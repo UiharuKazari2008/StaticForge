@@ -1642,12 +1642,13 @@ async function setActiveWorkspace(id) {
         isWorkspaceSwitching = true;
         window.isWorkspaceSwitching = true;
 
-        // Save any pending desktop shortcut changes before switching workspaces
-        if (desktopShortcuts && desktopShortcuts.pendingChanges) {
+        // Save any pending desktop layout changes before switching workspaces
+        if (desktopShortcuts && desktopShortcuts.hasPendingDesktopChanges()) {
             if (desktopShortcuts.saveDebounceTimer) {
                 clearTimeout(desktopShortcuts.saveDebounceTimer);
+                desktopShortcuts.saveDebounceTimer = null;
             }
-            await desktopShortcuts.saveToServer();
+            await desktopShortcuts.flushPendingDesktopLayout();
         }
 
         // Show progress modal or toast

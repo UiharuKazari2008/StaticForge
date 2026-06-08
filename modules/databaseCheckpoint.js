@@ -76,12 +76,13 @@ class DatabaseCheckpointManager {
     }
 
     /**
-     * Determine if the on-disk database has changed since the last checkpoint
-     * @param {Object} currentSignature
+     * Compare two file signatures for equality
+     * @param {Object} sigA
+     * @param {Object} sigB
      */
-    hasDatabaseChanged(currentSignature) {
-        if (!this.lastCheckpointSignature) {
-            return true;
+    signaturesEqual(sigA, sigB) {
+        if (!sigA || !sigB) {
+            return false;
         }
 
         const keys = [
@@ -93,7 +94,34 @@ class DatabaseCheckpointManager {
             'shmMtimeMs'
         ];
 
-        return keys.some(key => this.lastCheckpointSignature[key] !== currentSignature[key]);
+        return keys.every(key => sigA[key] === sigB[key]);
+    }
+
+    /**
+     * Determine if the on-disk database has changed since the last checkpoint
+     * @param {Object} currentSignature
+     */
+    hasDatabaseChanged(currentSignature) {
+        if (!this.lastCheckpointSignature) {
+            return true;
+        }
+
+        return !this.signaturesEqual(this.lastCheckpointSignature, currentSignature);
+    }
+
+    /**
+     * Determine if a checkpoint is needed based on dirty state and on-disk changes
+     * @param {Object} options
+     * @param {boolean} options.dirty - True when write operations modified data since last checkpoint
+     * @param {boolean} options.force - Bypass dirty requirement (not signature check)
+     */
+    needsCheckpoint({ dirty = false, force = false } = {}) {
+        if (!force && this.dbWrapper && !dirty) {
+            return false;
+        }
+
+        const currentSignature = this.getDatabaseSignature();
+        return this.hasDatabaseChanged(currentSignature);
     }
 
     /**
@@ -218,7 +246,11 @@ class DatabaseCheckpointManager {
             }
 
             const currentSignature = this.getDatabaseSignature();
-            if (!this.hasDatabaseChanged(currentSignature)) {
+            const dirty = !!(this.dbWrapper && typeof this.dbWrapper.isDirtyState === 'function' && this.dbWrapper.isDirtyState());
+            if (!this.needsCheckpoint({ dirty, force: false })) {
+                if (dirty && this.dbWrapper && typeof this.dbWrapper.markClean === 'function') {
+                    this.dbWrapper.markClean();
+                }
                 console.log(`ℹ️ Database unchanged, skipping checkpoint for ${this.dbName}`);
                 return false;
             }
@@ -248,6 +280,9 @@ class DatabaseCheckpointManager {
             this.cleanupOldCheckpoints();
 
             this.lastCheckpointSignature = currentSignature;
+            if (this.dbWrapper && typeof this.dbWrapper.markClean === 'function') {
+                this.dbWrapper.markClean();
+            }
             
             return true;
         } catch (error) {
@@ -258,9 +293,9 @@ class DatabaseCheckpointManager {
 
     /**
      * Create a checkpoint using SQLite backup API (more reliable for active databases)
-     * @param {boolean} forceDirty - Force checkpoint even if signature check suggests no changes (from dirty state tracking)
+     * @param {boolean} dirty - True when write operations modified data since last checkpoint
      */
-    async createCheckpointWithBackup(forceDirty = false) {
+    async createCheckpointWithBackup(dirty = false) {
         try {
             if (!fs.existsSync(this.dbPath)) {
                 console.warn(`⚠️ Database file does not exist: ${this.dbPath}`);
@@ -268,8 +303,10 @@ class DatabaseCheckpointManager {
             }
 
             const currentSignature = this.getDatabaseSignature();
-            // If forceDirty is true, skip signature check (we know writes occurred)
-            if (!forceDirty && !this.hasDatabaseChanged(currentSignature)) {
+            if (!this.needsCheckpoint({ dirty, force: false })) {
+                if (dirty && this.dbWrapper && typeof this.dbWrapper.markClean === 'function') {
+                    this.dbWrapper.markClean();
+                }
                 console.log(`ℹ️ Database unchanged, skipping checkpoint for ${this.dbName}`);
                 return false;
             }
@@ -294,6 +331,9 @@ class DatabaseCheckpointManager {
             this.cleanupOldCheckpoints();
 
             this.lastCheckpointSignature = currentSignature;
+            if (this.dbWrapper && typeof this.dbWrapper.markClean === 'function') {
+                this.dbWrapper.markClean();
+            }
             
             return true;
         } catch (error) {

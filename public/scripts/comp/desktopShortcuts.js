@@ -16,8 +16,11 @@ class DesktopShortcutsManager {
         
         // Debounce settings
         this.saveDebounceTimer = null;
-        this.saveDebounceDelay = 30000; // 30 seconds
+        this.saveDebounceDelay = 10000; // 10 seconds (aligned with server workspaceDesktop debounce)
         this.pendingChanges = false;
+        this.pendingWindowPositionSave = false;
+        this._saveTrayState = 'hidden';
+        this._saveTrayHideTimer = null;
         
         // Positioning settings
         this.snapThreshold = 50; // pixels to snap to grid
@@ -28,6 +31,18 @@ class DesktopShortcutsManager {
         
         // Collision offsets (temporary display adjustments for freeform icons only)
         this.collisionOffsets = new Map(); // shortcutId -> {x, y}
+
+        // Multi-select state
+        this.selectedShortcutIds = new Set();
+        this.dragGroup = null; // [{ element, shortcut, startX, startY, wasInGrid }]
+        this.primaryDragStart = { x: 0, y: 0 };
+        this.marqueeState = null;
+        this.selectionMarqueeEl = null;
+
+        // Folder drag/hold gesture state
+        this.folderHoldTarget = null;
+        this.folderHoldTimer = null;
+        this._lastDesktopContextCoords = null;
         
         // Shortcut type definitions
         this.shortcutTypes = {
@@ -81,8 +96,12 @@ class DesktopShortcutsManager {
                 icon: this.createBracketGenerationIcon,
                 contextMenu: this.getBracketGenerationContextMenu,
                 onClick: this.handleBracketGenerationClick
+            },
+            folder: {
+                icon: this.createFolderIcon,
+                contextMenu: this.getFolderContextMenu,
+                onClick: this.handleFolderClick
             }
-            // More types can be added here (folder, app, etc.)
         };
     }
 
@@ -103,15 +122,128 @@ class DesktopShortcutsManager {
 
         // Listen for WebSocket events
         this.initializeWebSocketListeners();
+        this.setupSelectionHandlers();
+        this.hideSaveTrayIndicator();
         
         // Save pending changes before page unload
         window.addEventListener('beforeunload', () => {
-            if (this.pendingChanges && this.saveDebounceTimer) {
-                clearTimeout(this.saveDebounceTimer);
-                // Synchronous save attempt (best effort)
-                this.saveToServer();
+            if (this.pendingChanges || this.pendingWindowPositionSave) {
+                if (this.saveDebounceTimer) {
+                    clearTimeout(this.saveDebounceTimer);
+                }
+                if (this.pendingWindowPositionSave && typeof flushSaveWindowPositions === 'function') {
+                    flushSaveWindowPositions();
+                }
+                if (this.pendingChanges) {
+                    this.saveToServer();
+                }
             }
         });
+    }
+
+    hasPendingDesktopChanges() {
+        return !!(this.pendingChanges || this.pendingWindowPositionSave);
+    }
+
+    hideSaveTrayIndicator() {
+        this.updateSaveTrayIndicator('hidden');
+    }
+
+    refreshSaveTrayIndicator() {
+        if (!window.isDesktop) {
+            this.hideSaveTrayIndicator();
+            return;
+        }
+
+        if (this.hasPendingDesktopChanges()) {
+            this.updateSaveTrayIndicator('pending');
+        }
+    }
+
+    updateSaveTrayIndicator(state) {
+        if (!window.isDesktop) {
+            return;
+        }
+
+        const indicator = document.getElementById('desktopSaveTrayIndicator');
+        const icon = document.getElementById('desktopSaveTrayIcon');
+        if (!indicator || !icon) {
+            return;
+        }
+
+        if (this._saveTrayHideTimer) {
+            clearTimeout(this._saveTrayHideTimer);
+            this._saveTrayHideTimer = null;
+        }
+
+        this._saveTrayState = state;
+        indicator.classList.remove('pending', 'received', 'saved');
+
+        switch (state) {
+            case 'pending':
+                indicator.classList.remove('hidden');
+                indicator.classList.add('pending');
+                icon.className = 'fas fa-inbox-in';
+                indicator.title = 'Desktop changes waiting to sync…';
+                break;
+            case 'received':
+                indicator.classList.remove('hidden');
+                indicator.classList.add('received');
+                icon.className = 'fas fa-inbox-full';
+                indicator.title = 'Desktop changes received by server…';
+                break;
+            case 'saved':
+                indicator.classList.remove('hidden');
+                indicator.classList.add('saved');
+                icon.className = 'fas fa-inbox';
+                indicator.title = 'Desktop layout saved to disk';
+                this._saveTrayHideTimer = setTimeout(() => {
+                    if (this._saveTrayState === 'saved' && !this.hasPendingDesktopChanges()) {
+                        this.hideSaveTrayIndicator();
+                    }
+                }, 20000);
+                break;
+            default:
+                indicator.classList.add('hidden');
+                indicator.title = 'Desktop layout saved';
+                this._saveTrayState = 'hidden';
+                break;
+        }
+    }
+
+    handleWorkspaceDesktopPersisted() {
+        if (this.hasPendingDesktopChanges()) {
+            return;
+        }
+
+        this.updateSaveTrayIndicator('saved');
+    }
+
+    markDesktopChangesReceivedByServer() {
+        if (this.hasPendingDesktopChanges()) {
+            this.refreshSaveTrayIndicator();
+            return;
+        }
+
+        this.updateSaveTrayIndicator('received');
+    }
+
+    async flushPendingDesktopLayout() {
+        const hadWindowPositions = this.pendingWindowPositionSave;
+        const hadShortcutChanges = this.pendingChanges;
+
+        if (hadWindowPositions && typeof flushSaveWindowPositions === 'function') {
+            await flushSaveWindowPositions();
+            this.pendingWindowPositionSave = false;
+        }
+
+        if (hadShortcutChanges) {
+            await this.saveToServer();
+        }
+
+        if (!this.hasPendingDesktopChanges() && (hadWindowPositions || hadShortcutChanges)) {
+            this.markDesktopChangesReceivedByServer();
+        }
     }
 
     // Initialize WebSocket listeners for desktop events
@@ -124,7 +256,7 @@ class DesktopShortcutsManager {
         document.addEventListener('wsMessage', (event) => {
             const { type, data } = event.detail;
             
-            // Ignore broadcasts from our own changes
+            // Ignore broadcasts from our own pending local changes
             if (this.pendingChanges) {
                 return;
             }
@@ -133,9 +265,9 @@ class DesktopShortcutsManager {
                 case 'desktop_shortcut_added':
                     if (data.workspaceId === this.currentWorkspace) {
                         // Check if we don't already have this shortcut locally
-                        if (!this.shortcuts.find(s => s.id === data.shortcut.id)) {
+                        if (!this.shortcuts.find(s => s.id === data.shortcut.id && !s._isDeleted)) {
                             this.shortcuts.push(data.shortcut);
-                            this.addShortcutToDOM(data.shortcut);
+                            this.renderShortcuts();
                         }
                     }
                     break;
@@ -143,7 +275,7 @@ class DesktopShortcutsManager {
                 case 'desktop_shortcut_updated':
                     if (data.workspaceId === this.currentWorkspace) {
                         const shortcut = this.shortcuts.find(s => s.id === data.shortcutId);
-                        if (shortcut) {
+                        if (shortcut && !shortcut._isDeleted && !shortcut._nameModified) {
                             Object.assign(shortcut, data.updates);
                             this.updateShortcutInDOM(data.shortcutId, data.updates);
                         }
@@ -161,7 +293,7 @@ class DesktopShortcutsManager {
                     if (data.workspaceId === this.currentWorkspace) {
                         data.positions.forEach(({ id, position }) => {
                             const shortcut = this.shortcuts.find(s => s.id === id);
-                            if (shortcut) {
+                            if (shortcut && !shortcut._isDeleted) {
                                 shortcut.position = position;
                             }
                         });
@@ -203,14 +335,16 @@ class DesktopShortcutsManager {
     // Handle workspace change
     async handleWorkspaceChange(workspaceId, skipAnimation = false) {
         // Save any pending changes before switching
-        if (this.pendingChanges) {
+        if (this.hasPendingDesktopChanges()) {
             if (this.saveDebounceTimer) {
                 clearTimeout(this.saveDebounceTimer);
+                this.saveDebounceTimer = null;
             }
-            await this.saveToServer();
+            await this.flushPendingDesktopLayout();
         }
 
         this.currentWorkspace = workspaceId;
+        this.clearSelection();
 
         await this.loadShortcuts(workspaceId);
         
@@ -271,13 +405,15 @@ class DesktopShortcutsManager {
         
         // Clear collision offsets
         this.collisionOffsets.clear();
+
+        const activeShortcuts = this.shortcuts.filter(s => !s._isDeleted && (s.folderId == null || s.folderId === undefined));
         
         // Separate grid shortcuts from freeform shortcuts
-        const gridShortcuts = this.shortcuts
+        const gridShortcuts = activeShortcuts
             .filter(s => s.position && s.position.index === 0)
             .sort((a, b) => (a.position.pos || 0) - (b.position.pos || 0));
             
-        const freeformShortcuts = this.shortcuts
+        const freeformShortcuts = activeShortcuts
             .filter(s => !s.position || s.position.index !== 0)
             .sort((a, b) => {
                 if (!a.position || !b.position) return 0;
@@ -303,6 +439,587 @@ class DesktopShortcutsManager {
         
         // Clear cache after rendering
         this.notesMetadataCache = null;
+        this.updateSelectionVisuals();
+    }
+
+    // --- Multi-select ---
+
+    setupSelectionHandlers() {
+        if (!this.desktopContainer || this.desktopContainer.dataset.selectionWired === 'true') {
+            return;
+        }
+        this.desktopContainer.dataset.selectionWired = 'true';
+
+        this.desktopContainer.addEventListener('mousedown', (e) => this.handleDesktopMarqueeStart(e));
+        this.freeformContainer?.addEventListener('contextmenu', (e) => {
+            this._lastDesktopContextCoords = { x: e.clientX, y: e.clientY };
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (!document.body.classList.contains('desktop-mode')) return;
+            if (!this.selectedShortcutIds.size) return;
+            if (this._isEditableShortcutTarget(e.target) || this._isEditableShortcutTarget(document.activeElement)) return;
+            if (!this._isDesktopKeyboardFocused(e)) return;
+            if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+            e.preventDefault();
+            this.removeSelectedShortcuts();
+        });
+    }
+
+    _isEditableShortcutTarget(el) {
+        if (!el || el === document.body || el === document.documentElement) return false;
+        if (el.matches?.('input, textarea, select')) return true;
+        if (el.isContentEditable) return true;
+        return !!el.closest?.('input, textarea, select, [contenteditable="true"], [contenteditable=""]');
+    }
+
+    _isDesktopKeyboardFocused(ev) {
+        const inDesktop = (el) => el && (
+            this.desktopContainer?.contains(el) ||
+            this.freeformContainer?.contains(el)
+        );
+        if (inDesktop(ev.target)) return true;
+        return inDesktop(document.activeElement);
+    }
+
+    getAllShortcutElements() {
+        const elements = [];
+        if (this.gridContainer) {
+            elements.push(...this.gridContainer.querySelectorAll('.desktop-shortcut:not(.desktop-drop-placeholder)'));
+        }
+        if (this.freeformContainer) {
+            elements.push(...this.freeformContainer.querySelectorAll('.desktop-shortcut'));
+        }
+        return elements;
+    }
+
+    rectsIntersect(a, b) {
+        return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
+    }
+
+    getShortcutIdsInRect(rect) {
+        const ids = [];
+        this.getAllShortcutElements().forEach((el) => {
+            if (this.rectsIntersect(rect, el.getBoundingClientRect())) {
+                ids.push(el.dataset.shortcutId);
+            }
+        });
+        return ids;
+    }
+
+    selectShortcut(shortcutId, add = false) {
+        if (!shortcutId) return;
+        if (!add) {
+            this.selectedShortcutIds.clear();
+        }
+        this.selectedShortcutIds.add(shortcutId);
+        this.updateSelectionVisuals();
+    }
+
+    toggleShortcutSelection(shortcutId) {
+        if (!shortcutId) return;
+        if (this.selectedShortcutIds.has(shortcutId)) {
+            this.selectedShortcutIds.delete(shortcutId);
+        } else {
+            this.selectedShortcutIds.add(shortcutId);
+        }
+        this.updateSelectionVisuals();
+    }
+
+    clearSelection() {
+        if (!this.selectedShortcutIds.size) return;
+        this.selectedShortcutIds.clear();
+        this.updateSelectionVisuals();
+    }
+
+    updateSelectionVisuals() {
+        this.getAllShortcutElements().forEach((el) => {
+            const isSelected = this.selectedShortcutIds.has(el.dataset.shortcutId);
+            el.classList.toggle('selected', isSelected);
+            el.dataset.selected = isSelected ? 'true' : 'false';
+        });
+        this.desktopContainer?.classList.toggle('desktop-has-selection', this.selectedShortcutIds.size > 0);
+    }
+
+    getSelectedShortcuts() {
+        return this.shortcuts.filter((s) => this.selectedShortcutIds.has(s.id));
+    }
+
+    getSelectedCount() {
+        return this.selectedShortcutIds.size;
+    }
+
+    isShortcutSelected(shortcutId) {
+        return this.selectedShortcutIds.has(shortcutId);
+    }
+
+    ensureSelectionMarqueeEl() {
+        if (this.selectionMarqueeEl) return this.selectionMarqueeEl;
+        this.selectionMarqueeEl = document.createElement('div');
+        this.selectionMarqueeEl.className = 'desktop-selection-marquee hidden';
+        document.body.appendChild(this.selectionMarqueeEl);
+        return this.selectionMarqueeEl;
+    }
+
+    handleDesktopMarqueeStart(event) {
+        if (!document.body.classList.contains('desktop-mode')) return;
+        if (event.button !== 0) return;
+        if (event.target.closest('.desktop-shortcut, .modal, #desktopTaskbar, #startMenu')) return;
+
+        const isDesktopSurface =
+            event.target === this.desktopContainer ||
+            event.target === this.freeformContainer ||
+            event.target === this.gridContainer;
+        if (!isDesktopSurface) return;
+
+        const addToSelection = event.ctrlKey || event.metaKey;
+        if (!addToSelection) {
+            this.clearSelection();
+        }
+
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const marqueeEl = this.ensureSelectionMarqueeEl();
+        const baseSelection = addToSelection ? new Set(this.selectedShortcutIds) : new Set();
+
+        marqueeEl.classList.remove('hidden');
+        marqueeEl.style.left = `${startX}px`;
+        marqueeEl.style.top = `${startY}px`;
+        marqueeEl.style.width = '0px';
+        marqueeEl.style.height = '0px';
+
+        this.marqueeState = { startX, startY, addToSelection, baseSelection };
+        document.body.classList.add('desktop-marquee-active');
+
+        const moveHandler = (e) => this.handleDesktopMarqueeMove(e, moveHandler, endHandler);
+        const endHandler = (e) => this.handleDesktopMarqueeEnd(e, moveHandler, endHandler);
+
+        document.addEventListener('mousemove', moveHandler);
+        document.addEventListener('mouseup', endHandler);
+        event.preventDefault();
+    }
+
+    handleDesktopMarqueeMove(event, moveHandler, endHandler) {
+        if (!this.marqueeState) return;
+
+        const { startX, startY, addToSelection, baseSelection } = this.marqueeState;
+        const left = Math.min(startX, event.clientX);
+        const top = Math.min(startY, event.clientY);
+        const width = Math.abs(event.clientX - startX);
+        const height = Math.abs(event.clientY - startY);
+
+        const marqueeEl = this.selectionMarqueeEl;
+        if (marqueeEl) {
+            marqueeEl.style.left = `${left}px`;
+            marqueeEl.style.top = `${top}px`;
+            marqueeEl.style.width = `${width}px`;
+            marqueeEl.style.height = `${height}px`;
+        }
+
+        if (width < 4 && height < 4) return;
+
+        const rect = { left, top, right: left + width, bottom: top + height };
+        const boxIds = this.getShortcutIdsInRect(rect);
+
+        if (addToSelection) {
+            this.selectedShortcutIds = new Set(baseSelection);
+            boxIds.forEach((id) => this.selectedShortcutIds.add(id));
+        } else {
+            this.selectedShortcutIds = new Set(boxIds);
+        }
+        this.updateSelectionVisuals();
+    }
+
+    handleDesktopMarqueeEnd(event, moveHandler, endHandler) {
+        document.removeEventListener('mousemove', moveHandler);
+        document.removeEventListener('mouseup', endHandler);
+        document.body.classList.remove('desktop-marquee-active');
+
+        if (this.selectionMarqueeEl) {
+            this.selectionMarqueeEl.classList.add('hidden');
+            this.selectionMarqueeEl.style.width = '0px';
+            this.selectionMarqueeEl.style.height = '0px';
+        }
+        this.marqueeState = null;
+    }
+
+    async removeSelectedShortcuts() {
+        const ids = [...this.selectedShortcutIds];
+        if (!ids.length) return;
+
+        const selected = ids.map(id => this.shortcuts.find(s => s.id === id)).filter(Boolean);
+        const folders = selected.filter(s => s.type === 'folder');
+        const shortcuts = selected.filter(s => s.type !== 'folder');
+        const count = ids.length;
+
+        let message;
+        let confirmLabel;
+        if (folders.length && shortcuts.length) {
+            message = `Remove ${shortcuts.length} item(s) and delete ${folders.length} folder(s)? Folder contents may be permanently deleted.`;
+            confirmLabel = 'Confirm';
+        } else if (folders.length === 1 && !shortcuts.length) {
+            message = this.getFolderDeleteConfirmMessage(folders[0]);
+            confirmLabel = 'Delete';
+        } else if (folders.length > 1 && !shortcuts.length) {
+            message = `Delete ${folders.length} folders and their contents? This cannot be undone.`;
+            confirmLabel = 'Delete';
+        } else if (count === 1) {
+            message = `Remove "${selected[0].name}"?`;
+            confirmLabel = 'Remove';
+        } else {
+            message = `Remove ${count} items from the desktop?`;
+            confirmLabel = 'Remove';
+        }
+
+        const confirmed = await showConfirmationDialog(
+            message,
+            [
+                { text: confirmLabel, value: true, className: 'btn-danger' },
+                { text: 'Cancel', value: false, className: 'btn-secondary' }
+            ]
+        );
+
+        if (!confirmed) return;
+
+        for (const id of ids) {
+            const shortcut = this.shortcuts.find(s => s.id === id);
+            if (shortcut?.type === 'folder') {
+                await this.deleteFolderShortcut(id);
+            } else {
+                await this.removeShortcut(id);
+            }
+        }
+        this.clearSelection();
+    }
+
+    async moveSelectedShortcutsToWorkspace(targetWorkspaceId) {
+        const ids = [...this.selectedShortcutIds];
+        if (!ids.length) return;
+
+        let moved = 0;
+        for (const id of ids) {
+            try {
+                await this.moveShortcutToWorkspace(id, targetWorkspaceId, true);
+                moved++;
+            } catch (error) {
+                // moveShortcutToWorkspace already toasts errors
+            }
+        }
+        this.clearSelection();
+
+        if (moved > 0) {
+            const wsName = workspaces[targetWorkspaceId]?.name || targetWorkspaceId;
+            const message = moved === 1
+                ? `Shortcut moved to ${wsName}`
+                : `${moved} shortcuts moved to ${wsName}`;
+            showGlassToast('success', null, message, false, 3000, '<i class="fas fa-arrow-right"></i>');
+        }
+    }
+
+    getFolderDeleteConfirmMessage(shortcut) {
+        const vfsFolderId = shortcut?.data?.vfsFolderId;
+        const nestedCount = vfsFolderId
+            ? this.shortcuts.filter(s => s.folderId === vfsFolderId && !s._isDeleted).length
+            : 0;
+        const name = shortcut?.name || 'this folder';
+        if (nestedCount > 0) {
+            return `Delete folder "${name}" and the ${nestedCount} item(s) inside? Any files stored in this folder will also be permanently deleted.`;
+        }
+        return `Delete folder "${name}"? Any files or items stored inside will be permanently deleted.`;
+    }
+
+    async _purgeVfsFolderContents(folderListPath) {
+        if (!folderListPath || !wsClient?.isConnected()) return;
+
+        let listing;
+        try {
+            listing = await vfsClient.listDirectory(folderListPath);
+        } catch (err) {
+            console.warn('Could not list folder for delete:', err);
+            return;
+        }
+
+        const items = listing?.items || [];
+        for (const item of items) {
+            const targetKind = item.targetKind || item.kind;
+            if (targetKind === 'vfs-folder' || item.kind === 'folder') {
+                const subId = item.targetId || item.id;
+                const subPath = item.navPath || `${folderListPath.replace(/\/+$/, '')}/${subId}`;
+                await this._purgeVfsFolderContents(subPath);
+                try {
+                    await vfsClient.deleteFolder(subId);
+                } catch (err) {
+                    console.error('Failed to delete subfolder:', subId, err);
+                    throw err;
+                }
+            } else if (targetKind === 'user-file') {
+                await wsClient.sendMessage('vfs_delete_file', { fileId: item.targetId || item.id });
+            } else if (item.isDesktopShortcut && item.id) {
+                const exists = this.shortcuts.find(s => s.id === item.id && !s._isDeleted);
+                if (exists) await this.removeShortcut(item.id);
+            } else if (item.isShortcut && item.id) {
+                await vfsClient.deleteEntry(item.id);
+            }
+        }
+    }
+
+    async purgeVfsFolderByPath(folderListPath, folderId) {
+        if (!folderId) throw new Error('Folder id required');
+        await this._purgeVfsFolderContents(folderListPath);
+        await vfsClient.deleteFolder(folderId);
+    }
+
+    async deleteFolderShortcut(shortcutId) {
+        const shortcut = this.shortcuts.find(s => s.id === shortcutId);
+        if (!shortcut || shortcut.type !== 'folder') {
+            throw new Error('Not a folder shortcut');
+        }
+
+        const vfsFolderId = shortcut.data?.vfsFolderId;
+        const workspaceId = this.currentWorkspace;
+
+        if (vfsFolderId && workspaceId && wsClient?.isConnected()) {
+            const nested = this.shortcuts.filter(s => s.folderId === vfsFolderId && !s._isDeleted && s.id !== shortcutId);
+            for (const nestedShortcut of nested) {
+                await this.removeShortcut(nestedShortcut.id);
+            }
+
+            const listPath = `/Workspaces/${workspaceId}/Desktop/${vfsFolderId}`;
+            await this.purgeVfsFolderByPath(listPath, vfsFolderId);
+        }
+
+        await this.removeShortcut(shortcutId);
+    }
+
+    getShortcutPermanentDeleteItems(shortcut) {
+        if (!shortcut?.type) return [];
+        switch (shortcut.type) {
+            case 'image':
+                return [
+                    { separator: true },
+                    {
+                        icon: 'fas fa-fire',
+                        text: 'Incinerate',
+                        action: 'incinerate-shortcut-target',
+                        className: 'context-menu-item-danger'
+                    }
+                ];
+            case 'note':
+                return [
+                    { separator: true },
+                    {
+                        icon: 'fas fa-trash',
+                        text: 'Delete Note',
+                        action: 'delete-note-shortcut-target',
+                        className: 'context-menu-item-danger'
+                    }
+                ];
+            case 'reference':
+                return [
+                    { separator: true },
+                    {
+                        icon: 'fas fa-fire',
+                        text: 'Destroy',
+                        action: 'destroy-reference-shortcut-target',
+                        className: 'context-menu-item-danger'
+                    }
+                ];
+            default:
+                return [];
+        }
+    }
+
+    async permanentlyDeleteShortcutTarget(shortcut) {
+        if (!shortcut?.type) return;
+
+        switch (shortcut.type) {
+            case 'image': {
+                const filename = shortcut.data?.filename;
+                if (!filename) throw new Error('No filename for image shortcut');
+                let image = null;
+                if (typeof allImages !== 'undefined' && allImages.length > 0) {
+                    image = allImages.find(img =>
+                        img.filename === filename || img.original === filename || img.upscaled === filename
+                    );
+                }
+                if (image && typeof deleteImage === 'function') {
+                    deleteImage(image);
+                } else if (wsClient?.deleteImagesBulk) {
+                    const result = await wsClient.deleteImagesBulk([filename]);
+                    if (!result?.successful) throw new Error('Failed to delete image');
+                }
+                if (typeof loadGallery === 'function') loadGallery(true);
+                break;
+            }
+            case 'note': {
+                const noteId = shortcut.data?.noteId;
+                if (!noteId) throw new Error('No note id for note shortcut');
+                if (notepadManager?.notebookDeleteNote) {
+                    await notepadManager.notebookDeleteNote(noteId);
+                } else {
+                    const response = await wsClient.deleteNote(noteId);
+                    if (!response?.success) throw new Error('Failed to delete note');
+                }
+                break;
+            }
+            case 'reference': {
+                const hash = shortcut.data?.hash;
+                const wsId = shortcut.data?.workspaceId || activeWorkspace || 'default';
+                if (!hash) throw new Error('No reference hash for reference shortcut');
+                let cacheImage = null;
+                if (Array.isArray(cacheImages) && cacheImages.length) {
+                    cacheImage = cacheImages.find(img => img.hash === hash);
+                }
+                if (!cacheImage) {
+                    cacheImage = {
+                        hash,
+                        filename: shortcut.data?.filename || shortcut.name || hash,
+                        hasPreview: true,
+                        preview: shortcut.data?.preview,
+                        isStandalone: !!shortcut.data?.isStandalone,
+                        hasVibes: !!shortcut.data?.hasVibes,
+                        workspaceId: wsId
+                    };
+                }
+                const deleteType = (cacheImage.hasVibes && !cacheImage.isStandalone) ? 'both' : 'base';
+                // public/scripts/comp/referenceManager.js deleteReferenceImage
+                await deleteReferenceImage(cacheImage, wsId, async () => {
+                    if (typeof refreshReferenceBrowserIfOpen === 'function') await refreshReferenceBrowserIfOpen();
+                }, deleteType);
+                break;
+            }
+            default:
+                return;
+        }
+
+        await this.removeShortcut(shortcut.id);
+    }
+
+    getShortcutManagementMenuItems(leadingSeparator = false) {
+        const items = [];
+        if (leadingSeparator) {
+            items.push({ separator: true });
+        }
+        items.push(
+            {
+                icon: 'fas fa-pen',
+                text: 'Rename',
+                action: 'rename-shortcut'
+            },
+            {
+                icon: 'fas fa-arrow-right',
+                text: 'Move to...',
+                optionsfn: () => this.getWorkspaceSubmenuItems(),
+                loadfn: (item) => {
+                    item.disabled = this.getWorkspaceSubmenuItems().length === 0;
+                }
+            },
+            {
+                icon: 'fas fa-trash',
+                text: 'Remove',
+                action: 'remove-shortcut',
+                className: 'context-menu-item-danger'
+            }
+        );
+        return items;
+    }
+
+    getBulkContextMenu() {
+        const count = this.getSelectedCount();
+        return {
+            sections: [
+                {
+                    type: 'list',
+                    items: [
+                        {
+                            icon: 'fas fa-folder-plus',
+                            text: count > 1 ? `Create folder from ${count} items` : 'Create folder from selection',
+                            action: 'create-folder-from-selection'
+                        },
+                        {
+                            icon: 'fas fa-arrow-right',
+                            text: count > 1 ? `Move ${count} items to...` : 'Move to...',
+                            optionsfn: () => this.getWorkspaceSubmenuItems(),
+                            loadfn: (item) => {
+                                item.disabled = this.getWorkspaceSubmenuItems().length === 0;
+                            }
+                        },
+                        {
+                            icon: 'fas fa-trash',
+                            text: count > 1 ? `Remove ${count} items` : 'Remove',
+                            action: 'remove-shortcut',
+                            className: 'context-menu-item-danger'
+                        }
+                    ]
+                }
+            ]
+        };
+    }
+
+    prepareDragGroup(primaryElement, primaryShortcut) {
+        const containerRect = this.freeformContainer.getBoundingClientRect();
+        const dragIds = this.selectedShortcutIds.has(primaryShortcut.id) && this.selectedShortcutIds.size > 1
+            ? [...this.selectedShortcutIds]
+            : [primaryShortcut.id];
+
+        if (dragIds.length === 1 && !this.selectedShortcutIds.has(primaryShortcut.id)) {
+            this.selectShortcut(primaryShortcut.id);
+        }
+
+        this.dragGroup = dragIds.map((id) => {
+            const shortcut = this.shortcuts.find((s) => s.id === id);
+            const element = this.gridContainer?.querySelector(`[data-shortcut-id="${id}"]`)
+                || this.freeformContainer?.querySelector(`[data-shortcut-id="${id}"]`);
+            if (!shortcut || !element) return null;
+
+            const wasInGrid = element.parentElement === this.gridContainer;
+            const rect = element.getBoundingClientRect();
+            return {
+                element,
+                shortcut,
+                startX: rect.left - containerRect.left,
+                startY: rect.top - containerRect.top,
+                wasInGrid
+            };
+        }).filter(Boolean);
+
+        const primaryEntry = this.dragGroup.find((item) => item.element === primaryElement);
+        if (primaryEntry) {
+            this.primaryDragStart = { x: primaryEntry.startX, y: primaryEntry.startY };
+        }
+    }
+
+    convertDragGroupToFreeform() {
+        if (!this.dragGroup || !this.freeformContainer) return;
+
+        const containerRect = this.freeformContainer.getBoundingClientRect();
+        this.dragGroup.forEach((item) => {
+            if (item.wasInGrid) {
+                this.freeformContainer.appendChild(item.element);
+                item.element.style.position = 'absolute';
+            }
+            item.element.style.left = `${item.startX}px`;
+            item.element.style.top = `${item.startY}px`;
+            item.element.classList.add('dragging');
+        });
+    }
+
+    updateDragGroupPositions(primaryX, primaryY) {
+        if (!this.dragGroup) return;
+
+        const deltaX = primaryX - this.primaryDragStart.x;
+        const deltaY = primaryY - this.primaryDragStart.y;
+        const containerRect = this.freeformContainer.getBoundingClientRect();
+
+        this.dragGroup.forEach((item) => {
+            let newX = item.startX + deltaX;
+            let newY = item.startY + deltaY;
+            const elementRect = item.element.getBoundingClientRect();
+            newX = Math.max(0, Math.min(newX, containerRect.width - elementRect.width));
+            newY = Math.max(0, Math.min(newY, containerRect.height - elementRect.height));
+            item.element.style.left = `${newX}px`;
+            item.element.style.top = `${newY}px`;
+        });
     }
 
     // Add a grid shortcut to the DOM (index 0)
@@ -390,6 +1107,12 @@ class DesktopShortcutsManager {
             e.preventDefault();
             e.stopPropagation();
             this.handleShortcutClick(shortcut);
+        });
+
+        element.addEventListener('contextmenu', () => {
+            if (!this.isShortcutSelected(shortcut.id)) {
+                this.selectShortcut(shortcut.id);
+            }
         });
 
         // Add drag handlers
@@ -599,30 +1322,7 @@ class DesktopShortcutsManager {
                             text: 'Open in Notion',
                             action: 'open-note-in-notebook'
                         },
-                        { separator: true },
-                        {
-                            icon: 'fas fa-pen',
-                            text: 'Rename',
-                            action: 'rename-shortcut'
-                        },
-                        {
-                            icon: 'fas fa-arrow-right',
-                            text: 'Move to...',
-                            optionsfn: (target) => {
-                                return this.getWorkspaceSubmenuItems();
-                            },
-                            loadfn: (item) => {
-                                // Disable if there are no other workspaces
-                                const otherWorkspaces = this.getWorkspaceSubmenuItems();
-                                item.disabled = otherWorkspaces.length === 0;
-                            }
-                        },
-                        {
-                            icon: 'fas fa-trash',
-                            text: 'Remove',
-                            action: 'remove-shortcut',
-                            className: 'context-menu-item-danger'
-                        }
+                        ...this.getShortcutManagementMenuItems(true, shortcut)
                     ]
                 }
             ],
@@ -634,25 +1334,10 @@ class DesktopShortcutsManager {
                     case 'open-note-in-notebook':
                         await this.handleNoteOpenInNotebook(shortcut);
                         break;
-                    case 'rename-shortcut':
-                        // Show rename dialog with input
-                        const newName = await showInputDialog(
-                            false,
-                            shortcut.name,
-                            'Enter shortcut name',
-                            [
-                                { text: 'Rename', value: true, className: 'btn-primary' },
-                                { text: 'Cancel', value: false, className: 'btn-secondary' }
-                            ]
-                        );
-                        
-                        if (newName && newName !== shortcut.name) {
-                            await this.renameShortcut(shortcut.id, newName);
-                        }
-                        break;
-                    case 'remove-shortcut':
-                        await this.removeShortcut(shortcut.id);
-                        break;
+                    default:
+                        document.dispatchEvent(new CustomEvent('contextMenuAction', {
+                            detail: { action, target, item }
+                        }));
                 }
             }
         };
@@ -776,36 +1461,7 @@ class DesktopShortcutsManager {
             sections: [
                 {
                     type: 'list',
-                    items: [
-                        {
-                            icon: 'fas fa-pen',
-                            text: 'Rename',
-                            action: 'rename-shortcut'
-                        }
-                    ]
-                },
-                {
-                    icon: 'fas fa-arrow-right',
-                    text: 'Move to...',
-                    optionsfn: (target) => {
-                        return this.getWorkspaceSubmenuItems();
-                    },
-                    loadfn: (item) => {
-                        // Disable if there are no other workspaces
-                        const otherWorkspaces = this.getWorkspaceSubmenuItems();
-                        item.disabled = otherWorkspaces.length === 0;
-                    }
-                },
-                {
-                    type: 'list',
-                    items: [
-                        {
-                            icon: 'fas fa-trash',
-                            text: 'Remove',
-                            action: 'remove-shortcut',
-                            className: 'context-menu-item-danger'
-                        }
-                    ]
+                    items: this.getShortcutManagementMenuItems(false, shortcut)
                 }
             ]
         };
@@ -880,28 +1536,7 @@ class DesktopShortcutsManager {
             sections: [
                 {
                     type: 'list',
-                    items: [
-                        {
-                            icon: 'fas fa-pen',
-                            text: 'Rename',
-                            action: 'rename-shortcut'
-                        },
-                        {
-                            icon: 'fas fa-arrow-right',
-                            text: 'Move to...',
-                            optionsfn: () => this.getWorkspaceSubmenuItems(),
-                            loadfn: (item) => {
-                                const otherWorkspaces = this.getWorkspaceSubmenuItems();
-                                item.disabled = otherWorkspaces.length === 0;
-                            }
-                        },
-                        {
-                            icon: 'fas fa-trash',
-                            text: 'Remove',
-                            action: 'remove-shortcut',
-                            className: 'context-menu-item-danger'
-                        }
-                    ]
+                    items: this.getShortcutManagementMenuItems(false, shortcut)
                 }
             ]
         };
@@ -923,6 +1558,159 @@ class DesktopShortcutsManager {
         } else {
             showGlassToast('error', null, 'Phasewalker not available', false, 4000);
         }
+    }
+
+    createFolderIcon() {
+        const icon = document.createElement('div');
+        icon.className = 'desktop-shortcut-icon';
+        icon.innerHTML = '<i class="fas fa-folder"></i>';
+        return icon;
+    }
+
+    handleFolderClick(shortcut) {
+        const wsId = this.currentWorkspace;
+        const vfsFolderId = shortcut.data?.vfsFolderId;
+        if (!wsId || !vfsFolderId) return;
+        openExplorerApplet(`/Workspaces/${wsId}/Desktop/${vfsFolderId}`);
+    }
+
+    getFolderContextMenu() {
+        return {
+            sections: [
+                {
+                    type: 'list',
+                    items: [
+                        {
+                            icon: 'fas fa-folder-open',
+                            text: 'Open',
+                            action: 'open-folder-shortcut'
+                        },
+                        {
+                            icon: 'fas fa-i-cursor',
+                            text: 'Rename',
+                            action: 'rename-shortcut'
+                        },
+                        { separator: true },
+                        {
+                            icon: 'fas fa-trash',
+                            text: 'Delete Folder',
+                            action: 'delete-folder-shortcut',
+                            className: 'context-menu-item-danger'
+                        }
+                    ]
+                }
+            ]
+        };
+    }
+
+    getContextMenuPosition() {
+        if (this._lastDesktopContextCoords && this.freeformContainer) {
+            const rect = this.freeformContainer.getBoundingClientRect();
+            const x = this._lastDesktopContextCoords.x - rect.left;
+            const y = this._lastDesktopContextCoords.y - rect.top;
+            return this.pixelToPositionData(x, y, rect);
+        }
+        return this.getNextAvailablePosition();
+    }
+
+    getShortcutUnderPoint(clientX, clientY) {
+        const el = document.elementFromPoint(clientX, clientY)?.closest('.desktop-shortcut:not(.desktop-drop-placeholder)');
+        if (!el) return null;
+        const id = el.dataset.shortcutId;
+        return this.shortcuts.find(s => s.id === id) || null;
+    }
+
+    getFolderShortcutUnderPoint(clientX, clientY) {
+        const shortcut = this.getShortcutUnderPoint(clientX, clientY);
+        if (shortcut && shortcut.type === 'folder') return shortcut;
+        return null;
+    }
+
+    clearFolderHoldTimer() {
+        if (this.folderHoldTimer) {
+            clearTimeout(this.folderHoldTimer);
+            this.folderHoldTimer = null;
+        }
+        this.folderHoldTarget = null;
+    }
+
+    async createEmptyFolder(options = {}) {
+        const workspaceId = this.currentWorkspace;
+        if (!workspaceId || !wsClient?.isConnected()) return;
+
+        const position = options.position || this.getNextAvailablePosition();
+        try {
+            const resp = await vfsClient.createDesktopEmptyFolder(workspaceId, position, options.name || 'New Folder');
+            if (!resp.success) return;
+
+            if (resp.shortcut) {
+                const exists = this.shortcuts.find(s => s.id === resp.shortcut.id);
+                if (!exists) this.shortcuts.push(resp.shortcut);
+            }
+            this.renderShortcuts();
+
+            const shortcutId = resp.shortcutId || resp.shortcut?.id;
+            if (shortcutId) {
+                const newName = await showInputDialog(
+                    'New Folder',
+                    'New Folder',
+                    'Enter folder name',
+                    [
+                        { text: 'Create', value: true, className: 'btn-primary' },
+                        { text: 'Cancel', value: false, className: 'btn-secondary' }
+                    ]
+                );
+                if (newName && newName.trim()) {
+                    await this.renameShortcut(shortcutId, newName.trim());
+                    if (resp.folderId) {
+                        await vfsClient.renameFolder(resp.folderId, newName.trim());
+                    }
+                }
+            }
+        } catch (err) {
+            showGlassToast('error', 'Desktop', err.message || 'Failed to create folder', false, 5000);
+        }
+    }
+
+    async createFolderFromSelection(position) {
+        const workspaceId = this.currentWorkspace;
+        if (!workspaceId) return;
+
+        const shortcutIds = this.getSelectedCount() > 0
+            ? [...this.selectedShortcutIds]
+            : (this.draggedShortcut ? [this.draggedShortcut.shortcut.id] : []);
+
+        if (shortcutIds.length < 1) return;
+
+        try {
+            const pos = position || this.getNextAvailablePosition();
+            await vfsClient.createFolderFromSelection(workspaceId, shortcutIds, pos);
+            this.clearSelection();
+            await this.loadShortcuts(workspaceId);
+            this.renderShortcuts();
+        } catch (err) {
+            showGlassToast('error', 'Desktop', err.message || 'Failed to create folder', false, 5000);
+        }
+    }
+
+    async assignShortcutsToFolder(shortcutIds, folderShortcut) {
+        const workspaceId = this.currentWorkspace;
+        const folderId = folderShortcut?.data?.vfsFolderId;
+        if (!workspaceId || !folderId || !shortcutIds.length) return;
+
+        const updates = shortcutIds
+            .filter(id => id !== folderShortcut.id)
+            .map(shortcutId => ({ shortcutId, folderId }));
+
+        if (!updates.length) return;
+
+        await vfsClient.updateShortcutFolders(workspaceId, updates);
+        updates.forEach(({ shortcutId, folderId: fid }) => {
+            const s = this.shortcuts.find(sc => sc.id === shortcutId);
+            if (s) s.folderId = fid;
+        });
+        this.clearSelection();
+        this.renderShortcuts();
     }
 
     // Find applet by launch ID
@@ -954,14 +1742,7 @@ class DesktopShortcutsManager {
             sections: [
                 {
                     type: 'list',
-                    items: [
-                        {
-                            icon: 'fas fa-trash',
-                            text: 'Remove',
-                            action: 'remove-shortcut',
-                            className: 'context-menu-item-danger'
-                        }
-                    ]
+                    items: this.getShortcutManagementMenuItems(false, shortcut)
                 }
             ]
         };
@@ -1076,29 +1857,7 @@ class DesktopShortcutsManager {
                 {
                     type: 'list',
                     items: [
-                        {
-                            icon: 'fas fa-pen',
-                            text: 'Rename',
-                            action: 'rename-shortcut'
-                        },
-                        {
-                            icon: 'fas fa-arrow-right',
-                            text: 'Move to...',
-                            optionsfn: (target) => {
-                                return this.getWorkspaceSubmenuItems();
-                            },
-                            loadfn: (item) => {
-                                // Disable if there are no other workspaces
-                                const otherWorkspaces = this.getWorkspaceSubmenuItems();
-                                item.disabled = otherWorkspaces.length === 0;
-                            }
-                        },
-                        {
-                            icon: 'fas fa-trash',
-                            text: 'Remove',
-                            action: 'remove-shortcut',
-                            className: 'context-menu-item-danger'
-                        }
+                        ...this.getShortcutManagementMenuItems(false, shortcut)
                     ]
                 }
             ]
@@ -1157,30 +1916,7 @@ class DesktopShortcutsManager {
                             text: 'Copy URL',
                             action: 'preset-copy-url'
                         },
-                        { separator: true },
-                        {
-                            icon: 'fas fa-pen',
-                            text: 'Rename',
-                            action: 'rename-shortcut'
-                        },
-                        {
-                            icon: 'fas fa-arrow-right',
-                            text: 'Move to...',
-                            optionsfn: (target) => {
-                                return this.getWorkspaceSubmenuItems();
-                            },
-                            loadfn: (item) => {
-                                // Disable if there are no other workspaces
-                                const otherWorkspaces = this.getWorkspaceSubmenuItems();
-                                item.disabled = otherWorkspaces.length === 0;
-                            }
-                        },
-                        {
-                            icon: 'fas fa-trash',
-                            text: 'Remove',
-                            action: 'remove-shortcut',
-                            className: 'context-menu-item-danger'
-                        }
+                        ...this.getShortcutManagementMenuItems(true, shortcut)
                     ]
                 }
             ]
@@ -1312,31 +2048,7 @@ class DesktopShortcutsManager {
             sections: [
                 {
                     type: 'list',
-                    items: [
-                        {
-                            icon: 'fas fa-pen',
-                            text: 'Rename',
-                            action: 'rename-shortcut'
-                        },
-                        {
-                            icon: 'fas fa-arrow-right',
-                            text: 'Move to...',
-                            optionsfn: (target) => {
-                                return this.getWorkspaceSubmenuItems();
-                            },
-                            loadfn: (item) => {
-                                // Disable if there are no other workspaces
-                                const otherWorkspaces = this.getWorkspaceSubmenuItems();
-                                item.disabled = otherWorkspaces.length === 0;
-                            }
-                        },
-                        {
-                            icon: 'fas fa-trash',
-                            text: 'Remove',
-                            action: 'remove-shortcut',
-                            className: 'context-menu-item-danger'
-                        }
-                    ]
+                    items: this.getShortcutManagementMenuItems(false, shortcut)
                 }
             ]
         };
@@ -1424,27 +2136,7 @@ class DesktopShortcutsManager {
                             action: 'nax-tag-add-to-prompt',
                             disabled: () => manualModal && manualModal.classList.contains('hidden')
                         },
-                        { separator: true },
-                        {
-                            icon: 'fas fa-pen',
-                            text: 'Rename',
-                            action: 'rename-shortcut'
-                        },
-                        {
-                            icon: 'fas fa-arrow-right',
-                            text: 'Move to...',
-                            optionsfn: () => this.getWorkspaceSubmenuItems(),
-                            loadfn: (item) => {
-                                const otherWorkspaces = this.getWorkspaceSubmenuItems();
-                                item.disabled = otherWorkspaces.length === 0;
-                            }
-                        },
-                        {
-                            icon: 'fas fa-trash',
-                            text: 'Remove',
-                            action: 'remove-shortcut',
-                            className: 'context-menu-item-danger'
-                        }
+                        ...this.getShortcutManagementMenuItems(true, shortcut)
                     ]
                 }
             ]
@@ -1582,11 +2274,40 @@ class DesktopShortcutsManager {
         if (!contextMenu) return;
 
         const typeHandler = this.shortcutTypes[shortcut.type];
-        const contextMenuConfig = typeHandler && typeHandler.contextMenu 
+        const singleMenuConfig = typeHandler && typeHandler.contextMenu
             ? typeHandler.contextMenu.call(this, shortcut)
             : this.getDefaultContextMenu(shortcut);
 
-        contextMenu.attachToElement(element, contextMenuConfig);
+        const config = {
+            sections: singleMenuConfig.sections,
+            beforeShow: (event, target) => {
+                const shortcutId = target.closest('.desktop-shortcut')?.dataset.shortcutId;
+                const menuShortcut = shortcutId
+                    ? this.shortcuts.find((s) => s.id === shortcutId)
+                    : shortcut;
+                if (this.getSelectedCount() > 1 && this.isShortcutSelected(shortcutId)) {
+                    if (explorerApplet) explorerApplet._contextMenuTarget = null;
+                    config.sections = this.getBulkContextMenu().sections;
+                    return;
+                }
+                // public/scripts/comp/explorerApplet.js buildDesktopShortcutContextMenu
+                const explorer = typeof initializeExplorerApplet === 'function'
+                    ? initializeExplorerApplet()
+                    : explorerApplet;
+                if (explorer && explorer.buildDesktopShortcutContextMenu && menuShortcut) {
+                    explorer._contextMenuTarget = explorer._shortcutToExplorerItem(
+                        menuShortcut,
+                        { isDesktopShortcut: true }
+                    );
+                    config.sections = explorer.buildDesktopShortcutContextMenu(menuShortcut);
+                    return;
+                }
+                if (explorer) explorer._contextMenuTarget = null;
+                config.sections = singleMenuConfig.sections;
+            }
+        };
+
+        contextMenu.attachToElement(element, config);
     }
 
     // Get default context menu
@@ -1595,31 +2316,7 @@ class DesktopShortcutsManager {
             sections: [
                 {
                     type: 'list',
-                    items: [
-                        {
-                            icon: 'fas fa-pen',
-                            text: 'Rename',
-                            action: 'rename-shortcut'
-                        },
-                        {
-                            icon: 'fas fa-arrow-right',
-                            text: 'Move to...',
-                            optionsfn: (target) => {
-                                return this.getWorkspaceSubmenuItems();
-                            },
-                            loadfn: (item) => {
-                                // Disable if there are no other workspaces
-                                const otherWorkspaces = this.getWorkspaceSubmenuItems();
-                                item.disabled = otherWorkspaces.length === 0;
-                            }
-                        },
-                        {
-                            icon: 'fas fa-trash',
-                            text: 'Remove',
-                            action: 'remove-shortcut',
-                            className: 'context-menu-item-danger'
-                        }
-                    ]
+                    items: this.getShortcutManagementMenuItems(false, shortcut)
                 }
             ]
         };
@@ -1652,32 +2349,7 @@ class DesktopShortcutsManager {
                             text: 'Copy to Clipboard',
                             action: 'copy-to-clipboard'
                         },
-                        {
-                            separator: true
-                        },
-                        {
-                            icon: 'fas fa-pen',
-                            text: 'Rename',
-                            action: 'rename-shortcut'
-                        },
-                        {
-                            icon: 'fas fa-arrow-right',
-                            text: 'Move to...',
-                            optionsfn: (target) => {
-                                return this.getWorkspaceSubmenuItems();
-                            },
-                            loadfn: (item) => {
-                                // Disable if there are no other workspaces
-                                const otherWorkspaces = this.getWorkspaceSubmenuItems();
-                                item.disabled = otherWorkspaces.length === 0;
-                            }
-                        },
-                        {
-                            icon: 'fas fa-trash',
-                            text: 'Remove',
-                            action: 'remove-shortcut',
-                            className: 'context-menu-item-danger'
-                        }
+                        ...this.getShortcutManagementMenuItems(true, shortcut)
                     ]
                 }
             ]
@@ -1686,9 +2358,20 @@ class DesktopShortcutsManager {
 
     // Handle drag start (mousedown/touchstart)
     handleDragStart(event, shortcut) {
-        // Don't prevent default yet - let clicks/double-clicks work
-        
+        if (event.type === 'mousedown' && event.button !== 0) return;
+
         const element = event.currentTarget;
+        const isCtrl = event.ctrlKey || event.metaKey;
+
+        if (isCtrl) {
+            this.toggleShortcutSelection(shortcut.id);
+            return;
+        }
+
+        if (!this.isShortcutSelected(shortcut.id)) {
+            this.selectShortcut(shortcut.id);
+        }
+        
         const rect = element.getBoundingClientRect();
         
         // Calculate offset from mouse/touch to element position
@@ -1742,21 +2425,9 @@ class DesktopShortcutsManager {
             // Beyond threshold, enter drag mode
             this.isDragging = true;
             event.preventDefault();
-            
-            // Add dragging class
-            this.draggedShortcut.element.classList.add('dragging');
-            
-            // If starting from grid, convert to absolute positioning
-            if (this.draggedShortcut.wasInGrid) {
-                const containerRect = this.freeformContainer.getBoundingClientRect();
-                const initialX = clientX - containerRect.left - this.dragOffset.x;
-                const initialY = clientY - containerRect.top - this.dragOffset.y;
-                
-                this.freeformContainer.appendChild(this.draggedShortcut.element);
-                this.draggedShortcut.element.style.position = 'absolute';
-                this.draggedShortcut.element.style.left = `${initialX}px`;
-                this.draggedShortcut.element.style.top = `${initialY}px`;
-            }
+
+            this.prepareDragGroup(this.draggedShortcut.element, this.draggedShortcut.shortcut);
+            this.convertDragGroupToFreeform();
             
             // Show drop zones
             this.showDropZones();
@@ -1773,20 +2444,54 @@ class DesktopShortcutsManager {
         let newX = clientX - containerRect.left - this.dragOffset.x;
         let newY = clientY - containerRect.top - this.dragOffset.y;
 
-        // Constrain to container bounds
+        // Constrain primary position to container bounds
         const elementRect = this.draggedShortcut.element.getBoundingClientRect();
         newX = Math.max(0, Math.min(newX, containerRect.width - elementRect.width));
         newY = Math.max(0, Math.min(newY, containerRect.height - elementRect.height));
-        
-        // Update position
-        this.draggedShortcut.element.style.left = `${newX}px`;
-        this.draggedShortcut.element.style.top = `${newY}px`;
+
+        if (this.dragGroup && this.dragGroup.length > 1) {
+            this.updateDragGroupPositions(newX, newY);
+        } else {
+            this.draggedShortcut.element.style.left = `${newX}px`;
+            this.draggedShortcut.element.style.top = `${newY}px`;
+        }
         
         // Check if hovering over manual modal for reference shortcuts
         this.checkManualModalDrop(clientX, clientY);
         
         // Highlight drop placeholder if hovering over grid
         this.highlightDropZone(newX, newY, containerRect);
+
+        // Folder drop target highlight + hold-to-folder gesture
+        const folderTarget = this.getFolderShortcutUnderPoint(clientX, clientY);
+        this.getAllShortcutElements().forEach((el) => {
+            el.classList.toggle('folder-drop-target', folderTarget && el.dataset.shortcutId === folderTarget.id);
+        });
+
+        const hoverTarget = this.getShortcutUnderPoint(clientX, clientY);
+        if (folderTarget && folderTarget.id !== this.draggedShortcut.shortcut.id) {
+            this.clearFolderHoldTimer();
+        } else if (hoverTarget && hoverTarget.id !== this.draggedShortcut.shortcut.id && hoverTarget.type !== 'folder') {
+            if (this.folderHoldTarget !== hoverTarget.id) {
+                this.clearFolderHoldTimer();
+                this.folderHoldTarget = hoverTarget.id;
+                this.folderHoldTimer = setTimeout(async () => {
+                    const ids = this.getSelectedCount() > 1
+                        ? [...this.selectedShortcutIds]
+                        : [this.draggedShortcut.shortcut.id];
+                    if (!ids.includes(hoverTarget.id)) ids.push(hoverTarget.id);
+                    this.selectedShortcutIds = new Set(ids);
+                    await this.createFolderFromSelection();
+                    this.clearFolderHoldTimer();
+                    this.hideDropZones();
+                    this.draggedShortcut = null;
+                    this.dragGroup = null;
+                    this.isDragging = false;
+                }, 600);
+            }
+        } else if (!folderTarget) {
+            this.clearFolderHoldTimer();
+        }
     }
     
     // Check if dragging over manual modal
@@ -1888,13 +2593,30 @@ class DesktopShortcutsManager {
                 }
             }
             
-            // Remove dragging class
-            this.draggedShortcut.element.classList.remove('dragging', 'can-drop-reference');
+            // Remove dragging class from all dragged items
+            if (this.dragGroup) {
+                this.dragGroup.forEach((item) => {
+                    item.element.classList.remove('dragging', 'can-drop-reference');
+                });
+            } else {
+                this.draggedShortcut.element.classList.remove('dragging', 'can-drop-reference');
+            }
             
             // Hide drop zones
             this.hideDropZones();
+            this.clearFolderHoldTimer();
+            this.getAllShortcutElements().forEach((el) => el.classList.remove('folder-drop-target'));
 
-            if (droppedOnManual) {
+            const clientX = event.type === 'touchend' ? event.changedTouches[0].clientX : event.clientX;
+            const clientY = event.type === 'touchend' ? event.changedTouches[0].clientY : event.clientY;
+            const folderTarget = this.getFolderShortcutUnderPoint(clientX, clientY);
+
+            if (folderTarget && !droppedOnManual) {
+                const dragIds = this.dragGroup && this.dragGroup.length > 0
+                    ? this.dragGroup.map((item) => item.shortcut.id)
+                    : [this.draggedShortcut.shortcut.id];
+                await this.assignShortcutsToFolder(dragIds, folderTarget);
+            } else if (droppedOnManual) {
                 // Handle drop on manual modal
                 const typeHandler = this.shortcutTypes[this.draggedShortcut.shortcut.type];
                 if (typeHandler && typeHandler.onDragToManual) {
@@ -1904,23 +2626,59 @@ class DesktopShortcutsManager {
                 // Return icon to original position - re-render to restore
                 this.renderShortcuts();
             } else {
-                // Normal drop - update position
-                const finalX = parseInt(this.draggedShortcut.element.style.left) || 0;
-                const finalY = parseInt(this.draggedShortcut.element.style.top) || 0;
-                
-                // Convert to position data (quadrant + percentage or grid position)
                 const containerRect = this.freeformContainer.getBoundingClientRect();
-                
-                const newPosition = this.pixelToPositionData(finalX, finalY, containerRect);
+                const positionUpdates = [];
 
-                // Update position (will trigger re-render to move to correct container)
-                await this.updateShortcutPosition(this.draggedShortcut.shortcut.id, newPosition);
+                const itemsToMove = this.dragGroup && this.dragGroup.length > 0
+                    ? this.dragGroup
+                    : [{
+                        element: this.draggedShortcut.element,
+                        shortcut: this.draggedShortcut.shortcut
+                    }];
+
+                itemsToMove.forEach((item) => {
+                    const finalX = parseInt(item.element.style.left, 10) || 0;
+                    const finalY = parseInt(item.element.style.top, 10) || 0;
+                    const position = this.pixelToPositionData(finalX, finalY, containerRect, item.shortcut);
+                    positionUpdates.push({
+                        id: item.shortcut.id,
+                        position
+                    });
+                    // Apply tentatively so subsequent grid snaps see updated occupancy
+                    const shortcutRef = this.shortcuts.find((s) => s.id === item.shortcut.id);
+                    if (shortcutRef) {
+                        shortcutRef.position = position;
+                    }
+                });
+
+                await this.updateMultipleShortcutPositions(positionUpdates);
             }
         }
         
         // Clean up
         this.draggedShortcut = null;
+        this.dragGroup = null;
         this.isDragging = false;
+    }
+
+    async updateMultipleShortcutPositions(updates) {
+        if (!updates.length) return;
+
+        try {
+            updates.forEach(({ id, position }) => {
+                const shortcut = this.shortcuts.find((s) => s.id === id);
+                if (!shortcut) return;
+                shortcut.position = position;
+                if (!shortcut._isNew) {
+                    shortcut._isModified = true;
+                }
+            });
+
+            this.renderShortcuts();
+            this.debouncedSave();
+        } catch (error) {
+            console.error('Failed to update shortcut positions:', error);
+        }
     }
     
     // Show drop zone placeholder in grid
@@ -2025,10 +2783,10 @@ class DesktopShortcutsManager {
 
     // Update positions in DOM
     updatePositionsInDOM(positions) {
-        // Update local shortcuts first
+        // Update local shortcuts first (skip pending deletions)
         positions.forEach(({ id, position }) => {
             const shortcut = this.shortcuts.find(s => s.id === id);
-            if (shortcut) {
+            if (shortcut && !shortcut._isDeleted) {
                 shortcut.position = position;
             }
         });
@@ -2037,18 +2795,31 @@ class DesktopShortcutsManager {
         this.renderShortcuts();
     }
 
-    // Debounced save to server
-    debouncedSave() {
+    // Debounced save to server (optionally includes window positions in the same flush)
+    debouncedSave(options = {}) {
+        const { includeWindowPositions = false } = options;
+
+        if (includeWindowPositions) {
+            this.pendingWindowPositionSave = true;
+        } else {
+            this.pendingChanges = true;
+        }
+
+        if (!this.pendingChanges && !this.pendingWindowPositionSave) {
+            return;
+        }
+
+        this.refreshSaveTrayIndicator();
+
         // Clear existing timer
         if (this.saveDebounceTimer) {
             clearTimeout(this.saveDebounceTimer);
         }
         
-        this.pendingChanges = true;
-        
         // Set new timer
-        this.saveDebounceTimer = setTimeout(() => {
-            this.saveToServer();
+        this.saveDebounceTimer = setTimeout(async () => {
+            this.saveDebounceTimer = null;
+            await this.flushPendingDesktopLayout();
         }, this.saveDebounceDelay);
     }
 
@@ -2114,24 +2885,52 @@ class DesktopShortcutsManager {
                 }
             }
             
-            // Process updates
+            // Process updates — batch position changes, individual saves only for renames
+            const positionUpdates = [];
+
             for (const shortcut of this.shortcuts) {
-                if (shortcut._isModified && !shortcut._isNew && !shortcut._isDeleted) {
-                    // Update existing shortcut (only if it has a real ID, not temp)
-                    if (!shortcut.id.startsWith('temp-')) {
-                        try {
-                            await wsClient.updateDesktopShortcut(this.currentWorkspace, shortcut.id, {
-                                name: shortcut.name,
-                                position: shortcut.position
-                            });
-                            delete shortcut._isModified;
-                        } catch (error) {
-                            console.error('Failed to update shortcut:', error);
-                        }
-                    } else {
-                        console.warn('Skipping update for shortcut with temp ID:', shortcut.id);
+                if (!shortcut._isModified || shortcut._isNew || shortcut._isDeleted) {
+                    continue;
+                }
+
+                if (shortcut.id.startsWith('temp-')) {
+                    console.warn('Skipping update for shortcut with temp ID:', shortcut.id);
+                    delete shortcut._isModified;
+                    delete shortcut._nameModified;
+                    continue;
+                }
+
+                if (shortcut._nameModified) {
+                    try {
+                        await wsClient.updateDesktopShortcut(this.currentWorkspace, shortcut.id, {
+                            name: shortcut.name,
+                            position: shortcut.position
+                        });
+                        delete shortcut._nameModified;
                         delete shortcut._isModified;
+                    } catch (error) {
+                        console.error('Failed to update shortcut:', error);
                     }
+                    continue;
+                }
+
+                positionUpdates.push({
+                    id: shortcut.id,
+                    position: shortcut.position
+                });
+            }
+
+            if (positionUpdates.length > 0) {
+                try {
+                    await wsClient.updateDesktopPositions(this.currentWorkspace, positionUpdates);
+                    positionUpdates.forEach(({ id }) => {
+                        const shortcut = this.shortcuts.find(s => s.id === id);
+                        if (shortcut) {
+                            delete shortcut._isModified;
+                        }
+                    });
+                } catch (error) {
+                    console.error('Failed to batch update shortcut positions:', error);
                 }
             }
             
@@ -2242,7 +3041,7 @@ class DesktopShortcutsManager {
     }
     
     // Convert pixel position to position data based on drop location
-    pixelToPositionData(pixelX, pixelY, freeformContainerRect) {
+    pixelToPositionData(pixelX, pixelY, freeformContainerRect, shortcutForContext = null) {
         const width = freeformContainerRect.width;
         const height = freeformContainerRect.height;
         const halfWidth = width / 2;
@@ -2272,7 +3071,8 @@ class DesktopShortcutsManager {
             
             if (intersects) {
                 // Snap to grid
-                const currentShortcut = this.draggedShortcut ? this.draggedShortcut.shortcut : null;
+                const currentShortcut = shortcutForContext
+                    || (this.draggedShortcut ? this.draggedShortcut.shortcut : null);
                 
                 if (currentShortcut && currentShortcut.position && currentShortcut.position.index === 0) {
                     // Already in grid, keep its position (don't create gaps)
@@ -2416,6 +3216,7 @@ class DesktopShortcutsManager {
             
             // Remove from DOM immediately
             this.removeShortcutFromDOM(shortcutId);
+            this.selectedShortcutIds.delete(shortcutId);
             
             // Trigger debounced save
             this.debouncedSave();
@@ -2438,10 +3239,14 @@ class DesktopShortcutsManager {
             if (shortcut.type === 'bracket-generation' && shortcut.data) {
                 shortcut.data.label = newName;
             }
+            if (shortcut.type === 'folder' && shortcut.data?.vfsFolderId && wsClient?.isConnected()) {
+                await vfsClient.renameFolder(shortcut.data.vfsFolderId, newName);
+            }
             
             // Mark as modified if not new
             if (!shortcut._isNew) {
                 shortcut._isModified = true;
+                shortcut._nameModified = true;
             }
             
             // Update DOM immediately
@@ -2477,7 +3282,7 @@ class DesktopShortcutsManager {
     }
 
     // Move a shortcut to another workspace
-    async moveShortcutToWorkspace(shortcutId, targetWorkspaceId) {
+    async moveShortcutToWorkspace(shortcutId, targetWorkspaceId, silent = false) {
         try {
             const shortcut = this.shortcuts.find(s => s.id === shortcutId);
             if (!shortcut) {
@@ -2500,7 +3305,9 @@ class DesktopShortcutsManager {
             // Remove shortcut from current workspace using debounced save
             await this.removeShortcut(shortcutId);
 
-            showGlassToast('success', null, `Shortcut moved to ${workspaces[targetWorkspaceId]?.name || targetWorkspaceId}`, false, 3000, '<i class="fas fa-arrow-right"></i>');
+            if (!silent) {
+                showGlassToast('success', null, `Shortcut moved to ${workspaces[targetWorkspaceId]?.name || targetWorkspaceId}`, false, 3000, '<i class="fas fa-arrow-right"></i>');
+            }
         } catch (error) {
             console.error('Failed to move desktop shortcut:', error);
             showGlassToast('error', 'Error', 'Failed to move shortcut', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
@@ -2532,6 +3339,9 @@ wsClient.registerInitStep(18, 'Loading Desktop Shortcuts', async () => {
 // Handle context menu actions for shortcuts
 document.addEventListener('contextMenuAction', async (event) => {
     const { action, target } = event.detail;
+
+    // public/scripts/comp/explorerApplet.js isDesktopSurfaceContextTarget
+    if (isDesktopSurfaceContextTarget(target)) return;
     
     // Check if this is a desktop shortcut
     const shortcutElement = target.closest('.desktop-shortcut');
@@ -2548,8 +3358,54 @@ document.addEventListener('contextMenuAction', async (event) => {
         clientY: rect.top + rect.height / 2,
         target: shortcutElement
     };
+
+    const explorer = typeof initializeExplorerApplet === 'function'
+        ? initializeExplorerApplet()
+        : explorerApplet;
+
+    if (explorer && (action.startsWith('explorer-') || action === 'remove-shortcut')) {
+        const item = explorer._shortcutToExplorerItem(shortcut, { isDesktopShortcut: true });
+        explorer._contextMenuTarget = item;
+        if (await explorer.handleDesktopShortcutExplorerAction(action, item, event)) return;
+    }
+
+    if (shortcut.type === 'image' && explorer) {
+        const item = explorer._shortcutToExplorerItem(shortcut, { isDesktopShortcut: true });
+        explorer._contextMenuTarget = item;
+
+        // public/scripts/comp/explorerApplet.js EXPLORER_IMAGE_GALLERY_CONTEXT_ACTIONS
+        if (EXPLORER_IMAGE_GALLERY_CONTEXT_ACTIONS.has(action)) {
+            if (await explorer._handleImageGalleryContextAction(action, item, event)) return;
+        }
+    }
+
+    if (shortcut.type === 'reference' && explorer && action.startsWith('reference-manager-')) {
+        const item = explorer._shortcutToExplorerItem(shortcut, { isDesktopShortcut: true });
+        explorer._contextMenuTarget = item;
+        if (await explorer._handleReferenceContextAction(action, item)) return;
+    }
+
+    if (shortcut.type === 'note' && explorer) {
+        const item = explorer._shortcutToExplorerItem(shortcut, { isDesktopShortcut: true });
+        explorer._contextMenuTarget = item;
+        // public/scripts/comp/explorerApplet.js _handleNoteContextAction
+        const noteActions = new Set(['open-in-window', 'add-to-desktop', 'modify-note', 'delete-note']);
+        if (noteActions.has(action)) {
+            if (await explorer._handleNoteContextAction(action, item)) return;
+        }
+    }
     
     switch (action) {
+        case 'open-folder-shortcut':
+            if (shortcut.type === 'folder') {
+                desktopShortcuts.handleFolderClick(shortcut);
+            }
+            break;
+
+        case 'create-folder-from-selection':
+            await desktopShortcuts.createFolderFromSelection();
+            break;
+
         case 'rename-shortcut':
             // Show rename dialog with input
             const newName = await showInputDialog(
@@ -2569,9 +3425,32 @@ document.addEventListener('contextMenuAction', async (event) => {
             break;
             
         case 'remove-shortcut':
+            if (shortcut.type === 'folder') {
+                const folderDeleteConfirmed = await showConfirmationDialog(
+                    desktopShortcuts.getFolderDeleteConfirmMessage(shortcut),
+                    [
+                        { text: 'Delete', value: true, className: 'btn-danger' },
+                        { text: 'Cancel', value: false, className: 'btn-secondary' }
+                    ],
+                    syntheticEvent
+                );
+                if (folderDeleteConfirmed) {
+                    try {
+                        await desktopShortcuts.deleteFolderShortcut(shortcutId);
+                    } catch (error) {
+                        console.error('Failed to delete folder:', error);
+                        showGlassToast('error', 'Error', error.message || 'Failed to delete folder', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+                    }
+                }
+                break;
+            }
+            if (desktopShortcuts.getSelectedCount() > 1 && desktopShortcuts.isShortcutSelected(shortcutId)) {
+                await desktopShortcuts.removeSelectedShortcuts();
+                break;
+            }
             // Show confirmation dialog
             const confirmed = await showConfirmationDialog(
-                `Remove shortcut "${shortcut.name}"?`,
+                `Remove "${shortcut.name}"?`,
                 [
                     { text: 'Remove', value: true, className: 'btn-danger' },
                     { text: 'Cancel', value: false, className: 'btn-secondary' }
@@ -2583,14 +3462,69 @@ document.addEventListener('contextMenuAction', async (event) => {
                 await desktopShortcuts.removeShortcut(shortcutId);
             }
             break;
+
+        case 'delete-folder-shortcut': {
+            const deleteFolderConfirmed = await showConfirmationDialog(
+                desktopShortcuts.getFolderDeleteConfirmMessage(shortcut),
+                [
+                    { text: 'Delete', value: true, className: 'btn-danger' },
+                    { text: 'Cancel', value: false, className: 'btn-secondary' }
+                ],
+                syntheticEvent
+            );
+            if (deleteFolderConfirmed) {
+                try {
+                    await desktopShortcuts.deleteFolderShortcut(shortcutId);
+                } catch (error) {
+                    console.error('Failed to delete folder:', error);
+                    showGlassToast('error', 'Error', error.message || 'Failed to delete folder', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+                }
+            }
+            break;
+        }
+
+        case 'incinerate-shortcut-target':
+        case 'delete-note-shortcut-target':
+        case 'destroy-reference-shortcut-target': {
+            const confirmMessages = {
+                'incinerate-shortcut-target': `Permanently delete image "${shortcut.name}" and remove its desktop shortcut?`,
+                'delete-note-shortcut-target': `Permanently delete note "${shortcut.name}" and remove its desktop shortcut?`,
+                'destroy-reference-shortcut-target': `Permanently destroy reference "${shortcut.name}" and remove its desktop shortcut?`
+            };
+            const confirmLabels = {
+                'incinerate-shortcut-target': 'Incinerate',
+                'delete-note-shortcut-target': 'Delete',
+                'destroy-reference-shortcut-target': 'Destroy'
+            };
+            const deleteConfirmed = await showConfirmationDialog(
+                confirmMessages[action],
+                [
+                    { text: confirmLabels[action], value: true, className: 'btn-danger' },
+                    { text: 'Cancel', value: false, className: 'btn-secondary' }
+                ],
+                syntheticEvent
+            );
+            if (deleteConfirmed) {
+                try {
+                    await desktopShortcuts.permanentlyDeleteShortcutTarget(shortcut);
+                } catch (error) {
+                    console.error('Failed to permanently delete shortcut target:', error);
+                    showGlassToast('error', 'Error', error.message || 'Delete failed', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+                }
+            }
+            break;
+        }
             
         case 'move-shortcut-to-workspace':
             // Get workspace data from item
             const { item } = event.detail;
             if (item && item.data && item.data.workspaceId) {
                 const targetWorkspaceId = item.data.workspaceId;
-                const targetWorkspaceName = item.data.workspaceName || targetWorkspaceId;
-                await desktopShortcuts.moveShortcutToWorkspace(shortcutId, targetWorkspaceId);
+                if (desktopShortcuts.getSelectedCount() > 1 && desktopShortcuts.isShortcutSelected(shortcutId)) {
+                    await desktopShortcuts.moveSelectedShortcutsToWorkspace(targetWorkspaceId);
+                } else {
+                    await desktopShortcuts.moveShortcutToWorkspace(shortcutId, targetWorkspaceId);
+                }
             }
             break;
             

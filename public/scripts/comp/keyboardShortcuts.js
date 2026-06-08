@@ -16,6 +16,19 @@ let ctrlKeyPressed = false;
 let runAppletLastAltUpTime = 0;
 const RUN_APPLET_DOUBLE_ALT_MS = 400;
 
+let suppressAutofillUntil = 0;
+
+/** Briefly suppress autofill after a prompt textarea shortcut (keyboardShortcuts.js). */
+function markPromptShortcutHandled(ms = 120) {
+    suppressAutofillUntil = Date.now() + ms;
+}
+
+function shouldSuppressAutofillFromShortcut() {
+    return Date.now() < suppressAutofillUntil;
+}
+
+window.shouldSuppressAutofillFromShortcut = shouldSuppressAutofillFromShortcut;
+
 let shortcutActionToastHost = null;
 let shortcutActionToastHideTimer = null;
 let shortcutActionToastFadeTimer = null;
@@ -619,6 +632,19 @@ function createWindowSwitcherOverlay() {
 
 // Handle key down events
 function handleKeyDown(event) {
+    // Plain typing in prompt fields — autofill uses input/beforeinput; skip global shortcut work.
+    const shortcutTarget = event.target;
+    if (shortcutTarget && shortcutTarget.matches && shortcutTarget.matches('.prompt-textarea, .character-prompt-textarea')) {
+        if (!event.ctrlKey && !event.metaKey && !event.altKey) {
+            const k = event.key;
+            const isPlainTypingKey = k.length === 1 || k === 'Backspace' || k === 'Delete' || k === 'Enter' ||
+                k === 'Tab' || k.startsWith('Arrow');
+            if (isPlainTypingKey && !/^F\d{1,2}$/i.test(k)) {
+                return;
+            }
+        }
+    }
+
     // Handle CTRL+TAB for window switcher (only in desktop mode)
     if (window.isDesktop && event.ctrlKey && event.key === 'Tab' && !event.shiftKey) {
         event.preventDefault();
@@ -1081,6 +1107,13 @@ function handleKeyDown(event) {
         default:
             break;
     }
+
+    if (event.defaultPrevented) {
+        const active = document.activeElement;
+        if (active && active.matches('.prompt-textarea, .character-prompt-textarea')) {
+            markPromptShortcutHandled();
+        }
+    }
 }
 
 // Handle key up events
@@ -1259,24 +1292,9 @@ function activateSelectedWindow() {
     if (!selectedModal) return;
     
     // Unminimize if minimized
-    if (selectedModal.classList.contains('minimised')) {
-        // Get or create taskbar item for animation
-        const taskbarItem = typeof getOrCreateTaskbarItem === 'function' ? getOrCreateTaskbarItem(selectedModal) : null;
-        if (taskbarItem && typeof setMinimizeTargetVariables === 'function') {
-            setMinimizeTargetVariables(selectedModal, taskbarItem);
-        }
-        
-        selectedModal.classList.remove('minimised');
-        updateBackdropVisibility(); // public/scripts/comp/modalUtils.js
-        selectedModal.classList.add('unminimising');
-        
-        const unminimisingHandler = (e) => {
-            if (e.target === selectedModal && e.animationName === 'modalUnminimize' && selectedModal.classList.contains('unminimising')) {
-                selectedModal.removeEventListener('animationend', unminimisingHandler);
-                selectedModal.classList.remove('unminimising');
-            }
-        };
-        selectedModal.addEventListener('animationend', unminimisingHandler);
+    // restoreMinimizedModal: public/scripts/comp/modalUtils.js
+    if (typeof restoreMinimizedModal === 'function') {
+        restoreMinimizedModal(selectedModal, typeof getOrCreateTaskbarItem === 'function' ? getOrCreateTaskbarItem(selectedModal) : null);
     }
     
     // Show if hidden

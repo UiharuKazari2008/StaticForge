@@ -1890,6 +1890,9 @@
                                     <i class="mdi mdi-draw-pen"></i>
                                     <p>Generate an image to see preview</p>
                                 </div>
+                                <div id="generationPreviewQuip" class="generation-preview-quip hidden" aria-live="polite">
+                                    <span class="generation-preview-quip-text"></span>
+                                </div>
                                 <!-- Dialog overlay container -->
                                 <div id="manualPreviewDialogs" class="manual-preview-dialogs hidden"></div>
                                 <!-- Stage Indicators -->
@@ -4883,6 +4886,126 @@ Examples:
         </div>
     </div>
 
+    <!-- Explorer Modal -->
+    <div id="explorerModal" class="modal toolbar-visible resizeable-window hidden"
+        data-window-identifier="explorer"
+        data-window-min-width="700" data-window-min-height="500"
+        data-window-max-width="1800" data-window-max-height="1200"
+        data-window-default-width="900" data-window-default-height="600">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-folder-open icon-fa"></i>
+                <img src="/static_images/app_icons/explorer.png" alt="" class="icon-image" />
+                <span id="explorerTitleLabel">File Explorer</span>
+            </div>
+            <div class="modal-window-title-toolbar">
+                <div class="button-group">
+                    <button type="button" id="explorerBackBtn" class="btn-secondary" title="Back"><i class="fas fa-arrow-left"></i></button>
+                    <button type="button" id="explorerForwardBtn" class="btn-secondary" title="Forward"><i class="fas fa-arrow-right"></i></button>
+                </div>
+                <button type="button" id="explorerUpBtn" class="btn-secondary" title="Up"><i class="fas fa-arrow-up"></i></button>
+                <div class="button-group">
+                    <input type="text" id="explorerAddressBar" class="form-control colored explorer-address-bar" placeholder="/" spellcheck="false">
+                    <button type="button" id="explorerRefreshBtn" class="btn-secondary" title="Refresh"><i class="fas fa-sync"></i></button>
+                </div>
+                <input type="text" id="explorerSearchBar" class="form-control colored explorer-search-bar" placeholder="Search..." spellcheck="false">
+            </div>
+        </div>
+        <div class="modal-focus-overlay"></div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" class="btn-secondary btn-small modal-work-area-maximize" title="Maximize">
+                <i class="fa-regular fa-window-maximize"></i>
+            </button>
+            <button type="button" id="closeExplorerBtn" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content naxt-modal-content dark explorer-content">
+            <div class="naxt-search-header explorer-actions-header">
+                <div class="naxt-search-controls">
+                    <div class="button-group">
+                        <button type="button" id="explorerNewFolderBtn" class="btn-secondary btn-small" title="New Folder"><i class="fas fa-folder-plus"></i></button>
+                        <button type="button" id="explorerUploadBtn" class="btn-secondary btn-small" title="Upload"><i class="fas fa-upload"></i></button>
+                    </div>
+                    <input type="file" id="explorerFileInput" class="hidden" multiple>
+                    <div class="button-group">
+                        <button type="button" id="explorerCutBtn" class="btn-secondary disabled btn-small" title="Cut" disabled><i class="fas fa-cut"></i></button>
+                        <button type="button" id="explorerCopyBtn" class="btn-secondary disabled btn-small" title="Copy" disabled><i class="fas fa-copy"></i></button>
+                        <button type="button" id="explorerPasteBtn" class="btn-secondary disabled btn-small" title="Paste" disabled><i class="fas fa-paste"></i></button>
+                        <button type="button" id="explorerRenameBtn" class="btn-secondary disabled btn-small" title="Rename" disabled><i class="fas fa-i-cursor"></i></button>
+                        <button type="button" id="explorerDownloadBtn" class="btn-secondary disabled btn-small" title="Download" disabled><i class="fas fa-download"></i></button>
+                        <button type="button" id="explorerReplaceBtn" class="btn-secondary disabled btn-small" title="Replace" disabled><i class="fas fa-exchange-alt"></i></button>
+                        <button type="button" id="explorerDeleteBtn" class="btn-secondary disabled btn-small" title="Delete" disabled><i class="fas fa-trash"></i></button>
+                    </div>
+                    <div class="explorer-toolbar-right">
+                        <div id="explorerSortDropdown" class="custom-dropdown dark dropright">
+                            <button type="button" id="explorerSortDropdownBtn" class="btn-secondary btn-small" title="Sort">
+                                <i class="fas fa-sort"></i>
+                                <i class="fas fa-chevron-down naxt-dataset-chevron" aria-hidden="true"></i>
+                            </button>
+                            <div id="explorerSortDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                        </div>
+                        <div id="explorerViewsDropdown" class="custom-dropdown dark  dropright">
+                            <button type="button" id="explorerViewsDropdownBtn" class="btn-secondary btn-small" title="Views">
+                                <i class="fas fa-th-large"></i>
+                                <i class="fas fa-chevron-down naxt-dataset-chevron" aria-hidden="true"></i>
+                            </button>
+                            <div id="explorerViewsDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="explorerDetailsHeader" class="explorer-details-header hidden" aria-hidden="true">
+                <span class="explorer-details-col-icon" aria-hidden="true"></span>
+                <button type="button" class="explorer-details-sort-col" data-sort-field="name">
+                    <span class="explorer-details-col-label">Name</span>
+                    <i class="explorer-details-sort-icon fas fa-sort" aria-hidden="true"></i>
+                </button>
+                <button type="button" class="explorer-details-sort-col" data-sort-field="date">
+                    <span class="explorer-details-col-label">Date Modified</span>
+                    <i class="explorer-details-sort-icon fas fa-sort" aria-hidden="true"></i>
+                </button>
+                <button type="button" class="explorer-details-sort-col" data-sort-field="type">
+                    <span class="explorer-details-col-label">Type</span>
+                    <i class="explorer-details-sort-icon fas fa-sort" aria-hidden="true"></i>
+                </button>
+                <button type="button" class="explorer-details-sort-col" data-sort-field="size">
+                    <span class="explorer-details-col-label">Size</span>
+                    <i class="explorer-details-sort-icon fas fa-sort" aria-hidden="true"></i>
+                </button>
+            </div>
+            <div id="explorerGridHost" class="explorer-grid-host naxt-body"></div>
+            <div class="explorer-statusbar">
+                <span id="explorerStatusSpinner" class="explorer-status-spinner hidden" aria-hidden="true"><i class="fas fa-spinner fa-spin"></i></span>
+                <span id="explorerStatusText" class="explorer-status-text"></span>
+                <div class="explorer-status-center">
+                    <button type="button" id="explorerViewDetailsBtn" class="btn-secondary explorer-view-toggle btn-small" title="Details"><i class="fas fa-list"></i></button>
+                    <button type="button" id="explorerViewLargeBtn" class="btn-secondary explorer-view-toggle btn-small" title="Large icons"><i class="fas fa-th-large"></i></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- VFS Import Choice Modal -->
+    <div id="vfsImportChoiceModal" class="modal hidden tool-window">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <span id="vfsImportChoiceTitle">Import</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-danger close-btn btn-small" onclick="closeModal(document.getElementById('vfsImportChoiceModal'))" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content modal-padding dark">
+            <div id="vfsImportChoiceList" class="vfs-import-choice-list"></div>
+        </div>
+    </div>
+
     <!-- Notebook Modal -->
     <div id="notebookModal" class="modal resizeable-window hidden" data-window-min-width="600"
         data-window-min-height="400">
@@ -6773,7 +6896,8 @@ Examples:
     </div>
 
     <!-- Desktop Settings Modal -->
-    <div id="desktopSettingsModal" class="modal hidden">
+    <div id="desktopSettingsModal" class="modal hidden"
+    data-window-restore-position="false" data-window-restore-size="false">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-paint-roller icon-fa"></i>
@@ -7049,7 +7173,8 @@ Examples:
     </div>
 
     <!-- About Melaton Modal -->
-    <div id="aboutMelatoninModal" class="modal hidden">
+    <div id="aboutMelatoninModal" class="modal hidden"
+    data-window-restore-position="false" data-window-restore-size="false">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fa-light fa-info-circle icon-fa"></i>
@@ -7320,6 +7445,11 @@ Examples:
                 <div class="fixed-credits-indicator taskbar-tray-icon" id="fixedCreditsIndicator" title="">
                     <i class="nai-anla"></i>
                 </div>
+                <!-- Desktop layout save status -->
+                <div class="desktop-save-tray-indicator taskbar-tray-icon hidden" id="desktopSaveTrayIndicator"
+                    title="Desktop layout saved">
+                    <i class="fas fa-inbox" id="desktopSaveTrayIcon"></i>
+                </div>
                 <!-- Search Indexing Indicator -->
                 <div class="search-indexing-indicator taskbar-tray-icon" id="searchIndexingIndicator"
                     title="No Status Available">
@@ -7334,13 +7464,13 @@ Examples:
                     title="Service Worker">
                     <i class="fas fa-hard-drive" id="serviceWorkerTrayIconGlyph"></i>
                 </div>
-                <!-- Modem / Network Connection -->
-                <div class="modem-tray-icon taskbar-tray-icon" id="modemTrayIcon" title="Melaton Network Connection">
-                    <i class="fa-regular fa-globe" id="modemTrayIconGlyph"></i>
-                </div>
                 <!-- Ping Warning Indicator -->
                 <div class="ping-warning-indicator taskbar-tray-icon" id="pingWarningIndicator" title="">
                     <i class="fas fa-satellite"></i>
+                </div>
+                <!-- Modem / Network Connection -->
+                <div class="modem-tray-icon taskbar-tray-icon" id="modemTrayIcon" title="Melaton Network Connection">
+                    <i class="fa-regular fa-globe" id="modemTrayIconGlyph"></i>
                 </div>
                 <!-- WebSocket Indicator -->
                 <div class="websocket-indicator taskbar-ws-indicator" id="taskbarWebsocketIndicator">
@@ -7394,6 +7524,7 @@ Examples:
     <script src="scripts/comp/requestBodyReplacementsModal.js"></script>
     <script src="scripts/comp/presetManager.js"></script>
     <script src="scripts/comp/autocompleteUtils.js"></script>
+    <script src="scripts/comp/autofillSettings.js"></script>
     <script src="scripts/utils/referenceUtils.js"></script>
     <script src="scripts/comp/imageBias.js"></script>
     <script src="scripts/comp/imageExpansion.js"></script>
@@ -7420,6 +7551,10 @@ Examples:
     <script src="scripts/comp/presetTokenCount.js"></script>
     <script src="scripts/comp/promptTextareaToolbar.js"></script>
     <script src="scripts/comp/galleryView.js"></script>
+    <script src="scripts/comp/vfsClient.js"></script>
+    <script src="scripts/comp/vfsVirtualGrid.js"></script>
+    <script src="scripts/comp/vfsImportRouter.js"></script>
+    <script src="scripts/comp/explorerApplet.js"></script>
     <script src="scripts/comp/desktopShortcuts.js"></script>
     <script src="scripts/comp/notepadManager.js"></script>
     <script src="scripts/comp/fileSearch.js"></script>
@@ -7431,6 +7566,7 @@ Examples:
     <script src="scripts/comp/bracketGenerationApplet.js"></script>
     <script src="scripts/comp/promptTextareaContextMenu.js"></script>
     <script src="scripts/comp/dynamicGenerationLockState.js"></script>
+    <script src="scripts/comp/generationQuips.js"></script>
     <script src="scripts/comp/manualModalManager.js"></script>
     <script src="protected/t5-tokenizer.js"></script>
     <script src="scripts/app.js"></script>

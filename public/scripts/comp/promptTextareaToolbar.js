@@ -7,6 +7,11 @@ class PromptTextareaToolbar {
         this.tokenCounters = new Map();
         this.searchStates = new Map(); // Map of toolbar -> search state
         this.originalCharacterStates = new Map(); // Track original collapse states
+        this._fieldTokenCache = new WeakMap();
+        this._groupTotals = { editablePrompt: 0, editableUc: 0, nePrompt: 0, neUc: 0 };
+        this._groupTotalsReady = false;
+        this._bottomSummaryRaf = null;
+        this._pendingBottomSummary = null;
         this.init();
     }
 
@@ -102,6 +107,9 @@ class PromptTextareaToolbar {
         if (toolbar) {
             toolbar.classList.remove('hidden');
             this.updateTokenCount(textarea);
+            if (this._groupTotalsReady) {
+                this.refreshGroupToolbarTotals(this.isUcTextarea(textarea));
+            }
             
             // Add direct emphasis keyboard listener if not already added
             if (!toolbar.hasAttribute('data-direct-emphasis-listener-added')) {
@@ -145,6 +153,7 @@ class PromptTextareaToolbar {
             if (toolbar && !isFocusWithinContainer) {
                 toolbar.classList.add('hidden');
                 this.activeTextarea = null;
+                this.updateAllTokenCounts();
                 // Adjust container height after toolbar is hidden
                 if (window.autoResizeTextarea) {
                     setTimeout(() => window.autoResizeTextarea(textarea), 10);
@@ -242,15 +251,106 @@ class PromptTextareaToolbar {
         });
     }
 
+    isUcTextarea(textarea) {
+        if (!textarea) return false;
+        return textarea.id === 'manualUc'
+            || (textarea.id && textarea.id.endsWith('_uc'));
+    }
+
+    collectEditorTokenTextareas() {
+        const promptTextareas = [];
+        const ucTextareas = [];
+
+        const manualPrompt = document.getElementById('manualPrompt');
+        const manualUc = document.getElementById('manualUc');
+        if (manualPrompt) promptTextareas.push(manualPrompt);
+        if (manualUc) ucTextareas.push(manualUc);
+
+        const manualPromptNegative = document.getElementById('manualPromptNegative');
+        if (manualPromptNegative) promptTextareas.push(manualPromptNegative);
+
+        promptTextareas.push(...Array.from(document.querySelectorAll('[id$="_prompt"].character-prompt-textarea')));
+        promptTextareas.push(...Array.from(document.querySelectorAll('[id$="_promptNegative"].character-prompt-textarea')));
+        ucTextareas.push(...Array.from(document.querySelectorAll('[id$="_uc"].character-prompt-textarea')));
+
+        return { promptTextareas, ucTextareas };
+    }
+
+    scheduleBottomSummaryUpdate(editablePrompt, editableUc, nePrompt, neUc, maxTokens) {
+        this._pendingBottomSummary = { editablePrompt, editableUc, nePrompt, neUc, maxTokens };
+        if (this._bottomSummaryRaf) return;
+        this._bottomSummaryRaf = requestAnimationFrame(() => {
+            this._bottomSummaryRaf = null;
+            const pending = this._pendingBottomSummary;
+            this._pendingBottomSummary = null;
+            if (!pending) return;
+            this.updateBottomSummary(
+                pending.editablePrompt,
+                pending.editableUc,
+                pending.nePrompt,
+                pending.neUc,
+                pending.maxTokens
+            );
+        });
+    }
+
+    refreshGroupToolbarTotals(isUc) {
+        const { promptTextareas, ucTextareas } = this.collectEditorTokenTextareas();
+        const list = isUc ? ucTextareas : promptTextareas;
+        const ne = isUc ? this._groupTotals.neUc : this._groupTotals.nePrompt;
+        const editableGroup = isUc ? this._groupTotals.editableUc : this._groupTotals.editablePrompt;
+        const groupTotal = editableGroup + ne;
+        const maxTokens = 512;
+
+        list.forEach((textarea) => {
+            const cached = this._fieldTokenCache.get(textarea);
+            const count = cached ? cached.count : this.calculateTokenCount(textarea.value || '');
+            this.updateToolbarDisplay(textarea, count, ne, groupTotal, maxTokens);
+        });
+    }
+
     updateTokenCount(textarea) {
-        // Debounced version that updates all token counts
-        if (this._tokenUpdateTimeout) {
-            clearTimeout(this._tokenUpdateTimeout);
-        }
-        
-        this._tokenUpdateTimeout = setTimeout(() => {
+        if (!this._groupTotalsReady) {
             this.updateAllTokenCounts();
-        }, 150);
+            return;
+        }
+        this.updateTokenCountIncremental(textarea);
+    }
+
+    updateTokenCountIncremental(changedTextarea) {
+        if (!t5Tokenizer || !changedTextarea) return;
+        if (!this._fieldTokenCache.has(changedTextarea)) {
+            this.updateAllTokenCounts();
+            return;
+        }
+
+        const isUc = this.isUcTextarea(changedTextarea);
+        const stripped = stripPromptBlocksForEffectivePrompt(changedTextarea.value || '', { stageIndex: 0, pipelineStageGeneration: false });
+        const newCount = t5Tokenizer.countTokens(stripped);
+        const prev = this._fieldTokenCache.get(changedTextarea) || { count: 0, expanderNe: 0 };
+        const countDelta = newCount - prev.count;
+
+        if (isUc) {
+            this._groupTotals.editableUc += countDelta;
+        } else {
+            this._groupTotals.editablePrompt += countDelta;
+        }
+
+        prev.count = newCount;
+        this._fieldTokenCache.set(changedTextarea, prev);
+
+        const ne = isUc ? this._groupTotals.neUc : this._groupTotals.nePrompt;
+        const editableGroup = isUc ? this._groupTotals.editableUc : this._groupTotals.editablePrompt;
+        const groupTotal = editableGroup + ne;
+
+        this.updateToolbarDisplay(changedTextarea, newCount, ne, groupTotal, 512);
+        this.scheduleBottomSummaryUpdate(
+            this._groupTotals.editablePrompt,
+            this._groupTotals.editableUc,
+            this._groupTotals.nePrompt,
+            this._groupTotals.neUc,
+            512
+        );
     }
 
     updateAllTokenCounts() {
@@ -259,27 +359,8 @@ class PromptTextareaToolbar {
             return;
         }
 
-        // Collect all prompt textareas (main + all character prompts)
-        const promptTextareas = [];
-        const ucTextareas = [];
-        
-        const manualPrompt = document.getElementById('manualPrompt');
-        const manualUc = document.getElementById('manualUc');
-        
-        if (manualPrompt) promptTextareas.push(manualPrompt);
-        if (manualUc) ucTextareas.push(manualUc);
-        const manualPromptNegative = document.getElementById('manualPromptNegative');
-        if (manualPromptNegative) promptTextareas.push(manualPromptNegative);
-        
-        // Collect character prompts and inline negatives
-        const characterPrompts = document.querySelectorAll('[id$="_prompt"].character-prompt-textarea');
-        const characterUcs = document.querySelectorAll('[id$="_uc"].character-prompt-textarea');
-        const characterPromptNegatives = document.querySelectorAll('[id$="_promptNegative"].character-prompt-textarea');
-        
-        promptTextareas.push(...Array.from(characterPrompts));
-        promptTextareas.push(...Array.from(characterPromptNegatives));
-        ucTextareas.push(...Array.from(characterUcs));
-        
+        const { promptTextareas, ucTextareas } = this.collectEditorTokenTextareas();
+
         // Strip stage blocks and disabled blocks (matches server); non-pipeline preview uses stage 0
         const stripForTokens = (s) => stripPromptBlocksForEffectivePrompt(s || '', { stageIndex: 0, pipelineStageGeneration: false });
         const promptTexts = promptTextareas.map((ta) => stripForTokens(ta.value || ''));
@@ -299,6 +380,38 @@ class PromptTextareaToolbar {
 
         const totalPromptTokens = editablePromptTotal + nonEditable.prompt;
         const totalUcTokens = editableUcTotal + nonEditable.uc;
+
+        this._groupTotals = {
+            editablePrompt: editablePromptTotal,
+            editableUc: editableUcTotal,
+            nePrompt: nonEditable.prompt,
+            neUc: nonEditable.uc
+        };
+        this._groupTotalsReady = true;
+
+        const lockedSeeds = window.lastGenerationTextReplacements || window.lockedTextReplacements || [];
+        promptTextareas.forEach((textarea, index) => {
+            const result = promptAnalysis.results[index];
+            const stripped = promptTexts[index];
+            const expanderNe = typeof getExpanderTokenDeltaForText === 'function'
+                ? getExpanderTokenDeltaForText(stripped, lockedSeeds, periodKey, model)
+                : 0;
+            this._fieldTokenCache.set(textarea, {
+                count: result ? result.tokenCount : 0,
+                expanderNe
+            });
+        });
+        ucTextareas.forEach((textarea, index) => {
+            const result = ucAnalysis.results[index];
+            const stripped = ucTexts[index];
+            const expanderNe = typeof getExpanderTokenDeltaForText === 'function'
+                ? getExpanderTokenDeltaForText(stripped, lockedSeeds, periodKey, model)
+                : 0;
+            this._fieldTokenCache.set(textarea, {
+                count: result ? result.tokenCount : 0,
+                expanderNe
+            });
+        });
 
         const maxTokens = 512;
 

@@ -171,7 +171,7 @@ function togglePhotoSwipeShellWindowed() {
     if (!shell) return;
     if (shell.classList.contains('windowed')) {
         shell.setAttribute('data-modal-moved', 'true');
-        flushSaveWindowPositions();
+        debouncedSaveWindowPositions();
         localStorage.setItem(PHOTO_SWIPE_WINDOW_MODE_KEY, 'maximized');
         shell.classList.remove('windowed');
         shell.classList.remove('modal-maximized');
@@ -253,7 +253,7 @@ function teardownPhotoSwipeDesktopShell() {
     // Save windowed layout before close so the next open can restore it
     if (shell.classList.contains('windowed')) {
         shell.setAttribute('data-modal-moved', 'true');
-        flushSaveWindowPositions();
+        debouncedSaveWindowPositions();
     }
     closeModal(shell);
 }

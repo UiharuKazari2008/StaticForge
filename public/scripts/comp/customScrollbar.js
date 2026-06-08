@@ -8,7 +8,78 @@ class CustomScrollbar {
     constructor() {
         this.scrollbars = new Map();
         this.maxScrollCache = new WeakMap(); // Cache max scroll values to avoid recalculating
+        this._updateRafIds = new WeakMap();
+        this._layoutBatchDepth = 0;
+        this._layoutBatchPending = new Set();
+        this._layoutSettling = false;
+        this._layoutSettleRafId = null;
         this.init();
+    }
+
+    beginLayoutBatch() {
+        this._layoutBatchDepth++;
+        this._layoutSettling = true;
+        if (this._layoutSettleRafId) {
+            cancelAnimationFrame(this._layoutSettleRafId);
+            this._layoutSettleRafId = null;
+        }
+    }
+
+    endLayoutBatch() {
+        if (this._layoutBatchDepth <= 0) return;
+        this._layoutBatchDepth--;
+        if (this._layoutBatchDepth > 0) return;
+
+        const pending = Array.from(this._layoutBatchPending);
+        this._layoutBatchPending.clear();
+        pending.forEach((element) => {
+            this._cancelScheduledUpdate(element);
+            this._updateScrollbarNow(element);
+        });
+        this._scheduleLayoutSettleFlush();
+    }
+
+    _scheduleLayoutSettleFlush() {
+        if (this._layoutSettleRafId) return;
+        // ResizeObserver delivers after sync layout; wait two frames then apply scroll-state once.
+        this._layoutSettleRafId = requestAnimationFrame(() => {
+            this._layoutSettleRafId = requestAnimationFrame(() => {
+                this._layoutSettleRafId = null;
+                if (this._layoutBatchDepth > 0) {
+                    this._scheduleLayoutSettleFlush();
+                    return;
+                }
+                const latePending = Array.from(this._layoutBatchPending);
+                this._layoutBatchPending.clear();
+                this._layoutSettling = false;
+                latePending.forEach((element) => {
+                    this._cancelScheduledUpdate(element);
+                    this._updateScrollbarNow(element);
+                });
+            });
+        });
+    }
+
+    _scheduleUpdateScrollbar(element) {
+        if (!element) return;
+        if (this._layoutBatchDepth > 0 || this._layoutSettling) {
+            this._layoutBatchPending.add(element);
+            return;
+        }
+        if (this._updateRafIds.has(element)) return;
+        const rafId = requestAnimationFrame(() => {
+            this._updateRafIds.delete(element);
+            this._updateScrollbarNow(element);
+        });
+        this._updateRafIds.set(element, rafId);
+    }
+
+    _cancelScheduledUpdate(element) {
+        const rafId = this._updateRafIds.get(element);
+        if (rafId) {
+            cancelAnimationFrame(rafId);
+            this._updateRafIds.delete(element);
+        }
     }
 
     init() {
@@ -160,9 +231,7 @@ class CustomScrollbar {
         });
 
         // Initial update - use requestAnimationFrame to ensure layout is complete
-        requestAnimationFrame(() => {
-            this.updateScrollbar(element);
-        });
+        this._scheduleUpdateScrollbar(element);
     }
 
     initScrollbarFunctionality(element, scrollableContent, scrollbar, thumb, wrapperClass = 'scrollable-content') {
@@ -172,7 +241,7 @@ class CustomScrollbar {
 
         // Update scrollbar on scroll
         scrollableContent.addEventListener('scroll', () => {
-            this.updateScrollbar(element);
+            this._scheduleUpdateScrollbar(element);
         });
 
         // Mouse wheel handling - only prevent default on non-touch devices
@@ -336,45 +405,53 @@ class CustomScrollbar {
             // Clear cache when size changes
             this.maxScrollCache.delete(scrollableContent);
             // Update scrollbar on any resize event - content or container size changes
-            this.updateScrollbar(element);
+            this._scheduleUpdateScrollbar(element);
         });
 
         // Only observe scrollableContent, not the parent element
         resizeObserver.observe(scrollableContent);
 
-        // Mutation observer to watch for content changes that might affect scrollability
+        // Structural DOM changes only — attributes/style fire from textarea auto-resize (handled via syncPromptTextareaContainerMeasurements).
         const mutationObserver = new MutationObserver(() => {
-            // Clear cache when content changes
             this.maxScrollCache.delete(scrollableContent);
-            // Update scrollbar when content is added, removed, or modified
-            this.updateScrollbar(element);
+            this._scheduleUpdateScrollbar(element);
         });
 
-        // Observe child additions/removals and subtree changes
         mutationObserver.observe(scrollableContent, {
             childList: true,
-            subtree: true,
-            characterData: true,
-            attributes: true
+            subtree: true
         });
     }
 
     // Helper function to get max scroll distance
     // This ensures we can scroll into all padding by using the actual scrollable area
     getMaxScrollDistance(scrollableContent) {
-        // Get the actual scroll dimensions
         const scrollHeight = scrollableContent.scrollHeight;
         const clientHeight = scrollableContent.clientHeight;
-        let maxScroll = Math.max(0, scrollHeight - clientHeight);
-        const savedScrollTop = scrollableContent.scrollTop;
-        scrollableContent.scrollTop = 999999;
-        const actualMax = scrollableContent.scrollTop;
-        scrollableContent.scrollTop = savedScrollTop;
+        const cached = this.maxScrollCache.get(scrollableContent);
+        if (cached && cached.scrollHeight === scrollHeight && cached.clientHeight === clientHeight) {
+            return cached.max;
+        }
 
-        return Math.max(maxScroll, actualMax);
+        let maxScroll = Math.max(0, scrollHeight - clientHeight);
+        let max = maxScroll;
+
+        if (maxScroll > 0) {
+            const savedScrollTop = scrollableContent.scrollTop;
+            scrollableContent.scrollTop = 999999;
+            max = Math.max(maxScroll, scrollableContent.scrollTop);
+            scrollableContent.scrollTop = savedScrollTop;
+        }
+
+        this.maxScrollCache.set(scrollableContent, { scrollHeight, clientHeight, max });
+        return max;
     }
 
     updateScrollbar(element) {
+        this._scheduleUpdateScrollbar(element);
+    }
+
+    _updateScrollbarNow(element) {
         const data = this.scrollbars.get(element);
         if (!data) return;
 
@@ -386,32 +463,27 @@ class CustomScrollbar {
 
         // Check if scrollbar is needed
         const needsScrollbar = scrollHeight > clientHeight;
+        const scrollState = data.scrollState || {};
+        const skipScrollStateClasses = this._layoutSettling;
 
-        // Update scroll state classes
+        // Update scroll state classes (deferred during layout settling to preserve CSS transitions)
         if (needsScrollbar) {
-            // Add scroll-ready class when content is scrollable
-            element.classList.add('scroll-ready');
-
-            // Get max scroll distance (scrollHeight already includes padding)
             const maxScrollDistance = this.getMaxScrollDistance(scrollableContent);
 
-            // Check scroll position for top/bottom classes
-            // For atBottom, we need to check against the actual maximum the browser allows
-            // Use a small tolerance (1px) to account for rounding
-            const atTop = scrollTop <= 0;
-            const actualMaxScroll = scrollableContent.scrollHeight - scrollableContent.clientHeight;
-            const atBottom = scrollTop >= (actualMaxScroll - 1);
+            if (!skipScrollStateClasses) {
+                if (!scrollState.needsScrollbar) {
+                    element.classList.add('scroll-ready');
+                }
 
-            if (atTop) {
-                element.classList.add('scroll-top');
-            } else {
-                element.classList.remove('scroll-top');
-            }
+                const atTop = scrollTop <= 0;
+                const atBottom = scrollTop >= (maxScrollDistance - 1);
 
-            if (atBottom) {
-                element.classList.add('scroll-end');
-            } else {
-                element.classList.remove('scroll-end');
+                element.classList.toggle('scroll-top', atTop);
+                element.classList.toggle('scroll-end', atBottom);
+
+                scrollState.needsScrollbar = true;
+                scrollState.atTop = atTop;
+                scrollState.atBottom = atBottom;
             }
 
             // Calculate thumb position for static height
@@ -443,12 +515,18 @@ class CustomScrollbar {
             // Show scrollbar
             scrollbar.classList.remove('hidden');
         } else {
-            // Remove all scroll state classes when not scrollable
-            element.classList.remove('scroll-ready', 'scroll-top', 'scroll-end');
+            if (!skipScrollStateClasses && scrollState.needsScrollbar) {
+                element.classList.remove('scroll-ready', 'scroll-top', 'scroll-end');
+                scrollState.needsScrollbar = false;
+                scrollState.atTop = false;
+                scrollState.atBottom = false;
+            }
 
             // Hide scrollbar when not needed
             scrollbar.classList.add('hidden');
         }
+
+        data.scrollState = scrollState;
     }
 
     // Check if this scrollable element is the innermost one relative to the event target
@@ -480,6 +558,7 @@ class CustomScrollbar {
         const data = this.scrollbars.get(element);
         if (data) {
             try {
+                this._cancelScheduledUpdate(element);
                 // Restore original structure
                 const { scrollableContent } = data;
 

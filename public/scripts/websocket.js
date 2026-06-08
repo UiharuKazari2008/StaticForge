@@ -242,6 +242,26 @@ class BannerManager {
             'desktop_update_shortcut': 'Update Desktop Shortcut',
             'desktop_remove_shortcut': 'Remove Desktop Shortcut',
             'desktop_update_positions': 'Update Desktop Positions',
+            'desktop_create_empty_folder': 'Create Desktop Folder',
+            'desktop_update_shortcut_folders': 'Move to Folder',
+            'desktop_create_folder_from_selection': 'Create Folder',
+
+            // VFS operations
+            'vfs_list_directory': 'List Directory',
+            'vfs_get_path_stats': 'Path Stats',
+            'vfs_resolve_path': 'Resolve Path',
+            'vfs_create_folder': 'Create Folder',
+            'vfs_rename_folder': 'Rename Folder',
+            'vfs_delete_folder': 'Delete Folder',
+            'vfs_move_items': 'Move Items',
+            'vfs_copy_items': 'Copy Items',
+            'vfs_delete_entry': 'Delete Entry',
+            'vfs_upload_file': 'Upload File',
+            'vfs_replace_file': 'Replace File',
+            'vfs_download_file': 'Download File',
+            'vfs_delete_file': 'Delete File',
+            'vfs_convert_reference_to_file': 'Convert Reference',
+            'vfs_convert_file_to_reference': 'Convert to Reference',
 
             'get_text_replacement_options': 'Resolve Placeholder',
             'scan_text_replacements': 'Scan Expanders',
@@ -495,6 +515,7 @@ class WebSocketClient {
         this.maxReconnectDelay = WebSocketClient.DELAY_RECONNECT_MAX;
         this.isConnecting = false;
         this.isManualClose = false;
+        this._reconnectTimer = null;
         this.circuitBreaker = false; // New: circuit breaker to prevent infinite retries
         this.lastConnectionAttempt = 0;
         this.connectionCooldown = WebSocketClient.DELAY_CONNECTION_COOLDOWN;
@@ -567,6 +588,16 @@ class WebSocketClient {
 
         // WebSocket indicator elements (dynamically populated array)
         this.websocketIndicators = [];
+        /** Cached visible arrow elements for traffic flash (see _refreshWsFlashTargets). */
+        this._wsFlashTargets = [];
+        this._wsFlashPendingUp = null;
+        this._wsFlashPendingDown = null;
+        this._wsFlashRafId = null;
+        this._wsFlashLastApply = 0;
+        this._wsFlashMinInterval = 80;
+        this._wsFlashVisibilityInterval = null;
+        this._wsFlashVisibilityObserver = null;
+        this._wsFlashVisibilityRefreshRaf = null;
         /** Server app ping overdue while socket still OPEN — flash green dot (see setPingResponseWaitingFlash). */
         this._pingResponseWaitingFlash = false;
 
@@ -873,7 +904,9 @@ class WebSocketClient {
             swStatus = window.serviceWorkerManager.getServiceWorkerHeartbeatStatus();
             swStatus.isUpdating = Boolean(window.serviceWorkerManager.isUpdating);
             swStatus.updateProgress = Number.isFinite(window.serviceWorkerManager.updateProgress) ? window.serviceWorkerManager.updateProgress : 0;
-            swStatus.updateAvailable = Boolean(window.serviceWorkerManager.updateAvailable);
+            swStatus.updateAvailable = Boolean(
+                window.serviceWorkerManager.hasPendingUpdates() || window.serviceWorkerManager.updateAvailable
+            );
         }
 
         let iconClass = 'fas fa-hard-drive';
@@ -2321,7 +2354,15 @@ class WebSocketClient {
         // Handle page visibility changes (covers tab switching, app minimise, screen lock)
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') {
+                this._refreshWsFlashTargets();
                 this._reconnectOnFocusRegain('visibilitychange');
+            } else {
+                this._wsFlashPendingUp = null;
+                this._wsFlashPendingDown = null;
+                if (this._wsFlashRafId) {
+                    cancelAnimationFrame(this._wsFlashRafId);
+                    this._wsFlashRafId = null;
+                }
             }
         });
 
@@ -2363,6 +2404,10 @@ class WebSocketClient {
      * @throws {Error} If connection cannot be established after retries
      */
     async connect() {
+        if (this.isManualClose) {
+            return;
+        }
+
         this.initWebSocketIndicators();
         this.setupRequestsModalHandlers();
 
@@ -2423,7 +2468,7 @@ class WebSocketClient {
 
                 this._setConnectionPhase('failed', { message: failureMessage });
 
-                if (!this.circuitBreaker) {
+                if (!this.circuitBreaker && !this.isManualClose) {
                     setTimeout(() => {
                         this.reconnect();
                     }, 3000);
@@ -2741,6 +2786,19 @@ class WebSocketClient {
         }
     }
 
+    /**
+     * Stops automatic reconnection — used when the page will reload or close (DSS restart, client shutdown).
+     */
+    suppressAutoReconnect() {
+        this.isManualClose = true;
+        this.reconnectAttempts = 0;
+        this.circuitBreaker = false;
+        if (this._reconnectTimer) {
+            clearTimeout(this._reconnectTimer);
+            this._reconnectTimer = null;
+        }
+    }
+
     reconnect() {
         // Check if we're in circuit breaker mode
         if (this.circuitBreaker) {
@@ -2785,7 +2843,13 @@ class WebSocketClient {
             maxAttempts: this.maxReconnectAttempts
         });
 
-        setTimeout(() => {
+        if (this._reconnectTimer) {
+            clearTimeout(this._reconnectTimer);
+            this._reconnectTimer = null;
+        }
+
+        this._reconnectTimer = setTimeout(() => {
+            this._reconnectTimer = null;
             if (!this.isManualClose && !this.circuitBreaker) {
                 this.connect();
             }
@@ -2989,11 +3053,17 @@ class WebSocketClient {
             if (message.logViewerPathUuid && localStorage.getItem('userType') === 'admin') {
                 localStorage.setItem('logViewerPathUuid', message.logViewerPathUuid);
             }
+            if (message.vfsPathUuid && typeof bootstrapVfsPathUuidFromOptions === 'function') {
+                bootstrapVfsPathUuidFromOptions(message);
+            }
             return;
         }
 
         // Handle pong responses with requestId for authentication checking
         if (message.type === 'pong') {
+            if (message.vfsPathUuid && typeof bootstrapVfsPathUuidFromOptions === 'function') {
+                bootstrapVfsPathUuidFromOptions(message);
+            }
             if (message.requestId) {
                 // Calculate RTT if we have the ping timestamp
                 if (this.pendingPings.has(message.requestId)) {
@@ -3244,6 +3314,19 @@ class WebSocketClient {
             return;
         }
 
+        // Handle service worker cache manifest push (same data as OPTIONS / update check)
+        if (message.type === 'service_worker_cache_update') {
+            const files = message.data && Array.isArray(message.data.files) ? message.data.files : [];
+            const silent = message.data && message.data.silent === true;
+
+            if (files.length > 0 && window.serviceWorkerManager && typeof window.serviceWorkerManager.updateStaticCache === 'function') {
+                window.serviceWorkerManager.updateStaticCache(files, silent);
+            } else if (!silent && window.serviceWorkerManager && typeof window.serviceWorkerManager.checkStaticFileUpdates === 'function') {
+                window.serviceWorkerManager.checkStaticFileUpdates(silent);
+            }
+            return;
+        }
+
         // Handle resource update notifications
         if (message.type === 'resource_update_available') {
             const updateMessage = message.data.message || 'Resource updates are available for download';
@@ -3374,6 +3457,20 @@ class WebSocketClient {
 
             case 'workspace_updated':
                 this.handleWorkspaceUpdate(message.data);
+                break;
+
+            case 'workspace_desktop_persisted':
+                if (typeof desktopShortcuts !== 'undefined' && desktopShortcuts &&
+                    typeof desktopShortcuts.handleWorkspaceDesktopPersisted === 'function') {
+                    desktopShortcuts.handleWorkspaceDesktopPersisted();
+                }
+                break;
+
+            case 'vfs_updated':
+                if (typeof explorerApplet !== 'undefined' && explorerApplet &&
+                    explorerApplet.modal && !explorerApplet.modal.classList.contains('hidden')) {
+                    explorerApplet.softRefresh();
+                }
                 break;
 
             case 'workspace_activated':
@@ -3844,6 +3941,9 @@ class WebSocketClient {
                 // Show that we're in streaming mode
                 manualForm.classList.add('streaming');
 
+                // lockGenerationQuips: public/scripts/comp/generationQuips.js
+                lockGenerationQuips();
+
                 // Show the manual preview section with resolution dimensions
                 if (typeof showManualPreview === 'function') {
                     showManualPreview(true); // true = set resolution dimensions
@@ -4154,6 +4254,12 @@ class WebSocketClient {
             if (data.phase === 'complete') {
                 this.clearStreamingStepQueues();
 
+                const manualModal = document.getElementById('manualModal');
+                if (manualModal && !manualModal.classList.contains('hidden')) {
+                    // lockGenerationQuips: public/scripts/comp/generationQuips.js
+                    lockGenerationQuips();
+                }
+
                 // Clear any running timers
                 if (progressState.timer) {
                     clearInterval(progressState.timer);
@@ -4241,7 +4347,7 @@ class WebSocketClient {
             case 'up_to_date':
             case 'cache_ready':
                 indicator.classList.add('up_to_date');
-                icon.className = 'fas fa-folder-magnifying-glass';
+                icon.className = 'fas fa-file-magnifying-glass';
                 break;
             case 'paused':
                 indicator.classList.add('paused');
@@ -4250,14 +4356,14 @@ class WebSocketClient {
             case 'resumed':
             case 'idle':
                 indicator.classList.add('up_to_date');
-                icon.className = 'fas fa-folder-magnifying-glass';
+                icon.className = 'fas fa-magnifying-glass';
                 break;
             case 'error':
                 indicator.classList.add('error');
                 icon.className = 'fas fa-rotate-exclamation';
                 break;
             default:
-                icon.className = 'fas fa-folder-magnifying-glass';
+                icon.className = 'fas fa-magnifying-glass';
                 break;
         }
 
@@ -4544,12 +4650,31 @@ class WebSocketClient {
                 requestId: options.requestId,
                 autofillSessionId: options.autofillSessionId || null,
                 spellCheckText: options.spellCheckText || query,
-                isContinuation: options.isContinuation === true
+                isContinuation: options.isContinuation === true,
+                autofillSettings: options.autofillSettings || null
             });
             return { success: true };
         } catch (error) {
             showGlassToast('error', 'Character search error', error.message, false);
             throw error;
+        }
+    }
+
+    async fetchAutofillWikiPreviews(tagIds, options = {}) {
+        if (!Array.isArray(tagIds) || tagIds.length === 0) {
+            return { success: true };
+        }
+        try {
+            this.sendAcklessMessage('fetch_autofill_wiki_previews', {
+                tagIds,
+                requestId: options.requestId || null,
+                autofillSessionId: options.autofillSessionId || null,
+                model: options.model || null
+            });
+            return { success: true };
+        } catch (error) {
+            console.error('fetchAutofillWikiPreviews:', error);
+            return { success: false };
         }
     }
 
@@ -4836,16 +4961,13 @@ class WebSocketClient {
         return this.sendMessage('workspace_update_settings', { id, settings });
     }
 
-    // Save window positions without triggering ticket system (uses ackless message)
-    // Window positions are now global (not per-workspace), so workspaceId is ignored
+    // Save window positions (global, not per-workspace). Uses sendMessage so callers can await server receipt.
     async saveWindowPositions(workspaceId, windowPositions) {
         if (!this.isConnected()) {
             return;
         }
 
-        // Use sendAcklessMessage to avoid triggering the ticket system
-        // workspaceId is ignored - positions are stored globally
-        this.sendAcklessMessage('workspace_update_window_positions', {
+        return this.sendMessage('workspace_update_window_positions', {
             windowPositions: windowPositions
         });
     }
@@ -5855,6 +5977,8 @@ class WebSocketClient {
 
         // Set initial status
         this.updateWebSocketStatus('disconnected');
+        this._refreshWsFlashTargets();
+        this._startWsFlashVisibilityWatcher();
     }
 
     // Setup click handlers for ticker and indicators to open requests modal
@@ -5926,6 +6050,7 @@ class WebSocketClient {
 
         // Re-setup click handlers for new indicators
         this.setupRequestsModalHandlers();
+        this._refreshWsFlashTargets();
 
         this.logInfo(`WebSocket indicators refreshed. Found ${this.websocketIndicators.length} indicator(s).`);
     }
@@ -5986,28 +6111,53 @@ class WebSocketClient {
         }
     }
 
-    // Flash WebSocket arrow for traffic indication with rapid activity support
-    flashWebSocketArrow(direction, duration = 500) {
-        const arrowType = direction === 'up' ? 'upArrow' : 'downArrow';
-        const timeoutType = direction === 'up' ? 'upTimeout' : 'downTimeout';
+    // True when an element is actually shown (no layout reads — safe for deferred refresh).
+    _isWsFlashElementVisible(el) {
+        if (!el || document.hidden) return false;
 
-        const flashArrow = (arrow, timeoutKey, timeoutStore) => {
-            if (!arrow) return;
-            if (timeoutStore[timeoutKey]) {
-                clearTimeout(timeoutStore[timeoutKey]);
+        const modal = el.closest('.modal');
+        if (modal && (modal.classList.contains('hidden') || modal.classList.contains('hidden-alt'))) {
+            return false;
+        }
+
+        let node = el;
+        while (node && node !== document.documentElement) {
+            if (node.classList?.contains('hidden') || node.classList?.contains('hidden-alt')) {
+                return false;
             }
-            arrow.classList.remove('active');
-            void arrow.offsetHeight;
-            arrow.classList.add('active');
-            timeoutStore[timeoutKey] = setTimeout(() => {
-                arrow.classList.remove('active');
-                timeoutStore[timeoutKey] = null;
-            }, duration);
-        };
+            const style = getComputedStyle(node);
+            if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) {
+                return false;
+            }
+            node = node.parentElement;
+        }
 
-        // Handle all indicators
+        if (typeof el.checkVisibility === 'function') {
+            return el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
+        }
+        return true;
+    }
+
+    _isWsFlashVisibilityMutationTarget(node) {
+        if (!node || node.nodeType !== 1) return false;
+        if (node === document.body) return true;
+        if (node.classList?.contains('modal')) return true;
+        if (node.classList?.contains('websocket-indicator')) return true;
+        if (node.id === 'connectionDialModal' || node.id === 'connectionDialStats') return true;
+        return !!node.closest?.('.websocket-indicator, #connectionDialModal, #connectionDialStats');
+    }
+
+    // Rebuild cached list of visible traffic arrows (called on interval and when indicators refresh).
+    _refreshWsFlashTargets() {
+        const targets = [];
+
         this.websocketIndicators.forEach(indicator => {
-            flashArrow(indicator[arrowType], timeoutType, indicator);
+            if (indicator.upArrow && this._isWsFlashElementVisible(indicator.upArrow)) {
+                targets.push({ arrow: indicator.upArrow, timeoutKey: 'upTimeout', timeoutStore: indicator });
+            }
+            if (indicator.downArrow && this._isWsFlashElementVisible(indicator.downArrow)) {
+                targets.push({ arrow: indicator.downArrow, timeoutKey: 'downTimeout', timeoutStore: indicator });
+            }
         });
 
         if (!this._melatonTrafficUp) {
@@ -6019,8 +6169,116 @@ class WebSocketClient {
         if (!this._melatonTrafficTimeouts) {
             this._melatonTrafficTimeouts = { upTimeout: null, downTimeout: null };
         }
-        const melatonArrow = direction === 'up' ? this._melatonTrafficUp : this._melatonTrafficDown;
-        flashArrow(melatonArrow, timeoutType, this._melatonTrafficTimeouts);
+        if (this._melatonTrafficUp && this._isWsFlashElementVisible(this._melatonTrafficUp)) {
+            targets.push({ arrow: this._melatonTrafficUp, timeoutKey: 'upTimeout', timeoutStore: this._melatonTrafficTimeouts });
+        }
+        if (this._melatonTrafficDown && this._isWsFlashElementVisible(this._melatonTrafficDown)) {
+            targets.push({ arrow: this._melatonTrafficDown, timeoutKey: 'downTimeout', timeoutStore: this._melatonTrafficTimeouts });
+        }
+
+        this._wsFlashTargets = targets;
+    }
+
+    _scheduleWsFlashVisibilityRefresh() {
+        if (this._wsFlashVisibilityRefreshRaf) return;
+        this._wsFlashVisibilityRefreshRaf = requestAnimationFrame(() => {
+            this._wsFlashVisibilityRefreshRaf = null;
+            this._refreshWsFlashTargets();
+        });
+    }
+
+    _startWsFlashVisibilityWatcher() {
+        if (!this._wsFlashVisibilityObserver) {
+            this._wsFlashVisibilityObserver = new MutationObserver((mutations) => {
+                for (let i = 0; i < mutations.length; i++) {
+                    if (this._isWsFlashVisibilityMutationTarget(mutations[i].target)) {
+                        this._scheduleWsFlashVisibilityRefresh();
+                        return;
+                    }
+                }
+            });
+            this._wsFlashVisibilityObserver.observe(document.body, {
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['class']
+            });
+        }
+
+        if (!this._wsFlashVisibilityInterval) {
+            this._wsFlashVisibilityInterval = setInterval(() => {
+                this._refreshWsFlashTargets();
+            }, 5000);
+        }
+    }
+
+    // Queue DOM flash work off the WebSocket message path (rAF runs after current task).
+    _queueWsFlashApply() {
+        if (this._wsFlashRafId) return;
+        this._wsFlashRafId = requestAnimationFrame(() => {
+            this._wsFlashRafId = null;
+            if (document.hidden) {
+                this._wsFlashPendingUp = null;
+                this._wsFlashPendingDown = null;
+                return;
+            }
+
+            const now = performance.now();
+            if (now - this._wsFlashLastApply < this._wsFlashMinInterval) {
+                this._queueWsFlashApply();
+                return;
+            }
+
+            const upDuration = this._wsFlashPendingUp;
+            const downDuration = this._wsFlashPendingDown;
+            if (upDuration == null && downDuration == null) return;
+
+            this._wsFlashPendingUp = null;
+            this._wsFlashPendingDown = null;
+            this._wsFlashLastApply = now;
+            this._refreshWsFlashTargets();
+
+            if (upDuration != null) {
+                this._applyWebSocketArrowFlash('up', upDuration);
+            }
+            if (downDuration != null) {
+                this._applyWebSocketArrowFlash('down', downDuration);
+            }
+        });
+    }
+
+    _applyWebSocketArrowFlash(direction, duration = 500) {
+        if (document.hidden || !this._wsFlashTargets.length) return;
+
+        const timeoutType = direction === 'up' ? 'upTimeout' : 'downTimeout';
+
+        const flashArrow = (arrow, timeoutKey, timeoutStore) => {
+            if (!arrow) return;
+            if (timeoutStore[timeoutKey]) {
+                clearTimeout(timeoutStore[timeoutKey]);
+            } else {
+                arrow.classList.add('active');
+            }
+            timeoutStore[timeoutKey] = setTimeout(() => {
+                arrow.classList.remove('active');
+                timeoutStore[timeoutKey] = null;
+            }, duration);
+        };
+
+        this._wsFlashTargets.forEach(target => {
+            if (target.timeoutKey !== timeoutType) return;
+            flashArrow(target.arrow, target.timeoutKey, target.timeoutStore);
+        });
+    }
+
+    // Record traffic for a deferred flash — no DOM work on the WebSocket message path.
+    flashWebSocketArrow(direction, duration = 500) {
+        if (document.hidden) return;
+        if (direction === 'up') {
+            this._wsFlashPendingUp = duration;
+        } else {
+            this._wsFlashPendingDown = duration;
+        }
+        this._queueWsFlashApply();
     }
 
     // Clear all WebSocket indicator timeouts (for cleanup)

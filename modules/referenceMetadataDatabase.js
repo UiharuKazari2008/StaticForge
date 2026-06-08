@@ -1588,6 +1588,34 @@ class ReferenceMetadataDatabase {
     }
 
     /**
+     * Lightweight vibe rows for directory listings (no encodings payload).
+     * @param {string} workspaceId
+     * @returns {Array}
+     */
+    getWorkspaceVibesListLight(workspaceId) {
+        try {
+            const stmt = this.db.prepare(`
+                SELECT
+                    vm.id AS vibe_id,
+                    vm.preview_hash,
+                    vm.type,
+                    vm.updated_at,
+                    vm.created_at,
+                    rm.display_name
+                FROM reference_vibe_workspace_ownership vwo
+                INNER JOIN reference_vibe_metadata vm ON vm.id = vwo.vibe_id
+                LEFT JOIN reference_metadata rm ON rm.hash = vm.id
+                WHERE vwo.workspace_id = ?
+                ORDER BY vwo.created_at DESC
+            `);
+            return stmt.all(workspaceId);
+        } catch (error) {
+            console.error('Error getting workspace vibes list:', error);
+            return [];
+        }
+    }
+
+    /**
      * Get all vibe IDs that use a specific cache hash as their image source
      * Used for converting vibes to base64 before deleting cache files
      * @param {string} cacheHash - Cache file hash

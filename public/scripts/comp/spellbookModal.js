@@ -407,6 +407,18 @@ class SpellbookModalManager {
                             hidden: () => !document.body.classList.contains('desktop-mode')
                         },
                         {
+                            icon: 'fas fa-crosshairs',
+                            text: 'Jump to Image',
+                            action: 'spellcaster-jump-workspace',
+                            disabled: () => !hasImage()
+                        },
+                        {
+                            icon: 'nai-img2img',
+                            text: 'New Reference',
+                            action: 'spellcaster-create-reference',
+                            disabled: () => !hasImage()
+                        },
+                        {
                             icon: 'fas fa-arrow-down-left',
                             text: 'Add to Desktop',
                             action: 'spellcaster-desktop-shortcut',
@@ -419,18 +431,6 @@ class SpellbookModalManager {
                     type: 'list',
                     title: 'Management',
                     items: [
-                        {
-                            icon: 'fas fa-crosshairs',
-                            text: 'Jump to Image',
-                            action: 'spellcaster-jump-workspace',
-                            disabled: () => !hasImage()
-                        },
-                        {
-                            icon: 'nai-img2img',
-                            text: 'New Reference',
-                            action: 'spellcaster-create-reference',
-                            disabled: () => !hasImage()
-                        },
                         {
                             content: () => manager.buildMoveToMenuContent(),
                             optionsfn: getMoveWorkspaceOptions,

@@ -541,6 +541,10 @@
         if (typeof bypassConfirmation !== 'undefined') {
             bypassConfirmation = true;
         }
+        if (typeof runClientShutdownSequence === 'function') {
+            runClientShutdownSequence(function () { location.reload(); });
+            return;
+        }
         location.reload();
     }
 

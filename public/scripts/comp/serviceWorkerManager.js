@@ -2,6 +2,8 @@ class ServiceWorkerManager {
     constructor() {
         this.swRegistration = null;
         this.updateAvailable = false;
+        // Blown when updates are downloaded but not yet applied via restart.
+        this.pendingUpdateFuse = false;
         this.updateProgress = 0;
         this.isUpdating = false;
         this.lastUpdateCounts = { completed: 0, total: 0 };
@@ -38,6 +40,29 @@ class ServiceWorkerManager {
 
     _isDesktopTrayMode() {
         return Boolean(window.isDesktop && document.body.classList.contains('desktop-mode'));
+    }
+
+    hasPendingUpdates() {
+        return this.pendingUpdateFuse;
+    }
+
+    tripPendingUpdateFuse() {
+        this.pendingUpdateFuse = true;
+        this.updateAvailable = true;
+        this._notifyTrayIconUpdate();
+    }
+
+    resetPendingUpdateFuse() {
+        this.pendingUpdateFuse = false;
+        this.updateAvailable = false;
+        this._notifyTrayIconUpdate();
+    }
+
+    _notifyTrayIconUpdate() {
+        // wsClient._updateServiceWorkerTrayIcon: public/scripts/websocket.js
+        if (window.wsClient && typeof window.wsClient._updateServiceWorkerTrayIcon === 'function') {
+            window.wsClient._updateServiceWorkerTrayIcon();
+        }
     }
 
     _isPreStartupUpdatePhase() {
@@ -762,12 +787,15 @@ class ServiceWorkerManager {
                     files: filesToUpdate
                 });
             } else if (!noToast) {
-                // Update existing checking toast to show "no updates"
-                this.showNoUpdatesFromChecking();
-                if (this.swRegistration && this.swRegistration.active) {
-                    this.swRegistration.active.postMessage({
-                        type: 'NO_UPDATES_AVAILABLE'
-                    });
+                if (this.hasPendingUpdates()) {
+                    this.showPendingUpdatesFromChecking();
+                } else {
+                    this.showNoUpdatesFromChecking();
+                    if (this.swRegistration && this.swRegistration.active) {
+                        this.swRegistration.active.postMessage({
+                            type: 'NO_UPDATES_AVAILABLE'
+                        });
+                    }
                 }
             } else {
                 // Silently remove checking toast when noToast is true
@@ -960,6 +988,45 @@ class ServiceWorkerManager {
         }
     }
 
+    showPendingUpdatesFromChecking() {
+        if (this._isDesktopTrayMode()) {
+            this._showServiceWorkerTrayPopup('complete', {
+                message: 'No new updates found. Restart to apply pending updates.',
+                progress: 100,
+                filesTotal: this.trayPopup.filesTotal || this.lastUpdateFilesTotal || 0
+            });
+            this.updateToastId = 'service-worker-tray-popup';
+            this.checkingToastId = null;
+        } else if (this.checkingToastId && typeof updateGlassToastComplete === 'function') {
+            updateGlassToastComplete(this.checkingToastId, {
+                type: 'warning',
+                title: 'Restart Required',
+                message: 'No new updates found. Restart to apply pending updates.',
+                showProgress: false,
+                customIcon: '<i class="fas fa-arrows-rotate"></i>',
+                timeout: false
+            });
+            if (typeof updateGlassToastButtons === 'function') {
+                updateGlassToastButtons(this.checkingToastId, [
+                    {
+                        text: 'Restart Now',
+                        type: 'primary',
+                        onClick: () => this.forceRestart(),
+                        closeOnClick: true
+                    },
+                    {
+                        text: 'Later',
+                        type: 'secondary',
+                        onClick: () => {},
+                        closeOnClick: true
+                    }
+                ]);
+            }
+            this.updateToastId = this.checkingToastId;
+            this.checkingToastId = null;
+        }
+    }
+
     showCacheUpdateErrorFromChecking(error) {
         // Desktop mode: tray popup (auto-hide)
         if (this._isDesktopTrayMode()) {
@@ -1052,7 +1119,9 @@ class ServiceWorkerManager {
             }
         }
         this.updateToastId = null;
-        this.updateAvailable = false;
+        if (!this.pendingUpdateFuse) {
+            this.updateAvailable = false;
+        }
         this.isUpdating = false;
     }
     
@@ -1304,6 +1373,7 @@ class ServiceWorkerManager {
                 // Use files.length as fallback if total is 0 (handles race condition)
                 const filesCount = event.data.total > 0 ? event.data.total : (event.data.files ? event.data.files.length : 0);
                 if (filesCount > 0) {
+                    this.tripPendingUpdateFuse();
                     this.trayPopup.dismissedUntilComplete = false;
                     this.trayPopup.filesTotal = filesCount;
                     // Pre-startup init flow shows windowsUpdateModal and waits for user choice.
@@ -1846,9 +1916,9 @@ class ServiceWorkerManager {
 
                 // Clear current registration
                 this.swRegistration = null;
-                this.updateAvailable = false;
                 this.isUpdating = false;
                 this.initialCheckDone = false;
+                this.tripPendingUpdateFuse();
             }
 
             // Step 2: Clear any existing timeouts

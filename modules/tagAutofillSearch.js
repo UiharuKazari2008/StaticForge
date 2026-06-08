@@ -64,6 +64,25 @@ class TagAutofillSearch {
         return tags;
     }
 
+    /** Load autofill tag objects by DB id (for lazy wiki preview fetch). */
+    getTagsByIdsForAutofill(tagIds, options = {}) {
+        const limit = options.limit ?? DEFAULT_SEARCH_LIMIT;
+        const tagLookup = this.getTagLookup();
+        const ids = [...new Set((tagIds || []).map(id => Number(id)).filter(id => id > 0))].slice(0, limit);
+        if (!ids.length) {
+            return [];
+        }
+        const rows = tagLookup.fetchTagsByIdsSync(ids);
+        const tags = [];
+        rows.forEach((row, index) => {
+            const mapped = tagLookup.mapRowToTag(row);
+            if (mapped) {
+                tags.push(this.buildAutofillTag(mapped, index));
+            }
+        });
+        return tags.filter(tag => tag && tag.hasWiki);
+    }
+
     buildAutofillTag(tag, index) {
         const datasets = this.getDatasetSources(tag);
         const score = this.normalizeAutofillScore(tag, index);

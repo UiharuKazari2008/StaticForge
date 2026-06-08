@@ -1216,30 +1216,48 @@ function calculateCreditCost(requestBody) {
     return price; // Return the list price (credits cost)
 }
 
+/** Height of a stacked prompt row — use textarea inline height when wraps collapse under hidden-pane measure. */
+function getPromptStackedElementHeight(el) {
+    const ta = el.matches('textarea.prompt-textarea, textarea.character-prompt-textarea')
+        ? el
+        : el.querySelector(':scope > textarea.prompt-textarea, :scope > textarea.character-prompt-textarea');
+    if (ta) {
+        const inline = parseInt(ta.style.height, 10);
+        if (Number.isFinite(inline) && inline > 0) return inline;
+        return ta.offsetHeight;
+    }
+    return el.offsetHeight;
+}
+
+function getPromptStackGapBefore(nextEl) {
+    if (!nextEl) return 0;
+    const cs = getComputedStyle(nextEl);
+    return (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.borderTopWidth) || 0);
+}
+
 /**
  * Sizes .prompt-textarea-container height from all direct stacked .prompt-textarea children plus visible toolbar (flow height).
  */
 function syncPromptTextareaContainerMeasurements(container, extraContainerHeight = 0) {
-    if (!container) return;
+    if (!container) return false;
 
     const wraps = container.querySelectorAll(':scope > .prompt-textarea-emphasis-wrap');
     let sum = 0;
 
     if (wraps.length) {
         wraps.forEach((wrap, idx) => {
-            sum += wrap.offsetHeight;
+            sum += getPromptStackedElementHeight(wrap);
             if (idx < wraps.length - 1) {
-                const next = wraps[idx + 1];
-                sum += parseFloat(getComputedStyle(next).marginTop) || 0;
+                sum += getPromptStackGapBefore(wraps[idx + 1]);
             }
         });
     } else {
         const stacked = container.querySelectorAll(':scope > textarea.prompt-textarea');
-        if (!stacked.length) return;
+        if (!stacked.length) return false;
         stacked.forEach((ta, idx) => {
-            sum += ta.offsetHeight;
+            sum += getPromptStackedElementHeight(ta);
             if (idx < stacked.length - 1) {
-                sum += parseFloat(getComputedStyle(stacked[idx + 1]).marginTop) || 0;
+                sum += getPromptStackGapBefore(stacked[idx + 1]);
             }
         });
     }
@@ -1249,18 +1267,132 @@ function syncPromptTextareaContainerMeasurements(container, extraContainerHeight
         const cs = getComputedStyle(toolbar);
         sum += toolbar.offsetHeight + (parseFloat(cs.marginTop) || 0);
     }
-    container.style.setProperty('--textarea-height', `${sum}px`);
-    container.style.setProperty('--extra-height', `${extraContainerHeight || 0}px`);
+
+    const heightVal = `${sum}px`;
+    const extraVal = `${extraContainerHeight || 0}px`;
+    const curH = container.style.getPropertyValue('--textarea-height');
+    const curE = container.style.getPropertyValue('--extra-height') || '0px';
+    if (curH === heightVal && curE === extraVal) {
+        return false;
+    }
+
+    container.style.setProperty('--textarea-height', heightVal);
+    container.style.setProperty('--extra-height', extraVal);
+    return true;
+}
+
+/** Sync each prompt container once after all of its textareas have been sized (UC tab twin fields). */
+function syncPromptTextareaContainersInScope(root) {
+    if (!root) return;
+    const containers = new Set();
+    root.querySelectorAll('.prompt-textarea, .character-prompt-textarea').forEach((ta) => {
+        const container = ta.closest('.prompt-textarea-container, .character-prompt-textarea-container');
+        if (container) containers.add(container);
+    });
+    containers.forEach((container) => syncPromptTextareaContainerMeasurements(container));
+}
+
+/**
+ * Measure layout on a hidden tab pane (display:none) without showing it to the user.
+ * @param {HTMLElement} tabPane
+ * @param {function(): void} fn
+ */
+function measureTabPaneForLayout(tabPane, fn) {
+    if (!tabPane) return;
+    if (tabPane.classList.contains('active')) {
+        fn();
+        return;
+    }
+
+    const prev = {
+        display: tabPane.style.display,
+        visibility: tabPane.style.visibility,
+        position: tabPane.style.position,
+        pointerEvents: tabPane.style.pointerEvents,
+        height: tabPane.style.height,
+        overflow: tabPane.style.overflow,
+        width: tabPane.style.width,
+        left: tabPane.style.left,
+        top: tabPane.style.top
+    };
+
+    tabPane.style.display = 'block';
+    tabPane.style.visibility = 'hidden';
+    tabPane.style.position = 'absolute';
+    tabPane.style.pointerEvents = 'none';
+    tabPane.style.height = 'auto';
+    tabPane.style.overflow = 'visible';
+    tabPane.style.width = '100%';
+    tabPane.style.left = '0';
+    tabPane.style.top = '0';
+    void tabPane.offsetHeight;
+
+    try {
+        fn();
+    } finally {
+        tabPane.style.display = prev.display;
+        tabPane.style.visibility = prev.visibility;
+        tabPane.style.position = prev.position;
+        tabPane.style.pointerEvents = prev.pointerEvents;
+        tabPane.style.height = prev.height;
+        tabPane.style.overflow = prev.overflow;
+        tabPane.style.width = prev.width;
+        tabPane.style.left = prev.left;
+        tabPane.style.top = prev.top;
+    }
+}
+
+/** Resize all prompt textareas in a manual-modal tab before it becomes visible. */
+function prepareManualTabLayout(targetTab) {
+    const resizePaneTextareas = (pane) => {
+        if (!pane) return;
+        measureTabPaneForLayout(pane, () => {
+            pane.querySelectorAll('.prompt-textarea, .character-prompt-textarea').forEach((ta) => {
+                const minH = ta.id === 'creativeDirectiveInput' ? 23 : 70;
+                // deferContainerSync: size all stacked fields before one container measure (UC tab)
+                autoResizeTextarea(ta, minH, 0, true, true);
+            });
+            syncPromptTextareaContainersInScope(pane);
+        });
+    };
+
+    const ownsScrollbarBatch = typeof customScrollbar !== 'undefined' && customScrollbar._layoutBatchDepth === 0;
+    if (ownsScrollbarBatch) {
+        customScrollbar.beginLayoutBatch();
+    }
+    try {
+        resizePaneTextareas(document.getElementById(`${targetTab}-tab`));
+
+        document.querySelectorAll('.character-prompt-item').forEach((item) => {
+            resizePaneTextareas(document.getElementById(`${item.id}_${targetTab}-tab`));
+        });
+    } finally {
+        if (ownsScrollbarBatch) {
+            customScrollbar.endLayoutBatch();
+        }
+    }
 }
 
 /**
  * Auto-resize textarea to fit content
  * @param {HTMLTextAreaElement} textarea
  */
-function autoResizeTextarea(textarea, _minHeight = 70, extraContainerHeight = 0) {
-    if (!textarea) return;
+function autoResizeTextarea(textarea, _minHeight = 70, extraContainerHeight = 0, layoutOnly = false, deferContainerSync = false) {
+    if (!textarea) return false;
 
     let minHeight = _minHeight || 70;
+    const priorInline = textarea.style.height;
+    const priorEffectivePx = (priorInline && priorInline !== 'auto')
+        ? parseInt(priorInline, 10)
+        : textarea.offsetHeight;
+
+    let transitionStartHeight = null;
+    if (!layoutOnly) {
+        transitionStartHeight = (priorInline && priorInline !== 'auto')
+            ? priorInline
+            : `${textarea.offsetHeight}px`;
+    }
+
     // Reset height to auto to get the correct scrollHeight
     textarea.style.height = 'auto';
 
@@ -1281,13 +1413,21 @@ function autoResizeTextarea(textarea, _minHeight = 70, extraContainerHeight = 0)
     if (scrollHeight === 0 && textarea.value) {
         // If scrollHeight is 0 but there's content, try again after a brief delay
         setTimeout(() => {
+            const retryStartHeight = (textarea.style.height && textarea.style.height !== 'auto')
+                ? textarea.style.height
+                : `${textarea.offsetHeight}px`;
             textarea.style.height = 'auto';
             const newScrollHeight = textarea.scrollHeight;
             if (newScrollHeight > 0) {
                 let calculatedHeight = parseInt(Math.max(newScrollHeight + totalPadding, minHeight).toFixed(0)) - 1;
                 // Round up to even number
                 const newHeight = Math.ceil(calculatedHeight / 2) * 2;
-                textarea.style.height = newHeight + 'px';
+                const nextHeight = `${newHeight}px`;
+                if (retryStartHeight !== nextHeight) {
+                    textarea.style.height = retryStartHeight;
+                    void textarea.offsetHeight;
+                }
+                textarea.style.height = nextHeight;
 
                 // Update container height if it exists
                 const container = textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container');
@@ -1296,21 +1436,35 @@ function autoResizeTextarea(textarea, _minHeight = 70, extraContainerHeight = 0)
                 }
             }
         }, 5);
-        return;
+        return false;
     }
 
     let calculatedHeight = (parseInt(Math.max(scrollHeight + totalPadding, minHeight).toFixed(0)) - 1);
     // Round up to even number
     const newHeight = Math.ceil(calculatedHeight / 2) * 2;
+    const nextHeight = `${newHeight}px`;
 
-    // Set the new height
-    textarea.style.height = newHeight + 'px';
+    if (priorEffectivePx === newHeight) {
+        textarea.style.height = (priorInline && priorInline !== 'auto') ? priorInline : nextHeight;
+        if (!deferContainerSync) {
+            const container = textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container');
+            syncPromptTextareaContainerMeasurements(container, extraContainerHeight);
+        }
+        return false;
+    }
 
-    // Update container: sum all stacked prompt textareas + toolbar (covers UC tab twin fields)
-    const container = textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container');
-    if (container) {
+    // Restore measured start height so CSS height transition can interpolate from px → px
+    if (!layoutOnly && transitionStartHeight !== nextHeight) {
+        textarea.style.height = transitionStartHeight;
+        void textarea.offsetHeight;
+    }
+    textarea.style.height = nextHeight;
+
+    if (!deferContainerSync) {
+        const container = textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container');
         syncPromptTextareaContainerMeasurements(container, extraContainerHeight);
     }
+    return true;
 }
 
 const autoResizeTextareaRafIds = new WeakMap();

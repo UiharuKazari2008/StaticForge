@@ -35,6 +35,8 @@ const metadataDatabase = require('./metadataDatabase');
 const chatDatabase = require('./chatDatabase');
 const directorDatabase = require('./directorDatabase');
 const notesDatabase = require('./notesDatabase');
+const vfsDatabase = require('./vfsDatabase');
+const { VfsManager } = require('./vfsManager');
 const TagLookup = require('./tag-lookup');
 const TagAutofillSearch = require('./tagAutofillSearch');
 const logger = require('./logger');
@@ -263,6 +265,7 @@ class GlobalResources {
             vibeCache: path.join(rootDir, '.cache', 'vibe'),
             tempDownload: path.join(rootDir, '.cache', 'tempDownload'),
             presetSourceCache: path.join(rootDir, '.cache', 'preset_source'),
+            userFiles: path.join(rootDir, '.cache', 'userFiles'),
             sessions: path.join(rootDir, '.cache', 'sessions'),
 
             // Database files (directory path, not file path)
@@ -590,6 +593,17 @@ class GlobalResources {
     }
 
     /**
+     * Queue a debounced workspaceDesktop save merging window position updates into any pending write
+     * @param {Object} partialPositions
+     */
+    queueWorkspaceDesktopWindowPositions(partialPositions) {
+        if (!this.configManager) {
+            throw new Error('ConfigManager not initialized');
+        }
+        return this.configManager.queueWorkspaceDesktopWindowPositions(partialPositions);
+    }
+
+    /**
      * Flush all pending config saves immediately (useful for shutdown)
      * @returns {number} Number of configs that were flushed
      */
@@ -673,6 +687,7 @@ class GlobalResources {
 
             // Log viewer path UUID (secure config, needed before route registration)
             this.ensureLogViewerPathUuid();
+            this.ensureVfsPathUuid();
         } catch (error) {
             console.error('❌ Error preparing global resources:', error.message);
             return false;
@@ -1365,6 +1380,22 @@ class GlobalResources {
             this.notesDatabase = notesDatabase;
             this.initializationProgress.notesDatabase = true;
             console.log('✓ Notes database ready');
+
+            if (vfsDatabase.initializeVfsDatabase) {
+                const vfsOk = await vfsDatabase.initializeVfsDatabase(databasesPath);
+                if (!vfsOk) {
+                    throw new Error('Failed to initialize VFS database - check logs above for details');
+                }
+            }
+            this.vfsDatabase = vfsDatabase;
+            this.vfsManager = new VfsManager(this);
+            const fs = require('fs');
+            const userFilesPath = this.getPath('userFiles');
+            if (!fs.existsSync(userFilesPath)) {
+                fs.mkdirSync(userFilesPath, { recursive: true });
+            }
+            this.initializationProgress.vfsDatabase = true;
+            console.log('✓ VFS database ready');
 
             // Initialize tag database (tag-lookup)
             const tagLookup = new TagLookup(this);
@@ -2108,6 +2139,37 @@ class GlobalResources {
             throw new Error('Notes database not initialized - ensure initializeNotesDatabase() was called');
         }
         return this.notesDatabase;
+    }
+
+    getVfsDatabase() {
+        if (!this.vfsDatabase) {
+            throw new Error('VFS database not initialized');
+        }
+        return this.vfsDatabase;
+    }
+
+    getVfsManager() {
+        if (!this.vfsManager) {
+            throw new Error('VFS manager not initialized');
+        }
+        return this.vfsManager;
+    }
+
+    ensureVfsPathUuid() {
+        let uuid = this.getSecureConfig({ path: 'vfsPathUuid' });
+        if (!uuid || typeof uuid !== 'string') {
+            uuid = crypto.randomUUID();
+            this.modifyConfig('secureConfig').assign('vfsPathUuid', uuid);
+        }
+        return uuid;
+    }
+
+    getVfsPathUuid() {
+        const uuid = this.getSecureConfig({ path: 'vfsPathUuid' });
+        if (!uuid || typeof uuid !== 'string') {
+            return this.ensureVfsPathUuid();
+        }
+        return uuid;
     }
 
     /**
@@ -4056,26 +4118,124 @@ class GlobalResources {
     }
 
     /**
-     * Cleanup and shutdown all resources
-     * Called on server shutdown
+     * Flush pending work, checkpoint, and close databases before restart/shutdown.
+     * Safe to call more than once; subsequent calls await the first run.
      */
-    async shutdown() {
-        console.log('🔄 Shutting down global resources...');
+    async prepareForRestart() {
+        if (this._prepareForRestartPromise) {
+            return this._prepareForRestartPromise;
+        }
 
-        // Flush all pending config saves before shutdown
+        this._prepareForRestartPromise = this._runPrepareForRestart();
+        return this._prepareForRestartPromise;
+    }
+
+    async _runPrepareForRestart() {
+        const log = (msg) => {
+            if (this.logger) {
+                this.logger.info(msg);
+            } else {
+                console.log(msg);
+            }
+        };
+
+        log('Preparing server for restart…');
+
+        if (this.globalCheckpointManager) {
+            this.globalCheckpointManager.stopPeriodicCheckpoints();
+        }
+
+        try {
+            const wsServer = this.getWebSocketServer();
+            if (wsServer) {
+                wsServer.stopPingInterval();
+                wsServer.stopQueueStatusInterval();
+                if (wsServer.isIndexing && typeof wsServer.setIndexingPaused === 'function') {
+                    wsServer.setIndexingPaused(true);
+                }
+            }
+        } catch (_) { /* WebSocket server may not be initialized */ }
+
+        try {
+            const handlers = this.getWebSocketMessageHandlers();
+            handlers?.stopAllKeepAliveIntervals?.();
+        } catch (_) { /* handlers may not be initialized */ }
+
+        try {
+            const tagCache = this.getTagSuggestionsCache();
+            if (tagCache?.isDirty) {
+                log('Saving tag cache before restart');
+                tagCache.saveCache();
+            }
+        } catch (_) { /* tag cache optional */ }
+
         const flushedCount = this.flushAllPendingConfigSaves();
         if (flushedCount > 0) {
-            console.log(`💾 Flushed ${flushedCount} pending config save(s)`);
+            log(`Flushed ${flushedCount} pending config save(s) before restart`);
         }
 
-        // Stop all polymorphic modules
+        if (this.asyncSQLiteManager) {
+            await this.asyncSQLiteManager.checkpointAllDirty();
+        }
+
+        if (this.globalCheckpointManager) {
+            for (const name of this.globalCheckpointManager.getAllCheckpointManagers().keys()) {
+                await this.globalCheckpointManager.createCheckpoint(name, true);
+            }
+        }
+
         if (this.polymoduleManager) {
             this.polymoduleManager.stopAll();
-            // Wait a moment for processes to exit gracefully
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise((resolve) => setTimeout(resolve, 500));
         }
 
-        if (this.naxTagsDatabase && typeof this.naxTagsDatabase.shutdownNaxTagsDatabase === 'function') {
+        await this._closeAllDatabasesForShutdown();
+
+        log('Server prepared for restart');
+    }
+
+    async _closeAllDatabasesForShutdown() {
+        const closeSafely = async (label, fn) => {
+            if (!fn) return;
+            try {
+                await fn();
+            } catch (error) {
+                console.warn(`⚠️ ${label} database close:`, error.message);
+            }
+        };
+
+        if (this.referenceMetadataDatabase?.close) {
+            try {
+                this.referenceMetadataDatabase.close();
+            } catch (error) {
+                console.warn('⚠️ Reference metadata database close:', error.message);
+            }
+            this.referenceMetadataDatabase = null;
+        }
+
+        await closeSafely('metadata', () => this.metadataDatabase?.closeDatabase?.());
+        await closeSafely('chat', () => this.chatDatabase?.closeChatDatabase?.());
+        await closeSafely('director', () => this.directorDatabase?.closeDirectorDatabase?.());
+        await closeSafely('notes', () => this.notesDatabase?.closeNotesDatabase?.());
+        await closeSafely('vfs', () => this.vfsDatabase?.closeVfsDatabase?.());
+
+        if (this.tagSearchDatabase?.closeTagSearchDatabase) {
+            try {
+                this.tagSearchDatabase.closeTagSearchDatabase();
+            } catch (error) {
+                console.warn('⚠️ Tag search database close:', error.message);
+            }
+        }
+
+        if (this.knowledgeMemoryDb?.closeKnowledgeMemoryDatabase) {
+            try {
+                this.knowledgeMemoryDb.closeKnowledgeMemoryDatabase();
+            } catch (error) {
+                console.warn('⚠️ Knowledge memory database close:', error.message);
+            }
+        }
+
+        if (this.naxTagsDatabase?.shutdownNaxTagsDatabase) {
             try {
                 this.naxTagsDatabase.shutdownNaxTagsDatabase();
             } catch (error) {
@@ -4084,6 +4244,22 @@ class GlobalResources {
             this.naxTagsDatabase = null;
         }
 
+        if (this.asyncSQLiteManager) {
+            try {
+                await this.asyncSQLiteManager.closeAll();
+            } catch (error) {
+                console.warn('⚠️ Async SQLite manager close:', error.message);
+            }
+        }
+    }
+
+    /**
+     * Cleanup and shutdown all resources
+     * Called on server shutdown
+     */
+    async shutdown() {
+        console.log('🔄 Shutting down global resources...');
+        await this.prepareForRestart();
         console.log('✓ Global resources shutdown complete');
     }
 

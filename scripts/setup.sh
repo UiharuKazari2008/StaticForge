@@ -368,7 +368,7 @@ create_directories() {
     log "Creating data directories ..."
     local dirs=(
         images .previews .cache .cache/sessions .cache/upload .cache/preview
-        .cache/vibe .cache/tempDownload .cache/nax_images logs securePrompts tmp
+        .cache/vibe .cache/tempDownload .cache/nax_images .cache/userFiles logs securePrompts tmp
     )
     for d in "${dirs[@]}"; do
         mkdir -p "$ROOT/$d"

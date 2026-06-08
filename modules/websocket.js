@@ -72,6 +72,20 @@ class WebSocketServer {
                     });
                 }
             });
+
+            // Service worker cache manifest broadcast (CLI / admin refresh)
+            plumbing.subscribe('ws:broadcast:serviceWorkerCacheUpdate', (data) => {
+                this.broadcast({
+                    type: 'service_worker_cache_update',
+                    data: {
+                        files: data.files || [],
+                        silent: data.silent === true,
+                        message: data.message || 'Application updates are available',
+                        timestamp: data.timestamp || Date.now()
+                    },
+                    timestamp: new Date().toISOString()
+                });
+            });
         } catch (error) {
             console.error('❌ Failed to set up WebSocket plumbing subscriptions:', error);
             // Retry after a short delay
@@ -286,8 +300,13 @@ class WebSocketServer {
             if (this.sessionStore) {
                 return new Promise((resolve) => {
                     this.sessionStore.get(sessionId, (err, session) => {
-                        if (err || !session) {
+                        if (err) {
                             console.error('❌ WebSocket session verification failed:', err);
+                            resolve(null);
+                            return;
+                        }
+                        if (!session) {
+                            console.log('🔓 WebSocket session not in store (login required or expired cookie)');
                             resolve(null);
                             return;
                         }

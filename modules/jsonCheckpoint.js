@@ -42,6 +42,7 @@ class JSONCheckpointManager {
         } = options || {};
         this.minCheckpointAgeMs = Math.max(0, Number(minCheckpointAgeMs) || 0);
         this.lastCheckpointTime = 0;
+        this.isDirty = false;
         
         // Cache for file hashes and metadata
         this._cache = {
@@ -156,6 +157,35 @@ class JSONCheckpointManager {
         } catch (error) {
             console.error('❌ Error cleaning up checkpoints:', error);
         }
+    }
+
+    /**
+     * Mark file as dirty (content changed since last checkpoint)
+     */
+    markDirty() {
+        this.isDirty = true;
+    }
+
+    /**
+     * Mark file as clean (after checkpoint or verified unchanged)
+     */
+    markClean() {
+        this.isDirty = false;
+    }
+
+    /**
+     * Check if file has unsaved changes since last checkpoint
+     */
+    isDirtyState() {
+        return this.isDirty;
+    }
+
+    /**
+     * Compute MD5 hash for JSON-serializable data
+     */
+    hashData(data) {
+        const jsonData = JSON.stringify(data, null, 2);
+        return crypto.createHash('md5').update(jsonData).digest('hex');
     }
 
     /**
@@ -303,6 +333,10 @@ class JSONCheckpointManager {
                 return false;
             }
 
+            if (!force && !this.isDirty) {
+                return false;
+            }
+
             // Validate before creating checkpoint if callback provided
             if (validationCallback) {
                 const validation = this.validateCheckpoint(this.filePath, validationCallback);
@@ -331,6 +365,7 @@ class JSONCheckpointManager {
             if (latestCheckpointPath && fs.existsSync(latestCheckpointPath)) {
                 if (this.filesAreIdentical(this.filePath, latestCheckpointPath)) {
                     // Files are identical, skip checkpoint creation
+                    this.markClean();
                     return false;
                 }
             }
@@ -350,6 +385,7 @@ class JSONCheckpointManager {
             this._cache.latestCheckpoint.mtime = checkpointStats.mtime;
 
             this.lastCheckpointTime = checkpointStats.mtime.getTime();
+            this.markClean();
             console.log(`✅ Created checkpoint: ${checkpointFilename}`);
             
             // Clean up old checkpoints
@@ -415,6 +451,20 @@ class JSONCheckpointManager {
                 fs.mkdirSync(dir, { recursive: true });
             }
 
+            const jsonData = JSON.stringify(data, null, 2);
+            const newHash = crypto.createHash('md5').update(jsonData).digest('hex');
+
+            // Skip write and checkpoint when content is unchanged
+            if (fs.existsSync(this.filePath)) {
+                const currentInfo = this.getFileHash(this.filePath, 'currentFile');
+                if (currentInfo && currentInfo.hash === newHash) {
+                    this.markClean();
+                    return true;
+                }
+            }
+
+            this.markDirty();
+
             // Create checkpoint before saving if requested
             if (createCheckpoint && fs.existsSync(this.filePath)) {
                 this.createCheckpoint({
@@ -424,15 +474,14 @@ class JSONCheckpointManager {
             }
 
             // Write the new data
-            const jsonData = JSON.stringify(data, null, 2);
             fs.writeFileSync(this.filePath, jsonData, 'utf8');
 
             // Update cache with new file hash
             const stats = fs.statSync(this.filePath);
-            const hash = crypto.createHash('md5').update(jsonData).digest('hex');
-            this._cache.currentFile.hash = hash;
+            this._cache.currentFile.hash = newHash;
             this._cache.currentFile.size = stats.size;
             this._cache.currentFile.mtime = stats.mtime;
+            this.markClean();
 
             // Verify the file was written correctly
             const savedData = fs.readFileSync(this.filePath, 'utf8');

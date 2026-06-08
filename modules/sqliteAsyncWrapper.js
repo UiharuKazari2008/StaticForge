@@ -298,11 +298,13 @@ class AsyncSQLiteDatabase {
      */
     async run(sql, params = []) {
         await this.open();
-        this.markDirty();
         this.activeOperations++;
         
         try {
             const result = await this.db.run(sql, params);
+            if (result.changes > 0) {
+                this.markDirty();
+            }
             return {
                 lastID: result.lastID,
                 changes: result.changes
@@ -316,9 +318,11 @@ class AsyncSQLiteDatabase {
                 this.isOpen = false;
                 this.db = null;
                 await this.open();
-                this.markDirty();
                 // Retry the execution
                 const result = await this.db.run(sql, params);
+                if (result.changes > 0) {
+                    this.markDirty();
+                }
                 return {
                     lastID: result.lastID,
                     changes: result.changes
@@ -399,11 +403,19 @@ class AsyncSQLiteDatabase {
      */
     async exec(sql) {
         await this.open();
-        this.markDirty();
+        const signatureBefore = this.checkpointManager
+            ? this.checkpointManager.getDatabaseSignature()
+            : null;
         this.activeOperations++;
         
         try {
             await this.db.exec(sql);
+            if (this.checkpointManager && signatureBefore) {
+                const signatureAfter = this.checkpointManager.getDatabaseSignature();
+                if (!this.checkpointManager.signaturesEqual(signatureBefore, signatureAfter)) {
+                    this.markDirty();
+                }
+            }
         } catch (error) {
             // Handle SQLITE_MISUSE (database handle is closed) by reopening and retrying
             // This is a safety net - activeOperations should prevent this, but handle it just in case
@@ -413,9 +425,17 @@ class AsyncSQLiteDatabase {
                 this.isOpen = false;
                 this.db = null;
                 await this.open();
-                this.markDirty();
+                const retrySignatureBefore = this.checkpointManager
+                    ? this.checkpointManager.getDatabaseSignature()
+                    : null;
                 // Retry the execution
                 await this.db.exec(sql);
+                if (this.checkpointManager && retrySignatureBefore) {
+                    const signatureAfter = this.checkpointManager.getDatabaseSignature();
+                    if (!this.checkpointManager.signaturesEqual(retrySignatureBefore, signatureAfter)) {
+                        this.markDirty();
+                    }
+                }
                 return;
             }
             throw new Error(`SQL execution failed: ${error.message}`);
@@ -544,6 +564,11 @@ class AsyncSQLiteDatabase {
      */
     async createCheckpointIfDirty() {
         if (!this.checkpointManager || !this.isDirty) {
+            return false;
+        }
+
+        if (!this.checkpointManager.needsCheckpoint({ dirty: true, force: false })) {
+            this.markClean();
             return false;
         }
         

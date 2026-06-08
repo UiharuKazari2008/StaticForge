@@ -68,6 +68,8 @@
         opacity 0.35s ease-in-out,
         width 0.24s ease-out,
         height 0.24s ease-out,
+        left 0.28s ease-out,
+        top 0.28s ease-out,
         transform 0.22s ease-out,
         -webkit-filter 0.22s ease-out,
         filter 0.22s ease-out;

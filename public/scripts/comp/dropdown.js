@@ -1,5 +1,60 @@
 // Global tracking for open dropdowns
 const openDropdowns = new Set();
+const DROPDOWN_PANEL_FADE_OUT_MS = 300;
+
+function _clearDropdownAnimation(menu, className, handler) {
+    menu.classList.remove(className);
+    if (handler) {
+        menu.removeEventListener('animationend', handler);
+    }
+}
+
+function _playDropdownOpenAnimation(menu) {
+    _clearDropdownAnimation(menu, 'custom-dropdown-closing');
+    menu.classList.remove('custom-dropdown-opening');
+    void menu.offsetWidth;
+    menu.classList.add('custom-dropdown-opening');
+
+    let cleared = false;
+    const clearOpening = () => {
+        if (cleared) return;
+        cleared = true;
+        _clearDropdownAnimation(menu, 'custom-dropdown-opening', onOpenEnd);
+    };
+
+    const onOpenEnd = (e) => {
+        if (e.target !== menu || e.animationName !== 'customDropdownFadeIn') return;
+        clearOpening();
+    };
+
+    menu.addEventListener('animationend', onOpenEnd);
+    setTimeout(clearOpening, 260);
+}
+
+function _playDropdownCloseAnimation(menu) {
+    if (menu.classList.contains('hidden') || menu.classList.contains('custom-dropdown-closing')) {
+        return;
+    }
+
+    _clearDropdownAnimation(menu, 'custom-dropdown-opening');
+    menu.classList.add('custom-dropdown-closing');
+
+    let finished = false;
+    const finish = () => {
+        if (finished) return;
+        finished = true;
+        _clearDropdownAnimation(menu, 'custom-dropdown-closing', onCloseEnd);
+        menu.classList.add('hidden');
+    };
+
+    const onCloseEnd = (e) => {
+        if (e.target !== menu || e.animationName !== 'customDropdownFadeOut') return;
+        finish();
+    };
+
+    menu.addEventListener('animationend', onCloseEnd);
+    setTimeout(finish, DROPDOWN_PANEL_FADE_OUT_MS);
+}
 
 /**
  * Renders a grouped dropdown menu.
@@ -67,11 +122,10 @@ function openDropdown(menu, button) {
         }
     });
     
-    // Open this dropdown
-    menu.classList.remove('hidden');
+    menu.classList.remove('hidden', 'custom-dropdown-closing');
     if (button) button.classList.add('active');
-    
-    // Track this dropdown as open
+    _playDropdownOpenAnimation(menu);
+
     openDropdowns.add({ menu, button });
 }
 
@@ -79,22 +133,32 @@ function openDropdown(menu, button) {
  * Closes a dropdown menu.
  */
 function closeDropdown(menu, button) {
-    menu.classList.add('hidden');
+    if (menu.classList.contains('hidden') && !menu.classList.contains('custom-dropdown-closing')) {
+        if (button) button.classList.remove('active');
+        openDropdowns.forEach(dropdown => {
+            if (dropdown.menu === menu) {
+                openDropdowns.delete(dropdown);
+            }
+        });
+        return;
+    }
+
     if (button) button.classList.remove('active');
-    
-    // Remove from tracking
+
     openDropdowns.forEach(dropdown => {
         if (dropdown.menu === menu) {
             openDropdowns.delete(dropdown);
         }
     });
+
+    _playDropdownCloseAnimation(menu);
 }
 
 /**
  * Toggles a dropdown menu.
  */
 function toggleDropdown(menu, button) {
-    if (!menu.classList.contains('hidden')) {
+    if (!menu.classList.contains('hidden') || menu.classList.contains('custom-dropdown-closing')) {
         closeDropdown(menu, button);
     } else {
         openDropdown(menu, button);
@@ -126,7 +190,7 @@ function setupDropdown(container, button, menu, render, getSelectedValue, option
     button.addEventListener('click', async e => {
         e.preventDefault();
         e.stopPropagation();
-        if (!menu.classList.contains('hidden')) {
+        if (!menu.classList.contains('hidden') || menu.classList.contains('custom-dropdown-closing')) {
             closeDropdown(menu, button);
         } else {
             await render(getSelectedValue());

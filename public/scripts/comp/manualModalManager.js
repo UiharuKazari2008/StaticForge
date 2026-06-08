@@ -67,7 +67,7 @@ function updateSplashScreenStatus(status) {
     }
 }
 
-function hideSplashScreen() {
+function hideSplashScreen(onHidden) {
     const elapsed = Date.now() - splashScreenStartTime;
     const remaining = splashScreenMinDisplayTime - elapsed;
 
@@ -78,6 +78,9 @@ function hideSplashScreen() {
     splashScreenCloseTimeout = setTimeout(() => {
         splashScreen.classList.add('hidden');
         splashScreenCloseTimeout = null;
+        if (typeof onHidden === 'function') {
+            onHidden();
+        }
     }, (Math.min(Math.max(0, remaining), 500) + 750));
 }
 
@@ -1331,6 +1334,9 @@ function startPreviewAnimation() {
         previewContainer.classList.remove('preview-foreground-lines-active');
         previewContainer.classList.add('preview-animation-active');
 
+        // startGenerationQuips: public/scripts/comp/generationQuips.js
+        startGenerationQuips();
+
         // Fade in stars (0.25s)
         setTimeout(() => {
             if (previewStars) {
@@ -1363,6 +1369,9 @@ async function stopPreviewAnimation() {
     // It should manage its own visibility based on generation phases
 
     if (!generationAnimationActive) return;
+
+    // stopGenerationQuips: public/scripts/comp/generationQuips.js
+    stopGenerationQuips();
 
     manualForm.classList.remove('generating');
 
@@ -1466,6 +1475,9 @@ async function forceStopPreviewAnimation() {
     if (generationAnimationActive) {
         generationAnimationActive = false;
     }
+
+    // stopGenerationQuips: public/scripts/comp/generationQuips.js
+    stopGenerationQuips();
 
     manualForm.classList.remove('generating');
 
@@ -2646,6 +2658,9 @@ function updateDynamicGenerationOverlay(context) {
 // skipContentCheck: If true, skip confirmation check (caller handles it)
 // skipContentLoad: If true, skip loading content (just show modal)
 async function openManualModalWithContent(content = null, event = null) {
+    // wireStudioVfsDrop: public/scripts/comp/explorerApplet.js
+    if (typeof wireStudioVfsDrop === 'function') wireStudioVfsDrop();
+
     // Check if modal is already open
     const isRunning = manualModal && !manualModal.classList.contains('hidden');
     const isActiveWindow = isRunning && (!window.isDesktop || modalStack?.indexOf(manualModal) !== -1);
@@ -2881,19 +2896,44 @@ async function openManualModalWithContent(content = null, event = null) {
         updateManualModalTitlebar(titleToSet, true);
     }
 
-    // Update UI states after loading
+    // Update UI states after loading — hide visible modal during layout so user never sees reflow
     updateMainLockButtonState();
-    autoResizeTextareasAfterModalShow();
-    updateCreativeDirectiveVisibility();
-    updatePromptStatusIcons();
+    const layoutWasVisible = !manualModal.classList.contains('hidden') && !manualModal.classList.contains('hidden-alt');
+    const layoutPrevVisibility = manualModal.style.visibility;
+    const layoutPrevPointerEvents = manualModal.style.pointerEvents;
+    if (layoutWasVisible) {
+        manualModal.style.visibility = 'hidden';
+        manualModal.style.pointerEvents = 'none';
+    }
+    try {
+        updateCreativeDirectiveVisibility();
+        autoResizeTextareasAfterModalShow();
+        updatePromptStatusIcons();
+    } finally {
+        if (layoutWasVisible) {
+            manualModal.style.visibility = layoutPrevVisibility;
+            manualModal.style.pointerEvents = layoutPrevPointerEvents;
+        }
+    }
 
     manualModal.classList.remove('initializing');
     manualModal.querySelector('.spinner-overlay').classList.add('hidden');
 
-    openModal(manualModal);
-
-    hideSplashScreen();
-    manualPrompt.focus();
+    const deferOpenUntilSplashDismissed = window.isDesktop && manualModal.classList.contains('hidden-alt');
+    if (deferOpenUntilSplashDismissed) {
+        hideSplashScreen(() => {
+            requestAnimationFrame(() => {
+                manualModal.classList.remove('opening');
+                void manualModal.offsetWidth;
+                openModal(manualModal);
+                manualPrompt.focus();
+            });
+        });
+    } else {
+        hideSplashScreen();
+        openModal(manualModal);
+        manualPrompt.focus();
+    }
 }
 
 // Update creative directive visibility based on creative mode and dynamic generation visibility
@@ -2926,11 +2966,6 @@ function updateCreativeDirectiveVisibility() {
                 // Switch to prompt tab using existing function
                 switchManualTab('prompt');
             }
-        }
-
-        // Ensure single-line until overflow
-        if (creativeDirectiveInput) {
-            autoResizeTextarea(creativeDirectiveInput, 23);
         }
     } catch (e) {
         // no-op
@@ -3183,16 +3218,12 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
         }
         if (manualUc) {
             manualUc.value = data.uc || '';
-            autoResizeTextarea(manualUc);
-            updateEmphasisHighlighting(manualUc);
         }
         if (manualPromptNegative) {
             manualPromptNegative.value =
                 data.input_prompt_negative ||
                 data.forge_data?.input_prompt_negative ||
                 '';
-            autoResizeTextarea(manualPromptNegative);
-            updateEmphasisHighlighting(manualPromptNegative);
         }
 
         // Load creative directive if present in dynamic_generation
@@ -4148,56 +4179,56 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
  * TODO: Move function implementation from app.js
  */
 function autoResizeTextareasAfterModalShow() {
-    // Auto-resize main prompt and UC textareas
-    if (manualPrompt) {
-        applyFormattedText(manualPrompt, true);
-        updateEmphasisHighlighting(manualPrompt);
-        stopEmphasisHighlighting();
-        autoResizeTextarea(manualPrompt);
-    }
-    if (manualUc) {
-        applyFormattedText(manualUc, true);
-        updateEmphasisHighlighting(manualUc);
-        stopEmphasisHighlighting();
-        autoResizeTextarea(manualUc);
-    }
-    if (manualPromptNegative) {
-        applyFormattedText(manualPromptNegative, true);
-        updateEmphasisHighlighting(manualPromptNegative);
-        stopEmphasisHighlighting();
-        autoResizeTextarea(manualPromptNegative);
-    }
+    const textareas = [];
 
-    // Auto-resize character prompt textareas
-    const characterPromptItems = document.querySelectorAll('.character-prompt-item');
-    characterPromptItems.forEach(item => {
-        const characterId = item.id;
-        const promptField = document.getElementById(`${characterId}_prompt`);
-        const ucField = document.getElementById(`${characterId}_uc`);
+    const queueField = (field) => {
+        if (field) {
+            textareas.push(field);
+        }
+    };
 
-        if (promptField) {
-            applyFormattedText(promptField, true);
-            updateEmphasisHighlighting(promptField);
-            stopEmphasisHighlighting();
-            autoResizeTextarea(promptField);
-        }
-        if (ucField) {
-            applyFormattedText(ucField, true);
-            updateEmphasisHighlighting(ucField);
-            stopEmphasisHighlighting();
-            autoResizeTextarea(ucField);
-        }
+    queueField(manualPrompt);
+    queueField(manualUc);
+    queueField(manualPromptNegative);
+
+    document.querySelectorAll('.character-prompt-item').forEach((item) => {
+        queueField(document.getElementById(`${item.id}_prompt`));
+        queueField(document.getElementById(`${item.id}_uc`));
     });
 
-    // Auto-resize creative directive if present
-    if (creativeDirectiveInput) {
-        autoResizeTextarea(creativeDirectiveInput, 23);
+    textareas.forEach((field) => {
+        applyFormattedText(field, true);
+    });
 
-        // Add input event listener for continuous auto-resizing
-        creativeDirectiveInput.addEventListener('input', () => {
-            autoResizeTextarea(creativeDirectiveInput, 23);
-        });
+    if (typeof customScrollbar !== 'undefined') {
+        customScrollbar.beginLayoutBatch();
     }
+    try {
+        prepareManualTabLayout('prompt');
+        prepareManualTabLayout('uc');
+        prepareManualTabLayout('creative');
+    } finally {
+        if (typeof customScrollbar !== 'undefined') {
+            customScrollbar.endLayoutBatch();
+        }
+    }
+
+    // Defer emphasis highlighting only — layout is settled before openModal.
+    requestAnimationFrame(() => {
+        textareas.forEach((field) => {
+            // scheduleEmphasisHighlightUpdate: public/scripts/comp/emphasisManager.js
+            scheduleEmphasisHighlightUpdate(field);
+        });
+        stopEmphasisHighlighting();
+
+        if (creativeDirectiveInput && !creativeDirectiveInput.dataset.autoResizeWired) {
+            creativeDirectiveInput.dataset.autoResizeWired = 'true';
+            creativeDirectiveInput.addEventListener('input', () => {
+                // scheduleAutoResizeTextarea: public/scripts/comp/utilities.js
+                scheduleAutoResizeTextarea(creativeDirectiveInput, 23);
+            });
+        }
+    });
 }
 
 /**
@@ -4408,6 +4439,9 @@ async function handleManualGeneration(e, options = {}) {
 
         const result = await window.wsClient.generateImage(generationParams, null, true); // Enable streaming
 
+        // lockGenerationQuips: public/scripts/comp/generationQuips.js — server done, client still finalizing
+        lockGenerationQuips();
+
         // Reset ephemeral flags after request is sent
         if (dynamicCarousel) {
             dynamicCarousel.dataset.expirePreview = 'false';
@@ -4567,6 +4601,7 @@ async function handleManualGeneration(e, options = {}) {
 
             // Now stop the animation AFTER the image is displayed
             stopPreviewAnimation();
+            hideDynamicGenerationProgressOverlayImmediate();
         } else {
             throw new Error('Invalid response from WebSocket');
         }
@@ -4574,6 +4609,7 @@ async function handleManualGeneration(e, options = {}) {
     } catch (error) {
         if (error && error.code === 'CLIENT_CANCELLED') {
             stopPreviewAnimation();
+            hideDynamicGenerationProgressOverlayImmediate();
             return;
         }
         if (!window.isDesktop) {
@@ -4594,7 +4630,7 @@ async function handleManualGeneration(e, options = {}) {
 
         showError(errorMessage);
         stopPreviewAnimation();
-        hideDynamicGenerationProgressOverlay();
+        hideDynamicGenerationProgressOverlayImmediate();
     } finally {
         // Animation cleanup is handled in the success path after image display
         // Just clean up classes and state
@@ -4604,6 +4640,7 @@ async function handleManualGeneration(e, options = {}) {
         showManualLoading(false);
         isGenerating = false;
         updateManualGenerateBtnState();
+        hideDynamicGenerationProgressOverlayImmediate();
     }
 }
 

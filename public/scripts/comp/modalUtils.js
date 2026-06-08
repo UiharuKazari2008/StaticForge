@@ -10,11 +10,12 @@ let modalStack = []; // Array to track modal stack order
 // Window position caching
 let windowPositionSaveTimer = null;
 let windowPositionSaveMaxTimer = null;
-const WINDOW_POSITION_SAVE_DEBOUNCE = 2000; // 2 seconds debounce (resets on each action)
-const WINDOW_POSITION_SAVE_MAX_WAIT = 300000; // 5 minutes max wait time
+const WINDOW_POSITION_SAVE_DEBOUNCE = 10000; // Shared with desktopShortcuts.saveDebounceDelay
+const WINDOW_POSITION_SAVE_MAX_WAIT = 60000; // 60 seconds max wait (aligned with server maxWaitMs)
 
 // Global window positions (not per-workspace)
 let globalWindowPositions = {}; // windowId -> { topLeft: { index, x, y }, bottomRight: { index, x, y } }
+let lastSentWindowPositionsHash = null;
 
 // Track which transient windows should restore positions
 const transientWindowsWithPositions = new Set(['photoSwipeShell', 'virtualKeyboard']); // Set of window IDs that are transient but should restore positions
@@ -329,7 +330,7 @@ function flushSaveWindowPositions() {
         clearTimeout(windowPositionSaveMaxTimer);
         windowPositionSaveMaxTimer = null;
     }
-    saveWindowPositions();
+    return saveWindowPositions({ force: true });
 }
 
 function applyDesktopWindowPositionsAfterLoad() {
@@ -441,7 +442,8 @@ function refreshModalLayoutAfterSizeChange(modal) {
         const waitForAnimation = (e) => {
             if (e.target !== modal) return;
             if (e.animationName !== 'modalSlideIn' && e.animationName !== 'modalSlideInTopAnchor' &&
-                e.animationName !== 'modalSlideOut' && e.animationName !== 'modalSlideOutTopAnchor') {
+                e.animationName !== 'modalSlideOut' && e.animationName !== 'modalSlideOutTopAnchor' &&
+                e.animationName !== 'modalMinimize' && e.animationName !== 'modalUnminimize') {
                 return;
             }
             modal.removeEventListener('animationend', waitForAnimation);
@@ -581,6 +583,27 @@ function getModalMinDimensions(modal) {
         minWidth: modal.dataset.windowMinWidth ? parseInt(modal.dataset.windowMinWidth, 10) : 200,
         minHeight: modal.dataset.windowMinHeight ? parseInt(modal.dataset.windowMinHeight, 10) : 150
     };
+}
+
+function applyModalDefaultWindowSize(modal) {
+    if (!modal || modal.hasAttribute('data-window-position-restored')) {
+        return;
+    }
+    if (!modal.dataset.windowDefaultWidth && !modal.dataset.windowDefaultHeight) {
+        return;
+    }
+
+    const { minWidth, minHeight } = getModalMinDimensions(modal);
+    const maxWidth = modal.dataset.windowMaxWidth ? parseInt(modal.dataset.windowMaxWidth, 10) : Infinity;
+    const maxHeight = modal.dataset.windowMaxHeight ? parseInt(modal.dataset.windowMaxHeight, 10) : Infinity;
+
+    let width = parseInt(modal.dataset.windowDefaultWidth, 10) || minWidth;
+    let height = parseInt(modal.dataset.windowDefaultHeight, 10) || minHeight;
+    width = Math.max(minWidth, Math.min(width, maxWidth));
+    height = Math.max(minHeight, Math.min(height, maxHeight));
+
+    modal.style.width = `${width}px`;
+    modal.style.height = `${height}px`;
 }
 
 function parseCssPixelLength(value, containerPx) {
@@ -814,8 +837,11 @@ function setModalPositionFromViewportRect(modal, rect) {
 
     clearModalPixelAnchor(modal);
 
-    const width = roundCssPixel(rect.width);
-    const height = roundCssPixel(rect.height);
+    const { minWidth, minHeight } = getModalMinDimensions(modal);
+    const maxWidth = modal.dataset.windowMaxWidth ? parseInt(modal.dataset.windowMaxWidth, 10) : Infinity;
+    const maxHeight = modal.dataset.windowMaxHeight ? parseInt(modal.dataset.windowMaxHeight, 10) : Infinity;
+    const width = roundCssPixel(Math.max(minWidth, Math.min(rect.width, maxWidth)));
+    const height = roundCssPixel(Math.max(minHeight, Math.min(rect.height, maxHeight)));
     const clamped = clampModalViewportRect(rect.left, rect.top, width, height);
     const left = roundToDevicePixel(clamped.left);
     const top = roundToDevicePixel(clamped.top);
@@ -1279,6 +1305,17 @@ function handleModalDragStart(e) {
     const titleBar = e.target.closest('.modal-window-title');
     if (!titleBar) return;
 
+    if (e.target.closest('.modal-window-title-toolbar')) return;
+    if (e.target.closest('button, input, select, textarea, a, [role="button"]')) return;
+
+    const toolbar = titleBar.querySelector('.modal-window-title-toolbar');
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const bandBottom = toolbar
+        ? toolbar.getBoundingClientRect().top
+        : titleBar.getBoundingClientRect().bottom;
+
+    if (clientY >= bandBottom) return;
+
     const modal = titleBar.closest('.modal');
     if (!modal) return;
 
@@ -1293,7 +1330,6 @@ function handleModalDragStart(e) {
 
     // Get coordinates from touch or mouse event
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
 
     // Store drag state as data attributes on the modal
     modal.setAttribute('data-dragging', 'true');
@@ -1738,6 +1774,9 @@ function openModal(modal) {
             && (!isTransient || (modal.dataset.windowIdentifier && transientWindowsWithPositions.has(modal.dataset.windowIdentifier)))) {
             restoreWindowPosition(modal);
         }
+        if (!modal.hasAttribute('data-window-position-restored')) {
+            applyModalDefaultWindowSize(modal);
+        }
     }
 
     // Check if this modal should trigger backdrop display
@@ -1789,13 +1828,15 @@ function openModal(modal) {
 
     // Lumen restores after visible — openModal skips .image-viewer-modal (public/scripts/comp/imageViewer.js)
 
-    // Add opening class to trigger animation
-    modal.classList.add('opening');
-    // Remove hidden class to show modal (if it exists, hidden-alt was already removed above)
-    modal.classList.remove('hidden');
+    // Reveal before animating — hidden-alt pauses CSS animations while display:none
     if (isSoftOpened) {
         modal.classList.remove('hidden-alt');
     }
+    modal.classList.remove('hidden');
+
+    modal.classList.remove('opening');
+    void modal.offsetWidth;
+    modal.classList.add('opening');
 
     // Update taskbar (debounced for performance)
     debouncedUpdateTaskbarWindows();
@@ -1825,7 +1866,7 @@ function openModal(modal) {
     // Remove opening class after animation completes
     const openingAnimationHandler = (e) => {
         // Only handle animations on this modal while it has the opening class
-        if (e.target === modal && (e.animationName === 'modalSlideIn' || e.animationName === 'modalSlideInTopAnchor') && modal.classList.contains('opening')) {
+        if (e.target === modal && (e.animationName === 'modalSlideIn' || e.animationName === 'modalSlideInTopAnchor' || e.animationName === 'modalFadeIn') && modal.classList.contains('opening')) {
             modal.removeEventListener('animationend', openingAnimationHandler);
             modal.classList.remove('opening');
             if (isMoveable && !modal.classList.contains('hidden')) {
@@ -1888,7 +1929,7 @@ function closeMainModal(modal) {
     if (!modal) return Promise.resolve();
 
     if (shouldPersistWindowPosition(modal)) {
-        flushSaveWindowPositions();
+        debouncedSaveWindowPositions();
     }
 
     // Check if this modal should trigger backdrop changes
@@ -2060,7 +2101,7 @@ function closeMainModal(modal) {
         // Wait for animation to complete using animationend event
         const animationEndHandler = (e) => {
             // Only handle closing animations on this modal
-            if (e.target === modal && (e.animationName === 'modalSlideOut' || e.animationName === 'modalSlideOutTopAnchor') && modal.classList.contains('closing')) {
+            if (e.target === modal && (e.animationName === 'modalSlideOut' || e.animationName === 'modalSlideOutTopAnchor' || e.animationName === 'modalFadeOut') && modal.classList.contains('closing')) {
                 modal.removeEventListener('animationend', animationEndHandler);
                 cleanup();
                 resolve();
@@ -2489,6 +2530,7 @@ function updateGalleryWindowMode() {
             desktopShortcuts.dragOffset = { x: 0, y: 0 };
             desktopShortcuts.dragStartPos = { x: 0, y: 0 };
             desktopShortcuts.isDragging = false;
+            desktopShortcuts.clearSelection();
             desktopShortcuts.notesMetadataCache = null;
             // Clear any pending save timers
             if (desktopShortcuts.saveDebounceTimer) {
@@ -2496,6 +2538,10 @@ function updateGalleryWindowMode() {
                 desktopShortcuts.saveDebounceTimer = null;
             }
             desktopShortcuts.pendingChanges = false;
+            desktopShortcuts.pendingWindowPositionSave = false;
+            if (typeof desktopShortcuts.hideSaveTrayIndicator === 'function') {
+                desktopShortcuts.hideSaveTrayIndicator();
+            }
         }
 
         // Clear window positions
@@ -2508,14 +2554,10 @@ function updateGalleryWindowMode() {
         }
 
         // Hide start menu if open
-        const startMenu = document.getElementById('startMenu');
-        if (startMenu) {
-            startMenu.classList.add('hidden');
-            const startBtn = document.getElementById('taskbarStartBtn');
-            if (startBtn) {
-                startBtn.classList.remove('active');
-            }
+        if (!startMenu) {
+            startMenu = document.getElementById('startMenu');
         }
+        closeStartMenu({ immediate: true });
 
         // Remove from modal stack
         const modalIndex = modalStack.indexOf(galleryWindow);
@@ -2627,7 +2669,7 @@ async function hideGalleryWindow() {
     }
 
     galleryWindow.setAttribute('data-modal-moved', 'true');
-    flushSaveWindowPositions();
+    debouncedSaveWindowPositions();
 
     await closeModal(galleryWindow);
 
@@ -3212,19 +3254,7 @@ function updateTaskbarWindows() {
                     const newItem = existingItem.cloneNode(true);
 
                     newItem.addEventListener('click', () => {
-                        if (modal.classList.contains('minimised')) {
-                            setMinimizeTargetVariables(modal, newItem);
-                            modal.classList.remove('minimised');
-                            updateBackdropVisibility();
-                            modal.classList.add('unminimising');
-                            const unminimisingHandler = (e) => {
-                                if (e.target === modal && e.animationName === 'modalUnminimize' && modal.classList.contains('unminimising')) {
-                                    modal.removeEventListener('animationend', unminimisingHandler);
-                                    modal.classList.remove('unminimising');
-                                }
-                            };
-                            modal.addEventListener('animationend', unminimisingHandler);
-                        }
+                        restoreMinimizedModal(modal, newItem);
                         if (modal.classList.contains('hidden')) {
                             if (modal.id === 'galleryWindow') {
                                 showGalleryWindow();
@@ -3245,15 +3275,7 @@ function updateTaskbarWindows() {
                     // Content unchanged, just update event listeners if needed
                     // (They should already be attached, but ensure they work)
                     const clickHandler = () => {
-                        if (modal.classList.contains('minimised')) {
-                            setMinimizeTargetVariables(modal, existingItem);
-                            modal.classList.remove('minimised');
-                            updateBackdropVisibility();
-                            modal.classList.add('unminimising');
-                            setTimeout(() => {
-                                modal.classList.remove('unminimising');
-                            }, 250);
-                        }
+                        restoreMinimizedModal(modal, existingItem);
                         if (modal.classList.contains('hidden')) {
                             if (modal.id === 'galleryWindow') {
                                 showGalleryWindow();
@@ -3294,19 +3316,7 @@ function updateTaskbarWindows() {
 
                 // Click handler
                 item.addEventListener('click', () => {
-                    if (modal.classList.contains('minimised')) {
-                        setMinimizeTargetVariables(modal, item);
-                        modal.classList.remove('minimised');
-                        updateBackdropVisibility();
-                        modal.classList.add('unminimising');
-                        const unminimisingHandler = (e) => {
-                            if (e.target === modal && e.animationName === 'modalUnminimize' && modal.classList.contains('unminimising')) {
-                                modal.removeEventListener('animationend', unminimisingHandler);
-                                modal.classList.remove('unminimising');
-                            }
-                        };
-                        modal.addEventListener('animationend', unminimisingHandler);
-                    }
+                    restoreMinimizedModal(modal, item);
                     if (modal.classList.contains('hidden')) {
                         if (modal.id === 'galleryWindow') {
                             showGalleryWindow();
@@ -3623,22 +3633,7 @@ function activateTaskbarWindowEntry(modalId) {
         return false;
     }
 
-    const taskbarItem = getOrCreateTaskbarItem(modal);
-    if (modal.classList.contains('minimised')) {
-        if (taskbarItem) {
-            setMinimizeTargetVariables(modal, taskbarItem);
-        }
-        modal.classList.remove('minimised');
-        updateBackdropVisibility();
-        modal.classList.add('unminimising');
-        const unminimisingHandler = (e) => {
-            if (e.target === modal && e.animationName === 'modalUnminimize' && modal.classList.contains('unminimising')) {
-                modal.removeEventListener('animationend', unminimisingHandler);
-                modal.classList.remove('unminimising');
-            }
-        };
-        modal.addEventListener('animationend', unminimisingHandler);
-    }
+    restoreMinimizedModal(modal, getOrCreateTaskbarItem(modal));
 
     bringModalToFront(modal);
     return true;
@@ -3685,32 +3680,67 @@ function getOrCreateTaskbarItem(modal) {
     return taskbarItem;
 }
 
-// Set CSS variables for minimize animation target
+function getModalMinimizeAnchorCenter(modal) {
+    const offsetX = parseFloat(modal.style.getPropertyValue('--modal-offset-x')) || 0;
+    const offsetY = parseFloat(modal.style.getPropertyValue('--modal-offset-y')) || 0;
+    const trueInsetTop = getModalTrueInsetTop();
+    return {
+        centerX: (window.innerWidth / 2) + offsetX,
+        centerY: (window.innerHeight / 2) + (0.5 * trueInsetTop) + offsetY - getDesktopModalTopBias()
+    };
+}
+
+// Set CSS variables for minimize / unminimize animation target
 function setMinimizeTargetVariables(modal, taskbarItem) {
     const modalRect = modal.getBoundingClientRect();
     const taskbarRect = taskbarItem.getBoundingClientRect();
+    const anchor = getModalMinimizeAnchorCenter(modal);
 
-    // Calculate the target position relative to the modal's current center
-    // Modal is positioned at 50% 50% (center of viewport)
-    const modalCenterX = window.innerWidth / 2;
-    const modalCenterY = window.innerHeight / 2;
+    const taskbarCenterX = taskbarRect.left + (taskbarRect.width / 2);
+    const taskbarCenterY = taskbarRect.top + (taskbarRect.height / 2);
 
-    // Taskbar item center position
-    const taskbarCenterX = taskbarRect.left + taskbarRect.width / 2;
-    const taskbarCenterY = taskbarRect.top + taskbarRect.height / 2;
+    const offsetX = taskbarCenterX - anchor.centerX;
+    const offsetY = taskbarCenterY - anchor.centerY;
 
-    // Calculate offset from modal center to taskbar center
-    const offsetX = taskbarCenterX - modalCenterX;
-    const offsetY = taskbarCenterY - modalCenterY;
+    const modalWidth = modalRect.width > 0 ? modalRect.width : modal.offsetWidth;
+    const scale = modalWidth > 0 ? Math.min(taskbarRect.width / modalWidth, 0.3) : 0.3;
 
-    // Calculate scale based on taskbar item width vs modal width
-    const scale = Math.min(taskbarRect.width / modalRect.width, 0.3);
-
-    // Set CSS variables on the modal
     modal.style.setProperty('--minimize-target-x', `${offsetX}px`);
     modal.style.setProperty('--minimize-target-y', `${offsetY}px`);
     modal.style.setProperty('--minimize-target-scale', scale);
     modal.style.setProperty('--minimize-target-width', `${taskbarRect.width}px`);
+}
+
+function restoreMinimizedModal(modal, taskbarItem) {
+    if (!modal || !modal.classList.contains('minimised')) {
+        return;
+    }
+
+    const wasPixelSettled = modal.classList.contains('modal-pixel-settled');
+    if (wasPixelSettled) {
+        revertModalToOffsetAnchor(modal);
+    }
+
+    modal.classList.remove('minimised');
+    void modal.offsetHeight;
+
+    if (taskbarItem) {
+        setMinimizeTargetVariables(modal, taskbarItem);
+    }
+
+    updateBackdropVisibility();
+    modal.classList.add('unminimising');
+
+    const unminimisingHandler = (e) => {
+        if (e.target === modal && e.animationName === 'modalUnminimize' && modal.classList.contains('unminimising')) {
+            modal.removeEventListener('animationend', unminimisingHandler);
+            modal.classList.remove('unminimising');
+            if (wasPixelSettled) {
+                settleModalPixelAnchor(modal);
+            }
+        }
+    };
+    modal.addEventListener('animationend', unminimisingHandler);
 }
 
 // Toggle taskbar group menu (dropdown/dropup)
@@ -3764,21 +3794,7 @@ function toggleTaskbarGroupMenu(groupItem, modals) {
         item.addEventListener('click', (e) => {
             e.stopPropagation();
 
-            if (modal.classList.contains('minimised')) {
-                // Set CSS variables for unminimize animation
-                setMinimizeTargetVariables(modal, groupItem);
-
-                modal.classList.remove('minimised');
-                updateBackdropVisibility();
-                modal.classList.add('unminimising');
-                const unminimisingHandler = (e) => {
-                    if (e.target === modal && e.animationName === 'modalUnminimize' && modal.classList.contains('unminimising')) {
-                        modal.removeEventListener('animationend', unminimisingHandler);
-                        modal.classList.remove('unminimising');
-                    }
-                };
-                modal.addEventListener('animationend', unminimisingHandler);
-            }
+            restoreMinimizedModal(modal, groupItem);
             if (modal.classList.contains('hidden')) {
                 modal.classList.remove('hidden');
             }
@@ -4160,6 +4176,24 @@ document.addEventListener('contextMenuAction', (e) => {
         return;
     }
 
+    if (action === 'desktop-new-folder') {
+        if (typeof desktopShortcuts !== 'undefined' && desktopShortcuts) {
+            const pos = desktopShortcuts.getContextMenuPosition(e.detail?.event);
+            desktopShortcuts.createEmptyFolder({ position: pos });
+        }
+        return;
+    }
+
+    if (action === 'desktop-paste') {
+        if (typeof explorerApplet !== 'undefined' && explorerApplet?.clipboard) {
+            const wsId = (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null)
+                || (typeof getActiveWorkspace === 'function' ? getActiveWorkspace() : null)
+                || 'default';
+            explorerApplet.pasteToPath(`/Workspaces/${wsId}/Desktop`);
+        }
+        return;
+    }
+
     // Handle exit desktop action
     if (action === 'exit-desktop') {
         maximizeGalleryWindow();
@@ -4340,6 +4374,7 @@ const startMenuConfig = [
         hasSubmenu: true,
         submenu: 'planets'
     },
+    { launchId: 'explorer', icon: 'fas fa-folder-open', imageIcon: 'explorer.png', text: 'File Explorer', action: () => { openExplorerApplet(); } },
     { icon: 'fas fa-toolbox', imageIcon: 'toolbox.png', text: 'Toolbox', hasSubmenu: true, submenu: 'toolbox' },
     { launchId: 'run', icon: 'fas fa-magnifying-glass', imageIcon: 'search.png', text: 'Run', action: () => { if (window.runApplet) { window.runApplet.open(); } } },
 ];
@@ -4463,63 +4498,278 @@ function collectStartMenuLaunchables() {
 }
 
 function fadeClientShutdownOverlay(run) {
-    let overlay = document.getElementById('clientShutdownOverlay');
-    if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.id = 'clientShutdownOverlay';
-        overlay.className = 'client-shutdown-overlay';
-        document.body.appendChild(overlay);
-    }
-    overlay.classList.add('show');
-    setTimeout(() => {
-        if (run) run();
-    }, 580);
+    fadeClientShutdownOverlayAsync(run);
 }
 
-async function confirmClientRestart() {
-    if (typeof showConfirmationDialog !== 'function') return;
-    const confirmed = await showConfirmationDialog(
-        'Restart the application? The page will reload.',
-        [
-            { text: 'Restart', value: true, icon: 'fas fa-rotate-right', className: 'btn-danger' },
-            { text: 'Cancel', value: false, className: 'btn-secondary' }
-        ],
-        null,
-        { title: 'Restart', icon: 'fas fa-rotate-right' }
-    );
-    if (!confirmed) return;
-    fadeClientShutdownOverlay(() => location.reload());
-}
-
-async function confirmClientShutdown() {
-    if (typeof showConfirmationDialog !== 'function') return;
-    const confirmed = await showConfirmationDialog(
-        'Shut down and close this tab?',
-        [
-            { text: 'Shutdown', value: true, icon: 'fas fa-power-off', className: 'btn-danger' },
-            { text: 'Cancel', value: false, className: 'btn-secondary' }
-        ],
-        null,
-        { title: 'Shutdown', icon: 'fas fa-power-off' }
-    );
-    if (!confirmed) return;
-    fadeClientShutdownOverlay(() => window.close());
-}
-
-const startMenuIconRow = [
-    {
-        icon: 'fas fa-window-maximize',
-        tooltip: 'Exit Desktop Mode',
-        action: () => {
-            maximizeGalleryWindow();
+function fadeClientShutdownOverlayAsync(run) {
+    return new Promise((resolve) => {
+        let overlay = document.getElementById('clientShutdownOverlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'clientShutdownOverlay';
+            overlay.className = 'client-shutdown-overlay';
+            document.body.appendChild(overlay);
         }
-    },
-    {
-        icon: 'fas fa-right-from-bracket',
-        tooltip: 'Logout',
-        action: () => { logout(); }
+
+        let finished = false;
+        const finish = () => {
+            if (finished) return;
+            finished = true;
+            overlay.removeEventListener('transitionend', onTransition);
+            if (typeof bypassConfirmation !== 'undefined') {
+                bypassConfirmation = true;
+            }
+            if (run) run();
+            resolve();
+        };
+
+        const onTransition = (e) => {
+            if (e.target === overlay && e.propertyName === 'opacity') {
+                setTimeout(finish, 80);
+            }
+        };
+
+        overlay.classList.remove('show');
+        void overlay.offsetWidth;
+        overlay.classList.add('show');
+        overlay.addEventListener('transitionend', onTransition);
+        setTimeout(finish, 700);
+    });
+}
+
+function delayForClientShutdown(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function suppressWebSocketReconnectForReload() {
+    const ws = window.wsClient;
+    if (!ws) return;
+    // suppressAutoReconnect — public/scripts/websocket.js
+    ws.suppressAutoReconnect();
+}
+
+async function fetchServerStatusForRestart() {
+    try {
+        const response = await fetch('/status', { method: 'OPTIONS', cache: 'no-cache' });
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (_) {
+        return null;
     }
-];
+}
+
+async function waitForServerDisconnect(options = {}) {
+    suppressWebSocketReconnectForReload();
+
+    const timeoutMs = options.timeoutMs || 120000;
+    const pollMs = options.pollMs || 500;
+    const start = Date.now();
+
+    return new Promise((resolve) => {
+        let settled = false;
+        let pollTimer = null;
+        const ws = window.wsClient;
+        let onDisconnect = null;
+
+        const finish = (ok) => {
+            if (settled) return;
+            settled = true;
+            if (pollTimer) clearInterval(pollTimer);
+            if (ws && onDisconnect) ws.off('disconnected', onDisconnect);
+            resolve(ok);
+        };
+
+        onDisconnect = () => finish(true);
+
+        if (ws) {
+            if (!ws.isConnected()) {
+                finish(true);
+                return;
+            }
+            ws.on('disconnected', onDisconnect);
+        }
+
+        pollTimer = setInterval(async () => {
+            if (Date.now() - start > timeoutMs) {
+                finish(false);
+                return;
+            }
+            const status = await fetchServerStatusForRestart();
+            if (!status || !status.isReady) {
+                finish(true);
+            }
+        }, pollMs);
+    });
+}
+
+function dismissTransientUIForShutdown() {
+    if (startMenu && !startMenu.classList.contains('hidden')) {
+        closeStartMenu({ immediate: true });
+    }
+    // contextMenu — public/scripts/comp/contextMenu.js
+    if (typeof contextMenu !== 'undefined' && contextMenu?.hideMenu) {
+        contextMenu.hideMenu();
+    }
+    // logViewerApplet — public/scripts/comp/logViewerApplet.js
+    if (typeof logViewerApplet !== 'undefined' && logViewerApplet?.hideAllGlassPopovers) {
+        logViewerApplet.hideAllGlassPopovers();
+    }
+    try {
+        if (typeof lightbox !== 'undefined' && lightbox?.pswp?.isOpen) {
+            lightbox.pswp.close();
+        }
+    } catch (_) { /* lightbox optional */ }
+    if (typeof isConfirmationDialogActive === 'function' && isConfirmationDialogActive()
+        && typeof hideConfirmationDialog === 'function') {
+        hideConfirmationDialog();
+    }
+    closeStartMenuPowerDropdown();
+}
+
+function getModalsForShutdownClose() {
+    const open = Array.from(document.querySelectorAll('.modal:not(.hidden)'))
+        .filter((modal) => !modal.classList.contains('closing'));
+    const remaining = new Set(open);
+    const ordered = [];
+
+    for (let i = modalStack.length - 1; i >= 0; i--) {
+        const modal = modalStack[i];
+        if (remaining.has(modal)) {
+            ordered.push(modal);
+            remaining.delete(modal);
+        }
+    }
+
+    for (const modal of remaining) {
+        ordered.push(modal);
+    }
+
+    return ordered;
+}
+
+async function closeAllModalsForShutdown() {
+    let modals = getModalsForShutdownClose();
+    let safety = 0;
+
+    while (modals.length > 0 && safety < 64) {
+        safety += 1;
+        await closeModal(modals[0]);
+        await delayForClientShutdown(120);
+        modals = getModalsForShutdownClose();
+    }
+}
+
+let clientShutdownSequenceRunning = false;
+
+async function runClientShutdownSequence(finalAction) {
+    if (clientShutdownSequenceRunning) return;
+    clientShutdownSequenceRunning = true;
+
+    try {
+        suppressWebSocketReconnectForReload();
+        dismissTransientUIForShutdown();
+        await closeAllModalsForShutdown();
+        await delayForClientShutdown(150);
+        await fadeClientShutdownOverlayAsync(finalAction);
+    } catch (error) {
+        clientShutdownSequenceRunning = false;
+        throw error;
+    }
+}
+
+async function runClientRestartDirect() {
+    closeStartMenuAfterPowerAction();
+    await runClientShutdownSequence(() => location.reload());
+}
+
+async function runClientShutdownDirect() {
+    closeStartMenuAfterPowerAction();
+    await runClientShutdownSequence(() => window.close());
+}
+
+function runLeaveDesktopModeDirect() {
+    closeStartMenuAfterPowerAction();
+    maximizeGalleryWindow();
+}
+
+function runLogoutDirect() {
+    closeStartMenuAfterPowerAction();
+    // handleLogout — public/scripts/app.js
+    if (typeof handleLogout === 'function') {
+        handleLogout();
+    }
+}
+
+let startMenuPowerDropdown = null;
+let startMenuPowerMenu = null;
+let startMenuPowerToggle = null;
+
+function getStartMenuPowerMenuItems() {
+    const items = [
+        { id: 'shutdown', icon: 'fas fa-power-off', text: 'Shutdown', danger: true, action: () => runClientShutdownDirect() },
+        { id: 'restart', icon: 'fas fa-rotate-right', text: 'Restart', action: () => runClientRestartDirect() },
+        { id: 'leave-desktop', icon: 'fas fa-window-maximize', text: 'Leave Desktop Mode', desktopOnly: true, action: () => runLeaveDesktopModeDirect() },
+        { id: 'logout', icon: 'fas fa-right-from-bracket', text: 'Log Out', action: () => runLogoutDirect() }
+    ];
+    return items.filter((item) => !item.desktopOnly || isDesktopStartMenuEnvironment());
+}
+
+function renderStartMenuPowerDropdown(menu) {
+    menu.innerHTML = '';
+    getStartMenuPowerMenuItems().forEach((item) => {
+        const option = document.createElement('div');
+        option.className = 'custom-dropdown-option' + (item.danger ? ' start-menu-power-option-danger' : '');
+        option.tabIndex = 0;
+        option.dataset.value = item.id;
+        option.innerHTML = `<i class="${item.icon}"></i><span>${item.text}</span>`;
+        const action = () => {
+            item.action();
+        };
+        option.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+        });
+        option.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            closeDropdown(menu, startMenuPowerToggle);
+            action();
+        });
+        touchSlopUtils.registerTouchSlopTracking(option);
+        option.addEventListener('touchend', (e) => {
+            const maxDelta = touchSlopUtils.finalizeTouchSlop(option, e);
+            if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
+            e.preventDefault();
+            closeDropdown(menu, startMenuPowerToggle);
+            action();
+        }, { passive: false });
+        menu.appendChild(option);
+    });
+}
+
+function setupStartMenuPowerDropdown() {
+    if (!startMenuPowerDropdown || !startMenuPowerToggle || !startMenuPowerMenu) return;
+    // setupDropdown — public/scripts/comp/dropdown.js
+    setupDropdown(
+        startMenuPowerDropdown,
+        startMenuPowerToggle,
+        startMenuPowerMenu,
+        () => renderStartMenuPowerDropdown(startMenuPowerMenu),
+        () => null,
+        { preventFocusTransfer: true }
+    );
+}
+
+function closeStartMenuPowerDropdown() {
+    if (startMenuPowerMenu && startMenuPowerToggle) {
+        closeDropdown(startMenuPowerMenu, startMenuPowerToggle);
+    }
+}
+
+function closeStartMenuAfterPowerAction() {
+    closeAllStartMenuSubmenus();
+    closeStartMenuPowerDropdown();
+    closeStartMenu();
+}
 
 function initializeStartMenu() {
     startMenu = document.getElementById('startMenu');
@@ -4543,9 +4793,7 @@ function initializeStartMenu() {
     document.addEventListener('click', (e) => {
         const startBtn = document.getElementById('taskbarStartBtn');
         if (startMenu && !startMenu.classList.contains('hidden') && !startMenu.contains(e.target) && !e.target.closest('#taskbarStartBtn')) {
-            startMenu.classList.add('hidden');
-            closeAllStartMenuSubmenus();
-            if (startBtn) startBtn.classList.remove('active');
+            closeStartMenu();
         }
     });
 }
@@ -4616,10 +4864,7 @@ function buildStartMenu() {
                             subMenuItem.addEventListener('click', (e) => {
                                 e.stopPropagation();
                                 if (subItem.action) subItem.action();
-                                closeAllStartMenuSubmenus();
-                                startMenu.classList.add('hidden');
-                                const startBtn = document.getElementById('taskbarStartBtn');
-                                if (startBtn) startBtn.classList.remove('active');
+                                closeStartMenu();
                             });
 
                             // Attach context menu to submenu item if it has a launch ID
@@ -4642,20 +4887,14 @@ function buildStartMenu() {
                         rightBtn.addEventListener('click', (e) => {
                             e.stopPropagation();
                             if (item.rightAction.action) item.rightAction.action();
-                            closeAllStartMenuSubmenus();
-                            startMenu.classList.add('hidden');
-                            const startBtn = document.getElementById('taskbarStartBtn');
-                            if (startBtn) startBtn.classList.remove('active');
+                            closeStartMenu();
                         });
                     }
                 }
 
                 menuItem.addEventListener('click', () => {
                     if (item.action) item.action();
-                    closeAllStartMenuSubmenus();
-                    startMenu.classList.add('hidden');
-                    const startBtn = document.getElementById('taskbarStartBtn');
-                    if (startBtn) startBtn.classList.remove('active');
+                    closeStartMenu();
                 });
 
                 // Attach context menu to main menu item if it has a launch ID
@@ -4668,78 +4907,51 @@ function buildStartMenu() {
         }
     });
 
-    const actionBar = document.createElement('div');
-    actionBar.className = 'start-menu-action-bar';
-
-    const restartBtn = document.createElement('button');
-    restartBtn.type = 'button';
-    restartBtn.className = 'start-menu-action-btn';
-    restartBtn.innerHTML = '<i class="fas fa-rotate-right"></i><span>Restart</span>';
-    restartBtn.title = 'Restart application';
-    restartBtn.addEventListener('click', () => {
-        confirmClientRestart();
-        closeAllStartMenuSubmenus();
-        startMenu.classList.add('hidden');
-        const startBtn = document.getElementById('taskbarStartBtn');
-        if (startBtn) startBtn.classList.remove('active');
-    });
-
-    const shutdownBtn = document.createElement('button');
-    shutdownBtn.type = 'button';
-    shutdownBtn.className = 'start-menu-action-btn start-menu-action-danger';
-    shutdownBtn.innerHTML = '<i class="fas fa-power-off"></i><span>Shutdown</span>';
-    shutdownBtn.title = 'Close this tab';
-    shutdownBtn.addEventListener('click', () => {
-        confirmClientShutdown();
-        closeAllStartMenuSubmenus();
-        startMenu.classList.add('hidden');
-        const startBtn = document.getElementById('taskbarStartBtn');
-        if (startBtn) startBtn.classList.remove('active');
-    });
-
-    actionBar.appendChild(restartBtn);
-    actionBar.appendChild(shutdownBtn);
-    startMenuItems.appendChild(actionBar);
-
-    // Add icon row at bottom
     const iconRow = document.createElement('div');
     iconRow.className = 'start-menu-icons-row';
 
-    startMenuIconRow.forEach(iconConfig => {
-        const btn = document.createElement('button');
-        btn.className = 'start-menu-icon-btn';
-        btn.title = iconConfig.tooltip;
-        btn.innerHTML = getIconHTML(iconConfig.icon);
+    const powerGroup = document.createElement('div');
+    powerGroup.className = 'start-menu-power-group btn-group';
 
-        // Add indicator class and data-state for toggle buttons
-        if (iconConfig.getState) {
-            btn.classList.add('indicator');
-            btn.setAttribute('data-state', iconConfig.getState());
-        }
-
-        btn.addEventListener('click', () => {
-            if (iconConfig.action) iconConfig.action();
-
-            // If this is a toggle button, just update its state (keep menu open)
-            if (iconConfig.getState) {
-                btn.setAttribute('data-state', iconConfig.getState());
-            } else {
-                // Non-toggle buttons close the menu
-                closeAllStartMenuSubmenus();
-                startMenu.classList.add('hidden');
-                const startBtn = document.getElementById('taskbarStartBtn');
-                if (startBtn) startBtn.classList.remove('active');
-            }
-        });
-
-        iconRow.appendChild(btn);
+    const shutdownMainBtn = document.createElement('button');
+    shutdownMainBtn.type = 'button';
+    shutdownMainBtn.className = 'start-menu-action-btn start-menu-action-danger';
+    shutdownMainBtn.innerHTML = '<i class="fas fa-power-off"></i><span>Shutdown</span>';
+    shutdownMainBtn.title = 'Shut down and close this tab';
+    shutdownMainBtn.addEventListener('click', () => {
+        runClientShutdownDirect();
     });
 
+    startMenuPowerDropdown = document.createElement('div');
+    startMenuPowerDropdown.id = 'startMenuPowerDropdown';
+    startMenuPowerDropdown.className = 'custom-dropdown dropup dark dropright start-menu-power-dropdown';
+
+    startMenuPowerToggle = document.createElement('button');
+    startMenuPowerToggle.type = 'button';
+    startMenuPowerToggle.id = 'startMenuPowerDropdownBtn';
+    startMenuPowerToggle.className = 'start-menu-action-btn start-menu-action-danger start-menu-power-toggle';
+    startMenuPowerToggle.innerHTML = '<i class="fas fa-chevron-up"></i>';
+    startMenuPowerToggle.title = 'More power options';
+
+    startMenuPowerMenu = document.createElement('div');
+    startMenuPowerMenu.id = 'startMenuPowerDropdownMenu';
+    startMenuPowerMenu.className = 'custom-dropdown-menu hidden';
+
+    startMenuPowerDropdown.appendChild(startMenuPowerToggle);
+    startMenuPowerDropdown.appendChild(startMenuPowerMenu);
+
+    powerGroup.appendChild(shutdownMainBtn);
+    powerGroup.appendChild(startMenuPowerDropdown);
+    iconRow.appendChild(powerGroup);
     startMenuItems.appendChild(iconRow);
+
+    setupStartMenuPowerDropdown();
 }
 
 function closeAllStartMenuSubmenus() {
     if (!startMenu) return;
+
+    closeStartMenuPowerDropdown();
 
     // Find all expanded menu items
     const expandedItems = startMenu.querySelectorAll('.start-menu-item.expanded');
@@ -4755,25 +4967,91 @@ function closeAllStartMenuSubmenus() {
     });
 }
 
-function toggleStartMenu() {
+const START_MENU_FADE_OUT_MS = 320;
+
+function openStartMenu() {
     if (!startMenu) return;
-    const startBtn = document.getElementById('taskbarStartBtn');
-
-    const wasHidden = startMenu.classList.contains('hidden');
-    startMenu.classList.toggle('hidden');
-
-    // If closing the menu, close all submenus
-    if (!wasHidden) {
-        closeAllStartMenuSubmenus();
+    if (!startMenu.classList.contains('hidden') && !startMenu.classList.contains('start-menu-closing')) {
+        return;
     }
 
-    // Toggle active class on start button
-    if (startBtn) {
-        if (startMenu.classList.contains('hidden')) {
-            startBtn.classList.remove('active');
-        } else {
-            startBtn.classList.add('active');
-        }
+    startMenu.classList.remove('hidden', 'start-menu-closing');
+    const startBtn = document.getElementById('taskbarStartBtn');
+    if (startBtn) startBtn.classList.add('active');
+
+    startMenu.classList.remove('start-menu-opening');
+    void startMenu.offsetWidth;
+    startMenu.classList.add('start-menu-opening');
+
+    let cleared = false;
+    const clearOpening = () => {
+        if (cleared) return;
+        cleared = true;
+        startMenu.classList.remove('start-menu-opening');
+        startMenu.removeEventListener('animationend', onOpenEnd);
+    };
+
+    const onOpenEnd = (e) => {
+        if (e.target !== startMenu || e.animationName !== 'startMenuFadeIn') return;
+        clearOpening();
+    };
+
+    startMenu.addEventListener('animationend', onOpenEnd);
+    setTimeout(clearOpening, 280);
+}
+
+function closeStartMenu(options = {}) {
+    if (!startMenu) return;
+
+    const startBtn = document.getElementById('taskbarStartBtn');
+    const immediate = options.immediate === true;
+
+    if (startMenu.classList.contains('hidden') && !startMenu.classList.contains('start-menu-closing')) {
+        if (startBtn) startBtn.classList.remove('active');
+        return;
+    }
+
+    closeAllStartMenuSubmenus();
+    if (startBtn) startBtn.classList.remove('active');
+
+    if (immediate) {
+        startMenu.classList.remove('start-menu-opening', 'start-menu-closing');
+        startMenu.classList.add('hidden');
+        return;
+    }
+
+    if (startMenu.classList.contains('start-menu-closing')) {
+        return;
+    }
+
+    startMenu.classList.remove('start-menu-opening');
+    startMenu.classList.add('start-menu-closing');
+
+    let finished = false;
+    const finish = () => {
+        if (finished) return;
+        finished = true;
+        startMenu.classList.remove('start-menu-closing');
+        startMenu.classList.add('hidden');
+    };
+
+    const onCloseEnd = (e) => {
+        if (e.target !== startMenu || e.animationName !== 'startMenuFadeOut') return;
+        startMenu.removeEventListener('animationend', onCloseEnd);
+        finish();
+    };
+
+    startMenu.addEventListener('animationend', onCloseEnd);
+    setTimeout(finish, START_MENU_FADE_OUT_MS);
+}
+
+function toggleStartMenu() {
+    if (!startMenu) return;
+
+    if (startMenu.classList.contains('hidden') && !startMenu.classList.contains('start-menu-closing')) {
+        openStartMenu();
+    } else {
+        closeStartMenu();
     }
 }
 
@@ -5041,14 +5319,29 @@ const ALIGNMENT_OPTIONS = {
 };
 
 function setupDesktopContextMenu() {
+    const desktopIcons = document.getElementById('desktopIcons');
     const freeformContainer = document.getElementById('desktopFreeformContainer');
-    if (!freeformContainer || !contextMenu) return;
+    if ((!desktopIcons && !freeformContainer) || !contextMenu) return;
 
     const desktopContextMenuConfig = {
+        beforeShow: () => {
+            if (explorerApplet) explorerApplet._contextMenuTarget = null;
+        },
         sections: [
             {
                 type: 'list',
                 items: [
+                    {
+                        icon: 'fa-light fa-folder-plus',
+                        text: 'New Folder',
+                        action: 'desktop-new-folder'
+                    },
+                    {
+                        icon: 'fas fa-paste',
+                        text: 'Paste',
+                        action: 'desktop-paste',
+                        hidden: () => !(explorerApplet && explorerApplet.clipboard)
+                    },
                     {
                         icon: 'fa-light fa-paint-roller',
                         text: 'Personalize',
@@ -5100,8 +5393,12 @@ function setupDesktopContextMenu() {
         ]
     };
 
-    // Attach context menu to freeform container (empty space)
-    contextMenu.attachToElement(freeformContainer, desktopContextMenuConfig);
+    // Attach context menu to desktop (empty space on grid or freeform)
+    if (desktopIcons) {
+        contextMenu.attachToElement(desktopIcons, desktopContextMenuConfig);
+    } else if (freeformContainer) {
+        contextMenu.attachToElement(freeformContainer, desktopContextMenuConfig);
+    }
 }
 
 function getDesktopSettingsActiveScope() {
@@ -6306,25 +6603,27 @@ async function updateWallpaperPosition(position) {
 
 // Window position caching functions
 function debouncedSaveWindowPositions() {
-    // Clear existing debounce timer (resets on each action)
+    // Coalesce with desktop icon saves when the shortcuts manager is available
+    if (typeof desktopShortcuts !== 'undefined' && desktopShortcuts && typeof desktopShortcuts.debouncedSave === 'function') {
+        desktopShortcuts.debouncedSave({ includeWindowPositions: true });
+        return;
+    }
+
+    // Fallback before desktopShortcuts initializes
     if (windowPositionSaveTimer) {
         clearTimeout(windowPositionSaveTimer);
     }
 
-    // Set new debounce timer
     windowPositionSaveTimer = setTimeout(() => {
         saveWindowPositions();
-        // Clear max timer when save happens
         if (windowPositionSaveMaxTimer) {
             clearTimeout(windowPositionSaveMaxTimer);
             windowPositionSaveMaxTimer = null;
         }
     }, WINDOW_POSITION_SAVE_DEBOUNCE);
 
-    // Set max wait timer if not already set (forces save after 5 minutes regardless of activity)
     if (!windowPositionSaveMaxTimer) {
         windowPositionSaveMaxTimer = setTimeout(() => {
-            // Force save if debounce timer is still active
             if (windowPositionSaveTimer) {
                 clearTimeout(windowPositionSaveTimer);
                 windowPositionSaveTimer = null;
@@ -6422,9 +6721,65 @@ function quadrantToPixelPosition(quadrantPos, containerWidth, containerHeight) {
     return { x, y };
 }
 
-function saveWindowPositions() {
+function getWindowPositionStorageKey(windowKey) {
+    const el = document.getElementById(windowKey);
+    if (el) {
+        return windowKey;
+    }
+
+    for (const modal of document.querySelectorAll('.modal, #galleryWindow.windowed')) {
+        if (modal.id === windowKey) {
+            return windowKey;
+        }
+        if (modal.dataset.windowIdentifier === windowKey) {
+            return windowKey;
+        }
+        const modalType = typeof getModalType === 'function' ? getModalType(modal) : null;
+        if (modalType === windowKey) {
+            return windowKey;
+        }
+    }
+
+    return windowKey;
+}
+
+function isPersistedWindowCurrentlyOpen(windowKey) {
+    const el = document.getElementById(windowKey);
+    if (el) {
+        return !el.classList.contains('hidden') && !el.classList.contains('hidden-alt');
+    }
+
+    for (const modal of document.querySelectorAll('.modal, #galleryWindow.windowed')) {
+        const modalType = typeof getModalType === 'function' ? getModalType(modal) : null;
+        const key = modal.id || modal.dataset.windowIdentifier || modalType;
+        if (key !== windowKey) {
+            continue;
+        }
+        return !modal.classList.contains('hidden') && !modal.classList.contains('hidden-alt');
+    }
+
+    return false;
+}
+
+function pruneClosedWindowPositions(visibleKeys) {
+    for (const windowKey of Object.keys(globalWindowPositions)) {
+        if (visibleKeys.has(windowKey)) {
+            continue;
+        }
+        if (!isPersistedWindowCurrentlyOpen(getWindowPositionStorageKey(windowKey))) {
+            delete globalWindowPositions[windowKey];
+        }
+    }
+}
+
+function hashWindowPositionsSnapshot(positions) {
+    return JSON.stringify(positions);
+}
+
+function saveWindowPositions(options = {}) {
+    const { force = false } = options;
     // Collect positions of all windows (non-transient, or transient that are marked for restoration)
-    if (!window.isDesktop) return;
+    if (!window.isDesktop) return Promise.resolve();
 
     const windowPositions = {};
     const containerWidth = window.innerWidth;
@@ -6471,23 +6826,12 @@ function saveWindowPositions() {
 
         // Get current position and size in pixels
         const modalRect = modal.getBoundingClientRect();
-        const computedStyle = getComputedStyle(modal);
 
         // Use actual rendered top-left corner position from getBoundingClientRect
         // This accounts for all CSS adjustments (true-inset-top, desktop mode, etc.)
         // Round to whole numbers for consistency
         const topLeftX = Math.round(modalRect.left);
         const topLeftY = Math.round(modalRect.top);
-
-        // Debug logging
-        const cssOffsetX = parseFloat(computedStyle.getPropertyValue('--modal-offset-x') || '0');
-        const cssOffsetY = parseFloat(computedStyle.getPropertyValue('--modal-offset-y') || '0');
-        console.log(`[SAVE] ${windowKey}:`, {
-            modalRect: { left: modalRect.left, top: modalRect.top, width: modalRect.width, height: modalRect.height },
-            cssOffsets: { x: cssOffsetX, y: cssOffsetY },
-            topLeftPixel: { x: topLeftX, y: topLeftY },
-            windowSize: { width: containerWidth, height: containerHeight }
-        });
 
         // Convert top-left to quadrant position
         const topLeftQuadrant = pixelToQuadrantPosition(topLeftX, topLeftY, containerWidth, containerHeight);
@@ -6531,18 +6875,25 @@ function saveWindowPositions() {
         }
     });
 
-    // Update global window positions
+    const visibleKeys = new Set(Object.keys(windowPositions));
+    pruneClosedWindowPositions(visibleKeys);
     Object.assign(globalWindowPositions, windowPositions);
 
-    // Save via WebSocket using ackless message (doesn't trigger ticket system)
-    // Saves to the same file as desktop shortcuts (workspaceDesktop config) as global object
-    if (wsClient && wsClient.isConnected() && Object.keys(windowPositions).length > 0) {
-        try {
-            wsClient.saveWindowPositions(null, globalWindowPositions); // full merged map — partial saves wiped other windows
-        } catch (error) {
-            console.warn('Failed to save window positions:', error);
-        }
+    const saveHash = hashWindowPositionsSnapshot(globalWindowPositions);
+    if (!force && saveHash === lastSentWindowPositionsHash) {
+        return Promise.resolve();
     }
+
+    // Save via WebSocket — full merged map; partial saves wiped other windows
+    if (wsClient && wsClient.isConnected() && Object.keys(globalWindowPositions).length > 0) {
+        return wsClient.saveWindowPositions(null, globalWindowPositions).then(() => {
+            lastSentWindowPositionsHash = saveHash;
+        }).catch((error) => {
+            console.warn('Failed to save window positions:', error);
+        });
+    }
+
+    return Promise.resolve();
 }
 
 // Restore position for a single window (only called when opening, if not already open)

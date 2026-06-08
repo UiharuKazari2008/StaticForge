@@ -1666,20 +1666,31 @@ const EMPHASIS_PATTERNS = {
 // Store previous textarea values for NSFW tag detection
 const previousTextareaValues = new WeakMap();
 
-// Emphasis highlighting functions
-// Throttled version of updateEmphasisHighlighting to prevent excessive calls
-let emphasisHighlightingTimeout = null;
-function throttledUpdateEmphasisHighlighting(textarea) {
-    // Clear existing timeout
-    if (emphasisHighlightingTimeout) {
-        clearTimeout(emphasisHighlightingTimeout);
+// Emphasis highlighting — one overlay pass per frame; plain text skips the regex pipeline
+const emphasisHighlightValueCache = new WeakMap();
+const emphasisHighlightRafIds = new WeakMap();
+
+function promptNeedsFullSyntaxHighlight(text) {
+    if (!text) return false;
+    return /::|[{}[\]|]|<|>|!/.test(text);
+}
+
+function scheduleEmphasisHighlightUpdate(textarea) {
+    if (!textarea) return;
+    const prevId = emphasisHighlightRafIds.get(textarea);
+    if (prevId) {
+        cancelAnimationFrame(prevId);
     }
-    
-    // Throttle to prevent excessive calls during rapid typing
-    emphasisHighlightingTimeout = setTimeout(() => {
+    const rafId = requestAnimationFrame(() => {
+        emphasisHighlightRafIds.delete(textarea);
+        if (!textarea.isConnected) return;
         updateEmphasisHighlighting(textarea);
-        emphasisHighlightingTimeout = null;
-    }, 100); // 100ms throttle - 10fps for emphasis highlighting
+    });
+    emphasisHighlightRafIds.set(textarea, rafId);
+}
+
+function throttledUpdateEmphasisHighlighting(textarea) {
+    scheduleEmphasisHighlightUpdate(textarea);
 }
 
 function startEmphasisHighlighting(textarea) {
@@ -1703,7 +1714,7 @@ function startEmphasisHighlighting(textarea) {
         } else {
             autoResizeTextarea(textarea);
         }
-        throttledUpdateEmphasisHighlighting(textarea);
+        scheduleEmphasisHighlightUpdate(textarea);
     }, 'emphasisHighlighting');
 
     // Initial highlighting
@@ -1713,6 +1724,12 @@ function startEmphasisHighlighting(textarea) {
 
 function stopEmphasisHighlighting() {
     if (emphasisHighlightingTarget) {
+        const pendingRaf = emphasisHighlightRafIds.get(emphasisHighlightingTarget);
+        if (pendingRaf) {
+            cancelAnimationFrame(pendingRaf);
+            emphasisHighlightRafIds.delete(emphasisHighlightingTarget);
+        }
+        emphasisHighlightValueCache.delete(emphasisHighlightingTarget);
         // Clean up the emphasis highlighting event listener
         removeSafeEventListener(emphasisHighlightingTarget, 'input', 'emphasisHighlighting');
     }
@@ -1791,14 +1808,24 @@ function updateEmphasisHighlighting(textarea) {
 
     // NSFW tag detection and auto-setting
     handleNsfwTagDetection(textarea, value);
-    
-    // Use normal emphasis highlighting
-    const highlightedValue = highlightEmphasisInText(value);
 
+    const currentValue = textarea.value;
     const overlay = ensurePromptEmphasisHighlightOverlay(textarea);
     if (!overlay) return;
 
-    overlay.innerHTML = highlightedValue;
+    const cachedValue = emphasisHighlightValueCache.get(textarea);
+    if (cachedValue === currentValue) {
+        overlay.scrollTop = textarea.scrollTop;
+        overlay.scrollLeft = textarea.scrollLeft;
+        return;
+    }
+    emphasisHighlightValueCache.set(textarea, currentValue);
+
+    if (!promptNeedsFullSyntaxHighlight(currentValue)) {
+        overlay.textContent = currentValue;
+    } else {
+        overlay.innerHTML = highlightEmphasisInText(currentValue);
+    }
 
     // Sync scroll position
     overlay.scrollTop = textarea.scrollTop;
@@ -1829,6 +1856,20 @@ function getEmphasisToolbarColor(weight) {
     if (weight === '---') return '#ff6b6b';
     const c = computeEmphasisWeightColor(weight);
     return `rgb(${c.r}, ${c.g}, ${c.b})`;
+}
+
+let cachedU1TagPattern = null;
+let cachedU1TagPatternSource = null;
+
+function getU1TagPattern() {
+    if (!window.u1 || !window.u1.length) return null;
+    if (cachedU1TagPattern && cachedU1TagPatternSource === window.u1) {
+        return cachedU1TagPattern;
+    }
+    const sortedTags = [...window.u1].sort((a, b) => b.length - a.length);
+    cachedU1TagPattern = new RegExp(`\\b(${sortedTags.map(tag => tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'gi');
+    cachedU1TagPatternSource = window.u1;
+    return cachedU1TagPattern;
 }
 
 function highlightEmphasisInText(text) {
@@ -1862,11 +1903,8 @@ function highlightEmphasisInText(text) {
 
     // Function to apply NSFW highlighting to content
     function applyNSFWHighlighting(content) {
-        if (!window.u1) return content;
-
-        // Create a regex pattern from all u1 tags, sorted by length (longest first to avoid partial matches)
-        const sortedTags = [...window.u1].sort((a, b) => b.length - a.length);
-        const tagPattern = new RegExp(`\\b(${sortedTags.map(tag => tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'gi');
+        const tagPattern = getU1TagPattern();
+        if (!tagPattern) return content;
 
         return content.replace(tagPattern, (match, tag) => {
             // Check if this tag is part of a single colon pattern (like "tag:value")
@@ -2102,11 +2140,8 @@ function highlightEmphasisInText(text) {
     // Highlight NSFW tags in remaining text (outside of emphasis blocks)
     // Only process text that's not already inside emphasis-highlight spans
     highlightedText = highlightedText.replace(/([^<]*?)(?=<span class="emphasis-highlight"|$)/g, (match, text) => {
-        if (!window.u1 || !text.trim()) return match;
-
-        // Create a regex pattern from all u1 tags, sorted by length (longest first)
-        const sortedTags = [...window.u1].sort((a, b) => b.length - a.length);
-        const tagPattern = new RegExp(`\\b(${sortedTags.map(tag => tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'gi');
+        const tagPattern = getU1TagPattern();
+        if (!tagPattern || !text.trim()) return match;
 
         return text.replace(tagPattern, (tagMatch, tag) => {
             // Check if this tag is part of a single colon pattern (like "tag:value")

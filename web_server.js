@@ -427,6 +427,76 @@ async function initializeCacheData(force = false) {
     }
 }
 
+// Build service worker cache manifest (same payload as OPTIONS /)
+function buildServiceWorkerCacheManifest() {
+    const routeFiles = [
+        { url: '/', name: '/index.html' },
+        { url: '/app', name: '/app.html' },
+        { url: '/launch', name: '/launch.html' }
+    ];
+
+    const routeEntries = routeFiles.map(route => {
+        const file = globalResources.getGlobalCacheData().find(f => f.path === route.name) || {};
+        return {
+            url: route.url,
+            name: route.name,
+            hash: file.md5 || 'no-hash',
+            size: file.size || 0,
+            modified: file.modified || Date.now(),
+            type: 'route'
+        };
+    });
+
+    const routeNames = routeFiles.map(f => f.name);
+    const splashOrScreenshotPattern = /^\/static_images\/(apple-splash|android-screenshot)-.*\.(png|jpg|jpeg|webp)$/i;
+    const unrelatedFilePattern = /\.(backup\..*|md|markdown|txt|log|DS_Store|swp|tmp|bak)$/i;
+
+    const staticFiles = globalResources.getGlobalCacheData()
+        .filter(file =>
+            !routeNames.includes(file.path) &&
+            !splashOrScreenshotPattern.test(file.path) &&
+            !unrelatedFilePattern.test(file.path)
+        )
+        .map(file => ({
+            url: file.path,
+            hash: file.md5,
+            size: file.size,
+            modified: file.modified
+        }));
+
+    return [...routeEntries, ...staticFiles];
+}
+
+// Refresh server hash cache and broadcast manifest to all connected clients
+async function refreshAndBroadcastServiceWorkerCache(options = {}) {
+    const silent = options.silent === true;
+    const updateMessage = options.message || 'Application updates are available';
+
+    await initializeCacheData(true);
+
+    const files = buildServiceWorkerCacheManifest();
+    const plumbing = globalResources.getDataPlumbing();
+    plumbing.publish('ws:broadcast:serviceWorkerCacheUpdate', {
+        files,
+        silent,
+        message: updateMessage,
+        timestamp: Date.now()
+    });
+
+    const wsServer = globalResources.getWebSocketServer();
+    const clientsNotified = wsServer && typeof wsServer.getConnectionCount === 'function'
+        ? wsServer.getConnectionCount()
+        : 0;
+
+    return {
+        success: true,
+        message: 'Service worker cache refreshed and broadcast to clients',
+        assetsCount: files.length,
+        clientsNotified,
+        timestamp: Date.now()
+    };
+}
+
 // Generate cache data for public directory
 async function generateCacheData(directory) {
     const assets = [];
@@ -1072,6 +1142,10 @@ app.use((req, res, next) => {
     if (req.path.startsWith(logViewerPrefix)) {
         return next();
     }
+    const vfsPrefix = `/${globalResources.getVfsPathUuid()}`;
+    if (req.path.startsWith(vfsPrefix)) {
+        return next();
+    }
     
     const startTime = Date.now();
     const timestamp = new Date().toLocaleString('en-US', {
@@ -1281,46 +1355,7 @@ app.use('/image/opti/:filename', authMiddleware, async (req, res) => {
 
 app.options('/', (req, res) => {
     try {
-        // Route-based HTML entries
-        const routeFiles = [
-            { url: '/', name: '/index.html' },
-            { url: '/app', name: '/app.html' },
-            { url: '/launch', name: '/launch.html' }
-        ];
-
-        // Build route file info from cache
-        const routeEntries = routeFiles.map(route => {
-            const file = globalResources.getGlobalCacheData().find(f => f.path === route.name) || {};
-            return {
-                url: route.url,
-                name: route.name,
-                hash: file.md5 || 'no-hash',
-                size: file.size || 0,
-                modified: file.modified || Date.now(),
-                type: 'route'
-            };
-        });
-
-        // Patterns to exclude
-        const routeNames = routeFiles.map(f => f.name);
-        const splashOrScreenshotPattern = /^\/static_images\/(apple-splash|android-screenshot)-.*\.(png|jpg|jpeg|webp)$/i;
-        const unrelatedFilePattern = /\.(backup\..*|md|markdown|txt|log|DS_Store|swp|tmp|bak)$/i;
-
-        // Filter static files
-        const staticFiles = globalResources.getGlobalCacheData()
-            .filter(file =>
-                !routeNames.includes(file.path) &&
-                !splashOrScreenshotPattern.test(file.path) &&
-                !unrelatedFilePattern.test(file.path)
-            )
-            .map(file => ({
-                url: file.path,
-                hash: file.md5,
-                size: file.size,
-                modified: file.modified
-            }));
-
-        res.json([...routeEntries, ...staticFiles]);
+        res.json(buildServiceWorkerCacheManifest());
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -1371,7 +1406,8 @@ app.post('/', serverReadinessMiddleware, express.json(), (req, res) => {
                     success: true,
                     message: 'Login successful',
                     userType: 'admin',
-                    logViewerPathUuid: globalResources.getLogViewerPathUuid()
+                    logViewerPathUuid: globalResources.getLogViewerPathUuid(),
+                    vfsPathUuid: globalResources.getVfsPathUuid()
                 });
             } else if (pin === config.readOnlyPin) {
                 // Clear any failed login attempts on successful login
@@ -1379,7 +1415,7 @@ app.post('/', serverReadinessMiddleware, express.json(), (req, res) => {
                 
                 req.session.authenticated = true;
                 req.session.userType = 'readonly';
-                res.json({ success: true, message: 'Login successful', userType: 'readonly' });
+                res.json({ success: true, message: 'Login successful', userType: 'readonly', vfsPathUuid: globalResources.getVfsPathUuid() });
             } else {
                 // Skip tracking failed login attempts for private IP addresses
                 if (!isPrivateIP(realIP)) {
@@ -1456,6 +1492,9 @@ app.post('/', serverReadinessMiddleware, express.json(), (req, res) => {
                 userType: userType || null,
                 redirect: isAuthenticated ? '/app' : null
             };
+            if (isAuthenticated) {
+                pingPayload.vfsPathUuid = globalResources.getVfsPathUuid();
+            }
             if (isAuthenticated && isAdminUser(req)) {
                 pingPayload.logViewerPathUuid = globalResources.getLogViewerPathUuid();
             }
@@ -1485,6 +1524,7 @@ app.options('/app', authMiddleware, (req, res) => {
     if (isAdminUser(req)) {
         response.logViewerPathUuid = globalResources.getLogViewerPathUuid();
     }
+    response.vfsPathUuid = globalResources.getVfsPathUuid();
     res.json(response);
 });
 app.get('/app', (req, res) => {
@@ -1605,8 +1645,14 @@ app.get('/traces/:id', authMiddleware, (req, res) => {
             if (!pm2Service.isPm2Available()) {
                 return res.status(404).json({ success: false, error: 'PM2 not available' });
             }
-            const result = await pm2Service.restartProcess();
-            res.json({ success: true, ...result });
+            const broom = req.body?.broom !== false;
+            res.json({ success: true, broom, preparing: true });
+
+            setImmediate(() => {
+                performAdminDssRestart(broom).catch((err) => {
+                    globalResources.getLogger().error(`Admin DSS restart failed: ${err.message}`);
+                });
+            });
         } catch (e) {
             res.status(500).json({ success: false, error: e.message });
         }
@@ -1650,6 +1696,65 @@ app.get('/traces/:id', authMiddleware, (req, res) => {
             getHostMetrics: () => pm2Service.getHostMetrics(),
             statusIntervalMs: Number.isFinite(statusInterval) ? statusInterval : undefined
         });
+    });
+})();
+
+// VFS file serving (UUID-prefixed paths — not guessable)
+(function registerVfsRoutes() {
+    const vfsPath = `/${globalResources.getVfsPathUuid()}`;
+
+    app.get(`${vfsPath}/files/:fileId`, authMiddleware, async (req, res) => {
+        try {
+            const file = await globalResources.getVfsDatabase().getUserFileById(req.params.fileId);
+            if (!file) return res.status(404).json({ success: false, error: 'File not found' });
+            const blobPath = globalResources.getVfsManager().getFileBlobPath(file.content_hash);
+            if (!fs.existsSync(blobPath)) return res.status(404).json({ success: false, error: 'File blob missing' });
+            res.setHeader('Content-Type', file.mime_type || 'application/octet-stream');
+            res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.original_name)}"`);
+            fs.createReadStream(blobPath).pipe(res);
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
+    app.get(`${vfsPath}/previews/:fileId`, authMiddleware, async (req, res) => {
+        try {
+            const file = await globalResources.getVfsDatabase().getUserFileById(req.params.fileId);
+            if (!file) return res.status(404).send('Not found');
+            if (file.preview_path) {
+                const previewPath = globalResources.getVfsManager().getFilePreviewPath(file.preview_path);
+                if (previewPath && fs.existsSync(previewPath)) {
+                    res.setHeader('Content-Type', 'image/webp');
+                    return fs.createReadStream(previewPath).pipe(res);
+                }
+            }
+            const blobPath = globalResources.getVfsManager().getFileBlobPath(file.content_hash);
+            if ((file.mime_type || '').startsWith('image/') && fs.existsSync(blobPath)) {
+                res.setHeader('Content-Type', file.mime_type);
+                return fs.createReadStream(blobPath).pipe(res);
+            }
+            res.status(404).send('No preview');
+        } catch (e) {
+            res.status(500).send(e.message);
+        }
+    });
+
+    app.get(`${vfsPath}/images/:filename`, authMiddleware, async (req, res) => {
+        try {
+            const filename = decodeURIComponent(req.params.filename);
+            const workspaceId = req.query.ws;
+            if (!workspaceId) return res.status(400).json({ success: false, error: 'workspace required' });
+            const ws = globalResources.getWorkspaceManager().getWorkspaces()[workspaceId];
+            if (!ws) return res.status(404).json({ success: false, error: 'Workspace not found' });
+            const inFiles = (ws.files || []).includes(filename) || (ws.scraps || []).includes(filename);
+            if (!inFiles) return res.status(403).json({ success: false, error: 'Access denied' });
+            const imagePath = path.join(globalResources.getPath('images'), filename);
+            if (!fs.existsSync(imagePath)) return res.status(404).send('Not found');
+            res.setHeader('Content-Type', 'image/png');
+            fs.createReadStream(imagePath).pipe(res);
+        } catch (e) {
+            res.status(500).send(e.message);
+        }
     });
 })();
 
@@ -2506,6 +2611,12 @@ globalResources.getDataPlumbing().setCallback('refreshCache', () => initializeCa
     tags: ['cache', 'refresh'],
     description: 'Callback to force refresh server cache data'
 });
+globalResources.getDataPlumbing().setCallback('refreshAndBroadcastServiceWorkerCache', (options) => refreshAndBroadcastServiceWorkerCache(options), {
+    temporary: false,
+    category: 'cache',
+    tags: ['cache', 'refresh', 'service-worker', 'broadcast'],
+    description: 'Refresh server SW hash cache and broadcast manifest to all clients'
+});
 globalResources.setGetUserDataCallback(getUserData);
 
 // Initialize account data in globalResources (balance is stored at accountData.subscription.trainingStepsLeft)
@@ -2998,6 +3109,29 @@ async function handleSendCommand(data) {
     };
 }*/
 
+let unixSocketCommunication = null;
+
+async function handleAdminUnixSocketMessage(message, socket) {
+    const { type, data, id } = message;
+
+    try {
+        let result;
+
+        switch (type) {
+            case 'refresh_service_worker_cache':
+                result = await refreshAndBroadcastServiceWorkerCache(data || {});
+                break;
+            default:
+                throw new Error(`Unknown Unix socket message type: ${type}`);
+        }
+
+        unixSocketCommunication.sendResponseToClient(socket, id, result, null, true);
+    } catch (error) {
+        console.error(`❌ Error handling Unix socket message ${type}:`, error);
+        unixSocketCommunication.sendResponseToClient(socket, id, null, error.message, false);
+    }
+}
+
 // Start server with early readiness tracking
 (async () => {
     // Initialize boot tree logging
@@ -3068,6 +3202,15 @@ async function handleSendCommand(data) {
         
         globalResources.logger.bootSubStep('WebSocket server initialized');
     });
+
+    // Unix socket CLI (service worker cache refresh / client broadcast)
+    await globalResources.logger.bootStep('Unix Socket CLI', async () => {
+        const socketPath = process.env.STATICFORGE_SOCKET_PATH || '/tmp/staticforge_mcp.sock';
+        unixSocketCommunication = new UnixSocketCommunication({ socketPath });
+        unixSocketCommunication.on('message', handleAdminUnixSocketMessage);
+        await unixSocketCommunication.startServer();
+        globalResources.logger.bootSubStep(`Unix socket listening on ${socketPath}`);
+    });
     
     // Finalize Setup
     await globalResources.logger.bootStep('Finalizing', async () => {
@@ -3124,53 +3267,44 @@ async function handleSendCommand(data) {
     globalResources.logger.endBoot();
 })();
 
+// Admin log viewer: safe prepare, optional log flush (broom), then PM2 restart
+async function performAdminDssRestart(broom = true) {
+    const logger = globalResources.getLogger();
+    logger.info(`Admin DSS restart requested (broom: ${broom})`);
+
+    cleanupAllScheduledTimeouts();
+    await globalResources.prepareForRestart();
+
+    if (broom) {
+        const flushResult = await pm2Service.flushLogs();
+        logger.info(`PM2 logs flushed for ${flushResult.processName} (admin restart)`);
+    }
+
+    const restartResult = await pm2Service.restartProcess();
+    logger.info(`PM2 restart initiated for ${restartResult.processName} (admin restart)`);
+}
+
 // Graceful shutdown handling
 async function gracefulShutdown() {
     globalResources.logger.info('Graceful shutdown initiated');
-    
-    // Shutdown polymorphic modules
+
+    cleanupAllScheduledTimeouts();
+
     if (globalResources.shutdown) {
         await globalResources.shutdown();
     }
-    
-    // Get WebSocket server from globalResources
-    try {
-        const wsServer = globalResources.getWebSocketServer();
-        if (wsServer) {
-            wsServer.stopPingInterval();
-            wsServer.stopQueueStatusInterval();
-        }
-    } catch (error) {
-        // WebSocket server not initialized, skip cleanup
-    }
-    
+
     // Close dev bridge server if it exists
     if (devBridgeServer) {
         globalResources.logger.info('Closing dev bridge server');
         devBridgeServer.close();
     }
-    
+
     // Close Unix socket communication if it exists
     if (unixSocketCommunication) {
         globalResources.logger.info('Closing Unix socket communication');
         unixSocketCommunication.close();
     }
-    
-    // Save tag cache immediately if dirty
-    const tagCache = globalResources.getTagSuggestionsCache();
-    if (tagCache.isDirty) {
-        globalResources.logger.info('Saving tag cache before shutdown');
-        tagCache.saveCache();
-    }
-
-    // Flush all pending config saves
-    const flushedCount = globalResources.flushAllPendingConfigSaves();
-    if (flushedCount > 0) {
-        globalResources.logger.info(`Flushed ${flushedCount} pending config save(s) before shutdown`);
-    }
-
-    // Clean up all scheduled timeouts
-    cleanupAllScheduledTimeouts();
 
     globalResources.logger.shutdown();
     process.exit(0);

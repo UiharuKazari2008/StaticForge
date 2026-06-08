@@ -312,21 +312,28 @@ class GlobalCheckpointManager {
             if (type === 'database') {
                 // For database checkpoints, only checkpoint if database is open (not idle)
                 // Don't wake up idle databases just for scheduled checkpoints
-                // The wrapper will handle checkpoints when dirty during actual operations
-                if (manager.dbWrapper && typeof manager.dbWrapper.isOpenState === 'function') {
-                    const isOpen = manager.dbWrapper.isOpenState();
-                    if (!isOpen) {
+                const dbWrapper = manager.dbWrapper;
+                if (dbWrapper && typeof dbWrapper.isOpenState === 'function') {
+                    if (!dbWrapper.isOpenState()) {
                         // Database is idle/closed - skip scheduled checkpoint
                         // It will be checkpointed when it wakes up for actual operations or before idle shutdown
                         return false;
                     }
                 }
+
+                const isDirty = dbWrapper && typeof dbWrapper.isDirtyState === 'function'
+                    ? dbWrapper.isDirtyState()
+                    : false;
+
+                // Skip when no writes have occurred since the last checkpoint
+                if (!force && !isDirty) {
+                    return false;
+                }
                 
                 // Use backup API for databases (more reliable)
-                // createCheckpointWithBackup will check signatures and skip if unchanged
-                // Dirty state is handled by the async wrapper internally, not accessible here
+                // Signature check confirms on-disk data actually changed
                 if (manager.createCheckpointWithBackup) {
-                    success = await manager.createCheckpointWithBackup(force);
+                    success = await manager.createCheckpointWithBackup(isDirty);
                 } else {
                     success = manager.createCheckpoint();
                 }
@@ -612,8 +619,8 @@ class ConfigManager {
             policy.snapshotMinAgeMs = 30 * 60 * 1000; // 30 minutes (for checkpoints)
         }
         if (configType === 'workspaceDesktop') {
-            policy.saveDelayMs = 5 * 1000; // 5 seconds debounce
-            policy.maxWaitMs = 30 * 1000; // 30 seconds max wait
+            policy.saveDelayMs = 10 * 1000; // 10 seconds debounce (icons + window positions)
+            policy.maxWaitMs = 60 * 1000; // 60 seconds max wait
             policy.snapshotMinAgeMs = 30 * 60 * 1000; // 30 minutes (for checkpoints)
         }
         return policy;
@@ -630,7 +637,7 @@ class ConfigManager {
             case 'workspaces':
                 return 'flush'; // Always flush pending before new workspace save (maintains array integrity)
             case 'workspaceDesktop':
-                return 'flush'; // Always flush pending before new desktop save (maintains shortcut array integrity)
+                return 'overwrite'; // Coalesce rapid icon/window updates into one debounced write
             case 'promptConfig':
                 return 'overwrite'; // User edits should overwrite pending (most recent wins)
             case 'config':
@@ -781,6 +788,21 @@ class ConfigManager {
                         // Validate shortcuts array
                         if (!Array.isArray(value.shortcuts)) {
                             errors.push(`workspaceDesktop.${key}.shortcuts must be an array`);
+                        } else {
+                            value.shortcuts.forEach((shortcut, idx) => {
+                                if (!shortcut || typeof shortcut !== 'object') {
+                                    errors.push(`workspaceDesktop.${key}.shortcuts[${idx}] must be an object`);
+                                    return;
+                                }
+                                if (shortcut.folderId !== undefined && shortcut.folderId !== null && typeof shortcut.folderId !== 'string') {
+                                    errors.push(`workspaceDesktop.${key}.shortcuts[${idx}].folderId must be a string or null`);
+                                }
+                                if (shortcut.type === 'folder') {
+                                    if (!shortcut.data || typeof shortcut.data.vfsFolderId !== 'string') {
+                                        errors.push(`workspaceDesktop.${key}.shortcuts[${idx}] folder type requires data.vfsFolderId`);
+                                    }
+                                }
+                            });
                         }
                     });
                     
@@ -1138,6 +1160,17 @@ class ConfigManager {
                         if (!Array.isArray(value.shortcuts)) {
                             value.shortcuts = [];
                             modified = true;
+                        } else {
+                            value.shortcuts.forEach((shortcut) => {
+                                if (!shortcut || typeof shortcut !== 'object') return;
+                                if (shortcut.folderId === undefined) {
+                                    shortcut.folderId = null;
+                                    modified = true;
+                                }
+                                if (shortcut.type === 'folder' && (!shortcut.data || typeof shortcut.data.vfsFolderId !== 'string')) {
+                                    shortcut.data = { ...(shortcut.data || {}), vfsFolderId: shortcut.data?.vfsFolderId || null };
+                                }
+                            });
                         }
                     });
                     
@@ -1329,17 +1362,23 @@ class ConfigManager {
             }
         }
 
+        const elapsed = now - configInfo.pendingSaveStartTime;
+        if (policy.maxWaitMs > 0 && elapsed >= policy.maxWaitMs) {
+            this._executePendingSave(configType);
+            configInfo.pendingSaveStartTime = now;
+        }
+
         configInfo.pendingSaveData = configData;
         configInfo.pendingSaveOptions = { ...options };
 
-        const elapsed = now - configInfo.pendingSaveStartTime;
-        if (policy.maxWaitMs > 0 && elapsed >= policy.maxWaitMs) {
+        const elapsedAfterFlush = Date.now() - configInfo.pendingSaveStartTime;
+        if (policy.maxWaitMs > 0 && elapsedAfterFlush >= policy.maxWaitMs) {
             this._executePendingSave(configType);
             return true;
         }
 
         const delay = policy.saveDelayMs;
-        const remainingMax = policy.maxWaitMs > 0 ? Math.max(0, policy.maxWaitMs - elapsed) : delay;
+        const remainingMax = policy.maxWaitMs > 0 ? Math.max(0, policy.maxWaitMs - elapsedAfterFlush) : delay;
         const effectiveDelay = Math.max(0, Math.min(delay, remainingMax));
 
         this._clearPendingSaveTimer(configInfo);
@@ -1429,10 +1468,35 @@ class ConfigManager {
                 configInfo.lastCheckpointTime = configInfo.checkpointManager.lastCheckpointTime || configInfo.lastCheckpointTime;
             }
 
+            if (configType === 'workspaceDesktop') {
+                this._broadcastWorkspaceDesktopPersisted();
+            }
+
             return true;
         } catch (error) {
             console.error(`❌ Error writing ${configType} to disk:`, error);
             throw error;
+        }
+    }
+
+    /**
+     * Notify clients that workspace desktop config was written to disk
+     * @private
+     */
+    _broadcastWorkspaceDesktopPersisted() {
+        try {
+            const wsServer = this.globalResources?.getWebSocketServer?.();
+            if (!wsServer || typeof wsServer.broadcast !== 'function') {
+                return;
+            }
+
+            wsServer.broadcast({
+                type: 'workspace_desktop_persisted',
+                data: {},
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.warn('⚠️ Failed to broadcast workspace desktop persisted event:', error.message);
         }
     }
     
@@ -1979,6 +2043,36 @@ class ConfigManager {
         return Object.keys(this._configs);
     }
     
+    /**
+     * Queue workspace desktop save, merging window positions into any pending debounced payload
+     * @param {Object} partialPositions
+     */
+    queueWorkspaceDesktopWindowPositions(partialPositions) {
+        const configType = 'workspaceDesktop';
+        const configInfo = this._configs[configType];
+        if (!configInfo) {
+            throw new Error(`Unknown config type: ${configType}`);
+        }
+
+        if (!partialPositions || typeof partialPositions !== 'object') {
+            throw new Error('partialPositions must be an object');
+        }
+
+        let nextConfig;
+        if (configInfo.pendingSaveData) {
+            nextConfig = JSON.parse(JSON.stringify(configInfo.pendingSaveData));
+        } else {
+            nextConfig = JSON.parse(JSON.stringify(this._getReactiveConfig(configType)));
+        }
+
+        nextConfig.windowPositions = {
+            ...(nextConfig.windowPositions || {}),
+            ...partialPositions
+        };
+
+        return this.saveConfig(configType, nextConfig);
+    }
+
     /**
      * Flush all pending saves immediately (useful for shutdown)
      * @returns {number} Number of configs that were flushed

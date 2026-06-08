@@ -422,6 +422,9 @@ class LoginPage {
                 if (data.userType === 'admin' && data.logViewerPathUuid) {
                     localStorage.setItem('logViewerPathUuid', data.logViewerPathUuid);
                 }
+                if (data.vfsPathUuid) {
+                    localStorage.setItem('vfsPathUuid', data.vfsPathUuid);
+                }
                 
                 // Store any additional user data that might be returned
                 if (data.userData) {

@@ -1,0 +1,30 @@
+---
+description: After client-side edits, refresh SW hash cache and notify all clients
+globs:
+  - public/**/*.js
+  - public/**/*.ts
+  - public/**/*.css
+  - public/**/*.html
+  - public/**/*.json
+  - public/**/*.jpeg
+  - public/**/*.jpg
+  - public/**/*.png
+  - public/sw.js
+  - public/dist/**/*.js
+  - public/dist/**/*.css
+alwaysApply: false
+---
+
+# Service Worker Notification After Client Edits
+
+<rule>
+name: sw_notify_after_client_edits
+description: When making changes in the client-side codebase, always refresh the service worker hash cache and push an update notification so connected clients download the new assets.
+
+actions:
+  - type: suggest
+    message: |
+      Run after updating client-side code:
+      `bash scripts/notify-service-worker-update.sh --restart`
+</rule>
+

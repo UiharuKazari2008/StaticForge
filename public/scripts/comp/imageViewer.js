@@ -588,6 +588,16 @@ class ImageViewer {
                     hidden: () => !document.body.classList.contains('desktop-mode')
                 },
                 {
+                    icon: 'fas fa-film-canister',
+                    text: 'Jump to Image',
+                    action: 'image-viewer-jump-workspace'
+                },
+                {
+                    icon: 'nai-img2img',
+                    text: 'New Reference',
+                    action: 'image-viewer-create-reference'
+                },
+                {
                     icon: 'fas fa-arrow-down-left',
                     text: 'Add to Desktop',
                     action: 'image-viewer-desktop-shortcut',
@@ -605,16 +615,6 @@ class ImageViewer {
                 type: 'list',
                 title: 'Management',
                 items: [
-                    {
-                        icon: 'fas fa-film-canister',
-                        text: 'Jump to Image',
-                        action: 'image-viewer-jump-workspace'
-                    },
-                    {
-                        icon: 'nai-img2img',
-                        text: 'New Reference',
-                        action: 'image-viewer-create-reference'
-                    },
                     {
                         content: (target) => this.buildMoveToMenuContent(target),
                         optionsfn: getMoveWorkspaceOptions,

@@ -1,4 +1,4 @@
- /* CSS Variables for Design System */
+ /* CSS Variables for Design System */ 
 :root {
     /* Window Controls Overlay API Variables */
     /* Fallback chain: native env() → caption-bar CSS vars → safe default */
@@ -187,6 +187,9 @@
     /* Scoped transition property lists (pair with matching will-change on active states) */
     --transition-btn-surface: background-color var(--transition-normal), border-color var(--transition-normal), box-shadow var(--transition-normal), color var(--transition-normal), -webkit-backdrop-filter var(--transition-normal), backdrop-filter var(--transition-normal), transform var(--transition-normal), opacity var(--transition-normal);
     --transition-glass-surface: background-color var(--transition-normal), border-color var(--transition-normal), box-shadow var(--transition-normal), color var(--transition-normal), -webkit-backdrop-filter var(--transition-normal), backdrop-filter var(--transition-normal), transform var(--transition-normal), opacity var(--transition-normal);
+    --transition-hover-show: padding var(--transition-normal), background-color var(--transition-normal), border-color var(--transition-normal), box-shadow var(--transition-normal), color var(--transition-normal), -webkit-backdrop-filter var(--transition-normal), backdrop-filter var(--transition-normal), transform var(--transition-normal), opacity var(--transition-normal);
+    --animation-panel-fade-in: 0.125s ease-out;
+    --animation-panel-fade-out: 0.25s ease-in;
     --transition-modal-glass: box-shadow var(--transition-normal), -webkit-backdrop-filter var(--transition-slow), backdrop-filter var(--transition-slow), background-color var(--transition-slow);
     --transition-overlay-fade: opacity var(--transition-normal), visibility var(--transition-normal);
     --transition-toast-slide: transform var(--transition-normal), opacity var(--transition-normal);
@@ -207,13 +210,17 @@
     --transition-tray-menu: background-color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast), opacity var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
     --transition-form-control: background-color var(--transition-normal), border-color var(--transition-normal), box-shadow var(--transition-normal), color var(--transition-normal), opacity var(--transition-normal);
     --transition-form-layout: height var(--transition-normal), opacity var(--transition-normal), transform var(--transition-normal), padding var(--transition-normal), gap var(--transition-normal), max-height var(--transition-normal), flex var(--transition-normal);
-    --transition-character-prompt: background-color var(--transition-normal), border-color var(--transition-normal), box-shadow var(--transition-normal), width var(--transition-normal), opacity var(--transition-normal), flex var(--transition-normal);
+    /* Prompt surfaces: layout height (via --textarea-height) + glass focus states */
+    --transition-prompt-container: height var(--transition-normal), max-height var(--transition-normal), background-color var(--transition-normal), border-color var(--transition-normal), box-shadow var(--transition-normal), border-radius var(--transition-normal);
+    --transition-textarea-field: height var(--transition-normal), background-color var(--transition-normal), border-color var(--transition-normal);
+    --transition-prompt-toolbar: max-height var(--transition-normal), min-height var(--transition-normal), padding var(--transition-normal), margin-top var(--transition-normal), opacity var(--transition-normal), background-color var(--transition-normal), border-color var(--transition-normal), border-radius var(--transition-normal);
+    --transition-character-prompt: height var(--transition-normal), max-height var(--transition-normal), background-color var(--transition-normal), border-color var(--transition-normal), box-shadow var(--transition-normal), width var(--transition-normal), opacity var(--transition-normal), flex var(--transition-normal);
     --transition-gallery-toggle: opacity var(--transition-normal), color var(--transition-normal), background-color var(--transition-normal), border-color var(--transition-normal), box-shadow var(--transition-normal), transform var(--transition-normal);
     --transition-desktop-icon: background-color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast), opacity var(--transition-fast), -webkit-backdrop-filter var(--transition-fast), backdrop-filter var(--transition-fast);
     --transition-sub-menu: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding-top 0.3s cubic-bezier(0.4, 0, 0.2, 1), margin-top 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     --transition-workspace-tabs-bar: padding var(--transition-fast), opacity var(--transition-fast);
     --transition-workspace-tab: top var(--transition-fast), opacity var(--transition-fast), padding var(--transition-fast), background-color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast), color var(--transition-fast), transform var(--transition-fast), min-width 0.4s ease, max-width 0.4s ease, -webkit-backdrop-filter var(--transition-fast), backdrop-filter var(--transition-fast);
-    --transition-prompt-tab-layout: border-radius var(--transition-normal), border-color var(--transition-normal), margin var(--transition-normal), box-shadow var(--transition-normal), background-color var(--transition-normal), border-bottom-width 0s ease-in-out;
+    --transition-prompt-tab-layout: height var(--transition-normal), max-height var(--transition-normal), border-radius var(--transition-normal), border-color var(--transition-normal), margin var(--transition-normal), box-shadow var(--transition-normal), background-color var(--transition-normal), border-bottom-width 0s ease-in-out;
     --transition-scroll-fade: border-color var(--transition-slow), box-shadow var(--transition-slow);
     --transition-preview-control: background-color var(--transition-slow-3x), border-color var(--transition-slow-3x), box-shadow var(--transition-slow-3x), color var(--transition-slow-3x), opacity var(--transition-slow-3x), transform var(--transition-slow-3x);
     --transition-badge: background-color var(--transition-normal), color var(--transition-normal), transform var(--transition-normal), opacity var(--transition-normal);
@@ -274,6 +281,8 @@
     /* Taskbar */
     --z-taskbar-popover: 2710;
     /* Taskbar */
+    --z-shutdown-overlay: 2910;
+    /* Client shutdown fade (above taskbar and start menu) */
     --z-lightbox: 2800;
     /* Lightbox images */
 
@@ -1155,6 +1164,11 @@ body.desktop-mode .modal-focus-overlay {
 .modal:not(.active-window):not(.hidden):not(.hidden-alt) .modal-focus-overlay {
     display: block;
     pointer-events: auto;
+}
+
+.modal.toolbar-visible:not(.active-window):not(.hidden):not(.hidden-alt) .modal-focus-overlay {
+    top: var(--modal-title-chrome-height, 75px);
+    height: calc(100% - var(--modal-title-chrome-height, 75px));
 }
 
 .pswp.pswp--ui-visible {
@@ -2783,6 +2797,7 @@ button {
     z-index: var(--z-layer-2);
     letter-spacing: 0.3px;
     transform: translateZ(0);
+    will-change: backdrop-filter;
     line-height: 1;
 }
 
@@ -3697,8 +3712,14 @@ body.desktop-mode .modal-backdrop {
     box-shadow: 3px 3px 20px 1px #000000a3, inset 0 0 0 1px #ffffff2b;
     z-index: var(--z-modal);
     transform: translateZ(0) translate(-50%, -50%) scale(1);
+    will-change: backdrop-filter, transform, opacity, background-color;
     contain: layout;
     transition: var(--transition-modal-glass);
+}
+
+.modal.toolbar-visible {
+    --modal-title-chrome-height: 75px;
+    padding-top: var(--modal-title-chrome-height);
 }
 
 .modal .modal-content.dark,
@@ -3943,10 +3964,6 @@ body.desktop-mode .modal[data-window-content-anchor="top"] {
     will-change: transform, opacity;
 }
 
-.modal:not(.opening):not(.closing):not(.minimising):not(.unminimising) {
-    will-change: auto;
-}
-
 .dialog-bubble.generating,
 .dialog-bubble.navigating {
     will-change: opacity, filter;
@@ -3978,10 +3995,6 @@ body.desktop-mode .modal[data-window-content-anchor="top"] {
 
 .manual-preview-navigation-loading {
     will-change: opacity;
-}
-
-.page-background {
-    will-change: opacity, background-color, background-image;
 }
 
 #desktopPreStartupModal .desktop-prestartup-progress > div {
@@ -4026,10 +4039,6 @@ body.desktop-mode .modal[data-window-content-anchor="top"] {
 .editor-open .floating-bar-right,
 .initializing .floating-bar-right {
     will-change: left, right;
-}
-
-.workspace-tab {
-    will-change: top, opacity, transform;
 }
 
 .editor-open .workspace-tabs,
@@ -5331,6 +5340,20 @@ body:not(.desktop-mode) .desktop-taskbar {
     }
 }
 
+/* Desktop layout save tray indicator */
+.desktop-save-tray-indicator {
+    color: var(--text-secondary);
+}
+
+.desktop-save-tray-indicator.pending {
+    color: #ff9800;
+}
+
+.desktop-save-tray-indicator.received,
+.desktop-save-tray-indicator.saved {
+    color: var(--text-secondary);
+}
+
 /* Workspace Tray Icon */
 .workspace-tray-icon {
     color: var(--text-accent-tinted);
@@ -5367,7 +5390,7 @@ body:not(.desktop-mode) .desktop-taskbar {
 .search-indexing-indicator.indexing i,
 .search-indexing-indicator.cache_init i {
     color: #64b5f6;
-    animation: fa-spin 2s linear infinite;
+    /* animation: fa-spin 2s linear infinite; */
 }
 
 .search-indexing-indicator.cache_ready i {
@@ -5457,6 +5480,7 @@ body:not(.desktop-mode) .desktop-taskbar {
     left: 0;
     width: 350px;
     max-height: calc(100vh - calc(var(--titlebar-area-height) + 64px));
+    transform-origin: left bottom;
     /* Vista-style gradient with sharper center scumophic edge - matching taskbar */
     background:
         linear-gradient(to bottom,
@@ -5485,8 +5509,63 @@ body:not(.desktop-mode) .desktop-taskbar {
     opacity: 1;
 }
 
-.start-menu.hidden {
+@keyframes startMenuFadeIn {
+    0% {
+        opacity: 0;
+        max-height: calc((100vh - calc(var(--titlebar-area-height) + 64px)) * 0.75);
+    }
+
+    100% {
+        opacity: 1;
+        max-height: calc(100vh - calc(var(--titlebar-area-height) + 64px));
+    }
+}
+
+@keyframes startMenuFadeOut {
+    0% {
+        opacity: 1;
+        max-height: calc(100vh - calc(var(--titlebar-area-height) + 64px));
+    }
+
+    100% {
+        opacity: 0;
+        max-height: calc((100vh - calc(var(--titlebar-area-height) + 64px)) * 0.75);
+    }
+}
+
+#startMenu.start-menu.start-menu-opening,
+#startMenu.start-menu.start-menu-closing {
+    overflow: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    pointer-events: none;
+}
+
+#startMenu.start-menu.start-menu-opening::-webkit-scrollbar,
+#startMenu.start-menu.start-menu-closing::-webkit-scrollbar {
     display: none;
+}
+
+#startMenu.start-menu.start-menu-opening .start-menu-content,
+#startMenu.start-menu.start-menu-closing .start-menu-content {
+    overflow: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    pointer-events: none;
+}
+
+#startMenu.start-menu.start-menu-opening .start-menu-content::-webkit-scrollbar,
+#startMenu.start-menu.start-menu-closing .start-menu-content::-webkit-scrollbar {
+    display: none;
+}
+
+#startMenu.start-menu.start-menu-opening {
+    animation: startMenuFadeIn var(--animation-panel-fade-in) forwards;
+}
+
+#startMenu.start-menu.start-menu-closing {
+    animation: startMenuFadeOut var(--animation-panel-fade-out) forwards;
+    pointer-events: none;
 }
 
 .start-menu-content {
@@ -5708,14 +5787,89 @@ body:not(.desktop-mode) .desktop-taskbar {
     border-color: rgba(239, 68, 68, 0.45);
 }
 
+.start-menu-power-group.btn-group {
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0;
+    flex: 0 1 auto;
+    max-width: 100%;
+    overflow: visible;
+    border-radius: var(--border-radius-md);
+    background: var(--glass-layer-3);
+    border: 1px solid rgba(239, 68, 68, 0.45);
+    box-sizing: border-box;
+}
+
+.start-menu-power-group.btn-group > .start-menu-action-btn,
+.start-menu-power-group.btn-group .start-menu-power-toggle {
+    flex: 0 0 auto;
+    margin: 0;
+    box-shadow: none;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+}
+
+.start-menu-power-group.btn-group > .start-menu-action-btn.start-menu-action-danger,
+.start-menu-power-group.btn-group .start-menu-power-toggle.start-menu-action-danger {
+    border-color: transparent;
+}
+
+.start-menu-power-group.btn-group > .start-menu-action-btn:first-of-type {
+    flex: 1 1 auto;
+    border-top-left-radius: var(--border-radius-md);
+    border-bottom-left-radius: var(--border-radius-md);
+    border-right: 1px solid rgba(239, 68, 68, 0.45);
+}
+
+.start-menu-power-group.btn-group > .start-menu-power-dropdown.custom-dropdown {
+    flex: 0 0 auto;
+    width: auto;
+    position: relative;
+    display: flex;
+}
+
+.start-menu-power-group.btn-group .start-menu-power-toggle {
+    border-top-right-radius: var(--border-radius-md);
+    border-bottom-right-radius: var(--border-radius-md);
+    padding: 0.25em 0.55em;
+}
+
+.start-menu-power-group.btn-group .start-menu-power-toggle.active {
+    background: var(--glass-layer-4);
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .start-menu-power-group.btn-group > .start-menu-action-btn:hover:not(:disabled),
+    .start-menu-power-group.btn-group .start-menu-power-toggle:hover:not(:disabled) {
+        background: var(--glass-layer-4);
+    }
+}
+
+.start-menu-power-dropdown .custom-dropdown-menu {
+    min-width: 11.5rem;
+    margin-bottom: 6px;
+}
+
+.start-menu-power-dropdown .custom-dropdown-option {
+    gap: 0.45em;
+}
+
+.start-menu-power-dropdown .custom-dropdown-option.start-menu-power-option-danger {
+    color: #fecaca;
+}
+
 .client-shutdown-overlay {
     position: fixed;
     inset: 0;
-    z-index: calc(var(--z-modal) + 200);
+    z-index: var(--z-shutdown-overlay);
     background: #000;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.55s ease;
+    will-change: opacity;
 }
 
 .client-shutdown-overlay.show {
@@ -5955,6 +6109,7 @@ body.desktop-mode .desktop-icons {
 .desktop-shortcut[data-shortcut-type="applet"] .desktop-shortcut-icon,
 .desktop-shortcut[data-shortcut-type="preset"] .desktop-shortcut-icon,
 .desktop-shortcut[data-shortcut-type="note"] .desktop-shortcut-icon,
+.desktop-shortcut[data-shortcut-type="folder"] .desktop-shortcut-icon,
 .desktop-shortcut[data-shortcut-type="wiki-page"] .desktop-shortcut-icon,
 .desktop-shortcut[data-shortcut-type="static-wiki-page"] .desktop-shortcut-icon,
 .desktop-shortcut[data-shortcut-type="bracket-generation"] .desktop-shortcut-icon {
@@ -6020,6 +6175,35 @@ body.desktop-mode .desktop-icons {
     box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
     pointer-events: none;
     /* Don't interfere with drop detection */
+}
+
+.desktop-shortcut.selected {
+    background: var(--glass-layer-dark-3);
+    box-shadow: 0 0 0 2px var(--accent-primary), 0 0 12px rgba(var(--accent-primary-rgb), 0.35);
+}
+
+.desktop-shortcut.folder-drop-target {
+    background: color-mix(in srgb, var(--accent-primary, #6cb4ff) 25%, transparent);
+    box-shadow: 0 0 0 2px var(--accent-primary);
+}
+
+.desktop-selection-marquee {
+    position: fixed;
+    z-index: 500;
+    border: 1px dotted var(--accent-primary, #6cb4ff);
+    background: color-mix(in srgb, var(--accent-primary, #6cb4ff) 18%, transparent);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+    box-sizing: border-box;
+}
+
+.desktop-selection-marquee.hidden {
+    display: none;
+}
+
+body.desktop-marquee-active {
+    user-select: none;
+    cursor: crosshair;
 }
 
 .desktop-shortcut-icon {
@@ -8563,6 +8747,41 @@ body.desktop-mode .desktop-icons {
     z-index: 5;
 }
 
+/* Generation quip overlay — public/scripts/comp/generationQuips.js */
+.generation-preview-quip {
+    position: absolute;
+    bottom: 10%;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 8;
+    pointer-events: none;
+    opacity: 0;
+    visibility: visible;
+    transition: opacity 0.5s ease-in-out, visibility 0.5s ease-in-out;
+    max-width: 95%;
+    text-align: center;
+}
+
+.generation-preview-quip.visible {
+    opacity: 1;
+}
+
+.generation-preview-quip-text {
+    display: inline-block;
+    color: var(--text-accent-tinted);
+    font-size: 1.15rem;
+    font-style: italic;
+    line-height: 1.5;
+    text-shadow: 0 1px 10px hsl(0deg 0% 0% / 70%), 0 0 24px hsl(0deg 0% 0% / 45%);
+}
+
+/* Hide quips while Enshutsuka reasoning popups are on screen */
+.generating .manual-preview-content:has(.progress-reasoning-container .progress-reasoning-item) .generation-preview-quip {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    transition: opacity 0.3s ease-out, visibility 0.3s ease-out;
+}
+
 /* Dialog overlay styles */
 .manual-preview-dialogs {
     position: absolute;
@@ -10881,7 +11100,7 @@ button::-moz-focus-inner {
     background: transparent;
     color: var(--text-primary);
     padding: 0.25em 1.2em 0.25em 0;
-    transition: var(--transition-glass-surface);
+    transition: var(--transition-hover-show);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
     box-shadow: none;
@@ -10952,7 +11171,7 @@ button::-moz-focus-inner {
     border: 1px solid var(--glass-border-3);
     border-radius: var(--border-radius-md);
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
-    transition: var(--transition-glass-surface);
+    transition: var(--transition-prompt-container);
     overflow: visible;
     font-size: 1.1rem;
     line-height: 1.75;
@@ -11392,7 +11611,7 @@ i#carouselCacheIcon {
     align-items: center;
     z-index: var(--z-layer-6);
     line-height: 1;
-    transition: var(--transition-glass-surface);
+    transition: var(--transition-prompt-toolbar);
     margin-top: 5px;
     min-height: 43px;
     background: var(--glass-inset-bg-5);
@@ -11678,7 +11897,7 @@ i#carouselCacheIcon {
     font-size: 0.85em;
     padding: 0.45em;
     border-radius: var(--border-radius-md);
-    transition: var(--transition-glass-surface);
+    transition: var(--transition-textarea-field);
     line-height: 1.35;
     line-break: anywhere;
     background: transparent;
@@ -11714,6 +11933,13 @@ i#carouselCacheIcon {
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
     transition: var(--transition-glass-surface);
     position: relative;
+}
+
+.prompt-textarea.textarea-inset,
+.character-prompt-textarea.textarea-inset,
+.prompt-textarea.textarea-inset:hover:not(:disabled),
+.character-prompt-textarea.textarea-inset:hover:not(:disabled) {
+    transition: var(--transition-textarea-field);
 }
 
 .textarea-inset::before {
@@ -14196,24 +14422,38 @@ textarea {
     opacity: 0.85;
 }
 
-.character-autocomplete-item[data-type="tag"][data-has-wiki-preview="true"] {
+.character-autocomplete-item[data-type="tag"][data-has-wiki-preview="true"].selected.wiki-preview-revealed,
+.character-autocomplete-item[data-type="tag"][data-has-wiki-pending="true"].selected.wiki-preview-revealed {
     flex-direction: column;
     align-items: stretch;
 }
 
-.character-autocomplete-item[data-type="tag"][data-has-wiki-preview="true"] .character-info-row {
+.character-autocomplete-item[data-type="tag"][data-has-wiki-preview="true"].selected.wiki-preview-revealed .character-info-row,
+.character-autocomplete-item[data-type="tag"][data-has-wiki-pending="true"].selected.wiki-preview-revealed .character-info-row {
     width: 100%;
 }
 
 .tag-wiki-preview-row {
     display: none;
     width: 100%;
+    flex: 0 0 auto;
     overflow: hidden;
     padding-top: 2px;
 }
 
-.character-autocomplete-item[data-type="tag"][data-has-wiki-preview="true"].selected .tag-wiki-preview-row {
+.character-autocomplete-item[data-type="tag"][data-has-wiki-preview="true"].selected.wiki-preview-revealed .tag-wiki-preview-row,
+.character-autocomplete-item[data-type="tag"][data-has-wiki-pending="true"].selected.wiki-preview-revealed .tag-wiki-preview-row {
     display: block;
+}
+
+.tag-wiki-preview-row.tag-wiki-preview-pending .tag-wiki-preview-text {
+    opacity: 0.72;
+    font-style: italic;
+}
+
+.tag-wiki-preview-row.tag-wiki-preview-pending .tag-wiki-preview-text i {
+    margin-right: 0.35em;
+    opacity: 0.85;
 }
 
 .tag-wiki-preview-scroll {
@@ -15874,6 +16114,76 @@ textarea {
     min-width: 36px;
 }
 
+.button-group:has(.form-control, input:not([type="hidden"])) {
+    overflow: hidden;
+    border-radius: var(--border-radius-md);
+    box-shadow: none;
+}
+
+.button-group:has(.form-control, input:not([type="hidden"])) .form-control,
+.button-group:has(.form-control, input:not([type="hidden"]))>input:not([type="hidden"]) {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    border-radius: 0;
+    box-shadow: none;
+    border-top: none;
+    border-bottom: none;
+    border-left: none;
+}
+
+.button-group:has(.form-control, input:not([type="hidden"])) .form-control:first-child,
+.button-group:has(.form-control, input:not([type="hidden"]))>input:first-child {
+    border-top-left-radius: var(--border-radius-md);
+    border-bottom-left-radius: var(--border-radius-md);
+}
+
+.button-group:has(.form-control, input:not([type="hidden"])) .form-control:last-child,
+.button-group:has(.form-control, input:not([type="hidden"]))>input:last-child {
+    border-top-right-radius: var(--border-radius-md);
+    border-bottom-right-radius: var(--border-radius-md);
+}
+
+.button-group:has(.form-control, input:not([type="hidden"])) .form-control:not(:last-child),
+.button-group:has(.form-control, input:not([type="hidden"]))>input:not(:last-child) {
+    border-right: 1px solid var(--glass-border-3);
+}
+
+.button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"] {
+    border-radius: 0;
+    border-top: none;
+    border-bottom: none;
+    flex-shrink: 0;
+}
+
+.button-group:has(.form-control, input:not([type="hidden"])) .form-control+[class^="btn-"],
+.button-group:has(.form-control, input:not([type="hidden"])) input+[class^="btn-"] {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-left: 1px solid var(--glass-border-3);
+}
+
+.button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"]+.form-control,
+.button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"]+input {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-left: 1px solid var(--glass-border-3);
+    border-right: none;
+}
+
+.button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"]:first-child:not(:last-child) {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"]:last-child:not(:first-child) {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-top-right-radius: var(--border-radius-md);
+    border-bottom-right-radius: var(--border-radius-md);
+    border-left: none;
+}
+
 .workspace-option-content {
     display: flex;
     justify-content: space-between;
@@ -16465,7 +16775,7 @@ textarea {
     color: var(--hover-show-colored-text, var(--text-primary));
     font-weight: 500;
     opacity: 0.75;
-    transition: var(--transition-glass-surface);
+    transition: var(--transition-hover-show);
 }
 
 
@@ -16548,9 +16858,60 @@ textarea {
     min-width: 165px;
     width: auto;
     transform: translateZ(0);
+    transform-origin: top center;
     font-size: 0.9em;
     font-weight: 550;
     font-variation-settings: "wght" 550;
+}
+
+@keyframes customDropdownFadeIn {
+    0% {
+        opacity: 0;
+        max-height: 270px;
+        padding-block: 0.1875em;
+    }
+
+    100% {
+        opacity: 1;
+        max-height: 360px;
+        padding-block: 0.25em;
+    }
+}
+
+@keyframes customDropdownFadeOut {
+    0% {
+        opacity: 1;
+        max-height: 360px;
+        padding-block: 0.25em;
+    }
+
+    100% {
+        opacity: 0;
+        max-height: 270px;
+        padding-block: 0.1875em;
+    }
+}
+
+.custom-dropdown-menu.custom-dropdown-opening,
+.custom-dropdown-menu.custom-dropdown-closing {
+    overflow: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    pointer-events: none;
+}
+
+.custom-dropdown-menu.custom-dropdown-opening::-webkit-scrollbar,
+.custom-dropdown-menu.custom-dropdown-closing::-webkit-scrollbar {
+    display: none;
+}
+
+.custom-dropdown-menu.custom-dropdown-opening {
+    animation: customDropdownFadeIn var(--animation-panel-fade-in) forwards;
+}
+
+.custom-dropdown-menu.custom-dropdown-closing {
+    animation: customDropdownFadeOut var(--animation-panel-fade-out) forwards;
+    pointer-events: none;
 }
 
 .dark .custom-dropdown-menu {
@@ -17455,6 +17816,7 @@ div#manualWorkspaceDropdownMenu {
 }
 
 #manualModal .prompt-tabs .gallery-toggle-group[data-active="prompt"] .gallery-toggle-slider {
+    transform: translateX(0);
     background: rgba(174, 255, 171, 0.3);
     border-color: rgb(211 255 203 / 30%);
 }
@@ -26018,12 +26380,12 @@ body.scraps-grayscale::after {
     bottom: 0;
     width: calc(100% - calc(2 * var(--spacing-md)));
     margin: 0 var(--spacing-md);
+    transition: var(--transition-scroll-fade);
 }
 
 #manualModal .form-section.form-section-scroll.scroll-ready::after {
     border-top: 1px solid var(--glass-border-2);
     box-shadow: 0 0 15px 1px #00000000;
-    transition: var(--transition-scroll-fade);
 }
 
 #manualModal .form-section.form-section-scroll.scroll-ready:not(.scroll-end)::after {
@@ -29050,7 +29412,13 @@ html:not(.disable-blur) .websocket-ticker {
     .subscription-renewal-indicator.warning,
     .subscription-renewal-indicator.critical,
     .fixed-credits-indicator.low-credits,
-    .indicator.flashing.active:not([data-state="on"]):not([data-state="onhigh"])::after {
+    .indicator.flashing.active:not([data-state="on"]):not([data-state="onhigh"])::after,
+    .context-menu-opening,
+    .context-menu-closing,
+    #startMenu.start-menu.start-menu-opening,
+    #startMenu.start-menu.start-menu-closing,
+    .custom-dropdown-menu.custom-dropdown-opening,
+    .custom-dropdown-menu.custom-dropdown-closing {
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
@@ -30492,19 +30860,23 @@ html:has(body.desktop-mode) {
     left: -1px;
     min-height: 28px;
     width: calc(100% + 2px);
-    flex-direction: row;
+    flex-direction: column;
     gap: 0;
-    padding: 1px 150px 0px var(--spacing-md);
+    padding: 1px var(--spacing-md) 0px var(--spacing-md);
     font-size: 0.75em;
-    align-items: center;
-    justify-content: flex-start;
+    align-items: flex-start;
+    justify-content: center;
     border-bottom: 1px solid var(--glass-border-5);
     border-radius: var(--border-radius-lg) var(--border-radius-lg) 0 0;
     background: linear-gradient(180deg, hsl(0deg 0% 100% / 25%), hsl(0deg 0% 100% / 28%) 50%, hsl(0deg 0% 75% / 25%) 50.5%, hsl(0deg 0% 100% / 25%));
     z-index: var(--z-layer-9);
-    cursor: normal;
+    cursor: grab;
     user-select: none;
     box-shadow: inset 0px -2px 10px var(--hover-show-active-border);
+}
+
+.modal.toolbar-visible .modal-window-title {
+    background: linear-gradient(180deg, hsl(0deg 0% 100% / 25%), hsl(0deg 0% 100% / 28%) 16.9%, hsl(0deg 0% 75% / 25%) 17%, hsl(0deg 0% 100% / 25%), hsl(0deg 0% 100% / 30%));
 }
 
 .modal:not(.active-window) .modal-window-title {
@@ -30523,7 +30895,10 @@ html:has(body.desktop-mode) {
     color: var(--text-primary);
     gap: 6px;
     flex: 1;
+    height: 26px;
+    min-height: 26px;
     min-width: 0;
+    padding-right: 150px;
     -webkit-filter: drop-shadow(0px 0px 5px rgba(0, 0, 0, 0.4));
     filter: drop-shadow(0px 0px 5px rgba(0, 0, 0, 0.4));
     text-shadow: -1px -1px 0 rgba(0, 0, 0, 0.45),
@@ -30559,6 +30934,336 @@ html:has(body.desktop-mode) {
     image-rendering: -webkit-optimize-contrast;
     image-rendering: crisp-edges;
     image-rendering: pixelated;
+}
+
+.modal-window-title-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    height: 48px;
+    min-height: 48px;
+    width: 100%;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) 0;
+    flex-shrink: 0;
+    overflow: visible;
+    line-height: 1;
+    cursor: auto;
+    user-select: text;
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.modal-window-title-toolbar .button-group,
+.modal-window-title-toolbar [class^="btn-"] {
+    user-select: none;
+}
+
+.modal-window-title-toolbar .button-group:not(:has(.form-control, input:not([type="hidden"]))) {
+    box-shadow: none;
+}
+
+.modal-window-title-toolbar .form-control,
+.modal-window-title-toolbar input.form-control,
+.modal-window-title-toolbar>.button-group:has(.form-control, input:not([type="hidden"])) {
+    transition: var(--transition-form-control);
+}
+
+.modal-window-title-toolbar [class^="btn-"] {
+    transition: var(--transition-btn-surface);
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"] {
+    transition: var(--transition-form-control);
+}
+
+.modal-window-title-toolbar>[class^="btn-"],
+.modal-window-title-toolbar>.button-group:not(:has(.form-control, input:not([type="hidden"]))) [class^="btn-"] {
+    background: var(--glass-layer-dark-4);
+    border-color: var(--glass-border-3);
+    color: var(--text-accent-tinted);
+    box-shadow: var(--glass-shadow-2), inset 0 0 12px var(--glass-inset-bg-4);
+}
+
+.modal-window-title-toolbar>.form-control,
+.modal-window-title-toolbar>input.form-control:not([type="hidden"]) {
+    background: var(--glass-layer-dark-4);
+    border: 1px solid var(--glass-border-3);
+    color: var(--text-accent-tinted);
+    box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
+}
+
+.modal-window-title-toolbar>.form-control::placeholder,
+.modal-window-title-toolbar>input.form-control::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.85;
+}
+
+.modal-window-title-toolbar>.form-control:disabled,
+.modal-window-title-toolbar>input.form-control:disabled {
+    background: var(--glass-layer-dark-2);
+    border-color: var(--glass-border-2);
+    color: var(--text-muted);
+    box-shadow: inset var(--glass-shadow-1);
+}
+
+.modal-window-title-toolbar>[class^="btn-"]:disabled,
+.modal-window-title-toolbar>.button-group:not(:has(.form-control, input:not([type="hidden"]))) [class^="btn-"]:disabled {
+    background: var(--glass-layer-dark-2);
+    border-color: var(--glass-border-2);
+    color: var(--text-muted);
+    box-shadow: inset var(--glass-shadow-1);
+}
+
+.modal-window-title-toolbar>.button-group:has(.form-control, input:not([type="hidden"])) {
+    background: var(--glass-layer-dark-4);
+    border: 1px solid var(--glass-border-3);
+    box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:not([type="hidden"]),
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"] {
+    background: transparent;
+    box-shadow: none;
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:not([type="hidden"]) {
+    border-radius: 0;
+    border-top: none;
+    border-bottom: none;
+    border-left: none;
+    border-right: 1px solid var(--glass-border-3);
+    color: var(--text-accent-tinted);
+    min-height: revert;
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control:first-child,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:first-child,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control:last-child,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:last-child {
+    border-radius: 0;
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control:focus,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:focus,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control:active,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:active,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"]:focus,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"]:active {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control:focus,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:focus,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control:active,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:active {
+    border-right-color: var(--glass-border-3);
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"] {
+    border-top: none;
+    border-bottom: none;
+    border-right: none;
+    border-left: 1px solid var(--glass-border-3);
+    color: var(--text-accent-tinted);
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"]:focus,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"]:active {
+    border-left-color: var(--glass-border-3);
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"]:disabled {
+    background: transparent;
+    color: var(--text-muted);
+    box-shadow: none;
+}
+
+.modal:not(.active-window) .modal-window-title-toolbar>[class^="btn-"],
+.modal:not(.active-window) .modal-window-title-toolbar>.button-group:not(:has(.form-control, input:not([type="hidden"]))) [class^="btn-"] {
+    background: var(--glass-layer-dark-2);
+    border-color: var(--glass-border-2);
+    color: var(--text-secondary);
+    box-shadow: inset var(--glass-shadow-1);
+}
+
+.modal:not(.active-window) .modal-window-title-toolbar>.form-control,
+.modal:not(.active-window) .modal-window-title-toolbar>input.form-control:not([type="hidden"]) {
+    background: var(--glass-layer-dark-2);
+    border-color: var(--glass-border-2);
+    color: var(--text-secondary);
+    box-shadow: inset var(--glass-shadow-2);
+}
+
+.modal:not(.active-window) .modal-window-title-toolbar>.button-group:has(.form-control, input:not([type="hidden"])) {
+    background: var(--glass-layer-dark-2);
+    border-color: var(--glass-border-2);
+    box-shadow: inset var(--glass-shadow-2);
+}
+
+.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control,
+.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:not([type="hidden"]),
+.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"] {
+    background: transparent;
+    color: var(--text-secondary);
+    box-shadow: none;
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+
+    .modal-window-title-toolbar>[class^="btn-"]:hover:not(:disabled),
+    .modal-window-title-toolbar>.button-group:not(:has(.form-control, input:not([type="hidden"]))) [class^="btn-"]:hover:not(:disabled) {
+        background: var(--btn-hover-bg-secondary);
+        border-color: var(--btn-hover-border-secondary);
+        color: var(--btn-hover-text-secondary);
+        box-shadow: var(--btn-shadow-secondary-glow), inset 0 0 12px var(--glass-inset-bg-3);
+    }
+
+    .modal-window-title-toolbar>.form-control:hover:not(:disabled):not(:focus):not(:active),
+    .modal-window-title-toolbar>input.form-control:hover:not(:disabled):not(:focus):not(:active) {
+        border-color: var(--glass-border-4);
+        box-shadow: inset var(--glass-shadow-3), inset 0 0 16px var(--glass-inset-bg-5);
+    }
+
+    .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control:hover:not(:disabled),
+    .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:hover:not(:disabled),
+    .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"]:hover:not(:disabled) {
+        background: transparent;
+        box-shadow: none;
+        color: var(--text-accent-tinted);
+    }
+
+    .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control:hover:not(:disabled),
+    .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:hover:not(:disabled) {
+        border-top: none;
+        border-bottom: none;
+        border-left: none;
+        border-right: 1px solid var(--glass-border-3);
+    }
+
+    .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"]:hover:not(:disabled) {
+        border-top: none;
+        border-bottom: none;
+        border-right: none;
+    }
+
+    .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(.form-control:hover:not(:disabled), input:hover:not(:disabled), [class^="btn-"]:hover:not(:disabled)):not(:focus-within):not(:has(:active)) {
+        border-color: var(--glass-border-4);
+        box-shadow: inset var(--glass-shadow-3), inset 0 0 16px var(--glass-inset-bg-5);
+    }
+
+    .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(.form-control:hover:not(:disabled), input:hover:not(:disabled), [class^="btn-"]:hover:not(:disabled)):not(:focus-within):not(:has(:active)) [class^="btn-"] {
+        border-left-color: var(--glass-border-4);
+    }
+
+    .modal:not(.active-window) .modal-window-title-toolbar>[class^="btn-"]:hover:not(:disabled),
+    .modal:not(.active-window) .modal-window-title-toolbar>.button-group:not(:has(.form-control, input:not([type="hidden"]))) [class^="btn-"]:hover:not(:disabled) {
+        background: var(--glass-layer-dark-3);
+        border-color: var(--glass-border-3);
+        box-shadow: inset var(--glass-shadow-2), inset 0 0 12px var(--glass-inset-bg-3);
+    }
+
+    .modal:not(.active-window) .modal-window-title-toolbar>.form-control:hover:not(:disabled):not(:focus),
+    .modal:not(.active-window) .modal-window-title-toolbar>input.form-control:hover:not(:disabled):not(:focus) {
+        border-color: var(--glass-border-3);
+        box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
+    }
+
+    .modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(.form-control:hover:not(:disabled), input:hover:not(:disabled), [class^="btn-"]:hover:not(:disabled)):not(:focus-within):not(:has(:active)) {
+        border-color: var(--glass-border-3);
+        box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
+    }
+}
+
+.modal-window-title-toolbar>.form-control:focus,
+.modal-window-title-toolbar>.form-control:active,
+.modal-window-title-toolbar>input.form-control:focus,
+.modal-window-title-toolbar>input.form-control:active {
+    background: var(--glass-layer-dark-5);
+    border-color: var(--glass-border-4);
+    color: var(--text-primary);
+    box-shadow: inset var(--glass-shadow-4), inset 0 0 18px var(--glass-inset-bg-5);
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):focus-within,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(:active) {
+    background: var(--glass-layer-dark-5);
+    border-color: var(--glass-border-4);
+    box-shadow: inset var(--glass-shadow-4), inset 0 0 18px var(--glass-inset-bg-5);
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):focus-within .form-control,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):focus-within>input,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(:active) .form-control,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(:active)>input,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):focus-within [class^="btn-"],
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(:active) [class^="btn-"] {
+    color: var(--text-primary);
+}
+
+.modal:not(.active-window) .modal-window-title-toolbar>.form-control:focus,
+.modal:not(.active-window) .modal-window-title-toolbar>input.form-control:focus {
+    background: var(--glass-layer-dark-3);
+    border-color: var(--glass-border-3);
+    color: var(--text-primary);
+    box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
+}
+
+.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):focus-within,
+.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(:active) {
+    background: var(--glass-layer-dark-3);
+    border-color: var(--glass-border-3);
+    box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
+}
+
+.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):focus-within .form-control,
+.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):focus-within>input,
+.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(:active) .form-control,
+.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(:active)>input,
+.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):focus-within [class^="btn-"],
+.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(:active) [class^="btn-"] {
+    background: transparent;
+    color: var(--text-primary);
+    box-shadow: none;
+}
+
+.modal-window-title-toolbar>.form-control:focus:hover,
+.modal-window-title-toolbar>.form-control:active:hover,
+.modal-window-title-toolbar>input.form-control:focus:hover,
+.modal-window-title-toolbar>input.form-control:active:hover {
+    background: var(--glass-layer-dark-5);
+    border-color: var(--glass-border-4);
+    color: var(--text-primary);
+    box-shadow: inset var(--glass-shadow-4), inset 0 0 18px var(--glass-inset-bg-5);
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control:focus:hover,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:focus:hover,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control:active:hover,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:active:hover,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"]:focus:hover,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"]:active:hover {
+    background: transparent;
+    box-shadow: none;
+}
+
+.modal:not(.active-window) .modal-window-title-toolbar>.form-control:focus:hover,
+.modal:not(.active-window) .modal-window-title-toolbar>input.form-control:focus:hover {
+    background: var(--glass-layer-dark-3);
+    border-color: var(--glass-border-3);
+    color: var(--text-primary);
+    box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
 }
 
 /* Show Font Awesome icons by default, hide image icons */
@@ -30655,8 +31360,8 @@ body.user-icons .icon-image {
 /* Non-active window styling */
 .modal:not(.active-window) {
     box-shadow: 0px 0px 5px 1px #00000021, inset 0 0 0 1px #ffffff14;
-    -webkit-backdrop-filter: saturate(2.0) contrast(1.0) brightness(1.0) var(--glass-blur-2);
-    backdrop-filter: saturate(2.0) contrast(1.0) brightness(1.0) var(--glass-blur-2);
+    -webkit-backdrop-filter: saturate(1.0) contrast(0.5) brightness(1.0);
+    backdrop-filter: saturate(1.0) contrast(0.5) brightness(1.0);
 }
 
 .modal:not(.active-window) .modal-window-title-main {
@@ -30830,20 +31535,54 @@ span.context-menu-item-state {
     color: var(--text-muted);
 }
 
-/* Opening Animation - Grow and Slide Effect */
+/* Opening / closing animation */
 @keyframes contextMenuFadeIn {
     0% {
         opacity: 0;
+        max-height: calc(var(--context-menu-max-height, 85vh) * 0.75);
+        padding-block: 0.1875em;
     }
 
     100% {
         opacity: 1;
+        max-height: var(--context-menu-max-height, 85vh);
+        padding-block: 0.25em;
     }
 }
 
-/* Animation trigger class */
-.context-menu-animate {
-    animation: contextMenuFadeIn 0.15s ease-out forwards;
+@keyframes contextMenuFadeOut {
+    0% {
+        opacity: 1;
+        max-height: var(--context-menu-max-height, 85vh);
+        padding-block: 0.25em;
+    }
+
+    100% {
+        opacity: 0;
+        max-height: calc(var(--context-menu-max-height, 85vh) * 0.75);
+        padding-block: 0.1875em;
+    }
+}
+
+.context-menu-opening,
+.context-menu-closing {
+    overflow: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    pointer-events: none;
+}
+
+.context-menu-opening::-webkit-scrollbar,
+.context-menu-closing::-webkit-scrollbar {
+    display: none;
+}
+
+.context-menu-opening {
+    animation: contextMenuFadeIn var(--animation-panel-fade-in) forwards;
+}
+
+.context-menu-closing {
+    animation: contextMenuFadeOut var(--animation-panel-fade-out) forwards;
 }
 
 .context-menu-content {
@@ -30883,6 +31622,11 @@ span.context-menu-item-state {
 .context-menu-custom-section:not(:first-child):not(:has(.context-menu-section-title)) {
     border-top: 1px solid var(--glass-border-2, rgba(255, 255, 255, 0.1));
     padding-top: var(--spacing-sm, 0.5em);
+}
+
+.context-menu-icons-section:has(.context-menu-section-title) + .context-menu-list-section:not(:has(.context-menu-section-title)) {
+    border-top: none;
+    padding-top: 0;
 }
 
 .menu-item-row {
@@ -31442,16 +32186,8 @@ span.context-menu-item-state {
     transform-origin: bottom center;
 }
 
-.context-menu.position-up .context-menu-animate {
-    animation: contextMenuFadeIn 0.15s ease-out forwards;
-}
-
 .context-menu.position-down {
     transform-origin: top center;
-}
-
-.context-menu.position-down .context-menu-animate {
-    animation: contextMenuFadeIn 0.15s ease-out forwards;
 }
 
 /* Typing indicator styles - using existing styles */
@@ -37331,6 +38067,30 @@ div#spellbookCustomPresetDropdown {
     gap: 0.35em;
 }
 
+.log-viewer-restart-broom-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    margin-top: 0.65em;
+}
+
+.log-viewer-restart-broom-row .log-viewer-restart-broom-toggle {
+    flex: 0 0 auto;
+    width: 2rem;
+    min-width: 2rem;
+    padding: 0;
+    justify-content: center;
+}
+
+.log-viewer-restart-broom-hint {
+    font-size: 0.85em;
+    opacity: 0.75;
+}
+
+#confirmationDialog .log-viewer-restart-broom-row {
+    margin-top: 0.85em;
+}
+
 .log-viewer-glass-popover {
     position: fixed;
     z-index: calc(var(--z-modal) + 50);
@@ -37827,12 +38587,7 @@ div#spellbookCustomPresetDropdown {
     padding-top: 0;
 }
 
-/* Explorer Applet Styles (Windows Vista-style Aero Glass) */
-.explorer-content {
-    background: linear-gradient(135deg, rgba(173, 216, 230, 0.15) 0%, rgba(135, 206, 250, 0.1) 100%);
-    -webkit-backdrop-filter: blur(10px);
-    backdrop-filter: blur(10px);
-}
+/* Explorer Applet Styles — shell uses naxt-modal-content; see #explorerModal rules below */
 
 .explorer-drives-container {
     display: grid;
@@ -37978,6 +38733,620 @@ div#spellbookCustomPresetDropdown {
     color: var(--text-secondary);
 }
 
+/* Explorer Applet */
+#explorerModal .naxt-modal-content {
+    container-type: inline-size;
+    container-name: explorer;
+}
+
+#explorerModal .explorer-actions-header {
+    overflow: visible;
+    line-height: 1;
+}
+
+#explorerModal .explorer-actions-header .naxt-search-controls {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    flex-wrap: nowrap;
+    align-items: center;
+    overflow: visible;
+}
+
+#explorerModal .explorer-actions-header .button-group {
+    flex-shrink: 0;
+}
+
+#explorerModal .explorer-actions-header .explorer-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+#explorerModal .explorer-actions-header #explorerSortDropdown,
+#explorerModal .explorer-actions-header #explorerViewsDropdown {
+    position: relative;
+    display: inline-block;
+    width: auto;
+    flex-shrink: 0;
+}
+
+#explorerModal .explorer-actions-header #explorerSortDropdownBtn,
+#explorerModal .explorer-actions-header #explorerViewsDropdownBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+#explorerModal .explorer-actions-header #explorerSortDropdownBtn .naxt-dataset-chevron,
+#explorerModal .explorer-actions-header #explorerViewsDropdownBtn .naxt-dataset-chevron {
+    flex-shrink: 0;
+    margin-left: 0.15em;
+    opacity: 0.75;
+}
+
+#explorerModal .explorer-actions-header #explorerSortDropdownMenu,
+#explorerModal .explorer-actions-header #explorerViewsDropdownMenu {
+    z-index: var(--z-dropdown);
+    min-width: 11rem;
+}
+
+#explorerModal .explorer-address-bar {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 0;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+}
+
+#explorerModal .explorer-search-bar {
+    flex: 0 0 9rem;
+    width: 9rem;
+    max-width: 9rem;
+    min-width: 6rem;
+    font-size: 0.8125rem;
+}
+
+#explorerModal #explorerDetailsHeader {
+    flex-shrink: 0;
+}
+
+#explorerModal .explorer-grid-host {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+}
+
+#explorerModal .explorer-grid-host.explorer-drop-target {
+    outline: 2px dashed rgba(135, 206, 250, 0.6);
+    outline-offset: -2px;
+}
+
+.explorer-selection-marquee {
+    position: fixed;
+    z-index: 12000;
+    border: 1px dotted var(--accent-primary, #6cb4ff);
+    background: color-mix(in srgb, var(--accent-primary, #6cb4ff) 18%, transparent);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+    box-sizing: border-box;
+}
+
+.explorer-selection-marquee.hidden {
+    display: none;
+}
+
+#explorerModal .explorer-grid-host.explorer-marquee-active {
+    user-select: none;
+    cursor: crosshair;
+}
+
+.explorer-item.explorer-item-upload-pending {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.explorer-item.explorer-item-upload-pending .explorer-item-icon-box::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: inherit;
+    pointer-events: none;
+}
+
+.explorer-item.explorer-item-drop-target {
+    outline: 2px solid rgba(135, 206, 250, 0.85);
+    outline-offset: 2px;
+    background: rgba(135, 206, 250, 0.12);
+}
+
+#explorerModal .explorer-grid-host.explorer-item-drag-active {
+    cursor: grabbing;
+}
+
+#desktopGridContainer.explorer-desktop-drop-target,
+#desktopFreeformContainer.explorer-desktop-drop-target {
+    outline: 2px dashed rgba(135, 206, 250, 0.75);
+    outline-offset: -4px;
+}
+
+#explorerModal .explorer-statusbar {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-top: 1px solid var(--glass-border-4);
+    font-size: 0.8125rem;
+    flex-shrink: 0;
+    min-width: 0;
+    background: var(--glass-layer-2);
+}
+
+#explorerModal .explorer-status-spinner {
+    flex-shrink: 0;
+    color: var(--text-secondary);
+    line-height: 1;
+}
+
+#explorerModal .explorer-status-spinner.hidden {
+    display: none;
+}
+
+#explorerModal .explorer-status-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#explorerModal .explorer-status-center {
+    display: flex;
+    gap: var(--spacing-xs);
+    flex-shrink: 0;
+}
+
+#explorerModal .explorer-view-toggle.active {
+    background: rgba(135, 206, 250, 0.25);
+}
+
+#explorerModal .explorer-grid-host.explorer-loading {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+#explorerModal .explorer-grid-host.explorer-loading .explorer-grid-content {
+    visibility: hidden;
+}
+
+#explorerModal .explorer-grid-host.explorer-busy-open {
+    cursor: progress;
+}
+
+#explorerModal .explorer-grid-host.explorer-busy-paste {
+    cursor: progress;
+}
+
+.explorer-load-more-foot {
+    position: absolute;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md);
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    pointer-events: none;
+}
+
+.explorer-load-more-foot.hidden {
+    display: none;
+}
+
+.explorer-item.explorer-item-opening {
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+.explorer-item.explorer-item-opening .explorer-item-icon-box::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.35);
+    border-radius: inherit;
+}
+
+.explorer-grid-spacer {
+    width: 100%;
+    pointer-events: none;
+    flex-shrink: 0;
+}
+
+.explorer-grid-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    position: relative;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: var(--glass-layer-5) transparent;
+}
+
+.explorer-grid-scroll::-webkit-scrollbar {
+    width: 8px;
+}
+
+.explorer-grid-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.explorer-grid-scroll::-webkit-scrollbar-thumb {
+    background: var(--glass-layer-5);
+    border-radius: 4px;
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .explorer-grid-scroll::-webkit-scrollbar-thumb:hover:not(:disabled) {
+        background: var(--primary-color-light);
+    }
+}
+
+.explorer-grid-content {
+    position: absolute;
+    left: 0;
+    right: 0;
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.explorer-details-header {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) minmax(180px, 1.6fr) 96px 72px;
+    gap: var(--spacing-sm);
+    align-items: center;
+    padding: 4px var(--spacing-sm);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--glass-border-4);
+    background: var(--glass-layer-2);
+    flex-shrink: 0;
+}
+
+.explorer-details-header .explorer-details-sort-col {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    font: inherit;
+    font-weight: 600;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.explorer-details-header .explorer-details-sort-col:hover,
+.explorer-details-header .explorer-details-sort-col.active {
+    color: var(--text-primary);
+}
+
+.explorer-details-header .explorer-details-col-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.explorer-details-header .explorer-details-sort-icon {
+    font-size: 9px;
+    flex-shrink: 0;
+    opacity: 0;
+}
+
+.explorer-details-header .explorer-details-sort-col:hover .explorer-details-sort-icon,
+.explorer-details-header .explorer-details-sort-col.active .explorer-details-sort-icon {
+    opacity: 0.85;
+}
+
+.explorer-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: var(--spacing-xs);
+    cursor: default;
+    user-select: none;
+    border: 1px solid transparent;
+    box-sizing: border-box;
+    gap: var(--spacing-xs);
+    overflow: hidden;
+}
+
+.explorer-item:not(.explorer-item-list-row):not(.explorer-item-details-row) {
+    max-width: 100%;
+}
+
+.explorer-item:not(.explorer-item-list-row):not(.explorer-item-details-row) .explorer-item-label {
+    flex: 0 0 auto;
+    min-height: 2.75em;
+}
+
+.explorer-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.explorer-item.selected {
+    background: rgba(135, 206, 250, 0.2);
+    border-color: rgba(135, 206, 250, 0.4);
+}
+
+.explorer-item-icon-box {
+    position: relative;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.explorer-item-icon-box-xl {
+    width: 192px;
+    height: 192px;
+}
+
+.explorer-item-icon-box-lg {
+    width: 128px;
+    height: 128px;
+}
+
+.explorer-item-icon-box-md {
+    width: 96px;
+    height: 96px;
+}
+
+.explorer-item-icon-box-sm {
+    width: 44px;
+    height: 44px;
+}
+
+.explorer-item-icon-box-row {
+    width: 20px;
+    height: 20px;
+    min-width: 20px;
+    max-width: 20px;
+    min-height: 20px;
+    max-height: 20px;
+    flex-shrink: 0;
+    border-radius: 2px;
+}
+
+.explorer-item-icon-box-row .explorer-item-type-icon {
+    font-size: 12px;
+}
+
+.explorer-item-icon-box-xl .explorer-item-type-icon {
+    font-size: 112px;
+}
+
+.explorer-item-icon-box-lg .explorer-item-type-icon {
+    font-size: 72px;
+}
+
+.explorer-item-icon-box-md .explorer-item-type-icon {
+    font-size: 52px;
+}
+
+.explorer-item-icon-box-sm .explorer-item-type-icon {
+    font-size: 28px;
+}
+
+.explorer-item-type-icon {
+    color: var(--text-secondary);
+    line-height: 1;
+    pointer-events: none;
+}
+
+.explorer-item-preview-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.explorer-item-icon-box.has-preview .explorer-item-preview-img {
+    opacity: 1;
+}
+
+.explorer-item-icon-box.has-preview .explorer-item-type-icon {
+    opacity: 0;
+}
+
+.explorer-item-icon-box .explorer-desktop-icon-root {
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    pointer-events: none;
+}
+
+.explorer-item-icon-box .explorer-desktop-icon-root.desktop-shortcut-icon {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: transparent;
+}
+
+.explorer-item-icon-box .explorer-desktop-icon-root .icon-image,
+.explorer-item-icon-box .explorer-desktop-icon-root .desktop-shortcut-wiki-site-icon {
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+}
+
+.explorer-item-icon-box-xl .explorer-desktop-icon-root.desktop-shortcut-icon:not(.desktop-shortcut-icon-image) {
+    font-size: 5.5rem;
+}
+
+.explorer-item-icon-box-lg .explorer-desktop-icon-root.desktop-shortcut-icon:not(.desktop-shortcut-icon-image) {
+    font-size: 3.75rem;
+}
+
+.explorer-item-icon-box-md .explorer-desktop-icon-root.desktop-shortcut-icon:not(.desktop-shortcut-icon-image) {
+    font-size: 2.75rem;
+}
+
+.explorer-item-icon-box-sm .explorer-desktop-icon-root.desktop-shortcut-icon:not(.desktop-shortcut-icon-image) {
+    font-size: 1.5rem;
+}
+
+.explorer-item-icon-box-row .explorer-desktop-icon-root.desktop-shortcut-icon:not(.desktop-shortcut-icon-image) {
+    font-size: 12px;
+}
+
+.explorer-item-icon-box .explorer-desktop-icon-root.desktop-shortcut-icon-image {
+    border-width: 1px;
+}
+
+.explorer-item-icon-box-xl .explorer-desktop-icon-root .desktop-shortcut-image-icon {
+    font-size: 1.75rem;
+}
+
+.explorer-item-icon-box-lg .explorer-desktop-icon-root .desktop-shortcut-image-icon {
+    font-size: 1.25rem;
+}
+
+.explorer-item-icon-box-md .explorer-desktop-icon-root .desktop-shortcut-image-icon {
+    font-size: 1rem;
+}
+
+.explorer-item-icon-box-sm .explorer-desktop-icon-root .desktop-shortcut-image-icon {
+    font-size: 0.75rem;
+}
+
+.explorer-item-icon-box-row .explorer-desktop-icon-root .desktop-shortcut-image-icon {
+    font-size: 0.5rem;
+}
+
+.explorer-item-icon-box-xl .explorer-desktop-icon-root.desktop-shortcut-icon-note {
+    font-size: 5.5rem;
+}
+
+.explorer-item-icon-box-lg .explorer-desktop-icon-root.desktop-shortcut-icon-note {
+    font-size: 3.75rem;
+}
+
+.explorer-item-icon-box-md .explorer-desktop-icon-root.desktop-shortcut-icon-note {
+    font-size: 2.75rem;
+}
+
+.explorer-item-icon-box-sm .explorer-desktop-icon-root.desktop-shortcut-icon-note {
+    font-size: 1.5rem;
+}
+
+.explorer-item-icon-box-row .explorer-desktop-icon-root.desktop-shortcut-icon-note {
+    font-size: 12px;
+}
+
+.explorer-item-label {
+    font-size: 11px;
+    text-align: center;
+    width: 100%;
+    max-width: 100%;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    word-break: normal;
+}
+
+.explorer-item-list-row,
+.explorer-item-details-row {
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+    gap: var(--spacing-sm);
+    padding: 2px var(--spacing-sm);
+}
+
+.explorer-item-list-row {
+    justify-content: flex-start;
+}
+
+.explorer-item-list-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex: 1;
+}
+
+.explorer-item-details-row {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) minmax(180px, 1.6fr) 96px 72px;
+    font-size: 12px;
+    gap: var(--spacing-sm);
+    max-height: 28px;
+    overflow: hidden;
+    align-items: center;
+}
+
+.explorer-item-list-row {
+    max-height: 28px;
+    overflow: hidden;
+}
+
+.explorer-item-details-row .explorer-item-name,
+.explorer-item-details-row .explorer-item-date,
+.explorer-item-details-row .explorer-item-type,
+.explorer-item-details-row .explorer-item-size {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.explorer-view-toggle.active {
+    background: rgba(135, 206, 250, 0.25);
+}
+
+.vfs-import-choice-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.vfs-import-choice-btn {
+    width: 100%;
+    justify-content: flex-start;
+}
+
 /* ============================================================================
    Windows Classic Theme - body class override for all modals
    ============================================================================ */
@@ -38050,7 +39419,9 @@ body.windows-classic-theme .modal.active-window .modal-window-title {
     border: none;
     font-size: 10px;
     border-radius: 0;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
     height: 18px;
     min-height: 18px;
     max-width: calc(100% - 2px);
@@ -38968,7 +40339,8 @@ body.desktop-mode.windows-startup.boot-from-launch {
 /* NAXT + NAX Vibes modals (shared Atelier shell) */
 #naxtModal .naxt-modal-content,
 #naxVibesModal .naxt-modal-content,
-#logViewerModal .naxt-modal-content {
+#logViewerModal .naxt-modal-content,
+#explorerModal .naxt-modal-content {
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -38977,7 +40349,8 @@ body.desktop-mode.windows-startup.boot-from-launch {
 
 #naxtModal .naxt-search-header,
 #naxVibesModal .naxt-search-header,
-#logViewerModal .naxt-search-header {
+#logViewerModal .naxt-search-header,
+#explorerModal .naxt-search-header {
     padding: var(--spacing-sm);
     border-bottom: 1px solid var(--glass-border-4);
     flex-shrink: 0;
@@ -38986,7 +40359,8 @@ body.desktop-mode.windows-startup.boot-from-launch {
 
 #naxtModal .naxt-search-controls,
 #naxVibesModal .naxt-search-controls,
-#logViewerModal .naxt-search-controls {
+#logViewerModal .naxt-search-controls,
+#explorerModal .naxt-search-controls {
     display: flex;
     gap: var(--spacing-sm);
     align-items: center;
@@ -38998,6 +40372,10 @@ body.desktop-mode.windows-startup.boot-from-launch {
 }
 
 #logViewerModal .naxt-search-controls {
+    flex-wrap: nowrap;
+}
+
+#explorerModal .naxt-search-controls {
     flex-wrap: nowrap;
 }
 
@@ -39074,7 +40452,8 @@ body.desktop-mode.windows-startup.boot-from-launch {
 
 #naxtModal .naxt-body,
 #naxVibesModal .naxt-body,
-#logViewerModal .naxt-body {
+#logViewerModal .naxt-body,
+#explorerModal .naxt-body {
     flex: 1;
     min-height: 0;
 }

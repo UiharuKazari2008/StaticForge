@@ -14,8 +14,13 @@ const { generateImageWebSocket, handleRerollGeneration, expandImage, rerollExpan
 const { upscaleImageWebSocket } = require('./imageUpscaling');
 const { generateMobilePreviews } = require('./previewUtils');
 const { getTimezoneByCoordinates, resolveDynamicContext } = require('./dynamicGenerationHandlers');
-const path = require('path');
+const VfsWebSocketHandlers = require('./vfsWebSocketHandlers');
+const {
+    normalizeAutofillSearchSettings,
+    mergeAutofillSearchSettingsPatch
+} = require('./autofillSearchSettings');
 const fs = require('fs');
+const path = require('path');
 const crypto = require('crypto');
 const sharp = require('sharp');
 const https = require('https');
@@ -240,6 +245,7 @@ class WebSocketMessageHandlers {
         this.cancelledGenerationRequestIds = new Set(); // Client-cancelled image generation request IDs
         this.metadataCache = new MetadataCache(1000); // LRU cache with 1000 items
         this.metadataCache.startCleanup(); // Start periodic cleanup
+        this.vfsHandlers = new VfsWebSocketHandlers(this);
     }
 
     // Clean up metadata cache when client disconnects
@@ -297,7 +303,9 @@ class WebSocketMessageHandlers {
             console.error(`❌ WebSocket message failed: ${message.type} (ID: ${requestId}) - ${processingTime}ms - Error:`, error.message);
             wsServer.sendToClient(ws, {
                 type: 'error',
-                message: 'Internal server error',
+                message: error.message || 'Internal server error',
+                details: message.type,
+                requestId: message.requestId || null,
                 code: 'INTERNAL_ERROR',
                 timestamp: new Date().toISOString()
             });
@@ -398,6 +406,23 @@ class WebSocketMessageHandlers {
             'desktop_update_shortcut',
             'desktop_remove_shortcut',
             'desktop_update_positions',
+            'vfs_create_folder',
+            'vfs_rename_folder',
+            'vfs_rename_file',
+            'vfs_delete_folder',
+            'vfs_move_items',
+            'vfs_copy_items',
+            'vfs_delete_entry',
+            'vfs_rename_shortcut_entry',
+            'vfs_rename_entry',
+            'vfs_upload_file',
+            'vfs_replace_file',
+            'vfs_delete_file',
+            'vfs_convert_reference_to_file',
+            'vfs_convert_file_to_reference',
+            'desktop_create_empty_folder',
+            'desktop_update_shortcut_folders',
+            'desktop_create_folder_from_selection',
             'save_persona_settings',
             'create_chat_session',
             'delete_chat_session',
@@ -429,7 +454,8 @@ class WebSocketMessageHandlers {
             },
             naxt: {
                 elevatePins: this.normalizeNaxtElevatePinsSetting(naxt)
-            }
+            },
+            autofillSearch: normalizeAutofillSearchSettings(base.autofillSearch)
         };
     }
 
@@ -461,6 +487,9 @@ class WebSocketMessageHandlers {
             } else if (typeof patch.naxt.elevateFavorites === 'boolean') {
                 out.naxt.elevatePins = patch.naxt.elevateFavorites ? 1 : 0;
             }
+        }
+        if (patch.autofillSearch && typeof patch.autofillSearch === 'object') {
+            out.autofillSearch = mergeAutofillSearchSettingsPatch(out.autofillSearch, patch.autofillSearch);
         }
         return out;
     }
@@ -494,6 +523,10 @@ class WebSocketMessageHandlers {
 
             case 'search_characters':
                 await this.handleCharacterSearch(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'fetch_autofill_wiki_previews':
+                await this.handleFetchAutofillWikiPreviews(ws, message, clientInfo, wsServer);
                 break;
 
             case 'search_presets':
@@ -737,6 +770,90 @@ class WebSocketMessageHandlers {
 
             case 'get_system_info':
                 await this.handleGetSystemInfo(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'vfs_list_directory':
+                await this.vfsHandlers.handleVfsListDirectory(ws, message, clientInfo);
+                break;
+
+            case 'vfs_get_path_stats':
+                await this.vfsHandlers.handleVfsGetPathStats(ws, message);
+                break;
+
+            case 'vfs_resolve_path':
+                await this.vfsHandlers.handleVfsResolvePath(ws, message);
+                break;
+
+            case 'vfs_create_folder':
+                await this.vfsHandlers.handleVfsCreateFolder(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'vfs_rename_folder':
+                await this.vfsHandlers.handleVfsRenameFolder(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'vfs_rename_file':
+                await this.vfsHandlers.handleVfsRenameFile(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'vfs_delete_folder':
+                await this.vfsHandlers.handleVfsDeleteFolder(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'vfs_move_items':
+                await this.vfsHandlers.handleVfsMoveItems(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'vfs_copy_items':
+                await this.vfsHandlers.handleVfsCopyItems(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'vfs_delete_entry':
+                await this.vfsHandlers.handleVfsDeleteEntry(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'vfs_rename_shortcut_entry':
+                await this.vfsHandlers.handleVfsRenameShortcutEntry(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'vfs_rename_entry':
+                await this.vfsHandlers.handleVfsRenameEntry(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'vfs_upload_file':
+                await this.vfsHandlers.handleVfsUploadFile(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'vfs_replace_file':
+                await this.vfsHandlers.handleVfsReplaceFile(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'vfs_download_file':
+                await this.vfsHandlers.handleVfsDownloadFile(ws, message);
+                break;
+
+            case 'vfs_delete_file':
+                await this.vfsHandlers.handleVfsDeleteFile(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'vfs_convert_reference_to_file':
+                await this.vfsHandlers.handleVfsConvertReferenceToFile(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'vfs_convert_file_to_reference':
+                await this.vfsHandlers.handleVfsConvertFileToReference(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'desktop_create_empty_folder':
+                await this.vfsHandlers.handleDesktopCreateEmptyFolder(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'desktop_update_shortcut_folders':
+                await this.vfsHandlers.handleDesktopUpdateShortcutFolders(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'desktop_create_folder_from_selection':
+                await this.vfsHandlers.handleDesktopCreateFolderFromSelection(ws, message, clientInfo, wsServer);
                 break;
 
             case 'get_rate_limiting_stats':
@@ -1370,7 +1487,7 @@ class WebSocketMessageHandlers {
 
     // Handle character search requests - Ack-less Latest Request Wins Pattern
     async handleCharacterSearch(ws, message, clientInfo, wsServer) {
-        const { query, model, requestId, autofillSessionId, spellCheckText, isContinuation } = message;
+        const { query, model, requestId, autofillSessionId, spellCheckText, isContinuation, autofillSettings } = message;
 
         if (!query) {
             this.sendError(ws, 'Missing query parameter', 'search_characters');
@@ -1378,10 +1495,18 @@ class WebSocketMessageHandlers {
         }
 
         try {
-            // Perform search with latest-request-wins pattern
+            const config = this.globalResources.getConfig() || {};
+            const persisted = normalizeAutofillSearchSettings(config.userGlobalSettings?.autofillSearch);
+            const resolvedSettings = normalizeAutofillSearchSettings(
+                autofillSettings && typeof autofillSettings === 'object' ? autofillSettings : persisted
+            );
+            if (clientInfo) {
+                clientInfo.autofillSearch = resolvedSettings;
+            }
+
             const result = await this.globalResources.getSearchService().searchCharacters(
                 query, model, ws, clientInfo.sessionId, null, requestId, autofillSessionId,
-                { spellCheckText, isContinuation }
+                { spellCheckText, isContinuation, autofillSettings: resolvedSettings }
             );
 
             if (result && result.superseded) {
@@ -1402,6 +1527,27 @@ class WebSocketMessageHandlers {
                 console.error('Character search error:', error);
                 this.sendError(ws, 'Search failed', error.message);
             }
+        }
+    }
+
+    async handleFetchAutofillWikiPreviews(ws, message, clientInfo, wsServer) {
+        const { tagIds, requestId, autofillSessionId, model } = message;
+        if (!Array.isArray(tagIds) || tagIds.length === 0) {
+            return;
+        }
+        try {
+            const config = this.globalResources.getConfig() || {};
+            const settings = normalizeAutofillSearchSettings(
+                clientInfo?.autofillSearch || config.userGlobalSettings?.autofillSearch
+            );
+            if (!settings.wikiPreviews) {
+                return;
+            }
+            await this.globalResources.getSearchService().fetchAutofillWikiPreviews(
+                tagIds, model, ws, requestId, autofillSessionId, settings
+            );
+        } catch (error) {
+            console.error('fetch_autofill_wiki_previews:', error);
         }
     }
 
@@ -2650,6 +2796,9 @@ class WebSocketMessageHandlers {
                 cfg.userGlobalSettings = merged;
                 return cfg;
             });
+            if (clientInfo && merged.autofillSearch) {
+                clientInfo.autofillSearch = merged.autofillSearch;
+            }
             this.sendToClient(ws, {
                 type: 'update_user_global_settings_response',
                 requestId: message.requestId,
@@ -5163,17 +5312,29 @@ class WebSocketMessageHandlers {
             const desktopConfig = this.globalResources.getWorkspaceDesktopConfig() || {};
             const existing = desktopConfig.windowPositions || {};
             const merged = { ...existing, ...windowPositions };
-            this.globalResources.modifyConfig('workspaceDesktop').assign(['windowPositions'], merged);
+            this.globalResources.queueWorkspaceDesktopWindowPositions(merged);
 
-            // Broadcast to all clients (no response since this is ackless)
+            // Broadcast to all clients
             wsServer.broadcast({
                 type: 'workspace_updated',
                 data: { action: 'window_positions_updated', windowPositions: merged }, // No workspaceId, positions are global
                 timestamp: new Date().toISOString()
             });
+
+            if (message.requestId) {
+                this.sendToClient(ws, {
+                    type: 'workspace_update_window_positions_response',
+                    requestId: message.requestId,
+                    data: { success: true },
+                    timestamp: new Date().toISOString()
+                });
+            }
         } catch (error) {
-            // Log error but don't send response (ackless message)
-            console.error('Workspace update window positions error:', error);
+            if (message.requestId) {
+                this.sendError(ws, 'Failed to update window positions', error.message, message.requestId);
+            } else {
+                console.error('Workspace update window positions error:', error);
+            }
         }
     }
 
@@ -9633,6 +9794,13 @@ class WebSocketMessageHandlers {
     clearGenerationCancelled(requestId) {
         if (requestId) {
             this.cancelledGenerationRequestIds.delete(requestId);
+        }
+    }
+
+    stopAllKeepAliveIntervals() {
+        if (!this.keepAliveIntervals || this.keepAliveIntervals.size === 0) return;
+        for (const requestId of [...this.keepAliveIntervals.keys()]) {
+            this.stopKeepAliveInterval(requestId);
         }
     }
 

@@ -89,6 +89,7 @@ class LogViewerApplet {
         this.popoverFlushBtn = null;
         this.popoverRebootBtn = null;
         this.popoverReloadBtn = null;
+        this.restartBroomDefault = true;
         this.streamStatusText = 'Ready';
         this.streamGeneration = 0;
         this.reconnectTimer = null;
@@ -701,15 +702,19 @@ class LogViewerApplet {
     }
 
     flashTrafficArrow(direction) {
+        if (!this.modal || this.modal.classList.contains('hidden')
+            || this.modal.classList.contains('hidden-alt')
+            || this.modal.classList.contains('minimised')) {
+            return;
+        }
         const arrow = direction === 'up' ? this.statOutArrow : this.statInArrow;
         if (!arrow) return;
         const key = direction === 'up' ? 'up' : 'down';
         if (this._trafficTimeouts[key]) {
             clearTimeout(this._trafficTimeouts[key]);
+        } else {
+            arrow.classList.add('active');
         }
-        arrow.classList.remove('active');
-        void arrow.offsetWidth;
-        arrow.classList.add('active');
         this._trafficTimeouts[key] = setTimeout(() => {
             arrow.classList.remove('active');
             this._trafficTimeouts[key] = null;
@@ -961,13 +966,9 @@ class LogViewerApplet {
     }
 
     applyDefaultWindowSize() {
-        if (!this.modal || this.modal.hasAttribute('data-window-position-restored')) return;
-        const w = parseInt(this.modal.dataset.windowDefaultWidth, 10)
-            || parseInt(this.modal.dataset.windowMinWidth, 10) || 1000;
-        const h = parseInt(this.modal.dataset.windowDefaultHeight, 10)
-            || parseInt(this.modal.dataset.windowMinHeight, 10) || 700;
-        this.modal.style.width = `${w}px`;
-        this.modal.style.height = `${h}px`;
+        if (!this.modal) return;
+        // public/scripts/comp/modalUtils.js
+        applyModalDefaultWindowSize(this.modal);
     }
 
     serializeOffset() {
@@ -1145,14 +1146,26 @@ class LogViewerApplet {
         }, LOG_VIEWER_RECONNECT_DELAY_MS);
     }
 
-    async postPm2Action(path) {
+    wireRestartBroomToggleInDialog() {
+        const toggle = document.querySelector('#confirmationDialog .log-viewer-restart-broom-toggle');
+        if (!toggle || toggle.dataset.wired === '1') return;
+        toggle.dataset.wired = '1';
+        toggle.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const on = toggle.getAttribute('data-state') === 'on';
+            toggle.setAttribute('data-state', on ? 'off' : 'on');
+        });
+    }
+
+    async postPm2Action(path, body = {}) {
         const base = this.getBasePath();
         if (!base) throw new Error('Log path unavailable');
         const response = await fetch(`${base}${path}`, {
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
-            body: '{}'
+            body: JSON.stringify(body)
         });
         const data = await response.json();
         if (!response.ok || !data.success) {
@@ -1185,24 +1198,66 @@ class LogViewerApplet {
 
     async requestRestartServer() {
         const procLabel = this.getPm2ProcessLabel();
-        const confirmed = await showConfirmationDialog(
-            `Restart DreamScape Server via PM2 (${procLabel})? Only this process is restarted. All connections will drop until the server is back online.`,
+        const broomState = this.restartBroomDefault ? 'on' : 'off';
+        const dialogPromise = showConfirmationDialog(
+            `Restart DreamScape Server via PM2 (${procLabel})? Pending work will be flushed, databases saved, and connections will drop until the server is back online.
+            <div class="log-viewer-restart-broom-row">
+                <button type="button" class="btn-secondary btn-small toggle-btn log-viewer-restart-broom-toggle" data-state="${broomState}" title="Flush PM2 logs before restart" aria-label="Flush PM2 logs before restart">
+                    <i class="fas fa-broom"></i>
+                </button>
+                <span class="log-viewer-restart-broom-hint">Flush logs before restart</span>
+            </div>`,
             [
                 { text: 'Restart DSS', value: true, icon: 'fas fa-rotate-right', className: 'btn-danger' },
                 { text: 'Cancel', value: false, className: 'btn-secondary' }
             ],
             null,
-            { title: 'Restart DSS', icon: 'fas fa-rotate-right' }
+            {
+                title: 'Restart DSS',
+                icon: 'fas fa-rotate-right',
+                resolveValue: (value, dialog) => {
+                    if (!value) return false;
+                    const toggle = dialog?.querySelector('.log-viewer-restart-broom-toggle');
+                    const broom = toggle ? toggle.getAttribute('data-state') !== 'off' : true;
+                    return { confirmed: true, broom };
+                }
+            }
         );
-        if (!confirmed) return;
+        setTimeout(() => this.wireRestartBroomToggleInDialog(), 0);
+        const confirmed = await dialogPromise;
+        if (!confirmed || confirmed === false) return;
+
+        const broom = typeof confirmed === 'object' ? confirmed.broom !== false : true;
+        this.restartBroomDefault = broom;
 
         try {
             this.cancelReconnect();
             this.stopStream();
-            this.setStatus('Restarting DSS…');
-            await this.postPm2Action('/pm2/restart');
-            showGlassToast('info', 'DreamScape Server', 'DSS restart initiated — reconnect when ready', false, 8000, '<i class="fas fa-rotate-right"></i>');
-            this.setStatus('DSS restarting — stream disconnected');
+            suppressWebSocketReconnectForReload();
+            this.setStatus('Preparing DSS restart…');
+            await this.postPm2Action('/pm2/restart', { broom });
+            this.setStatus('DSS restarting — waiting for disconnect…');
+
+            // waitForServerDisconnect, runClientShutdownSequence — modalUtils.js
+            const disconnected = typeof waitForServerDisconnect === 'function'
+                ? await waitForServerDisconnect({ timeoutMs: 120000 })
+                : false;
+
+            if (!disconnected) {
+                showGlassToast('error', 'DreamScape Server', 'Server did not disconnect in time — reload manually when ready', false, 10000, '<i class="fas fa-exclamation-triangle"></i>');
+                this.setStatus('DSS restart timed out — server may still be shutting down');
+                return;
+            }
+
+            this.setStatus('Server disconnected — restarting application…');
+            if (typeof runClientShutdownSequence === 'function') {
+                await runClientShutdownSequence(() => location.reload());
+            } else if (typeof bypassConfirmation !== 'undefined') {
+                bypassConfirmation = true;
+                location.reload();
+            } else {
+                location.reload();
+            }
         } catch (error) {
             showGlassToast('error', 'System', error.message, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
             if (!this.paused) this.startStream();

@@ -1490,21 +1490,6 @@ function escapePresetHtml(text) {
     return div.innerHTML;
 }
 
-function toggleDropdown(menu, button) {
-    if (menu.classList.contains('hidden')) {
-        menu.classList.remove('hidden');
-        button.classList.add('active');
-    } else {
-        menu.classList.add('hidden');
-        button.classList.remove('active');
-    }
-}
-
-function closeDropdown(menu, button) {
-    menu.classList.add('hidden');
-    button.classList.remove('active');
-}
-
 // Set up WebSocket event handlers
 function setupWebSocketEventHandlers() {
     if (wsClient) {

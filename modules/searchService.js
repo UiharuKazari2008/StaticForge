@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { normalizeAutofillSearchSettings } = require('./autofillSearchSettings');
 
 // Search functionality module
 class SearchService {
@@ -432,6 +433,7 @@ class SearchService {
             spellCheckText: searchOptions.spellCheckText || query,
             isContinuation: searchOptions.isContinuation === true,
             priorQuery: previous && previous.query ? previous.query : '',
+            autofillSettings: normalizeAutofillSearchSettings(searchOptions.autofillSettings),
             timestamp: Date.now()
         });
 
@@ -478,7 +480,8 @@ class SearchService {
             return { results: [], spellCheck: null };
         }
 
-        const { query, model, ws, sessionId, requestId, autofillSessionId, spellCheckText, isContinuation, priorQuery } = latestRequest;
+        const { query, model, ws, sessionId, requestId, autofillSessionId, spellCheckText, isContinuation, priorQuery, autofillSettings } = latestRequest;
+        const settings = normalizeAutofillSearchSettings(autofillSettings);
         const tagSearchQuery = this.truncateTagSearchQuery(query);
         const spellCheckInput = (spellCheckText || query || '').trim();
 
@@ -524,10 +527,17 @@ class SearchService {
             let spellCheckData = null;
 
             if (!isTextReplacementSearch && !isTextPrefixSearch) {
-                // Start all services independently and send results as they complete
+                if (!settings.enabled) {
+                    return { results: [], spellCheck: null };
+                }
 
-                // Start character search as independent service
-                const characterPromise = this.performCharacterSearch(tagSearchQuery, model, ws, requestId).then(results => {
+                const tagOptions = {
+                    isContinuation: isContinuation,
+                    priorQuery: priorQuery || '',
+                    autofillSettings: settings
+                };
+
+                const runCharacters = this.performCharacterSearch(tagSearchQuery, model, ws, requestId).then(results => {
                     return results;
                 }).catch(error => {
                     console.error('Character search error:', error);
@@ -544,30 +554,30 @@ class SearchService {
                     return [];
                 });
 
-                // Tag results stream per-model via makeTagRequests(); aggregate only for complete payload
-                const tagPromise = this.performTagSearch(tagSearchQuery, model, ws, sessionId, requestId, {
-                    isContinuation: isContinuation,
-                    priorQuery: priorQuery || ''
-                }).catch(error => {
-                    console.error('Tag search error:', error);
-                    return [];
-                });
+                const runTags = (settings.naiAnimeTags || settings.naiFurryTags || settings.dbAnimeTags || settings.dbFurryTags)
+                    ? this.performTagSearch(tagSearchQuery, model, ws, sessionId, requestId, tagOptions).catch(error => {
+                        console.error('Tag search error:', error);
+                        return [];
+                    })
+                    : Promise.resolve([]);
 
-                // Start spellcheck first; thesaurus runs after spell check so corrections apply
-                const spellcheckPromise = this.performSpellCheckAsync(spellCheckInput, ws, requestId).catch(error => {
-                    console.error('Spellcheck error:', error);
-                    return null;
-                });
+                const runSpellcheck = settings.spellcheck
+                    ? this.performSpellCheckAsync(spellCheckInput, ws, requestId).catch(error => {
+                        console.error('Spellcheck error:', error);
+                        return null;
+                    })
+                    : Promise.resolve(null);
 
-                const wordLookupPromise = spellcheckPromise.then(spellCheckData =>
-                    this.performWordLookupAsync(spellCheckInput, ws, requestId, spellCheckData)
-                ).catch(error => {
-                    console.error('Word lookup error:', error);
-                    return null;
-                });
+                const runWordLookup = settings.thesaurus
+                    ? runSpellcheck.then(spellCheckData =>
+                        this.performWordLookupAsync(spellCheckInput, ws, requestId, spellCheckData)
+                    ).catch(error => {
+                        console.error('Word lookup error:', error);
+                        return null;
+                    })
+                    : Promise.resolve(null);
 
-                // Text replacements stream via performTextReplacementSearch (single WS send per service)
-                const textReplacementPromise = this.performTextReplacementSearch(searchQuery, ws, hasPickSuffix, requestId).catch(error => {
+                const runTextReplacements = this.performTextReplacementSearch(searchQuery, ws, hasPickSuffix, requestId).catch(error => {
                     console.error('Text replacement search error:', error);
                     if (ws) {
                         this.sendSearchWs(ws, {
@@ -581,13 +591,12 @@ class SearchService {
                     return [];
                 });
 
-                // Wait for all services to complete (they run concurrently)
                 const [characterResults, tagResults, spellcheckData, wordLookupData, textReplacementResults] = await Promise.allSettled([
-                    characterPromise,
-                    tagPromise,
-                    spellcheckPromise,
-                    wordLookupPromise,
-                    textReplacementPromise
+                    runCharacters,
+                    runTags,
+                    runSpellcheck,
+                    runWordLookup,
+                    runTextReplacements
                 ]);
 
                 // Extract results (handle any failures gracefully)
@@ -1127,29 +1136,52 @@ class SearchService {
                 models.push('nai-diffusion-furry-3');
             }
 
+            const settings = options.autofillSettings || null;
+            if (settings) {
+                models = models.filter((apiModel) => {
+                    if (apiModel === 'nai-diffusion-furry-3') {
+                        return settings.naiFurryTags !== false;
+                    }
+                    return settings.naiAnimeTags !== false;
+                });
+            }
+
             const animeLocalService = this.tagAutofillSearch?.getAnimeLocalServiceName?.() || 'anime-local';
             const furryLocalService = this.tagAutofillSearch?.getFurryLocalServiceName?.() || 'furry-local';
+            const includeDbAnime = !settings || settings.dbAnimeTags !== false;
+            const includeDbFurry = !settings || settings.dbFurryTags !== false;
 
             // Send initial status update for all services (API + local)
             if (ws) {
                 const allServices = [
                     ...models.map(m => ({ name: m, status: 'stalled' })),
-                    { name: animeLocalService, status: 'searching' },
-                    { name: furryLocalService, status: 'searching' }
                 ];
-                this.sendSearchWs(ws,{
-                    type: 'search_status_update',
-                    services: allServices,
-                    requestId: requestId
-                });
+                if (includeDbAnime) {
+                    allServices.push({ name: animeLocalService, status: 'searching' });
+                }
+                if (includeDbFurry) {
+                    allServices.push({ name: furryLocalService, status: 'searching' });
+                }
+                if (allServices.length > 0) {
+                    this.sendSearchWs(ws,{
+                        type: 'search_status_update',
+                        services: allServices,
+                        requestId: requestId
+                    });
+                }
             }
 
             // Local search runs immediately; do not wait for NovelAI API before streaming local results
-            const localTagsPromise = this.makeLocalDatasetTagRequests(normalizedQuery, currentModel, queryHash, ws, requestId)
-                .catch(error => {
+            const localTagsPromise = (includeDbAnime || includeDbFurry)
+                ? this.makeLocalDatasetTagRequests(normalizedQuery, currentModel, queryHash, ws, requestId, {
+                    ...options,
+                    includeDbAnime,
+                    includeDbFurry
+                }).catch(error => {
                     console.error('❌ Local dataset tag search error:', error.message);
                     return [];
-                });
+                })
+                : Promise.resolve([]);
 
             const processApiModel = async (apiModel, serviceOrder) => {
                 try {
@@ -1251,13 +1283,16 @@ class SearchService {
 
             // Local results stream on their own schedule; do not block completion on local DB work
             if (ws) {
-                const totalServices = models.length + 2;
-                this.sendSearchWs(ws, {
-                    type: 'search_results_complete',
-                    totalServices: totalServices,
-                    completedServices: totalServices,
-                    requestId: requestId
-                });
+                const localServiceCount = (includeDbAnime ? 1 : 0) + (includeDbFurry ? 1 : 0);
+                const totalServices = models.length + localServiceCount;
+                if (totalServices > 0) {
+                    this.sendSearchWs(ws, {
+                        type: 'search_results_complete',
+                        totalServices: totalServices,
+                        completedServices: totalServices,
+                        requestId: requestId
+                    });
+                }
             }
 
             const localTags = await localTagsPromise;
@@ -1279,9 +1314,26 @@ class SearchService {
         return crypto.createHash('md5').update(`${query.toLowerCase()}_${model.toLowerCase()}`).digest('hex');
     }
 
-    async makeLocalDatasetTagRequests(query, model, queryHash, ws = null, requestId = null) {
+    async makeLocalDatasetTagRequests(query, model, queryHash, ws = null, requestId = null, options = {}) {
         const animeLocalService = this.tagAutofillSearch?.getAnimeLocalServiceName?.() || 'anime-local';
         const furryLocalService = this.tagAutofillSearch?.getFurryLocalServiceName?.() || 'furry-local';
+        const settings = options.autofillSettings || null;
+        const maxResults = settings?.maxResults || 35;
+        const includeDbAnime = options.includeDbAnime !== false && (!settings || settings.dbAnimeTags !== false);
+        const includeDbFurry = options.includeDbFurry !== false && (!settings || settings.dbFurryTags !== false);
+
+        const markLocalServiceComplete = (serviceName, status) => {
+            if (!ws) return;
+            this.sendSearchWs(ws, {
+                type: 'search_status_update',
+                services: [{ name: serviceName, status: status || 'completed-none' }],
+                requestId: requestId
+            });
+        };
+
+        if (!includeDbAnime && !includeDbFurry) {
+            return [];
+        }
 
         const sendLocalStream = (serviceName, tags, isComplete, mergeBodyPreviews = false) => {
             if (!ws || !this.tagAutofillSearch) return;
@@ -1312,18 +1364,24 @@ class SearchService {
                 throw new Error('Tag autofill search not available');
             }
 
-            const tags = await this.tagAutofillSearch.searchTags(query);
+            const tags = await this.tagAutofillSearch.searchTags(query, { limit: maxResults });
             const { anime, furry } = this.tagAutofillSearch.splitLocalServices(tags);
 
-            sendLocalStream(animeLocalService, anime, true);
-            sendLocalStream(furryLocalService, furry, true);
+            if (includeDbAnime) {
+                sendLocalStream(animeLocalService, anime, true);
+            } else {
+                markLocalServiceComplete(animeLocalService, 'completed-none');
+            }
+            if (includeDbFurry) {
+                sendLocalStream(furryLocalService, furry, true);
+            } else {
+                markLocalServiceComplete(furryLocalService, 'completed-none');
+            }
 
-            this.sendLocalTagBodyPreviews(anime, furry, animeLocalService, furryLocalService, model, ws, requestId)
-                .catch(error => {
-                    console.error('❌ Local tag body preview error:', error.message);
-                });
-
-            return [...anime, ...furry];
+            return [
+                ...(includeDbAnime ? anime : []),
+                ...(includeDbFurry ? furry : [])
+            ];
         } catch (error) {
             console.error('❌ Local tag search error:', error.message);
 
@@ -1342,10 +1400,13 @@ class SearchService {
         }
     }
 
-    async sendLocalTagBodyPreviews(anime, furry, animeLocalService, furryLocalService, model, ws, requestId) {
+    async sendLocalTagBodyPreviews(anime, furry, animeLocalService, furryLocalService, model, ws, requestId, autofillSessionId = null, options = {}) {
         if (!ws || !this.tagAutofillSearch) {
             return;
         }
+
+        const sessionId = autofillSessionId || this._searchPacketContext?.autofillSessionId || null;
+        const skipAttach = options.skipAttach === true;
 
         const seen = new Set();
         const toEnrich = [];
@@ -1361,7 +1422,9 @@ class SearchService {
             return;
         }
 
-        await this.tagAutofillSearch.attachBodyPreviewsToTags(toEnrich);
+        if (!skipAttach) {
+            await this.tagAutofillSearch.attachBodyPreviewsToTags(toEnrich);
+        }
 
         const bodyById = new Map();
         for (const tag of toEnrich) {
@@ -1387,12 +1450,62 @@ class SearchService {
                 serviceOrder: 0,
                 isComplete: true,
                 mergeBodyPreviews: true,
-                requestId: requestId
+                requestId: requestId,
+                autofillSessionId: sessionId
             });
         };
 
         sendLocalStream(animeLocalService, anime);
         sendLocalStream(furryLocalService, furry);
+    }
+
+    async fetchAutofillWikiPreviews(tagIds, model, ws, requestId, autofillSessionId, settings) {
+        if (!ws || !this.tagAutofillSearch) {
+            return;
+        }
+        await this.ensureServicesInitialized();
+        const resolved = normalizeAutofillSearchSettings(settings);
+        if (!resolved.wikiPreviews) {
+            return;
+        }
+
+        const tags = this.tagAutofillSearch.getTagsByIdsForAutofill(tagIds, { limit: resolved.maxResults });
+        if (!tags.length) {
+            return;
+        }
+
+        await this.tagAutofillSearch.attachBodyPreviewsToTags(tags);
+        const { anime, furry } = this.tagAutofillSearch.splitLocalServices(tags);
+        const animeLocalService = this.tagAutofillSearch.getAnimeLocalServiceName();
+        const furryLocalService = this.tagAutofillSearch.getFurryLocalServiceName();
+        const mappedModel = this.globalResources.getNekoAiService('Model')[(model || '').toUpperCase()] || model || 'nai-diffusion-4-5-full';
+
+        const sendMergedPreviews = async (animeTags, furryTags) => {
+            const bodyById = new Map();
+            for (const tag of [...animeTags, ...furryTags]) {
+                if (tag && tag.id != null && tag.primaryBody) {
+                    bodyById.set(tag.id, tag.primaryBody);
+                }
+            }
+            if (bodyById.size === 0) {
+                return;
+            }
+            const withBodies = (list) => list.filter(tag => tag && tag.id != null && bodyById.has(tag.id));
+            if (resolved.dbAnimeTags !== false && animeTags.length > 0) {
+                const batch = withBodies(animeTags);
+                if (batch.length > 0) {
+                    await this.sendLocalTagBodyPreviews(batch, [], animeLocalService, furryLocalService, mappedModel, ws, requestId, autofillSessionId, { skipAttach: true });
+                }
+            }
+            if (resolved.dbFurryTags !== false && furryTags.length > 0) {
+                const batch = withBodies(furryTags);
+                if (batch.length > 0) {
+                    await this.sendLocalTagBodyPreviews([], batch, animeLocalService, furryLocalService, mappedModel, ws, requestId, autofillSessionId, { skipAttach: true });
+                }
+            }
+        };
+
+        await sendMergedPreviews(anime, furry);
     }
 
     calculateSimilarity(searchTerm, text) {

@@ -46,6 +46,11 @@ class ContextMenuController {
         /** Next `positionMenu` pass centers the root menu in the viewport (e.g. bulk move shortcut). */
         this._nextMenuViewportCenter = false;
 
+        /** Monotonic id — stale hideMenu completion handlers bail when this changes. */
+        this._hideSessionId = 0;
+        this._hideCompleteTimer = null;
+        this._hideAnimationEndHandler = null;
+
         this.init();
     }
 
@@ -513,10 +518,18 @@ class ContextMenuController {
     }
 
     showMenu(event, target, isTouch = false, isProxyEvent = false) {
-        // Block additional context menu clicks when a menu is already active
-        // But allow proxy events from the overlay
         if (this.isOpen && !isProxyEvent) {
-            return;
+            if (this.currentTarget === target) {
+                return;
+            }
+            this._dismissForMenuSwitch();
+        }
+
+        this._cancelPendingHide();
+
+        if (this.menu) {
+            this.menu.classList.remove('context-menu-closing', 'context-menu-opening', 'hidden');
+            this.menu.style.opacity = '';
         }
 
         const menuConfigId = target.dataset.contextMenu;
@@ -1399,6 +1412,91 @@ class ContextMenuController {
         return sectionElement;
     }
 
+    _cancelPendingHide() {
+        this._hideSessionId += 1;
+        if (this._hideCompleteTimer) {
+            clearTimeout(this._hideCompleteTimer);
+            this._hideCompleteTimer = null;
+        }
+        if (this._hideAnimationEndHandler && this.menu) {
+            this.menu.removeEventListener('animationend', this._hideAnimationEndHandler);
+            this._hideAnimationEndHandler = null;
+        }
+        return this._hideSessionId;
+    }
+
+    _clearContextOpenTargetClasses(target) {
+        if (!target) return;
+        target.classList.remove(
+            'context-open',
+            'top-left',
+            'top-right',
+            'bottom-left',
+            'bottom-right',
+            'center-left',
+            'center-right',
+            'center-top',
+            'center-bottom',
+            'center-center'
+        );
+    }
+
+    _dismissForMenuSwitch() {
+        if (!this.isOpen) return;
+
+        const hideConfig = this.activeRootMenuConfig;
+        const hideTarget = this.currentTarget;
+
+        this._cancelPendingHide();
+        this.isOpen = false;
+        this._clearContextOpenTargetClasses(this.currentTarget);
+        this.hideSubmenu();
+
+        if (this.touchTimer) {
+            clearTimeout(this.touchTimer);
+            this.touchTimer = null;
+        }
+        this.clearHoverTimers();
+
+        if (this.menu) {
+            this.menu.classList.remove('context-menu-closing', 'context-menu-opening');
+            this.menu.style.opacity = '';
+        }
+
+        this.currentTarget = null;
+        this.activeRootMenuConfig = null;
+
+        if (hideConfig && typeof hideConfig.onHide === 'function') {
+            try {
+                hideConfig.onHide(hideTarget);
+            } catch (error) {
+                console.error('Error executing context menu onHide:', error);
+            }
+        }
+    }
+
+    _playContextMenuOpenAnimation(menu) {
+        menu.classList.remove('context-menu-closing', 'context-menu-opening');
+        void menu.offsetWidth;
+        menu.classList.add('context-menu-opening');
+
+        let cleared = false;
+        const clearOpening = () => {
+            if (cleared) return;
+            cleared = true;
+            menu.classList.remove('context-menu-opening');
+            menu.removeEventListener('animationend', onOpenEnd);
+        };
+
+        const onOpenEnd = (e) => {
+            if (e.target !== menu || e.animationName !== 'contextMenuFadeIn') return;
+            clearOpening();
+        };
+
+        menu.addEventListener('animationend', onOpenEnd);
+        setTimeout(clearOpening, 260);
+    }
+
     positionMenu(event, isTouch = false) {
         const menu = this.menu;
         const menuContent = menu.querySelector('.context-menu-content');
@@ -1414,10 +1512,7 @@ class ContextMenuController {
             // CSS will handle centering
             menu.style.left = '';
             menu.style.top = '';
-            // Trigger fade animation
-            menu.classList.remove('context-menu-animate');
-            void menu.offsetWidth; // Trigger reflow
-            menu.classList.add('context-menu-animate');
+            this._playContextMenuOpenAnimation(menu);
             return;
         }
 
@@ -1470,13 +1565,9 @@ class ContextMenuController {
         menu.style.top = `${positioning.y}px`;
         menu.style.bottom = '';
 
-        // Make menu visible with fade animation
-        menu.style.opacity = '1';
+        menu.style.opacity = '';
 
-        // Trigger animation with correct direction
-        menu.classList.remove('context-menu-animate');
-        void menu.offsetWidth; // Trigger reflow
-        menu.classList.add('context-menu-animate');
+        this._playContextMenuOpenAnimation(menu);
     }
 
     calculatePositioning(clickX, clickY, menuWidth, menuHeight, viewportWidth, viewportHeight) {
@@ -2029,39 +2120,81 @@ class ContextMenuController {
     hideMenu() {
         if (!this.isOpen) return;
 
-        // Remove context-open class and position classes from target element
-        if (this.currentTarget) {
-            this.currentTarget.classList.remove(
-                'context-open',
-                'top-left',
-                'top-right',
-                'bottom-left',
-                'bottom-right',
-                'center-left',
-                'center-right',
-                'center-top',
-                'center-bottom',
-                'center-center'
-            );
-        }
+        const hideSession = this._cancelPendingHide();
 
-        this.menu.classList.add('hidden');
-        this.overlay.classList.add('hidden');
+        const hideConfig = this.activeRootMenuConfig;
+        const hideTarget = this.currentTarget;
+        const menu = this.menu;
+        const overlay = this.overlay;
+
         this.isOpen = false;
-        this.currentTarget = null;
-        this.activeRootMenuConfig = null;
 
-        // Hide any open submenu
+        this._clearContextOpenTargetClasses(this.currentTarget);
+
         this.hideSubmenu();
 
-        // Clear any touch timers
         if (this.touchTimer) {
             clearTimeout(this.touchTimer);
             this.touchTimer = null;
         }
 
-        // Clear hover timers
         this.clearHoverTimers();
+
+        const finishHide = () => {
+            if (hideSession !== this._hideSessionId) return;
+
+            menu.classList.remove('context-menu-closing', 'context-menu-opening');
+            menu.style.opacity = '';
+            menu.classList.add('hidden');
+            overlay.classList.add('hidden');
+            this.currentTarget = null;
+            this.activeRootMenuConfig = null;
+
+            if (typeof explorerApplet !== 'undefined' && explorerApplet) {
+                explorerApplet._contextMenuTarget = null;
+            }
+
+            if (hideConfig && typeof hideConfig.onHide === 'function') {
+                try {
+                    hideConfig.onHide(hideTarget);
+                } catch (error) {
+                    console.error('Error executing context menu onHide:', error);
+                }
+            }
+        };
+
+        if (menu.classList.contains('hidden')) {
+            finishHide();
+            return;
+        }
+
+        menu.classList.remove('context-menu-opening');
+        menu.style.opacity = '';
+        menu.classList.add('context-menu-closing');
+        overlay.classList.add('hidden');
+
+        let finished = false;
+        const completeHide = () => {
+            if (finished || hideSession !== this._hideSessionId) return;
+            finished = true;
+            if (this._hideAnimationEndHandler) {
+                menu.removeEventListener('animationend', this._hideAnimationEndHandler);
+                this._hideAnimationEndHandler = null;
+            }
+            if (this._hideCompleteTimer) {
+                clearTimeout(this._hideCompleteTimer);
+                this._hideCompleteTimer = null;
+            }
+            finishHide();
+        };
+
+        this._hideAnimationEndHandler = (e) => {
+            if (e.target !== menu || e.animationName !== 'contextMenuFadeOut') return;
+            completeHide();
+        };
+
+        menu.addEventListener('animationend', this._hideAnimationEndHandler);
+        this._hideCompleteTimer = setTimeout(completeHide, 300);
     }
 
     addSubmenuHoverSupport(itemElement, item, target) {

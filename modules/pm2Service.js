@@ -179,9 +179,12 @@ function restartProcess() {
         return Promise.reject(new Error('PM2 not available'));
     }
     return withPm2((pm2lib) => new Promise((resolve, reject) => {
-        pm2lib.restart(name, (err) => {
-            if (err) return reject(err);
-            resolve({ processName: name, restarted: true });
+        pm2lib.reset(name, (resetErr) => {
+            if (resetErr) return reject(resetErr);
+            pm2lib.restart(name, (err) => {
+                if (err) return reject(err);
+                resolve({ processName: name, restarted: true });
+            });
         });
     }));
 }

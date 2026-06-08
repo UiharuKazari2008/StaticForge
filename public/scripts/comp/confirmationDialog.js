@@ -219,9 +219,12 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
                 button.addEventListener('click', (e) => {
                     e.preventDefault();
                     const res = currentResolve;
+                    const resolved = typeof config.resolveValue === 'function'
+                        ? config.resolveValue(option.value, confirmationDialog)
+                        : option.value;
                     hideConfirmationDialog();
                     if (res) {
-                        res(option.value);
+                        res(resolved);
                     }
                 });
 

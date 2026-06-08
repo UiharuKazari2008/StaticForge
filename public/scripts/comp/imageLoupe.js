@@ -274,6 +274,12 @@ class ImageLoupe {
         this._observedPreviewInner = null;
         this._idleBackdropRaf = false;
         this._idleBackdropRafComplete = null;
+        this._layoutTransitionLocked = false;
+        this._deferredIdleReposition = false;
+        this._lastHostW = 0;
+        this._lastHostH = 0;
+        this._hostModal = null;
+        this._modalClassObserver = null;
         this._vpMatchActive = false;
         this._vpHoverSyncRaf = null;
         this._revealPresentationActive = false;
@@ -353,6 +359,79 @@ class ImageLoupe {
         document.addEventListener('pointerup', this._onPointerUp);
         document.addEventListener('pointercancel', this._onPointerUp);
         this.hostEl.addEventListener('wheel', this._onWheel, { passive: false });
+        this._wireModalLayoutLock();
+    }
+
+    _isModalLayoutLocked() {
+        const modal = this._hostModal || this.hostEl.closest('.modal');
+        if (!modal) {
+            return false;
+        }
+        return modal.classList.contains('hidden')
+            || modal.classList.contains('hidden-alt')
+            || modal.classList.contains('minimised')
+            || modal.classList.contains('opening')
+            || modal.classList.contains('closing')
+            || modal.classList.contains('minimising')
+            || modal.classList.contains('unminimising');
+    }
+
+    _ensureResizeSnapUnlocked() {
+        this.el.classList.remove('is-resize-snapping');
+    }
+
+    _shouldAnimateIdleReposition(hostW, hostH) {
+        const prevW = this._lastHostW;
+        const prevH = this._lastHostH;
+        this._lastHostW = hostW;
+        this._lastHostH = hostH;
+        if (prevW <= 0 || prevH <= 0 || hostW <= 0 || hostH <= 0) {
+            return false;
+        }
+        return Math.abs(prevW - hostW) > 1 || Math.abs(prevH - hostH) > 1;
+    }
+
+    _syncModalLayoutLock() {
+        const wasLocked = this._layoutTransitionLocked;
+        this._layoutTransitionLocked = this._isModalLayoutLocked();
+
+        if (!wasLocked && this._layoutTransitionLocked) {
+            this._clearIdlePositionTransitionHandler();
+            this._ensureResizeSnapUnlocked();
+        }
+
+        if (wasLocked && !this._layoutTransitionLocked) {
+            this._ensureResizeSnapUnlocked();
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    if (this._destroyed) {
+                        return;
+                    }
+                    if (this.state === 'idle') {
+                        this._applyIdleAnchorPosition({ animate: true });
+                    } else {
+                        this._clampCurrentPosition();
+                    }
+                    this._updateViewport();
+                    if (this.state === 'idle') {
+                        this._scheduleIdleBackdropSync();
+                    }
+                    this._deferredIdleReposition = false;
+                });
+            });
+        }
+    }
+
+    _wireModalLayoutLock() {
+        const modal = this.hostEl.closest('.modal');
+        if (!modal) {
+            return;
+        }
+        this._hostModal = modal;
+        this._syncModalLayoutLockBound = () => this._syncModalLayoutLock();
+        this._modalClassObserver = new MutationObserver(this._syncModalLayoutLockBound);
+        this._modalClassObserver.observe(modal, { attributes: true, attributeFilter: ['class'] });
+        this._syncModalLayoutLock();
     }
 
     _tryObserveBlurBackdrop() {
@@ -431,6 +510,7 @@ class ImageLoupe {
             return;
         }
         const started = performance.now();
+        const maxDurationMs = 150;
         const tick = (now) => {
             if (this._destroyed || !this._vpMatchActive) {
                 this._vpHoverSyncRaf = null;
@@ -438,7 +518,7 @@ class ImageLoupe {
             }
             this._syncVpMatchZoom();
             this._updateViewport();
-            if (now - started < 800) {
+            if (now - started < maxDurationMs) {
                 this._vpHoverSyncRaf = requestAnimationFrame(tick);
             } else {
                 this._vpHoverSyncRaf = null;
@@ -478,19 +558,29 @@ class ImageLoupe {
             }
         }
 
+        if (this._layoutTransitionLocked || this._isModalLayoutLocked()) {
+            this._layoutTransitionLocked = true;
+            this._deferredIdleReposition = true;
+            return;
+        }
+
         const snapIdle = this.state === 'idle';
         if (snapIdle) {
             this.el.classList.add('is-resize-snapping');
         }
         if (this.state === 'idle') {
-            this._applyIdleAnchorPosition();
+            const hostW = this.hostEl.clientWidth;
+            const hostH = this.hostEl.clientHeight;
+            this._applyIdleAnchorPosition({
+                animate: this._shouldAnimateIdleReposition(hostW, hostH)
+            });
         } else {
             this._clampCurrentPosition();
         }
         this._scheduleRefresh();
         if (snapIdle) {
             this._scheduleIdleBackdropSync(() => {
-                this.el.classList.remove('is-resize-snapping');
+                this._ensureResizeSnapUnlocked();
             });
         }
     }
@@ -657,6 +747,58 @@ class ImageLoupe {
         return vp + (ring + elevation) * 2;
     }
 
+    _clearIdlePositionTransitionHandler() {
+        if (!this._idlePositionTransitionHandler) {
+            return;
+        }
+        this.el.removeEventListener('transitionend', this._idlePositionTransitionHandler);
+        this._idlePositionTransitionHandler = null;
+    }
+
+    _commitIdleAnchorToPx(targetX, targetY, animate) {
+        if (animate && (this._layoutTransitionLocked || this.el.classList.contains('is-resize-snapping'))) {
+            this._deferredIdleReposition = true;
+            return;
+        }
+
+        const hostRect = this.hostEl.getBoundingClientRect();
+        const loupeRect = this.el.getBoundingClientRect();
+        const currentX = loupeRect.left - hostRect.left + (loupeRect.width / 2);
+        const currentY = loupeRect.top - hostRect.top + (loupeRect.height / 2);
+
+        this.el.style.left = `${currentX}px`;
+        this.el.style.top = `${currentY}px`;
+
+        if (!animate) {
+            this.el.style.left = `${targetX}px`;
+            this.el.style.top = `${targetY}px`;
+            return;
+        }
+
+        this._clearIdlePositionTransitionHandler();
+        void this.el.offsetHeight;
+        requestAnimationFrame(() => {
+            if (this._destroyed || this.state !== 'idle') {
+                return;
+            }
+            this.el.style.left = `${targetX}px`;
+            this.el.style.top = `${targetY}px`;
+        });
+
+        this._idlePositionTransitionHandler = (e) => {
+            if (e.target !== this.el || (e.propertyName !== 'left' && e.propertyName !== 'top')) {
+                return;
+            }
+            this._clearIdlePositionTransitionHandler();
+            if (this._destroyed || this.state !== 'idle') {
+                return;
+            }
+            this.el.style.removeProperty('left');
+            this.el.style.removeProperty('top');
+        };
+        this.el.addEventListener('transitionend', this._idlePositionTransitionHandler);
+    }
+
     _applyIdleAnchorPosition(options = {}) {
         const anchor = IMAGE_LOUPE_CORNER_ANCHOR[this.parkedCorner] || IMAGE_LOUPE_CORNER_ANCHOR['bottom-left'];
         this.el.dataset.corner = this.parkedCorner;
@@ -667,25 +809,25 @@ class ImageLoupe {
 
         const hostW = this.hostEl.clientWidth;
         const hostH = this.hostEl.clientHeight;
-        this._centerX = (anchor.x / 100) * hostW;
-        this._centerY = (anchor.y / 100) * hostH;
+        const targetX = (anchor.x / 100) * hostW;
+        const targetY = (anchor.y / 100) * hostH;
+        this._centerX = targetX;
+        this._centerY = targetY;
 
         if (this.state !== 'idle') {
             return;
         }
 
-        const hadPxAnchor = /px/i.test(this.el.style.left || '');
-        if (options.animateFromPx && hadPxAnchor) {
-            requestAnimationFrame(() => {
-                if (this._destroyed || this.state !== 'idle') {
-                    return;
-                }
-                this.el.style.removeProperty('left');
-                this.el.style.removeProperty('top');
-            });
+        if (options.animate) {
+            if (this._layoutTransitionLocked) {
+                this._deferredIdleReposition = true;
+                return;
+            }
+            this._commitIdleAnchorToPx(targetX, targetY, true);
             return;
         }
 
+        this._clearIdlePositionTransitionHandler();
         this.el.style.removeProperty('left');
         this.el.style.removeProperty('top');
     }
@@ -1103,8 +1245,9 @@ class ImageLoupe {
         this._snapEscapeAccum.value = 0;
         this.hostEl.removeAttribute('data-corner-zone');
 
+        this._ensureResizeSnapUnlocked();
         this._applyViewportDimensions(this.getIdleViewportPx());
-        this._applyIdleAnchorPosition({ animateFromPx: true });
+        this._applyIdleAnchorPosition({ animate: !this._layoutTransitionLocked });
         this._persistPrefs();
         this._updateViewport();
     }
@@ -1405,10 +1548,6 @@ class ImageLoupe {
         }
         this._revealPresentationActive = revealActive;
 
-        if (this.state === 'idle') {
-            this._applyIdleAnchorPosition();
-        }
-
         const img = this._getImage();
         if (img && !img._imageLoupeLoadWired) {
             img._imageLoupeLoadWired = true;
@@ -1563,6 +1702,13 @@ class ImageLoupe {
         document.removeEventListener('pointerup', this._onPointerUp);
         document.removeEventListener('pointercancel', this._onPointerUp);
         this.hostEl.removeEventListener('wheel', this._onWheel);
+
+        this._clearIdlePositionTransitionHandler();
+
+        if (this._modalClassObserver) {
+            this._modalClassObserver.disconnect();
+            this._modalClassObserver = null;
+        }
 
         if (this._resizeObserver) {
             this._resizeObserver.disconnect();

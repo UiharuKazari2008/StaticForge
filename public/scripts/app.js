@@ -9840,6 +9840,10 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
 
             window.optionsData = options;
 
+            if (typeof bootstrapVfsPathUuidFromOptions === 'function') {
+                bootstrapVfsPathUuidFromOptions(options);
+            }
+
             // Initialize datasetBias dynamically from config with default values
             if (window.optionsData?.datasets) {
                 window.optionsData.datasets.forEach(dataset => {
@@ -12262,22 +12266,25 @@ function setupEventListeners() {
     const manualTabButtons = document.querySelectorAll('#manualModal .prompt-tabs .gallery-toggle-group .gallery-toggle-btn');
     const showBothBtn = document.getElementById('showBothBtn');
 
-    // Track the last focused textarea globally
-    let lastFocusedTextarea = null;
-
     // Add focus event listeners to all textareas to track the last focused one
     document.addEventListener('focusin', (e) => {
         if (e.target.matches('.prompt-textarea, .character-prompt-textarea')) {
-            lastFocusedTextarea = e.target;
             window.lastFocusedPromptTextarea = e.target;
         }
     });
 
     manualTabButtons.forEach(button => {
+        let tabSwitchFocusSource = null;
+        button.addEventListener('mousedown', () => {
+            const active = document.activeElement;
+            tabSwitchFocusSource = (active && active.matches('.prompt-textarea, .character-prompt-textarea'))
+                ? active
+                : null;
+        });
         button.addEventListener('click', (e) => {
             e.preventDefault();
             const targetTab = button.getAttribute('data-tab');
-            switchManualTab(targetTab, lastFocusedTextarea);
+            switchManualTab(targetTab, tabSwitchFocusSource);
         });
     });
 
@@ -12809,7 +12816,14 @@ function setupEventListeners() {
 // toggleManualShowBoth, and related tab management functionality.
 
 // Tab switching functionality for prompt/UC tabs (Manual Generation Model)
-function switchManualTab(targetTab, previouslyFocused = null) {
+function switchManualTab(targetTab, previouslyFocused = undefined) {
+    prepareManualTabLayout(targetTab);
+
+    const ownsScrollbarBatch = typeof customScrollbar !== 'undefined' && customScrollbar._layoutBatchDepth === 0;
+    if (ownsScrollbarBatch) {
+        customScrollbar.beginLayoutBatch();
+    }
+
     // Target ONLY the tab buttons within the manual modal's prompt-tabs section
     const tabButtons = document.querySelectorAll('#manualModal .prompt-tabs .gallery-toggle-group .gallery-toggle-btn');
     // Target ONLY the tab panes within the manual modal's prompt-tabs section
@@ -12818,8 +12832,8 @@ function switchManualTab(targetTab, previouslyFocused = null) {
     const promptTabs = document.querySelector('#manualModal .prompt-tabs');
     const toggleGroup = document.querySelector('#manualModal .prompt-tabs .gallery-toggle-group');
 
-    // Use the previously focused element if provided, otherwise fall back to current active element
-    const currentlyFocused = previouslyFocused || document.activeElement;
+    // undefined = infer from activeElement (keyboard/programmatic); null = no textarea focus; element = explicit source
+    const currentlyFocused = previouslyFocused === undefined ? document.activeElement : previouslyFocused;
     let focusTarget = null;
 
     // Remove show-both state
@@ -12850,11 +12864,17 @@ function switchManualTab(targetTab, previouslyFocused = null) {
             const characterItem = currentlyFocused.closest('.character-prompt-item');
             if (characterItem) {
                 const characterId = characterItem.id;
-                const targetId = `${characterId}_${targetTab}`;
-                focusTarget = document.getElementById(targetId);
-
+                if (currentlyFocused.id.endsWith('_promptNegative')) {
+                    if (targetTab === 'uc') {
+                        focusTarget = currentlyFocused;
+                    } else if (targetTab === 'prompt') {
+                        focusTarget = document.getElementById(`${characterId}_prompt`);
+                    }
+                } else {
+                    focusTarget = document.getElementById(`${characterId}_${targetTab}`);
+                }
             }
-        } else if (currentlyFocused.matches('.prompt-textarea') && !currentlyFocused.matches('.character-prompt-textarea')) {
+        } else if (currentlyFocused.matches('.prompt-textarea')) {
             // Main prompt textarea was focused (not character), focus main target tab textarea
             if (targetTab === 'prompt') {
                 focusTarget = document.getElementById('manualPrompt');
@@ -12869,32 +12889,25 @@ function switchManualTab(targetTab, previouslyFocused = null) {
             }
 
         }
-    } else {
-        // If nothing was focused or something else was focused, default to main textarea
-        if (targetTab === 'prompt') {
-            focusTarget = document.getElementById('manualPrompt');
-        } else if (targetTab === 'uc') {
-            focusTarget = document.getElementById('manualUc');
-        } else if (targetTab === 'creative') {
-            focusTarget = document.getElementById('creativeDirectiveInput');
-        }
-
     }
 
-    // Only focus if there was a previously focused textarea
+    // Only focus when a textarea was focused in the tab we are leaving
     if (focusTarget) {
-        // Use setTimeout to ensure the tab switch is complete before focusing
         setTimeout(() => {
             if (focusTarget && focusTarget.focus) {
                 focusTarget.focus();
-                updateEmphasisHighlighting(focusTarget);
-                autoResizeTextarea(focusTarget);
+                // scheduleEmphasisHighlightUpdate: public/scripts/comp/emphasisManager.js
+                scheduleEmphasisHighlightUpdate(focusTarget);
             }
         }, 10);
     }
 
     // Sync the selection to all character prompts
     syncCharacterPromptTabs(targetTab);
+
+    if (ownsScrollbarBatch) {
+        customScrollbar.endLayoutBatch();
+    }
 }
 
 // New function to sync main window tab selection to all character prompts
@@ -12929,11 +12942,11 @@ function syncCharacterPromptTabs(mainTab) {
             toggleGroup.setAttribute('data-active', mainTab);
         }
 
-        // Update emphasis highlighting and auto-resize for the active textarea (but don't change focus)
+        // Update emphasis highlighting for the active textarea (layout already prepared before tab show)
         const activeTextarea = characterItem.querySelector(`#${characterId}_${mainTab}`);
         if (activeTextarea) {
-            updateEmphasisHighlighting(activeTextarea);
-            autoResizeTextarea(activeTextarea);
+            // scheduleEmphasisHighlightUpdate: public/scripts/comp/emphasisManager.js
+            scheduleEmphasisHighlightUpdate(activeTextarea);
         }
     });
 }
@@ -12969,12 +12982,13 @@ function syncCharacterPromptTabsShowBoth() {
 
         if (promptTextarea) {
             updateEmphasisHighlighting(promptTextarea);
-            autoResizeTextarea(promptTextarea);
+            autoResizeTextarea(promptTextarea, 70, 0, false, true);
         }
         if (ucTextarea) {
             updateEmphasisHighlighting(ucTextarea);
-            autoResizeTextarea(ucTextarea);
+            autoResizeTextarea(ucTextarea, 70, 0, false, true);
         }
+        syncPromptTextareaContainersInScope(characterItem);
     });
 }
 
@@ -16804,6 +16818,7 @@ function setupTrayIconPopovers() {
         'fixedCreditsIndicator',
         'imageGenerationIndicator',
         'searchIndexingIndicator',
+        'desktopSaveTrayIndicator',
         'workspaceTrayIcon',
         'serviceWorkerTrayIcon',
         'modemTrayIcon',
@@ -17521,6 +17536,13 @@ function setupServiceWorkerTrayContextMenu() {
                 type: 'list',
                 title: 'Updates',
                 items: [
+                    {
+                        icon: 'fas fa-arrows-rotate',
+                        text: 'Restart to Apply Updates',
+                        action: 'sw-restart-apply-updates',
+                        className: 'text-warning',
+                        hidden: () => !(window.serviceWorkerManager && window.serviceWorkerManager.hasPendingUpdates())
+                    },
                     {
                         icon: 'fa-regular fa-sync',
                         text: 'Check for Updates',
@@ -18538,13 +18560,6 @@ function addCharacterPrompt() {
         });
     }
 
-    // Update preview content when prompt changes
-    if (promptField) {
-        promptField.addEventListener('input', () => {
-            updateCharacterPromptPreview(characterId);
-        });
-    }
-
     // Set initial collapsed state for new characters
     // First character should be open, others collapsed
     const existingCharacters = characterPromptsContainer.querySelectorAll('.character-prompt-item');
@@ -18569,6 +18584,8 @@ function addCharacterPrompt() {
 
     // Initialize drag and drop functionality
     initializeCharacterPromptDragAndDrop();
+
+    promptTextareaToolbar.updateAllTokenCounts();
 }
 
 function deleteCharacterPrompt(characterId) {
@@ -18598,6 +18615,7 @@ function deleteCharacterPrompt(characterId) {
         // Reinitialize drag and drop functionality
         initializeCharacterPromptDragAndDrop();
         scheduleMaybeSyncMainPromptSubjectTagsFromCharacterPrompts();
+        promptTextareaToolbar.updateAllTokenCounts();
     }
     if (characterPromptsContainer.querySelectorAll('.character-prompt-item').length === 0) {
         characterPromptsContainer.classList.add('hidden');
@@ -19509,6 +19527,8 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
 
     // Update auto position toggle after loading
     updateAutoPositionToggle();
+
+    promptTextareaToolbar.updateAllTokenCounts();
 }
 
 /**
@@ -28105,6 +28125,12 @@ function setupMainMenuContextMenus() {
             case 'refresh-cache':
                 // Refresh cache directly
                 await serviceWorkerManager.refreshServerCacheAndCheck();
+                break;
+
+            case 'sw-restart-apply-updates':
+                if (window.serviceWorkerManager) {
+                    window.serviceWorkerManager.forceRestart();
+                }
                 break;
 
             case 'sw-check-updates':

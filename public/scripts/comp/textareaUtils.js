@@ -189,6 +189,13 @@ function wireManualStylePromptTextarea(textarea) {
     if (attachPromptTextareaContextMenu) {
         attachPromptTextareaContextMenu(textarea);
     }
+
+    const autofillBtn = textarea.closest('.character-prompt-textarea-container, .prompt-textarea-container')
+        ?.querySelector('[data-action="autofill"]');
+    // wireAutofillSettingsButton: public/scripts/comp/autofillSettings.js
+    if (autofillBtn && typeof wireAutofillSettingsButton === 'function') {
+        wireAutofillSettingsButton(autofillBtn);
+    }
 }
 
 function setupPromptTextareaControls(textarea) {
