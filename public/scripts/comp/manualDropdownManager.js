@@ -125,8 +125,28 @@ class ManualDropdownManager {
      * Set up all dropdowns
      */
     setupDropdowns() {
-        // TODO: Set up all dropdowns using setupDropdown() from dropdown.js
-        // Model dropdown, sampler dropdown, resolution dropdown, etc.
+        setupDropdown(
+            manualResolutionDropdown,
+            manualResolutionDropdownBtn,
+            manualResolutionDropdownMenu,
+            renderManualResolutionDropdown,
+            () => manualSelectedResolution,
+            { preventFocusTransfer: true }
+        );
+
+        setupDropdown(manualSamplerDropdown, manualSamplerDropdownBtn, manualSamplerDropdownMenu, renderManualSamplerDropdown, () => manualSelectedSampler, { preventFocusTransfer: true });
+
+        setupDropdown(manualModelDropdown, manualModelDropdownBtn, manualModelDropdownMenu, renderManualModelDropdown, () => manualSelectedModel, { preventFocusTransfer: true });
+
+        setupDropdown(datasetDropdown, datasetDropdownBtn, datasetDropdownMenu, renderDatasetDropdown, () => selectedDatasets, { preventFocusTransfer: true });
+
+        setupDropdown(subTogglesDropdown, subTogglesBtn, subTogglesDropdownMenu, renderSubTogglesDropdown, () => selectedDatasets, { preventFocusTransfer: true });
+
+        setupDropdown(ucPresetsDropdown, ucPresetsDropdownBtn, ucPresetsDropdownMenu, renderUcPresetsDropdown, () => selectedUcPreset, { preventFocusTransfer: true });
+
+        setupDropdown(nsfwDropdown, nsfwToggleBtn, nsfwDropdownMenu, renderNsfwDropdown, () => selectedNsfwValue, { preventFocusTransfer: true });
+
+        setupDropdown(manualWorkspaceDropdown, manualWorkspaceDropdownBtn, manualWorkspaceDropdownMenu, renderManualWorkspaceDropdown, () => manualSelectedWorkspace, { preventFocusTransfer: true });
     }
 
     /**
@@ -2759,3 +2779,6 @@ function openReferenceBrowserWithFilter(filterMode) {
     }
 }
 
+
+// Instantiate and export global manager
+window.manualDropdownManager = new ManualDropdownManager();

@@ -12590,28 +12590,10 @@ function setupEventListeners() {
         });
     }
 
-    setupDropdown(
-        manualResolutionDropdown,
-        manualResolutionDropdownBtn,
-        manualResolutionDropdownMenu,
-        renderManualResolutionDropdown,
-        () => manualSelectedResolution,
-        { preventFocusTransfer: true }
-    );
-
-    setupDropdown(manualSamplerDropdown, manualSamplerDropdownBtn, manualSamplerDropdownMenu, renderManualSamplerDropdown, () => manualSelectedSampler, { preventFocusTransfer: true });
-
-    setupDropdown(manualModelDropdown, manualModelDropdownBtn, manualModelDropdownMenu, renderManualModelDropdown, () => manualSelectedModel, { preventFocusTransfer: true });
-
-    setupDropdown(datasetDropdown, datasetDropdownBtn, datasetDropdownMenu, renderDatasetDropdown, () => selectedDatasets, { preventFocusTransfer: true });
-
-    setupDropdown(subTogglesDropdown, subTogglesBtn, subTogglesDropdownMenu, renderSubTogglesDropdown, () => selectedDatasets, { preventFocusTransfer: true });
-
-    setupDropdown(ucPresetsDropdown, ucPresetsDropdownBtn, ucPresetsDropdownMenu, renderUcPresetsDropdown, () => selectedUcPreset, { preventFocusTransfer: true });
-
-    setupDropdown(nsfwDropdown, nsfwToggleBtn, nsfwDropdownMenu, renderNsfwDropdown, () => selectedNsfwValue, { preventFocusTransfer: true });
-
-    setupDropdown(manualWorkspaceDropdown, manualWorkspaceDropdownBtn, manualWorkspaceDropdownMenu, renderManualWorkspaceDropdown, () => manualSelectedWorkspace, { preventFocusTransfer: true });
+    // Initialize manual dropdown manager
+    if (window.manualDropdownManager) {
+        window.manualDropdownManager.init();
+    }
 
     // Initialize manual workspace selection to current active workspace
     manualSelectedWorkspace = activeWorkspace;
