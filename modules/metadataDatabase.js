@@ -526,45 +526,7 @@ async function removeImageMetadata(filenames) {
     if (!Array.isArray(filenames) || filenames.length === 0) {
         return 0;
     }
-    
-    // For large batches, use batch deletion
-    if (filenames.length > 50) {
-        return await removeImageMetadataBatch(filenames);
-    }
-    
-    // For smaller batches, use individual deletion (preserves receipt handling)
-    let removedCount = 0;
-    
-    for (const filename of filenames) {
-        const image = await db.get('SELECT id FROM images WHERE filename = ?', [filename]);
-        
-        if (image) {
-            // Extract receipts before deletion
-            const receipts = await db.all('SELECT receipt_data FROM receipts WHERE image_id = ?', [image.id]);
-            
-            if (receipts.length > 0) {
-                // Merge receipts into unattributed receipts
-                for (const receipt of receipts) {
-                    await db.run(`
-                        INSERT INTO unattributed_receipts (date, receipt_data)
-                        VALUES (?, ?)
-                    `, [Date.now(), receipt.receipt_data]);
-                }
-                console.log(`📝 Merged ${receipts.length} receipts from deleted file: ${filename}`);
-            }
-            
-            // Delete the image and its receipts (CASCADE will handle receipts)
-            await db.run('DELETE FROM images WHERE filename = ?', [filename]);
-            
-            removedCount++;
-        }
-    }
-    
-    if (removedCount > 0) {
-        console.log(`🗑️ Removed metadata for ${removedCount} images`);
-    }
-    
-    return removedCount;
+    return await removeImageMetadataBatch(filenames);
 }
 
 /**
@@ -594,43 +556,27 @@ async function removeImageMetadataBatch(filenames, batchSize = 500) {
                 // Use a transaction for each batch
                 await db.run('BEGIN TRANSACTION');
                 
-                // First, extract all receipts for images in this batch
                 const placeholders = batch.map(() => '?').join(',');
-                const images = await db.all(
-                    `SELECT id, filename FROM images WHERE filename IN (${placeholders})`,
+                const now = Date.now();
+
+                // Move receipts to unattributed_receipts for all images in this batch in one operation
+                const insertResult = await db.run(`
+                    INSERT INTO unattributed_receipts (date, receipt_data)
+                    SELECT ?, r.receipt_data
+                    FROM receipts r
+                    JOIN images i ON r.image_id = i.id
+                    WHERE i.filename IN (${placeholders})
+                `, [now, ...batch]);
+
+                receiptCount += insertResult.changes;
+
+                // Delete images in batch (CASCADE will handle receipts)
+                const deleteResult = await db.run(
+                    `DELETE FROM images WHERE filename IN (${placeholders})`,
                     batch
                 );
-                
-                if (images.length > 0) {
-                    const imageIds = images.map(img => img.id);
-                    const receiptPlaceholders = imageIds.map(() => '?').join(',');
-                    
-                    // Get all receipts for these images
-                    const receipts = await db.all(
-                        `SELECT receipt_data FROM receipts WHERE image_id IN (${receiptPlaceholders})`,
-                        imageIds
-                    );
-                    
-                    // Merge receipts into unattributed receipts in batch
-                    if (receipts.length > 0) {
-                        const now = Date.now();
-                        for (const receipt of receipts) {
-                            await db.run(`
-                                INSERT INTO unattributed_receipts (date, receipt_data)
-                                VALUES (?, ?)
-                            `, [now, receipt.receipt_data]);
-                        }
-                        receiptCount += receipts.length;
-                    }
-                    
-                    // Delete images in batch (CASCADE will handle receipts)
-                    await db.run(
-                        `DELETE FROM images WHERE filename IN (${placeholders})`,
-                        batch
-                    );
-                    
-                    removedCount += images.length;
-                }
+
+                removedCount += deleteResult.changes;
                 
                 // Commit transaction
                 await db.run('COMMIT');
