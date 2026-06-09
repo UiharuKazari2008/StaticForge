@@ -79,9 +79,16 @@ class LoginPage {
             this.loginContainer.classList.add('transition');
             this.loginContainer.classList.toggle('minimize');
         });
+        this.pinDisplay.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                this.pinDisplay.click();
+            }
+        });
     }
 
     addDigit(digit) {
+        this.clearPinError();
         if (this.rollingBuffer.length < 6) {
             this.rollingBuffer += digit;
             this.updatePinDisplay();
@@ -94,6 +101,7 @@ class LoginPage {
     }
 
     removeDigit() {
+        this.clearPinError();
         if (this.rollingBuffer.length > 0) {
             this.rollingBuffer = this.rollingBuffer.slice(0, -1);
             this.updatePinDisplay();
@@ -101,6 +109,7 @@ class LoginPage {
     }
 
     clearPin() {
+        this.clearPinError();
         this.rollingBuffer = '';
         this.updatePinDisplay();
     }
