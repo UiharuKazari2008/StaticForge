@@ -9875,6 +9875,11 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
                 loadDynamicGenerationQuips().catch(() => {});
             }
 
+            // loadDynamicGenerationQuips: public/scripts/comp/generationQuips.js
+            if (typeof loadDynamicGenerationQuips === 'function') {
+                loadDynamicGenerationQuips().catch(() => {});
+            }
+
             if (typeof bootstrapVfsPathUuidFromOptions === 'function') {
                 bootstrapVfsPathUuidFromOptions(options);
             }
@@ -16871,6 +16876,8 @@ function prepareSystemTrayBackground() {
         'subscriptionRenewalIndicator',
         'fixedCreditsIndicator',
         'searchIndexingIndicator',
+        'desktopSaveTrayIndicator',
+        'generationQuipsTrayIcon',
         'naxtBagTrayIcon',
         'phasewalkerTrayIcon',
         'workspaceTrayIcon',
@@ -16951,6 +16958,10 @@ async function startBackgroundTrayServices() {
             return 'modemTrayIcon';
         },
         () => {
+            revealTrayIconById('generationQuipsTrayIcon');
+            return 'generationQuipsTrayIcon';
+        },
+        () => {
             if (window.naxtApplet && typeof window.naxtApplet.updateBagTrayChrome === 'function') {
                 window.naxtApplet.updateBagTrayChrome();
             }
@@ -17001,6 +17012,8 @@ function setupTrayIconPopovers() {
         'fixedCreditsIndicator',
         'imageGenerationIndicator',
         'searchIndexingIndicator',
+        'generationQuipsTrayIcon',
+        'desktopSaveTrayIndicator',
         'workspaceTrayIcon',
         'serviceWorkerTrayIcon',
         'modemTrayIcon',
