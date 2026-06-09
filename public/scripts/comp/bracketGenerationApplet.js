@@ -320,6 +320,7 @@ function syncManagedBracketEditorSaveFlags() {
             saveResultsBtn.disabled = true;
         }
     });
+    bracketGenNotifyTrayChrome();
 }
 
 function deleteAllManagedBracketArtifacts() {
@@ -578,6 +579,10 @@ class BracketGenerationApplet {
         this._pendingAutoCompile = false;
         this._desktopShortcut = null;
         this._savedSnapshot = null;
+        this.trayEl = null;
+        this.trayGlyph = null;
+        this.trayMenuConfig = null;
+        this._trayInitialized = false;
     }
 
     getActiveKeywordSteps() {
@@ -1198,6 +1203,180 @@ class BracketGenerationApplet {
     updateChrome() {
         this.updateTitleBar();
         this.updateCompileButton();
+        this.updateTrayChrome();
+    }
+
+    formatTrayTitle() {
+        const menuData = bracketGenGetStepMenuData();
+        if (!menuData) return 'Phasewalker';
+        const stepCount = Math.max(
+            0,
+            ...menuData.keywords.map((kw) => (menuData.keywordSteps[kw] || []).length)
+        );
+        const kwPart = menuData.keywords.length === 1
+            ? menuData.keywords[0]
+            : `${menuData.keywords.length} keywords`;
+        return `Phasewalker - ${kwPart} · ${stepCount} step${stepCount === 1 ? '' : 's'}`;
+    }
+
+    handleTrayMenuAction(action) {
+        if (action === 'pw-tray-compile') {
+            this.compileStages();
+            return;
+        }
+        if (action === 'pw-tray-load') {
+            this.loadFromEditor();
+            return;
+        }
+        if (action === 'pw-tray-delete') {
+            void this.deleteStages();
+            return;
+        }
+        if (action === 'pw-tray-desktop') {
+            void this.addToDesktop();
+            return;
+        }
+        if (action === 'pw-tray-save-shortcut') {
+            void this.saveShortcutChanges();
+            return;
+        }
+        if (action === 'pw-tray-toggle-stage0') {
+            this.state.useStage0 = !this.state.useStage0;
+            this.normalizeCompareSourceStepIndex();
+            this.renderSteps();
+            this.updateChrome();
+        }
+    }
+
+    buildTrayMenuItems() {
+        const menuData = bracketGenGetStepMenuData();
+        const items = [];
+        if (!menuData) {
+            items.push({ text: 'No Phasewalker data', disabled: true });
+            return items;
+        }
+
+        const stepCount = Math.max(
+            0,
+            ...menuData.keywords.map((kw) => (menuData.keywordSteps[kw] || []).length)
+        );
+        items.push({
+            separator: true,
+            text: `${menuData.keywords.length} keyword${menuData.keywords.length === 1 ? '' : 's'} · ${stepCount} step${stepCount === 1 ? '' : 's'}`
+        });
+
+        menuData.keywords.forEach((kw) => {
+            items.push({ separator: true, text: kw });
+            const steps = menuData.keywordSteps[kw] || [];
+            if (!steps.length) {
+                items.push({ text: 'No steps', disabled: true });
+                return;
+            }
+            steps.forEach((step, index) => {
+                items.push({
+                    text: menuData.stepLabel(index),
+                    icon: 'fas fa-stairs',
+                    disabled: true
+                });
+            });
+        });
+
+        items.push({ separator: true });
+        items.push({
+            text: 'Compile',
+            icon: 'fas fa-hammer',
+            action: 'pw-tray-compile',
+            disabled: !bracketGenIsEditorOpen() || !this.hasToolData()
+        });
+        items.push({
+            text: 'Load from Editor',
+            icon: 'fas fa-file-import',
+            action: 'pw-tray-load',
+            disabled: !bracketGenIsEditorOpen() || !hasManagedBracketArtifacts()
+        });
+        items.push({
+            text: 'Delete Stages',
+            icon: 'fas fa-trash-alt',
+            action: 'pw-tray-delete',
+            disabled: !hasManagedBracketArtifacts()
+        });
+        items.push({
+            text: this._desktopShortcut ? 'Save changes' : 'Add to Desktop',
+            icon: this._desktopShortcut ? 'fas fa-save' : 'fas fa-arrow-down-left',
+            action: this._desktopShortcut ? 'pw-tray-save-shortcut' : 'pw-tray-desktop',
+            disabled: !this.hasToolData()
+        });
+        items.push({
+            text: this.state.useStage0 ? 'Use Stage 0' : 'Use Stage 0 (off)',
+            icon: this.state.useStage0 ? 'fas fa-check' : 'fas fa-square',
+            action: 'pw-tray-toggle-stage0'
+        });
+        return items;
+    }
+
+    refreshTrayMenuItems() {
+        if (!this.trayMenuConfig || !this.trayMenuConfig.sections[0]) return;
+        this.trayMenuConfig.sections[0].items = this.buildTrayMenuItems();
+    }
+
+    reRenderTrayMenuIfOpen() {
+        // contextMenu.renderMenu: public/scripts/comp/contextMenu.js
+        if (!contextMenu || !contextMenu.isOpen || contextMenu.currentTarget !== this.trayEl) return;
+        this.refreshTrayMenuItems();
+        contextMenu.renderMenu(this.trayMenuConfig, this.trayEl);
+        contextMenu.executeLoadFunctions(this.trayMenuConfig, this.trayEl);
+        contextMenu.updateIndicatorDots(this.trayMenuConfig);
+    }
+
+    buildTrayMenuConfig() {
+        const applet = this;
+        return {
+            maxHeight: 420,
+            beforeShow: () => applet.refreshTrayMenuItems(),
+            sections: [{ type: 'list', items: [] }],
+            onAction: (action) => applet.handleTrayMenuAction(action)
+        };
+    }
+
+    updateTrayChrome() {
+        if (!this.trayEl) return;
+
+        const hasData = bracketGenGetStepMenuData() !== null;
+        const appletOpen = bracketGenIsAppletActive();
+        const bootPending = typeof window.isDesktopTrayBootPending === 'function'
+            && window.isDesktopTrayBootPending();
+
+        if (hasData) {
+            if (!bootPending) {
+                this.trayEl.classList.remove('hidden');
+            }
+            this.trayEl.classList.toggle('phasewalker-tray-applet-open', appletOpen);
+        } else {
+            this.trayEl.classList.add('hidden');
+            this.trayEl.classList.remove('phasewalker-tray-applet-open');
+        }
+
+        if (this.trayGlyph) {
+            this.trayGlyph.className = 'fas fa-layer-group';
+        }
+        this.trayEl.title = this.formatTrayTitle();
+        this.reRenderTrayMenuIfOpen();
+    }
+
+    setupTray() {
+        // contextMenu.attachToElement: public/scripts/comp/contextMenu.js
+        if (!this.trayEl || !contextMenu) return;
+
+        this.trayMenuConfig = this.buildTrayMenuConfig();
+        contextMenu.attachToElement(this.trayEl, this.trayMenuConfig);
+
+        this.trayEl.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            void this.open();
+        });
+
+        this.updateTrayChrome();
     }
 
     async saveShortcutChanges() {
@@ -1825,6 +2004,7 @@ class BracketGenerationApplet {
         this._skipCloseConfirm = true;
         closeModal(this.modal);
         this._skipCloseConfirm = false;
+        this.updateTrayChrome();
     }
 
     async requestClose() {
@@ -1866,6 +2046,27 @@ window.deleteAllManagedBracketArtifacts = deleteAllManagedBracketArtifacts;
 window.hasManagedBracketArtifacts = hasManagedBracketArtifacts;
 window.syncManagedBracketEditorSaveFlags = syncManagedBracketEditorSaveFlags;
 window.validateBracketPlaceholdersBeforeGeneration = validateBracketPlaceholdersBeforeGeneration;
+
+function bracketGenNotifyTrayChrome() {
+    if (bracketGenerationApplet && typeof bracketGenerationApplet.updateTrayChrome === 'function') {
+        bracketGenerationApplet.updateTrayChrome();
+    }
+}
+window.bracketGenNotifyTrayChrome = bracketGenNotifyTrayChrome;
+
+function initializePhasewalkerTray() {
+    if (!bracketGenerationApplet.trayEl) {
+        bracketGenerationApplet.trayEl = document.getElementById('phasewalkerTrayIcon');
+        bracketGenerationApplet.trayGlyph = document.getElementById('phasewalkerTrayIconGlyph');
+    }
+    if (!bracketGenerationApplet.trayEl || bracketGenerationApplet._trayInitialized) return;
+    if (!window.isDesktop) {
+        bracketGenerationApplet.trayEl.classList.add('hidden');
+        return;
+    }
+    bracketGenerationApplet.setupTray();
+    bracketGenerationApplet._trayInitialized = true;
+}
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => bracketGenerationApplet.init());

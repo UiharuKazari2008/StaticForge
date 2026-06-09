@@ -2381,14 +2381,9 @@
             </div>
         </div>
         <div class="modal-window-controls">
-            <div id="textReplacementActionsDropdown" class="custom-dropdown dark dropright">
-                <button type="button" id="textReplacementActionsDropdownBtn" class="btn-secondary btn-small">
-                    <i class="fas fa-chevron-down"></i>
-                </button>
-                <div id="textReplacementActionsDropdownMenu" class="custom-dropdown-menu hidden">
-                    <!-- Options will be populated by JavaScript -->
-                </div>
-            </div>
+            <button type="button" id="textReplacementActionsDropdownBtn" class="btn-secondary btn-small" title="Actions">
+                <i class="fas fa-chevron-down"></i>
+            </button>
             <button type="button" id="toggleCompiledPromptsSectionBtn" class="btn-secondary btn-small"
                 title="Compiled Prompts">
                 <i class="fa-regular fa-subtitles"></i>
@@ -2505,14 +2500,9 @@
             <button type="button" id="toggleMemorySearchBtn" class="btn-secondary" title="Search">
                 <i class="fas fa-search"></i>
             </button>
-            <div id="memoryCategoryFilterDropdown" class="custom-dropdown">
-                <button type="button" id="memoryCategoryFilterBtn" class="btn-secondary" title="Filter">
-                    <i class="fas fa-filter"></i>
-                </button>
-                <div id="memoryCategoryFilterMenu" class="custom-dropdown-menu hidden">
-                    <!-- Options will be populated by JavaScript -->
-                </div>
-            </div>
+            <button type="button" id="memoryCategoryFilterBtn" class="btn-secondary" title="Filter">
+                <i class="fas fa-filter"></i>
+            </button>
             <button type="button" id="refreshKnowledgeMemoriesBtn" class="btn-secondary" title="Refresh">
                 <i class="fas fa-refresh"></i>
             </button>
@@ -4900,15 +4890,15 @@ Examples:
             </div>
             <div class="modal-window-title-toolbar">
                 <div class="button-group">
-                    <button type="button" id="explorerBackBtn" class="btn-secondary" title="Back"><i class="fas fa-arrow-left"></i></button>
-                    <button type="button" id="explorerForwardBtn" class="btn-secondary" title="Forward"><i class="fas fa-arrow-right"></i></button>
+                    <button type="button" id="explorerBackBtn" class="btn-secondary toolbar-input-segment" title="Back"><i class="fas fa-arrow-left"></i></button>
+                    <button type="button" id="explorerForwardBtn" class="btn-secondary toolbar-input-segment" title="Forward"><i class="fas fa-arrow-right"></i></button>
                 </div>
                 <button type="button" id="explorerUpBtn" class="btn-secondary" title="Up"><i class="fas fa-arrow-up"></i></button>
                 <div class="button-group">
-                    <input type="text" id="explorerAddressBar" class="form-control colored explorer-address-bar" placeholder="/" spellcheck="false">
-                    <button type="button" id="explorerRefreshBtn" class="btn-secondary" title="Refresh"><i class="fas fa-sync"></i></button>
+                    <input type="text" id="explorerAddressBar" class="form-control colored explorer-address-bar toolbar-input-segment" placeholder="/" spellcheck="false">
+                    <button type="button" id="explorerRefreshBtn" class="btn-secondary toolbar-input-segment" title="Refresh"><i class="fas fa-sync"></i></button>
                 </div>
-                <input type="text" id="explorerSearchBar" class="form-control colored explorer-search-bar" placeholder="Search..." spellcheck="false">
+                <input type="text" id="explorerSearchBar" class="form-control colored explorer-search-bar toolbar-input-segment" placeholder="Search..." spellcheck="false">
             </div>
         </div>
         <div class="modal-focus-overlay"></div>
@@ -4941,20 +4931,14 @@ Examples:
                         <button type="button" id="explorerDeleteBtn" class="btn-secondary disabled btn-small" title="Delete" disabled><i class="fas fa-trash"></i></button>
                     </div>
                     <div class="explorer-toolbar-right">
-                        <div id="explorerSortDropdown" class="custom-dropdown dark dropright">
-                            <button type="button" id="explorerSortDropdownBtn" class="btn-secondary btn-small" title="Sort">
-                                <i class="fas fa-sort"></i>
-                                <i class="fas fa-chevron-down naxt-dataset-chevron" aria-hidden="true"></i>
-                            </button>
-                            <div id="explorerSortDropdownMenu" class="custom-dropdown-menu hidden"></div>
-                        </div>
-                        <div id="explorerViewsDropdown" class="custom-dropdown dark  dropright">
-                            <button type="button" id="explorerViewsDropdownBtn" class="btn-secondary btn-small" title="Views">
-                                <i class="fas fa-th-large"></i>
-                                <i class="fas fa-chevron-down naxt-dataset-chevron" aria-hidden="true"></i>
-                            </button>
-                            <div id="explorerViewsDropdownMenu" class="custom-dropdown-menu hidden"></div>
-                        </div>
+                        <button type="button" id="explorerSortDropdownBtn" class="btn-secondary btn-small" title="Sort">
+                            <i class="fas fa-sort"></i>
+                            <i class="fas fa-chevron-down naxt-dataset-chevron" aria-hidden="true"></i>
+                        </button>
+                        <button type="button" id="explorerViewsDropdownBtn" class="btn-secondary btn-small" title="Views">
+                            <i class="fas fa-th-large"></i>
+                            <i class="fas fa-chevron-down naxt-dataset-chevron" aria-hidden="true"></i>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -6164,11 +6148,12 @@ Examples:
         data-window-min-height="600">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
-                <i class="fas fa-file-doc icon-fa"></i>
+                <i class="fa-regular fa-globe icon-fa"></i>
                 <img src="/static_images/app_icons/books.png" alt="" class="icon-image" />
                 <span>Wiki Page</span>
             </div>
         </div>
+        <div class="modal-focus-overlay"></div>
         <div class="modal-window-controls">
             <button type="button" class="btn-secondary btn-small wiki-window-back-btn" title="Back">
                 <i class="fas fa-chevron-left"></i>
@@ -6283,13 +6268,40 @@ Examples:
     </div>
 
     <!-- Tag Wiki Search Modal -->
-    <div id="tagWikiSearchModal" class="modal hidden resizeable-window" data-window-max-width="1800"
-        data-window-max-height="1200" data-window-min-width="800" data-window-min-height="600">
+    <div id="tagWikiSearchModal" class="modal toolbar-visible hidden resizeable-window"
+        data-window-identifier="grimoire"
+        data-window-max-width="1800" data-window-max-height="1200" data-window-min-width="800"
+        data-window-min-height="600">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-book icon-fa"></i>
                 <img src="/static_images/app_icons/books.png" alt="" class="icon-image" />
                 <span>Grimoire</span>
+            </div>
+            <div class="modal-window-title-toolbar">
+                <div class="button-group">
+                    <button type="button" class="btn-secondary toolbar-input-segment" id="tagWikiSearchBackBtn" title="Back">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <button type="button" class="btn-secondary toolbar-input-segment" id="tagWikiSearchForwardBtn" title="Forward">
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
+                </div>
+                <button type="button" class="btn-secondary" id="tagWikiSearchHomeBtn" title="Home">
+                    <i class="fas fa-home"></i>
+                </button>
+                <div class="button-group">
+                    <input type="text" id="tagWikiSearchInput" class="form-control colored tag-wiki-search-bar toolbar-input-segment"
+                        placeholder="Enter search term and press Enter..." autocapitalize="false" autocorrect="false"
+                        spellcheck="false">
+                    <button type="button" id="tagWikiSearchRefreshBtn" class="btn-secondary toolbar-input-segment" title="Refresh">
+                        <i class="fas fa-sync"></i>
+                    </button>
+                </div>
+                <button type="button" id="tagWikiSearchResultsSidebarToggleBtn"
+                    class="btn-secondary btn-toggle hidden" data-state="off" title="Show search results">
+                    <i class="fas fa-sidebar"></i>
+                </button>
             </div>
         </div>
         <div class="modal-focus-overlay"></div>
@@ -6305,57 +6317,33 @@ Examples:
             </button>
         </div>
         <div class="modal-content tag-wiki-search-content dark">
-            <div class="tag-wiki-search-header">
-                <div class="tag-wiki-search-controls">
-                    <div class="button-group tag-wiki-nav-group">
-                        <button type="button" class="btn-secondary" id="tagWikiSearchBackBtn" title="Back">
-                            <i class="fas fa-chevron-left"></i>
-                        </button>
-                        <button type="button" class="btn-secondary" id="tagWikiSearchForwardBtn" title="Forward">
-                            <i class="fas fa-chevron-right"></i>
-                        </button>
-                    </div>
-                    <button type="button" class="btn-secondary" id="tagWikiSearchHomeBtn" title="Home">
-                        <i class="fas fa-home"></i>
-                    </button>
-                    <input type="text" id="tagWikiSearchInput" class="form-control hover-show colored"
-                        placeholder="Enter search term and press Enter..." autocapitalize="false" autocorrect="false"
-                        spellcheck="false">
-                    <button type="button" id="tagWikiSearchOnlineToggleBtn" class="btn-secondary indicator"
-                        data-state="off" title="Search online (Danbooru &amp; e621)">
-                        <i class="fas fa-cloud"></i>
-                    </button>
-                    <div id="tagWikiSearchSourceDropdown" class="custom-dropdown dark dropright">
-                        <button type="button" id="tagWikiSearchSourceDropdownBtn" class="btn-secondary" title="Source">
-                            <i id="tagWikiSearchSourceIcon" class="fas fa-globe"></i>
-                        </button>
-                        <div id="tagWikiSearchSourceDropdownMenu" class="custom-dropdown-menu hidden"></div>
-                    </div>
-                    <div id="tagWikiSearchFilterDropdown" class="custom-dropdown dark dropright">
-                        <button type="button" id="tagWikiSearchFilterDropdownBtn" class="btn-secondary"
-                            title="Category Filter">
-                            <i id="tagWikiSearchFilterIcon" class="fas fa-filter"></i>
-                        </button>
-                        <div id="tagWikiSearchFilterDropdownMenu" class="custom-dropdown-menu hidden"></div>
-                    </div>
-                    <div id="tagWikiSearchTypeDropdown" class="custom-dropdown dark dropright">
-                        <button type="button" id="tagWikiSearchTypeDropdownBtn" class="btn-secondary"
-                            title="Search Type">
-                            <i id="tagWikiSearchTypeIcon" class="fas fa-tag"></i>
-                        </button>
-                        <div id="tagWikiSearchTypeDropdownMenu" class="custom-dropdown-menu hidden"></div>
-                    </div>
-                </div>
-            </div>
             <div class="tag-wiki-panels-wrap">
                 <div class="tag-wiki-search-body tag-wiki-split-pane-left">
                     <aside class="tag-wiki-search-results-panel">
                         <div class="tag-wiki-results-panel-header">
-                            <span class="tag-wiki-results-panel-title">Results</span>
-                            <button type="button" id="tagWikiSearchResultsCollapseBtn"
-                                class="btn-secondary btn-small tag-wiki-results-collapse-btn" title="Collapse results">
-                                <i class="fas fa-chevron-left"></i>
-                            </button>
+                            <div class="tag-wiki-results-panel-header-row">
+                                <button type="button" id="tagWikiSearchOnlineToggleBtn"
+                                    class="btn-secondary btn-small indicator" data-state="off"
+                                    title="Search online (Danbooru &amp; e621)">
+                                    <i class="fas fa-cloud"></i>
+                                </button>
+                                <button type="button" id="tagWikiSearchSourceDropdownBtn"
+                                    class="btn-secondary btn-small" title="Source">
+                                    <i id="tagWikiSearchSourceIcon" class="fas fa-globe"></i>
+                                </button>
+                                <button type="button" id="tagWikiSearchFilterDropdownBtn"
+                                    class="btn-secondary btn-small" title="Category Filter">
+                                    <i id="tagWikiSearchFilterIcon" class="fas fa-filter"></i>
+                                </button>
+                                <button type="button" id="tagWikiSearchTypeDropdownBtn"
+                                    class="btn-secondary btn-small" title="Search Type">
+                                    <i id="tagWikiSearchTypeIcon" class="fas fa-tag"></i>
+                                </button>
+                                <button type="button" id="tagWikiSearchResultsCollapseBtn"
+                                    class="btn-secondary btn-small tag-wiki-results-collapse-btn" title="Collapse results">
+                                    <i class="fas fa-chevron-left"></i>
+                                </button>
+                            </div>
                         </div>
                         <div class="tag-wiki-search-results form-section-scroll">
                             <div id="tagWikiSearchResultsList" class="tag-wiki-results-list">
@@ -6363,10 +6351,6 @@ Examples:
                             </div>
                         </div>
                     </aside>
-                    <button type="button" id="tagWikiSearchResultsExpandBtn"
-                        class="btn-secondary btn-small tag-wiki-results-expand-btn hidden" title="Show search results">
-                        <i class="fas fa-chevron-right"></i>
-                    </button>
                     <button type="button" id="tagWikiSearchResultsOverlayBackdrop"
                         class="tag-wiki-results-overlay-backdrop hidden" aria-hidden="true"></button>
                     <div class="tag-wiki-search-display form-section-scroll selectable">
@@ -6399,13 +6383,66 @@ Examples:
     </div>
 
     <!-- NAXT: NAX community tag browser -->
-    <div id="naxtModal" class="modal hidden resizeable-window" data-window-max-width="1800"
-        data-window-max-height="1200" data-window-min-width="800" data-window-min-height="600">
+    <div id="naxtModal" class="modal toolbar-visible hidden resizeable-window" data-window-identifier="naxt"
+        data-window-max-width="1800" data-window-max-height="1200" data-window-min-width="800"
+        data-window-min-height="600">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-flask icon-fa"></i>
                 <img src="/static_images/app_icons/test_tube.png" alt="" class="icon-image" />
                 <span id="naxtModalTitleLabel">Atelier</span>
+            </div>
+            <div class="modal-window-title-toolbar">
+                <div class="button-group naxt-quick-filters">
+                    <button type="button" id="naxtQuickGoatBtn" class="btn-secondary btn-toggle toolbar-input-segment" data-state="off"
+                        title="GOAT — up ratio ≥ 75%, min 15 upvotes, sorted by score">
+                        <i class="fas fa-crown"></i>
+                    </button>
+                    <button type="button" id="naxtQuickGemsBtn" class="btn-secondary btn-toggle toolbar-input-segment" data-state="off"
+                        title="Hidden Gems — max 4 upvotes, 0 downvotes, min 1 upvote, random order">
+                        <i class="fas fa-gem"></i>
+                    </button>
+                    <button type="button" id="naxtQuickDebatedBtn" class="btn-secondary btn-toggle toolbar-input-segment" data-state="off"
+                        title="Debated — up ratio 50–60%, min 5 up &amp; 5 down, sorted by ratio">
+                        <i class="fas fa-scale-balanced"></i>
+                    </button>
+                </div>
+                <button type="button" class="btn-secondary" id="naxtHomeBtn" title="Home">
+                    <i class="fas fa-home"></i>
+                </button>
+                <div class="button-group">
+                    <button type="button" id="naxtDatasetDropdownBtn" class="btn-secondary toolbar-input-segment naxt-toolbar-dataset" title="Dataset">
+                        <span id="naxtDatasetSelected"><i class="fas fa-layer-group naxt-dataset-btn-icon" aria-hidden="true"></i></span>
+                    </button>
+                    <input type="text" id="naxtSearchInput" class="form-control colored naxt-search-input toolbar-input-segment"
+                        placeholder="Press Enter to search…" autocapitalize="false" autocorrect="false" spellcheck="false">
+                    <button type="button" id="naxtRefreshBtn" class="btn-secondary toolbar-input-segment" title="Refresh">
+                        <i class="fas fa-sync"></i>
+                    </button>
+                </div>
+                <button type="button" id="naxtFilterToggleBtn" class="btn-secondary btn-toggle" data-state="off"
+                    title="Show filters">
+                    <i class="fas fa-filter"></i>
+                </button>
+                <button type="button" id="naxtMarkFilterDropdownBtn"
+                    class="btn-secondary btn-toggle icon-only indicator" data-state="off"
+                    title="Filter by mark: All">
+                    <i id="naxtMarkFilterIcon" class="fas fa-bookmark" aria-hidden="true"></i>
+                </button>
+                <button type="button" id="naxtElevatePinsDropdownBtn"
+                    class="btn-secondary btn-toggle icon-only indicator" data-state="off"
+                    title="Pin to top: None">
+                    <i id="naxtElevatePinsIcon" class="fas fa-thumbtack" aria-hidden="true"></i>
+                </button>
+                <button type="button" id="naxtBagDropdownBtn" class="btn-secondary indicator" data-state="off"
+                    title="Tag bag">
+                    <i class="fas fa-shopping-bag"></i>
+                    <span id="naxtBagCount" class="naxt-bag-count hidden" aria-hidden="true">0</span>
+                </button>
+                <button type="button" id="naxtOpenCustomTagBtn" class="btn-primary hidden"
+                    title="Add custom tag (generate preview)">
+                    <i class="fas fa-plus"></i>
+                </button>
             </div>
         </div>
         <div class="modal-focus-overlay"></div>
@@ -6421,120 +6458,55 @@ Examples:
             </button>
         </div>
         <div class="modal-content naxt-modal-content dark">
-            <div class="naxt-search-header">
-                <div class="naxt-search-controls">
-                    <div id="naxtDatasetDropdown" class="custom-dropdown dark naxt-toolbar-dataset">
-                        <button type="button" id="naxtDatasetDropdownBtn" class="btn-secondary">
-                            <span id="naxtDatasetSelected">Dataset</span>
-                            <i class="fas fa-chevron-down naxt-dataset-chevron" aria-hidden="true"></i>
-                        </button>
-                        <div id="naxtDatasetDropdownMenu" class="custom-dropdown-menu hidden"></div>
+            <div id="naxtFilterToolbar" class="modal-content-toolbar-overlay naxt-filter-toolbar hidden">
+                <div class="naxt-filter-fields">
+                    <div class="naxt-filter-pair">
+                        <label for="naxtMinUp">Min up</label>
+                        <input type="number" id="naxtMinUp" class="form-control colored" min="0" value=""
+                            placeholder="0">
                     </div>
-                    <div class="button-group naxt-quick-filters">
-                        <button type="button" id="naxtQuickGoatBtn" class="btn-secondary toggle-btn" data-state="off"
-                            title="GOAT — up ratio ≥ 75%, min 15 upvotes, sorted by score">
-                            <i class="fas fa-crown"></i>
-                        </button>
-                        <button type="button" id="naxtQuickGemsBtn" class="btn-secondary toggle-btn" data-state="off"
-                            title="Hidden Gems — max 4 upvotes, 0 downvotes, min 1 upvote, random order">
-                            <i class="fas fa-gem"></i>
-                        </button>
-                        <button type="button" id="naxtQuickDebatedBtn" class="btn-secondary toggle-btn" data-state="off"
-                            title="Debated — up ratio 50–60%, min 5 up &amp; 5 down, sorted by ratio">
-                            <i class="fas fa-scale-balanced"></i>
-                        </button>
+                    <div class="naxt-filter-pair">
+                        <label for="naxtMaxUp">Max up</label>
+                        <input type="number" id="naxtMaxUp" class="form-control colored" min="0" value=""
+                            placeholder="∞">
                     </div>
-                    <button type="button" id="naxtFilterToggleBtn" class="btn-secondary indicator" data-state="off"
-                        title="Filters">
-                        <i class="fas fa-filter"></i>
+                    <div class="naxt-filter-pair">
+                        <label for="naxtMinDown">Min down</label>
+                        <input type="number" id="naxtMinDown" class="form-control colored" min="0" value=""
+                            placeholder="0">
+                    </div>
+                    <div class="naxt-filter-pair">
+                        <label for="naxtMaxDown">Max down</label>
+                        <input type="number" id="naxtMaxDown" class="form-control colored" min="0" value=""
+                            placeholder="∞">
+                    </div>
+                    <div class="naxt-filter-pair">
+                        <label for="naxtMinScore">Min score</label>
+                        <input type="number" id="naxtMinScore" class="form-control colored" min="-100"
+                            max="100" value="" placeholder="-100">
+                    </div>
+                    <div class="naxt-filter-pair">
+                        <label for="naxtMaxScore">Max score</label>
+                        <input type="number" id="naxtMaxScore" class="form-control colored" min="-100"
+                            max="100" value="" placeholder="100">
+                    </div>
+                </div>
+                <div class="naxt-filter-actions">
+                    <button type="button" id="naxtSortDropdownBtn" class="btn-secondary"
+                        title="Date sorts by position in the NAX export (not calendar date)">
+                        <span id="naxtSortSelected">Score</span>
+                        <i class="fas fa-sort"></i>
                     </button>
-                    <button type="button" class="btn-secondary" id="naxtHomeBtn" title="Home">
-                        <i class="fas fa-home"></i>
+                    <button type="button" id="naxtInvertBtn" class="btn-secondary toggle-btn" data-state="off"
+                        title="Invert order">
+                        <i class="fas fa-arrow-down-arrow-up"></i>
                     </button>
-                    <input type="text" id="naxtSearchInput" class="form-control hover-show colored naxt-search-input"
-                        placeholder="Press Enter to search…" autocapitalize="false" autocorrect="false" spellcheck="false">
-                    <div id="naxtMarkFilterDropdown" class="custom-dropdown dark dropright">
-                        <button type="button" id="naxtMarkFilterDropdownBtn"
-                            class="btn-secondary toggle-btn icon-only indicator" data-state="off"
-                            title="Filter by mark: All">
-                            <i id="naxtMarkFilterIcon" class="fas fa-bookmark" aria-hidden="true"></i>
-                        </button>
-                        <div id="naxtMarkFilterDropdownMenu" class="custom-dropdown-menu hidden"></div>
-                    </div>
-                    <div id="naxtElevatePinsDropdown" class="custom-dropdown dark dropright">
-                        <button type="button" id="naxtElevatePinsDropdownBtn"
-                            class="btn-secondary toggle-btn icon-only indicator" data-state="off"
-                            title="Pin to top: None">
-                            <i id="naxtElevatePinsIcon" class="fas fa-thumbtack" aria-hidden="true"></i>
-                        </button>
-                        <div id="naxtElevatePinsDropdownMenu" class="custom-dropdown-menu hidden"></div>
-                    </div>
-                    <div id="naxtBagDropdown" class="custom-dropdown">
-                        <button type="button" id="naxtBagDropdownBtn" class="btn-secondary indicator" data-state="off"
-                            title="Tag bag">
-                            <i class="fas fa-shopping-bag"></i>
-                            <span id="naxtBagCount" class="naxt-bag-count hidden" aria-hidden="true">0</span>
-                        </button>
-                        <div id="naxtBagDropdownMenu" class="custom-dropdown-menu hidden naxt-bag-dropdown-menu"></div>
-                    </div>
-                    <button type="button" id="naxtOpenCustomTagBtn" class="btn-primary hidden"
-                        title="Add custom tag (generate preview)">
-                        <i class="fas fa-plus"></i>
+                    <button type="button" id="naxtResetFiltersBtn" class="btn-secondary" title="Clear all filters">
+                        <i class="fas fa-rotate-left"></i>
                     </button>
                 </div>
-                <div id="naxtFilterRow" class="naxt-filter-row hidden">
-                    <div class="naxt-filter-fields">
-                        <div class="naxt-filter-pair">
-                            <label for="naxtMinUp">Min up</label>
-                            <input type="number" id="naxtMinUp" class="form-control hover-show colored" min="0" value=""
-                                placeholder="0">
-                        </div>
-                        <div class="naxt-filter-pair">
-                            <label for="naxtMaxUp">Max up</label>
-                            <input type="number" id="naxtMaxUp" class="form-control hover-show colored" min="0" value=""
-                                placeholder="∞">
-                        </div>
-                        <div class="naxt-filter-pair">
-                            <label for="naxtMinDown">Min down</label>
-                            <input type="number" id="naxtMinDown" class="form-control hover-show colored" min="0" value=""
-                                placeholder="0">
-                        </div>
-                        <div class="naxt-filter-pair">
-                            <label for="naxtMaxDown">Max down</label>
-                            <input type="number" id="naxtMaxDown" class="form-control hover-show colored" min="0" value=""
-                                placeholder="∞">
-                        </div>
-                        <div class="naxt-filter-pair">
-                            <label for="naxtMinScore">Min score</label>
-                            <input type="number" id="naxtMinScore" class="form-control hover-show colored" min="-100"
-                                max="100" value="" placeholder="-100">
-                        </div>
-                        <div class="naxt-filter-pair">
-                            <label for="naxtMaxScore">Max score</label>
-                            <input type="number" id="naxtMaxScore" class="form-control hover-show colored" min="-100"
-                                max="100" value="" placeholder="100">
-                        </div>
-                    </div>
-                    <div class="naxt-filter-actions">
-                        <div id="naxtSortDropdown" class="custom-dropdown dark dropright">
-                            <button type="button" id="naxtSortDropdownBtn" class="btn-secondary"
-                                title="Date sorts by position in the NAX export (not calendar date)">
-                                <span id="naxtSortSelected">Score</span>
-                                <i class="fas fa-sort"></i>
-                            </button>
-                            <div id="naxtSortDropdownMenu" class="custom-dropdown-menu hidden"></div>
-                        </div>
-                        <button type="button" id="naxtInvertBtn" class="btn-secondary toggle-btn" data-state="off"
-                            title="Invert order">
-                            <i class="fas fa-arrow-down-arrow-up"></i>
-                        </button>
-                        <button type="button" id="naxtResetFiltersBtn" class="btn-secondary" title="Clear all filters">
-                            <i class="fas fa-rotate-left"></i>
-                        </button>
-                    </div>
-                    <input type="hidden" id="naxtMinRatio" value="">
-                    <input type="hidden" id="naxtMaxRatio" value="">
-                </div>
+                <input type="hidden" id="naxtMinRatio" value="">
+                <input type="hidden" id="naxtMaxRatio" value="">
             </div>
             <div class="naxt-body form-section-scroll">
                 <div id="naxtGrid" class="naxt-grid"></div>
@@ -6550,13 +6522,61 @@ Examples:
     </div>
 
     <!-- NAX.moe community vibes browser (layout mirrors naxtModal / Atelier) -->
-    <div id="naxVibesModal" class="modal hidden resizeable-window" data-window-max-width="1800"
-        data-window-max-height="1200" data-window-min-width="800" data-window-min-height="600">
+    <div id="naxVibesModal" class="modal toolbar-visible hidden resizeable-window" data-window-identifier="nax-vibes"
+        data-window-max-width="1800" data-window-max-height="1200" data-window-min-width="800"
+        data-window-min-height="600">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-square-rss icon-fa"></i>
                 <img src="/static_images/app_icons/export.png" alt="" class="icon-image" />
                 <span id="naxVibesModalTitleLabel">Browse Vibes (via nax.moe)</span>
+            </div>
+            <div class="modal-window-title-toolbar">
+                <div class="button-group naxt-quick-filters">
+                    <button type="button" id="naxVibesPresetTopBtn" class="btn-secondary btn-toggle toolbar-input-segment" data-state="on"
+                        title="Top votes">
+                        <i class="fas fa-arrow-up"></i>
+                    </button>
+                    <button type="button" id="naxVibesPresetHotBtn" class="btn-secondary btn-toggle toolbar-input-segment" data-state="off"
+                        title="Hot">
+                        <i class="fas fa-fire"></i>
+                    </button>
+                    <button type="button" id="naxVibesPresetGemsBtn" class="btn-secondary btn-toggle toolbar-input-segment" data-state="off"
+                        title="Hidden gems">
+                        <i class="fas fa-gem"></i>
+                    </button>
+                    <button type="button" id="naxVibesPresetDebatedBtn" class="btn-secondary btn-toggle toolbar-input-segment" data-state="off"
+                        title="Debated">
+                        <i class="fas fa-scale-balanced"></i>
+                    </button>
+                </div>
+                <div class="button-group naxt-nav-group">
+                    <button type="button" class="btn-secondary toolbar-input-segment" id="naxVibesPrevPageBtn" title="Previous page"
+                        disabled>
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <button type="button" class="btn-secondary toolbar-input-segment" id="naxVibesNextPageBtn" title="Next page"
+                        disabled>
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+                <button type="button" class="btn-secondary" id="naxVibesHomeBtn" title="Top votes (home)">
+                    <i class="fas fa-home"></i>
+                </button>
+                <div class="button-group">
+                    <input type="text" id="naxVibesSearchInput"
+                        class="form-control colored naxt-search-input toolbar-input-segment"
+                        placeholder="Press Enter to search…" autocapitalize="false" autocorrect="false"
+                        spellcheck="false">
+                    <button type="button" id="naxVibesRefreshBtn" class="btn-secondary toolbar-input-segment"
+                        title="Refresh (bypass cache)">
+                        <i class="fas fa-sync"></i>
+                    </button>
+                </div>
+                <button type="button" id="naxVibesModelDropdownBtn" class="btn-secondary btn-toggle"
+                    data-state="off" title="Model filters">
+                    <i class="fas fa-sliders" aria-hidden="true"></i>
+                </button>
             </div>
         </div>
         <div class="modal-focus-overlay"></div>
@@ -6572,52 +6592,6 @@ Examples:
             </button>
         </div>
         <div class="modal-content naxt-modal-content dark">
-            <div class="naxt-search-header">
-                <div class="naxt-search-controls">
-                    <div class="button-group naxt-quick-filters">
-                        <button type="button" id="naxVibesPresetTopBtn" class="btn-secondary toggle-btn" data-state="on"
-                            title="Top votes">
-                            <i class="fas fa-arrow-up"></i>
-                        </button>
-                        <button type="button" id="naxVibesPresetHotBtn" class="btn-secondary toggle-btn" data-state="off"
-                            title="Hot">
-                            <i class="fas fa-fire"></i>
-                        </button>
-                        <button type="button" id="naxVibesPresetGemsBtn" class="btn-secondary toggle-btn" data-state="off"
-                            title="Hidden gems">
-                            <i class="fas fa-gem"></i>
-                        </button>
-                        <button type="button" id="naxVibesPresetDebatedBtn" class="btn-secondary toggle-btn" data-state="off"
-                            title="Debated">
-                            <i class="fas fa-scale-balanced"></i>
-                        </button>
-                    </div>
-                    <div id="naxVibesModelDropdown" class="custom-dropdown dark dropright">
-                        <button type="button" id="naxVibesModelDropdownBtn" class="btn-secondary" title="Model filters">
-                            <i class="fas fa-sliders" aria-hidden="true"></i>
-                        </button>
-                        <div id="naxVibesModelDropdownMenu" class="custom-dropdown-menu hidden"></div>
-                    </div>
-                    <input type="text" id="naxVibesSearchInput" class="form-control hover-show colored naxt-search-input"
-                        placeholder="Press Enter to search…" autocapitalize="false" autocorrect="false" spellcheck="false">
-                    <button type="button" class="btn-secondary" id="naxVibesHomeBtn" title="Top votes (home)">
-                        <i class="fas fa-home"></i>
-                    </button>
-                    <div class="button-group naxt-nav-group">
-                        <button type="button" class="btn-secondary" id="naxVibesPrevPageBtn" title="Previous page"
-                            disabled>
-                            <i class="fas fa-chevron-left"></i>
-                        </button>
-                        <button type="button" class="btn-secondary" id="naxVibesNextPageBtn" title="Next page"
-                            disabled>
-                            <i class="fas fa-chevron-right"></i>
-                        </button>
-                    </div>
-                    <button type="button" id="naxVibesRefreshBtn" class="btn-secondary" title="Refresh (bypass cache)">
-                        <i class="fa-regular fa-sync"></i>
-                    </button>
-                </div>
-            </div>
             <div class="naxt-body form-section-scroll">
                 <div id="naxVibesGrid" class="naxt-grid"></div>
                 <div id="naxVibesEmptyState" class="naxt-empty-state hidden">
@@ -6764,7 +6738,7 @@ Examples:
     </div>
 
     <!-- Event Viewer Applet -->
-    <div id="logViewerModal" class="modal hidden resizeable-window"
+    <div id="logViewerModal" class="modal toolbar-visible hidden resizeable-window"
         data-window-identifier="eventViewer"
         data-window-max-width="1800" data-window-max-height="1200"
         data-window-min-width="680" data-window-min-height="420"
@@ -6774,6 +6748,33 @@ Examples:
                 <i class="fas fa-wave-square icon-fa"></i>
                 <img src="/static_images/app_icons/event_viewer.png" alt="" class="icon-image" />
                 <span id="logViewerModalTitleLabel">Event Viewer</span>
+            </div>
+            <div class="modal-window-title-toolbar">
+                <button type="button" id="logViewerSourceDropdownBtn" class="btn-secondary log-viewer-source-btn" title="Log source">
+                    <span id="logViewerSourceSelected">System</span>
+                    <i class="fas fa-chevron-down naxt-dataset-chevron" aria-hidden="true"></i>
+                </button>
+                <div class="button-group">
+                    <button type="button" id="logViewerPauseBtn" class="btn-secondary toolbar-input-segment" title="Pause">
+                        <i class="fas fa-pause"></i>
+                    </button>
+                    <button type="button" id="logViewerScrollBottomBtn" class="btn-secondary toolbar-input-segment" title="Scroll to bottom">
+                        <i class="fas fa-arrow-down"></i>
+                    </button>
+                </div>
+                <div class="log-viewer-toolbar-right">
+                    <div class="websocket-ticker log-viewer-ws-ticker expanded disconnected" id="logViewerWsTicker" title="WebSocket status — click for tasks">
+                        <div class="websocket-ticker-content">
+                            <i class="fas fa-plug websocket-ticker-icon"></i>
+                            <span class="websocket-ticker-text">Disconnected</span>
+                            <span class="websocket-ticker-badge hidden" data-count="0">0</span>
+                        </div>
+                    </div>
+                    <button type="button" id="logViewerTasksToggleBtn" class="btn-secondary btn-toggle log-viewer-tasks-toggle" data-state="off"
+                        title="Show tasks sidebar">
+                        <i class="fas fa-conveyor-belt-boxes"></i>
+                    </button>
+                </div>
             </div>
         </div>
         <div class="modal-focus-overlay"></div>
@@ -6789,38 +6790,6 @@ Examples:
             </button>
         </div>
         <div class="modal-content naxt-modal-content dark">
-            <div class="naxt-search-header">
-                <div class="naxt-search-controls">
-                    <div id="logViewerSourceDropdown" class="custom-dropdown dark naxt-toolbar-dataset">
-                        <button type="button" id="logViewerSourceDropdownBtn" class="btn-secondary btn-small" title="Log source">
-                            <span id="logViewerSourceSelected">System</span>
-                            <i class="fas fa-chevron-down naxt-dataset-chevron" aria-hidden="true"></i>
-                        </button>
-                        <div id="logViewerSourceDropdownMenu" class="custom-dropdown-menu hidden"></div>
-                    </div>
-                    <div class="button-group">
-                        <button type="button" id="logViewerPauseBtn" class="btn-secondary btn-small" title="Pause">
-                            <i class="fas fa-pause"></i>
-                        </button>
-                        <button type="button" id="logViewerScrollBottomBtn" class="btn-secondary btn-small" title="Scroll to bottom">
-                            <i class="fas fa-arrow-down"></i>
-                        </button>
-                    </div>
-                    <div class="log-viewer-toolbar-right">
-                        <div class="websocket-ticker log-viewer-ws-ticker expanded disconnected" id="logViewerWsTicker" title="WebSocket status — click for tasks">
-                            <div class="websocket-ticker-content">
-                                <i class="fas fa-plug websocket-ticker-icon"></i>
-                                <span class="websocket-ticker-text">Disconnected</span>
-                                <span class="websocket-ticker-badge hidden" data-count="0">0</span>
-                            </div>
-                        </div>
-                        <button type="button" id="logViewerTasksToggleBtn" class="btn-secondary btn-small toggle-btn log-viewer-tasks-toggle" data-state="off"
-                            title="Show tasks sidebar">
-                            <i class="fas fa-conveyor-belt-boxes"></i>
-                        </button>
-                    </div>
-                </div>
-            </div>
             <div id="logViewerMainLayout" class="log-viewer-main-layout">
                 <div class="naxt-body form-section-scroll log-viewer-body-scroll" data-custom-scrollbar>
                     <pre id="logViewerContent" class="log-viewer-pre selectable"></pre>
@@ -7080,6 +7049,69 @@ Examples:
                         </div>
                     </div>
 
+                    <!-- Global: Taskbar -->
+                    <div class="settings-section hidden" data-desktop-settings-scope="global">
+                        <h3 class="section-header"><i class="fas fa-bars"></i> Taskbar</h3>
+                        <div class="start-menu-text-setting">
+                            <div class="start-menu-text-setting-preview">
+                                <span class="start-btn-text-preview-label">Preview</span>
+                                <div class="start-btn-text-preview-frame" id="desktopSettingsStartMenuTextPreviewFrame">
+                                    <div class="start-btn-text-preview-scene">
+                                        <div class="start-btn-text-preview-wallpaper" id="desktopSettingsStartMenuPreviewWallpaper"></div>
+                                        <div class="start-btn-text-preview-taskbar">
+                                            <div class="taskbar-start">
+                                                <button type="button" id="desktopSettingsStartMenuPreviewBtn"
+                                                    class="taskbar-start-button" disabled tabindex="-1">
+                                                    <span class="taskbar-start-button-orb-frame hidden" aria-hidden="true">
+                                                        <img src="/static_images/vista_orb.png" alt="" class="taskbar-start-button-orb">
+                                                    </span>
+                                                    <img src="/static_images/logo_icon.png" alt="" class="taskbar-start-button-logo">
+                                                    <span class="taskbar-start-button-text" id="desktopSettingsStartMenuPreviewText">スタート</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="start-menu-text-setting-controls">
+                                <div class="form-group">
+                                    <label for="desktopSettingsStartMenuTextBtn">Start button text</label>
+                                    <div id="desktopSettingsStartMenuTextDropdown" class="custom-dropdown dropup">
+                                        <button type="button" id="desktopSettingsStartMenuTextBtn"
+                                            class="custom-dropdown-btn hover-show colored">
+                                            <span id="desktopSettingsStartMenuTextSelected">"Start" — Japanese (スタート)</span>
+                                        </button>
+                                        <div id="desktopSettingsStartMenuTextMenu" class="custom-dropdown-menu hidden"></div>
+                                    </div>
+                                    <input type="hidden" id="desktopSettingsStartMenuTextHidden" value="start-ja">
+                                </div>
+                                <div id="desktopSettingsStartMenuCustomTextGroup" class="form-group hidden">
+                                    <label for="desktopSettingsStartMenuCustomTextInput">Custom text</label>
+                                    <input type="text" id="desktopSettingsStartMenuCustomTextInput" class="form-control"
+                                        maxlength="24" placeholder="Enter start button text" autocomplete="off">
+                                </div>
+                                <div class="form-group">
+                                    <label>Start button style</label>
+                                    <div id="desktopSettingsStartMenuStyleToggle"
+                                        class="gallery-toggle-group desktop-settings-start-menu-style-toggle three-tabs"
+                                        data-active="workspace">
+                                        <button type="button" class="gallery-toggle-btn" data-style="luna">
+                                            <span class="tab-text">Luna</span>
+                                        </button>
+                                        <button type="button" class="gallery-toggle-btn active" data-style="workspace">
+                                            <span class="tab-text">Workspace</span>
+                                        </button>
+                                        <button type="button" class="gallery-toggle-btn" data-style="orb">
+                                            <span class="tab-text">Orb</span>
+                                        </button>
+                                        <div class="gallery-toggle-slider"></div>
+                                    </div>
+                                </div>
+                                <p class="desktop-settings-hint">Uses authentic Windows XP Luna start-button wording per locale.</p>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Global: Startup Behaviour -->
                     <div class="settings-section hidden" data-desktop-settings-scope="global">
                         <h3 class="section-header"><i class="fas fa-power-off"></i> Startup Behaviour</h3>
@@ -7228,7 +7260,8 @@ Examples:
     </div>
 
     <!-- Phasewalker -->
-    <div id="bracketGenerationModal" class="modal hidden resizeable-window"
+    <div id="bracketGenerationModal" class="modal toolbar-visible hidden resizeable-window"
+        data-window-identifier="phasewalker"
         data-window-max-width="1600" data-window-max-height="1000"
         data-window-min-width="360" data-window-min-height="280">
         <div class="modal-window-title">
@@ -7236,6 +7269,23 @@ Examples:
                 <i class="fas fa-layer-group icon-fa"></i>
                 <img src="/static_images/app_icons/stack.png" alt="" class="icon-image" />
                 <span id="bracketGenTitleLabel">Phasewalker</span>
+            </div>
+            <div class="modal-window-title-toolbar">
+                <div id="bracketGenTabButtons" class="gallery-toggle-group two-tabs" data-active="prompt">
+                    <button type="button" class="gallery-toggle-btn active" data-tab="prompt" title="Prompt (F1)">
+                        <i class="ri-code-block"></i>
+                    </button>
+                    <button type="button" class="gallery-toggle-btn" data-tab="uc" title="Undesired Content (F2)">
+                        <i class="ri-eraser-fill"></i>
+                    </button>
+                    <div class="gallery-toggle-slider"></div>
+                </div>
+                <button type="button" id="bracketGenAddStepBtn" class="btn-secondary" title="Add stage (Alt+A)">
+                    <i class="fas fa-plus"></i>
+                </button>
+                <button type="button" id="bracketGenCompileBtn" class="btn-primary" title="Compile stages (F8)">
+                    Compile <i class="fas fa-hammer"></i>
+                </button>
             </div>
         </div>
         <div class="modal-focus-overlay"></div>
@@ -7261,25 +7311,6 @@ Examples:
             </button>
         </div>
         <div class="modal-content bracket-generation-modal-content dark">
-            <div class="bracket-gen-header character-prompts-header">
-                <div id="bracketGenTabButtons" class="gallery-toggle-group two-tabs" data-active="prompt">
-                    <button type="button" class="gallery-toggle-btn active" data-tab="prompt" title="Prompt (F1)">
-                        <i class="ri-code-block"></i>
-                    </button>
-                    <button type="button" class="gallery-toggle-btn" data-tab="uc" title="Undesired Content (F2)">
-                        <i class="ri-eraser-fill"></i>
-                    </button>
-                    <div class="gallery-toggle-slider"></div>
-                </div>
-                <div class="bracket-gen-header-right character-prompts-controls">
-                    <button type="button" id="bracketGenAddStepBtn" class="btn-secondary" title="Add stage (Alt+A)">
-                        <i class="fas fa-plus"></i>
-                    </button>
-                    <button type="button" id="bracketGenCompileBtn" class="btn-primary" title="Compile stages (F8)">
-                        Compile <i class="fas fa-hammer"></i>
-                    </button>
-                </div>
-            </div>
             <div class="form-section form-section-scroll bracket-generation-steps-scroll" data-custom-scrollbar>
                 <div id="bracketStepsContainer" class="character-prompts-container"></div>
             </div>
@@ -7410,6 +7441,9 @@ Examples:
     <div id="desktopTaskbar" class="desktop-taskbar hidden">
         <div class="taskbar-start">
             <button type="button" id="taskbarStartBtn" class="taskbar-start-button" title="Start">
+                <span class="taskbar-start-button-orb-frame hidden" aria-hidden="true">
+                    <img src="/static_images/vista_orb.png" alt="" class="taskbar-start-button-orb">
+                </span>
                 <img src="/static_images/logo_icon.png" alt="Dreamscape" class="taskbar-start-button-logo">
                 <span class="taskbar-start-button-text">スタート</span>
             </button>
@@ -7436,14 +7470,13 @@ Examples:
                     title="Image generation in progress">
                     <i class="fas fa-sparkles"></i>
                 </div>
-                <!-- Subscription Renewal Indicator -->
-                <div class="subscription-renewal-indicator taskbar-tray-icon hidden" id="subscriptionRenewalIndicator"
-                    title="">
-                    <i class="fas fa-hand-holding-circle-dollar"></i>
+                <!-- Phasewalker pipeline data -->
+                <div class="phasewalker-tray-icon taskbar-tray-icon hidden" id="phasewalkerTrayIcon" title="Phasewalker">
+                    <i class="fas fa-layer-group" id="phasewalkerTrayIconGlyph"></i>
                 </div>
-                <!-- Fixed Credits Indicator -->
-                <div class="fixed-credits-indicator taskbar-tray-icon" id="fixedCreditsIndicator" title="">
-                    <i class="nai-anla"></i>
+                <!-- Atelier tag bag -->
+                <div class="naxt-bag-tray-icon taskbar-tray-icon hidden" id="naxtBagTrayIcon" title="Atelier Bag - 0 items">
+                    <i class="fas fa-shopping-bag" id="naxtBagTrayIconGlyph"></i>
                 </div>
                 <!-- Desktop layout save status -->
                 <div class="desktop-save-tray-indicator taskbar-tray-icon hidden" id="desktopSaveTrayIndicator"
@@ -7451,25 +7484,40 @@ Examples:
                     <i class="fas fa-inbox" id="desktopSaveTrayIcon"></i>
                 </div>
                 <!-- Search Indexing Indicator -->
-                <div class="search-indexing-indicator taskbar-tray-icon" id="searchIndexingIndicator"
+                <div class="search-indexing-indicator taskbar-tray-icon hidden" id="searchIndexingIndicator"
                     title="No Status Available">
                     <i class="fas fa-rotate-exclamation"></i>
                 </div>
+                <!-- Dynamic Generation Quips -->
+                <div class="generation-quips-tray-icon taskbar-tray-icon quips-idle hidden" id="generationQuipsTrayIcon"
+                    title="Generation quips">
+                    <i class="fas fa-comment" id="generationQuipsTrayIconGlyph"></i>
+                    <span class="generation-quips-auto-indicator hidden" id="generationQuipsAutoIndicator" aria-hidden="true"></span>
+                </div>
+                <!-- Subscription Renewal Indicator -->
+                <div class="subscription-renewal-indicator taskbar-tray-icon hidden" id="subscriptionRenewalIndicator"
+                    title="">
+                    <i class="fas fa-hand-holding-circle-dollar"></i>
+                </div>
+                <!-- Fixed Credits Indicator -->
+                <div class="fixed-credits-indicator taskbar-tray-icon hidden" id="fixedCreditsIndicator" title="">
+                    <i class="nai-anla"></i>
+                </div>
                 <!-- Workspace Icon -->
-                <div class="workspace-tray-icon taskbar-tray-icon" id="workspaceTrayIcon" title="Workspace">
+                <div class="workspace-tray-icon taskbar-tray-icon hidden" id="workspaceTrayIcon" title="Workspace">
                     <i class="fa-duotone fa-clone"></i>
                 </div>
                 <!-- Service Worker Indicator -->
-                <div class="service-worker-tray-icon taskbar-tray-icon" id="serviceWorkerTrayIcon"
+                <div class="service-worker-tray-icon taskbar-tray-icon hidden" id="serviceWorkerTrayIcon"
                     title="Service Worker">
                     <i class="fas fa-hard-drive" id="serviceWorkerTrayIconGlyph"></i>
                 </div>
                 <!-- Ping Warning Indicator -->
-                <div class="ping-warning-indicator taskbar-tray-icon" id="pingWarningIndicator" title="">
+                <div class="ping-warning-indicator taskbar-tray-icon hidden" id="pingWarningIndicator" title="">
                     <i class="fas fa-satellite"></i>
                 </div>
                 <!-- Modem / Network Connection -->
-                <div class="modem-tray-icon taskbar-tray-icon" id="modemTrayIcon" title="Melaton Network Connection">
+                <div class="modem-tray-icon taskbar-tray-icon hidden" id="modemTrayIcon" title="Melaton Network Connection">
                     <i class="fa-regular fa-globe" id="modemTrayIconGlyph"></i>
                 </div>
                 <!-- WebSocket Indicator -->
@@ -7567,6 +7615,7 @@ Examples:
     <script src="scripts/comp/promptTextareaContextMenu.js"></script>
     <script src="scripts/comp/dynamicGenerationLockState.js"></script>
     <script src="scripts/comp/generationQuips.js"></script>
+    <script src="scripts/comp/generationQuipsTray.js"></script>
     <script src="scripts/comp/manualModalManager.js"></script>
     <script src="protected/t5-tokenizer.js"></script>
     <script src="scripts/app.js"></script>

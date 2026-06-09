@@ -22,6 +22,8 @@ const NaxTagGenerationService = require('./naxTagGeneration');
 const naxVibesGallery = require('./naxVibesGallery');
 const apiKeyManager = require('./apiKeyManager');
 const ReferenceMetadataDatabase = require('./referenceMetadataDatabase');
+const GenerationQuipsDatabase = require('./generationQuipsDatabase');
+const { GenerationQuipsManager } = require('./generationQuipsManager');
 const DatasetTagService = require('./datasetTagService');
 const FavoritesManager = require('./favorites');
 const MemoryManager = require('./memoryManager');
@@ -90,6 +92,8 @@ class GlobalResources {
         this.naxTagGeneration = null;
         this.naxVibesGallery = null;
         this.referenceMetadataDatabase = null;
+        this.generationQuipsDatabase = null;
+        this.generationQuipsManager = null;
         this.datasetTagService = null;
 
         // Singleton managers (already instantiated as singletons)
@@ -222,6 +226,9 @@ class GlobalResources {
             naxTagsDatabase: false,
             naxTagGeneration: false,
             referenceMetadataDatabase: false,
+            generationQuipsDatabase: false,
+            generationQuipsManager: false,
+            generationQuipsAutoUpdate: false,
             datasetTagService: false,
             memoryManager: false,
             promptManager: false,
@@ -777,6 +784,9 @@ class GlobalResources {
             // STEP 8: Initialize reference metadata database (no dependencies beyond logger)
             this.initializeReferenceMetadataDatabase();
 
+            // STEP 8b: Generation quips database (SQLite, no Grok dependency)
+            this.initializeGenerationQuipsDatabase();
+
             // STEP 9: Initialize singleton managers in dependency order:
             //   - memoryManager (needs logger + chatDatabase)
             //   - promptManager (needs logger + metadataDatabase + chatDatabase + memoryManager)
@@ -785,6 +795,9 @@ class GlobalResources {
 
             // STEP 10: Initialize workspace module (needs logger)
             this.initializeWorkspace();
+
+            // STEP 10b: Generation quips manager (needs metadata, workspaces, Grok)
+            this.initializeGenerationQuipsManager();
 
             // STEP 11: Initialize queue module (no dependencies)
             this.initializeQueue();
@@ -1195,6 +1208,63 @@ class GlobalResources {
             console.error('  ❌ Failed to initialize reference metadata database:', error);
             throw error;
         }
+    }
+
+    initializeGenerationQuipsDatabase() {
+        try {
+            this.generationQuipsDatabase = new GenerationQuipsDatabase(this);
+            this.initializationProgress.generationQuipsDatabase = true;
+            console.log('✓ Generation quips database ready');
+        } catch (error) {
+            console.error('  ❌ Failed to initialize generation quips database:', error);
+            throw error;
+        }
+    }
+
+    initializeGenerationQuipsManager() {
+        try {
+            this.generationQuipsManager = new GenerationQuipsManager(this);
+            this.initializationProgress.generationQuipsManager = true;
+            console.log('✓ Generation quips manager ready');
+        } catch (error) {
+            console.error('  ❌ Failed to initialize generation quips manager:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Start generation quips auto-update scheduler (requires WebSocket server).
+     */
+    initializeGenerationQuipsAutoUpdate() {
+        if (this.initializationProgress.generationQuipsAutoUpdate) {
+            return;
+        }
+        if (!this.generationQuipsManager) {
+            throw new Error('Generation quips manager must be initialized before auto-update scheduler');
+        }
+        if (!this.webSocketServer) {
+            throw new Error('WebSocket server must be initialized before generation quips auto-update scheduler');
+        }
+
+        try {
+            this.generationQuipsManager.startAutoUpdateScheduler();
+            this.initializationProgress.generationQuipsAutoUpdate = true;
+            console.log('✓ Generation quips auto-update scheduler started');
+        } catch (error) {
+            console.error('  ❌ Failed to start generation quips auto-update scheduler:', error);
+            throw error;
+        }
+    }
+
+    stopGenerationQuipsAutoUpdate() {
+        if (!this.generationQuipsManager) return;
+        this.generationQuipsManager.stopAutoUpdateScheduler();
+        this.initializationProgress.generationQuipsAutoUpdate = false;
+    }
+
+    applyGenerationQuipsSettingsPatch(patch) {
+        if (!patch || typeof patch !== 'object') return;
+        this.getGenerationQuipsManager().applyWorkspaceQuipSettingsPatch(patch);
     }
 
     /**
@@ -2129,6 +2199,20 @@ class GlobalResources {
             throw new Error('Reference metadata database not initialized - ensure initializeReferenceMetadataDatabase() was called');
         }
         return this.referenceMetadataDatabase;
+    }
+
+    getGenerationQuipsDatabase() {
+        if (!this.generationQuipsDatabase) {
+            throw new Error('Generation quips database not initialized');
+        }
+        return this.generationQuipsDatabase;
+    }
+
+    getGenerationQuipsManager() {
+        if (!this.generationQuipsManager) {
+            throw new Error('Generation quips manager not initialized');
+        }
+        return this.generationQuipsManager;
     }
 
     /**
@@ -4156,6 +4240,8 @@ class GlobalResources {
             }
         } catch (_) { /* WebSocket server may not be initialized */ }
 
+        this.stopGenerationQuipsAutoUpdate();
+
         try {
             const handlers = this.getWebSocketMessageHandlers();
             handlers?.stopAllKeepAliveIntervals?.();
@@ -4295,6 +4381,7 @@ class GlobalResources {
                     this.wsMessageHandlers = null;
                     this.initializationProgress.httpServer = false;
                     this.initializationProgress.webSocketServer = false;
+                    this.initializationProgress.generationQuipsAutoUpdate = false;
 
                     // Reinitialize
                     this.initializeExpressApp().then(() => {

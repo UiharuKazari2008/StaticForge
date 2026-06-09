@@ -1948,6 +1948,183 @@ process.on('SIGTERM', () => {
     process.exit(0);
 });
 
+/**
+ * Top prompt/character tags for a set of filenames (for dynamic quip term extraction).
+ */
+async function getPromptTermStatsForFilenames(filenames, options = {}) {
+    if (!dbInitialized || !db) {
+        throw new Error('Database not initialized');
+    }
+
+    const {
+        limit = 120,
+        sources = ['prompt', 'character_prompt', 'v4_character_caption']
+    } = options;
+
+    if (!filenames || filenames.length === 0) {
+        return [];
+    }
+
+    const sourcePlaceholders = sources.map(() => '?').join(',');
+    const chunkSize = 400;
+    const aggregate = new Map();
+
+    for (let i = 0; i < filenames.length; i += chunkSize) {
+        const chunk = filenames.slice(i, i + chunkSize);
+        const filePlaceholders = chunk.map(() => '?').join(',');
+        const rows = await db.all(`
+            SELECT
+                tag,
+                original_tag,
+                COUNT(DISTINCT filename) AS occurrenceCount,
+                AVG(ABS(weight)) AS avgWeight
+            FROM search_tags
+            WHERE filename IN (${filePlaceholders})
+              AND source IN (${sourcePlaceholders})
+            GROUP BY tag, original_tag
+        `, [...chunk, ...sources]);
+
+        for (const row of rows) {
+            const key = row.tag;
+            const existing = aggregate.get(key);
+            if (!existing || row.occurrenceCount > existing.occurrenceCount) {
+                aggregate.set(key, {
+                    tag: row.tag,
+                    originalTag: row.original_tag,
+                    occurrenceCount: row.occurrenceCount,
+                    avgWeight: row.avgWeight || 0
+                });
+            }
+        }
+    }
+
+    return [...aggregate.values()]
+        .sort((a, b) => {
+            if (b.occurrenceCount !== a.occurrenceCount) {
+                return b.occurrenceCount - a.occurrenceCount;
+            }
+            return (b.avgWeight || 0) - (a.avgWeight || 0);
+        })
+        .slice(0, limit);
+}
+
+/**
+ * Tag pairs that co-occur in the same file (for distinctive workspace combinations).
+ */
+async function getPromptTagPairStatsForFilenames(filenames, options = {}) {
+    if (!dbInitialized || !db) {
+        throw new Error('Database not initialized');
+    }
+
+    const {
+        limit = 80,
+        minCoCount = 4,
+        sources = ['prompt', 'character_prompt', 'v4_character_caption']
+    } = options;
+
+    if (!filenames || filenames.length === 0) {
+        return [];
+    }
+
+    const sourcePlaceholders = sources.map(() => '?').join(',');
+    const chunkSize = 200;
+    const aggregate = new Map();
+
+    for (let i = 0; i < filenames.length; i += chunkSize) {
+        const chunk = filenames.slice(i, i + chunkSize);
+        const filePlaceholders = chunk.map(() => '?').join(',');
+        const rows = await db.all(`
+            SELECT
+                t1.tag AS tag1,
+                t2.tag AS tag2,
+                MIN(t1.original_tag) AS originalTag1,
+                MIN(t2.original_tag) AS originalTag2,
+                COUNT(DISTINCT t1.filename) AS coOccurrenceCount,
+                AVG((ABS(t1.weight) + ABS(t2.weight)) / 2.0) AS avgWeight
+            FROM search_tags t1
+            INNER JOIN search_tags t2
+                ON t1.filename = t2.filename
+               AND t1.tag < t2.tag
+            WHERE t1.filename IN (${filePlaceholders})
+              AND t1.source IN (${sourcePlaceholders})
+              AND t2.source IN (${sourcePlaceholders})
+            GROUP BY t1.tag, t2.tag
+            HAVING COUNT(DISTINCT t1.filename) >= ?
+        `, [...chunk, ...sources, ...sources, minCoCount]);
+
+        for (const row of rows) {
+            const key = `${row.tag1}\0${row.tag2}`;
+            const existing = aggregate.get(key);
+            if (!existing || row.coOccurrenceCount > existing.coOccurrenceCount) {
+                aggregate.set(key, {
+                    tag1: row.tag1,
+                    tag2: row.tag2,
+                    originalTag1: row.originalTag1,
+                    originalTag2: row.originalTag2,
+                    coOccurrenceCount: row.coOccurrenceCount,
+                    avgWeight: row.avgWeight || 0
+                });
+            }
+        }
+    }
+
+    return [...aggregate.values()]
+        .sort((a, b) => {
+            if (b.coOccurrenceCount !== a.coOccurrenceCount) {
+                return b.coOccurrenceCount - a.coOccurrenceCount;
+            }
+            return (b.avgWeight || 0) - (a.avgWeight || 0);
+        })
+        .slice(0, limit);
+}
+
+/**
+ * Character names indexed from forge metadata for a set of filenames.
+ */
+async function getCharacterStatsForFilenames(filenames, options = {}) {
+    if (!dbInitialized || !db) {
+        throw new Error('Database not initialized');
+    }
+
+    const { limit = 40 } = options;
+
+    if (!filenames || filenames.length === 0) {
+        return [];
+    }
+
+    const chunkSize = 400;
+    const aggregate = new Map();
+
+    for (let i = 0; i < filenames.length; i += chunkSize) {
+        const chunk = filenames.slice(i, i + chunkSize);
+        const filePlaceholders = chunk.map(() => '?').join(',');
+        const rows = await db.all(`
+            SELECT
+                character_name AS characterName,
+                COUNT(DISTINCT filename) AS occurrenceCount
+            FROM search_characters
+            WHERE filename IN (${filePlaceholders})
+            GROUP BY character_name
+        `, chunk);
+
+        for (const row of rows) {
+            const key = String(row.characterName || '').trim().toLowerCase();
+            if (!key) continue;
+            const existing = aggregate.get(key);
+            if (!existing || row.occurrenceCount > existing.occurrenceCount) {
+                aggregate.set(key, {
+                    characterName: row.characterName,
+                    occurrenceCount: row.occurrenceCount
+                });
+            }
+        }
+    }
+
+    return [...aggregate.values()]
+        .sort((a, b) => b.occurrenceCount - a.occurrenceCount)
+        .slice(0, limit);
+}
+
 module.exports = {
     initializeDatabase,
     closeDatabase,
@@ -1971,6 +2148,9 @@ module.exports = {
     updateSearchIndexes,
     searchFilesInDatabase,
     getTagSuggestionsFromDatabase,
+    getPromptTermStatsForFilenames,
+    getPromptTagPairStatsForFilenames,
+    getCharacterStatsForFilenames,
     computeTagSuggestionRankScore,
     syncSearchIndexes,
     rebuildSearchIndexes,

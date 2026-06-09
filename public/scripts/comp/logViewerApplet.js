@@ -30,9 +30,7 @@ class LogViewerApplet {
         this.modal = null;
         this.contentEl = null;
         this.mainLayout = null;
-        this.sourceDropdown = null;
         this.sourceBtn = null;
-        this.sourceMenu = null;
         this.sourceSelected = null;
         this.backlogLines = 500;
         this.statusEl = null;
@@ -115,9 +113,7 @@ class LogViewerApplet {
 
         this.contentEl = document.getElementById('logViewerContent');
         this.mainLayout = document.getElementById('logViewerMainLayout');
-        this.sourceDropdown = document.getElementById('logViewerSourceDropdown');
         this.sourceBtn = document.getElementById('logViewerSourceDropdownBtn');
-        this.sourceMenu = document.getElementById('logViewerSourceDropdownMenu');
         this.sourceSelected = document.getElementById('logViewerSourceSelected');
         this.modalTitleLabel = document.getElementById('logViewerModalTitleLabel');
         this.statusEl = document.getElementById('logViewerStatus');
@@ -151,7 +147,7 @@ class LogViewerApplet {
             closeBtn.addEventListener('click', () => this.close());
         }
 
-        this.setupSourceDropdown();
+        this.setupSourceClickMenu();
         this.setupGlassPopovers();
 
         if (this.linesBtn) {
@@ -558,15 +554,61 @@ class LogViewerApplet {
         pop.style.left = `${left}px`;
     }
 
-    setupSourceDropdown() {
-        if (!this.sourceDropdown || !this.sourceBtn || !this.sourceMenu || typeof setupDropdown !== 'function') return;
-        setupDropdown(
-            this.sourceDropdown,
-            this.sourceBtn,
-            this.sourceMenu,
-            () => this.renderSourceMenu(),
-            () => this.currentSource
-        );
+    setupSourceClickMenu() {
+        // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+        if (!this.sourceBtn || !contextMenu) return;
+
+        this.sourceClickMenuConfig = {
+            position: 'anchor',
+            anchorAlign: 'start',
+            maxHeight: 420,
+            beforeShow: () => this.refreshSourceClickMenuItems(),
+            sections: [{ type: 'list', items: [] }],
+            onAction: (action, target, item) => {
+                if (action !== 'select-log-source' || !item.sourceId) return;
+                if (item.sourceId !== this.currentSource) {
+                    this.currentSource = item.sourceId;
+                    this.updateSourceButtonLabel();
+                    this.updateTitleBar();
+                    this.reload();
+                }
+            }
+        };
+        contextMenu.attachClickMenuToElement(this.sourceBtn, this.sourceClickMenuConfig);
+    }
+
+    refreshSourceClickMenuItems() {
+        if (!this.sourceClickMenuConfig) return;
+        const groups = this.sourceGroups.length
+            ? this.sourceGroups.map((g) => ({
+                header: g.header,
+                options: g.sources.map((s) => ({ value: s.id, label: s.label }))
+            }))
+            : [{
+                header: 'Logs',
+                options: this.sources.map((s) => ({ value: s.id, label: s.label }))
+            }];
+
+        const items = [];
+        groups.forEach((group) => {
+            if (group.header) {
+                items.push({ separator: true, text: group.header });
+            }
+            group.options.forEach((opt) => {
+                items.push({
+                    text: opt.label,
+                    action: 'select-log-source',
+                    sourceId: opt.value,
+                    loadfn: (item) => {
+                        item.highlighted = item.sourceId === this.currentSource;
+                    }
+                });
+            });
+        });
+        if (!items.length) {
+            items.push({ text: 'No sources', disabled: true });
+        }
+        this.sourceClickMenuConfig.sections[0].items = items;
     }
 
     applyViewSettings() {
@@ -879,35 +921,6 @@ class LogViewerApplet {
         if (this.activeGlassPopover === 'connection') {
             this.refreshConnectionPopover();
         }
-    }
-
-    renderSourceMenu() {
-        if (!this.sourceMenu || typeof renderGroupedDropdown !== 'function') return;
-        const groups = this.sourceGroups.length
-            ? this.sourceGroups.map((g) => ({
-                group: g.header,
-                options: g.sources.map((s) => ({ value: s.id, label: s.label }))
-            }))
-            : [{
-                group: 'Logs',
-                options: this.sources.map((s) => ({ value: s.id, label: s.label }))
-            }];
-
-        renderGroupedDropdown(
-            this.sourceMenu,
-            groups,
-            (value) => {
-                if (value && value !== this.currentSource) {
-                    this.currentSource = value;
-                    this.updateSourceButtonLabel();
-                    this.updateTitleBar();
-                    this.reload();
-                }
-            },
-            () => closeDropdown(this.sourceMenu, this.sourceBtn),
-            this.currentSource,
-            (opt) => opt.label
-        );
     }
 
     isCombinedSource(source) {

@@ -360,12 +360,42 @@ function clearModalPixelAnchor(modal) {
     modal.style.removeProperty('--modal-pixel-top');
 }
 
+/** Layout rect for offset revert; falls back to stored pixel anchor when display:none (e.g. minimised). */
+function getModalAnchorRect(modal) {
+    const rect = modal.getBoundingClientRect();
+    if (rect.width > 0 || rect.height > 0) {
+        return rect;
+    }
+
+    const pixelLeft = parseFloat(modal.style.getPropertyValue('--modal-pixel-left'));
+    const pixelTop = parseFloat(modal.style.getPropertyValue('--modal-pixel-top'));
+    if (!Number.isFinite(pixelLeft) || !Number.isFinite(pixelTop)) {
+        return rect;
+    }
+
+    let width = parseFloat(modal.style.width);
+    let height = parseFloat(modal.style.height);
+    if (!Number.isFinite(width) || width <= 0) {
+        width = modal.offsetWidth;
+    }
+    if (!Number.isFinite(height) || height <= 0) {
+        height = modal.offsetHeight;
+    }
+
+    return {
+        left: pixelLeft,
+        top: pixelTop,
+        width: width || 0,
+        height: height || 0
+    };
+}
+
 /** Drop pixel-settled positioning back to offset mode without moving the window on screen. */
 function revertModalToOffsetAnchor(modal) {
     if (!modal || !modal.classList.contains('modal-pixel-settled')) {
         return;
     }
-    const rect = modal.getBoundingClientRect();
+    const rect = getModalAnchorRect(modal);
     clearModalPixelAnchor(modal);
 
     const trueInsetTop = getModalTrueInsetTop();
@@ -3717,12 +3747,14 @@ function restoreMinimizedModal(modal, taskbarItem) {
     }
 
     const wasPixelSettled = modal.classList.contains('modal-pixel-settled');
+
+    // Must be visible before reverting pixel anchor — getBoundingClientRect is all zeros while minimised.
+    modal.classList.remove('minimised');
+    void modal.offsetHeight;
+
     if (wasPixelSettled) {
         revertModalToOffsetAnchor(modal);
     }
-
-    modal.classList.remove('minimised');
-    void modal.offsetHeight;
 
     if (taskbarItem) {
         setMinimizeTargetVariables(modal, taskbarItem);
@@ -5296,11 +5328,363 @@ let desktopSettingsGlobalState = {
             return readBypassNotificationBridgeInDesktopPreference();
         }
         return false;
-    })()
+    })(),
+    startMenuButtonPreset: 'start-ja',
+    startMenuButtonCustomText: '',
+    startMenuButtonStyle: 'workspace'
 };
+
+// Authentic Windows XP Luna start-button strings per locale (explorer.exe string 578).
+const START_MENU_BUTTON_PRESET_META = {
+    'start-ja': { group: 'Start', label: 'Japanese', text: 'スタート' },
+    'start-ko': { group: 'Start', label: 'Korean', text: '시작' },
+    'start-en': { group: 'Start', label: 'English', text: 'start' },
+    'start-fr': { group: 'Start', label: 'French', text: 'démarrer' },
+    'start-ru': { group: 'Start', label: 'Russian', text: 'Пуск' },
+    'dream-ja': { group: 'Dream', label: 'Japanese', text: 'ドリーム' },
+    'dream-ko': { group: 'Dream', label: 'Korean', text: '드림' },
+    'dream-en': { group: 'Dream', label: 'English', text: 'dream' },
+    'dream-fr': { group: 'Dream', label: 'French', text: 'Rêve' },
+    'dream-ru': { group: 'Dream', label: 'Russian', text: 'Дрим' },
+    custom: { group: 'Other', label: 'Custom Text', text: null }
+};
+
+const START_MENU_BUTTON_PRESET_ORDER = [
+    'start-ja', 'start-ko', 'start-en', 'start-fr', 'start-ru',
+    'dream-ja', 'dream-ko', 'dream-en', 'dream-fr', 'dream-ru',
+    'custom'
+];
+
+function normalizeStartMenuButtonPresetClient(preset) {
+    if (preset === 'start-de') {
+        return 'start-en';
+    }
+    return START_MENU_BUTTON_PRESET_ORDER.includes(preset) ? preset : 'start-ja';
+}
+
+function getStartMenuButtonPresetGroups() {
+    const groups = [];
+    const groupNames = ['Start', 'Dream', 'Other'];
+    groupNames.forEach((groupName) => {
+        const options = START_MENU_BUTTON_PRESET_ORDER
+            .filter((preset) => START_MENU_BUTTON_PRESET_META[preset].group === groupName)
+            .map((preset) => {
+                const meta = START_MENU_BUTTON_PRESET_META[preset];
+                if (preset === 'custom') {
+                    return { value: preset, label: 'Custom Text' };
+                }
+                return {
+                    value: preset,
+                    label: `"${meta.group}" — ${meta.label} (${meta.text})`
+                };
+            });
+        if (options.length) {
+            groups.push({ group: groupName, options });
+        }
+    });
+    return groups;
+}
+
+function getStartMenuButtonPresetLabel(preset, customText = '') {
+    const normalized = normalizeStartMenuButtonPresetClient(preset);
+    if (normalized === 'custom') {
+        const trimmed = typeof customText === 'string' ? customText.trim() : '';
+        return trimmed ? `Custom Text (${trimmed})` : 'Custom Text';
+    }
+    const meta = START_MENU_BUTTON_PRESET_META[normalized];
+    return `"${meta.group}" — ${meta.label} (${meta.text})`;
+}
+
+function resolveStartMenuButtonDisplayText(preset, customText = '') {
+    const normalized = normalizeStartMenuButtonPresetClient(preset);
+    if (normalized === 'custom') {
+        const trimmed = typeof customText === 'string' ? customText.trim() : '';
+        return trimmed || START_MENU_BUTTON_PRESET_META['start-ja'].text;
+    }
+    return START_MENU_BUTTON_PRESET_META[normalized].text;
+}
+
+function normalizeStartMenuButtonStyleClient(style) {
+    return ['luna', 'workspace', 'orb'].includes(style) ? style : 'workspace';
+}
+
+function readDesktopSettingsStartMenuButtonPreference() {
+    return {
+        preset: normalizeStartMenuButtonPresetClient(desktopSettingsGlobalState.startMenuButtonPreset),
+        customText: typeof desktopSettingsGlobalState.startMenuButtonCustomText === 'string'
+            ? desktopSettingsGlobalState.startMenuButtonCustomText.trim().slice(0, 24)
+            : '',
+        style: normalizeStartMenuButtonStyleClient(desktopSettingsGlobalState.startMenuButtonStyle)
+    };
+}
+
+function applyStartMenuButtonStyleToElement(btn, style) {
+    if (!btn) return;
+    const normalized = normalizeStartMenuButtonStyleClient(style);
+    const orbFrame = btn.querySelector('.taskbar-start-button-orb-frame');
+    const logo = btn.querySelector('.taskbar-start-button-logo');
+    btn.classList.remove('luna', 'orb');
+    if (normalized === 'luna') {
+        btn.classList.add('luna');
+    } else if (normalized === 'orb') {
+        btn.classList.add('orb');
+    }
+    const isOrb = normalized === 'orb';
+    if (orbFrame) {
+        orbFrame.classList.toggle('hidden', !isOrb);
+    }
+    if (logo) {
+        logo.classList.toggle('hidden', isOrb);
+    }
+}
+
+function syncStartMenuButtonTextElement(textEl, preset, customText) {
+    if (!textEl) return;
+    const displayText = resolveStartMenuButtonDisplayText(preset, customText);
+    textEl.textContent = displayText;
+    return displayText;
+}
+
+function applyStartMenuButtonAppearanceToTaskbar(preset, customText, style) {
+    const btn = document.getElementById('taskbarStartBtn');
+    const textEl = btn ? btn.querySelector('.taskbar-start-button-text') : null;
+    if (textEl) {
+        const displayText = syncStartMenuButtonTextElement(textEl, preset, customText);
+        if (btn) {
+            btn.title = displayText;
+        }
+    }
+    applyStartMenuButtonStyleToElement(btn, style);
+}
+
+function resolveWorkspaceWallpaperUrl(wallpaperPath) {
+    if (!wallpaperPath || typeof wallpaperPath !== 'string') {
+        return null;
+    }
+    const [type, ...idParts] = wallpaperPath.split(':');
+    const id = idParts.join(':');
+    switch (type) {
+        case 'file':
+            return `/images/${id}`;
+        case 'cache':
+            return `/cache/upload/${id}`;
+        case 'cache-preview':
+            return `/cache/preview/${id}`;
+        case 'vibe':
+            return `/cache/vibe/${id}`;
+        case 'wallpaper':
+            return `/cache/wallpapers/${id}.png`;
+        case 'url':
+            return id;
+        default:
+            return null;
+    }
+}
+
+function getStartMenuButtonPreviewWallpaperStyle() {
+    const wallpaperEl = document.getElementById('desktopWallpaper');
+    if (wallpaperEl) {
+        const computed = getComputedStyle(wallpaperEl);
+        if (computed.backgroundImage && computed.backgroundImage !== 'none') {
+            return {
+                backgroundImage: computed.backgroundImage,
+                backgroundPosition: computed.backgroundPosition || 'center center',
+                backgroundSize: computed.backgroundSize || 'cover',
+                backgroundColor: computed.backgroundColor || '#0a1a2a'
+            };
+        }
+    }
+
+    const bodyStyle = getComputedStyle(document.body);
+    let backgroundImage = bodyStyle.getPropertyValue('--desktop-wallpaper').trim();
+    let backgroundPosition = bodyStyle.getPropertyValue('--desktop-wallpaper-position').trim() || 'center center';
+    const backgroundColor = bodyStyle.getPropertyValue('--workspace-background-color').trim() || '#0a1a2a';
+
+    if ((!backgroundImage || backgroundImage === 'none') && typeof workspaces === 'object' && workspaces) {
+        const workspaceId = (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null)
+            || document.body.getAttribute('data-workspace')
+            || 'default';
+        const workspace = workspaces[workspaceId];
+        const wallpaperUrl = workspace && resolveWorkspaceWallpaperUrl(workspace.wallpaper);
+        if (wallpaperUrl) {
+            backgroundImage = `url("${wallpaperUrl}")`;
+            backgroundPosition = workspace.wallpaperPosition || 'center';
+        }
+    }
+
+    return {
+        backgroundImage: backgroundImage || 'none',
+        backgroundPosition,
+        backgroundSize: 'cover',
+        backgroundColor
+    };
+}
+
+function getDesktopSettingsStartMenuPreviewDisplayText() {
+    const pref = readDesktopSettingsStartMenuButtonPreference();
+    return resolveStartMenuButtonDisplayText(pref.preset, pref.customText);
+}
+
+function updateDesktopSettingsStartMenuTextPreview() {
+    const wallpaper = document.getElementById('desktopSettingsStartMenuPreviewWallpaper');
+    const previewText = document.getElementById('desktopSettingsStartMenuPreviewText');
+    const previewBtn = document.getElementById('desktopSettingsStartMenuPreviewBtn');
+    const pref = readDesktopSettingsStartMenuButtonPreference();
+    if (wallpaper) {
+        const wallpaperStyle = getStartMenuButtonPreviewWallpaperStyle();
+        wallpaper.style.backgroundImage = wallpaperStyle.backgroundImage;
+        wallpaper.style.backgroundPosition = wallpaperStyle.backgroundPosition;
+        wallpaper.style.backgroundSize = wallpaperStyle.backgroundSize || 'cover';
+        wallpaper.style.backgroundColor = wallpaperStyle.backgroundColor;
+    }
+    if (previewText) {
+        syncStartMenuButtonTextElement(previewText, pref.preset, pref.customText);
+    }
+    applyStartMenuButtonStyleToElement(previewBtn, pref.style);
+}
+
+function syncDesktopSettingsStartMenuCustomTextVisibility() {
+    const group = document.getElementById('desktopSettingsStartMenuCustomTextGroup');
+    const input = document.getElementById('desktopSettingsStartMenuCustomTextInput');
+    const pref = readDesktopSettingsStartMenuButtonPreference();
+    const isCustom = pref.preset === 'custom';
+    if (group) {
+        group.classList.toggle('hidden', !isCustom);
+    }
+    if (input && document.activeElement !== input) {
+        input.value = pref.customText || '';
+    }
+}
+
+function syncDesktopSettingsStartMenuTextUI() {
+    const selectedEl = document.getElementById('desktopSettingsStartMenuTextSelected');
+    const hidden = document.getElementById('desktopSettingsStartMenuTextHidden');
+    const pref = readDesktopSettingsStartMenuButtonPreference();
+    if (selectedEl) {
+        selectedEl.textContent = getStartMenuButtonPresetLabel(pref.preset, pref.customText);
+    }
+    if (hidden) {
+        hidden.value = pref.preset;
+    }
+    syncDesktopSettingsStartMenuCustomTextVisibility();
+    syncDesktopSettingsStartMenuStyleUI();
+    updateDesktopSettingsStartMenuTextPreview();
+}
+
+function syncDesktopSettingsStartMenuStyleUI() {
+    const toggle = document.getElementById('desktopSettingsStartMenuStyleToggle');
+    const pref = readDesktopSettingsStartMenuButtonPreference();
+    if (!toggle) return;
+    toggle.setAttribute('data-active', pref.style);
+    toggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.style === pref.style);
+    });
+}
+
+function setupDesktopSettingsStartMenuStyleToggle() {
+    if (desktopSettingsStartMenuStyleWired) {
+        return;
+    }
+
+    const toggle = document.getElementById('desktopSettingsStartMenuStyleToggle');
+    if (!toggle) return;
+
+    toggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const style = btn.dataset.style;
+            if (!style) return;
+            desktopSettingsGlobalState.startMenuButtonStyle = normalizeStartMenuButtonStyleClient(style);
+            syncDesktopSettingsStartMenuStyleUI();
+            updateDesktopSettingsStartMenuTextPreview();
+        });
+    });
+
+    desktopSettingsStartMenuStyleWired = true;
+}
+
+function setupDesktopSettingsStartMenuTextDropdown() {
+    if (desktopSettingsStartMenuTextWired) {
+        return;
+    }
+
+    const container = document.getElementById('desktopSettingsStartMenuTextDropdown');
+    const btn = document.getElementById('desktopSettingsStartMenuTextBtn');
+    const menu = document.getElementById('desktopSettingsStartMenuTextMenu');
+    const selectedEl = document.getElementById('desktopSettingsStartMenuTextSelected');
+    const hidden = document.getElementById('desktopSettingsStartMenuTextHidden');
+    const customInput = document.getElementById('desktopSettingsStartMenuCustomTextInput');
+    if (!container || !btn || !menu || !selectedEl || !hidden) return;
+
+    const groups = getStartMenuButtonPresetGroups();
+
+    const applyPresetSelection = (preset, customText) => {
+        const normalized = normalizeStartMenuButtonPresetClient(preset);
+        desktopSettingsGlobalState.startMenuButtonPreset = normalized;
+        desktopSettingsGlobalState.startMenuButtonCustomText = typeof customText === 'string'
+            ? customText.trim().slice(0, 24)
+            : '';
+        hidden.value = normalized;
+        selectedEl.textContent = getStartMenuButtonPresetLabel(
+            normalized,
+            desktopSettingsGlobalState.startMenuButtonCustomText
+        );
+        syncDesktopSettingsStartMenuCustomTextVisibility();
+        updateDesktopSettingsStartMenuTextPreview();
+    };
+
+    const renderMenu = (selectedVal) => {
+        // renderGroupedDropdown, closeDropdown: public/scripts/comp/dropdown.js
+        renderGroupedDropdown(
+            menu,
+            groups,
+            (value) => {
+                if (value === 'custom') {
+                    applyPresetSelection('custom', desktopSettingsGlobalState.startMenuButtonCustomText || '');
+                    if (customInput) {
+                        customInput.focus();
+                        customInput.select();
+                    }
+                    return;
+                }
+                applyPresetSelection(value, '');
+            },
+            () => closeDropdown(menu, btn),
+            selectedVal,
+            (opt) => opt.label
+        );
+    };
+
+    // setupDropdown: public/scripts/comp/dropdown.js
+    setupDropdown(
+        container,
+        btn,
+        menu,
+        renderMenu,
+        () => readDesktopSettingsStartMenuButtonPreference().preset,
+        { preventFocusTransfer: true }
+    );
+
+    if (customInput) {
+        customInput.addEventListener('input', () => {
+            desktopSettingsGlobalState.startMenuButtonCustomText = customInput.value.slice(0, 24);
+            selectedEl.textContent = getStartMenuButtonPresetLabel(
+                'custom',
+                desktopSettingsGlobalState.startMenuButtonCustomText
+            );
+            updateDesktopSettingsStartMenuTextPreview();
+        });
+    }
+
+    desktopSettingsStartMenuTextWired = true;
+}
 
 let desktopSettingsActiveScope = 'workspace';
 let desktopSettingsScopeHandlersWired = false;
+let desktopSettingsDropdownsWired = false;
+let desktopSettingsStartMenuTextWired = false;
+let desktopSettingsStartMenuStyleWired = false;
+let desktopSettingsPersistedStartMenuButton = { preset: 'start-ja', customText: '', style: 'workspace' };
 
 // Alignment options for dropdowns
 const ALIGNMENT_OPTIONS = {
@@ -5803,6 +6187,16 @@ async function openDesktopSettingsModal(wallpaperPath = null) {
             readDesktopSettingsBypassNotificationBridgeDesktopPreference();
         syncDesktopSettingsNotificationBridgeToggleUI();
     }
+    const startMenuPref = readDesktopSettingsStartMenuButtonPreference();
+    desktopSettingsPersistedStartMenuButton = {
+        preset: startMenuPref.preset,
+        customText: startMenuPref.customText,
+        style: startMenuPref.style
+    };
+    desktopSettingsGlobalState.startMenuButtonPreset = startMenuPref.preset;
+    desktopSettingsGlobalState.startMenuButtonCustomText = startMenuPref.customText;
+    desktopSettingsGlobalState.startMenuButtonStyle = startMenuPref.style;
+    syncDesktopSettingsStartMenuTextUI();
     setDesktopSettingsScope('workspace');
 
     // Initialize dropdowns and button handlers
@@ -5876,6 +6270,8 @@ function initializeDesktopSettingsModal() {
 
     // Setup dropdowns
     setupDesktopSettingsDropdowns();
+    setupDesktopSettingsStartMenuTextDropdown();
+    setupDesktopSettingsStartMenuStyleToggle();
 
     // Setup button handlers
     setupDesktopSettingsButtonHandlers();
@@ -5883,6 +6279,10 @@ function initializeDesktopSettingsModal() {
 
 // Initialize dropdowns
 function setupDesktopSettingsDropdowns() {
+    if (desktopSettingsDropdownsWired) {
+        return;
+    }
+
     // Horizontal dropdown
     const horizDropdown = document.getElementById('desktopSettingsHorizontalDropdown');
     const horizBtn = document.getElementById('desktopSettingsHorizontalBtn');
@@ -6066,6 +6466,8 @@ function setupDesktopSettingsDropdowns() {
             }
         );
     }
+
+    desktopSettingsDropdownsWired = true;
 }
 
 // Render alignment dropdown options
@@ -6266,13 +6668,15 @@ function buildUserGlobalSettingsSnapshotFromClient() {
     if (window.naxtApplet && typeof window.naxtApplet.elevatePins !== 'undefined') {
         elevatePins = normalizeNaxtElevatePinsClient(window.naxtApplet.elevatePins);
     }
+    const startMenuButton = readDesktopSettingsStartMenuButtonPreference();
     return {
         desktop: {
             autoLaunchWorkspace: readDesktopSettingsAutoLaunchPreference(),
             liveWindowRepositioning: readDesktopSettingsLiveWindowRepositioningPreference(),
             exitDesktopOnWorkspaceMaximise: readDesktopSettingsExitDesktopOnWorkspaceMaximisePreference(),
             notificationBridgeEnabled: readDesktopSettingsNotificationBridgeEnabledPreference(),
-            bypassNotificationBridgeInDesktopMode: readDesktopSettingsBypassNotificationBridgeDesktopPreference()
+            bypassNotificationBridgeInDesktopMode: readDesktopSettingsBypassNotificationBridgeDesktopPreference(),
+            startMenuButton
         },
         naxt: {
             elevatePins
@@ -6324,6 +6728,17 @@ function applyUserGlobalSettingsToClient(settings) {
                 desktopSettingsGlobalState.notificationBridgeEnabled !== false,
                 desktopSettingsGlobalState.bypassNotificationBridgeInDesktopMode === true
             );
+        }
+        if (desktop.startMenuButton && typeof desktop.startMenuButton === 'object') {
+            const preset = normalizeStartMenuButtonPresetClient(desktop.startMenuButton.preset);
+            const customText = typeof desktop.startMenuButton.customText === 'string'
+                ? desktop.startMenuButton.customText.trim().slice(0, 24)
+                : '';
+            const style = normalizeStartMenuButtonStyleClient(desktop.startMenuButton.style);
+            desktopSettingsGlobalState.startMenuButtonPreset = preset;
+            desktopSettingsGlobalState.startMenuButtonCustomText = customText;
+            desktopSettingsGlobalState.startMenuButtonStyle = style;
+            applyStartMenuButtonAppearanceToTaskbar(preset, customText, style);
         }
     }
 
@@ -6404,12 +6819,26 @@ async function saveDesktopGlobalSettings() {
     const previousNotificationBridgeEnabled = readDesktopSettingsNotificationBridgeEnabledPreference();
     const previousBypassNotificationBridgeInDesktopMode =
         readDesktopSettingsBypassNotificationBridgeDesktopPreference();
+    const startMenuButton = readDesktopSettingsStartMenuButtonPreference();
+    const previousStartMenuButton = desktopSettingsPersistedStartMenuButton;
     const bridgeDetected = typeof isAndroidNotificationBridgeDetected === 'function'
         && isAndroidNotificationBridgeDetected();
+
+    if (startMenuButton.preset === 'custom' && !startMenuButton.customText) {
+        showGlassToast('warning', null, 'Enter custom start button text before saving', false, 3000, '<i class="fa-light fa-exclamation-triangle"></i>');
+        const customInput = document.getElementById('desktopSettingsStartMenuCustomTextInput');
+        if (customInput) {
+            customInput.focus();
+        }
+        return;
+    }
 
     if (autoLaunch === previousAutoLaunch
         && liveWindowRepositioning === previousLiveWindowRepositioning
         && exitDesktopOnWorkspaceMaximise === previousExitDesktopOnWorkspaceMaximise
+        && startMenuButton.preset === previousStartMenuButton.preset
+        && startMenuButton.customText === previousStartMenuButton.customText
+        && startMenuButton.style === previousStartMenuButton.style
         && (!bridgeDetected
             || (notificationBridgeEnabled === previousNotificationBridgeEnabled
                 && bypassNotificationBridgeInDesktopMode === previousBypassNotificationBridgeInDesktopMode))) {
@@ -6422,7 +6851,8 @@ async function saveDesktopGlobalSettings() {
     const desktopPatch = {
         autoLaunchWorkspace: autoLaunch,
         liveWindowRepositioning,
-        exitDesktopOnWorkspaceMaximise
+        exitDesktopOnWorkspaceMaximise,
+        startMenuButton
     };
     if (bridgeDetected) {
         desktopPatch.notificationBridgeEnabled = notificationBridgeEnabled;
@@ -6431,6 +6861,16 @@ async function saveDesktopGlobalSettings() {
 
     try {
         await persistUserGlobalSettingsPatch({ desktop: desktopPatch });
+        desktopSettingsPersistedStartMenuButton = {
+            preset: startMenuButton.preset,
+            customText: startMenuButton.customText,
+            style: startMenuButton.style
+        };
+        applyStartMenuButtonAppearanceToTaskbar(
+            startMenuButton.preset,
+            startMenuButton.customText,
+            startMenuButton.style
+        );
         if (bridgeDetected && typeof applyNotificationBridgePreferences === 'function') {
             applyNotificationBridgePreferences(notificationBridgeEnabled, bypassNotificationBridgeInDesktopMode);
         }

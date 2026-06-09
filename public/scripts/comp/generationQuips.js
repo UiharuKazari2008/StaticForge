@@ -1,5 +1,5 @@
 // Witty quips shown over the manual preview during image generation — wired from manualModalManager.js
-// NSFW weighting reads selectedNsfwValue from manualDropdownManager.js
+// NSFW weighting reads selectedNsfwValue from manualDropdownManager.js; prompt trigger scan supplements the slider
 
 const GENERATION_QUIP_POOLS = {
     technical: [
@@ -345,6 +345,264 @@ const GENERATION_QUIP_POOLS = {
 const GENERATION_QUIPS = [];
 const quipCategoryByIndex = [];
 
+// Dynamic quips keyed by workspace id (or _global); loaded from server into IndexedDB at startup
+let dynamicQuipsByWorkspace = new Map();
+let dynamicQuipsVersionHash = '';
+let dynamicQuipsLoaded = false;
+
+class GenerationQuipsStore {
+    constructor() {
+        this.dbName = 'StaticForgeGenerationQuips';
+        this.version = 1;
+        this.db = null;
+        this.initPromise = this.initDB();
+    }
+
+    async initDB() {
+        return new Promise((resolve) => {
+            const request = indexedDB.open(this.dbName, this.version);
+            request.onerror = () => resolve(null);
+            request.onsuccess = (event) => {
+                this.db = event.target.result;
+                resolve(this.db);
+            };
+            request.onupgradeneeded = (event) => {
+                const db = event.target.result;
+                if (!db.objectStoreNames.contains('quips')) {
+                    db.createObjectStore('quips', { keyPath: 'key' });
+                }
+                if (!db.objectStoreNames.contains('meta')) {
+                    db.createObjectStore('meta', { keyPath: 'id' });
+                }
+            };
+        });
+    }
+
+    async getMeta() {
+        await this.initPromise;
+        if (!this.db) return null;
+        return new Promise((resolve) => {
+            const tx = this.db.transaction('meta', 'readonly');
+            const req = tx.objectStore('meta').get('manifest');
+            req.onsuccess = () => resolve(req.result || null);
+            req.onerror = () => resolve(null);
+        });
+    }
+
+    async savePayload(payload) {
+        await this.initPromise;
+        if (!this.db || !payload) return false;
+
+        return new Promise((resolve) => {
+            const tx = this.db.transaction(['quips', 'meta'], 'readwrite');
+            const quipStore = tx.objectStore('quips');
+            const metaStore = tx.objectStore('meta');
+
+            quipStore.clear();
+            const byWorkspace = payload.byWorkspace || {};
+            for (const [workspaceId, entries] of Object.entries(byWorkspace)) {
+                quipStore.put({
+                    key: workspaceId,
+                    entries
+                });
+            }
+
+            metaStore.put({
+                id: 'manifest',
+                versionHash: payload.versionHash || '',
+                termCount: payload.termCount || 0,
+                phraseCount: payload.phraseCount || 0,
+                cachedAt: Date.now()
+            });
+
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = () => resolve(false);
+        });
+    }
+
+    async loadPayload() {
+        await this.initPromise;
+        if (!this.db) return null;
+
+        return new Promise((resolve) => {
+            const tx = this.db.transaction(['quips', 'meta'], 'readonly');
+            const quipStore = tx.objectStore('quips');
+            const metaStore = tx.objectStore('meta');
+            const byWorkspace = {};
+            let meta = null;
+
+            const allReq = quipStore.getAll();
+            allReq.onsuccess = () => {
+                for (const row of allReq.result || []) {
+                    byWorkspace[row.key] = row.entries || [];
+                }
+            };
+
+            const metaReq = metaStore.get('manifest');
+            metaReq.onsuccess = () => {
+                meta = metaReq.result || null;
+            };
+
+            tx.oncomplete = () => {
+                if (!meta || Object.keys(byWorkspace).length === 0) {
+                    resolve(null);
+                    return;
+                }
+                resolve({
+                    byWorkspace,
+                    versionHash: meta.versionHash,
+                    termCount: meta.termCount,
+                    phraseCount: meta.phraseCount
+                });
+            };
+            tx.onerror = () => resolve(null);
+        });
+    }
+}
+
+const generationQuipsStore = new GenerationQuipsStore();
+
+function applyDynamicQuipPayload(payload) {
+    if (!payload || !payload.byWorkspace) return;
+    dynamicQuipsByWorkspace = new Map(Object.entries(payload.byWorkspace));
+    dynamicQuipsVersionHash = payload.versionHash || '';
+    dynamicQuipsLoaded = true;
+}
+
+function getDynamicQuipsVersionHash() {
+    return dynamicQuipsVersionHash || '';
+}
+
+async function loadDynamicGenerationQuips(forceRefresh) {
+    try {
+        const cached = await generationQuipsStore.loadPayload();
+        if (cached) {
+            applyDynamicQuipPayload(cached);
+        }
+
+        if (!forceRefresh) {
+            if (cached) {
+                return {
+                    ok: true,
+                    fromCache: true,
+                    versionHash: cached.versionHash || '',
+                    termCount: cached.termCount || 0,
+                    phraseCount: cached.phraseCount || 0
+                };
+            }
+            return { ok: dynamicQuipsLoaded, fromCache: true };
+        }
+
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            return { ok: false, error: 'WebSocket not connected' };
+        }
+
+        const payload = await window.wsClient.getGenerationQuips();
+        if (!payload || !payload.byWorkspace) {
+            return { ok: false, error: 'Server returned no quip data' };
+        }
+
+        const summary = {
+            versionHash: payload.versionHash || '',
+            termCount: payload.termCount || 0,
+            phraseCount: payload.phraseCount || 0
+        };
+
+        if (summary.versionHash && summary.versionHash === dynamicQuipsVersionHash && dynamicQuipsLoaded) {
+            return { ok: true, unchanged: true, ...summary };
+        }
+
+        applyDynamicQuipPayload(payload);
+        const saved = await generationQuipsStore.savePayload(payload);
+        if (!saved) {
+            return { ok: false, error: 'Failed to save quips to local cache', ...summary };
+        }
+
+        return { ok: true, refreshed: true, ...summary };
+    } catch (error) {
+        console.warn('Failed to load dynamic generation quips:', error);
+        const message = error?.message || 'Failed to load generation quips';
+        if (forceRefresh) {
+            return { ok: false, error: message };
+        }
+        return { ok: dynamicQuipsLoaded, error: dynamicQuipsLoaded ? null : message };
+    }
+}
+
+function collectPromptTextForQuips() {
+    const parts = [];
+    const promptEl = document.getElementById('manualPrompt');
+    if (promptEl && promptEl.value) {
+        parts.push(promptEl.value);
+    }
+    // getCharacterPrompts: public/scripts/app.js
+    if (typeof getCharacterPrompts === 'function') {
+        const chars = getCharacterPrompts();
+        if (Array.isArray(chars)) {
+            for (const c of chars) {
+                if (c && c.enabled !== false && c.prompt) {
+                    parts.push(c.prompt);
+                }
+            }
+        }
+    }
+    return parts.join(' | ').toLowerCase();
+}
+
+function matchDynamicQuipPhrases(promptText) {
+    if (!promptText || dynamicQuipsByWorkspace.size === 0) {
+        return [];
+    }
+
+    const workspaceId = typeof activeWorkspace !== 'undefined' ? activeWorkspace : 'default';
+    const workspaceEntries = dynamicQuipsByWorkspace.get(workspaceId) || [];
+    const sharedEntries = dynamicQuipsByWorkspace.get('_shared') || [];
+    const globalEntries = dynamicQuipsByWorkspace.get('_global') || [];
+    const matched = [];
+
+    const termMatchesPrompt = (term) => {
+        if (!term || term.length < 3) return false;
+        if (term.includes(' + ')) {
+            const parts = term.split(' + ').map((p) => p.trim()).filter((p) => p.length >= 2);
+            return parts.length >= 2 && parts.every((part) => promptText.includes(part));
+        }
+        if (term.startsWith('artist:')) {
+            const slug = term.slice('artist:'.length).trim();
+            if (!slug) return false;
+            return promptText.includes(term)
+                || promptText.includes(`art by ${slug}`)
+                || promptText.includes(`art by ${slug.replace(/_/g, ' ')}`);
+        }
+        if (term.startsWith('art by ')) {
+            const slug = term.slice('art by '.length).trim();
+            if (!slug) return false;
+            return promptText.includes(term)
+                || promptText.includes(`artist:${slug}`)
+                || promptText.includes(`artist:${slug.replace(/\s+/g, '_')}`);
+        }
+        return promptText.includes(term);
+    };
+
+    const tryMatch = (entries, weight) => {
+        for (const entry of entries) {
+            if (!entry.term || !Array.isArray(entry.phrases)) continue;
+            const term = entry.term.toLowerCase();
+            if (!termMatchesPrompt(term)) continue;
+            for (const phrase of entry.phrases) {
+                if (phrase && typeof phrase === 'string') {
+                    matched.push({ text: phrase, weight, term });
+                }
+            }
+        }
+    };
+
+    tryMatch(workspaceEntries, DYNAMIC_QUIP_WEIGHT_WORKSPACE);
+    tryMatch(sharedEntries, DYNAMIC_QUIP_WEIGHT_SHARED);
+    tryMatch(globalEntries, DYNAMIC_QUIP_WEIGHT_GLOBAL);
+
+    return matched;
+}
+
 Object.entries(GENERATION_QUIP_POOLS).forEach(([category, lines]) => {
     lines.forEach((text) => {
         quipCategoryByIndex.push(category);
@@ -355,6 +613,70 @@ Object.entries(GENERATION_QUIP_POOLS).forEach(([category, lines]) => {
 const QUIP_VISIBLE_MS = 10000;
 const QUIP_FADE_MS = 600;
 
+// When prompt terms match generated quips, favor them heavily over static pools
+const DYNAMIC_QUIP_WEIGHT_WORKSPACE = 8;
+const DYNAMIC_QUIP_WEIGHT_SHARED = 7;
+const DYNAMIC_QUIP_WEIGHT_GLOBAL = 5;
+const DYNAMIC_QUIP_PRIORITY_RATIO = 0.85;
+const STATIC_WEIGHT_FACTOR_WHEN_DYNAMIC = 0.15;
+
+// Scale dynamic bias down when workspace inventory or prompt-directed matches are sparse
+const DIRECTED_QUIP_LOW_PHRASE_COUNT = 15;
+const DIRECTED_QUIP_HEALTHY_PHRASE_COUNT = 120;
+const DIRECTED_QUIP_LOW_MATCH_COUNT = 4;
+const DIRECTED_QUIP_HEALTHY_MATCH_COUNT = 20;
+
+function countDirectedQuipInventory(workspaceId) {
+    const workspaceEntries = dynamicQuipsByWorkspace.get(workspaceId) || [];
+    const sharedEntries = dynamicQuipsByWorkspace.get('_shared') || [];
+    const globalEntries = dynamicQuipsByWorkspace.get('_global') || [];
+    let terms = 0;
+    let phrases = 0;
+
+    const tally = (entries) => {
+        for (const entry of entries) {
+            if (!entry?.term || !Array.isArray(entry.phrases)) continue;
+            terms += 1;
+            for (const phrase of entry.phrases) {
+                if (phrase && typeof phrase === 'string') phrases += 1;
+            }
+        }
+    };
+
+    tally(workspaceEntries);
+    tally(sharedEntries);
+    tally(globalEntries);
+
+    return { terms, phrases };
+}
+
+function scaleBetween(value, low, high) {
+    if (value <= low) return 0;
+    if (value >= high) return 1;
+    return (value - low) / (high - low);
+}
+
+function getDirectedQuipMixFactors(directedMatchCount) {
+    const workspaceId = typeof activeWorkspace !== 'undefined' ? activeWorkspace : 'default';
+    const inventory = countDirectedQuipInventory(workspaceId);
+    const inventoryBlend = scaleBetween(
+        inventory.phrases,
+        DIRECTED_QUIP_LOW_PHRASE_COUNT,
+        DIRECTED_QUIP_HEALTHY_PHRASE_COUNT
+    );
+    const matchBlend = directedMatchCount > 0
+        ? scaleBetween(directedMatchCount, DIRECTED_QUIP_LOW_MATCH_COUNT, DIRECTED_QUIP_HEALTHY_MATCH_COUNT)
+        : inventoryBlend;
+    const blend = Math.min(inventoryBlend, matchBlend);
+
+    return {
+        blend,
+        dynamicPriorityRatio: DYNAMIC_QUIP_PRIORITY_RATIO * blend,
+        staticWeightFactor: 1 - blend * (1 - STATIC_WEIGHT_FACTOR_WHEN_DYNAMIC),
+        dynamicWeightScale: blend
+    };
+}
+
 let quipCycleTimeout = null;
 let quipFadeTimeout = null;
 let quipsShownIndices = [];
@@ -364,8 +686,33 @@ function getNsfwLevel() {
     return typeof selectedNsfwValue !== 'undefined' ? selectedNsfwValue : 0;
 }
 
-function getQuipCategoryWeights() {
-    const level = getNsfwLevel();
+// Fetish/spicy signals in the positive prompt — used when NSFW slider is neutral/low but tags are not
+const PROMPT_SPICY_EXPLICIT = /\b(nude|naked|nipples?|areolae?|pussy|penis|sex|anal|cum|cumshot|ahegao|orgasm|hentai|explicit|blowjob|handjob|footjob|masturbat|ejaculat|creampie|gangbang|bukkake|paizuri|fellatio|cunnilingus|doggystyle|missionary|cowgirl|reverse cowgirl|bondage sex|gang bang)\b/i;
+const PROMPT_SPICY_STRONG = /\b(lewd|ecchi|nsfw|topless|bottomless|panties|thong|g-string|lingerie|bikini|micro bikini|bondage|bdsm|collar|leash|slave|spanking|lactation|pregnant|pregnan|inflation|vore|giantess|giant girl|macro|micro girl|femdom|dominatrix|spread legs|all fours|bent over|upskirt|pantyshot|cleavage|underboob|sideboob|cameltoe|wardrobe malfunction|see-through|wet shirt|shirt lift|skirt lift|tentacle|futanari|futa|yuri|yaoi|rating:questionable|rating:explicit|impregnation|milking|breeding|humiliation|exhibitionism|voyeur|peeping|stripper|pole dance|lap dance|orgy|threesome|foursome)\b/i;
+const PROMPT_SPICY_MILD = /\b(thigh|thighs|booty|ass\b|breasts|boobs|wide hips|thick thighs|curvy|voluptuous|sensual|seductive|blush|embarrassed|skimpy|revealing|tight clothes|bodysuit|latex|fishnet|stockings|thighhighs|maid bikini|bunny girl|catgirl|fox girl|horny|aroused|sweat|steamy|hot spring|onsen|towel|bath|shower|bedroom|pin-up|pinup|cleavage cutout|navel|belly|plump|chubby|obese|weight gain|hyper|expansion|growth|size difference|smother|facesit|foot fetish|feet|toes|armpit)\b/i;
+
+function getPromptSpicyLevel(promptText) {
+    if (!promptText) return 0;
+
+    if (PROMPT_SPICY_EXPLICIT.test(promptText)) return 3;
+    if (PROMPT_SPICY_STRONG.test(promptText)) return 2;
+
+    const mildHits = promptText.match(new RegExp(PROMPT_SPICY_MILD.source, 'gi'));
+    const mildCount = mildHits ? mildHits.length : 0;
+    if (mildCount >= 3) return 2;
+    if (mildCount >= 1) return 1;
+
+    return 0;
+}
+
+function getEffectiveQuipSpicyLevel(promptText) {
+    const nsfwLevel = getNsfwLevel();
+    const promptLevel = getPromptSpicyLevel(promptText);
+    return Math.max(nsfwLevel, promptLevel);
+}
+
+function getQuipCategoryWeights(spicyLevel) {
+    const level = typeof spicyLevel === 'number' ? spicyLevel : getNsfwLevel();
 
     const weights = {
         technical: 1,
@@ -424,11 +771,32 @@ function getQuipCategoryWeights() {
 }
 
 function pickGenerationQuip() {
-    if (GENERATION_QUIPS.length === 0) return '';
+    const promptText = collectPromptTextForQuips();
+    const dynamicMatches = matchDynamicQuipPhrases(promptText);
 
-    const level = getNsfwLevel();
-    const weights = getQuipCategoryWeights();
+    const hasDynamicMatches = dynamicMatches.length > 0;
+    const mix = getDirectedQuipMixFactors(dynamicMatches.length);
+
+    if (hasDynamicMatches && mix.dynamicPriorityRatio > 0 && Math.random() < mix.dynamicPriorityRatio) {
+        const pick = dynamicMatches[Math.floor(Math.random() * dynamicMatches.length)];
+        return pick.text;
+    }
+
+    const level = getEffectiveQuipSpicyLevel(promptText);
+    const weights = getQuipCategoryWeights(level);
+    const staticFactor = hasDynamicMatches ? mix.staticWeightFactor : 1;
     const candidates = [];
+
+    // Matched workspace/global quips always eligible — never gated by NSFW slider or term category
+    for (const match of dynamicMatches) {
+        const scaledWeight = match.weight * mix.dynamicWeightScale;
+        if (scaledWeight <= 0) continue;
+        candidates.push({
+            type: 'dynamic',
+            text: match.text,
+            weight: scaledWeight
+        });
+    }
 
     for (let i = 0; i < GENERATION_QUIPS.length; i++) {
         if (quipsShownIndices.includes(i)) continue;
@@ -439,12 +807,18 @@ function pickGenerationQuip() {
         if (!weight || weight <= 0) continue;
 
         candidates.push({
+            type: 'static',
             index: i,
-            weight
+            text: GENERATION_QUIPS[i],
+            weight: weight * staticFactor
         });
     }
 
     if (candidates.length === 0) {
+        if (dynamicMatches.length > 0) {
+            const pick = dynamicMatches[Math.floor(Math.random() * dynamicMatches.length)];
+            return pick.text;
+        }
         quipsShownIndices = [];
         return pickGenerationQuip();
     }
@@ -461,8 +835,11 @@ function pickGenerationQuip() {
         }
     }
 
-    quipsShownIndices.push(picked.index);
-    return GENERATION_QUIPS[picked.index];
+    if (picked.type === 'static' && picked.index !== undefined) {
+        quipsShownIndices.push(picked.index);
+    }
+
+    return picked.text;
 }
 
 function clearGenerationQuipTimers() {
@@ -527,6 +904,7 @@ function startGenerationQuips() {
 
     stopGenerationQuips();
     quipRotationLocked = false;
+    quipsShownIndices = [];
     quipEl.classList.remove('hidden');
     showNextGenerationQuip();
 }

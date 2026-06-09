@@ -3186,7 +3186,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
     await globalResources.logger.bootStep('WebSocket Server', async () => {
         updateServerStage('websocket_init');
         const { wsServer } = globalResources.initializeWebSocketServer();
-        
+
         // Start ping interval with server data callback
         wsServer.startPingInterval(() => {
             return {
@@ -3199,8 +3199,13 @@ async function handleAdminUnixSocketMessage(message, socket) {
 
         // Start queue status broadcasting
         wsServer.startQueueStatusInterval();
-        
+
         globalResources.logger.bootSubStep('WebSocket server initialized');
+    });
+
+    await globalResources.logger.bootStep('Generation Quips Auto-Update', async () => {
+        updateServerStage('generation_quips_auto_update_init');
+        globalResources.initializeGenerationQuipsAutoUpdate();
     });
 
     // Unix socket CLI (service worker cache refresh / client broadcast)
@@ -3314,6 +3319,11 @@ async function gracefulShutdown() {
 process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 process.on('uncaughtException', (error) => {
+    // pm2Service.handleRecoverablePm2Error: modules/pm2Service.js
+    if (pm2Service.handleRecoverablePm2Error(error)) {
+        globalResources?.logger?.warn('Recovered PM2 client error, connection reset:', error.message);
+        return;
+    }
     globalResources.logger.error('Uncaught exception:', error);
     process.exit(1);
 });

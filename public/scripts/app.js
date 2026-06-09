@@ -9840,6 +9840,11 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
 
             window.optionsData = options;
 
+            // loadDynamicGenerationQuips: public/scripts/comp/generationQuips.js
+            if (typeof loadDynamicGenerationQuips === 'function') {
+                loadDynamicGenerationQuips().catch(() => {});
+            }
+
             if (typeof bootstrapVfsPathUuidFromOptions === 'function') {
                 bootstrapVfsPathUuidFromOptions(options);
             }
@@ -10236,83 +10241,37 @@ function setupEventListeners() {
         });
     }
 
-    // Text Replacement Actions Dropdown
-    const textReplacementActionsDropdown = document.getElementById('textReplacementActionsDropdown');
+    // Text Replacement Actions — click menu on window control
     const textReplacementActionsDropdownBtn = document.getElementById('textReplacementActionsDropdownBtn');
-    const textReplacementActionsDropdownMenu = document.getElementById('textReplacementActionsDropdownMenu');
 
-    if (textReplacementActionsDropdown && textReplacementActionsDropdownBtn && textReplacementActionsDropdownMenu) {
-        setupDropdown(
-            textReplacementActionsDropdown,
-            textReplacementActionsDropdownBtn,
-            textReplacementActionsDropdownMenu,
-            () => renderTextReplacementActionsDropdown(),
-            () => null, // No selected value needed for action menu
-            { preventFocusTransfer: true }
-        );
-    }
-
-    // Render function for text replacement actions dropdown
-    function renderTextReplacementActionsDropdown() {
-        if (!textReplacementActionsDropdownMenu) return;
-
-        textReplacementActionsDropdownMenu.innerHTML = '';
-
-        const options = [
-            {
-                icon: 'fas fa-check-square',
-                text: 'Select All',
-                action: 'selectAll'
-            },
-            {
-                icon: 'fas fa-square',
-                text: 'Deselect All',
-                action: 'deselectAll'
-            },
-            {
-                icon: 'fas fa-book-font',
-                text: 'Global Expanders',
-                action: 'openGlobal'
-            },
-            {
-                icon: 'fas fa-notebook',
-                text: 'Local Expanders',
-                action: 'openLocal'
-            }
-        ];
-
-        options.forEach(option => {
-            const optionElement = document.createElement('div');
-            optionElement.className = 'custom-dropdown-option';
-            optionElement.dataset.action = option.action;
-            optionElement.innerHTML = `<i class="${option.icon}"></i> ${option.text}`;
-
-            optionElement.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-
-                // Close the dropdown
-                closeDropdown(textReplacementActionsDropdownMenu, textReplacementActionsDropdownBtn);
-
-                // Handle the action
-                switch (option.action) {
-                    case 'selectAll':
-                        selectAllTextReplacements();
-                        break;
-                    case 'deselectAll':
-                        deselectAllTextReplacements();
-                        break;
-                    case 'openGlobal':
-                        showTextReplacementManager();
-                        break;
-                    case 'openLocal':
-                        showRequestBodyReplacementsModal();
-                        break;
+    if (textReplacementActionsDropdownBtn && contextMenu) {
+        const textReplacementActionsClickMenuConfig = {
+            position: 'anchor',
+            anchorAlign: 'end',
+            maxHeight: 280,
+            sections: [{
+                type: 'list',
+                items: [
+                    { text: 'Select All', icon: 'fas fa-check-square', action: 'text-replacement-select-all' },
+                    { text: 'Deselect All', icon: 'fas fa-square', action: 'text-replacement-deselect-all' },
+                    { separator: true },
+                    { text: 'Global Expanders', icon: 'fas fa-book-font', action: 'text-replacement-open-global' },
+                    { text: 'Local Expanders', icon: 'fas fa-notebook', action: 'text-replacement-open-local' }
+                ]
+            }],
+            onAction: (action) => {
+                if (action === 'text-replacement-select-all') {
+                    selectAllTextReplacements();
+                } else if (action === 'text-replacement-deselect-all') {
+                    deselectAllTextReplacements();
+                } else if (action === 'text-replacement-open-global') {
+                    showTextReplacementManager();
+                } else if (action === 'text-replacement-open-local') {
+                    showRequestBodyReplacementsModal();
                 }
-            });
-
-            textReplacementActionsDropdownMenu.appendChild(optionElement);
-        });
+            }
+        };
+        contextMenu.attachClickMenuToElement(textReplacementActionsDropdownBtn, textReplacementActionsClickMenuConfig);
     }
 
     // Manual selection modal event listeners
@@ -12728,13 +12687,30 @@ function setupEventListeners() {
     document.addEventListener('click', (event) => {
         const link = event.target.closest('a');
         if (link && link.href && !link.target && !link.hasAttribute('download')) {
-            // Skip tag wiki links - they're handled by the tag wiki modal
-            if (link.classList.contains('tag-wiki-link')) {
+            // In-app wiki / quip links — handled by their own click handlers
+            if (link.classList.contains('tag-wiki-link')
+                || link.classList.contains('quip-wiki-nav-link')
+                || link.classList.contains('wiki-static-link')
+                || link.classList.contains('wiki-static-index-link')
+                || link.classList.contains('tag-wiki-anchor-link')) {
                 return;
             }
 
             const href = link.href;
             const currentOrigin = window.location.origin;
+
+            // Same document (hash-only or #) — not leaving the app
+            try {
+                const linkUrl = new URL(href);
+                const pageUrl = new URL(window.location.href);
+                if (linkUrl.origin === pageUrl.origin
+                    && linkUrl.pathname === pageUrl.pathname
+                    && linkUrl.search === pageUrl.search) {
+                    return;
+                }
+            } catch (_) {
+                // fall through to origin check
+            }
 
             // Check if link navigates away from current page
             if (href.startsWith(currentOrigin) && href !== window.location.href) {
@@ -16702,6 +16678,94 @@ async function handleClipboardPaste(event) {
 }
 
 let showSubscriptionExpirationToast = false;
+let showFixedTrainingStepsToast = false;
+
+function isDesktopTrayBootPending() {
+    return !!(window.isDesktop && !window._systemTrayBootComplete);
+}
+window.isDesktopTrayBootPending = isDesktopTrayBootPending;
+
+function isSystemTrayBootComplete() {
+    return !window.isDesktop || window._systemTrayBootComplete === true;
+}
+
+function shouldDeferTrayNotifications() {
+    return isDesktopTrayBootPending();
+}
+
+function revealTrayIconElement(el, animate = true) {
+    if (!el) return;
+    el.classList.remove('hidden');
+    if (animate) {
+        el.classList.remove('tray-boot-in');
+        void el.offsetWidth;
+        el.classList.add('tray-boot-in');
+    }
+}
+
+function revealTrayIconById(id, animate = true) {
+    revealTrayIconElement(document.getElementById(id), animate);
+}
+
+async function checkSubscriptionExpiration(options = {}) {
+    if (!window.optionsData?.user?.subscription?.expiresAt) return;
+
+    const renewalData = getSubscriptionRenewalDisplayData(window.optionsData.user.subscription.expiresAt);
+    const subTier = window.optionsData.user.subscription.tier;
+    const subName = subTier === 3 ? 'Opus' : subTier === 2 ? 'Scroll' : subTier === 1 ? 'Tablet' : 'Enterprise';
+
+    if (renewalData.msUntilRenewal <= (7 * 24 * 60 * 60 * 1000) && renewalData.msUntilRenewal > 0) {
+        if (!options.forceDisplay && shouldDeferTrayNotifications()) {
+            return;
+        }
+        if (!showSubscriptionExpirationToast) {
+            const message = `Your NovelAI ${subName} subscription will renew in ${renewalData.timeRemaining}! (${renewalData.renewalDateTimeStr})`;
+            showGlassToast('warning', 'NovelAI Subscription Status', message, false, 15000);
+            showSubscriptionExpirationToast = true;
+        }
+    }
+}
+
+async function checkFixedTrainingSteps(options = {}) {
+    if (!window.optionsData?.balance || !window.optionsData?.user?.subscription?.expiresAt) {
+        console.error('No balance data available');
+        return;
+    }
+
+    const fixedSteps = window.optionsData.balance.fixedTrainingStepsLeft || 0;
+    const renewalData = getSubscriptionRenewalDisplayData(window.optionsData.user.subscription.expiresAt);
+    const daysUntilRenewal = Math.max(1, renewalData.daysUntilRenewal);
+    const usePerDay = parseInt((fixedSteps / daysUntilRenewal).toFixed(0));
+    const usePerHour = Math.max(1, parseInt((fixedSteps / Math.max(1, renewalData.hoursUntilRenewal)).toFixed(0)));
+    const pacingSuggestion = renewalData.hoursUntilRenewal < 96
+        ? `${usePerHour} Anlas per hour`
+        : `${usePerDay} Anlas per day`;
+    if (fixedSteps > 500 && daysUntilRenewal <= 15 && daysUntilRenewal > 0) {
+        if (!options.forceDisplay && shouldDeferTrayNotifications()) {
+            return;
+        }
+        if (!showFixedTrainingStepsToast) {
+            showGlassToast('info', 'Account Fixed Anlas Expiring',
+                `You have <i class="nai-anla"></i> ${fixedSteps} Fixed Anlas remaining that will expire.<br/>
+                Consider burning <i class="nai-anla"></i> ${pacingSuggestion} over the next ${renewalData.timeRemaining}.`, false, 300000, '<i class="nai-anla"></i>');
+            showFixedTrainingStepsToast = true;
+        }
+    } else {
+        // Reset so the toast can fire again when account state re-enters the warning window.
+        showFixedTrainingStepsToast = false;
+    }
+}
+
+async function flushDeferredAccountTrayNotifications() {
+    await checkSubscriptionExpiration({ forceDisplay: true });
+    await checkFixedTrainingSteps({ forceDisplay: true });
+}
+
+function flushDeferredNetworkTrayNotifications() {
+    if (!window.wsClient || typeof window.wsClient.flushDeferredPingTrayNotification !== 'function') return;
+    window.wsClient.flushDeferredPingTrayNotification();
+}
+
 function getSubscriptionRenewalDisplayData(expiresAtUnix) {
     const expiresAt = new Date(expiresAtUnix * 1000);
     const now = new Date();
@@ -16741,48 +16805,6 @@ function getSubscriptionRenewalDisplayData(expiresAtUnix) {
     };
 }
 
-async function checkSubscriptionExpiration() {
-    const renewalData = getSubscriptionRenewalDisplayData(window.optionsData.user.subscription.expiresAt);
-    const subTier = window.optionsData.user.subscription.tier;
-    const subName = subTier === 3 ? 'Opus' : subTier === 2 ? 'Scroll' : subTier === 1 ? 'Tablet' : 'Enterprise';
-
-    if (renewalData.msUntilRenewal <= (7 * 24 * 60 * 60 * 1000) && renewalData.msUntilRenewal > 0) {
-        if (!showSubscriptionExpirationToast) {
-            const message = `Your NovelAI ${subName} subscription will renew in ${renewalData.timeRemaining}! (${renewalData.renewalDateTimeStr})`;
-            showGlassToast('warning', 'NovelAI Subscription Status', message, false, 15000);
-            showSubscriptionExpirationToast = true;
-        }
-    }
-}
-
-let showFixedTrainingStepsToast = false;
-async function checkFixedTrainingSteps() {
-    if (!window.optionsData?.balance || !window.optionsData?.user?.subscription?.expiresAt) {
-        console.error('No balance data available');
-        return;
-    }
-
-    const fixedSteps = window.optionsData.balance.fixedTrainingStepsLeft || 0;
-    const renewalData = getSubscriptionRenewalDisplayData(window.optionsData.user.subscription.expiresAt);
-    const daysUntilRenewal = Math.max(1, renewalData.daysUntilRenewal);
-    const usePerDay = parseInt((fixedSteps / daysUntilRenewal).toFixed(0));
-    const usePerHour = Math.max(1, parseInt((fixedSteps / Math.max(1, renewalData.hoursUntilRenewal)).toFixed(0)));
-    const pacingSuggestion = renewalData.hoursUntilRenewal < 96
-        ? `${usePerHour} Anlas per hour`
-        : `${usePerDay} Anlas per day`;
-    if (fixedSteps > 500 && daysUntilRenewal <= 15 && daysUntilRenewal > 0) {
-        if (!showFixedTrainingStepsToast) {
-            showGlassToast('info', 'Account Fixed Anlas Expiring',
-                `You have <i class="nai-anla"></i> ${fixedSteps} Fixed Anlas remaining that will expire.<br/>
-                Consider burning <i class="nai-anla"></i> ${pacingSuggestion} over the next ${renewalData.timeRemaining}.`, false, 300000, '<i class="nai-anla"></i>');
-            showFixedTrainingStepsToast = true;
-        }
-    } else {
-        // Reset so the toast can fire again when account state re-enters the warning window.
-        showFixedTrainingStepsToast = false;
-    }
-}
-
 async function updateSubscriptionNotifications() {
     await checkSubscriptionExpiration();
     await checkFixedTrainingSteps();
@@ -16792,23 +16814,144 @@ async function updateSubscriptionNotifications() {
 }
 
 // System Tray Icons Management
-function initializeSystemTrayIcons() {
-    updateSubscriptionRenewalIndicator();
-    updateFixedCreditsIndicator();
-    updateWorkspaceTrayIcon();
-    updateImageGenerationIndicator();
+const SYSTEM_TRAY_BOOT_STAGGER_MS = 70;
+
+function prepareSystemTrayBackground() {
+    if (window._systemTrayBackgroundPrepared) return;
+    window._systemTrayBackgroundPrepared = true;
+
+    const trayIconIds = [
+        'imageGenerationIndicator',
+        'subscriptionRenewalIndicator',
+        'fixedCreditsIndicator',
+        'desktopSaveTrayIndicator',
+        'searchIndexingIndicator',
+        'generationQuipsTrayIcon',
+        'naxtBagTrayIcon',
+        'phasewalkerTrayIcon',
+        'workspaceTrayIcon',
+        'serviceWorkerTrayIcon',
+        'pingWarningIndicator',
+        'modemTrayIcon'
+    ];
+
+    trayIconIds.forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+    });
+
+    setInterval(updateSubscriptionRenewalIndicator, 3600000);
+    setInterval(updateFixedCreditsIndicator, 60000);
+    setInterval(updateImageGenerationIndicator, 500);
+}
+
+async function startBackgroundTrayServices() {
+    if (!window.isDesktop) return;
+
+    updateFixedCreditsIndicator({ reveal: false });
+    updateSubscriptionRenewalIndicator({ reveal: false });
+    updateWorkspaceTrayIcon({ reveal: false });
     updateSearchIndexingIndicator();
     setupServiceWorkerTrayContextMenu();
+    // initializeGenerationQuipsTray: public/scripts/comp/generationQuipsTray.js
+    if (typeof initializeGenerationQuipsTray === 'function') {
+        initializeGenerationQuipsTray();
+    }
+    // initializeNaxtBagTray: public/scripts/comp/naxtApplet.js
+    if (typeof initializeNaxtBagTray === 'function') {
+        initializeNaxtBagTray();
+    }
+    // initializePhasewalkerTray: public/scripts/comp/bracketGenerationApplet.js
+    if (typeof initializePhasewalkerTray === 'function') {
+        initializePhasewalkerTray();
+    }
+    updateImageGenerationIndicator({ reveal: false });
 
-    // Update subscription indicator periodically
-    setInterval(updateSubscriptionRenewalIndicator, 3600000); // Every hour
+    if (window.wsClient) {
+        if (typeof window.wsClient._updateServiceWorkerTrayIcon === 'function') {
+            window.wsClient._updateServiceWorkerTrayIcon();
+        }
+        if (typeof window.wsClient._updateModemTrayIcon === 'function') {
+            window.wsClient._updateModemTrayIcon();
+        }
+        if (typeof window.wsClient.updatePingWarningIcon === 'function') {
+            window.wsClient.updatePingWarningIcon({ reveal: false });
+        }
+    }
 
-    // Update fixed credits indicator periodically
-    setInterval(updateFixedCreditsIndicator, 60000); // Every minute
+    window._systemTrayBootComplete = true;
 
-    // Update image generation indicator more frequently
-    setInterval(updateImageGenerationIndicator, 500); // Every 500ms
+    const revealPlan = [
+        () => {
+            updateFixedCreditsIndicator({ reveal: true });
+            return 'fixedCreditsIndicator';
+        },
+        () => {
+            updateSubscriptionRenewalIndicator({ reveal: true });
+            return 'subscriptionRenewalIndicator';
+        },
+        () => {
+            updateWorkspaceTrayIcon({ reveal: true });
+            return 'workspaceTrayIcon';
+        },
+        () => {
+            revealTrayIconById('searchIndexingIndicator');
+            return 'searchIndexingIndicator';
+        },
+        () => {
+            revealTrayIconById('serviceWorkerTrayIcon');
+            return 'serviceWorkerTrayIcon';
+        },
+        () => {
+            revealTrayIconById('modemTrayIcon');
+            return 'modemTrayIcon';
+        },
+        () => {
+            revealTrayIconById('generationQuipsTrayIcon');
+            return 'generationQuipsTrayIcon';
+        },
+        () => {
+            if (window.naxtApplet && typeof window.naxtApplet.updateBagTrayChrome === 'function') {
+                window.naxtApplet.updateBagTrayChrome();
+            }
+            return 'naxtBagTrayIcon';
+        },
+        () => {
+            if (window.bracketGenerationApplet && typeof window.bracketGenerationApplet.updateTrayChrome === 'function') {
+                window.bracketGenerationApplet.updateTrayChrome();
+            }
+            return 'phasewalkerTrayIcon';
+        },
+        () => {
+            if (window.wsClient && typeof window.wsClient.updatePingWarningIcon === 'function') {
+                window.wsClient.updatePingWarningIcon({ reveal: true });
+            }
+            return 'pingWarningIndicator';
+        },
+        () => {
+            updateImageGenerationIndicator({ reveal: true });
+            return 'imageGenerationIndicator';
+        }
+    ];
+
+    let delay = 0;
+    revealPlan.forEach((revealFn) => {
+        setTimeout(() => {
+            const id = revealFn();
+            const el = document.getElementById(id);
+            if (el && !el.classList.contains('hidden')) {
+                revealTrayIconElement(el);
+            }
+        }, delay);
+        delay += SYSTEM_TRAY_BOOT_STAGGER_MS;
+    });
+
+    setTimeout(async () => {
+        await flushDeferredAccountTrayNotifications();
+        flushDeferredNetworkTrayNotifications();
+    }, delay + SYSTEM_TRAY_BOOT_STAGGER_MS);
 }
+
 
 function setupTrayIconPopovers() {
     if (!window.PopoverManager) return;
@@ -16818,6 +16961,7 @@ function setupTrayIconPopovers() {
         'fixedCreditsIndicator',
         'imageGenerationIndicator',
         'searchIndexingIndicator',
+        'generationQuipsTrayIcon',
         'desktopSaveTrayIndicator',
         'workspaceTrayIcon',
         'serviceWorkerTrayIcon',
@@ -17067,7 +17211,7 @@ function testCreditsIndicatorPopover() {
     }, 4000);
 }
 
-function updateSubscriptionRenewalIndicator() {
+function updateSubscriptionRenewalIndicator(options = {}) {
     const indicator = document.getElementById('subscriptionRenewalIndicator');
     if (!indicator) return;
 
@@ -17077,31 +17221,32 @@ function updateSubscriptionRenewalIndicator() {
     }
 
     const renewalData = getSubscriptionRenewalDisplayData(window.optionsData.user.subscription.expiresAt);
+    const shouldWarn = renewalData.msUntilRenewal <= (7 * 24 * 60 * 60 * 1000) && renewalData.msUntilRenewal > 0;
+    const reveal = options.reveal !== false && !isDesktopTrayBootPending();
 
-    // Show indicator if renewal is within 7 days (including today/less than 1 day)
-    // Use hours when renewal is within 96 hours.
-    if (renewalData.msUntilRenewal <= (7 * 24 * 60 * 60 * 1000) && renewalData.msUntilRenewal > 0) {
-        indicator.classList.remove('hidden');
+    if (shouldWarn) {
         indicator.title = `Subscription renews in ${renewalData.timeRemaining} (${renewalData.renewalDateTimeStr})`;
-
-        // Update warning level
         indicator.classList.remove('warning', 'critical');
         if (renewalData.hoursUntilRenewal <= 24 || renewalData.calendarDaysUntilRenewal <= 1) {
             indicator.classList.add('critical');
         } else if (renewalData.hoursUntilRenewal <= 72 || renewalData.calendarDaysUntilRenewal <= 3) {
             indicator.classList.add('warning');
         }
+        if (reveal) {
+            indicator.classList.remove('hidden');
+        } else {
+            indicator.classList.add('hidden');
+        }
     } else {
         indicator.classList.add('hidden');
     }
 }
 
-function updateFixedCreditsIndicator() {
+function updateFixedCreditsIndicator(options = {}) {
     const indicator = document.getElementById('fixedCreditsIndicator');
     if (!indicator) return;
 
-    // Always show the indicator
-    indicator.classList.remove('hidden');
+    const reveal = options.reveal !== false && !isDesktopTrayBootPending();
 
     // Ensure icon is always nai-anla
     const iconElement = indicator.querySelector('i');
@@ -17110,9 +17255,13 @@ function updateFixedCreditsIndicator() {
     }
 
     if (!window.optionsData?.balance) {
-        // No balance data - remove all state classes
         indicator.classList.remove('low-credits', 'no-credits', 'expiring-credits');
         indicator.title = 'Loading balance...';
+        if (reveal) {
+            indicator.classList.remove('hidden');
+        } else {
+            indicator.classList.add('hidden');
+        }
         return;
     }
 
@@ -17264,11 +17413,19 @@ function updateFixedCreditsIndicator() {
             ]
         });
     }
+
+    if (reveal) {
+        indicator.classList.remove('hidden');
+    } else {
+        indicator.classList.add('hidden');
+    }
 }
 
-function updateWorkspaceTrayIcon() {
+function updateWorkspaceTrayIcon(options = {}) {
     const icon = document.getElementById('workspaceTrayIcon');
     if (!icon) return;
+
+    const reveal = options.reveal !== false && !isDesktopTrayBootPending();
 
     const activeWorkspaceId = (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null) || window.activeWorkspace || 'default';
     const workspacesData = (typeof workspaces !== 'undefined' ? workspaces : null) || window.workspaces || {};
@@ -17362,6 +17519,12 @@ function updateWorkspaceTrayIcon() {
             ]
         });
     }
+
+    if (reveal) {
+        icon.classList.remove('hidden');
+    } else {
+        icon.classList.add('hidden');
+    }
 }
 
 function updateSearchIndexingIndicator() {
@@ -17428,16 +17591,16 @@ function updateSearchIndexingIndicator() {
     }
 }
 
-function updateImageGenerationIndicator() {
+function updateImageGenerationIndicator(options = {}) {
     const indicator = document.getElementById('imageGenerationIndicator');
     if (!indicator) return;
 
-    // Check if generation is active
+    const reveal = options.reveal !== false && !isDesktopTrayBootPending();
     const isManualGenerating = typeof isGenerating !== 'undefined' && isGenerating;
     const isSpellbookGenerating = window.spellbookModalManager?.isGenerating || false;
     const isAnyGenerating = isManualGenerating || isSpellbookGenerating;
 
-    if (isAnyGenerating) {
+    if (isAnyGenerating && reveal) {
         indicator.classList.remove('hidden');
         indicator.classList.add('active');
     } else {
@@ -17591,11 +17754,11 @@ function formatBytes(bytes) {
     return `${rounded} ${units[idx]}`;
 }
 
-// Initialize on page load
+// Prepare tray background on page load; services start during "Starting Background Services" init step
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeSystemTrayIcons);
+    document.addEventListener('DOMContentLoaded', prepareSystemTrayBackground);
 } else {
-    initializeSystemTrayIcons();
+    prepareSystemTrayBackground();
 }
 
 // Update workspace icon when workspace changes
@@ -22116,6 +22279,10 @@ function clearPipelineStages() {
     if (saveStage0Btn) {
         saveStage0Btn.classList.add('hidden');
         saveStage0Btn.dataset.state = 'off';
+    }
+    // bracketGenNotifyTrayChrome: public/scripts/comp/bracketGenerationApplet.js
+    if (typeof bracketGenNotifyTrayChrome === 'function') {
+        bracketGenNotifyTrayChrome();
     }
 }
 
@@ -29162,6 +29329,10 @@ if (window.wsClient) {
             console.error('Startup gallery load failed:', err);
         });
     }
+
+    window.wsClient.registerInitStep(84, 'Starting Background Services', async () => {
+        await startBackgroundTrayServices();
+    }, true);
 
     window.wsClient.registerInitStep(85, 'Wiring Application UI', async () => {
         await setupEventListeners();

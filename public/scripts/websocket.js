@@ -308,6 +308,11 @@ class BannerManager {
 
             // App and settings operations
             'get_app_options': 'Get Settings',
+            'get_generation_quips': 'Load Generation Quips',
+            'get_generation_quips_status': 'Quips Status',
+            'get_generation_quips_wiki': 'Quips Phrase Book',
+            'generation_quips_run': 'Scan Generation Quips',
+            'generation_quips_clear': 'Clear Workspace Quips',
             'get_rate_limiting_stats': 'Get Rate Stats',
             'get_session_rate_limiting_stats': 'Get Session Stats',
             'cancel_pending_requests': 'Cancel Requests',
@@ -447,6 +452,30 @@ class WebSocketClient {
     static ATTEMPTS_MAX_RECONNECT = 5; // Maximum reconnect attempts
     static ATTEMPTS_MAX_PING = 3; // Maximum ping attempts
 
+    /** Outbound types excluded from ticker badge/cycle (like ping). */
+    static SILENT_TICKER_REQUEST_TYPES = new Set([
+        'ping',
+        'get_generation_quips',
+        'get_generation_quips_status',
+        'get_generation_quips_wiki'
+    ]);
+
+    static GENERATION_QUIPS_MESSAGE_TYPES = new Set([
+        'get_generation_quips',
+        'get_generation_quips_status',
+        'get_generation_quips_wiki',
+        'generation_quips_run',
+        'generation_quips_clear',
+        'get_generation_quips_response',
+        'get_generation_quips_status_response',
+        'get_generation_quips_wiki_response',
+        'generation_quips_run_response',
+        'generation_quips_clear_response',
+        'generation_quips_updated',
+        'generation_quips_progress',
+        'generation_quips_status'
+    ]);
+
     static PROGRESS_INIT_BASE = 25; // Base progress percentage for initialization
     static PROGRESS_INIT_STEPS = 75; // Progress percentage allocated to init steps
 
@@ -558,6 +587,7 @@ class WebSocketClient {
             dialNumber: WebSocketClient.fqdnToDialNumber(window.location.hostname)
         };
         this._wasPingWarning = false;
+        this._latencyPopupDisplayed = false;
         this._initializingBeatComplete = false;
         this._connectionStatsTimer = null;
         this._melatonTrafficUp = null;
@@ -667,8 +697,38 @@ class WebSocketClient {
         this.connectionStats.connectedAt = null;
     }
 
+    isSilentTickerRequest(type) {
+        return WebSocketClient.SILENT_TICKER_REQUEST_TYPES.has(type);
+    }
+
+    isSilentTickerMessage(type) {
+        if (!type) return false;
+        if (type === 'ping' || type === 'pong') return true;
+        if (type === 'get_generation_quips_status' || type === 'get_generation_quips_status_response') {
+            return true;
+        }
+        return false;
+    }
+
+    isGenerationQuipsMessage(message) {
+        if (!message || !message.type) return false;
+        return WebSocketClient.GENERATION_QUIPS_MESSAGE_TYPES.has(message.type)
+            || message.type.includes('generation_quips');
+    }
+
+    logGenerationQuipsWs(direction, message, detail) {
+        if (!this.isGenerationQuipsMessage(message)) return;
+        const prefix = direction === 'out' ? '📤 [Quips]' : '📥 [Quips]';
+        const payload = detail !== undefined ? detail : message.data;
+        if (payload !== undefined) {
+            console.log(`${prefix} ${message.type}`, payload);
+        } else {
+            console.log(`${prefix} ${message.type}`);
+        }
+    }
+
     _recordWsMessage(direction, message) {
-        if (message && (message.type === 'ping' || message.type === 'pong')) {
+        if (message && this.isSilentTickerMessage(message.type)) {
             return;
         }
         if (direction === 'out') {
@@ -976,14 +1036,17 @@ class WebSocketClient {
         if (typeof showGlassToast !== 'function') return;
 
         if (this._isDesktopTrayMode()) {
-            showGlassToast(
-                'warning',
-                'High Latency Detected',
-                message,
-                false,
-                8000,
-                '<i class="fas fa-satellite"></i>'
-            );
+            const bootPending = typeof window.isDesktopTrayBootPending === 'function' && window.isDesktopTrayBootPending();
+            if (!bootPending) {
+                showGlassToast(
+                    'warning',
+                    'High Latency Detected',
+                    message,
+                    false,
+                    8000,
+                    '<i class="fas fa-satellite"></i>'
+                );
+            }
             return;
         }
 
@@ -1528,13 +1591,15 @@ class WebSocketClient {
     /**
      * Updates the ping warning tray icon visibility and tooltip
      */
-    updatePingWarningIcon() {
+    updatePingWarningIcon(options = {}) {
         const warningIcon = document.getElementById('pingWarningIndicator');
         if (!warningIcon) return;
 
+        const reveal = options.reveal !== false
+            && !(window.isDesktop && typeof window.isDesktopTrayBootPending === 'function' && window.isDesktopTrayBootPending());
         const shouldShow = this.shouldShowPingWarning();
 
-        if (shouldShow) {
+        if (shouldShow && reveal) {
             warningIcon.classList.remove('hidden');
 
             // Add appropriate classes based on warning type
@@ -1563,9 +1628,21 @@ class WebSocketClient {
         }
 
         if (shouldShow && !this._wasPingWarning) {
-            this._showLatencyTrayPopup(this.getPingWarningReason());
+            const bootPending = window.isDesktop
+                && typeof window.isDesktopTrayBootPending === 'function'
+                && window.isDesktopTrayBootPending();
+            if (!bootPending) {
+                this._showLatencyTrayPopup(this.getPingWarningReason());
+                this._latencyPopupDisplayed = true;
+            }
         }
         this._wasPingWarning = shouldShow;
+    }
+
+    flushDeferredPingTrayNotification() {
+        if (this._latencyPopupDisplayed || !this.shouldShowPingWarning()) return;
+        this._showLatencyTrayPopup(this.getPingWarningReason());
+        this._latencyPopupDisplayed = true;
     }
 
     /**
@@ -3040,6 +3117,7 @@ class WebSocketClient {
 
     send(message) {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.logGenerationQuipsWs('out', message);
             this._recordWsMessage('out', message);
             this.ws.send(JSON.stringify(message));
             this.flashWebSocketArrow('up');
@@ -3049,6 +3127,8 @@ class WebSocketClient {
     }
 
     handleMessage(message) {
+        this.logGenerationQuipsWs('in', message);
+
         if (message.type === 'connection') {
             if (message.logViewerPathUuid && localStorage.getItem('userType') === 'admin') {
                 localStorage.setItem('logViewerPathUuid', message.logViewerPathUuid);
@@ -3402,6 +3482,21 @@ class WebSocketClient {
         // Handle search indexing status updates
         if (message.type === 'search_indexing_status') {
             this.handleSearchIndexingStatus(message);
+            return;
+        }
+
+        if (message.type === 'generation_quips_updated') {
+            this.handleGenerationQuipsUpdated(message);
+            return;
+        }
+
+        if (message.type === 'generation_quips_progress') {
+            this.handleGenerationQuipsProgress(message);
+            return;
+        }
+
+        if (message.type === 'generation_quips_status') {
+            this.handleGenerationQuipsStatus(message);
             return;
         }
 
@@ -4383,6 +4478,32 @@ class WebSocketClient {
         this.triggerEvent('search_indexing_status', message);
     }
 
+    handleGenerationQuipsUpdated(message) {
+        const data = message.data || {};
+        // handleGenerationQuipsClientUpdate: public/scripts/comp/generationQuipsTray.js
+        if (typeof handleGenerationQuipsClientUpdate === 'function') {
+            handleGenerationQuipsClientUpdate(data);
+        }
+        this.triggerEvent('generation_quips_updated', message);
+    }
+
+    handleGenerationQuipsProgress(message) {
+        const data = message.data || {};
+        // handleGenerationQuipsProgress: public/scripts/comp/generationQuipsTray.js
+        if (typeof handleGenerationQuipsProgress === 'function') {
+            handleGenerationQuipsProgress(data);
+        }
+        this.triggerEvent('generation_quips_progress', message);
+    }
+
+    handleGenerationQuipsStatus(message) {
+        const data = message.data || {};
+        // handleGenerationQuipsStatusBroadcast: public/scripts/comp/generationQuipsTray.js
+        if (typeof handleGenerationQuipsStatusBroadcast === 'function') {
+            handleGenerationQuipsStatusBroadcast(data);
+        }
+        this.triggerEvent('generation_quips_status', message);
+    }
 
     // Method to request image upscaling via WebSocket
     async upscaleImage(upscaleParams, requestId = null) {
@@ -5128,6 +5249,26 @@ class WebSocketClient {
         return this.sendMessage('get_app_options');
     }
 
+    async getGenerationQuips() {
+        return this.sendMessage('get_generation_quips', {}, false);
+    }
+
+    async getGenerationQuipsStatus() {
+        return this.sendMessage('get_generation_quips_status', {}, false);
+    }
+
+    async getGenerationQuipsWiki(options = {}) {
+        return this.sendMessage('get_generation_quips_wiki', options, false);
+    }
+
+    async runGenerationQuips(options = {}) {
+        return this.sendMessage('generation_quips_run', options);
+    }
+
+    async clearGenerationQuips(options = {}) {
+        return this.sendMessage('generation_quips_clear', options);
+    }
+
     async pingWithAuth() {
         return new Promise((resolve, reject) => {
             // Basic connection validation - don't be too strict
@@ -5442,6 +5583,9 @@ class WebSocketClient {
      * @throws {Error} If WebSocket is not connected or request times out
      */
     sendMessage(type, data = {}, showBanner = true) {
+        const silentTicker = this.isSilentTickerRequest(type);
+        const effectiveShowBanner = silentTicker ? false : showBanner;
+
         return new Promise((resolve, reject) => {
             // Enhanced connection validation
             if (!this.isConnectionHealthy()) {
@@ -5496,12 +5640,14 @@ class WebSocketClient {
                 resolve,
                 reject,
                 type,
-                showBanner,
+                showBanner: effectiveShowBanner,
+                silentTicker,
                 timestamp: Date.now()
             });
 
-            // Increment pending requests count
-            this.incrementPendingRequests();
+            if (!silentTicker) {
+                this.incrementPendingRequests();
+            }
 
             // Set timeout based on request type BEFORE sending - critical requests should fail fast
             let baseTimeout = 60000; // Default 60 seconds
@@ -5520,7 +5666,9 @@ class WebSocketClient {
                     const requestAge = Date.now() - request.timestamp;
 
                     this.pendingRequests.delete(requestId);
-                    this.decrementPendingRequests();
+                    if (!silentTicker) {
+                        this.decrementPendingRequests();
+                    }
 
                     console.warn(`⚠️ Request timeout for ${message.type} (ID: ${requestId}) after ${requestAge}ms`);
 
@@ -5561,7 +5709,9 @@ class WebSocketClient {
                 }
             } catch (error) {
                 this.pendingRequests.delete(requestId);
-                this.decrementPendingRequests();
+                if (!silentTicker) {
+                    this.decrementPendingRequests();
+                }
                 reject(error);
             }
         });
@@ -5799,7 +5949,14 @@ class WebSocketClient {
      * dismissing after unrelated work like image generation completes with zero pending requests.
      */
     pruneOrphanPaginationGroups() {
-        if (!this.paginationGroups || this.paginationGroups.size === 0 || !this.pendingRequests) {
+        if (!this.paginationGroups || this.paginationGroups.size === 0) {
+            return;
+        }
+        if (!this.pendingRequests || this.pendingRequests.size === 0) {
+            this.paginationGroups.clear();
+            if (this.pendingRequestsCount > 0) {
+                this.pendingRequestsCount = 0;
+            }
             return;
         }
         const activeGroupIds = new Set();
@@ -5945,9 +6102,25 @@ class WebSocketClient {
 
     // Update ticker badge with current pending count (pagination group = one ticker row; see getPendingRequestsForTicker)
     updateTickerBadge() {
-        let displayCount = this.pendingRequestsCount;
+        if (!this.pendingRequests || this.pendingRequests.size === 0) {
+            this.pruneOrphanPaginationGroups();
+        }
+
         const tickerLen = this.getPendingRequestsForTicker().length;
+        const mapSize = this.pendingRequests?.size || 0;
+
+        if (mapSize === 0 && tickerLen === 0 && this.pendingRequestsCount > 0) {
+            this.pendingRequestsCount = 0;
+        }
+
+        let displayCount = this.pendingRequestsCount;
         displayCount = Math.max(displayCount, tickerLen);
+
+        if (displayCount > 0 && mapSize === 0 && tickerLen === 0) {
+            this.pendingRequestsCount = 0;
+            displayCount = 0;
+        }
+
         const badges = document.querySelectorAll('.websocket-ticker-badge');
         badges.forEach(badge => {
             badge.textContent = displayCount > 0 ? String(displayCount) : '';
@@ -6504,8 +6677,10 @@ class WebSocketClient {
                 }
             }
 
-            // Track completed request (only if not ping)
-            if (request.type && request.type !== 'ping') {
+            const silentTicker = request.silentTicker || this.isSilentTickerRequest(request.type);
+
+            // Track completed request (only if not ping / silent ticker poll)
+            if (request.type && request.type !== 'ping' && !silentTicker) {
                 const completedAt = Date.now();
                 const duration = request.timestamp ? completedAt - request.timestamp : null;
 
@@ -6531,7 +6706,7 @@ class WebSocketClient {
             }
 
             // Decrement pending requests count only if not part of incomplete pagination group
-            if (shouldDecrementCounter) {
+            if (shouldDecrementCounter && !silentTicker) {
                 this.decrementPendingRequests();
             }
 

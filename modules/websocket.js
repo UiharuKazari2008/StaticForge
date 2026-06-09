@@ -398,6 +398,11 @@ class WebSocketServer {
         });
     }
 
+    /** Alias used by generation quips and admin resource broadcasts. */
+    broadcastToAll(message, filter = null) {
+        this.broadcast(message, filter);
+    }
+
     sendToUser(sessionId, message) {
         this.wss.clients.forEach(client => {
             const clientInfo = this.clients.get(client);

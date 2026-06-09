@@ -436,8 +436,31 @@ class WebSocketMessageHandlers {
             'delete_nax_custom_tag',
             'config_editor_save',
             'update_user_global_settings',
+            'generation_quips_run',
+            'generation_quips_clear',
         ];
         return destructiveOperations.includes(messageType);
+    }
+
+    normalizeStartMenuButtonSetting(desktop) {
+        const raw = desktop && desktop.startMenuButton && typeof desktop.startMenuButton === 'object'
+            ? desktop.startMenuButton
+            : {};
+        const validPresets = new Set([
+            'start-ja', 'start-ko', 'start-en', 'start-fr', 'start-ru',
+            'dream-ja', 'dream-ko', 'dream-en', 'dream-de', 'dream-fr', 'dream-ru',
+            'custom'
+        ]);
+        let preset = validPresets.has(raw.preset) ? raw.preset : 'start-ja';
+        if (preset === 'start-de') {
+            preset = 'start-en';
+        }
+        const customText = typeof raw.customText === 'string'
+            ? raw.customText.trim().slice(0, 24)
+            : '';
+        const validStyles = new Set(['luna', 'workspace', 'orb']);
+        const style = validStyles.has(raw.style) ? raw.style : 'workspace';
+        return { preset, customText, style };
     }
 
     normalizeUserGlobalSettings(raw) {
@@ -450,7 +473,8 @@ class WebSocketMessageHandlers {
                 liveWindowRepositioning: desktop.liveWindowRepositioning === true,
                 exitDesktopOnWorkspaceMaximise: desktop.exitDesktopOnWorkspaceMaximise === true,
                 notificationBridgeEnabled: desktop.notificationBridgeEnabled !== false,
-                bypassNotificationBridgeInDesktopMode: desktop.bypassNotificationBridgeInDesktopMode === true
+                bypassNotificationBridgeInDesktopMode: desktop.bypassNotificationBridgeInDesktopMode === true,
+                startMenuButton: this.normalizeStartMenuButtonSetting(desktop)
             },
             naxt: {
                 elevatePins: this.normalizeNaxtElevatePinsSetting(naxt)
@@ -479,6 +503,15 @@ class WebSocketMessageHandlers {
             }
             if (typeof patch.desktop.bypassNotificationBridgeInDesktopMode === 'boolean') {
                 out.desktop.bypassNotificationBridgeInDesktopMode = patch.desktop.bypassNotificationBridgeInDesktopMode;
+            }
+            if (patch.desktop.startMenuButton && typeof patch.desktop.startMenuButton === 'object') {
+                out.desktop.startMenuButton = this.normalizeStartMenuButtonSetting({
+                    ...out.desktop,
+                    startMenuButton: {
+                        ...out.desktop.startMenuButton,
+                        ...patch.desktop.startMenuButton
+                    }
+                });
             }
         }
         if (patch.naxt && typeof patch.naxt === 'object') {
@@ -766,6 +799,26 @@ class WebSocketMessageHandlers {
 
             case 'get_app_options':
                 await this.handleGetAppOptions(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'get_generation_quips':
+                await this.handleGetGenerationQuips(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'get_generation_quips_status':
+                await this.handleGetGenerationQuipsStatus(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'get_generation_quips_wiki':
+                await this.handleGetGenerationQuipsWiki(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'generation_quips_run':
+                await this.handleGenerationQuipsRun(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'generation_quips_clear':
+                await this.handleGenerationQuipsClear(ws, message, clientInfo, wsServer);
                 break;
 
             case 'get_system_info':
@@ -2791,7 +2844,13 @@ class WebSocketMessageHandlers {
                 return;
             }
             const config = this.globalResources.getConfig() || {};
-            const merged = this.mergeUserGlobalSettingsPatch(config.userGlobalSettings, patch);
+            const settingsPatch = { ...patch };
+            const generationQuipsPatch = settingsPatch.generationQuips;
+            if (generationQuipsPatch) {
+                delete settingsPatch.generationQuips;
+            }
+
+            const merged = this.mergeUserGlobalSettingsPatch(config.userGlobalSettings, settingsPatch);
             await this.globalResources.modifyConfig('config', (cfg) => {
                 cfg.userGlobalSettings = merged;
                 return cfg;
@@ -2799,10 +2858,28 @@ class WebSocketMessageHandlers {
             if (clientInfo && merged.autofillSearch) {
                 clientInfo.autofillSearch = merged.autofillSearch;
             }
+
+            let generationQuipsSettings = null;
+            if (generationQuipsPatch && typeof generationQuipsPatch === 'object') {
+                const activeWorkspaceId = this.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
+                this.globalResources.applyGenerationQuipsSettingsPatch(generationQuipsPatch);
+                generationQuipsSettings = {
+                    byWorkspace: {
+                        [activeWorkspaceId]: this.globalResources.getGenerationQuipsManager()
+                            .getAutoUpdateUserSettings(activeWorkspaceId)
+                    }
+                };
+            }
+
             this.sendToClient(ws, {
                 type: 'update_user_global_settings_response',
                 requestId: message.requestId,
-                data: { success: true, settings: merged },
+                data: {
+                    success: true,
+                    settings: generationQuipsSettings
+                        ? { ...merged, generationQuips: generationQuipsSettings }
+                        : merged
+                },
                 timestamp: new Date().toISOString()
             });
         } catch (error) {
@@ -3996,6 +4073,113 @@ class WebSocketMessageHandlers {
             const totalTime = Date.now() - startTime;
             console.error(`❌ App options request error after ${totalTime}ms:`, error);
             this.sendError(ws, 'Failed to load app options', error.message, message.requestId);
+        }
+    }
+
+    async handleGetGenerationQuips(ws, message, clientInfo, wsServer) {
+        try {
+            const payload = this.globalResources.getGenerationQuipsManager().getClientPayload();
+            this.sendToClient(ws, {
+                type: 'get_generation_quips_response',
+                requestId: message.requestId,
+                data: payload,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Generation quips request error:', error);
+            this.sendError(ws, 'Failed to load generation quips', error.message, message.requestId);
+        }
+    }
+
+    async handleGetGenerationQuipsStatus(ws, message, clientInfo, wsServer) {
+        try {
+            const activeWorkspaceId = this.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
+            const status = this.globalResources.getGenerationQuipsManager().getStatus(activeWorkspaceId);
+            this.sendToClient(ws, {
+                type: 'get_generation_quips_status_response',
+                requestId: message.requestId,
+                data: status,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Generation quips status error:', error);
+            this.sendError(ws, 'Failed to load generation quips status', error.message, message.requestId);
+        }
+    }
+
+    async handleGenerationQuipsRun(ws, message, clientInfo, wsServer) {
+        try {
+            const manager = this.globalResources.getGenerationQuipsManager();
+            const scopeAll = message.scope === 'all' || message.allWorkspaces === true;
+            const activeWorkspaceId = this.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
+            const workspaceFilter = scopeAll ? null : (message.workspaceId || activeWorkspaceId);
+            const autoSettings = manager.getAutoUpdateUserSettings(workspaceFilter || activeWorkspaceId);
+
+            const result = manager.startPipelineInBackground({
+                workspaceFilter,
+                extractOnly: message.extractOnly === true,
+                generateOnly: message.generateOnly === true,
+                limit: message.termLimit != null ? message.termLimit : autoSettings.termLimit,
+                grokBatchSize: message.grokBatchSize != null ? message.grokBatchSize : autoSettings.grokBatchSize,
+                phrasesPerTerm: message.phrasesPerTerm != null ? message.phrasesPerTerm : autoSettings.phrasesPerTerm
+            }, wsServer);
+
+            this.sendToClient(ws, {
+                type: 'generation_quips_run_response',
+                requestId: message.requestId,
+                data: result,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Generation quips run error:', error);
+            this.sendError(ws, 'Failed to start quip scan', error.message, message.requestId);
+        }
+    }
+
+    async handleGenerationQuipsClear(ws, message, clientInfo, wsServer) {
+        try {
+            const manager = this.globalResources.getGenerationQuipsManager();
+            const activeWorkspaceId = this.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
+            const workspaceId = message.workspaceId || activeWorkspaceId;
+            const result = manager.clearWorkspaceQuips(workspaceId, wsServer);
+
+            this.sendToClient(ws, {
+                type: 'generation_quips_clear_response',
+                requestId: message.requestId,
+                data: result,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Generation quips clear error:', error);
+            this.sendError(ws, 'Failed to clear workspace quips', error.message, message.requestId);
+        }
+    }
+
+    async handleGetGenerationQuipsWiki(ws, message, clientInfo, wsServer) {
+        try {
+            const manager = this.globalResources.getGenerationQuipsManager();
+            const activeWorkspaceId = message.workspaceId
+                || this.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
+            const viewAll = !!message.viewAll;
+            const targetWorkspaceId = message.workspaceId || activeWorkspaceId;
+            const html = manager.buildWikiHtml({
+                workspaceId: viewAll ? null : targetWorkspaceId,
+                viewAll
+            });
+            const workspaces = this.globalResources.getWorkspaceManager().getWorkspaces();
+            const title = viewAll
+                ? 'Generation Quips — All Workspaces'
+                : `Generation Quips — ${workspaces[targetWorkspaceId]?.name || targetWorkspaceId}`;
+
+            this.sendToClient(ws, {
+                type: 'get_generation_quips_wiki_response',
+                requestId: message.requestId,
+                data: { html, title, workspaceId: targetWorkspaceId, viewAll },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Generation quips wiki error:', error);
+            this.sendError(ws, 'Failed to load generation quips wiki', error.message, message.requestId);
         }
     }
 

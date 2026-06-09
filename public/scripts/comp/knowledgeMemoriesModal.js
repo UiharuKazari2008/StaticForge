@@ -19,7 +19,7 @@ class KnowledgeMemoriesModalManager {
         this.setupEventListeners();
         
         // Setup dropdowns
-        this.setupCategoryDropdown();
+        this.setupCategoryClickMenu();
         this.setupDeleteDropdown();
     }
     
@@ -139,49 +139,45 @@ class KnowledgeMemoriesModalManager {
         }
     }
     
-    setupCategoryDropdown() {
-        if (!this.categoryFilterDropdown || !this.categoryFilterBtn || !this.categoryFilterMenu) {
-            return;
-        }
-        
-        setupDropdown(
-            this.categoryFilterDropdown,
-            this.categoryFilterBtn,
-            this.categoryFilterMenu,
-            (selectedValue) => this.renderCategoryDropdown(selectedValue),
-            () => this.selectedCategory,
-            { preventFocusTransfer: true }
-        );
+    setupCategoryClickMenu() {
+        // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+        if (!this.categoryFilterBtn || !contextMenu) return;
+
+        this.categoryClickMenuConfig = {
+            position: 'anchor',
+            anchorAlign: 'end',
+            maxHeight: 360,
+            beforeShow: () => this.refreshCategoryClickMenuItems(),
+            sections: [{ type: 'list', items: [] }],
+            onAction: (action, target, item) => {
+                if (action !== 'select-memory-category') return;
+                this.selectCategory(item.categoryValue);
+            }
+        };
+        contextMenu.attachClickMenuToElement(this.categoryFilterBtn, this.categoryClickMenuConfig);
     }
-    
-    renderCategoryDropdown(selectedValue) {
-        if (!this.categoryFilterMenu) return;
-        
-        // Get unique categories from memories
+
+    refreshCategoryClickMenuItems() {
+        if (!this.categoryClickMenuConfig) return;
         const categories = ['All Categories', ...new Set(
             this.memories
-                .map(m => m.category)
-                .filter(c => c)
+                .map((m) => m.category)
+                .filter((c) => c)
                 .sort()
         )];
-        
-        const options = categories.map(cat => ({
-            value: cat === 'All Categories' ? null : cat,
-            name: cat
-        }));
-        
-        renderSimpleDropdown(
-            this.categoryFilterMenu,
-            options,
-            'value',
-            'name',
-            (value) => this.selectCategory(value),
-            () => closeDropdown(this.categoryFilterMenu, this.categoryFilterBtn),
-            selectedValue,
-            { preventFocusTransfer: true }
-        );
+        this.categoryClickMenuConfig.sections[0].items = categories.map((cat) => {
+            const value = cat === 'All Categories' ? null : cat;
+            return {
+                text: cat,
+                action: 'select-memory-category',
+                categoryValue: value,
+                loadfn: (item) => {
+                    item.highlighted = item.categoryValue === this.selectedCategory;
+                }
+            };
+        });
     }
-    
+
     selectCategory(category) {
         this.selectedCategory = category;
         this.filterMemories();

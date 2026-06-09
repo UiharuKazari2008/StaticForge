@@ -331,16 +331,7 @@ class NaxVibesApplet {
             });
         }
 
-        if (this.modelDropdown && this.modelBtn && this.modelMenu && typeof setupDropdown === 'function') {
-            setupDropdown(
-                this.modelDropdown,
-                this.modelBtn,
-                this.modelMenu,
-                () => this.renderModelDropdown(),
-                () => null,
-                { preventFocusTransfer: true }
-            );
-        }
+        this.setupModelClickMenu();
 
         if (this.closeEncodingPickerBtn) {
             this.closeEncodingPickerBtn.addEventListener('click', (e) => {
@@ -356,55 +347,85 @@ class NaxVibesApplet {
         }
     }
 
-    ensureModelFiltersEnabled() {
-        const any = NAX_VIBES_MODEL_FILTERS.some((f) => this.filters[f.key]);
-        if (!any) {
-            this.filters.filter45Curated = true;
-            this.filters.filter45Full = true;
-        }
+    setupModelClickMenu() {
+        // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+        if (!this.modelBtn || !contextMenu) return;
+
+        this.modelClickMenuConfig = {
+            position: 'anchor',
+            anchorAlign: 'end',
+            maxHeight: 420,
+            beforeShow: () => this.refreshModelClickMenuItems(),
+            sections: [{ type: 'list', items: [] }],
+            onAction: (action, target, item) => {
+                if (action !== 'toggle-model-filter' || !item.filterKey) return;
+                this.filters[item.filterKey] = !this.filters[item.filterKey];
+                this.updateModelFilterButton();
+                void this.reload(false);
+                if (contextMenu.isOpen && contextMenu.currentTarget === this.modelBtn) {
+                    this.refreshModelClickMenuItems();
+                    contextMenu.renderMenu(this.modelClickMenuConfig, this.modelBtn);
+                    contextMenu.executeLoadFunctions(this.modelClickMenuConfig, this.modelBtn);
+                }
+            }
+        };
+        contextMenu.attachClickMenuToElement(this.modelBtn, this.modelClickMenuConfig);
+        this.updateModelFilterButton();
     }
 
-    renderModelDropdown() {
-        if (!this.modelMenu) return;
-        this.modelMenu.innerHTML = '';
+    updateModelFilterButton() {
+        if (!this.modelBtn) return;
+        const defaults = {
+            filter45Curated: true,
+            filter45Full: true,
+            filter4Curated: false,
+            filter4Full: false
+        };
+        const customized = NAX_VIBES_MODEL_FILTERS.some(
+            (f) => !!this.filters[f.key] !== !!defaults[f.key]
+        );
+        this.modelBtn.setAttribute('data-state', customized ? 'open' : 'off');
+    }
 
+    refreshModelClickMenuItems() {
+        if (!this.modelClickMenuConfig) return;
+        const items = [];
         const currentGroup = typeof modelGroups !== 'undefined'
             ? modelGroups.find((g) => g.group === 'Current Model')
             : null;
 
-        const renderOption = (filterDef, opt) => {
-            const enabled = !!this.filters[filterDef.key];
-            const option = document.createElement('div');
-            option.className = 'custom-dropdown-option';
-            option.tabIndex = 0;
-            const action = () => {
-                this.filters[filterDef.key] = !this.filters[filterDef.key];
-                void this.reload(false);
-                this.renderModelDropdown();
-            };
-            option.innerHTML = `${naxVibeModelOptionHtml(opt)}${enabled ? '<i class="fas fa-check" style="margin-left:auto;color:var(--success-color);"></i>' : ''}`;
-            option.addEventListener('click', (e) => {
-                e.stopPropagation();
-                action();
-            });
-            option.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    action();
+        const appendFilter = (filterDef, opt) => {
+            const label = opt && opt.name ? opt.name : filterDef.key;
+            items.push({
+                text: label,
+                action: 'toggle-model-filter',
+                filterKey: filterDef.key,
+                keepMenuOpen: true,
+                loadfn: (item) => {
+                    item.checked = !!this.filters[item.filterKey];
                 }
             });
-            this.modelMenu.appendChild(option);
         };
 
         if (currentGroup) {
             currentGroup.options.forEach((opt) => {
                 const filterDef = NAX_VIBES_MODEL_FILTERS.find((f) => f.forgeKey === opt.value);
-                if (filterDef) renderOption(filterDef, opt);
+                if (filterDef) appendFilter(filterDef, opt);
             });
         } else {
             NAX_VIBES_MODEL_FILTERS.forEach((filterDef) => {
-                renderOption(filterDef, naxVibeGetModelOption(filterDef.forgeKey));
+                appendFilter(filterDef, naxVibeGetModelOption(filterDef.forgeKey));
             });
+        }
+        this.modelClickMenuConfig.sections[0].items = items;
+    }
+
+    ensureModelFiltersEnabled() {
+        const any = NAX_VIBES_MODEL_FILTERS.some((f) => this.filters[f.key]);
+        if (!any) {
+            this.filters.filter45Curated = true;
+            this.filters.filter45Full = true;
+            this.updateModelFilterButton();
         }
     }
 

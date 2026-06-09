@@ -2084,6 +2084,7 @@ class WikiWindowInstance extends WikiDisplayBase {
         this.forwardBtn = this.modal.querySelector('.wiki-window-forward-btn');
         this.homeBtn = this.modal.querySelector('.wiki-window-home-btn');
         this.closeBtn = this.modal.querySelector('.wiki-window-close-btn');
+        this.maximizeBtn = this.modal.querySelector('.wiki-window-maximize-btn');
         
         // Setup event listeners
         if (this.backBtn) {
@@ -2442,13 +2443,15 @@ class TagWikiSearchModal extends WikiDisplayBase {
         this.searchBody = null;
         this.resultsScrollPanel = null;
         this.resultsCollapseBtn = null;
-        this.resultsExpandBtn = null;
+        this.resultsSidebarToggleBtn = null;
         this.splitSwapBtn = null;
         this.splitDividerEl = null;
         this.rightPaneEl = null;
         this.rightPane = null;
         this.resultsOverlayBackdrop = null;
         this.onlineToggleBtn = null;
+        this.refreshBtn = null;
+        this.searchControlElements = [];
         this.hasEverMaximized = false;
         
         this.history = [];
@@ -2499,19 +2502,27 @@ class TagWikiSearchModal extends WikiDisplayBase {
         this.searchBody = this.modal.querySelector('.tag-wiki-search-body');
         this.resultsScrollPanel = this.modal.querySelector('.tag-wiki-search-results.form-section-scroll');
         this.resultsCollapseBtn = document.getElementById('tagWikiSearchResultsCollapseBtn');
-        this.resultsExpandBtn = document.getElementById('tagWikiSearchResultsExpandBtn');
+        this.resultsSidebarToggleBtn = document.getElementById('tagWikiSearchResultsSidebarToggleBtn');
         this.splitSwapBtn = document.getElementById('tagWikiSearchSplitSwapBtn');
         this.splitDividerEl = document.getElementById('tagWikiSearchSplitDivider');
         this.rightPaneEl = document.getElementById('tagWikiSearchRightPane');
         this.resultsOverlayBackdrop = document.getElementById('tagWikiSearchResultsOverlayBackdrop');
         this.onlineToggleBtn = document.getElementById('tagWikiSearchOnlineToggleBtn');
+        this.refreshBtn = document.getElementById('tagWikiSearchRefreshBtn');
+        this.searchControlElements = [
+            document.getElementById('tagWikiSearchOnlineToggleBtn'),
+            document.getElementById('tagWikiSearchSourceDropdown'),
+            document.getElementById('tagWikiSearchFilterDropdown'),
+            document.getElementById('tagWikiSearchTypeDropdown')
+        ].filter(Boolean);
         
         this.setupOnlineToggle();
-        this.setupDropdowns();
+        this.setupClickMenus();
         this.setupResultsSidebar();
         this.setupEventListeners();
         this.setupSplitModeListeners();
         this.setupContextMenu();
+        this.updateSearchControlsVisibility();
     }
 
     setupOnlineToggle() {
@@ -2564,6 +2575,49 @@ class TagWikiSearchModal extends WikiDisplayBase {
         return this.isSplitMode() || tooSmall;
     }
 
+    isResultsSidebarOpen() {
+        if (!this.searchBody || !this.modal) return false;
+        if (this.needsResultsOverlay()) {
+            return this.modal.classList.contains('tag-wiki-results-overlay-open');
+        }
+        return !this.searchBody.classList.contains('results-sidebar-collapsed');
+    }
+
+    shouldShowResultsSidebarToggle() {
+        if (!this.searchBody || !this.modal) return false;
+        if (this.needsResultsOverlay()) {
+            return true;
+        }
+        return this.searchBody.classList.contains('results-sidebar-collapsed');
+    }
+
+    updateResultsSidebarToggle() {
+        if (!this.resultsSidebarToggleBtn) return;
+        const overlayMode = this.needsResultsOverlay();
+        const sidebarOpen = this.isResultsSidebarOpen();
+        this.resultsSidebarToggleBtn.classList.toggle('hidden', !this.shouldShowResultsSidebarToggle());
+        this.resultsSidebarToggleBtn.dataset.state = sidebarOpen ? 'on' : 'off';
+        this.resultsSidebarToggleBtn.title = sidebarOpen
+            ? (overlayMode ? 'Hide search results sidebar' : 'Collapse search results sidebar')
+            : 'Show search results sidebar';
+    }
+
+    toggleResultsSidebar() {
+        if (this.needsResultsOverlay()) {
+            const open = this.modal.classList.contains('tag-wiki-results-overlay-open');
+            if (open) {
+                this.resultsSidebarManualCollapsed = true;
+                this.setResultsOverlayOpen(false);
+            } else {
+                this.resultsSidebarManualCollapsed = false;
+                this.setResultsOverlayOpen(true);
+            }
+        } else {
+            this.resultsSidebarManualCollapsed = !this.resultsSidebarManualCollapsed;
+            this.updateResultsSidebar();
+        }
+    }
+
     setResultsOverlayOpen(open) {
         if (!this.modal) return;
         const on = !!open;
@@ -2574,18 +2628,11 @@ class TagWikiSearchModal extends WikiDisplayBase {
         if (on && this.resultsScrollPanel && window.customScrollbar) {
             window.customScrollbar.forceReinit(this.resultsScrollPanel);
         }
-        if (this.needsResultsOverlay()) {
-            const overlayOpen = on;
-            if (this.resultsExpandBtn) {
-                this.resultsExpandBtn.classList.toggle('hidden', overlayOpen);
-                this.resultsExpandBtn.disabled = false;
-                this.resultsExpandBtn.title = 'Show search results';
-            }
-            if (this.resultsCollapseBtn) {
-                this.resultsCollapseBtn.disabled = !overlayOpen;
-                this.resultsCollapseBtn.title = overlayOpen ? 'Hide search results' : 'Collapse results';
-            }
+        if (this.needsResultsOverlay() && this.resultsCollapseBtn) {
+            this.resultsCollapseBtn.disabled = !on;
+            this.resultsCollapseBtn.title = on ? 'Hide search results' : 'Collapse results';
         }
+        this.updateResultsSidebarToggle();
     }
 
     saveRightPaneStateToStorage() {
@@ -2713,131 +2760,171 @@ class TagWikiSearchModal extends WikiDisplayBase {
     }
     
     
-    setupDropdowns() {
-        // Setup filter dropdown
-        if (this.filterDropdown && this.filterDropdownBtn && this.filterDropdownMenu) {
-            const filterOptions = [
-                { value: '', label: 'All Categories' },
-                { value: '0', label: 'General' },
-                { value: '1', label: 'Artist' },
-                { value: '3', label: 'Copyright' },
-                { value: '4', label: 'Character' },
-                { value: '5', label: 'Meta' },
-                { value: '6', label: 'Species' },
-                { value: 'non-tag', label: 'Non-Tag Results' }
-            ];
-            
-            setupDropdown(
-                this.filterDropdown,
-                this.filterDropdownBtn,
-                this.filterDropdownMenu,
-                () => {
-                    renderGroupedDropdown(
-                        this.filterDropdownMenu,
-                        [{ group: '', options: filterOptions }],
-                        (value) => {
-                            this.currentFilter = value;
-                            const option = filterOptions.find(opt => opt.value === value);
-                            if (this.filterIcon) {
-                                // Icon stays the same (fa-filter) for all categories
-                                this.filterIcon.className = 'fas fa-filter';
-                            }
-                            if (this.searchInput && this.searchInput.value.trim()) {
-                                this.performSearch();
-                            }
-                        },
-                        () => closeDropdown(this.filterDropdownMenu, this.filterDropdownBtn),
-                        this.currentFilter,
-                        (opt) => opt.label
-                    );
-                },
-                () => this.currentFilter
-            );
+    setupClickMenus() {
+        // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+        if (!contextMenu) return;
+
+        this.filterClickMenuConfig = this.buildGrimoireFilterClickMenuConfig();
+        this.searchTypeClickMenuConfig = this.buildGrimoireSearchTypeClickMenuConfig();
+        this.sourceClickMenuConfig = this.buildGrimoireSourceClickMenuConfig();
+
+        if (this.filterDropdownBtn) {
+            contextMenu.attachClickMenuToElement(this.filterDropdownBtn, this.filterClickMenuConfig);
         }
-        
-        // Setup search type dropdown
-        if (this.searchTypeDropdown && this.searchTypeDropdownBtn && this.searchTypeDropdownMenu) {
-            const searchTypeOptions = [
-                { value: 'name', label: 'Name' },
-                { value: 'description', label: 'Description' }
-            ];
-            
-            setupDropdown(
-                this.searchTypeDropdown,
-                this.searchTypeDropdownBtn,
-                this.searchTypeDropdownMenu,
-                () => {
-                    renderGroupedDropdown(
-                        this.searchTypeDropdownMenu,
-                        [{ group: '', options: searchTypeOptions }],
-                        (value) => {
-                            this.currentSearchType = value;
-                            const option = searchTypeOptions.find(opt => opt.value === value);
-                            if (this.searchTypeIcon) {
-                                // Update icon based on search type
-                                if (value === 'description') {
-                                    this.searchTypeIcon.className = 'fas fa-font';
-                                } else {
-                                    this.searchTypeIcon.className = 'fas fa-tag';
-                                }
-                            }
-                            this.updateOnlineToggleState();
-                            if (this.searchInput && this.searchInput.value.trim()) {
-                                this.performSearch();
-                            }
-                        },
-                        () => closeDropdown(this.searchTypeDropdownMenu, this.searchTypeDropdownBtn),
-                        this.currentSearchType,
-                        (opt) => opt.label
-                    );
-                },
-                () => this.currentSearchType
-            );
+        if (this.searchTypeDropdownBtn) {
+            contextMenu.attachClickMenuToElement(this.searchTypeDropdownBtn, this.searchTypeClickMenuConfig);
         }
-        
-        // Setup source dropdown
-        if (this.sourceDropdown && this.sourceDropdownBtn && this.sourceDropdownMenu) {
-            const sourceOptions = [
-                { value: 'both', label: 'Both' },
-                { value: 'danbooru', label: 'Danbooru' },
-                { value: 'e621', label: 'e621' }
-            ];
-            
-            setupDropdown(
-                this.sourceDropdown,
-                this.sourceDropdownBtn,
-                this.sourceDropdownMenu,
-                () => {
-                    renderGroupedDropdown(
-                        this.sourceDropdownMenu,
-                        [{ group: '', options: sourceOptions }],
-                        (value) => {
-                            this.currentSource = value;
-                            const option = sourceOptions.find(opt => opt.value === value);
-                            if (this.sourceIcon) {
-                                // Update icon based on source
-                                if (value === 'danbooru') {
-                                    this.sourceIcon.className = 'nai-sakura';
-                                } else if (value === 'e621') {
-                                    this.sourceIcon.className = 'nai-paw';
-                                } else {
-                                    this.sourceIcon.className = 'fas fa-globe';
-                                }
-                            }
-                            if (this.searchInput && this.searchInput.value.trim()) {
-                                this.performSearch();
-                            }
-                        },
-                        () => closeDropdown(this.sourceDropdownMenu, this.sourceDropdownBtn),
-                        this.currentSource,
-                        (opt) => opt.label
-                    );
-                },
-                () => this.currentSource
-            );
+        if (this.sourceDropdownBtn) {
+            contextMenu.attachClickMenuToElement(this.sourceDropdownBtn, this.sourceClickMenuConfig);
         }
     }
-    
+
+    getGrimoireFilterOptions() {
+        return [
+            { value: '', label: 'All Categories' },
+            { value: '0', label: 'General' },
+            { value: '1', label: 'Artist' },
+            { value: '3', label: 'Copyright' },
+            { value: '4', label: 'Character' },
+            { value: '5', label: 'Meta' },
+            { value: '6', label: 'Species' },
+            { value: 'non-tag', label: 'Non-Tag Results' }
+        ];
+    }
+
+    getGrimoireSearchTypeOptions() {
+        return [
+            { value: 'name', label: 'Name' },
+            { value: 'description', label: 'Description' }
+        ];
+    }
+
+    getGrimoireSourceOptions() {
+        return [
+            { value: 'both', label: 'Both' },
+            { value: 'danbooru', label: 'Danbooru' },
+            { value: 'e621', label: 'e621' }
+        ];
+    }
+
+    applyGrimoireFilter(value) {
+        this.currentFilter = value;
+        if (this.filterIcon) {
+            this.filterIcon.className = 'fas fa-filter';
+        }
+        if (this.searchInput && this.searchInput.value.trim()) {
+            this.performSearch();
+        }
+    }
+
+    applyGrimoireSearchType(value) {
+        this.currentSearchType = value;
+        if (this.searchTypeIcon) {
+            this.searchTypeIcon.className = value === 'description' ? 'fas fa-font' : 'fas fa-tag';
+        }
+        this.updateOnlineToggleState();
+        if (this.searchInput && this.searchInput.value.trim()) {
+            this.performSearch();
+        }
+    }
+
+    applyGrimoireSource(value) {
+        this.currentSource = value;
+        if (this.sourceIcon) {
+            if (value === 'danbooru') {
+                this.sourceIcon.className = 'nai-sakura';
+            } else if (value === 'e621') {
+                this.sourceIcon.className = 'nai-paw';
+            } else {
+                this.sourceIcon.className = 'fas fa-globe';
+            }
+        }
+        if (this.searchInput && this.searchInput.value.trim()) {
+            this.performSearch();
+        }
+    }
+
+    buildGrimoireFilterClickMenuConfig() {
+        const modal = this;
+        return {
+            position: 'anchor',
+            anchorAlign: 'start',
+            maxHeight: 360,
+            beforeShow: () => modal.refreshGrimoireFilterClickMenuItems(),
+            sections: [{ type: 'list', items: [] }],
+            onAction: (action, target, item) => {
+                if (action !== 'select-grimoire-filter') return;
+                modal.applyGrimoireFilter(item.filterValue);
+            }
+        };
+    }
+
+    refreshGrimoireFilterClickMenuItems() {
+        if (!this.filterClickMenuConfig) return;
+        this.filterClickMenuConfig.sections[0].items = this.getGrimoireFilterOptions().map((opt) => ({
+            text: opt.label,
+            action: 'select-grimoire-filter',
+            filterValue: opt.value,
+            loadfn: (item) => {
+                item.highlighted = item.filterValue === this.currentFilter;
+            }
+        }));
+    }
+
+    buildGrimoireSearchTypeClickMenuConfig() {
+        const modal = this;
+        return {
+            position: 'anchor',
+            anchorAlign: 'start',
+            maxHeight: 240,
+            beforeShow: () => modal.refreshGrimoireSearchTypeClickMenuItems(),
+            sections: [{ type: 'list', items: [] }],
+            onAction: (action, target, item) => {
+                if (action !== 'select-grimoire-search-type' || !item.searchType) return;
+                modal.applyGrimoireSearchType(item.searchType);
+            }
+        };
+    }
+
+    refreshGrimoireSearchTypeClickMenuItems() {
+        if (!this.searchTypeClickMenuConfig) return;
+        this.searchTypeClickMenuConfig.sections[0].items = this.getGrimoireSearchTypeOptions().map((opt) => ({
+            text: opt.label,
+            action: 'select-grimoire-search-type',
+            searchType: opt.value,
+            loadfn: (item) => {
+                item.highlighted = item.searchType === this.currentSearchType;
+            }
+        }));
+    }
+
+    buildGrimoireSourceClickMenuConfig() {
+        const modal = this;
+        return {
+            position: 'anchor',
+            anchorAlign: 'start',
+            maxHeight: 240,
+            beforeShow: () => modal.refreshGrimoireSourceClickMenuItems(),
+            sections: [{ type: 'list', items: [] }],
+            onAction: (action, target, item) => {
+                if (action !== 'select-grimoire-source' || !item.sourceValue) return;
+                modal.applyGrimoireSource(item.sourceValue);
+            }
+        };
+    }
+
+    refreshGrimoireSourceClickMenuItems() {
+        if (!this.sourceClickMenuConfig) return;
+        this.sourceClickMenuConfig.sections[0].items = this.getGrimoireSourceOptions().map((opt) => ({
+            text: opt.label,
+            action: 'select-grimoire-source',
+            sourceValue: opt.value,
+            loadfn: (item) => {
+                item.highlighted = item.sourceValue === this.currentSource;
+            }
+        }));
+    }
+
     setupResultsSidebar() {
         if (!this.searchBody || !this.modal) return;
 
@@ -2852,14 +2939,9 @@ class TagWikiSearchModal extends WikiDisplayBase {
             });
         }
 
-        if (this.resultsExpandBtn) {
-            this.resultsExpandBtn.addEventListener('click', () => {
-                this.resultsSidebarManualCollapsed = false;
-                if (this.needsResultsOverlay()) {
-                    this.setResultsOverlayOpen(true);
-                } else {
-                    this.updateResultsSidebar();
-                }
+        if (this.resultsSidebarToggleBtn) {
+            this.resultsSidebarToggleBtn.addEventListener('click', () => {
+                this.toggleResultsSidebar();
             });
         }
 
@@ -2896,16 +2978,12 @@ class TagWikiSearchModal extends WikiDisplayBase {
 
         if (overlayMode) {
             this.searchBody.classList.add('results-sidebar-collapsed');
-            const overlayOpen = this.modal.classList.contains('tag-wiki-results-overlay-open');
-            if (this.resultsExpandBtn) {
-                this.resultsExpandBtn.classList.toggle('hidden', overlayOpen);
-                this.resultsExpandBtn.disabled = false;
-                this.resultsExpandBtn.title = 'Show search results';
-            }
             if (this.resultsCollapseBtn) {
+                const overlayOpen = this.modal.classList.contains('tag-wiki-results-overlay-open');
                 this.resultsCollapseBtn.disabled = !overlayOpen;
                 this.resultsCollapseBtn.title = overlayOpen ? 'Hide search results' : 'Collapse results';
             }
+            this.updateResultsSidebarToggle();
             return;
         }
 
@@ -2919,14 +2997,6 @@ class TagWikiSearchModal extends WikiDisplayBase {
         const wasCollapsed = this.searchBody.classList.contains('results-sidebar-collapsed');
         this.searchBody.classList.toggle('results-sidebar-collapsed', collapsed);
 
-        if (this.resultsExpandBtn) {
-            this.resultsExpandBtn.classList.toggle('hidden', !collapsed || tooSmall);
-            this.resultsExpandBtn.disabled = tooSmall;
-            this.resultsExpandBtn.title = tooSmall
-                ? 'Widen the window to show search results'
-                : 'Show search results';
-        }
-
         if (this.resultsCollapseBtn) {
             this.resultsCollapseBtn.disabled = tooSmall;
             this.resultsCollapseBtn.title = tooSmall
@@ -2937,6 +3007,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         if (wasCollapsed && !collapsed && this.resultsScrollPanel && window.customScrollbar) {
             window.customScrollbar.forceReinit(this.resultsScrollPanel);
         }
+        this.updateResultsSidebarToggle();
     }
     
     setupEventListeners() {
@@ -2965,6 +3036,10 @@ class TagWikiSearchModal extends WikiDisplayBase {
         
         if (this.homeBtn) {
             this.homeBtn.addEventListener('click', () => this.goHome());
+        }
+
+        if (this.refreshBtn) {
+            this.refreshBtn.addEventListener('click', () => this.refreshToolbar());
         }
         
         // Close button
@@ -3014,6 +3089,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
                 }
                 this.showDreamWikiHomepage();
                 this.updateNavigationButtons();
+                this.updateSearchControlsVisibility();
             }
             
             // Focus search input
@@ -3182,6 +3258,22 @@ class TagWikiSearchModal extends WikiDisplayBase {
             this.setResultsOverlayOpen(false);
         });
     }
+
+    async refreshToolbar() {
+        if (this.currentTagName) {
+            await this.refreshFromOnline();
+            return;
+        }
+        const query = this.searchInput?.value.trim();
+        if (query) {
+            await this.performSearch();
+            return;
+        }
+        const entry = this.history[this.historyIndex];
+        if (entry && entry.type === 'home') {
+            this.showDreamWikiHomepage();
+        }
+    }
     
     async performSearch() {
         if (!this.searchInput) return;
@@ -3205,6 +3297,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
             this.resultsList.innerHTML = `<div class="tag-wiki-loading">${loadingHint}</div>`;
         }
         this.updateResultsSidebar(true);
+        this.updateSearchControlsVisibility();
         
         try {
             const results = await this.searchTagWiki(query, {
@@ -3233,6 +3326,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
                 this.resultsList.innerHTML = `<div class="tag-wiki-error"><i class="fas fa-exclamation-circle"></i> Error: ${error.message}</div>`;
             }
             this.updateResultsSidebar(true);
+            this.updateSearchControlsVisibility();
         }
     }
     
@@ -3281,6 +3375,21 @@ class TagWikiSearchModal extends WikiDisplayBase {
         `;
     }
 
+    shouldShowSearchControls() {
+        const entry = this.history[this.historyIndex];
+        if (entry && (entry.type === 'wiki' || entry.type === 'static-wiki-page' || entry.type === 'static-wiki-index')) {
+            return false;
+        }
+        return true;
+    }
+
+    updateSearchControlsVisibility() {
+        const show = this.shouldShowSearchControls();
+        this.searchControlElements.forEach((el) => {
+            el.classList.toggle('hidden', !show);
+        });
+    }
+
     updateResultsPanelTitle() {
         const titleEl = this.modal && this.modal.querySelector('.tag-wiki-results-panel-title');
         if (!titleEl) return;
@@ -3305,6 +3414,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
             this.resultsList.innerHTML = '<div class="tag-wiki-empty-results"><i class="fas fa-search"></i> No results found</div>';
             this.updateResultsPanelTitle();
             this.updateResultsSidebar(true);
+            this.updateSearchControlsVisibility();
             return;
         }
         
@@ -3409,6 +3519,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         this.checkAndOpenDirectMatch(results, itemsWithWiki);
         this.updateResultsPanelTitle();
         this.updateResultsSidebar(true);
+        this.updateSearchControlsVisibility();
     }
     
     checkAndOpenDirectMatch(allResults, itemsWithWiki) {
@@ -3608,6 +3719,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         }
         this.currentSearchResults = [];
         this.updateResultsSidebar();
+        this.updateSearchControlsVisibility();
     }
     
     clearDisplay() {
@@ -3632,6 +3744,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         this.historyIndex = this.history.length - 1;
         
         this.updateNavigationButtons();
+        this.updateSearchControlsVisibility();
     }
     
     goHome() {
@@ -3643,6 +3756,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         this.historyIndex = 0;
         this.showDreamWikiHomepage();
         this.updateNavigationButtons();
+        this.updateSearchControlsVisibility();
     }
     
     restoreHistoryEntry(entry) {
@@ -3748,6 +3862,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         }
         
         this.updateNavigationButtons();
+        this.updateSearchControlsVisibility();
     }
     
     updateNavigationButtons() {

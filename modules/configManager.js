@@ -549,11 +549,21 @@ class ConfigManager {
                             liveWindowRepositioning: false,
                             exitDesktopOnWorkspaceMaximise: false,
                             notificationBridgeEnabled: true,
-                            bypassNotificationBridgeInDesktopMode: false
+                            bypassNotificationBridgeInDesktopMode: false,
+                            startMenuButton: {
+                                preset: 'start-ja',
+                                customText: '',
+                                style: 'workspace'
+                            }
                         },
                         naxt: {
                             elevatePins: 0
                         }
+                    },
+                    generationQuips: {
+                        autoUpdateCheckHour: 8,
+                        autoUpdateCheckMinute: 0,
+                        countBasedCheckIntervalHours: 4
                     },
                     selectedApiKeys: {
                         novelai: 0,

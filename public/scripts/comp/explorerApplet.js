@@ -144,7 +144,7 @@ class ExplorerApplet {
 
         this.bindElements();
         this.bindEvents();
-        this.setupDropdowns();
+        this.setupClickMenus();
         this.setupDetailsHeader();
         this.setupExplorerContextMenu();
 
@@ -1802,74 +1802,84 @@ class ExplorerApplet {
         await desktopShortcuts.handleReferenceDragToManual(shortcut, document.getElementById('manualModal'));
     }
 
-    setupDropdowns() {
-        const sortDropdown = document.getElementById('explorerSortDropdown');
+    setupClickMenus() {
+        // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+        if (!contextMenu) return;
+
         const sortBtn = document.getElementById('explorerSortDropdownBtn');
-        const sortMenu = document.getElementById('explorerSortDropdownMenu');
-        const viewsDropdown = document.getElementById('explorerViewsDropdown');
         const viewsBtn = document.getElementById('explorerViewsDropdownBtn');
-        const viewsMenu = document.getElementById('explorerViewsDropdownMenu');
+        this.sortClickMenuConfig = this.buildExplorerSortClickMenuConfig();
+        this.viewsClickMenuConfig = this.buildExplorerViewsClickMenuConfig();
 
-        if (sortDropdown && sortBtn && sortMenu && typeof setupDropdown === 'function') {
-            setupDropdown(
-                sortDropdown,
-                sortBtn,
-                sortMenu,
-                () => this.renderSortMenu(sortMenu),
-                () => `${this.sortField}:${this.sortDirection}`,
-                { preventFocusTransfer: true }
-            );
+        if (sortBtn) {
+            contextMenu.attachClickMenuToElement(sortBtn, this.sortClickMenuConfig);
         }
-
-        if (viewsDropdown && viewsBtn && viewsMenu && typeof setupDropdown === 'function') {
-            setupDropdown(
-                viewsDropdown,
-                viewsBtn,
-                viewsMenu,
-                () => this.renderViewsMenu(viewsMenu),
-                () => this.viewMode,
-                { preventFocusTransfer: true }
-            );
+        if (viewsBtn) {
+            contextMenu.attachClickMenuToElement(viewsBtn, this.viewsClickMenuConfig);
         }
     }
 
-    renderSortMenu(menu) {
-        if (!menu) return;
-        menu.innerHTML = '';
+    buildExplorerSortClickMenuConfig() {
+        const applet = this;
+        return {
+            position: 'anchor',
+            anchorAlign: 'end',
+            maxHeight: 360,
+            beforeShow: () => applet.refreshExplorerSortClickMenuItems(),
+            sections: [{ type: 'list', items: [] }],
+            onAction: (action, target, item) => {
+                if (action !== 'select-explorer-sort' || !item.sortValue) return;
+                applet.sortField = item.sortField;
+                applet.sortDirection = item.sortDirection;
+                localStorage.setItem('explorerSortField', applet.sortField);
+                localStorage.setItem('explorerSortDirection', applet.sortDirection);
+                applet.updateSortLabel();
+                applet.updateDetailsHeaderSort();
+                applet.navigateTo(applet.currentPath);
+            }
+        };
+    }
+
+    refreshExplorerSortClickMenuItems() {
+        if (!this.sortClickMenuConfig) return;
         const current = `${this.sortField}:${this.sortDirection}`;
-        EXPLORER_SORT_OPTIONS.forEach((opt) => {
-            const option = document.createElement('div');
-            option.className = 'custom-dropdown-option' + (opt.value === current ? ' selected' : '');
-            option.dataset.value = opt.value;
-            option.textContent = opt.label;
-            option.addEventListener('click', () => {
-                this.sortField = opt.field;
-                this.sortDirection = opt.direction;
-                localStorage.setItem('explorerSortField', this.sortField);
-                localStorage.setItem('explorerSortDirection', this.sortDirection);
-                this.updateSortLabel();
-                this.updateDetailsHeaderSort();
-                closeDropdown(menu, document.getElementById('explorerSortDropdownBtn'));
-                this.navigateTo(this.currentPath);
-            });
-            menu.appendChild(option);
-        });
+        this.sortClickMenuConfig.sections[0].items = EXPLORER_SORT_OPTIONS.map((opt) => ({
+            text: opt.label,
+            action: 'select-explorer-sort',
+            sortValue: opt.value,
+            sortField: opt.field,
+            sortDirection: opt.direction,
+            loadfn: (item) => {
+                item.highlighted = item.sortValue === current;
+            }
+        }));
     }
 
-    renderViewsMenu(menu) {
-        if (!menu) return;
-        menu.innerHTML = '';
-        Object.entries(EXPLORER_VIEW_MODES).forEach(([mode, cfg]) => {
-            const option = document.createElement('div');
-            option.className = 'custom-dropdown-option' + (mode === this.viewMode ? ' selected' : '');
-            option.dataset.value = mode;
-            option.textContent = cfg.label;
-            option.addEventListener('click', () => {
-                this.setViewMode(mode);
-                closeDropdown(menu, document.getElementById('explorerViewsDropdownBtn'));
-            });
-            menu.appendChild(option);
-        });
+    buildExplorerViewsClickMenuConfig() {
+        const applet = this;
+        return {
+            position: 'anchor',
+            anchorAlign: 'end',
+            maxHeight: 360,
+            beforeShow: () => applet.refreshExplorerViewsClickMenuItems(),
+            sections: [{ type: 'list', items: [] }],
+            onAction: (action, target, item) => {
+                if (action !== 'select-explorer-view' || !item.viewMode) return;
+                applet.setViewMode(item.viewMode);
+            }
+        };
+    }
+
+    refreshExplorerViewsClickMenuItems() {
+        if (!this.viewsClickMenuConfig) return;
+        this.viewsClickMenuConfig.sections[0].items = Object.entries(EXPLORER_VIEW_MODES).map(([mode, cfg]) => ({
+            text: cfg.label,
+            action: 'select-explorer-view',
+            viewMode: mode,
+            loadfn: (item) => {
+                item.highlighted = item.viewMode === this.viewMode;
+            }
+        }));
     }
 
     updateSortLabel() {

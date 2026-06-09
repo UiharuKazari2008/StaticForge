@@ -1,6 +1,6 @@
 /**
  * NAXT applet — NAX community tag browser (WebSocket data, GET only for images).
- * public/scripts/comp/modalUtils.js (openModal), public/scripts/comp/dropdown.js (setupDropdown)
+ * public/scripts/comp/modalUtils.js (openModal), public/scripts/comp/dropdown.js (setupDropdown), public/scripts/comp/contextMenu.js (attachClickMenuToElement)
  */
 
 const NAXT_FILTER_DEBOUNCE_MS = 2000;
@@ -209,13 +209,12 @@ class NaxtApplet {
 
         this.homeBtn = document.getElementById('naxtHomeBtn');
         this.closeBtn = document.getElementById('closeNaxtModalBtn');
-        this.datasetDropdown = document.getElementById('naxtDatasetDropdown');
         this.datasetBtn = document.getElementById('naxtDatasetDropdownBtn');
-        this.datasetMenu = document.getElementById('naxtDatasetDropdownMenu');
         this.datasetSelected = document.getElementById('naxtDatasetSelected');
         this.searchInput = document.getElementById('naxtSearchInput');
+        this.refreshBtn = document.getElementById('naxtRefreshBtn');
         this.filterToggleBtn = document.getElementById('naxtFilterToggleBtn');
-        this.filterRow = document.getElementById('naxtFilterRow');
+        this.filterToolbar = document.getElementById('naxtFilterToolbar');
         this.sortDropdown = document.getElementById('naxtSortDropdown');
         this.sortBtn = document.getElementById('naxtSortDropdownBtn');
         this.sortMenu = document.getElementById('naxtSortDropdownMenu');
@@ -256,22 +255,18 @@ class NaxtApplet {
         this.customTagGenerateBtn = document.getElementById('naxtCustomTagGenerateBtn');
         this.customTagDeleteBtn = document.getElementById('naxtCustomTagDeleteBtn');
         this.closeCustomTagBtn = document.getElementById('closeNaxtCustomTagModalBtn');
-        this.bagDropdown = document.getElementById('naxtBagDropdown');
         this.bagBtn = document.getElementById('naxtBagDropdownBtn');
-        this.bagMenu = document.getElementById('naxtBagDropdownMenu');
         this.bagCountEl = document.getElementById('naxtBagCount');
-        this.markFilterDropdown = document.getElementById('naxtMarkFilterDropdown');
+        this.bagTrayEl = document.getElementById('naxtBagTrayIcon');
+        this.bagTrayGlyph = document.getElementById('naxtBagTrayIconGlyph');
         this.markFilterBtn = document.getElementById('naxtMarkFilterDropdownBtn');
-        this.markFilterMenu = document.getElementById('naxtMarkFilterDropdownMenu');
         this.markFilterIcon = document.getElementById('naxtMarkFilterIcon');
-        this.elevatePinsDropdown = document.getElementById('naxtElevatePinsDropdown');
         this.elevatePinsBtn = document.getElementById('naxtElevatePinsDropdownBtn');
-        this.elevatePinsMenu = document.getElementById('naxtElevatePinsDropdownMenu');
         this.elevatePinsIcon = document.getElementById('naxtElevatePinsIcon');
 
         this.loadBagFromStorage();
         this.loadElevatePinsFromLocal();
-        this.setupDropdowns();
+        this.setupClickMenus();
         this.setupListeners();
         this.updateBagChrome();
         this.updateMarkFilterButton();
@@ -287,7 +282,10 @@ class NaxtApplet {
         const g = this.galleries.find((x) => x.slug === s);
         const label = s ? (g ? naxtGalleryMenuLabel(g) : naxtGalleryBucketLabel(s, this.galleries)) : 'Dataset';
         const icon = s ? naxtGalleryIconClass(s) : 'fas fa-layer-group';
-        this.datasetSelected.innerHTML = `<i class="${naxtEscapeHtml(icon)} naxt-dataset-btn-icon" aria-hidden="true"></i><span class="naxt-dataset-btn-text">${naxtEscapeHtml(label)}</span>`;
+        this.datasetSelected.innerHTML = `<i class="${naxtEscapeHtml(icon)} naxt-dataset-btn-icon" aria-hidden="true"></i>`;
+        if (this.datasetBtn) {
+            this.datasetBtn.title = label;
+        }
         if (this.modalTitleLabel) {
             this.modalTitleLabel.textContent = s ? `Atelier - ${label}` : 'Atelier';
         }
@@ -631,9 +629,24 @@ class NaxtApplet {
         return false;
     }
 
+    syncFilterToolbarVisibility() {
+        if (this.filterToolbar) {
+            this.filterToolbar.classList.toggle('hidden', !this.filterRowVisible);
+        }
+    }
+
     syncFilterToggleIndicator() {
         if (!this.filterToggleBtn) return;
-        this.filterToggleBtn.setAttribute('data-state', this.filtersAreActive() ? 'open' : 'off');
+        const active = this.filtersAreActive();
+        const open = this.filterRowVisible;
+        this.filterToggleBtn.setAttribute('data-state', (open || active) ? 'on' : 'off');
+        if (open) {
+            this.filterToggleBtn.title = 'Hide filters';
+        } else if (active) {
+            this.filterToggleBtn.title = 'Show filters (active)';
+        } else {
+            this.filterToggleBtn.title = 'Show filters';
+        }
     }
 
     setGridLoading(active) {
@@ -641,59 +654,379 @@ class NaxtApplet {
         this.grid.classList.toggle('naxt-loading', !!active);
     }
 
-    setupDropdowns() {
-        if (this.sortDropdown && this.sortBtn && this.sortMenu && typeof setupDropdown === 'function') {
-            setupDropdown(
-                this.sortDropdown,
-                this.sortBtn,
-                this.sortMenu,
-                () => this.renderNaxtSortMenu(),
-                () => this.sortKey
-            );
+    setupClickMenus() {
+        // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+        if (!contextMenu) return;
+
+        this.datasetClickMenuConfig = this.buildDatasetClickMenuConfig();
+        this.markFilterClickMenuConfig = this.buildMarkFilterClickMenuConfig();
+        this.elevatePinsClickMenuConfig = this.buildElevatePinsClickMenuConfig();
+        this.bagClickMenuConfig = this.buildBagClickMenuConfig();
+        this.sortClickMenuConfig = this.buildSortClickMenuConfig();
+
+        if (this.datasetBtn) {
+            contextMenu.attachClickMenuToElement(this.datasetBtn, this.datasetClickMenuConfig);
+        }
+        if (this.markFilterBtn) {
+            contextMenu.attachClickMenuToElement(this.markFilterBtn, this.markFilterClickMenuConfig);
+        }
+        if (this.elevatePinsBtn) {
+            contextMenu.attachClickMenuToElement(this.elevatePinsBtn, this.elevatePinsClickMenuConfig);
+        }
+        if (this.bagBtn) {
+            contextMenu.attachClickMenuToElement(this.bagBtn, this.bagClickMenuConfig);
+        }
+        if (this.sortBtn) {
+            contextMenu.attachClickMenuToElement(this.sortBtn, this.sortClickMenuConfig);
+        }
+    }
+
+    getNaxtSortOptions() {
+        return [
+            { value: 'score', label: 'Score' },
+            { value: 'name', label: 'Name' },
+            { value: 'date', label: 'Date (export order)' },
+            { value: 'ratio', label: 'Ratio' },
+            { value: 'random', label: 'Random' }
+        ];
+    }
+
+    applySortSelection(value) {
+        if (value === 'random') {
+            this.randomSeed = (Math.random() * 2147483647) | 0;
+            this.invert = false;
+            if (this.invertBtn) this.invertBtn.setAttribute('data-state', 'off');
+        } else if (this.sortKey === 'random') {
+            this.randomSeed = 0;
+        }
+        this.sortKey = value;
+        this.activeQuickFilter = '';
+        this.syncQuickFilterButtons();
+        const opt = this.getNaxtSortOptions().find((o) => o.value === value);
+        if (this.sortSelected) this.sortSelected.textContent = opt ? opt.label : 'Score';
+        void this.reloadFromTop();
+        this.syncFilterToggleIndicator();
+    }
+
+    buildSortClickMenuConfig() {
+        const applet = this;
+        return {
+            position: 'anchor',
+            anchorAlign: 'end',
+            maxHeight: 320,
+            beforeShow: () => applet.refreshSortClickMenuItems(),
+            sections: [{ type: 'list', items: [] }],
+            onAction: (action, target, item) => {
+                if (action !== 'select-sort' || item.sortValue == null) return;
+                applet.applySortSelection(item.sortValue);
+            }
+        };
+    }
+
+    refreshSortClickMenuItems() {
+        if (!this.sortClickMenuConfig) return;
+        this.sortClickMenuConfig.sections[0].items = this.getNaxtSortOptions().map((opt) => ({
+            text: opt.label,
+            action: 'select-sort',
+            sortValue: opt.value,
+            loadfn: (item) => {
+                item.highlighted = item.sortValue === this.sortKey;
+            }
+        }));
+    }
+
+    buildDatasetClickMenuConfig() {
+        const applet = this;
+        return {
+            position: 'anchor',
+            anchorAlign: 'start',
+            maxHeight: 360,
+            beforeShow: () => applet.refreshDatasetClickMenuItems(),
+            sections: [{ type: 'list', items: [] }],
+            onAction: (action, target, item) => {
+                if (action !== 'select-dataset' || item.datasetSlug == null) return;
+                const slugChanged = item.datasetSlug !== applet.selectedGallerySlug;
+                applet.selectedGallerySlug = item.datasetSlug;
+                if (slugChanged) applet.resetFiltersOnCategoryChange();
+                applet.updateDatasetLabelVisual(item.datasetSlug);
+                void applet.reloadFromTop();
+            }
+        };
+    }
+
+    refreshDatasetClickMenuItems() {
+        if (!this.datasetClickMenuConfig) return;
+        const items = [];
+        const v45 = this.galleries.filter((g) => String(g.version || '').includes('4.5'));
+        const v4 = this.galleries.filter((g) => !String(g.version || '').includes('4.5'));
+        if (v45.length) {
+            items.push({ separator: true, text: 'v4.5' });
+            v45.forEach((g) => {
+                items.push({
+                    text: naxtGalleryMenuLabel(g),
+                    action: 'select-dataset',
+                    datasetSlug: g.slug,
+                    loadfn: (item) => {
+                        item.highlighted = item.datasetSlug === this.selectedGallerySlug;
+                    }
+                });
+            });
+        }
+        if (v4.length) {
+            items.push({ separator: true, text: 'v4' });
+            v4.forEach((g) => {
+                items.push({
+                    text: naxtGalleryMenuLabel(g),
+                    action: 'select-dataset',
+                    datasetSlug: g.slug,
+                    loadfn: (item) => {
+                        item.highlighted = item.datasetSlug === this.selectedGallerySlug;
+                    }
+                });
+            });
+        }
+        if (!items.length) {
+            items.push({ text: 'No datasets', disabled: true });
+        }
+        this.datasetClickMenuConfig.sections[0].items = items;
+    }
+
+    buildMarkFilterClickMenuConfig() {
+        const applet = this;
+        return {
+            position: 'anchor',
+            anchorAlign: 'end',
+            maxHeight: 360,
+            beforeShow: () => applet.refreshMarkFilterClickMenuItems(),
+            sections: [{ type: 'list', items: [] }],
+            onAction: (action, target, item) => {
+                if (action !== 'select-mark-filter' || item.markValue == null) return;
+                applet.markFilter = item.markValue;
+                applet.updateMarkFilterButton();
+                void applet.reloadFromTop();
+                applet.syncFilterToggleIndicator();
+            }
+        };
+    }
+
+    refreshMarkFilterClickMenuItems() {
+        if (!this.markFilterClickMenuConfig) return;
+        this.markFilterClickMenuConfig.sections[0].items = NAXT_MARK_FILTER_OPTIONS.map((opt) => ({
+            text: opt.label,
+            icon: opt.icon,
+            action: 'select-mark-filter',
+            markValue: opt.value,
+            loadfn: (item) => {
+                item.highlighted = item.markValue === this.markFilter;
+            }
+        }));
+    }
+
+    buildElevatePinsClickMenuConfig() {
+        const applet = this;
+        return {
+            position: 'anchor',
+            anchorAlign: 'end',
+            maxHeight: 360,
+            beforeShow: () => applet.refreshElevatePinsClickMenuItems(),
+            sections: [{ type: 'list', items: [] }],
+            onAction: (action, target, item) => {
+                if (action !== 'select-elevate-pins' || item.pinMode == null) return;
+                applet.elevatePins = naxtNormalizeElevatePins(item.pinMode);
+                applet.updateElevatePinsButton();
+                void applet.persistElevatePinsSetting();
+                void applet.reloadFromTop();
+            }
+        };
+    }
+
+    refreshElevatePinsClickMenuItems() {
+        if (!this.elevatePinsClickMenuConfig) return;
+        const mode = naxtNormalizeElevatePins(this.elevatePins);
+        this.elevatePinsClickMenuConfig.sections[0].items = NAXT_ELEVATE_PIN_OPTIONS.map((opt) => ({
+            text: opt.label,
+            icon: opt.icon,
+            action: 'select-elevate-pins',
+            pinMode: opt.value,
+            loadfn: (item) => {
+                item.highlighted = naxtNormalizeElevatePins(item.pinMode) === mode;
+            }
+        }));
+    }
+
+    handleBagMenuAction(action, target, item) {
+        if (action === 'bag-remove' && item.bagIndex != null) {
+            this.removeFromBagAt(item.bagIndex);
+            return;
+        }
+        if (action === 'bag-compile') {
+            this.compileBag();
+            return;
+        }
+        if (action === 'bag-phasewalker') {
+            this.openPhasewalkerFromBag();
+            return;
+        }
+        if (action === 'bag-clear') {
+            this.clearBag();
+        }
+    }
+
+    buildBagMenuItems() {
+        const applet = this;
+        const items = [];
+        if (!this.bag.length) {
+            items.push({ text: 'Bag is empty', disabled: true });
+        } else {
+            this.bag.forEach((entry, index) => {
+                items.push({
+                    text: entry.tag,
+                    icon: naxtGalleryIconClass(entry.gallerySlug),
+                    action: 'bag-remove',
+                    bagIndex: index,
+                    itemContextBindfn: (item, el) => {
+                        const bagEntry = applet.bag[item.bagIndex];
+                        if (bagEntry) {
+                            applet.syncNaxtTagTargetDataset(el, bagEntry, item.bagIndex);
+                            item._contextIsCustom = el.dataset.isCustom === '1';
+                        }
+                    },
+                    itemContextMenu: (item) => applet.buildNaxtTagContextMenuConfig({
+                        inBag: true,
+                        isCustom: !!item._contextIsCustom
+                    })
+                });
+            });
+        }
+        const hasBag = this.bag.length > 0;
+        items.push({ separator: true });
+        items.push({
+            text: 'Compile',
+            icon: 'fas fa-hammer',
+            action: 'bag-compile',
+            disabled: !hasBag
+        });
+        items.push({
+            text: 'Open Phasewalker',
+            icon: 'fas fa-layer-group',
+            action: 'bag-phasewalker',
+            disabled: !hasBag
+        });
+        items.push({
+            text: 'Remove all',
+            icon: 'fas fa-trash',
+            action: 'bag-clear',
+            disabled: !hasBag
+        });
+        return items;
+    }
+
+    refreshBagMenuItems() {
+        const items = this.buildBagMenuItems();
+        if (this.bagClickMenuConfig && this.bagClickMenuConfig.sections[0]) {
+            this.bagClickMenuConfig.sections[0].items = items;
+        }
+        if (this.bagTrayMenuConfig && this.bagTrayMenuConfig.sections[0]) {
+            this.bagTrayMenuConfig.sections[0].items = items;
+        }
+    }
+
+    reRenderBagMenusIfOpen() {
+        // contextMenu.renderMenu: public/scripts/comp/contextMenu.js
+        if (!contextMenu || !contextMenu.isOpen) return;
+        this.refreshBagMenuItems();
+        const target = contextMenu.currentTarget;
+        let config = null;
+        if (target === this.bagBtn) config = this.bagClickMenuConfig;
+        else if (target === this.bagTrayEl) config = this.bagTrayMenuConfig;
+        if (!config) return;
+        contextMenu.renderMenu(config, target);
+        contextMenu.executeLoadFunctions(config, target);
+        contextMenu.updateIndicatorDots(config);
+    }
+
+    buildBagClickMenuConfig() {
+        const applet = this;
+        return {
+            position: 'anchor',
+            anchorAlign: 'end',
+            maxHeight: 420,
+            beforeShow: () => applet.refreshBagMenuItems(),
+            sections: [{ type: 'list', items: [] }],
+            onAction: (action, target, item) => applet.handleBagMenuAction(action, target, item)
+        };
+    }
+
+    buildBagTrayMenuConfig() {
+        const applet = this;
+        return {
+            maxHeight: 420,
+            beforeShow: () => applet.refreshBagMenuItems(),
+            sections: [{ type: 'list', items: [] }],
+            onAction: (action, target, item) => applet.handleBagMenuAction(action, target, item)
+        };
+    }
+
+    refreshBagClickMenuItems() {
+        this.refreshBagMenuItems();
+    }
+
+    isAppletOpen() {
+        return !!(this.modal && !this.modal.classList.contains('hidden'));
+    }
+
+    formatBagTrayTitle() {
+        const n = this.bag.length;
+        return `Atelier Bag - ${n} item${n === 1 ? '' : 's'}`;
+    }
+
+    updateBagTrayChrome() {
+        if (!this.bagTrayEl) return;
+
+        const n = this.bag.length;
+        const appletOpen = this.isAppletOpen();
+        const bootPending = typeof window.isDesktopTrayBootPending === 'function' && window.isDesktopTrayBootPending();
+
+        if (n > 0) {
+            if (!bootPending) {
+                this.bagTrayEl.classList.remove('hidden', 'naxt-bag-tray-atelier-open');
+            }
+            if (this.bagTrayGlyph) {
+                this.bagTrayGlyph.className = 'fas fa-shopping-bag';
+            }
+        } else if (appletOpen) {
+            if (!bootPending) {
+                this.bagTrayEl.classList.remove('hidden');
+                this.bagTrayEl.classList.add('naxt-bag-tray-atelier-open');
+            }
+            if (this.bagTrayGlyph) {
+                this.bagTrayGlyph.className = 'fas fa-flask';
+            }
+        } else {
+            this.bagTrayEl.classList.add('hidden');
+            this.bagTrayEl.classList.remove('naxt-bag-tray-atelier-open');
+            if (this.bagTrayGlyph) {
+                this.bagTrayGlyph.className = 'fas fa-shopping-bag';
+            }
         }
 
-        if (this.datasetDropdown && this.datasetBtn && this.datasetMenu && typeof setupDropdown === 'function') {
-            setupDropdown(
-                this.datasetDropdown,
-                this.datasetBtn,
-                this.datasetMenu,
-                () => this.renderDatasetMenu(),
-                () => this.selectedGallerySlug
-            );
-        }
+        this.bagTrayEl.title = this.formatBagTrayTitle();
+    }
 
-        if (this.markFilterDropdown && this.markFilterBtn && this.markFilterMenu && typeof setupDropdown === 'function') {
-            setupDropdown(
-                this.markFilterDropdown,
-                this.markFilterBtn,
-                this.markFilterMenu,
-                () => this.renderNaxtMarkFilterMenu(),
-                () => this.markFilter,
-                { preventFocusTransfer: true }
-            );
-        }
+    setupBagTray() {
+        // contextMenu.attachToElement: public/scripts/comp/contextMenu.js
+        if (!this.bagTrayEl || !contextMenu) return;
 
-        if (this.bagDropdown && this.bagBtn && this.bagMenu && typeof setupDropdown === 'function') {
-            setupDropdown(
-                this.bagDropdown,
-                this.bagBtn,
-                this.bagMenu,
-                () => this.renderNaxtBagMenu(),
-                () => null,
-                { preventFocusTransfer: true }
-            );
-        }
+        this.bagTrayMenuConfig = this.buildBagTrayMenuConfig();
+        contextMenu.attachToElement(this.bagTrayEl, this.bagTrayMenuConfig);
 
-        if (this.elevatePinsDropdown && this.elevatePinsBtn && this.elevatePinsMenu && typeof setupDropdown === 'function') {
-            setupDropdown(
-                this.elevatePinsDropdown,
-                this.elevatePinsBtn,
-                this.elevatePinsMenu,
-                () => this.renderNaxtElevatePinsMenu(),
-                () => this.elevatePins,
-                { preventFocusTransfer: true }
-            );
-        }
+        this.bagTrayEl.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            void this.open();
+        });
+
+        this.updateBagTrayChrome();
     }
 
     updateMarkFilterButton() {
@@ -736,29 +1069,6 @@ class NaxtApplet {
         }
     }
 
-    renderNaxtElevatePinsMenu() {
-        if (!this.elevatePinsMenu) return;
-        const menu = this.elevatePinsMenu;
-        menu.innerHTML = '';
-        const selectMode = (value) => {
-            this.elevatePins = naxtNormalizeElevatePins(value);
-            this.updateElevatePinsButton();
-            if (typeof closeDropdown === 'function') closeDropdown(this.elevatePinsMenu, this.elevatePinsBtn);
-            void this.persistElevatePinsSetting();
-            void this.reloadFromTop();
-        };
-        NAXT_ELEVATE_PIN_OPTIONS.forEach((item) => {
-            const option = document.createElement('div');
-            option.className = 'custom-dropdown-option' + (this.elevatePins === item.value ? ' selected' : '');
-            option.tabIndex = 0;
-            option.dataset.value = String(item.value);
-            const icon = item.icon ? `<i class="${item.icon}" aria-hidden="true"></i> ` : '';
-            option.innerHTML = `<span>${icon}${naxtEscapeHtml(item.label)}</span>`;
-            this.bindNaxtSortMenuOption(option, () => selectMode(item.value));
-            menu.appendChild(option);
-        });
-    }
-
     async persistElevatePinsSetting() {
         // persistUserGlobalSettingsPatch: public/scripts/comp/modalUtils.js
         if (typeof persistUserGlobalSettingsPatch === 'function') {
@@ -776,29 +1086,6 @@ class NaxtApplet {
         } catch {
             /* */
         }
-    }
-
-    renderNaxtMarkFilterMenu() {
-        if (!this.markFilterMenu) return;
-        const menu = this.markFilterMenu;
-        menu.innerHTML = '';
-        const selectMark = (value) => {
-            this.markFilter = value;
-            this.updateMarkFilterButton();
-            if (typeof closeDropdown === 'function') closeDropdown(this.markFilterMenu, this.markFilterBtn);
-            void this.reloadFromTop();
-            this.syncFilterToggleIndicator();
-        };
-        NAXT_MARK_FILTER_OPTIONS.forEach((item) => {
-            const option = document.createElement('div');
-            option.className = 'custom-dropdown-option' + (this.markFilter === item.value ? ' selected' : '');
-            option.tabIndex = 0;
-            option.dataset.value = item.value;
-            const icon = item.icon ? `<i class="${item.icon}" aria-hidden="true"></i> ` : '';
-            option.innerHTML = `<span>${icon}${naxtEscapeHtml(item.label)}</span>`;
-            this.bindNaxtSortMenuOption(option, () => selectMark(item.value));
-            menu.appendChild(option);
-        });
     }
 
     loadBagFromStorage() {
@@ -834,6 +1121,8 @@ class NaxtApplet {
         if (this.bagBtn) {
             this.bagBtn.setAttribute('data-state', n > 0 ? 'on' : 'off');
         }
+        this.updateBagTrayChrome();
+        this.reRenderBagMenusIfOpen();
     }
 
     bagEntryKey(entry) {
@@ -873,64 +1162,10 @@ class NaxtApplet {
         this.bag = [];
         this.saveBagToStorage();
         this.updateBagChrome();
-        if (typeof closeDropdown === 'function' && this.bagMenu && this.bagBtn) {
-            closeDropdown(this.bagMenu, this.bagBtn);
+        if (contextMenu && contextMenu.isOpen &&
+            (contextMenu.currentTarget === this.bagBtn || contextMenu.currentTarget === this.bagTrayEl)) {
+            contextMenu.hideMenu();
         }
-    }
-
-    renderNaxtBagMenu() {
-        if (!this.bagMenu) return;
-        const menu = this.bagMenu;
-        menu.innerHTML = '';
-
-        if (!this.bag.length) {
-            const empty = document.createElement('div');
-            empty.className = 'custom-dropdown-option disabled';
-            empty.textContent = 'Bag is empty';
-            menu.appendChild(empty);
-        } else {
-            this.bag.forEach((entry, index) => {
-                const option = document.createElement('div');
-                option.className = 'custom-dropdown-option naxt-bag-item';
-                option.tabIndex = 0;
-                const icon = naxtGalleryIconClass(entry.gallerySlug);
-                option.innerHTML = `<i class="${icon}"></i> <span>${naxtEscapeHtml(entry.tag)}</span>`;
-                this.syncNaxtTagTargetDataset(option, entry, index);
-                this.attachNaxtTagContextMenu(option, {
-                    inBag: true,
-                    isCustom: option.dataset.isCustom === '1'
-                });
-                this.bindNaxtSortMenuOption(option, () => {
-                    this.removeFromBagAt(index);
-                    if (typeof closeDropdown === 'function') closeDropdown(this.bagMenu, this.bagBtn);
-                });
-                menu.appendChild(option);
-            });
-        }
-
-        const actions = document.createElement('div');
-        actions.className = 'naxt-bag-menu-actions';
-
-        const addAction = (label, iconClass, handler, disabled) => {
-            const option = document.createElement('div');
-            option.className = 'custom-dropdown-option' + (disabled ? ' disabled' : '');
-            option.tabIndex = disabled ? -1 : 0;
-            option.innerHTML = `<i class="${iconClass}"></i> <span>${label}</span>`;
-            if (!disabled) {
-                this.bindNaxtSortMenuOption(option, () => {
-                    if (typeof closeDropdown === 'function') closeDropdown(this.bagMenu, this.bagBtn);
-                    handler();
-                });
-            }
-            actions.appendChild(option);
-        };
-
-        const hasBag = this.bag.length > 0;
-        addAction('Compile', 'fas fa-hammer', () => this.compileBag(), !hasBag);
-        addAction('Open Phasewalker', 'fas fa-layer-group', () => this.openPhasewalkerFromBag(), !hasBag);
-        addAction('Remove all', 'fas fa-trash', () => this.clearBag(), !hasBag);
-
-        menu.appendChild(actions);
     }
 
     buildBracketSnapshotFromBag() {
@@ -1074,45 +1309,6 @@ class NaxtApplet {
         }
     }
 
-    renderNaxtSortMenu() {
-        if (!this.sortMenu) return;
-        const menu = this.sortMenu;
-        menu.innerHTML = '';
-        const sortOptions = [
-            { value: 'score', label: 'Score' },
-            { value: 'name', label: 'Name' },
-            { value: 'date', label: 'Date (export order)' },
-            { value: 'ratio', label: 'Ratio' },
-            { value: 'random', label: 'Random' }
-        ];
-        const selectSort = (value) => {
-            if (value === 'random') {
-                this.randomSeed = (Math.random() * 2147483647) | 0;
-                this.invert = false;
-                if (this.invertBtn) this.invertBtn.setAttribute('data-state', 'off');
-            } else if (this.sortKey === 'random') {
-                this.randomSeed = 0;
-            }
-            this.sortKey = value;
-            this.activeQuickFilter = '';
-            this.syncQuickFilterButtons();
-            const opt = sortOptions.find((o) => o.value === value);
-            if (this.sortSelected) this.sortSelected.textContent = opt ? opt.label : 'Score';
-            if (typeof closeDropdown === 'function') closeDropdown(this.sortMenu, this.sortBtn);
-            void this.reloadFromTop();
-            this.syncFilterToggleIndicator();
-        };
-        sortOptions.forEach((item) => {
-            const option = document.createElement('div');
-            option.className = 'custom-dropdown-option' + (this.sortKey === item.value ? ' selected' : '');
-            option.tabIndex = 0;
-            option.dataset.value = item.value;
-            option.innerHTML = `<span>${item.label}</span>`;
-            this.bindNaxtSortMenuOption(option, () => selectSort(item.value));
-            menu.appendChild(option);
-        });
-    }
-
     syncQuickFilterButtons() {
         const map = {
             goat: this.quickGoatBtn,
@@ -1146,33 +1342,6 @@ class NaxtApplet {
         }
     }
 
-    bindNaxtSortMenuOption(option, action) {
-        option.addEventListener('mousedown', (e) => {
-            e.preventDefault();
-        });
-        option.addEventListener('click', (e) => {
-            e.preventDefault();
-            action();
-        });
-        touchSlopUtils.registerTouchSlopTracking(option);
-        option.addEventListener(
-            'touchend',
-            (e) => {
-                const maxDelta = touchSlopUtils.finalizeTouchSlop(option, e);
-                if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
-                e.preventDefault();
-                action();
-            },
-            { passive: false }
-        );
-        option.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                action();
-            }
-        });
-    }
-
     clearNaxtNumericFilters() {
         [this.minUp, this.maxUp, this.minDown, this.maxDown, this.minScore, this.maxScore, this.minRatio, this.maxRatio].forEach((el) => {
             if (el) el.value = '';
@@ -1185,7 +1354,7 @@ class NaxtApplet {
             this.filterReloadTimer = null;
         }
         this.filterRowVisible = false;
-        if (this.filterRow) this.filterRow.classList.add('hidden');
+        this.syncFilterToolbarVisibility();
         this.syncFilterToggleIndicator();
         this.sortKey = 'score';
         this.randomSeed = 0;
@@ -1206,7 +1375,7 @@ class NaxtApplet {
             return;
         }
         this.filterRowVisible = false;
-        if (this.filterRow) this.filterRow.classList.add('hidden');
+        this.syncFilterToolbarVisibility();
         this.clearNaxtNumericFilters();
         this.invert = false;
         if (this.invertBtn) this.invertBtn.setAttribute('data-state', 'off');
@@ -1236,64 +1405,6 @@ class NaxtApplet {
         void this.reloadFromTop();
     }
 
-    renderDatasetMenu() {
-        if (!this.datasetMenu) return;
-        this.datasetMenu.innerHTML = '';
-        const v45 = this.galleries.filter((g) => String(g.version || '').includes('4.5'));
-        const v4 = this.galleries.filter((g) => !String(g.version || '').includes('4.5'));
-        const groups = [];
-        if (v45.length) {
-            groups.push({
-                group: 'v4.5',
-                options: v45.map((g) => ({
-                    value: g.slug,
-                    label: naxtGalleryMenuLabel(g)
-                }))
-            });
-        }
-        if (v4.length) {
-            groups.push({
-                group: 'v4',
-                options: v4.map((g) => ({
-                    value: g.slug,
-                    label: naxtGalleryMenuLabel(g)
-                }))
-            });
-        }
-        if (!groups.length) {
-            const empty = document.createElement('div');
-            empty.className = 'custom-dropdown-option disabled';
-            empty.textContent = 'No datasets';
-            this.datasetMenu.appendChild(empty);
-            return;
-        }
-        if (typeof renderGroupedDropdown === 'function') {
-            renderGroupedDropdown(
-                this.datasetMenu,
-                groups,
-                (value) => {
-                    const slugChanged = value !== this.selectedGallerySlug;
-                    this.selectedGallerySlug = value;
-                    if (slugChanged) {
-                        this.resetFiltersOnCategoryChange();
-                    }
-                    this.updateDatasetLabelVisual(value);
-                    if (typeof closeDropdown === 'function') {
-                        closeDropdown(this.datasetMenu, this.datasetBtn);
-                    }
-                    void this.reloadFromTop();
-                },
-                () => {
-                    if (typeof closeDropdown === 'function') {
-                        closeDropdown(this.datasetMenu, this.datasetBtn);
-                    }
-                },
-                this.selectedGallerySlug,
-                (opt) => `<span>${naxtEscapeHtml(opt.label)}</span>`
-            );
-        }
-    }
-
     setupListeners() {
         if (this.homeBtn) this.homeBtn.addEventListener('click', () => void this.goHome());
         if (this.closeBtn) {
@@ -1313,9 +1424,16 @@ class NaxtApplet {
                     return;
                 }
                 this.filterRowVisible = !this.filterRowVisible;
-                if (this.filterRow) {
-                    this.filterRow.classList.toggle('hidden', !this.filterRowVisible);
-                }
+                this.syncFilterToolbarVisibility();
+                this.syncFilterToggleIndicator();
+            });
+        }
+
+        if (this.refreshBtn) {
+            this.refreshBtn.addEventListener('click', () => {
+                this.committedSearchQuery = this.searchInput ? this.searchInput.value.trim() : '';
+                void this.reloadFromTop();
+                this.syncFilterToggleIndicator();
             });
         }
 
@@ -1471,7 +1589,7 @@ class NaxtApplet {
 
     applyHomeDefaults() {
         this.filterRowVisible = false;
-        if (this.filterRow) this.filterRow.classList.add('hidden');
+        this.syncFilterToolbarVisibility();
         this.syncFilterToggleIndicator();
         this.sortKey = 'score';
         this.invert = false;
@@ -1539,6 +1657,7 @@ class NaxtApplet {
         if (typeof openModal === 'function') {
             openModal(this.modal);
         }
+        this.updateBagTrayChrome();
         setTimeout(() => {
             if (window.customScrollbar) {
                 const body = this.modal.querySelector('.naxt-body.form-section-scroll');
@@ -1557,6 +1676,7 @@ class NaxtApplet {
         closeModal(this.modal).then(() => {
             this.browseSessionActive = false;
             if (this.grid) this.grid.innerHTML = '';
+            this.updateBagTrayChrome();
         });
     }
 
@@ -1934,9 +2054,6 @@ class NaxtApplet {
             const index = parseInt(bagIndex, 10);
             if (!Number.isNaN(index)) {
                 this.removeFromBagAt(index);
-                if (typeof closeDropdown === 'function' && this.bagMenu && this.bagBtn) {
-                    closeDropdown(this.bagMenu, this.bagBtn);
-                }
             }
         } else if (action === 'naxt-add-desktop') {
             this.addNaxTagToDesktop(target);
@@ -2169,4 +2286,18 @@ class NaxtApplet {
 const naxtApplet = new NaxtApplet();
 if (typeof window !== 'undefined') {
     window.naxtApplet = naxtApplet;
+}
+
+function initializeNaxtBagTray() {
+    if (!naxtApplet.bagTrayEl) {
+        naxtApplet.bagTrayEl = document.getElementById('naxtBagTrayIcon');
+        naxtApplet.bagTrayGlyph = document.getElementById('naxtBagTrayIconGlyph');
+    }
+    if (!naxtApplet.bagTrayEl || naxtApplet._bagTrayInitialized) return;
+    if (!window.isDesktop) {
+        naxtApplet.bagTrayEl.classList.add('hidden');
+        return;
+    }
+    naxtApplet.setupBagTray();
+    naxtApplet._bagTrayInitialized = true;
 }

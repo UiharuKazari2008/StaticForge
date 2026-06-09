@@ -1,4 +1,4 @@
- /* CSS Variables for Design System */ 
+/* CSS Variables for Design System */ 
 :root {
     /* Window Controls Overlay API Variables */
     /* Fallback chain: native env() → caption-bar CSS vars → safe default */
@@ -2259,6 +2259,38 @@ span.menu-logo,
     min-width: 120px;
 }
 
+/* Titlebar toolbar toggles — compact data-state on/off/open */
+.btn-toggle {
+    position: relative;
+    transition: var(--transition-toggle);
+    min-width: unset;
+}
+
+.btn-toggle[data-state="on"],
+.btn-toggle[data-state="open"] {
+    background: var(--toggle-on-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--glass-border-3);
+    box-shadow: inset 0 2px 4px var(--toggle-shadow-color-58), inset 0 0 8px var(--toggle-shadow-color-19), 0 0 0 1px rgb(0 0 0 / 32%);
+}
+
+.btn-toggle[data-state="on"]::before,
+.btn-toggle[data-state="open"]::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, hsl(16 100% 50% / 15%) 0%, transparent 50%, hsl(0 0% 0% / 15%) 100%);
+    border-radius: inherit;
+    pointer-events: none;
+}
+
+.btn-toggle.icon-only {
+    min-width: 2.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 .indicator::after {
     content: '';
     position: absolute;
@@ -3722,6 +3754,23 @@ body.desktop-mode .modal-backdrop {
     padding-top: var(--modal-title-chrome-height);
 }
 
+.modal.toolbar-visible .modal-content:has(> .modal-content-toolbar-overlay) {
+    position: relative;
+}
+
+.modal-content-toolbar-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: var(--z-layer-5);
+    border-bottom: 1px solid var(--glass-border-4);
+    background: var(--glass-layer-dark-bg, var(--glass-layer-dark-5));
+    -webkit-backdrop-filter: var(--glass-blur-3, brightness(0.5)) saturate(0.5);
+    backdrop-filter: var(--glass-blur-3, brightness(0.5)) saturate(0.5);
+    box-shadow: var(--glass-shadow-2);
+}
+
 .modal .modal-content.dark,
 .modal .modal-body.dark {
     background: var(--glass-windows-semi-bg, var(--glass-layer-dark-bg));
@@ -4074,8 +4123,11 @@ body.desktop-mode .modal[data-window-content-anchor="top"] {
     will-change: opacity;
 }
 
-.taskbar-window-item:hover:not(:disabled),
-.taskbar-start-button:hover:not(:disabled) {
+.taskbar-window-item:hover:not(:disabled) {
+    will-change: background-color, border-color, box-shadow;
+}
+
+.taskbar-start-button:not(.orb):hover:not(:disabled) {
     will-change: background-color, border-color, box-shadow, backdrop-filter, transform;
 }
 
@@ -4462,7 +4514,7 @@ body:not(.desktop-mode) #titlebar-grab-area-container .window-handle-icon {
     bottom: 0;
     left: 0;
     right: 0;
-    height: 35px;
+    height: var(--taskbar-height, 35px);
     display: flex;
     align-items: center;
     gap: 4px;
@@ -4470,6 +4522,10 @@ body:not(.desktop-mode) #titlebar-grab-area-container .window-handle-icon {
     z-index: var(--z-taskbar);
     isolation: isolate;
     /* Create stacking context for layering */
+}
+
+body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .desktop-taskbar {
+    overflow: visible;
 }
 
 /* Layer 1: Workspace color tint (bottom layer) */
@@ -4533,6 +4589,15 @@ body:not(.desktop-mode) .desktop-taskbar {
     height: 100%;
 }
 
+.taskbar-start:has(.taskbar-start-button.orb) {
+    overflow: visible;
+    align-items: flex-end;
+    flex: 0 0 auto;
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
+}
+
 .taskbar-start-button {
     height: 100%;
     border-radius: 0 14px 14px 0;
@@ -4541,7 +4606,7 @@ body:not(.desktop-mode) .desktop-taskbar {
     justify-content: center;
     color: white;
     transition: var(--transition-taskbar-item);
-    font-size: 0.875rem;
+    font-size: 1rem;
     padding: 0.25em 0.85em 0.25em 0.5em;
     border-left-style: none;
     border-bottom-style: none;
@@ -4572,12 +4637,11 @@ body:not(.desktop-mode) .desktop-taskbar {
         inset 0 1px 0 rgba(255, 255, 255, 0.22),
         inset 0 -1px 1px rgba(0, 0, 0, 0.2);
 
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 
 @supports not ((-webkit-touch-callout: none) or (hover: hover)) {
-    .taskbar-start-button:hover:not(:disabled):not(.active) {
+    .taskbar-start-button:not(.luna):not(.orb):hover:not(:disabled):not(.active) {
         /* Vista-style hover - slightly brighter but still translucent glass with sharper edge - lightened */
         background:
             linear-gradient(to bottom,
@@ -4600,7 +4664,7 @@ body:not(.desktop-mode) .desktop-taskbar {
     }
 }
 
-.taskbar-start-button.active {
+.taskbar-start-button:not(.luna):not(.orb).active {
     /* Vista-style pressed/active state - inverted gradient with sharper edge, still translucent - lightened */
     background:
         linear-gradient(to bottom,
@@ -4625,203 +4689,163 @@ body:not(.desktop-mode) .desktop-taskbar {
     transform: translateY(1px);
 }
 
-/* Vista Orb Style - add .orb class to enable */
-.taskbar-start-button.orb {
-    /* Make it perfectly circular */
-    width: 48px;
-    min-width: 48px;
-    max-width: 48px;
-    height: 48px;
-    min-height: 48px;
-    max-height: 48px;
-    border-radius: 50%;
-    padding: 0;
-    margin: 0 4px 0 10px;
-    border-left-style: solid;
-    border-bottom-style: solid;
-
-    color: white;
-    isolation: isolate;
-
-    /* Glass blur effect for true transparency */
-    -webkit-backdrop-filter: blur(8px) saturate(1.2);
-    backdrop-filter: blur(8px) saturate(1.2);
-
-    /* Vista-style deep orb with subtle gloss and strong depth */
+/* Windows XP Luna green start button */
+.taskbar-start-button.luna {
+    min-width: 118px;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
     background:
-        /* Very subtle gloss - faint highlight */
-        radial-gradient(ellipse 38% 32% at 30% 28%,
-            rgba(255, 255, 255, 0.35) 0%,
-            rgba(255, 255, 255, 0.22) 12%,
-            rgba(255, 255, 255, 0.12) 25%,
-            rgba(255, 255, 255, 0.05) 40%,
-            transparent 65%),
-        /* Very subtle bottom-right highlight for depth */
-        radial-gradient(ellipse 30% 25% at 70% 72%,
-            rgba(255, 255, 255, 0.08) 0%,
-            rgba(255, 255, 255, 0.03) 35%,
-            transparent 70%),
-        /* Top-left shadow area for depth */
-        radial-gradient(ellipse 45% 40% at 20% 20%,
-            rgba(0, 40, 80, 0.05) 0%,
-            transparent 50%),
-        /* Bottom-right shadow area for concave depth */
-        radial-gradient(ellipse 60% 55% at 65% 65%,
-            transparent 0%,
-            rgba(0, 40, 80, 0.15) 60%,
-            rgba(0, 40, 80, 0.25) 100%),
-        /* Subtle cyan tint */
-        radial-gradient(ellipse 80% 75% at 40% 40%,
-            rgba(140, 210, 250, 0.12) 0%,
-            rgba(110, 190, 240, 0.08) 40%,
-            transparent 80%),
-        /* Main transparent blue/cyan gradient */
-        radial-gradient(ellipse 95% 90% at 50% 50%,
-            rgba(95, 190, 250, 0.28) 0%,
-            rgba(80, 180, 245, 0.26) 15%,
-            rgba(68, 170, 238, 0.25) 30%,
-            rgba(58, 160, 230, 0.26) 45%,
-            rgba(50, 150, 222, 0.28) 60%,
-            rgba(42, 140, 212, 0.30) 75%,
-            rgba(36, 125, 200, 0.32) 90%,
-            rgba(32, 110, 190, 0.34) 100%);
-
-    border: 1.5px solid rgba(255, 255, 255, 0.30);
-    border-bottom-color: rgba(30, 80, 140, 0.40);
-    border-right-color: rgba(30, 80, 140, 0.35);
-
-    /* Enhanced shadows for depth */
+        linear-gradient(to bottom,
+            rgba(255, 255, 255, 0.62) 0%,
+            rgba(255, 255, 255, 0.34) 14%,
+            rgba(255, 255, 255, 0.12) 32%,
+            transparent 42%,
+            rgba(0, 0, 0, 0.06) 48%,
+            rgba(0, 0, 0, 0.2) 100%),
+        linear-gradient(to bottom,
+            #7ad87a 0%,
+            #55c255 16%,
+            #3dad3d 38%,
+            #2f962f 68%,
+            #247f24 100%);
+    border: 1px solid #1a6d1a;
+    border-top-color: #6fd06f;
+    border-left: none;
     box-shadow:
-        inset 0 2px 3px rgba(255, 255, 255, 0.25),
-        inset 0 -3px 6px rgba(0, 50, 110, 0.35),
-        inset -3px 0 6px rgba(0, 50, 110, 0.28),
-        inset 3px 3px 6px rgba(0, 50, 110, 0.15),
-        0 0 12px rgba(60, 160, 230, 0.30),
-        0 3px 8px rgba(0, 0, 0, 0.40);
-}
-
-/* Hide text in orb mode */
-.taskbar-start-button.orb .taskbar-start-button-text {
-    display: none;
-}
-
-/* Center and adjust logo in orb mode */
-.taskbar-start-button.orb .taskbar-start-button-logo {
-    height: 22px;
-    -webkit-filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
-    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+        inset 0 1px 0 rgba(255, 255, 255, 0.72),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.28),
+        0 0 12px rgba(70, 190, 70, 0.55),
+        0 2px 5px rgba(0, 0, 0, 0.35);
 }
 
 @supports not ((-webkit-touch-callout: none) or (hover: hover)) {
-    .taskbar-start-button.orb:hover:not(:disabled) {
-        /* Enhanced glass effect on hover */
-        -webkit-backdrop-filter: blur(10px) saturate(1.4);
-        backdrop-filter: blur(10px) saturate(1.4);
-
+    .taskbar-start-button.luna:hover:not(:disabled):not(.active) {
         background:
-            /* Slightly brighter but still subtle gloss */
-            radial-gradient(ellipse 40% 34% at 30% 28%,
-                rgba(255, 255, 255, 0.45) 0%,
-                rgba(255, 255, 255, 0.30) 12%,
-                rgba(255, 255, 255, 0.18) 25%,
-                rgba(255, 255, 255, 0.08) 40%,
-                transparent 65%),
-            /* Subtle bottom-right highlight */
-            radial-gradient(ellipse 32% 28% at 70% 72%,
-                rgba(255, 255, 255, 0.12) 0%,
-                rgba(255, 255, 255, 0.05) 35%,
-                transparent 70%),
-            /* Shadow areas for depth */
-            radial-gradient(ellipse 60% 55% at 65% 65%,
-                transparent 0%,
-                rgba(0, 40, 80, 0.12) 60%,
-                rgba(0, 40, 80, 0.22) 100%),
-            /* Subtle cyan tint */
-            radial-gradient(ellipse 85% 78% at 40% 40%,
-                rgba(160, 220, 255, 0.16) 0%,
-                rgba(130, 200, 245, 0.11) 40%,
-                transparent 80%),
-            /* Slightly brighter main gradient */
-            radial-gradient(ellipse 95% 90% at 50% 50%,
-                rgba(110, 200, 255, 0.32) 0%,
-                rgba(95, 190, 250, 0.30) 15%,
-                rgba(82, 180, 245, 0.29) 30%,
-                rgba(70, 170, 238, 0.30) 45%,
-                rgba(60, 160, 230, 0.32) 60%,
-                rgba(52, 150, 220, 0.34) 75%,
-                rgba(45, 135, 208, 0.36) 90%,
-                rgba(40, 120, 198, 0.38) 100%);
-
-        border-color: rgba(255, 255, 255, 0.38);
-        border-bottom-color: rgba(30, 80, 140, 0.45);
-        border-right-color: rgba(30, 80, 140, 0.40);
-
+            linear-gradient(to bottom,
+                rgba(255, 255, 255, 0.68) 0%,
+                rgba(255, 255, 255, 0.38) 14%,
+                rgba(255, 255, 255, 0.14) 32%,
+                transparent 42%,
+                rgba(0, 0, 0, 0.05) 48%,
+                rgba(0, 0, 0, 0.18) 100%),
+            linear-gradient(to bottom,
+                #84e084 0%,
+                #5dcc5d 16%,
+                #45b845 38%,
+                #36a136 68%,
+                #2a8b2a 100%);
         box-shadow:
-            inset 0 2px 4px rgba(255, 255, 255, 0.32),
-            inset 0 -3px 7px rgba(0, 50, 110, 0.38),
-            inset -3px 0 7px rgba(0, 50, 110, 0.30),
-            inset 3px 3px 6px rgba(0, 50, 110, 0.18),
-            0 0 16px rgba(75, 170, 235, 0.40),
-            0 3px 9px rgba(0, 0, 0, 0.42);
+            inset 0 1px 0 rgba(255, 255, 255, 0.78),
+            inset 0 -1px 0 rgba(0, 0, 0, 0.22),
+            0 0 16px rgba(90, 210, 90, 0.65),
+            0 2px 5px rgba(0, 0, 0, 0.32);
     }
 }
 
-.taskbar-start-button.orb.active {
-    /* Pressed state - deep inset with subtle bottom highlight */
-    -webkit-backdrop-filter: blur(8px) saturate(1.1);
-    backdrop-filter: blur(8px) saturate(1.1);
-
+.taskbar-start-button.luna.active {
     background:
-        /* Very subtle bottom highlight when pressed */
-        radial-gradient(ellipse 42% 35% at 50% 68%,
-            rgba(255, 255, 255, 0.15) 0%,
-            rgba(255, 255, 255, 0.08) 22%,
-            rgba(255, 255, 255, 0.03) 45%,
-            transparent 70%),
-        /* Top-left shadow area for pressed depth */
-        radial-gradient(ellipse 55% 50% at 30% 30%,
-            rgba(0, 40, 80, 0.25) 0%,
-            rgba(0, 40, 80, 0.12) 50%,
-            transparent 80%),
-        /* Pressed gradient - slightly darker */
-        radial-gradient(ellipse 95% 90% at 50% 55%,
-            rgba(40, 115, 175, 0.38) 0%,
-            rgba(44, 120, 182, 0.37) 15%,
-            rgba(50, 128, 190, 0.36) 30%,
-            rgba(56, 138, 200, 0.35) 45%,
-            rgba(63, 148, 210, 0.36) 60%,
-            rgba(70, 158, 218, 0.37) 75%,
-            rgba(78, 168, 226, 0.38) 90%,
-            rgba(85, 178, 232, 0.40) 100%);
-
-    border: 1.5px solid rgba(25, 65, 115, 0.45);
-    border-top-color: rgba(0, 0, 0, 0.50);
-    border-left-color: rgba(0, 0, 0, 0.50);
-
-    /* Deep inset shadows for pressed appearance */
+        linear-gradient(to bottom,
+            rgba(0, 0, 0, 0.22) 0%,
+            rgba(0, 0, 0, 0.14) 40%,
+            rgba(255, 255, 255, 0.12) 48%,
+            rgba(255, 255, 255, 0.18) 100%),
+        linear-gradient(to bottom,
+            #2d7f2d 0%,
+            #338833 35%,
+            #3a943a 70%,
+            #42a042 100%);
+    border-color: #145814;
+    border-top-color: rgba(0, 0, 0, 0.35);
     box-shadow:
-        inset 0 4px 8px rgba(0, 50, 100, 0.50),
-        inset 0 -1px 3px rgba(255, 255, 255, 0.08),
-        inset 4px 0 8px rgba(0, 50, 100, 0.42),
-        inset -2px -2px 6px rgba(0, 50, 100, 0.25),
-        0 0 10px rgba(70, 170, 228, 0.32);
-
-    transform: scale(0.95);
+        inset 0 2px 5px rgba(0, 0, 0, 0.38),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.15),
+        0 0 8px rgba(55, 160, 55, 0.45);
+    transform: translateY(1px);
 }
 
+/* Vista orb: 60×45 sprite frames in a clip window, overflows above taskbar */
+.taskbar-start-button-orb-frame {
+    display: none;
+}
+
+.taskbar-start-button.orb {
+    width: 60px;
+    min-width: 60px;
+    max-width: 60px;
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+    border: none;
+    color: white;
+    isolation: isolate;
+    overflow: visible;
+    display: block;
+    transition: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: none;
+    box-shadow: none;
+}
+
+.taskbar-start-button.orb .taskbar-start-button-orb-frame {
+    display: block;
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 60px;
+    height: 38px;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.taskbar-start-button.orb .taskbar-start-button-orb {
+    display: block;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 60px;
+    height: auto;
+    max-width: none;
+    pointer-events: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.taskbar-start-button.orb .taskbar-start-button-text,
+.taskbar-start-button.orb .taskbar-start-button-logo {
+    display: none;
+}
+
+.taskbar-start-button.orb:hover:not(:disabled):not(.active) .taskbar-start-button-orb {
+    top: -45px;
+}
+
+.taskbar-start-button.orb.active .taskbar-start-button-orb {
+    top: -90px;
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .taskbar-start-button.orb:hover:not(:disabled):not(.active) .taskbar-start-button-orb {
+        top: -45px;
+    }
+}
+
+/* Windows XP Luna: bold oblique on all locales (Latin, CJK, Cyrillic) */
 .taskbar-start-button-text {
     margin-left: 6px;
-    font-size: 1rem;
-    font-weight: 600;
-    font-variation-settings: "wght" 600;
-    font-family: 'Tahoma', 'Segoe UI', Geneva, Verdana, sans-serif;
-    color: white;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6), 0 0 1px rgba(0, 0, 0, 0.3);
-    letter-spacing: 0.01em;
+    font-size: 12pt;
+    font-weight: 700;
+    font-style: italic;
+    font-family: Tahoma, 'Noto Sans JP', 'Noto Sans KR', 'MS UI Gothic', 'MS Sans Serif', 'Segoe UI', sans-serif;
+    color: #fff;
     text-transform: none;
     white-space: nowrap;
     line-height: 1;
-    font-style: italic;
+    letter-spacing: 0;
+    text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.9);
 }
 
 .taskbar-start-button-logo {
@@ -4835,22 +4859,33 @@ body:not(.desktop-mode) .desktop-taskbar {
     display: flex;
     gap: 2px;
     align-items: center;
+    min-height: 0;
     overflow: hidden;
     padding: 0 4px;
 }
 
 .taskbar-window-item {
-    height: 28px;
+    height: var(--taskbar-window-height, 28px);
     min-width: 180px;
     max-width: 180px;
     border-radius: 3px;
     display: flex;
     align-items: center;
+    justify-content: flex-start;
     padding: 0;
     overflow: hidden;
     position: relative;
     isolation: isolate;
-    transition: var(--transition-taskbar-item);
+    box-sizing: border-box;
+    transition:
+        background-color var(--transition-fast),
+        border-color var(--transition-fast),
+        box-shadow var(--transition-fast),
+        min-width var(--transition-fast),
+        max-width var(--transition-fast),
+        width var(--transition-fast),
+        padding var(--transition-fast),
+        opacity var(--transition-fast);
 
     /* Vista-style layered glass background */
     background:
@@ -4866,11 +4901,10 @@ body:not(.desktop-mode) .desktop-taskbar {
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-bottom-color: rgba(0, 0, 0, 0.3);
 
-    /* Vista-style inner shadows for depth */
+    /* Inset only — outer shadow caused hover jump */
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.1),
-        inset 0 -1px 0 rgba(0, 0, 0, 0.25),
-        0 1px 2px rgba(0, 0, 0, 0.2);
+        inset 0 -1px 0 rgba(0, 0, 0, 0.25);
 }
 
 @supports not ((-webkit-touch-callout: none) or (hover: hover)) {
@@ -4890,8 +4924,7 @@ body:not(.desktop-mode) .desktop-taskbar {
 
         box-shadow:
             inset 0 1px 0 rgba(255, 255, 255, 0.15),
-            inset 0 -1px 0 rgba(0, 0, 0, 0.3),
-            0 1px 3px rgba(0, 0, 0, 0.3);
+            inset 0 -1px 0 rgba(0, 0, 0, 0.3);
     }
 }
 
@@ -4903,7 +4936,10 @@ body:not(.desktop-mode) .desktop-taskbar {
     color: white;
     font-weight: 650;
     font-variation-settings: "wght" 650;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 -1px 0 rgba(0, 0, 0, 0.2), 0 0 8px var(--primary-glass-color), 0 1px 3px rgba(0, 0, 0, 0.4);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.3),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.2),
+        0 0 8px var(--primary-glass-color);
 }
 
 .taskbar-window-item.minimised {
@@ -4920,24 +4956,41 @@ body:not(.desktop-mode) .desktop-taskbar {
     min-width: 180px;
     width: 180px;
     height: 100%;
+    box-sizing: border-box;
     opacity: 1;
-    text-shadow: -1px 2px 4px #0000007a;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.48);
     transition: opacity 0.1s ease-out;
 }
 
 .taskbar-window-item i {
     flex-shrink: 0;
-    font-size: 0.85rem;
+    width: var(--taskbar-window-icon-size, 17px);
+    height: var(--taskbar-window-icon-size, 17px);
+    font-size: var(--taskbar-window-fa-font-size, 0.85rem);
+    line-height: var(--taskbar-window-icon-size, 17px);
+    text-align: center;
 }
 
 .taskbar-window-item .icon-image {
     flex-shrink: 0;
-    width: 17px;
-    height: 17px;
+    width: var(--taskbar-window-icon-size, 17px);
+    height: var(--taskbar-window-icon-size, 17px);
     object-fit: contain;
-    image-rendering: -webkit-optimize-contrast;
-    image-rendering: crisp-edges;
-    image-rendering: pixelated;
+    display: none !important;
+}
+
+/* Luna / workspace: <i> only (beats body.user-icons) */
+body.desktop-mode:not(:has(#desktopTaskbar .taskbar-start-button.orb)) .taskbar-window-item i {
+    display: inline-block !important;
+}
+
+/* Orb: image icon when available */
+body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window-item .icon-image {
+    display: inline-block !important;
+}
+
+body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window-item:has(.icon-image) i {
+    display: none !important;
 }
 
 .taskbar-window-item span {
@@ -4945,7 +4998,8 @@ body:not(.desktop-mode) .desktop-taskbar {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 0.75rem;
+    font-size: var(--taskbar-window-font-size, 0.75rem);
+    line-height: normal;
     color: var(--text-primary);
 }
 
@@ -5033,8 +5087,8 @@ body:not(.desktop-mode) .desktop-taskbar {
     align-items: center;
     justify-content: center;
     flex: 0 auto;
-    min-width: 18px;
-    height: 18px;
+    min-width: var(--taskbar-group-count-size, 18px);
+    height: var(--taskbar-group-count-size, 18px);
     padding: 0 4px;
     margin-left: 4px;
     background: linear-gradient(to bottom,
@@ -5200,6 +5254,7 @@ body:not(.desktop-mode) .desktop-taskbar {
     align-items: center;
     gap: 8px;
     height: 100%;
+    min-height: 0;
     padding: 0 8px;
 
     /* Vista-style separator with subtle depth */
@@ -5248,8 +5303,8 @@ body:not(.desktop-mode) .desktop-taskbar {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
+    width: var(--taskbar-tray-icon-size, 24px);
+    height: var(--taskbar-tray-icon-size, 24px);
     margin-right: 4px;
     border-radius: 4px;
     transition: background-color 0.2s ease, opacity 0.3s ease;
@@ -5266,6 +5321,22 @@ body:not(.desktop-mode) .desktop-taskbar {
 
 .taskbar-tray-icon.hidden {
     display: none;
+}
+
+.taskbar-tray-icon.tray-boot-in {
+    animation: trayIconBootIn 0.22s ease-out;
+}
+
+@keyframes trayIconBootIn {
+    from {
+        opacity: 0;
+        transform: translateY(3px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 /* Subscription Renewal Indicator */
@@ -5405,6 +5476,330 @@ body:not(.desktop-mode) .desktop-taskbar {
     color: #e57373;
 }
 
+/* Generation Quips Tray */
+.generation-quips-tray-icon {
+    color: var(--text-secondary);
+    cursor: default;
+}
+
+.generation-quips-tray-icon.quips-running i {
+    color: #ce93d8;
+    animation: quips-tray-pulse 1.8s ease-in-out infinite;
+}
+
+.generation-quips-tray-icon.quips-running-other i {
+    color: #90caf9;
+    animation: quips-tray-pulse-other 2.4s ease-in-out infinite;
+}
+
+@keyframes quips-tray-pulse-other {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.92); }
+}
+
+@keyframes quips-tray-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+}
+
+.generation-quips-tray-icon.quips-ready i {
+    /* use default tray icon color */
+}
+
+.generation-quips-tray-icon.quips-partial i {
+    color: #ffb74d;
+}
+
+.generation-quips-tray-icon.quips-error i {
+    color: #e57373;
+}
+
+.generation-quips-tray-icon.quips-idle i {
+    color: var(--text-secondary);
+    opacity: 0.75;
+}
+
+.generation-quips-tray-icon.quips-request-ready i {
+    color: #81d4fa;
+}
+
+.naxt-bag-tray-icon.naxt-bag-tray-atelier-open {
+    opacity: 0.45;
+}
+
+.generation-quips-tray-icon {
+    position: relative;
+}
+
+.generation-quips-auto-indicator {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #81c784;
+    box-shadow: 0 0 4px rgba(129, 199, 132, 0.9);
+}
+
+.generation-quips-auto-indicator.hidden {
+    display: none;
+}
+
+.generation-quips-tray-icon.quips-auto-pending .generation-quips-auto-indicator {
+    animation: quips-auto-indicator-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes quips-auto-indicator-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.45; transform: scale(0.85); }
+}
+
+.quips-auto-update-dialog .quips-auto-update-intro {
+    margin: 0 0 0.75rem;
+    text-align: left;
+    line-height: 1.4;
+}
+
+.quips-auto-update-dialog .form-group {
+    margin-bottom: 0.5rem;
+    text-align: left;
+}
+
+.quips-auto-update-dialog .form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.35rem;
+    font-size: 0.85em;
+}
+
+.quips-auto-update-dialog .custom-dropdown {
+    width: 100%;
+}
+
+.quips-auto-update-dialog .custom-dropdown-btn {
+    width: 100%;
+    justify-content: space-between;
+}
+
+.quips-auto-update-dialog .quips-auto-update-meta {
+    margin-top: 0.75rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.generation-quips-tray-popup {
+    min-width: 0;
+    max-width: 220px;
+    width: max-content;
+    padding: 0.45em 0.5em;
+    font-size: 0.82em;
+    z-index: 12000;
+}
+
+.generation-quips-tray-popup.hidden {
+    display: none;
+}
+
+.generation-quips-tray-popup .popover-content,
+.generation-quips-tray-popup-inner {
+    gap: 0;
+    min-width: 0;
+}
+
+.generation-quips-tray-popup-header-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.35em;
+}
+
+.generation-quips-tray-popup-header-row > .popover-body {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    margin: 0;
+}
+
+.generation-quips-tray-popup-close.context-menu-icon-btn {
+    width: 18px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0;
+    border-radius: 2px;
+    margin: 0;
+    flex-shrink: 0;
+}
+
+.generation-quips-tray-popup .popover-body {
+    font-size: 1em;
+    line-height: 1.3;
+    white-space: normal;
+}
+
+.generation-quips-tray-popup-status {
+    font-weight: 500;
+}
+
+.generation-quips-tray-popup-detail {
+    color: var(--text-secondary);
+    font-size: 0.88em;
+    margin-top: 0.15em;
+}
+
+.generation-quips-tray-popup-progress-wrap {
+    margin-top: 0.35em;
+    height: 5px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.generation-quips-tray-popup-progress-wrap > div {
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #ce93d8, #81d4fa);
+    transition: width 0.35s ease;
+}
+
+.generation-quips-tray-popup-previews {
+    margin-top: 0.45em;
+    max-height: 120px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3em;
+}
+
+.generation-quips-tray-preview {
+    padding: 0.3em 0.4em;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.generation-quips-tray-preview-term {
+    display: block;
+    font-size: 0.75em;
+    color: #ce93d8;
+    margin-bottom: 0.1em;
+}
+
+.generation-quips-tray-preview-phrase {
+    display: block;
+    font-size: 0.85em;
+}
+
+.quip-wiki-doc {
+    padding: 0.5rem 0.25rem 1.5rem;
+}
+
+.quip-wiki-nav {
+    margin-bottom: 1.25rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+.quip-wiki-nav-link {
+    color: var(--primary-color, #7eb8ff);
+    text-decoration: none;
+}
+
+.quip-wiki-nav-link:hover {
+    text-decoration: underline;
+}
+
+.quip-wiki-section {
+    margin-bottom: 2rem;
+}
+
+.quip-wiki-section h2 {
+    margin: 0 0 1rem;
+    font-size: 1.15rem;
+}
+
+.quip-wiki-controls {
+    margin-top: 2rem;
+    padding: 1rem 1.1rem;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.quip-wiki-controls-title {
+    margin: 0 0 1rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+}
+
+.quip-wiki-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+    gap: 0.65rem 1rem;
+    margin: 0 0 1.1rem;
+}
+
+.quip-wiki-stat {
+    margin: 0;
+}
+
+.quip-wiki-stat dt {
+    margin: 0;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.6;
+}
+
+.quip-wiki-stat dd {
+    margin: 0.15rem 0 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.quip-wiki-controls-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.quip-wiki-term {
+    margin-bottom: 1.25rem;
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.quip-wiki-term-title {
+    margin: 0 0 0.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.quip-wiki-phrase-count {
+    font-size: 0.75rem;
+    font-weight: normal;
+    opacity: 0.65;
+}
+
+.quip-wiki-phrases {
+    margin: 0;
+    padding-left: 1.25rem;
+}
+
+.quip-wiki-phrases li {
+    margin-bottom: 0.35rem;
+    line-height: 1.45;
+}
+
+.quip-wiki-empty {
+    opacity: 0.7;
+    font-style: italic;
+}
+
 /* Ping Warning Indicator */
 .ping-warning-indicator {
     color: #ff9800;
@@ -5476,7 +5871,7 @@ body:not(.desktop-mode) .desktop-taskbar {
 /* Start Menu Styles */
 .start-menu {
     position: fixed;
-    bottom: 35px;
+    bottom: var(--taskbar-height, 35px);
     left: 0;
     width: 350px;
     max-height: calc(100vh - calc(var(--titlebar-area-height) + 64px));
@@ -5922,8 +6317,25 @@ body:not(.desktop-mode) .desktop-taskbar {
 
 /* Adjust body padding when taskbar is visible */
 body.desktop-mode {
-    padding-bottom: 35px;
+    --taskbar-height: 35px;
+    --taskbar-window-height: 28px;
+    --taskbar-tray-icon-size: 24px;
+    --taskbar-window-icon-size: 17px;
+    --taskbar-window-font-size: 0.75rem;
+    --taskbar-window-fa-font-size: 0.85rem;
+    --taskbar-group-count-size: 18px;
+    padding-bottom: var(--taskbar-height);
     border-top-width: 0px;
+}
+
+body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) {
+    --taskbar-height: 31px;
+    --taskbar-window-height: 24px;
+    --taskbar-tray-icon-size: 20px;
+    --taskbar-window-icon-size: 15px;
+    --taskbar-window-font-size: 0.7rem;
+    --taskbar-window-fa-font-size: 0.8rem;
+    --taskbar-group-count-size: 16px;
 }
 
 /* Hide generation controls in desktop mode */
@@ -6576,6 +6988,19 @@ body.desktop-marquee-active {
     height: 980px;
 }
 
+#naxtModal #naxtDatasetDropdownBtn {
+    min-width: 2.25rem;
+    padding: 0.35em 0.55em;
+}
+
+#naxtModal #naxtDatasetDropdownBtn #naxtDatasetSelected {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    max-width: none;
+    overflow: visible;
+}
+
 #desktopSettingsModal {
     width: 550px;
     max-height: 90vh;
@@ -6699,6 +7124,28 @@ body.desktop-marquee-active {
     transform: translateX(calc(100% + 1px));
 }
 
+#desktopSettingsModal .desktop-settings-start-menu-style-toggle {
+    grid-template-columns: 1fr 1fr 1fr;
+}
+
+#desktopSettingsModal .desktop-settings-start-menu-style-toggle .gallery-toggle-slider {
+    width: calc(calc(100% / 3) - 2px);
+}
+
+#desktopSettingsModal .desktop-settings-start-menu-style-toggle[data-active="workspace"] .gallery-toggle-slider {
+    transform: translateX(calc(100% + 1px));
+}
+
+#desktopSettingsModal .desktop-settings-start-menu-style-toggle[data-active="orb"] .gallery-toggle-slider {
+    transform: translateX(calc(200% + 2px));
+}
+
+#desktopSettingsModal .desktop-settings-start-menu-style-toggle .gallery-toggle-btn .tab-text {
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
 #desktopSettingsModal .desktop-settings-scope-toggle .gallery-toggle-btn .tab-text {
     font-size: 0.8rem;
     font-weight: 600;
@@ -6746,6 +7193,156 @@ body.desktop-marquee-active {
     line-height: 1.35;
     color: var(--text-accent-tinted);
     opacity: 0.75;
+}
+
+/* Start button custom text preview (confirmation dialog) */
+.start-btn-text-preview-dialog {
+    text-align: left;
+}
+
+.start-btn-text-preview-dialog .start-btn-text-preview-label {
+    display: block;
+    margin: 0 0 var(--spacing-xs);
+    font-size: 0.82rem;
+    color: var(--text-accent-tinted);
+}
+
+.start-btn-text-preview-frame {
+    width: 100%;
+    height: 96px;
+    overflow: hidden;
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--radius-sm);
+    background: #000;
+    position: relative;
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+.start-btn-text-preview-scene {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+.start-btn-text-preview-wallpaper {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: var(--workspace-background-color, #0a1a2a);
+    background-size: cover;
+    background-repeat: no-repeat;
+}
+
+.start-btn-text-preview-taskbar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 35px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 4px 0 0;
+    isolation: isolate;
+}
+
+.start-btn-text-preview-taskbar .taskbar-start {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+}
+
+.start-btn-text-preview-taskbar::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top,
+            var(--border-primary, #ffffff00) 0%,
+            transparent 100%);
+    opacity: 0.5;
+    z-index: -2;
+}
+
+.start-btn-text-preview-taskbar::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(to bottom,
+            rgba(255, 255, 255, 0.08) 0%,
+            rgba(255, 255, 255, 0.04) 40%,
+            rgba(0, 0, 0, 0.2) 50%,
+            rgba(0, 0, 0, 0.35) 100%),
+        linear-gradient(to top,
+            hsl(0 0% 8% / 95%) 0%,
+            hsl(0 0% 12% / 92%) 50%,
+            hsl(0 0% 18% / 90%) 100%);
+    -webkit-backdrop-filter: saturate(2.5) var(--glass-blur-4);
+    backdrop-filter: saturate(2.5) var(--glass-blur-4);
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.15),
+        inset 0 -1px 1px rgba(0, 0, 0, 0.3);
+    z-index: -1;
+    opacity: 0.85;
+}
+
+.start-btn-text-preview-taskbar:has(.taskbar-start-button.orb) {
+    height: 31px;
+}
+
+.start-btn-text-preview-taskbar {
+    overflow: visible;
+}
+
+.start-btn-text-preview-taskbar .taskbar-start {
+    overflow: visible;
+}
+
+.start-btn-text-preview-taskbar .taskbar-start-button {
+    pointer-events: none;
+}
+
+.start-menu-text-setting {
+    display: flex;
+    flex-direction: row;
+    gap: var(--spacing-lg);
+    align-items: stretch;
+}
+
+.start-menu-text-setting-preview {
+    flex: 0 0 200px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.start-menu-text-setting-controls {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.start-menu-text-setting-controls .form-group {
+    margin-bottom: 0;
+}
+
+@media (max-width: 640px) {
+    .start-menu-text-setting {
+        flex-direction: column;
+    }
+
+    .start-menu-text-setting-preview {
+        flex: none;
+        width: 100%;
+    }
 }
 
 @media (max-width: 640px) {
@@ -10117,7 +10714,7 @@ body.desktop-mode .form-section.model-control .control-holder .form-row.control-
     }
 
     body.desktop-mode div#manualModal:not(.windowed) {
-        max-height: calc(100vh - 35px);
+        max-height: calc(100vh - var(--taskbar-height, 35px));
     }
 
     html:not(.titlebar-android) .editor-open:not(.desktop-mode) #titlebar-grab-area-container #menu-bar-left-gutter {
@@ -11083,10 +11680,10 @@ button::-moz-focus-inner {
     }
 }
 
-.form-row input:focus,
-.form-row .percentage-input-container:focus-within,
-.form-control:focus,
-.form-control:active {
+.form-row input:not(.hover-show):focus,
+.form-row .percentage-input-container:not(.hover-show):focus-within,
+.form-control:not(.hover-show):focus,
+.form-control:not(.hover-show):active {
     background: var(--glass-layer-4);
     border: 1px solid var(--glass-border-4);
 }
@@ -11138,6 +11735,23 @@ button::-moz-focus-inner {
         border: 1px solid var(--glass-border-3);
         box-shadow: 0 8px 20px rgb(255 255 255 / 12%);
         z-index: var(--z-layer-3);
+    }
+
+    input.hover-show:hover:focus:not(:disabled),
+    textarea.hover-show:hover:focus:not(:disabled),
+    select.hover-show:hover:focus:not(:disabled),
+    .form-control.hover-show:hover:focus:not(:disabled),
+    .modal-content input.hover-show:hover:focus:not(:disabled),
+    .modal-content textarea.hover-show:hover:focus:not(:disabled),
+    .modal-content select.hover-show:hover:focus:not(:disabled),
+    .form-row input.hover-show:hover:focus:not(:disabled),
+    .form-row textarea.hover-show:hover:focus:not(:disabled),
+    .percentage-input-container.hover-show:hover:focus-within,
+    .percentage-input-container.hover-show:focus-within:hover:not(:disabled),
+    .custom-dropdown-btn.hover-show.active:hover:not(:disabled) {
+        background: var(--hover-show-active-bg);
+        border: 1px solid var(--hover-show-active-border);
+        box-shadow: var(--hover-show-active-shadow);
     }
 }
 
@@ -12554,7 +13168,7 @@ i#carouselCacheIcon {
     color: #cccccc;
 }
 
-.modal-content input {
+.modal-content input:not([type="radio"]):not([type="checkbox"]) {
     width: 100%;
     font-size: 1rem;
 }
@@ -26505,7 +27119,21 @@ body.scraps-grayscale::after {
     white-space: nowrap;
 }
 
-.custom-dropdown-btn.hover-show.active {
+input.hover-show:focus:not(:disabled),
+textarea.hover-show:focus:not(:disabled),
+select.hover-show:focus:not(:disabled),
+.form-control.hover-show:focus:not(:disabled),
+.modal-content input.hover-show:focus:not(:disabled),
+.modal-content textarea.hover-show:focus:not(:disabled),
+.modal-content select.hover-show:focus:not(:disabled),
+.form-row input.hover-show:focus:not(:disabled),
+.form-row textarea.hover-show:focus:not(:disabled),
+.form-row .percentage-input-container.hover-show:focus-within,
+.percentage-input-container.hover-show:focus-within {
+    color: var(--text-primary);
+    background: var(--hover-show-active-bg);
+    border: 1px solid var(--hover-show-active-border);
+    box-shadow: var(--hover-show-active-shadow);
     padding: 0.25em 0.6em;
     outline: none;
     appearance: none;
@@ -26514,15 +27142,33 @@ body.scraps-grayscale::after {
     z-index: var(--z-layer-3);
 }
 
-.custom-dropdown-btn.hover-show.active,
-.modal-content .hover-show:focus,
-.form-row input.hover-show:focus,
-.form-row .percentage-input-container:focus-within,
-.percentage-input-container.hover-show:focus-within {
+.custom-dropdown-btn.hover-show.active {
     color: var(--text-primary);
     background: var(--hover-show-active-bg);
     border: 1px solid var(--hover-show-active-border);
     box-shadow: var(--hover-show-active-shadow);
+    padding: 0.25em 0.6em;
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
+    z-index: var(--z-layer-3);
+}
+
+input.hover-show:hover:focus:not(:disabled),
+textarea.hover-show:hover:focus:not(:disabled),
+select.hover-show:hover:focus:not(:disabled),
+.form-control.hover-show:hover:focus:not(:disabled),
+.modal-content input.hover-show:hover:focus:not(:disabled),
+.modal-content textarea.hover-show:hover:focus:not(:disabled),
+.modal-content select.hover-show:hover:focus:not(:disabled),
+.form-row input.hover-show:hover:focus:not(:disabled),
+.form-row textarea.hover-show:hover:focus:not(:disabled),
+.form-row .percentage-input-container.hover-show:hover:focus-within,
+.percentage-input-container.hover-show:hover:focus-within,
+.custom-dropdown-btn.hover-show.active:hover:not(:disabled) {
+    background: var(--hover-show-active-bg);
+    border: 1px solid var(--hover-show-active-border);
+    box-shadow: var(--hover-show-active-shadow);
+    padding: 0.25em 0.6em;
 }
 
 span.dataset-button-text {
@@ -30877,6 +31523,7 @@ html:has(body.desktop-mode) {
 
 .modal.toolbar-visible .modal-window-title {
     background: linear-gradient(180deg, hsl(0deg 0% 100% / 25%), hsl(0deg 0% 100% / 28%) 16.9%, hsl(0deg 0% 75% / 25%) 17%, hsl(0deg 0% 100% / 25%), hsl(0deg 0% 100% / 30%));
+    overflow: visible;
 }
 
 .modal:not(.active-window) .modal-window-title {
@@ -30945,18 +31592,55 @@ html:has(body.desktop-mode) {
     height: 48px;
     min-height: 48px;
     width: 100%;
-    gap: var(--spacing-sm);
+    min-width: 0;
+    max-width: 100%;
     padding: var(--spacing-sm) 0;
+    box-sizing: border-box;
+    gap: var(--spacing-xs);
     flex-shrink: 0;
-    overflow: visible;
+    overflow-x: auto;
+    overflow-y: visible;
+    scrollbar-width: thin;
     line-height: 1;
     cursor: auto;
     user-select: text;
 }
 
+.modal-window-title-toolbar > .button-group,
+.modal-window-title-toolbar > .custom-dropdown,
+.modal-window-title-toolbar > [class^="btn-"],
+.modal-window-title-toolbar > .form-control,
+.modal-window-title-toolbar > input.form-control:not([type="hidden"]) {
+    flex-shrink: 0;
+}
+
+.modal-window-title-toolbar .custom-dropdown {
+    width: auto;
+}
+
+.modal-window-title-toolbar .custom-dropdown [class^="btn-"] {
+    width: auto;
+    min-width: 2.25rem;
+    min-height: 32px;
+    padding: 0.35em 0.55em;
+    background: var(--glass-layer-dark-4);
+    border: 1px solid var(--glass-border-3);
+    color: var(--text-accent-tinted);
+    box-shadow: var(--glass-shadow-2), inset 0 0 12px var(--glass-inset-bg-4);
+}
+
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) [class^="btn-"] {
+    min-width: 2.25rem;
+    padding: 0.35em 0.55em;
+}
+
 .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) {
     flex: 1 1 auto;
     min-width: 0;
+    align-self: center;
+    height: 32px;
+    min-height: 32px;
+    overflow: visible;
 }
 
 .modal-window-title-toolbar .button-group,
@@ -30964,7 +31648,7 @@ html:has(body.desktop-mode) {
     user-select: none;
 }
 
-.modal-window-title-toolbar .button-group:not(:has(.form-control, input:not([type="hidden"]))) {
+.modal-window-title-toolbar .button-group:not(:has(.form-control, input:not([type="hidden"]))):not(:has(> .toolbar-input-segment)) {
     box-shadow: none;
 }
 
@@ -30984,10 +31668,10 @@ html:has(body.desktop-mode) {
     transition: var(--transition-form-control);
 }
 
-.modal-window-title-toolbar>[class^="btn-"],
-.modal-window-title-toolbar>.button-group:not(:has(.form-control, input:not([type="hidden"]))) [class^="btn-"] {
+.modal-window-title-toolbar>[class^="btn-"]:not(.btn-primary):not(.btn-danger):not(.btn-toggle),
+.modal-window-title-toolbar>.button-group:not(:has(.form-control, input:not([type="hidden"]))) [class^="btn-"]:not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment) {
     background: var(--glass-layer-dark-4);
-    border-color: var(--glass-border-3);
+    border: 1px solid var(--glass-border-3);
     color: var(--text-accent-tinted);
     box-shadow: var(--glass-shadow-2), inset 0 0 12px var(--glass-inset-bg-4);
 }
@@ -30998,12 +31682,19 @@ html:has(body.desktop-mode) {
     border: 1px solid var(--glass-border-3);
     color: var(--text-accent-tinted);
     box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
+    min-height: 32px;
+    height: 32px;
+    padding-block: 0;
+    line-height: 1;
+    box-sizing: border-box;
+    font-family: inherit;
+    font-size: 0.8125rem;
 }
 
-.modal-window-title-toolbar>.form-control::placeholder,
-.modal-window-title-toolbar>input.form-control::placeholder {
-    color: var(--text-secondary);
-    opacity: 0.85;
+.modal-window-title-toolbar .form-control::placeholder,
+.modal-window-title-toolbar input.form-control::placeholder {
+    color: var(--text-accent-tinted);
+    opacity: 0.55;
 }
 
 .modal-window-title-toolbar>.form-control:disabled,
@@ -31014,8 +31705,59 @@ html:has(body.desktop-mode) {
     box-shadow: inset var(--glass-shadow-1);
 }
 
-.modal-window-title-toolbar>[class^="btn-"]:disabled,
-.modal-window-title-toolbar>.button-group:not(:has(.form-control, input:not([type="hidden"]))) [class^="btn-"]:disabled {
+.modal-window-title-toolbar>[class^="btn-"]:disabled:not(.btn-primary):not(.btn-danger):not(.btn-toggle),
+.modal-window-title-toolbar>.button-group:not(:has(.form-control, input:not([type="hidden"]))) [class^="btn-"]:disabled:not(.btn-primary):not(.btn-danger):not(.btn-toggle) {
+    background: var(--glass-layer-dark-2);
+    border-color: var(--glass-border-2);
+    color: var(--text-muted);
+    box-shadow: inset var(--glass-shadow-1);
+}
+
+.modal-window-title-toolbar > .btn-primary,
+.modal-window-title-toolbar > .btn-danger,
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-primary,
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-danger {
+    min-width: 2.25rem;
+    min-height: 32px;
+    height: 32px;
+    padding: 0.35em 0.55em;
+    line-height: 1;
+    box-sizing: border-box;
+    font-size: inherit;
+}
+
+.modal-window-title-toolbar > .btn-primary,
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-primary {
+    background: var(--primary-glass-color);
+    border: 1px solid var(--primary-glass-border);
+    color: var(--text-accent-tinted);
+    box-shadow: var(--glass-shadow-2), inset 0 0 12px var(--glass-inset-bg-4);
+    font-weight: 700;
+    font-variation-settings: "wght" 700;
+}
+
+.modal-window-title-toolbar > .btn-primary:disabled,
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-primary:disabled {
+    opacity: 0.5;
+    background: var(--glass-layer-dark-2);
+    border-color: var(--glass-border-2);
+    color: var(--text-muted);
+    box-shadow: inset var(--glass-shadow-1);
+    font-weight: 600;
+    font-variation-settings: "wght" 600;
+}
+
+.modal-window-title-toolbar > .btn-danger,
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-danger {
+    background: var(--danger-glass-color);
+    border: 1px solid var(--danger-glass-border);
+    color: hsl(0 100% 85%);
+    box-shadow: var(--glass-shadow-2), inset 0 0 12px var(--glass-inset-bg-4);
+}
+
+.modal-window-title-toolbar > .btn-danger:disabled,
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-danger:disabled {
+    opacity: 0.6;
     background: var(--glass-layer-dark-2);
     border-color: var(--glass-border-2);
     color: var(--text-muted);
@@ -31026,11 +31768,13 @@ html:has(body.desktop-mode) {
     background: var(--glass-layer-dark-4);
     border: 1px solid var(--glass-border-3);
     box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
+    overflow: visible;
 }
 
 .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control,
 .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:not([type="hidden"]),
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"] {
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))> [class^="btn-"],
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .custom-dropdown [class^="btn-"] {
     background: transparent;
     box-shadow: none;
 }
@@ -31040,10 +31784,148 @@ html:has(body.desktop-mode) {
     border-radius: 0;
     border-top: none;
     border-bottom: none;
-    border-left: none;
-    border-right: 1px solid var(--glass-border-3);
+    border-left: 1px solid transparent;
+    border-right: 1px solid transparent;
     color: var(--text-accent-tinted);
-    min-height: revert;
+    flex: 1;
+    min-width: 0;
+    min-height: 32px;
+    height: 32px;
+    padding-block: 0;
+    line-height: 1;
+    box-sizing: border-box;
+    font-family: inherit;
+    font-size: 0.8125rem;
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))> [class^="btn-"] {
+    min-height: 32px;
+    height: 32px;
+    padding-block: 0;
+    line-height: 1;
+    box-sizing: border-box;
+    border-top: none;
+    border-bottom: none;
+    border-left: 1px solid transparent;
+    border-right: 1px solid transparent;
+    color: var(--text-accent-tinted);
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .custom-dropdown {
+    flex-shrink: 0;
+    width: auto;
+    position: relative;
+    z-index: 1;
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .custom-dropdown:has([class^="btn-"].active) {
+    z-index: 2;
+}
+
+/* Override global .button-group segment borders — title toolbar uses .toolbar-input-segment rules */
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control:not(:last-child),
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:not(:last-child) {
+    border-right: 1px solid transparent;
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control+[class^="btn-"],
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) input+[class^="btn-"],
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"]+.form-control,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"]+input {
+    border-left: 1px solid transparent;
+    border-right: 1px solid transparent;
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .toolbar-input-segment {
+    transition: color 0.15s ease;
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .custom-dropdown [class^="btn-"] {
+    background: transparent;
+    box-shadow: none;
+    border-radius: 0;
+    border-top: none;
+    border-bottom: none;
+    border-left: 1px solid transparent;
+    border-right: 1px solid transparent;
+    min-height: 32px;
+    height: 32px;
+    padding-block: 0;
+    line-height: 1;
+    box-sizing: border-box;
+    color: var(--text-accent-tinted);
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .custom-dropdown:first-child [class^="btn-"],
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))> [class^="btn-"].toolbar-input-segment:first-child {
+    border-top-left-radius: var(--border-radius-md);
+    border-bottom-left-radius: var(--border-radius-md);
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))> [class^="btn-"].toolbar-input-segment:last-child {
+    border-top-right-radius: var(--border-radius-md);
+    border-bottom-right-radius: var(--border-radius-md);
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(
+    .toolbar-input-segment:hover,
+    .toolbar-input-segment.active,
+    .toolbar-input-segment.context-open,
+    input.toolbar-input-segment:focus
+) .toolbar-input-segment:not(:hover):not(.active):not(.context-open):not(:focus) {
+    border-color: transparent;
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .toolbar-input-segment:hover,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .toolbar-input-segment.active,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .toolbar-input-segment.context-open,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) input.toolbar-input-segment:focus {
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-primary);
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .custom-dropdown:not(:last-child) .toolbar-input-segment:hover,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .custom-dropdown:not(:last-child) .toolbar-input-segment.active,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .custom-dropdown:not(:last-child) .toolbar-input-segment.context-open {
+    border-left-color: transparent;
+    border-right-color: var(--glass-border-4);
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) input.toolbar-input-segment:focus {
+    border-left-color: transparent;
+    border-right-color: var(--glass-border-4);
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))> [class^="btn-"].toolbar-input-segment:last-child:hover,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))> [class^="btn-"].toolbar-input-segment:last-child.active,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))> [class^="btn-"].toolbar-input-segment:last-child.context-open {
+    border-left-color: var(--glass-border-4);
+    border-right-color: transparent;
+}
+
+.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .custom-dropdown [class^="btn-"] {
+    background: transparent;
+    color: var(--text-secondary);
+    box-shadow: none;
+}
+
+.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .toolbar-input-segment:hover,
+.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .toolbar-input-segment.active,
+.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) input.toolbar-input-segment:focus {
+    color: var(--text-primary);
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(
+    .toolbar-input-segment:hover,
+    .toolbar-input-segment.active,
+    .toolbar-input-segment.context-open,
+    input.toolbar-input-segment:focus
+),
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):hover {
+    border-color: var(--glass-border-4);
+    background: var(--glass-layer-dark-5);
+    box-shadow: inset var(--glass-shadow-3), inset 0 0 18px var(--glass-inset-bg-5);
 }
 
 .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control:first-child,
@@ -31053,50 +31935,133 @@ html:has(body.desktop-mode) {
     border-radius: 0;
 }
 
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control:focus,
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:focus,
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control:active,
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:active,
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"]:focus,
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"]:active {
-    background: transparent;
-    border-color: transparent;
-    box-shadow: none;
-}
-
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control:focus,
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:focus,
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control:active,
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:active {
-    border-right-color: var(--glass-border-3);
-}
-
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"] {
-    border-top: none;
-    border-bottom: none;
-    border-right: none;
-    border-left: 1px solid var(--glass-border-3);
-    color: var(--text-accent-tinted);
-}
-
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"]:focus,
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"]:active {
-    border-left-color: var(--glass-border-3);
-}
-
 .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"]:disabled {
     background: transparent;
     color: var(--text-muted);
     box-shadow: none;
 }
 
-.modal:not(.active-window) .modal-window-title-toolbar>[class^="btn-"],
-.modal:not(.active-window) .modal-window-title-toolbar>.button-group:not(:has(.form-control, input:not([type="hidden"]))) [class^="btn-"] {
+.modal-window-title-toolbar .btn-toggle {
+    min-width: 2.25rem;
+}
+
+.modal-window-title-toolbar > .btn-toggle[data-state="off"],
+.modal-window-title-toolbar > [class^="btn-"].btn-toggle[data-state="off"]:not(.toolbar-input-segment) {
+    background: var(--glass-layer-dark-4);
+    border: 1px solid var(--glass-border-3);
+    color: var(--text-accent-tinted);
+    box-shadow: var(--glass-shadow-2), inset 0 0 12px var(--glass-inset-bg-4);
+}
+
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment) {
+    background: var(--glass-layer-dark-4);
+    border: 1px solid var(--glass-border-3);
+    box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
+    overflow: visible;
+    border-radius: var(--border-radius-md);
+    align-self: center;
+    height: 32px;
+    min-height: 32px;
+    flex-shrink: 0;
+}
+
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment) > .toolbar-input-segment {
+    background: transparent;
+    box-shadow: none;
+    border-top: none;
+    border-bottom: none;
+    border-left: 1px solid transparent;
+    border-right: 1px solid transparent;
+    border-radius: 0;
+    min-height: 32px;
+    height: 32px;
+    color: var(--text-accent-tinted);
+}
+
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment) > .toolbar-input-segment:not(:last-child) {
+    border-right-color: var(--glass-border-3);
+}
+
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment) > .toolbar-input-segment:first-child {
+    border-top-left-radius: var(--border-radius-md);
+    border-bottom-left-radius: var(--border-radius-md);
+}
+
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment) > .toolbar-input-segment:last-child {
+    border-top-right-radius: var(--border-radius-md);
+    border-bottom-right-radius: var(--border-radius-md);
+}
+
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment) > [class^="btn-"].toolbar-input-segment:disabled {
+    background: transparent;
+    color: var(--text-muted);
+    box-shadow: none;
+}
+
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment):has(
+    .toolbar-input-segment:hover,
+    .toolbar-input-segment.active,
+    .toolbar-input-segment.context-open,
+    .btn-toggle[data-state="on"],
+    .btn-toggle[data-state="open"]
+),
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment):hover {
+    border-color: var(--glass-border-4);
+    background: var(--glass-layer-dark-5);
+    box-shadow: inset var(--glass-shadow-3), inset 0 0 18px var(--glass-inset-bg-5);
+}
+
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment) > .toolbar-input-segment:hover:not(:disabled),
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment) > .toolbar-input-segment.active,
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment) > .toolbar-input-segment.context-open {
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-primary);
+}
+
+.modal:not(.active-window) .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment) {
+    background: var(--glass-layer-dark-2);
+    border-color: var(--glass-border-2);
+    box-shadow: inset var(--glass-shadow-2);
+}
+
+.modal:not(.active-window) .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment) > .toolbar-input-segment {
+    background: transparent;
+    color: var(--text-secondary);
+    box-shadow: none;
+}
+
+.modal:not(.active-window) .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment) > .toolbar-input-segment:hover:not(:disabled),
+.modal:not(.active-window) .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment) > .toolbar-input-segment.active,
+.modal:not(.active-window) .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment) > .toolbar-input-segment.context-open {
+    color: var(--text-primary);
+}
+
+.modal:not(.active-window) .modal-window-title-toolbar>[class^="btn-"]:not(.btn-primary):not(.btn-danger):not(.btn-toggle),
+.modal:not(.active-window) .modal-window-title-toolbar>.button-group:not(:has(.form-control, input:not([type="hidden"]))) [class^="btn-"]:not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment),
+.modal:not(.active-window) .modal-window-title-toolbar .custom-dropdown [class^="btn-"] {
     background: var(--glass-layer-dark-2);
     border-color: var(--glass-border-2);
     color: var(--text-secondary);
     box-shadow: inset var(--glass-shadow-1);
 }
+
+.modal:not(.active-window) .modal-window-title-toolbar > .btn-primary,
+.modal:not(.active-window) .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-primary {
+    background: var(--primary-glass-color);
+    border-color: var(--primary-glass-border);
+    color: var(--text-accent-tinted);
+    box-shadow: var(--glass-shadow-2), inset 0 0 10px var(--glass-inset-bg-3);
+}
+
+.modal:not(.active-window) .modal-window-title-toolbar > .btn-danger,
+.modal:not(.active-window) .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-danger {
+    background: var(--danger-glass-color);
+    border-color: var(--danger-glass-border);
+    color: hsl(0 100% 85%);
+    box-shadow: var(--glass-shadow-2), inset 0 0 10px var(--glass-inset-bg-3);
+}
+
 
 .modal:not(.active-window) .modal-window-title-toolbar>.form-control,
 .modal:not(.active-window) .modal-window-title-toolbar>input.form-control:not([type="hidden"]) {
@@ -31122,8 +32087,32 @@ html:has(body.desktop-mode) {
 
 @supports not ((-webkit-touch-callout: none) or (hover: hover)) {
 
-    .modal-window-title-toolbar>[class^="btn-"]:hover:not(:disabled),
-    .modal-window-title-toolbar>.button-group:not(:has(.form-control, input:not([type="hidden"]))) [class^="btn-"]:hover:not(:disabled) {
+    .modal-window-title-toolbar>[class^="btn-"]:hover:not(:disabled):not(.btn-primary):not(.btn-danger):not(.btn-toggle),
+    .modal-window-title-toolbar>.button-group:not(:has(.form-control, input:not([type="hidden"]))) [class^="btn-"]:hover:not(:disabled):not(.btn-primary):not(.btn-danger):not(.btn-toggle),
+    .modal-window-title-toolbar .custom-dropdown [class^="btn-"]:hover:not(:disabled) {
+        background: var(--btn-hover-bg-secondary);
+        border-color: var(--btn-hover-border-secondary);
+        color: var(--btn-hover-text-secondary);
+        box-shadow: var(--btn-shadow-secondary-glow), inset 0 0 12px var(--glass-inset-bg-3);
+    }
+
+    .modal-window-title-toolbar > .btn-primary:hover:not(:disabled),
+    .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-primary:hover:not(:disabled) {
+        background: var(--btn-hover-bg-primary);
+        border-color: var(--btn-hover-border-primary);
+        color: var(--btn-hover-text-primary);
+        box-shadow: var(--btn-shadow-primary-glow), inset 0 0 12px var(--glass-inset-bg-3);
+    }
+
+    .modal-window-title-toolbar > .btn-danger:hover:not(:disabled),
+    .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-danger:hover:not(:disabled) {
+        background: var(--btn-hover-bg-danger);
+        border-color: var(--btn-hover-border-danger);
+        color: var(--btn-hover-text-danger);
+        box-shadow: var(--btn-shadow-danger-glow), inset 0 0 12px var(--glass-inset-bg-3);
+    }
+
+    .modal-window-title-toolbar > .btn-toggle[data-state="off"]:not(.toolbar-input-segment):hover:not(:disabled) {
         background: var(--btn-hover-bg-secondary);
         border-color: var(--btn-hover-border-secondary);
         color: var(--btn-hover-text-secondary);
@@ -31136,51 +32125,61 @@ html:has(body.desktop-mode) {
         box-shadow: inset var(--glass-shadow-3), inset 0 0 16px var(--glass-inset-bg-5);
     }
 
-    .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control:hover:not(:disabled),
-    .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:hover:not(:disabled),
-    .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"]:hover:not(:disabled) {
+    .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):hover,
+    .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(
+        .toolbar-input-segment:hover,
+        .toolbar-input-segment.active,
+        input.toolbar-input-segment:focus
+    ) {
+        border-color: var(--glass-border-4);
+        background: var(--glass-layer-dark-5);
+        box-shadow: inset var(--glass-shadow-3), inset 0 0 18px var(--glass-inset-bg-5);
+    }
+
+    .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .toolbar-input-segment:hover:not(:disabled),
+    .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .toolbar-input-segment.active,
+    .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) input.toolbar-input-segment:focus {
         background: transparent;
         box-shadow: none;
-        color: var(--text-accent-tinted);
     }
 
-    .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control:hover:not(:disabled),
-    .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:hover:not(:disabled) {
-        border-top: none;
-        border-bottom: none;
-        border-left: none;
-        border-right: 1px solid var(--glass-border-3);
+    .modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):hover,
+    .modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(
+        .toolbar-input-segment:hover,
+        .toolbar-input-segment.active,
+        input.toolbar-input-segment:focus
+    ) {
+        border-color: var(--glass-border-3);
+        background: var(--glass-layer-dark-3);
+        box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
     }
 
-    .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"]:hover:not(:disabled) {
-        border-top: none;
-        border-bottom: none;
-        border-right: none;
-    }
-
-    .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(.form-control:hover:not(:disabled), input:hover:not(:disabled), [class^="btn-"]:hover:not(:disabled)):not(:focus-within):not(:has(:active)) {
-        border-color: var(--glass-border-4);
-        box-shadow: inset var(--glass-shadow-3), inset 0 0 16px var(--glass-inset-bg-5);
-    }
-
-    .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(.form-control:hover:not(:disabled), input:hover:not(:disabled), [class^="btn-"]:hover:not(:disabled)):not(:focus-within):not(:has(:active)) [class^="btn-"] {
-        border-left-color: var(--glass-border-4);
-    }
-
-    .modal:not(.active-window) .modal-window-title-toolbar>[class^="btn-"]:hover:not(:disabled),
-    .modal:not(.active-window) .modal-window-title-toolbar>.button-group:not(:has(.form-control, input:not([type="hidden"]))) [class^="btn-"]:hover:not(:disabled) {
+    .modal:not(.active-window) .modal-window-title-toolbar>[class^="btn-"]:hover:not(:disabled):not(.btn-primary):not(.btn-danger):not(.btn-toggle[data-state="on"]):not(.btn-toggle[data-state="open"]),
+    .modal:not(.active-window) .modal-window-title-toolbar>.button-group:not(:has(.form-control, input:not([type="hidden"]))) [class^="btn-"]:hover:not(:disabled):not(.btn-primary):not(.btn-danger):not(.btn-toggle[data-state="on"]):not(.btn-toggle[data-state="open"]),
+    .modal:not(.active-window) .modal-window-title-toolbar .custom-dropdown [class^="btn-"]:hover:not(:disabled) {
         background: var(--glass-layer-dark-3);
         border-color: var(--glass-border-3);
         box-shadow: inset var(--glass-shadow-2), inset 0 0 12px var(--glass-inset-bg-3);
     }
 
-    .modal:not(.active-window) .modal-window-title-toolbar>.form-control:hover:not(:disabled):not(:focus),
-    .modal:not(.active-window) .modal-window-title-toolbar>input.form-control:hover:not(:disabled):not(:focus) {
-        border-color: var(--glass-border-3);
-        box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
+    .modal:not(.active-window) .modal-window-title-toolbar > .btn-primary:hover:not(:disabled),
+    .modal:not(.active-window) .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-primary:hover:not(:disabled) {
+        background: var(--btn-hover-bg-primary);
+        border-color: var(--btn-hover-border-primary);
+        color: var(--btn-hover-text-primary);
+        box-shadow: var(--btn-shadow-primary-glow), inset 0 0 12px var(--glass-inset-bg-3);
     }
 
-    .modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(.form-control:hover:not(:disabled), input:hover:not(:disabled), [class^="btn-"]:hover:not(:disabled)):not(:focus-within):not(:has(:active)) {
+    .modal:not(.active-window) .modal-window-title-toolbar > .btn-danger:hover:not(:disabled),
+    .modal:not(.active-window) .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-danger:hover:not(:disabled) {
+        background: var(--btn-hover-bg-danger);
+        border-color: var(--btn-hover-border-danger);
+        color: var(--btn-hover-text-danger);
+        box-shadow: var(--btn-shadow-danger-glow), inset 0 0 12px var(--glass-inset-bg-3);
+    }
+
+    .modal:not(.active-window) .modal-window-title-toolbar>.form-control:hover:not(:disabled):not(:focus),
+    .modal:not(.active-window) .modal-window-title-toolbar>input.form-control:hover:not(:disabled):not(:focus) {
         border-color: var(--glass-border-3);
         box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
     }
@@ -31196,20 +32195,20 @@ html:has(body.desktop-mode) {
     box-shadow: inset var(--glass-shadow-4), inset 0 0 18px var(--glass-inset-bg-5);
 }
 
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):focus-within,
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(:active) {
-    background: var(--glass-layer-dark-5);
-    border-color: var(--glass-border-4);
-    box-shadow: inset var(--glass-shadow-4), inset 0 0 18px var(--glass-inset-bg-5);
+.context-menu.context-menu-click-triggered {
+    min-width: 165px;
 }
 
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):focus-within .form-control,
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):focus-within>input,
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(:active) .form-control,
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(:active)>input,
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):focus-within [class^="btn-"],
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(:active) [class^="btn-"] {
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .toolbar-input-segment:focus:not(.active):not(.context-open) {
+    background: transparent;
+    box-shadow: none;
+    outline: none;
+}
+
+.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(input.toolbar-input-segment:focus) input.toolbar-input-segment {
+    background: transparent;
     color: var(--text-primary);
+    box-shadow: none;
 }
 
 .modal:not(.active-window) .modal-window-title-toolbar>.form-control:focus,
@@ -31218,24 +32217,6 @@ html:has(body.desktop-mode) {
     border-color: var(--glass-border-3);
     color: var(--text-primary);
     box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
-}
-
-.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):focus-within,
-.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(:active) {
-    background: var(--glass-layer-dark-3);
-    border-color: var(--glass-border-3);
-    box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
-}
-
-.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):focus-within .form-control,
-.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):focus-within>input,
-.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(:active) .form-control,
-.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(:active)>input,
-.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):focus-within [class^="btn-"],
-.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(:active) [class^="btn-"] {
-    background: transparent;
-    color: var(--text-primary);
-    box-shadow: none;
 }
 
 .modal-window-title-toolbar>.form-control:focus:hover,
@@ -31249,11 +32230,7 @@ html:has(body.desktop-mode) {
 }
 
 .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control:focus:hover,
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:focus:hover,
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control:active:hover,
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:active:hover,
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"]:focus:hover,
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"]:active:hover {
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:focus:hover {
     background: transparent;
     box-shadow: none;
 }
@@ -31264,6 +32241,209 @@ html:has(body.desktop-mode) {
     border-color: var(--glass-border-3);
     color: var(--text-primary);
     box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
+}
+
+/* Toolbar unified chrome — one outer shell for groups + standalone controls */
+.modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) {
+    display: inline-flex;
+    align-items: stretch;
+    flex-shrink: 0;
+    height: 32px;
+    min-height: 32px;
+    margin: 0;
+    padding: 0;
+    gap: 0;
+    border-radius: var(--border-radius-md);
+    border: 1px solid var(--glass-border-3);
+    background: var(--glass-layer-dark-4);
+    box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
+    overflow: hidden;
+}
+
+.modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > .toolbar-input-segment,
+.modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > [class^="btn-"].toolbar-input-segment {
+    min-width: 2.25rem;
+    min-height: 32px;
+    height: 32px;
+    margin: 0;
+    padding: 0 0.55em;
+    border: none;
+    border-right: 1px solid var(--glass-border-3);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-accent-tinted);
+    line-height: 1;
+}
+
+.modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > .toolbar-input-segment:last-child,
+.modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > [class^="btn-"].toolbar-input-segment:last-child {
+    border-right: none;
+}
+
+.modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > input.toolbar-input-segment.form-control {
+    flex: 1 1 auto;
+    min-width: 6rem;
+    width: auto;
+    padding: 0 0.55em;
+    font-size: 0.8125rem;
+    font-family: inherit;
+}
+
+/* Enabled segment buttons — popped out (available) */
+.modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > .toolbar-input-segment:not(:disabled):not([data-state="on"]):not([data-state="open"]),
+.modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > [class^="btn-"].toolbar-input-segment:not(:disabled):not([data-state="on"]):not([data-state="open"]) {
+    background: var(--glass-layer-dark-5);
+    box-shadow: var(--glass-shadow-2), 0 1px 0 hsl(0 0% 100% / 14%) inset;
+    color: var(--text-primary);
+}
+
+/* Disabled segment buttons — sunken */
+.modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > [class^="btn-"].toolbar-input-segment:disabled {
+    background: hsl(0 0% 0% / 20%);
+    box-shadow: inset 0 2px 6px hsl(0 0% 0% / 42%);
+    color: var(--text-muted);
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > [class^="btn-"].toolbar-input-segment:disabled i,
+.modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > [class^="btn-"].toolbar-input-segment:disabled .icon-fa {
+    opacity: 0.32;
+    text-shadow: none;
+}
+
+/* Standalone enabled buttons — popped out */
+.modal.toolbar-visible .modal-window-title-toolbar > [class^="btn-"]:not(.btn-primary):not(.btn-danger):not(.toolbar-input-segment):not(:disabled):not([data-state="on"]):not([data-state="open"]),
+.modal.toolbar-visible .modal-window-title-toolbar > input.form-control.toolbar-input-segment:not([type="hidden"]):not(:disabled) {
+    min-width: 2.25rem;
+    min-height: 32px;
+    height: 32px;
+    padding: 0 0.55em;
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-md);
+    background: var(--glass-layer-dark-5);
+    box-shadow: var(--glass-shadow-2), 0 1px 0 hsl(0 0% 100% / 14%) inset;
+    color: var(--text-primary);
+    line-height: 1;
+    box-sizing: border-box;
+}
+
+/* Standalone disabled buttons — sunken */
+.modal.toolbar-visible .modal-window-title-toolbar > [class^="btn-"]:not(.btn-primary):not(.btn-danger):not(.toolbar-input-segment):disabled {
+    min-width: 2.25rem;
+    min-height: 32px;
+    height: 32px;
+    padding: 0 0.55em;
+    border: 1px solid var(--glass-border-2);
+    border-radius: var(--border-radius-md);
+    background: var(--glass-layer-dark-2);
+    box-shadow: inset 0 2px 6px hsl(0 0% 0% / 40%);
+    color: var(--text-muted);
+    opacity: 0.7;
+    cursor: not-allowed;
+    line-height: 1;
+    box-sizing: border-box;
+}
+
+.modal.toolbar-visible .modal-window-title-toolbar > [class^="btn-"]:disabled:not(.toolbar-input-segment) i,
+.modal.toolbar-visible .modal-window-title-toolbar > [class^="btn-"]:disabled:not(.toolbar-input-segment) .icon-fa {
+    opacity: 0.32;
+    text-shadow: none;
+}
+
+/* Toggle on/open — inset pressed (selected), never popped out */
+.modal.toolbar-visible .modal-window-title-toolbar > .btn-toggle[data-state="on"]:not(.toolbar-input-segment),
+.modal.toolbar-visible .modal-window-title-toolbar > .btn-toggle[data-state="open"]:not(.toolbar-input-segment),
+.modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > .toolbar-input-segment.btn-toggle[data-state="on"],
+.modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > .toolbar-input-segment.btn-toggle[data-state="open"] {
+    background: var(--toggle-on-bg);
+    color: var(--text-primary);
+    border-color: var(--glass-border-3);
+    box-shadow: inset 0 2px 5px hsl(0 0% 0% / 40%), inset 0 0 10px var(--toggle-shadow-color-19), 0 0 0 1px rgb(0 0 0 / 30%);
+    position: relative;
+}
+
+.modal.toolbar-visible .modal-window-title-toolbar > .btn-toggle[data-state="on"]:not(.toolbar-input-segment)::before,
+.modal.toolbar-visible .modal-window-title-toolbar > .btn-toggle[data-state="open"]:not(.toolbar-input-segment)::before,
+.modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > .toolbar-input-segment.btn-toggle[data-state="on"]::before,
+.modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > .toolbar-input-segment.btn-toggle[data-state="open"]::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, hsl(16 100% 50% / 15%) 0%, transparent 50%, hsl(0 0% 0% / 15%) 100%);
+    border-radius: inherit;
+    pointer-events: none;
+}
+
+.modal.toolbar-visible .modal-window-title-toolbar [class^="btn-"] i,
+.modal.toolbar-visible .modal-window-title-toolbar [class^="btn-"] .icon-fa {
+    text-shadow:
+        -1px -1px 0 rgba(0, 0, 0, 0.45),
+        1px -1px 0 rgba(0, 0, 0, 0.45),
+        -1px 1px 0 rgba(0, 0, 0, 0.45),
+        1px 1px 0 rgba(0, 0, 0, 0.45),
+        0 -1px 0 rgba(0, 0, 0, 0.45),
+        0 1px 0 rgba(0, 0, 0, 0.45),
+        -1px 0 0 rgba(0, 0, 0, 0.45),
+        1px 0 0 rgba(0, 0, 0, 0.45);
+}
+
+.modal:not(.active-window).toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) {
+    background: var(--glass-layer-dark-2);
+    border-color: var(--glass-border-2);
+    box-shadow: inset var(--glass-shadow-2);
+}
+
+.modal:not(.active-window).toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > .toolbar-input-segment,
+.modal:not(.active-window).toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > [class^="btn-"].toolbar-input-segment {
+    color: var(--text-secondary);
+}
+
+.modal:not(.active-window).toolbar-visible .modal-window-title-toolbar > [class^="btn-"]:not(.btn-primary):not(.btn-danger):not(.toolbar-input-segment),
+.modal:not(.active-window).toolbar-visible .modal-window-title-toolbar > input.form-control.toolbar-input-segment:not([type="hidden"]) {
+    background: var(--glass-layer-dark-2);
+    border-color: var(--glass-border-2);
+    box-shadow: inset var(--glass-shadow-2);
+    color: var(--text-secondary);
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+
+    .modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment):hover {
+        border-color: var(--glass-border-4);
+        background: var(--glass-layer-dark-5);
+        box-shadow: inset var(--glass-shadow-3), inset 0 0 18px var(--glass-inset-bg-5);
+    }
+
+    .modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > .toolbar-input-segment:hover:not(:disabled),
+    .modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > [class^="btn-"].toolbar-input-segment:hover:not(:disabled) {
+        color: var(--text-primary);
+    }
+
+    .modal.toolbar-visible .modal-window-title-toolbar > [class^="btn-"]:not(.btn-primary):not(.btn-danger):not(.toolbar-input-segment):hover:not(:disabled):not([data-state="on"]):not([data-state="open"]),
+    .modal.toolbar-visible .modal-window-title-toolbar > input.form-control.toolbar-input-segment:not([type="hidden"]):hover:not(:disabled) {
+        border-color: var(--glass-border-4);
+        background: var(--glass-layer-dark-5);
+        box-shadow: var(--glass-shadow-3), 0 1px 0 hsl(0 0% 100% / 18%) inset;
+        color: var(--text-primary);
+    }
+
+    .modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > .toolbar-input-segment:not(:disabled):not([data-state="on"]):not([data-state="open"]):hover,
+    .modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > [class^="btn-"].toolbar-input-segment:not(:disabled):not([data-state="on"]):not([data-state="open"]):hover {
+        background: var(--glass-layer-dark-5);
+        box-shadow: var(--glass-shadow-3), 0 1px 0 hsl(0 0% 100% / 18%) inset;
+        color: var(--text-primary);
+    }
+
+    .modal.toolbar-visible .modal-window-title-toolbar > .btn-toggle[data-state="on"]:not(.toolbar-input-segment):hover:not(:disabled),
+    .modal.toolbar-visible .modal-window-title-toolbar > .btn-toggle[data-state="open"]:not(.toolbar-input-segment):hover:not(:disabled),
+    .modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > .toolbar-input-segment.btn-toggle[data-state="on"]:hover:not(:disabled),
+    .modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > .toolbar-input-segment.btn-toggle[data-state="open"]:hover:not(:disabled) {
+        background: var(--toggle-on-hover-bg);
+        color: var(--text-primary);
+        box-shadow: inset 0 2px 5px hsl(0 0% 0% / 44%), inset 0 0 10px var(--toggle-shadow-color-19), 0 0 0 1px rgb(0 0 0 / 32%);
+    }
 }
 
 /* Show Font Awesome icons by default, hide image icons */
@@ -31794,30 +32974,74 @@ span.context-menu-item-state {
 
 /* Indicator dot for toggle items */
 .context-menu-item-indicator {
-    width: 0.75em;
-    height: 14px;
-    border-radius: var(--border-radius-sm);
-    background: radial-gradient(#343434, #202020);
-    border: 1px solid #cccccc38;
     margin-left: auto;
     flex-shrink: 0;
     transition: var(--transition-tray-menu);
     opacity: 1;
 }
 
-.context-menu-item-indicator.checked {
+.context-menu-item-indicator.indicator-box {
+    width: 0.75em;
+    height: 14px;
+    border-radius: var(--border-radius-sm);
+    background: radial-gradient(#343434, #202020);
+    border: 1px solid #cccccc38;
+}
+
+.context-menu-item-indicator.indicator-dot {
+    width: 0.45em;
+    height: 0.45em;
+    border-radius: 50%;
+    background: var(--text-muted, rgba(255, 255, 255, 0.35));
+    border: none;
+}
+
+.context-menu-item-indicator.indicator-box.checked {
     background: radial-gradient(#7aff89, #006318);
     border-color: #a6ffa670;
     box-shadow: 0 0 13px #51ff51;
 }
 
-.dark .context-menu-item-indicator {
+.context-menu-item-indicator.indicator-dot.checked {
+    background: var(--primary-color, #3aff67);
+    box-shadow: 0 0 8px color-mix(in srgb, var(--primary-color, #3aff67) 65%, transparent);
+}
+
+.dark .context-menu-item-indicator.indicator-box {
     border-color: var(--text-muted, rgba(255, 255, 255, 0.3));
 }
 
-.dark .context-menu-item-indicator.checked {
+.dark .context-menu-item-indicator.indicator-box.checked {
     background: var(--primary-color, #3aff67);
     border-color: var(--primary-color, #3aff67);
+}
+
+.dark .context-menu-item-indicator.indicator-dot.checked {
+    background: var(--primary-color, #3aff67);
+}
+
+/* Persistent row highlight (distinct from hover — matches dropdown .selected) */
+.context-menu-item.context-menu-item-highlighted {
+    background: var(--dropdown-selected-bg, var(--primary-glass-color));
+    color: var(--text-white, #fff);
+    font-weight: 600;
+}
+
+.dark .context-menu-item.context-menu-item-highlighted {
+    background: var(--dropdown-selected-bg, var(--primary-glass-color));
+    color: var(--text-white, #fff);
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .context-menu-item.context-menu-item-highlighted:hover:not(.disabled) {
+        background: var(--dropdown-hover-bg, var(--primary-glass-border));
+        color: var(--text-white, #fff);
+    }
+
+    .dark .context-menu-item.context-menu-item-highlighted:hover:not(.disabled) {
+        background: var(--dropdown-hover-bg, var(--primary-glass-border));
+        color: var(--text-white, #fff);
+    }
 }
 
 /* Ensure indicator appears on the right, even with submenu arrow */
@@ -35292,39 +36516,29 @@ div#spellbookCustomPresetDropdown {
     overflow: hidden;
 }
 
-.tag-wiki-search-header {
-    padding: var(--spacing-sm);
-    border-bottom: 1px solid var(--glass-border-4);
-    flex-shrink: 0;
-    background: var(--glass-layer-2);
-}
-
-.tag-wiki-search-controls {
-    display: flex;
-    gap: var(--spacing-sm);
-    align-items: flex-start;
-}
-
-.tag-wiki-nav-group {
-    flex-shrink: 0;
-}
-
-.tag-wiki-nav-group .btn-secondary {
-    min-width: 2rem;
-    padding: 0.35em 0.5em;
-}
-
 .tag-wiki-results-overlay-btn {
     flex-shrink: 0;
 }
 
-.tag-wiki-search-controls input[type="text"] {
-    flex: 1;
-    font-family: inherit;
+#tagWikiSearchResultsCollapseBtn {
+    margin-left: auto;
 }
 
-.tag-wiki-search-controls .custom-dropdown {
-    flex-shrink: 0;
+.tag-wiki-results-panel-header-row .custom-dropdown {
+    width: auto;
+    flex: 0 0 auto;
+}
+
+.tag-wiki-results-panel-header-row > [class^="btn-"]:not(.tag-wiki-results-collapse-btn),
+.tag-wiki-results-panel-header-row .custom-dropdown [class^="btn-"] {
+    position: relative;
+    box-shadow: none;
+}
+
+#tagWikiSearchModal .tag-wiki-results-panel-header-row #tagWikiSearchSourceDropdownMenu,
+#tagWikiSearchModal .tag-wiki-results-panel-header-row #tagWikiSearchFilterDropdownMenu,
+#tagWikiSearchModal .tag-wiki-results-panel-header-row #tagWikiSearchTypeDropdownMenu {
+    z-index: var(--z-dropdown);
 }
 
 .tag-wiki-search-body {
@@ -35471,34 +36685,23 @@ div#spellbookCustomPresetDropdown {
 }
 
 .tag-wiki-results-panel-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--spacing-xs);
     padding: var(--spacing-xs) var(--spacing-sm);
     border-bottom: 1px solid var(--glass-border-4);
     flex-shrink: 0;
     background: var(--glass-layer-2);
 }
 
-.tag-wiki-results-panel-title {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--text-muted);
+.tag-wiki-results-panel-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--spacing-xs);
+    min-width: 0;
 }
 
 .tag-wiki-results-collapse-btn {
     flex-shrink: 0;
-}
-
-.tag-wiki-results-expand-btn {
-    flex-shrink: 0;
-    align-self: stretch;
-    width: 28px;
-    min-width: 28px;
-    border-radius: 0;
-    border-right: 1px solid var(--glass-border-4);
-    padding: 0;
+    margin-left: auto;
 }
 
 .tag-wiki-search-results {
@@ -37549,80 +38752,38 @@ div#spellbookCustomPresetDropdown {
 }
 
 /* Log Viewer Modal */
-#logViewerModal .naxt-search-header {
-    padding: 0.3rem var(--spacing-sm);
-    overflow: visible;
-    line-height: 1;
-}
-
-#logViewerModal .naxt-search-controls {
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    flex-wrap: nowrap;
-    align-items: center;
-    gap: 0.3em;
-    height: 26px;
-    overflow: visible;
-}
-
-#logViewerModal .naxt-search-controls .btn-small,
-#logViewerModal .naxt-search-controls #logViewerSourceDropdownBtn {
-    min-height: 24px;
-    height: 24px;
-    max-height: 24px;
-    min-width: 28px;
-    padding: 0 6px;
-    font-size: 0.75rem;
-    line-height: 1;
-    box-shadow: none;
-}
-
-#logViewerModal .naxt-search-controls .button-group {
-    flex-shrink: 0;
-    height: 24px;
-    box-shadow: none;
-}
-
-#logViewerModal .naxt-search-controls .naxt-toolbar-dataset,
-#logViewerModal #logViewerSourceDropdown {
+#logViewerModal .modal-window-title-toolbar .log-viewer-source-btn {
     flex: 0 1 auto;
     min-width: 0;
-    max-width: 7.5rem;
-    height: 24px;
+    max-width: 9rem;
+    padding: 0.35em 0.55em;
 }
 
-#logViewerModal .naxt-search-controls #logViewerSourceDropdownBtn {
-    width: 100%;
-    max-width: 100%;
-}
-
-#logViewerModal #logViewerSourceDropdownBtn #logViewerSourceSelected {
+#logViewerModal .modal-window-title-toolbar #logViewerSourceSelected {
     display: inline-block;
-    max-width: 5.5rem;
+    max-width: 6.5rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     vertical-align: middle;
 }
 
-#logViewerModal .log-viewer-toolbar-right {
+#logViewerModal .modal-window-title-toolbar .log-viewer-toolbar-right {
     display: flex;
     align-items: center;
-    gap: 0.3em;
+    gap: var(--spacing-xs);
     margin-left: auto;
     flex: 0 1 auto;
     min-width: 0;
-    height: 24px;
 }
 
 #logViewerModal .log-viewer-ws-ticker,
 #logViewerModal .log-viewer-ws-ticker.expanded {
     flex: 0 1 auto;
     min-width: 0;
-    max-width: 5.5rem;
-    height: 24px;
-    max-height: 24px;
+    max-width: 7rem;
+    height: auto;
+    max-height: none;
     margin: 0;
     cursor: pointer;
     align-self: center;
@@ -37636,15 +38797,15 @@ div#spellbookCustomPresetDropdown {
 }
 
 #logViewerModal .log-viewer-ws-ticker .websocket-ticker-text {
-    max-width: 4rem;
+    max-width: 5rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 0.7rem;
+    font-size: 0.75rem;
 }
 
 #logViewerModal .log-viewer-ws-ticker .websocket-ticker-icon {
-    font-size: 0.7rem;
+    font-size: 0.75rem;
 }
 
 #logViewerModal .log-viewer-tasks-toggle {
@@ -37656,12 +38817,12 @@ div#spellbookCustomPresetDropdown {
         display: none;
     }
 
-    #logViewerModal #logViewerSourceDropdown {
-        max-width: 5.5rem;
+    #logViewerModal .modal-window-title-toolbar .log-viewer-source-btn {
+        max-width: 6.5rem;
     }
 
-    #logViewerModal #logViewerSourceDropdownBtn #logViewerSourceSelected {
-        max-width: 3.5rem;
+    #logViewerModal .modal-window-title-toolbar #logViewerSourceSelected {
+        max-width: 4rem;
     }
 }
 
@@ -40347,9 +41508,6 @@ body.desktop-mode.windows-startup.boot-from-launch {
     overflow: hidden;
 }
 
-#naxtModal .naxt-search-header,
-#naxVibesModal .naxt-search-header,
-#logViewerModal .naxt-search-header,
 #explorerModal .naxt-search-header {
     padding: var(--spacing-sm);
     border-bottom: 1px solid var(--glass-border-4);
@@ -40357,51 +41515,59 @@ body.desktop-mode.windows-startup.boot-from-launch {
     background: var(--glass-layer-2);
 }
 
-#naxtModal .naxt-search-controls,
-#naxVibesModal .naxt-search-controls,
-#logViewerModal .naxt-search-controls,
 #explorerModal .naxt-search-controls {
     display: flex;
     gap: var(--spacing-sm);
     align-items: center;
+    flex-wrap: nowrap;
 }
 
-#naxtModal .naxt-search-controls,
-#naxVibesModal .naxt-search-controls {
+.naxt-filter-toolbar {
+    display: flex;
     flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: var(--spacing-sm);
 }
 
-#logViewerModal .naxt-search-controls {
-    flex-wrap: nowrap;
-}
-
-#explorerModal .naxt-search-controls {
-    flex-wrap: nowrap;
-}
-
-#naxtModal .naxt-toolbar-dataset {
-    flex-shrink: 0;
-}
-
-#naxtModal .naxt-quick-filters,
-#naxVibesModal .naxt-quick-filters {
-    flex-shrink: 0;
-}
-
-#naxtModal .naxt-quick-filters .btn-secondary,
-#naxVibesModal .naxt-quick-filters .btn-secondary {
-    min-width: 2.25rem;
-    padding: 0.35em 0.55em;
-}
-
-#naxtModal .naxt-search-input,
-#naxVibesModal .naxt-search-input {
+.naxt-filter-toolbar .naxt-filter-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    align-items: flex-end;
     flex: 1;
-    min-width: 120px;
-    font-family: inherit;
+    min-width: 0;
 }
 
-#naxtModal .naxt-filter-row,
+.naxt-filter-toolbar .naxt-filter-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    align-items: center;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.naxt-filter-pair {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.naxt-filter-pair .form-control {
+    width: 4.5rem;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.naxt-filter-pair label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
 #naxVibesModal .naxt-filter-row {
     display: flex;
     flex-wrap: wrap;
@@ -40411,7 +41577,6 @@ body.desktop-mode.windows-startup.boot-from-launch {
     justify-content: space-between;
 }
 
-#naxtModal .naxt-filter-fields,
 #naxVibesModal .naxt-filter-fields {
     display: flex;
     flex-wrap: wrap;
@@ -40421,7 +41586,6 @@ body.desktop-mode.windows-startup.boot-from-launch {
     min-width: 0;
 }
 
-#naxtModal .naxt-filter-actions,
 #naxVibesModal .naxt-filter-actions {
     display: flex;
     flex-wrap: wrap;
@@ -40429,25 +41593,6 @@ body.desktop-mode.windows-startup.boot-from-launch {
     align-items: center;
     margin-left: auto;
     flex-shrink: 0;
-}
-
-#naxtModal .naxt-filter-pair {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-}
-
-#naxtModal .naxt-filter-pair .form-control {
-    width: 4.5rem;
-    max-width: 100%;
-    min-width: 0;
-    box-sizing: border-box;
-}
-
-#naxtModal .naxt-filter-pair label {
-    font-size: 0.75rem;
-    color: var(--text-muted);
 }
 
 #naxtModal .naxt-body,
@@ -40556,25 +41701,9 @@ body.desktop-mode.windows-startup.boot-from-launch {
     background: var(--glass-layer-2);
 }
 
-#naxtModal #naxtDatasetDropdownBtn #naxtDatasetSelected {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4em;
-    max-width: 14rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 #naxtModal #naxtDatasetDropdownBtn .naxt-dataset-btn-icon {
     flex-shrink: 0;
     opacity: 0.9;
-}
-
-#naxtModal #naxtDatasetDropdownBtn .naxt-dataset-chevron {
-    flex-shrink: 0;
-    margin-left: 0.15em;
-    opacity: 0.75;
 }
 
 #naxtModal #naxtDatasetDropdownMenu .custom-dropdown-option {
@@ -40954,14 +42083,6 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
     height: 800px;
 }
 
-#bracketGenerationModal .bracket-gen-header {
-    flex-shrink: 0;
-    padding: var(--spacing-sm) var(--spacing-md);
-    gap: var(--spacing-sm);
-    border-bottom: 1px solid var(--glass-border-2);
-    background: var(--glass-layer-2);
-}
-
 #bracketGenerationModal #bracketGenKeywordDropdownBtn #bracketGenKeywordSelected {
     min-width: 72px;
     max-width: 140px;
@@ -40977,12 +42098,6 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
     font-style: italic;
 }
 
-#bracketGenerationModal .bracket-gen-header-right {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-}
-
 #bracketGenerationModal #bracketGenGearDropdownMenu .custom-dropdown-option i,
 #bracketGenerationModal #bracketGenKeywordDropdownMenu .custom-dropdown-option i {
     width: 1.1em;
@@ -40995,6 +42110,8 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
     display: grid;
     grid-template-columns: 1fr 1fr;
     min-width: 72px;
+    flex-shrink: 0;
+    margin: -4px auto -4px 0;
 }
 
 #bracketGenerationModal #bracketGenTabButtons .gallery-toggle-slider {
@@ -41010,6 +42127,10 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
 #bracketGenerationModal #bracketGenTabButtons[data-active="prompt"] .gallery-toggle-slider {
     background: rgba(174, 255, 171, 0.3);
     border-color: rgb(211 255 203 / 30%);
+}
+
+#bracketGenerationModal #bracketGenCompileBtn {
+    flex-shrink: 0;
 }
 
 .bracket-generation-modal-content {

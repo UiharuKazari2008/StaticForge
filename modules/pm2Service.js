@@ -14,20 +14,80 @@ const HOST_DISK_CACHE_MS = 60000;
 let hostDiskCache = null;
 let hostDiskCacheAt = 0;
 
-function withPm2(fn) {
-    return new Promise((resolve, reject) => {
-        pm2.connect((err) => {
-            if (err) return reject(err);
-            Promise.resolve(fn(pm2))
-                .then(resolve)
-                .catch(reject)
-                .finally(() => {
-                    try {
-                        pm2.disconnect();
-                    } catch (_) { /* ignore */ }
-                });
+let pm2Connected = false;
+let pm2Connecting = null;
+let pm2OpQueue = Promise.resolve();
+let pm2ErrorHooked = false;
+
+function resetPm2Connection() {
+    pm2Connected = false;
+    pm2Connecting = null;
+    try {
+        pm2.disconnect();
+    } catch (_) { /* ignore */ }
+}
+
+function hookPm2Errors() {
+    if (pm2ErrorHooked) return;
+    pm2ErrorHooked = true;
+
+    if (typeof pm2.on === 'function') {
+        pm2.on('error', () => resetPm2Connection());
+    }
+
+    try {
+        pm2.launchBus((err, bus) => {
+            if (err || !bus) return;
+            bus.on('error', () => resetPm2Connection());
         });
+    } catch (_) { /* ignore */ }
+}
+
+function ensurePm2Connected() {
+    if (pm2Connected) return Promise.resolve();
+    if (pm2Connecting) return pm2Connecting;
+
+    hookPm2Errors();
+
+    pm2Connecting = new Promise((resolve, reject) => {
+        try {
+            pm2.connect((err) => {
+                pm2Connecting = null;
+                if (err) {
+                    pm2Connected = false;
+                    reject(err);
+                    return;
+                }
+                pm2Connected = true;
+                resolve();
+            });
+        } catch (err) {
+            pm2Connecting = null;
+            pm2Connected = false;
+            reject(err);
+        }
     });
+
+    return pm2Connecting;
+}
+
+function withPm2(fn, attempt = 0) {
+    const run = async () => {
+        try {
+            await ensurePm2Connected();
+            return await fn(pm2);
+        } catch (err) {
+            resetPm2Connection();
+            if (attempt < 1) {
+                return withPm2(fn, attempt + 1);
+            }
+            throw err;
+        }
+    };
+
+    const op = pm2OpQueue.then(run, run);
+    pm2OpQueue = op.catch(() => {});
+    return op;
 }
 
 function getProcessName() {
@@ -189,11 +249,26 @@ function restartProcess() {
     }));
 }
 
+function isRecoverablePm2Error(error) {
+    if (!error) return false;
+    const message = String(error.message || '');
+    const stack = String(error.stack || '');
+    return (message.includes("'sock'") || message.includes('sock'))
+        && (stack.includes('pm2') || stack.includes('pm2-axon'));
+}
+
+function handleRecoverablePm2Error(error) {
+    if (!isRecoverablePm2Error(error)) return false;
+    resetPm2Connection();
+    return true;
+}
+
 module.exports = {
     isPm2Available,
     getPm2DiskUsageBytes,
     getHostMetrics,
     getProcessStatus,
     flushLogs,
-    restartProcess
+    restartProcess,
+    handleRecoverablePm2Error
 };
