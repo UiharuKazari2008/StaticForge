@@ -75,9 +75,22 @@ class LoginPage {
                 }
             });
         });
-        this.pinDisplay.addEventListener('click', () => {
+
+        const togglePinPad = () => {
             this.loginContainer.classList.add('transition');
-            this.loginContainer.classList.toggle('minimize');
+            const isMinimized = this.loginContainer.classList.toggle('minimize');
+
+            // Update ARIA states
+            this.pinDisplay.setAttribute('aria-expanded', (!isMinimized).toString());
+            this.pinDisplay.setAttribute('aria-label', isMinimized ? 'Expand PIN pad' : 'Collapse PIN pad');
+        };
+
+        this.pinDisplay.addEventListener('click', togglePinPad);
+        this.pinDisplay.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                togglePinPad();
+            }
         });
     }
 

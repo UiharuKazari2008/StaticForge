@@ -142,6 +142,17 @@ body {
 .pin-display {
     display: flex;
     justify-content: center;
+    border-radius: 10px;
+    padding: 10px;
+    margin: -10px;
+    transition: var(--transition-pin-dot);
+    cursor: pointer;
+}
+
+.pin-display:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+    background-color: rgba(255, 255, 255, 0.1);
 }
 
 .pin-dots {
@@ -328,6 +339,14 @@ body {
     .pin-button:active {
         background-color: rgb(255 255 255 / 90%);
     }
+
+    .pin-button:focus-visible {
+        outline: 2px solid #fff;
+        outline-offset: 2px;
+        background-color: rgb(255 255 255 / 68%);
+        box-shadow: 0 0 20px rgb(255 255 255 / 66%);
+    }
+
     .pin-button.backspace-btn:hover,
     .pin-button.danger:hover {
         background-color: rgba(220, 53, 69, 0.5);
