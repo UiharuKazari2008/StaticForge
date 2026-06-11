@@ -50,6 +50,8 @@ class LoginPage {
                 }
             } else if (e.key === 'Backspace') {
                 this.removeDigit();
+            } else if (e.key === 'Escape') {
+                this.clearPin();
             }
         });
     }
@@ -75,13 +77,24 @@ class LoginPage {
                 }
             });
         });
-        this.pinDisplay.addEventListener('click', () => {
+
+        const toggleMinimize = () => {
             this.loginContainer.classList.add('transition');
-            this.loginContainer.classList.toggle('minimize');
+            const isMinimized = this.loginContainer.classList.toggle('minimize');
+            this.pinDisplay.setAttribute('aria-expanded', !isMinimized);
+        };
+
+        this.pinDisplay.addEventListener('click', toggleMinimize);
+        this.pinDisplay.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleMinimize();
+            }
         });
     }
 
     addDigit(digit) {
+        this.clearPinError();
         if (this.rollingBuffer.length < 6) {
             this.rollingBuffer += digit;
             this.updatePinDisplay();
