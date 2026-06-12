@@ -338,6 +338,18 @@ body {
     }
 }
 
+.pin-button:focus-visible,
+.pin-display:focus-visible {
+    outline: 3px solid #fff;
+    outline-offset: 3px;
+    box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.3);
+}
+
+.pin-display:focus-visible {
+    border-radius: 10px;
+    outline-offset: 8px;
+}
+
 /* Error message */
 .error-message {
     margin-top: 20px;

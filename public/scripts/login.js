@@ -75,13 +75,25 @@ class LoginPage {
                 }
             });
         });
-        this.pinDisplay.addEventListener('click', () => {
+
+        const toggleMinimize = () => {
             this.loginContainer.classList.add('transition');
-            this.loginContainer.classList.toggle('minimize');
+            const isMinimized = this.loginContainer.classList.toggle('minimize');
+            this.pinDisplay.setAttribute('aria-expanded', !isMinimized);
+            this.pinDisplay.setAttribute('aria-label', isMinimized ? 'Expand PIN pad' : 'Collapse PIN pad');
+        };
+
+        this.pinDisplay.addEventListener('click', toggleMinimize);
+        this.pinDisplay.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleMinimize();
+            }
         });
     }
 
     addDigit(digit) {
+        this.clearPinError();
         if (this.rollingBuffer.length < 6) {
             this.rollingBuffer += digit;
             this.updatePinDisplay();
@@ -94,6 +106,7 @@ class LoginPage {
     }
 
     removeDigit() {
+        this.clearPinError();
         if (this.rollingBuffer.length > 0) {
             this.rollingBuffer = this.rollingBuffer.slice(0, -1);
             this.updatePinDisplay();
