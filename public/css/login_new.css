@@ -142,6 +142,15 @@ body {
 .pin-display {
     display: flex;
     justify-content: center;
+    border-radius: 10px;
+    padding: 10px;
+    margin: -10px;
+    transition: box-shadow 0.3s ease;
+}
+
+.pin-display:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5);
 }
 
 .pin-dots {
@@ -301,6 +310,12 @@ body {
     align-items: center;
     justify-content: center;
     border: 2px solid rgba(255, 255, 255, 0.25);
+}
+
+.pin-button:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.8);
+    background-color: rgba(255, 255, 255, 0.7);
 }
 
 .pin-button.danger {

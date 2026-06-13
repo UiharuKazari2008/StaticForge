@@ -1,0 +1,3 @@
+## 2025-05-14 - [Login Accessibility and Interaction Polish]
+**Learning:** For interactive UI components with "minimized" or collapsible states (like the PIN pad), managing the `tabindex` of children is critical to prevent keyboard users from focusing on hidden elements. Additionally, clearing "stale" error messages immediately upon the user's next keystroke or interaction significantly improves the perceived responsiveness of the interface.
+**Action:** Always synchronize the accessibility state (`aria-expanded`, `tabindex`) with visual transitions. Implement "interaction-based clearing" for dynamic feedback like error messages to ensure users always receive the most relevant state information.

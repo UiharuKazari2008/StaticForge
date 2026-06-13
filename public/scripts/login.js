@@ -37,6 +37,7 @@ class LoginPage {
         this.transitionToImage(0);
         this.sendTelemetryPing();
         this.setupServiceWorkerListener();
+        this.updatePinPadAccessibility();
     }
 
     setupKeyboardListener() {
@@ -78,6 +79,13 @@ class LoginPage {
         this.pinDisplay.addEventListener('click', () => {
             this.loginContainer.classList.add('transition');
             this.loginContainer.classList.toggle('minimize');
+            this.updatePinPadAccessibility();
+        });
+        this.pinDisplay.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                this.pinDisplay.click();
+            }
         });
     }
 
@@ -85,6 +93,8 @@ class LoginPage {
         if (this.rollingBuffer.length < 6) {
             this.rollingBuffer += digit;
             this.updatePinDisplay();
+            this.clearPinError();
+            this.hideErrorMessage();
             
             // Auto-submit when 6 digits are entered
             if (this.rollingBuffer.length === 6) {
@@ -97,12 +107,16 @@ class LoginPage {
         if (this.rollingBuffer.length > 0) {
             this.rollingBuffer = this.rollingBuffer.slice(0, -1);
             this.updatePinDisplay();
+            this.clearPinError();
+            this.hideErrorMessage();
         }
     }
 
     clearPin() {
         this.rollingBuffer = '';
         this.updatePinDisplay();
+        this.clearPinError();
+        this.hideErrorMessage();
     }
 
     async clearCachesAndReload() {
@@ -397,10 +411,19 @@ class LoginPage {
         });
     }
 
+    updatePinPadAccessibility() {
+        const isMinimized = this.loginContainer.classList.contains('minimize');
+        this.pinDisplay.setAttribute('aria-expanded', !isMinimized);
+        this.pinButtons.forEach(button => {
+            button.setAttribute('tabindex', isMinimized ? '-1' : '0');
+        });
+    }
+
     async handleLogin() {
         if (this.isLoading) return;
         this.isLoading = true;
         this.clearPinError();
+        this.hideErrorMessage();
         
         try {
             const response = await fetch('/', {
@@ -415,6 +438,9 @@ class LoginPage {
             const data = await response.json();
             
             if (response.ok) {
+                // Hide error if it was shown
+                this.hideErrorMessage();
+
                 // Store user type and any other user data for use in the app
                 if (data.userType) {
                     localStorage.setItem('userType', data.userType);
@@ -448,14 +474,29 @@ class LoginPage {
                 
             } else {
                 this.showPinError();
+                this.showErrorMessage(data.error || 'Invalid PIN code');
                 this.clearPin();
             }
         } catch (error) {
             console.error('Login error:', error);
             this.showPinError();
+            this.showErrorMessage('Connection error. Please try again.');
             this.clearPin();
         } finally {
             this.isLoading = false;
+        }
+    }
+
+    showErrorMessage(message) {
+        if (this.errorMessage) {
+            this.errorMessage.textContent = message;
+            this.errorMessage.classList.remove('hidden');
+        }
+    }
+
+    hideErrorMessage() {
+        if (this.errorMessage) {
+            this.errorMessage.classList.add('hidden');
         }
     }
 
