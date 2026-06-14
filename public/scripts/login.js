@@ -76,12 +76,37 @@ class LoginPage {
             });
         });
         this.pinDisplay.addEventListener('click', () => {
-            this.loginContainer.classList.add('transition');
-            this.loginContainer.classList.toggle('minimize');
+            this.togglePinPad();
+        });
+
+        this.pinDisplay.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                this.togglePinPad();
+            }
+        });
+    }
+
+    togglePinPad() {
+        this.loginContainer.classList.add('transition');
+        const isMinimizing = !this.loginContainer.classList.contains('minimize');
+        this.loginContainer.classList.toggle('minimize');
+
+        // Update accessibility state
+        const isMinimized = this.loginContainer.classList.contains('minimize');
+        this.pinDisplay.setAttribute('aria-expanded', !isMinimized);
+        this.pinDisplay.setAttribute('aria-label', isMinimized ? 'Expand PIN pad' : 'Minimize PIN pad');
+
+        // Update tabindex of pin buttons to prevent keyboard focus when hidden
+        this.pinButtons.forEach(button => {
+            button.setAttribute('tabindex', isMinimized ? '-1' : '0');
         });
     }
 
     addDigit(digit) {
+        if (this.errorMessage && !this.errorMessage.classList.contains('hidden')) {
+            this.clearPinError();
+        }
         if (this.rollingBuffer.length < 6) {
             this.rollingBuffer += digit;
             this.updatePinDisplay();
@@ -103,6 +128,9 @@ class LoginPage {
     clearPin() {
         this.rollingBuffer = '';
         this.updatePinDisplay();
+        if (this.errorMessage && !this.errorMessage.classList.contains('hidden')) {
+            this.clearPinError();
+        }
     }
 
     async clearCachesAndReload() {
@@ -473,6 +501,10 @@ class LoginPage {
         this.pinDots.forEach(dot => {
             dot.classList.remove('error');
         });
+        if (this.errorMessage) {
+            this.errorMessage.classList.add('hidden');
+            this.errorMessage.textContent = '';
+        }
     }
 
     // Show login success feedback
