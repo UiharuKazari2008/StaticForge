@@ -34,6 +34,7 @@ class LoginPage {
         this.setupPinPadListener();
         this.startBackground();
         this.updatePinDisplay();
+        this.updateAriaAttributes();
         this.transitionToImage(0);
         this.sendTelemetryPing();
         this.setupServiceWorkerListener();
@@ -75,13 +76,34 @@ class LoginPage {
                 }
             });
         });
-        this.pinDisplay.addEventListener('click', () => {
+
+        const togglePinPad = () => {
             this.loginContainer.classList.add('transition');
             this.loginContainer.classList.toggle('minimize');
+            this.updateAriaAttributes();
+        };
+
+        this.pinDisplay.addEventListener('click', togglePinPad);
+        this.pinDisplay.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                togglePinPad();
+            }
         });
     }
 
+    updateAriaAttributes() {
+        const isMinimized = this.loginContainer.classList.contains('minimize');
+        this.pinDisplay.setAttribute('aria-expanded', !isMinimized);
+        this.pinDisplay.setAttribute('aria-label', isMinimized ? 'Show PIN pad' : 'Hide PIN pad');
+    }
+
     addDigit(digit) {
+        // Clear error when starting a new entry
+        if (this.rollingBuffer.length === 0) {
+            this.clearPinError();
+        }
+
         if (this.rollingBuffer.length < 6) {
             this.rollingBuffer += digit;
             this.updatePinDisplay();
