@@ -1,0 +1,3 @@
+## 2025-05-15 - Managing accessibility in collapsible UI components
+**Learning:** For interactive elements that can be hidden via CSS transitions (like a PIN pad toggle), it is critical to synchronize the `tabindex` of inner elements with their visual visibility to prevent "ghost" keyboard focus on hidden controls. Additionally, using `aria-expanded` and `aria-controls` provides essential context for screen reader users when interacting with toggles.
+**Action:** Always implement a visibility-aware `updateTabOrder` method for collapsible containers and ensure ARIA state attributes are updated immediately during state transitions.

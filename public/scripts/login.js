@@ -37,6 +37,8 @@ class LoginPage {
         this.transitionToImage(0);
         this.sendTelemetryPing();
         this.setupServiceWorkerListener();
+        this.updateTabOrder();
+        window.addEventListener('resize', () => this.updateTabOrder());
     }
 
     setupKeyboardListener() {
@@ -47,9 +49,14 @@ class LoginPage {
             } else if (e.key === 'Enter') {
                 if (this.rollingBuffer.length === 6) {
                     this.handleLogin();
+                } else if (document.activeElement === this.pinDisplay) {
+                    this.togglePinPad();
                 }
             } else if (e.key === 'Backspace') {
                 this.removeDigit();
+            } else if (e.key === ' ' && document.activeElement === this.pinDisplay) {
+                e.preventDefault();
+                this.togglePinPad();
             }
         });
     }
@@ -76,8 +83,25 @@ class LoginPage {
             });
         });
         this.pinDisplay.addEventListener('click', () => {
-            this.loginContainer.classList.add('transition');
-            this.loginContainer.classList.toggle('minimize');
+            this.togglePinPad();
+        });
+    }
+
+    togglePinPad() {
+        this.loginContainer.classList.add('transition');
+        const isMinimized = this.loginContainer.classList.toggle('minimize');
+        this.pinDisplay.setAttribute('aria-expanded', (!isMinimized).toString());
+        this.pinDisplay.setAttribute('aria-label', isMinimized ? 'Expand PIN pad' : 'Minimize PIN pad');
+        this.updateTabOrder();
+    }
+
+    updateTabOrder() {
+        const isMinimized = this.loginContainer.classList.contains('minimize');
+        const isMobile = window.innerWidth <= 480;
+        // On mobile, pin pad is always visible regardless of minimize class (due to CSS media queries)
+        const isVisible = !isMinimized || isMobile;
+        this.pinButtons.forEach(button => {
+            button.setAttribute('tabindex', isVisible ? '0' : '-1');
         });
     }
 
