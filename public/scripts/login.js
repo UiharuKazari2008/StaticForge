@@ -469,32 +469,47 @@ class LoginPage {
                 }, 800);
                 
             } else {
-                this.showPinError();
+                this.showPinError(data.error || 'Invalid PIN code');
                 this.clearPin();
             }
         } catch (error) {
             console.error('Login error:', error);
-            this.showPinError();
+            this.showPinError('An error occurred during login');
             this.clearPin();
         } finally {
             this.isLoading = false;
         }
     }
 
-    showPinError() {
+    showPinError(message) {
         this.pinDots.forEach(dot => {
             dot.classList.add('error');
         });
-        // Remove error state after animation
+
+        if (message && this.errorMessage) {
+            this.errorMessage.textContent = message;
+            this.errorMessage.classList.remove('hidden');
+        }
+
+        // Remove dot error state after animation
         setTimeout(() => {
-            this.clearPinError();
+            this.clearPinDotsError();
         }, 1000);
     }
 
-    clearPinError() {
+    clearPinDotsError() {
         this.pinDots.forEach(dot => {
             dot.classList.remove('error');
         });
+    }
+
+    clearPinError() {
+        this.clearPinDotsError();
+
+        if (this.errorMessage) {
+            this.errorMessage.classList.add('hidden');
+            this.errorMessage.textContent = '';
+        }
     }
 
     // Show login success feedback
