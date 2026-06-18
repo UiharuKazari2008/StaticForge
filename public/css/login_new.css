@@ -360,10 +360,28 @@ body {
     border-radius: 5px;
     color: #fff;
     font-size: 0.9em;
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 100px;
+    overflow: hidden;
+    transition: opacity 0.3s ease, transform 0.3s ease, max-height 0.3s ease, margin-top 0.3s ease, padding 0.3s ease;
+    will-change: opacity, transform, max-height;
 }
 
 .hidden {
     display: none;
+}
+
+.error-message.hidden {
+    display: block;
+    opacity: 0;
+    transform: translateY(-10px);
+    max-height: 0;
+    margin-top: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    border-width: 0;
+    pointer-events: none;
 }
 
 /* Mobile responsiveness */

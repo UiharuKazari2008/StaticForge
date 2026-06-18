@@ -100,9 +100,7 @@ class LoginPage {
 
     addDigit(digit) {
         // Clear error when starting a new entry
-        if (this.rollingBuffer.length === 0) {
-            this.clearPinError();
-        }
+        this.clearPinError();
 
         if (this.rollingBuffer.length < 6) {
             this.rollingBuffer += digit;
@@ -116,6 +114,7 @@ class LoginPage {
     }
 
     removeDigit() {
+        this.clearPinError();
         if (this.rollingBuffer.length > 0) {
             this.rollingBuffer = this.rollingBuffer.slice(0, -1);
             this.updatePinDisplay();
@@ -123,6 +122,7 @@ class LoginPage {
     }
 
     clearPin() {
+        this.clearPinError();
         this.rollingBuffer = '';
         this.updatePinDisplay();
     }
@@ -469,32 +469,42 @@ class LoginPage {
                 }, 800);
                 
             } else {
-                this.showPinError();
+                this.showPinError(data.error || 'Invalid PIN code');
                 this.clearPin();
             }
         } catch (error) {
             console.error('Login error:', error);
-            this.showPinError();
+            this.showPinError('An error occurred during login');
             this.clearPin();
         } finally {
             this.isLoading = false;
         }
     }
 
-    showPinError() {
+    showPinError(message) {
         this.pinDots.forEach(dot => {
             dot.classList.add('error');
         });
-        // Remove error state after animation
-        setTimeout(() => {
-            this.clearPinError();
-        }, 1000);
+
+        if (this.errorMessage) {
+            this.errorMessage.textContent = message || 'Invalid PIN code';
+            this.errorMessage.classList.remove('hidden');
+        }
     }
 
     clearPinError() {
         this.pinDots.forEach(dot => {
             dot.classList.remove('error');
         });
+
+        if (this.errorMessage) {
+            this.errorMessage.classList.add('hidden');
+            setTimeout(() => {
+                if (this.errorMessage.classList.contains('hidden')) {
+                    this.errorMessage.textContent = '';
+                }
+            }, 300);
+        }
     }
 
     // Show login success feedback
