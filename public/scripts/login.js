@@ -95,14 +95,18 @@ class LoginPage {
     updateAriaAttributes() {
         const isMinimized = this.loginContainer.classList.contains('minimize');
         this.pinDisplay.setAttribute('aria-expanded', !isMinimized);
-        this.pinDisplay.setAttribute('aria-label', isMinimized ? 'Show PIN pad' : 'Hide PIN pad');
+
+        let label = isMinimized ? 'Show PIN pad' : 'Hide PIN pad';
+        if (this.rollingBuffer.length > 0) {
+            label += `, ${this.rollingBuffer.length} digits entered`;
+        }
+        this.pinDisplay.setAttribute('aria-label', label);
     }
 
     addDigit(digit) {
         // Clear error when starting a new entry
-        if (this.rollingBuffer.length === 0) {
-            this.clearPinError();
-        }
+        this.clearPinError();
+        this.clearPinDotsError();
 
         if (this.rollingBuffer.length < 6) {
             this.rollingBuffer += digit;
@@ -116,6 +120,8 @@ class LoginPage {
     }
 
     removeDigit() {
+        this.clearPinError();
+        this.clearPinDotsError();
         if (this.rollingBuffer.length > 0) {
             this.rollingBuffer = this.rollingBuffer.slice(0, -1);
             this.updatePinDisplay();
@@ -123,6 +129,8 @@ class LoginPage {
     }
 
     clearPin() {
+        this.clearPinError();
+        this.clearPinDotsError();
         this.rollingBuffer = '';
         this.updatePinDisplay();
     }
@@ -417,12 +425,15 @@ class LoginPage {
                 dot.classList.remove('filled');
             }
         });
+        this.updateAriaAttributes();
     }
 
     async handleLogin() {
         if (this.isLoading) return;
         this.isLoading = true;
         this.clearPinError();
+        this.clearPinDotsError();
+        this.pinDots.forEach(dot => dot.classList.add('loading'));
         
         try {
             const response = await fetch('/', {
@@ -469,29 +480,42 @@ class LoginPage {
                 }, 800);
                 
             } else {
-                this.showPinError();
-                this.clearPin();
+                this.showPinError(data.error || 'Invalid PIN');
+                this.rollingBuffer = '';
+                this.updatePinDisplay();
             }
         } catch (error) {
             console.error('Login error:', error);
-            this.showPinError();
-            this.clearPin();
+            this.showPinError('Connection error. Please try again.');
+            this.rollingBuffer = '';
+            this.updatePinDisplay();
         } finally {
             this.isLoading = false;
+            this.pinDots.forEach(dot => dot.classList.remove('loading'));
         }
     }
 
-    showPinError() {
+    showPinError(message) {
+        if (this.errorMessage) {
+            this.errorMessage.textContent = message;
+            this.errorMessage.classList.remove('hidden');
+        }
         this.pinDots.forEach(dot => {
             dot.classList.add('error');
         });
         // Remove error state after animation
         setTimeout(() => {
-            this.clearPinError();
+            this.clearPinDotsError();
         }, 1000);
     }
 
     clearPinError() {
+        if (this.errorMessage) {
+            this.errorMessage.classList.add('hidden');
+        }
+    }
+
+    clearPinDotsError() {
         this.pinDots.forEach(dot => {
             dot.classList.remove('error');
         });
