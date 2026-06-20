@@ -6,6 +6,7 @@ class LoginPage {
         this.isLoading = false;
         this.rollingBuffer = '';
         this.pinDots = document.querySelectorAll('.pin-dot');
+        this.pinDotsContainer = document.querySelector('.pin-dots');
         this.pinDisplay = document.querySelector('.pin-display');
         this.pinButtons = document.querySelectorAll('.pin-button');
         this.loginContainer = document.querySelector('.login-container');
@@ -94,8 +95,9 @@ class LoginPage {
 
     updateAriaAttributes() {
         const isMinimized = this.loginContainer.classList.contains('minimize');
+        const count = this.rollingBuffer.length;
         this.pinDisplay.setAttribute('aria-expanded', !isMinimized);
-        this.pinDisplay.setAttribute('aria-label', isMinimized ? 'Show PIN pad' : 'Hide PIN pad');
+        this.pinDisplay.setAttribute('aria-label', (isMinimized ? 'Show PIN pad' : 'Hide PIN pad') + (count > 0 ? `, ${count} digits entered` : ''));
     }
 
     addDigit(digit) {
@@ -107,6 +109,7 @@ class LoginPage {
         if (this.rollingBuffer.length < 6) {
             this.rollingBuffer += digit;
             this.updatePinDisplay();
+            this.updateAriaAttributes();
             
             // Auto-submit when 6 digits are entered
             if (this.rollingBuffer.length === 6) {
@@ -119,12 +122,14 @@ class LoginPage {
         if (this.rollingBuffer.length > 0) {
             this.rollingBuffer = this.rollingBuffer.slice(0, -1);
             this.updatePinDisplay();
+            this.updateAriaAttributes();
         }
     }
 
     clearPin() {
         this.rollingBuffer = '';
         this.updatePinDisplay();
+        this.updateAriaAttributes();
     }
 
     async clearCachesAndReload() {
@@ -423,6 +428,7 @@ class LoginPage {
         if (this.isLoading) return;
         this.isLoading = true;
         this.clearPinError();
+        if (this.pinDotsContainer) this.pinDotsContainer.classList.add('loading');
         
         try {
             const response = await fetch('/', {
@@ -478,6 +484,7 @@ class LoginPage {
             this.clearPin();
         } finally {
             this.isLoading = false;
+            if (this.pinDotsContainer) this.pinDotsContainer.classList.remove('loading');
         }
     }
 
