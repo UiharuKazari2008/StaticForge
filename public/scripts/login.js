@@ -94,8 +94,10 @@ class LoginPage {
 
     updateAriaAttributes() {
         const isMinimized = this.loginContainer.classList.contains('minimize');
+        const digitCount = this.rollingBuffer.length;
+        const digitText = digitCount > 0 ? `, ${digitCount} digit${digitCount === 1 ? '' : 's'} entered` : '';
         this.pinDisplay.setAttribute('aria-expanded', !isMinimized);
-        this.pinDisplay.setAttribute('aria-label', isMinimized ? 'Show PIN pad' : 'Hide PIN pad');
+        this.pinDisplay.setAttribute('aria-label', (isMinimized ? 'Show PIN pad' : 'Hide PIN pad') + digitText);
     }
 
     addDigit(digit) {
@@ -119,12 +121,14 @@ class LoginPage {
         if (this.rollingBuffer.length > 0) {
             this.rollingBuffer = this.rollingBuffer.slice(0, -1);
             this.updatePinDisplay();
+            this.clearPinError();
         }
     }
 
     clearPin() {
         this.rollingBuffer = '';
         this.updatePinDisplay();
+        this.clearPinError();
     }
 
     async clearCachesAndReload() {
@@ -417,6 +421,7 @@ class LoginPage {
                 dot.classList.remove('filled');
             }
         });
+        this.updateAriaAttributes();
     }
 
     async handleLogin() {
@@ -469,25 +474,35 @@ class LoginPage {
                 }, 800);
                 
             } else {
-                this.showPinError();
-                this.clearPin();
+                this.showPinError(data.error || 'Invalid PIN code');
+                this.rollingBuffer = '';
+                this.updatePinDisplay();
             }
         } catch (error) {
             console.error('Login error:', error);
-            this.showPinError();
-            this.clearPin();
+            this.showPinError('An error occurred during login');
+            this.rollingBuffer = '';
+            this.updatePinDisplay();
         } finally {
             this.isLoading = false;
         }
     }
 
-    showPinError() {
+    showPinError(message) {
         this.pinDots.forEach(dot => {
             dot.classList.add('error');
         });
-        // Remove error state after animation
+
+        if (message && this.errorMessage) {
+            this.errorMessage.textContent = message;
+            this.errorMessage.classList.remove('hidden');
+        }
+
+        // Remove error state from dots after animation
         setTimeout(() => {
-            this.clearPinError();
+            this.pinDots.forEach(dot => {
+                dot.classList.remove('error');
+            });
         }, 1000);
     }
 
@@ -495,6 +510,15 @@ class LoginPage {
         this.pinDots.forEach(dot => {
             dot.classList.remove('error');
         });
+        if (this.errorMessage) {
+            this.errorMessage.classList.add('hidden');
+            // Don't clear text immediately to allow transition to finish
+            setTimeout(() => {
+                if (this.errorMessage.classList.contains('hidden')) {
+                    this.errorMessage.textContent = '';
+                }
+            }, 500);
+        }
     }
 
     // Show login success feedback
