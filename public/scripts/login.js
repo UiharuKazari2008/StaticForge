@@ -94,14 +94,18 @@ class LoginPage {
 
     updateAriaAttributes() {
         const isMinimized = this.loginContainer.classList.contains('minimize');
+        const digitsEntered = this.rollingBuffer.length;
+        const digitText = digitsEntered === 1 ? '1 digit entered' : `${digitsEntered} digits entered`;
+
         this.pinDisplay.setAttribute('aria-expanded', !isMinimized);
-        this.pinDisplay.setAttribute('aria-label', isMinimized ? 'Show PIN pad' : 'Hide PIN pad');
+        this.pinDisplay.setAttribute('aria-label', `${isMinimized ? 'Show PIN pad' : 'Hide PIN pad'}, ${digitText}`);
     }
 
     addDigit(digit) {
         // Clear error when starting a new entry
         if (this.rollingBuffer.length === 0) {
             this.clearPinError();
+            this.clearPinDotsError();
         }
 
         if (this.rollingBuffer.length < 6) {
@@ -119,12 +123,18 @@ class LoginPage {
         if (this.rollingBuffer.length > 0) {
             this.rollingBuffer = this.rollingBuffer.slice(0, -1);
             this.updatePinDisplay();
+            this.updateAriaAttributes();
+            this.clearPinError();
+            this.clearPinDotsError();
         }
     }
 
     clearPin() {
         this.rollingBuffer = '';
         this.updatePinDisplay();
+        this.updateAriaAttributes();
+        this.clearPinError();
+        this.clearPinDotsError();
     }
 
     async clearCachesAndReload() {
@@ -422,7 +432,12 @@ class LoginPage {
     async handleLogin() {
         if (this.isLoading) return;
         this.isLoading = true;
+
+        // Visual feedback for authentication
+        const pinDotsContainer = document.querySelector('.pin-dots');
+        if (pinDotsContainer) pinDotsContainer.classList.add('loading');
         this.clearPinError();
+        this.clearPinDotsError();
         
         try {
             const response = await fetch('/', {
@@ -437,6 +452,7 @@ class LoginPage {
             const data = await response.json();
             
             if (response.ok) {
+                if (pinDotsContainer) pinDotsContainer.classList.remove('loading');
                 // Store user type and any other user data for use in the app
                 if (data.userType) {
                     localStorage.setItem('userType', data.userType);
@@ -469,29 +485,48 @@ class LoginPage {
                 }, 800);
                 
             } else {
-                this.showPinError();
-                this.clearPin();
+                if (pinDotsContainer) pinDotsContainer.classList.remove('loading');
+                this.showPinError(data.error || 'Invalid PIN code');
+                // Clear buffer without calling clearPin() to avoid immediate error clearing
+                this.rollingBuffer = '';
+                this.updatePinDisplay();
+                this.updateAriaAttributes();
             }
         } catch (error) {
             console.error('Login error:', error);
-            this.showPinError();
-            this.clearPin();
+            if (pinDotsContainer) pinDotsContainer.classList.remove('loading');
+            this.showPinError('Connection error. Please try again.');
+            this.rollingBuffer = '';
+            this.updatePinDisplay();
+            this.updateAriaAttributes();
         } finally {
             this.isLoading = false;
         }
     }
 
-    showPinError() {
+    showPinError(message) {
         this.pinDots.forEach(dot => {
             dot.classList.add('error');
         });
-        // Remove error state after animation
+
+        if (this.errorMessage) {
+            this.errorMessage.textContent = message;
+            this.errorMessage.classList.remove('hidden');
+        }
+
+        // Remove dots error state after animation, but keep error message
         setTimeout(() => {
-            this.clearPinError();
+            this.clearPinDotsError();
         }, 1000);
     }
 
     clearPinError() {
+        if (this.errorMessage) {
+            this.errorMessage.classList.add('hidden');
+        }
+    }
+
+    clearPinDotsError() {
         this.pinDots.forEach(dot => {
             dot.classList.remove('error');
         });
