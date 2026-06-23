@@ -987,11 +987,9 @@ class FileSearch {
         this.tagSuggestions = [];
         this.isSearching = false;
 
-        if (window.originalAllImages) {
-            delete window.originalAllImages;
-        }
-        if (window.filteredImageIndices) {
-            delete window.filteredImageIndices;
+        // clearStaleGalleryListCopies: public/scripts/comp/galleryView.js
+        if (typeof clearStaleGalleryListCopies === 'function') {
+            clearStaleGalleryListCopies();
         }
         if (this.searchTimeout) {
             clearTimeout(this.searchTimeout);
@@ -1033,8 +1031,7 @@ class FileSearch {
 
     ensureOriginalGalleryData() {
         if (!window.originalAllImages && allImages && allImages.length > 0) {
-            window.originalAllImages = [...allImages];
-            // Clear filtered indices when ensuring original data
+            window.originalAllImages = allImages;
             if (window.filteredImageIndices) {
                 delete window.filteredImageIndices;
             }

@@ -850,6 +850,7 @@ async function compileDirectorPrompts(globalResources, inputPrompt) {
         base_uc: processedNegativePrompt,
         chara: processedCharacterPrompts,
         apply_quality_preset: inputPrompt.append_quality,
+        quality_preset_bias: inputPrompt.quality_preset_bias,
         apply_uc_preset: inputPrompt.append_uc
     };
 }

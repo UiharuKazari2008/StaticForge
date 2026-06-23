@@ -1261,6 +1261,72 @@ class GenerationQuipsManager {
         return this.parseQuipResponse(grokService, result?.content || result?.message || '', schema);
     }
 
+    /**
+     * Native @ai-sdk/xai path for quips (smaller task).
+     * Uses generateObject for reliable structured output.
+     * The XaiNativeService also fully supports streaming (streamText) and native
+     * web_search when enableWebSearch: true — ready for other small utility tasks.
+     */
+    async callXaiNativeForQuips(xaiService, workspaceName, terms, schemaOptions = {}) {
+        const { QuipBatchSchema, QuipSingleTermSchema } = buildQuipSchemas(schemaOptions.phrasesPerTerm);
+        const schema = schemaOptions.singleTerm ? QuipSingleTermSchema : QuipBatchSchema;
+
+        // If the outer generateQuipsForWorkspace is managing cross-batch state (same session
+        // for the whole workspace request), it passes the exact messages array via _callMessages.
+        let messages = schemaOptions && schemaOptions._callMessages;
+        if (!messages || !Array.isArray(messages) || messages.length === 0) {
+            messages = [
+                { role: 'system', content: this.buildGrokSystemPrompt(workspaceName, schemaOptions.phrasesPerTerm) },
+                { role: 'user', content: this.buildGrokUserPrompt(terms, workspaceName, schemaOptions.phrasesPerTerm) }
+            ];
+        }
+
+        // Primary: clean structured generation via the native SDK.
+        // Web search is available on the service but not required for creative quip generation.
+        try {
+            const aiRes = await xaiService.generateObject({
+                schema,
+                messages,
+                model: 'grok-4.3',
+                temperature: 1.05,
+                maxTokens: 16000,
+                enableWebSearch: false,
+                logLabel: 'Quips AI (native)',
+                reasoningEffort: 'low'
+            });
+            if (aiRes && aiRes.object && Array.isArray(aiRes.object.quips)) {
+                return {
+                    parsed: aiRes.object.quips,
+                    usage: aiRes.usage || null,
+                    rawText: JSON.stringify(aiRes.object)
+                };
+            }
+        } catch (err) {
+            this.globalResources.getLogger?.().detailed?.(`xaiNative quips generateObject failed, falling back: ${err?.message}`);
+        }
+
+        // Fallback: ask for text and reuse the existing (graceful) parser from the classic GrokService.
+        // This keeps behavior identical to the old path on weird outputs.
+        try {
+            const grokService = this.globalResources.getGrokService();
+            const textResult = await xaiService.generateText({
+                messages,
+                model: 'grok-4.3',
+                temperature: 1.05,
+                maxTokens: 16000,
+                enableWebSearch: false,
+                logLabel: 'Quips AI (native)',
+                reasoningEffort: 'low'
+            });
+            const raw = textResult?.text || '';
+            const parsed = this.parseQuipResponse(grokService, raw, schema);
+            return { parsed, usage: textResult?.usage || null, rawText: raw };
+        } catch (fallbackErr) {
+            console.error('❌ xaiNative quips fallback also failed:', fallbackErr?.message);
+            return { parsed: null, usage: null, rawText: '' };
+        }
+    }
+
     async generateQuipsForWorkspace(workspaceId, terms, workspaceName, progressCtx = null, options = {}) {
         const grokBatchSize = options.grokBatchSize ?? 3;
         const phrasesPerTerm = options.phrasesPerTerm ?? DEFAULT_PHRASES_PER_TERM;
@@ -1269,10 +1335,43 @@ class GenerationQuipsManager {
 
         terms = await this.enrichTermsWithTagLookup(terms);
 
+        // Prefer the native @ai-sdk/xai service for this smaller utility task (quips).
+        // It supports streaming + native web search out of the box; we use generateObject here
+        // because quips are a structured JSON batch and we want strong schema adherence.
+        const xaiNativeService = this.globalResources.getXaiNativeService?.();
         const grokService = this.globalResources.getGrokService();
         const batchSize = Math.max(1, Math.min(5, parseInt(grokBatchSize, 10) || 3));
         const allQuips = [];
         const batchTotal = Math.ceil(terms.length / batchSize);
+
+        // === Session / conversation continuity for the entire workspace quip request ===
+        // By default we accumulate messages across batches so the model sees previous quips
+        // it generated for this workspace (better stylistic consistency).
+        // Config under generationQuips:
+        //   maintainQuipSession: true          // use same logical session (accumulated messages)
+        //   breakQuipSessionAt128k: true       // start a fresh session when we near 128k context
+        //   logFullPromptsToConsole: false     // when true, console.log the full sent messages + returned content for this run
+        const quipsCfg = this.globalResources.getConfig({ path: 'generationQuips' }) || {};
+        const maintainSession = quipsCfg.maintainQuipSession !== false; // default true
+        const breakAt128k = quipsCfg.breakQuipSessionAt128k !== false;  // default true
+        const logFullToConsole = !!quipsCfg.logFullPromptsToConsole;
+        const TOKEN_BREAK_THRESHOLD = 120000; // headroom before 128k (Grok pricing / context tiers)
+
+        let sessionMessages = null;
+        let sessionTokens = 0; // accumulated from actual usage replies
+
+        if (xaiNativeService && maintainSession) {
+            const systemPrompt = this.buildGrokSystemPrompt(workspaceName, phrasesPerTerm);
+            sessionMessages = [{ role: 'system', content: systemPrompt }];
+            if (logFullToConsole) {
+                const logger = this.globalResources.getLogger();
+                if (logger && typeof logger.detailed === 'function') {
+                    logger.detailed(`🧠 Quips session started for ${workspaceName} (maintainSession=true, breakAt128k=${breakAt128k})`);
+                }
+            }
+        }
+
+        const logger = this.globalResources.getLogger();
 
         for (let i = 0; i < terms.length; i += batchSize) {
             const batchIndex = Math.floor(i / batchSize) + 1;
@@ -1294,7 +1393,88 @@ class GenerationQuipsManager {
                 }, { wsServer: progressCtx.wsServer });
             }
 
-            let parsed = await this.callGrokForQuips(grokService, workspaceName, batch, { phrasesPerTerm });
+            // Build the messages for *this* call (either fresh per-batch or continued session)
+            let callMessages = null;
+            let userContentForBatch = null;
+            let didBreakSession = false;
+
+            if (xaiNativeService && sessionMessages) {
+                userContentForBatch = this.buildGrokUserPrompt(batch, workspaceName, phrasesPerTerm);
+                callMessages = [...sessionMessages, { role: 'user', content: userContentForBatch }];
+
+                // Decide whether to break into a new logical session for this batch
+                const estimatedAdd = Math.ceil(((userContentForBatch || '').length + 1500) / 3.5); // cheap chars->tokens estimate
+                if (breakAt128k && (sessionTokens + estimatedAdd > TOKEN_BREAK_THRESHOLD)) {
+                    if (logger && typeof logger.detailed === 'function') {
+                        logger.detailed(`🆕 Breaking quip session for "${workspaceName}" (sessionTokens~${sessionTokens}, next est +${estimatedAdd} would near/exceed 128k)`);
+                    }
+                    // Start a fresh session: keep only the original system prompt + this batch's user message
+                    const systemOnly = sessionMessages[0] ? [sessionMessages[0]] : [];
+                    sessionMessages = systemOnly.length ? systemOnly : [{ role: 'system', content: this.buildGrokSystemPrompt(workspaceName, phrasesPerTerm) }];
+                    callMessages = [...sessionMessages, { role: 'user', content: userContentForBatch }];
+                    sessionTokens = 0;
+                    didBreakSession = true;
+                }
+            }
+
+            // Console insight header — same style as the main Director / GrokService flows
+            const effectiveMsgCount = callMessages ? callMessages.length : 2;
+            const usingNative = !!xaiNativeService;
+            if (logger && typeof logger.detailed === 'function') {
+                const label = usingNative ? 'Quips AI (native)' : 'Quips AI (legacy)';
+                const stateNote = didBreakSession ? ' | new session (128k break)' : (sessionMessages ? ' | stateful' : '');
+                logger.detailed(`🎯 ${label}: ${usingNative ? (this.globalResources.getConfig({ path: 'defaultGrokModel' }) || 'grok-4.3') : 'grok'} | Batch ${batchIndex}/${batchTotal} | ${effectiveMsgCount} msgs | 0 tools${stateNote}`);
+            }
+
+            // Optional full visibility of exactly what we are sending (for debugging style/consistency issues)
+            if (logFullToConsole && callMessages && logger) {
+                try {
+                    const sentPreview = JSON.stringify(callMessages, null, 2);
+                    if (typeof logger.detailed === 'function') {
+                        logger.detailed(`📤 Quips FULL SENT (batch ${batchIndex}/${batchTotal}):\n${sentPreview.slice(0, 12000)}`);
+                    } else {
+                        console.log(`📤 Quips FULL SENT (batch ${batchIndex}/${batchTotal}):\n${sentPreview.slice(0, 12000)}`);
+                    }
+                } catch (_) {}
+            }
+
+            let parsed = null;
+            let aiUsage = null;
+
+            if (xaiNativeService) {
+                const aiResult = await this.callXaiNativeForQuips(xaiNativeService, workspaceName, batch, { phrasesPerTerm, _callMessages: callMessages });
+                parsed = aiResult?.parsed || null;
+                aiUsage = aiResult?.usage || null;
+
+                // Update the running session state for the next batch (same workspace request)
+                if (maintainSession && sessionMessages && userContentForBatch) {
+                    // Append the turn we just did
+                    sessionMessages.push({ role: 'user', content: userContentForBatch });
+                    const assistantJson = parsed && Array.isArray(parsed) ? JSON.stringify({ quips: parsed }) : (aiResult?.rawText || '');
+                    sessionMessages.push({ role: 'assistant', content: assistantJson || '' });
+
+                    if (aiUsage) {
+                        const tot = aiUsage.totalTokens || (aiUsage.promptTokens || 0) + (aiUsage.completionTokens || 0) || 0;
+                        sessionTokens += tot;
+                    }
+                }
+            } else {
+                // Fallback to the classic (OpenAI SDK) path if native service isn't ready yet.
+                // (Legacy path stays per-batch independent unless you also wire sessioning there.)
+                parsed = await this.callGrokForQuips(grokService, workspaceName, batch, { phrasesPerTerm });
+            }
+
+            // Optional: log what came back (after we have parsed)
+            if (logFullToConsole && logger) {
+                try {
+                    const ret = parsed ? JSON.stringify({ quips: parsed }, null, 2) : '(no parsed quips)';
+                    if (typeof logger.detailed === 'function') {
+                        logger.detailed(`📥 Quips FULL RETURNED (batch ${batchIndex}/${batchTotal}):\n${ret.slice(0, 8000)}`);
+                    } else {
+                        console.log(`📥 Quips FULL RETURNED (batch ${batchIndex}/${batchTotal}):\n${ret.slice(0, 8000)}`);
+                    }
+                } catch (_) {}
+            }
             const batchResults = [];
 
             if (Array.isArray(parsed)) {
@@ -1309,9 +1489,54 @@ class GenerationQuipsManager {
                 const termKey = termRow.term.toLowerCase().trim();
                 const existing = batchResults.find((q) => q.term === termKey);
                 if (!existing || existing.phrases.length < minPhrases) {
-                    const retry = await this.callGrokForQuips(grokService, workspaceName, [termRow], { phrasesPerTerm, singleTerm: true });
-                    if (Array.isArray(retry) && retry[0]) {
-                        const normalized = this.normalizeQuipEntry(retry[0]);
+                    let retryParsed = null;
+                    let retryUsage = null;
+                    let retryUserContent = null;
+
+                    if (xaiNativeService) {
+                        retryUserContent = this.buildGrokUserPrompt([termRow], workspaceName, phrasesPerTerm);
+                        let retryCallMessages = null;
+
+                        if (maintainSession && sessionMessages) {
+                            retryCallMessages = [...sessionMessages, { role: 'user', content: retryUserContent }];
+                            // light 128k check for the retry turn too
+                            const est = Math.ceil((retryUserContent.length + 800) / 3.5);
+                            if (breakAt128k && (sessionTokens + est > TOKEN_BREAK_THRESHOLD)) {
+                                if (logger && typeof logger.detailed === 'function') {
+                                    logger.detailed(`🆕 Breaking quip session (retry) for "${workspaceName}" near 128k`);
+                                }
+                                const sys = sessionMessages[0] ? [sessionMessages[0]] : [];
+                                sessionMessages = sys.length ? sys : [{ role: 'system', content: this.buildGrokSystemPrompt(workspaceName, phrasesPerTerm) }];
+                                retryCallMessages = [...sessionMessages, { role: 'user', content: retryUserContent }];
+                                sessionTokens = 0;
+                            }
+                        }
+
+                        const retryRes = await this.callXaiNativeForQuips(xaiNativeService, workspaceName, [termRow], {
+                            phrasesPerTerm,
+                            singleTerm: true,
+                            _callMessages: retryCallMessages
+                        });
+                        retryParsed = retryRes?.parsed || null;
+                        retryUsage = retryRes?.usage || null;
+
+                        // keep session alive with this retry turn
+                        if (maintainSession && sessionMessages && retryUserContent) {
+                            sessionMessages.push({ role: 'user', content: retryUserContent });
+                            const asst = retryParsed && Array.isArray(retryParsed) ? JSON.stringify({ quips: retryParsed }) : (retryRes?.rawText || '');
+                            sessionMessages.push({ role: 'assistant', content: asst || '' });
+                            if (retryUsage) {
+                                const tot = retryUsage.totalTokens || (retryUsage.promptTokens || 0) + (retryUsage.completionTokens || 0) || 0;
+                                sessionTokens += tot;
+                            }
+                        }
+                    } else {
+                        const retryRes = await this.callGrokForQuips(grokService, workspaceName, [termRow], { phrasesPerTerm, singleTerm: true });
+                        retryParsed = Array.isArray(retryRes) ? retryRes : null;
+                    }
+
+                    if (Array.isArray(retryParsed) && retryParsed[0]) {
+                        const normalized = this.normalizeQuipEntry(retryParsed[0]);
                         if (normalized) {
                             if (existing) {
                                 existing.phrases = normalized.phrases;

@@ -2125,6 +2125,26 @@ async function getCharacterStatsForFilenames(filenames, options = {}) {
         .slice(0, limit);
 }
 
+/**
+ * Find the most recently modified workspace image linked to a novel note via forge metadata.
+ */
+async function findLatestImageFilenameByNovelNoteId(noteId) {
+    if (!dbInitialized || !db || !noteId) return null;
+    try {
+        const row = await db.get(`
+            SELECT filename FROM images
+            WHERE json_extract(metadata, '$.forge_data.novel_note_id') = ?
+               OR json_extract(metadata, '$.novel_note_id') = ?
+            ORDER BY mtime DESC, updated_at DESC
+            LIMIT 1
+        `, [noteId, noteId]);
+        return row?.filename || null;
+    } catch (error) {
+        logger.error('Error finding novel-linked image in metadata DB:', error);
+        return null;
+    }
+}
+
 module.exports = {
     initializeDatabase,
     closeDatabase,
@@ -2143,6 +2163,7 @@ module.exports = {
     getDatabaseStats,
     updateFileMetadata,
     getAllFilenames,
+    findLatestImageFilenameByNovelNoteId,
     
     // Search index functions
     updateSearchIndexes,

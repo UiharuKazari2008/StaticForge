@@ -1,0 +1,33 @@
+/* Generation quip overlay — scripts/comp/generationQuips.js */
+/* Generation quip overlay — public/scripts/comp/generationQuips.js */
+.generation-preview-quip {
+    position: absolute;
+    bottom: 10%;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 8;
+    pointer-events: none;
+    opacity: 0;
+    visibility: visible;
+    transition: opacity 0.5s ease-in-out, visibility 0.5s ease-in-out;
+    max-width: 95%;
+    text-align: center;
+}
+
+.generation-preview-quip.visible {
+    opacity: 1;
+}
+
+.generation-preview-quip-text {
+    display: inline-block;
+    color: var(--text-accent-tinted);
+    font-size: 1.15rem;
+    font-style: italic;
+    line-height: 1.5;
+    text-shadow: 0 1px 10px hsl(0deg 0% 0% / 70%), 0 0 24px hsl(0deg 0% 0% / 45%);
+}
+
+/* Above Rentan overlay (z-index 15) during generation */
+.generating .generation-preview-quip {
+    z-index: 17;
+}

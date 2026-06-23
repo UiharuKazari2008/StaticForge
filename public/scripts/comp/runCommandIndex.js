@@ -54,7 +54,7 @@ const RUN_APP_ALIAS_GROUPS = [
     { aliases: ['grimoire', 'wiki', 'e621', 'danbooru', 'e6', 'dan', 'encyclopedia', 'books', 'novelai', 'help', 'search'], launchIds: ['encyclopedia'] },
     { aliases: ['notion', 'notes', 'notebook', 'notepad'], launchIds: ['notebook'] },
     { aliases: ['chat', 'girlfriend', 'friend', 'erp', 'roleplay', 'messages'], launchIds: ['chat'] },
-    { aliases: ['atelier', 'naxt', 'vibe', 'style', 'lab', 'novelai'], launchIds: ['naxt'] },
+    { aliases: ['atelier', 'naxt', 'naxt tag', 'tag lab'], launchIds: ['naxt'] },
     { aliases: ['expanders', 'text replacement', 'expander', 'prefix', 'prefixes'], launchIds: ['expanders'] },
     { aliases: ['import', 'upload' ,'vibe', 'style'], launchIds: ['import'] },
     { aliases: ['phasewalker', 'phase', 'bracket', 'stages'], launchIds: ['bracket-generation'] },
@@ -852,11 +852,8 @@ async function copyRunTagText(text) {
     const tag = String(text || '').trim();
     if (!tag) return;
     try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            await navigator.clipboard.writeText(tag);
-        } else {
-            throw new Error('Clipboard unavailable');
-        }
+        // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
+        await copyTextToClipboard(tag);
         showGlassToast('success', 'Run', 'Tag copied', false, 2000, '<i class="fas fa-copy"></i>');
     } catch (err) {
         showGlassToast('error', 'Run', 'Failed to copy tag', false, 3000);
@@ -1349,16 +1346,19 @@ async function fetchRunAsyncEntries(query, categoryHint, generation) {
             const wikiEntries = [];
             (wikiResults || []).slice(0, 6).forEach((result, idx) => {
                 const name = result.title || result.name || result.tag || query;
+                const hasWiki = !!result.hasWiki;
                 wikiEntries.push({
                     id: `wiki-${name}`,
                     category: 'wiki',
                     label: name,
-                    subtitle: result.hasWiki ? 'Grimoire' : 'Search Grimoire',
+                    subtitle: hasWiki ? 'Grimoire' : 'Search Grimoire',
                     icon: RUN_CATEGORY_ICONS.wiki,
                     keywords: [name],
                     execute: async () => {
                         if (!window.tagWikiSearchModal) return;
-                        const opened = await window.tagWikiSearchModal.openStandaloneWikiIfDirectMatch(name);
+                        const opened = await window.tagWikiSearchModal.openStandaloneWikiIfDirectMatch(name, {
+                            force: hasWiki
+                        });
                         if (!opened) {
                             window.tagWikiSearchModal.openSearchForTerm(name);
                         }
@@ -1638,7 +1638,7 @@ function getRunEntryActionMenu(entry) {
                 const term = entry.label;
                 if (!window.tagWikiSearchModal) return;
                 if (action === 'standalone') {
-                    await window.tagWikiSearchModal.openStandaloneWikiIfDirectMatch(term);
+                    await window.tagWikiSearchModal.openStandaloneWikiIfDirectMatch(term, { force: true });
                 } else if (action === 'browser') {
                     window.tagWikiSearchModal.openSearchForTerm(term);
                 }

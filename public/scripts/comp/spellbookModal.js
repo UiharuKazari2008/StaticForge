@@ -1502,10 +1502,8 @@ class SpellbookModalManager {
             const response = await fetch(this.previewImage.src);
             const blob = await response.blob();
 
-            // Copy to clipboard
-            await navigator.clipboard.write([
-                new ClipboardItem({ 'image/png': blob })
-            ]);
+            // copyBlobToClipboard: public/scripts/utils/dreamscapeClipboard.js
+            await copyBlobToClipboard(blob, { name: 'spellbook-image.png' });
 
             // Show success message
             if (window.showGlassToast) {

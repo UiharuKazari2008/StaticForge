@@ -29,27 +29,59 @@ function isTextInputComposing(el, e) {
 }
 
 const textInputSideEffectRafIds = new WeakMap();
+const textInputSideEffectQueues = new WeakMap();
 
 /**
  * Run a non-editing input side effect after the browser commits the keystroke.
- * Coalesces multiple input events per textarea per frame. Does not stop propagation.
+ * Coalesces multiple input events and callbacks per textarea per frame. Does not stop propagation.
  */
 function scheduleTextInputSideEffect(textarea, fn) {
     if (!textarea || typeof fn !== 'function') return;
     if (isTextInputComposing(textarea)) return;
 
-    const prevId = textInputSideEffectRafIds.get(textarea);
-    if (prevId) {
-        cancelAnimationFrame(prevId);
+    let queue = textInputSideEffectQueues.get(textarea);
+    if (!queue) {
+        queue = [];
+        textInputSideEffectQueues.set(textarea, queue);
+    }
+    queue.push(fn);
+
+    if (textInputSideEffectRafIds.has(textarea)) {
+        return;
     }
 
     const rafId = requestAnimationFrame(() => {
         textInputSideEffectRafIds.delete(textarea);
+        const pending = textInputSideEffectQueues.get(textarea) || [];
+        textInputSideEffectQueues.delete(textarea);
         if (!textarea.isConnected) return;
         if (isTextInputComposing(textarea)) return;
-        fn();
+        pending.forEach((cb) => cb());
     });
     textInputSideEffectRafIds.set(textarea, rafId);
+}
+
+/** Cancel pending rAF side effects for a textarea (e.g. on blur / teardown). */
+function cancelTextInputSideEffect(textarea) {
+    if (!textarea) return;
+    const rafId = textInputSideEffectRafIds.get(textarea);
+    if (rafId) {
+        cancelAnimationFrame(rafId);
+        textInputSideEffectRafIds.delete(textarea);
+    }
+    textInputSideEffectQueues.delete(textarea);
+}
+
+/**
+ * Input listener that defers fn until after native input/IME commit (bubble phase).
+ * addSafeEventListener: public/scripts/comp/utilities.js
+ */
+function addTextareaInputSideEffect(textarea, fn, handlerId) {
+    if (!textarea || typeof fn !== 'function') return;
+    addSafeEventListener(textarea, 'input', (e) => {
+        if (isTextInputComposing(textarea, e)) return;
+        scheduleTextInputSideEffect(textarea, fn);
+    }, handlerId);
 }
 
 document.addEventListener('focusin', (e) => {
@@ -167,11 +199,17 @@ function wireManualStylePromptTextarea(textarea) {
     if (typeof handleCharacterAutocompleteKeydown === 'function') {
         addSafeEventListener(textarea, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
     }
-    if (typeof startEmphasisHighlighting === 'function') {
+    if (typeof startEmphasisHighlighting === 'function' && !textarea.closest('.creative-directive-container, .prompt-textarea-container.director-prompt')) {
         addSafeEventListener(textarea, 'focus', () => startEmphasisHighlighting(textarea), 'emphasisFocus');
     }
     if (typeof applyFormattedText === 'function' && typeof updateEmphasisHighlighting === 'function' && typeof stopEmphasisHighlighting === 'function') {
         addSafeEventListener(textarea, 'blur', () => {
+            if (textarea.closest('.creative-directive-container, .prompt-textarea-container.director-prompt')) {
+                if (typeof autoResizeTextarea === 'function') {
+                    autoResizeTextarea(textarea);
+                }
+                return;
+            }
             applyFormattedText(textarea, true);
             updateEmphasisHighlighting(textarea);
             if (typeof autoResizeTextarea === 'function') {
@@ -180,10 +218,8 @@ function wireManualStylePromptTextarea(textarea) {
             stopEmphasisHighlighting();
         }, 'emphasisBlur');
     }
-    if (typeof scheduleAutoResizeTextarea === 'function') {
-        addSafeEventListener(textarea, 'input', () => scheduleAutoResizeTextarea(textarea), 'resize');
-    } else if (typeof autoResizeTextarea === 'function') {
-        addSafeEventListener(textarea, 'input', () => autoResizeTextarea(textarea), 'resize');
+    if (typeof autoResizeTextarea === 'function') {
+        addTextareaInputSideEffect(textarea, () => autoResizeTextarea(textarea), 'resize');
     }
     // attachPromptTextareaContextMenu: public/scripts/comp/promptTextareaContextMenu.js
     if (attachPromptTextareaContextMenu) {
@@ -252,8 +288,8 @@ function setupEditableTextarea(textarea, customToolbarHandler = null) {
             window.promptTextareaToolbar.updateTokenCount(textarea);
         }
     }, 150); // 150ms debounce for token counting
-    
-    addSafeEventListener(textarea, 'input', debouncedTokenUpdate, 'tokenCount');
+
+    addTextareaInputSideEffect(textarea, debouncedTokenUpdate, 'tokenCount');
     
     // Add character autocomplete events
     if (window.handleCharacterAutocompleteInput) {

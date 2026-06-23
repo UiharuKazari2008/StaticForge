@@ -1,0 +1,298 @@
+/* Spellbook generation modal — scripts/comp/spellbookModal.js */
+#spellbookDynamicGenerationProgressOverlay {
+    top: 0;
+    left: 0;
+    transform: unset;
+    display: flex;
+    flex-direction: column;
+    border: none;
+    border-radius: none;
+    width: 100%;
+    height: 100%;
+}
+
+/* Spellbook Modal Rentan Overlay */
+#spellbookGenerationModal .dynamic-generation-overlay {
+    opacity: 1 !important;
+    position: absolute;
+    top: var(--spacing-lg);
+    right: var(--spacing-lg);
+}
+
+#spellbookGenerationModal .dynamic-generation-overlay-body {
+    gap: 12px !important;
+}
+
+#spellbookGenerationModal .overlay-time {
+    opacity: 1 !important;
+}
+
+#spellbookGenerationModal .overlay-weather-info {
+    opacity: 1 !important;
+}
+
+#spellbookGenerationModal .overlay-weather-icon .wi {
+    opacity: 1 !important;
+}
+
+/* Spellbook Modal Rentan Progress Overlay */
+#spellbookGenerationModal .dynamic-generation-progress-overlay {
+    opacity: 1 !important;
+}
+
+#spellbookGenerationModal .progress-overlay-header {
+    opacity: 1 !important;
+}
+
+/* Spellbook progress overlay is always full opacity */
+
+#spellbookGenerationModal .progress-time {
+    opacity: 1 !important;
+}
+
+#spellbookGenerationModal .progress-date {
+    opacity: 1 !important;
+}
+
+#spellbookGenerationModal .progress-season {
+    opacity: 1 !important;
+}
+
+#spellbookGenerationModal .progress-holiday {
+    opacity: 1 !important;
+}
+
+#spellbookGenerationModal .progress-reasoning-item {
+    opacity: 1 !important;
+}
+
+#spellbookGenerationModal .progress-reasoning-waiting {
+    opacity: 1 !important;
+}
+/* Spellbook Generation Modal Styles - Mobile First */
+
+/* Spellbook modal specific content styling */
+#spellbookGenerationModal {
+    width: 100%;
+    max-width: calc(min(100vh, 100vw, 650px) - 16px);
+    overflow: visible;
+}
+
+/* Spellbook confetti container - now just a reference point for positioning */
+#spellbookConfettiContainer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+}
+
+#spellbookCustomPresetDropdownBtn {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+}
+
+button#spellbookClearPresetBtn {
+    min-width: 32px;
+}
+
+div#spellbookCustomPresetDropdown {
+    width: -webkit-fill-available;
+}
+
+.spellbook-modal-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.spellbook-preview-container {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.spellbook-preview-image-container {
+    position: relative;
+    width: 100%;
+    max-height: calc(min(100vh, 100vw, 650px) - 75px);
+    aspect-ratio: 1 / 1;
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--glass-inset-bg-3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--glass-border-3);
+    box-shadow: inset 0 0px 35px 0px hsl(0deg 0% 0% / 64%);
+}
+
+.spellbook-preview-image {
+    width: calc(100% - 1rem);
+    /* Padding around image */
+    height: calc(100% - 1rem);
+    object-fit: contain;
+    /* Contain within container */
+    border-radius: 4px;
+    z-index: var(--z-layer-2);
+    position: relative;
+}
+
+/* Blur background layers */
+.spellbook-blur-background {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    opacity: 0;
+    transition: opacity 0.5s ease-in-out;
+    z-index: var(--z-layer-1);
+    border-radius: 6px;
+}
+
+/* Overlay buttons container */
+.spellbook-overlay-buttons {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: var(--z-layer-3);
+}
+
+/* Top right buttons (Close modal) */
+.spellbook-top-right-buttons {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+/* Bottom left buttons (Download, Copy) */
+.spellbook-bottom-left-buttons {
+    position: absolute;
+    bottom: 0.75rem;
+    left: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+/* Bottom right buttons (Go to workspace) */
+.spellbook-bottom-right-buttons {
+    position: absolute;
+    bottom: 0.75rem;
+    right: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.spellbook-block-container.block-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    transform: translateZ(0px);
+    border-radius: 6px;
+    background: transparent;
+    z-index: var(--z-layer-4);
+    pointer-events: none;
+    touch-action: none;
+}
+
+.spellbook-controls-container {
+    display: flex;
+    flex-direction: row;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.spellbook-controls-container .custom-dropdown {
+    flex: 1;
+    min-width: 0;
+}
+
+.spellbook-controls-container .button-group {
+    width: 100%;
+    display: flex;
+}
+
+.spellbook-controls-container .button-group button:first-child {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.spellbook-controls-container #spellbookCustomPresetSelected {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+}
+
+.spellbook-bottom-left-buttons,
+.spellbook-bottom-right-buttons {
+    pointer-events: all;
+    touch-action: all;
+}
+
+/* Tablet styles */
+@media (min-width: 769px) {
+    .spellbook-modal-layout {
+        gap: 0.5rem;
+    }
+
+    .spellbook-controls-container {
+        gap: 0.5rem;
+    }
+}
+
+/* Tablet styles */
+@container manual-modal (max-width: 680px) {
+    .manual-preview-controls-top-right {
+        align-items: flex-end;
+        flex-direction: column-reverse;
+    }
+
+    .character-prompt-item.collapsed .character-prompt-controls {
+        display: flex !important;
+        width: 100%;
+    }
+
+    .character-prompt-item.collapsed .character-prompt-controls button {
+        width: 100%;
+    }
+}
+
+/* Desktop styles */
+@media (min-width: 1025px) {
+    #spellbookGenerationModal {
+        max-width: calc(min(100vh, 100vw, 750px) - 16px);
+    }
+
+    .spellbook-modal-layout {
+        gap: 0.625rem;
+    }
+
+    .spellbook-controls-container {
+        gap: 0.625rem;
+    }
+}
+
+/* Block container specific styles for spellbook - use existing block styles */

@@ -1,0 +1,421 @@
+/* Desktop settings modal */
+#desktopSettingsModal {
+    width: 550px;
+    max-height: 90vh;
+}
+
+#desktopSettingsModal:has([data-desktop-settings-scope="global"]:not(.hidden)) {
+    width: 680px;
+}
+
+/* Desktop Settings Modal */
+/* Desktop Settings Modal Layout */
+.desktop-settings-layout {
+    display: flex;
+    flex-direction: column;
+    padding: var(--spacing-md);
+    flex: 1;
+    min-height: 0;
+}
+
+.desktop-settings-controls {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.settings-section {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--spacing-sm);
+}
+
+.settings-section .section-header {
+    color: var(--text-accent-tinted);
+    font-size: 0.85em;
+    opacity: 0.7;
+}
+
+/* Wallpaper section two-column layout */
+.wallpaper-section-content {
+    display: flex;
+    flex-direction: row;
+    gap: var(--spacing-lg);
+    align-items: stretch;
+}
+
+.desktop-settings-preview-section {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+.wallpaper-controls {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    min-width: 0;
+}
+
+.form-section-separator {
+    height: 1px;
+    background: linear-gradient(90deg,
+            transparent 0%,
+            var(--glass-border-2) 20%,
+            var(--glass-border-2) 80%,
+            transparent 100%);
+}
+
+.form-section .section-header {
+    font-size: 0.95rem;
+    font-weight: 600;
+    font-variation-settings: "wght" 600;
+    margin-bottom: var(--spacing-md);
+    color: var(--text-accent);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.form-section .section-header i {
+    opacity: 0.7;
+}
+
+.desktop-settings-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+    justify-content: flex-end;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: auto;
+}
+
+.modal-footer-colored {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-md);
+    border-top: 1px solid var(--glass-border-2);
+    background: var(--glass-layer-dark-3);
+    border-radius: 0 0 var(--border-radius-lg) var(--border-radius-lg);
+}
+
+#desktopSettingsModal .desktop-settings-footer {
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+#desktopSettingsModal .desktop-settings-scope-toggle {
+    grid-template-columns: 1fr 1fr;
+    min-width: 11rem;
+}
+
+#desktopSettingsModal .desktop-settings-scope-toggle .gallery-toggle-slider {
+    width: calc(50% - 2px);
+}
+
+#desktopSettingsModal .desktop-settings-scope-toggle[data-active="global"] .gallery-toggle-slider {
+    transform: translateX(calc(100% + 1px));
+}
+
+#desktopSettingsModal .desktop-settings-start-menu-style-toggle {
+    grid-template-columns: 1fr 1fr 1fr;
+}
+
+#desktopSettingsModal .desktop-settings-start-menu-style-toggle .gallery-toggle-slider {
+    width: calc(calc(100% / 3) - 2px);
+}
+
+#desktopSettingsModal .desktop-settings-start-menu-style-toggle[data-active="workspace"] .gallery-toggle-slider {
+    transform: translateX(calc(100% + 1px));
+}
+
+#desktopSettingsModal .desktop-settings-start-menu-style-toggle[data-active="orb"] .gallery-toggle-slider {
+    transform: translateX(calc(200% + 2px));
+}
+
+#desktopSettingsModal .desktop-settings-start-menu-style-toggle .gallery-toggle-btn .tab-text {
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+#desktopSettingsModal .desktop-settings-scope-toggle .gallery-toggle-btn .tab-text {
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.desktop-settings-options-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-md);
+}
+
+.desktop-settings-option {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+}
+
+.desktop-settings-option-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.desktop-settings-option-label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    font-variation-settings: "wght" 600;
+    color: var(--text-primary);
+    line-height: 1.3;
+}
+
+#desktopSettingsModal .desktop-settings-global-toggle {
+    min-width: 44px;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    flex-shrink: 0;
+}
+
+#desktopSettingsModal .desktop-settings-hint {
+    margin: var(--spacing-xs) 0 0;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    color: var(--text-accent-tinted);
+    opacity: 0.75;
+}
+
+/* Start button custom text preview (confirmation dialog) */
+.start-btn-text-preview-dialog {
+    text-align: left;
+}
+
+.start-btn-text-preview-dialog .start-btn-text-preview-label {
+    display: block;
+    margin: 0 0 var(--spacing-xs);
+    font-size: 0.82rem;
+    color: var(--text-accent-tinted);
+}
+
+.start-btn-text-preview-frame {
+    width: 100%;
+    height: 96px;
+    overflow: hidden;
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--radius-sm);
+    background: #000;
+    position: relative;
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+.start-btn-text-preview-scene {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+.start-btn-text-preview-wallpaper {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: var(--workspace-background-color, #0a1a2a);
+    background-size: cover;
+    background-repeat: no-repeat;
+}
+
+.start-btn-text-preview-taskbar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 35px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 4px 0 0;
+    isolation: isolate;
+}
+
+.start-btn-text-preview-taskbar .taskbar-start {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+}
+
+.start-btn-text-preview-taskbar::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top,
+            var(--border-primary, #ffffff00) 0%,
+            transparent 100%);
+    opacity: 0.5;
+    z-index: -2;
+}
+
+.start-btn-text-preview-taskbar::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(to bottom,
+            rgba(255, 255, 255, 0.08) 0%,
+            rgba(255, 255, 255, 0.04) 40%,
+            rgba(0, 0, 0, 0.2) 50%,
+            rgba(0, 0, 0, 0.35) 100%),
+        linear-gradient(to top,
+            hsl(0 0% 8% / 95%) 0%,
+            hsl(0 0% 12% / 92%) 50%,
+            hsl(0 0% 18% / 90%) 100%);
+    -webkit-backdrop-filter: saturate(2.5) var(--glass-blur-4);
+    backdrop-filter: saturate(2.5) var(--glass-blur-4);
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.15),
+        inset 0 -1px 1px rgba(0, 0, 0, 0.3);
+    z-index: -1;
+    opacity: 0.85;
+}
+
+.start-btn-text-preview-taskbar:has(.taskbar-start-button.orb) {
+    height: 31px;
+}
+
+.start-btn-text-preview-taskbar {
+    overflow: visible;
+}
+
+.start-btn-text-preview-taskbar .taskbar-start {
+    overflow: visible;
+}
+
+.start-btn-text-preview-taskbar .taskbar-start-button {
+    pointer-events: none;
+}
+
+.start-menu-text-setting {
+    display: flex;
+    flex-direction: row;
+    gap: var(--spacing-lg);
+    align-items: stretch;
+}
+
+.start-menu-text-setting-preview {
+    flex: 0 0 200px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.start-menu-text-setting-controls {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.start-menu-text-setting-controls .form-group {
+    margin-bottom: 0;
+}
+
+@media (max-width: 640px) {
+    .start-menu-text-setting {
+        flex-direction: column;
+    }
+
+    .start-menu-text-setting-preview {
+        flex: none;
+        width: 100%;
+    }
+}
+
+@media (max-width: 640px) {
+    .desktop-settings-options-grid {
+        grid-template-columns: 1fr;
+    }
+
+    #desktopSettingsModal:has([data-desktop-settings-scope="global"]:not(.hidden)) {
+        width: 550px;
+    }
+}
+
+.desktop-settings-scope-toggle .gallery-toggle-btn {
+    min-height: 30px;
+}
+
+/* Monitor Preview Frame */
+.desktop-settings-monitor-frame {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 220px;
+}
+
+/* Responsive - stack on small screens */
+@media (max-width: 768px) {
+    .wallpaper-section-content {
+        flex-direction: column;
+    }
+
+    .desktop-settings-monitor-frame {
+        width: 100%;
+        max-width: 300px;
+    }
+}
+
+.desktop-settings-monitor-bezel {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: linear-gradient(145deg, var(--glass-layer-2) 0%, var(--glass-layer-3) 100%);
+    padding: var(--spacing-xs);
+    border-radius: var(--radius-md) var(--radius-md) var(--radius-sm) var(--radius-sm);
+    border: 2px solid var(--glass-border-3);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), inset 0 1px 0 var(--glass-border-4);
+}
+
+.desktop-settings-preview {
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-position: center center;
+    background-color: var(--workspace-background-color, #0a1a2a);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--glass-border-1);
+    overflow: hidden;
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.desktop-settings-monitor-stand {
+    width: 3rem;
+    height: 2rem;
+    background: linear-gradient(180deg, var(--glass-bg-3) 0%, var(--glass-bg-2) 100%);
+    border-left: 2px solid var(--glass-border-2);
+    border-right: 2px solid var(--glass-border-2);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.desktop-settings-monitor-base {
+    width: 6rem;
+    height: 0.5rem;
+    background: linear-gradient(145deg, var(--glass-bg-3) 0%, var(--glass-bg-2) 100%);
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    border: 2px solid var(--glass-border-2);
+    border-top: none;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}

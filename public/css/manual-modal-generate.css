@@ -1,0 +1,1091 @@
+/* Centered toast when a keyboard shortcut changes state (manual modal shortcuts) */
+.shortcut-action-toast-host {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: calc(var(--z-critical) + 1);
+    opacity: 0;
+    transition: opacity 0.18s ease;
+}
+
+.shortcut-action-toast-host.visible {
+    opacity: 1;
+}
+
+.shortcut-action-toast-host.fade-out {
+    opacity: 0;
+}
+
+.shortcut-action-toast {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: var(--glass-layer-dark-5);
+    -webkit-backdrop-filter: var(--glass-blur-4, none);
+    backdrop-filter: var(--glass-blur-4, none);
+    border: 1px solid var(--glass-border-4);
+    border-radius: var(--border-radius-lg);
+    padding: 7px 16px;
+    box-shadow: var(--glass-shadow-4);
+    color: var(--text-primary);
+    font-size: 0.88rem;
+    font-weight: 500;
+    min-width: min(240px, 92vw);
+    max-width: min(90vw, 380px);
+    text-align: center;
+    line-height: 1.25;
+}
+
+.shortcut-action-toast.no-icon {
+    gap: 0;
+}
+
+.shortcut-action-toast.flash-border {
+    animation: shortcutActionToastBorderFlash 420ms ease-out;
+}
+
+.shortcut-action-toast-icon {
+    flex: 0 0 22px;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.shortcut-action-toast-icon:empty {
+    visibility: hidden;
+}
+
+.shortcut-action-toast-icon i,
+.shortcut-action-toast-icon img {
+    max-width: 18px;
+    max-height: 18px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    display: block;
+}
+
+.shortcut-action-toast-text {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1 1 auto;
+    max-width: 100%;
+    text-align: center;
+}
+
+.shortcut-action-toast-line {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+}
+
+.shortcut-action-toast-line > span {
+    display: inline-block;
+}
+
+.generating-effect {
+    cursor: progress;
+    background: linear-gradient(90deg,
+            rgb(255 40 40 / 66%),
+            rgb(255 181 60 / 66%),
+            rgb(165 255 116 / 68%),
+            rgb(91 236 255 / 69%),
+            rgb(126 137 255 / 72%),
+            rgb(165 90 255 / 72%),
+            rgb(255 64 185 / 66%),
+            rgb(255 40 40 / 66%)) 0% 0% / 1000% 100%;
+    animation: rainbowShift 25s linear infinite;
+}
+
+/* Ensure generating effect overrides all disabled button styles */
+.generating-effect:disabled.btn-primary,
+.generating-effect:hover.btn-primary {
+    background: linear-gradient(90deg,
+            rgb(255 40 40 / 66%),
+            rgb(255 181 60 / 66%),
+            rgb(165 255 116 / 68%),
+            rgb(91 236 255 / 69%),
+            rgb(126 137 255 / 72%),
+            rgb(165 90 255 / 72%),
+            rgb(255 64 185 / 66%),
+            rgb(255 40 40 / 66%)) 0% 0% / 1000% 100%;
+    animation: rainbowShift 25s linear infinite;
+    opacity: 1 !important;
+    cursor: not-allowed;
+    transform: none;
+    border-color: var(--primary-color) !important;
+    color: #ffffff !important;
+}
+
+/* Rainbow animation for manualGenerateBtn when generating */
+@keyframes rainbowShift {
+    0% {
+        background-position: 0% 50%;
+    }
+
+    100% {
+        background-position: 200% 50%;
+    }
+}
+
+/* Generate button hover popover */
+.generate-button-popover {
+    position: fixed;
+    z-index: var(--z-critical);
+    background: var(--glass-layer-4);
+    border: 1px solid var(--glass-border-4);
+    border-radius: 8px;
+    box-shadow: var(--glass-shadow-4), 0 8px 32px rgba(0, 0, 0, 0.3);
+    -webkit-backdrop-filter: var(--glass-blur-4, none);
+    backdrop-filter: var(--glass-blur-4, none);
+    color: var(--text-primary);
+    font-size: 14px;
+    min-width: 200px;
+    pointer-events: none;
+    animation: popoverFadeIn 0.2s ease-out;
+}
+
+.generate-button-popover .popover-content {
+    padding: 12px 16px;
+}
+
+.generate-button-popover .popover-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 13px;
+}
+
+.generate-button-popover .popover-header i {
+    color: var(--accent-primary);
+    font-size: 12px;
+}
+
+.generate-button-popover .popover-body {
+    text-align: center;
+}
+
+.generate-button-popover .counter-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--accent-primary);
+    margin-bottom: 4px;
+}
+
+.generate-button-popover .counter-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.generate-button-popover .popover-arrow {
+    position: absolute;
+    bottom: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 6px solid var(--glass-layer-4);
+}
+
+.generate-button-popover .popover-arrow::before {
+    content: '';
+    position: absolute;
+    bottom: 1px;
+    left: -6px;
+    width: 0;
+    height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 6px solid var(--glass-border-4);
+}
+
+/* Arrow when popover is below button */
+.generate-button-popover.below .popover-arrow {
+    bottom: auto;
+    top: -6px;
+    border-top: none;
+    border-bottom: 6px solid var(--glass-layer-4);
+}
+
+.generate-button-popover.below .popover-arrow::before {
+    bottom: auto;
+    top: 1px;
+    border-top: none;
+    border-bottom: 6px solid var(--glass-border-4);
+}
+
+@keyframes popoverFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Popover styles based on 7.css tooltip */
+.popover {
+    position: fixed;
+    z-index: var(--z-taskbar-popover);
+    background: linear-gradient(to bottom, #fff, #f0f0f0);
+    border: 1px solid rgba(0, 0, 0, 0.4);
+    border-radius: 3px;
+    box-shadow: 5px 5px 3px -3px rgba(0, 0, 0, 0.4);
+    padding: 1em;
+    font-size: 9pt;
+    font-family: "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    color: #000;
+    pointer-events: none;
+    white-space: pre-line;
+    opacity: 0;
+    visibility: hidden;
+    transition: var(--transition-overlay-fade);
+    display: flex;
+    flex-direction: column;
+}
+
+.popover.show {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    will-change: opacity;
+}
+
+.popover:not(.show) {
+    will-change: auto;
+}
+
+.popover-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5em;
+    min-width: 0;
+    flex: 1;
+}
+
+.popover-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    font-weight: 700;
+    margin-bottom: 0.25em;
+    font-variation-settings: "wght" 700;
+    justify-content: flex-end;
+}
+
+.popover-header i {
+    font-size: 0.9em;
+    flex-shrink: 0;
+}
+
+.popover-body {
+    white-space: pre-line;
+    min-width: 0;
+    flex: 1;
+}
+
+.popover::before {
+    content: "";
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    background: url("data:image/svg+xml;charset=utf-8,%3Csvg width='20' height='20' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M.5 1.5v18h18l-18-18Z' fill='%23fff' stroke='%23fff'/%3E%3Cpath d='M1 19.5H.5v-18l18 18H18' stroke='%23939393'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+    left: 1em;
+    top: calc(18px * -1);
+}
+
+/* Popover positioned above element */
+.popover.is-top::before {
+    background: url("data:image/svg+xml;charset=utf-8,%3Csvg width='20' height='20' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M.5 1.5v18h18l-18-18Z' fill='%23ebebeb' stroke='%23ddd'/%3E%3Cpath d='M1 19.5H.5v-18l18 18H18' stroke='%23939393'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+    bottom: calc(18px * -1);
+    top: auto;
+    transform: scale(-1);
+}
+
+.popover.is-top.is-right::before {
+    transform: scaleY(-1);
+}
+
+/* Popover positioned to the left */
+.popover.is-left::before {
+    left: auto;
+    right: 1em;
+}
+
+.popover.is-left.is-bottom::before {
+    transform: scaleX(-1);
+}
+
+/* Popover positioned to the right */
+.popover.is-right::before {
+    left: auto;
+    right: 1em;
+}
+
+/* Arrow at bottom right (for tray icons) */
+.popover.arrow-bottom-right::before {
+    top: auto;
+    bottom: calc(18px * -1);
+    left: auto;
+    right: 1em;
+    transform: scale(-1);
+}
+
+html:not(.disable-blur) {
+    /* Glass Blur Circles */
+    --glass-blur-circle-0: blur(0.04px);
+    --glass-blur-circle-1: blur(0.08px);
+    --glass-blur-circle-2: blur(0.12px);
+    --glass-blur-circle-3: blur(0.16px);
+    --glass-blur-circle-4: blur(0.2px);
+    --glass-blur-circle-5: blur(0.24px);
+
+    /* Glass Blur Levels */
+    --glass-blur-0: blur(0px);
+    --glass-blur-1: blur(2px);
+    --glass-blur-2: blur(3px);
+    --glass-blur-3: blur(5px);
+    --glass-blur-4: blur(10px);
+    --glass-blur-5: blur(15px);
+}
+
+/* Compositor hints: pair -webkit-backdrop-filter with backdrop-filter on glass surfaces */
+html:not(.disable-blur) #focus-overlay,
+html:not(.disable-blur) .websocket-ticker {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+    html:not(.disable-blur) {
+        --glass-blur-circle-0: blur(0px);
+        --glass-blur-circle-1: blur(0px);
+        --glass-blur-circle-2: blur(0px);
+        --glass-blur-circle-3: blur(0px);
+        --glass-blur-circle-4: blur(0px);
+        --glass-blur-circle-5: blur(0px);
+        --glass-blur-0: blur(0px);
+        --glass-blur-1: blur(0px);
+        --glass-blur-2: blur(0px);
+        --glass-blur-3: blur(0px);
+        --glass-blur-4: blur(0px);
+        --glass-blur-5: blur(0px);
+    }
+
+    #focus-overlay,
+    #focus-overlay .focus-message,
+    .blur,
+    .shortcuts-glass,
+    .modal,
+    .glass-toast,
+    .dialog-bubble,
+    .developer-modal-overlay,
+    .login-container,
+    .pin-button {
+        -webkit-backdrop-filter: none !important;
+        backdrop-filter: none !important;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .modal.opening,
+    .modal.closing,
+    .modal.minimising,
+    .modal.unminimising,
+    .modal[data-window-content-anchor="top"].opening,
+    .modal[data-window-content-anchor="top"].closing,
+    #manualModal:not(.windowed).opening,
+    #manualModal:not(.windowed).closing,
+    .dialog-bubble.generating,
+    .dialog-bubble.navigating,
+    .glass-toast,
+    .glass-toast.removing,
+    #manualPanelSection.zoomed,
+    #manualPanelSection.initial,
+    #manualPanelSection.zoomed div#manualPreviewContainer,
+    #manualPanelSection.initial div#manualPreviewContainer,
+    .gallery:has(.gallery-item.context-open) .gallery-item,
+    .gallery-item.context-open,
+    .gallery.highlighting .gallery-item,
+    .taskbar-window-item.entering,
+    .taskbar-window-item.leaving,
+    .shortcuts-overlay.visible,
+    .shortcuts-overlay.visible .shortcuts-content,
+    .prompt-panel.show,
+    .workspace-tab,
+    .toast.removing,
+    .gallery.selection-mode .gallery-item,
+    .vibe-manager-gallery.selection-mode .vibe-manager-gallery-item,
+    .cache-gallery-item,
+    .vibe-manager-gallery-item,
+    .workspace-image-item,
+    .manual-preview-image-container.dual-mode .manual-preview-image-container,
+    .manual-preview-image-container img.manual-preview-original-image,
+    body.workspace-transitioning,
+    body.workspace-transitioning::after,
+    body.editor-open::after,
+    .subscription-renewal-indicator.warning,
+    .subscription-renewal-indicator.critical,
+    .fixed-credits-indicator.low-credits,
+    .indicator.flashing.active:not([data-state="on"]):not([data-state="onhigh"])::after,
+    .context-menu-opening,
+    .context-menu-closing,
+    #startMenu.start-menu.start-menu-opening,
+    #startMenu.start-menu.start-menu-closing,
+    .custom-dropdown-menu.custom-dropdown-opening,
+    .custom-dropdown-menu.custom-dropdown-closing {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        -webkit-filter: none !important;
+        filter: none !important;
+    }
+}
+
+html:has(body.desktop-mode) {
+    --modal-desktop-top-bias: 18px;
+    --true-window-inset-top: 0px;
+    --true-window-inset-bottom: 0px;
+    --true-window-inset-left: 0px;
+    --true-window-inset-right: 0px;
+
+    --window-inset-top: 0px;
+    --window-inset-bottom: 0px;
+    --window-inset-left: 0px;
+    --window-inset-right: 0px;
+}
+
+.justify-end {
+    justify-content: flex-end;
+}
+
+.justify-center {
+    justify-content: center;
+}
+
+.justify-start {
+    justify-content: flex-start;
+}
+
+.auto-flex {
+    flex: 1 0 auto;
+}
+
+/* Percentage Input Styles */
+.percentage-input-container {
+    position: relative;
+    display: inline-block;
+    min-height: 32px;
+}
+
+.percentage-input-container .form-control {
+    position: relative;
+    z-index: var(--z-layer-2);
+    background: transparent;
+    border: none;
+    outline: none;
+    padding: 0;
+    margin: 0;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: none;
+    min-height: 0px;
+    box-sizing: border-box;
+    border-radius: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.percentage-input-container input {
+    border: none !important;
+    flex: none;
+    line-height: 0;
+}
+
+.percentage-input-container:focus-within .form-control {
+    background: transparent;
+    color: var(--text-primary);
+}
+
+.percentage-input-container:not(:focus-within) .form-control,
+.percentage-input-container:not(:focus-within) .form-control:hover {
+    color: transparent;
+    caret-color: transparent;
+}
+
+.percentage-input-overlay {
+    position: absolute;
+    top: 0;
+    display: inline-flex;
+    align-items: center;
+    pointer-events: none;
+    z-index: var(--z-layer-4);
+    min-height: 0px;
+    height: 100%;
+}
+
+.percentage-input-container:focus-within .percentage-input-overlay {
+    display: none;
+}
+
+.percentage-input-container:not(:focus-within) .percentage-input-overlay {
+    display: flex;
+}
+
+/* Ensure percentage input containers work properly within form groups */
+.form-group .percentage-input-container {
+    display: inline-block;
+    width: auto;
+}
+
+.form-group .percentage-input-container .form-control {
+    width: auto;
+    max-width: 46px;
+}
+
+
+.percentage-input-container.hover-show.negative-value {
+    color: #ff6666;
+}
+
+/* URL Preview Warning Section Styles */
+.warning-section {
+    margin-top: 1rem;
+}
+
+.warning-section .warning-message {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background-color: var(--status-warning-bg);
+    border: 1px solid var(--status-warning-border);
+    border-radius: 6px;
+    color: var(--status-warning-text);
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.warning-section .warning-message.info {
+    background-color: var(--status-info-bg);
+    border-color: var(--status-info-border);
+    color: var(--status-info-text);
+}
+
+.warning-section .warning-message i {
+    font-size: 1.1rem;
+    margin-top: 0.1rem;
+    flex-shrink: 0;
+}
+
+.warning-section .warning-message strong {
+    font-weight: 600;
+    margin-right: 0.25rem;
+}
+
+.main-menu-row .btn-primary,
+.main-menu-row .btn-secondary,
+.main-menu-row .btn-danger {
+    font-weight: 300;
+    font-variation-settings: "wght" 300;
+    background: transparent;
+    border: 1px solid transparent;
+    box-shadow: none;
+    min-width: 32px;
+}
+
+.main-menu-row .btn-primary i,
+.main-menu-row .btn-secondary i,
+.main-menu-row .btn-danger i {
+    font-size: 1.3em;
+}
+
+/* Override main-menu-row styles for round buttons */
+.main-menu-row .round-button,
+.floating-controls .round-button {
+    background: var(--header-bg, var(--glass-layer-dark-5));
+    border: 1px solid var(--header-border, var(--glass-border-2));
+    box-shadow: var(--glass-shadow-3), inset 0 0 15px #ffffff2b;
+    min-width: 54px;
+    min-height: 54px;
+    -webkit-backdrop-filter: var(--glass-blur-2, brightness(0.15)) saturate(0.5);
+    backdrop-filter: var(--glass-blur-2, brightness(0.15)) saturate(0.5);
+}
+
+.main-menu-row .round-button.btn-primary,
+.floating-controls .round-button.btn-primary {
+    background: radial-gradient(var(--primary-glass-color), var(--primary-glass-color));
+    color: var(--text-accent-tinted);
+    border-color: var(--primary-glass-border);
+    box-shadow: var(--glass-shadow-3), inset 0 0 15px #ffffff2b;
+}
+
+/* Preview Animation Container */
+.manual-preview-container {
+    position: relative;
+    overflow: hidden;
+}
+
+/* Stars Layer */
+.preview-stars {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    opacity: 0;
+    transition: opacity 0.25s ease-in-out;
+}
+
+.preview-star {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    background: #fff;
+    border-radius: 50%;
+    animation: previewTwinkle 4s infinite;
+}
+
+.preview-star:nth-child(odd) {
+    animation-delay: 0s;
+}
+
+.preview-star:nth-child(even) {
+    animation-delay: 1.5s;
+}
+
+.preview-star:nth-child(3n) {
+    animation-delay: 0.75s;
+}
+
+.preview-star:nth-child(4n) {
+    animation-delay: 2.25s;
+}
+
+@keyframes previewTwinkle {
+
+    0%,
+    100% {
+        opacity: 0.3;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 1;
+        transform: scale(1.5);
+    }
+}
+
+/* Star positions using percentages */
+.preview-star:nth-child(1) {
+    top: 10%;
+    left: 15%;
+}
+
+.preview-star:nth-child(2) {
+    top: 20%;
+    left: 85%;
+}
+
+.preview-star:nth-child(3) {
+    top: 30%;
+    left: 25%;
+}
+
+.preview-star:nth-child(4) {
+    top: 40%;
+    left: 75%;
+}
+
+.preview-star:nth-child(5) {
+    top: 50%;
+    left: 10%;
+}
+
+.preview-star:nth-child(6) {
+    top: 60%;
+    left: 90%;
+}
+
+.preview-star:nth-child(7) {
+    top: 70%;
+    left: 35%;
+}
+
+.preview-star:nth-child(8) {
+    top: 80%;
+    left: 65%;
+}
+
+.preview-star:nth-child(9) {
+    top: 15%;
+    left: 50%;
+}
+
+.preview-star:nth-child(10) {
+    top: 25%;
+    left: 5%;
+}
+
+.preview-star:nth-child(11) {
+    top: 35%;
+    left: 95%;
+}
+
+.preview-star:nth-child(12) {
+    top: 45%;
+    left: 45%;
+}
+
+.preview-star:nth-child(13) {
+    top: 55%;
+    left: 20%;
+}
+
+.preview-star:nth-child(14) {
+    top: 65%;
+    left: 80%;
+}
+
+.preview-star:nth-child(15) {
+    top: 75%;
+    left: 30%;
+}
+
+.preview-star:nth-child(16) {
+    top: 85%;
+    left: 70%;
+}
+
+.preview-star:nth-child(17) {
+    top: 5%;
+    left: 40%;
+}
+
+.preview-star:nth-child(18) {
+    top: 90%;
+    left: 15%;
+}
+
+.preview-star:nth-child(19) {
+    top: 95%;
+    left: 55%;
+}
+
+.preview-star:nth-child(20) {
+    top: 8%;
+    left: 70%;
+}
+
+/* Additional 15 stars positioned at top, bottom, and edges */
+.preview-star:nth-child(21) {
+    top: 2%;
+    left: 5%;
+}
+
+.preview-star:nth-child(22) {
+    top: 2%;
+    left: 95%;
+}
+
+.preview-star:nth-child(23) {
+    top: 5%;
+    left: 10%;
+}
+
+.preview-star:nth-child(24) {
+    top: 5%;
+    left: 90%;
+}
+
+.preview-star:nth-child(25) {
+    top: 8%;
+    left: 20%;
+}
+
+.preview-star:nth-child(26) {
+    top: 8%;
+    left: 80%;
+}
+
+.preview-star:nth-child(27) {
+    top: 12%;
+    left: 2%;
+}
+
+.preview-star:nth-child(28) {
+    top: 12%;
+    left: 98%;
+}
+
+.preview-star:nth-child(29) {
+    top: 98%;
+    left: 5%;
+}
+
+.preview-star:nth-child(30) {
+    top: 98%;
+    left: 95%;
+}
+
+.preview-star:nth-child(31) {
+    top: 95%;
+    left: 10%;
+}
+
+.preview-star:nth-child(32) {
+    top: 95%;
+    left: 90%;
+}
+
+.preview-star:nth-child(33) {
+    top: 92%;
+    left: 20%;
+}
+
+.preview-star:nth-child(34) {
+    top: 92%;
+    left: 80%;
+}
+
+.preview-star:nth-child(35) {
+    top: 88%;
+    left: 2%;
+}
+
+/* Lines Layer */
+.preview-lines-layer {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    cursor: progress;
+}
+
+.preview-lines-background {
+    z-index: 0;
+    pointer-events: none;
+}
+
+.preview-lines-foreground {
+    z-index: var(--z-layer-1);
+    pointer-events: none;
+}
+
+.preview-line {
+    position: absolute;
+    bottom: -310px;
+    width: 10px;
+    height: 300px;
+    background: rgba(255, 255, 255, 0.8);
+    animation: previewRiseUp 1.5s linear infinite;
+    opacity: 0;
+    visibility: hidden;
+}
+
+.preview-lines-background .preview-line {
+    background: var(--active-tab-bg, rgba(100, 150, 255, 1));
+    width: 5px;
+    height: 175px;
+    box-shadow: 0 0 15px var(--active-tab-border, rgba(100, 150, 255, 0.8));
+    animation: previewRiseUp 4s linear infinite;
+}
+
+.preview-lines-foreground .preview-line {
+    background: var(--primary-color-light, rgba(255, 100, 150, 0.9));
+}
+
+/* Background lines run whenever preview animation is active; foreground waits until diffusion (preview-foreground-lines-active). */
+.preview-animation-active:not(.preview-foreground-lines-active) .preview-lines-foreground .preview-line {
+    animation-play-state: paused;
+}
+
+.preview-animation-active.preview-foreground-lines-active .preview-lines-foreground .preview-line {
+    animation-play-state: running;
+}
+
+/* Line positions using percentages */
+.preview-line:nth-child(1) {
+    left: 8%;
+    animation-delay: 0s;
+}
+
+.preview-line:nth-child(2) {
+    left: 23%;
+    animation-delay: 0.8s;
+}
+
+.preview-line:nth-child(3) {
+    left: 67%;
+    animation-delay: 1.6s;
+}
+
+.preview-line:nth-child(4) {
+    left: 41%;
+    animation-delay: 2.4s;
+}
+
+.preview-line:nth-child(5) {
+    left: 89%;
+    animation-delay: 3.2s;
+}
+
+.preview-line:nth-child(6) {
+    left: 15%;
+    animation-delay: 4s;
+}
+
+.preview-line:nth-child(7) {
+    left: 73%;
+    animation-delay: 4.8s;
+}
+
+.preview-line:nth-child(8) {
+    left: 34%;
+    animation-delay: 5.6s;
+}
+
+.preview-line:nth-child(9) {
+    left: 56%;
+    animation-delay: 6.4s;
+}
+
+.preview-line:nth-child(10) {
+    left: 92%;
+    animation-delay: 7.2s;
+}
+
+.preview-line:nth-child(11) {
+    left: 28%;
+    animation-delay: 8s;
+}
+
+.preview-line:nth-child(12) {
+    left: 81%;
+    animation-delay: 8.8s;
+}
+
+.preview-line:nth-child(13) {
+    left: 47%;
+    animation-delay: 9.6s;
+}
+
+.preview-line:nth-child(14) {
+    left: 19%;
+    animation-delay: 10.4s;
+}
+
+.preview-line:nth-child(15) {
+    left: 75%;
+    animation-delay: 11.2s;
+}
+
+/* Height variations using viewport units for responsive sizing */
+.preview-line:nth-child(3n) {
+    height: 110px;
+}
+
+.preview-line:nth-child(5n) {
+    height: 90px;
+}
+
+.preview-line:nth-child(7n) {
+    height: 130px;
+}
+
+.preview-line:nth-child(11n) {
+    height: 95px;
+}
+
+/* Background lines - make them even more prominent */
+.preview-lines-background .preview-line:nth-child(3n) {
+    height: 140px;
+}
+
+.preview-lines-background .preview-line:nth-child(5n) {
+    height: 160px;
+}
+
+.preview-lines-background .preview-line:nth-child(7n) {
+    height: 130px;
+}
+
+.preview-lines-background .preview-line:nth-child(11n) {
+    height: 150px;
+}
+
+@keyframes previewRiseUp {
+    0% {
+        transform: translateY(0);
+        opacity: 0;
+    }
+
+    5% {
+        opacity: 1;
+    }
+
+    95% {
+        opacity: 1;
+    }
+
+    100% {
+        transform: translateY(-100vh);
+        opacity: 0;
+    }
+}
+
+/* Animation states */
+.preview-animation-active .preview-stars {
+    opacity: 1;
+}
+
+/* Fade out animations */
+.preview-fade-out .preview-line {
+    animation-play-state: paused;
+}
+
+.preview-fade-out .preview-stars {
+    transition: opacity 3s ease-out;
+}
+
+/* Container fade out animation */
+.preview-lines-layer.fadeOut {
+    animation: fadeOutContainer 0.8s ease-out forwards;
+}
+
+@keyframes fadeOutContainer {
+    from {
+        opacity: 1;
+    }
+
+    to {
+        opacity: 0;
+    }
+}

@@ -20,7 +20,6 @@ class DesktopShortcutsManager {
         this.pendingChanges = false;
         this.pendingWindowPositionSave = false;
         this._saveTrayState = 'hidden';
-        this._saveTrayHideTimer = null;
         
         // Positioning settings
         this.snapThreshold = 50; // pixels to snap to grid
@@ -165,47 +164,35 @@ class DesktopShortcutsManager {
             return;
         }
 
-        const indicator = document.getElementById('desktopSaveTrayIndicator');
-        const icon = document.getElementById('desktopSaveTrayIcon');
-        if (!indicator || !icon) {
+        const trayIcon = document.getElementById('workspaceTrayIcon');
+        const dot = document.getElementById('workspaceSaveStatusDot');
+        if (!trayIcon || !dot) {
             return;
         }
 
-        if (this._saveTrayHideTimer) {
-            clearTimeout(this._saveTrayHideTimer);
-            this._saveTrayHideTimer = null;
-        }
-
         this._saveTrayState = state;
-        indicator.classList.remove('pending', 'received', 'saved');
+        dot.classList.remove('pending', 'received', 'saved');
 
         switch (state) {
             case 'pending':
-                indicator.classList.remove('hidden');
-                indicator.classList.add('pending');
-                icon.className = 'fas fa-inbox-in';
-                indicator.title = 'Desktop changes waiting to sync…';
+                dot.classList.remove('hidden');
+                dot.classList.add('pending');
+                trayIcon.title = 'Desktop changes waiting to sync…';
                 break;
             case 'received':
-                indicator.classList.remove('hidden');
-                indicator.classList.add('received');
-                icon.className = 'fas fa-inbox-full';
-                indicator.title = 'Desktop changes received by server…';
+                dot.classList.remove('hidden');
+                dot.classList.add('received');
+                trayIcon.title = 'Desktop changes received by server…';
                 break;
             case 'saved':
-                indicator.classList.remove('hidden');
-                indicator.classList.add('saved');
-                icon.className = 'fas fa-inbox';
-                indicator.title = 'Desktop layout saved to disk';
-                this._saveTrayHideTimer = setTimeout(() => {
-                    if (this._saveTrayState === 'saved' && !this.hasPendingDesktopChanges()) {
-                        this.hideSaveTrayIndicator();
-                    }
-                }, 20000);
+                this.hideSaveTrayIndicator();
                 break;
             default:
-                indicator.classList.add('hidden');
-                indicator.title = 'Desktop layout saved';
+                dot.classList.add('hidden');
+                // updateWorkspaceTrayIcon: public/scripts/app.js
+                if (typeof updateWorkspaceTrayIcon === 'function') {
+                    updateWorkspaceTrayIcon({ reveal: false });
+                }
                 this._saveTrayState = 'hidden';
                 break;
         }
@@ -326,6 +313,9 @@ class DesktopShortcutsManager {
                     if (data.action === 'window_positions_updated' && data.windowPositions) {
                         // Update global window positions directly
                         Object.assign(globalWindowPositions, data.windowPositions);
+                        if (!this.pendingWindowPositionSave && typeof commitWindowPositionsSnapshot === 'function') {
+                            commitWindowPositionsSnapshot();
+                        }
                     }
                     break;
             }
@@ -373,6 +363,10 @@ class DesktopShortcutsManager {
             
             // Set global window positions directly
             globalWindowPositions = data?.windowPositions || {};
+            // commitWindowPositionsSnapshot: public/scripts/comp/modalUtils.js
+            if (typeof commitWindowPositionsSnapshot === 'function') {
+                commitWindowPositionsSnapshot();
+            }
         } catch (error) {
             console.error('Failed to load desktop shortcuts:', error);
             this.shortcuts = [];
@@ -766,7 +760,12 @@ class DesktopShortcutsManager {
     async purgeVfsFolderByPath(folderListPath, folderId) {
         if (!folderId) throw new Error('Folder id required');
         await this._purgeVfsFolderContents(folderListPath);
-        await vfsClient.deleteFolder(folderId);
+        try {
+            await vfsClient.deleteFolder(folderId);
+        } catch (err) {
+            // Folder may already be deleted or never existed (dangling shortcut); continue to remove shortcut record
+            console.warn('vfs deleteFolder during purge (may be missing):', folderId, err?.message || err);
+        }
     }
 
     async deleteFolderShortcut(shortcutId) {
@@ -785,7 +784,11 @@ class DesktopShortcutsManager {
             }
 
             const listPath = `/Workspaces/${workspaceId}/Desktop/${vfsFolderId}`;
-            await this.purgeVfsFolderByPath(listPath, vfsFolderId);
+            try {
+                await this.purgeVfsFolderByPath(listPath, vfsFolderId);
+            } catch (err) {
+                console.warn('Failed to purge vfs folder contents (proceeding to remove shortcut):', err?.message || err);
+            }
         }
 
         await this.removeShortcut(shortcutId);
@@ -1715,6 +1718,18 @@ class DesktopShortcutsManager {
 
     // Find applet by launch ID
     findAppletById(launchId) {
+        // findStartMenuLaunchableById: public/scripts/comp/modalUtils.js
+        const fromRegistry = typeof findStartMenuLaunchableById === 'function'
+            ? findStartMenuLaunchableById(launchId)
+            : null;
+        if (fromRegistry) return fromRegistry;
+
+        // Search in launchable catalog
+        if (typeof startMenuLaunchables !== 'undefined') {
+            const launchable = startMenuLaunchables.find(item => item.launchId === launchId);
+            if (launchable) return launchable;
+        }
+
         // Search in main start menu config
         if (typeof startMenuConfig !== 'undefined') {
             const mainItem = startMenuConfig.find(item => item.launchId === launchId);
@@ -1819,6 +1834,7 @@ class DesktopShortcutsManager {
                 dataset_config: requestBody.dataset_config,
                 append_quality: requestBody.append_quality,
                 append_uc: requestBody.append_uc,
+                quality_preset_bias: requestBody.quality_preset_bias,
                 vibe_transfer: requestBody.vibe_transfer,
                 normalize_vibes: requestBody.normalize_vibes,
                 dynamic_generation: requestBody.dynamic_generation,
@@ -1948,25 +1964,15 @@ class DesktopShortcutsManager {
         const tagName = shortcut.data.tagName;
 
         try {
-            if (!wikiWindowManager) {
+            if (!tagWikiSearchModal) {
                 showGlassToast('error', 'Error', 'Wiki window manager not available', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
                 return;
             }
 
-            if (!wsClient || !wsClient.isConnected()) {
-                showGlassToast('error', 'Error', 'WebSocket not connected', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
-                return;
-            }
-
-            const result = await wsClient.sendMessage('get_tag_wiki_page', {
-                tagName: tagName,
-                source: 'both',
-                format: 'html'
-            });
-
-            if (result) {
-                wikiWindowManager.createWindow(result, { title: tagName, name: tagName });
-            } else {
+            // Normal desktop launch: respect local DB cache for the wiki body and derived image files.
+            // Only force live update if the user explicitly chooses "Refresh from online".
+            const opened = await tagWikiSearchModal.openStandaloneWikiIfDirectMatch(tagName);
+            if (!opened) {
                 showGlassToast('error', 'Error', 'Failed to load wiki page', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
             }
         } catch (error) {
@@ -3206,10 +3212,12 @@ class DesktopShortcutsManager {
                 throw new Error('Shortcut not found');
             }
 
-            // If it's a new shortcut that hasn't been saved, just remove it
-            if (shortcut._isNew) {
+            const isNew = !!shortcut._isNew;
+            const isDeleted = !!shortcut._isDeleted;
+
+            if (isNew) {
                 this.shortcuts = this.shortcuts.filter(s => s.id !== shortcutId);
-            } else {
+            } else if (!isDeleted) {
                 // Mark for deletion
                 shortcut._isDeleted = true;
             }
@@ -3218,7 +3226,20 @@ class DesktopShortcutsManager {
             this.removeShortcutFromDOM(shortcutId);
             this.selectedShortcutIds.delete(shortcutId);
             
-            // Trigger debounced save
+            // Send remove to server immediately (deletes should not wait for the long position debounce)
+            if (!isNew && !isDeleted && wsClient?.isConnected() && this.currentWorkspace) {
+                try {
+                    await wsClient.removeDesktopShortcut(this.currentWorkspace, shortcutId);
+                    // Server will broadcast removed which will filter; proactively clean local now
+                    this.shortcuts = this.shortcuts.filter(s => s.id !== shortcutId);
+                } catch (rmErr) {
+                    console.warn('Immediate desktop shortcut remove failed (will retry on flush):', rmErr?.message || rmErr);
+                    // still mark pending so flush can retry
+                    this.pendingChanges = true;
+                }
+            }
+
+            // Trigger debounced (for any other pending); flush will skip already-removed or tolerate
             this.debouncedSave();
         } catch (error) {
             console.error('Failed to remove desktop shortcut:', error);
@@ -3762,7 +3783,8 @@ document.addEventListener('contextMenuAction', async (event) => {
                 // Copy preset URL to clipboard
                 const presetURL = location.origin + '/preset/' + shortcut.data.uuid + '?download=true';
                 try {
-                    await navigator.clipboard.writeText(presetURL);
+                    // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
+                    await copyTextToClipboard(presetURL);
                     showGlassToast('success', null, 'Preset URL copied to clipboard', false, 3000, '<i class="fa-regular fa-clipboard"></i>');
                 } catch (error) {
                     console.error('Failed to copy URL:', error);

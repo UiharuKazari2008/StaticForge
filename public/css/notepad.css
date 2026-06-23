@@ -1,0 +1,456 @@
+/* Notepad, notebook, and open-note modals — scripts/comp/notepadManager.js */
+/* ============================================================================
+   Notepad Modal Styles
+   ============================================================================ */
+
+.notepad-modal {
+    width: 600px;
+    height: 500px;
+}
+
+.notepad-modal .modal-content {
+    padding: 0;
+}
+
+.notepad-modal-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.notepad-textarea {
+    width: 100%;
+    height: 100%;
+    flex: 1;
+    resize: none;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    outline: none;
+    padding: 0.5em;
+    font-family: var(--font-primary);
+    font-size: 13px;
+    line-height: 1.5;
+    background: transparent;
+    color: #000000;
+    box-sizing: border-box;
+    border-radius: 0 0 var(--border-radius-xl) var(--border-radius-xl);
+}
+
+.notepad-textarea::placeholder {
+    color: #000000;
+    opacity: 0.5;
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+
+    .notepad-textarea:hover:not(:disabled):not(:focus),
+    .notepad-textarea:active {
+        background: transparent;
+        padding: 0.5em;
+        outline: none;
+        appearance: none;
+        -webkit-appearance: none;
+        -webkit-tap-highlight-color: transparent;
+    }
+}
+
+
+.notepad-textarea:focus,
+.notepad-textarea:focus:hover,
+.notepad-textarea:focus:active {
+    background: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 1);
+}
+
+/* ============================================================================
+   Notebook Modal Styles
+   ============================================================================ */
+
+.notebook-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    padding: 0;
+}
+
+.notebook-split {
+    display: flex;
+    flex-direction: row;
+    height: 100%;
+    overflow: hidden;
+}
+
+.notebook-list-panel {
+    width: 280px;
+    min-width: 200px;
+    max-width: 400px;
+    display: flex;
+    flex-direction: column;
+    background: var(--glass-layer-dark-bg);
+    border-right: 1px solid var(--glass-border);
+    overflow: hidden;
+    border-bottom-left-radius: var(--border-radius-xl);
+}
+
+.notebook-list-content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.notebook-notes-list {
+    padding: var(--spacing-sm);
+}
+
+.notebook-note-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    margin-bottom: var(--spacing-xs);
+    background: var(--glass-layer-dark-3);
+    border: 1px solid var(--glass-border-1);
+    border-radius: var(--border-radius-md);
+    transition: var(--transition-tray-menu);
+}
+
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .notebook-note-item:hover:not(:disabled) {
+        background: var(--glass-layer-dark-4);
+        border-color: var(--glass-border-2);
+        transform: translateX(4px);
+    }
+}
+
+.notebook-note-item.active {
+    background: var(--btn-hover-bg-primary);
+    border-color: var(--btn-hover-border-primary);
+}
+
+.notebook-note-item i {
+    font-size: 1.1em;
+    flex-shrink: 0;
+}
+
+.notebook-note-item .note-name {
+    flex: 1;
+    font-weight: 500;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.9rem;
+}
+
+.notebook-note-item.active .note-name {
+    color: var(--accent-color);
+}
+
+.notebook-editor-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--glass-layer-light-bg);
+    border-bottom-right-radius: var(--border-radius-xl);
+}
+
+.notebook-editor-panel .notepad-textarea {
+    flex: 1;
+    height: 100%;
+    border: none;
+    margin: 0;
+}
+
+.notebook-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-muted);
+    gap: var(--spacing-md);
+    padding: var(--spacing-lg);
+}
+
+.notebook-empty-state i {
+    font-size: 3em;
+    opacity: 0.5;
+}
+
+.notebook-empty-state p {
+    font-size: 1.1em;
+    opacity: 0.7;
+    text-align: center;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .notebook-list-panel {
+        width: 200px;
+        min-width: 150px;
+    }
+}
+
+/* Notepad dropdown menu */
+.notepad-dropdown-menu {
+    min-width: 180px;
+}
+
+/* Note selection dialog */
+.open-note-modal-content {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 100%;
+}
+
+.open-note-layout {
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+}
+
+.open-note-sidebar-backdrop {
+    display: none;
+}
+
+.open-note-sidebar {
+    width: 200px;
+    min-width: 180px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--glass-layer-dark-bg);
+    border-right: 1px solid var(--glass-border);
+    overflow: hidden;
+    border-bottom-left-radius: var(--border-radius-xl);
+}
+
+.open-note-sidebar-header {
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--glass-border);
+    flex-shrink: 0;
+}
+
+.open-note-workspace-list {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: var(--spacing-xs);
+}
+
+.open-note-workspace-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    margin-bottom: var(--spacing-xs);
+    border-radius: var(--border-radius-md);
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .open-note-workspace-item:hover:not(:disabled) {
+        background: var(--glass-layer-dark-4);
+    }
+}
+
+.open-note-workspace-item.active {
+    background: var(--btn-hover-bg-primary);
+}
+
+.open-note-workspace-item .workspace-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.9rem;
+}
+
+.open-note-workspace-count {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.open-note-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-bottom-right-radius: var(--border-radius-xl);
+}
+
+.open-note-list-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: var(--spacing-sm);
+}
+
+.open-note-sidebar-toggle {
+    display: none;
+}
+
+.open-note-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-xl);
+    color: var(--text-muted);
+    column-span: all;
+}
+
+.open-note-empty-state i {
+    font-size: 2.5em;
+    opacity: 0.5;
+}
+
+.note-selection-list {
+    column-width: 180px;
+    column-gap: var(--spacing-sm);
+    column-fill: auto;
+    height: 100%;
+    padding: 0;
+}
+
+.note-selection-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    margin-bottom: var(--spacing-sm);
+    break-inside: avoid;
+    background: var(--glass-layer-3);
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-md);
+    transition: var(--transition-tray-menu);
+    cursor: pointer;
+}
+
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .note-selection-item:hover:not(:disabled) {
+        background: var(--glass-layer-4);
+        border-color: var(--accent-primary);
+    }
+}
+
+.note-selection-item i {
+    font-size: 1.25rem;
+    flex-shrink: 0;
+    color: var(--accent-primary);
+}
+
+.note-selection-item .note-name {
+    flex: 1;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#notebookWorkspaceDropdown .custom-dropdown-btn {
+    gap: var(--spacing-xs);
+    max-width: 140px;
+}
+
+#notebookWorkspaceDropdown #notebookWorkspaceSelected {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+    #openNoteModal {
+        width: 100%;
+        max-width: 100%;
+        height: 85vh;
+    }
+
+    .open-note-sidebar-toggle {
+        display: inline-flex;
+    }
+
+    .open-note-sidebar {
+        position: absolute;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        z-index: 5;
+        transform: translateX(-100%);
+        transition: transform var(--transition-normal);
+        box-shadow: 4px 0 16px rgba(0, 0, 0, 0.35);
+        border-bottom-left-radius: 0;
+    }
+
+    .open-note-layout.sidebar-open .open-note-sidebar {
+        transform: translateX(0);
+    }
+
+    .open-note-sidebar-backdrop {
+        display: none;
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        z-index: 4;
+    }
+
+    .open-note-layout.sidebar-open .open-note-sidebar-backdrop {
+        display: block;
+    }
+
+    .open-note-list-scroll {
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+
+    .note-selection-list {
+        columns: 1;
+        column-width: auto;
+        height: auto;
+    }
+}
+
+/* Color option in dropdown */
+.color-option-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.color-square {
+    width: 20px;
+    height: 20px;
+    border-radius: var(--border-radius-sm);
+    border: 2px solid var(--glass-border-5);
+    flex-shrink: 0;
+}
+
+#openNoteModal,
+#updateNoteModal {
+    width: 500px;
+}
+
+#openNoteModal {
+    height: 520px;
+}

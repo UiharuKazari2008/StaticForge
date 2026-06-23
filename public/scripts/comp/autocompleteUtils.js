@@ -446,7 +446,10 @@ window.handleSearchResponse = function (message) {
                 const wl = results[0];
                 if (wl.data && wl.data.hasData) {
                     searchServices.set('wordLookup', 'completed');
-                    persistentWordLookupData = wl.data;
+                    const wlTarget = currentCharacterAutocompleteTarget;
+                    persistentWordLookupData = wlTarget
+                        ? attachWordLookupTermBounds(wl.data, wlTarget, currentSearchQuery)
+                        : wl.data;
                 } else {
                     searchServices.set('wordLookup', 'completed-none');
                     persistentWordLookupData = null;
@@ -984,6 +987,31 @@ function processAutofillSelectionChange() {
 document.addEventListener('selectionchange', handleAutofillSelectionChange);
 document.addEventListener('beforeinput', handleCharacterAutocompleteBeforeinput, true);
 
+function isAutofillProseMode(target) {
+    return Boolean(target && target.closest('.creative-directive-container, .prompt-textarea-container.director-prompt'));
+}
+
+/** Word at caret for prose / director prompts (whitespace-delimited, works mid-word). */
+function getProseWordBoundsAtCursor(value, cursorPosition) {
+    const len = value ? value.length : 0;
+    const safeCursor = Math.max(0, Math.min(cursorPosition, len));
+    if (!len) {
+        return { start: 0, end: 0, word: '' };
+    }
+
+    let start = safeCursor;
+    while (start > 0 && !/\s/.test(value[start - 1])) {
+        start--;
+    }
+    let end = safeCursor;
+    while (end < len && !/\s/.test(value[end])) {
+        end++;
+    }
+
+    const word = value.substring(start, end).trim();
+    return { start, end, word };
+}
+
 function getAutocompleteSearchBounds(target) {
     if (!target || typeof target.value !== 'string') return null;
     if (typeof target.selectionStart !== 'number') return null;
@@ -1012,6 +1040,23 @@ function getAutocompleteSearchBounds(target) {
     }
 
     const safeCursor = Math.max(0, Math.min(cursorPosition, value.length));
+
+    if (isAutofillProseMode(target)) {
+        const wordBounds = getProseWordBoundsAtCursor(value, safeCursor);
+        const word = wordBounds.word;
+        const bounds = {
+            tokenStart: wordBounds.start,
+            tokenEnd: wordBounds.end,
+            spellCheckTermOffset: wordBounds.start,
+            query: word,
+            spellCheckText: word,
+            isTextPrefix: false,
+            isProseMode: true
+        };
+        autofillSearchBoundsCache = { target, value, selectionStart: cursorPosition, bounds };
+        return bounds;
+    }
+
     const textBeforeCursor = value.substring(0, safeCursor);
 
     const textPrefixIndex = textBeforeCursor.lastIndexOf('Text:');
@@ -1355,6 +1400,185 @@ function attachSpellCheckTermBounds(spellData, target) {
         inputEnd: inputEnd,
         inputText: inputText
     });
+}
+
+/** Capture textarea slice for thesaurus replace (not spell-check metadata). */
+function attachWordLookupTermBounds(wordLookupData, target, lookupQuery) {
+    if (!wordLookupData || !target) {
+        return wordLookupData;
+    }
+    const value = target.value || '';
+    const query = String(lookupQuery != null ? lookupQuery : currentSearchQuery || '').trim();
+    const cursorPos = typeof target.selectionStart === 'number' ? target.selectionStart : 0;
+    const bounds = getAutocompleteSearchBounds(target) || currentSearchSessionBounds;
+
+    let inputStart = null;
+    let inputEnd = null;
+
+    const selStart = target.selectionStart;
+    const selEnd = target.selectionEnd;
+    if (selStart !== selEnd) {
+        inputStart = Math.min(selStart, selEnd);
+        inputEnd = Math.max(selStart, selEnd);
+    } else if (isAutofillProseMode(target)) {
+        const prose = getProseWordBoundsAtCursor(value, cursorPos);
+        if (prose.end > prose.start) {
+            inputStart = prose.start;
+            inputEnd = prose.end;
+        }
+    } else if (query && bounds) {
+        const typedRange = resolveTypedInputReplaceRange(value, bounds, cursorPos, { queryText: query });
+        if (typedRange) {
+            inputStart = typedRange.start;
+            inputEnd = typedRange.end;
+        }
+    }
+
+    if (inputStart == null && query) {
+        const found = findMisspelledWordInInputSlice(value, cursorPos, query, 0, value.length);
+        if (found) {
+            inputStart = found.start;
+            inputEnd = found.end;
+        }
+    }
+
+    const termStart = bounds ? bounds.tokenStart : 0;
+    const termEnd = bounds ? bounds.tokenEnd : value.length;
+
+    return Object.assign({}, wordLookupData, {
+        termStart,
+        termEnd,
+        inputStart,
+        inputEnd,
+        inputText: inputStart != null ? value.substring(inputStart, inputEnd) : '',
+        lookupQuery: query
+    });
+}
+
+function getWordLookupWordOccurrenceIndex(wordLookupData, originalWord, wordRowIndex) {
+    if (!wordLookupData || !Array.isArray(wordLookupData.words) || wordRowIndex < 0) {
+        return -1;
+    }
+    const origLower = String(originalWord || '').toLowerCase();
+    if (String(wordLookupData.words[wordRowIndex]?.word || '').toLowerCase() !== origLower) {
+        return -1;
+    }
+    let occ = 0;
+    for (let i = 0; i < wordRowIndex; i++) {
+        if (String(wordLookupData.words[i]?.word || '').toLowerCase() === origLower) {
+            occ++;
+        }
+    }
+    return occ;
+}
+
+function findWordInSpanByOccurrence(value, sliceStart, sliceEnd, originalWord, occurrenceIndex) {
+    if (!originalWord || sliceStart == null || sliceEnd == null) {
+        return null;
+    }
+    const inputText = value.substring(sliceStart, sliceEnd);
+    const origLower = String(originalWord).toLowerCase();
+    const matching = getWordRangesInSpan(inputText).filter(function (r) {
+        return r.word.toLowerCase() === origLower;
+    });
+    if (!matching.length) {
+        return null;
+    }
+    let idx = occurrenceIndex >= 0 ? occurrenceIndex : 0;
+    if (idx >= matching.length) {
+        idx = matching.length - 1;
+    }
+    const r = matching[idx];
+    return { start: sliceStart + r.start, end: sliceStart + r.end };
+}
+
+function findWordLookupReplaceRange(target, originalWord, wordRowIndex) {
+    if (!target || !originalWord) {
+        return null;
+    }
+    const value = target.value || '';
+    const cursorPos = typeof target.selectionStart === 'number' ? target.selectionStart : 0;
+    const origLower = String(originalWord).toLowerCase();
+    const wlMeta = persistentWordLookupData || {};
+    let rowIndex = typeof wordRowIndex === 'number' && wordRowIndex >= 0 ? wordRowIndex : -1;
+    if (rowIndex < 0 && wordLookupNavigationMode && selectedWordLookupWordIndex >= 0) {
+        rowIndex = selectedWordLookupWordIndex;
+    }
+
+    const selStart = target.selectionStart;
+    const selEnd = target.selectionEnd;
+    if (selStart !== selEnd) {
+        const a = Math.min(selStart, selEnd);
+        const b = Math.max(selStart, selEnd);
+        const sel = value.substring(a, b);
+        if (sel.trim().toLowerCase() === origLower || sel.toLowerCase() === origLower) {
+            return { start: a, end: b };
+        }
+    }
+
+    const occIndex = getWordLookupWordOccurrenceIndex(wlMeta, originalWord, rowIndex);
+
+    if (wlMeta.inputStart != null && wlMeta.inputEnd != null && wlMeta.inputText) {
+        const sliceText = value.substring(wlMeta.inputStart, wlMeta.inputEnd);
+        if (sliceText === wlMeta.inputText) {
+            if (sliceText.toLowerCase() === origLower) {
+                return { start: wlMeta.inputStart, end: wlMeta.inputEnd };
+            }
+            const inStored = findWordInSpanByOccurrence(value, wlMeta.inputStart, wlMeta.inputEnd, originalWord, occIndex);
+            if (inStored) {
+                return inStored;
+            }
+        }
+    }
+
+    const liveBounds = getAutocompleteSearchBounds(target);
+    const bounds = currentSearchSessionBounds || liveBounds;
+    if (bounds) {
+        const termStart = bounds.tokenStart;
+        const termEnd = bounds.termEnd;
+        const typedRange = resolveTypedInputReplaceRange(value, bounds, cursorPos, { queryText: originalWord });
+        if (typedRange) {
+            const t = value.substring(typedRange.start, typedRange.end);
+            if (t.toLowerCase() === origLower) {
+                return { start: typedRange.start, end: typedRange.end };
+            }
+        }
+        const inTerm = findWordInSpanByOccurrence(value, termStart, termEnd, originalWord, occIndex);
+        if (inTerm) {
+            return inTerm;
+        }
+        return findMisspelledWordInInputSlice(value, cursorPos, originalWord, termStart, termEnd);
+    }
+
+    if (isAutofillProseMode(target)) {
+        const prose = getProseWordBoundsAtCursor(value, cursorPos);
+        if (prose.word.toLowerCase() === origLower) {
+            return { start: prose.start, end: prose.end };
+        }
+    }
+
+    const sliceStart = wlMeta.termStart != null ? wlMeta.termStart : 0;
+    const sliceEnd = wlMeta.termEnd != null ? wlMeta.termEnd : value.length;
+    const inSlice = findWordInSpanByOccurrence(value, sliceStart, sliceEnd, originalWord, occIndex);
+    if (inSlice) {
+        return inSlice;
+    }
+
+    return findMisspelledWordInInputSlice(value, cursorPos, originalWord, 0, value.length);
+}
+
+function primeWordLookupReplaceContext(target, lookupQuery, boundData) {
+    if (boundData) {
+        persistentWordLookupData = boundData;
+        return boundData;
+    }
+    if (!target) {
+        return null;
+    }
+    const query = String(lookupQuery || getWikiTermFromPromptTextareaForKeyboard(target) || currentSearchQuery || '').trim();
+    const base = getActiveWordLookupData() || { hasData: true, words: [] };
+    persistentWordLookupData = attachWordLookupTermBounds(base, target, query);
+    return persistentWordLookupData;
 }
 
 function scheduleAutofillSearchDebounced(target, searchText, runSearch) {
@@ -3555,7 +3779,9 @@ async function fetchWordLookupForTerm(term, textarea) {
         }
     }
 
-    return getActiveWordLookupData();
+    return getActiveWordLookupData()
+        ? attachWordLookupTermBounds(getActiveWordLookupData(), textarea, q)
+        : null;
 }
 
 // Character autocomplete functions
@@ -3683,6 +3909,41 @@ function processCharacterAutocompleteInput(e) {
         return;
     }
 
+    if (isAutofillProseMode(target)) {
+        const bounds = getAutocompleteSearchBounds(target);
+        if (!bounds || !bounds.query) {
+            hideCharacterAutocomplete();
+            return;
+        }
+        const searchText = bounds.query;
+        const minQueryLen = 1;
+
+        if (e.inputType === 'deleteContentBackward') {
+            if (autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0) {
+                scheduleAutofillSearchDebounced(target, searchText, function () {
+                    if (searchText.startsWith('<') || searchText.length >= minQueryLen) {
+                        searchCharacters(searchText, target);
+                    } else {
+                        hideCharacterAutocomplete();
+                    }
+                });
+                return;
+            }
+            hideCharacterAutocomplete();
+            return;
+        }
+
+        scheduleAutofillSearchDebounced(target, searchText, function () {
+            if (searchText.startsWith('<') || searchText.length >= minQueryLen) {
+                lastSearchText = searchText;
+                searchCharacters(searchText, target);
+            } else {
+                hideCharacterAutocomplete();
+            }
+        });
+        return;
+    }
+
     const cursorPosition = target.selectionStart;
 
     // Get the text before the cursor
@@ -3732,13 +3993,14 @@ function processCharacterAutocompleteInput(e) {
         return;
     }
     const searchText = bounds.query;
+    const minQueryLen = bounds.isProseMode ? 1 : 2;
 
     // Handle backspace - if actively navigating, start normal search delay
     if (e.inputType === 'deleteContentBackward') {
         // If user is actively navigating or has an item selected, start normal search
         if (autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0) {
             scheduleAutofillSearchDebounced(target, searchText, function () {
-                if (searchText.startsWith('<') || searchText.length >= 2) {
+                if (searchText.startsWith('<') || searchText.length >= minQueryLen) {
                     searchCharacters(searchText, target);
                 } else {
                     hideCharacterAutocomplete();
@@ -3754,7 +4016,7 @@ function processCharacterAutocompleteInput(e) {
     }
 
     scheduleAutofillSearchDebounced(target, searchText, function () {
-        if (searchText.startsWith('<') || searchText.length >= 2) {
+        if (searchText.startsWith('<') || searchText.length >= minQueryLen) {
             lastSearchText = searchText;
             searchCharacters(searchText, target);
         } else {
@@ -3782,7 +4044,7 @@ function sanitizePromptFragmentForWikiSearch(s) {
     return t.trim();
 }
 
-/** Selection if any; else text from previous "," to caret; then sanitize (comma path per Alt+Q/W when autofill closed). */
+/** Selection if any; else current word at caret for prose, or comma-delimited tag slice for prompts. */
 function getWikiTermFromPromptTextareaForKeyboard(textarea) {
     if (!textarea || typeof textarea.value !== 'string') return '';
     const value = textarea.value;
@@ -3793,6 +4055,8 @@ function getWikiTermFromPromptTextareaForKeyboard(textarea) {
         const a = Math.min(start, end);
         const b = Math.max(start, end);
         raw = value.substring(a, b);
+    } else if (isAutofillProseMode(textarea)) {
+        raw = getProseWordBoundsAtCursor(value, start).word;
     } else {
         const textBefore = value.substring(0, start);
         const lastComma = textBefore.lastIndexOf(',');
@@ -3871,6 +4135,21 @@ function getWikiSearchTermFromAutocompleteItem(selectedItem) {
         return String(selectedItem.dataset.placeholder || '').trim();
     }
     return '';
+}
+
+/** Tag object for Grimoire wiki lookup — buildWikiTagFromTerm in public/scripts/comp/tagWikiSearchModal.js */
+function buildWikiTagFromAutocompleteItem(selectedItem) {
+    if (!selectedItem || !selectedItem.dataset || selectedItem.dataset.type !== 'tag') {
+        return null;
+    }
+    const title = String(selectedItem.dataset.tagName || '').trim();
+    if (!title) return null;
+    const tagId = Number(selectedItem.dataset.tagId);
+    const extra = tagId > 0 ? { id: tagId } : {};
+    if (tagWikiSearchModal) {
+        return tagWikiSearchModal.buildWikiTagFromTerm(title, extra);
+    }
+    return { title, name: title.replace(/\s+/g, '_'), ...extra };
 }
 
 function getTagInsertStringForAutocomplete(tagName, category) {
@@ -4216,7 +4495,9 @@ function getSelectedWordLookupSuggestionButton() {
 function tryApplySelectedWordLookupSuggestion(target) {
     const selectedBtn = getSelectedWordLookupSuggestionButton();
     if (!selectedBtn || !target) return false;
-    return applyWordLookupInsert(target, selectedBtn.dataset.original, selectedBtn.dataset.suggestion);
+    const row = selectedBtn.closest('.word-lookup-word-row');
+    const wordRowIndex = row ? parseInt(row.dataset.wordIndex, 10) : -1;
+    return applyWordLookupInsert(target, selectedBtn.dataset.original, selectedBtn.dataset.suggestion, wordRowIndex);
 }
 
 function getSelectedSpellCheckSuggestionButton() {
@@ -4312,7 +4593,9 @@ function applyTabAutofillPreview(target) {
         if (wordLookupSection && getWordLookupWordCount(wordLookupSection) > 0) {
             const firstBtn = getFirstWordLookupSuggestionButton(wordLookupSection);
             if (firstBtn) {
-                return applyWordLookupInsert(target, firstBtn.dataset.original, firstBtn.dataset.suggestion);
+                const row = firstBtn.closest('.word-lookup-word-row');
+                const wordRowIndex = row ? parseInt(row.dataset.wordIndex, 10) : 0;
+                return applyWordLookupInsert(target, firstBtn.dataset.original, firstBtn.dataset.suggestion, wordRowIndex);
             }
         }
 
@@ -4927,7 +5210,14 @@ function handleCharacterAutocompleteKeydown(e) {
                         const selectedItem = resultItems[selectedCharacterAutocompleteIndex];
                         const wikiTerm = getWikiSearchTermFromAutocompleteItem(selectedItem);
                         if (wikiTerm && window.tagWikiSearchModal) {
-                            window.tagWikiSearchModal.openStandaloneWikiIfDirectMatch(wikiTerm);
+                            hideCharacterAutocomplete();
+                            autocompleteNavigationMode = false;
+                            autocompleteExpanded = false;
+                            const wikiTag = buildWikiTagFromAutocompleteItem(selectedItem);
+                            window.tagWikiSearchModal.openStandaloneWikiIfDirectMatch(wikiTerm, {
+                                tag: wikiTag || undefined,
+                                force: selectedItem.dataset.hasWiki === 'true'
+                            });
                         }
                     }
                 }
@@ -5018,7 +5308,7 @@ function handleCharacterAutocompleteKeydown(e) {
                 const wikiTerm = getWikiTermFromPromptTextareaForKeyboard(t);
                 if (wikiTerm && window.tagWikiSearchModal) {
                     e.preventDefault();
-                    window.tagWikiSearchModal.openStandaloneWikiIfDirectMatch(wikiTerm);
+                    window.tagWikiSearchModal.openStandaloneWikiIfDirectMatch(wikiTerm, { force: true });
                 }
             }
         }
@@ -6079,9 +6369,12 @@ function getBestWordLookupResult() {
 
 function getActiveWordLookupData() {
     const wordLookupResult = getBestWordLookupResult();
+    const target = currentCharacterAutocompleteTarget;
     if (wordLookupResult && wordLookupResult.data && wordLookupResult.data.hasData) {
-        persistentWordLookupData = wordLookupResult.data;
-        return wordLookupResult.data;
+        persistentWordLookupData = target
+            ? attachWordLookupTermBounds(wordLookupResult.data, target, currentSearchQuery)
+            : wordLookupResult.data;
+        return persistentWordLookupData;
     }
     if (persistentWordLookupData && persistentWordLookupData.hasData) {
         return persistentWordLookupData;
@@ -6111,16 +6404,18 @@ function applyWordLookupWordDisplay(section, activeIndex) {
 function wireWordLookupSuggestionButtons(container, target) {
     if (!container) return;
     container.querySelectorAll('.suggestion-btn').forEach(btn => {
+        const wordRowIndex = parseInt(btn.closest('.word-lookup-word-row')?.dataset.wordIndex, 10);
+        const rowIndex = Number.isFinite(wordRowIndex) ? wordRowIndex : -1;
         btn.addEventListener('click', (e) => {
             e.preventDefault();
-            applyWordLookupInsert(target, btn.dataset.original, btn.dataset.suggestion);
+            applyWordLookupInsert(target, btn.dataset.original, btn.dataset.suggestion, rowIndex);
         });
         touchSlopUtils.registerTouchSlopTracking(btn);
         btn.addEventListener('touchend', (e) => {
             const maxDelta = touchSlopUtils.finalizeTouchSlop(btn, e);
             if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
             e.preventDefault();
-            applyWordLookupInsert(target, btn.dataset.original, btn.dataset.suggestion);
+            applyWordLookupInsert(target, btn.dataset.original, btn.dataset.suggestion, rowIndex);
         }, { passive: false });
     });
 }
@@ -6284,8 +6579,19 @@ function showWordLookupSection(wordLookupData, target) {
     }
 }
 
-function applyWordLookupInsert(target, originalWord, synonym) {
-    return applySpellCorrection(target, originalWord, synonym);
+function applyWordLookupInsert(target, originalWord, synonym, wordRowIndex) {
+    if (!target || !originalWord || synonym == null) {
+        return false;
+    }
+    const cursorPos = target.selectionStart;
+    const wordRange = findWordLookupReplaceRange(target, originalWord, wordRowIndex);
+    if (wordRange) {
+        return applySpellCorrectionReplace(target, wordRange.start, wordRange.end, synonym, cursorPos);
+    }
+    if (typeof showGlassToast === 'function') {
+        showGlassToast('error', null, `Could not find "${originalWord}" to replace`, false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+    }
+    return false;
 }
 
 function applySpellCorrection(target, originalWord, suggestion, misspelledRowIndex) {
@@ -8441,6 +8747,7 @@ function handlePromptTabCycling(e) {
     if (!manualPrompt || !characterPromptsContainer) return;
 
     const isShowingBoth = promptTabs && promptTabs.classList.contains('show-both');
+    const keepCharacterPromptsExpanded = document.body.classList.contains('desktop-mode');
     const characterItems = characterPromptsContainer.querySelectorAll('.character-prompt-item');
     const characterItemsArray = Array.from(characterItems); // Convert NodeList to Array
     const currentlyFocused = document.activeElement;
@@ -8473,11 +8780,13 @@ function handlePromptTabCycling(e) {
                 if (promptTextarea) cycleOrder.push(promptTextarea);
             });
         } else if (mainActiveTab === 'uc') {
-            // UC tab is active - cycle through UC, inline negative, and character UC textareas
+            // UC tab is active - cycle through UC, inline negative, and character UC/negative textareas
             cycleOrder = [manualUc, manualPromptNegative].filter(Boolean);
             characterItemsArray.forEach(characterItem => {
                 const ucTextarea = characterItem.querySelector(`#${characterItem.id}_uc`);
+                const promptNegativeTextarea = characterItem.querySelector(`#${characterItem.id}_promptNegative`);
                 if (ucTextarea) cycleOrder.push(ucTextarea);
+                if (promptNegativeTextarea) cycleOrder.push(promptNegativeTextarea);
             });
         } else {
             // Fallback - include both main prompts
@@ -8529,7 +8838,7 @@ function handlePromptTabCycling(e) {
     // Handle navigation to target element
     if (targetElement === manualPrompt) {
         // Close current character prompt if we're in one
-        if (currentlyFocused.closest('.character-prompt-item')) {
+        if (!keepCharacterPromptsExpanded && currentlyFocused.closest('.character-prompt-item')) {
             const currentCharacterItem = currentlyFocused.closest('.character-prompt-item');
             if (!currentCharacterItem.classList.contains('collapsed')) {
                 currentCharacterItem.classList.add('collapsed');
@@ -8541,7 +8850,7 @@ function handlePromptTabCycling(e) {
         scrollToCenter(manualPrompt);
     } else if (targetElement === manualUc) {
         // Close current character prompt if we're in one
-        if (currentlyFocused.closest('.character-prompt-item')) {
+        if (!keepCharacterPromptsExpanded && currentlyFocused.closest('.character-prompt-item')) {
             const currentCharacterItem = currentlyFocused.closest('.character-prompt-item');
             if (!currentCharacterItem.classList.contains('collapsed')) {
                 currentCharacterItem.classList.add('collapsed');
@@ -8552,7 +8861,7 @@ function handlePromptTabCycling(e) {
         manualUc.focus();
         scrollToCenter(manualUc);
     } else if (manualPromptNegative && targetElement === manualPromptNegative) {
-        if (currentlyFocused.closest('.character-prompt-item')) {
+        if (!keepCharacterPromptsExpanded && currentlyFocused.closest('.character-prompt-item')) {
             const currentCharacterItem = currentlyFocused.closest('.character-prompt-item');
             if (!currentCharacterItem.classList.contains('collapsed')) {
                 currentCharacterItem.classList.add('collapsed');
@@ -8567,7 +8876,7 @@ function handlePromptTabCycling(e) {
 
         if (targetCharacterItem) {
             // Only close current character prompt if we're moving from one character to another
-            if (currentlyFocused.closest('.character-prompt-item')) {
+            if (!keepCharacterPromptsExpanded && currentlyFocused.closest('.character-prompt-item')) {
                 const currentCharacterItem = currentlyFocused.closest('.character-prompt-item');
                 if (currentCharacterItem !== targetCharacterItem && !currentCharacterItem.classList.contains('collapsed')) {
                     currentCharacterItem.classList.add('collapsed');
@@ -8578,8 +8887,10 @@ function handlePromptTabCycling(e) {
 
             // Switch to the correct tab if needed (only when not in show-both mode)
             if (!isShowingBoth) {
-                const isUcTextarea = targetElement.id && targetElement.id.includes('_uc');
-                const targetTab = isUcTextarea ? 'uc' : 'prompt';
+                const isUcTabField = targetElement.id && (
+                    targetElement.id.endsWith('_uc') || targetElement.id.endsWith('_promptNegative')
+                );
+                const targetTab = isUcTabField ? 'uc' : 'prompt';
                 const targetTabPane = targetCharacterItem.querySelector(`#${targetCharacterItem.id}_${targetTab}-tab`);
                 const currentTabPane = targetCharacterItem.querySelector('.tab-pane.active');
 

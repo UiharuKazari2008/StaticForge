@@ -1,0 +1,416 @@
+/* Unified upload modal */
+/* Upload Explanation Section */
+.upload-explanation {
+    font-size: 0.65em;
+    font-family: var(--font-tertiary);
+    opacity: 0.75;
+}
+
+#unifiedUploadExplanationContent {
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+#unifiedUploadExplanationContent strong {
+    color: var(--text-primary);
+    font-weight: 600;
+    font-variation-settings: "wght" 600;
+}
+
+#unifiedUploadExplanationContent .highlight {
+    color: var(--accent-color);
+    font-weight: 600;
+    font-variation-settings: "wght" 600;
+}
+
+/* Default state - hide all mode-specific elements when no data-mode is set */
+#unifiedUploadModal:not([data-mode]) #unifiedUploadBlueprintPreview,
+#unifiedUploadModal:not([data-mode]) #unifiedUploadCommentInputContainer,
+#unifiedUploadModal:not([data-mode]) #unifiedUploadOpenInEditorBtn,
+#unifiedUploadModal:not([data-mode]) #unifiedUploadVibeControls,
+#unifiedUploadModal:not([data-mode]) #unifiedUploadUrlPreview,
+#unifiedUploadModal:not([data-mode]) #unifiedUploadSiteDomain,
+#unifiedUploadModal:not([data-mode]) #unifiedUploadModalSubtitle {
+    display: none !important;
+}
+
+#unifiedUploadModal:not([data-mode]) #unifiedUploadModeSelector,
+#unifiedUploadModal[data-mode="url"] #unifiedUploadModeSelector,
+#unifiedUploadModal[data-mode="vibe"][data-vibe-type="import"] #unifiedUploadModeSelector {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Ensure initial upload options are visible by default */
+#unifiedUploadModal:not([data-mode]) #unifiedUploadInitialOptions {
+    display: flex !important;
+}
+
+/* Hide initial upload options when any mode is set */
+#unifiedUploadModal[data-mode] #unifiedUploadInitialOptions {
+    display: none !important;
+}
+
+/* Blueprint preview - only show in blueprint mode */
+#unifiedUploadModal[data-mode="blueprint"] #unifiedUploadBlueprintPreview {
+    display: flex !important;
+}
+
+#unifiedUploadModal:not([data-mode="blueprint"]) #unifiedUploadBlueprintPreview {
+    display: none !important;
+}
+
+/* Open in editor button - only show in blueprint mode */
+#unifiedUploadModal[data-mode="blueprint"] #unifiedUploadOpenInEditorBtn {
+    display: flex !important;
+}
+
+#unifiedUploadModal:not([data-mode="blueprint"]) #unifiedUploadOpenInEditorBtn {
+    display: none !important;
+}
+
+/* Hide comment input in all other cases */
+#unifiedUploadModal #unifiedUploadCommentInputContainer {
+    display: none !important;
+}
+
+/* Comment input container - show in reference, blueprint, character, url, and vibe import modes */
+#unifiedUploadModal[data-mode]:not([data-mode="blueprint"]):not([data-mode="url"]) #unifiedUploadCommentInputContainer {
+    display: flex !important;
+}
+
+/* Mode-specific explanations - hide all by default, show specific ones */
+[id^="unifiedUploadExplanation"] {
+    display: none !important;
+}
+
+#unifiedUploadImportMetadataControls {
+    display: none !important;
+    flex-direction: row;
+    gap: var(--spacing-sm);
+    margin-top: var(--spacing-sm);
+}
+
+#unifiedUploadModal[data-mode="reference"] #unifiedUploadImportMetadataControls,
+#unifiedUploadModal[data-mode="character"] #unifiedUploadImportMetadataControls,
+#unifiedUploadModal[data-mode="vibe"][data-vibe-type="encode"] #unifiedUploadImportMetadataControls {
+    display: flex !important;
+}
+
+#unifiedUploadModal[data-mode="character"] #unifiedUploadPreciseReferenceToggle {
+    display: none !important;
+}
+
+#unifiedUploadModal[data-mode="character"] #unifiedUploadReferenceTypeGroup {
+    display: flex !important;
+}
+
+#unifiedUploadPreciseReferenceToggle {
+    width: 75px;
+    height: 40px;
+    justify-content: center;
+    gap: var(--spacing-xs);
+}
+
+
+.unified-upload-reference-toggles {
+    gap: var(--spacing-sm);
+    width: 100%;
+}
+
+.unified-upload-reference-toggles .toggle-btn {
+    flex: 1;
+    min-height: 40px;
+    font-size: 0.95rem;
+    justify-content: center;
+    gap: var(--spacing-xs);
+}
+
+#unifiedUploadWorkspaceDropdown .custom-dropdown-btn {
+    gap: var(--spacing-xs);
+    padding-right: var(--spacing-sm);
+}
+
+#unifiedUploadModal[data-mode="reference"] #unifiedUploadExplanationReference,
+#unifiedUploadModal[data-mode="blueprint"] #unifiedUploadExplanationBlueprint,
+#unifiedUploadModal[data-mode="character"] #unifiedUploadExplanationCharacter,
+#unifiedUploadModal[data-mode="vibe"] #unifiedUploadExplanationVibe {
+    display: flex !important;
+}
+
+/* Vibe controls - only show when encoding (not importing vibe files) */
+#unifiedUploadModal[data-mode="vibe"] #unifiedUploadVibeControls {
+    display: none !important;
+}
+
+#unifiedUploadModal[data-mode="vibe"][data-vibe-type="encode"] #unifiedUploadVibeControls {
+    display: block !important;
+}
+
+/* URL mode visibility - show URL-specific elements only in URL mode */
+#unifiedUploadModal[data-mode="url"] #unifiedUploadUrlPreview {
+    display: block !important;
+}
+
+/* Hide URL preview for all modes except URL mode */
+#unifiedUploadModal[data-mode]:not([data-mode="url"]) #unifiedUploadUrlPreview {
+    display: none !important;
+}
+
+#unifiedUploadModal[data-mode="url"] #unifiedUploadSiteDomain,
+#unifiedUploadModal[data-mode="url"] #unifiedUploadModalSubtitle {
+    display: block !important;
+}
+
+/* Hide URL-specific elements for all modes except URL mode */
+#unifiedUploadModal[data-mode]:not([data-mode="url"]) #unifiedUploadSiteDomain,
+#unifiedUploadModal[data-mode]:not([data-mode="url"]) #unifiedUploadModalSubtitle {
+    display: none !important;
+}
+
+#unifiedUploadModal[data-mode="url"] #unifiedUploadBlueprintPreview {
+    display: none !important;
+}
+
+#unifiedUploadModal[data-mode="url"] #unifiedUploadOpenInEditorBtn {
+    display: none !important;
+}
+
+#unifiedUploadModal[data-mode="url"] #unifiedUploadVibeControls {
+    display: none !important;
+}
+
+.upload-options-container-info {
+    font-size: 10pt;
+    color: var(--text-muted);
+    font-family: var(--font-secondary);
+    font-weight: 500;
+    font-variation-settings: "wght" 500;
+    text-align: center;
+}
+
+/* Upload Options Container */
+.upload-options-container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 20px 0;
+    height: 100%;
+    justify-content: center;
+    align-items: center;
+}
+
+.upload-options-container-inner {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: center;
+    align-items: center;
+    gap: var(--spacing-xl);
+}
+
+.upload-options-container-inner .btn-large {
+    width: 100%;
+    max-width: 300px;
+    padding: 16px 24px;
+    font-size: 16px;
+    gap: var(--spacing-lg);
+}
+
+.upload-option-btn {
+    min-width: 25%;
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    justify-content: center;
+    align-items: center;
+}
+
+.upload-option-btn i {
+    font-size: 32pt;
+}
+
+/* File Info Overlay */
+#unifiedUploadFileInfo {
+    text-align: center;
+}
+
+/* URL Preview Styles */
+.url-display {
+    word-break: break-all;
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    background: var(--background-secondary);
+    padding: var(--spacing-sm);
+    border-radius: var(--border-radius-sm);
+    border: 1px solid var(--glass-border-2);
+}
+
+.form-group.full-width {
+    width: 100%;
+}
+
+/* URL Preview specific styling for main content area */
+#unifiedUploadUrlPreview {
+    margin-bottom: var(--spacing-lg);
+}
+
+/* Site Domain Display in Footer */
+.site-domain-display {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin-right: auto;
+}
+
+.site-domain-display i {
+    color: var(--accent-secondary);
+}
+
+.site-domain-display span {
+    font-weight: 500;
+}
+
+#unifiedUploadSiteDomainText {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    flex-direction: row;
+    border: 1px solid var(--glass-border-3);
+    background: var(--glass-layer-3);
+    padding: 4px 8px;
+    gap: 8px;
+    border-radius: 5px;
+    font-size: 10pt;
+}
+
+/* Workspace Selector in Unified Upload Modal */
+#unifiedUploadWorkspaceDropdown {
+    margin-right: auto;
+    display: flex;
+    gap: var(--spacing-sm);
+    align-items: center;
+}
+
+#unifiedUploadWorkspaceDropdown .custom-dropdown {
+    min-width: auto;
+}
+
+#unifiedUploadWorkspaceDropdown .custom-dropdown-btn {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: 0.9rem;
+}
+
+#unifiedUploadWorkspaceDropdown .custom-dropdown-btn i {
+    color: var(--accent-secondary);
+    font-size: 0.8rem;
+}
+
+#unifiedUploadWorkspaceDropdown .custom-dropdown-btn .workspace-color-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background-color: #6366f1;
+}
+
+#unifiedUploadWorkspaceDropdown .workspace-option-content {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+#unifiedUploadWorkspaceDropdown .workspace-color-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+#unifiedUploadWorkspaceDropdown .workspace-name {
+    font-weight: 500;
+}
+
+#unifiedUploadUrlPreviewContent {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: var(--spacing-md);
+}
+
+.selected-text-preview {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    background: var(--background-secondary);
+    padding: 0.5rem;
+    border-radius: 4px;
+    margin-top: 0.5rem;
+    word-break: break-word;
+    border-left: 3px solid var(--accent-secondary);
+}
+
+.text-replacement-form {
+    margin: 1rem 0;
+}
+
+.form-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.form-hint {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.form-hint i {
+    color: var(--accent-secondary);
+}
+
+
+.gen-controls {
+    display: flex;
+    align-items: center;
+    gap: 0px;
+    justify-content: space-between;
+    padding-left: 0;
+    border-left: none;
+}
+
+.controls-flex-left,
+.controls-flex-right {
+    display: flex;
+    align-items: center;
+    flex: auto;
+    position: relative;
+}
+
+.controls-flex-left {
+    gap: var(--spacing-sm);
+}
+
+.controls-flex-right {
+    flex: 0 0 auto;
+}
+
+.controls-flex-right>* {
+    margin-left: var(--spacing-sm);
+}
+
+#namePreview {
+    font-family: var(--font-mono);
+    color: var(--accent-primary);
+    font-weight: 500;
+}

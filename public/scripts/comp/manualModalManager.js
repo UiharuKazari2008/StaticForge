@@ -89,7 +89,7 @@ function hideSplashScreen(onHidden) {
  */
 function updateManualModalTitlebar(value = null, skipTaskbarUpdate = false) {
     const _windowTitle = (value || manualPresetName.value)?.trim();
-    manualModal.querySelector('.manual-modal-title .modal-window-title-main span').textContent = 'DreamStudio 2025 R3' + (_windowTitle ? ` - ${_windowTitle}` : '');
+    manualModal.querySelector('.manual-modal-title .modal-window-title-main span').textContent = 'DreamStudio 2026 R7' + (_windowTitle ? ` - ${_windowTitle}` : '');
     if (!skipTaskbarUpdate) updateTaskbarWindows();
 }
 
@@ -228,6 +228,7 @@ window.currentManualPreviewImage = null;
 window.currentManualPreviewIndex = null;
 let lastLoadedSeed = null;
 let manualSeedHistory = []; // Array to store seeds from generations and loaded images (never cleared)
+const MANUAL_SEED_HISTORY_MAX = 64;
 let varietyEnabled = false;
 let characterPromptCounter = 0;
 let textOverlayCounter = 0;
@@ -255,8 +256,10 @@ function addSeedToHistory(seed) {
 
     // Only add if not already in array
     if (!manualSeedHistory.includes(seedInt)) {
-        // Add to the bottom (newest last)
         manualSeedHistory.push(seedInt);
+        if (manualSeedHistory.length > MANUAL_SEED_HISTORY_MAX) {
+            manualSeedHistory.splice(0, manualSeedHistory.length - MANUAL_SEED_HISTORY_MAX);
+        }
     }
 }
 
@@ -632,21 +635,10 @@ async function handleManualPreviewImageContextMenuAction(event) {
                     const response = await fetch(previewImage.dataset.blobUrl);
                     const blob = await response.blob();
 
-                    // Copy to clipboard
-                    await navigator.clipboard.write([
-                        new ClipboardItem({
-                            [blob.type]: blob
-                        })
-                    ]);
+                    // copyBlobToClipboard: public/scripts/utils/dreamscapeClipboard.js
+                    await copyBlobToClipboard(blob, { name: 'generated-image.png' });
 
-                    // Calculate and format file size
-                    const sizeInBytes = blob.size;
-                    let sizeText;
-                    if (sizeInBytes < 1024 * 1024) {
-                        sizeText = `${(sizeInBytes / 1024).toFixed(1)} KB`;
-                    } else {
-                        sizeText = `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
-                    }
+                    const sizeText = formatClipboardBlobSize(blob);
 
                     // Show success notification with size
                     if (showGlassToast) {
@@ -1610,7 +1602,7 @@ function resetDynamicGenerationControls() {
             btn.removeAttribute('data-chain-updates');
             btn.removeAttribute('data-expire-preview');
             btn.removeAttribute('data-force-refresh');
-            btn.removeAttribute('data-use-cache');
+            btn.setAttribute('data-use-cache', 'true');
             btn.removeAttribute('data-has-cache');
             btn.removeAttribute('data-creative-directive-strategy');
             btn.removeAttribute('data-creative-directive-tool-passes');
@@ -1666,6 +1658,7 @@ function disableDynamicGeneration() {
 function clearManualForm() {
     // Clean up any existing blob URLs
     cleanupBlobUrls();
+    releaseManualPreviewImageSrc();
 
     manualForm.reset();
 
@@ -1827,6 +1820,11 @@ function clearManualForm() {
     if (directorBtn) {
         delete directorBtn.dataset.directorSessionId;
         delete directorBtn.dataset.directorMessageId;
+    }
+
+    // novelClearSession: public/scripts/comp/novelManager.js
+    if (typeof novelClearSession === 'function') {
+        novelClearSession();
     }
 
     // Restore UI elements
@@ -2213,6 +2211,9 @@ function addSharedFieldsToRequestBody(requestBody, values) {
     if (values.append_uc !== undefined) {
         requestBody.append_uc = values.append_uc;
     }
+    if (values.quality_preset_bias !== undefined) {
+        requestBody.quality_preset_bias = values.quality_preset_bias;
+    }
 
     // Add vibe transfer data
     if (values.vibe_transfer && values.vibe_transfer.length > 0) {
@@ -2259,7 +2260,7 @@ function addSharedFieldsToRequestBody(requestBody, values) {
         cache_locked: dynamicGenerationLocks.cacheLocked,
         context_locked: dynamicGenerationLocks.contextLocked,
         expire_preview: dynamicCarousel?.dataset.expirePreview === 'true',
-        use_cache_responses: dynamicCarousel?.getAttribute('data-use-cache') === 'false' ? false : undefined,
+        use_cache_responses: dynamicCarousel?.getAttribute('data-use-cache') !== 'false',
         chain_updates: dynamicCarousel?.dataset.chainUpdates === 'true' ? true : false, // Default to false
         force_context_refresh: dynamicCarousel?.dataset.forceRefresh === 'true' ? true : undefined // Force context update in chain mode
     };
@@ -2331,6 +2332,11 @@ function addSharedFieldsToRequestBody(requestBody, values) {
             console.log(`🎄 Season enabled with observeHoliday=${fullDynamicData.observeHoliday}, setting disable_holiday=${fullDynamicData.disable_holiday}`);
         }
 
+        // novelApplySegmentToDynamicData: public/scripts/comp/novelManager.js
+        if (typeof novelApplySegmentToDynamicData === 'function') {
+            novelApplySegmentToDynamicData(fullDynamicData);
+        }
+
         window.dynamicGenerationData = fullDynamicData;
         requestBody.dynamic_generation = fullDynamicData;
     } else {
@@ -2398,6 +2404,11 @@ function addSharedFieldsToRequestBody(requestBody, values) {
     const textOverlayData = getTextOverlayData();
     if (textOverlayData && textOverlayData.length > 0) {
         requestBody.text_overlays = textOverlayData;
+    }
+
+    // novelApplyBodyFields: public/scripts/comp/novelManager.js
+    if (typeof novelApplyBodyFields === 'function') {
+        novelApplyBodyFields(requestBody);
     }
 }
 
@@ -2919,6 +2930,12 @@ async function openManualModalWithContent(content = null, event = null) {
     manualModal.classList.remove('initializing');
     manualModal.querySelector('.spinner-overlay').classList.add('hidden');
 
+    const schedulePostOpenPromptLayout = () => {
+        requestAnimationFrame(() => {
+            autoResizeTextareasAfterModalShow();
+        });
+    };
+
     const deferOpenUntilSplashDismissed = window.isDesktop && manualModal.classList.contains('hidden-alt');
     if (deferOpenUntilSplashDismissed) {
         hideSplashScreen(() => {
@@ -2927,12 +2944,14 @@ async function openManualModalWithContent(content = null, event = null) {
                 void manualModal.offsetWidth;
                 openModal(manualModal);
                 manualPrompt.focus();
+                schedulePostOpenPromptLayout();
             });
         });
     } else {
         hideSplashScreen();
         openModal(manualModal);
         manualPrompt.focus();
+        schedulePostOpenPromptLayout();
     }
 }
 
@@ -2982,6 +3001,9 @@ function updateLoadButtonState() {
 
     // Calculate initial price display
     updateManualPriceDisplay();
+    if (typeof updateManualGenCountDisplay === 'function') {
+        updateManualGenCountDisplay();
+    }
 
     // Check if "show both" mode is active and hide tab buttons container if needed
     const promptTabs = document.querySelector('#manualModal .prompt-tabs');
@@ -3226,10 +3248,15 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
                 '';
         }
 
-        // Load creative directive if present in dynamic_generation
-        if (creativeDirectiveInput && data.dynamic_generation && data.dynamic_generation.directive) {
-            creativeDirectiveInput.value = data.dynamic_generation.directive;
+        // Load creative directive if present in dynamic_generation (top-level or forge_data)
+        const loadedDynamicGen = data.dynamic_generation || data.forge_data?.dynamic_generation;
+        if (creativeDirectiveInput && loadedDynamicGen?.directive) {
+            creativeDirectiveInput.value = loadedDynamicGen.directive;
             autoResizeTextarea(creativeDirectiveInput, 23);
+            // novelRefreshEnableState: public/scripts/comp/novelManager.js
+            if (typeof novelRefreshEnableState === 'function') {
+                novelRefreshEnableState();
+            }
         }
 
         selectManualModel(data.model || 'v4_5', '');
@@ -3399,6 +3426,12 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
             }
         }
 
+        // novelRestoreFromForgeData: public/scripts/comp/novelManager.js
+        if (typeof novelRestoreFromForgeData === 'function') {
+            const hasNovelForge = data.novel_note_id || data.forge_data?.novel_note_id;
+            if (hasNovelForge) novelRestoreFromForgeData(data);
+        }
+
         // Load new parameters from metadata if available
         if (data.dataset_config && data.dataset_config.include) {
             selectedDatasets = [...data.dataset_config.include];
@@ -3503,6 +3536,9 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
         } else {
             qualityPresetBias = 1.0;
         }
+
+        // Re-render dataset dropdown to reflect possibly-loaded quality bias value
+        renderDatasetDropdown();
 
         if (data.append_uc !== undefined) {
             selectedUcPreset = data.append_uc;
@@ -3843,20 +3879,25 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
 
         updateSplashScreenStatus('Loading Tendai...');
         // Load dynamic generation data from forge_data if available
-        if (data.dynamic_generation) {
-            window.dynamicGenerationData = data.dynamic_generation;
+        const loadedDynamicGeneration = data.dynamic_generation || data.forge_data?.dynamic_generation;
+        if (loadedDynamicGeneration) {
+            window.dynamicGenerationData = loadedDynamicGeneration;
+
+            if (creativeDirectiveInput && loadedDynamicGeneration.directive && !creativeDirectiveInput.value.trim()) {
+                creativeDirectiveInput.value = loadedDynamicGeneration.directive;
+                autoResizeTextarea(creativeDirectiveInput, 23);
+            }
 
             // Update carousel cache attributes
             if (dynamicCarousel) {
                 dynamicCarousel.setAttribute('data-has-cache', (!!window.dynamicGenerationData.compiled_prompt).toString());
-                // Check if cache is not expired (use dynamic expiration if available, otherwise 15 minutes)
-                const now = Date.now();
-                const isNotExpired = window.dynamicGenerationData.compiled_prompt?.expiresAt
-                    ? now < window.dynamicGenerationData.compiled_prompt.expiresAt
-                    : (now - (window.dynamicGenerationData.compiled_prompt?.timestamp || 0)) < 1000 * 60 * 15;
-                if (isNotExpired) {
-                    dynamicCarousel.setAttribute('data-use-cache', 'true');
-                }
+                // Restore cache preference from forge_data, preset default, or on (never tied to expiry)
+                const savedUseCache = window.dynamicGenerationData.use_cache_responses;
+                const presetUseCache = data.use_cache_responses_preset;
+                const useCacheEnabled = savedUseCache === false
+                    ? false
+                    : (savedUseCache === true ? true : presetUseCache !== false);
+                dynamicCarousel.setAttribute('data-use-cache', useCacheEnabled ? 'true' : 'false');
 
                 // Restore fast_mode from dynamic_generation if present
                 if (window.dynamicGenerationData.fast_mode !== undefined) {
@@ -4043,6 +4084,9 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
             }
         } else {
             dynamicGenerationGroup.classList.add('hidden');
+            if (type === 'preset' && dynamicCarousel && data.use_cache_responses_preset === false) {
+                dynamicCarousel.setAttribute('data-use-cache', 'false');
+            }
         }
 
         // Check for compiled prompt context and switch carousel to compiled mode
@@ -4061,6 +4105,11 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
 
         // Update creative directive visibility after dynamic generation visibility changes
         updateCreativeDirectiveVisibility();
+
+        // novelRefreshEnableState: public/scripts/comp/novelManager.js
+        if (typeof novelRefreshEnableState === 'function') {
+            novelRefreshEnableState();
+        }
 
         // Load request body replacements from forge_data if available
         if (data.text_replacements && Array.isArray(data.text_replacements)) {
@@ -4194,6 +4243,7 @@ function autoResizeTextareasAfterModalShow() {
     document.querySelectorAll('.character-prompt-item').forEach((item) => {
         queueField(document.getElementById(`${item.id}_prompt`));
         queueField(document.getElementById(`${item.id}_uc`));
+        queueField(document.getElementById(`${item.id}_promptNegative`));
     });
 
     textareas.forEach((field) => {
@@ -4223,10 +4273,14 @@ function autoResizeTextareasAfterModalShow() {
 
         if (creativeDirectiveInput && !creativeDirectiveInput.dataset.autoResizeWired) {
             creativeDirectiveInput.dataset.autoResizeWired = 'true';
-            creativeDirectiveInput.addEventListener('input', () => {
-                // scheduleAutoResizeTextarea: public/scripts/comp/utilities.js
-                scheduleAutoResizeTextarea(creativeDirectiveInput, 23);
-            });
+            // addTextareaInputSideEffect, autoResizeTextarea: public/scripts/comp/textareaUtils.js, utilities.js
+            addTextareaInputSideEffect(creativeDirectiveInput, () => {
+                autoResizeTextarea(creativeDirectiveInput, 23);
+            }, 'autoResize');
+        }
+        // setupPromptTextareaControls: public/scripts/comp/textareaUtils.js
+        if (creativeDirectiveInput && creativeDirectiveInput.dataset.manualStylePromptWired !== '1') {
+            setupPromptTextareaControls(creativeDirectiveInput);
         }
     });
 }
@@ -4486,11 +4540,18 @@ async function handleManualGeneration(e, options = {}) {
             // Store compiled prompt if it was included in the response
             if (compiled_prompt && window.dynamicGenerationData) {
                 window.dynamicGenerationData.compiled_prompt = compiled_prompt;
+                if (compiled_prompt.application_context) {
+                    window._lastCompileToPromptsApplicationContext = compiled_prompt.application_context;
+                }
 
                 // Update carousel attributes
                 if (dynamicCarousel) {
                     dynamicCarousel.setAttribute('data-has-cache', 'true');
-                    dynamicCarousel.setAttribute('data-use-cache', 'true');
+                    // Preserve user's cache preference; only refresh has-cache after compile
+                    const useCache = window.dynamicGenerationData.use_cache_responses !== false
+                        && dynamicCarousel.getAttribute('data-use-cache') !== 'false';
+                    dynamicCarousel.setAttribute('data-use-cache', useCache ? 'true' : 'false');
+                    window.dynamicGenerationData.use_cache_responses = useCache;
 
                     applyDynamicGenerationLockStateFromCompiledPrompt(compiled_prompt);
                 }
@@ -4612,6 +4673,9 @@ async function handleManualGeneration(e, options = {}) {
             hideDynamicGenerationProgressOverlayImmediate();
             return;
         }
+        if (window.wsClient) {
+            window.wsClient.clearStreamingStepQueues(null, true);
+        }
         if (!window.isDesktop) {
             restoreGalleryState();
         }
@@ -4649,6 +4713,11 @@ async function handleManualGeneration(e, options = {}) {
  * TODO: Move function implementation from app.js
  */
 async function handleImageResult(imageSrc, clearContextFn, seed = null, response = null, metadata = null) {
+    // Release streaming/data preview pixels before loading final /images/ URL
+    if (window.wsClient) {
+        window.wsClient.releaseDataImageSrc(document.getElementById('manualPreviewImage'));
+    }
+
     // Store the seed for manual preview
     if (seed !== null) {
         window.lastGeneratedSeed = seed;
@@ -4669,6 +4738,12 @@ async function handleImageResult(imageSrc, clearContextFn, seed = null, response
         // Use metadata passed directly (new WebSocket flow)
         window.lastGeneration = metadata;
         manualPreviewOriginalImage.classList.remove('hidden');
+
+        const genFilename = metadata.filename || window.lastGeneration?.filename || response?.headers?.get?.('X-Generated-Filename');
+        // novelOnImageGenerated: public/scripts/comp/novelManager.js
+        if (genFilename && typeof novelOnImageGenerated === 'function') {
+            novelOnImageGenerated(genFilename, metadata);
+        }
 
         // Update character names and generated image name from metadata
         if (metadata?.dynamic_generation?.compiled_prompt) {
@@ -4876,6 +4951,8 @@ function applyManualPreviewDynamicGenPhase(phase) {
         manualFormEl.classList.remove('manual-preview-dynamic-gen-active');
     } else if (activePhases.includes(phase)) {
         manualFormEl.classList.add('manual-preview-dynamic-gen-active');
+        // ensureGenerationQuipsCycling: public/scripts/comp/generationQuips.js
+        ensureGenerationQuipsCycling();
     }
     refreshManualPreviewImageLoupe();
 }

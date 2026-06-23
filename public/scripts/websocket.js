@@ -266,6 +266,8 @@ class BannerManager {
             'get_text_replacement_options': 'Resolve Placeholder',
             'scan_text_replacements': 'Scan Expanders',
             'resolve_dynamic_context': 'Resolve Context',
+            'compile_dynamic_generation': 'Compile to Prompts',
+            'apply_tendai_preview': 'Apply Tendai',
 
             // Bulk operations
             'delete_images_bulk': 'Delete Images',
@@ -457,7 +459,9 @@ class WebSocketClient {
         'ping',
         'get_generation_quips',
         'get_generation_quips_status',
-        'get_generation_quips_wiki'
+        'get_generation_quips_wiki',
+        'workspace_update_settings',
+        'workspace_update_window_positions'
     ]);
 
     static GENERATION_QUIPS_MESSAGE_TYPES = new Set([
@@ -3263,14 +3267,9 @@ class WebSocketClient {
             console.error('❌ Image generation error:', message.error);
             console.error('❌ Full error details:', message);
 
-            this.clearStreamingStepQueues();
+            this.clearStreamingStepQueues(null, true);
             if (this.progressStates && message.requestId) {
-                const progressState = this.progressStates.get(message.requestId);
-                if (progressState) {
-                    if (progressState.timer) clearInterval(progressState.timer);
-                    if (progressState.delayTimer) clearInterval(progressState.delayTimer);
-                    this.progressStates.delete(message.requestId);
-                }
+                this.cleanupGenerationProgressState(message.requestId);
             }
             if (typeof progressToastId !== 'undefined' && progressToastId && typeof clearGlassToastImagePreview === 'function') {
                 clearGlassToastImagePreview(progressToastId);
@@ -3500,6 +3499,21 @@ class WebSocketClient {
             return;
         }
 
+        if (message.type === 'novel_progress') {
+            this.handleNovelProgress(message);
+            return;
+        }
+
+        if (message.type === 'novel_updated') {
+            this.handleNovelUpdated(message);
+            return;
+        }
+
+        if (message.type === 'novel_generate_complete') {
+            this.handleNovelGenerateComplete(message);
+            return;
+        }
+
         // Trigger message event
         this.triggerEvent('message', message);
 
@@ -3562,6 +3576,9 @@ class WebSocketClient {
                 break;
 
             case 'vfs_updated':
+            case 'desktop_shortcut_added':
+            case 'desktop_shortcut_removed':
+            case 'desktop_shortcut_updated':
                 if (typeof explorerApplet !== 'undefined' && explorerApplet &&
                     explorerApplet.modal && !explorerApplet.modal.classList.contains('hidden')) {
                     explorerApplet.softRefresh();
@@ -3929,6 +3946,12 @@ class WebSocketClient {
         if (data.action === 'window_positions_updated' && data.windowPositions) {
             // Update global window positions directly
             Object.assign(globalWindowPositions, data.windowPositions);
+            if (typeof desktopShortcuts !== 'undefined'
+                && desktopShortcuts
+                && !desktopShortcuts.pendingWindowPositionSave
+                && typeof commitWindowPositionsSnapshot === 'function') {
+                commitWindowPositionsSnapshot();
+            }
         }
 
         // Dispatch custom event for workspace updates
@@ -3967,6 +3990,50 @@ class WebSocketClient {
         document.dispatchEvent(event);
     }
 
+    // Drop large base64 payloads from streaming preview elements so decoded pixels can be GC'd.
+    releaseDataImageSrc(img) {
+        if (!img || !img.src || !img.src.startsWith('data:')) return;
+        img.onload = null;
+        img.onerror = null;
+        img.removeAttribute('src');
+    }
+
+    discardStreamingStepImageData(queueData) {
+        if (!queueData || !Array.isArray(queueData.queue)) return;
+        for (const item of queueData.queue) {
+            if (item && item.imageData) {
+                delete item.imageData;
+            }
+        }
+        queueData.queue.length = 0;
+    }
+
+    cleanupGenerationProgressState(requestId) {
+        if (!this.progressStates || !requestId) return;
+        const progressState = this.progressStates.get(requestId);
+        if (!progressState) return;
+        if (progressState.timer) {
+            clearInterval(progressState.timer);
+            progressState.timer = null;
+        }
+        if (progressState.delayTimer) {
+            clearInterval(progressState.delayTimer);
+            progressState.delayTimer = null;
+        }
+        this.progressStates.delete(requestId);
+        delete window._lastToolState;
+    }
+
+    releaseStreamingPreviewDataUrls(modalType = null) {
+        if (!modalType || modalType === 'manual') {
+            this.releaseDataImageSrc(document.getElementById('manualPreviewImage'));
+        }
+        if (!modalType || modalType === 'spellbook') {
+            const spellbookImg = window.spellbookModalManager?.previewImage;
+            this.releaseDataImageSrc(spellbookImg);
+        }
+    }
+
     // Queue a streaming step with 250ms minimum display time
     queueStreamingStep(modalType, data) {
         // Initialize queue for this modal type if it doesn't exist
@@ -3984,7 +4051,11 @@ class WebSocketClient {
 
         const queueData = this.streamingStepQueues[modalType];
 
-        // Add step to queue
+        // Coalesce intermediate frames — only the latest step matters for preview.
+        if (data.imageData) {
+            this.discardStreamingStepImageData(queueData);
+        }
+
         queueData.queue.push(data);
 
         // Start processing if not already processing
@@ -4016,6 +4087,9 @@ class WebSocketClient {
 
             // Display the step
             this.displayStreamingStep(modalType, data);
+            if (data && data.imageData) {
+                delete data.imageData;
+            }
             queueData.lastDisplayTime = Date.now();
         }
 
@@ -4024,11 +4098,15 @@ class WebSocketClient {
 
     // Display a streaming step on the appropriate modal
     displayStreamingStep(modalType, data) {
+        if (!data?.imageData) return;
+
+        const imageDataUrl = `data:image/png;base64,${data.imageData}`;
+        delete data.imageData;
+
         if (modalType === 'manual') {
             const previewPlaceholder = document.getElementById('manualPreviewPlaceholder');
             if (manualPreviewImage) {
-                // Convert base64 to data URL
-                const imageDataUrl = `data:image/png;base64,${data.imageData}`;
+                this.releaseDataImageSrc(manualPreviewImage);
                 manualPreviewImage.src = imageDataUrl;
                 manualPreviewImage.classList.remove('hidden');
                 previewPlaceholder.classList.add('hidden');
@@ -4052,8 +4130,7 @@ class WebSocketClient {
         } else if (modalType === 'spellbook') {
             const spellbookPreviewImage = window.spellbookModalManager.previewImage;
             if (spellbookPreviewImage) {
-                // Convert base64 to data URL
-                const imageDataUrl = `data:image/png;base64,${data.imageData}`;
+                this.releaseDataImageSrc(spellbookPreviewImage);
                 spellbookPreviewImage.src = imageDataUrl;
                 spellbookPreviewImage.classList.remove('hidden');
 
@@ -4066,19 +4143,21 @@ class WebSocketClient {
     }
 
     // Clear streaming step queues (call when generation completes or is cancelled)
-    clearStreamingStepQueues(modalType = null) {
+    clearStreamingStepQueues(modalType = null, releasePreview = false) {
         if (!this.streamingStepQueues) return;
 
         if (modalType) {
-            // Clear specific modal queue
             if (this.streamingStepQueues[modalType]) {
-                this.streamingStepQueues[modalType].queue = [];
+                this.discardStreamingStepImageData(this.streamingStepQueues[modalType]);
             }
         } else {
-            // Clear all queues
             Object.keys(this.streamingStepQueues).forEach(key => {
-                this.streamingStepQueues[key].queue = [];
+                this.discardStreamingStepImageData(this.streamingStepQueues[key]);
             });
+        }
+
+        if (releasePreview) {
+            this.releaseStreamingPreviewDataUrls(modalType);
         }
     }
 
@@ -4333,7 +4412,15 @@ class WebSocketClient {
 
             // Handle image preview updates
             if (data.imageData && typeof updateGlassToastImagePreview === 'function') {
-                updateGlassToastImagePreview(progressToastId, data.imageData);
+                const manualModalEl = document.getElementById('manualModal');
+                const skipToastPreview = data.phase === 'generating'
+                    && manualModalEl
+                    && !manualModalEl.classList.contains('hidden')
+                    && !this.isSpellbookGenerationActive();
+
+                if (!skipToastPreview) {
+                    updateGlassToastImagePreview(progressToastId, data.imageData);
+                }
 
                 // Also handle modal streaming updates for intermediate images
                 if (data.phase === 'generating' && data.currentStep !== undefined) {
@@ -4349,6 +4436,10 @@ class WebSocketClient {
             if (data.phase === 'complete') {
                 this.clearStreamingStepQueues();
 
+                if (progressToastId && typeof clearGlassToastImagePreview === 'function') {
+                    clearGlassToastImagePreview(progressToastId);
+                }
+
                 const manualModal = document.getElementById('manualModal');
                 if (manualModal && !manualModal.classList.contains('hidden')) {
                     // lockGenerationQuips: public/scripts/comp/generationQuips.js
@@ -4356,14 +4447,7 @@ class WebSocketClient {
                 }
 
                 // Clear any running timers
-                if (progressState.timer) {
-                    clearInterval(progressState.timer);
-                    progressState.timer = null;
-                }
-                if (progressState.delayTimer) {
-                    clearInterval(progressState.delayTimer);
-                    progressState.delayTimer = null;
-                }
+                this.cleanupGenerationProgressState(requestId);
 
                 if (typeof updateGlassToastComplete === 'function') {
                     updateGlassToastComplete(progressToastId, {
@@ -4386,7 +4470,6 @@ class WebSocketClient {
                 }
 
                 progressToastId = null; // Clear the toast ID
-                this.progressStates.delete(requestId); // Clean up state
             }
         }
     }
@@ -4503,6 +4586,33 @@ class WebSocketClient {
             handleGenerationQuipsStatusBroadcast(data);
         }
         this.triggerEvent('generation_quips_status', message);
+    }
+
+    handleNovelProgress(message) {
+        const data = message.data || {};
+        // handleNovelProgressUpdate: public/scripts/comp/novelManager.js
+        if (typeof handleNovelProgressUpdate === 'function') {
+            handleNovelProgressUpdate(data);
+        }
+        this.triggerEvent('novel_progress', message);
+    }
+
+    handleNovelUpdated(message) {
+        const data = message.data || {};
+        // handleNovelClientUpdate: public/scripts/comp/novelManager.js
+        if (typeof handleNovelClientUpdate === 'function') {
+            handleNovelClientUpdate(data);
+        }
+        this.triggerEvent('novel_updated', message);
+    }
+
+    handleNovelGenerateComplete(message) {
+        const data = message.data || {};
+        // handleNovelGenerateComplete: public/scripts/comp/novelManager.js
+        if (typeof handleNovelGenerateComplete === 'function') {
+            handleNovelGenerateComplete(data, message.requestId);
+        }
+        this.triggerEvent('novel_generate_complete', message);
     }
 
     // Method to request image upscaling via WebSocket
@@ -4813,6 +4923,18 @@ class WebSocketClient {
 
     async resolveDynamicContext(dynamicConfig) {
         return this.sendMessageWithRequestId('resolve_dynamic_context', this.generateRequestId(), { dynamicConfig });
+    }
+
+    async compileDynamicGeneration(requestBody) {
+        const requestId = this.generateRequestId();
+        requestBody.requestId = requestId;
+        return this.sendMessageWithRequestId('compile_dynamic_generation', requestId, requestBody);
+    }
+
+    async applyTendaiPreview(requestBody) {
+        const requestId = this.generateRequestId();
+        requestBody.requestId = requestId;
+        return this.sendMessageWithRequestId('apply_tendai_preview', requestId, requestBody);
     }
 
     async resolveTextReplacements(text, presetName = null, model = null, periodKey = null) {
@@ -5269,6 +5391,30 @@ class WebSocketClient {
         return this.sendMessage('generation_quips_clear', options);
     }
 
+    async novelList(workspaceId) {
+        return this.sendMessage('novel_list', { workspaceId }, false);
+    }
+
+    async novelGet(noteId) {
+        return this.sendMessage('novel_get', { noteId }, false);
+    }
+
+    async novelUpdate(noteId, updates) {
+        return this.sendMessage('novel_update', { noteId, updates });
+    }
+
+    async novelGenerate(params) {
+        return this.sendMessage('novel_generate', params);
+    }
+
+    async novelUndo(noteId) {
+        return this.sendMessage('novel_undo', { noteId });
+    }
+
+    async novelResolveImage(noteId, filename = null) {
+        return this.sendMessage('novel_resolve_image', { noteId, filename }, false);
+    }
+
     async pingWithAuth() {
         return new Promise((resolve, reject) => {
             // Basic connection validation - don't be too strict
@@ -5447,14 +5593,14 @@ class WebSocketClient {
     }
 
     /**
-     * Reject pending generate_image / generate_preset promises (unblocks UI), clear streaming queues,
+     * Reject pending generate_image / generate_preset / expand_image / reroll_expanded_image promises (unblocks UI), clear streaming queues,
      * and notify the server to stop keep-alive timers for those request IDs. Server work may continue until completed.
      */
     cancelClientImageGeneration(reason = 'Generation cancelled') {
         if (!this.pendingRequests || this.pendingRequests.size === 0) {
             return [];
         }
-        const types = new Set(['generate_image', 'generate_preset']);
+        const types = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image']);
         const cancelledIds = [];
         for (const [requestId, req] of [...this.pendingRequests.entries()]) {
             if (!types.has(req.type)) continue;
@@ -5464,7 +5610,7 @@ class WebSocketClient {
             this.resolveRequest(requestId, null, err);
         }
         if (cancelledIds.length > 0) {
-            this.clearStreamingStepQueues();
+            this.clearStreamingStepQueues(null, true);
             try {
                 this.sendAcklessMessage('cancel_generation', { cancelledRequestIds: cancelledIds });
             } catch (e) {
@@ -5480,13 +5626,13 @@ class WebSocketClient {
             return false;
         }
         const request = this.pendingRequests.get(requestId);
-        const generationTypes = new Set(['generate_image', 'generate_preset']);
+        const generationTypes = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image']);
         const err = new Error(reason);
         err.code = generationTypes.has(request.type) ? 'CLIENT_CANCELLED' : 'REQUEST_ABORTED';
         err.requestId = requestId;
 
         if (generationTypes.has(request.type)) {
-            this.clearStreamingStepQueues();
+            this.clearStreamingStepQueues(null, true);
             try {
                 this.sendAcklessMessage('cancel_generation', { cancelledRequestIds: [requestId] });
             } catch (e) {
@@ -6653,6 +6799,11 @@ class WebSocketClient {
                 requestId === this.pendingRequests.keys().next().value;
 
             this.pendingRequests.delete(requestId);
+
+            const generationRequestTypes = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image']);
+            if (generationRequestTypes.has(request.type)) {
+                this.cleanupGenerationProgressState(requestId);
+            }
 
             // Clear timeout safely
             request.timeoutId = this.clearTimeoutSafely(request.timeoutId);

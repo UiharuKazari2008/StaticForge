@@ -1,0 +1,129 @@
+/* About Melaton modal */
+/* About Melaton Modal */
+#aboutMelatoninModal {
+    width: 550px;
+    max-width: 90vw;
+}
+
+#aboutMelatoninModal .modal-content p {
+    text-align: left;
+}
+
+#aboutMelatoninModal .about-logo-container {
+    display: flex;
+    flex-wrap: nowrap;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
+}
+
+#aboutMelatoninModal .about-logo {
+    width: 64px;
+    height: 64px;
+    flex-shrink: 0;
+}
+
+#aboutMelatoninModal .form-row h2 {
+    margin: 0;
+    font-size: 2.75rem;
+    font-weight: bold;
+    color: #ffffff;
+}
+
+#aboutMelatoninModal .about-product-description-container {
+    display: flex;
+    flex-direction: column;
+    padding: var(--spacing-lg) var(--spacing-xxl);
+    gap: var(--spacing-xl);
+}
+
+#aboutMelatoninModal .about-system-infomation-container {
+    display: flex;
+    flex-direction: column;
+    padding: var(--spacing-lg) var(--spacing-xxl);
+}
+
+#aboutMelatoninModal .about-product-name {
+    margin: 0 0 0.25rem 0;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+#aboutMelatoninModal .about-version {
+    margin: 0.25rem 0;
+    font-size: 0.8rem;
+}
+
+#aboutMelatoninModal .about-copyright {
+    margin: 0.25rem 0 0 0;
+    font-size: 0.85rem;
+}
+
+#aboutMelatoninModal .about-description {
+    margin: 0;
+    font-size: 0.8rem;
+    line-height: 1.5;
+}
+
+#aboutMelatoninModal .about-system-info {
+    font-size: 0.85rem;
+}
+
+#aboutMelatoninModal .about-info-label {
+    font-weight: 500;
+    min-width: 120px;
+}
+
+#aboutMelatoninModal .text-danger {
+    color: var(--text-danger, #d32f2f);
+}
+
+/* Workspace Table */
+#aboutMelatoninModal .about-workspaces-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+#aboutMelatoninModal .about-workspaces-table thead th {
+    text-align: right;
+    padding: 0.5rem;
+    border-bottom: 1px solid var(--glass-border-3);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+#aboutMelatoninModal .about-workspaces-table tbody td {
+    padding: 0.35rem;
+    border-bottom: 1px solid var(--glass-border-2);
+    color: var(--text-secondary);
+}
+
+#aboutMelatoninModal .about-workspaces-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+#aboutMelatoninModal .about-workspaces-table thead th.about-workspace-name-header {
+    text-align: left;
+    width: 100%;
+}
+
+#aboutMelatoninModal .about-workspace-name-cell {
+    display: flex;
+    align-items: center;
+}
+
+#aboutMelatoninModal .about-workspace-col {
+    text-align: right;
+    white-space: nowrap;
+}
+
+#aboutMelatoninModal .about-workspace-name-cell .workspace-color-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+}

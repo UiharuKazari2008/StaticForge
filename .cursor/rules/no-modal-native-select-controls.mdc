@@ -50,5 +50,5 @@ Call wiring in `setTimeout(..., 0)` immediately after `showConfirmationDialog` /
 
 - `public/scripts/comp/dropdown.js`
 - `.cursor/rules/dropdown-setup.mdc`
-- Fixed example: `wireQuipsAutoUpdateScheduleDropdown` in `public/scripts/comp/generationQuipsTray.js`
+      - Fixed example: `_wireSettingsDropdowns` in `public/scripts/comp/quipsDsapApplet.js`
 </rule>

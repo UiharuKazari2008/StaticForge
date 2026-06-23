@@ -163,6 +163,49 @@
     <link rel="stylesheet" href="/dist/fontawesome/css/fontawesome.min.css">
     <link rel="stylesheet" href="/dist/fontawesome/css/all.min.css">
     <link rel="stylesheet" href="/css/app.css">
+    <!-- Feature-scoped styles (split from app.css) -->
+    <link rel="stylesheet" href="/css/desktop-shell.css">
+    <link rel="stylesheet" href="/css/desktop-settings.css">
+    <link rel="stylesheet" href="/css/modal-dimensions.css">
+    <link rel="stylesheet" href="/css/modal-theme-glass.css">
+    <link rel="stylesheet" href="/css/context-menu.css">
+    <link rel="stylesheet" href="/css/gallery-toolbar.css">
+    <link rel="stylesheet" href="/css/lightbox.css">
+    <link rel="stylesheet" href="/css/manual-modal.css">
+    <link rel="stylesheet" href="/css/manual-modal-prompt-form.css">
+    <link rel="stylesheet" href="/css/novel-tool.css">
+    <link rel="stylesheet" href="/css/manual-modal-preview-tools.css">
+    <link rel="stylesheet" href="/css/manual-modal-generate.css">
+    <link rel="stylesheet" href="/css/manual-modal-viewer.css">
+    <link rel="stylesheet" href="/css/genso-lock.css">
+    <link rel="stylesheet" href="/css/weather-location.css">
+    <link rel="stylesheet" href="/css/director.css">
+    <link rel="stylesheet" href="/css/vibe-manager.css">
+    <link rel="stylesheet" href="/css/chat-modal.css">
+    <link rel="stylesheet" href="/css/unified-upload.css">
+    <link rel="stylesheet" href="/css/genso-manager.css">
+    <link rel="stylesheet" href="/css/fatal-error.css">
+    <link rel="stylesheet" href="/css/run-applet.css">
+    <link rel="stylesheet" href="/css/about-melaton.css">
+    <link rel="stylesheet" href="/css/desktop-boot.css">
+    <link rel="stylesheet" href="/css/connection-dial.css">
+    <link rel="stylesheet" href="/css/config-editor.css">
+    <link rel="stylesheet" href="/css/naxt-shell.css">
+    <link rel="stylesheet" href="/css/notepad.css">
+    <link rel="stylesheet" href="/css/websocket-requests.css">
+    <link rel="stylesheet" href="/css/log-viewer.css">
+    <link rel="stylesheet" href="/css/spellbook.css">
+    <link rel="stylesheet" href="/css/bracket-generation.css">
+    <link rel="stylesheet" href="/css/generation-quips.css">
+    <link rel="stylesheet" href="/css/manual-modal-splash.css">
+    <link rel="stylesheet" href="/css/token-display.css">
+    <link rel="stylesheet" href="/css/compiled-prompt-lcd.css">
+    <link rel="stylesheet" href="/css/tag-wiki-search.css">
+    <link rel="stylesheet" href="/css/explorer.css">
+    <link rel="stylesheet" href="/css/emphasis-groups-tool.css">
+    <link rel="stylesheet" href="/css/windows-classic-theme.css">
+    <link rel="stylesheet" href="/css/service-worker-tray.css">
+    <link rel="stylesheet" href="/css/gallery-loading.css">
     <link rel="stylesheet" href="/css/7.scoped.css">
     <link rel="stylesheet" href="/css/developer-tools.css">
     <link rel="stylesheet" href="/css/pin-modal.css">
@@ -170,13 +213,16 @@
     <link rel="stylesheet" href="/css/blockContainer.css">
     <link rel="stylesheet" href="/css/image-loupe.css">
     <link rel="stylesheet" href="/css/virtual-keyboard.css">
-    <script src="/scripts/comp/tagSets.js"></script>
-    <script src="/scripts/comp/blockContainer.js"></script>
-    <script src="/scripts/utils/deviceUtils.js"></script>
-    <script src="/scripts/utils/touchSlopUtils.js"></script>
     <link rel="stylesheet" href="/dist/mdi/materialdesignicons.min.css">
     <link rel="stylesheet" href="/dist/fonts/weather-icons.min.css">
     <link rel="stylesheet" href="/dist/remixicon/remixicon.css">
+    <!-- Terminal: global .hidden — must stay last in the stylesheet stack -->
+    <link rel="stylesheet" href="/css/hidden.css">
+    <script src="/scripts/comp/tagSets.js"></script>
+    <script src="/scripts/comp/blockContainer.js"></script>
+    <script src="/scripts/utils/deviceUtils.js"></script>
+    <script src="/scripts/utils/dreamscapeClipboard.js"></script>
+    <script src="/scripts/utils/touchSlopUtils.js"></script>
 </head>
 
 <body class="initializing">
@@ -752,6 +798,87 @@
         </div>
     </div>
 
+    <!-- Novel Editor Tool Window -->
+    <div id="novelEditorTool" class="modal hidden transient tool-window on-top resizeable-window novel-editor-tool"
+        data-parent-modal-id="manualModal"
+        data-window-identifier="novel-editor-tool"
+        data-window-min-width="480" data-window-min-height="360"
+        data-window-max-width="900" data-window-max-height="900"
+        data-window-default-width="560" data-window-default-height="480"
+        data-window-position-mode="cascade-parent">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-book-open icon-fa"></i>
+                <img src="/static_images/app_icons/notebook.png" alt="" class="icon-image" />
+                <span id="novelEditorToolTitle">Novel</span>
+            </div>
+        </div>
+        <div class="modal-focus-overlay"></div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content dark novel-editor-content">
+            <div class="modal-body novel-editor-body">
+                <div class="novel-editor-meta">
+                    <span id="novelEditorCursorLine">Story cursor: start</span>
+                </div>
+                <textarea id="novelEditorTextarea" class="novel-editor-textarea form-control director-prompt"
+                    placeholder="Your story… Use { what you want to happen } for intent blocks."
+                    spellcheck="true"></textarea>
+            </div>
+            <div class="modal-footer">
+                <div class="form-actions">
+                    <button type="button" id="novelEditorGenerateBtn" class="btn-secondary btn-small">
+                        <i class="fas fa-pen-fancy"></i> Generate
+                    </button>
+                    <button type="button" id="novelEditorUndoBtn" class="btn-secondary btn-small" disabled>
+                        <i class="fas fa-undo"></i> Undo
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Novel Progress Tool Window -->
+    <div id="novelProgressTool" class="modal hidden transient tool-window on-top resizeable-window novel-progress-tool"
+        data-parent-modal-id="manualModal"
+        data-window-identifier="novel-progress-tool"
+        data-window-min-width="360" data-window-min-height="240"
+        data-window-max-width="520" data-window-max-height="700"
+        data-window-default-width="400" data-window-default-height="320"
+        data-window-position-mode="cascade-parent">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-brain icon-fa"></i>
+                <img src="/static_images/app_icons/event_viewer.png" alt="" class="icon-image" />
+                <span id="novelProgressToolTitle">Novel Generation</span>
+            </div>
+        </div>
+        <div class="modal-focus-overlay"></div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content dark novel-progress-content">
+            <div class="modal-body novel-progress-body">
+                <div id="novelProgressStatus" class="novel-progress-status">Preparing…</div>
+                <div class="novel-progress-log-shell" data-custom-scrollbar
+                    data-scrollable-wrapper-class="novel-progress-log-scrollable">
+                    <div id="novelProgressLog" class="novel-progress-log"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Run Applet (Application Finder) -->
     <div id="runModal" class="modal hidden transient tool-window on-top resizeable-window run-applet"
         data-window-max-width="720" data-window-min-width="560" data-window-min-height="100"
@@ -790,7 +917,7 @@
         <div class="splash-content">
             <div class="splash-title-container">
                 <span class="splash-title-main">DreamStudio</span>
-                <span class="splash-title-version">2025 R3</span>
+                <span class="splash-title-version">2026 R7</span>
             </div>
             <div class="splash-status">
                 <span class="splash-status-text">Initializing...</span>
@@ -805,7 +932,7 @@
             <div class="modal-window-title-main">
                 <i class="fa-duotone fa-compass-drafting icon-fa"></i>
                 <img src="/static_images/app_icons/studio.png" alt="" class="icon-image" />
-                <span>DreamStudio 2025 R3</span>
+                <span>DreamStudio 2026 R7</span>
             </div>
         </div>
         <div class="modal-window-menu" id="manualModalMenuBar"></div>
@@ -883,14 +1010,14 @@
                                 <!-- Right side action elements -->
                                 <div class="director-header-right">
                                     <!-- Session chat actions -->
-                                    <div id="directorHeaderActions" class="director-header-element hidden"
+                                    <div id="directorHeaderActionsNewSession" class="director-header-element hidden"
                                         data-view="newSession">
                                         <button type="button" id="directorMaxResolutionBtn"
                                             class="btn-secondary indicator" data-state="on">
                                             <i class="fas fa-high-definition"></i>
                                         </button>
                                     </div>
-                                    <div id="directorHeaderActions" class="director-header-element hidden"
+                                    <div id="directorHeaderActionsSessionChat" class="director-header-element hidden"
                                         data-view="sessionChat">
                                         <!-- Message filter slider -->
                                         <div id="directorMessageFilterGroup" class="gallery-toggle-group"
@@ -1200,18 +1327,6 @@
                                                             <div class="divider"></div>
                                                             <button type="button"
                                                                 class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
-                                                                data-action="split-emphasis" title="Split Emphasis">
-                                                                <i class="fas fa-scissors"></i>
-                                                            </button>
-                                                            <button type="button" id="keepNewlinesBtn"
-                                                                class="btn-secondary btn-small toolbar-btn toggle-btn"
-                                                                data-action="keep-newlines" data-state="off"
-                                                                title="Keep Newlines">
-                                                                <i class="fas fa-paragraph"></i>
-                                                            </button>
-                                                            <div class="divider toolbar-wide-divider"></div>
-                                                            <button type="button"
-                                                                class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
                                                                 data-action="quick-access" title="Quick Access">
                                                                 <i class="fas fa-book-atlas"></i>
                                                             </button>
@@ -1272,74 +1387,25 @@
                                                 <textarea id="creativeDirectiveInput"
                                                     class="form-control prompt-textarea textarea-inset"
                                                     placeholder="Dear Kamisama..." rows="1"
-                                                    autocapitalize="false"></textarea>
+                                                    autocapitalize="false" autocorrect="false" spellcheck="false"
+                                                    data-ms-editor="false"
+                                                    data-autofill-enable="spellcheck,thesaurus"></textarea>
                                                 <div class="prompt-textarea-toolbar hidden">
                                                     <div class="toolbar-left">
-                                                        <div class="toolbar-regular-buttons">
-                                                        </div>
-                                                        <!-- Search Mode Elements (Hidden by default) -->
-                                                        <div class="toolbar-search-elements">
-                                                            <div class="text-search-label">Search</div>
-                                                            <div class="text-search-input-container">
-                                                                <input type="text" class="text-search-input"
-                                                                    placeholder="Enter search term..." />
-                                                            </div>
-                                                            <div class="text-search-match-count">0</div>
-                                                        </div>
                                                     </div>
                                                     <div class="toolbar-right">
                                                         <div class="toolbar-regular-buttons">
                                                             <button type="button"
-                                                                class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
-                                                                data-action="split-emphasis" title="Split Emphasis">
-                                                                <i class="fas fa-scissors"></i>
-                                                            </button>
-                                                            <div class="divider toolbar-wide-divider"></div>
-                                                            <button type="button"
-                                                                class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
-                                                                data-action="quick-access" title="Quick Access">
-                                                                <i class="fas fa-book-atlas"></i>
-                                                            </button>
-                                                            <button type="button"
-                                                                class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
-                                                                data-action="search" title="Search">
-                                                                <i class="fas fa-search"></i>
+                                                                class="btn-secondary btn-small toolbar-btn indicator"
+                                                                data-action="autofill" data-state="on"
+                                                                title="Toggle Autofill">
+                                                                <i class="fas fa-lightbulb"></i>
                                                             </button>
                                                             <button type="button" id="creativeTabShowBothBtn"
                                                                 class="btn-secondary btn-small toolbar-btn toggle-btn"
                                                                 data-state="off" title="Show Both Prompt and UC Panes">
                                                                 <i class="nai-detatch-up"></i>
                                                             </button>
-                                                            <div id="creativeTabPromptActionsDropdown"
-                                                                class="custom-dropdown dark dropright">
-                                                                <button type="button"
-                                                                    id="creativeTabPromptActionsDropdownBtn"
-                                                                    class="btn-secondary btn-small toolbar-btn">
-                                                                    <i class="fas fa-toolbox"></i>
-                                                                </button>
-                                                                <div id="creativeTabPromptActionsDropdownMenu"
-                                                                    class="custom-dropdown-menu hidden" tabindex="0">
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                        <!-- Search Mode Buttons (Hidden by default) -->
-                                                        <div class="toolbar-search-buttons">
-                                                            <button type="button"
-                                                                class="btn-secondary btn-small toolbar-btn text-search-prev"
-                                                                data-action="search-prev" title="Previous"><i
-                                                                    class="fas fa-chevron-up"></i></button>
-                                                            <button type="button"
-                                                                class="btn-secondary btn-small toolbar-btn text-search-next"
-                                                                data-action="search-next" title="Next"><i
-                                                                    class="fas fa-chevron-down"></i></button>
-                                                            <button type="button"
-                                                                class="btn-secondary btn-small toolbar-btn text-search-select"
-                                                                data-action="search-select" title="Select (Enter)"><i
-                                                                    class="fas fa-arrow-right-long-to-line"></i></button>
-                                                            <button type="button"
-                                                                class="btn-secondary btn-small toolbar-btn text-search-close"
-                                                                data-action="search-close" title="Close"><i
-                                                                    class="fas fa-times"></i></button>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1480,12 +1546,6 @@
                                                             <div class="divider"></div>
                                                             <button type="button"
                                                                 class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
-                                                                data-action="split-emphasis" title="Split Emphasis">
-                                                                <i class="fas fa-scissors"></i>
-                                                            </button>
-                                                            <div class="divider toolbar-wide-divider"></div>
-                                                            <button type="button"
-                                                                class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
                                                                 data-action="quick-access" title="Quick Access">
                                                                 <i class="fas fa-book-atlas"></i>
                                                             </button>
@@ -1594,6 +1654,14 @@
                                                     data-toggle-action="false" title="Creative Mode">
                                                     <i class="fas fa-paintbrush-pencil"></i>
                                                 </button>
+                                                <button type="button" id="novelBtn"
+                                                    class="btn-secondary btn-small toggle-btn toolbar-btn btn-wide"
+                                                    data-state="off" data-auto-generate="true"
+                                                    data-tone="neutral" data-style="literary"
+                                                    data-explicitness="moderate" data-persuasiveness="neutral"
+                                                    data-resume-advancement="false" title="Novel" disabled>
+                                                    <i class="fas fa-book-open"></i>
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
@@ -1633,11 +1701,20 @@
                                         title="Force Paid Request">
                                         <i class="fas fa-dollar-sign"></i>
                                     </button>
+                                    <div id="manualGenCountDisplay" class="inset-badge gen-count-display hidden" style="height: 32px;" title="24h generation count">
+                                        <div class="price-list-container">
+                                            <span id="manualGenCount" class="price-list">-</span>
+                                        </div>
+                                    </div>
                                     <div id="manualPriceDisplay" class="inset-badge price-display hidden"
                                         style="height: 32px;">
                                         <i class="nai-anla"></i>
                                         <span id="manualPriceList" class="price-list">-</span>
-                                        <span id="manualBalanceDisplay" class="price-list balanceAmount">-</span>
+                                        <div id="manualBalanceSplit" class="price-list-container manual-balance-split">
+                                            <span id="manualBalanceFixed" class="price-list balanceFixed">-</span>
+                                            <i class="fas fa-circle manual-balance-dot" aria-hidden="true"></i>
+                                            <span id="manualBalancePaid" class="price-list balancePaid">-</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1873,6 +1950,9 @@
                                         class="btn-secondary btn-small">Cancel</button>
                                 </div>
                             </div>
+                            <div id="generationPreviewQuip" class="generation-preview-quip hidden" aria-live="polite">
+                                <span class="generation-preview-quip-text"></span>
+                            </div>
                             <!-- Navigation buttons -->
                             <div class="manual-preview-image-container">
                                 <div class="manual-preview-image-container-inner" id="manualPreviewImageContainerInner">
@@ -1889,9 +1969,6 @@
                                 <div id="manualPreviewPlaceholder" class="manual-preview-placeholder">
                                     <i class="mdi mdi-draw-pen"></i>
                                     <p>Generate an image to see preview</p>
-                                </div>
-                                <div id="generationPreviewQuip" class="generation-preview-quip hidden" aria-live="polite">
-                                    <span class="generation-preview-quip-text"></span>
                                 </div>
                                 <!-- Dialog overlay container -->
                                 <div id="manualPreviewDialogs" class="manual-preview-dialogs hidden"></div>
@@ -2487,184 +2564,8 @@
         </div>
     </div>
 
-    <!-- Knowledge Memories Modal -->
-    <div id="knowledgeMemoriesModal" class="modal hidden resizeable-window">
-        <div class="modal-window-title">
-            <div class="modal-window-title-main">
-                <i class="fas fa-box-open-full icon-fa"></i>
-                <img src="/static_images/app_icons/dna.png" alt="" class="icon-image" />
-                <span>Enshutsuka Memories</span>
-            </div>
-        </div>
-        <div class="modal-window-controls">
-            <button type="button" id="toggleMemorySearchBtn" class="btn-secondary" title="Search">
-                <i class="fas fa-search"></i>
-            </button>
-            <button type="button" id="memoryCategoryFilterBtn" class="btn-secondary" title="Filter">
-                <i class="fas fa-filter"></i>
-            </button>
-            <button type="button" id="refreshKnowledgeMemoriesBtn" class="btn-secondary" title="Refresh">
-                <i class="fas fa-refresh"></i>
-            </button>
-            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
-                <i class="fa-regular fa-window-minimize"></i>
-            </button>
-            <button type="button" id="closeKnowledgeMemoriesModalBtn" class="btn-danger close-btn btn-small"
-                title="Close">
-                <i class="fa-regular fa-xmark-large"></i>
-            </button>
-        </div>
-        <div class="modal-content knowledge-memories-modal-content dark">
-            <div class="modal-body">
-                <!-- Memories List Section -->
-                <div id="knowledgeMemoriesListContainer" class="knowledge-memories-list-container form-section-scroll">
-                    <!-- Search Section (toggleable) -->
-                    <div class="knowledge-memories-search-section hidden">
-                        <div class="form-group">
-                            <label for="memorySearchInput">Search</label>
-                            <input type="text" id="memorySearchInput" class="form-control hover-show colored"
-                                placeholder="Search memories...">
-                        </div>
-                    </div>
-                    <div id="knowledgeMemoriesLoading" class="knowledge-memories-loading">
-                        <i class="fas fa-spinner-third fa-spin"></i> Loading Enshutsuka memories...
-                    </div>
-                    <div id="knowledgeMemoriesList" class="knowledge-memories-list hidden">
-                        <!-- Memory items will be populated here -->
-                    </div>
-                    <div id="knowledgeMemoriesEmpty" class="knowledge-memories-empty hidden">
-                        <i class="fas fa-info-circle"></i> No Enshutsuka memories found
-                    </div>
-                </div>
-
-                <!-- Memory Details/Edit Section -->
-                <div id="knowledgeMemoryDetailsContainer" class="knowledge-memory-details-container hidden">
-                    <div class="knowledge-memory-details-header">
-                        <button type="button" id="backToMemoriesListBtn" class="btn-secondary">
-                            <i class="fas fa-arrow-left"></i>
-                        </button>
-                        <h3 id="memoryDetailsNameDisplay" class="memory-detail-value">Memory Details</h3>
-                        <input type="text" id="memoryDetailsNameInput" class="form-control hidden"
-                            placeholder="Memory Name">
-                        <div class="knowledge-memory-header-actions">
-                            <button type="button" id="editMemoryBtn" class="btn-secondary">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                            <button type="button" id="saveMemoryBtn" class="btn-primary hidden">
-                                <i class="fas fa-save"></i> Save
-                            </button>
-                            <button type="button" id="cancelEditMemoryBtn" class="btn-secondary hidden">
-                                Cancel
-                            </button>
-                            <button type="button" id="deleteMemoryBtn" class="btn-danger">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="knowledge-memory-details-body form-section-scroll">
-                        <div class="form-group">
-                            <label>Name</label>
-                            <div id="memoryDetailsName" class="memory-detail-value selectable"></div>
-                            <input type="text" id="memoryDetailsNameEdit" class="form-control hidden"
-                                placeholder="Memory Name">
-                        </div>
-
-                        <div class="form-group">
-                            <label>Description</label>
-                            <div id="memoryDetailsDescription" class="memory-detail-value selectable"></div>
-                            <textarea id="memoryDetailsDescriptionEdit" class="form-control hidden"
-                                placeholder="Description" style="resize: none; overflow: hidden;"></textarea>
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Category</label>
-                                <div id="memoryDetailsCategory" class="memory-detail-value selectable"></div>
-                                <input type="text" id="memoryDetailsCategoryEdit" class="form-control hidden"
-                                    placeholder="Category">
-                            </div>
-                            <div class="form-group">
-                                <label>Confidence</label>
-                                <div id="memoryDetailsConfidence" class="memory-detail-value selectable"></div>
-                                <input type="number" id="memoryDetailsConfidenceEdit" class="form-control hidden"
-                                    min="0" max="1" step="0.01" placeholder="0.0 - 1.0">
-                            </div>
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Usage Count</label>
-                                <div id="memoryDetailsUsageCount" class="memory-detail-value selectable"></div>
-                            </div>
-                            <div class="form-group">
-                                <label>Last Used</label>
-                                <div id="memoryDetailsLastUsed" class="memory-detail-value selectable"></div>
-                            </div>
-                        </div>
-
-                        <!-- Entities Section -->
-                        <div class="knowledge-memory-section">
-                            <div class="knowledge-memory-section-header">
-                                <h4><i class="fas fa-cubes"></i> Entities</h4>
-                                <button type="button" id="addEntityBtn" class="btn-secondary btn-small hidden">
-                                    <i class="fas fa-plus"></i> Add Entity
-                                </button>
-                            </div>
-                            <div id="memoryDetailsEntities" class="knowledge-memory-entities">
-                                <!-- Entities will be populated here -->
-                            </div>
-                        </div>
-
-                        <!-- Relations Section -->
-                        <div class="knowledge-memory-section">
-                            <div class="knowledge-memory-section-header">
-                                <h4><i class="fas fa-project-diagram"></i> Relations</h4>
-                                <button type="button" id="addRelationBtn" class="btn-secondary btn-small hidden">
-                                    <i class="fas fa-plus"></i> Add Relation
-                                </button>
-                            </div>
-                            <div id="memoryDetailsRelations" class="knowledge-memory-relations">
-                                <!-- Relations will be populated here -->
-                            </div>
-                        </div>
-
-                        <!-- Observations Section -->
-                        <div class="knowledge-memory-section">
-                            <div class="knowledge-memory-section-header">
-                                <h4><i class="fas fa-eye"></i> Observations</h4>
-                                <button type="button" id="addObservationBtn" class="btn-secondary btn-small hidden">
-                                    <i class="fas fa-plus"></i> Add Observation
-                                </button>
-                            </div>
-                            <div id="memoryDetailsObservations" class="knowledge-memory-observations">
-                                <!-- Observations will be populated here -->
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="modal-footer modal-footer-padded">
-                <div class="modal-footer-left">
-                    <div id="memoryStatsDisplay" class="memory-stats-display">
-                        <!-- Stats will be populated here -->
-                    </div>
-                </div>
-                <div class="modal-footer-right">
-                    <div id="memoryDeleteDropdown" class="custom-dropdown dropup dark dropright">
-                        <button type="button" id="memoryDeleteBtn" class="btn-danger btn-small">
-                            <i class="fas fa-trash"></i>
-                            <span>Delete Memories</span>
-                        </button>
-                        <div id="memoryDeleteMenu" class="custom-dropdown-menu hidden">
-                            <!-- Options will be populated by JavaScript -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+    <!-- Knowledge Memories now lives as a DSAP applet (memories.dyna.dreamscape.jp) -->
+    <!-- Old modal removed during conversion to DSAP + 2008 Web 2.0 design. -->
 
     <!-- Image Expansion Modal -->
     <div id="imageExpansionDialog" class="modal hidden tool-window">
@@ -2948,12 +2849,6 @@
                                             <div class="toolbar-regular-buttons">
                                                 <button type="button"
                                                     class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
-                                                    data-action="split-emphasis" title="Split Emphasis">
-                                                    <i class="fas fa-scissors"></i>
-                                                </button>
-                                                <div class="divider toolbar-wide-divider"></div>
-                                                <button type="button"
-                                                    class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
                                                     data-action="quick-access" title="Quick Access">
                                                     <i class="fas fa-book-atlas"></i>
                                                 </button>
@@ -3035,12 +2930,6 @@
                                         </div>
                                         <div class="toolbar-right">
                                             <div class="toolbar-regular-buttons">
-                                                <button type="button"
-                                                    class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
-                                                    data-action="split-emphasis" title="Split Emphasis">
-                                                    <i class="fas fa-scissors"></i>
-                                                </button>
-                                                <div class="divider toolbar-wide-divider"></div>
                                                 <button type="button"
                                                     class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
                                                     data-action="quick-access" title="Quick Access">
@@ -3706,6 +3595,48 @@
         </div>
     </div>
 
+    <!-- Compile to Prompts Modal -->
+    <div id="compileToPromptsModal" class="modal resizeable-window hidden tool-window compile-to-prompts-modal"
+        data-parent-modal-id="manualModal" data-window-min-width="420" data-window-min-height="320"
+        data-window-max-width="900" data-window-max-height="900">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-file-pen"></i>
+                <span>Compile to Prompts</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" id="closeCompileToPromptsModalBtn" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content dark">
+            <div class="modal-body compile-to-prompts-body">
+                <div class="compile-to-prompts-toolbar">
+                    <button type="button" id="compileToPromptsSelectAllBtn" class="btn-secondary btn-small">Select All</button>
+                    <button type="button" id="compileToPromptsSelectNoneBtn" class="btn-secondary btn-small">Select None</button>
+                </div>
+                <div id="compileToPromptsListContainer" class="text-replacement-lock-list-container form-section-scroll">
+                    <div id="compileToPromptsList" class="text-replacement-lock-list"></div>
+                </div>
+            </div>
+            <div class="modal-footer compile-to-prompts-footer">
+                <div class="form-actions">
+                    <button type="button" id="compileToPromptsCancelBtn" class="btn-secondary">Cancel</button>
+                    <button type="button" id="compileToPromptsApplyBtn" class="btn-primary">
+                        <i class="fas fa-check"></i> Apply
+                    </button>
+                    <button type="button" id="compileToPromptsApplyCloseBtn" class="btn-primary">
+                        <i class="fas fa-check-double"></i> Apply &amp; Close Rentan
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Director Feedback Modal -->
     <div id="directorFeedbackModal" class="modal resizeable-window hidden tool-window on-top"
         data-parent-modal-id="textReplacementLockModal" data-window-min-width="400" data-window-min-height="280"
@@ -3760,43 +3691,8 @@ Examples:
         </div>
     </div>
 
-    <!-- Director Rules Manager Modal -->
-    <div id="directorRulesModal" class="modal resizeable-window hidden">
-        <div class="modal-window-title">
-            <div class="modal-window-title-main">
-                <i class="fas fa-book-law icon-fa"></i>
-                <img src="/static_images/app_icons/rules.png" alt="" class="icon-image" />
-                <span>Enshutsuka Rules</span>
-            </div>
-        </div>
-        <div class="modal-window-controls">
-            <div id="directorRulesViewDropdown" class="custom-dropdown dropright">
-                <button type="button" id="directorRulesViewDropdownBtn" class="btn-secondary" title="Type">
-                    <span id="directorRulesViewDropdownSelected">Global</span>
-                    <i class="fas fa-chevron-down"></i>
-                </button>
-                <div id="directorRulesViewDropdownMenu" class="custom-dropdown-menu hidden"></div>
-            </div>
-            <button type="button" id="addDirectorRuleBtn" class="btn-primary" title="Add New Rule">
-                <i class="fas fa-plus"></i>
-            </button>
-            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
-                <i class="fa-regular fa-window-minimize"></i>
-            </button>
-            <button type="button" id="closeDirectorRulesBtn" class="btn-danger close-btn btn-small" title="Close">
-                <i class="fa-regular fa-xmark-large"></i>
-            </button>
-        </div>
-        <div class="modal-content director-rules-modal-content dark">
-            <div class="modal-body">
-                <div id="directorRulesListContainer" class="director-rules-list-container form-section-scroll">
-                    <div id="directorRulesList" class="director-rules-list">
-                        <!-- Rules will be populated by JavaScript -->
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+    <!-- Director Rules (Static Rules) now live inside the Memories DSAP at /static_rules/ -->
+    <!-- Old standalone modal removed during integration. -->
 
     <!-- Genso Manager Modal -->
     <div id="textReplacementManagerModal" class="modal resizeable-window hidden" data-window-min-width="500"
@@ -4439,10 +4335,14 @@ Examples:
                 <p>Select the target workspace to merge all items from <strong id="dumpSourceWorkspaceName"></strong>:
                 </p>
                 <div class="form-group">
-                    <label for="dumpTargetSelect">Target Planet</label>
-                    <select id="dumpTargetSelect" class="form-control hover-show">
-                        <!-- Options will be populated here -->
-                    </select>
+                    <label for="dumpTargetBtn">Target Planet</label>
+                    <div id="dumpTargetDropdown" class="custom-dropdown">
+                        <button type="button" id="dumpTargetBtn" class="custom-dropdown-btn hover-show colored">
+                            <span id="dumpTargetSelected">Select planet...</span>
+                        </button>
+                        <div id="dumpTargetMenu" class="custom-dropdown-menu hidden"></div>
+                    </div>
+                    <input type="hidden" id="dumpTargetHidden" value="">
                 </div>
                 <div class="modal-actions btn-group">
                     <button type="button" id="workspaceDumpConfirmBtn" class="btn-primary">
@@ -4804,15 +4704,14 @@ Examples:
                         </div>
 
                         <div class="form-group">
-                            <label for="chatVerbosity">Verbosity</label>
-                            <select id="chatVerbosity" class="form-control">
-                                <option value="auto">Auto</option>
-                                <option value="1">Brief</option>
-                                <option value="2">Direct</option>
-                                <option value="3" selected>Expressive</option>
-                                <option value="4">Elaborate</option>
-                                <option value="5">Poetic</option>
-                            </select>
+                            <label for="chatVerbosityBtn">Verbosity</label>
+                            <div id="chatVerbosityDropdown" class="custom-dropdown">
+                                <button type="button" id="chatVerbosityBtn" class="custom-dropdown-btn hover-show colored">
+                                    <span id="chatVerbositySelected">Expressive</span>
+                                </button>
+                                <div id="chatVerbosityMenu" class="custom-dropdown-menu hidden"></div>
+                            </div>
+                            <input type="hidden" id="chatVerbosityHidden" value="3">
                         </div>
                     </div>
                 </div>
@@ -4889,16 +4788,18 @@ Examples:
                 <span id="explorerTitleLabel">File Explorer</span>
             </div>
             <div class="modal-window-title-toolbar">
-                <div class="button-group">
+                <div class="button-group naxt-nav-group">
                     <button type="button" id="explorerBackBtn" class="btn-secondary toolbar-input-segment" title="Back"><i class="fas fa-arrow-left"></i></button>
                     <button type="button" id="explorerForwardBtn" class="btn-secondary toolbar-input-segment" title="Forward"><i class="fas fa-arrow-right"></i></button>
                 </div>
                 <button type="button" id="explorerUpBtn" class="btn-secondary" title="Up"><i class="fas fa-arrow-up"></i></button>
                 <div class="button-group">
-                    <input type="text" id="explorerAddressBar" class="form-control colored explorer-address-bar toolbar-input-segment" placeholder="/" spellcheck="false">
+                    <input type="text" id="explorerAddressBar" class="form-control colored explorer-address-bar toolbar-input-segment" placeholder="/" spellcheck="false" autocapitalize="false" autocorrect="false">
                     <button type="button" id="explorerRefreshBtn" class="btn-secondary toolbar-input-segment" title="Refresh"><i class="fas fa-sync"></i></button>
                 </div>
-                <input type="text" id="explorerSearchBar" class="form-control colored explorer-search-bar toolbar-input-segment" placeholder="Search..." spellcheck="false">
+                <div class="button-group">
+                    <input type="text" id="explorerSearchBar" class="form-control colored explorer-search-bar toolbar-input-segment" placeholder="Search..." spellcheck="false" autocapitalize="false" autocorrect="false">
+                </div>
             </div>
         </div>
         <div class="modal-focus-overlay"></div>
@@ -5008,6 +4909,15 @@ Examples:
             <button type="button" id="notebookSaveBtn" class="btn-secondary btn-small" title="Save Note">
                 <i class="fas fa-save"></i>
             </button>
+            <button type="button" id="notebookNovelGenerateBtn" class="btn-secondary btn-small hidden novel-notebook-only" title="Generate Next">
+                <i class="fas fa-pen-fancy"></i>
+            </button>
+            <button type="button" id="notebookNovelUndoBtn" class="btn-secondary btn-small hidden novel-notebook-only" title="Undo Last Generation">
+                <i class="fas fa-undo"></i>
+            </button>
+            <button type="button" id="notebookNovelContinueBtn" class="btn-secondary btn-small hidden novel-notebook-only" title="Continue Story in Manual Modal">
+                <i class="fas fa-book-open"></i>
+            </button>
             <div id="notebookWorkspaceDropdown" class="custom-dropdown">
                 <button type="button" id="notebookWorkspaceDropdownBtn" class="btn-secondary btn-small" title="Switch workspace">
                     <span id="notebookWorkspaceSelected">Default</span>
@@ -5081,15 +4991,14 @@ Examples:
                     </div>
 
                     <div class="form-group">
-                        <label for="personaDefaultVerbosity">Default Verbosity</label>
-                        <select id="personaDefaultVerbosity" class="form-control">
-                            <option value="auto">Auto</option>
-                            <option value="1">Brief</option>
-                            <option value="2">Direct</option>
-                            <option value="3" selected>Expressive</option>
-                            <option value="4">Elaborate</option>
-                            <option value="5">Poetic</option>
-                        </select>
+                        <label for="personaDefaultVerbosityBtn">Default Verbosity</label>
+                        <div id="personaDefaultVerbosityDropdown" class="custom-dropdown">
+                            <button type="button" id="personaDefaultVerbosityBtn" class="custom-dropdown-btn hover-show colored">
+                                <span id="personaDefaultVerbositySelected">Expressive</span>
+                            </button>
+                            <div id="personaDefaultVerbosityMenu" class="custom-dropdown-menu hidden"></div>
+                        </div>
+                        <input type="hidden" id="personaDefaultVerbosityHidden" value="3">
                     </div>
                 </div>
             </div>
@@ -5227,10 +5136,14 @@ Examples:
                 <p>Select the target workspace to move <strong id="vibeManagerMoveCount">0</strong> selected vibe
                     encodings:</p>
                 <div class="form-group">
-                    <label for="vibeManagerMoveTargetSelect">Target Workspace</label>
-                    <select id="vibeManagerMoveTargetSelect" class="form-control hover-show">
-                        <!-- Options will be populated here -->
-                    </select>
+                    <label for="vibeManagerMoveTargetBtn">Target Workspace</label>
+                    <div id="vibeManagerMoveTargetDropdown" class="custom-dropdown">
+                        <button type="button" id="vibeManagerMoveTargetBtn" class="custom-dropdown-btn hover-show colored">
+                            <span id="vibeManagerMoveTargetSelected">Select workspace...</span>
+                        </button>
+                        <div id="vibeManagerMoveTargetMenu" class="custom-dropdown-menu hidden"></div>
+                    </div>
+                    <input type="hidden" id="vibeManagerMoveTargetHidden" value="">
                 </div>
                 <div class="modal-actions btn-group">
                     <button type="button" id="vibeManagerMoveConfirmBtn" class="btn-primary">
@@ -6018,6 +5931,55 @@ Examples:
         </div>
     </div>
 
+    <!-- Emphasis Groups Tool Template (will be cloned for multiple instances) -->
+    <div id="emphasisGroupsToolTemplate" class="modal toolbar-visible hidden transient tool-window on-top resizeable-window emphasis-groups-tool"
+        data-window-identifier="emphasis-groups-tool"
+        data-window-min-width="360" data-window-min-height="400"
+        data-window-max-width="900" data-window-max-height="1000"
+        data-window-default-width="480" data-window-default-height="640"
+        data-window-position-mode="cascade-parent">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-sliders icon-fa"></i>
+                <span id="emphasisGroupsToolTitle">Emphasis Groups</span>
+            </div>
+            <div class="modal-window-title-toolbar">
+                <button type="button" id="emphasisGroupsNormalizeBtn" class="btn-secondary btn-toggle"
+                    data-state="off" title="Normalize distribution across groups">
+                    <i class="fas fa-chart-pie"></i>
+                </button>
+                <div id="emphasisGroupsNormalizeRange" class="button-group hidden">
+                    <input type="number" id="emphasisGroupsMinWeight" class="form-control colored toolbar-input-segment emphasis-groups-weight-input"
+                        step="0.1" value="1" min="-6" max="6" placeholder="Min" title="Minimum weight" aria-label="Minimum weight">
+                    <input type="number" id="emphasisGroupsMaxWeight" class="form-control colored toolbar-input-segment emphasis-groups-weight-input"
+                        step="0.1" value="2" min="-6" max="6" placeholder="Max" title="Maximum weight" aria-label="Maximum weight">
+                </div>
+                <button type="button" id="emphasisGroupsScopeBtn" class="btn-secondary btn-toggle icon-only hidden emphasis-groups-normalize-control"
+                    data-state="off" title="Selected groups only">
+                    <i class="fas fa-list-check"></i>
+                </button>
+            </div>
+        </div>
+        <div class="modal-focus-overlay"></div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content dark">
+            <div class="modal-body emphasis-groups-tool-content">
+                <div class="emphasis-groups-grid-shell" data-custom-scrollbar
+                    data-scrollable-wrapper-class="emphasis-groups-grid-scrollable">
+                    <div id="emphasisGroupsGrid" class="emphasis-groups-grid"></div>
+                    <div id="emphasisGroupsEmpty" class="emphasis-groups-empty hidden">No emphasis groups in this prompt.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Notepad Modal Template (will be cloned for multiple instances) -->
     <div id="notepadModalTemplate" class="modal hidden transient notepad-modal resizeable-window"
         data-window-max-width="1000" data-window-max-height="800" data-window-min-width="400"
@@ -6290,18 +6252,25 @@ Examples:
                 <button type="button" class="btn-secondary" id="tagWikiSearchHomeBtn" title="Home">
                     <i class="fas fa-home"></i>
                 </button>
-                <div class="button-group">
-                    <input type="text" id="tagWikiSearchInput" class="form-control colored tag-wiki-search-bar toolbar-input-segment"
-                        placeholder="Enter search term and press Enter..." autocapitalize="false" autocorrect="false"
-                        spellcheck="false">
-                    <button type="button" id="tagWikiSearchRefreshBtn" class="btn-secondary toolbar-input-segment" title="Refresh">
-                        <i class="fas fa-sync"></i>
-                    </button>
+                <!-- Two-layer pseudo-browser address bar (replaces plain search+refresh group).
+                     Display layer (icon + path) is on top; edit layer (real input + refresh) sits underneath
+                     and is revealed on click of display or hover of the address bar group. -->
+                <div class="wiki-address-bar" id="grimoireAddressBar" data-protocol="edtx">
+                    <!-- Top / visible display layer -->
+                    <div class="address-display-layer" id="grimoireAddressDisplay" tabindex="0" title="Click or hover to edit address / search">
+                        <i class="address-mode-icon fas fa-book" id="grimoireAddressModeIcon" aria-hidden="true"></i>
+                        <span class="address-path" id="grimoireAddressPath">edtx://en.grimoire.jp/index.dtxt</span>
+                    </div>
+                    <!-- Lower / hidden edit layer (contains the original input + refresh for compatibility) -->
+                    <div class="address-edit-layer hidden" id="grimoireAddressEdit">
+                        <input type="text" id="tagWikiSearchInput" class="form-control colored tag-wiki-search-bar toolbar-input-segment"
+                            placeholder="Enter search term or full address (e.g. edtx://en.grimoire.jp/search or wiki.danbooru.jp/tag/...) and press Enter..." autocapitalize="false" autocorrect="false"
+                            spellcheck="false">
+                        <button type="button" id="tagWikiSearchRefreshBtn" class="btn-secondary toolbar-input-segment" title="Refresh">
+                            <i class="fas fa-sync"></i>
+                        </button>
+                    </div>
                 </div>
-                <button type="button" id="tagWikiSearchResultsSidebarToggleBtn"
-                    class="btn-secondary btn-toggle hidden" data-state="off" title="Show search results">
-                    <i class="fas fa-sidebar"></i>
-                </button>
             </div>
         </div>
         <div class="modal-focus-overlay"></div>
@@ -6319,45 +6288,15 @@ Examples:
         <div class="modal-content tag-wiki-search-content dark">
             <div class="tag-wiki-panels-wrap">
                 <div class="tag-wiki-search-body tag-wiki-split-pane-left">
-                    <aside class="tag-wiki-search-results-panel">
-                        <div class="tag-wiki-results-panel-header">
-                            <div class="tag-wiki-results-panel-header-row">
-                                <button type="button" id="tagWikiSearchOnlineToggleBtn"
-                                    class="btn-secondary btn-small indicator" data-state="off"
-                                    title="Search online (Danbooru &amp; e621)">
-                                    <i class="fas fa-cloud"></i>
-                                </button>
-                                <button type="button" id="tagWikiSearchSourceDropdownBtn"
-                                    class="btn-secondary btn-small" title="Source">
-                                    <i id="tagWikiSearchSourceIcon" class="fas fa-globe"></i>
-                                </button>
-                                <button type="button" id="tagWikiSearchFilterDropdownBtn"
-                                    class="btn-secondary btn-small" title="Category Filter">
-                                    <i id="tagWikiSearchFilterIcon" class="fas fa-filter"></i>
-                                </button>
-                                <button type="button" id="tagWikiSearchTypeDropdownBtn"
-                                    class="btn-secondary btn-small" title="Search Type">
-                                    <i id="tagWikiSearchTypeIcon" class="fas fa-tag"></i>
-                                </button>
-                                <button type="button" id="tagWikiSearchResultsCollapseBtn"
-                                    class="btn-secondary btn-small tag-wiki-results-collapse-btn" title="Collapse results">
-                                    <i class="fas fa-chevron-left"></i>
-                                </button>
-                            </div>
-                        </div>
-                        <div class="tag-wiki-search-results form-section-scroll">
-                            <div id="tagWikiSearchResultsList" class="tag-wiki-results-list">
-                                <!-- Results will be populated here -->
-                            </div>
-                        </div>
-                    </aside>
-                    <button type="button" id="tagWikiSearchResultsOverlayBackdrop"
-                        class="tag-wiki-results-overlay-backdrop hidden" aria-hidden="true"></button>
+                    <!-- Old results sidebar (tag-wiki-search-results-panel + list + toggles + overlay) removed.
+                         All search results now render as a full "page" via showSearchResultsPage directly
+                         into the display area (Google-style home + results list). Wiki content and split
+                         panes continue to use the display areas. -->
                     <div class="tag-wiki-search-display form-section-scroll selectable">
                         <div id="tagWikiSearchDisplay" class="tag-wiki-display-content">
                             <div class="tag-wiki-empty-state">
                                 <i class="fas fa-book-open"></i>
-                                <p>Select a tag from the results to view its wiki page</p>
+                                <p>Use the address bar or search to navigate (edtx://, wiki tags, or rdf:// docs).</p>
                             </div>
                         </div>
                     </div>
@@ -7396,7 +7335,13 @@ Examples:
                         autocomplete="off" spellcheck="false" placeholder="Enter new value (unchanged if empty)">
                     <textarea id="configEditorValueTextarea" class="form-control hover-show colored hidden" rows="6" spellcheck="false"></textarea>
                     <button type="button" id="configEditorValueBoolToggle" class="btn-secondary toggle-btn hidden" data-state="off">false</button>
-                    <select id="configEditorValueEnum" class="form-control hover-show colored hidden"></select>
+                    <div id="configEditorValueEnumDropdown" class="custom-dropdown hidden">
+                        <button type="button" id="configEditorValueEnumBtn" class="custom-dropdown-btn hover-show colored">
+                            <span id="configEditorValueEnumSelected"></span>
+                        </button>
+                        <div id="configEditorValueEnumMenu" class="custom-dropdown-menu hidden"></div>
+                    </div>
+                    <input type="hidden" id="configEditorValueEnumHidden" value="">
                 </div>
             </div>
             <div class="modal-footer">
@@ -7478,21 +7423,10 @@ Examples:
                 <div class="naxt-bag-tray-icon taskbar-tray-icon hidden" id="naxtBagTrayIcon" title="Atelier Bag - 0 items">
                     <i class="fas fa-shopping-bag" id="naxtBagTrayIconGlyph"></i>
                 </div>
-                <!-- Desktop layout save status -->
-                <div class="desktop-save-tray-indicator taskbar-tray-icon hidden" id="desktopSaveTrayIndicator"
-                    title="Desktop layout saved">
-                    <i class="fas fa-inbox" id="desktopSaveTrayIcon"></i>
-                </div>
                 <!-- Search Indexing Indicator -->
                 <div class="search-indexing-indicator taskbar-tray-icon hidden" id="searchIndexingIndicator"
                     title="No Status Available">
                     <i class="fas fa-rotate-exclamation"></i>
-                </div>
-                <!-- Dynamic Generation Quips -->
-                <div class="generation-quips-tray-icon taskbar-tray-icon quips-idle hidden" id="generationQuipsTrayIcon"
-                    title="Generation quips">
-                    <i class="fas fa-comment" id="generationQuipsTrayIconGlyph"></i>
-                    <span class="generation-quips-auto-indicator hidden" id="generationQuipsAutoIndicator" aria-hidden="true"></span>
                 </div>
                 <!-- Subscription Renewal Indicator -->
                 <div class="subscription-renewal-indicator taskbar-tray-icon hidden" id="subscriptionRenewalIndicator"
@@ -7506,6 +7440,7 @@ Examples:
                 <!-- Workspace Icon -->
                 <div class="workspace-tray-icon taskbar-tray-icon hidden" id="workspaceTrayIcon" title="Workspace">
                     <i class="fa-duotone fa-clone"></i>
+                    <span class="workspace-save-status-dot hidden" id="workspaceSaveStatusDot" aria-hidden="true"></span>
                 </div>
                 <!-- Service Worker Indicator -->
                 <div class="service-worker-tray-icon taskbar-tray-icon hidden" id="serviceWorkerTrayIcon"
@@ -7569,6 +7504,8 @@ Examples:
     <script src="scripts/comp/workspaceUtils.js"></script>
     <script src="scripts/comp/textareaUtils.js"></script>
     <script src="scripts/comp/textReplacementManager.js"></script>
+    <script src="scripts/comp/promptApplyPipeline.js"></script>
+    <script src="scripts/comp/compileToPromptsApplet.js"></script>
     <script src="scripts/comp/requestBodyReplacementsModal.js"></script>
     <script src="scripts/comp/presetManager.js"></script>
     <script src="scripts/comp/autocompleteUtils.js"></script>
@@ -7579,6 +7516,11 @@ Examples:
     <script src="scripts/comp/referenceManager.js"></script>
     <script src="scripts/comp/promptStageBlocks.js"></script>
     <script src="scripts/comp/emphasisManager.js"></script>
+    <script src="scripts/comp/emphasisGroupsToolManager.js"></script>
+    <script src="scripts/comp/dsapRegistry.js"></script>
+    <script src="scripts/comp/dsapManifests.js"></script>
+    <!-- Core Grimoire pseudo-domains (en.grimoire.jp, wiki.*, docs.*, etc.) registered via the same domain+alias system -->
+    <script src="scripts/comp/grimoireCoreDomains.js"></script>
     <script src="scripts/comp/tagWikiSearchModal.js"></script>
     <script src="scripts/comp/naxtApplet.js"></script>
     <script src="scripts/comp/naxVibesApplet.js"></script>
@@ -7606,7 +7548,6 @@ Examples:
     <script src="scripts/comp/desktopShortcuts.js"></script>
     <script src="scripts/comp/notepadManager.js"></script>
     <script src="scripts/comp/fileSearch.js"></script>
-    <script src="scripts/comp/knowledgeMemoriesModal.js"></script>
     <script src="scripts/comp/ipManagement.js"></script>
     <script src="scripts/comp/director.js"></script>
     <script src="scripts/comp/utilities.js"></script>
@@ -7616,6 +7557,8 @@ Examples:
     <script src="scripts/comp/dynamicGenerationLockState.js"></script>
     <script src="scripts/comp/generationQuips.js"></script>
     <script src="scripts/comp/generationQuipsTray.js"></script>
+    <script src="scripts/comp/novelManager.js"></script>
+    <script src="scripts/comp/novelContextMenu.js"></script>
     <script src="scripts/comp/manualModalManager.js"></script>
     <script src="protected/t5-tokenizer.js"></script>
     <script src="scripts/app.js"></script>

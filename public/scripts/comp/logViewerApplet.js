@@ -281,10 +281,6 @@ class LogViewerApplet {
     setupGlassPopovers() {
         if (this.settingsPopover) return;
 
-        const presetOptions = STATUS_REFRESH_PRESETS.map((p) =>
-            `<option value="${p.ms}"${p.ms === this.pm2StatusIntervalMs ? ' selected' : ''}>${p.label}</option>`
-        ).join('');
-
         this.settingsPopover = document.createElement('div');
         this.settingsPopover.className = 'log-viewer-glass-popover hidden';
         this.settingsPopover.innerHTML = `
@@ -294,8 +290,14 @@ class LogViewerApplet {
                     <label class="log-viewer-settings-label">Backlog lines</label>
                     <input type="number" id="logViewerLinesPopoverInput" class="form-control hover-show colored"
                         value="${this.backlogLines}" min="50" max="5000" step="50">
-                    <label class="log-viewer-settings-label">Status refresh</label>
-                    <select id="logViewerStatusIntervalSelect" class="form-control hover-show colored">${presetOptions}</select>
+                    <label class="log-viewer-settings-label" for="logViewerStatusIntervalBtn">Status refresh</label>
+                    <div id="logViewerStatusIntervalDropdown" class="custom-dropdown">
+                        <button type="button" id="logViewerStatusIntervalBtn" class="custom-dropdown-btn hover-show colored">
+                            <span id="logViewerStatusIntervalSelected">${STATUS_REFRESH_PRESETS.find((p) => p.ms === this.pm2StatusIntervalMs)?.label || '5 seconds'}</span>
+                        </button>
+                        <div id="logViewerStatusIntervalMenu" class="custom-dropdown-menu hidden"></div>
+                    </div>
+                    <input type="hidden" id="logViewerStatusIntervalHidden" value="${this.pm2StatusIntervalMs}">
                     <button type="button" id="logViewerSettingsApplyBtn" class="btn-primary btn-small">Apply</button>
                     <div class="log-viewer-glass-popover-actions">
                         <button type="button" id="logViewerPopoverReloadBtn" class="btn-secondary btn-small" title="Reload backlog">
@@ -308,6 +310,7 @@ class LogViewerApplet {
                 </div>
             </div>`;
         document.body.appendChild(this.settingsPopover);
+        setTimeout(() => this.wireLogViewerStatusIntervalDropdown(), 0);
 
         this.uptimePopover = document.createElement('div');
         this.uptimePopover.className = 'log-viewer-glass-popover log-viewer-uptime-glass-popover hidden';
@@ -394,9 +397,13 @@ class LogViewerApplet {
         if (which === 'connection') this.refreshConnectionPopover();
         if (which === 'settings') {
             const linesInput = document.getElementById('logViewerLinesPopoverInput');
-            const intervalSelect = document.getElementById('logViewerStatusIntervalSelect');
+            const intervalHidden = document.getElementById('logViewerStatusIntervalHidden');
+            const intervalSelected = document.getElementById('logViewerStatusIntervalSelected');
             if (linesInput) linesInput.value = String(this.backlogLines);
-            if (intervalSelect) intervalSelect.value = String(this.pm2StatusIntervalMs);
+            if (intervalHidden) intervalHidden.value = String(this.pm2StatusIntervalMs);
+            if (intervalSelected) {
+                intervalSelected.textContent = STATUS_REFRESH_PRESETS.find((p) => p.ms === this.pm2StatusIntervalMs)?.label || '5 seconds';
+            }
         }
         this.activeGlassPopover = which;
         pop.classList.remove('hidden');
@@ -613,9 +620,9 @@ class LogViewerApplet {
 
     applyViewSettings() {
         const linesInput = document.getElementById('logViewerLinesPopoverInput');
-        const intervalSelect = document.getElementById('logViewerStatusIntervalSelect');
+        const intervalHidden = document.getElementById('logViewerStatusIntervalHidden');
         const lines = parseInt(linesInput?.value, 10);
-        const interval = parseInt(intervalSelect?.value, 10);
+        const interval = parseInt(intervalHidden?.value, 10);
         if (lines >= 50 && lines <= 5000) {
             this.backlogLines = lines;
         }
@@ -1157,6 +1164,40 @@ class LogViewerApplet {
                 this.startStream(true);
             }
         }, LOG_VIEWER_RECONNECT_DELAY_MS);
+    }
+
+    wireLogViewerStatusIntervalDropdown() {
+        const container = document.getElementById('logViewerStatusIntervalDropdown');
+        const btn = document.getElementById('logViewerStatusIntervalBtn');
+        const menu = document.getElementById('logViewerStatusIntervalMenu');
+        const selectedEl = document.getElementById('logViewerStatusIntervalSelected');
+        const hidden = document.getElementById('logViewerStatusIntervalHidden');
+        if (!container || !btn || !menu || !selectedEl || !hidden) return;
+        if (container.dataset.wired === '1') return;
+        container.dataset.wired = '1';
+
+        const items = STATUS_REFRESH_PRESETS.map((p) => ({ value: String(p.ms), name: p.label }));
+
+        const renderMenu = (selectedVal) => {
+            // renderSimpleDropdown: public/scripts/comp/manualDropdownManager.js
+            renderSimpleDropdown(
+                menu,
+                items,
+                'value',
+                'name',
+                (value) => {
+                    hidden.value = String(value);
+                    const preset = STATUS_REFRESH_PRESETS.find((p) => String(p.ms) === String(value));
+                    selectedEl.textContent = preset?.label || '5 seconds';
+                },
+                () => closeDropdown(menu, btn), // closeDropdown: public/scripts/comp/dropdown.js
+                String(selectedVal || hidden.value),
+                { preventFocusTransfer: true }
+            );
+        };
+
+        // setupDropdown: public/scripts/comp/dropdown.js
+        setupDropdown(container, btn, menu, renderMenu, () => hidden.value, { preventFocusTransfer: true });
     }
 
     wireRestartBroomToggleInDialog() {

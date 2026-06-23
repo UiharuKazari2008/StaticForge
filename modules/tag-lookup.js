@@ -380,6 +380,19 @@ class TagLookup {
                 GROUP BY t.id
                 LIMIT ?
             `,
+            searchTagWordsFuzzySuffix: `
+                SELECT DISTINCT t.*,
+                       GROUP_CONCAT(DISTINCT w.source) AS wiki_sources,
+                       tw.word AS matched_word
+                FROM tag_words tw
+                INNER JOIN tags t ON t.id = tw.tag_id
+                LEFT JOIN tag_wikis twi ON twi.tag_id = t.id
+                LEFT JOIN wikis w ON w.id = twi.wiki_id
+                WHERE LOWER(tw.word) LIKE '%' || LOWER(?) ESCAPE '\\'
+                  AND ABS(LENGTH(tw.word) - ?) <= 2
+                GROUP BY t.id
+                LIMIT ?
+            `,
             searchTagsTitleFts: `
                 SELECT t.*,
                        GROUP_CONCAT(DISTINCT w.source) AS wiki_sources
@@ -642,30 +655,44 @@ class TagLookup {
     const tt = titleToken.toLowerCase();
     if (!qt || !tt) return 0;
     if (qt === tt) return 100;
+
+    let best = 0;
+    const lenDiff = Math.abs(qt.length - tt.length);
+
     if (qt.length >= 3 && tt.length >= 3 && (qt.startsWith(tt) || tt.startsWith(qt))) {
-        return 90;
+        best = Math.max(best, 90);
     }
+
     const stemLen = this.commonPrefixLength(qt, tt);
     const minLen = Math.min(qt.length, tt.length);
     const stemThreshold = Math.max(3, Math.min(4, Math.floor(minLen * 0.72)));
     if (stemLen >= 5) {
-        return 88;
+        best = Math.max(best, 88);
+    } else if (stemLen >= stemThreshold) {
+        const stemScore = lenDiff <= 1 ? 75 : (lenDiff <= 2 ? 65 : 55);
+        best = Math.max(best, stemScore);
     }
-    if (stemLen >= stemThreshold) {
-        return 75;
-    }
+
     if (qt.includes(tt) || tt.includes(qt)) {
         if (Math.min(qt.length, tt.length) >= 3) {
-            return 55;
+            best = Math.max(best, 55);
         }
     }
+
     const distance = this.levenshteinDistance(qt, tt);
     const maxLen = Math.max(qt.length, tt.length);
     const similarity = 1 - (distance / maxLen);
     if (similarity >= 0.72) {
-        return Math.round(similarity * 65);
+        let levScore = Math.round(similarity * 65);
+        if (lenDiff <= 1 && similarity >= 0.75) {
+            levScore = Math.round(similarity * 90);
+        } else if (lenDiff <= 2 && similarity >= 0.78) {
+            levScore = Math.round(similarity * 80);
+        }
+        best = Math.max(best, levScore);
     }
-    return 0;
+
+    return best;
 }
 
     getQueryTokenCoverageScore(query, title) {
@@ -1531,28 +1558,76 @@ class TagLookup {
     return { processed, totalMissing };
 }
 
-    getFuzzyWordPrefix(word = '') {
+    getFuzzyWordPrefixes(word = '') {
     const w = String(word || '').toLowerCase().trim();
-    if (w.length < 3) return null;
-    return w.substring(0, Math.min(3, w.length));
+    if (w.length < 3) return [];
+
+    const prefixes = [w.substring(0, Math.min(3, w.length))];
+    if (w.length >= 6) {
+        const shortPrefix = w.substring(0, 2);
+        if (!prefixes.includes(shortPrefix)) {
+            prefixes.push(shortPrefix);
+        }
+    }
+    return prefixes;
+}
+
+    getFuzzyWordPrefix(word = '') {
+    const prefixes = this.getFuzzyWordPrefixes(word);
+    return prefixes.length > 0 ? prefixes[0] : null;
+}
+
+    getFuzzyWordSuffixes(word = '') {
+    const w = String(word || '').toLowerCase().trim();
+    if (w.length < 6) return [];
+
+    const suffixLen = Math.min(6, Math.max(4, w.length - 3));
+    const tail = w.substring(w.length - suffixLen);
+    if (tail.length < 4) return [];
+    return [tail];
+}
+
+    collectScoredFuzzyWordRows(word, rows, seenTagIds) {
+    const accepted = [];
+    for (const row of rows) {
+        if (!row || seenTagIds.has(row.id)) continue;
+        const matchedWord = row.matched_word || '';
+        const tokenScore = this.getTokenMatchScore(word, matchedWord);
+        if (tokenScore < 40) continue;
+        seenTagIds.add(row.id);
+        const fuzzyScore = Math.max(55, Math.min(95, tokenScore));
+        accepted.push({ row, fuzzyScore });
+    }
+    return accepted;
 }
 
     async addFuzzyWordMatches(word, addMatch, limit, normalized) {
     if (!word || word.length < 3) return;
 
-    const prefix = this.getFuzzyWordPrefix(word);
-    if (!prefix) return;
+    const prefixes = this.getFuzzyWordPrefixes(word);
+    const suffixes = this.getFuzzyWordSuffixes(word);
+    if (prefixes.length === 0 && suffixes.length === 0) return;
 
     const statements = this.getStatements();
-    const pattern = this.escapeLikePattern(prefix) + '%';
-    const rows = await this.db.all(statements.searchTagWordsFuzzyPrefix, [pattern, word.length, Math.min(60, limit * 2)]);
+    const seenTagIds = new Set();
 
-    for (const row of rows) {
-        const matchedWord = row.matched_word || '';
-        const tokenScore = this.getTokenMatchScore(word, matchedWord);
-        if (tokenScore < 40) continue;
-        const fuzzyScore = Math.max(55, Math.min(95, tokenScore));
-        addMatch(row, normalized, fuzzyScore, 'word_fuzzy', 2);
+    for (const prefix of prefixes) {
+        const pattern = this.escapeLikePattern(prefix) + '%';
+        const rowLimit = prefix.length <= 2
+            ? Math.min(120, limit * 4)
+            : Math.min(60, limit * 2);
+        const rows = await this.db.all(statements.searchTagWordsFuzzyPrefix, [pattern, word.length, rowLimit]);
+        for (const { row, fuzzyScore } of this.collectScoredFuzzyWordRows(word, rows, seenTagIds)) {
+            addMatch(row, normalized, fuzzyScore, 'word_fuzzy', 2);
+        }
+    }
+
+    for (const suffix of suffixes) {
+        const pattern = this.escapeLikePattern(suffix);
+        const rows = await this.db.all(statements.searchTagWordsFuzzySuffix, [pattern, word.length, Math.min(40, limit * 2)]);
+        for (const { row, fuzzyScore } of this.collectScoredFuzzyWordRows(word, rows, seenTagIds)) {
+            addMatch(row, normalized, fuzzyScore, 'word_fuzzy', 2);
+        }
     }
 }
 
@@ -1624,8 +1699,16 @@ class TagLookup {
                 LIMIT ?
             `),
             wordFuzzyIds: this.searchDb.prepare(`
-                SELECT DISTINCT tw.tag_id AS id FROM tag_words tw
+                SELECT DISTINCT tw.tag_id AS id, tw.word AS matched_word
+                FROM tag_words tw
                 WHERE LOWER(tw.word) LIKE LOWER(?) || '%' ESCAPE '\\'
+                  AND ABS(LENGTH(tw.word) - ?) <= 2
+                LIMIT ?
+            `),
+            wordFuzzySuffixIds: this.searchDb.prepare(`
+                SELECT DISTINCT tw.tag_id AS id, tw.word AS matched_word
+                FROM tag_words tw
+                WHERE LOWER(tw.word) LIKE '%' || LOWER(?) ESCAPE '\\'
                   AND ABS(LENGTH(tw.word) - ?) <= 2
                 LIMIT ?
             `)
@@ -1752,11 +1835,24 @@ class TagLookup {
             addCandidate(row.id, 95);
         }
 
-        const prefix = this.getFuzzyWordPrefix(word);
-        if (prefix) {
+        const fuzzyPrefixes = this.getFuzzyWordPrefixes(word);
+        const fuzzySuffixes = this.getFuzzyWordSuffixes(word);
+        const seenFuzzyIds = new Set();
+        for (const prefix of fuzzyPrefixes) {
             const pattern = this.escapeLikePattern(prefix) + '%';
-            for (const row of stmts.wordFuzzyIds.all(pattern, word.length, perWordLimit)) {
-                addCandidate(row.id, 70);
+            const fuzzyLimit = prefix.length <= 2
+                ? Math.min(120, perWordLimit * 2)
+                : perWordLimit;
+            const rows = stmts.wordFuzzyIds.all(pattern, word.length, fuzzyLimit);
+            for (const { row, fuzzyScore } of this.collectScoredFuzzyWordRows(word, rows, seenFuzzyIds)) {
+                addCandidate(row.id, fuzzyScore);
+            }
+        }
+        for (const suffix of fuzzySuffixes) {
+            const pattern = this.escapeLikePattern(suffix);
+            const rows = stmts.wordFuzzySuffixIds.all(pattern, word.length, Math.min(40, perWordLimit));
+            for (const { row, fuzzyScore } of this.collectScoredFuzzyWordRows(word, rows, seenFuzzyIds)) {
+                addCandidate(row.id, fuzzyScore);
             }
         }
 

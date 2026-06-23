@@ -1,0 +1,68 @@
+/* Modal width/height defaults */
+
+#cacheMetadataModal .modal-content {
+    width: 750px;
+}
+
+#imageBiasAdjustmentModal,
+#measurementsModal,
+#maskEditorDialog {
+    width: min(1200px, 100%);
+    height: min(950px, 100%);
+}
+
+#directorFeedbackModal,
+#workspaceManageModal,
+#textReplacementManagerModal,
+#favoritesManagerModal,
+#updatePresetModal,
+#imageExpansionDialog {
+    width: 500px;
+}
+
+#presetManagerModal,
+#workspaceManageModal,
+#textReplacementManagerModal {
+    height: 1024px;
+}
+
+#favoritesManagerModal {
+    height: 720px;
+}
+
+#personaSettingsModal {
+    width: 400px;
+}
+
+#windowsUpdateModal {
+    width: 475px;
+}
+
+#createTextReplacementModal,
+#createRequestBodyReplacementModal {
+    width: 550px;
+}
+
+#compiledPromptModal {
+    width: 700px;
+}
+
+#requestBodyReplacementsModal {
+    width: 750px;
+}
+
+#notebookModal {
+    width: 800px;
+    height: 450px;
+}
+
+#cacheManagerModal {
+    height: 750px;
+    width: 1200px;
+}
+
+#emphasisGroupsToolTemplate,
+[id^="emphasisGroupsTool_"] {
+    width: 480px;
+    height: 640px;
+}

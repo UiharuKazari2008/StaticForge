@@ -12,13 +12,16 @@ let windowPositionSaveTimer = null;
 let windowPositionSaveMaxTimer = null;
 const WINDOW_POSITION_SAVE_DEBOUNCE = 10000; // Shared with desktopShortcuts.saveDebounceDelay
 const WINDOW_POSITION_SAVE_MAX_WAIT = 60000; // 60 seconds max wait (aligned with server maxWaitMs)
+const VIEWPORT_RESIZE_POSITION_DELAY_MS = 500; // Wait for resize to settle before clamp/save
 
 // Global window positions (not per-workspace)
 let globalWindowPositions = {}; // windowId -> { topLeft: { index, x, y }, bottomRight: { index, x, y } }
 let lastSentWindowPositionsHash = null;
+let lastCommittedWindowPositions = null;
+let viewportResizePositionTimer = null;
 
 // Track which transient windows should restore positions
-const transientWindowsWithPositions = new Set(['photoSwipeShell', 'virtualKeyboard']); // Set of window IDs that are transient but should restore positions
+const transientWindowsWithPositions = new Set(['photoSwipeShell', 'virtualKeyboard', 'emphasis-groups-tool', 'novel-editor-tool', 'novel-progress-tool']); // Set of window IDs that are transient but should restore positions
 
 // Active window management
 let currentActiveWindowId = null; // ID of the currently active window (null if no window is active)
@@ -333,22 +336,329 @@ function flushSaveWindowPositions() {
     return saveWindowPositions({ force: true });
 }
 
-function applyDesktopWindowPositionsAfterLoad() {
-    if (!window.isDesktop) {
+function commitWindowPositionsSnapshot() {
+    lastCommittedWindowPositions = JSON.parse(JSON.stringify(globalWindowPositions || {}));
+}
+
+function cancelPendingWindowPositionUpdates(options = {}) {
+    const { revert = true } = options;
+
+    if (windowPositionSaveTimer) {
+        clearTimeout(windowPositionSaveTimer);
+        windowPositionSaveTimer = null;
+    }
+    if (windowPositionSaveMaxTimer) {
+        clearTimeout(windowPositionSaveMaxTimer);
+        windowPositionSaveMaxTimer = null;
+    }
+    if (viewportResizePositionTimer) {
+        clearTimeout(viewportResizePositionTimer);
+        viewportResizePositionTimer = null;
+    }
+
+    if (typeof desktopShortcuts !== 'undefined' && desktopShortcuts) {
+        if (desktopShortcuts.pendingWindowPositionSave) {
+            desktopShortcuts.pendingWindowPositionSave = false;
+            if (desktopShortcuts.saveDebounceTimer && !desktopShortcuts.pendingChanges) {
+                clearTimeout(desktopShortcuts.saveDebounceTimer);
+                desktopShortcuts.saveDebounceTimer = null;
+            }
+        }
+        if (typeof desktopShortcuts.refreshSaveTrayIndicator === 'function') {
+            desktopShortcuts.refreshSaveTrayIndicator();
+        }
+    }
+
+    if (revert && lastCommittedWindowPositions) {
+        globalWindowPositions = JSON.parse(JSON.stringify(lastCommittedWindowPositions));
+    }
+}
+
+function clampModalEdgesWithinWorkAreaSync(modal, edgeMarginPx) {
+    if (!modal || modal.classList.contains('hidden') || modal.classList.contains('hidden-alt') || isModalMaximized(modal)) {
+        return false;
+    }
+
+    const rect = modal.getBoundingClientRect();
+    if (!rect.width || !rect.height) {
+        return false;
+    }
+
+    const clamped = clampModalViewportRect(rect.left, rect.top, rect.width, rect.height, edgeMarginPx);
+    if (Math.abs(clamped.left - rect.left) > 0.5 || Math.abs(clamped.top - rect.top) > 0.5) {
+        setModalOffsetsFromViewportTopLeft(modal, clamped.left, clamped.top);
+        modal.setAttribute('data-modal-moved', 'true');
+        return true;
+    }
+
+    settleModalPixelAnchor(modal);
+    return false;
+}
+
+function handleDesktopViewportResizePositionSync() {
+    if (!window.isDesktop || !document.body.classList.contains('desktop-mode')) {
         return;
     }
 
-    const gallery = document.getElementById('galleryWindow');
-    if (gallery && gallery.classList.contains('windowed') && !gallery.classList.contains('hidden')) {
-        restoreWindowPosition(gallery);
-        ensureModalEdgesWithinWorkArea(gallery);
+    let positionChanged = false;
+    document.querySelectorAll('.modal:not(.hidden):not(.hidden-alt)').forEach(modal => {
+        if (modal.classList.contains('minimised') || modal.classList.contains('minimising')) {
+            return;
+        }
+        if (!modal.querySelector('.modal-window-title')) {
+            return;
+        }
+        if (clampModalEdgesWithinWorkAreaSync(modal)) {
+            positionChanged = true;
+        }
+    });
+
+    if (positionChanged) {
+        debouncedSaveWindowPositions();
+    }
+}
+
+function scheduleDesktopViewportResizePositionSync() {
+    if (!window.isDesktop || !document.body.classList.contains('desktop-mode')) {
+        return;
     }
 
-    const photoSwipeShell = document.getElementById('photoSwipeWindow');
-    if (photoSwipeShell && !photoSwipeShell.classList.contains('hidden')) {
-        restoreWindowPosition(photoSwipeShell);
-        ensureModalEdgesWithinWorkArea(photoSwipeShell);
+    cancelPendingWindowPositionUpdates({ revert: false });
+
+    if (viewportResizePositionTimer) {
+        clearTimeout(viewportResizePositionTimer);
     }
+
+    viewportResizePositionTimer = setTimeout(() => {
+        viewportResizePositionTimer = null;
+        handleDesktopViewportResizePositionSync();
+    }, VIEWPORT_RESIZE_POSITION_DELAY_MS);
+}
+
+function isStudioModalOpen() {
+    const manualModal = document.getElementById('manualModal');
+    // hidden-alt counts as open in desktop (studio visible without taking the modal stack)
+    return !!(manualModal && !manualModal.classList.contains('hidden'));
+}
+
+function syncStudioForAppMode() {
+    const manualModal = document.getElementById('manualModal');
+    if (!manualModal || manualModal.classList.contains('hidden')) {
+        return;
+    }
+
+    manualModal.classList.remove('minimised', 'minimising', 'unminimising', 'hidden-alt');
+
+    if (manualModal.classList.contains('windowed') || manualModal.classList.contains('modal-maximized')) {
+        if (isModalMaximized(manualModal)) {
+            restoreModalFromMaximize(manualModal);
+        }
+
+        manualModal.classList.remove('windowed');
+        manualModal.style.removeProperty('width');
+        manualModal.style.removeProperty('height');
+        manualModal.style.removeProperty('z-index');
+        manualModal.style.removeProperty('--modal-offset-x');
+        manualModal.style.removeProperty('--modal-offset-y');
+        manualModal.removeAttribute('data-modal-moved');
+        clearModalPixelAnchor(manualModal);
+    }
+
+    document.body.classList.add('editor-open');
+
+    if (typeof modalStack !== 'undefined') {
+        const modalIndex = modalStack.indexOf(manualModal);
+        if (modalIndex !== -1) {
+            modalStack.splice(modalIndex, 1);
+            updateModalStackZIndexes();
+        }
+    }
+
+    openModal(manualModal);
+
+    // updateAndroidCaptionControlsOverlay: public/scripts/app.js
+    if (typeof updateAndroidCaptionControlsOverlay === 'function') {
+        updateAndroidCaptionControlsOverlay();
+    }
+}
+
+function minimizeModalProgrammatically(modal) {
+    if (!modal
+        || modal.classList.contains('hidden')
+        || modal.classList.contains('hidden-alt')
+        || modal.classList.contains('minimised')
+        || modal.classList.contains('minimising')) {
+        return;
+    }
+    if (!document.body.classList.contains('desktop-mode')) {
+        return;
+    }
+
+    const taskbarItem = getOrCreateTaskbarItem(modal);
+    if (taskbarItem) {
+        setMinimizeTargetVariables(modal, taskbarItem);
+    }
+
+    modal.classList.add('minimising');
+    const minimisingAnimationHandler = (e) => {
+        if (e.target === modal && e.animationName === 'modalMinimize' && modal.classList.contains('minimising')) {
+            modal.removeEventListener('animationend', minimisingAnimationHandler);
+            modal.classList.add('minimised');
+            modal.classList.remove('minimising');
+            debouncedUpdateTaskbarWindows();
+            updateBackdropVisibility();
+        }
+    };
+    modal.addEventListener('animationend', minimisingAnimationHandler);
+}
+
+function ensureGalleryReadyForAppMode(isStudioOpen) {
+    if (!galleryWindow) {
+        return;
+    }
+
+    galleryWindow.classList.remove('hidden', 'minimised', 'minimising');
+    if (isModalMaximized(galleryWindow)) {
+        restoreModalFromMaximize(galleryWindow);
+    }
+
+    if (isStudioOpen) {
+        return;
+    }
+
+    const savedPosition = window.savedGalleryPosition || 0;
+    if (savedPosition && typeof displayGalleryFromStartIndex === 'function') {
+        displayGalleryFromStartIndex(savedPosition);
+    } else if (typeof loadGallery === 'function') {
+        loadGallery();
+    }
+}
+
+function prepareAppModeWindowLayout() {
+    if (!document.body.classList.contains('desktop-mode')) {
+        return;
+    }
+
+    const isStudioOpen = isStudioModalOpen();
+    ensureGalleryReadyForAppMode(isStudioOpen);
+
+    document.querySelectorAll('.modal:not(.hidden):not(.hidden-alt)').forEach(modal => {
+        if (modal.id === 'galleryWindow') {
+            return;
+        }
+        if (isStudioOpen && modal.id === 'manualModal') {
+            return;
+        }
+        if (!modal.querySelector('.modal-window-title')) {
+            return;
+        }
+
+        if (isModalMaximized(modal)) {
+            restoreModalFromMaximize(modal);
+        }
+        resetModalToViewportCenter(modal);
+        minimizeModalProgrammatically(modal);
+    });
+
+    debouncedUpdateTaskbarWindows();
+    updateBackdropVisibility();
+}
+
+function applyDesktopWindowPositionsAfterLoad() {
+    ensureGalleryVisibleForDesktopEntry();
+    restoreOpenDesktopWindowPositions();
+}
+
+function ensureGalleryVisibleForDesktopEntry() {
+    if (!galleryWindow || !galleryWindow.classList.contains('windowed')) {
+        return;
+    }
+    if (Object.keys(globalWindowPositions).length === 0) {
+        return;
+    }
+
+    let autoLaunchGallery = true;
+    try {
+        autoLaunchGallery = localStorage.getItem('dontAutoLaunchWorkspace') !== 'true';
+    } catch (e) { /* ignore */ }
+    if (autoLaunchGallery) {
+        galleryWindow.classList.remove('hidden');
+    }
+}
+
+function restoreOpenDesktopWindowPositions() {
+    if (!window.isDesktop || Object.keys(globalWindowPositions).length === 0) {
+        return;
+    }
+
+    const candidates = new Set();
+    document.querySelectorAll('.modal').forEach((modal) => candidates.add(modal));
+    const gallery = document.getElementById('galleryWindow');
+    if (gallery) {
+        candidates.add(gallery);
+    }
+
+    candidates.forEach((modal) => {
+        if (modal.classList.contains('hidden') || modal.classList.contains('hidden-alt')) {
+            return;
+        }
+        if (modal.classList.contains('minimised') || modal.classList.contains('minimising')) {
+            return;
+        }
+
+        const hasTitleBar = modal.querySelector('.modal-window-title');
+        const isGalleryShell = modal.id === 'galleryWindow' && modal.classList.contains('windowed');
+        if (!hasTitleBar && !isGalleryShell) {
+            return;
+        }
+
+        if (!windowRestoresPosition(modal) && !windowRestoresSize(modal)) {
+            return;
+        }
+
+        const isTransient = modal.classList.contains('transient');
+        if (isTransient
+            && (!modal.dataset.windowIdentifier
+                || !transientWindowsWithPositions.has(modal.dataset.windowIdentifier))) {
+            return;
+        }
+
+        restoreWindowPosition(modal);
+        ensureModalEdgesWithinWorkArea(modal);
+    });
+}
+
+async function ensureDesktopPositionsAfterEntry() {
+    if (!window.isDesktop || !document.body.classList.contains('desktop-mode')) {
+        return;
+    }
+
+    const workspaceId = (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null)
+        || window.currentWorkspace
+        || 'default';
+
+    if (typeof desktopShortcuts !== 'undefined' && desktopShortcuts && workspaceId) {
+        const needsLoad = Object.keys(globalWindowPositions).length === 0
+            || desktopShortcuts.currentWorkspace !== workspaceId
+            || desktopShortcuts.shortcuts.length === 0;
+
+        if (needsLoad) {
+            desktopShortcuts.currentWorkspace = workspaceId;
+            await desktopShortcuts.loadShortcuts(workspaceId);
+        }
+
+        if (desktopShortcuts.gridContainer && desktopShortcuts.freeformContainer) {
+            desktopShortcuts.renderShortcuts();
+        }
+    }
+
+    if (Object.keys(globalWindowPositions).length === 0) {
+        return;
+    }
+
+    ensureGalleryVisibleForDesktopEntry();
+    restoreOpenDesktopWindowPositions();
+    debouncedUpdateTaskbarWindows();
 }
 
 function clearModalPixelAnchor(modal) {
@@ -1232,6 +1542,11 @@ function initializeModalDragging() {
         if (modal) {
             e.preventDefault();
             e.stopPropagation();
+
+            // Studio cannot be minimised in app mode (non-desktop)
+            if (modal.id === 'manualModal' && !document.body.classList.contains('desktop-mode')) {
+                return;
+            }
 
             // Get or create the taskbar item to minimize to
             const taskbarItem = getOrCreateTaskbarItem(modal);
@@ -2388,6 +2703,7 @@ function initializeGalleryWindow() {
 function updateGalleryWindowMode() {
     if (!galleryWindow) return;
 
+    const wasDesktopMode = document.body.classList.contains('desktop-mode');
     const isWideScreen = window.innerWidth >= 1200;
     const isWindowed = galleryWindow.classList.contains('windowed');
 
@@ -2432,17 +2748,7 @@ function updateGalleryWindowMode() {
 
                 // Load and render shortcuts for current workspace if not already loaded
                 if (typeof activeWorkspace !== 'undefined' && activeWorkspace) {
-                    if (desktopShortcuts.currentWorkspace !== activeWorkspace || desktopShortcuts.shortcuts.length === 0) {
-                        desktopShortcuts.currentWorkspace = activeWorkspace;
-                        desktopShortcuts.loadShortcuts(activeWorkspace).then(() => {
-                            desktopShortcuts.renderShortcuts();
-                        }).catch(err => {
-                            console.error('Error loading desktop shortcuts:', err);
-                        });
-                    } else {
-                        // Shortcuts already loaded for this workspace, just render them
-                        desktopShortcuts.renderShortcuts();
-                    }
+                    desktopShortcuts.currentWorkspace = activeWorkspace;
                 }
             }
 
@@ -2456,23 +2762,6 @@ function updateGalleryWindowMode() {
             }
         }
 
-        // Only show gallery window if window positions are already loaded
-        // If positions aren't loaded yet, keep it hidden - desktopShortcuts will show it after loading
-        // dontAutoLaunchWorkspace: public/scripts/comp/galleryView.js shouldAutoLaunchWorkspace
-        if (Object.keys(globalWindowPositions).length > 0) {
-            let autoLaunchGallery = true;
-            try {
-                autoLaunchGallery = localStorage.getItem('dontAutoLaunchWorkspace') !== 'true';
-            } catch (e) { /* ignore */ }
-            if (autoLaunchGallery) {
-                galleryWindow.classList.remove('hidden');
-            }
-        } else {
-            // Positions not loaded yet - keep hidden until positions load
-            // The positions will be loaded by desktopShortcuts manager, which will then show the window
-            // Don't return here - continue with initialization so window is ready when positions load
-        }
-
         // Initialize modal functionality if not already done
         if (!galleryWindow.hasAttribute('data-modal-initialized')) {
             // Add resize handles for this resizeable window
@@ -2481,9 +2770,6 @@ function updateGalleryWindowMode() {
             }
             galleryWindow.setAttribute('data-modal-initialized', 'true');
         }
-
-        restoreWindowPosition(galleryWindow);
-        ensureModalEdgesWithinWorkArea(galleryWindow);
 
         // Add gallery window to modal stack for z-index management
         if (modalStack.indexOf(galleryWindow) === -1) {
@@ -2520,6 +2806,9 @@ function updateGalleryWindowMode() {
         updateGalleryGrid(true, true); // onlyIfChanged=true, updatePlaceholders=true
 
     } else if (!shouldBeWindowed && isWindowed) {
+        prepareAppModeWindowLayout();
+        cancelPendingWindowPositionUpdates({ revert: true });
+
         // Switch to maximized mode (exit desktop mode)
         galleryWindow.classList.remove('windowed');
         galleryWindow.classList.remove('modal'); // Remove modal class for maximized mode
@@ -2562,8 +2851,8 @@ function updateGalleryWindowMode() {
             desktopShortcuts.isDragging = false;
             desktopShortcuts.clearSelection();
             desktopShortcuts.notesMetadataCache = null;
-            // Clear any pending save timers
-            if (desktopShortcuts.saveDebounceTimer) {
+            // Clear any pending save timers (window position revert handled above)
+            if (desktopShortcuts.saveDebounceTimer && !desktopShortcuts.pendingChanges) {
                 clearTimeout(desktopShortcuts.saveDebounceTimer);
                 desktopShortcuts.saveDebounceTimer = null;
             }
@@ -2625,12 +2914,14 @@ function updateGalleryWindowMode() {
             closeBtn.disabled = true;
         }
 
-        // Reload gallery when leaving desktop mode
-        const savedPosition = window.savedGalleryPosition || 0;
-        if (displayGalleryFromStartIndex) {
-            displayGalleryFromStartIndex(savedPosition);
-        } else {
-            loadGallery();
+        // Reload gallery when leaving desktop mode (skip when Studio is open — gallery is not loaded then)
+        if (!isStudioModalOpen()) {
+            const savedPosition = window.savedGalleryPosition || 0;
+            if (displayGalleryFromStartIndex) {
+                displayGalleryFromStartIndex(savedPosition);
+            } else {
+                loadGallery();
+            }
         }
 
         // Update taskbar
@@ -2645,6 +2936,14 @@ function updateGalleryWindowMode() {
     } else if (!shouldBeWindowed && document.body.classList.contains('desktop-mode')) {
         document.body.classList.remove('desktop-mode');
         window.isDesktop = false;
+    }
+
+    if (wasDesktopMode && !document.body.classList.contains('desktop-mode')) {
+        syncStudioForAppMode();
+    }
+
+    if (!wasDesktopMode && document.body.classList.contains('desktop-mode')) {
+        ensureDesktopPositionsAfterEntry();
     }
 
     // syncVirtualKeyboardPresentation: public/scripts/comp/virtualKeyboard.js
@@ -2769,6 +3068,7 @@ function activateAllResizeListeners() {
  */
 function activateGalleryResizeListener() {
     window.addEventListener('resize', debounceGalleryResize(updateGalleryWindowMode, 150));
+    window.addEventListener('resize', scheduleDesktopViewportResizePositionSync);
     // Perform one check in case the window was resized during loading
     updateGalleryWindowMode();
 }
@@ -3425,9 +3725,7 @@ function renderIcon(icon, className = '') {
 
     // If it's an image icon, render as img tag
     if (isImageIcon(icon)) {
-        // If it's already a full path starting with /, use it as-is
-        // Otherwise, assume it's just a filename and prepend the path
-        const imagePath = icon.startsWith('/') ? icon : `/static_images/app_icons/${icon}`;
+        const imagePath = resolveAppIconPath(icon);
         const classAttr = className ? ` class="icon-image ${className}"` : ' class="icon-image"';
         return `<img src="${imagePath}" alt=""${classAttr} />`;
     }
@@ -3438,6 +3736,15 @@ function renderIcon(icon, className = '') {
 }
 
 // Helper function to render both icon and imageIcon (for CSS-based switching)
+function resolveAppIconPath(imageIcon) {
+    const val = String(imageIcon || '').trim();
+    if (!val) return '';
+    if (val.startsWith('http://') || val.startsWith('https://') || val.startsWith('//')) return val;
+    if (val.startsWith('/')) return val;
+    if (val.startsWith('static_images/')) return `/${val}`;
+    return `/static_images/app_icons/${val}`;
+}
+
 function renderDualIcon(icon, imageIcon, className = '') {
     let html = '';
 
@@ -3458,12 +3765,11 @@ function renderDualIcon(icon, imageIcon, className = '') {
 
     // Render image icon (shown in desktop mode)
     if (imageIcon) {
-        const imagePath = imageIcon.startsWith('/') ? imageIcon : `/static_images/app_icons/${imageIcon}`;
+        const imagePath = resolveAppIconPath(imageIcon);
         const classAttr = className ? ` class="icon-image ${className}"` : ' class="icon-image"';
         html += `<img src="${imagePath}" alt=""${classAttr} />`;
     } else if (icon && isImageIcon(icon)) {
-        // Fallback: if icon itself is an image, render it
-        const imagePath = icon.startsWith('/') ? icon : `/static_images/app_icons/${icon}`;
+        const imagePath = resolveAppIconPath(icon);
         const classAttr = className ? ` class="icon-image ${className}"` : ' class="icon-image"';
         html += `<img src="${imagePath}" alt=""${classAttr} />`;
     }
@@ -3602,9 +3908,17 @@ function getModalType(modal) {
         return 'notepad';
     }
 
+    if (modal.id && modal.id.startsWith('emphasisGroupsTool_')) {
+        return 'emphasisGroupsTool';
+    }
+
     // Check for specific modal classes
     if (modal.classList.contains('image-viewer-modal')) {
         return 'imageViewer';
+    }
+
+    if (modal.classList.contains('emphasis-groups-tool')) {
+        return 'emphasisGroupsTool';
     }
 
     // For other modals, use their ID as the type (they won't group)
@@ -4365,16 +4679,18 @@ document.addEventListener('contextMenuAction', (e) => {
 let startMenu = null;
 let startMenuItems = null;
 
-/** Optional per-item: desktopOnly, fullName (start menu label only), appRootOnly (omit from desktop taskbar start menu only). */
-const startMenuConfig = [
+const START_MENU_DEFAULT_PINNED = ['workspace', 'studio'];
+
+/** Launchable apps (pinned + All Apps). Not shown on the root shell unless pinned. */
+const startMenuLaunchables = [
     {
         launchId: 'workspace',
         icon: 'fas fa-film-canister',
         imageIcon: 'art.png',
         text: 'Workspace',
         desktopOnly: true,
+        appMenu: true,
         action: () => {
-            // In desktop mode, show the gallery if hidden
             if (isGalleryWindowHidden()) {
                 showGalleryWindow();
             } else {
@@ -4389,14 +4705,22 @@ const startMenuConfig = [
         text: 'Studio',
         fullName: 'DreamStudio 2025',
         desktopOnly: true,
+        appMenu: true,
         action: () => { openManualModalWithContent(); }
     },
-    { launchId: 'spellbook', icon: 'fas fa-hat-wizard', imageIcon: 'caster.png', text: 'Spellcaster', action: () => { window.spellbookModalManager.openModal(); } },
-    { launchId: 'reference', icon: 'fas fa-swatchbook', imageIcon: 'ref.png', text: 'Reference', action: () => { showCacheManagerModal(); } },
-    { launchId: 'notebook', icon: 'fas fa-notebook', imageIcon: 'notebook.png', text: 'Notion', action: () => { window.notepadManager.openNotebook(); }, rightAction: { icon: 'fas fa-sticky-note', tooltip: 'New Note', action: () => { window.notepadManager.handleNewNote(); } } },
-    { launchId: 'encyclopedia', icon: 'fas fa-book', imageIcon: 'books.png', text: 'Grimoire', action: () => { if (window.tagWikiSearchModal) { window.tagWikiSearchModal.open(); } else { const modal = document.getElementById('tagWikiSearchModal'); if (modal) openModal(modal); } } },
-    { launchId: 'naxt', icon: 'fas fa-flask', imageIcon: 'test_tube.png', text: 'Atelier', action: () => { if (window.naxtApplet) { window.naxtApplet.open(); } else { const modal = document.getElementById('naxtModal'); if (modal) openModal(modal); } } },
-    { launchId: 'chat', icon: 'fas fa-messages', imageIcon: 'chat.png', text: 'Chat', action: () => { if (window.chatSystem) window.chatSystem.showAllChats(); } },
+    { launchId: 'spellbook', icon: 'fas fa-hat-wizard', imageIcon: 'caster.png', text: 'Spellcaster', appMenu: true, action: () => { window.spellbookModalManager.openModal(); } },
+    { launchId: 'reference', icon: 'fas fa-swatchbook', imageIcon: 'ref.png', text: 'Reference', appMenu: true, action: () => { showCacheManagerModal(); } },
+    { launchId: 'bracket-generation', icon: 'fas fa-layer-group', imageIcon: 'stack.png', text: 'Phasewalker', desktopOnly: true, appMenu: true, action: () => { if (window.bracketGenerationApplet) { window.bracketGenerationApplet.open(); } else { const modal = document.getElementById('bracketGenerationModal'); if (modal) openModal(modal); } } },
+    { launchId: 'encyclopedia', icon: 'fas fa-book', imageIcon: 'books.png', text: 'Grimoire', appMenu: true, action: () => { if (window.tagWikiSearchModal) { window.tagWikiSearchModal.open(); } else { const modal = document.getElementById('tagWikiSearchModal'); if (modal) openModal(modal); } } },
+    { launchId: 'naxt', icon: 'fas fa-flask', imageIcon: 'test_tube.png', text: 'Atelier', appMenu: true, action: () => { if (window.naxtApplet) { window.naxtApplet.open(); } else { const modal = document.getElementById('naxtModal'); if (modal) openModal(modal); } } },
+    { launchId: 'notebook', icon: 'fas fa-notebook', imageIcon: 'notebook.png', text: 'Notion', appMenu: true, action: () => { window.notepadManager.openNotebook(); }, rightAction: { icon: 'fas fa-sticky-note', tooltip: 'New Note', action: () => { window.notepadManager.handleNewNote(); } } },
+    { launchId: 'chat', icon: 'fas fa-messages', imageIcon: 'chat.png', text: 'Chat', appMenu: true, action: () => { if (window.chatSystem) window.chatSystem.showAllChats(); } },
+    { launchId: 'explorer', icon: 'fas fa-folder-open', imageIcon: 'explorer.png', text: 'File Explorer', appMenu: true, action: () => { openExplorerApplet(); } },
+];
+
+/** Root start menu shell rows (folders + run). */
+const startMenuShellConfig = [
+    { icon: 'fas fa-grid-2', imageIcon: 'atom.png', text: 'All Apps', hasSubmenu: true, submenu: 'all-apps', appMenu: false },
     { separator: true },
     {
         icon: 'fas fa-planet-ringed',
@@ -4404,46 +4728,344 @@ const startMenuConfig = [
         text: 'Planets',
         desktopOnly: true,
         hasSubmenu: true,
-        submenu: 'planets'
+        submenu: 'planets',
+        appMenu: false
     },
-    { launchId: 'explorer', icon: 'fas fa-folder-open', imageIcon: 'explorer.png', text: 'File Explorer', action: () => { openExplorerApplet(); } },
-    { icon: 'fas fa-toolbox', imageIcon: 'toolbox.png', text: 'Toolbox', hasSubmenu: true, submenu: 'toolbox' },
-    { launchId: 'run', icon: 'fas fa-magnifying-glass', imageIcon: 'search.png', text: 'Run', action: () => { if (window.runApplet) { window.runApplet.open(); } } },
+    { icon: 'fas fa-toolbox', imageIcon: 'toolbox.png', text: 'Toolbox', hasSubmenu: true, submenu: 'tools', appMenu: false },
+    { launchId: 'run', icon: 'fas fa-magnifying-glass', imageIcon: 'search.png', text: 'Run', appMenu: false, action: () => { if (window.runApplet) { window.runApplet.open(); } } },
 ];
 
-const startMenuSubmenus = {
-    planets: () => {
-        // Get workspace options dynamically (workspaces is an object, not array)
-        const workspacesData = workspaces || window.workspaces || {};
-        const workspacesList = Object.values(workspacesData).sort((a, b) => (a.sort || 0) - (b.sort || 0));
+/** @deprecated Use startMenuLaunchables + startMenuShellConfig */
+const startMenuConfig = startMenuLaunchables.concat(startMenuShellConfig);
 
-        if (workspacesList.length === 0) {
-            return [{ icon: 'fas fa-planet-ringed', text: 'No workspaces', action: null }];
+function sortMenuItemsByIndex(items, indexKey = 'index') {
+    return items
+        .map((item, seq) => ({
+            item,
+            index: typeof item[indexKey] === 'number'
+                ? item[indexKey]
+                : (typeof item.index === 'number' ? item.index : seq),
+            seq
+        }))
+        .sort((a, b) => (a.index - b.index) || (a.seq - b.seq))
+        .map((entry) => entry.item);
+}
+
+function isStartMenuEntryEnabled(item) {
+    if (!item || item.startMenu === false) return false;
+    if (item.startMenuLocation === 'none') return false;
+    return true;
+}
+
+function isAppMenuEntryEnabled(item) {
+    if (!item || item.appMenu === false) return false;
+    const loc = item.appMenuLocation;
+    if (loc && loc !== 'all-apps') return false;
+    return true;
+}
+
+function isAppMenuToolsEntryEnabled(item) {
+    if (!item || item.appMenu === false) return false;
+    const loc = item.appMenuLocation;
+    if (loc === 'none' || loc === 'all-apps') return false;
+    if (loc && loc !== 'tools' && loc !== 'toolbox') return false;
+    return true;
+}
+
+function buildToolsSubmenuItems() {
+    const staticItems = [
+        { launchId: 'solar-system', icon: 'fas fa-solar-system', imageIcon: 'planet.png', text: 'Solar System', appMenuLocation: 'tools', action: () => { showWorkspaceManagementModal(); } },
+        { launchId: 'import', icon: 'nai-import', imageIcon: 'export.png', text: 'Import', appMenuLocation: 'tools', action: () => { unifiedUploadModalManager.show(); } },
+        { launchId: 'presets', icon: 'fas fa-book-spells', imageIcon: 'presetbook.png', text: 'Spellbook', appMenuLocation: 'tools', action: () => { showPresetManager(); } },
+        { launchId: 'expanders', icon: 'fas fa-book-font', imageIcon: 'expanders.png', text: 'Expanders', appMenuLocation: 'tools', action: () => { showTextReplacementManager(); } },
+        { launchId: 'favorites', icon: 'fas fa-star', imageIcon: 'heart.png', text: 'Favorites', appMenuLocation: 'tools', action: () => { showFavoritesManager(); } },
+        { launchId: 'memories', icon: 'fas fa-box-open-full', imageIcon: 'dna.png', text: 'Memories', appMenuLocation: 'tools', action: () => { openKnowledgeMemoriesModal(); } },
+        { launchId: 'chat-persona', icon: 'fas fa-user-doctor-message', imageIcon: 'me.png', text: 'Chat Persona', appMenuLocation: 'tools', action: () => { window.chatSystem.openPersonaSettingsModal() } },
+        { launchId: 'config-editor', icon: 'fas fa-gears', imageIcon: 'slider.png', text: 'Config Editor', desktopOnly: true, appMenuLocation: 'tools', action: () => { if (window.configEditorApplet) { window.configEditorApplet.open(); } else { const modal = document.getElementById('configEditorModal'); if (modal) openModal(modal); } } },
+        { launchId: 'event-viewer', icon: 'fas fa-wave-square', imageIcon: 'event_viewer.png', text: 'Event Viewer', desktopOnly: true, appMenuLocation: 'tools', action: () => { if (logViewerApplet) { logViewerApplet.open(); } else { const modal = document.getElementById('logViewerModal'); if (modal) openModal(modal); } } },
+        { launchId: 'keychain', icon: 'fas fa-key-skeleton-left-right', imageIcon: 'key.png', text: 'Keychain', appMenuLocation: 'tools', action: () => { openApiKeyModal(); } },
+    ].filter(isStartMenuEntryEnabled);
+    // getDsapStartMenuEntriesAtLocation: public/scripts/comp/dsapRegistry.js
+    const dsapAtTools = typeof getDsapStartMenuEntriesAtLocation === 'function'
+        ? getDsapStartMenuEntriesAtLocation('tools')
+        : (typeof getDsapMenuEntriesAtLocation === 'function' ? getDsapMenuEntriesAtLocation('tools') : []);
+    const staticCount = staticItems.length;
+
+    const merged = staticItems
+        .map((item, seq) => ({ ...item, startMenuIndex: seq, index: seq }))
+        .concat(dsapAtTools.map((item, seq) => ({
+            ...item,
+            startMenuIndex: typeof item.startMenuIndex === 'number' ? item.startMenuIndex : staticCount + seq,
+            index: typeof item.startMenuIndex === 'number' ? item.startMenuIndex : staticCount + seq
+        })));
+
+    return sortMenuItemsByIndex(merged, 'startMenuIndex');
+}
+
+function getAppMenuToolsItems() {
+    const desktop = isDesktopStartMenuEnvironment();
+    const candidates = [];
+
+    buildToolsSubmenuItems().forEach((item, seq) => {
+        if (!item || item.separator || item.hasSubmenu) return;
+        if (!isAppMenuToolsEntryEnabled(item)) return;
+        if (item.desktopOnly && !desktop) return;
+        if (typeof item.action !== 'function') return;
+        const appMenuIndex = typeof item.appMenuIndex === 'number'
+            ? item.appMenuIndex
+            : (typeof item.index === 'number' ? item.index : seq);
+        candidates.push({ ...item, appMenuIndex, index: appMenuIndex });
+    });
+
+    return sortMenuItemsByIndex(candidates, 'appMenuIndex');
+}
+
+function getAllAppsMenuItems() {
+    const desktop = isDesktopStartMenuEnvironment();
+    const candidates = [];
+    const seen = new Set();
+
+    const tryAdd = (item, fallbackIndex) => {
+        if (!item || item.separator || item.hasSubmenu) return;
+        if (!isAppMenuEntryEnabled(item)) return;
+        if (item.desktopOnly && !desktop) return;
+        if (typeof item.action !== 'function') return;
+        const launchId = item.launchId || item.text;
+        if (seen.has(launchId)) return;
+        seen.add(launchId);
+        const appMenuIndex = typeof item.appMenuIndex === 'number'
+            ? item.appMenuIndex
+            : (typeof item.index === 'number' ? item.index : fallbackIndex);
+        candidates.push({ ...item, appMenuIndex, index: appMenuIndex });
+    };
+
+    startMenuLaunchables.forEach((item, seq) => {
+        tryAdd(item, seq);
+    });
+
+    const launchableCount = startMenuLaunchables.filter(isAppMenuEntryEnabled).length;
+    // getDsapAppMenuEntries: public/scripts/comp/dsapRegistry.js
+    const dsapAppItems = typeof getDsapAppMenuEntries === 'function'
+        ? getDsapAppMenuEntries()
+        : (typeof getDsapMenuEntries === 'function'
+            ? getDsapMenuEntries().filter(isAppMenuEntryEnabled)
+            : []);
+    dsapAppItems.forEach((item, seq) => {
+        tryAdd(item, launchableCount + seq);
+    });
+
+    return sortMenuItemsByIndex(candidates, 'appMenuIndex');
+}
+
+function startMenuPlanetLaunchId(workspaceId) {
+    return `planet-${workspaceId}`;
+}
+
+function isStartMenuPlanetLaunchId(launchId) {
+    return typeof launchId === 'string' && launchId.startsWith('planet-');
+}
+
+function buildPlanetsSubmenuItems() {
+    const workspacesData = workspaces || window.workspaces || {};
+    const workspacesList = Object.values(workspacesData).sort((a, b) => (a.sort || 0) - (b.sort || 0));
+
+    if (workspacesList.length === 0) {
+        return [{ icon: 'fas fa-planet-ringed', text: 'No workspaces', action: null }];
+    }
+
+    return workspacesList.map((ws) => ({
+        launchId: startMenuPlanetLaunchId(ws.id),
+        text: ws.name,
+        color: ws.color,
+        icon: 'fas fa-planet-ringed',
+        appMenu: false,
+        desktopOnly: true,
+        action: () => {
+            setActiveWorkspace(ws.id);
         }
+    }));
+}
 
-        return workspacesList.map(ws => ({
-            text: ws.name,
-            color: ws.color,
-            action: () => {
-                setActiveWorkspace(ws.id);
-            }
-        }));
-    },
-    toolbox: [
-        { launchId: 'solar-system', icon: 'fas fa-solar-system', imageIcon: 'planet.png', text: 'Solar System', action: () => { showWorkspaceManagementModal(); } },
-        { launchId: 'import', icon: 'nai-import', imageIcon: 'export.png', text: 'Import', action: () => { unifiedUploadModalManager.show(); } },
-        { launchId: 'presets', icon: 'fas fa-book-spells', imageIcon: 'presetbook.png', text: 'Spellbook', action: () => { showPresetManager(); } },
-        { launchId: 'bracket-generation', icon: 'fas fa-layer-group', imageIcon: 'stack.png', text: 'Phasewalker', desktopOnly: true, action: () => { if (window.bracketGenerationApplet) { window.bracketGenerationApplet.open(); } else { const modal = document.getElementById('bracketGenerationModal'); if (modal) openModal(modal); } } },
-        { launchId: 'expanders', icon: 'fas fa-book-font', imageIcon: 'expanders.png', text: 'Expanders', action: () => { showTextReplacementManager(); } },
-        { launchId: 'favorites', icon: 'fas fa-star', imageIcon: 'heart.png', text: 'Favorites', action: () => { showFavoritesManager(); } },
-        { launchId: 'memories', icon: 'fas fa-box-open-full', imageIcon: 'dna.png', text: 'Memories', action: () => { openKnowledgeMemoriesModal(); } },
-        { launchId: 'rules', icon: 'fas fa-book-law', imageIcon: 'rules.png', text: 'Rules', action: () => { showDirectorRulesManager(); } },
-        { launchId: 'chat-persona', icon: 'fas fa-user-doctor-message', imageIcon: 'me.png', text: 'Chat Persona', action: () => { window.chatSystem.openPersonaSettingsModal() } },
-        { launchId: 'config-editor', icon: 'fas fa-gears', imageIcon: 'slider.png', text: 'Config Editor', desktopOnly: true, action: () => { if (window.configEditorApplet) { window.configEditorApplet.open(); } else { const modal = document.getElementById('configEditorModal'); if (modal) openModal(modal); } } },
-        { launchId: 'event-viewer', icon: 'fas fa-wave-square', imageIcon: 'event_viewer.png', text: 'Event Viewer', desktopOnly: true, action: () => { if (logViewerApplet) { logViewerApplet.open(); } else { const modal = document.getElementById('logViewerModal'); if (modal) openModal(modal); } } },
-        { launchId: 'keychain', icon: 'fas fa-key-skeleton-left-right', imageIcon: 'key.png', text: 'Keychain', action: () => { openApiKeyModal(); } },
-    ]
+function buildPlanetMenuItemFromLaunchId(launchId) {
+    if (!isStartMenuPlanetLaunchId(launchId)) return null;
+    const wsId = launchId.slice('planet-'.length);
+    const workspacesData = workspaces || window.workspaces || {};
+    const ws = workspacesData[wsId];
+    if (!ws) return null;
+    return {
+        launchId,
+        text: ws.name,
+        color: ws.color,
+        icon: 'fas fa-planet-ringed',
+        appMenu: false,
+        desktopOnly: true,
+        action: () => {
+            setActiveWorkspace(ws.id);
+        }
+    };
+}
+
+const startMenuSubmenus = {
+    planets: () => buildPlanetsSubmenuItems(),
+    tools: () => buildToolsSubmenuItems(),
+    toolbox: () => buildToolsSubmenuItems(),
+    'all-apps': () => getAllAppsMenuItems()
 };
+
+let startMenuPinnedLaunchIds = null;
+
+function readStartMenuPinnedFromStorage() {
+    try {
+        if (!localStorage.getItem('startMenuPinned')) return null;
+        const parsed = JSON.parse(localStorage.getItem('startMenuPinned'));
+        if (!Array.isArray(parsed)) return null;
+        return parsed.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim());
+    } catch (e) {
+        return null;
+    }
+}
+
+function getStartMenuPinnedLaunchIds() {
+    if (startMenuPinnedLaunchIds === null) {
+        return START_MENU_DEFAULT_PINNED.slice();
+    }
+    return startMenuPinnedLaunchIds.slice();
+}
+
+function isStartMenuItemPinned(launchId) {
+    if (!launchId) return false;
+    return getStartMenuPinnedLaunchIds().includes(launchId);
+}
+
+function applyStartMenuPinnedLaunchIds(ids) {
+    if (ids === null) {
+        startMenuPinnedLaunchIds = null;
+        try {
+            localStorage.removeItem('startMenuPinned');
+        } catch (e) {
+            /* */
+        }
+        return;
+    }
+    startMenuPinnedLaunchIds = ids
+        .filter((id) => typeof id === 'string' && id.trim())
+        .map((id) => id.trim())
+        .slice(0, 48);
+    try {
+        localStorage.setItem('startMenuPinned', JSON.stringify(startMenuPinnedLaunchIds));
+    } catch (e) {
+        /* */
+    }
+}
+
+async function persistStartMenuPinned() {
+    const patch = {
+        desktop: {
+            startMenuPinned: startMenuPinnedLaunchIds === null
+                ? START_MENU_DEFAULT_PINNED.slice()
+                : startMenuPinnedLaunchIds.slice()
+        }
+    };
+    if (typeof persistUserGlobalSettingsPatch === 'function') {
+        await persistUserGlobalSettingsPatch(patch);
+    }
+}
+
+async function setStartMenuItemPinned(launchId, pinned) {
+    if (!launchId) return;
+    const descriptor = findStartMenuLaunchableById(launchId);
+    if (pinned && descriptor && !isStartMenuEntryEnabled(descriptor)) return;
+    const ids = getStartMenuPinnedLaunchIds();
+    const idx = ids.indexOf(launchId);
+    if (pinned && idx < 0) {
+        ids.push(launchId);
+    } else if (!pinned && idx >= 0) {
+        ids.splice(idx, 1);
+    } else {
+        return;
+    }
+    applyStartMenuPinnedLaunchIds(ids);
+    await persistStartMenuPinned();
+    buildStartMenu();
+}
+
+async function moveStartMenuPinnedItem(launchId, direction) {
+    if (!launchId) return;
+    const ids = getStartMenuPinnedLaunchIds();
+    const idx = ids.indexOf(launchId);
+    if (idx < 0) return;
+    const target = direction === 'up' ? idx - 1 : idx + 1;
+    if (target < 0 || target >= ids.length) return;
+    const tmp = ids[target];
+    ids[target] = ids[idx];
+    ids[idx] = tmp;
+    applyStartMenuPinnedLaunchIds(ids);
+    await persistStartMenuPinned();
+    buildStartMenu();
+}
+
+function flattenToolsSubmenuItems(items) {
+    const out = [];
+    if (!Array.isArray(items)) return out;
+    items.forEach((item) => {
+        if (!item) return;
+        if (item.hasSubmenu && typeof item.submenu === 'function') {
+            flattenToolsSubmenuItems(item.submenu()).forEach((nested) => out.push(nested));
+            return;
+        }
+        out.push(item);
+    });
+    return out;
+}
+
+function collectStartMenuLaunchableDescriptors() {
+    const out = [];
+    const desktop = isDesktopStartMenuEnvironment();
+    const seen = new Set();
+
+    const pushItem = (item) => {
+        if (!item || item.separator || item.hasSubmenu) return;
+        if (!isStartMenuEntryEnabled(item)) return;
+        if (item.desktopOnly && !desktop) return;
+        if (!item.launchId || typeof item.action !== 'function') return;
+        if (seen.has(item.launchId)) return;
+        seen.add(item.launchId);
+        out.push(item);
+    };
+
+    startMenuLaunchables.forEach(pushItem);
+    flattenToolsSubmenuItems(buildToolsSubmenuItems()).forEach(pushItem);
+
+    // getDsapMenuEntries: public/scripts/comp/dsapRegistry.js
+    if (typeof getDsapMenuEntries === 'function') {
+        getDsapMenuEntries().forEach(pushItem);
+    }
+
+    return out;
+}
+
+function findStartMenuLaunchableById(launchId) {
+    if (!launchId) return null;
+    const planetItem = buildPlanetMenuItemFromLaunchId(launchId);
+    if (planetItem) return planetItem;
+    return collectStartMenuLaunchableDescriptors().find((item) => item.launchId === launchId) || null;
+}
+
+function getStartMenuPinnedItems() {
+    const pinnedSet = new Set();
+    const items = [];
+    const desktop = isDesktopStartMenuEnvironment();
+    getStartMenuPinnedLaunchIds().forEach((launchId) => {
+        if (pinnedSet.has(launchId)) return;
+        const item = findStartMenuLaunchableById(launchId);
+        if (!item) return;
+        if (!isStartMenuEntryEnabled(item)) return;
+        if (item.desktopOnly && !desktop) return;
+        pinnedSet.add(launchId);
+        items.push({ ...item, pinned: true });
+    });
+    return items;
+}
 
 function isDesktopStartMenuEnvironment() {
     return Boolean(document.body.classList.contains('desktop-mode') || window.isDesktop);
@@ -4458,7 +5080,7 @@ function getFilteredStartMenuConfig(options) {
     const excludeAppRootOnly = opts.excludeAppRootOnly === true;
     const desktop = isDesktopStartMenuEnvironment();
     const stage = [];
-    for (const item of startMenuConfig) {
+    for (const item of startMenuShellConfig) {
         if (!item) continue;
         if (item.separator) {
             stage.push({ separator: true });
@@ -4492,39 +5114,19 @@ function getFilteredStartMenuConfig(options) {
  */
 function collectStartMenuLaunchables() {
     const out = [];
-    const items = getFilteredStartMenuConfig({ excludeAppRootOnly: false });
+    const items = collectStartMenuLaunchableDescriptors();
     items.forEach((item) => {
-        if (!item || item.separator) return;
-        if (item.hasSubmenu && item.submenu && startMenuSubmenus[item.submenu]) {
-            if (item.submenu === 'planets') return;
-            const submenuSource = startMenuSubmenus[item.submenu];
-            const submenuItems = typeof submenuSource === 'function' ? submenuSource() : submenuSource;
-            if (!Array.isArray(submenuItems)) return;
-            submenuItems.forEach((subItem) => {
-                if (!subItem || typeof subItem.action !== 'function') return;
-                if (subItem.desktopOnly && !isDesktopStartMenuEnvironment()) return;
-                const label = subItem.text || 'Item';
-                out.push({
-                    launchId: subItem.launchId || `${item.submenu}-${label}`,
-                    label,
-                    subtitle: item.text || 'Application',
-                    icon: subItem.icon || item.icon,
-                    keywords: [label, item.text, subItem.launchId].filter(Boolean),
-                    execute: () => subItem.action()
-                });
-            });
-            return;
-        }
-        if (typeof item.action === 'function') {
-            out.push({
-                launchId: item.launchId,
-                label: item.fullName || item.text || 'Application',
-                subtitle: 'Application',
-                icon: item.icon,
-                keywords: [item.text, item.fullName, item.launchId].filter(Boolean),
-                execute: () => item.action()
-            });
-        }
+        if (!item || typeof item.action !== 'function') return;
+        const label = item.fullName || item.text || 'Application';
+        out.push({
+            launchId: item.launchId || label,
+            label,
+            subtitle: item.pinned ? 'Pinned' : 'Application',
+            icon: item.icon,
+            imageIcon: item.imageIcon,
+            keywords: [item.text, item.fullName, item.launchId].filter(Boolean),
+            execute: () => item.action()
+        });
     });
     return out;
 }
@@ -4635,6 +5237,7 @@ async function waitForServerDisconnect(options = {}) {
 }
 
 function dismissTransientUIForShutdown() {
+    closeAllStartMenuPopouts();
     if (startMenu && !startMenu.classList.contains('hidden')) {
         closeStartMenu({ immediate: true });
     }
@@ -4809,6 +5412,11 @@ function initializeStartMenu() {
 
     if (!startMenu || !startMenuItems) return;
 
+    const storedPins = readStartMenuPinnedFromStorage();
+    if (storedPins !== null) {
+        applyStartMenuPinnedLaunchIds(storedPins);
+    }
+
     // Build start menu
     buildStartMenu();
 
@@ -4824,118 +5432,274 @@ function initializeStartMenu() {
     // Close start menu when clicking outside
     document.addEventListener('click', (e) => {
         const startBtn = document.getElementById('taskbarStartBtn');
-        if (startMenu && !startMenu.classList.contains('hidden') && !startMenu.contains(e.target) && !e.target.closest('#taskbarStartBtn')) {
+        if (startMenu && !startMenu.classList.contains('hidden')
+            && !startMenu.contains(e.target)
+            && !e.target.closest('#taskbarStartBtn')
+            && !e.target.closest('.start-menu-popout')) {
             closeStartMenu();
         }
     });
 }
 
+let startMenuPopoutStack = [];
+let startMenuPopoutTimers = { open: null, close: null };
+const START_MENU_POPOUT_OPEN_DELAY = 120;
+const START_MENU_POPOUT_CLOSE_DELAY = 220;
+
+function clearStartMenuPopoutTimers() {
+    if (startMenuPopoutTimers.open) {
+        clearTimeout(startMenuPopoutTimers.open);
+        startMenuPopoutTimers.open = null;
+    }
+    if (startMenuPopoutTimers.close) {
+        clearTimeout(startMenuPopoutTimers.close);
+        startMenuPopoutTimers.close = null;
+    }
+}
+
+function closeAllStartMenuPopouts() {
+    clearStartMenuPopoutTimers();
+    if (startMenu) {
+        startMenu.querySelectorAll('.start-menu-item.popout-open').forEach((el) => el.classList.remove('popout-open'));
+    }
+    while (startMenuPopoutStack.length) {
+        const el = startMenuPopoutStack.pop();
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+    }
+}
+
+function positionStartMenuPopout(popout, anchorEl) {
+    const anchorRect = anchorEl.getBoundingClientRect();
+    const menuEl = startMenu || document.getElementById('startMenu');
+    const menuRight = menuEl ? menuEl.getBoundingClientRect().right : anchorRect.right;
+
+    popout.style.position = 'fixed';
+    popout.style.left = `${Math.round(menuRight)}px`;
+    popout.style.top = `${Math.round(anchorRect.top)}px`;
+    popout.style.maxHeight = `${Math.min(Math.round(window.innerHeight * 0.72), window.innerHeight - 16)}px`;
+
+    requestAnimationFrame(() => {
+        const popRect = popout.getBoundingClientRect();
+        if (popRect.bottom > window.innerHeight - 8) {
+            const adjust = popRect.bottom - (window.innerHeight - 8);
+            popout.style.top = `${Math.max(8, anchorRect.top - adjust)}px`;
+        }
+        if (popRect.right > window.innerWidth - 8) {
+            popout.style.left = `${Math.max(8, anchorRect.left - popRect.width)}px`;
+        }
+    });
+}
+
+function resolveStartMenuSubmenuItems(item) {
+    if (!item) return [];
+    if (typeof item.submenu === 'function') {
+        return item.submenu() || [];
+    }
+    if (item.submenu && startMenuSubmenus[item.submenu]) {
+        const submenuData = startMenuSubmenus[item.submenu];
+        return typeof submenuData === 'function' ? submenuData() : submenuData;
+    }
+    return [];
+}
+
+function createStartMenuPopoutRow(item, level) {
+    const row = document.createElement('div');
+    row.className = 'start-menu-popout-item' + (item.hasSubmenu ? ' has-submenu' : '');
+
+    const label = item.fullName ? item.fullName : item.text;
+    if (item.color) {
+        row.innerHTML = `
+            <div class="workspace-color-indicator" style="background-color: ${item.color}"></div>
+            <span>${label}</span>
+        `;
+    } else {
+        row.innerHTML = `
+            ${getIconHTML(item.icon, item.imageIcon)}
+            <span>${label}</span>
+        `;
+    }
+
+    if (item.hasSubmenu) {
+        row.addEventListener('mouseenter', () => {
+            clearStartMenuPopoutTimers();
+            startMenuPopoutTimers.open = setTimeout(() => {
+                showStartMenuPopout(row, () => resolveStartMenuSubmenuItems(item), level + 1);
+            }, START_MENU_POPOUT_OPEN_DELAY);
+        });
+        row.addEventListener('mouseleave', (e) => {
+            const nextPopout = startMenuPopoutStack[level + 1];
+            if (nextPopout && e.relatedTarget && nextPopout.contains(e.relatedTarget)) return;
+            clearStartMenuPopoutTimers();
+            startMenuPopoutTimers.close = setTimeout(() => {
+                while (startMenuPopoutStack.length > level + 1) {
+                    const el = startMenuPopoutStack.pop();
+                    if (el && el.parentNode) el.parentNode.removeChild(el);
+                }
+                row.classList.remove('popout-open');
+            }, START_MENU_POPOUT_CLOSE_DELAY);
+        });
+        row.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showStartMenuPopout(row, () => resolveStartMenuSubmenuItems(item), level + 1);
+        });
+    } else {
+        row.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (item.action) item.action();
+            closeStartMenu();
+        });
+        if (item.launchId) {
+            attachStartMenuItemContextMenu(row, item);
+        }
+    }
+
+    return row;
+}
+
+function showStartMenuPopout(anchorEl, itemsSource, level = 0) {
+    while (startMenuPopoutStack.length > level) {
+        const el = startMenuPopoutStack.pop();
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+    }
+
+    const items = typeof itemsSource === 'function' ? itemsSource() : itemsSource;
+    if (!Array.isArray(items) || items.length === 0) return;
+
+    const popout = document.createElement('div');
+    popout.className = 'start-menu-popout';
+    popout.dataset.level = String(level);
+
+    const desktop = isDesktopStartMenuEnvironment();
+    items.forEach((item) => {
+        if (!item) return;
+        if (item.separator) {
+            const separator = document.createElement('div');
+            separator.className = 'start-menu-popout-separator';
+            popout.appendChild(separator);
+            return;
+        }
+        if (item.desktopOnly && !desktop) return;
+        popout.appendChild(createStartMenuPopoutRow(item, level));
+    });
+
+    if (!popout.childElementCount) return;
+
+    document.body.appendChild(popout);
+    positionStartMenuPopout(popout, anchorEl);
+    startMenuPopoutStack.push(popout);
+    anchorEl.classList.add('popout-open');
+
+    popout.addEventListener('mouseenter', () => clearStartMenuPopoutTimers());
+    popout.addEventListener('mouseleave', () => {
+        clearStartMenuPopoutTimers();
+        startMenuPopoutTimers.close = setTimeout(() => {
+            while (startMenuPopoutStack.length > level) {
+                const el = startMenuPopoutStack.pop();
+                if (el && el.parentNode) el.parentNode.removeChild(el);
+            }
+            anchorEl.classList.remove('popout-open');
+        }, START_MENU_POPOUT_CLOSE_DELAY);
+    });
+}
+
+function wireStartMenuFolderItem(menuItemEl, item) {
+    const openPopout = () => {
+        showStartMenuPopout(menuItemEl, () => resolveStartMenuSubmenuItems(item), 0);
+    };
+
+    menuItemEl.addEventListener('mouseenter', () => {
+        clearStartMenuPopoutTimers();
+        startMenuPopoutTimers.open = setTimeout(openPopout, START_MENU_POPOUT_OPEN_DELAY);
+    });
+    menuItemEl.addEventListener('mouseleave', (e) => {
+        const popout = startMenuPopoutStack[0];
+        if (popout && e.relatedTarget && popout.contains(e.relatedTarget)) return;
+        clearStartMenuPopoutTimers();
+        startMenuPopoutTimers.close = setTimeout(() => {
+            closeAllStartMenuPopouts();
+        }, START_MENU_POPOUT_CLOSE_DELAY);
+    });
+    menuItemEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (menuItemEl.classList.contains('popout-open')) {
+            closeAllStartMenuPopouts();
+        } else {
+            openPopout();
+        }
+    });
+}
+
+function createStartMenuRowElement(item, options = {}) {
+    const menuItem = document.createElement('div');
+    menuItem.className = 'start-menu-item'
+        + (item.hasSubmenu ? ' has-submenu' : '')
+        + (item.rightAction ? ' has-right-action' : '')
+        + (options.pinned ? ' is-pinned' : '');
+
+    const label = item.fullName ? item.fullName : item.text;
+    if (item.color) {
+        menuItem.innerHTML = `
+            <div class="workspace-color-indicator" style="background-color: ${item.color}"></div>
+            <span>${label}</span>
+            ${item.rightAction ? `<button class="start-menu-right-btn" title="${item.rightAction.tooltip || ''}">${getIconHTML(item.rightAction.icon, item.rightAction.imageIcon)}</button>` : ''}
+        `;
+    } else {
+        menuItem.innerHTML = `
+            ${getIconHTML(item.icon, item.imageIcon)}
+            <span>${label}</span>
+            ${item.rightAction ? `<button class="start-menu-right-btn" title="${item.rightAction.tooltip || ''}">${getIconHTML(item.rightAction.icon, item.rightAction.imageIcon)}</button>` : ''}
+        `;
+    }
+
+    if (item.hasSubmenu) {
+        wireStartMenuFolderItem(menuItem, item);
+    } else {
+        if (item.rightAction) {
+            const rightBtn = menuItem.querySelector('.start-menu-right-btn');
+            if (rightBtn) {
+                rightBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (item.rightAction.action) item.rightAction.action();
+                    closeStartMenu();
+                });
+            }
+        }
+
+        menuItem.addEventListener('click', () => {
+            if (item.action) item.action();
+            closeStartMenu();
+        });
+
+        if (item.launchId) {
+            attachStartMenuItemContextMenu(menuItem, item);
+        }
+    }
+
+    return menuItem;
+}
+
 function buildStartMenu() {
     if (!startMenuItems) return;
 
+    closeAllStartMenuPopouts();
     startMenuItems.innerHTML = '';
 
     const desktop = isDesktopStartMenuEnvironment();
-    // Add main items: desktop start menu hides appRootOnly; label is fullName if set, else text
+    const pinnedItems = getStartMenuPinnedItems();
+
+    if (pinnedItems.length > 0) {
+        pinnedItems.forEach((item) => {
+            startMenuItems.appendChild(createStartMenuRowElement(item, { pinned: true }));
+        });
+    }
+
     getFilteredStartMenuConfig({ excludeAppRootOnly: desktop }).forEach(item => {
         if (item.separator) {
             const separator = document.createElement('div');
             separator.className = 'start-menu-separator';
             startMenuItems.appendChild(separator);
         } else {
-            const menuItem = document.createElement('div');
-            menuItem.className = 'start-menu-item' + (item.hasSubmenu ? ' has-submenu' : '') + (item.rightAction ? ' has-right-action' : '');
-
-            const label = item.fullName ? item.fullName : item.text;
-            menuItem.innerHTML = `
-                ${getIconHTML(item.icon, item.imageIcon)}
-                <span>${label}</span>
-                ${item.rightAction ? `<button class="start-menu-right-btn" title="${item.rightAction.tooltip || ''}">${getIconHTML(item.rightAction.icon, item.rightAction.imageIcon)}</button>` : ''}
-            `;
-
-            if (item.hasSubmenu) {
-                // Handle submenu - expand inline
-                menuItem.addEventListener('click', () => {
-                    const submenuData = startMenuSubmenus[item.submenu];
-                    let submenuItems = typeof submenuData === 'function' ? submenuData() : submenuData;
-
-                    if (!submenuItems || submenuItems.length === 0) {
-                        console.warn('No submenu items for:', item.submenu);
-                        return;
-                    }
-
-                    // Toggle submenu expansion
-                    const existingSubmenu = menuItem.nextElementSibling?.classList.contains('start-menu-submenu');
-                    if (existingSubmenu) {
-                        // Collapse submenu
-                        menuItem.nextElementSibling.remove();
-                        menuItem.classList.remove('expanded');
-                    } else {
-                        // Expand submenu
-                        const submenuContainer = document.createElement('div');
-                        submenuContainer.className = 'start-menu-submenu';
-
-                        submenuItems.forEach(subItem => {
-                            const subMenuItem = document.createElement('div');
-                            subMenuItem.className = 'start-menu-item submenu-item';
-
-                            // Use color dot if color is provided, otherwise use icon
-                            const subLabel = subItem.fullName ? subItem.fullName : subItem.text;
-                            if (subItem.color) {
-                                subMenuItem.innerHTML = `
-                                    <div class="workspace-color-indicator" style="background-color: ${subItem.color}"></div>
-                                    <span>${subLabel}</span>
-                                `;
-                            } else {
-                                subMenuItem.innerHTML = `
-                                    ${getIconHTML(subItem.icon, subItem.imageIcon)}
-                                    <span>${subLabel}</span>
-                                `;
-                            }
-
-                            subMenuItem.addEventListener('click', (e) => {
-                                e.stopPropagation();
-                                if (subItem.action) subItem.action();
-                                closeStartMenu();
-                            });
-
-                            // Attach context menu to submenu item if it has a launch ID
-                            if (subItem.launchId) {
-                                attachStartMenuItemContextMenu(subMenuItem, subItem);
-                            }
-
-                            submenuContainer.appendChild(subMenuItem);
-                        });
-
-                        menuItem.after(submenuContainer);
-                        menuItem.classList.add('expanded');
-                    }
-                });
-            } else {
-                // Handle right action button if present
-                if (item.rightAction) {
-                    const rightBtn = menuItem.querySelector('.start-menu-right-btn');
-                    if (rightBtn) {
-                        rightBtn.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            if (item.rightAction.action) item.rightAction.action();
-                            closeStartMenu();
-                        });
-                    }
-                }
-
-                menuItem.addEventListener('click', () => {
-                    if (item.action) item.action();
-                    closeStartMenu();
-                });
-
-                // Attach context menu to main menu item if it has a launch ID
-                if (item.launchId) {
-                    attachStartMenuItemContextMenu(menuItem, item);
-                }
-            }
-
-            startMenuItems.appendChild(menuItem);
+            startMenuItems.appendChild(createStartMenuRowElement(item));
         }
     });
 
@@ -4981,22 +5745,8 @@ function buildStartMenu() {
 }
 
 function closeAllStartMenuSubmenus() {
-    if (!startMenu) return;
-
     closeStartMenuPowerDropdown();
-
-    // Find all expanded menu items
-    const expandedItems = startMenu.querySelectorAll('.start-menu-item.expanded');
-    expandedItems.forEach(item => {
-        // Remove the expanded class
-        item.classList.remove('expanded');
-
-        // Find and remove the submenu container
-        const submenu = item.nextElementSibling;
-        if (submenu && submenu.classList.contains('start-menu-submenu')) {
-            submenu.remove();
-        }
-    });
+    closeAllStartMenuPopouts();
 }
 
 const START_MENU_FADE_OUT_MS = 320;
@@ -5097,14 +5847,46 @@ function attachStartMenuItemContextMenu(element, item) {
                 type: 'list',
                 items: [
                     {
+                        icon: 'fas fa-thumbtack',
+                        text: 'Show in Start Menu',
+                        action: 'toggle-start-menu-pin',
+                        hidden: () => !isStartMenuEntryEnabled(item),
+                        loadfn: (ctxItem) => {
+                            const pinned = isStartMenuItemPinned(item.launchId);
+                            ctxItem.text = pinned ? 'Unpin from Start Menu' : 'Show in Start Menu';
+                        }
+                    },
+                    {
+                        icon: 'fas fa-arrow-up',
+                        text: 'Move Up',
+                        action: 'pin-move-up',
+                        hidden: () => !isStartMenuEntryEnabled(item) || !isStartMenuItemPinned(item.launchId),
+                        loadfn: (ctxItem) => {
+                            const idx = getStartMenuPinnedLaunchIds().indexOf(item.launchId);
+                            ctxItem.disabled = idx <= 0;
+                        }
+                    },
+                    {
+                        icon: 'fas fa-arrow-down',
+                        text: 'Move Down',
+                        action: 'pin-move-down',
+                        hidden: () => !isStartMenuEntryEnabled(item) || !isStartMenuItemPinned(item.launchId),
+                        loadfn: (ctxItem) => {
+                            const ids = getStartMenuPinnedLaunchIds();
+                            const idx = ids.indexOf(item.launchId);
+                            ctxItem.disabled = idx < 0 || idx >= ids.length - 1;
+                        }
+                    },
+                    { separator: true, hidden: () => !isStartMenuEntryEnabled(item) },
+                    {
                         icon: 'fas fa-arrow-down-left',
                         text: 'Add to Desktop...',
                         action: 'add-to-desktop',
-                        loadfn: (menuItem) => {
-                            // Check if shortcut already exists
+                        hidden: () => isStartMenuPlanetLaunchId(item.launchId),
+                        loadfn: (ctxItem) => {
                             if (desktopShortcuts && desktopShortcuts.hasAppletShortcut(item.launchId)) {
-                                menuItem.disabled = true;
-                                menuItem.text = 'Already on Desktop';
+                                ctxItem.disabled = true;
+                                ctxItem.text = 'Already on Desktop';
                             }
                         }
                     }
@@ -5112,6 +5894,18 @@ function attachStartMenuItemContextMenu(element, item) {
             }
         ],
         onAction: async (action) => {
+            if (action === 'toggle-start-menu-pin') {
+                await setStartMenuItemPinned(item.launchId, !isStartMenuItemPinned(item.launchId));
+                return;
+            }
+            if (action === 'pin-move-up') {
+                await moveStartMenuPinnedItem(item.launchId, 'up');
+                return;
+            }
+            if (action === 'pin-move-down') {
+                await moveStartMenuPinnedItem(item.launchId, 'down');
+                return;
+            }
             if (action === 'add-to-desktop') {
                 await addAppletToDesktop(item);
             }
@@ -6676,7 +7470,10 @@ function buildUserGlobalSettingsSnapshotFromClient() {
             exitDesktopOnWorkspaceMaximise: readDesktopSettingsExitDesktopOnWorkspaceMaximisePreference(),
             notificationBridgeEnabled: readDesktopSettingsNotificationBridgeEnabledPreference(),
             bypassNotificationBridgeInDesktopMode: readDesktopSettingsBypassNotificationBridgeDesktopPreference(),
-            startMenuButton
+            startMenuButton,
+            ...(startMenuPinnedLaunchIds === null
+                ? {}
+                : { startMenuPinned: startMenuPinnedLaunchIds.slice() })
         },
         naxt: {
             elevatePins
@@ -6739,6 +7536,12 @@ function applyUserGlobalSettingsToClient(settings) {
             desktopSettingsGlobalState.startMenuButtonCustomText = customText;
             desktopSettingsGlobalState.startMenuButtonStyle = style;
             applyStartMenuButtonAppearanceToTaskbar(preset, customText, style);
+        }
+        if (Array.isArray(desktop.startMenuPinned)) {
+            applyStartMenuPinnedLaunchIds(desktop.startMenuPinned);
+            if (startMenuItems) {
+                buildStartMenu();
+            }
         }
     }
 
@@ -7328,6 +8131,7 @@ function saveWindowPositions(options = {}) {
     if (wsClient && wsClient.isConnected() && Object.keys(globalWindowPositions).length > 0) {
         return wsClient.saveWindowPositions(null, globalWindowPositions).then(() => {
             lastSentWindowPositionsHash = saveHash;
+            commitWindowPositionsSnapshot();
         }).catch((error) => {
             console.warn('Failed to save window positions:', error);
         });

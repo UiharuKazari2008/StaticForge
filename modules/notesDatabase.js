@@ -57,13 +57,73 @@ async function createNotesTables() {
             updated_at INTEGER DEFAULT (strftime('%s', 'now'))
         )
     `);
+
+    try {
+        await db.exec(`ALTER TABLE notes ADD COLUMN note_kind TEXT DEFAULT 'note'`);
+    } catch (error) {
+        // Column already exists
+    }
+
+    try {
+        await db.exec(`ALTER TABLE notes ADD COLUMN metadata TEXT DEFAULT '{}'`);
+    } catch (error) {
+        // Column already exists
+    }
     
     // Create indexes for better performance
     await db.exec(`
         CREATE INDEX IF NOT EXISTS idx_notes_workspace_id ON notes (workspace_id);
         CREATE INDEX IF NOT EXISTS idx_notes_name ON notes (name);
         CREATE INDEX IF NOT EXISTS idx_notes_created_at ON notes (created_at);
+        CREATE INDEX IF NOT EXISTS idx_notes_note_kind ON notes (note_kind);
     `);
+}
+
+const DEFAULT_NOVEL_SETTINGS = {
+    tone: 'neutral',
+    style: 'literary',
+    explicitness: 'moderate',
+    persuasiveness: 'neutral',
+    auto_generate: true
+};
+
+const MAX_NOVEL_UNDO_STACK = 10;
+
+function parseNoteMetadata(raw) {
+    if (!raw) return {};
+    if (typeof raw === 'object') return raw;
+    try {
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (error) {
+        return {};
+    }
+}
+
+function normalizeNovelMetadata(metadata = {}) {
+    const meta = { ...metadata };
+    if (!meta.settings || typeof meta.settings !== 'object') {
+        meta.settings = { ...DEFAULT_NOVEL_SETTINGS };
+    } else {
+        meta.settings = { ...DEFAULT_NOVEL_SETTINGS, ...meta.settings };
+    }
+    if (!Array.isArray(meta.linked_images)) meta.linked_images = [];
+    if (!Array.isArray(meta.undo_stack)) meta.undo_stack = [];
+    if (typeof meta.story_cursor_line !== 'number') meta.story_cursor_line = 0;
+    if (meta.last_response_id == null) meta.last_response_id = null;
+    return meta;
+}
+
+function formatNoteRow(note) {
+    if (!note) return note;
+    const formatted = { ...note };
+    formatted.metadata = normalizeNovelMetadata(parseNoteMetadata(note.metadata));
+    if (!formatted.note_kind) formatted.note_kind = 'note';
+    return formatted;
+}
+
+function serializeNoteMetadata(metadata) {
+    return JSON.stringify(normalizeNovelMetadata(metadata || {}));
 }
 
 /**
@@ -83,18 +143,31 @@ async function closeNotesDatabase() {
  */
 async function createNote(noteData) {
     try {
-        const { id, name, workspaceId, content = '', icon = 'fas fa-file-lines', color = '#ffc107' } = noteData;
+        const {
+            id,
+            name,
+            workspaceId,
+            content = '',
+            icon = 'fas fa-file-lines',
+            color = '#ffc107',
+            note_kind = 'note',
+            metadata = {}
+        } = noteData;
         
         if (!id || !name || !workspaceId) {
             throw new Error('Note ID, name, and workspace ID are required');
         }
+
+        const metadataJson = note_kind === 'novel'
+            ? serializeNoteMetadata(metadata)
+            : (typeof metadata === 'string' ? metadata : JSON.stringify(metadata || {}));
         
         await db.run(
-            `INSERT INTO notes (id, name, workspace_id, content, icon, color) VALUES (?, ?, ?, ?, ?, ?)`,
-            [id, name, workspaceId, content, icon, color]
+            `INSERT INTO notes (id, name, workspace_id, content, icon, color, note_kind, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [id, name, workspaceId, content, icon, color, note_kind, metadataJson]
         );
         
-        const note = await db.get('SELECT * FROM notes WHERE id = ?', [id]);
+        const note = formatNoteRow(await db.get('SELECT * FROM notes WHERE id = ?', [id]));
         console.log(`📝 Created note: ${name} in workspace ${workspaceId}`);
         return note;
     } catch (error) {
@@ -109,7 +182,7 @@ async function createNote(noteData) {
 async function getNote(noteId) {
     try {
         const note = await db.get('SELECT * FROM notes WHERE id = ?', [noteId]);
-        return note;
+        return formatNoteRow(note);
     } catch (error) {
         logger.error('Error getting note:', error);
         throw error;
@@ -125,7 +198,7 @@ async function getNotesByWorkspace(workspaceId) {
             'SELECT * FROM notes WHERE workspace_id = ? ORDER BY updated_at DESC',
             [workspaceId]
         );
-        return notes;
+        return notes.map(formatNoteRow);
     } catch (error) {
         logger.error('Error getting notes by workspace:', error);
         throw error;
@@ -138,7 +211,7 @@ async function getNotesByWorkspace(workspaceId) {
 async function getAllNotes() {
     try {
         const notes = await db.all('SELECT * FROM notes ORDER BY workspace_id, updated_at DESC');
-        return notes;
+        return notes.map(formatNoteRow);
     } catch (error) {
         logger.error('Error getting all notes:', error);
         throw error;
@@ -151,9 +224,15 @@ async function getAllNotes() {
 async function getAllNotesMetadata() {
     try {
         const notes = await db.all(
-            'SELECT id, name, workspace_id, icon, color, created_at, updated_at FROM notes ORDER BY workspace_id, updated_at DESC'
+            'SELECT id, name, workspace_id, icon, color, note_kind, metadata, created_at, updated_at FROM notes ORDER BY workspace_id, updated_at DESC'
         );
-        return notes;
+        return notes.map((note) => {
+            const formatted = { ...note };
+            if (note.note_kind === 'novel') {
+                formatted.metadata = normalizeNovelMetadata(parseNoteMetadata(note.metadata));
+            }
+            return formatted;
+        });
     } catch (error) {
         logger.error('Error getting all notes metadata:', error);
         throw error;
@@ -165,14 +244,18 @@ async function getAllNotesMetadata() {
  */
 async function updateNote(noteId, updates) {
     try {
-        const allowedFields = ['name', 'content', 'icon', 'color', 'workspace_id'];
+        const allowedFields = ['name', 'content', 'icon', 'color', 'workspace_id', 'note_kind', 'metadata'];
         const updateFields = [];
         const values = [];
         
         for (const [key, value] of Object.entries(updates)) {
             if (allowedFields.includes(key)) {
                 updateFields.push(`${key} = ?`);
-                values.push(value);
+                if (key === 'metadata' && value && typeof value === 'object') {
+                    values.push(serializeNoteMetadata(value));
+                } else {
+                    values.push(value);
+                }
             }
         }
         
@@ -192,7 +275,7 @@ async function updateNote(noteId, updates) {
             values
         );
         
-        const note = await db.get('SELECT * FROM notes WHERE id = ?', [noteId]);
+        const note = formatNoteRow(await db.get('SELECT * FROM notes WHERE id = ?', [noteId]));
         console.log(`📝 Updated note: ${noteId}`);
         return note;
     } catch (error) {
@@ -237,6 +320,26 @@ async function saveNoteContent(noteId, content) {
     }
 }
 
+async function getNovelNotesByWorkspace(workspaceId) {
+    try {
+        const notes = await db.all(
+            `SELECT * FROM notes WHERE workspace_id = ? AND note_kind = 'novel' ORDER BY updated_at DESC`,
+            [workspaceId]
+        );
+        return notes.map(formatNoteRow);
+    } catch (error) {
+        logger.error('Error getting novel notes by workspace:', error);
+        throw error;
+    }
+}
+
+async function updateNoteMetadata(noteId, metadataPatch) {
+    const note = await getNote(noteId);
+    if (!note) throw new Error('Note not found');
+    const merged = normalizeNovelMetadata({ ...note.metadata, ...metadataPatch });
+    return updateNote(noteId, { metadata: merged });
+}
+
 module.exports = {
     initializeNotesDatabase,
     closeNotesDatabase,
@@ -244,10 +347,17 @@ module.exports = {
     createNote,
     getNote,
     getNotesByWorkspace,
+    getNovelNotesByWorkspace,
     getAllNotes,
     getAllNotesMetadata,
     updateNote,
+    updateNoteMetadata,
     deleteNote,
-    saveNoteContent
+    saveNoteContent,
+    parseNoteMetadata,
+    normalizeNovelMetadata,
+    serializeNoteMetadata,
+    DEFAULT_NOVEL_SETTINGS,
+    MAX_NOVEL_UNDO_STACK
 };
 

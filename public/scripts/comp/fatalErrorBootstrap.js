@@ -134,6 +134,19 @@
 
     function copyIssueToClipboard(detail) {
         var text = formatIssueForCursor(detail);
+        // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
+        if (typeof copyTextToClipboard === 'function') {
+            copyTextToClipboard(text).then(function () {
+                try {
+                    if (typeof showToast === 'function') {
+                        showToast('Issue copied to clipboard', 'success');
+                    }
+                } catch (e) { /* ignore */ }
+            }).catch(function () {
+                fallbackCopy(text);
+            });
+            return;
+        }
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(text).then(function () {
                 try {

@@ -909,6 +909,24 @@ function startGenerationQuips() {
     showNextGenerationQuip();
 }
 
+/** Resume quip cycling when Enshutsuka overlay opens but preview animation did not start quips yet. */
+function ensureGenerationQuipsCycling() {
+    const manualForm = document.getElementById('manualForm');
+    if (!manualForm || !manualForm.classList.contains('generating')) return;
+
+    const quipEl = document.getElementById('generationPreviewQuip');
+    if (!quipEl || quipRotationLocked) return;
+
+    if (quipEl.classList.contains('hidden')) {
+        startGenerationQuips();
+        return;
+    }
+
+    if (!quipCycleTimeout && !quipFadeTimeout) {
+        showNextGenerationQuip();
+    }
+}
+
 function stopGenerationQuips() {
     clearGenerationQuipTimers();
     quipRotationLocked = false;

@@ -1,0 +1,12 @@
+/* Gallery infinite-scroll loading spinner */
+/* Gallery Loading Spinner */
+.gallery-loading-spinner {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 2rem;
+    color: var(--text-primary);
+    z-index: 10;
+    pointer-events: none;
+}

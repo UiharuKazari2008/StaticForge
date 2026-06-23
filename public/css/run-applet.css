@@ -1,0 +1,206 @@
+/* Run applet (Application Finder) — scripts/comp/runApplet.js */
+/* Run Applet (Application Finder) */
+#runModal.run-applet {
+    min-height: auto;
+}
+
+#runModal .run-applet-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 8px 8px;
+    min-height: 0;
+}
+
+#runModal .run-applet-results-shell {
+    position: relative;
+    min-height: 0;
+    flex: 1;
+}
+
+#runModal .run-applet-results-shell.show-actions .run-applet-suggestions {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+#runModal .run-applet-action-panel {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: var(--border-radius-md, 6px);
+    border: 1px solid var(--glass-border-3, rgba(255, 255, 255, 0.08));
+    background: color-mix(in srgb, var(--glass-layer-dark-4, rgba(0, 0, 0, 0.55)) 98%, transparent);
+}
+
+
+#runModal .run-applet-action-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--glass-border-3, rgba(255, 255, 255, 0.08));
+    flex-shrink: 0;
+}
+
+#runModal .run-applet-action-back {
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 0.78rem;
+    cursor: pointer;
+    padding: 2px 4px;
+    opacity: 0.85;
+}
+
+#runModal .run-applet-action-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.82rem;
+    color: var(--text-primary);
+    opacity: 0.75;
+}
+
+#runModal .run-applet-action-list {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+#runModal .run-applet-action-danger .run-applet-label {
+    color: var(--color-danger, #e85d5d);
+}
+
+#runModal .run-applet-search-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 6px;
+    border: 1px solid color-mix(in srgb, var(--color-primary, #5eb8b8) 55%, transparent);
+    border-radius: var(--border-radius-md, 6px);
+    background: color-mix(in srgb, var(--glass-layer-dark-3, rgba(0, 0, 0, 0.45)) 90%, transparent);
+}
+
+#runModal .run-applet-prefix-hint {
+    font-size: 0.72rem;
+    line-height: 1.2;
+    color: var(--text-muted, #888);
+    padding: 0 6px 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0.88;
+}
+
+#runModal .run-applet-search-icon {
+    color: var(--text-muted, #888);
+    font-size: 0.95rem;
+    flex-shrink: 0;
+    opacity: 0.75;
+}
+
+#runModal .run-applet-input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    padding: 5px 2px;
+    font-size: 0.92rem;
+    min-width: 0;
+}
+
+#runModal .run-applet-input:focus {
+    outline: none;
+    box-shadow: none;
+}
+
+#runModal .run-applet-suggestions {
+    max-height: 320px;
+    overflow-y: auto;
+    border-radius: var(--border-radius-md, 6px);
+    border: 1px solid var(--glass-border-3, rgba(255, 255, 255, 0.08));
+    background: color-mix(in srgb, var(--glass-layer-dark-4, rgba(0, 0, 0, 0.55)) 95%, transparent);
+}
+
+
+#runModal .run-applet-item {
+    cursor: pointer;
+    padding: 4px 8px;
+    min-height: 0;
+}
+
+#runModal .character-autocomplete-item.run-applet-item:hover:not(:disabled) {
+    background: transparent;
+}
+
+#runModal .run-applet-item.keyboard-selected {
+    background: color-mix(in srgb, var(--color-primary, #5eb8b8) 18%, transparent);
+}
+
+#runModal .run-applet-results-shell.mouse-nav .character-autocomplete-item.run-applet-item:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-primary, #5eb8b8) 18%, transparent);
+}
+
+#runModal .run-applet-results-shell.mouse-nav .run-applet-item.keyboard-selected:hover {
+    background: color-mix(in srgb, var(--color-primary, #5eb8b8) 24%, transparent);
+}
+
+#runModal .run-applet-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 22px;
+    line-height: 1.2;
+}
+
+#runModal .run-applet-item-icon {
+    width: 1em;
+    flex-shrink: 0;
+    text-align: center;
+    opacity: 0.8;
+    font-size: 0.85rem;
+}
+
+#runModal .run-applet-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.88rem;
+    color: var(--text-primary);
+}
+
+#runModal .run-applet-meta {
+    flex-shrink: 0;
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    opacity: 0.5;
+    white-space: nowrap;
+    max-width: 42%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#runModal .run-applet-menu-hint {
+    flex-shrink: 0;
+    opacity: 0.45;
+    font-size: 0.65rem;
+    padding-left: 2px;
+}
+
+#runModal .run-applet-item-pinned.run-applet-item {
+    opacity: 0.92;
+}
+
+#runModal .run-applet-item[data-action-index] .run-applet-label,
+#runModal .run-applet-action-item .run-applet-label {
+    color: var(--text-primary);
+}

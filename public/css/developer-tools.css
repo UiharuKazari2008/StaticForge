@@ -13,10 +13,6 @@
     transition: opacity 0.3s ease;
 }
 
-.developer-modal.hidden {
-    display: none;
-}
-
 .developer-modal-overlay {
     position: absolute;
     top: 0;

@@ -1,0 +1,276 @@
+/* Desktop boot modals — pre-startup, Windows startup splash */
+#desktopPreStartupModal .desktop-prestartup-progress > div {
+    will-change: background-position;
+}
+#desktopPreStartupModal {
+    width: 530px;
+    max-width: calc(100vw - 48px);
+}
+
+#desktopPreStartupModal .desktop-prestartup-content {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#desktopPreStartupModal .desktop-prestartup-hero {
+    min-height: 102px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 14px;
+    box-sizing: border-box;
+    background: #084f8d url('/static_images/header.png') center/cover no-repeat;
+}
+
+#desktopPreStartupModal .desktop-prestartup-hero-brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 11px;
+}
+
+#desktopPreStartupModal .desktop-prestartup-logo {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
+#desktopPreStartupModal .desktop-prestartup-logo-text-wrap {
+    display: flex;
+    flex-direction: column;
+}
+
+#desktopPreStartupModal .desktop-prestartup-logo-text {
+    margin: 0;
+    font-size: 1.8rem;
+    line-height: 1;
+    color: #ffffff;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+
+#desktopPreStartupModal .desktop-prestartup-logo-subtext {
+    margin: 2px 0 0;
+    color: #ffffff;
+    font-size: 0.83rem;
+    line-height: 1.2;
+}
+
+#desktopPreStartupModal .desktop-prestartup-progress {
+    height: 10px;
+    margin: 0;
+    background: transparent;
+    overflow: hidden;
+}
+
+#desktopPreStartupModal .desktop-prestartup-progress > div {
+    width: 100%;
+    height: 100%;
+    background-image: linear-gradient(90deg, #054793 0%, #8ec4ef 25%, #0a4f9e 50%, #8ec4ef 75%, #0a4f9e 100%);
+    background-size: 200% 100%;
+    background-repeat: repeat;
+    background-position-x: 100%;
+    animation: desktop-prestartup-marquee 3s linear infinite!important;
+    animation-play-state: running!important;
+    animation-timing-function: linear;
+}
+
+#desktopPreStartupModal .desktop-prestartup-progress.paused > div {
+    animation-play-state: paused;
+}
+
+#desktopPreStartupModal .desktop-prestartup-main {
+    display: flex;
+    flex-direction: row;
+    gap: 14px;
+    padding: 14px;
+    box-sizing: border-box;
+    background: var(--button-face, #d4d0c8);
+}
+
+#desktopPreStartupModal.auth-active .desktop-prestartup-main {
+    min-height: 102px;
+}
+
+#desktopPreStartupModal .desktop-prestartup-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: flex-start;
+}
+
+#desktopPreStartupModal .desktop-prestartup-status {
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--WindowText, #000000);
+    text-align: left;
+}
+
+#desktopPreStartupModal .desktop-prestartup-auth {
+    flex: 0 0 274px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+
+
+#desktopPreStartupModal .desktop-prestartup-auth-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#desktopPreStartupModal .desktop-prestartup-auth-label {
+    width: 68px;
+    text-align: left;
+    font-size: 12px;
+    color: var(--WindowText, #000000);
+    flex-shrink: 0;
+}
+
+#desktopPreStartupModal .desktop-prestartup-input {
+    flex: 1;
+    min-width: 0;
+    padding: 3px 5px;
+    font-size: 12px;
+    border: 1px solid var(--ButtonShadow, #808080);
+    background: var(--Window, #ffffff);
+    color: var(--WindowText, #000000);
+}
+
+#desktopPreStartupModal .desktop-prestartup-auth-error {
+    color: #a30000;
+    font-size: 11px;
+    min-height: 14px;
+    line-height: 1.3;
+}
+
+
+#desktopPreStartupModal .desktop-prestartup-auth-actions {
+    display: flex;
+    justify-content: flex-start;
+    margin-top: 2px;
+}
+
+body.windows-classic-theme #desktopPreStartupModal .desktop-prestartup-status,
+body.windows-classic-theme #desktopPreStartupModal .desktop-prestartup-auth-label,
+body.windows-classic-theme #desktopPreStartupModal .desktop-prestartup-input,
+body.windows-classic-theme #desktopPreStartupModal .desktop-prestartup-auth-error {
+    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
+    font-size: 11px;
+}
+
+@keyframes desktop-prestartup-marquee {
+    from {
+        background-position-x: 100%;
+    }
+
+    to {
+        background-position-x: 0%;
+    }
+}
+
+#windowsStartupModal {
+    position: fixed;
+    top: calc(var(--true-inset-top, 0px) + var(--modal-offset-y, 20px));
+    left: var(--modal-offset-x, 20px);
+    transform: none;
+    width: 320px;
+    z-index: var(--z-modal-top) !important;
+}
+
+/* Corner-anchored boot splash: avoid center-based slide (translate -50%) fighting top/left layout */
+#windowsStartupModal.opening {
+    animation: modalFadeIn 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+#windowsStartupModal.closing {
+    animation: modalFadeOut 0.2s cubic-bezier(0.55, 0.06, 0.68, 0.19);
+}
+
+#windowsStartupModal.modal-pixel-settled:not(.opening):not(.closing) {
+    left: var(--modal-offset-x, 20px);
+    top: calc(var(--true-inset-top, 0px) + var(--modal-offset-y, 20px));
+    transform: none;
+    margin: 0;
+}
+
+.windows-startup-status {
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    font-size: 13px;
+}
+
+/* Windows Startup Modal Specific Styles */
+body.windows-classic-theme .windows-startup-status {
+    color: var(--WindowText);
+    min-height: 16px;
+    margin-bottom: 8px;
+    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
+    font-size: 10px;
+}
+
+/* Classic theme overrides for new [role=progressbar] structure */
+body.windows-classic-theme [role=progressbar] {
+    width: 100%;
+    height: 20px;
+    background: var(--MenuBar);
+    border: none;
+    overflow: hidden;
+    box-sizing: border-box;
+    border-radius: 0px;
+    box-shadow: -1px -1px 0px 1px var(--ButtonDkShadow), 0px 0px 0px 1px var(--ButtonLight), -1px -1px 0px 2px var(--ButtonShadow), 0px 0px 0px 2px var(--ButtonHilight);
+    margin: 0 3px;
+    max-width: calc(100% - 6px);
+}
+
+body.windows-classic-theme [role=progressbar]>div {
+    height: 100%;
+    background: var(--Hilight);
+    width: 0%;
+    transition: width 0.3s ease;
+    box-shadow: none;
+    border-radius: 0px;
+    background-image: none;
+}
+
+body.windows-classic-theme [role=progressbar]>div::before,
+body.windows-classic-theme [role=progressbar]>div::after {
+    display: none;
+}
+
+/* Windows Update Modal Specific Styles */
+.windows-update-status {
+    gap: 12px;
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+}
+
+.windows-update-progress-container {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.windows-update-restart-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin-top: 8px;
+}
+
+
+/* Desktop startup: solid fill; black when transitioning from launch (matches handoff) */
+body.desktop-mode.windows-startup {
+    background: teal;
+    background-image: none;
+}
+
+body.desktop-mode.windows-startup.boot-from-launch {
+    background: #000000;
+    background-image: none;
+}

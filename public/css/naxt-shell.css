@@ -1,0 +1,362 @@
+/* NAXT / NAX Vibes / shared Atelier shell — scripts/comp/naxtApplet.js */
+#naxtModal {
+    width: 1050px;
+    height: 980px;
+}
+
+#naxtModal #naxtDatasetDropdownBtn {
+    min-width: 2.25rem;
+    padding: 0.35em 0.55em;
+}
+
+#naxtModal #naxtDatasetDropdownBtn #naxtDatasetSelected {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    max-width: none;
+    overflow: visible;
+}
+/* NAXT + NAX Vibes modals (shared Atelier shell) */
+#naxtModal .naxt-modal-content,
+#naxVibesModal .naxt-modal-content,
+#logViewerModal .naxt-modal-content,
+#explorerModal .naxt-modal-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+#explorerModal .naxt-search-header {
+    padding: var(--spacing-sm);
+    border-bottom: 1px solid var(--glass-border-4);
+    flex-shrink: 0;
+    background: var(--glass-layer-2);
+}
+
+#explorerModal .naxt-search-controls {
+    display: flex;
+    gap: var(--spacing-sm);
+    align-items: center;
+    flex-wrap: nowrap;
+}
+
+.naxt-filter-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: var(--spacing-sm);
+}
+
+.naxt-filter-toolbar .naxt-filter-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    align-items: flex-end;
+    flex: 1;
+    min-width: 0;
+}
+
+.naxt-filter-toolbar .naxt-filter-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    align-items: center;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.naxt-filter-pair {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.naxt-filter-pair .form-control {
+    width: 4.5rem;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.naxt-filter-pair label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+#naxVibesModal .naxt-filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    margin-top: var(--spacing-sm);
+    align-items: flex-end;
+    justify-content: space-between;
+}
+
+#naxVibesModal .naxt-filter-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    align-items: flex-end;
+    flex: 1;
+    min-width: 0;
+}
+
+#naxVibesModal .naxt-filter-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    align-items: center;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+#naxtModal .naxt-body,
+#naxVibesModal .naxt-body,
+#logViewerModal .naxt-body,
+#explorerModal .naxt-body {
+    flex: 1;
+    min-height: 0;
+}
+
+#naxtModal .naxt-grid,
+#naxVibesModal .naxt-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm);
+    transition: opacity 0.2s ease;
+}
+
+#naxtModal.modal-maximized .naxt-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
+#naxVibesModal.modal-maximized .naxt-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
+#naxtModal .naxt-grid.naxt-loading,
+#naxVibesModal .naxt-grid.naxt-loading {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+#naxtModal #naxtMarkFilterDropdownBtn .naxt-mark-filter-icon,
+#naxtModal #naxtElevatePinsDropdownBtn .naxt-elevate-pins-icon {
+    pointer-events: none;
+}
+
+#naxVibesModal .naxt-card .cache-badges {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    z-index: var(--z-layer-2);
+    pointer-events: none;
+}
+
+#naxVibesModal .naxt-card:hover .cache-badges {
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+#naxVibesEncodingPickerModal .nax-vibes-encoding-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm);
+}
+
+#naxVibesEncodingPickerModal .nax-vibes-encoding-cell {
+    position: relative;
+    border-radius: var(--border-radius-md);
+    overflow: hidden;
+    background: var(--glass-layer-2);
+    border: 1px solid var(--glass-border-4);
+    cursor: pointer;
+}
+
+#naxVibesEncodingPickerModal .nax-vibes-encoding-cell .nax-vibes-encoding-thumb {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    background: var(--glass-layer-dark-5);
+}
+
+#naxVibesEncodingPickerModal .nax-vibes-encoding-cell .nax-vibes-encoding-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+#naxVibesEncodingPickerModal .nax-vibes-encoding-cell .naxt-card-caption {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 4px 6px;
+    font-size: 0.7rem;
+    text-align: center;
+}
+
+#naxtModal .naxt-sort-menu-divider {
+    height: 1px;
+    margin: 0.35rem 0.5rem;
+    background: var(--glass-border-4);
+}
+
+#naxtModal .naxt-status-bar,
+#naxVibesModal .naxt-status-bar,
+#logViewerModal .naxt-status-bar {
+    flex-shrink: 0;
+    padding: 0.35rem var(--spacing-sm);
+    border-top: 1px solid var(--glass-border-4);
+    font-size: 0.8rem;
+    color: var(--text-accent);
+    background: var(--glass-layer-2);
+}
+
+#naxtModal #naxtDatasetDropdownBtn .naxt-dataset-btn-icon {
+    flex-shrink: 0;
+    opacity: 0.9;
+}
+
+#naxtModal #naxtDatasetDropdownMenu .custom-dropdown-option {
+    display: flex;
+    align-items: center;
+    gap: 0.45em;
+}
+
+#naxtModal #naxtDatasetDropdownMenu .custom-dropdown-option i {
+    flex-shrink: 0;
+    width: 1.1em;
+    text-align: center;
+}
+
+#naxtModal .naxt-card,
+#naxVibesModal .naxt-card {
+    position: relative;
+    border-radius: var(--border-radius-md);
+    overflow: hidden;
+    background: var(--glass-layer-2);
+    border: 1px solid var(--glass-border-4);
+    cursor: pointer;
+}
+
+#naxtModal .naxt-card[data-favorite="1"] {
+    border-color: #e6c200;
+    box-shadow: 0 0 6px 3px rgb(230, 194, 0);
+}
+
+#naxtModal .naxt-card[data-try="1"] {
+    border-color: #6eb5ff;
+    box-shadow: 0 0 6px 3px rgb(110 181 255);
+}
+
+#naxtModal .naxt-card[data-favorite="1"][data-try="1"] {
+    border-color: #9ad4a0;
+    box-shadow: 0 0 6px 3px rgb(154, 212, 160);
+}
+
+#naxtModal .naxt-bag-dropdown-menu {
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+#naxtModal .naxt-bag-dropdown-menu .naxt-bag-menu-actions {
+    border-top: 1px solid var(--glass-border-4);
+    margin-top: 4px;
+    padding-top: 4px;
+}
+
+#naxtModal .naxt-card-img-wrap,
+#naxVibesModal .naxt-card-img-wrap {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    background: var(--glass-layer-dark-5);
+}
+
+#naxtModal .naxt-card-img-wrap img,
+#naxVibesModal .naxt-card-img-wrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+#naxtModal .naxt-card-votes,
+#naxVibesModal .naxt-card-votes {
+    position: absolute;
+    right: 4px;
+    bottom: 4px;
+    display: flex;
+    gap: 6px;
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: var(--border-radius-sm);
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    pointer-events: none;
+}
+
+#naxtModal .naxt-card-caption,
+#naxVibesModal .naxt-card-caption {
+    padding: 4px 6px;
+    font-size: 0.75rem;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-accent-tinted);
+}
+
+#naxtModal .naxt-load-sentinel {
+    height: 4px;
+    margin: var(--spacing-sm);
+}
+
+#naxtModal .naxt-empty-state,
+#naxVibesModal .naxt-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-xl);
+    color: var(--text-muted);
+    text-align: center;
+}
+
+
+#naxVibesModal .naxt-card-caption {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    white-space: normal;
+    line-height: 1.2;
+}
+
+#naxVibesModal .naxt-card-caption > span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+
+#naxVibesModal .naxt-card-caption-sub {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    margin-top: 1px;
+}
+
+#naxVibesModal .naxt-card[data-nsfw="1"] {
+    border-color: rgba(220, 80, 120, 0.55);
+}
+
+#naxVibesModal .naxt-card .cache-badges {
+    max-height: calc(100% - 40px);
+}

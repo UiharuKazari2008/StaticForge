@@ -342,6 +342,25 @@ function cleanupBlobUrls() {
     }
 }
 
+function trackBiasPreviewBlob(url) {
+    if (!url || !url.startsWith('blob:')) return;
+    if (!window.croppedImageBlobUrls) {
+        window.croppedImageBlobUrls = [];
+    }
+    window.croppedImageBlobUrls.push(url);
+}
+
+function cleanupBiasConfirmPreviewElements() {
+    ['confirmClientPreview', 'confirmServerPreview'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (el.src && el.src.startsWith('blob:')) {
+            URL.revokeObjectURL(el.src);
+        }
+        el.removeAttribute('src');
+    });
+}
+
 // Get image and target resolution data and determine orientation
 function getImageBiasOrientation() {
     const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
@@ -538,6 +557,7 @@ async function showImageBiasAdjustmentModal() {
                 const response = await fetch(imageUrl);
                 const blob = await response.blob();
                 imageDataUrl = URL.createObjectURL(blob);
+                trackBiasPreviewBlob(imageDataUrl);
             }
         }
     }
@@ -1116,6 +1136,7 @@ async function generateClientBiasPreview() {
 
         canvas.toBlob((blob) => {
             const url = URL.createObjectURL(blob);
+            trackBiasPreviewBlob(url);
             resolve(url);
         }, 'image/png');
     });
@@ -1151,7 +1172,9 @@ async function generateServerBiasPreview() {
     }
 
     const blob = await response.blob();
-    return URL.createObjectURL(blob);
+    const url = URL.createObjectURL(blob);
+    trackBiasPreviewBlob(url);
+    return url;
 }
 
 // Save bias adjustment
@@ -1263,6 +1286,7 @@ function applyBiasAdjustment() {
 
 // Hide bias adjustment confirmation dialog
 function hideBiasAdjustmentConfirmDialog() {
+    cleanupBiasConfirmPreviewElements();
     const dialog = document.getElementById('biasAdjustmentConfirmDialog');
     if (dialog) {
         closeModal(dialog);
@@ -1418,6 +1442,7 @@ async function cropImageToResolution() {
                     const response = await fetch(imageUrl);
                     const blob = await response.blob();
                     imageDataUrl = URL.createObjectURL(blob);
+                    trackBiasPreviewBlob(imageDataUrl);
                 }
             }
             window.uploadedImageData.originalDataUrl = imageDataUrl;

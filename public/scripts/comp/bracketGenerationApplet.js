@@ -552,9 +552,12 @@ async function validateBracketPlaceholdersBeforeGeneration(values) {
     }
     if (choice === 'copy') {
         const text = missing.map((t) => `!${t}`).join(', ');
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            await navigator.clipboard.writeText(text);
+        try {
+            // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
+            await copyTextToClipboard(text);
             showGlassToast('info', null, 'Copied placeholders to clipboard', false, 3000, '<i class="fas fa-copy"></i>');
+        } catch (err) {
+            console.error('Failed to copy placeholders:', err);
         }
         return false;
     }

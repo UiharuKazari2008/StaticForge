@@ -1844,6 +1844,27 @@ function convertPresetToMetadataFormat(presetData) {
 }
 
 // Function to load temp image preview (from blueprint uploads)
+function releaseManualPreviewImageSrc() {
+    const previewImage = document.getElementById('manualPreviewImage');
+    if (!previewImage) return;
+
+    previewImage.onload = null;
+    previewImage.onerror = null;
+
+    const src = previewImage.currentSrc || previewImage.src || '';
+    if (src.startsWith('blob:')) {
+        URL.revokeObjectURL(src);
+        previewImage.removeAttribute('src');
+    } else if (src.startsWith('data:')) {
+        previewImage.removeAttribute('src');
+    } else if (src) {
+        previewImage.removeAttribute('src');
+    }
+
+    delete previewImage.dataset.blobUrl;
+    delete previewImage.dataset.manualPreviewUrl;
+}
+
 async function loadTempImagePreview(previewUrl, imageData) {
     try {
         // Get the preview image element
@@ -1852,6 +1873,8 @@ async function loadTempImagePreview(previewUrl, imageData) {
             console.warn('Preview image element not found');
             return;
         }
+
+        releaseManualPreviewImageSrc();
 
         // Get the preview container
         const previewContainer = document.getElementById('manualPreviewContainer');
@@ -2581,7 +2604,7 @@ function updateCarouselIndicators() {
         // Show/hide cache icon when compiled prompt exists and use-cache is enabled
         // Show triangle exclamation if cache is expired
         if (cacheIcon && dynamicCarousel) {
-            const useCache = dynamicCarousel.getAttribute('data-use-cache') === 'true';
+            const useCache = dynamicCarousel.getAttribute('data-use-cache') !== 'false';
             if (useCache) {
                 // Check if compiled prompt has expired
                 const compiledPrompt = window.dynamicGenerationData?.compiled_prompt;
@@ -5174,10 +5197,10 @@ function renderTextReplacementLockList() {
                     } else if (actionName === 'random-selection') {
                         selectRandomTextReplacement(seed, index);
                     } else if (actionName === 'copy-value') {
-                        // Copy replacement value
                         const textToCopy = seed.value || '';
-                        if (textToCopy && navigator.clipboard && navigator.clipboard.writeText) {
-                            navigator.clipboard.writeText(textToCopy).then(() => {
+                        if (textToCopy) {
+                            // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
+                            copyTextToClipboard(textToCopy).then(() => {
                                 showGlassToast('success', null, 'Copied to clipboard', false, 2000, '<i class="nai-clipboard"></i>');
                             }).catch(err => {
                                 console.error('Failed to copy:', err);
@@ -7358,7 +7381,7 @@ async function clearCompiledPrompt() {
     // Clear the compiled prompt
     delete window.dynamicGenerationData.compiled_prompt;
     if (dynamicCarousel) {
-        dynamicCarousel.setAttribute('data-use-cache', 'false');
+        dynamicCarousel.setAttribute('data-has-cache', 'false');
     }
     clearDynamicGenerationLockState();
 
@@ -7450,34 +7473,18 @@ let directorFeedback = [];
 let currentDirectorView = 'rules'; // 'rules' or 'feedback'
 
 async function showDirectorRulesManager() {
-    const modal = document.getElementById('directorRulesModal');
-    if (!modal) {
-        console.error('Director rules modal not found');
+    // Rules/Feedback manager has been moved into the Memories DSAP applet
+    // at dsap://memories.dyna.dreamscape.jp/static_rules (and /feedback)
+    if (typeof openDsapInGrimoire === 'function') {
+        openDsapInGrimoire('dsap://memories.dyna.dreamscape.jp/static_rules');
         return;
     }
-
-    // Reset to rules view
-    currentDirectorView = 'rules';
-
-    // Load rules and feedback
-    await loadDirectorRules();
-    await loadDirectorFeedback();
-
-    // Setup dropdown if not already setup
-    setupDirectorViewDropdown();
-
-    // Update UI based on current view
-    updateDirectorViewUI();
-
-    // Render the list based on current view
-    if (currentDirectorView === 'rules') {
-        renderDirectorRulesList();
+    // Last resort: try to open the memories DSAP root
+    if (typeof openKnowledgeMemoriesModal === 'function') {
+        openKnowledgeMemoriesModal();
     } else {
-        renderDirectorFeedbackList();
+        console.warn('Director Rules are now at dsap://memories.dyna.dreamscape.jp/static_rules');
     }
-
-    // Show modal
-    openModal(modal);
 }
 
 async function loadDirectorRules() {
@@ -7939,6 +7946,52 @@ function collectDynamicButtonState(btn) {
         return true;
     }
     return false;
+}
+
+// Effective dynamic-generation settings — must match dynamicGenerationHandlers.js defaults
+function getEffectiveDynamicDialogsCount() {
+    const dialogsValue = dynamicCarousel?.dataset.creativeDirectiveDialogs;
+    if (dialogsValue === undefined || dialogsValue === '') {
+        return 0;
+    }
+    const parsed = parseInt(dialogsValue, 10);
+    return isNaN(parsed) ? 0 : parsed;
+}
+
+function getEffectiveDynamicToolPasses() {
+    if (dynamicCarousel?.dataset.fastMode === 'true') {
+        return 4;
+    }
+    const toolPassesValue = dynamicCarousel?.dataset.creativeDirectiveToolPasses;
+    if (toolPassesValue) {
+        const parsed = parseInt(toolPassesValue, 10);
+        if (!isNaN(parsed)) {
+            return parsed;
+        }
+    }
+    return 8;
+}
+
+function getEffectiveDynamicAiTemperature() {
+    const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+    if (aiTemp !== undefined && aiTemp !== '') {
+        return parseFloat(aiTemp);
+    }
+    const creativeBtn = document.getElementById('creativeBtn');
+    return creativeBtn?.dataset.state === 'on' ? 0.95 : 0.1;
+}
+
+function hasExplicitDynamicAiTemperature() {
+    const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+    return aiTemp !== undefined && aiTemp !== '';
+}
+
+function formatDynamicAiTemperature(temp) {
+    const numeric = typeof temp === 'number' ? temp : parseFloat(temp);
+    if (isNaN(numeric)) {
+        return '';
+    }
+    return numeric.toFixed(1);
 }
 
 // Get current TOD value display for context menu
@@ -8446,6 +8499,14 @@ function setupDynamicGenerationContextMenus() {
                         }
                     },
                     {
+                        text: 'Compile to Prompts',
+                        action: 'compileToPrompts',
+                        icon: 'fas fa-file-pen',
+                        loadfn: function (item) {
+                            item.disabled = !isDynamicGenerationEnabled();
+                        }
+                    },
+                    {
                         text: 'Refresh',
                         action: 'toggleForceRefresh',
                         icon: 'fas fa-rotate',
@@ -8608,8 +8669,7 @@ function setupDynamicGenerationContextMenus() {
                         text: 'Tool Calls',
                         icon: 'fas fa-hammer',
                         valueDisplay: function (target) {
-                            const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
-                            return currentValue.toString();
+                            return getEffectiveDynamicToolPasses().toString();
                         },
                         submenu: [
                             {
@@ -8617,8 +8677,7 @@ function setupDynamicGenerationContextMenus() {
                                 action: 'setCreativeDirectiveToolPasses',
                                 value: 4,
                                 loadfn: function (item, target) {
-                                    const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
-                                    item.checked = currentValue === 4;
+                                    item.checked = getEffectiveDynamicToolPasses() === 4;
                                 }
                             },
                             {
@@ -8626,8 +8685,7 @@ function setupDynamicGenerationContextMenus() {
                                 action: 'setCreativeDirectiveToolPasses',
                                 value: 6,
                                 loadfn: function (item, target) {
-                                    const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
-                                    item.checked = currentValue === 6;
+                                    item.checked = getEffectiveDynamicToolPasses() === 6;
                                 }
                             },
                             {
@@ -8635,8 +8693,7 @@ function setupDynamicGenerationContextMenus() {
                                 action: 'setCreativeDirectiveToolPasses',
                                 value: 8,
                                 loadfn: function (item, target) {
-                                    const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
-                                    item.checked = currentValue === 8;
+                                    item.checked = getEffectiveDynamicToolPasses() === 8;
                                 }
                             },
                             {
@@ -8644,8 +8701,7 @@ function setupDynamicGenerationContextMenus() {
                                 action: 'setCreativeDirectiveToolPasses',
                                 value: 10,
                                 loadfn: function (item, target) {
-                                    const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
-                                    item.checked = currentValue === 10;
+                                    item.checked = getEffectiveDynamicToolPasses() === 10;
                                 }
                             },
                             {
@@ -8653,8 +8709,7 @@ function setupDynamicGenerationContextMenus() {
                                 action: 'setCreativeDirectiveToolPasses',
                                 value: 12,
                                 loadfn: function (item, target) {
-                                    const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
-                                    item.checked = currentValue === 12;
+                                    item.checked = getEffectiveDynamicToolPasses() === 12;
                                 }
                             },
                             {
@@ -8662,8 +8717,7 @@ function setupDynamicGenerationContextMenus() {
                                 action: 'setCreativeDirectiveToolPasses',
                                 value: 16,
                                 loadfn: function (item, target) {
-                                    const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
-                                    item.checked = currentValue === 16;
+                                    item.checked = getEffectiveDynamicToolPasses() === 16;
                                 }
                             },
                             {
@@ -8671,8 +8725,7 @@ function setupDynamicGenerationContextMenus() {
                                 action: 'setCreativeDirectiveToolPasses',
                                 value: 20,
                                 loadfn: function (item, target) {
-                                    const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
-                                    item.checked = currentValue === 20;
+                                    item.checked = getEffectiveDynamicToolPasses() === 20;
                                 }
                             }
                         ]
@@ -8681,12 +8734,8 @@ function setupDynamicGenerationContextMenus() {
                         text: 'Dialogs',
                         icon: 'fas fa-comments',
                         valueDisplay: function (target) {
-                            const dialogsValue = dynamicCarousel?.dataset.creativeDirectiveDialogs;
-                            if (dialogsValue === '0') {
-                                return 'Off';
-                            }
-                            const currentValue = parseInt(dialogsValue || '6');
-                            return currentValue.toString();
+                            const currentValue = getEffectiveDynamicDialogsCount();
+                            return currentValue === 0 ? 'Off' : currentValue.toString();
                         },
                         submenu: [
                             {
@@ -8694,9 +8743,7 @@ function setupDynamicGenerationContextMenus() {
                                 icon: 'fas fa-times-circle',
                                 action: 'disableCreativeDirectiveDialogs',
                                 loadfn: function (item, target) {
-                                    const dialogsValue = dynamicCarousel?.dataset.creativeDirectiveDialogs;
-                                    const isDisabled = dialogsValue === '0';
-                                    item.checked = isDisabled;
+                                    item.checked = getEffectiveDynamicDialogsCount() === 0;
                                 }
                             },
                             { separator: true },
@@ -8705,8 +8752,7 @@ function setupDynamicGenerationContextMenus() {
                                 action: 'setCreativeDirectiveDialogs',
                                 value: 4,
                                 loadfn: function (item, target) {
-                                    const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveDialogs || '6');
-                                    item.checked = currentValue === 4;
+                                    item.checked = getEffectiveDynamicDialogsCount() === 4;
                                 }
                             },
                             {
@@ -8714,8 +8760,7 @@ function setupDynamicGenerationContextMenus() {
                                 action: 'setCreativeDirectiveDialogs',
                                 value: 6,
                                 loadfn: function (item, target) {
-                                    const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveDialogs || '6');
-                                    item.checked = currentValue === 6;
+                                    item.checked = getEffectiveDynamicDialogsCount() === 6;
                                 }
                             },
                             {
@@ -8723,8 +8768,7 @@ function setupDynamicGenerationContextMenus() {
                                 action: 'setCreativeDirectiveDialogs',
                                 value: 8,
                                 loadfn: function (item, target) {
-                                    const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveDialogs || '6');
-                                    item.checked = currentValue === 8;
+                                    item.checked = getEffectiveDynamicDialogsCount() === 8;
                                 }
                             },
                             {
@@ -8732,8 +8776,7 @@ function setupDynamicGenerationContextMenus() {
                                 action: 'setCreativeDirectiveDialogs',
                                 value: 10,
                                 loadfn: function (item, target) {
-                                    const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveDialogs || '6');
-                                    item.checked = currentValue === 10;
+                                    item.checked = getEffectiveDynamicDialogsCount() === 10;
                                 }
                             }
                         ]
@@ -8742,20 +8785,15 @@ function setupDynamicGenerationContextMenus() {
                         text: 'Temperature',
                         icon: 'fas fa-thermometer-three-quarters',
                         valueDisplay: function (target) {
-                            const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                            if (aiTemp) {
-                                return aiTemp;
-                            }
-                            return '';
+                            return formatDynamicAiTemperature(getEffectiveDynamicAiTemperature());
                         },
                         submenu: [
                             {
-                                text: 'Default',
-                                icon: 'fas fa-times',
+                                text: 'Auto',
+                                icon: 'fas fa-wand-magic-sparkles',
                                 action: 'clearAiTemperature',
                                 loadfn: function (item, target) {
-                                    const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                    item.hidden = !aiTemp;
+                                    item.checked = !hasExplicitDynamicAiTemperature();
                                 }
                             },
                             { separator: true },
@@ -8766,7 +8804,7 @@ function setupDynamicGenerationContextMenus() {
                                 value: 0.0,
                                 loadfn: function (item, target) {
                                     const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                    item.checked = aiTemp === '0.0';
+                                    item.checked = aiTemp === '0' || aiTemp === '0.0';
                                 }
                             },
                             {
@@ -8809,16 +8847,6 @@ function setupDynamicGenerationContextMenus() {
                                     item.checked = aiTemp === '0.7';
                                 }
                             },
-                            {
-                                text: 'Default (0.8)',
-                                icon: 'fas fa-thermometer-three-quarters',
-                                action: 'setAiTemperature',
-                                value: 0.8,
-                                loadfn: function (item, target) {
-                                    const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                    item.checked = aiTemp === '0.8' || !aiTemp;
-                                }
-                            },
                             { separator: true },
                             {
                                 text: 'Medium-High (1.0)',
@@ -8827,7 +8855,7 @@ function setupDynamicGenerationContextMenus() {
                                 value: 1.0,
                                 loadfn: function (item, target) {
                                     const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                    item.checked = aiTemp === '1.0';
+                                    item.checked = aiTemp === '1' || aiTemp === '1.0';
                                 }
                             },
                             {
@@ -8857,7 +8885,7 @@ function setupDynamicGenerationContextMenus() {
                                 value: 2.0,
                                 loadfn: function (item, target) {
                                     const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                    item.checked = aiTemp === '2.0';
+                                    item.checked = aiTemp === '2' || aiTemp === '2.0';
                                 }
                             }
                         ]
@@ -8903,11 +8931,7 @@ function setupDynamicGenerationContextMenus() {
                         icon: 'fas fa-floppy-disk',
                         keepMenuOpen: true,
                         loadfn: function (item, target) {
-                            const hasCache = Boolean(window.dynamicGenerationData?.compiled_prompt);
-                            const useCache = dynamicCarousel?.getAttribute('data-use-cache') === 'true';
-
-                            item.disabled = !hasCache;
-                            item.checked = useCache;
+                            item.checked = dynamicCarousel?.getAttribute('data-use-cache') !== 'false';
                         },
                     },
                     {
@@ -9220,15 +9244,21 @@ document.addEventListener('contextMenuAction', (e) => {
         createDebouncedContextResolution();
     } else if (action === 'showInspector') {
         showCompiledPromptModal();
+    } else if (action === 'compileToPrompts') {
+        // startCompileToPrompts: compileToPromptsApplet.js
+        startCompileToPrompts();
     } else if (action === 'clearCompiledPrompt') {
         clearCompiledPrompt();
     } else if (action === 'disableDynamicGeneration') {
         // disableDynamicGeneration: public/scripts/comp/manualModalManager.js
         disableDynamicGeneration();
     } else if (action === 'toggleUseCache') {
-        const currentUseCache = dynamicCarousel.getAttribute('data-use-cache') === 'true';
+        const currentUseCache = dynamicCarousel.getAttribute('data-use-cache') !== 'false';
         const newUseCache = !currentUseCache;
         dynamicCarousel.setAttribute('data-use-cache', newUseCache.toString());
+        if (window.dynamicGenerationData) {
+            window.dynamicGenerationData.use_cache_responses = newUseCache;
+        }
         updateCarouselIndicators();
     } else if (action === 'toggleOptimize') {
         const optimizeEnabled = dynamicCarousel.dataset.optimizeEnabled === 'true';
@@ -9327,7 +9357,7 @@ document.addEventListener('contextMenuAction', (e) => {
         const value = e.detail.item.value;
         dynamicCarousel.dataset.creativeDirectiveDialogs = value.toString();
     } else if (action === 'disableCreativeDirectiveDialogs') {
-        dynamicCarousel.dataset.creativeDirectiveDialogs = '0';
+        dynamicCarousel.removeAttribute('data-creative-directive-dialogs');
     } else if (action === 'setAiTemperature') {
         const value = e.detail.item.value;
         if (dynamicCarousel) {
@@ -10428,21 +10458,10 @@ function setupEventListeners() {
                 const response = await fetch(previewImage.dataset.blobUrl);
                 const blob = await response.blob();
 
-                // Copy to clipboard
-                await navigator.clipboard.write([
-                    new ClipboardItem({
-                        [blob.type]: blob
-                    })
-                ]);
+                // copyBlobToClipboard: public/scripts/utils/dreamscapeClipboard.js
+                await copyBlobToClipboard(blob, { name: 'generated-image.png' });
 
-                // Calculate and format file size
-                const sizeInBytes = blob.size;
-                let sizeText;
-                if (sizeInBytes < 1024 * 1024) {
-                    sizeText = `${(sizeInBytes / 1024).toFixed(1)} KB`;
-                } else {
-                    sizeText = `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
-                }
+                const sizeText = formatClipboardBlobSize(blob);
 
                 // Show success notification with size
                 if (showGlassToast) {
@@ -11002,7 +11021,7 @@ function setupEventListeners() {
     }, 'blur');
 
     // TEXTAREA AUTOCOMPLETE SYSTEM - Auto-resize functionality for manual UC field
-    addSafeEventListener(manualUc, 'input', () => scheduleAutoResizeTextarea(manualUc), 'resize');
+    addTextareaInputSideEffect(manualUc, () => autoResizeTextarea(manualUc), 'resize');
 
     const manualPromptNegative = document.getElementById('manualPromptNegative');
     if (manualPromptNegative) {
@@ -11015,7 +11034,7 @@ function setupEventListeners() {
             autoResizeTextarea(manualPromptNegative);
             stopEmphasisHighlighting();
         }, 'blur');
-        addSafeEventListener(manualPromptNegative, 'input', () => scheduleAutoResizeTextarea(manualPromptNegative), 'resize');
+        addTextareaInputSideEffect(manualPromptNegative, () => autoResizeTextarea(manualPromptNegative), 'resize');
     }
 
     // attachPromptTextareaContextMenu: public/scripts/comp/promptTextareaContextMenu.js
@@ -12918,12 +12937,23 @@ function syncCharacterPromptTabs(mainTab) {
             toggleGroup.setAttribute('data-active', mainTab);
         }
 
-        // Update emphasis highlighting for the active textarea (layout already prepared before tab show)
-        const activeTextarea = characterItem.querySelector(`#${characterId}_${mainTab}`);
-        if (activeTextarea) {
-            // scheduleEmphasisHighlightUpdate: public/scripts/comp/emphasisManager.js
-            scheduleEmphasisHighlightUpdate(activeTextarea);
+        const promptTextarea = characterItem.querySelector(`#${characterId}_prompt`);
+        const ucTextarea = characterItem.querySelector(`#${characterId}_uc`);
+        const promptNegativeTextarea = characterItem.querySelector(`#${characterId}_promptNegative`);
+
+        if (promptTextarea) {
+            updateEmphasisHighlighting(promptTextarea);
+            autoResizeTextarea(promptTextarea, 70, 0, false, true);
         }
+        if (ucTextarea) {
+            updateEmphasisHighlighting(ucTextarea);
+            autoResizeTextarea(ucTextarea, 70, 0, false, true);
+        }
+        if (promptNegativeTextarea) {
+            updateEmphasisHighlighting(promptNegativeTextarea);
+            autoResizeTextarea(promptNegativeTextarea, 70, 0, false, true);
+        }
+        syncPromptTextareaContainersInScope(characterItem);
     });
 }
 // New function to sync character prompts to show both tabs
@@ -14477,6 +14507,9 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
                     resolve();
                 }, 10000);
                 previewImage.onload = finish;
+                if (previewImage.src && previewImage.src.startsWith('data:')) {
+                    previewImage.removeAttribute('src');
+                }
                 previewImage.src = imageUrl;
                 if (previewImage.decode) {
                     previewImage.decode().then(finish).catch(() => {
@@ -14744,10 +14777,10 @@ function resetManualPreview() {
     const deleteBtn = document.getElementById('manualPreviewDeleteBtn');
 
     if (previewImage && previewPlaceholder) {
+        releaseManualPreviewImageSrc();
+
         // Hide the image and show placeholder
         previewImage.classList.add('hidden');
-        previewImage.src = '';
-        previewImage.dataset.blobUrl = '';
         previewPlaceholder.classList.remove('hidden');
 
         // Hide original image and reset dual mode
@@ -16576,6 +16609,57 @@ async function handleImageUpload(event) {
 }
 
 // Handle clipboard paste
+async function handleClipboardBlueprintText(text) {
+    try {
+        const data = JSON.parse(text);
+        const isNovelAI = data && (
+            (data.source && data.source.includes('NovelAI')) ||
+            data.v4_prompt ||
+            data.signed_hash ||
+            data.request_type === 'PromptGenerateRequest' ||
+            data.request_type === 'Img2ImgRequest'
+        );
+
+        if (!isNovelAI) {
+            console.log('Clipboard text is not a NovelAI blueprint');
+            return;
+        }
+
+        const toastId = showGlassToast('info', 'Loading Blueprint', 'Loading blueprint from clipboard...', true, false, '<i class="nai-import"></i>');
+
+        try {
+            if (!data.source) {
+                data.source = 'NovelAI';
+            }
+
+            const transformedMetadata = window.transformMetadataForEditor(data);
+            await openManualModalWithContent({
+                type: 'metadata',
+                data: transformedMetadata
+            });
+
+            updateGlassToastComplete(toastId, {
+                type: 'success',
+                title: 'Blueprint Loaded',
+                message: 'Successfully loaded blueprint from clipboard',
+                customIcon: '<i class="nai-check"></i>',
+                showProgress: false
+            });
+        } catch (error) {
+            console.error('Error loading blueprint:', error);
+            updateGlassToastComplete(toastId, {
+                type: 'error',
+                title: 'Blueprint Load Failed',
+                message: 'Failed to load blueprint: ' + error.message,
+                customIcon: '<i class="nai-cross"></i>',
+                showProgress: false
+            });
+        }
+    } catch (e) {
+        console.log('Clipboard text is not valid JSON');
+    }
+}
+
 async function handleClipboardPaste(event) {
     // Check if user is typing in an input field - don't intercept paste in that case
     const activeElement = document.activeElement;
@@ -16590,82 +16674,44 @@ async function handleClipboardPaste(event) {
         return;
     }
 
-    const items = event.clipboardData?.items;
-    if (!items) return;
+    const clipboardItems = event.clipboardData?.items;
+    if ((!clipboardItems || clipboardItems.length === 0) && isAndroidClipboardBridgeActive()) {
+        event.preventDefault();
+        try {
+            const result = await readClipboard();
+            if (result.empty) return;
+
+            const imageFile = getPrimaryImageFileFromClipboardResult(result);
+            if (imageFile) {
+                await uploadImages([imageFile]);
+                return;
+            }
+
+            const text = getPrimaryTextFromClipboardResult(result);
+            if (text) {
+                await handleClipboardBlueprintText(text);
+            }
+        } catch (error) {
+            console.warn('📱 Android clipboard paste failed:', error);
+        }
+        return;
+    }
+
+    if (!clipboardItems) return;
 
     // First check for text/JSON data (blueprint)
-    for (let item of items) {
+    for (let item of clipboardItems) {
         if (item.type === 'text/plain') {
             event.preventDefault();
             item.getAsString(async (text) => {
-                try {
-                    // Try to parse as JSON
-                    const data = JSON.parse(text);
-
-                    // Check if it's NovelAI metadata (blueprint)
-                    // Multiple ways to detect NovelAI data:
-                    // 1. Has explicit source field
-                    // 2. Has v4_prompt structure (NovelAI v4 specific)
-                    // 3. Has signed_hash field (NovelAI specific)
-                    // 4. Has request_type field (NovelAI API specific)
-                    const isNovelAI = data && (
-                        (data.source && data.source.includes('NovelAI')) ||
-                        data.v4_prompt ||
-                        data.signed_hash ||
-                        data.request_type === 'PromptGenerateRequest' ||
-                        data.request_type === 'Img2ImgRequest'
-                    );
-
-                    if (isNovelAI) {
-                        const toastId = showGlassToast('info', 'Loading Blueprint', 'Loading blueprint from clipboard...', true, false, '<i class="nai-import"></i>');
-
-                        try {
-                            // Add source field if missing for compatibility
-                            if (!data.source) {
-                                data.source = 'NovelAI';
-                            }
-
-                            // Transform metadata to the format expected by the manual form
-                            const transformedMetadata = window.transformMetadataForEditor(data);
-
-                            // Use unified function to open modal and load NovelAI metadata
-                            await openManualModalWithContent({
-                                type: 'metadata',
-                                data: transformedMetadata
-                            });
-
-                            updateGlassToastComplete(toastId, {
-                                type: 'success',
-                                title: 'Blueprint Loaded',
-                                message: 'Successfully loaded blueprint from clipboard',
-                                customIcon: '<i class="nai-check"></i>',
-                                showProgress: false
-                            });
-                        } catch (error) {
-                            console.error('Error loading blueprint:', error);
-                            updateGlassToastComplete(toastId, {
-                                type: 'error',
-                                title: 'Blueprint Load Failed',
-                                message: 'Failed to load blueprint: ' + error.message,
-                                customIcon: '<i class="nai-cross"></i>',
-                                showProgress: false
-                            });
-                        }
-                    } else {
-                        // Not a NovelAI blueprint, ignore
-                        console.log('Clipboard text is not a NovelAI blueprint');
-                    }
-                } catch (e) {
-                    // Not valid JSON, ignore
-                    console.log('Clipboard text is not valid JSON');
-                }
+                await handleClipboardBlueprintText(text);
             });
             return;
         }
     }
 
     // If no text data found, check for images
-    for (let item of items) {
+    for (let item of clipboardItems) {
         if (item.type.startsWith('image/')) {
             event.preventDefault();
             const file = item.getAsFile();
@@ -16824,9 +16870,7 @@ function prepareSystemTrayBackground() {
         'imageGenerationIndicator',
         'subscriptionRenewalIndicator',
         'fixedCreditsIndicator',
-        'desktopSaveTrayIndicator',
         'searchIndexingIndicator',
-        'generationQuipsTrayIcon',
         'naxtBagTrayIcon',
         'phasewalkerTrayIcon',
         'workspaceTrayIcon',
@@ -16907,10 +16951,6 @@ async function startBackgroundTrayServices() {
             return 'modemTrayIcon';
         },
         () => {
-            revealTrayIconById('generationQuipsTrayIcon');
-            return 'generationQuipsTrayIcon';
-        },
-        () => {
             if (window.naxtApplet && typeof window.naxtApplet.updateBagTrayChrome === 'function') {
                 window.naxtApplet.updateBagTrayChrome();
             }
@@ -16961,8 +17001,6 @@ function setupTrayIconPopovers() {
         'fixedCreditsIndicator',
         'imageGenerationIndicator',
         'searchIndexingIndicator',
-        'generationQuipsTrayIcon',
-        'desktopSaveTrayIndicator',
         'workspaceTrayIcon',
         'serviceWorkerTrayIcon',
         'modemTrayIcon',
@@ -18503,10 +18541,6 @@ function buildCharacterUcTabContainerHtml(characterId, ucValue, promptNegativeVa
                                 </div>
                                 <div class="toolbar-right">
                                     <div class="toolbar-regular-buttons">
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="split-emphasis" title="Split Emphasis">
-                                            <i class="fas fa-scissors"></i>
-                                        </button>
-                                        <div class="divider toolbar-wide-divider"></div>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="quick-access" title="Quick Access">
                                             <i class="fas fa-book-atlas"></i>
                                         </button>
@@ -18546,8 +18580,8 @@ function wireCharacterPromptTextarea(textarea, blurExtra) {
         stopEmphasisHighlighting();
         if (blurExtra) blurExtra();
     }, 'blur');
-    const debouncedResize = debounce(() => scheduleAutoResizeTextarea(textarea), 50);
-    addSafeEventListener(textarea, 'input', debouncedResize, 'resize');
+    const debouncedResize = debounce(() => autoResizeTextarea(textarea), 50);
+    addTextareaInputSideEffect(textarea, debouncedResize, 'resize');
     initializeEmphasisOverlay(textarea);
     // attachPromptTextareaContextMenu: public/scripts/comp/promptTextareaContextMenu.js
     if (attachPromptTextareaContextMenu) {
@@ -18629,10 +18663,6 @@ function addCharacterPrompt() {
                                 <div class="toolbar-right">
                                     <!-- Regular Toolbar Buttons -->
                                     <div class="toolbar-regular-buttons">
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="split-emphasis" title="Split Emphasis">
-                                            <i class="fas fa-scissors"></i>
-                                        </button>
-                                        <div class="divider toolbar-wide-divider"></div>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="quick-access" title="Quick Access">
                                             <i class="fas fa-book-atlas"></i>
                                         </button>
@@ -18724,14 +18754,12 @@ function addCharacterPrompt() {
     }
 
     // Set initial collapsed state for new characters
-    // First character should be open, others collapsed
     const existingCharacters = characterPromptsContainer.querySelectorAll('.character-prompt-item');
-    if (existingCharacters.length === 0) {
-        // This is the first character, make it open
+    const keepAllCharacterPromptsOpen = document.body.classList.contains('desktop-mode');
+    if (keepAllCharacterPromptsOpen || existingCharacters.length === 0) {
         characterItem.classList.remove('collapsed');
         updateCharacterPromptCollapseButton(characterId, false);
     } else {
-        // This is not the first character, make it collapsed
         characterItem.classList.add('collapsed');
         updateCharacterPromptCollapseButton(characterId, true);
     }
@@ -19558,10 +19586,6 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                                 <div class="toolbar-right">
                                     <!-- Regular Toolbar Buttons -->
                                     <div class="toolbar-regular-buttons">
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="split-emphasis" title="Split Emphasis">
-                                            <i class="fas fa-scissors"></i>
-                                        </button>
-                                        <div class="divider toolbar-wide-divider"></div>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="quick-access" title="Quick Access">
                                             <i class="fas fa-book-atlas"></i>
                                         </button>
@@ -19610,26 +19634,43 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
 
         characterPromptsContainer.appendChild(characterItem);
 
+        // Set default collapsed state before sizing so layout matches visible structure
+        const keepAllCharacterPromptsOpen = document.body.classList.contains('desktop-mode');
+        if (keepAllCharacterPromptsOpen || index === 0) {
+            characterItem.classList.remove('collapsed');
+            updateCharacterPromptCollapseButton(characterId, false);
+        } else {
+            characterItem.classList.add('collapsed');
+            updateCharacterPromptCollapseButton(characterId, true);
+        }
+
         // Add autocomplete event listeners for prompt and UC fields
         const promptField = document.getElementById(`${characterId}_prompt`);
         const ucField = document.getElementById(`${characterId}_uc`);
         const promptNegativeField = document.getElementById(`${characterId}_promptNegative`);
 
+        const shouldSizeCharacterFields = !characterItem.classList.contains('collapsed');
         if (promptField) {
             wireCharacterPromptTextarea(promptField, scheduleMaybeSyncMainPromptSubjectTagsFromCharacterPrompts);
-            autoResizeTextarea(promptField);
+            if (shouldSizeCharacterFields) {
+                autoResizeTextarea(promptField);
+            }
             updateEmphasisHighlighting(promptField);
         }
 
         if (ucField) {
             wireCharacterPromptTextarea(ucField);
-            autoResizeTextarea(ucField);
+            if (shouldSizeCharacterFields) {
+                autoResizeTextarea(ucField);
+            }
             updateEmphasisHighlighting(ucField);
         }
 
         if (promptNegativeField) {
             wireCharacterPromptTextarea(promptNegativeField);
-            autoResizeTextarea(promptNegativeField);
+            if (shouldSizeCharacterFields) {
+                autoResizeTextarea(promptNegativeField);
+            }
             updateEmphasisHighlighting(promptNegativeField);
         }
 
@@ -19672,16 +19713,10 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
             updateCharacterPromptPreview(characterId);
         }
 
-        // Set default collapsed state for loaded characters
-        // First character should be open, others collapsed
-        if (index === 0) {
-            characterItem.classList.remove('collapsed');
-            updateCharacterPromptCollapseButton(characterId, false);
-        } else {
-            characterItem.classList.add('collapsed');
-            updateCharacterPromptCollapseButton(characterId, true);
-        }
     });
+
+    // prepareManualTabLayout: public/scripts/comp/utilities.js
+    prepareManualTabLayout(mainActiveTab);
 
     // Match addCharacterPrompt: toolbar action menus, overlay target lists, and reorder handles
     promptTextareaToolbar.initializeCharacterDropdowns();
@@ -26227,8 +26262,11 @@ function toggleCharacterPromptCollapse(characterId) {
         // Resize text areas when expanding to ensure proper height
         const promptField = document.getElementById(`${characterId}_prompt`);
         const ucField = document.getElementById(`${characterId}_uc`);
+        const promptNegativeField = document.getElementById(`${characterId}_promptNegative`);
         if (promptField) autoResizeTextarea(promptField);
         if (ucField) autoResizeTextarea(ucField);
+        if (promptNegativeField) autoResizeTextarea(promptNegativeField);
+        syncPromptTextareaContainersInScope(characterItem);
     }
 
     updateCharacterPromptCollapseButton(characterId, newCollapsedState);
@@ -26613,6 +26651,9 @@ function handleServerPing(data) {
     // Update UI with server data
     if (data.image_count !== undefined) {
         imageCount = data.image_count;
+        if (typeof updateManualGenCountDisplay === 'function') {
+            updateManualGenCountDisplay();
+        }
     }
     if (data.balance !== undefined) {
         updateBalanceDisplay(data.balance);
@@ -27198,11 +27239,52 @@ function getWindowManagementApplicationItems() {
         return key;
     };
 
+    const filterAppMenuSubitems = (items) => {
+        if (!Array.isArray(items)) return [];
+        return items.filter((subItem) => {
+            if (!subItem || subItem.separator || subItem.hasSubmenu) return false;
+            // isAppMenuEntryEnabled: public/scripts/comp/modalUtils.js
+            if (typeof isAppMenuEntryEnabled === 'function') return isAppMenuEntryEnabled(subItem);
+            return subItem.appMenu !== false;
+        });
+    };
+
     const startItems = (typeof getFilteredStartMenuConfig === 'function')
         ? getFilteredStartMenuConfig({ excludeAppRootOnly: false })
-        : (Array.isArray(startMenuConfig) ? startMenuConfig : []);
+        : (Array.isArray(startMenuShellConfig) ? startMenuShellConfig : []);
+
+    if (typeof getAllAppsMenuItems === 'function') {
+        getAllAppsMenuItems().forEach((item) => {
+            if (typeof item.action !== 'function') return;
+            mainApplicationItems.push({
+                icon: item.icon || 'fas fa-circle',
+                imageIcon: item.imageIcon,
+                text: item.text || item.fullName || 'Application',
+                action: registerAction('app-main', item, item.text || 'app')
+            });
+        });
+    } else if (typeof collectStartMenuLaunchableDescriptors === 'function') {
+        collectStartMenuLaunchableDescriptors()
+            .filter((item) => item.appMenu !== false)
+            .forEach((item) => {
+                if (typeof item.action !== 'function') return;
+                mainApplicationItems.push({
+                    icon: item.icon || 'fas fa-circle',
+                    imageIcon: item.imageIcon,
+                    text: item.text || item.fullName || 'Application',
+                    action: registerAction('app-main', item, item.text || 'app')
+                });
+            });
+    }
+
     startItems.forEach((item) => {
-        if (!item || item.separator || item.submenu === 'toolbox') return;
+        if (!item || item.separator || item.submenu === 'tools' || item.submenu === 'toolbox' || item.submenu === 'all-apps') return;
+        // isAppMenuEntryEnabled: public/scripts/comp/modalUtils.js
+        if (typeof isAppMenuEntryEnabled === 'function') {
+            if (!isAppMenuEntryEnabled(item)) return;
+        } else if (item.appMenu === false) {
+            return;
+        }
 
         if (item.hasSubmenu && item.submenu && startMenuSubmenus?.[item.submenu]) {
             mainApplicationItems.push({
@@ -27213,7 +27295,9 @@ function getWindowManagementApplicationItems() {
                     const submenuItems = typeof submenuSource === 'function' ? submenuSource() : submenuSource;
                     if (!Array.isArray(submenuItems)) return [];
 
-                    return submenuItems.map((subItem, index) => {
+                    return submenuItems
+                        .filter((subItem) => !subItem || subItem.appMenu !== false)
+                        .map((subItem, index) => {
                         const text = subItem.text || `Item ${index + 1}`;
                         if (subItem.color) {
                             return {
@@ -27235,8 +27319,7 @@ function getWindowManagementApplicationItems() {
                 },
                 handlerfn: (subItem) => {
                     const submenuSource = startMenuSubmenus[item.submenu];
-                    const submenuItems = typeof submenuSource === 'function' ? submenuSource() : submenuSource;
-                    if (!Array.isArray(submenuItems)) return;
+                    const submenuItems = filterAppMenuSubitems(typeof submenuSource === 'function' ? submenuSource() : submenuSource);
                     const match = submenuItems.find((candidate, index) => `app-submenu-${item.submenu}-${index}` === subItem.action);
                     if (match?.action) {
                         match.action();
@@ -27256,34 +27339,39 @@ function getWindowManagementApplicationItems() {
         }
     });
 
-    const toolboxItemsSource = startMenuSubmenus?.toolbox;
-    const toolboxSourceList = typeof toolboxItemsSource === 'function' ? toolboxItemsSource() : toolboxItemsSource;
-    const toolboxApplicationItems = [];
-    if (Array.isArray(toolboxSourceList) && toolboxSourceList.length > 0) {
-        toolboxSourceList.forEach((item) => {
-            if (!item || item.separator || typeof item.action !== 'function') return;
-            toolboxApplicationItems.push({
+    const toolsApplicationItems = [];
+    const toolsSourceList = typeof getAppMenuToolsItems === 'function'
+        ? getAppMenuToolsItems()
+        : (() => {
+            const toolsItemsSource = startMenuSubmenus?.tools || startMenuSubmenus?.toolbox;
+            return typeof toolsItemsSource === 'function' ? toolsItemsSource() : toolsItemsSource;
+        })();
+    if (Array.isArray(toolsSourceList) && toolsSourceList.length > 0) {
+        toolsSourceList.forEach((item) => {
+            if (!item || item.separator || item.hasSubmenu || typeof item.action !== 'function') return;
+            toolsApplicationItems.push({
                 icon: item.icon || 'fas fa-toolbox',
+                imageIcon: item.imageIcon,
                 text: item.text || 'Tool',
                 action: registerAction('app-tool', item, item.text || 'tool')
             });
         });
     }
 
-    /** Flat list for nested "Applications" when windows are open: main rows + Tools header + toolbox rows */
+    /** Flat list for nested "Applications" when windows are open: main rows + Tools header + tools rows */
     const applicationItemsNested = [...mainApplicationItems];
-    if (toolboxApplicationItems.length > 0) {
+    if (toolsApplicationItems.length > 0) {
         applicationItemsNested.push({ separator: true, text: 'Tools' });
-        applicationItemsNested.push(...toolboxApplicationItems);
+        applicationItemsNested.push(...toolsApplicationItems);
     }
 
     /** Single root menu when no windows: main rows + Tools as submenu (subitems use action → onAction → actionHandlers) */
     const applicationItemsSingleRoot = [...mainApplicationItems];
-    if (toolboxApplicationItems.length > 0) {
+    if (toolsApplicationItems.length > 0) {
         applicationItemsSingleRoot.push({
             icon: 'fas fa-toolbox',
             text: 'Tools',
-            optionsfn: () => toolboxApplicationItems,
+            optionsfn: () => toolsApplicationItems,
             openOnHover: false
         });
     }
@@ -27296,8 +27384,9 @@ function getWindowManagementApplicationItems() {
 }
 
 function buildWindowManagementButtonMenuConfig() {
+    const isDesktopMode = document.body.classList.contains('desktop-mode');
     const windowEntries = (typeof getNonRootTaskbarWindowEntries === 'function') ? getNonRootTaskbarWindowEntries() : [];
-    const hasWindowEntries = windowEntries.length > 0;
+    const hasWindowEntries = !isDesktopMode && windowEntries.length > 0;
     const { actionHandlers, applicationItemsNested, applicationItemsSingleRoot } = getWindowManagementApplicationItems();
 
     const sections = [];
@@ -27351,9 +27440,10 @@ function updateWindowManagementButtonsState() {
     const galleryButton = document.getElementById('windowListGalleryBtn');
     const editorButton = document.getElementById('windowListEditorBtn');
 
+    const isDesktopMode = document.body.classList.contains('desktop-mode');
     const entries = (typeof getNonRootTaskbarWindowEntries === 'function') ? getNonRootTaskbarWindowEntries() : [];
     const hasWindows = entries.length > 0;
-    const iconClass = hasWindows ? 'fa-light fa-window-restore' : 'fa-light fa-atom-alt';
+    const iconClass = (isDesktopMode || !hasWindows) ? 'fa-light fa-atom-alt' : 'fa-light fa-window-restore';
 
     [galleryButton, editorButton].forEach((button) => {
         if (!button) return;
@@ -27364,7 +27454,11 @@ function updateWindowManagementButtonsState() {
     });
 
     if (galleryButton) {
-        galleryButton.classList.toggle('hidden', !hasWindows);
+        if (isDesktopMode) {
+            galleryButton.classList.remove('hidden');
+        } else {
+            galleryButton.classList.toggle('hidden', !hasWindows);
+        }
     }
 }
 
@@ -28185,8 +28279,12 @@ function setupMainMenuContextMenus() {
                 break;
 
             case 'knowledge-memories':
-                // Open knowledge memories modal
-                openKnowledgeMemoriesModal();
+                // Open Knowledge Memories DSAP applet (2008 web 2.0 edition)
+                if (typeof openDsapInGrimoire === 'function') {
+                    openDsapInGrimoire('dsap://memories.dyna.dreamscape.jp');
+                } else if (typeof openKnowledgeMemoriesModal === 'function') {
+                    openKnowledgeMemoriesModal();
+                }
                 break;
 
             case 'api-key-manager':
@@ -28772,7 +28870,8 @@ if (window.wsClient) {
     wsClient.on('galleryUpdated', (data) => {
         if (isGalleryWindowHidden()) {
             if (data.gallery) {
-                allImages = data.gallery;
+                // setActiveGalleryList: public/scripts/comp/galleryView.js
+                setActiveGalleryList(data.gallery);
                 syncServiceWorkerImageCacheRules();
             }
             return;
@@ -28785,7 +28884,7 @@ if (window.wsClient) {
         }
         // Update gallery data and refresh the view if it matches the updated view type
         if (data.viewType && data.gallery) {
-            const oldImages = [...allImages];
+            const oldImages = allImages;
             const newImages = data.gallery;
             const currentView = currentGalleryView || 'images';
 
@@ -28799,31 +28898,34 @@ if (window.wsClient) {
 
             if (changes.type === 'full_reload') {
                 // Complete reload needed
-                allImages = newImages;
+                setActiveGalleryList(newImages);
                 syncServiceWorkerImageCacheRules();
                 if (window.sortGalleryData) {
                     window.sortGalleryData();
                 }
+                triggerBuildGalleryNavigationCache();
                 clearSelection();
                 resetInfiniteScroll();
                 displayCurrentPageOptimized();
                 console.log('Gallery: Full reload performed');
             } else if (changes.type === 'append_top') {
                 // New items added to top - append them
-                allImages = newImages;
+                setActiveGalleryList(newImages);
                 syncServiceWorkerImageCacheRules();
                 if (window.sortGalleryData) {
                     window.sortGalleryData();
                 }
+                triggerBuildGalleryNavigationCache();
                 appendNewGalleryItems(changes.newItems);
                 console.log(`Gallery: Appended ${changes.newItems.length} new items to top`);
             } else if (changes.type === 'shift_indexes') {
                 // Gallery shifted - adjust indexes and add placeholders
-                allImages = newImages;
+                setActiveGalleryList(newImages);
                 syncServiceWorkerImageCacheRules();
                 if (window.sortGalleryData) {
                     window.sortGalleryData();
                 }
+                triggerBuildGalleryNavigationCache();
                 shiftGalleryIndexes(changes.shiftAmount);
                 console.log(`Gallery: Shifted indexes by ${changes.shiftAmount}`);
             } else {

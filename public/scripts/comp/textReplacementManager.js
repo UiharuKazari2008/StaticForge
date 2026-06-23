@@ -1531,6 +1531,13 @@ async function removeFavorite(type, index) {
 
 // Validate if a dynamic replacement can be applied client-side
 function validateDynamicReplacementCanApply(replacement) {
+    const applicationContext = window.dynamicGenerationData?.compiled_prompt?.application_context
+        || window._lastCompileToPromptsApplicationContext;
+    // validateReplacementAgainstResolved: promptApplyPipeline.js
+    if (applicationContext?.streams && typeof validateReplacementAgainstResolved === 'function') {
+        return validateReplacementAgainstResolved(replacement, applicationContext);
+    }
+
     const action = replacement.action?.toLowerCase() || 'replace';
     
     // For append without select_text, always can apply
@@ -1834,192 +1841,61 @@ function applyDynamicReplacementClientSide(replacement) {
     return { success: true, method: method };
 }
 
+function getTendaiCategoryIcon(category) {
+    const categoryLower = (category || '').toLowerCase();
+    if (categoryLower.includes('weather')) return '<i class="fas fa-cloud-rain"></i>';
+    if (categoryLower.includes('time of day') || categoryLower.includes('time')) return '<i class="fas fa-clock"></i>';
+    if (categoryLower.includes('seasonal')) return '<i class="fas fa-leaf"></i>';
+    if (categoryLower.includes('holiday')) return '<i class="fas fa-calendar-star"></i>';
+    if (categoryLower.includes('spelling')) return '<i class="fas fa-spell-check"></i>';
+    if (categoryLower.includes('text overlay') || categoryLower.includes('overlay')) return '<i class="fas fa-comment-dots"></i>';
+    if (categoryLower.includes('conflict resolution') || categoryLower.includes('conflict')) return '<i class="fas fa-wrench"></i>';
+    if (categoryLower.includes('enhancement') || categoryLower.includes('enhance')) return '<i class="fas fa-sparkles"></i>';
+    if (categoryLower.includes('lighting') || categoryLower.includes('light')) return '<i class="fas fa-lightbulb"></i>';
+    if (categoryLower.includes('atmosphere')) return '<i class="fas fa-cloud-sun"></i>';
+    if (categoryLower.includes('action verb') || categoryLower.includes('action')) return '<i class="fas fa-running"></i>';
+    if (categoryLower.includes('directive')) return '<i class="fas fa-bullseye"></i>';
+    return '<i class="fas fa-tag"></i>';
+}
 
-// Create a Rentan modification (Tsubo) item for the lock modal (matches existing layout)
-function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
-    const item = document.createElement('div');
-    const action = replacement.action?.toLowerCase() || 'replace';
-    item.className = `text-replacement-lock-item dynamic-replacement-type dynamic-action-${action}`;
-    
-    // Add UC class if targetType is uc
-    if (replacement.targetType === 'uc' || (replacement.targetType === 'character' && replacement.targetField === 'uc')) {
-        item.classList.add('negative-prompt');
-    }
-    
-    item.dataset.globalIndex = globalIndex;
+function getTendaiCategoryClass(category) {
+    if (!category) return '';
+    return 'category-' + category.toLowerCase().replace(/\s+/g, '-');
+}
 
-    const actionDisplay = action === 'replace' ? 'Replace' : action === 'append' ? 'Append' : 'Delete';
-    const actionIcon = action === 'replace' ? 'fa-arrows-rotate' : action === 'append' ? 'fa-plus' : 'fa-trash';
-    
-    // Helper function to get category icon (based on schema-defined categories)
-    const getCategoryIconLocal = (category) => {
-        const categoryLower = (category || '').toLowerCase();
-        
-        // Schema-defined categories from dynamicGenerationHandlers.js:
-        // 'Weather', 'Time of Day', 'Seasonal', 'Holiday', 'Spelling', 'Dialog', 
-        // 'Conflict Resolution', 'Enhancement', 'Lighting', 'Atmosphere'
-        
-        if (categoryLower.includes('weather')) {
-            return '<i class="fas fa-cloud-rain"></i>';
-        } else if (categoryLower.includes('time of day') || categoryLower.includes('time')) {
-            return '<i class="fas fa-clock"></i>';
-        } else if (categoryLower.includes('seasonal')) {
-            return '<i class="fas fa-leaf"></i>';
-        } else if (categoryLower.includes('holiday')) {
-            return '<i class="fas fa-calendar-star"></i>';
-        } else if (categoryLower.includes('spelling')) {
-            return '<i class="fas fa-spell-check"></i>';
-        } else if (categoryLower.includes('text overlay') || categoryLower.includes('overlay')) {
-            return '<i class="fas fa-comment-dots"></i>';
-        } else if (categoryLower.includes('conflict resolution') || categoryLower.includes('conflict')) {
-            return '<i class="fas fa-wrench"></i>';
-        } else if (categoryLower.includes('enhancement') || categoryLower.includes('enhance')) {
-            return '<i class="fas fa-sparkles"></i>';
-        } else if (categoryLower.includes('lighting') || categoryLower.includes('light')) {
-            return '<i class="fas fa-lightbulb"></i>';
-        } else if (categoryLower.includes('atmosphere')) {
-            return '<i class="fas fa-cloud-sun"></i>';
-        } else if (categoryLower.includes('action verb') || categoryLower.includes('action')) {
-            return '<i class="fas fa-running"></i>';
-        } else if (categoryLower.includes('directive')) {
-            return '<i class="fas fa-bullseye"></i>';
-        }
-        
-        return '<i class="fas fa-tag"></i>';
-    };
-    
-    // Determine target label and icon (for location badge)
-    let targetLabel = '';
-    let locationIcon = '';
-    let locationColor = '';
-    if (replacement.targetType === 'prompt') {
-        targetLabel = 'Prompt';
-        locationIcon = '<i class="ri-code-block"></i>';
-        locationColor = '#81ffcb';
-    } else if (replacement.targetType === 'uc') {
-        targetLabel = 'Negative';
-        locationIcon = '<i class="ri-eraser-fill"></i>';
-        locationColor = '#ff8199';
-    } else if (replacement.targetType === 'character') {
-        targetLabel = `Character ${replacement.targetSource + 1} ${replacement.targetField === 'prompt' ? 'Prompt' : 'Negative'}`;
-        if (replacement.targetField === 'prompt') {
-            locationIcon = '<i class="ri-code-block"></i>';
-            locationColor = '#81ffcb';
-        } else {
-            locationIcon = '<i class="ri-eraser-fill"></i>';
-            locationColor = '#ff8199';
-        }
-    }
-
-    // Get action type color
-    // Anchor + mitigation context
-    const mitigations = Array.isArray(replacement.mitigations) ? replacement.mitigations : [];
-    const anchorDetails = replacement.anchor_details || null;
-    const anchorDisplayText = anchorDetails?.preview || replacement.anchor_text || '';
-    const anchorSourceLabel = anchorDetails?.source ? anchorDetails.source.replace(/_/g, ' ') : '';
-
-    // Get action type color
-    let actionColor = '#9ca3af'; // Default gray
-    if (action === 'replace') {
-        actionColor = '#ffb981'; // Orange for replace
-    } else if (action === 'append') {
-        actionColor = '#81ffcb'; // Cyan for append/add
-    } else if (action === 'delete') {
-        actionColor = '#ff8199'; // Pink/red for delete
-    }
-
-    // Get application method for type badge
-    let applicationMethod = 'Direct';
-    if (replacement.used_fallback || replacement.application_method === 'fallback') {
-        applicationMethod = 'Fallback';
-    } else if (replacement.used_alternative || replacement.application_method === 'alternative') {
-        applicationMethod = 'Alternative';
-    }
-
-    // Get application method icon and label for status icon
-    let statusIcon = '';
-    let statusClass = '';
-    let statusTitle = '';
-    let statusColor = '';
-    
-    // Check if replacement failed to apply
+function buildTendaiStatusIcon(replacement) {
     if (replacement.applied === false || replacement.error) {
-        statusIcon = '<i class="fas fa-times"></i>';
-        statusClass = 'status-failed';
-        statusTitle = replacement.error ? `Failed to apply: ${replacement.error}` : 'Failed to apply';
-        statusColor = '#ff8181';
-    } else if (replacement.used_fallback || replacement.application_method === 'fallback') {
-        statusIcon = '<i class="fas fa-exclamation-triangle"></i>';
-        statusClass = 'status-fallback';
-        statusTitle = 'Applied using fallback text';
-        statusColor = '#ffc981';
-    } else if (replacement.used_alternative || replacement.application_method === 'alternative') {
-        statusIcon = '<i class="fas fa-rotate"></i>';
-        statusClass = 'status-alternative';
-        statusTitle = 'Applied using alternative text';
-        statusColor = '#81d4ff';
-    } else if (replacement.applied !== false) {
-        // Only show success if not explicitly marked as failed
-        statusIcon = '<i class="fas fa-check"></i>';
-        statusClass = 'status-direct';
-        statusTitle = 'Applied successfully';
-        statusColor = '#81ffb3';
+        return {
+            statusIcon: '<i class="fas fa-times"></i>',
+            statusColor: '#ff8181',
+            statusTitle: replacement.error ? `Failed to apply: ${replacement.error}` : 'Failed to apply'
+        };
     }
-
-    // Helper function to convert category to CSS class name
-    const getCategoryClass = (category) => {
-        if (!category) return '';
-        return 'category-' + category.toLowerCase().replace(/\s+/g, '-');
-    };
-
-    // Check if locked
-    const isLocked = replacement.locked === true;
-    item.classList.toggle('selected', isLocked);
-
-    // Build the pattern display (matching existing layout)
-    let selectTextPattern = '';
-    if (replacement.select_text) {
-        selectTextPattern = `"${escapeHtml(replacement.select_text)}"`;
-    } else if (action === 'append') {
-        selectTextPattern = '<i>append to end</i>';
-    } else {
-        selectTextPattern = '<i>N/A</i>';
+    if (replacement.used_fallback || replacement.application_method === 'fallback') {
+        return {
+            statusIcon: '<i class="fas fa-exclamation-triangle"></i>',
+            statusColor: '#ffc981',
+            statusTitle: 'Applied using fallback text'
+        };
     }
-
-    // Build the replacement display
-    let replaceTextPattern = '';
-    if (action === 'delete') {
-        if (replacement.select_text) {
-            let selectText = replacement.select_text;
-            // Apply bias if replacement has segment_emphasis property
-            if (replacement.segment_emphasis !== null && replacement.segment_emphasis !== undefined && !hasEmphasisGroupForDisplay(selectText)) {
-                selectText = applyBiasToText(selectText, replacement.segment_emphasis);
-            }
-            replaceTextPattern = `"${escapeHtml(selectText)}"`;
-            if (replacement.count) {
-                replaceTextPattern += ` <span style="opacity: 0.7; font-size: 0.9em;">(${replacement.count} occurrence(s))</span>`;
-            } else {
-                replaceTextPattern += ` <span style="opacity: 0.7; font-size: 0.9em;">(all occurrences)</span>`;
-            }
-        } else {
-            replaceTextPattern = replacement.count 
-                ? `<i>Delete ${replacement.count} occurrence(s)</i>` 
-                : '<i>Delete all</i>';
-        }
-    } else {
-        if (replacement.replace_text) {
-            let replaceText = replacement.replace_text;
-            const replacementBias = getReplacementBias(replacement);
-            if (replacementBias !== null && !hasEmphasisGroupForDisplay(replaceText)) {
-                replaceText = applyBiasToText(replaceText, replacementBias);
-            }
-            replaceTextPattern = `"${escapeHtml(replaceText)}"`;
-        } else {
-            replaceTextPattern = '<i>N/A</i>';
-        }
+    if (replacement.used_alternative || replacement.application_method === 'alternative') {
+        return {
+            statusIcon: '<i class="fas fa-rotate"></i>',
+            statusColor: '#81d4ff',
+            statusTitle: 'Applied using alternative text'
+        };
     }
+    if (replacement.applied !== false) {
+        return {
+            statusIcon: '<i class="fas fa-check"></i>',
+            statusColor: '#81ffb3',
+            statusTitle: 'Applied successfully'
+        };
+    }
+    return { statusIcon: '', statusColor: '', statusTitle: '' };
+}
 
-    // Build status indicator badges
+function buildTendaiStatusIndicators(replacement, mitigations) {
     let statusIndicators = '';
     if (replacement.applied === false || replacement.error) {
         const errorMsg = replacement.error ? escapeHtml(replacement.error) : 'Failed to apply';
@@ -2032,16 +1908,116 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
             statusIndicators += `<span class="text-replacement-badge text-replacement-badge-info" title="Used alternative: ${escapeHtml(replacement.alternative_text_used)}"><i class="fas fa-rotate"></i> Alternative</span>`;
         }
     }
-    const wasConverted = mitigations.some(m => m.type === 'converted_to_append');
-    if (wasConverted) {
+    if (mitigations.some(m => m.type === 'converted_to_append')) {
         statusIndicators += `<span class="text-replacement-badge text-replacement-badge-info" title="Converted from replace to append due to overlapping anchor"><i class="fas fa-share"></i> Converted</span>`;
     }
+    return statusIndicators;
+}
 
-    // Validate if can be applied client-side
-    const canApply = validateDynamicReplacementCanApply(replacement);
+/**
+ * Shared Tendai row for Inspector (lock) or Compile to Prompts (include check).
+ * @param {object} replacement
+ * @param {number} globalIndex
+ * @param {{ mode?: 'lock'|'include', included?: boolean, applicationContext?: object, onIncludeToggle?: function }} options
+ */
+function createTendaiReplacementRow(replacement, globalIndex, options = {}) {
+    const mode = options.mode || 'lock';
+    const item = document.createElement('div');
+    const action = replacement.action?.toLowerCase() || 'replace';
+    item.className = `text-replacement-lock-item dynamic-replacement-type dynamic-action-${action}`;
 
-    // Create unique ID for feedback
-    const repId = `dynamic_lock_${globalIndex}_${Math.random().toString(36).substr(2, 9)}`;
+    if (replacement.targetType === 'uc' || (replacement.targetType === 'character' && replacement.targetField === 'uc')) {
+        item.classList.add('negative-prompt');
+    }
+
+    item.dataset.globalIndex = globalIndex;
+
+    const actionIcon = action === 'replace' ? 'fa-arrows-rotate' : action === 'append' ? 'fa-plus' : 'fa-trash';
+    let locationIcon = '<i class="ri-code-block"></i>';
+    let locationColor = '#81ffcb';
+    if (replacement.targetType === 'uc') {
+        locationIcon = '<i class="ri-eraser-fill"></i>';
+        locationColor = '#ff8199';
+    } else if (replacement.targetType === 'character' && replacement.targetField === 'uc') {
+        locationIcon = '<i class="ri-eraser-fill"></i>';
+        locationColor = '#ff8199';
+    }
+
+    let actionColor = '#9ca3af';
+    if (action === 'replace') actionColor = '#ffb981';
+    else if (action === 'append') actionColor = '#81ffcb';
+    else if (action === 'delete') actionColor = '#ff8199';
+
+    const applicationContext = options.applicationContext;
+    const canApply = mode === 'include'
+        ? validateReplacementAgainstResolved(replacement, applicationContext)
+        : validateDynamicReplacementCanApply(replacement);
+
+    const mitigations = Array.isArray(replacement.mitigations) ? replacement.mitigations : [];
+    const anchorDetails = replacement.anchor_details || null;
+    const anchorDisplayText = anchorDetails?.preview || replacement.anchor_text || '';
+    const anchorSourceLabel = anchorDetails?.source ? anchorDetails.source.replace(/_/g, ' ') : '';
+    const { statusIcon, statusColor, statusTitle } = buildTendaiStatusIcon(replacement);
+    const statusIndicators = buildTendaiStatusIndicators(replacement, mitigations);
+    const categoryClass = getTendaiCategoryClass(replacement.replacement_category);
+    const categoryIcon = getTendaiCategoryIcon(replacement.replacement_category);
+
+    let selectTextPattern = '';
+    if (replacement.select_text) {
+        selectTextPattern = `"${escapeHtml(replacement.select_text)}"`;
+    } else if (action === 'append') {
+        selectTextPattern = '<i>append to end</i>';
+    } else {
+        selectTextPattern = '<i>N/A</i>';
+    }
+
+    let replaceTextPattern = '';
+    if (action === 'delete') {
+        if (replacement.select_text) {
+            let selectText = replacement.select_text;
+            if (replacement.segment_emphasis !== null && replacement.segment_emphasis !== undefined && !hasEmphasisGroupForDisplay(selectText)) {
+                selectText = applyBiasToText(selectText, replacement.segment_emphasis);
+            }
+            replaceTextPattern = `"${escapeHtml(selectText)}"`;
+            if (replacement.count) {
+                replaceTextPattern += ` <span style="opacity: 0.7; font-size: 0.9em;">(${replacement.count} occurrence(s))</span>`;
+            } else {
+                replaceTextPattern += ` <span style="opacity: 0.7; font-size: 0.9em;">(all occurrences)</span>`;
+            }
+        } else {
+            replaceTextPattern = replacement.count
+                ? `<i>Delete ${replacement.count} occurrence(s)</i>`
+                : '<i>Delete all</i>';
+        }
+    } else if (replacement.replace_text) {
+        let rt = replacement.replace_text;
+        const bias = getReplacementBias(replacement);
+        if (bias !== null && !hasEmphasisGroupForDisplay(rt)) {
+            rt = applyBiasToText(rt, bias);
+        }
+        replaceTextPattern = `"${escapeHtml(rt)}"`;
+    } else {
+        replaceTextPattern = '<i>N/A</i>';
+    }
+
+    const isLocked = replacement.locked === true;
+    const isIncluded = options.included !== false;
+    item.classList.toggle('selected', mode === 'lock' ? isLocked : isIncluded);
+
+    const toggleBtnHtml = mode === 'include'
+        ? `<button type="button" class="text-replacement-lock-btn btn-secondary btn-small toggle-btn tendai-include-toggle" data-state="${isIncluded ? 'on' : 'off'}" data-global-index="${globalIndex}" title="Include in apply">
+                <i class="${isIncluded ? 'fas fa-check' : 'far fa-square'}"></i>
+           </button>`
+        : `<button type="button" class="text-replacement-lock-btn btn-secondary btn-small toggle-btn" data-state="${isLocked ? 'on' : 'off'}" data-global-index="${globalIndex}" title="Lock for AI Maintenance">
+                <i class="fas fa-lock"></i>
+           </button>`;
+
+    const applyWarning = mode === 'include' && !canApply
+        ? '<span class="text-replacement-badge text-replacement-badge-warning" title="May require expander/preset resolution on apply"><i class="fas fa-exclamation-triangle"></i></span>'
+        : '';
+
+    const showFindSection = action === 'append' ? !!replacement.select_text : action !== 'delete' || !replacement.select_text;
+    const showReplaceSection = action !== 'delete' || replacement.replace_text || replacement.select_text;
 
     const anchorSection = anchorDisplayText ? `
         <div class="text-replacement-full-value selectable">
@@ -2061,40 +2037,42 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
         </div>
     ` : '';
 
+    const referencesSection = replacement.references && replacement.references.length > 0 ? `
+        <div class="text-replacement-references" style="font-size: 0.7em;">
+            <div style="font-weight: 600; margin-bottom: var(--spacing-xs); opacity: 0.8;">
+                <i class="fas fa-book"></i> Research Sources:
+            </div>
+            ${replacement.references.map(ref => {
+                let refContent = '';
+                if (ref.type === 'web_search') {
+                    refContent = `<i class="fas fa-globe"></i> Web: <a href="${escapeHtml(ref.url || '#')}" target="_blank" style="color: var(--primary-color);">${escapeHtml(ref.query || 'Search')}</a>`;
+                } else if (ref.type === 'tag_search') {
+                    refContent = `<i class="fas fa-tags"></i> Tags: ${ref.tags ? ref.tags.map(t => escapeHtml(t)).join(', ') : escapeHtml(ref.query || '')}`;
+                } else if (ref.type === 'tag_description') {
+                    refContent = `<i class="fas fa-search"></i> ${escapeHtml(ref.description || ref.query || 'Tag description')}${ref.tags && ref.tags.length > 0 ? ` (${ref.tags.join(', ')})` : ''}`;
+                } else if (ref.type === 'tokenizer') {
+                    refContent = `<i class="fas fa-calculator"></i> ${escapeHtml(ref.description || 'Token analysis')}`;
+                }
+                return `<div style="padding: 2px 1em; opacity: 0.9;">${refContent}</div>`;
+            }).join('')}
+        </div>
+    ` : '';
+
     item.innerHTML = `
         <div class="text-replacement-lock-content">
             <div class="text-replacement-lock-info">
-                ${(action === 'append' ? !!replacement.select_text : action !== 'delete' || !replacement.select_text) ? `<div class="text-replacement-full-value selectable">
+                ${showFindSection ? `<div class="text-replacement-full-value selectable">
                     <div style="opacity: 0.7; font-size: 0.9em; margin-bottom: 4px;">Find:</div>
                     ${selectTextPattern}
-</div>` : ''}
-                ${action !== 'delete' || replacement.replace_text || replacement.select_text ? `<div class="text-replacement-full-value selectable">
+                </div>` : ''}
+                ${showReplaceSection ? `<div class="text-replacement-full-value selectable">
                     <div style="opacity: 0.7; font-size: 0.9em; margin-bottom: 4px;">${action === 'delete' ? 'Delete:' : (action === 'append' ? 'Insert:' : 'Replace with:')}</div>
                     ${replaceTextPattern}
                 </div>` : ''}
                 ${anchorSection}
                 ${mitigationSection}
-                ${replacement.reason ? `<div class="selectable reason-text">
-                    <i class="fas fa-quote-left"></i> ${escapeHtml(replacement.reason)}
-                </div>` : ''}
-                ${replacement.references && replacement.references.length > 0 ? `<div class="text-replacement-references" style="font-size: 0.7em;">
-                    <div style="font-weight: 600; margin-bottom: var(--spacing-xs); opacity: 0.8;">
-                        <i class="fas fa-book"></i> Research Sources:
-                    </div>
-                    ${replacement.references.map(ref => {
-                        let refContent = '';
-                        if (ref.type === 'web_search') {
-                            refContent = `<i class="fas fa-globe"></i> Web: <a href="${escapeHtml(ref.url || '#')}" target="_blank" style="color: var(--primary-color);">${escapeHtml(ref.query || 'Search')}</a>`;
-                        } else if (ref.type === 'tag_search') {
-                            refContent = `<i class="fas fa-tags"></i> Tags: ${ref.tags ? ref.tags.map(t => escapeHtml(t)).join(', ') : escapeHtml(ref.query || '')}`;
-                        } else if (ref.type === 'tag_description') {
-                            refContent = `<i class="fas fa-search"></i> ${escapeHtml(ref.description || ref.query || 'Tag description')}${ref.tags && ref.tags.length > 0 ? ` (${ref.tags.join(', ')})` : ''}`;
-                        } else if (ref.type === 'tokenizer') {
-                            refContent = `<i class="fas fa-calculator"></i> ${escapeHtml(ref.description || 'Token analysis')}`;
-                        }
-                        return `<div style="padding: 2px 1em; opacity: 0.9;">${refContent}</div>`;
-                    }).join('')}
-                </div>` : ''}
+                ${replacement.reason ? `<div class="selectable reason-text"><i class="fas fa-quote-left"></i> ${escapeHtml(replacement.reason)}</div>` : ''}
+                ${referencesSection}
             </div>
             <div class="text-replacement-lock-row">
                 <div class="text-replacement-lock-badges">
@@ -2107,109 +2085,98 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
                             </span>
                         ` : ''}
                         <span class="badge-icon-type" style="color: ${actionColor};"><i class="fas ${actionIcon}"></i></span>
-                        ${statusIcon ? `<span class="badge-icon-status" style="color: ${statusColor};" title="${statusTitle}">${statusIcon}</span>` : ''}
+                        ${statusIcon ? `<span class="badge-icon-status" style="color: ${statusColor};" title="${escapeHtml(statusTitle)}">${statusIcon}</span>` : ''}
                     </span>
                     ${statusIndicators}
+                    ${applyWarning}
                 </div>
                 <div class="text-replacement-lock-pattern">
-                    ${replacement.replacement_category ? `<span class="text-replacement-badge text-replacement-badge-category ${getCategoryClass(replacement.replacement_category)}">${getCategoryIconLocal(replacement.replacement_category)} ${escapeHtml(replacement.replacement_category)}</span>` : ''}
+                    ${replacement.replacement_category ? `<span class="text-replacement-badge text-replacement-badge-category ${categoryClass}">${categoryIcon} ${escapeHtml(replacement.replacement_category)}</span>` : ''}
                 </div>
                 <div class="text-replacement-lock-actions">
-                    <button type="button" class="text-replacement-lock-btn btn-secondary btn-small toggle-btn" data-state="${isLocked ? 'on' : 'off'}" data-global-index="${globalIndex}" title="Lock for AI Maintenance">
-                        <i class="fas fa-lock"></i>
-                    </button>
+                    ${toggleBtnHtml}
                 </div>
             </div>
         </div>
     `;
 
-    const lockBtn = item.querySelector('.text-replacement-lock-btn');
-    if (lockBtn) {
-        lockBtn.addEventListener('click', (e) => {
+    const toggleBtn = item.querySelector('.text-replacement-lock-btn');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', (e) => {
             e.preventDefault();
-            toggleDynamicReplacementLockInModal(globalIndex, lockBtn, item);
+            if (mode === 'include') {
+                const newState = toggleBtn.getAttribute('data-state') !== 'on';
+                toggleBtn.setAttribute('data-state', newState ? 'on' : 'off');
+                const icon = toggleBtn.querySelector('i');
+                if (icon) icon.className = newState ? 'fas fa-check' : 'far fa-square';
+                item.classList.toggle('selected', newState);
+                if (options.onIncludeToggle) options.onIncludeToggle(globalIndex, newState);
+            } else {
+                toggleDynamicReplacementLockInModal(globalIndex, toggleBtn, item);
+            }
         });
     }
-    // Add context menu to the item
-    if (contextMenu) {
+
+    if (mode === 'lock' && contextMenu) {
+        const canApplyLock = validateDynamicReplacementCanApply(replacement);
         contextMenu.attachToElement(item, {
-            sections: [
-                
-                {
-                    type: 'icons',
-                    position: 'outer',
-                    icons: [
-                        {
-                            tooltip: 'Toggle Lock Replacement',
-                            icon: 'fas fa-lock',
-                            action: 'lock',
-                            keepMenuOpen: true,
-                            showIndicator: true,
-                            loadfn: (item, target) => {
-                                item.checked = replacement.locked === true;
-                            }
-                        },
-                        {
-                            tooltip: 'Copy Replacement Value',
-                            icon: 'nai-clipboard',
-                            action: 'copy-value'
-                        },
-                        {
-                            tooltip: 'Apply Replacement to Prompt',
-                            icon: 'fas fa-pen-field',
-                            action: 'apply-prompt',
-                            disabled: !canApply
-                        },
-                    ]
-                },
-                {
+            sections: [{
+                type: 'icons',
+                position: 'outer',
+                icons: [
+                    {
+                        tooltip: 'Toggle Lock Replacement',
+                        icon: 'fas fa-lock',
+                        action: 'lock',
+                        keepMenuOpen: true,
+                        showIndicator: true,
+                        loadfn: (menuItem) => {
+                            menuItem.checked = replacement.locked === true;
+                        }
+                    },
+                    {
+                        tooltip: 'Copy Replacement Value',
+                        icon: 'nai-clipboard',
+                        action: 'copy-value'
+                    },
+                    {
+                        tooltip: 'Apply Replacement to Prompt',
+                        icon: 'fas fa-pen-field',
+                        action: 'apply-prompt',
+                        disabled: !canApplyLock
+                    }
+                ]
+            }, {
                 type: 'list',
                 items: [
-                    {
-                        text: 'Set Emphasis',
-                        icon: 'fas fa-sliders-h',
-                        action: 'set-emphasis',
-                    },
-                    {
-                        text: 'Report Issue',
-                        icon: 'fas fa-flag',
-                        action: 'report-issue',
-                        className: 'text-danger',
-                    },
-                    {
-                        text: 'Delete',
-                        icon: 'fas fa-trash',
-                        action: 'delete-replacement',
-                        className: 'text-danger',
-                    },
+                    { text: 'Set Emphasis', icon: 'fas fa-sliders-h', action: 'set-emphasis' },
+                    { text: 'Report Issue', icon: 'fas fa-flag', action: 'report-issue', className: 'text-danger' },
+                    { text: 'Delete', icon: 'fas fa-trash', action: 'delete-replacement', className: 'text-danger' }
                 ]
             }],
-            onAction: (actionName, target) => {
+            onAction: (actionName) => {
                 if (actionName === 'apply-prompt') {
                     applyDynamicReplacementFromLockModal(globalIndex);
+                } else if (actionName === 'lock') {
+                    toggleDynamicReplacementLockInModal(globalIndex, toggleBtn, item);
                 } else if (actionName === 'copy-value') {
-                    // Copy replacement value or replace_text
-                    let textToCopy = replacement.value || replacement.replace_text || '';
-                    if (textToCopy && navigator.clipboard && navigator.clipboard.writeText) {
-                        navigator.clipboard.writeText(textToCopy).then(() => {
+                    const textToCopy = replacement.value || replacement.replace_text || replacement.select_text || '';
+                    if (textToCopy) {
+                        copyTextToClipboard(textToCopy).then(() => {
                             showGlassToast('success', null, 'Copied to clipboard', false, 2000, '<i class="nai-clipboard"></i>');
-                        }).catch(err => {
-                            console.error('Failed to copy:', err);
-                            showGlassToast('error', null, 'Failed to copy to clipboard', false, 2000, '<i class="fas fa-exclamation-triangle"></i>');
                         });
                     }
-                } else if (actionName === 'report-issue') {
-                    const selectText = feedbackBtn.dataset.selectText;
-                    const replaceText = feedbackBtn.dataset.replaceText;
-                    const action = feedbackBtn.dataset.action.toLowerCase();
-                    const reason = feedbackBtn.dataset.reason;
-                    showDirectorFeedbackModal(selectText, replaceText, action, reason);
-                } else if (actionName === 'lock') {
-                    toggleDynamicReplacementLockInModal(globalIndex, lockBtn, item);
                 } else if (actionName === 'delete-replacement') {
                     deleteDynamicReplacementFromLockModal(globalIndex);
                 } else if (actionName === 'set-emphasis') {
                     setDynamicReplacementEmphasis(globalIndex, item);
+                } else if (actionName === 'report-issue') {
+                    showDirectorFeedbackModal(
+                        replacement.select_text,
+                        replacement.replace_text,
+                        replacement.action,
+                        replacement.reason
+                    );
                 }
             }
         });
@@ -2217,6 +2184,13 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
 
     return item;
 }
+
+
+// Create a Rentan modification (Tsubo) item for the lock modal (matches existing layout)
+function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
+    return createTendaiReplacementRow(replacement, globalIndex, { mode: 'lock' });
+}
+
 
 // Helper function to find replacement by global index
 function findDynamicReplacementByIndex(globalIndex) {
@@ -2258,7 +2232,7 @@ function findDynamicReplacementByIndex(globalIndex) {
 }
 
 // Apply Rentan modification (Tendai) from lock modal
-function applyDynamicReplacementFromLockModal(globalIndex) {
+async function applyDynamicReplacementFromLockModal(globalIndex) {
     if (!window.dynamicGenerationData?.compiled_prompt?.text_replacements) {
         showGlassToast('error', null, 'No Tendai Modifications available', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
         return;
@@ -2273,7 +2247,6 @@ function applyDynamicReplacementFromLockModal(globalIndex) {
 
     const { replacement, arrayRef, arrayIndex, metadata } = found;
 
-    // Add targetType metadata to the replacement object
     const replacementWithMetadata = {
         ...replacement,
         targetType: metadata.type,
@@ -2281,27 +2254,41 @@ function applyDynamicReplacementFromLockModal(globalIndex) {
         targetField: metadata.targetField
     };
 
-    // Apply the replacement using client-side logic
+    const applicationContext = window.dynamicGenerationData?.compiled_prompt?.application_context
+        || window._lastCompileToPromptsApplicationContext;
+
+  if (applicationContext?.streams && typeof applyTendaiToEditor === 'function') {
+        let requestBody = null;
+        if (typeof collectManualFormValues === 'function' && typeof addSharedFieldsToRequestBody === 'function') {
+            const values = collectManualFormValues();
+            requestBody = { model: values.model };
+            addSharedFieldsToRequestBody(requestBody, values);
+        }
+        const result = await applyTendaiToEditor([replacementWithMetadata], applicationContext, { requestBody });
+        if (result.success) {
+            replacement.applied = true;
+            arrayRef.splice(arrayIndex, 1);
+            if (typeof renderTextReplacementLockList === 'function') renderTextReplacementLockList();
+            if (typeof updateMainLockButtonState === 'function') updateMainLockButtonState();
+            showGlassToast('success', null, 'Applied replacement and removed from list', false, 3000, '<i class="fas fa-check"></i>');
+        } else {
+            showGlassToast('error', null, result.error || 'Failed to apply replacement', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+        }
+        return;
+    }
+
     const result = applyDynamicReplacementClientSide(replacementWithMetadata);
     
     if (result.success) {
-        // Mark as applied
         replacement.applied = true;
         replacement.application_method = result.method;
-
-        // Remove from the array
         arrayRef.splice(arrayIndex, 1);
-
-        // Re-render the lock modal list
         if (typeof renderTextReplacementLockList === 'function') {
             renderTextReplacementLockList();
         }
-
-        // Update the main lock button state
         if (typeof updateMainLockButtonState === 'function') {
             updateMainLockButtonState();
         }
-
         showGlassToast('success', null, `Applied replacement${result.method !== 'direct' ? ` (using ${result.method})` : ''} and removed from list`, false, 3000, '<i class="fas fa-check"></i>');
     } else {
         showGlassToast('error', null, result.error || 'Failed to apply replacement', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
@@ -2309,118 +2296,67 @@ function applyDynamicReplacementFromLockModal(globalIndex) {
 }
 
 // Compile all Rentan modifications (Tendai) into prompt fields and disable dynamic generation
-function compileAllTendaiReplacements() {
+async function compileAllTendaiReplacements() {
     if (!window.dynamicGenerationData?.compiled_prompt?.text_replacements) {
         showGlassToast('warning', null, 'No Tendai Modifications available to compile', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
         return;
     }
 
     const textReplacements = window.dynamicGenerationData.compiled_prompt.text_replacements;
-    const replacementQueue = [];
+    const selected = collectTendaiReplacementQueue(textReplacements).map(({ replacement, targetType, targetSource, targetField }) => ({
+        ...replacement,
+        targetType,
+        targetSource,
+        targetField
+    }));
 
-    if (Array.isArray(textReplacements.prompt)) {
-        textReplacements.prompt.forEach((replacement) => {
-            replacementQueue.push({
-                replacement,
-                targetType: 'prompt',
-                targetSource: 'base'
-            });
-        });
-    }
-
-    if (Array.isArray(textReplacements.uc)) {
-        textReplacements.uc.forEach((replacement) => {
-            replacementQueue.push({
-                replacement,
-                targetType: 'uc',
-                targetSource: 'base'
-            });
-        });
-    }
-
-    if (Array.isArray(textReplacements.character_prompts)) {
-        textReplacements.character_prompts.forEach((characterPrompt, characterIndex) => {
-            if (Array.isArray(characterPrompt?.prompt)) {
-                characterPrompt.prompt.forEach((replacement) => {
-                    replacementQueue.push({
-                        replacement,
-                        targetType: 'character',
-                        targetSource: characterIndex,
-                        targetField: 'prompt'
-                    });
-                });
-            }
-
-            if (Array.isArray(characterPrompt?.uc)) {
-                characterPrompt.uc.forEach((replacement) => {
-                    replacementQueue.push({
-                        replacement,
-                        targetType: 'character',
-                        targetSource: characterIndex,
-                        targetField: 'uc'
-                    });
-                });
-            }
-        });
-    }
-
-    if (replacementQueue.length === 0) {
+    if (!selected.length) {
         showGlassToast('warning', null, 'No Tendai Modifications available to compile', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
         return;
     }
 
-    // Match server behavior: apply replaces/deletes first, then appends (per target stream).
-    // Applying appends too early can shift replacement anchors and cause output divergence.
-    const replacementStreams = new Map();
-    replacementQueue.forEach((entry) => {
-        const streamKey = `${entry.targetType}:${entry.targetSource ?? 'base'}:${entry.targetField ?? 'none'}`;
-        if (!replacementStreams.has(streamKey)) {
-            replacementStreams.set(streamKey, []);
-        }
-        replacementStreams.get(streamKey).push(entry);
-    });
-
-    const orderedQueue = [];
-    replacementStreams.forEach((entries) => {
-        const phaseReplaceDelete = entries.filter(({ replacement }) => {
-            const action = (replacement?.action || 'replace').toLowerCase();
-            return action !== 'append';
-        });
-        const phaseAppend = entries.filter(({ replacement }) => {
-            const action = (replacement?.action || 'replace').toLowerCase();
-            return action === 'append';
-        });
-        orderedQueue.push(...phaseReplaceDelete, ...phaseAppend);
-    });
+    const applicationContext = window.dynamicGenerationData?.compiled_prompt?.application_context
+        || window._lastCompileToPromptsApplicationContext;
 
     let successCount = 0;
     let failedCount = 0;
 
-    orderedQueue.forEach(({ replacement, targetType, targetSource, targetField }) => {
-        const preparedReplacement = {
-            ...replacement,
-            // Server translates <br> to newlines before applying replacements.
-            replace_text: typeof replacement?.replace_text === 'string'
-                ? replacement.replace_text.replace(/<br\s*\/?>/gi, '\n')
-                : replacement?.replace_text,
-            alternative_text: typeof replacement?.alternative_text === 'string'
-                ? replacement.alternative_text.replace(/<br\s*\/?>/gi, '\n')
-                : replacement?.alternative_text,
-            targetType,
-            targetSource,
-            targetField
-        };
-
-        const result = applyDynamicReplacementClientSide(preparedReplacement);
-
-        if (result.success) {
-            successCount++;
-        } else {
-            failedCount++;
+    if (applicationContext?.streams && typeof applyTendaiToEditor === 'function') {
+        let requestBody = null;
+        if (typeof collectManualFormValues === 'function' && typeof addSharedFieldsToRequestBody === 'function') {
+            const values = collectManualFormValues();
+            requestBody = { model: values.model };
+            addSharedFieldsToRequestBody(requestBody, values);
         }
-    });
+        const result = await applyTendaiToEditor(selected, applicationContext, { requestBody });
+        successCount = result.applied || 0;
+        failedCount = result.failed || 0;
+        if (!result.success && failedCount > 0) {
+            showGlassToast('warning', null, result.error || 'Some replacements could not be applied', false, 4500, '<i class="fas fa-triangle-exclamation"></i>');
+        }
+    } else {
+        const replacementQueue = collectTendaiReplacementQueue(textReplacements);
+        const orderedQueue = orderReplacementQueue(replacementQueue);
 
-    // Clear compiled dynamic replacements and disable dynamic generation for upcoming requests.
+        orderedQueue.forEach(({ replacement, targetType, targetSource, targetField }) => {
+            const preparedReplacement = {
+                ...replacement,
+                replace_text: typeof replacement?.replace_text === 'string'
+                    ? replacement.replace_text.replace(/<br\s*\/?>/gi, '\n')
+                    : replacement?.replace_text,
+                alternative_text: typeof replacement?.alternative_text === 'string'
+                    ? replacement.alternative_text.replace(/<br\s*\/?>/gi, '\n')
+                    : replacement?.alternative_text,
+                targetType,
+                targetSource,
+                targetField
+            };
+            const result = applyDynamicReplacementClientSide(preparedReplacement);
+            if (result.success) successCount++;
+            else failedCount++;
+        });
+    }
+
     delete window.dynamicGenerationData;
 
     const dynamicGenerationToggle = document.getElementById('dynamicGenerationToggleBtn');
@@ -2434,7 +2370,7 @@ function compileAllTendaiReplacements() {
         dynamicGenerationSection.classList.add('hidden');
     }
     if (dynamicCarouselElement) {
-        dynamicCarouselElement.setAttribute('data-use-cache', 'false');
+        dynamicCarouselElement.setAttribute('data-use-cache', 'true');
     }
     // clearDynamicGenerationLockState: public/scripts/comp/dynamicGenerationLockState.js
     clearDynamicGenerationLockState();

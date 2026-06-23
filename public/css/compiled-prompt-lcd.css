@@ -1,0 +1,294 @@
+/* Compiled prompt LCD cards + context layout */
+.dynamic-replacements-context-cards {
+    gap: var(--spacing-md);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    flex-wrap: nowrap;
+}
+
+/* LCD Data Visualization Cards */
+.lcd-data-section {
+    margin: var(--spacing-lg) 0;
+}
+
+.lcd-section-title {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--spacing-md);
+    padding-bottom: var(--spacing-sm);
+    border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.lcd-section-title i {
+    color: rgba(100, 200, 255, 0.8);
+}
+
+.lcd-cards-grid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.lcd-data-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--border-radius-md);
+    overflow: hidden;
+    transition: var(--transition-glass-surface);
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .lcd-data-card:hover:not(:disabled) {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: rgba(255, 255, 255, 0.12);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    }
+}
+
+.lcd-card-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md);
+    background: rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.lcd-card-header i {
+    color: rgba(100, 200, 255, 0.8);
+    font-size: 1.1rem;
+}
+
+.lcd-card-body {
+    padding: var(--spacing-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.lcd-data-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-xs) 0;
+    min-height: 32px;
+}
+
+.lcd-data-label {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.6);
+    font-weight: 500;
+    flex-shrink: 0;
+    min-width: 120px;
+}
+
+.lcd-data-value {
+    font-size: 0.95rem;
+    color: rgba(255, 255, 255, 0.9);
+    text-align: right;
+}
+
+.lcd-data-value.highlight {
+    color: rgba(100, 200, 255, 1);
+    font-weight: 600;
+    font-size: 1.05rem;
+}
+
+.lcd-progress-container {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    flex: 1;
+    justify-content: flex-end;
+}
+
+.lcd-progress-bar {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+    flex: 1;
+    max-width: 200px;
+    position: relative;
+}
+
+.lcd-progress-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.5s ease;
+    background: linear-gradient(90deg, rgba(100, 200, 255, 0.6), rgba(100, 200, 255, 0.9));
+}
+
+.lcd-progress-fill.season-progress {
+    background: linear-gradient(90deg, rgba(150, 200, 120, 0.6), rgba(150, 200, 120, 0.9));
+}
+
+.lcd-progress-fill.light-level {
+    background: linear-gradient(90deg, rgba(255, 220, 100, 0.6), rgba(255, 220, 100, 0.9));
+}
+
+.lcd-progress-fill.cloud-coverage {
+    background: linear-gradient(90deg, rgba(150, 150, 150, 0.6), rgba(150, 150, 150, 0.9));
+}
+
+.lcd-progress-fill.visibility {
+    background: linear-gradient(90deg, rgba(100, 180, 255, 0.6), rgba(100, 180, 255, 0.9));
+}
+
+.lcd-progress-fill.solar-radiation {
+    background: linear-gradient(90deg, rgba(255, 180, 50, 0.6), rgba(255, 140, 0, 0.9));
+}
+
+.lcd-progress-bar.sun-position {
+    background: linear-gradient(90deg,
+            rgba(50, 50, 100, 0.3) 0%,
+            rgba(255, 220, 100, 0.3) 50%,
+            rgba(50, 50, 100, 0.3) 100%);
+    position: relative;
+}
+
+/* Noon/peak marker at center */
+.lcd-progress-bar.sun-position::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: rgba(255, 220, 100, 0.4);
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+.lcd-progress-marker {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 4px;
+    height: 14px;
+    background: rgba(255, 220, 100, 1);
+    border-radius: 2px;
+    box-shadow: 0 0 8px rgba(255, 220, 100, 0.8);
+    transition: left 0.5s ease;
+}
+
+.lcd-note {
+    margin-top: var(--spacing-sm);
+    padding: var(--spacing-sm);
+    background: rgba(100, 200, 255, 0.05);
+    border-left: 3px solid rgba(100, 200, 255, 0.5);
+    border-radius: 4px;
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.7);
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-xs);
+    line-height: 1.5;
+}
+
+.lcd-note i {
+    color: rgba(100, 200, 255, 0.8);
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+/* Card type variations */
+.lcd-data-card.time-data-card .lcd-card-header {
+    background: rgba(100, 200, 255, 0.05);
+}
+
+.lcd-data-card.weather-data-card .lcd-card-header {
+    background: rgba(100, 180, 255, 0.05);
+}
+
+.lcd-data-card.seasonal-card .lcd-card-header {
+    background: rgba(150, 200, 120, 0.05);
+}
+
+#expansionCompiledPromptDialog {
+    width: 560px;
+}
+
+#expansionCompiledPromptDialog .prompt-tabs {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+}
+
+#expansionCompiledPromptDialog .prompt-tabs .tab-content {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+#expansionCompiledPromptDialog .prompt-tabs .tab-content > .tab-pane.form-section-scroll {
+    min-height: 0;
+    flex: 1;
+}
+
+#expansionCompiledPromptDialog .prompt-tabs .tab-content > .tab-pane.form-section-scroll.active {
+    display: flex;
+    flex-direction: column;
+}
+
+#expansionCompiledPromptDialog .character-prompt-textarea-container {
+    min-height: 1rem;
+}
+
+#expansionCompiledPromptDialog .prompt-tabs .tab-header {
+    justify-content: flex-start;
+    margin: var(--spacing-sm) var(--spacing-sm) 0;
+}
+
+#expansionCompiledPromptDialog .prompt-tabs .gallery-toggle-group {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+    max-width: 200px;
+}
+
+#expansionCompiledPromptDialog .prompt-tabs .gallery-toggle-group .gallery-toggle-slider {
+    width: calc(50% - 2px);
+}
+
+#expansionCompiledPromptDialog .prompt-tabs .gallery-toggle-group[data-active="uc"] .gallery-toggle-slider {
+    transform: translateX(100%);
+}
+
+#expansionCompiledPromptDialog .prompt-tabs .gallery-toggle-group[data-active="prompt"] .gallery-toggle-slider {
+    background: rgba(174, 255, 171, 0.3);
+    border-color: rgb(211 255 203 / 30%);
+}
+
+#expansionCompiledPromptDialog .prompt-tabs .gallery-toggle-group[data-active="prompt"] .gallery-toggle-btn.active {
+    color: rgb(229, 255, 228);
+}
+
+#expansionCompiledPromptDialog .prompt-tabs .gallery-toggle-group[data-active="uc"] .gallery-toggle-slider {
+    background: rgb(255 25 25 / 30%);
+    border-color: rgb(250 82 82 / 30%);
+}
+
+#expansionCompiledPromptDialog .prompt-tabs .gallery-toggle-group[data-active="uc"] .gallery-toggle-btn.active {
+    color: rgb(255 228 228);
+}
+
+#expansionCompiledPromptDialog .prompt-textarea-container {
+    min-height: 12rem;
+}
+
+#expansionCompiledPromptDialog {
+    width: 560px;
+}

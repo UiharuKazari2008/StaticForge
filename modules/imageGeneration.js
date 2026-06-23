@@ -8,8 +8,31 @@ const { z } = require('zod');
 let __runtimeGr = null;
 function bindRuntimeGlobalResources(globalResources) { __runtimeGr = globalResources; }
 
+function sanitizeDynamicGenerationForForge(dg) {
+    if (dg === undefined || dg === null) return dg;
+    const dgForForge = { ...dg };
+    delete dgForForge.novel_segment;
+    delete dgForForge.novel_note_id;
+    delete dgForForge.novel_story_cursor_line;
+    delete dgForForge.novel_resume_advancement;
+    return dgForForge;
+}
+
+function mergeNovelForgeFieldsFromOpts(forgeData, opts) {
+    if (!forgeData || !opts) return;
+    if (opts.novel_note_id !== undefined) forgeData.novel_note_id = opts.novel_note_id;
+    if (opts.novel_story_cursor_line !== undefined) forgeData.novel_story_cursor_line = opts.novel_story_cursor_line;
+    if (opts.dynamic_generation !== undefined) {
+        forgeData.dynamic_generation = sanitizeDynamicGenerationForForge(opts.dynamic_generation);
+        if (opts.dynamic_generation?.compiled_prompt?.generated_image_name) {
+            forgeData.generated_image_name = opts.dynamic_generation.compiled_prompt.generated_image_name;
+        }
+    }
+}
+
 // Import modules
 const { expandShorthandTags, cleanupPromptSyntax, applyDynamicReplacements, generatePromptHash, generateRequestHash, generateDirectiveHash, processDynamicGenerationCore, calculateDynamicExpiration, compileContext, formatContextForCarousel } = require('./dynamicGenerationHandlers');
+const { buildPromptApplicationContext, mapProcessedToRaw } = require('./promptApplicationContext');
 
 const { 
     getImageDimensions, 
@@ -437,27 +460,50 @@ function applyBiasToText(input, bias) {
 }
 
 /**
- * Invert NAI-style numeric emphasis prefixes for inline prompt-negative (each `N::` -> opposite sign, 1 decimal).
+ * Force every NAI numeric emphasis prefix in inline prompt-negative to a negative weight (1 decimal).
+ * Positive and already-negative values use absolute magnitude, then apply a negative sign.
  */
-function invertNumericEmphasisPrefixes(input) {
+function ensureNegativeEmphasisPrefixes(input) {
     if (!input || typeof input !== 'string') return input;
     return input.replace(/(-?\d+\.?\d*)::/g, (match, num) => {
         const v = parseFloat(num);
-        const neg = Math.round(-v * 10) / 10;
-        return `${neg.toFixed(1)}::`;
+        let abs = Math.abs(Math.round(v * 10) / 10);
+        if (abs === 0) abs = 1.0;
+        return `-${abs.toFixed(1)}::`;
     });
 }
 
 /**
- * Build -1::...:: block from processed inline prompt-negative fragment.
+ * True when phrase is a complete NAI weight group (leading N:: ... ::).
+ */
+function isCompleteWeightGroupPhrase(phrase) {
+    return /^-?[\d]+(?:\.\d*)?::[\s\S]+::$/.test((phrase || '').trim());
+}
+
+/**
+ * Build merged inline prompt-negative block: each comma-separated phrase is handled
+ * independently — plain text gets -1::...::, weight groups keep structure with negative weights.
  */
 function buildPromptNegativeBlock(processedFragment) {
-    const invertedFrag = invertNumericEmphasisPrefixes(processedFragment || '').trim();
-    if (!invertedFrag) return null;
-    if (/^-?\d+(\.\d*)?::/.test(invertedFrag)) {
-        return invertedFrag;
+    const frag = (processedFragment || '').trim();
+    if (!frag) return null;
+
+    const phrases = splitUCPhrases(frag);
+    if (phrases.length === 0) return null;
+
+    const blocks = [];
+    for (const phrase of phrases) {
+        const trimmed = phrase.trim();
+        if (!trimmed) continue;
+        if (isCompleteWeightGroupPhrase(trimmed)) {
+            blocks.push(ensureNegativeEmphasisPrefixes(trimmed));
+        } else {
+            blocks.push(`-1::${ensureNegativeEmphasisPrefixes(trimmed)}::`);
+        }
     }
-    return `-1::${invertedFrag}::`;
+
+    if (blocks.length === 0) return null;
+    return blocks.join(', ');
 }
 
 function getCharacterInputPromptNegative(char) {
@@ -1404,6 +1450,68 @@ const applyCachedTextReplacements = (compiledPrompt, processedPrompt, processedN
     }
 };
 
+function stashPromptApplicationBaseline(body, preset, data) {
+    const markerRegex = new RegExp(`\\s*,?\\s*${data.APPEND_MARKER}\\s*,?\\s*`, 'g');
+    const stripAppendMarker = (text) => {
+        if (typeof text !== 'string') return text;
+        return text
+            .replace(markerRegex, ', ')
+            .replace(/,\s*,+/g, ', ')
+            .replace(/^,\s*|\s*,$/g, '')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+    };
+
+    const {
+        rawPrompt,
+        rawNegativePrompt,
+        rawInputPromptNegative,
+        processedPrompt,
+        processedNegativePrompt,
+        processedCharacterPrompts,
+        appliedPresetControls,
+        allTextReplacementSeeds,
+        processedPromptNegativeFragment
+    } = data;
+
+    const merged = applyAllInputPromptNegativeMerges(
+        processedPrompt,
+        processedPromptNegativeFragment,
+        processedCharacterPrompts
+    );
+    const promptMerged = merged.processedPrompt;
+    const charsMerged = merged.processedCharacterPrompts;
+
+    const promptForAI = stripAppendMarker(promptMerged);
+    const ucForAI = stripAppendMarker(processedNegativePrompt);
+    const characterPromptsForAI = (charsMerged && Array.isArray(charsMerged))
+        ? charsMerged.map(char => ({
+            ...char,
+            prompt: stripAppendMarker(char.prompt),
+            uc: stripAppendMarker(char.uc)
+        }))
+        : [];
+
+    body._promptApplicationBaseline = {
+        rawPrompt,
+        rawNegativePrompt,
+        rawInputPromptNegative: rawInputPromptNegative || '',
+        rawCharacterPrompts: (body.allCharacterPrompts || preset?.allCharacterPrompts || []).map(c => ({
+            prompt: c.prompt || '',
+            uc: c.uc || '',
+            input_prompt_negative: c.input_prompt_negative || c.prompt_negative || ''
+        })),
+        promptForAI,
+        ucForAI,
+        characterPromptsForAI: characterPromptsForAI.map(c => ({
+            prompt: c.prompt || '',
+            uc: c.uc || ''
+        })),
+        appliedPresetControls,
+        text_replacements_seed: allTextReplacementSeeds
+    };
+}
+
 const buildOptions = async (globalResources, body, preset = null, queryParams = {}, ws = null, handler = null, wsServer = null, stageData = null) => {
     bindRuntimeGlobalResources(globalResources);
     const referenceMetadataDb = __runtimeGr.getReferenceMetadataDatabase();
@@ -2274,6 +2382,21 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 if (canUseCache) {
                     console.log(`${isCacheLocked ? '🔒' : '📝'} ${isCacheLocked ? 'Locked' : 'Cached'} prompt available - attempting to apply text transformations`);
 
+                    if (!body._promptApplicationBaseline) {
+                        stashPromptApplicationBaseline(body, preset, {
+                            rawPrompt,
+                            rawNegativePrompt,
+                            rawInputPromptNegative,
+                            processedPrompt,
+                            processedNegativePrompt,
+                            processedCharacterPrompts,
+                            appliedPresetControls,
+                            allTextReplacementSeeds,
+                            processedPromptNegativeFragment,
+                            APPEND_MARKER
+                        });
+                    }
+
                     // Check if request parameters changed
                     if (compiledPrompt.request_hash !== currentRequestHash) {
                         console.log('🔄 Request hash modified, invalidating cache');
@@ -2418,6 +2541,14 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             if (hasValidCache) {
                 __runtimeGr.getLogger().detailed('✅ Using cached prompt');
 
+                if (body._promptApplicationBaseline && dynamic_generation?.compiled_prompt) {
+                    const appCtx = buildPromptApplicationContext(body._promptApplicationBaseline);
+                    dynamic_generation.compiled_prompt.application_context = appCtx;
+                    if (!dynamic_generation.compiled_prompt.applied_preset_controls) {
+                        dynamic_generation.compiled_prompt.applied_preset_controls = appCtx.applied_preset_controls;
+                    }
+                }
+
                 // Send context phase progress update even when using cache, so overlay shows correctly
                 if (ws && handler && contextForAI) {
                     const carouselData = formatContextForCarousel(contextForAI);
@@ -2480,7 +2611,8 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 
                 const needsPreview = initialPromptAware &&
                                      !hasValidPreview &&
-                                     !body.stageIndex; // Only generate preview for initial generation, not pipeline stages
+                                     !body.stageIndex &&
+                                     !body.compile_only; // Only generate preview for initial generation, not pipeline stages
                 
                 if (needsPreview) {
                     console.log('🖼️ Initial Prompt Aware enabled - generating preview first');
@@ -2623,6 +2755,19 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                         uc: stripAppendMarker(char.uc)
                     }))
                     : [];
+
+                stashPromptApplicationBaseline(body, preset, {
+                    rawPrompt,
+                    rawNegativePrompt,
+                    rawInputPromptNegative,
+                    processedPrompt,
+                    processedNegativePrompt,
+                    processedCharacterPrompts,
+                    appliedPresetControls,
+                    allTextReplacementSeeds,
+                    processedPromptNegativeFragment,
+                    APPEND_MARKER
+                });
                 
                 while (chainRetries < maxChainRetries) {
                     try {
@@ -2896,7 +3041,11 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                         usage: dynamicResult?.usage !== undefined ? dynamicResult.usage : null, // Save structured usage data with phase1 and phase2 breakdowns
                         apiCalls: dynamicResult?.apiCalls || null, // Save detailed API calls array for granular tracking
                         published_analysis: dynamicResult?.published_analysis || null,
-                        replacement_plan: dynamicResult?.replacement_plan || null
+                        replacement_plan: dynamicResult?.replacement_plan || null,
+                        applied_preset_controls: dynamicResult.applied_preset_controls || appliedPresetControls || null,
+                        application_context: body._promptApplicationBaseline
+                            ? buildPromptApplicationContext(body._promptApplicationBaseline)
+                            : null
                     };
                     
                     if (dynamicResult.text_replacements) {
@@ -3498,6 +3647,12 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
         if (body.director_message_id !== undefined) {
             baseOptions.director_message_id = body.director_message_id;
         }
+        if (body.novel_note_id !== undefined) {
+            baseOptions.novel_note_id = body.novel_note_id;
+        }
+        if (body.novel_story_cursor_line !== undefined) {
+            baseOptions.novel_story_cursor_line = body.novel_story_cursor_line;
+        }
         if (allTextReplacementSeeds.length > 0) {
             baseOptions.text_replacements_seed = allTextReplacementSeeds;
         }
@@ -3652,6 +3807,8 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
     delete apiOpts.chara_reference_fidelity;
     delete apiOpts.director_session_id;
     delete apiOpts.director_message_id;
+    delete apiOpts.novel_note_id;
+    delete apiOpts.novel_story_cursor_line;
     delete apiOpts.history;
     delete apiOpts.text_replacements_seed;
     delete apiOpts.dynamic_generation;
@@ -3893,6 +4050,9 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         if (opts.append_quality !== undefined) {
             forgeData.append_quality = opts.append_quality;
         }
+        if (opts.quality_preset_bias !== undefined) {
+            forgeData.quality_preset_bias = opts.quality_preset_bias;
+        }
         if (opts.append_uc !== undefined) {
             forgeData.append_uc = opts.append_uc;
         }
@@ -3919,10 +4079,14 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         if (opts.director_message_id !== undefined) {
             forgeData.director_message_id = opts.director_message_id;
         }
+        if (opts.novel_note_id !== undefined) {
+            forgeData.novel_note_id = opts.novel_note_id;
+        }
+        if (opts.novel_story_cursor_line !== undefined) {
+            forgeData.novel_story_cursor_line = opts.novel_story_cursor_line;
+        }
         if (opts.dynamic_generation !== undefined) {
-            forgeData.dynamic_generation = opts.dynamic_generation;
-            
-            // Extract generated_image_name from compiled_prompt if available
+            forgeData.dynamic_generation = sanitizeDynamicGenerationForForge(opts.dynamic_generation);
             if (opts.dynamic_generation?.compiled_prompt?.generated_image_name) {
                 forgeData.generated_image_name = opts.dynamic_generation.compiled_prompt.generated_image_name;
             }
@@ -3970,7 +4134,8 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             finalBuffer = __runtimeGr.getPngMetadata().stripPngTextChunks(buffer);
             
             forgeData = metadata.forge_data || {};
-            
+            mergeNovelForgeFieldsFromOpts(forgeData, opts);
+
             // Conditionally update only allowed fields
             forgeData.date_generated = Date.now();
             if (opts.chain_source && typeof opts.chain_source === 'string' && opts.chain_source.length > 0) {
@@ -5499,6 +5664,11 @@ async function convertMetadataToRequestFormat(globalResources, metadata, allowPa
     } else if (forgeData.append_quality !== undefined) {
         requestBody.append_quality = forgeData.append_quality;
     }
+    if (extractedMetadata.quality_preset_bias !== undefined) {
+        requestBody.quality_preset_bias = extractedMetadata.quality_preset_bias;
+    } else if (forgeData.quality_preset_bias !== undefined) {
+        requestBody.quality_preset_bias = forgeData.quality_preset_bias;
+    }
     if (extractedMetadata.append_uc !== undefined) {
         requestBody.append_uc = extractedMetadata.append_uc;
     } else if (forgeData.append_uc !== undefined) {
@@ -5569,6 +5739,12 @@ async function convertMetadataToRequestFormat(globalResources, metadata, allowPa
     }
     if (extractedMetadata.director_message_id !== undefined) {
         requestBody.director_message_id = extractedMetadata.director_message_id;
+    }
+    if (extractedMetadata.novel_note_id !== undefined) {
+        requestBody.novel_note_id = extractedMetadata.novel_note_id;
+    }
+    if (extractedMetadata.novel_story_cursor_line !== undefined) {
+        requestBody.novel_story_cursor_line = extractedMetadata.novel_story_cursor_line;
     }
     if (extractedMetadata.chara_reference_source !== undefined) {
         requestBody.chara_reference_source = extractedMetadata.chara_reference_source;
@@ -6838,7 +7014,7 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         if (ws && handler) {
             handler.sendGenerationProgress(ws, requestId, {
                 phase: 'generating',
-                hasDynamicGen: true,
+                hasDynamicGen: false,
                 isUpscaling: upscaleAfterComplete
             });
         }
@@ -7323,6 +7499,177 @@ function collectTextReplacementSeeds(globalResources, body, preset = null) {
     return allTextReplacementSeeds;
 }
 
+async function compileDynamicGenerationWebSocket(globalResources, body, ws, handler, wsServer) {
+    bindRuntimeGlobalResources(globalResources);
+
+    if (!body || typeof body !== 'object') {
+        throw new Error('Invalid request body');
+    }
+    if (!body.model) {
+        throw new Error('Invalid request: model parameter is required');
+    }
+    if (!body.dynamic_generation) {
+        throw new Error('Dynamic generation configuration is required');
+    }
+
+    body.compile_only = true;
+    body.no_save = true;
+    body.requestId = body.requestId || `compile-${Date.now()}`;
+
+    try {
+        __runtimeGr.getTracing().startTrace(body.requestId, { type: 'compile_dynamic_generation', workspace: body.workspace || null });
+    } catch {}
+
+    await buildOptions(globalResources, body, null, {}, ws, handler, wsServer);
+
+    const compiled_prompt = body.dynamic_generation?.compiled_prompt;
+    if (!compiled_prompt) {
+        throw new Error('Dynamic generation compile produced no compiled_prompt');
+    }
+
+    const application_context = buildPromptApplicationContext(body._promptApplicationBaseline);
+
+    if (!compiled_prompt.applied_preset_controls && application_context.applied_preset_controls) {
+        compiled_prompt.applied_preset_controls = application_context.applied_preset_controls;
+    }
+    compiled_prompt.application_context = application_context;
+
+    if (ws && handler) {
+        handler.sendGenerationProgress(ws, body.requestId, {
+            phase: 'completion',
+            hasDynamicGen: true
+        });
+    }
+
+    try {
+        __runtimeGr.getTracing().finalizeTrace(body.requestId, 'completed', { compileOnly: true });
+    } catch {}
+
+    return {
+        success: compiled_prompt.success !== false,
+        compiled_prompt,
+        application_context
+    };
+}
+
+async function applyTendaiPreviewWebSocket(globalResources, body, ws, handler, wsServer) {
+    bindRuntimeGlobalResources(globalResources);
+
+    if (!body || typeof body !== 'object') {
+        throw new Error('Invalid request body');
+    }
+    if (!body.model) {
+        throw new Error('Invalid request: model parameter is required');
+    }
+
+    const selectedReplacements = body.selected_replacements;
+    if (!selectedReplacements || !Array.isArray(selectedReplacements) || selectedReplacements.length === 0) {
+        throw new Error('No replacements selected for apply');
+    }
+
+    body.compile_only = true;
+    body.requestId = body.requestId || `apply-tendai-${Date.now()}`;
+
+    await buildOptions(globalResources, body, null, {}, ws, handler, wsServer);
+
+    const application_context = body._promptApplicationBaseline
+        ? buildPromptApplicationContext(body._promptApplicationBaseline)
+        : (body.dynamic_generation?.compiled_prompt?.application_context || buildPromptApplicationContext(null));
+
+    const baseline = body._promptApplicationBaseline;
+    if (!baseline) {
+        throw new Error('Could not build prompt application baseline');
+    }
+
+    const resolvedBefore = {
+        prompt: baseline.promptForAI || '',
+        uc: baseline.ucForAI || '',
+        character_prompts: (baseline.characterPromptsForAI || []).map(c => ({
+            prompt: c.prompt || '',
+            uc: c.uc || ''
+        }))
+    };
+
+    const textReplacementsShape = { prompt: [], uc: [], character_prompts: [] };
+
+    selectedReplacements.forEach((rep) => {
+        const targetType = rep.targetType || 'prompt';
+        if (targetType === 'prompt') {
+            textReplacementsShape.prompt.push(rep);
+        } else if (targetType === 'uc') {
+            textReplacementsShape.uc.push(rep);
+        } else if (targetType === 'character') {
+            const idx = rep.targetSource ?? 0;
+            if (!textReplacementsShape.character_prompts[idx]) {
+                textReplacementsShape.character_prompts[idx] = { prompt: [], uc: [] };
+            }
+            const field = rep.targetField || 'prompt';
+            textReplacementsShape.character_prompts[idx][field].push(rep);
+        }
+    });
+
+    let resolvedAfter = {
+        prompt: resolvedBefore.prompt,
+        uc: resolvedBefore.uc,
+        character_prompts: resolvedBefore.character_prompts.map(c => ({ ...c }))
+    };
+
+    if (textReplacementsShape.prompt.length > 0) {
+        const result = applyDynamicReplacements(__runtimeGr, resolvedAfter.prompt, textReplacementsShape, 'prompt');
+        if (result.success) resolvedAfter.prompt = result.result;
+    }
+    if (textReplacementsShape.uc.length > 0) {
+        const result = applyDynamicReplacements(__runtimeGr, resolvedAfter.uc, textReplacementsShape, 'uc');
+        if (result.success) resolvedAfter.uc = result.result;
+    }
+    textReplacementsShape.character_prompts.forEach((charRep, index) => {
+        if (!charRep) return;
+        if (!resolvedAfter.character_prompts[index]) {
+            resolvedAfter.character_prompts[index] = { prompt: '', uc: '' };
+        }
+        if (charRep.prompt?.length > 0) {
+            const result = applyDynamicReplacements(
+                __runtimeGr,
+                resolvedAfter.character_prompts[index].prompt || '',
+                textReplacementsShape,
+                'character',
+                index,
+                'prompt'
+            );
+            if (result.success) resolvedAfter.character_prompts[index].prompt = result.result;
+        }
+        if (charRep.uc?.length > 0) {
+            const result = applyDynamicReplacements(
+                __runtimeGr,
+                resolvedAfter.character_prompts[index].uc || '',
+                textReplacementsShape,
+                'character',
+                index,
+                'uc'
+            );
+            if (result.success) resolvedAfter.character_prompts[index].uc = result.result;
+        }
+    });
+
+    const mapped = mapProcessedToRaw(application_context, resolvedBefore, resolvedAfter);
+
+    const rawChars = body.allCharacterPrompts || [];
+    const mergedChars = rawChars.map((char, i) => ({
+        ...char,
+        prompt: mapped.allCharacterPrompts[i]?.prompt ?? char.prompt,
+        uc: mapped.allCharacterPrompts[i]?.uc ?? char.uc
+    }));
+
+    return {
+        success: true,
+        prompt: mapped.prompt,
+        uc: mapped.uc,
+        allCharacterPrompts: mergedChars,
+        preset_toggle_hints: mapped.preset_toggle_hints || {},
+        application_context
+    };
+}
+
 module.exports = {
     generateImageWebSocket,
     buildOptions,
@@ -7339,5 +7686,7 @@ module.exports = {
     handleStagedGeneration,
     previewExpandImagePrompt,
     collectTextReplacementSeeds,
+    compileDynamicGenerationWebSocket,
+    applyTendaiPreviewWebSocket,
 };
 

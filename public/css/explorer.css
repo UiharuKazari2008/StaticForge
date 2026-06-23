@@ -1,0 +1,751 @@
+/* Explorer applet — scripts/comp/explorerApplet.js */
+/* Explorer Applet Styles — shell uses naxt-modal-content; see #explorerModal rules below */
+
+.explorer-drives-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: var(--spacing-md);
+    padding: var(--spacing-lg);
+}
+
+.explorer-drive-item {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: var(--spacing-lg);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(240, 248, 255, 0.05) 100%);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(173, 216, 230, 0.3);
+    border-radius: 8px;
+    transition: var(--transition-glass-surface);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.explorer-drive-item:hover:not(:disabled) {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(240, 248, 255, 0.1) 100%);
+    border-color: rgba(173, 216, 230, 0.5);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.explorer-drive-icon-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-right: var(--spacing-lg);
+    position: relative;
+    min-width: 80px;
+}
+
+.explorer-drive-icon {
+    font-size: 32px;
+    transition: transform var(--transition-normal);
+    -webkit-filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.explorer-drive-item:hover:not(:disabled) .explorer-drive-icon {
+    transform: scale(1.05);
+}
+
+.explorer-drive-letter {
+    font-size: 13px;
+    font-weight: var(--wght-bold);
+    color: rgba(255, 255, 255, 0.9);
+    font-family: var(--font-mono);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.explorer-drive-info {
+    flex: 1;
+    text-align: left;
+}
+
+.explorer-drive-name {
+    font-size: 15px;
+    font-weight: var(--wght-semibold);
+    font-variation-settings: "wght" var(--wght-semibold);
+    color: rgba(255, 255, 255, 0.95);
+    margin-bottom: var(--spacing-xs);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.explorer-drive-capacity {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.8);
+    margin-bottom: var(--spacing-sm);
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
+}
+
+.explorer-drive-progress-container {
+    margin-top: var(--spacing-xs);
+}
+
+.explorer-drive-progress-bar {
+    width: 100%;
+    height: 10px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 5px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.explorer-drive-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg,
+            rgba(135, 206, 250, 0.9) 0%,
+            rgba(173, 216, 230, 0.85) 50%,
+            rgba(135, 206, 250, 0.9) 100%);
+    border-radius: 5px;
+    transition: width var(--transition-normal);
+    box-shadow:
+        0 0 8px rgba(135, 206, 250, 0.6),
+        inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    position: relative;
+}
+
+.explorer-drive-progress-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 50%;
+    background: linear-gradient(180deg,
+            rgba(255, 255, 255, 0.3) 0%,
+            transparent 100%);
+    border-radius: 5px 5px 0 0;
+}
+
+.explorer-empty-state,
+.explorer-error-state {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-xxl);
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.explorer-empty-state i,
+.explorer-error-state i {
+    font-size: 64px;
+    margin-bottom: var(--spacing-lg);
+    opacity: 0.5;
+}
+
+.explorer-empty-state p,
+.explorer-error-state p {
+    font-size: 16px;
+    color: var(--text-secondary);
+}
+
+/* Explorer Applet */
+#explorerModal .naxt-modal-content {
+    container-type: inline-size;
+    container-name: explorer;
+}
+
+#explorerModal .explorer-actions-header {
+    overflow: visible;
+    line-height: 1;
+}
+
+#explorerModal .explorer-actions-header .naxt-search-controls {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    flex-wrap: nowrap;
+    align-items: center;
+    overflow: visible;
+}
+
+#explorerModal .explorer-actions-header .button-group {
+    flex-shrink: 0;
+}
+
+#explorerModal .explorer-actions-header .explorer-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+#explorerModal .explorer-actions-header #explorerSortDropdown,
+#explorerModal .explorer-actions-header #explorerViewsDropdown {
+    position: relative;
+    display: inline-block;
+    width: auto;
+    flex-shrink: 0;
+}
+
+#explorerModal .explorer-actions-header #explorerSortDropdownBtn,
+#explorerModal .explorer-actions-header #explorerViewsDropdownBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+#explorerModal .explorer-actions-header #explorerSortDropdownBtn .naxt-dataset-chevron,
+#explorerModal .explorer-actions-header #explorerViewsDropdownBtn .naxt-dataset-chevron {
+    flex-shrink: 0;
+    margin-left: 0.15em;
+    opacity: 0.75;
+}
+
+#explorerModal .explorer-actions-header #explorerSortDropdownMenu,
+#explorerModal .explorer-actions-header #explorerViewsDropdownMenu {
+    z-index: var(--z-dropdown);
+    min-width: 11rem;
+}
+
+#explorerModal .modal-window-title-toolbar > .button-group:has(#explorerSearchBar) {
+    flex: 0 0 9rem;
+    width: 9rem;
+    max-width: 9rem;
+    min-width: 6rem;
+}
+
+#explorerModal .modal-window-title-toolbar .explorer-address-bar {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+}
+
+#explorerModal .modal-window-title-toolbar .explorer-search-bar {
+    font-size: 0.8125rem;
+}
+
+#explorerModal #explorerDetailsHeader {
+    flex-shrink: 0;
+}
+
+#explorerModal .explorer-grid-host {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+}
+
+#explorerModal .explorer-grid-host.explorer-drop-target {
+    outline: 2px dashed rgba(135, 206, 250, 0.6);
+    outline-offset: -2px;
+}
+
+.explorer-selection-marquee {
+    position: fixed;
+    z-index: 12000;
+    border: 1px dotted var(--accent-primary, #6cb4ff);
+    background: color-mix(in srgb, var(--accent-primary, #6cb4ff) 18%, transparent);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+    box-sizing: border-box;
+}
+
+
+#explorerModal .explorer-grid-host.explorer-marquee-active {
+    user-select: none;
+    cursor: crosshair;
+}
+
+.explorer-item.explorer-item-upload-pending {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.explorer-item.explorer-item-upload-pending .explorer-item-icon-box::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: inherit;
+    pointer-events: none;
+}
+
+.explorer-item.explorer-item-drop-target {
+    outline: 2px solid rgba(135, 206, 250, 0.85);
+    outline-offset: 2px;
+    background: rgba(135, 206, 250, 0.12);
+}
+
+#explorerModal .explorer-grid-host.explorer-item-drag-active {
+    cursor: grabbing;
+}
+
+#desktopGridContainer.explorer-desktop-drop-target,
+#desktopFreeformContainer.explorer-desktop-drop-target {
+    outline: 2px dashed rgba(135, 206, 250, 0.75);
+    outline-offset: -4px;
+}
+
+#explorerModal .explorer-statusbar {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-top: 1px solid var(--glass-border-4);
+    font-size: 0.8125rem;
+    flex-shrink: 0;
+    min-width: 0;
+    background: var(--glass-layer-2);
+}
+
+#explorerModal .explorer-status-spinner {
+    flex-shrink: 0;
+    color: var(--text-secondary);
+    line-height: 1;
+}
+
+
+#explorerModal .explorer-status-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#explorerModal .explorer-status-center {
+    display: flex;
+    gap: var(--spacing-xs);
+    flex-shrink: 0;
+}
+
+#explorerModal .explorer-view-toggle.active {
+    background: rgba(135, 206, 250, 0.25);
+}
+
+#explorerModal .explorer-grid-host.explorer-loading {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+#explorerModal .explorer-grid-host.explorer-loading .explorer-grid-content {
+    visibility: hidden;
+}
+
+#explorerModal .explorer-grid-host.explorer-busy-open {
+    cursor: progress;
+}
+
+#explorerModal .explorer-grid-host.explorer-busy-paste {
+    cursor: progress;
+}
+
+.explorer-load-more-foot {
+    position: absolute;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md);
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    pointer-events: none;
+}
+
+
+.explorer-item.explorer-item-opening {
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+.explorer-item.explorer-item-opening .explorer-item-icon-box::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.35);
+    border-radius: inherit;
+}
+
+.explorer-grid-spacer {
+    width: 100%;
+    pointer-events: none;
+    flex-shrink: 0;
+}
+
+.explorer-grid-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    position: relative;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: var(--glass-layer-5) transparent;
+}
+
+.explorer-grid-scroll::-webkit-scrollbar {
+    width: 8px;
+}
+
+.explorer-grid-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.explorer-grid-scroll::-webkit-scrollbar-thumb {
+    background: var(--glass-layer-5);
+    border-radius: 4px;
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .explorer-grid-scroll::-webkit-scrollbar-thumb:hover:not(:disabled) {
+        background: var(--primary-color-light);
+    }
+}
+
+.explorer-grid-content {
+    position: absolute;
+    left: 0;
+    right: 0;
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.explorer-details-header {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) minmax(180px, 1.6fr) 96px 72px;
+    gap: var(--spacing-sm);
+    align-items: center;
+    padding: 4px var(--spacing-sm);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--glass-border-4);
+    background: var(--glass-layer-2);
+    flex-shrink: 0;
+}
+
+.explorer-details-header .explorer-details-sort-col {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    font: inherit;
+    font-weight: 600;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.explorer-details-header .explorer-details-sort-col:hover,
+.explorer-details-header .explorer-details-sort-col.active {
+    color: var(--text-primary);
+}
+
+.explorer-details-header .explorer-details-col-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.explorer-details-header .explorer-details-sort-icon {
+    font-size: 9px;
+    flex-shrink: 0;
+    opacity: 0;
+}
+
+.explorer-details-header .explorer-details-sort-col:hover .explorer-details-sort-icon,
+.explorer-details-header .explorer-details-sort-col.active .explorer-details-sort-icon {
+    opacity: 0.85;
+}
+
+.explorer-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: var(--spacing-xs);
+    cursor: default;
+    user-select: none;
+    border: 1px solid transparent;
+    box-sizing: border-box;
+    gap: var(--spacing-xs);
+    overflow: hidden;
+}
+
+.explorer-item:not(.explorer-item-list-row):not(.explorer-item-details-row) {
+    max-width: 100%;
+}
+
+.explorer-item:not(.explorer-item-list-row):not(.explorer-item-details-row) .explorer-item-label {
+    flex: 0 0 auto;
+    min-height: 2.75em;
+}
+
+.explorer-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.explorer-item.selected {
+    background: rgba(135, 206, 250, 0.2);
+    border-color: rgba(135, 206, 250, 0.4);
+}
+
+.explorer-item-icon-box {
+    position: relative;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.explorer-item-icon-box-xl {
+    width: 192px;
+    height: 192px;
+}
+
+.explorer-item-icon-box-lg {
+    width: 128px;
+    height: 128px;
+}
+
+.explorer-item-icon-box-md {
+    width: 96px;
+    height: 96px;
+}
+
+.explorer-item-icon-box-sm {
+    width: 44px;
+    height: 44px;
+}
+
+.explorer-item-icon-box-row {
+    width: 20px;
+    height: 20px;
+    min-width: 20px;
+    max-width: 20px;
+    min-height: 20px;
+    max-height: 20px;
+    flex-shrink: 0;
+    border-radius: 2px;
+}
+
+.explorer-item-icon-box-row .explorer-item-type-icon {
+    font-size: 12px;
+}
+
+.explorer-item-icon-box-xl .explorer-item-type-icon {
+    font-size: 112px;
+}
+
+.explorer-item-icon-box-lg .explorer-item-type-icon {
+    font-size: 72px;
+}
+
+.explorer-item-icon-box-md .explorer-item-type-icon {
+    font-size: 52px;
+}
+
+.explorer-item-icon-box-sm .explorer-item-type-icon {
+    font-size: 28px;
+}
+
+.explorer-item-type-icon {
+    color: var(--text-secondary);
+    line-height: 1;
+    pointer-events: none;
+}
+
+.explorer-item-preview-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.explorer-item-icon-box.has-preview .explorer-item-preview-img {
+    opacity: 1;
+}
+
+.explorer-item-icon-box.has-preview .explorer-item-type-icon {
+    opacity: 0;
+}
+
+.explorer-item-icon-box .explorer-desktop-icon-root {
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    pointer-events: none;
+}
+
+.explorer-item-icon-box .explorer-desktop-icon-root.desktop-shortcut-icon {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: transparent;
+}
+
+.explorer-item-icon-box .explorer-desktop-icon-root .icon-image,
+.explorer-item-icon-box .explorer-desktop-icon-root .desktop-shortcut-wiki-site-icon {
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+}
+
+.explorer-item-icon-box-xl .explorer-desktop-icon-root.desktop-shortcut-icon:not(.desktop-shortcut-icon-image) {
+    font-size: 5.5rem;
+}
+
+.explorer-item-icon-box-lg .explorer-desktop-icon-root.desktop-shortcut-icon:not(.desktop-shortcut-icon-image) {
+    font-size: 3.75rem;
+}
+
+.explorer-item-icon-box-md .explorer-desktop-icon-root.desktop-shortcut-icon:not(.desktop-shortcut-icon-image) {
+    font-size: 2.75rem;
+}
+
+.explorer-item-icon-box-sm .explorer-desktop-icon-root.desktop-shortcut-icon:not(.desktop-shortcut-icon-image) {
+    font-size: 1.5rem;
+}
+
+.explorer-item-icon-box-row .explorer-desktop-icon-root.desktop-shortcut-icon:not(.desktop-shortcut-icon-image) {
+    font-size: 12px;
+}
+
+.explorer-item-icon-box .explorer-desktop-icon-root.desktop-shortcut-icon-image {
+    border-width: 1px;
+}
+
+.explorer-item-icon-box-xl .explorer-desktop-icon-root .desktop-shortcut-image-icon {
+    font-size: 1.75rem;
+}
+
+.explorer-item-icon-box-lg .explorer-desktop-icon-root .desktop-shortcut-image-icon {
+    font-size: 1.25rem;
+}
+
+.explorer-item-icon-box-md .explorer-desktop-icon-root .desktop-shortcut-image-icon {
+    font-size: 1rem;
+}
+
+.explorer-item-icon-box-sm .explorer-desktop-icon-root .desktop-shortcut-image-icon {
+    font-size: 0.75rem;
+}
+
+.explorer-item-icon-box-row .explorer-desktop-icon-root .desktop-shortcut-image-icon {
+    font-size: 0.5rem;
+}
+
+.explorer-item-icon-box-xl .explorer-desktop-icon-root.desktop-shortcut-icon-note {
+    font-size: 5.5rem;
+}
+
+.explorer-item-icon-box-lg .explorer-desktop-icon-root.desktop-shortcut-icon-note {
+    font-size: 3.75rem;
+}
+
+.explorer-item-icon-box-md .explorer-desktop-icon-root.desktop-shortcut-icon-note {
+    font-size: 2.75rem;
+}
+
+.explorer-item-icon-box-sm .explorer-desktop-icon-root.desktop-shortcut-icon-note {
+    font-size: 1.5rem;
+}
+
+.explorer-item-icon-box-row .explorer-desktop-icon-root.desktop-shortcut-icon-note {
+    font-size: 12px;
+}
+
+.explorer-item-label {
+    font-size: 11px;
+    text-align: center;
+    width: 100%;
+    max-width: 100%;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    word-break: normal;
+}
+
+.explorer-item-list-row,
+.explorer-item-details-row {
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+    gap: var(--spacing-sm);
+    padding: 2px var(--spacing-sm);
+}
+
+.explorer-item-list-row {
+    justify-content: flex-start;
+}
+
+.explorer-item-list-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex: 1;
+}
+
+.explorer-item-details-row {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) minmax(180px, 1.6fr) 96px 72px;
+    font-size: 12px;
+    gap: var(--spacing-sm);
+    max-height: 28px;
+    overflow: hidden;
+    align-items: center;
+}
+
+.explorer-item-list-row {
+    max-height: 28px;
+    overflow: hidden;
+}
+
+.explorer-item-details-row .explorer-item-name,
+.explorer-item-details-row .explorer-item-date,
+.explorer-item-details-row .explorer-item-type,
+.explorer-item-details-row .explorer-item-size {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.explorer-view-toggle.active {
+    background: rgba(135, 206, 250, 0.25);
+}
+
+.vfs-import-choice-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.vfs-import-choice-btn {
+    width: 100%;
+    justify-content: flex-start;
+}

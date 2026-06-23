@@ -22,6 +22,22 @@ let expansionModalData = {
 let expansionCompiledPromptLoadToken = 0;
 let expansionCompiledPromptReloadTimer = null;
 
+/** Tear down manual preview + Rentan overlay after expand/reroll (success, error, or cancel). */
+function finishExpansionGenerationUi() {
+    const manualForm = document.getElementById('manualForm');
+    if (manualForm) {
+        manualForm.classList.remove('generating', 'streaming');
+    }
+    if (window.wsClient) {
+        window.wsClient.clearStreamingStepQueues(null, true);
+    }
+    // hideDynamicGenerationProgressOverlayImmediate: public/scripts/comp/manualModalManager.js
+    hideDynamicGenerationProgressOverlayImmediate();
+    if (typeof stopPreviewAnimation === 'function') {
+        stopPreviewAnimation();
+    }
+}
+
 function normalizeExpansionCharacterPrompts(arr) {
     if (!Array.isArray(arr)) {
         return [];
@@ -93,8 +109,6 @@ function getExpansionCharacterPromptTextareaHtml(characterId, field, text) {
                                 </div>
                                 <div class="toolbar-right">
                                     <div class="toolbar-regular-buttons">
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="split-emphasis" title="Split Emphasis"><i class="fas fa-scissors"></i></button>
-                                        <div class="divider toolbar-wide-divider"></div>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="quick-access" title="Quick Access"><i class="fas fa-book-atlas"></i></button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="search" title="Search"><i class="fas fa-search"></i></button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle Autofill"><i class="fas fa-lightbulb"></i></button>
@@ -131,8 +145,6 @@ function getExpansionCharacterPromptTextareaHtml(characterId, field, text) {
                                 </div>
                                 <div class="toolbar-right">
                                     <div class="toolbar-regular-buttons">
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="split-emphasis" title="Split Emphasis"><i class="fas fa-scissors"></i></button>
-                                        <div class="divider toolbar-wide-divider"></div>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="quick-access" title="Quick Access"><i class="fas fa-book-atlas"></i></button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="search" title="Search"><i class="fas fa-search"></i></button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle Autofill"><i class="fas fa-lightbulb"></i></button>
@@ -1437,10 +1449,6 @@ async function submitImageExpansionReroll() {
                 await wsClient.waitForStreamingStepsComplete('manual');
             }
 
-            if (manualForm) {
-                manualForm.classList.remove('streaming');
-            }
-
             const imageSrc = `/images/${result.filename}`;
             const mockResponse = {
                 headers: {
@@ -1453,19 +1461,12 @@ async function submitImageExpansionReroll() {
             };
 
             await handleImageResult(imageSrc, undefined, result.seed, mockResponse, result.metadata);
-            manualForm.classList.remove('generating');
-            stopPreviewAnimation();
         }
     } catch (error) {
+        if (error && error.code === 'CLIENT_CANCELLED') {
+            return;
+        }
         console.error('❌ Image reroll failed:', error);
-        
-        if (manualForm) {
-            manualForm.classList.remove('generating');
-            manualForm.classList.remove('streaming');
-        }
-        if (typeof stopPreviewAnimation === 'function') {
-            stopPreviewAnimation();
-        }
         
         updateGlassToastComplete(progressToastId, {
             type: 'error',
@@ -1475,6 +1476,8 @@ async function submitImageExpansionReroll() {
             showProgress: false
         });
         progressToastId = null;
+    } finally {
+        finishExpansionGenerationUi();
     }
 }
 
@@ -1855,26 +1858,14 @@ async function submitImageExpansion() {
 
             await handleImageResult(imageSrc, undefined, result.seed, mockResponse, result.metadata);
             
-            manualForm.classList.remove('generating');
-            stopPreviewAnimation();
-            
             console.log('✨ Expansion prompt:', result.expansionPrompt);
             console.log('💭 Expansion reason:', result.expansionReason);
         }
     } catch (error) {
+        if (error && error.code === 'CLIENT_CANCELLED') {
+            return;
+        }
         console.error('❌ Image expansion failed:', error);
-        
-        // Remove generating/streaming classes on error
-        const manualForm = document.getElementById('manualForm');
-        const previewContainer = document.getElementById('manualPreviewContainer');
-        if (manualForm) {
-            manualForm.classList.remove('generating');
-            manualForm.classList.remove('streaming');
-        }
-        // Stop preview animation if available
-        if (typeof stopPreviewAnimation === 'function') {
-            stopPreviewAnimation();
-        }
         
         updateGlassToastComplete(progressToastId, {
             type: 'error',
@@ -1886,6 +1877,8 @@ async function submitImageExpansion() {
 
         // Clear the toast ID for future expansions
         progressToastId = null;
+    } finally {
+        finishExpansionGenerationUi();
     }
 }
 

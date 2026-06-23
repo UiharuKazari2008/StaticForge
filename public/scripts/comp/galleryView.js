@@ -899,6 +899,61 @@ function isGallerySearchModeActive() {
     return hasSearchTerm || hasNarrowFilter;
 }
 
+/** Drop duplicate gallery arrays kept for search/filter — active list is allImages only. */
+function clearStaleGalleryListCopies() {
+    if (window.originalAllImages) {
+        delete window.originalAllImages;
+    }
+    if (window.filteredImageIndices) {
+        delete window.filteredImageIndices;
+    }
+}
+
+/**
+ * Replace the active in-memory gallery list and discard previous versions.
+ * @param {Array} newGallery - New gallery array (by reference; not copied)
+ * @param {{ preserveSearchContext?: boolean, rebuildNavCache?: boolean }} options
+ */
+function setActiveGalleryList(newGallery, options = {}) {
+    const list = Array.isArray(newGallery) ? newGallery : [];
+    const preserveSearch = options.preserveSearchContext === true && isGallerySearchModeActive();
+
+    allImages = list;
+
+    if (preserveSearch) {
+        window.originalAllImages = list;
+        if (window.filteredImageIndices && window.filteredImageIndices.length > list.length) {
+            delete window.filteredImageIndices;
+        }
+    } else {
+        clearStaleGalleryListCopies();
+    }
+
+    if (options.rebuildNavCache === true) {
+        triggerBuildGalleryNavigationCache();
+    } else if (list.length === 0) {
+        buildGalleryNavigationCache([]);
+    }
+
+    return allImages;
+}
+
+/** Prepend a new item to the active gallery; keeps search baseline in sync when present. */
+function prependToActiveGalleryList(item) {
+    if (!item) return;
+    allImages.unshift(item);
+    if (window.originalAllImages && window.originalAllImages !== allImages) {
+        window.originalAllImages.unshift(item);
+    }
+    if (window.filteredImageIndices && Array.isArray(window.filteredImageIndices)) {
+        window.filteredImageIndices = window.filteredImageIndices.map((idx) => idx + 1);
+    }
+}
+
+window.setActiveGalleryList = setActiveGalleryList;
+window.clearStaleGalleryListCopies = clearStaleGalleryListCopies;
+window.prependToActiveGalleryList = prependToActiveGalleryList;
+
 function getGalleryImageTimestampMs(image) {
     if (!image || typeof image !== 'object') return null;
 
@@ -1715,11 +1770,9 @@ window.applyFilteredImages = function (images, originalIndices = null) {
         // Store original allImages if we don't have it yet (for filtering)
         // allImages should remain the full array, never be replaced with filtered array
         if (!window.originalAllImages || window.originalAllImages.length === 0) {
-            window.originalAllImages = [...allImages]; // Preserve the full array
+            window.originalAllImages = allImages;
         } else {
-            // Restore allImages to the full array if it was previously filtered
-            // This ensures allImages is always the full array
-            allImages = [...window.originalAllImages];
+            allImages = window.originalAllImages;
         }
 
         // images parameter is the filtered array, but we DON'T replace allImages with it
@@ -1949,9 +2002,9 @@ async function switchGalleryView(view, force = false, progressCallback = null) {
     if (window.currentSearchTerm) {
         window.fileSearch.clearSearch(false, true); // Don't reload, just clear search
     }
-    // Clear filtered indices when reloading
-    if (window.filteredImageIndices) {
-        delete window.filteredImageIndices;
+    // clearStaleGalleryListCopies: public/scripts/comp/galleryView.js
+    if (typeof clearStaleGalleryListCopies === 'function') {
+        clearStaleGalleryListCopies();
     }
 
     currentGalleryView = view;
@@ -2043,7 +2096,7 @@ async function loadScraps(progressCallback = null) {
         updateGalleryPlaceholders();
     } catch (error) {
         console.error('Error loading scraps:', error);
-        allImages = [];
+        setActiveGalleryList([]);
         if (!isJumpingToPosition) {
             resetInfiniteScroll();
             displayGalleryInitialPageOrRestored();
@@ -2073,7 +2126,7 @@ async function loadPinned(progressCallback = null) {
         updateGalleryPlaceholders();
     } catch (error) {
         console.error('Error loading pinned images:', error);
-        allImages = [];
+        setActiveGalleryList([]);
         if (!isJumpingToPosition) {
             resetInfiniteScroll();
             displayGalleryInitialPageOrRestored();
@@ -2103,7 +2156,7 @@ async function loadUpscaled(progressCallback = null) {
         updateGalleryPlaceholders();
     } catch (error) {
         console.error('Error loading upscaled images:', error);
-        allImages = [];
+        setActiveGalleryList([]);
         if (!isJumpingToPosition) {
             resetInfiniteScroll();
             displayGalleryInitialPageOrRestored();
@@ -2254,9 +2307,8 @@ async function loadGallery(addLatest, progressCallback = null, loadOptions = nul
             const { gallery: latestItems } = result.data || result;
 
             if (latestItems && latestItems.length > 0) {
-                allImages.unshift(latestItems[0]);
+                prependToActiveGalleryList(latestItems[0]);
 
-                // Sort and update caches
                 sortGalleryData();
                 if (!window.filteredImageIndices || window.filteredImageIndices.length === allImages.length) {
                     buildGalleryNavigationCache(allImages);
@@ -2354,7 +2406,7 @@ async function loadGallery(addLatest, progressCallback = null, loadOptions = nul
     } catch (error) {
         console.error('Error loading gallery:', error);
         // Don't throw error for gallery loading failure
-        allImages = [];
+        setActiveGalleryList([]);
 
         // Hide progress modal if it was shown
         if (galleryLoadingProgressShown) {
@@ -2459,7 +2511,7 @@ async function loadCompleteGallery(viewType = 'images', progressCallback = null)
                     serverDestructiveAt
                 );
                 if (snapshot && Array.isArray(snapshot.gallery)) {
-                    allImages = snapshot.gallery;
+                    setActiveGalleryList(snapshot.gallery);
                     if (window.wsClient && typeof window.wsClient.completeGalleryLoading === 'function') {
                         window.wsClient.completeGalleryLoading();
                     }
@@ -2551,7 +2603,7 @@ async function loadCompleteGallery(viewType = 'images', progressCallback = null)
         }
 
         // Set up gallery state with loaded data
-        allImages = dataItems;
+        setActiveGalleryList(dataItems);
 
         if (progressCallback && totalItems > 0) {
             progressCallback({
@@ -3081,50 +3133,9 @@ function createGalleryItem(image, index, skipImgElement = false) {
     copyBtn.className = 'btn-primary round-button';
     copyBtn.innerHTML = '<i class="fas fa-clipboard"></i>';
     copyBtn.title = 'Copy to clipboard';
-    copyBtn.onclick = async (e) => {
+    copyBtn.onclick = (e) => {
         e.stopPropagation();
-        try {
-            // Determine the correct URL for the image
-            let imageUrl;
-            if (image.url) {
-                // For newly generated images
-                imageUrl = image.url;
-            } else {
-                // For gallery images - prefer highest quality version
-                const filename = image.upscaled || image.original;
-                imageUrl = `/images/${filename}`;
-            }
-
-            // Fetch the image as a blob
-            const response = await fetch(imageUrl);
-            const blob = await response.blob();
-
-            // Copy to clipboard
-            await navigator.clipboard.write([
-                new ClipboardItem({
-                    [blob.type]: blob
-                })
-            ]);
-
-            // Calculate and format file size
-            const sizeInBytes = blob.size;
-            let sizeText;
-            if (sizeInBytes < 1024 * 1024) {
-                sizeText = `${(sizeInBytes / 1024).toFixed(1)} KB`;
-            } else {
-                sizeText = `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
-            }
-
-            // Show success notification with size
-            if (window.showGlassToast) {
-                window.showGlassToast('success', 'Image copied to clipboard!', `(${sizeText})`, false, 3000, '<i class="fas fa-clipboard-check"></i>');
-            }
-        } catch (error) {
-            console.error('Failed to copy image to clipboard:', error);
-            if (window.showGlassToast) {
-                window.showGlassToast('error', 'Failed to copy image to clipboard', '', false, 3000, '<i class="fas fa-clipboard"></i>');
-            }
-        }
+        copyImageToClipboard(image);
     };
 
     // Pin button
@@ -5701,8 +5712,8 @@ function removeImageFromGallery(image) {
 
             allImages.splice(allImagesIndex, 1);
 
-            // Also update originalAllImages if it exists
-            if (window.originalAllImages && window.originalAllImages.length > 0) {
+            // Sync separate search baseline copy when it is not the same array reference
+            if (window.originalAllImages && window.originalAllImages.length > 0 && window.originalAllImages !== allImages) {
                 const originalIndex = window.originalAllImages.findIndex(img => {
                     const imgFilename = img.filename || img.original || img.upscaled;
                     const targetFilename = image.filename || image.original || image.upscaled;
@@ -7217,48 +7228,32 @@ async function createDesktopShortcutFromImage(image) {
 
 // Helper functions for context menu actions
 function copyImageToClipboard(image) {
-    // Copy image to clipboard directly
+    // copyBlobToClipboard: public/scripts/utils/dreamscapeClipboard.js
     (async () => {
         try {
-            // Determine the correct URL for the image
             let imageUrl;
             if (image.url) {
-                // For newly generated images
                 imageUrl = image.url;
             } else {
-                // For gallery images - prefer highest quality version
                 const filename = image.upscaled || image.original;
                 imageUrl = `/images/${filename}`;
             }
 
-            // Fetch the image as a blob
             const response = await fetch(imageUrl);
             const blob = await response.blob();
+            const filename = image.filename || image.original || image.upscaled;
+            const name = filename ? String(filename).split('/').pop() : 'image.png';
 
-            // Copy to clipboard
-            await navigator.clipboard.write([
-                new ClipboardItem({
-                    [blob.type]: blob
-                })
-            ]);
+            await copyBlobToClipboard(blob, { name });
 
-            // Calculate and format file size
-            const sizeInBytes = blob.size;
-            let sizeText;
-            if (sizeInBytes < 1024 * 1024) {
-                sizeText = `${(sizeInBytes / 1024).toFixed(1)} KB`;
-            } else {
-                sizeText = `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
-            }
-
-            // Show success notification with size
-            if (window.showGlassToast) {
-                window.showGlassToast('success', 'Image copied to clipboard!', `(${sizeText})`, false, 3000, '<i class="fas fa-clipboard-check"></i>');
+            const sizeText = formatClipboardBlobSize(blob);
+            if (showGlassToast) {
+                showGlassToast('success', 'Image copied to clipboard!', `(${sizeText})`, false, 3000, '<i class="fas fa-clipboard-check"></i>');
             }
         } catch (error) {
             console.error('Failed to copy image to clipboard:', error);
-            if (window.showGlassToast) {
-                window.showGlassToast('error', 'Failed to copy image to clipboard', '', false, 3000, '<i class="fas fa-clipboard"></i>');
+            if (showGlassToast) {
+                showGlassToast('error', 'Failed to copy image to clipboard', '', false, 3000, '<i class="fas fa-clipboard"></i>');
             }
         }
     })();

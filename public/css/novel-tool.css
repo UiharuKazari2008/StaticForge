@@ -1,0 +1,131 @@
+/* Novel tool windows — public/scripts/comp/novelManager.js */
+
+.novel-editor-tool > .modal-content,
+.novel-progress-tool > .modal-content {
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.novel-editor-body,
+.novel-progress-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: 0.5rem;
+    padding: 0.65rem 0.75rem 0.5rem;
+    overflow: hidden;
+}
+
+.novel-editor-tool .modal-footer {
+    flex-shrink: 0;
+    padding: 0.5rem 0.75rem 0.65rem;
+    border-top: 1px solid var(--glass-border-3, rgba(255, 255, 255, 0.08));
+}
+
+.novel-editor-meta {
+    flex-shrink: 0;
+    font-size: 0.82rem;
+    opacity: 0.85;
+}
+
+.novel-editor-textarea {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    resize: none;
+    border: 1px solid var(--glass-border-3, rgba(255, 255, 255, 0.12));
+    border-radius: var(--border-radius-sm, 6px);
+    padding: 0.55rem 0.65rem;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.9rem;
+    line-height: 1.5;
+    background: rgba(0, 0, 0, 0.18);
+    color: var(--text-primary, #eee);
+    box-sizing: border-box;
+}
+
+.novel-progress-status {
+    flex-shrink: 0;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-accent, #c8d4ff);
+    padding: 0.35rem 0.5rem;
+    border-radius: var(--border-radius-sm, 6px);
+    background: rgba(0, 0, 0, 0.22);
+    border-left: 3px solid var(--accent-color, #6b8cff);
+}
+
+.novel-progress-log-shell {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.novel-progress-log-scrollable {
+    height: 100%;
+    overflow: auto;
+    padding: 0.15rem 0.25rem 0.35rem;
+}
+
+.novel-progress-log {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.novel-progress-log-entry {
+    padding: 0.45rem 0.6rem;
+    border-radius: var(--border-radius-sm, 6px);
+    background: rgba(0, 0, 0, 0.28);
+    border-left: 3px solid rgba(255, 255, 255, 0.18);
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: var(--text-accent-tinted, #b8c0d8);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.novel-progress-log-entry.novel-progress-log-active {
+    border-left-color: var(--accent-color, #6b8cff);
+}
+
+.novel-progress-log-entry.novel-progress-log-error {
+    border-left-color: #e07070;
+    color: #ffc8c8;
+}
+
+.novel-progress-log-entry.novel-progress-log-done {
+    border-left-color: #6bcf8a;
+    color: #d4f5de;
+}
+
+[data-dsap="novels"] .novels-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+[data-dsap="novels"] .novels-list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.15);
+    cursor: pointer;
+}
+
+[data-dsap="novels"] .novels-list-item:hover {
+    background: rgba(0, 0, 0, 0.25);
+}
+
+[data-dsap="novels"] .novels-editor-textarea {
+    width: 100%;
+    min-height: 240px;
+    font-family: var(--font-mono, monospace);
+    line-height: 1.5;
+}

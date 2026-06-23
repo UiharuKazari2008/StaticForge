@@ -1,0 +1,138 @@
+/* Phasewalker / bracket generation — scripts/comp/bracketGenerationApplet.js */
+#bracketGenerationModal .bracket-gen-step-item .character-name-editable.inline-name-edit {
+    text-transform: none;
+}
+
+#bracketGenerationModal .bracket-gen-step-item .left-controls {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+#bracketGenerationModal .bracket-gen-step-item .character-name-editable.inline-name-edit.editing-name .character-name-input {
+    font-size: 0.9em;
+    font-weight: 500;
+    max-width: 220px;
+}
+/* Phasewalker */
+#bracketGenerationModal {
+    width: 480px;
+    height: 800px;
+}
+
+#bracketGenerationModal #bracketGenKeywordDropdownBtn #bracketGenKeywordSelected {
+    min-width: 72px;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+#bracketGenerationModal #bracketGenKeywordDropdownBtn.bracket-gen-keyword-placeholder #bracketGenKeywordSelected {
+    opacity: 0.65;
+    font-style: italic;
+}
+
+#bracketGenerationModal #bracketGenGearDropdownMenu .custom-dropdown-option i,
+#bracketGenerationModal #bracketGenKeywordDropdownMenu .custom-dropdown-option i {
+    width: 1.1em;
+    text-align: center;
+    margin-right: 0.35em;
+}
+
+#bracketGenerationModal #bracketGenTabButtons.gallery-toggle-group {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-width: 72px;
+    flex-shrink: 0;
+    margin: -4px auto -4px 0;
+}
+
+#bracketGenerationModal #bracketGenTabButtons .gallery-toggle-slider {
+    width: calc(50% - 2px);
+}
+
+#bracketGenerationModal #bracketGenTabButtons[data-active="uc"] .gallery-toggle-slider {
+    transform: translateX(calc(100% + 1px));
+    background: rgb(255 25 25 / 30%);
+    border-color: rgb(250 82 82 / 30%);
+}
+
+#bracketGenerationModal #bracketGenTabButtons[data-active="prompt"] .gallery-toggle-slider {
+    background: rgba(174, 255, 171, 0.3);
+    border-color: rgb(211 255 203 / 30%);
+}
+
+#bracketGenerationModal #bracketGenCompileBtn {
+    flex-shrink: 0;
+}
+
+.bracket-generation-modal-content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+}
+
+.bracket-generation-steps-scroll {
+    flex: 1;
+    min-height: 120px;
+}
+
+.bracket-gen-step-item .tab-content {
+    display: block;
+}
+
+.bracket-gen-step-item .tab-pane.active {
+    display: block;
+}
+
+.bracket-gen-empty-hint {
+    padding: var(--spacing-md);
+    text-align: center;
+}
+
+.bracket-gen-compare-source-btn:disabled,
+.bracket-gen-compare-source-btn.disabled {
+    opacity: 0.35;
+    pointer-events: none;
+    cursor: not-allowed;
+}
+
+/* Managed pipeline stages & expanders */
+.pipeline-stage-item.managed-stage .stage-controls .btn-danger {
+    display: none;
+}
+
+.pipeline-stage-item[data-managed="true"] .workspace-drag-handle.managed-drag-disabled,
+.pipeline-stage-item.managed-stage .workspace-drag-handle {
+    opacity: 0.35;
+    pointer-events: none;
+    cursor: not-allowed;
+}
+
+.stage-managed-hammer {
+    margin-left: 0.35em;
+    font-size: 0.82em;
+    color: #ff8c33;
+    opacity: 0.95;
+    vertical-align: middle;
+    -webkit-filter: drop-shadow(0 0 4px rgb(255 140 51 / 45%));
+    filter: drop-shadow(0 0 4px rgb(255 140 51 / 45%));
+}
+
+.pipeline-stage-item.managed-stage .stage-hex-id {
+    opacity: 0.45;
+}
+
+.text-replacement-item.managed-expander .text-replacement-managed-lock {
+    color: var(--primary-color);
+    margin-left: var(--spacing-xs);
+    opacity: 0.85;
+}
+
+.text-replacement-item.managed-expander .text-replacement-value-display {
+    opacity: 0.9;
+}

@@ -24,12 +24,14 @@ const apiKeyManager = require('./apiKeyManager');
 const ReferenceMetadataDatabase = require('./referenceMetadataDatabase');
 const GenerationQuipsDatabase = require('./generationQuipsDatabase');
 const { GenerationQuipsManager } = require('./generationQuipsManager');
+const NovelHandlers = require('./novelHandlers');
 const DatasetTagService = require('./datasetTagService');
 const FavoritesManager = require('./favorites');
 const MemoryManager = require('./memoryManager');
 const PromptManager = require('./promptManager');
 const AIServiceManager = require('./aiServiceManager');
 const GrokService = require('./aiServices/grokService');
+const XaiNativeService = require('./aiServices/xaiNativeService');
 const PromptLogitAnalyzer = require('./promptLogitAnalyzer');
 const WorkspaceManager = require('./workspace');
 const Queue = require('./queue');
@@ -55,6 +57,7 @@ const TextReplacements = require('./textReplacements');
 const LocalPromptOptimizer = require('./localPromptOptimizer');
 const ConfigEditorService = require('./configEditorService');
 const staticWiki = require('./staticWiki');
+const grimoireDomainRegistry = require('./grimoireDomainRegistry');
 const { TagSuggestionsCache } = require('./cache');
 const { createAuthMiddleware, createDevAuthMiddleware } = require('./auth');
 const polymoduleManager = require('./polymoduleManager');
@@ -81,6 +84,7 @@ class GlobalResources {
         this.searchService = null; // Lazy-loaded to avoid circular dependency
         this.textReplacements = null; // Will be initialized after configs are loaded
         this.staticWiki = null;
+        this.grimoireDomainRegistry = null;
         this.localPromptOptimizer = null;
         this.configEditorService = null;
         this.tagSuggestionsCache = null;
@@ -101,6 +105,7 @@ class GlobalResources {
         this.promptManager = null;
         this.aiServiceManager = null;
         this.grokService = null;
+        this.xaiNativeService = null;
         this.promptLogitAnalyzer = null;
 
         // Workspace module (exports functions)
@@ -234,6 +239,7 @@ class GlobalResources {
             promptManager: false,
             aiServiceManager: false,
             grokService: false,
+            xaiNativeService: false,
             novelAiClient: false,
             grokClient: false,
             workspace: false,
@@ -671,6 +677,7 @@ class GlobalResources {
             // Initialize TextReplacements instance
             this.textReplacements = new TextReplacements(this);
             this.staticWiki = staticWiki;
+            this.grimoireDomainRegistry = grimoireDomainRegistry;
             this.configEditorService = new ConfigEditorService(this);
             this.initializeAuthMiddleware();
 
@@ -798,6 +805,9 @@ class GlobalResources {
 
             // STEP 10b: Generation quips manager (needs metadata, workspaces, Grok)
             this.initializeGenerationQuipsManager();
+
+            // STEP 10c: Novel handlers (needs notes DB, Grok)
+            this.initializeNovelHandlers();
 
             // STEP 11: Initialize queue module (no dependencies)
             this.initializeQueue();
@@ -1232,6 +1242,17 @@ class GlobalResources {
         }
     }
 
+    initializeNovelHandlers() {
+        try {
+            this.novelHandlers = new NovelHandlers(this);
+            this.initializationProgress.novelHandlers = true;
+            console.log('✓ Novel handlers ready');
+        } catch (error) {
+            console.error('  ❌ Failed to initialize novel handlers:', error);
+            throw error;
+        }
+    }
+
     /**
      * Start generation quips auto-update scheduler (requires WebSocket server).
      */
@@ -1344,6 +1365,13 @@ class GlobalResources {
             this.grokService = new GrokService(this);
             this.initializationProgress.grokService = true;
             console.log('✓ Grok service ready');
+
+            // Native xAI service (for smaller tasks, using @ai-sdk/xai directly)
+            // Separate from the main GrokService so we can use native streaming + web search tools
+            // without disturbing the Responses API flows used for persona chat + Director.
+            this.xaiNativeService = new XaiNativeService(this);
+            this.initializationProgress.xaiNativeService = true;
+            console.log('✓ xAI Native service ready (for small tasks / quips / streaming + web search)');
 
             // Prompt logit analyzer (instantiate class with globalResources)
             this.promptLogitAnalyzer = new PromptLogitAnalyzer(this);
@@ -2215,6 +2243,13 @@ class GlobalResources {
         return this.generationQuipsManager;
     }
 
+    getNovelHandlers() {
+        if (!this.novelHandlers) {
+            throw new Error('Novel handlers not initialized');
+        }
+        return this.novelHandlers;
+    }
+
     /**
      * Get Notes Database module (functions)
      */
@@ -2397,6 +2432,13 @@ class GlobalResources {
             throw new Error('StaticWiki not initialized - call initializeConfigs() first');
         }
         return this.staticWiki;
+    }
+
+    getGrimoireDomainRegistry() {
+        if (!this.grimoireDomainRegistry) {
+            throw new Error('GrimoireDomainRegistry not initialized - call initializeConfigs() first');
+        }
+        return this.grimoireDomainRegistry;
     }
 
     /**
@@ -2826,6 +2868,18 @@ class GlobalResources {
             throw new Error('Global resources not initialized - call initialize() first');
         }
         return this.grokService;
+    }
+
+    /**
+     * Get the native @ai-sdk/xai service (for smaller utility tasks).
+     * Supports streaming and native xAI web_search / x_search tools.
+     * This is intentionally separate from the main GrokService (OpenAI SDK + Responses API).
+     */
+    getXaiNativeService() {
+        if (!this.initialized) {
+            throw new Error('Global resources not initialized - call initialize() first');
+        }
+        return this.xaiNativeService;
     }
 
     /**

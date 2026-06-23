@@ -7699,6 +7699,25 @@ async function generateDynamicGenerationSystemMessage_Modular(globalResources, c
         );
     }
 
+    const novelSegment = dynamicConfig?.novel_segment;
+    if (novelSegment && typeof novelSegment === 'string' && novelSegment.trim().length > 0) {
+        directiveContentSections.push(
+            '',
+            '## 📖 STORY CONTINUATION (NEXT SCENE)',
+            '',
+            '**⚠️ CRITICAL** - The next image must depict what happens next in this story segment.',
+            '',
+            '```',
+            ...(novelSegment.trim().split('\n')),
+            '```',
+            '',
+            '- Visualize the events in this story segment',
+            '- Align character actions, mood, and environment with the narrative',
+            '- Create replacements that bring this story moment to life',
+            ''
+        );
+    }
+
     console.log(`✨ Generated system message using MODULAR builder (${systemMessageText.split('\n').length} lines)`);
 
     return {

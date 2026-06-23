@@ -703,6 +703,7 @@ class VfsVirtualGrid {
         el.addEventListener('contextmenu', (e) => {
             if (this._interactionBlocked) return;
             e.preventDefault();
+            e.stopPropagation();
             const idx = this._resolveIndex(item, parseInt(el.dataset.itemIndex, 10));
             if (!this.selectedIds.has(item.id)) {
                 this.selectedIds.clear();

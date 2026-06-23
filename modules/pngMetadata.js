@@ -356,6 +356,7 @@ class PngMetadata {
                     'dataset_config',
                     'append_quality',
                     'append_uc',
+                    'quality_preset_bias',
                     'vibe_transfer',
                     'normalize_vibes',
                     'allCharacters',
@@ -393,7 +394,9 @@ class PngMetadata {
                     'text_overlays',
                     'save_base_output',
                     'skip_pipeline_stages',
-                    'auto_clean_uc'
+                    'auto_clean_uc',
+                    'novel_note_id',
+                    'novel_story_cursor_line'
                 ];
                 
                 const filteredForgeData = {};
@@ -756,6 +759,9 @@ class PngMetadata {
         result.append_uc = detectedAppendUc;
         result.append_quality_id = forgeData.append_quality_id || null;
         result.append_uc_id = forgeData.append_uc_id || null;
+        if (forgeData.quality_preset_bias !== undefined) {
+            result.quality_preset_bias = forgeData.quality_preset_bias;
+        }
         result.dataset_config = forgeData.dataset_config || { include: [] }; // Default to empty array
 
         // Add precise reference fields
@@ -782,6 +788,12 @@ class PngMetadata {
         }
         if (forgeData.director_message_id) {
             result.director_message_id = forgeData.director_message_id;
+        }
+        if (forgeData.novel_note_id) {
+            result.novel_note_id = forgeData.novel_note_id;
+        }
+        if (forgeData.novel_story_cursor_line !== undefined) {
+            result.novel_story_cursor_line = forgeData.novel_story_cursor_line;
         }
 
         // Add image source seed for preset-based img2img

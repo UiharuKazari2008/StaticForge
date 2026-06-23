@@ -1136,6 +1136,25 @@ function updateManualPriceDisplay(bypass = false) {
 }
 
 /**
+ * Update the 24h generation count display (separate counter to the left of price/balance)
+ */
+function updateManualGenCountDisplay() {
+    const genCountEl = document.getElementById('manualGenCount');
+    const container = document.getElementById('manualGenCountDisplay');
+    if (!genCountEl) return;
+    let count = 0;
+    if (typeof imageCount === 'number') {
+        count = imageCount;
+    } else if (typeof window.imageCount === 'number') {
+        count = window.imageCount;
+    }
+    genCountEl.textContent = count;
+    if (container) {
+        container.classList.remove('hidden');
+    }
+}
+
+/**
  * Update manual upscale toggle disabled state based on resolution
  * @description Checks if upscaling is available for the current resolution and updates button state
  */
@@ -1252,7 +1271,9 @@ function syncPromptTextareaContainerMeasurements(container, extraContainerHeight
             }
         });
     } else {
-        const stacked = container.querySelectorAll(':scope > textarea.prompt-textarea');
+        const stacked = container.querySelectorAll(
+            ':scope > textarea.prompt-textarea, :scope > textarea.character-prompt-textarea'
+        );
         if (!stacked.length) return false;
         stacked.forEach((ta, idx) => {
             sum += getPromptStackedElementHeight(ta);
@@ -1299,9 +1320,37 @@ function syncPromptTextareaContainersInScope(root) {
  */
 function measureTabPaneForLayout(tabPane, fn) {
     if (!tabPane) return;
-    if (tabPane.classList.contains('active')) {
+
+    const tabContent = tabPane.closest('.tab-content');
+    const tabContentHidden = tabContent && getComputedStyle(tabContent).display === 'none';
+
+    if (tabPane.classList.contains('active') && !tabContentHidden) {
         fn();
         return;
+    }
+
+    const tabContentPrev = tabContentHidden ? {
+        display: tabContent.style.display,
+        visibility: tabContent.style.visibility,
+        position: tabContent.style.position,
+        pointerEvents: tabContent.style.pointerEvents,
+        height: tabContent.style.height,
+        overflow: tabContent.style.overflow,
+        width: tabContent.style.width,
+        left: tabContent.style.left,
+        top: tabContent.style.top
+    } : null;
+
+    if (tabContentHidden) {
+        tabContent.style.display = 'block';
+        tabContent.style.visibility = 'hidden';
+        tabContent.style.position = 'absolute';
+        tabContent.style.pointerEvents = 'none';
+        tabContent.style.height = 'auto';
+        tabContent.style.overflow = 'visible';
+        tabContent.style.width = '100%';
+        tabContent.style.left = '0';
+        tabContent.style.top = '0';
     }
 
     const prev = {
@@ -1339,6 +1388,18 @@ function measureTabPaneForLayout(tabPane, fn) {
         tabPane.style.width = prev.width;
         tabPane.style.left = prev.left;
         tabPane.style.top = prev.top;
+
+        if (tabContentHidden && tabContentPrev) {
+            tabContent.style.display = tabContentPrev.display;
+            tabContent.style.visibility = tabContentPrev.visibility;
+            tabContent.style.position = tabContentPrev.position;
+            tabContent.style.pointerEvents = tabContentPrev.pointerEvents;
+            tabContent.style.height = tabContentPrev.height;
+            tabContent.style.overflow = tabContentPrev.overflow;
+            tabContent.style.width = tabContentPrev.width;
+            tabContent.style.left = tabContentPrev.left;
+            tabContent.style.top = tabContentPrev.top;
+        }
     }
 }
 
@@ -1467,27 +1528,13 @@ function autoResizeTextarea(textarea, _minHeight = 70, extraContainerHeight = 0,
     return true;
 }
 
-const autoResizeTextareaRafIds = new WeakMap();
-
 /** Layout reflow after input — defer so native autocorrect/IME can commit first. */
 function scheduleAutoResizeTextarea(textarea, minHeight = 70, extraContainerHeight = 0) {
     if (!textarea) return;
-    // isTextInputComposing: public/scripts/comp/textareaUtils.js
-    if (typeof isTextInputComposing === 'function' && isTextInputComposing(textarea)) {
-        return;
-    }
-
-    const prevId = autoResizeTextareaRafIds.get(textarea);
-    if (prevId) {
-        cancelAnimationFrame(prevId);
-    }
-
-    const rafId = requestAnimationFrame(() => {
-        autoResizeTextareaRafIds.delete(textarea);
-        if (!textarea.isConnected) return;
+    // scheduleTextInputSideEffect: public/scripts/comp/textareaUtils.js
+    scheduleTextInputSideEffect(textarea, () => {
         autoResizeTextarea(textarea, minHeight, extraContainerHeight);
     });
-    autoResizeTextareaRafIds.set(textarea, rafId);
 }
 
 

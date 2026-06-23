@@ -662,17 +662,10 @@ class VfsManager {
             case 'Desktop': {
                 const { shortcuts } = this.globalResources.getWorkspaceManager().getDesktopShortcuts(workspaceId);
                 const rootShortcuts = (shortcuts || []).filter(s => !s.folderId);
-                const desktopFolderIds = this._getDesktopVfsFolderIds(workspaceId);
-                const folders = await vfsDatabase.getFoldersByParent('workspace', workspaceId, null);
-                const desktopFolders = folders.filter(f => desktopFolderIds.has(f.id));
-                return [
-                    ...desktopFolders.map(f => this.makeFolderItem(f, {
-                        importable: false,
-                        navPath: `/Workspaces/${workspaceId}/Desktop/${f.id}`,
-                        workspaceId
-                    })),
-                    ...rootShortcuts.filter(s => s.type !== 'folder').map(s => this._shortcutToItem(s, workspaceId))
-                ];
+                // Use shortcut metadata for everything (including folder shortcuts) so items carry
+                // shortcutType/isDesktopShortcut. This ensures delete paths use deleteFolderShortcut
+                // (removing both shortcut record and vfs folder) and explorer context menus are consistent.
+                return rootShortcuts.map(s => this._shortcutToItem(s, workspaceId));
             }
             case 'Pictures': {
                 const files = ws.files || [];

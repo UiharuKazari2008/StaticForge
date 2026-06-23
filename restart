@@ -1,0 +1,1 @@
+pm2 flush 12 && pm2 restart 12 && pm2 reset 12 && pm2 logs 12

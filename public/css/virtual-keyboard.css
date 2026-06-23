@@ -99,9 +99,6 @@
     width: 100%;
 }
 
-.virtual-keyboard-row.hidden {
-    display: none;
-}
 
 /* Uniform character keys */
 .virtual-keyboard-key--std {

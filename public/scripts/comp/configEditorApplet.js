@@ -715,7 +715,7 @@ class ConfigEditorApplet {
             'configEditorValueSecret',
             'configEditorValueTextarea',
             'configEditorValueBoolToggle',
-            'configEditorValueEnum'
+            'configEditorValueEnumDropdown'
         ];
         ids.forEach((id) => {
             const el = document.getElementById(id);
@@ -760,6 +760,10 @@ class ConfigEditorApplet {
             el.classList.remove('hidden');
             el.value = effectiveVal != null && effectiveVal !== '' ? String(effectiveVal) : '';
             el.focus();
+        } else if (child.enum?.length) {
+            const wrap = document.getElementById('configEditorValueEnumDropdown');
+            wrap?.classList.remove('hidden');
+            this.setEnumEditorValue(child.enum, effectiveVal);
         } else if (useTextarea) {
             const el = document.getElementById('configEditorValueTextarea');
             el.classList.remove('hidden');
@@ -774,6 +778,45 @@ class ConfigEditorApplet {
 
         openModal(this.valueModal);
         setTimeout(() => this.reinitScrollbars(), 80);
+    }
+
+    setEnumEditorValue(enumValues, effectiveVal) {
+        const container = document.getElementById('configEditorValueEnumDropdown');
+        const btn = document.getElementById('configEditorValueEnumBtn');
+        const menu = document.getElementById('configEditorValueEnumMenu');
+        const selectedEl = document.getElementById('configEditorValueEnumSelected');
+        const hidden = document.getElementById('configEditorValueEnumHidden');
+        if (!container || !btn || !menu || !selectedEl || !hidden) return;
+
+        const value = effectiveVal != null ? String(effectiveVal) : String(enumValues[0] ?? '');
+        hidden.value = value;
+        selectedEl.textContent = value;
+
+        if (container.dataset.wired === '1') return;
+        container.dataset.wired = '1';
+
+        const renderEnumMenu = (selectedVal) => {
+            const currentChild = this.editTarget?.child;
+            const values = currentChild?.enum?.length ? currentChild.enum : enumValues;
+            const items = values.map((v) => ({ value: String(v), name: String(v) }));
+            // renderSimpleDropdown: public/scripts/comp/manualDropdownManager.js
+            renderSimpleDropdown(
+                menu,
+                items,
+                'value',
+                'name',
+                (picked) => {
+                    hidden.value = String(picked);
+                    selectedEl.textContent = String(picked);
+                },
+                () => closeDropdown(menu, btn), // closeDropdown: public/scripts/comp/dropdown.js
+                String(selectedVal || hidden.value),
+                { preventFocusTransfer: true }
+            );
+        };
+
+        // setupDropdown: public/scripts/comp/dropdown.js
+        setupDropdown(container, btn, menu, renderEnumMenu, () => hidden.value, { preventFocusTransfer: true });
     }
 
     readValueFromEditor() {
@@ -796,6 +839,10 @@ class ConfigEditorApplet {
         const ta = document.getElementById('configEditorValueTextarea');
         if (ta && !ta.classList.contains('hidden')) {
             return ta.value;
+        }
+        const enumWrap = document.getElementById('configEditorValueEnumDropdown');
+        if (enumWrap && !enumWrap.classList.contains('hidden')) {
+            return document.getElementById('configEditorValueEnumHidden')?.value ?? '';
         }
         const el = document.getElementById('configEditorValueInput');
         return el?.value ?? '';

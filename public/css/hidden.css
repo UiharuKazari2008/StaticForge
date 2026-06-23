@@ -1,0 +1,29 @@
+/* Global hidden + terminal visibility overrides.
+   MUST remain the last stylesheet in app.html (after all feature CSS). */
+
+.hidden-alt,
+.hidden {
+    display: none !important;
+    animation-play-state: paused !important;
+}
+
+@media (min-width: 769px) {
+    html.scrolled:not(.desktop-mode) body:not(.editor-open) #title-bar {
+        animation-play-state: running;
+        opacity: 1;
+    }
+}
+
+body.initializing.no-animation *,
+body.initializing.no-animation {
+    animation: none !important;
+    transition: none !important;
+}
+
+body:not(.desktop-mode) .desktop-only {
+    display: none;
+}
+
+body.desktop-mode .singleapp-only {
+    display: none;
+}

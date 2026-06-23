@@ -2206,13 +2206,14 @@ class NaxtApplet {
     }
 
     copyTag(tag) {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(tag).then(() => {
-                if (typeof showGlassToast === 'function') {
-                    showGlassToast('success', null, `Copied "${tag}" to clipboard`, false, 2000, '<i class="fas fa-check"></i>');
-                }
-            });
-        }
+        // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
+        copyTextToClipboard(tag).then(() => {
+            if (showGlassToast) {
+                showGlassToast('success', null, `Copied "${tag}" to clipboard`, false, 2000, '<i class="fas fa-check"></i>');
+            }
+        }).catch((err) => {
+            console.error('Failed to copy tag:', err);
+        });
     }
 
     async addNaxTagToDesktop(card) {

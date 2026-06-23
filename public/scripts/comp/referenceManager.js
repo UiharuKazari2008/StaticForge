@@ -48,7 +48,6 @@ const vibeManagerMoveModal = document.getElementById('vibeManagerMoveModal');
 const vibeManagerGallery = document.getElementById('vibeManagerGallery');
 const vibeManagerLoading = document.getElementById('vibeManagerLoading');
 const vibeManagerMoveCount = document.getElementById('vibeManagerMoveCount');
-const vibeManagerMoveTargetSelect = document.getElementById('vibeManagerMoveTargetSelect');
 const closeUnifiedUploadBtn = document.getElementById('closeUnifiedUploadBtn');
 const unifiedUploadCancelBtn = document.getElementById('unifiedUploadCancelBtn');
 const unifiedUploadOpenInEditorBtn = document.getElementById('unifiedUploadOpenInEditorBtn');
@@ -4274,6 +4273,9 @@ function transformRawMetadataForEditor(metadata) {
         if (forgeData.append_quality !== undefined) {
             transformed.append_quality = forgeData.append_quality;
         }
+        if (forgeData.quality_preset_bias !== undefined) {
+            transformed.quality_preset_bias = forgeData.quality_preset_bias;
+        }
         if (forgeData.append_uc !== undefined) {
             transformed.append_uc = forgeData.append_uc;
         }
@@ -4547,6 +4549,9 @@ function transformMetadataForEditor(metadata) {
         }
         if (transformed.forge_data.append_quality !== undefined) {
             transformed.append_quality = transformed.forge_data.append_quality;
+        }
+        if (transformed.forge_data.quality_preset_bias !== undefined) {
+            transformed.quality_preset_bias = transformed.forge_data.quality_preset_bias;
         }
         if (transformed.forge_data.append_uc !== undefined) {
             transformed.append_uc = transformed.forge_data.append_uc;
@@ -6017,30 +6022,77 @@ function hideVibeManagerDeleteModal() {
     }
 }
 
+let vibeManagerMoveExcludeWorkspaceId = null;
+
+function setVibeManagerMoveTargetValue(workspaceId) {
+    const hidden = document.getElementById('vibeManagerMoveTargetHidden');
+    const selected = document.getElementById('vibeManagerMoveTargetSelected');
+    if (!hidden || !selected) return;
+    const ws = Object.values(workspaces).find((w) => w.id === workspaceId);
+    hidden.value = workspaceId || '';
+    selected.textContent = ws?.name || 'Select workspace...';
+}
+
+function renderVibeManagerMoveTargetDropdown(selectedVal) {
+    const menu = document.getElementById('vibeManagerMoveTargetMenu');
+    const btn = document.getElementById('vibeManagerMoveTargetBtn');
+    const hidden = document.getElementById('vibeManagerMoveTargetHidden');
+    if (!menu || !btn || !hidden) return;
+
+    const items = Object.values(workspaces)
+        .filter((w) => w.id !== vibeManagerMoveExcludeWorkspaceId)
+        .map((w) => ({ value: w.id, name: w.name }));
+
+    // renderSimpleDropdown: public/scripts/comp/manualDropdownManager.js
+    renderSimpleDropdown(
+        menu,
+        items,
+        'value',
+        'name',
+        (value) => setVibeManagerMoveTargetValue(value),
+        () => closeDropdown(menu, btn), // closeDropdown: public/scripts/comp/dropdown.js
+        selectedVal || hidden.value,
+        { preventFocusTransfer: true }
+    );
+}
+
+function wireVibeManagerMoveTargetDropdown() {
+    const container = document.getElementById('vibeManagerMoveTargetDropdown');
+    const btn = document.getElementById('vibeManagerMoveTargetBtn');
+    const menu = document.getElementById('vibeManagerMoveTargetMenu');
+    const hidden = document.getElementById('vibeManagerMoveTargetHidden');
+    if (!container || !btn || !menu || !hidden) return;
+    if (container.dataset.wired === '1') return;
+    container.dataset.wired = '1';
+
+    // setupDropdown: public/scripts/comp/dropdown.js
+    setupDropdown(container, btn, menu, renderVibeManagerMoveTargetDropdown, () => hidden.value, { preventFocusTransfer: true });
+}
+
 function showVibeManagerMoveModal() {
-    if (!vibeManagerMoveModal || !vibeManagerMoveTargetSelect) return;
+    if (!vibeManagerMoveModal) return;
 
     if (!vibeManagerMoveTargetImage) {
         showError('No vibe image selected for move');
         return;
     }
 
-    // Populate workspace options
-    vibeManagerMoveTargetSelect.innerHTML = '';
-    Object.values(workspaces).forEach(workspace => {
-        if (workspace.id !== cacheManagerCurrentWorkspace) {
-            const option = document.createElement('option');
-            option.value = workspace.id;
-            option.textContent = workspace.name;
-            vibeManagerMoveTargetSelect.appendChild(option);
-        }
-    });
+    vibeManagerMoveExcludeWorkspaceId = cacheManagerCurrentWorkspace;
+    wireVibeManagerMoveTargetDropdown();
+
+    const targets = Object.values(workspaces).filter((w) => w.id !== cacheManagerCurrentWorkspace);
+    if (targets.length) {
+        setVibeManagerMoveTargetValue(targets[0].id);
+    } else {
+        setVibeManagerMoveTargetValue('');
+    }
 
     openModal(vibeManagerMoveModal);
 }
 
 async function moveVibeManagerImages() {
-    if (!vibeManagerMoveTargetSelect || !vibeManagerMoveTargetSelect.value) {
+    const hidden = document.getElementById('vibeManagerMoveTargetHidden');
+    if (!hidden || !hidden.value) {
         showError('Please select a target workspace');
         return;
     }
@@ -6050,7 +6102,7 @@ async function moveVibeManagerImages() {
         return;
     }
 
-    const targetWorkspace = vibeManagerMoveTargetSelect.value;
+    const targetWorkspace = hidden.value;
     const vibeImage = vibeManagerMoveTargetImage;
 
     try {
@@ -7359,7 +7411,11 @@ function initializeCacheManager() {
     const cacheManagerNaxVibesBtn = document.getElementById('cacheManagerNaxVibesBtn');
     if (cacheManagerNaxVibesBtn) {
         cacheManagerNaxVibesBtn.addEventListener('click', () => {
-            if (typeof naxVibesApplet !== 'undefined' && naxVibesApplet) {
+            // Primary experience is now the DSAP applet on the NovelAI domain (early 2010s Web 2.0 vibe)
+            if (typeof openDsapInGrimoire === 'function') {
+                openDsapInGrimoire('dsap://vibes.novelai.net');
+            } else if (typeof naxVibesApplet !== 'undefined' && naxVibesApplet && typeof naxVibesApplet.open === 'function') {
+                // Fallback to legacy modal
                 naxVibesApplet.open();
             } else {
                 const modal = document.getElementById('naxVibesModal');
@@ -8786,49 +8842,30 @@ async function prepareUnifiedUploadPendingUrl(clipboardText) {
 // Handle clipboard paste for URL download or file
 async function handleUnifiedUploadClipboard() {
     try {
-        // Check if clipboard API is available
-        if (!navigator.clipboard) {
+        if (!isClipboardReadAvailable()) {
             showError('Clipboard API not available in this browser. Please copy and paste the URL manually.');
             return;
         }
 
-        // Try to read clipboard items (files first)
-        try {
-            const clipboardItems = await navigator.clipboard.read();
-            
-            // Check if there are files in the clipboard
-            for (const item of clipboardItems) {
-                for (const type of item.types) {
-                    if (type.startsWith('image/')) {
-                        // Handle clipboard image file
-                        const blob = await item.getType(type);
-                        const file = new File([blob], `clipboard-image.${type.split('/')[1]}`, { type });
-                        
-                        // Set the file size explicitly since File constructor from blob doesn't set it
-                        Object.defineProperty(file, 'size', {
-                            value: blob.size,
-                            writable: false
-                        });
-                        
-                        // Process as a file upload
-                        await handleClipboardFile(file);
-                        return;
-                    }
-                }
-            }
-        } catch (clipboardError) {
-            console.warn('Clipboard.read() failed, falling back to text:', clipboardError);
+        const result = await readClipboard();
+
+        const imageFile = getPrimaryImageFileFromClipboardResult(result);
+        if (imageFile) {
+            Object.defineProperty(imageFile, 'size', {
+                value: imageFile.size,
+                writable: false
+            });
+            await handleClipboardFile(imageFile);
+            return;
         }
 
-        // Read clipboard text (for URLs)
-        let clipboardText = await navigator.clipboard.readText();
+        let clipboardText = getPrimaryTextFromClipboardResult(result);
         if (!clipboardText) {
             showError('No text found in clipboard.');
             return;
         }
         clipboardText = clipboardText.trim();
 
-        // Check if it looks like a URL
         if (!clipboardText.startsWith('http') && !clipboardText.startsWith('https://')) {
             showError('Clipboard content does not appear to be a valid URL. Please copy a valid image URL.');
             return;

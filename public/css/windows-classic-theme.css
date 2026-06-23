@@ -1,0 +1,368 @@
+/* Windows Classic theme — modal chrome overrides */
+/* ============================================================================
+   Windows Classic Theme - body class override for all modals
+   ============================================================================ */
+
+body.windows-classic-theme {
+    --ActiveBorder: rgb(212, 208, 200);
+    --ActiveTitle: rgb(10, 36, 106);
+    --AppWorkspace: rgb(128, 128, 128);
+    --Background: rgb(58, 110, 165);
+    --ButtonAlternateFace: rgb(192, 192, 192);
+    --ButtonDkShadow: rgb(64, 64, 64);
+    --ButtonFace: rgb(212, 208, 200);
+    --ButtonHilight: rgb(255, 255, 255);
+    --ButtonLight: rgb(212, 208, 200);
+    --ButtonShadow: rgb(128, 128, 128);
+    --ButtonText: rgb(0, 0, 0);
+    --GradientActiveTitle: rgb(166, 202, 240);
+    --GradientInactiveTitle: rgb(192, 192, 192);
+    --GrayText: rgb(128, 128, 128);
+    --Hilight: rgb(10, 36, 106);
+    --HilightText: rgb(255, 255, 255);
+    --HotTrackingColor: rgb(0, 0, 128);
+    --InactiveBorder: rgb(212, 208, 200);
+    --InactiveTitle: rgb(128, 128, 128);
+    --InactiveTitleText: rgb(212, 208, 200);
+    --InfoText: rgb(0, 0, 0);
+    --InfoWindow: rgb(255, 255, 225);
+    --Menu: rgb(212, 208, 200);
+    --MenuBar: rgb(192, 192, 192);
+    --MenuHilight: rgb(0, 0, 128);
+    --MenuText: rgb(0, 0, 0);
+    --Scrollbar: rgb(212, 208, 200);
+    --TitleText: rgb(255, 255, 255);
+    --Window: rgb(255, 255, 255);
+    --WindowFrame: rgb(0, 0, 0);
+    --WindowText: rgb(0, 0, 0);
+}
+
+
+/* Window/Modal Base Styles */
+body.windows-classic-theme .modal {
+    background-color: var(--ButtonFace);
+    color: var(--WindowText);
+    border-color: var(--ActiveBorder);
+    font-size: 10px;
+    box-shadow: -1px -1px 0px 1px var(--ButtonHilight), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--ButtonLight), 0px 0px 0px 2px var(--ButtonDkShadow);
+    border: 1px solid var(--ActiveBorder);
+    border-radius: 0;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
+    padding: 19px 0 0;
+}
+
+body.windows-classic-theme .modal::after {
+    display: none;
+    background: transparent;
+    pointer-events: none;
+}
+
+/* Title Bar - Active Window (Blue gradient, left to right) */
+body.windows-classic-theme .modal.active-window .modal-window-title {
+    top: 0;
+    left: 0;
+    background-color: var(--ActiveTitle);
+    background-image: linear-gradient(to right, var(--ActiveTitle), var(--GradientActiveTitle));
+    color: var(--TitleText);
+    font-weight: bold;
+    padding: 1px;
+    border: none;
+    font-size: 10px;
+    border-radius: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    height: 18px;
+    min-height: 18px;
+    max-width: calc(100% - 2px);
+    line-height: 18px;
+    border-radius: 0;
+}
+
+/* Title Bar Text - Active (White) */
+body.windows-classic-theme .modal.active-window .modal-window-title-main {
+    color: var(--TitleText);
+    font-size: 10px;
+    font-weight: bold;
+    text-shadow: none;
+    padding: 0px 2px;
+    border-radius: 0;
+    -webkit-filter: none;
+    filter: none;
+}
+
+body.windows-classic-theme .modal.active-window .modal-window-title-main span {
+    color: var(--TitleText);
+    font-size: 10px;
+    font-weight: bold;
+    font-variation-settings: normal;
+}
+
+body.windows-classic-theme .modal.active-window .modal-window-title-main i,
+body.windows-classic-theme .modal.active-window .modal-window-title-main .icon-fa {
+    color: var(--TitleText);
+    font-size: 10px;
+}
+
+/* Title Bar - Inactive Window (Light gray gradient, left to right) */
+body.windows-classic-theme .modal:not(.active-window) .modal-window-title {
+    top: 0;
+    left: 0;
+    background-color: var(--InactiveTitle);
+    background-image: linear-gradient(to right, var(--InactiveTitle), var(--GradientInactiveTitle));
+    padding: 1px;
+    padding: 1px;
+    border: none;
+    font-size: 10px;
+    border-radius: 0;
+    align-items: center;
+    height: 18px;
+    min-height: 18px;
+    max-width: calc(100% - 2px);
+    line-height: 18px;
+    border-radius: 0;
+}
+
+body.windows-classic-theme .modal:not(.active-window) .modal-window-title-main {
+    color: var(--InactiveTitleText);
+    font-size: 10px;
+    padding: 0px 2px;
+}
+
+body.windows-classic-theme .modal:not(.active-window) .modal-window-title-main span {
+    color: var(--InactiveTitleText);
+    font-size: 10px;
+}
+
+body.windows-classic-theme .modal:not(.active-window) .modal-window-title-main i,
+body.windows-classic-theme .modal:not(.active-window) .modal-window-title-main .icon-fa {
+    color: var(--InactiveTitleText);
+    font-size: 8px;
+    font-weight: bold;
+}
+
+/* Window Controls Container */
+body.windows-classic-theme .modal.active-window .modal-window-controls {
+    background-color: var(--GradientActiveTitle);
+    border: none;
+    border-radius: 0;
+    right: 4px;
+    top: 0px;
+    gap: 0;
+    padding: 1px;
+    height: 18px;
+    align-items: center;
+    font-size: 8px;
+    font-weight: bold;
+}
+
+body.windows-classic-theme .modal:not(.active-window) .modal-window-controls {
+    background-color: var(--GradientInactiveTitle);
+    border: none;
+    border-radius: 0;
+    right: 4px;
+    top: 0px;
+    gap: 0;
+    padding: 1px;
+    height: 18px;
+    align-items: center;
+    font-size: 8px;
+    font-weight: bold;
+}
+
+/* Window Control Buttons - Active Window */
+body.windows-classic-theme .modal.active-window .modal-window-controls button {
+    background-color: var(--ButtonFace);
+    color: var(--ButtonText);
+    font-size: 8px;
+    padding: 0;
+    margin: 0;
+    height: 10px;
+    min-height: 10px;
+    width: 12px;
+    min-width: 12px;
+    font-weight: bold;
+    text-shadow: none;
+    border-radius: 0;
+    border: none;
+    box-shadow: -1px -1px 0px 1px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 10px;
+    max-width: calc(100% - 5px);
+}
+
+body.windows-classic-theme .modal.active-window .modal-window-controls button i {
+    color: var(--ButtonText);
+    text-shadow: none;
+    font-size: 8px;
+    line-height: 10px;
+}
+
+/* Window Control Buttons - Inactive Window */
+body.windows-classic-theme .modal:not(.active-window) .modal-window-controls button {
+    background-color: var(--ButtonFace);
+    color: var(--ButtonText);
+    font-size: 8px;
+    padding: 0;
+    margin: 0;
+    height: 10px;
+    min-height: 10px;
+    width: 12px;
+    min-width: 12px;
+    font-weight: bold;
+    text-shadow: none;
+    border-radius: 0;
+    border: none;
+    box-shadow: -1px -1px 0px 1px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 10px;
+    max-width: calc(100% - 5px);
+}
+
+body.windows-classic-theme .modal:not(.active-window) .modal-window-controls button i {
+    color: var(--ButtonText);
+    text-shadow: none;
+    font-size: 8px;
+    line-height: 10px;
+}
+
+/* Button Hover State - Active Window */
+body.windows-classic-theme .modal.active-window .modal-window-controls button:hover:not(:disabled) {
+    background-color: var(--ButtonLight);
+    box-shadow: -1px -1px 0px 1px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
+}
+
+/* Button Hover State - Inactive Window */
+body.windows-classic-theme .modal:not(.active-window) .modal-window-controls button:hover:not(:disabled) {
+    background-color: var(--ButtonLight);
+    box-shadow: -1px -1px 0px 1px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
+}
+
+/* Button Active/Pressed State */
+body.windows-classic-theme .modal.active-window .modal-window-controls button:active:not(:disabled) {
+    background-color: var(--ButtonFace);
+    box-shadow: -1px -1px 0px 1px var(--ButtonShadow), 0px 0px 0px 1px var(--ButtonLight), -1px -1px 0px 2px var(--ButtonDkShadow), 0px 0px 0px 2px var(--ButtonHilight);
+}
+
+body.windows-classic-theme .modal:not(.active-window) .modal-window-controls button:active:not(:disabled) {
+    background-color: var(--ButtonFace);
+    box-shadow: -1px -1px 0px 1px var(--ButtonShadow), 0px 0px 0px 1px var(--ButtonLight), -1px -1px 0px 2px var(--ButtonDkShadow), 0px 0px 0px 2px var(--ButtonHilight);
+}
+
+/* Button Disabled State - Window Controls */
+body.windows-classic-theme .modal.active-window .modal-window-controls button:disabled {
+    background-color: var(--ButtonFace);
+    box-shadow: -1px -1px 0px 1px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
+    opacity: 1;
+}
+
+body.windows-classic-theme .modal.active-window .modal-window-controls button:disabled i {
+    color: var(--GrayText);
+    opacity: 1;
+}
+
+body.windows-classic-theme .modal:not(.active-window) .modal-window-controls button:disabled {
+    background-color: var(--ButtonFace);
+    box-shadow: -1px -1px 0px 1px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
+    opacity: 1;
+}
+
+body.windows-classic-theme .modal:not(.active-window) .modal-window-controls button:disabled i {
+    color: var(--GrayText);
+    opacity: 1;
+}
+
+/* Modal Content/Body */
+body.windows-classic-theme .modal .modal-content {
+    border: none;
+    border-radius: 0;
+    font-size: 10px;
+    color: var(--WindowText);
+}
+
+body.windows-classic-theme .modal .modal-content.light,
+body.windows-classic-theme .modal .modal-body.light {
+    background: var(--Window);
+}
+
+body.windows-classic-theme .modal .modal-body {
+    color: var(--WindowText);
+    font-size: 10px;
+}
+
+/* Text Colors - Override for modal content */
+body.windows-classic-theme .modal .modal-content,
+body.windows-classic-theme .modal .modal-body {
+    color: var(--WindowText);
+}
+
+body.windows-classic-theme .modal .modal-content p {
+    color: var(--WindowText);
+}
+
+body.windows-classic-theme .modal.active-window .modal-window-title,
+body.windows-classic-theme .modal.active-window .modal-window-title * {
+    color: var(--TitleText);
+}
+
+body.windows-classic-theme .modal:not(.active-window) .modal-window-title,
+body.windows-classic-theme .modal:not(.active-window) .modal-window-title * {
+    color: var(--InactiveTitleText);
+}
+
+/* Buttons in modal content (OK, Cancel, etc.) */
+body.windows-classic-theme .modal button:not(.modal-window-controls button) {
+    background-color: var(--ButtonFace);
+    color: var(--ButtonText);
+    font-size: 10px;
+    padding: 0;
+    margin: 2px;
+    min-width: 68px;
+    min-height: 20px;
+    line-height: 20px;
+    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
+    font-weight: normal;
+    text-shadow: none;
+    border-radius: 0;
+    border: none;
+    box-shadow: -1px -1px 0px 1px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
+    text-align: center;
+    vertical-align: middle;
+    max-width: calc(100% - 5px);
+}
+
+body.windows-classic-theme .modal button:not(.modal-window-controls button):hover:not(:disabled) {
+    background-color: var(--ButtonLight);
+    box-shadow: -1px -1px 0px 1px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
+}
+
+body.windows-classic-theme .modal button:not(.modal-window-controls button):active:not(:disabled) {
+    background-color: var(--ButtonFace);
+    box-shadow: -1px -1px 0px 1px var(--ButtonShadow), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--WindowFrame), 0px 0px 0px 2px var(--WindowFrame);
+}
+
+body.windows-classic-theme .modal button:not(.modal-window-controls button):disabled {
+    background-color: var(--ButtonFace);
+    box-shadow: -1px -1px 0px 1px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
+    color: var(--GrayText);
+    opacity: 1;
+}
+
+body.windows-classic-theme .modal button:not(.modal-window-controls button):disabled * {
+    opacity: 1;
+    color: var(--GrayText);
+}
+
+/* Selected button state */
+body.windows-classic-theme .modal button:not(.modal-window-controls button).selected,
+body.windows-classic-theme .modal button:not(.modal-window-controls button)[aria-selected="true"] {
+    background-color: var(--Hilight);
+    color: var(--HilightText);
+    box-shadow: -1px -1px 0px 1px var(--ButtonShadow), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--WindowFrame), 0px 0px 0px 2px var(--WindowFrame);
+}

@@ -10,7 +10,7 @@ const {
     handleDirectorRollbackMessage
 } = require('./directorHandlers');
 const { isImageLarge, matchOriginalResolution } = require('./imageTools');
-const { generateImageWebSocket, handleRerollGeneration, expandImage, rerollExpandedImage, previewExpandImagePrompt, collectTextReplacementSeeds } = require('./imageGeneration');
+const { generateImageWebSocket, handleRerollGeneration, expandImage, rerollExpandedImage, previewExpandImagePrompt, collectTextReplacementSeeds, compileDynamicGenerationWebSocket, applyTendaiPreviewWebSocket } = require('./imageGeneration');
 const { upscaleImageWebSocket } = require('./imageUpscaling');
 const { generateMobilePreviews } = require('./previewUtils');
 const { getTimezoneByCoordinates, resolveDynamicContext } = require('./dynamicGenerationHandlers');
@@ -19,6 +19,7 @@ const {
     normalizeAutofillSearchSettings,
     mergeAutofillSearchSettingsPatch
 } = require('./autofillSearchSettings');
+const grimoireDomainRegistry = require('./grimoireDomainRegistry');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -246,6 +247,17 @@ class WebSocketMessageHandlers {
         this.metadataCache = new MetadataCache(1000); // LRU cache with 1000 items
         this.metadataCache.startCleanup(); // Start periodic cleanup
         this.vfsHandlers = new VfsWebSocketHandlers(this);
+
+        // Bind any Grimoire domain/applet declared WS packets so they can own their messages
+        // without every new applet editing this giant central switch.
+        try {
+            const reg = this.globalResources.getGrimoireDomainRegistry?.();
+            if (reg && typeof reg.bindAllDomainPackets === 'function') {
+                reg.bindAllDomainPackets(this);
+            }
+        } catch (e) {
+            console.warn('[WS] Failed to bind grimoire domain packets:', e.message);
+        }
     }
 
     // Clean up metadata cache when client disconnects
@@ -373,6 +385,9 @@ class WebSocketMessageHandlers {
             'delete_text_replacement',
             'get_text_replacement_options',
             'scan_text_replacements',
+            'compile_dynamic_generation',
+            'apply_tendai_preview',
+            'resolve_text_replacements',
             'spellcheck_add_word',
             'generate_image',
             'upscale_image',
@@ -442,6 +457,14 @@ class WebSocketMessageHandlers {
         return destructiveOperations.includes(messageType);
     }
 
+    normalizeStartMenuPinnedSetting(desktop) {
+        if (!desktop || !Array.isArray(desktop.startMenuPinned)) return undefined;
+        return desktop.startMenuPinned
+            .filter((id) => typeof id === 'string' && id.trim())
+            .map((id) => id.trim())
+            .slice(0, 48);
+    }
+
     normalizeStartMenuButtonSetting(desktop) {
         const raw = desktop && desktop.startMenuButton && typeof desktop.startMenuButton === 'object'
             ? desktop.startMenuButton
@@ -467,15 +490,20 @@ class WebSocketMessageHandlers {
         const base = raw && typeof raw === 'object' ? raw : {};
         const naxt = base.naxt && typeof base.naxt === 'object' ? base.naxt : {};
         const desktop = base.desktop && typeof base.desktop === 'object' ? base.desktop : {};
+        const pinned = this.normalizeStartMenuPinnedSetting(desktop);
+        const desktopOut = {
+            autoLaunchWorkspace: desktop.autoLaunchWorkspace !== false,
+            liveWindowRepositioning: desktop.liveWindowRepositioning === true,
+            exitDesktopOnWorkspaceMaximise: desktop.exitDesktopOnWorkspaceMaximise === true,
+            notificationBridgeEnabled: desktop.notificationBridgeEnabled !== false,
+            bypassNotificationBridgeInDesktopMode: desktop.bypassNotificationBridgeInDesktopMode === true,
+            startMenuButton: this.normalizeStartMenuButtonSetting(desktop)
+        };
+        if (pinned !== undefined) {
+            desktopOut.startMenuPinned = pinned;
+        }
         return {
-            desktop: {
-                autoLaunchWorkspace: desktop.autoLaunchWorkspace !== false,
-                liveWindowRepositioning: desktop.liveWindowRepositioning === true,
-                exitDesktopOnWorkspaceMaximise: desktop.exitDesktopOnWorkspaceMaximise === true,
-                notificationBridgeEnabled: desktop.notificationBridgeEnabled !== false,
-                bypassNotificationBridgeInDesktopMode: desktop.bypassNotificationBridgeInDesktopMode === true,
-                startMenuButton: this.normalizeStartMenuButtonSetting(desktop)
-            },
+            desktop: desktopOut,
             naxt: {
                 elevatePins: this.normalizeNaxtElevatePinsSetting(naxt)
             },
@@ -511,6 +539,11 @@ class WebSocketMessageHandlers {
                         ...out.desktop.startMenuButton,
                         ...patch.desktop.startMenuButton
                     }
+                });
+            }
+            if (Array.isArray(patch.desktop.startMenuPinned)) {
+                out.desktop.startMenuPinned = this.normalizeStartMenuPinnedSetting({
+                    startMenuPinned: patch.desktop.startMenuPinned
                 });
             }
         }
@@ -549,6 +582,19 @@ class WebSocketMessageHandlers {
 
     // Route messages to appropriate handlers
     async routeMessage(ws, message, clientInfo, wsServer) {
+        // First, allow Grimoire domains / applets to own specific packets.
+        // Registered via grimoireDomainRegistry.registerPacketHandler or via domain.packets in registration.
+        const direct = grimoireDomainRegistry.getPacketHandler && grimoireDomainRegistry.getPacketHandler(message.type);
+        if (direct) {
+            try {
+                await direct.call(this, ws, message, clientInfo, wsServer);
+            } catch (err) {
+                console.error('[WS] Domain packet handler error for', message.type, err);
+                this.sendError(ws, 'Packet handler failed', err.message, message.requestId);
+            }
+            return;
+        }
+
         switch (message.type) {
             case 'lookup_city':
                 await this.handleCityLookup(ws, message, clientInfo, wsServer);
@@ -640,6 +686,10 @@ class WebSocketMessageHandlers {
 
             case 'get_static_wiki_page':
                 await this.handleGetStaticWikiPage(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'resolve_grimoire_url':
+                await this.handleResolveGrimoireUrl(ws, message, clientInfo, wsServer);
                 break;
 
             case 'get_nax_galleries':
@@ -1115,6 +1165,30 @@ class WebSocketMessageHandlers {
                 await this.handleNotesSaveContent(ws, message, clientInfo, wsServer);
                 break;
 
+            case 'novel_list':
+                await this.handleNovelList(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'novel_get':
+                await this.handleNovelGet(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'novel_update':
+                await this.handleNovelUpdate(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'novel_generate':
+                await this.handleNovelGenerate(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'novel_undo':
+                await this.handleNovelUndo(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'novel_resolve_image':
+                await this.handleNovelResolveImage(ws, message, clientInfo, wsServer);
+                break;
+
             // Bulk operations
             case 'workspace_bulk_add_scrap':
                 await this.handleWorkspaceBulkAddScrap(ws, message, clientInfo, wsServer);
@@ -1398,6 +1472,18 @@ class WebSocketMessageHandlers {
 
             case 'resolve_dynamic_context':
                 await this.handleResolveDynamicContext(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'compile_dynamic_generation':
+                await this.handleCompileDynamicGeneration(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'apply_tendai_preview':
+                await this.handleApplyTendaiPreview(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'resolve_text_replacements':
+                await this.handleResolveTextReplacements(ws, message, clientInfo, wsServer);
                 break;
 
             // IP Management handlers
@@ -2371,7 +2457,10 @@ class WebSocketMessageHandlers {
         }
     }
 
-    // Handle get tag wiki page requests
+    // Handle get tag wiki page requests.
+    // Core contract: never bypass the local database (tag_wiki.db wikis table + sections/links)
+    // or the derived image cache (wiki_files/) unless the data does not exist locally,
+    // or the user has specifically requested to update the stored copy (explicit refresh).
     async handleGetTagWikiPage(ws, message, clientInfo, wsServer) {
         console.log(`[Wiki Handler] handleGetTagWikiPage called with tagName="${message.tagName}", source="${message.source}"`);
         
@@ -2402,6 +2491,33 @@ class WebSocketMessageHandlers {
 
             const SOURCE_DANBOORU = 1;
             const SOURCE_E621 = 2;
+            const forceFresh = !!(message && (message.force || message.forceRefresh));
+
+            // When forcing fresh (explicit user "Refresh from online" or dedicated online lookup),
+            // clear the recent failed-fetch cache so a prior failure doesn't short-circuit the live attempt.
+            // We still always prefer local DB first for normal loads.
+            if (forceFresh) {
+                try {
+                    const ckeyDan = `${tagName}|${SOURCE_DANBOORU}`;
+                    const ckeyE6 = `${tagName}|${SOURCE_E621}`;
+                    await tagLookup.clearFailedFetchCache(ckeyDan);
+                    await tagLookup.clearFailedFetchCache(ckeyE6);
+                    const resolved = tagLookup.resolveBooruWikiTagName(tagName);
+                    if (resolved && resolved !== tagName) {
+                        await tagLookup.clearFailedFetchCache(`${resolved}|${SOURCE_DANBOORU}`);
+                        await tagLookup.clearFailedFetchCache(`${resolved}|${SOURCE_E621}`);
+                    }
+                } catch (e) {
+                    /* non-fatal; proceed with fetch attempt */
+                }
+            }
+
+            // Rule: Never bypass the local database/cache for wiki bodies (or the derived image cache)
+            // unless the data does not exist locally, OR the user specifically requests an update
+            // of the stored copy (forceFresh from explicit refresh or dedicated online-check flow).
+            //
+            // Normal navigation, desktop shortcuts, history restore, address bar, etc. must use
+            // the stored copy if present.
 
             // If source is 'both' or not specified, get all bodies
             if (source === 'both' || !source) {
@@ -2412,9 +2528,9 @@ class WebSocketMessageHandlers {
                 let danbooruWikiId = null;
                 let e621WikiId = null;
                 
-                // Try to get from database
+                // Always try local DB first (by tag id if we have the tag, otherwise by title).
+                // This respects the cache for normal loads.
                 if (tag) {
-                    // Tag exists - query by tag ID
                     const danbooruResult = await tagLookup.getTagWikiBody(tag.id, SOURCE_DANBOORU);
                     const e621Result = await tagLookup.getTagWikiBody(tag.id, SOURCE_E621);
                     
@@ -2427,7 +2543,6 @@ class WebSocketMessageHandlers {
                         e621FetchedOnline = e621Result.fetchedOnline || false;
                     }
                 } else {
-                    // Tag doesn't exist - query wikis directly by title
                     const danbooruResult = await tagLookup.getWikiByTitleAndSource(tagName, SOURCE_DANBOORU);
                     const e621Result = await tagLookup.getWikiByTitleAndSource(tagName, SOURCE_E621);
                     
@@ -2443,15 +2558,16 @@ class WebSocketMessageHandlers {
                     }
                 }
 
-                // Fetch from API if not found in database (or if tag doesn't exist)
-                if (!danbooruBody) {
+                // Only initiate live fetch if we have nothing locally for that source,
+                // OR the user explicitly asked to update the stored copy.
+                if (!danbooruBody || forceFresh) {
                     const fetched = await tagLookup.fetchAndSaveWikiForTag(tag ? tag.id : null, tagName, SOURCE_DANBOORU);
                     if (fetched.body) {
                         danbooruBody = fetched.body;
                         danbooruFetchedOnline = fetched.fetchedOnline || false;
                     }
                 }
-                if (!e621Body) {
+                if (!e621Body || forceFresh) {
                     const fetched = await tagLookup.fetchAndSaveWikiForTag(tag ? tag.id : null, tagName, SOURCE_E621);
                     if (fetched.body) {
                         e621Body = fetched.body;
@@ -2561,7 +2677,8 @@ class WebSocketMessageHandlers {
 
             let bodyText = null;
             let fetchedOnline = false;
-            // Only try to get from database if tag exists
+
+            // Always try local first (respect cache for the wiki body and derived files).
             if (tag) {
                 const bodyResult = await tagLookup.getTagWikiBody(tag.id, sourceId);
                 if (bodyResult) {
@@ -2569,9 +2686,17 @@ class WebSocketMessageHandlers {
                     fetchedOnline = bodyResult.fetchedOnline || false;
                 }
             }
-                        
-            // Fetch from API if not found in database (or if tag doesn't exist)
-            if (!bodyText) {
+            if (!bodyText && !tag) {
+                const bodyResult = await tagLookup.getWikiByTitleAndSource(tagName, sourceId);
+                if (bodyResult) {
+                    bodyText = bodyResult.body;
+                    fetchedOnline = bodyResult.fetchedOnline || false;
+                }
+            }
+
+            // Only fetch live if nothing local for the source, or the user specifically requested
+            // to update the stored copy (explicit refresh / dedicated online check flow).
+            if (!bodyText || forceFresh) {
                 const fetched = await tagLookup.fetchAndSaveWikiForTag(tag ? tag.id : null, tagName, sourceId);
                 if (fetched.body) {
                     bodyText = fetched.body;
@@ -2600,7 +2725,7 @@ class WebSocketMessageHandlers {
                     }
                 }
                 
-                // If we just fetched, get the wiki ID
+                // If we just fetched (or to be safe after local hit), get the wiki ID
                 if (bodyText && !wikiId) {
                     const result = await tagLookup.getWikiIdForTag(tag.id, sourceId);
                     if (result) {
@@ -2647,13 +2772,14 @@ class WebSocketMessageHandlers {
                 throw new Error('Tag lookup service not available');
             }
 
-            // Clear failed fetch cache if forcing refresh
+            // This is the explicit "user wants to update the stored copy" path.
+            // Clear failed cache so a prior failure doesn't block the live attempt,
+            // then delegate (the handler will now fetch because forceFresh is set).
             if (force) {
                 const SOURCE_DANBOORU = 1;
                 const SOURCE_E621 = 2;
                 let sourceId = source === 'e621' ? SOURCE_E621 : SOURCE_DANBOORU;
                 if (source === 'both' || !source) {
-                    // Clear both
                     await tagLookup.clearFailedFetchCache(`${tagName}|${SOURCE_DANBOORU}`);
                     await tagLookup.clearFailedFetchCache(`${tagName}|${SOURCE_E621}`);
                 } else {
@@ -2661,7 +2787,7 @@ class WebSocketMessageHandlers {
                 }
             }
 
-            // Use the same handler as get_tag_wiki_page
+            // Delegate — force flag will cause live fetch + overwrite of the stored body/images.
             await this.handleGetTagWikiPage(ws, message, clientInfo, wsServer);
         } catch (error) {
             console.error('[Wiki Handler] Refresh tag wiki page error:', error);
@@ -2729,6 +2855,47 @@ class WebSocketMessageHandlers {
         } catch (error) {
             console.error('get_static_wiki_page:', error);
             this.sendError(ws, 'Failed to load wiki page', error.message, message.requestId);
+        }
+    }
+
+    /**
+     * Server-side Grimoire pseudo-URL resolver.
+     * Returns canonical form, page type hint, and (when available) prebuilt content or instructions.
+     * Client Grimoire browser (and future server-prebuilt flows) should prefer this over local string matching.
+     */
+    async handleResolveGrimoireUrl(ws, message, clientInfo, wsServer) {
+        const { url } = message;
+        if (!url) {
+            this.sendError(ws, 'Missing url parameter', 'resolve_grimoire_url', message.requestId);
+            return;
+        }
+        try {
+            const reg = this.globalResources.getGrimoireDomainRegistry();
+            const resolved = reg.resolvePseudoUrl ? reg.resolvePseudoUrl(url) : null;
+
+            let page = null;
+            if (resolved && resolved.entry && typeof resolved.entry.getPage === 'function') {
+                try {
+                    page = resolved.entry.getPage(resolved, { globalResources: this.globalResources });
+                } catch (e) {
+                    console.warn('grimoire domain getPage failed:', e.message);
+                }
+            }
+
+            this.sendToClient(ws, {
+                type: 'resolve_grimoire_url_response',
+                requestId: message.requestId,
+                data: {
+                    url,
+                    resolved: resolved || null,
+                    page, // may contain { html, title, type, data, ... } for prebuilt shells
+                    timestamp: new Date().toISOString()
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('resolve_grimoire_url:', error);
+            this.sendError(ws, 'Failed to resolve Grimoire URL', error.message, message.requestId);
         }
     }
 
@@ -2861,14 +3028,13 @@ class WebSocketMessageHandlers {
 
             let generationQuipsSettings = null;
             if (generationQuipsPatch && typeof generationQuipsPatch === 'object') {
-                const activeWorkspaceId = this.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
                 this.globalResources.applyGenerationQuipsSettingsPatch(generationQuipsPatch);
-                generationQuipsSettings = {
-                    byWorkspace: {
-                        [activeWorkspaceId]: this.globalResources.getGenerationQuipsManager()
-                            .getAutoUpdateUserSettings(activeWorkspaceId)
-                    }
-                };
+                const manager = this.globalResources.getGenerationQuipsManager();
+                const byWorkspace = {};
+                for (const wsId of Object.keys(generationQuipsPatch.byWorkspace || {})) {
+                    byWorkspace[wsId] = manager.getAutoUpdateStatus(wsId);
+                }
+                generationQuipsSettings = { byWorkspace };
             }
 
             this.sendToClient(ws, {
@@ -5678,11 +5844,34 @@ class WebSocketMessageHandlers {
     // Notes operation handlers
     async handleNotesCreate(ws, message, clientInfo, wsServer) {
         try {
-            const { id, name, workspaceId, content, icon, color } = message;
+            let { id, name, workspaceId, content, icon, color, note_kind, metadata } = message;
 
-            if (!id || !name || !workspaceId) {
-                this.sendError(ws, 'Note ID, name, and workspace ID are required', 'notes_create', message.requestId);
+            if (!id || !workspaceId) {
+                this.sendError(ws, 'Note ID and workspace ID are required', 'notes_create', message.requestId);
                 return;
+            }
+
+            if (note_kind === 'novel' && (!name || !String(name).trim())) {
+                const novelHandlers = this.globalResources.getNovelHandlers();
+                name = novelHandlers.generateNoteName({
+                    directive: message.directive,
+                    generatedImageName: message.generatedImageName,
+                    content
+                });
+            }
+
+            if (!name) {
+                this.sendError(ws, 'Note name is required', 'notes_create', message.requestId);
+                return;
+            }
+
+            if (note_kind === 'novel') {
+                icon = icon || 'fas fa-book-open';
+                const meta = metadata && typeof metadata === 'object' ? { ...metadata } : {};
+                if (message.directive && String(message.directive).trim()) {
+                    meta.directive_snapshot = String(message.directive).trim();
+                }
+                metadata = meta;
             }
 
             const note = await this.globalResources.notesDatabase.createNote({
@@ -5691,7 +5880,9 @@ class WebSocketMessageHandlers {
                 workspaceId,
                 content,
                 icon,
-                color
+                color,
+                note_kind: note_kind || 'note',
+                metadata: metadata || {}
             });
 
             this.sendToClient(ws, {
@@ -5878,6 +6069,167 @@ class WebSocketMessageHandlers {
         } catch (error) {
             console.error('Notes save content error:', error);
             this.sendError(ws, 'Failed to save note content', error.message, message.requestId);
+        }
+    }
+
+    async handleNovelList(ws, message, clientInfo, wsServer) {
+        try {
+            const activeWorkspaceId = this.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
+            const workspaceId = message.workspaceId || activeWorkspaceId;
+            const novels = await this.globalResources.getNovelHandlers().listNovels(workspaceId);
+            this.sendToClient(ws, {
+                type: 'novel_list_response',
+                requestId: message.requestId,
+                data: { novels },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Novel list error:', error);
+            this.sendError(ws, 'Failed to list novels', error.message, message.requestId);
+        }
+    }
+
+    async handleNovelGet(ws, message, clientInfo, wsServer) {
+        try {
+            const { noteId } = message;
+            if (!noteId) {
+                this.sendError(ws, 'Note ID is required', 'novel_get', message.requestId);
+                return;
+            }
+            const note = await this.globalResources.notesDatabase.getNote(noteId);
+            if (!note || note.note_kind !== 'novel') {
+                this.sendError(ws, 'Novel note not found', 'novel_get', message.requestId);
+                return;
+            }
+            this.sendToClient(ws, {
+                type: 'novel_get_response',
+                requestId: message.requestId,
+                data: { note },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Novel get error:', error);
+            this.sendError(ws, 'Failed to get novel', error.message, message.requestId);
+        }
+    }
+
+    async handleNovelUpdate(ws, message, clientInfo, wsServer) {
+        try {
+            const { noteId, updates } = message;
+            if (!noteId || !updates) {
+                this.sendError(ws, 'Note ID and updates are required', 'novel_update', message.requestId);
+                return;
+            }
+            const note = await this.globalResources.notesDatabase.updateNote(noteId, updates);
+            this.sendToClient(ws, {
+                type: 'novel_update_response',
+                requestId: message.requestId,
+                data: { success: true, note },
+                timestamp: new Date().toISOString()
+            });
+            wsServer.broadcast({
+                type: 'note_updated',
+                data: { noteId, updates, note },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Novel update error:', error);
+            this.sendError(ws, 'Failed to update novel', error.message, message.requestId);
+        }
+    }
+
+    async handleNovelGenerate(ws, message, clientInfo, wsServer) {
+        try {
+            const { noteId } = message;
+            if (!noteId) {
+                this.sendError(ws, 'Note ID is required', 'novel_generate', message.requestId);
+                return;
+            }
+            const novelHandlers = this.globalResources.getNovelHandlers();
+            this.sendToClient(ws, {
+                type: 'novel_generate_response',
+                requestId: message.requestId,
+                data: { success: true, started: true, noteId },
+                timestamp: new Date().toISOString()
+            });
+            setImmediate(async () => {
+                try {
+                    const result = await novelHandlers.runGenerate(ws, wsServer, message);
+                    this.sendToClient(ws, {
+                        type: 'novel_generate_complete',
+                        requestId: message.requestId,
+                        data: result,
+                        timestamp: new Date().toISOString()
+                    });
+                    wsServer.broadcast({
+                        type: 'novel_updated',
+                        data: { noteId, note: result.note },
+                        timestamp: new Date().toISOString()
+                    });
+                } catch (error) {
+                    console.error('Novel generate error:', error);
+                    novelHandlers.publishProgress(wsServer, {
+                        phase: 'error',
+                        noteId,
+                        requestId: message.requestId,
+                        reason: error.message
+                    });
+                    this.sendToClient(ws, {
+                        type: 'novel_generate_complete',
+                        requestId: message.requestId,
+                        data: { success: false, error: error.message },
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            });
+        } catch (error) {
+            console.error('Novel generate start error:', error);
+            this.sendError(ws, 'Failed to start novel generation', error.message, message.requestId);
+        }
+    }
+
+    async handleNovelUndo(ws, message, clientInfo, wsServer) {
+        try {
+            const { noteId } = message;
+            if (!noteId) {
+                this.sendError(ws, 'Note ID is required', 'novel_undo', message.requestId);
+                return;
+            }
+            const result = await this.globalResources.getNovelHandlers().runUndo(noteId);
+            this.sendToClient(ws, {
+                type: 'novel_undo_response',
+                requestId: message.requestId,
+                data: result,
+                timestamp: new Date().toISOString()
+            });
+            wsServer.broadcast({
+                type: 'novel_updated',
+                data: { noteId, note: result.note },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Novel undo error:', error);
+            this.sendError(ws, 'Failed to undo novel generation', error.message, message.requestId);
+        }
+    }
+
+    async handleNovelResolveImage(ws, message, clientInfo, wsServer) {
+        try {
+            const { noteId } = message;
+            if (!noteId) {
+                this.sendError(ws, 'Note ID is required', 'novel_resolve_image', message.requestId);
+                return;
+            }
+            const result = await this.globalResources.getNovelHandlers().resolveImage(noteId, message.filename || null);
+            this.sendToClient(ws, {
+                type: 'novel_resolve_image_response',
+                requestId: message.requestId,
+                data: result,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Novel resolve image error:', error);
+            this.sendError(ws, 'Failed to resolve novel image', error.message, message.requestId);
         }
     }
 
@@ -13650,10 +14002,93 @@ class WebSocketMessageHandlers {
         }
     }
 
+    async handleCompileDynamicGeneration(ws, message, clientInfo, wsServer) {
+        try {
+            const body = message.data || message;
+            const requestId = message.requestId || body.requestId;
+
+            const result = await compileDynamicGenerationWebSocket(
+                this.globalResources,
+                body,
+                ws,
+                this,
+                wsServer
+            );
+
+            this.sendToClient(ws, {
+                type: 'compile_dynamic_generation_response',
+                requestId,
+                data: result,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error compiling dynamic generation:', error);
+            this.sendError(ws, 'Failed to compile dynamic generation', error.message, message.requestId);
+        }
+    }
+
+    async handleApplyTendaiPreview(ws, message, clientInfo, wsServer) {
+        try {
+            const body = message.data || message;
+            const requestId = message.requestId || body.requestId;
+
+            const result = await applyTendaiPreviewWebSocket(
+                this.globalResources,
+                body,
+                ws,
+                this,
+                wsServer
+            );
+
+            this.sendToClient(ws, {
+                type: 'apply_tendai_preview_response',
+                requestId,
+                data: result,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error applying Tendai preview:', error);
+            this.sendError(ws, 'Failed to apply Tendai replacements', error.message, message.requestId);
+        }
+    }
+
+    async handleResolveTextReplacements(ws, message, clientInfo, wsServer) {
+        try {
+            const { text, presetName, model, periodKey, requestId } = message;
+            if (!text || typeof text !== 'string') {
+                this.sendError(ws, 'Invalid text', 'Text is required', requestId);
+                return;
+            }
+
+            const result = this.globalResources.getTextReplacements().applyTextReplacements(
+                text,
+                presetName || null,
+                model || null,
+                periodKey || null,
+                null,
+                { stageIndex: 0, stageType: 'base', text_replacements: [], pipelineStageGeneration: false }
+            );
+
+            this.sendToClient(ws, {
+                type: 'resolve_text_replacements_response',
+                requestId,
+                data: {
+                    success: true,
+                    text: result.text,
+                    replacements: result.replacements
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error resolving text replacements:', error);
+            this.sendError(ws, 'Failed to resolve text replacements', error.message, message.requestId);
+        }
+    }
+
     // KNOWLEDGE MEMORY HANDLERS
     async handleListKnowledgeMemories(ws, message, clientInfo, wsServer) {
         try {
-            const { requestId } = message;
+            const { requestId, limit, offset, search, category, page, perPage } = message;
 
             const knowledgeMemoryDb = this.globalResources.getKnowledgeMemoryDb();
 
@@ -13662,20 +14097,64 @@ class WebSocketMessageHandlers {
                 return;
             }
 
-            // Get list of memories
-            const memories = knowledgeMemoryDb.listKnowledgeMemories();
+            // Support both legacy (no params = full list) and new paged/filtered calls from the DSAP applet.
+            const wantsPaging = (limit != null || offset != null || search != null || category != null || page != null || perPage != null);
 
-            // Get stats
+            let memories;
+            let total = null;
+            let respPage = 1;
+            let respPerPage = 25;
+
+            if (wantsPaging) {
+                // Normalize paging params (support page/perPage or raw limit/offset)
+                const p = parseInt(page, 10);
+                const pp = parseInt(perPage, 10);
+                if (p > 0 && pp > 0) {
+                    respPage = p;
+                    respPerPage = Math.max(1, Math.min(200, pp));
+                    const computedOffset = (respPage - 1) * respPerPage;
+                    const res = knowledgeMemoryDb.listKnowledgeMemoriesPaged({
+                        limit: respPerPage,
+                        offset: computedOffset,
+                        search: search || '',
+                        category: category || null
+                    });
+                    memories = res.items;
+                    total = res.total;
+                } else {
+                    const lim = parseInt(limit, 10) || 25;
+                    const off = parseInt(offset, 10) || 0;
+                    respPerPage = Math.max(1, Math.min(200, lim));
+                    respPage = Math.floor(off / respPerPage) + 1;
+                    const res = knowledgeMemoryDb.listKnowledgeMemoriesPaged({
+                        limit: respPerPage,
+                        offset: off,
+                        search: search || '',
+                        category: category || null
+                    });
+                    memories = res.items;
+                    total = res.total;
+                }
+            } else {
+                // Legacy full list (used by other internal callers)
+                memories = knowledgeMemoryDb.listKnowledgeMemories();
+                total = memories.length;
+            }
+
+            // Always fetch grand stats (cheap and useful for the UI stat pills + category list)
             const stats = knowledgeMemoryDb.getKnowledgeMemoryStats();
 
-            console.log(`📚 Listed ${memories.length} knowledge memories`);
+            console.log(`📚 Listed ${memories.length} knowledge memories (paged=${wantsPaging})`);
 
-            // Send response
+            // Send response (shape is backward-compatible; extra fields are present when paging)
             this.sendToClient(ws, {
                 type: 'list_knowledge_memories_response',
                 data: {
                     success: true,
                     memories: memories,
+                    total: (total != null ? total : memories.length),
+                    page: respPage,
+                    perPage: respPerPage,
                     stats: stats
                 },
                 timestamp: new Date().toISOString(),

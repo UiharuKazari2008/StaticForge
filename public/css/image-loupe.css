@@ -104,9 +104,6 @@
     border-color: hsl(0deg 70% 55% / 45%);
 }
 
-.image-loupe.hidden {
-    display: none;
-}
 
 .image-loupe:active {
     cursor: grabbing;
@@ -274,9 +271,6 @@
     white-space: nowrap;
 }
 
-.image-loupe-scroll-hud.hidden {
-    display: none;
-}
 
 .image-loupe-scroll-hud.is-visible {
     display: flex;

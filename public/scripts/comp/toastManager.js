@@ -1078,6 +1078,11 @@ function updateGlassToastImagePreview(toastId, imageData) {
     }
 
     if (imageElement) {
+        if (imageElement.src && imageElement.src.startsWith('data:')) {
+            imageElement.onload = null;
+            imageElement.onclick = null;
+            imageElement.removeAttribute('src');
+        }
         imageElement.src = `data:image/png;base64,${imageData}`;
 
         // Add click handler to open in PhotoSwipe

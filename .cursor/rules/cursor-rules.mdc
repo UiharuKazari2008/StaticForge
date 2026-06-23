@@ -81,7 +81,7 @@ metadata:
 - **When modifying existing rules:**
   - Update version number
   - Document changes in commit messages
-  - Review and update related rules for consistency
+  - Review and update related rules for consistency (especially the Grimoire domain routing rule in dsap-applet-creation.mdc when changing pseudo-URL handling, navigation, or registry patterns)
   - Consider backward compatibility
 
 ### 5. Best Practices for Rule Content

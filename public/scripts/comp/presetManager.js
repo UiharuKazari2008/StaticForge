@@ -1118,7 +1118,8 @@ async function handleCopyPresetUuidFromModal() {
             return;
         }
         const presetURL = location.origin + '/preset/' + preset.uuid + '?download=true';
-        await navigator.clipboard.writeText(presetURL);
+        // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
+        await copyTextToClipboard(presetURL);
         showGlassToast('success', null, 'Preset Generation URL copied to clipboard', false, 3000, '<i class="fa-regular fa-clipboard"></i>');
     } catch (error) {
         console.error('Error copying UUID from modal:', error);
@@ -1375,7 +1376,8 @@ async function copyPresetUuid(presetName) {
             return;
         }
         const presetURL = location.origin + '/preset/' + preset.uuid + '?download=true';
-        await navigator.clipboard.writeText(presetURL);
+        // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
+        await copyTextToClipboard(presetURL);
         showGlassToast('success', null, 'Preset Generation URL copied to clipboard', false, 3000, '<i class="fa-regular fa-clipboard"></i>');
     } catch (error) {
         console.error('Error copying UUID:', error);

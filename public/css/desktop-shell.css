@@ -1,0 +1,2368 @@
+/* Desktop shell: taskbar, start menu, wallpaper, icons, gallery window */
+.taskbar-window-item.entering,
+.taskbar-window-item.leaving {
+    will-change: min-width, max-width, width, padding, opacity, transform;
+}
+
+.taskbar-window-item.entering .taskbar-window-item-content,
+.taskbar-window-item.leaving .taskbar-window-item-content {
+    will-change: opacity, transform;
+}
+.taskbar-window-item:hover:not(:disabled) {
+    will-change: background-color, border-color, box-shadow;
+}
+.taskbar-start-button:not(.orb):hover:not(:disabled) {
+    will-change: background-color, border-color, box-shadow, backdrop-filter, transform;
+}
+.taskbar-tray-icon:hover:not(:disabled) {
+    will-change: background-color, opacity;
+}
+
+.taskbar-group-menu-item:hover:not(:disabled) {
+    will-change: background-color, border-color, box-shadow;
+}
+/* Gallery Window - Desktop Mode Styles */
+/* Default: Maximized/full view - gallery is static, not a modal */
+/* When not windowed, ignore all positioning styles set when windowed */
+.gallery-window:not(.windowed) {
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    /* Ignore positioning styles - these have no effect with position: static */
+    left: auto !important;
+    top: auto !important;
+    transform: none !important;
+    z-index: auto !important;
+    /* CSS variables (--modal-offset-x, --modal-offset-y) are ignored when position is static */
+}
+
+.gallery-window:not(.windowed) .modal-window-title,
+.gallery-window:not(.windowed) .modal-window-controls {
+    display: none;
+}
+
+.gallery-window .gallery-container-wrapper {
+    width: 100%;
+    height: auto;
+    position: relative;
+}
+
+.gallery-window .gallery-container {
+    width: 100%;
+    height: auto;
+}
+
+/* Windowed mode - gallery becomes a moveable, resizable modal window */
+.gallery-window.windowed {
+    width: 85vw;
+    height: 85vh;
+    max-width: calc(min(1800px, 90vw) - calc(2 * var(--spacing-md)));
+    max-height: calc(calc(min(1400px, 90vh) - calc(2 * var(--spacing-md))) - var(--true-inset-top, 0px));
+}
+
+.gallery-window.windowed .gallery-container-wrapper {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    /* Fixes visual bug */
+    border-radius: 0 0 var(--border-radius-xl) var(--border-radius-xl);
+}
+
+.gallery-window.windowed .gallery-container {
+    width: 100%;
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* PhotoSwipe viewer shell (desktop mode only; mount is appendToEl target) */
+body.desktop-mode #photoSwipeWindow.photo-swipe-window {
+    display: flex;
+    flex-direction: column;
+    padding: 27px 0 0;
+    box-sizing: border-box;
+}
+
+/* Beats rule above (and matches other modals): #id + .classes outrank .modal.minimised alone */
+body.desktop-mode #photoSwipeWindow.photo-swipe-window.minimised {
+    display: none;
+}
+
+body.desktop-mode #photoSwipeWindow.photo-swipe-window #photoSwipeMount {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    overflow: hidden;
+}
+
+body.desktop-mode #photoSwipeWindow.photo-swipe-window.windowed {
+    width: 85vw;
+    height: 85vh;
+    max-width: calc(min(1800px, 90vw) - calc(2 * var(--spacing-md)));
+    max-height: calc(calc(min(1400px, 90vh) - calc(2 * var(--spacing-md))) - var(--true-inset-top, 0px));
+}
+
+body.desktop-mode #photoSwipeWindow.photo-swipe-window.windowed #photoSwipeMount {
+    border-radius: 0 0 var(--border-radius-xl) var(--border-radius-xl);
+}
+
+body.desktop-mode #photoSwipeWindow.photo-swipe-window:not(.windowed):not(.hidden) {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: none !important;
+    max-height: none !important;
+    transform: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    z-index: var(--z-modal-top) !important;
+}
+
+body.desktop-mode #photoSwipeWindow.photo-swipe-window:not(.windowed) .modal-focus-overlay {
+    display: none !important;
+}
+
+body.desktop-mode #photoSwipeWindow.photo-swipe-window:not(.windowed) .modal-window-title,
+body.desktop-mode #photoSwipeWindow.photo-swipe-window:not(.windowed) .modal-window-controls {
+    display: none !important;
+}
+
+body.desktop-mode #photoSwipeWindow.photo-swipe-window:not(.windowed) #photoSwipeMount {
+    height: 100%;
+    flex: 1;
+    min-height: 0;
+    border-radius: 0 !important;
+}
+
+body.desktop-mode #photoSwipeWindow.photo-swipe-window:not(.windowed) .resize-handle {
+    display: none !important;
+}
+
+/* Contain PhotoSwipe root inside mount (overrides dist photoswipe.css position:fixed) */
+body.desktop-mode #photoSwipeMount .pswp {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    z-index: 1;
+    --pswp-root-z-index: 1;
+}
+
+/* Desktop windowed viewer: glass shell provides frame; dim PhotoSwipe backdrop off */
+body.desktop-mode #photoSwipeWindow.photo-swipe-window.windowed #photoSwipeMount .pswp {
+    --pswp-bg: #000000ae;
+}
+
+body.desktop-mode #photoSwipeWindow.photo-swipe-window.windowed #photoSwipeMount .pswp .pswp__button--close {
+    display: none !important;
+}
+
+body.desktop-mode #photoSwipeWindow.photo-swipe-window.windowed #photoSwipeMount .pswp .pswp__button--zoom {
+    margin-right: 6px;
+}
+
+/* Restore-window control: only in desktop full-shell mode */
+.pswp .pswp__button--restore-desktop-shell-btn {
+    display: none !important;
+}
+
+body.desktop-mode #photoSwipeWindow.photo-swipe-window:not(.windowed):not(.hidden) .pswp .pswp__button--restore-desktop-shell-btn {
+    display: flex !important;
+}
+
+/* Melaton backdrop in gallery (desktop mode only) */
+.gallery-melatonin-backdrop {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-md);
+    opacity: 0.25;
+    pointer-events: none;
+    z-index: -1;
+}
+
+.gallery-melatonin-backdrop i {
+    font-size: 3.5em;
+    color: var(--text-primary);
+}
+
+.gallery-melatonin-backdrop .start-menu-brand-text {
+    writing-mode: horizontal-tb;
+    text-orientation: mixed;
+    font-size: 3rem;
+    font-weight: 300;
+    font-variation-settings: "wght" 300;
+    letter-spacing: 0.1em;
+    color: var(--text-primary);
+}
+
+/* Hide Melaton backdrop and window handle when not in desktop mode */
+body:not(.desktop-mode) .gallery-melatonin-backdrop,
+body:not(.desktop-mode) #titlebar-grab-area-container .window-handle-icon {
+    display: none;
+}
+
+.desktop-taskbar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: var(--taskbar-height, 35px);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 4px 0 0;
+    z-index: var(--z-taskbar);
+    isolation: isolate;
+    /* Create stacking context for layering */
+}
+
+body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .desktop-taskbar {
+    overflow: visible;
+}
+
+/* Layer 1: Workspace color tint (bottom layer) */
+.desktop-taskbar::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top,
+            var(--border-primary, #ffffff00) 0%,
+            transparent 100%);
+    opacity: 0.5;
+    /* Subtle workspace tint */
+    z-index: -2;
+}
+
+/* Layer 2: Vista-style skeuomorphic blackish glass (top layer) */
+.desktop-taskbar::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    /* Vista taskbar effect: dark gradient with glass highlights */
+    background:
+        linear-gradient(to bottom,
+            rgba(255, 255, 255, 0.08) 0%,
+            rgba(255, 255, 255, 0.04) 40%,
+            rgba(0, 0, 0, 0.2) 50%,
+            rgba(0, 0, 0, 0.35) 100%),
+        linear-gradient(to top,
+            hsl(0 0% 8% / 95%) 0%,
+            hsl(0 0% 12% / 92%) 50%,
+            hsl(0 0% 18% / 90%) 100%);
+    -webkit-backdrop-filter: saturate(2.5) var(--glass-blur-4);
+    backdrop-filter: saturate(2.5) var(--glass-blur-4);
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    /* Vista-style inner shadow for depth */
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.15),
+        inset 0 -1px 1px rgba(0, 0, 0, 0.3);
+    z-index: -1;
+    opacity: 0.85;
+}
+
+html.disable-blur .desktop-taskbar::after {
+    opacity: 1;
+}
+
+/* Ensure children are above the pseudo-elements */
+.desktop-taskbar>* {
+    position: relative;
+    z-index: 1;
+}
+
+/* Show taskbar only in desktop mode */
+body:not(.desktop-mode) .desktop-taskbar {
+    display: none;
+}
+
+.taskbar-start {
+    display: flex;
+    align-items: center;
+    height: 100%;
+}
+
+.taskbar-start:has(.taskbar-start-button.orb) {
+    overflow: visible;
+    align-items: flex-end;
+    flex: 0 0 auto;
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
+}
+
+.taskbar-start-button {
+    height: 100%;
+    border-radius: 0 14px 14px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    transition: var(--transition-taskbar-item);
+    font-size: 1rem;
+    padding: 0.25em 0.85em 0.25em 0.5em;
+    border-left-style: none;
+    border-bottom-style: none;
+    position: relative;
+    isolation: isolate;
+    min-width: 128px;
+
+    /* Vista-style gradient with sharper center scumophic edge - matching taskbar */
+    /* Base gradient matching taskbar style with sharper, more visible edge - lightened */
+    background:
+        linear-gradient(to bottom,
+            rgba(255, 255, 255, 0.18) 0%,
+            rgba(255, 255, 255, 0.1) 45%,
+            rgba(0, 0, 0, 0.25) 50%,
+            rgba(0, 0, 0, 0.35) 100%),
+        /* Workspace color overlay - more saturated, translucent glass - lightened */
+        linear-gradient(to top,
+            color-mix(in srgb, var(--primary-glass-color) 80%, transparent) 0%,
+            color-mix(in srgb, var(--primary-glass-color) 70%, transparent) 50%,
+            color-mix(in srgb, var(--primary-glass-color) 60%, transparent) 100%);
+    -webkit-backdrop-filter: saturate(2.5) var(--glass-blur-4);
+    backdrop-filter: saturate(2.5) var(--glass-blur-4);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-top-color: rgba(255, 255, 255, 0.22);
+
+    /* Vista-style inner shadow for depth - lightened */
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.22),
+        inset 0 -1px 1px rgba(0, 0, 0, 0.2);
+
+}
+
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .taskbar-start-button:not(.luna):not(.orb):hover:not(:disabled):not(.active) {
+        /* Vista-style hover - slightly brighter but still translucent glass with sharper edge - lightened */
+        background:
+            linear-gradient(to bottom,
+                rgba(255, 255, 255, 0.22) 0%,
+                rgba(255, 255, 255, 0.12) 45%,
+                rgba(0, 0, 0, 0.2) 50%,
+                rgba(0, 0, 0, 0.3) 100%),
+            linear-gradient(to top,
+                color-mix(in srgb, var(--primary-glass-color) 85%, transparent) 0%,
+                color-mix(in srgb, var(--primary-glass-color) 75%, transparent) 50%,
+                color-mix(in srgb, var(--primary-glass-color) 65%, transparent) 100%);
+
+        border-color: rgba(255, 255, 255, 0.22);
+        border-top-color: rgba(255, 255, 255, 0.25);
+
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.25),
+            inset 0 -1px 1px rgba(0, 0, 0, 0.15),
+            0 0 12px color-mix(in srgb, var(--primary-glass-color) 50%, transparent);
+    }
+}
+
+.taskbar-start-button:not(.luna):not(.orb).active {
+    /* Vista-style pressed/active state - inverted gradient with sharper edge, still translucent - lightened */
+    background:
+        linear-gradient(to bottom,
+            rgba(0, 0, 0, 0.3) 0%,
+            rgba(0, 0, 0, 0.25) 45%,
+            rgba(255, 255, 255, 0.15) 50%,
+            rgba(255, 255, 255, 0.18) 100%),
+        linear-gradient(to top,
+            color-mix(in srgb, var(--primary-glass-color) 60%, transparent) 0%,
+            color-mix(in srgb, var(--primary-glass-color) 65%, transparent) 50%,
+            color-mix(in srgb, var(--primary-glass-color) 70%, transparent) 100%);
+
+    border-color: rgba(0, 0, 0, 0.25);
+    border-top-color: rgba(0, 0, 0, 0.3);
+
+    /* Inset shadow for pressed look - lightened */
+    box-shadow:
+        inset 0 2px 4px rgba(0, 0, 0, 0.3),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.12),
+        0 0 6px color-mix(in srgb, var(--primary-glass-color) 40%, transparent);
+
+    transform: translateY(1px);
+}
+
+/* Windows XP Luna green start button */
+.taskbar-start-button.luna {
+    min-width: 118px;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background:
+        linear-gradient(to bottom,
+            rgba(255, 255, 255, 0.62) 0%,
+            rgba(255, 255, 255, 0.34) 14%,
+            rgba(255, 255, 255, 0.12) 32%,
+            transparent 42%,
+            rgba(0, 0, 0, 0.06) 48%,
+            rgba(0, 0, 0, 0.2) 100%),
+        linear-gradient(to bottom,
+            #7ad87a 0%,
+            #55c255 16%,
+            #3dad3d 38%,
+            #2f962f 68%,
+            #247f24 100%);
+    border: 1px solid #1a6d1a;
+    border-top-color: #6fd06f;
+    border-left: none;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.72),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.28),
+        0 0 12px rgba(70, 190, 70, 0.55),
+        0 2px 5px rgba(0, 0, 0, 0.35);
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .taskbar-start-button.luna:hover:not(:disabled):not(.active) {
+        background:
+            linear-gradient(to bottom,
+                rgba(255, 255, 255, 0.68) 0%,
+                rgba(255, 255, 255, 0.38) 14%,
+                rgba(255, 255, 255, 0.14) 32%,
+                transparent 42%,
+                rgba(0, 0, 0, 0.05) 48%,
+                rgba(0, 0, 0, 0.18) 100%),
+            linear-gradient(to bottom,
+                #84e084 0%,
+                #5dcc5d 16%,
+                #45b845 38%,
+                #36a136 68%,
+                #2a8b2a 100%);
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.78),
+            inset 0 -1px 0 rgba(0, 0, 0, 0.22),
+            0 0 16px rgba(90, 210, 90, 0.65),
+            0 2px 5px rgba(0, 0, 0, 0.32);
+    }
+}
+
+.taskbar-start-button.luna.active {
+    background:
+        linear-gradient(to bottom,
+            rgba(0, 0, 0, 0.22) 0%,
+            rgba(0, 0, 0, 0.14) 40%,
+            rgba(255, 255, 255, 0.12) 48%,
+            rgba(255, 255, 255, 0.18) 100%),
+        linear-gradient(to bottom,
+            #2d7f2d 0%,
+            #338833 35%,
+            #3a943a 70%,
+            #42a042 100%);
+    border-color: #145814;
+    border-top-color: rgba(0, 0, 0, 0.35);
+    box-shadow:
+        inset 0 2px 5px rgba(0, 0, 0, 0.38),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.15),
+        0 0 8px rgba(55, 160, 55, 0.45);
+    transform: translateY(1px);
+}
+
+/* Vista orb: 60×45 sprite frames in a clip window, overflows above taskbar */
+.taskbar-start-button-orb-frame {
+    display: none;
+}
+
+.taskbar-start-button.orb {
+    width: 60px;
+    min-width: 60px;
+    max-width: 60px;
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+    border: none;
+    color: white;
+    isolation: isolate;
+    overflow: visible;
+    display: block;
+    transition: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: none;
+    box-shadow: none;
+}
+
+.taskbar-start-button.orb .taskbar-start-button-orb-frame {
+    display: block;
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 60px;
+    height: 38px;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.taskbar-start-button.orb .taskbar-start-button-orb {
+    display: block;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 60px;
+    height: auto;
+    max-width: none;
+    pointer-events: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.taskbar-start-button.orb .taskbar-start-button-text,
+.taskbar-start-button.orb .taskbar-start-button-logo {
+    display: none;
+}
+
+.taskbar-start-button.orb:hover:not(:disabled):not(.active) .taskbar-start-button-orb {
+    top: -45px;
+}
+
+.taskbar-start-button.orb.active .taskbar-start-button-orb {
+    top: -90px;
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .taskbar-start-button.orb:hover:not(:disabled):not(.active) .taskbar-start-button-orb {
+        top: -45px;
+    }
+}
+
+/* Windows XP Luna: bold oblique on all locales (Latin, CJK, Cyrillic) */
+.taskbar-start-button-text {
+    margin-left: 6px;
+    font-size: 12pt;
+    font-weight: 700;
+    font-style: italic;
+    font-family: Tahoma, 'Noto Sans JP', 'Noto Sans KR', 'MS UI Gothic', 'MS Sans Serif', 'Segoe UI', sans-serif;
+    color: #fff;
+    text-transform: none;
+    white-space: nowrap;
+    line-height: 1;
+    letter-spacing: 0;
+    text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.9);
+}
+
+.taskbar-start-button-logo {
+    height: 22px;
+    -webkit-filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+}
+
+.taskbar-windows {
+    flex: 1;
+    display: flex;
+    gap: 2px;
+    align-items: center;
+    min-height: 0;
+    overflow: hidden;
+    padding: 0 4px;
+}
+
+.taskbar-window-item {
+    height: var(--taskbar-window-height, 28px);
+    min-width: 180px;
+    max-width: 180px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0;
+    overflow: hidden;
+    position: relative;
+    isolation: isolate;
+    box-sizing: border-box;
+    transition:
+        background-color var(--transition-fast),
+        border-color var(--transition-fast),
+        box-shadow var(--transition-fast),
+        min-width var(--transition-fast),
+        max-width var(--transition-fast),
+        width var(--transition-fast),
+        padding var(--transition-fast),
+        opacity var(--transition-fast);
+
+    /* Vista-style layered glass background */
+    background:
+        linear-gradient(to bottom,
+            rgba(255, 255, 255, 0.06) 0%,
+            rgba(255, 255, 255, 0.02) 48%,
+            rgba(0, 0, 0, 0.12) 52%,
+            rgba(0, 0, 0, 0.18) 100%),
+        linear-gradient(to top,
+            hsl(0 0% 12% / 85%) 0%,
+            hsl(0 0% 16% / 82%) 100%);
+
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom-color: rgba(0, 0, 0, 0.3);
+
+    /* Inset only — outer shadow caused hover jump */
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.25);
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .taskbar-window-item:hover:not(:disabled) {
+        background:
+            linear-gradient(to bottom,
+                rgba(255, 255, 255, 0.1) 0%,
+                rgba(255, 255, 255, 0.04) 48%,
+                rgba(0, 0, 0, 0.1) 52%,
+                rgba(0, 0, 0, 0.15) 100%),
+            linear-gradient(to top,
+                hsl(0 0% 18% / 88%) 0%,
+                hsl(0 0% 22% / 85%) 100%);
+
+        border-color: rgba(255, 255, 255, 0.12);
+        border-bottom-color: rgba(0, 0, 0, 0.35);
+
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.15),
+            inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+    }
+}
+
+.taskbar-window-item.active {
+    /* Active state with workspace color tint */
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.06) 48%, rgba(0, 0, 0, 0.08) 52%, rgba(0, 0, 0, 0.12) 100%), linear-gradient(to top, var(--btn-hover-bg-primary) 0%, var(--primary-glass-color) 100%);
+    border: 1px solid var(--btn-hover-bg-primary);
+    border-bottom-color: var(--dropdown-selected-bg);
+    color: white;
+    font-weight: 650;
+    font-variation-settings: "wght" 650;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.3),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.2),
+        0 0 8px var(--primary-glass-color);
+}
+
+.taskbar-window-item.minimised {
+    opacity: 0.9;
+    font-style: italic;
+}
+
+/* Inner content wrapper for taskbar items */
+.taskbar-window-item-content {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+    min-width: 180px;
+    width: 180px;
+    height: 100%;
+    box-sizing: border-box;
+    opacity: 1;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.48);
+    transition: opacity 0.1s ease-out;
+}
+
+.taskbar-window-item i {
+    flex-shrink: 0;
+    width: var(--taskbar-window-icon-size, 17px);
+    height: var(--taskbar-window-icon-size, 17px);
+    font-size: var(--taskbar-window-fa-font-size, 0.85rem);
+    line-height: var(--taskbar-window-icon-size, 17px);
+    text-align: center;
+}
+
+.taskbar-window-item .icon-image {
+    flex-shrink: 0;
+    width: var(--taskbar-window-icon-size, 17px);
+    height: var(--taskbar-window-icon-size, 17px);
+    object-fit: contain;
+    display: none !important;
+}
+
+/* Luna / workspace: <i> only (beats body.user-icons) */
+body.desktop-mode:not(:has(#desktopTaskbar .taskbar-start-button.orb)) .taskbar-window-item i {
+    display: inline-block !important;
+}
+
+/* Orb: image icon when available */
+body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window-item .icon-image {
+    display: inline-block !important;
+}
+
+body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window-item:has(.icon-image) i {
+    display: none !important;
+}
+
+.taskbar-window-item span {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--taskbar-window-font-size, 0.75rem);
+    line-height: normal;
+    color: var(--text-primary);
+}
+
+/* Animation for new taskbar items appearing */
+.taskbar-window-item.entering {
+    animation: taskbar-item-grow 0.2s ease-out;
+}
+
+.taskbar-window-item.entering .taskbar-window-item-content {
+    animation: taskbar-item-content-fade-in 0.2s ease-out;
+}
+
+/* Animation for taskbar items being removed */
+.taskbar-window-item.leaving {
+    animation: taskbar-item-shrink 0.2s ease-out forwards;
+}
+
+.taskbar-window-item.leaving .taskbar-window-item-content {
+    animation: taskbar-item-content-fade-out 0.15s ease-out forwards;
+}
+
+@keyframes taskbar-item-grow {
+    from {
+        min-width: 0;
+        max-width: 0;
+        padding: 0;
+        border-width: 0;
+        opacity: 0;
+    }
+
+    to {
+        min-width: 180px;
+        max-width: 180px;
+        padding: 0;
+        border-width: 1px;
+        opacity: 1;
+    }
+}
+
+@keyframes taskbar-item-shrink {
+    from {
+        min-width: 180px;
+        max-width: 180px;
+        padding: 0;
+        border-width: 1px;
+        opacity: 1;
+    }
+
+    to {
+        min-width: 0;
+        max-width: 0;
+        padding: 0;
+        border-width: 0;
+        opacity: 0;
+    }
+}
+
+@keyframes taskbar-item-content-fade-in {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes taskbar-item-content-fade-out {
+    from {
+        opacity: 1;
+    }
+
+    to {
+        opacity: 0;
+    }
+}
+
+/* Grouped taskbar items */
+.taskbar-window-group {
+    position: relative;
+}
+
+.taskbar-window-group .taskbar-group-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 auto;
+    min-width: var(--taskbar-group-count-size, 18px);
+    height: var(--taskbar-group-count-size, 18px);
+    padding: 0 4px;
+    margin-left: 4px;
+    background: linear-gradient(to bottom,
+            rgba(255, 255, 255, 0.15) 0%,
+            rgba(255, 255, 255, 0.08) 50%,
+            rgba(0, 0, 0, 0.2) 50%,
+            rgba(0, 0, 0, 0.3) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom-color: rgba(0, 0, 0, 0.4);
+    border-radius: 3px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.2),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.3),
+        0 1px 1px rgba(0, 0, 0, 0.2);
+}
+
+.taskbar-window-group.active .taskbar-group-count {
+    background: linear-gradient(to bottom,
+            rgba(255, 255, 255, 0.25) 0%,
+            rgba(255, 255, 255, 0.15) 50%,
+            rgba(0, 0, 0, 0.15) 50%,
+            rgba(0, 0, 0, 0.25) 100%);
+    border-color: rgba(255, 255, 255, 0.2);
+    border-bottom-color: rgba(0, 0, 0, 0.3);
+}
+
+.taskbar-window-group.group-menu-open {
+    background:
+        linear-gradient(to bottom,
+            rgba(255, 255, 255, 0.12) 0%,
+            rgba(255, 255, 255, 0.06) 48%,
+            rgba(0, 0, 0, 0.08) 52%,
+            rgba(0, 0, 0, 0.12) 100%),
+        linear-gradient(to top,
+            hsl(0 0% 20% / 90%) 0%,
+            hsl(0 0% 24% / 88%) 100%);
+    border-color: rgba(255, 255, 255, 0.15);
+    border-bottom-color: rgba(0, 0, 0, 0.3);
+}
+
+/* Taskbar group menu (dropdown/dropup) */
+.taskbar-group-menu {
+    position: fixed;
+    z-index: calc(var(--z-taskbar) + 100);
+    min-width: 200px;
+    max-width: 300px;
+    max-height: 400px;
+    overflow-y: auto;
+    overflow-x: hidden;
+
+    /* Vista-style glass background */
+    background:
+        linear-gradient(to bottom,
+            rgba(255, 255, 255, 0.1) 0%,
+            rgba(255, 255, 255, 0.05) 50%,
+            rgba(0, 0, 0, 0.1) 50%,
+            rgba(0, 0, 0, 0.2) 100%),
+        linear-gradient(to top,
+            hsl(0 0% 14% / 92%) 0%,
+            hsl(0 0% 18% / 90%) 100%);
+
+    -webkit-backdrop-filter: saturate(2) blur(12px);
+    backdrop-filter: saturate(2) blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-bottom-color: rgba(0, 0, 0, 0.4);
+    border-radius: 4px;
+
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.15),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.3),
+        0 4px 12px rgba(0, 0, 0, 0.4),
+        0 2px 4px rgba(0, 0, 0, 0.3);
+
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.taskbar-group-menu.dropup {
+    /* For dropup, menu appears above taskbar */
+}
+
+/* Taskbar group menu items */
+.taskbar-group-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 3px;
+    transition: var(--transition-tray-menu);
+    color: var(--text-primary);
+    font-size: 0.75rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    /* Vista-style hover effect */
+    background: transparent;
+    border: 1px solid transparent;
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .taskbar-group-menu-item:hover:not(:disabled) {
+        background: linear-gradient(to bottom,
+                rgba(255, 255, 255, 0.15) 0%,
+                rgba(255, 255, 255, 0.08) 50%,
+                rgba(0, 0, 0, 0.1) 50%,
+                rgba(0, 0, 0, 0.15) 100%);
+        border-color: rgba(255, 255, 255, 0.1);
+        border-bottom-color: rgba(0, 0, 0, 0.3);
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.2),
+            inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+    }
+}
+
+.taskbar-group-menu-item.active {
+    background: linear-gradient(to bottom,
+            rgba(255, 255, 255, 0.2) 0%,
+            rgba(255, 255, 255, 0.12) 50%,
+            rgba(0, 0, 0, 0.08) 50%,
+            rgba(0, 0, 0, 0.12) 100%),
+        linear-gradient(to top,
+            var(--btn-hover-bg-primary) 0%,
+            var(--primary-glass-color) 100%);
+    border-color: var(--btn-hover-bg-primary);
+    border-bottom-color: var(--dropdown-selected-bg);
+    color: white;
+    font-weight: 600;
+    font-variation-settings: "wght" 600;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.3),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.2),
+        0 0 4px var(--primary-glass-color);
+}
+
+.taskbar-group-menu-item.minimised {
+    opacity: 0.85;
+    font-style: italic;
+}
+
+.taskbar-group-menu-item i {
+    flex-shrink: 0;
+    font-size: 0.85rem;
+    width: 16px;
+    text-align: center;
+}
+
+.taskbar-group-menu-item span {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.taskbar-tray {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 100%;
+    min-height: 0;
+    padding: 0 8px;
+
+    /* Vista-style separator with subtle depth */
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: -1px 0 0 rgba(0, 0, 0, 0.3);
+
+    /* Subtle inset background for tray area */
+    background: linear-gradient(to bottom,
+            rgba(0, 0, 0, 0.1) 0%,
+            rgba(0, 0, 0, 0.05) 50%,
+            transparent 100%);
+}
+
+.taskbar-tray-icons {
+    display: flex;
+    align-items: center;
+    padding: 0;
+}
+
+.taskbar-tray-icons .websocket-ticker.expanded {
+    margin: 0 0 0 8px;
+}
+
+.balance-display.taskbar-balance {
+    font-size: 1em;
+    margin-right: 8px;
+}
+
+.desktop-taskbar .websocket-ticker.expanded {
+    margin: 0 var(--spacing-xs) 0 var(--spacing-xs);
+}
+
+/* System tray indicators */
+.taskbar-ticker,
+.taskbar-ws-indicator,
+.taskbar-balance {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.taskbar-ws-indicator {
+    margin-right: 4px;
+}
+
+/* System tray icon base styles */
+.taskbar-tray-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--taskbar-tray-icon-size, 24px);
+    height: var(--taskbar-tray-icon-size, 24px);
+    margin-right: 4px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease, opacity 0.3s ease;
+    font-size: 0.9em;
+    color: var(--text-secondary);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .taskbar-tray-icon:hover:not(:disabled) {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+}
+
+
+.taskbar-tray-icon.tray-boot-in {
+    animation: trayIconBootIn 0.22s ease-out;
+}
+
+@keyframes trayIconBootIn {
+    from {
+        opacity: 0;
+        transform: translateY(3px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Subscription Renewal Indicator */
+.subscription-renewal-indicator {
+    color: #ffa726;
+}
+
+.subscription-renewal-indicator.warning {
+    color: #ff9800;
+    animation: pulse-subscription 2s ease-in-out infinite;
+}
+
+.subscription-renewal-indicator.critical {
+    color: #ffaba5;
+    animation: pulse-subscription 1s ease-in-out infinite;
+}
+
+@keyframes pulse-subscription {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
+}
+
+/* Fixed Credits Indicator */
+.fixed-credits-indicator {
+    color: var(--text-secondary);
+    /* Default color */
+}
+
+.fixed-credits-indicator.low-credits {
+    color: #ff9800;
+    /* Less than 250 credits */
+    animation: pulse-credits 2s ease-in-out infinite;
+}
+
+.fixed-credits-indicator.no-credits {
+    color: #f44336;
+    /* 0 credits - all requests are paid */
+}
+
+.fixed-credits-indicator.expiring-credits {
+    color: #ffbd9d;
+    /* More than 250 credits but subscription expiring */
+}
+
+@keyframes pulse-credits {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.6;
+    }
+}
+
+/* Windows Aero Progress Bar Shimmer Animation */
+@keyframes aero-shimmer {
+    0% {
+        transform: translateX(-100%);
+    }
+
+    100% {
+        transform: translateX(200%);
+    }
+}
+
+/* Workspace Tray Icon */
+.workspace-tray-icon {
+    position: relative;
+    color: var(--text-accent-tinted);
+}
+
+.workspace-save-status-dot {
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+}
+
+
+.workspace-save-status-dot.pending {
+    background: #ff9800;
+    box-shadow: 0 0 4px rgba(255, 152, 0, 0.9);
+}
+
+.workspace-save-status-dot.received {
+    background: #81c784;
+    box-shadow: 0 0 4px rgba(129, 199, 132, 0.9);
+}
+
+/* Image Generation Indicator */
+.image-generation-indicator {
+    color: #51cf66;
+}
+
+.image-generation-indicator.active i {
+    animation: pulse-generation 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-generation {
+
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.7;
+        transform: scale(1.1);
+    }
+}
+
+/* Search Indexing Indicator */
+.search-indexing-indicator {
+    color: var(--text-secondary);
+}
+
+.search-indexing-indicator.indexing i,
+.search-indexing-indicator.cache_init i {
+    color: #64b5f6;
+    /* animation: fa-spin 2s linear infinite; */
+}
+
+.search-indexing-indicator.cache_ready i {
+    color: #81c784;
+}
+
+.search-indexing-indicator.paused i {
+    color: #ffa726;
+}
+
+.search-indexing-indicator.error i {
+    color: #e57373;
+}
+
+.naxt-bag-tray-icon.naxt-bag-tray-atelier-open {
+    opacity: 0.45;
+}
+
+.quip-wiki-doc {
+    padding: 0.5rem 0.25rem 1.5rem;
+}
+
+.quip-wiki-nav {
+    margin-bottom: 1.25rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+.quip-wiki-nav-link {
+    color: var(--primary-color, #7eb8ff);
+    text-decoration: none;
+}
+
+.quip-wiki-nav-link:hover {
+    text-decoration: underline;
+}
+
+.quip-wiki-section {
+    margin-bottom: 2rem;
+}
+
+.quip-wiki-section h2 {
+    margin: 0 0 1rem;
+    font-size: 1.15rem;
+}
+
+.quip-wiki-controls {
+    margin-top: 2rem;
+    padding: 1rem 1.1rem;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.quip-wiki-controls-title {
+    margin: 0 0 1rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+}
+
+.quip-wiki-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+    gap: 0.65rem 1rem;
+    margin: 0 0 1.1rem;
+}
+
+.quip-wiki-stat {
+    margin: 0;
+}
+
+.quip-wiki-stat dt {
+    margin: 0;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.6;
+}
+
+.quip-wiki-stat dd {
+    margin: 0.15rem 0 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.quip-wiki-controls-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.quip-wiki-term {
+    margin-bottom: 1.25rem;
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.quip-wiki-term-title {
+    margin: 0 0 0.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.quip-wiki-phrase-count {
+    font-size: 0.75rem;
+    font-weight: normal;
+    opacity: 0.65;
+}
+
+.quip-wiki-phrases {
+    margin: 0;
+    padding-left: 1.25rem;
+}
+
+.quip-wiki-phrases li {
+    margin-bottom: 0.35rem;
+    line-height: 1.45;
+}
+
+.quip-wiki-empty {
+    opacity: 0.7;
+    font-style: italic;
+}
+
+/* Ping Warning Indicator */
+.ping-warning-indicator {
+    color: #ff9800;
+}
+
+@keyframes pulse-ping-warning {
+
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.6;
+        transform: scale(1.1);
+    }
+}
+
+.ping-warning-indicator.high-ping {
+    color: #ff6b6b;
+}
+
+.ping-warning-indicator.variable-ping {
+    color: #ffa726;
+}
+
+.taskbar-clock {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0;
+    line-height: 1;
+    min-width: 64px;
+    height: 100%;
+    font-family: 'Red Hat Display';
+    font-size: 1.125em;
+    font-variation-settings: "wght" 300;
+
+    /* Vista-style subtle inset for clock area */
+    background: linear-gradient(to bottom,
+            rgba(0, 0, 0, 0.15) 0%,
+            rgba(0, 0, 0, 0.08) 50%,
+            transparent 100%);
+
+    border-left: 1px solid rgba(255, 255, 255, 0.06);
+    box-shadow:
+        -1px 0 0 rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(0, 0, 0, 0.2);
+}
+
+.window-controls-overlay .taskbar-clock {
+    -webkit-app-region: drag;
+}
+
+.window-controls-overlay #main-controls-bar .main-menu-bar-overlay #pendingRequestsSpinner,
+.window-controls-overlay #main-controls-bar .main-menu-bar-overlay .balanceDisplay,
+.window-controls-overlay #main-controls-bar .main-menu-bar-overlay #websocketIndicatorOverlay,
+.window-controls-overlay #manualPendingRequestsSpinner,
+.window-controls-overlay body:not(.desktop-mode) #manualBalanceSplit {
+    display: none;
+}
+
+.taskbar-time {
+    color: var(--text-primary);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+/* Start Menu Styles */
+.start-menu {
+    position: fixed;
+    bottom: var(--taskbar-height, 35px);
+    left: 0;
+    width: 350px;
+    max-height: calc(100vh - calc(var(--titlebar-area-height) + 64px));
+    transform-origin: left bottom;
+    /* Vista-style gradient with sharper center scumophic edge - matching taskbar */
+    background:
+        linear-gradient(to bottom,
+            rgba(255, 255, 255, 0.08) 0%,
+            rgba(255, 255, 255, 0.04) 40%,
+            rgba(0, 0, 0, 0.2) 50%,
+            rgba(0, 0, 0, 0.35) 100%),
+        linear-gradient(to top,
+            hsl(0 0% 8% / 85%) 0%,
+            hsl(0 0% 12% / 82%) 50%,
+            hsl(0 0% 18% / 80%) 100%);
+    -webkit-backdrop-filter: saturate(2.5) var(--glass-blur-4);
+    backdrop-filter: saturate(2.5) var(--glass-blur-4);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-bottom: none;
+    border-top-right-radius: var(--border-radius-xxl);
+    /* Vista-style inner shadow for depth */
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.15),
+        inset 0 -1px 1px rgba(0, 0, 0, 0.3),
+        0px 8px 32px 2px hsl(0deg 0% 0% / 50%);
+    z-index: var(--z-start-menu);
+    display: flex;
+    flex-direction: row;
+    overflow: hidden;
+    opacity: 1;
+}
+
+@keyframes startMenuFadeIn {
+    0% {
+        opacity: 0;
+        max-height: calc((100vh - calc(var(--titlebar-area-height) + 64px)) * 0.75);
+    }
+
+    100% {
+        opacity: 1;
+        max-height: calc(100vh - calc(var(--titlebar-area-height) + 64px));
+    }
+}
+
+@keyframes startMenuFadeOut {
+    0% {
+        opacity: 1;
+        max-height: calc(100vh - calc(var(--titlebar-area-height) + 64px));
+    }
+
+    100% {
+        opacity: 0;
+        max-height: calc((100vh - calc(var(--titlebar-area-height) + 64px)) * 0.75);
+    }
+}
+
+#startMenu.start-menu.start-menu-opening,
+#startMenu.start-menu.start-menu-closing {
+    overflow: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    pointer-events: none;
+}
+
+#startMenu.start-menu.start-menu-opening::-webkit-scrollbar,
+#startMenu.start-menu.start-menu-closing::-webkit-scrollbar {
+    display: none;
+}
+
+#startMenu.start-menu.start-menu-opening .start-menu-content,
+#startMenu.start-menu.start-menu-closing .start-menu-content {
+    overflow: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    pointer-events: none;
+}
+
+#startMenu.start-menu.start-menu-opening .start-menu-content::-webkit-scrollbar,
+#startMenu.start-menu.start-menu-closing .start-menu-content::-webkit-scrollbar {
+    display: none;
+}
+
+#startMenu.start-menu.start-menu-opening {
+    animation: startMenuFadeIn var(--animation-panel-fade-in) forwards;
+}
+
+#startMenu.start-menu.start-menu-closing {
+    animation: startMenuFadeOut var(--animation-panel-fade-out) forwards;
+    pointer-events: none;
+}
+
+.start-menu-content {
+    display: flex;
+    flex-direction: column-reverse;
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    border-top-right-radius: var(--border-radius-xxl);
+}
+
+.start-menu-branding {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    width: 32px;
+    background: linear-gradient(to bottom, var(--primary-color), var(--primary-color-dark));
+    padding: 12px 8px;
+    border-right: 1px solid var(--glass-border-4);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Vista-style glass overlay on branding strip */
+.start-menu-branding::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg,
+            var(--glass-layer-5) 0%,
+            transparent 50%,
+            var(--glass-layer-dark-3) 100%);
+    pointer-events: none;
+}
+
+.start-menu-logo {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+    -webkit-filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+    z-index: 1;
+}
+
+.start-menu-brand-text {
+    font-family: 'Oxanium';
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    font-size: 0.875rem;
+    font-weight: 600;
+    font-variation-settings: "wght" 600;
+    letter-spacing: 0.05em;
+    color: white;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    z-index: 1;
+}
+
+.start-menu-items {
+    display: flex;
+    flex-direction: column;
+}
+
+.start-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 46px;
+    padding: 10px 18px;
+    transition: var(--transition-tray-menu);
+    border-bottom: 1px solid transparent;
+    position: relative;
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .start-menu-item:hover:not(:disabled) {
+        background: var(--glass-layer-3);
+        border-bottom-color: var(--glass-border-3);
+    }
+}
+
+.start-menu-item i {
+    font-size: 1.5rem;
+    width: 32px;
+    text-align: center;
+    color: var(--text-primary);
+}
+
+.start-menu-item .icon-image {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
+.start-menu-item .icon-image {
+    width: 1.75rem;
+    height: 1.75rem;
+    object-fit: contain;
+    display: inline-block !important;
+    /* Always show image icon if available */
+}
+
+/* Hide Font Awesome icon in desktop icons when image icon is present */
+.start-menu-item:has(.icon-image) .icon-fa,
+.start-menu-item:has(.icon-image) i.icon-fa {
+    display: none !important;
+}
+
+.start-menu-item span {
+    flex: 1;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+}
+
+.start-menu-item.has-submenu::after {
+    content: '\f054';
+    font-family: 'Font Awesome 6 Pro';
+    font-weight: 300;
+    font-variation-settings: "wght" 300;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-left: auto;
+    transition: transform var(--transition-fast);
+}
+
+.start-menu-item.has-submenu.expanded::after {
+    transform: rotate(90deg);
+}
+
+.start-menu-right-btn {
+    margin-left: auto;
+    padding: 4px 8px;
+    background: var(--glass-layer-3);
+    border: 1px solid var(--glass-border-2);
+    border-radius: var(--border-radius-sm);
+    transition: var(--transition-tray-menu);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+}
+
+.start-menu-right-btn:hover:not(:disabled) {
+    background: var(--glass-layer-4);
+    border-color: var(--glass-border-4);
+}
+
+.start-menu-item.has-right-action span {
+    flex: 1;
+}
+
+.start-menu-item.has-submenu.popout-open::after,
+.start-menu-popout-item.has-submenu.popout-open::after {
+    color: var(--primary-color);
+}
+
+.start-menu-item.is-pinned:not(.has-submenu)::after {
+    content: '\f08d';
+    font-family: 'Font Awesome 6 Pro';
+    font-weight: 900;
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    margin-left: auto;
+    margin-right: 4px;
+}
+
+.start-menu-popout {
+    position: fixed;
+    z-index: calc(var(--z-start-menu) + 1);
+    display: flex;
+    flex-direction: column;
+    min-width: min(320px, 28vw);
+    max-width: min(400px, 34vw);
+    overflow-y: auto;
+    overflow-x: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: var(--border-radius-md);
+    background:
+        linear-gradient(to bottom,
+            rgba(255, 255, 255, 0.08) 0%,
+            rgba(255, 255, 255, 0.04) 40%,
+            rgba(0, 0, 0, 0.2) 50%,
+            rgba(0, 0, 0, 0.35) 100%),
+        linear-gradient(to top,
+            hsl(0 0% 8% / 92%) 0%,
+            hsl(0 0% 12% / 90%) 50%,
+            hsl(0 0% 18% / 88%) 100%);
+    -webkit-backdrop-filter: saturate(2.5) var(--glass-blur-4);
+    backdrop-filter: saturate(2.5) var(--glass-blur-4);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.12),
+        0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+.start-menu-popout-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 42px;
+    padding: 9px 16px;
+    transition: var(--transition-tray-menu);
+    cursor: default;
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .start-menu-popout-item:hover {
+        background: var(--glass-layer-3);
+    }
+}
+
+.start-menu-popout-item i {
+    font-size: 1.25rem;
+    width: 28px;
+    text-align: center;
+    color: var(--text-primary);
+}
+
+.start-menu-popout-item .icon-image {
+    width: 1.75rem;
+    height: 1.75rem;
+    object-fit: contain;
+    flex-shrink: 0;
+    display: inline-block !important;
+}
+
+.start-menu-popout-item:has(.icon-image) .icon-fa,
+.start-menu-popout-item:has(.icon-image) i.icon-fa {
+    display: none !important;
+}
+
+.start-menu-popout-item span {
+    flex: 1;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+
+.start-menu-popout-item.has-submenu::after {
+    content: '\f054';
+    font-family: 'Font Awesome 6 Pro';
+    font-weight: 300;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    margin-left: auto;
+}
+
+.start-menu-popout-separator {
+    height: 1px;
+    background: var(--glass-border-3);
+    margin: 4px 0;
+}
+
+.start-menu-submenu {
+    display: flex;
+    flex-direction: column;
+    background: var(--glass-layer-1);
+    border-left: 2px solid var(--primary-color);
+}
+
+.start-menu-item.submenu-item {
+    padding-left: 32px;
+    font-size: 0.825rem;
+}
+
+.start-menu-item.submenu-item i {
+    font-size: 0.9rem;
+}
+
+.start-menu-item .workspace-color-indicator {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.start-menu-separator {
+    height: 1px;
+    background: var(--glass-border-3);
+    margin: 4px 0;
+}
+
+.start-menu-action-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 7px;
+    border-top: 1px solid var(--glass-border-3);
+    background: var(--glass-layer-2);
+}
+
+.start-menu-action-btn {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4em;
+    min-height: 28px;
+    padding: 0.25em 0.6em;
+    font-size: 0.78rem;
+    background: var(--glass-layer-3);
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-md);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: var(--transition-tray-menu);
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .start-menu-action-btn:hover:not(:disabled) {
+        background: var(--glass-layer-4);
+        border-color: var(--glass-border-4);
+    }
+}
+
+.start-menu-action-btn.start-menu-action-danger {
+    color: #fecaca;
+    border-color: rgba(239, 68, 68, 0.45);
+}
+
+.start-menu-power-group.btn-group {
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0;
+    flex: 0 1 auto;
+    max-width: 100%;
+    overflow: visible;
+    border-radius: var(--border-radius-md);
+    background: hsl(0deg 100% 50% / 34%);
+    border: 1px solid rgba(239, 68, 68, 39%);
+    box-sizing: border-box;
+}
+
+.start-menu-power-group.btn-group > .start-menu-action-btn,
+.start-menu-power-group.btn-group .start-menu-power-toggle {
+    flex: 0 0 auto;
+    margin: 0;
+    box-shadow: none;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+}
+
+.start-menu-power-group.btn-group > .start-menu-action-btn.start-menu-action-danger,
+.start-menu-power-group.btn-group .start-menu-power-toggle.start-menu-action-danger {
+    border-color: transparent;
+}
+
+.start-menu-power-group.btn-group > .start-menu-action-btn:first-of-type {
+    flex: 1 1 auto;
+    border-top-left-radius: var(--border-radius-md);
+    border-bottom-left-radius: var(--border-radius-md);
+    border-right: 1px solid rgba(239, 68, 68, 39%);
+}
+
+.start-menu-power-group.btn-group > .start-menu-power-dropdown.custom-dropdown {
+    flex: 0 0 auto;
+    width: auto;
+    position: relative;
+    display: flex;
+}
+
+.start-menu-power-group.btn-group .start-menu-power-toggle {
+    border-top-right-radius: var(--border-radius-md);
+    border-bottom-right-radius: var(--border-radius-md);
+    padding: 0.25em 0.55em;
+}
+
+.start-menu-power-group.btn-group .start-menu-power-toggle.active {
+    background: var(--glass-layer-4);
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .start-menu-power-group.btn-group > .start-menu-action-btn:hover:not(:disabled),
+    .start-menu-power-group.btn-group .start-menu-power-toggle:hover:not(:disabled) {
+        background: var(--glass-layer-4);
+    }
+}
+
+.start-menu-power-dropdown .custom-dropdown-menu {
+    min-width: 11.5rem;
+    margin-bottom: 6px;
+}
+
+.start-menu-power-dropdown .custom-dropdown-option {
+    gap: 0.45em;
+}
+
+.start-menu-power-dropdown .custom-dropdown-option.start-menu-power-option-danger {
+    color: #fecaca;
+}
+
+.client-shutdown-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-shutdown-overlay);
+    background: #000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.55s ease;
+    will-change: opacity;
+}
+
+.client-shutdown-overlay.show {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.start-menu-icons-row {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-end;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 7px 7px;
+    border-top: 1px solid var(--glass-border-3);
+    background: var(--glass-layer-2);
+}
+
+.start-menu-icon-btn {
+    position: relative;
+    height: 31px;
+    width: 42px;
+    background: var(--glass-layer-3);
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-primary);
+    transition: var(--transition-tray-menu);
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .start-menu-icon-btn:hover:not(:disabled) {
+        background: var(--glass-layer-4);
+        border-color: var(--glass-border-4);
+    }
+}
+
+.start-menu-icon-btn i {
+    font-size: 1rem;
+}
+
+.start-menu-icon-btn .icon-image {
+    width: 1rem;
+    height: 1rem;
+    object-fit: contain;
+}
+
+/* Adjust body padding when taskbar is visible */
+body.desktop-mode {
+    --taskbar-height: 35px;
+    --taskbar-window-height: 28px;
+    --taskbar-tray-icon-size: 24px;
+    --taskbar-window-icon-size: 17px;
+    --taskbar-window-font-size: 0.75rem;
+    --taskbar-window-fa-font-size: 0.85rem;
+    --taskbar-group-count-size: 18px;
+    padding-bottom: var(--taskbar-height);
+    border-top-width: 0px;
+}
+
+body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) {
+    --taskbar-height: 31px;
+    --taskbar-window-height: 24px;
+    --taskbar-tray-icon-size: 20px;
+    --taskbar-window-icon-size: 15px;
+    --taskbar-window-font-size: 0.7rem;
+    --taskbar-window-fa-font-size: 0.8rem;
+    --taskbar-group-count-size: 16px;
+}
+
+/* Hide generation controls in desktop mode */
+body.desktop-mode #main-controls-bar,
+body.desktop-mode #closeManualBtn,
+body.desktop-mode #manualModal #manualPresetPlaceholder,
+body.desktop-mode #manualModal #manualPreviewToggleDialogsBtn,
+body.desktop-mode #manualModal #enableStageGenerationBtn,
+body.desktop-mode #main-menu-bar #allChatsBtn,
+body.desktop-mode #main-menu-bar #openNotebookBtn,
+body.desktop-mode #main-menu-bar #windowListGalleryBtn,
+body.desktop-mode #main-menu-bar #workspaceDropdown {
+    display: none !important;
+}
+
+body.desktop-mode #manualModal #windowListEditorBtn {
+    display: inline-flex !important;
+}
+
+/* Desktop Wallpaper */
+.desktop-wallpaper {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: var(--desktop-wallpaper, none);
+    background-position: var(--desktop-wallpaper-position, center);
+    background-size: cover;
+    background-repeat: no-repeat;
+    z-index: -1;
+    opacity: 0;
+    transition: opacity 0.5s ease-in-out, background-image 0.5s ease-in-out;
+    pointer-events: none;
+    /* Allow right-click on wallpaper for context menu */
+}
+
+/* Show desktop wallpaper only in desktop mode when workspace has wallpaper */
+body.desktop-mode .desktop-wallpaper {
+    opacity: 1;
+}
+
+body:not(.desktop-mode) .desktop-wallpaper,
+body:not(.desktop-mode) #manualRequestSaveBtn {
+    display: none;
+}
+
+/* Desktop Icons */
+.desktop-icons {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: calc(100% - 32px);
+    width: 100%;
+    z-index: 100;
+    pointer-events: none;
+}
+
+.titlebar-mac .desktop-icons {
+    top: var(--titlebar-area-height, 0px);
+    height: calc(100% - calc(32px + var(--titlebar-area-height, 0px)));
+}
+
+.titlebar-android .desktop-icons {
+    top: var(--titlebar-area-height, 0px);
+    height: calc(100% - calc(32px + var(--titlebar-area-height, 0px)));
+}
+
+/* Show desktop icons only in desktop mode */
+body.desktop-mode .desktop-icons {
+    display: block;
+}
+
+/* Freeform container for quadrant icons (index 1-4) */
+.desktop-freeform-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: auto;
+    /* Pass through to wallpaper for context menu */
+    z-index: 1;
+}
+
+/* Grid container for auto-arranged icons (index 0) */
+.desktop-grid-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: flex;
+    flex-direction: column;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 16px;
+    padding: 20px;
+    max-width: 50%;
+    max-height: 100%;
+    max-width: min(400px, calc(50% - 40px));
+    max-height: 100%;
+    z-index: 2;
+    pointer-events: none;
+}
+
+.desktop-icon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 10px;
+    background: var(--glass-layer-2);
+    -webkit-backdrop-filter: saturate(2.5) var(--glass-blur-4);
+    backdrop-filter: saturate(2.5) var(--glass-blur-4);
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-lg);
+    transition: var(--transition-desktop-icon);
+    width: 72px;
+    text-align: center;
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .desktop-icon:hover:not(:disabled) {
+        background: var(--glass-layer-3);
+        border-color: var(--glass-border-4);
+        transform: scale(1.05);
+    }
+}
+
+.desktop-icon:active {
+    transform: scale(0.98);
+}
+
+.desktop-icon .icon-fa,
+.desktop-icon i {
+    font-size: 1.75rem;
+    color: var(--text-primary);
+}
+
+.desktop-icon.primary i {
+    color: var(--primary-color);
+}
+
+.desktop-icon .icon-image {
+    width: 1.75rem;
+    height: 1.75rem;
+    object-fit: contain;
+    display: inline-block !important;
+    /* Always show image icon if available */
+}
+
+/* Hide Font Awesome icon in desktop icons when image icon is present */
+.desktop-icon:has(.icon-image) .icon-fa,
+.desktop-icon:has(.icon-image) i.icon-fa {
+    display: none !important;
+}
+
+.desktop-icon span {
+    font-size: 0.7rem;
+    color: var(--text-primary);
+    line-height: 1.1;
+    word-break: break-word;
+}
+
+/* Desktop Shortcuts */
+.desktop-shortcut {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 6px;
+    margin: -6px;
+    transition: transform var(--transition-fast), background var(--transition-normal);
+    width: 92px;
+    height: 112px;
+    border-radius: var(--border-radius-xl);
+    text-align: center;
+    pointer-events: all;
+    /* Enable clicks on shortcuts */
+    user-select: none;
+}
+
+.desktop-shortcut[data-shortcut-type="image"] .desktop-shortcut-icon,
+.desktop-shortcut[data-shortcut-type="applet"] .desktop-shortcut-icon,
+.desktop-shortcut[data-shortcut-type="preset"] .desktop-shortcut-icon,
+.desktop-shortcut[data-shortcut-type="note"] .desktop-shortcut-icon,
+.desktop-shortcut[data-shortcut-type="folder"] .desktop-shortcut-icon,
+.desktop-shortcut[data-shortcut-type="wiki-page"] .desktop-shortcut-icon,
+.desktop-shortcut[data-shortcut-type="static-wiki-page"] .desktop-shortcut-icon,
+.desktop-shortcut[data-shortcut-type="bracket-generation"] .desktop-shortcut-icon {
+    box-shadow: none;
+    font-size: 2.5rem;
+    color: var(--text-accent-tinted);
+    -webkit-filter: drop-shadow(1px 1px 5px #000000a0);
+    filter: drop-shadow(1px 1px 5px #000000a0);
+}
+
+.desktop-shortcut-icon .icon-image,
+.desktop-shortcut-icon .desktop-shortcut-wiki-site-icon {
+    width: 64px;
+    height: 64px;
+    object-fit: contain;
+    display: inline-block;
+}
+
+/* Hide Font Awesome icon in desktop shortcuts when image icon is present */
+.desktop-shortcut:has(.icon-image) .icon-fa,
+.desktop-shortcut:has(.icon-image) .desktop-shortcut-icon .icon-fa,
+.desktop-shortcut-icon:has(.icon-image) .icon-fa {
+    display: none !important;
+}
+
+.desktop-shortcut[data-shortcut-type="request"] .desktop-shortcut-icon-image {
+    border-radius: 50%;
+}
+
+.desktop-shortcut[data-shortcut-type="request"] .desktop-shortcut-image-icon {
+    font-size: 1em;
+    color: var(--text-accent-tinted);
+}
+
+.desktop-shortcut[data-shortcut-type="request"] .desktop-shortcut-flare-holder {
+    align-items: center;
+    justify-content: center;
+}
+
+/* Grid shortcuts are positioned by flex */
+.desktop-grid-container .desktop-shortcut {
+    position: relative;
+}
+
+/* Freeform shortcuts are absolutely positioned */
+.desktop-freeform-container .desktop-shortcut {
+    position: absolute;
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .desktop-shortcut:hover:not(:disabled) {
+        background: var(--glass-layer-dark-2);
+    }
+}
+
+.desktop-shortcut:active {
+    transform: scale(0.98);
+}
+
+.desktop-shortcut.dragging {
+    opacity: 0.9;
+    transform: scale(1.1);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+    pointer-events: none;
+    /* Don't interfere with drop detection */
+}
+
+.desktop-shortcut.selected {
+    background: var(--glass-layer-dark-3);
+    box-shadow: 0 0 0 2px var(--accent-primary), 0 0 12px rgba(var(--accent-primary-rgb), 0.35);
+}
+
+.desktop-shortcut.folder-drop-target {
+    background: color-mix(in srgb, var(--accent-primary, #6cb4ff) 25%, transparent);
+    box-shadow: 0 0 0 2px var(--accent-primary);
+}
+
+.desktop-selection-marquee {
+    position: fixed;
+    z-index: 500;
+    border: 1px dotted var(--accent-primary, #6cb4ff);
+    background: color-mix(in srgb, var(--accent-primary, #6cb4ff) 18%, transparent);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+    box-sizing: border-box;
+}
+
+
+body.desktop-marquee-active {
+    user-select: none;
+    cursor: crosshair;
+}
+
+.desktop-shortcut-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+    height: 64px;
+    font-size: 1.75rem;
+    color: #dfdfdf;
+    z-index: 1;
+}
+
+.desktop-shortcut-icon-request .desktop-shortcut-image-preview {
+    border-radius: 50%;
+    overflow: hidden;
+}
+
+.desktop-shortcut-icon-image {
+    position: relative;
+    border-radius: var(--border-radius-md);
+    border: 2px solid var(--glass-layer-dark-5);
+}
+
+.desktop-shortcut-image-preview {
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--border-radius-md);
+    overflow: hidden;
+}
+
+.desktop-shortcut-flare-holder {
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    width: 100%;
+    height: 100%;
+    padding: 2px 3px;
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .desktop-shortcut:hover:not(:disabled) .desktop-shortcut-flare-holder {
+        background: linear-gradient(135deg, rgba(0, 0, 0, 0.1) 0%, rgba(0, 0, 0, 0.3) 100%);
+    }
+}
+
+.desktop-shortcut-image-icon {
+    font-size: 1rem;
+    color: #dfdfdf;
+    text-shadow: 0 0 4px rgb(0 0 0);
+}
+
+.desktop-shortcut-label {
+    font-size: 0.75rem;
+    color: var(--text-primary);
+    word-break: break-word;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    line-clamp: 2;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    z-index: 2;
+    font-weight: 700;
+    font-variation-settings: "wght" 750;
+    -webkit-filter: drop-shadow(1px 1px 4px #000000);
+    filter: drop-shadow(1px 1px 4px #000000);
+}
+
+.desktop-shortcut.in-grid {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 8px rgba(var(--accent-primary-rgb), 0.3);
+}
+
+/* Desktop Drop Placeholder (shows where icon will land in grid) */
+.desktop-drop-placeholder {
+    opacity: 0;
+    border: 2px dashed var(--glass-border-3);
+    background: var(--glass-layer-1);
+    transition: opacity var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
+    pointer-events: none;
+    position: relative;
+    /* Keep it in flex flow */
+}
+
+.desktop-drop-placeholder.visible {
+    opacity: 0.5;
+}
+
+.desktop-drop-placeholder.active {
+    opacity: 1;
+    border-color: var(--accent-primary);
+    background: var(--glass-layer-2);
+    box-shadow: 0 0 12px rgba(var(--accent-primary-rgb), 0.3);
+}
+
+.desktop-drop-placeholder .desktop-shortcut-icon {
+    color: var(--text-secondary);
+    pointer-events: none;
+}
+
+.desktop-drop-placeholder.active .desktop-shortcut-icon {
+    color: var(--accent-primary);
+}
+
+.desktop-drop-placeholder .desktop-shortcut-label {
+    color: var(--text-secondary);
+    font-size: 0.65rem;
+    pointer-events: none;
+}
+
+.desktop-drop-placeholder.active .desktop-shortcut-label {
+    color: var(--accent-primary);
+}
+
+/* Reference drop to manual modal */
+.modal.reference-drop-target {
+    box-shadow: 0 0 0 3px var(--accent-primary);
+    animation: pulse-drop-target 1s ease-in-out infinite;
+}
+
+@keyframes pulse-drop-target {
+
+    0%,
+    100% {
+        box-shadow: 0 0 0 3px var(--accent-primary);
+    }
+
+    50% {
+        box-shadow: 0 0 0 6px var(--accent-primary);
+    }
+}
+
+.desktop-shortcut.can-drop-reference {
+    border: 2px solid var(--accent-primary);
+    box-shadow: 0 0 16px rgba(var(--accent-primary-rgb), 0.6);
+}

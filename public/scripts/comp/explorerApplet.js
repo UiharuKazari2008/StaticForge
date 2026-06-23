@@ -1781,7 +1781,8 @@ class ExplorerApplet {
         try {
             const resp = await fetch(`/images/${encodeURIComponent(filename)}`);
             const blob = await resp.blob();
-            await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+            // copyBlobToClipboard: public/scripts/utils/dreamscapeClipboard.js
+            await copyBlobToClipboard(blob, { name: filename });
         } catch (err) {
             showGlassToast('error', 'Copy Failed', err.message || 'Could not copy image', false, 4000);
         }

@@ -8692,8 +8692,17 @@ class GrokService {
                 responseFormat = null;
                     console.log('🔧 Tooling complete - using text.format for final structured response');
             } else {
-                // No tools: use normal response_format
-                responseFormat = zodResponseFormat(options?.responseSchema, "response");
+                // No tools: Responses API requires text.format (response_format is chat/completions only)
+                const zodFormat = zodResponseFormat(options?.responseSchema, "text");
+                textFormat = {
+                    format: {
+                        name: "structured_output",
+                        type: "json_schema",
+                        strict: true,
+                        schema: zodFormat.json_schema.schema
+                    }
+                };
+                responseFormat = null;
             }
         } else {
             // Fallback to normal text if invalid schema type

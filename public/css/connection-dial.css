@@ -1,0 +1,247 @@
+/* Melaton connection dial modal */
+#connectionDialModal {
+    width: 550px;
+}
+
+.connection-dial-content {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.connection-dial-layout {
+    display: flex;
+    align-items: stretch;
+    min-height: 200px;
+}
+
+.connection-dial-art {
+    height: 286px;
+    width: 150px;
+    display: flex;
+    align-items: stretch;
+    background: #008080;
+    border-right: 1px solid var(--glass-border-4, rgba(255, 255, 255, 0.12));
+}
+
+.connection-dial-art-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center top;
+    display: block;
+}
+
+.connection-dial-main {
+    flex: 1;
+    min-width: 0;
+    padding: var(--spacing-md);
+    display: flex;
+    flex-direction: column;
+}
+
+.connection-dial-main .modal-body {
+    padding: 0;
+}
+
+.connection-dial-footer-sep {
+    border-top: 1px solid var(--glass-border-4, rgba(255, 255, 255, 0.12));
+}
+
+.connection-dial-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md) var(--spacing-md);
+    min-height: 48px;
+}
+
+.connection-dial-body {
+    display: grid;
+    grid-template-rows: 3fr auto 1fr;
+    gap: 8px;
+    min-height: 260px;
+    flex: 1;
+}
+
+.connection-dial-upper {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+}
+
+.connection-dial-details {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.connection-dial-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+.connection-dial-detail-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-accent);
+}
+
+.connection-dial-detail-value {
+    font-size: 12px;
+    color: var(--text-accent-tinted);
+    font-variant-numeric: tabular-nums;
+    word-break: break-all;
+}
+
+.connection-dial-progress-wrap {
+    align-self: stretch;
+    width: 100%;
+}
+
+
+.connection-dial-progress {
+    width: 100%;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.connection-dial-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--btn-hover-bg-primary, #6366f1);
+    transition: width 0.3s ease;
+    min-width: 0;
+}
+
+body.windows-classic-theme .connection-dial-detail-label {
+    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
+    color: var(--GrayText);
+}
+
+body.windows-classic-theme .connection-dial-detail-value {
+    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
+    font-size: 10px;
+    color: var(--WindowText);
+}
+
+.connection-dial-status {
+    color: var(--text-primary);
+    font-size: 13px;
+    min-height: 18px;
+    line-height: 1.45;
+}
+
+body.windows-classic-theme .connection-dial-status {
+    color: var(--WindowText);
+    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
+    font-size: 10px;
+}
+
+.connection-dial-attempt {
+    color: var(--text-tertiary);
+    font-size: 11px;
+    min-height: 14px;
+}
+
+body.windows-classic-theme .connection-dial-attempt {
+    color: var(--GrayText);
+    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
+    font-size: 10px;
+}
+
+
+.connection-dial-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+}
+
+.connection-dial-modal.failed .connection-dial-actions {
+    display: flex;
+}
+
+.connection-dial-stats {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6px 8px;
+    margin-top: auto;
+    padding-top: 8px;
+    border-top: 1px solid var(--glass-border-4, rgba(255, 255, 255, 0.12));
+}
+
+body.windows-classic-theme .connection-dial-stats {
+    border-top-color: var(--ButtonShadow);
+}
+
+
+.connection-dial-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.connection-dial-stat-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-accent);
+}
+
+body.windows-classic-theme .connection-dial-stat-label {
+    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
+    color: var(--GrayText);
+}
+
+.connection-dial-stat-value {
+    font-size: 12px;
+    color: var(--text-accent-tinted);
+    font-variant-numeric: tabular-nums;
+}
+
+.connection-dial-stat-value-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.connection-dial-stat-value-row .websocket-arrow-up,
+.connection-dial-stat-value-row .websocket-arrow-down {
+    font-size: 10px;
+    opacity: 0.45;
+    transition: opacity var(--transition-slow), color 0.25s ease;
+    color: var(--text-color, #ffffff);
+}
+
+.connection-dial-stat-value-row .websocket-arrow-up.active {
+    color: #81ff9d;
+}
+
+.connection-dial-stat-value-row .websocket-arrow-down.active {
+    color: #ff8181;
+}
+
+.connection-dial-stat-value-row .websocket-arrow-up.active,
+.connection-dial-stat-value-row .websocket-arrow-down.active {
+    opacity: 1;
+}
+
+body.windows-classic-theme .connection-dial-stat-value {
+    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
+    font-size: 10px;
+    color: var(--WindowText);
+}
+
+.connection-dial-modal.status-view .connection-dial-stats:not(.hidden) {
+    display: grid;
+}

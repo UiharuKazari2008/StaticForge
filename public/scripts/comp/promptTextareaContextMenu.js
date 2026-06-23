@@ -130,8 +130,50 @@ function promptCtxCanToggleDisableSyntax(textarea) {
     return start !== end;
 }
 
+/** Plain-text prompt fields (creative directive, director prompt) — spellcheck/thesaurus only. */
+function promptCtxIsStandardTextPrompt(textarea) {
+    return Boolean(textarea && textarea.closest('.creative-directive-container, .prompt-textarea-container.director-prompt'));
+}
+
 function promptCtxIsCreativeDirectiveTextarea(textarea) {
-    return getPromptTextareaMenuState(textarea).isCreativeDirective;
+    return promptCtxIsStandardTextPrompt(textarea);
+}
+
+function promptCtxHideMenuItemForStandardPrompt(menuItem, target) {
+    const hide = promptCtxIsStandardTextPrompt(target);
+    if (menuItem._element) {
+        menuItem._element.style.display = hide ? 'none' : '';
+    }
+    if (hide) {
+        menuItem.disabled = true;
+    }
+}
+
+function promptCtxHasProtectedBlocks(textarea) {
+    return /!%[^%]+%/.test(String(textarea && textarea.value ? textarea.value : ''));
+}
+
+function promptCtxWillEnableProtectBlock(textarea) {
+    // isCursorInsideProtectBlock: public/scripts/comp/emphasisManager.js
+    return isCursorInsideProtectBlock && isCursorInsideProtectBlock(textarea);
+}
+
+function promptCtxGetProtectToggleIcon(textarea) {
+    return promptCtxWillEnableProtectBlock(textarea) ? 'fas fa-circle-check' : 'fas fa-shield-halved';
+}
+
+function promptCtxGetProtectToggleTooltip(textarea) {
+    if (promptCtxWillEnableProtectBlock(textarea)) {
+        return 'Unprotect Selection';
+    }
+    return 'Protect Selection';
+}
+
+function promptCtxCanToggleProtectSyntax(textarea) {
+    if (promptCtxWillEnableProtectBlock(textarea)) return true;
+    const start = typeof textarea.selectionStart === 'number' ? textarea.selectionStart : 0;
+    const end = typeof textarea.selectionEnd === 'number' ? textarea.selectionEnd : 0;
+    return start !== end;
 }
 
 function promptCtxRefreshThesaurusSubmenuIfOpen(textarea) {
@@ -309,7 +351,7 @@ function getPromptTextareaMenuState(textarea) {
         selectedText,
         contextTerm,
         fieldKind: promptCtxGetFieldKind(textarea),
-        isCreativeDirective: Boolean(textarea.closest('.creative-directive-container'))
+        isCreativeDirective: promptCtxIsStandardTextPrompt(textarea)
     };
 }
 
@@ -784,21 +826,20 @@ function handlePromptTextareaContextMenuAction(action, textarea, item) {
             break;
         case 'prompt-ctx-paste':
             textarea.focus();
-            if (navigator.clipboard && navigator.clipboard.readText) {
-                navigator.clipboard.readText().then((text) => {
-                    if (text == null) return;
-                    const start = textarea.selectionStart;
-                    const end = textarea.selectionEnd;
-                    const val = textarea.value;
-                    const next = val.substring(0, start) + text + val.substring(end);
-                    setTextareaValuePreservingUndo(textarea, next);
-                    const pos = start + text.length;
-                    textarea.setSelectionRange(pos, pos);
-                    textarea.dispatchEvent(new Event('input', { bubbles: true }));
-                }).catch(() => document.execCommand('paste'));
-            } else {
+            // readClipboardText: public/scripts/utils/dreamscapeClipboard.js
+            // replaceTextareaRangePreservingUndo: public/scripts/comp/textareaUtils.js
+            readClipboardText().then((text) => {
+                if (text == null || text === '') return;
+                const start = textarea.selectionStart;
+                const end = textarea.selectionEnd;
+                replaceTextareaRangePreservingUndo(textarea, start, end, text);
+                const pos = start + text.length;
+                textarea.setSelectionRange(pos, pos);
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            }).catch(() => {
+                textarea.focus();
                 document.execCommand('paste');
-            }
+            });
             break;
         case 'prompt-ctx-select-all':
             textarea.focus();
@@ -839,6 +880,11 @@ function handlePromptTextareaContextMenuAction(action, textarea, item) {
                 window.promptTextareaToolbar.openEmphasisMode(textarea, toolbar);
             }
             break;
+        case 'prompt-ctx-emphasis-groups':
+            if (emphasisGroupsToolManager) {
+                emphasisGroupsToolManager.openForTextarea(textarea);
+            }
+            break;
         case 'prompt-ctx-split-emphasis':
             // splitEmphasisBlock: public/scripts/comp/emphasisManager.js
             if (splitEmphasisBlock) splitEmphasisBlock(textarea);
@@ -857,6 +903,11 @@ function handlePromptTextareaContextMenuAction(action, textarea, item) {
             if (!promptCtxCanToggleDisableSyntax(textarea)) break;
             // toggleDisableSyntax: public/scripts/comp/emphasisManager.js
             if (toggleDisableSyntax) toggleDisableSyntax(textarea);
+            break;
+        case 'prompt-ctx-toggle-protect':
+            if (!promptCtxCanToggleProtectSyntax(textarea)) break;
+            // toggleProtectSyntax: public/scripts/comp/emphasisManager.js
+            if (toggleProtectSyntax) toggleProtectSyntax(textarea);
             break;
         case 'prompt-ctx-delete-disabled-blocks':
             promptCtxDeleteAllDisabledBlocks(textarea);
@@ -914,6 +965,13 @@ function handlePromptTextareaContextMenuAction(action, textarea, item) {
             const data = item && item.data;
             if (data && applyWordLookupInsert) {
                 promptCtxWithAutocompleteTarget(textarea, () => {
+                    const term = state.contextTerm;
+                    const key = term + '|' + (textarea.id || '');
+                    const cached = promptCtxThesaurusCache.get(key);
+                    // primeWordLookupReplaceContext: public/scripts/comp/autocompleteUtils.js
+                    if (typeof primeWordLookupReplaceContext === 'function') {
+                        primeWordLookupReplaceContext(textarea, term, cached && cached.data);
+                    }
                     applyWordLookupInsert(textarea, data.original, data.synonym);
                 });
             }
@@ -969,10 +1027,7 @@ function getPromptTextareaContextMenuConfig() {
                     {
                         icon: 'fas fa-paste',
                         tooltip: 'Paste',
-                        action: 'prompt-ctx-paste',
-                        loadfn: (icon) => {
-                            icon.disabled = !(navigator.clipboard && navigator.clipboard.readText);
-                        }
+                        action: 'prompt-ctx-paste'
                     },
                     {
                         icon: 'fas fa-square-dashed',
@@ -982,22 +1037,49 @@ function getPromptTextareaContextMenuConfig() {
                     {
                         icon: 'fas fa-search',
                         tooltip: 'Find Text',
-                        action: 'prompt-ctx-find-in-prompt'
+                        action: 'prompt-ctx-find-in-prompt',
+                        loadfn: (icon, target) => {
+                            promptCtxHideMenuItemForStandardPrompt(icon, target);
+                        }
                     }
                 ]
             },
             {
                 type: 'icons',
                 title: 'Blocks',
+                loadfn: (section, target) => {
+                    const isStandard = promptCtxIsStandardTextPrompt(target);
+                    if (section._element) {
+                        section._element.style.display = isStandard && !promptCtxIsDynamicGenerationEnabled() ? 'none' : '';
+                    }
+                },
                 icons: [
                     {
                         icon: 'fas fa-ban',
                         tooltip: 'Disable Selection',
                         action: 'prompt-ctx-toggle-disable',
                         loadfn: (icon, target) => {
-                            icon.disabled = promptCtxIsCreativeDirectiveTextarea(target) || !promptCtxCanToggleDisableSyntax(target);
+                            const isStandard = promptCtxIsStandardTextPrompt(target);
+                            if (icon._element) {
+                                icon._element.style.display = isStandard ? 'none' : '';
+                            }
+                            icon.disabled = !promptCtxCanToggleDisableSyntax(target);
                             icon.tooltip = promptCtxGetDisableToggleTooltip(target);
                             icon.icon = promptCtxGetDisableToggleIcon(target);
+                        }
+                    },
+                    {
+                        icon: 'fas fa-shield-halved',
+                        tooltip: 'Protect Selection',
+                        action: 'prompt-ctx-toggle-protect',
+                        loadfn: (icon, target) => {
+                            if (icon._element) {
+                                icon._element.style.display = '';
+                            }
+                            const dgOn = promptCtxIsDynamicGenerationEnabled();
+                            icon.disabled = !dgOn || !promptCtxCanToggleProtectSyntax(target);
+                            icon.tooltip = promptCtxGetProtectToggleTooltip(target);
+                            icon.icon = promptCtxGetProtectToggleIcon(target);
                         }
                     },
                     {
@@ -1005,7 +1087,11 @@ function getPromptTextareaContextMenuConfig() {
                         tooltip: 'Remove Disabled Blocks',
                         action: 'prompt-ctx-delete-disabled-blocks',
                         loadfn: (icon, target) => {
-                            icon.disabled = promptCtxIsCreativeDirectiveTextarea(target) || !promptCtxHasDisabledBlocks(target);
+                            const isStandard = promptCtxIsStandardTextPrompt(target);
+                            if (icon._element) {
+                                icon._element.style.display = isStandard ? 'none' : '';
+                            }
+                            icon.disabled = !promptCtxHasDisabledBlocks(target);
                         }
                     },
                     {
@@ -1013,7 +1099,11 @@ function getPromptTextareaContextMenuConfig() {
                         tooltip: 'Lowercase',
                         action: 'prompt-ctx-lowercase',
                         loadfn: (icon, target) => {
-                            icon.disabled = promptCtxIsCreativeDirectiveTextarea(target);
+                            const isStandard = promptCtxIsStandardTextPrompt(target);
+                            if (icon._element) {
+                                icon._element.style.display = isStandard ? 'none' : '';
+                            }
+                            icon.disabled = isStandard;
                         }
                     },
                     {
@@ -1021,7 +1111,11 @@ function getPromptTextareaContextMenuConfig() {
                         tooltip: 'New Text Expander',
                         action: 'prompt-ctx-new-expander',
                         loadfn: (icon, target) => {
-                            icon.disabled = promptCtxIsCreativeDirectiveTextarea(target);
+                            const isStandard = promptCtxIsStandardTextPrompt(target);
+                            if (icon._element) {
+                                icon._element.style.display = isStandard ? 'none' : '';
+                            }
+                            icon.disabled = isStandard;
                         }
                     }
                 ]
@@ -1029,11 +1123,24 @@ function getPromptTextareaContextMenuConfig() {
             {
                 type: 'icons',
                 title: 'Emphasis',
+                loadfn: (section, target) => {
+                    if (section._element) {
+                        section._element.style.display = promptCtxIsStandardTextPrompt(target) ? 'none' : '';
+                    }
+                },
                 icons: [
                     {
                         icon: 'fas fa-dial',
                         tooltip: 'Edit',
                         action: 'prompt-ctx-emphasis',
+                        loadfn: (icon, target) => {
+                            icon.disabled = promptCtxIsCreativeDirectiveTextarea(target);
+                        }
+                    },
+                    {
+                        icon: 'fas fa-sliders',
+                        tooltip: 'Emphasis Groups',
+                        action: 'prompt-ctx-emphasis-groups',
                         loadfn: (icon, target) => {
                             icon.disabled = promptCtxIsCreativeDirectiveTextarea(target);
                         }
@@ -1070,13 +1177,17 @@ function getPromptTextareaContextMenuConfig() {
                     {
                         icon: 'fas fa-book-atlas',
                         text: 'Quick Access',
-                        action: 'prompt-ctx-quick-access'
+                        action: 'prompt-ctx-quick-access',
+                        loadfn: (menuItem, target) => {
+                            promptCtxHideMenuItemForStandardPrompt(menuItem, target);
+                        }
                     },
                     {
                         icon: 'fas fa-book',
                         text: 'Search Wiki',
                         action: 'prompt-ctx-search-wiki',
                         loadfn: (menuItem, target) => {
+                            promptCtxHideMenuItemForStandardPrompt(menuItem, target);
                             const s = getPromptTextareaMenuState(target);
                             menuItem.disabled = !s.contextTerm;
                         }
@@ -1086,6 +1197,7 @@ function getPromptTextareaContextMenuConfig() {
                         text: 'Search Google',
                         action: 'prompt-ctx-search-google',
                         loadfn: (menuItem, target) => {
+                            promptCtxHideMenuItemForStandardPrompt(menuItem, target);
                             menuItem.disabled = !promptCtxHasMeaningfulSelection(target);
                         }
                     },
@@ -1106,6 +1218,11 @@ function getPromptTextareaContextMenuConfig() {
             },
             {
                 type: 'list',
+                loadfn: (section, target) => {
+                    if (section._element) {
+                        section._element.style.display = promptCtxIsStandardTextPrompt(target) ? 'none' : '';
+                    }
+                },
                 items: [
                     {
                         icon: 'fas fa-star',

@@ -605,53 +605,11 @@ async function initializePhotoSwipe() {
                             className: 'copy-button',
                             icon: '<i class="fa-light fa-clipboard"></i>',
                             label: 'Copy to clipboard',
-                            onClick: async () => {
+                            onClick: () => {
                                 const currentItem = pswp.currSlide;
                                 if (currentItem && currentItem.data?.data) {
-                                    try {
-                                        const imageData = currentItem.data.data;
-                                        
-                                        // Determine the correct URL for the image
-                                        let imageUrl;
-                                        if (imageData.url) {
-                                            // For newly generated images
-                                            imageUrl = imageData.url;
-                                        } else {
-                                            // For gallery images - prefer highest quality version
-                                            const filename = imageData.upscaled || imageData.original;
-                                            imageUrl = `/images/${filename}`;
-                                        }
-                                        
-                                        // Fetch the image as a blob
-                                        const response = await fetch(imageUrl);
-                                        const blob = await response.blob();
-                                        
-                                        // Copy to clipboard
-                                        await navigator.clipboard.write([
-                                            new ClipboardItem({
-                                                [blob.type]: blob
-                                            })
-                                        ]);
-                                        
-                                        // Calculate and format file size
-                                        const sizeInBytes = blob.size;
-                                        let sizeText;
-                                        if (sizeInBytes < 1024 * 1024) {
-                                            sizeText = `${(sizeInBytes / 1024).toFixed(1)} KB`;
-                                        } else {
-                                            sizeText = `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
-                                        }
-                                        
-                                        // Show success notification with size
-                                        if (window.showGlassToast) {
-                                            window.showGlassToast('success', 'Image copied to clipboard!', `(${sizeText})`, false, 3000, '<i class="fa-regular fa-clipboard-check"></i>');
-                                        }
-                                    } catch (error) {
-                                        console.error('Failed to copy image to clipboard:', error);
-                                        if (window.showGlassToast) {
-                                            window.showGlassToast('error', 'Failed to copy image to clipboard', '', false, 3000, '<i class="fa-regular fa-clipboard"></i>');
-                                        }
-                                    }
+                                    // copyImageToClipboard: public/scripts/comp/galleryView.js
+                                    copyImageToClipboard(currentItem.data.data);
                                 }
                             }
                         },

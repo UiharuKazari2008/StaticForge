@@ -63,6 +63,11 @@ class ContextMenuController {
         /** After touch-open, ignore ghost click on trigger and overlay dismiss. */
         this._suppressClickMenuClickUntil = 0;
 
+        /** Touch long-press confirmed for text inputs — blocks spurious contextmenu on short taps. */
+        this._textInputLongPressConfirmed = false;
+        this._textInputLongPressTarget = null;
+        this._textInputLongPressClearTimer = null;
+
         this.init();
     }
 
@@ -138,6 +143,49 @@ class ContextMenuController {
 
     isDesktop() {
         return !this.isMobile('tablet');
+    }
+
+    _isTextInputContextMenuTarget(element) {
+        if (!element) return false;
+        if (element.tagName === 'TEXTAREA') return true;
+        if (element.tagName === 'INPUT') {
+            const type = (element.type || 'text').toLowerCase();
+            return !['checkbox', 'radio', 'button', 'submit', 'reset', 'file', 'hidden', 'image', 'range', 'color'].includes(type);
+        }
+        return element.isContentEditable;
+    }
+
+    _clearTextInputLongPressState(delayMs = 0) {
+        if (this._textInputLongPressClearTimer) {
+            clearTimeout(this._textInputLongPressClearTimer);
+            this._textInputLongPressClearTimer = null;
+        }
+        const clear = () => {
+            this._textInputLongPressClearTimer = null;
+            this._textInputLongPressConfirmed = false;
+            this._textInputLongPressTarget = null;
+        };
+        if (delayMs > 0) {
+            this._textInputLongPressClearTimer = setTimeout(clear, delayMs);
+        } else {
+            clear();
+        }
+    }
+
+    /**
+     * Textareas/inputs: on touch, ignore native contextmenu unless our long-press timer fired.
+     * Desktop mouse right-click is always allowed.
+     */
+    _shouldAllowContextMenuOpen(event, target) {
+        if (event._isProxyEvent) return true;
+        if (!this._isTextInputContextMenuTarget(target)) return true;
+        if (event.pointerType === 'mouse') return true;
+        if (event.pointerType === 'touch') {
+            return this._textInputLongPressConfirmed && this._textInputLongPressTarget === target;
+        }
+        // Legacy desktop right-click (no pointerType): allow when not in an active touch session
+        if (!this._textInputLongPressTarget) return true;
+        return this._textInputLongPressConfirmed && this._textInputLongPressTarget === target;
     }
 
     // Filter items based on mobile/desktop visibility
@@ -264,6 +312,21 @@ class ContextMenuController {
         if (!this.isOpen || trigger !== 'context' || !target || !this.menu) return false;
         if (!target.classList.contains('has-item-context-menu')) return false;
         return this.menu.contains(target);
+    }
+
+    /** True when keyboard focus is inside the open menu tree (root menu, submenu, or nested inputs). */
+    isFocusInsideOpenMenu() {
+        const active = document.activeElement;
+        if (!active || active === document.body || active === document.documentElement) {
+            return false;
+        }
+        if (this.menu && !this.menu.classList.contains('hidden') && this.menu.contains(active)) {
+            return true;
+        }
+        if (this.currentSubmenu && this.currentSubmenu.contains(active)) {
+            return true;
+        }
+        return false;
     }
 
     pushMenuStackSnapshot() {
@@ -590,13 +653,13 @@ class ContextMenuController {
         // Desktop right-click
         document.addEventListener('contextmenu', (e) => {
             const target = e.target.closest('[data-context-menu]');
-            if (target) {
-                e.preventDefault();
-                if (!e._isProxyEvent && Date.now() < this._suppressDocumentContextMenuUntil) {
-                    return;
-                }
-                this.showMenu(e, target, false, e._isProxyEvent);
+            if (!target) return;
+            if (!this._shouldAllowContextMenuOpen(e, target)) return;
+            e.preventDefault();
+            if (!e._isProxyEvent && Date.now() < this._suppressDocumentContextMenuUntil) {
+                return;
             }
+            this.showMenu(e, target, false, e._isProxyEvent);
         });
 
         // Touch events for long-press (context) and tap (click menu)
@@ -620,8 +683,15 @@ class ContextMenuController {
             }
 
             if (contextTarget) {
+                if (this._isTextInputContextMenuTarget(contextTarget)) {
+                    this._clearTextInputLongPressState();
+                    this._textInputLongPressTarget = contextTarget;
+                }
                 this.touchTimer = setTimeout(() => {
                     if (!this.hasScrolled && this.touchStartX != null && this.touchStartY != null) {
+                        if (this._isTextInputContextMenuTarget(contextTarget)) {
+                            this._textInputLongPressConfirmed = true;
+                        }
                         this._suppressDocumentContextMenuUntil = Date.now() + 600;
                         this._pendingClickMenuTouchTarget = null;
                         const x = this.touchStartX;
@@ -667,6 +737,14 @@ class ContextMenuController {
             }
             this._removeTouchScrollCancelListener();
 
+            if (this._textInputLongPressTarget) {
+                if (this._textInputLongPressConfirmed) {
+                    this._clearTextInputLongPressState(400);
+                } else {
+                    this._clearTextInputLongPressState();
+                }
+            }
+
             if (clickTarget && wasShortTap && !this.hasScrolled && clickTarget.hasAttribute('data-click-menu')) {
                 const touch = e.changedTouches && e.changedTouches[0];
                 if (touch) {
@@ -686,13 +764,31 @@ class ContextMenuController {
             this.hasScrolled = false;
         }, { passive: true });
 
+        document.addEventListener('touchcancel', () => {
+            if (this.touchTimer) {
+                clearTimeout(this.touchTimer);
+                this.touchTimer = null;
+            }
+            this._removeTouchScrollCancelListener();
+            this._clearTextInputLongPressState();
+            this._pendingClickMenuTouchTarget = null;
+            this.touchStartX = null;
+            this.touchStartY = null;
+            this._touchScrollSnapshot = null;
+            this.hasScrolled = false;
+        }, { passive: true });
+
         // Note: Click outside handling is now done by the overlay
 
-        // Close menu on escape key
+        // Close menu on key press when focus is outside the menu (typing in a textarea, shortcuts, etc.)
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && this.isOpen) {
+            if (!this.isOpen) return;
+            if (e.key === 'Escape') {
                 this.hideMenu();
+                return;
             }
+            if (this.isFocusInsideOpenMenu()) return;
+            this.hideMenu();
         });
 
         // Handle window resize
@@ -1023,16 +1119,25 @@ class ContextMenuController {
             }
 
             // Execute loadfn for icon sections
-            if (section.type === 'icons' && section.icons && Array.isArray(section.icons)) {
-                section.icons.forEach((icon) => {
-                    if (icon.loadfn && typeof icon.loadfn === 'function') {
-                        try {
-                            icon.loadfn(icon, target);
-                        } catch (error) {
-                            console.error('Error executing icon loadfn:', error);
-                        }
+            if (section.type === 'icons') {
+                if (section.loadfn && typeof section.loadfn === 'function') {
+                    try {
+                        section.loadfn(section, target);
+                    } catch (error) {
+                        console.error('Error executing icons section loadfn:', error);
                     }
-                });
+                }
+                if (section.icons && Array.isArray(section.icons)) {
+                    section.icons.forEach((icon) => {
+                        if (icon.loadfn && typeof icon.loadfn === 'function') {
+                            try {
+                                icon.loadfn(icon, target);
+                            } catch (error) {
+                                console.error('Error executing icon loadfn:', error);
+                            }
+                        }
+                    });
+                }
             }
 
             if (section.type === 'grid' && section.items && Array.isArray(section.items)) {
@@ -1086,6 +1191,7 @@ class ContextMenuController {
     createSection(section, target, sectionIndex) {
         const sectionElement = document.createElement('div');
         sectionElement.className = 'context-menu-section';
+        section._element = sectionElement;
 
         switch (section.type) {
             case 'list':
@@ -1127,8 +1233,22 @@ class ContextMenuController {
             return sectionElement;
         }
 
+        // Track visible items to avoid emitting rogue/leading/trailing/consecutive separators
+        // for sections that end up empty after hidden items are filtered (e.g. page-type conditional
+        // actions in wiki display menus, or future conditional sections in gear menus).
+        let hasVisibleItemSinceLastSep = false;
+
         section.items.forEach((item, itemIndex) => {
             if (item.separator) {
+                // Allow explicit hidden on a separator itself for non-existent sections
+                if (typeof item.hidden === 'function' ? item.hidden() : !!item.hidden) {
+                    return;
+                }
+                if (!hasVisibleItemSinceLastSep) {
+                    // Skip separator that would appear before any visible item in this section
+                    // (prevents rogue divider when a whole preceding group of items is hidden by page type etc.)
+                    return;
+                }
                 const separator = document.createElement('div');
                 separator.className = 'context-menu-separator';
 
@@ -1152,6 +1272,7 @@ class ContextMenuController {
                 }
 
                 sectionElement.appendChild(separator);
+                hasVisibleItemSinceLastSep = false;
                 return;
             }
 
@@ -1170,6 +1291,8 @@ class ContextMenuController {
             itemElement.className = 'context-menu-item';
             itemElement.setAttribute('role', 'menuitem');
             itemElement.tabIndex = 0;
+
+            hasVisibleItemSinceLastSep = true;
 
             // Custom content or Icon + Text
             if (item.content) {
@@ -1463,6 +1586,7 @@ class ContextMenuController {
             }
 
             iconsContainer.appendChild(iconElement);
+            icon._element = iconElement;
         });
 
         sectionElement.appendChild(iconsContainer);

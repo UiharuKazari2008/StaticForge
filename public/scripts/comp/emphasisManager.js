@@ -342,6 +342,147 @@ function buildBraceEmphasisText(innerText, weight) {
     return innerText;
 }
 
+function normalizeEmphasisInnerText(innerText) {
+    return String(innerText || '').trim().replace(/\s+/g, ' ');
+}
+
+function buildEmphasisTargetKey(target) {
+    const kind = target.type === 'brace' ? (target.braceKind || 'brace') : 'group';
+    return `${target.type}|${kind}|${normalizeEmphasisInnerText(target.innerText)}`;
+}
+
+function isSpanInsideGroupSpan(start, end, groupSpans) {
+    for (const g of groupSpans) {
+        if (start >= g.start && end <= g.end) return true;
+    }
+    return false;
+}
+
+function listBraceEmphasisTargets(value, groupSpans) {
+    const targets = [];
+    const pattern = new RegExp(EMPHASIS_BRACE_BLOCK_PATTERN.source, 'g');
+    let match;
+    while ((match = pattern.exec(value)) !== null) {
+        const start = match.index;
+        const end = start + match[0].length;
+        if (isSpanInsideGroupSpan(start, end, groupSpans)) continue;
+
+        let braceKind;
+        let innerText;
+        if (match[1]) {
+            braceKind = 'brace';
+            innerText = match[2];
+        } else {
+            braceKind = 'bracket';
+            innerText = match[4];
+        }
+
+        targets.push({
+            type: 'brace',
+            start,
+            end,
+            weight: weightFromBraceBlockText(match[0]),
+            innerText,
+            braceKind
+        });
+    }
+    return targets;
+}
+
+/** All emphasis targets (weight:: groups + brace/bracket blocks outside groups), sorted by start. */
+function listAllEmphasisTargets(value) {
+    if (!value) return [];
+
+    const groups = listEmphasisBlocks(value).map((b) => ({
+        type: 'group',
+        start: b.start,
+        end: b.end,
+        weight: b.weight,
+        innerText: b.innerText,
+        needsTerminator: b.needsTerminator
+    }));
+
+    const groupSpans = groups.map((g) => ({ start: g.start, end: g.end }));
+    const braces = listBraceEmphasisTargets(value, groupSpans);
+
+    return [...groups, ...braces].sort((a, b) => a.start - b.start);
+}
+
+function buildEmphasisTargetText(target, weight) {
+    if (target.type === 'brace') {
+        return buildBraceEmphasisText(target.innerText, weight);
+    }
+    const weightStr = formatEmphasisWeight(weight);
+    if (target.needsTerminator) {
+        return `${weightStr}::${target.innerText}::`;
+    }
+    return `${weightStr}::${target.innerText}`;
+}
+
+function applyEmphasisTargetWeights(value, weightByIndex) {
+    const targets = listAllEmphasisTargets(value);
+    if (!targets.length) return value;
+
+    let result = '';
+    let lastEnd = 0;
+    targets.forEach((target, idx) => {
+        result += value.substring(lastEnd, target.start);
+        const weight = weightByIndex.has(idx) ? weightByIndex.get(idx) : target.weight;
+        result += buildEmphasisTargetText(target, weight);
+        lastEnd = target.end;
+    });
+    result += value.substring(lastEnd);
+    return result;
+}
+
+function rebalanceEmphasisShares(shares, changedIndex, newShare, activeIndices) {
+    const result = shares.slice();
+    const clampedShare = Math.max(0, Math.min(100, newShare));
+    result[changedIndex] = clampedShare;
+
+    const others = activeIndices.filter((i) => i !== changedIndex);
+    if (!others.length) return result;
+
+    const remaining = 100 - clampedShare;
+    const othersSum = others.reduce((sum, i) => sum + (shares[i] || 0), 0);
+
+    if (othersSum <= 0) {
+        const each = remaining / others.length;
+        others.forEach((i) => { result[i] = each; });
+    } else {
+        others.forEach((i) => {
+            result[i] = ((shares[i] || 0) / othersSum) * remaining;
+        });
+    }
+    return result;
+}
+
+function sharesToWeights(shares, min, max, activeIndices) {
+    const active = activeIndices && activeIndices.length
+        ? activeIndices
+        : shares.map((_, i) => i);
+    const sum = active.reduce((s, i) => s + (shares[i] || 0), 0);
+    const weights = [];
+    const range = max - min;
+
+    if (sum <= 0) {
+        active.forEach((i) => { weights[i] = clampEmphasisWeight(min); });
+        return weights;
+    }
+
+    active.forEach((i) => {
+        weights[i] = clampEmphasisWeight(min + ((shares[i] || 0) / sum) * range);
+    });
+    return weights;
+}
+
+function weightToShare(weight, min, max) {
+    const range = max - min;
+    if (range <= 0) return 100;
+    const w = clampEmphasisWeight(weight);
+    return Math.max(0, Math.min(100, ((w - min) / range) * 100));
+}
+
 function findEmphasisBlockOverlappingSelection(value, selStart, selEnd) {
     for (const block of listEmphasisBlocks(value)) {
         if (selStart < block.end && selEnd > block.start) {
@@ -1668,7 +1809,6 @@ const previousTextareaValues = new WeakMap();
 
 // Emphasis highlighting — one overlay pass per frame; plain text skips the regex pipeline
 const emphasisHighlightValueCache = new WeakMap();
-const emphasisHighlightRafIds = new WeakMap();
 
 function promptNeedsFullSyntaxHighlight(text) {
     if (!text) return false;
@@ -1677,16 +1817,10 @@ function promptNeedsFullSyntaxHighlight(text) {
 
 function scheduleEmphasisHighlightUpdate(textarea) {
     if (!textarea) return;
-    const prevId = emphasisHighlightRafIds.get(textarea);
-    if (prevId) {
-        cancelAnimationFrame(prevId);
-    }
-    const rafId = requestAnimationFrame(() => {
-        emphasisHighlightRafIds.delete(textarea);
-        if (!textarea.isConnected) return;
+    // scheduleTextInputSideEffect: public/scripts/comp/textareaUtils.js
+    scheduleTextInputSideEffect(textarea, () => {
         updateEmphasisHighlighting(textarea);
     });
-    emphasisHighlightRafIds.set(textarea, rafId);
 }
 
 function throttledUpdateEmphasisHighlighting(textarea) {
@@ -1696,25 +1830,16 @@ function throttledUpdateEmphasisHighlighting(textarea) {
 function startEmphasisHighlighting(textarea) {
     if (emphasisHighlightingActive && emphasisHighlightingTarget === textarea) return;
     
-    // Skip emphasis highlighting for creative directive container (only use search highlighting)
-    if (textarea && textarea.closest('.creative-directive-container')) return;
+    // Skip emphasis highlighting for plain-text prompt fields (search highlighting only)
+    if (textarea && textarea.closest('.creative-directive-container, .prompt-textarea-container.director-prompt')) return;
 
     emphasisHighlightingActive = true;
     emphasisHighlightingTarget = textarea;
 
     // Add event listeners for real-time highlighting using safe event listeners
-    addSafeEventListener(textarea, 'input', (e) => {
-        // isTextInputComposing: public/scripts/comp/textareaUtils.js
-        if (typeof isTextInputComposing === 'function' && isTextInputComposing(textarea, e)) {
-            return;
-        }
-        // scheduleAutoResizeTextarea: public/scripts/comp/utilities.js
-        if (typeof scheduleAutoResizeTextarea === 'function') {
-            scheduleAutoResizeTextarea(textarea);
-        } else {
-            autoResizeTextarea(textarea);
-        }
-        scheduleEmphasisHighlightUpdate(textarea);
+    addTextareaInputSideEffect(textarea, () => {
+        autoResizeTextarea(textarea);
+        updateEmphasisHighlighting(textarea);
     }, 'emphasisHighlighting');
 
     // Initial highlighting
@@ -1724,11 +1849,8 @@ function startEmphasisHighlighting(textarea) {
 
 function stopEmphasisHighlighting() {
     if (emphasisHighlightingTarget) {
-        const pendingRaf = emphasisHighlightRafIds.get(emphasisHighlightingTarget);
-        if (pendingRaf) {
-            cancelAnimationFrame(pendingRaf);
-            emphasisHighlightRafIds.delete(emphasisHighlightingTarget);
-        }
+        // cancelTextInputSideEffect: public/scripts/comp/textareaUtils.js
+        cancelTextInputSideEffect(emphasisHighlightingTarget);
         emphasisHighlightValueCache.delete(emphasisHighlightingTarget);
         // Clean up the emphasis highlighting event listener
         removeSafeEventListener(emphasisHighlightingTarget, 'input', 'emphasisHighlighting');
@@ -1796,7 +1918,7 @@ function updateEmphasisHighlighting(textarea) {
     }
     
     // Skip emphasis highlighting for creative directive container (only use search highlighting)
-    if (textarea.closest('.creative-directive-container')) return;
+    if (textarea.closest('.creative-directive-container, .prompt-textarea-container.director-prompt')) return;
 
     // Keep golden selection highlight while emphasis editor is active
     if (emphasisEditingActive && emphasisEditingTarget === textarea && emphasisEditingSelection) {
@@ -1836,7 +1958,7 @@ function initializeEmphasisOverlay(textarea) {
     if (!textarea) return;
     
     // Skip emphasis highlighting for creative directive container (only use search highlighting)
-    if (textarea.closest('.creative-directive-container')) return;
+    if (textarea.closest('.creative-directive-container, .prompt-textarea-container.director-prompt')) return;
 
     const value = textarea.value;
     const highlightedValue = highlightEmphasisInText(value);
@@ -2833,6 +2955,92 @@ function toggleDisableSyntax(target) {
     }
     
     // If no selection and cursor is not inside a disable block, do nothing
+}
+
+function isCursorInsideProtectBlock(target) {
+    if (!target) return null;
+
+    const value = target.value;
+    const cursorPosition = target.selectionStart;
+    const protectPattern = /!%[^%]+%/g;
+    let match;
+
+    while ((match = protectPattern.exec(value)) !== null) {
+        const blockStart = match.index;
+        const blockEnd = match.index + match[0].length;
+
+        if (cursorPosition >= blockStart && cursorPosition <= blockEnd) {
+            return {
+                start: blockStart,
+                end: blockEnd,
+                content: match[0].slice(2, -1),
+                fullMatch: match[0]
+            };
+        }
+    }
+
+    return null;
+}
+
+function removeInnerProtectBlocks(text) {
+    return text.replace(/!%[^%]+%/g, (match) => match.slice(2, -1));
+}
+
+function toggleProtectSyntax(target) {
+    if (!target) return;
+
+    const value = target.value;
+    const selectionStart = target.selectionStart;
+    const selectionEnd = target.selectionEnd;
+    const hasSelection = selectionStart !== selectionEnd;
+
+    const protectInfo = isCursorInsideProtectBlock(target);
+
+    if (protectInfo) {
+        const beforeText = value.substring(0, protectInfo.start);
+        const afterText = value.substring(protectInfo.end);
+        const newValue = beforeText + protectInfo.content + afterText;
+
+        // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+        setTextareaValuePreservingUndo(target, newValue);
+
+        const newCursorPosition = protectInfo.start + protectInfo.content.length;
+        target.setSelectionRange(newCursorPosition, newCursorPosition);
+        dispatchPromptTextareaInputEvent(target, { skipAutofill: true });
+
+        if (window.autoResizeTextarea) {
+            window.autoResizeTextarea(target);
+        }
+        if (window.updateEmphasisHighlighting) {
+            window.updateEmphasisHighlighting(target);
+        }
+
+        return;
+    }
+
+    if (hasSelection) {
+        const selectedText = value.substring(selectionStart, selectionEnd).trim();
+        if (!selectedText) return;
+
+        const cleanedText = removeInnerProtectBlocks(selectedText);
+        const protectedText = `!%${cleanedText}%`;
+        const beforeText = value.substring(0, selectionStart);
+        const afterText = value.substring(selectionEnd);
+        const newValue = beforeText + protectedText + afterText;
+
+        setTextareaValuePreservingUndo(target, newValue);
+
+        const newCursorPosition = selectionStart + protectedText.length;
+        target.setSelectionRange(newCursorPosition, newCursorPosition);
+        dispatchPromptTextareaInputEvent(target, { skipAutofill: true });
+
+        if (window.autoResizeTextarea) {
+            window.autoResizeTextarea(target);
+        }
+        if (window.updateEmphasisHighlighting) {
+            window.updateEmphasisHighlighting(target);
+        }
+    }
 }
 
 // ============================================================================

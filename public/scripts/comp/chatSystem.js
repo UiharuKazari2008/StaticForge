@@ -1,4 +1,62 @@
 // Chat System JavaScript
+
+const CHAT_VERBOSITY_OPTIONS = [
+    { value: 'auto', name: 'Auto' },
+    { value: '1', name: 'Brief' },
+    { value: '2', name: 'Direct' },
+    { value: '3', name: 'Expressive' },
+    { value: '4', name: 'Elaborate' },
+    { value: '5', name: 'Poetic' }
+];
+
+function chatVerbosityOptionLabel(value) {
+    const v = String(value ?? '3');
+    const hit = CHAT_VERBOSITY_OPTIONS.find((o) => o.value === v);
+    return hit ? hit.name : 'Expressive';
+}
+
+function setChatVerbosityField(hiddenId, selectedId, value) {
+    const v = value != null && value !== '' ? String(value) : '3';
+    const hidden = document.getElementById(hiddenId);
+    const selected = document.getElementById(selectedId);
+    if (hidden) hidden.value = v;
+    if (selected) selected.textContent = chatVerbosityOptionLabel(v);
+}
+
+function wireChatVerbosityDropdown(config) {
+    const container = document.getElementById(config.containerId);
+    const btn = document.getElementById(config.btnId);
+    const menu = document.getElementById(config.menuId);
+    const selectedEl = document.getElementById(config.selectedId);
+    const hidden = document.getElementById(config.hiddenId);
+    if (!container || !btn || !menu || !selectedEl || !hidden) return;
+    if (container.dataset.wired === '1') return;
+    container.dataset.wired = '1';
+
+    if (!hidden.value) hidden.value = '3';
+    selectedEl.textContent = chatVerbosityOptionLabel(hidden.value);
+
+    const renderMenu = (selectedVal) => {
+        // renderSimpleDropdown: public/scripts/comp/manualDropdownManager.js
+        renderSimpleDropdown(
+            menu,
+            CHAT_VERBOSITY_OPTIONS,
+            'value',
+            'name',
+            (value) => {
+                hidden.value = String(value);
+                selectedEl.textContent = chatVerbosityOptionLabel(value);
+            },
+            () => closeDropdown(menu, btn), // closeDropdown: public/scripts/comp/dropdown.js
+            selectedVal,
+            { preventFocusTransfer: true }
+        );
+    };
+
+    // setupDropdown: public/scripts/comp/dropdown.js
+    setupDropdown(container, btn, menu, renderMenu, () => hidden.value, { preventFocusTransfer: true });
+}
+
 class ChatSystem {
     constructor() {
         this.currentChatId = null;
@@ -50,6 +108,21 @@ class ChatSystem {
         
         // Persona settings button
         document.getElementById('personaSettingsBtn')?.addEventListener('click', () => this.openPersonaSettingsModal());
+
+        wireChatVerbosityDropdown({
+            containerId: 'chatVerbosityDropdown',
+            btnId: 'chatVerbosityBtn',
+            menuId: 'chatVerbosityMenu',
+            selectedId: 'chatVerbositySelected',
+            hiddenId: 'chatVerbosityHidden'
+        });
+        wireChatVerbosityDropdown({
+            containerId: 'personaDefaultVerbosityDropdown',
+            btnId: 'personaDefaultVerbosityBtn',
+            menuId: 'personaDefaultVerbosityMenu',
+            selectedId: 'personaDefaultVerbositySelected',
+            hiddenId: 'personaDefaultVerbosityHidden'
+        });
     }
 
     async initializeWithPersonaSettings() {
@@ -114,7 +187,7 @@ class ChatSystem {
         
         document.getElementById('personaUserName').value = this.personaSettings.user_name || '';
         document.getElementById('personaBackstory').value = this.personaSettings.backstory || '';
-        document.getElementById('personaDefaultVerbosity').value = this.personaSettings.default_verbosity || 3;
+        setChatVerbosityField('personaDefaultVerbosityHidden', 'personaDefaultVerbositySelected', this.personaSettings.default_verbosity || 3);
         
         // Set profile photo if exists
         if (this.personaSettings.profile_photo_base64) {
@@ -139,7 +212,7 @@ class ChatSystem {
         document.getElementById('chatMindSeed').value = '';
         document.getElementById('chatStoryContext').value = '';
         document.getElementById('chatViewerContext').value = '';
-        document.getElementById('chatVerbosity').value = this.personaSettings?.default_verbosity || 3;
+        setChatVerbosityField('chatVerbosityHidden', 'chatVerbositySelected', this.personaSettings?.default_verbosity || 3);
         
         // Fetch image metadata to extract creative directive if dynamic generation was enabled
         try {
@@ -230,7 +303,7 @@ class ChatSystem {
                 textContextInfo: document.getElementById('chatMindSeed').value || null,
                 textViewerInfo: document.getElementById('chatViewerContext').value || null,
                 storyContext: document.getElementById('chatStoryContext').value || null,
-                verbosityLevel: parseInt(document.getElementById('chatVerbosity').value) || 3,
+                verbosityLevel: parseInt(document.getElementById('chatVerbosityHidden').value, 10) || 3,
                 provider: 'grok',
                 model: defaultGrok
             };
@@ -1123,7 +1196,7 @@ class ChatSystem {
         const settings = {
             user_name: document.getElementById('personaUserName').value,
             backstory: document.getElementById('personaBackstory').value,
-            default_verbosity: parseInt(document.getElementById('personaDefaultVerbosity').value),
+            default_verbosity: parseInt(document.getElementById('personaDefaultVerbosityHidden').value, 10) || 3,
             profile_photo_base64: this.personaSettings?.profile_photo_base64 || ''
         };
         

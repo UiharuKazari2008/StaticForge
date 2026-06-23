@@ -106,13 +106,16 @@ class PromptTextareaToolbar {
         
         if (toolbar) {
             toolbar.classList.remove('hidden');
-            this.updateTokenCount(textarea);
-            if (this._groupTotalsReady) {
-                this.refreshGroupToolbarTotals(this.isUcTextarea(textarea));
+            if (!this.isStandardTextPromptTextarea(textarea)) {
+                this.updateTokenCount(textarea);
+                if (this._groupTotalsReady) {
+                    this.refreshGroupToolbarTotals(this.isUcTextarea(textarea));
+                }
             }
             
             // Add direct emphasis keyboard listener if not already added
-            if (!toolbar.hasAttribute('data-direct-emphasis-listener-added')) {
+            if (!this.isStandardTextPromptTextarea(textarea) &&
+                !toolbar.hasAttribute('data-direct-emphasis-listener-added')) {
                 this.addDirectEmphasisKeyboardListener(toolbar);
                 toolbar.setAttribute('data-direct-emphasis-listener-added', 'true');
             }
@@ -255,6 +258,10 @@ class PromptTextareaToolbar {
         if (!textarea) return false;
         return textarea.id === 'manualUc'
             || (textarea.id && textarea.id.endsWith('_uc'));
+    }
+
+    isStandardTextPromptTextarea(textarea) {
+        return Boolean(textarea && textarea.closest('.creative-directive-container, .prompt-textarea-container.director-prompt'));
     }
 
     collectEditorTokenTextareas() {
@@ -531,8 +538,10 @@ class PromptTextareaToolbar {
             { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-atlas', toolbarWide: true },
             { value: 'lowercase', display: 'Lowercase', icon: 'fas fa-font' },
             { value: 'emphasis', display: 'Edit Emphasis', icon: 'fas fa-scale-unbalanced-flip' },
+            { value: 'emphasis-groups-tool', display: 'Emphasis Groups', icon: 'fas fa-sliders' },
             { value: 'clear-emphasis', display: 'Reset Emphasis', icon: 'fas fa-eraser' },
             { value: 'split-emphasis', display: 'Split Emphasis', icon: 'fas fa-scissors', toolbarWide: true },
+            { value: 'keep-newlines', display: 'Keep Newlines', icon: 'fas fa-paragraph', toggle: true },
             { value: 'request-body-replacements', display: 'Text Expanders', icon: 'fas fa-book-font' }
         ];
         return menuOptions;
@@ -578,24 +587,7 @@ class PromptTextareaToolbar {
             );
         }
         
-        // Also initialize creative tab actions dropdown
-        const creativeTabDropdown = document.getElementById('creativeTabPromptActionsDropdown');
-        const creativeTabDropdownBtn = document.getElementById('creativeTabPromptActionsDropdownBtn');
-        const creativeTabDropdownMenu = document.getElementById('creativeTabPromptActionsDropdownMenu');
-
-        if (creativeTabDropdown && creativeTabDropdownBtn && creativeTabDropdownMenu) {
-            setupDropdown(
-                creativeTabDropdown,
-                creativeTabDropdownBtn,
-                creativeTabDropdownMenu,
-                () => this.renderToolbarActionsDropdown('creativeTabPromptActionsDropdownMenu', this.getDreamStudioToolboxOptions()),
-                () => null,
-                {
-                    enableKeyboardNav: false,
-                    preventFocusTransfer: true
-                }
-            );
-        }
+        // Creative directive uses autofill-only toolbar — no toolbox dropdown
 
         this.initializeExpansionCompiledPromptDropdowns();
     }
@@ -640,8 +632,11 @@ class PromptTextareaToolbar {
         dropdownMenu.innerHTML = '';
 
         options.forEach(option => {
+            const isToggleOn = option.toggle && option.value === 'keep-newlines' && !!window.keepPromptNewlines;
             const optionElement = document.createElement('div');
-            optionElement.className = 'custom-dropdown-option' + (option.toolbarWide ? ' toolbar-menu-only' : '');
+            optionElement.className = 'custom-dropdown-option'
+                + (option.toolbarWide ? ' toolbar-menu-only' : '')
+                + (isToggleOn ? ' selected' : '');
             optionElement.dataset.value = option.value;
             optionElement.innerHTML = `<i class="${option.icon}"></i> ${option.display}`;
 
@@ -658,17 +653,23 @@ class PromptTextareaToolbar {
                 if (!toolbar) return;
 
                 // Close the dropdown after handling the action
-                const dropdown = dropdownMenu.closest('.custom-dropdown');
-                if (dropdown) {
-                    // Find the correct button for this dropdown
-                    const button = dropdown.querySelector('.custom-dropdown-btn') || dropdown.querySelector('button');
-                    if (button) {
-                        closeDropdown(dropdownMenu, button);
+                if (!option.toggle) {
+                    const dropdown = dropdownMenu.closest('.custom-dropdown');
+                    if (dropdown) {
+                        // Find the correct button for this dropdown
+                        const button = dropdown.querySelector('.custom-dropdown-btn') || dropdown.querySelector('button');
+                        if (button) {
+                            closeDropdown(dropdownMenu, button);
+                        }
                     }
                 }
 
                 // Call handleToolbarAction with the correct parameters
                 this.handleToolbarAction(option.value, activeTextarea, toolbar, e);
+
+                if (option.toggle) {
+                    optionElement.classList.toggle('selected', !!window.keepPromptNewlines);
+                }
             });
 
             dropdownMenu.appendChild(optionElement);
@@ -676,6 +677,13 @@ class PromptTextareaToolbar {
     }
 
     handleToolbarAction(action, textarea, toolbar, event) {
+        if (this.isStandardTextPromptTextarea(textarea)) {
+            const allowed = new Set(['autofill', 'search', 'search-prev', 'search-next', 'search-select', 'search-close']);
+            if (!allowed.has(action)) {
+                return;
+            }
+        }
+
         switch (action) {
             case 'quick-access':
                 this.openQuickAccess(textarea);
@@ -685,6 +693,11 @@ class PromptTextareaToolbar {
                 break;
             case 'emphasis':
                 this.openEmphasisMode(textarea, toolbar);
+                break;
+            case 'emphasis-groups-tool':
+                if (emphasisGroupsToolManager) {
+                    emphasisGroupsToolManager.openForTextarea(textarea);
+                }
                 break;
             case 'clear-emphasis':
                 if (removeAllEmphasisFromSelection) {
@@ -718,10 +731,17 @@ class PromptTextareaToolbar {
                 showRequestBodyReplacementsModal();
                 break;
             case 'manage-director-rules':
-                showDirectorRulesManager();
+                // Rules now live inside the Memories DSAP (static rules)
+                if (typeof openDsapInGrimoire === 'function') {
+                    openDsapInGrimoire('dsap://memories.dyna.dreamscape.jp/static_rules');
+                } else if (typeof showDirectorRulesManager === 'function') {
+                    showDirectorRulesManager(); // legacy fallback
+                }
                 break;
             case 'enshutsuka-memories':
-                if (typeof openKnowledgeMemoriesModal === 'function') {
+                if (typeof openDsapInGrimoire === 'function') {
+                    openDsapInGrimoire('dsap://memories.dyna.dreamscape.jp');
+                } else if (typeof openKnowledgeMemoriesModal === 'function') {
                     openKnowledgeMemoriesModal();
                 }
                 break;
@@ -1725,6 +1745,79 @@ class PromptTextareaToolbar {
             toolbar.directEmphasisApplyTimeout = null;
         }
         toolbar.directEmphasisPending = null;
+        this.hideDirectEmphasisPreview(toolbar);
+    }
+
+    ensureDirectEmphasisPreviewElements(toolbar) {
+        let preview = toolbar.querySelector('.toolbar-direct-emphasis-elements');
+        if (preview) return preview;
+
+        const toolbarLeft = toolbar.querySelector('.toolbar-left');
+        const parent = toolbarLeft || toolbar;
+        preview = document.createElement('div');
+        preview.className = 'toolbar-direct-emphasis-elements';
+        preview.innerHTML = `
+            <div class="emphasis-toolbar">
+                <div class="emphasis-type mode-normal">New Group</div>
+                <div class="emphasis-value direct-emphasis-preview-value" title="Applies shortly">1.0</div>
+            </div>
+        `;
+        parent.appendChild(preview);
+        return preview;
+    }
+
+    resolveDirectEmphasisPreviewWeight(pending, textarea) {
+        let numericValue = this.buildDirectEmphasisWeightFromDigits(pending.digits);
+        if (numericValue === null) return null;
+        if (pending.isAlt) {
+            numericValue = -numericValue;
+        }
+        if (!textarea) return numericValue;
+        const currentMode = this.detectEmphasisMode(textarea, textarea.selectionStart, textarea.selectionEnd);
+        if (currentMode === 'brace') {
+            numericValue = snapWeightForBraceMode(numericValue);
+        }
+        return numericValue;
+    }
+
+    showDirectEmphasisPreview(toolbar, textarea, pending) {
+        const preview = this.ensureDirectEmphasisPreviewElements(toolbar);
+        if (!preview) return;
+
+        const numericValue = this.resolveDirectEmphasisPreviewWeight(pending, textarea);
+        if (numericValue === null) return;
+
+        const valueEl = preview.querySelector('.direct-emphasis-preview-value');
+        const typeEl = preview.querySelector('.emphasis-type');
+        if (valueEl) {
+            // formatEmphasisWeightDisplay, getEmphasisToolbarColor: public/scripts/comp/emphasisManager.js
+            valueEl.textContent = formatEmphasisWeightDisplay(numericValue);
+            valueEl.style.color = getEmphasisToolbarColor(numericValue);
+        }
+        if (typeEl && textarea) {
+            const mode = this.detectEmphasisMode(textarea, textarea.selectionStart, textarea.selectionEnd);
+            let typeText = 'New Group';
+            let modeClass = 'mode-normal';
+            switch (mode) {
+                case 'brace':
+                    typeText = 'Brace Block';
+                    modeClass = 'mode-brace';
+                    break;
+                case 'group':
+                    typeText = 'Modify Group';
+                    modeClass = 'mode-group';
+                    break;
+            }
+            typeEl.textContent = typeText;
+            typeEl.className = `emphasis-type ${modeClass}`;
+        }
+
+        toolbar.classList.add('direct-emphasis-preview');
+    }
+
+    hideDirectEmphasisPreview(toolbar) {
+        if (!toolbar) return;
+        toolbar.classList.remove('direct-emphasis-preview');
     }
 
     buildDirectEmphasisWeightFromDigits(digits) {
@@ -1749,6 +1842,8 @@ class PromptTextareaToolbar {
         pending.time = now;
         pending.isAlt = isAltPressed;
 
+        this.showDirectEmphasisPreview(toolbar, textarea, pending);
+
         if (toolbar.directEmphasisApplyTimeout) {
             clearTimeout(toolbar.directEmphasisApplyTimeout);
         }
@@ -1757,6 +1852,7 @@ class PromptTextareaToolbar {
             const activePending = toolbar.directEmphasisPending;
             toolbar.directEmphasisPending = null;
             toolbar.directEmphasisApplyTimeout = null;
+            this.hideDirectEmphasisPreview(toolbar);
             if (!activePending) return;
 
             let numericValue = this.buildDirectEmphasisWeightFromDigits(activePending.digits);
@@ -2189,19 +2285,14 @@ class PromptTextareaToolbar {
     }
 
     toggleKeepNewlines() {
-        const btn = document.getElementById('keepNewlinesBtn');
-        const nextState = btn && btn.getAttribute('data-state') === 'on' ? 'off' : 'on';
-        window.keepPromptNewlines = nextState === 'on';
-        if (btn) {
-            btn.setAttribute('data-state', nextState);
-        }
+        window.keepPromptNewlines = !window.keepPromptNewlines;
+        this.syncKeepNewlinesButtons();
     }
 
     syncKeepNewlinesButtons() {
-        const btn = document.getElementById('keepNewlinesBtn');
-        if (btn) {
-            btn.setAttribute('data-state', window.keepPromptNewlines ? 'on' : 'off');
-        }
+        document.querySelectorAll('.custom-dropdown-option[data-value="keep-newlines"]').forEach((option) => {
+            option.classList.toggle('selected', !!window.keepPromptNewlines);
+        });
     }
 }
 

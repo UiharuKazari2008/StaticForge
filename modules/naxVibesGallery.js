@@ -236,12 +236,17 @@ async function fetchGalleryHtml(url) {
  * @param {boolean} [options.forceRefresh] skip cache
  */
 async function getNaxVibesGallery(options = {}) {
-    let page = 1;
     const preset = options.preset && PRESET_PAGES[options.preset] != null ? options.preset : null;
-    if (preset) {
+    const requestedPage = options.page != null ? parseInt(options.page, 10) : null;
+
+    let page = 1;
+    if (requestedPage && requestedPage > 0) {
+        // Explicit positive page wins (supports pagination on preset tabs via URL ?page=N)
+        page = requestedPage;
+    } else if (preset) {
         page = PRESET_PAGES[preset];
-    } else if (options.page != null) {
-        page = parseInt(options.page, 10);
+    } else if (requestedPage != null) {
+        page = requestedPage;
         if (!Number.isFinite(page) || page < 1) page = 1;
     }
 

@@ -2017,20 +2017,65 @@ async function hideWorkspaceEditModal() {
     currentWorkspaceOperation = null;
 }
 
+let dumpTargetExcludeWorkspaceId = null;
+
+function setDumpTargetWorkspaceValue(workspaceId) {
+    const hidden = document.getElementById('dumpTargetHidden');
+    const selected = document.getElementById('dumpTargetSelected');
+    if (!hidden || !selected) return;
+    const ws = Object.values(workspaces).find((w) => w.id === workspaceId);
+    hidden.value = workspaceId || '';
+    selected.textContent = ws?.name || 'Select planet...';
+}
+
+function renderDumpTargetDropdown(selectedVal) {
+    const menu = document.getElementById('dumpTargetMenu');
+    const btn = document.getElementById('dumpTargetBtn');
+    const hidden = document.getElementById('dumpTargetHidden');
+    if (!menu || !btn || !hidden) return;
+
+    const items = Object.values(workspaces)
+        .filter((w) => w.id !== dumpTargetExcludeWorkspaceId)
+        .map((w) => ({ value: w.id, name: w.name }));
+
+    // renderSimpleDropdown: public/scripts/comp/manualDropdownManager.js
+    renderSimpleDropdown(
+        menu,
+        items,
+        'value',
+        'name',
+        (value) => setDumpTargetWorkspaceValue(value),
+        () => closeDropdown(menu, btn), // closeDropdown: public/scripts/comp/dropdown.js
+        selectedVal || hidden.value,
+        { preventFocusTransfer: true }
+    );
+}
+
+function wireDumpTargetDropdown() {
+    const container = document.getElementById('dumpTargetDropdown');
+    const btn = document.getElementById('dumpTargetBtn');
+    const menu = document.getElementById('dumpTargetMenu');
+    const hidden = document.getElementById('dumpTargetHidden');
+    if (!container || !btn || !menu || !hidden) return;
+    if (container.dataset.wired === '1') return;
+    container.dataset.wired = '1';
+
+    // setupDropdown: public/scripts/comp/dropdown.js
+    setupDropdown(container, btn, menu, renderDumpTargetDropdown, () => hidden.value, { preventFocusTransfer: true });
+}
+
 function showDumpWorkspaceModal(sourceId, sourceName) {
     document.getElementById('dumpSourceWorkspaceName').textContent = sourceName;
 
-    const select = document.getElementById('dumpTargetSelect');
-    select.innerHTML = '';
+    dumpTargetExcludeWorkspaceId = sourceId;
+    wireDumpTargetDropdown();
 
-    Object.values(workspaces).forEach(workspace => {
-        if (workspace.id !== sourceId) {
-            const option = document.createElement('option');
-            option.value = workspace.id;
-            option.textContent = workspace.name;
-            select.appendChild(option);
-        }
-    });
+    const targets = Object.values(workspaces).filter((w) => w.id !== sourceId);
+    if (targets.length) {
+        setDumpTargetWorkspaceValue(targets[0].id);
+    } else {
+        setDumpTargetWorkspaceValue('');
+    }
 
     currentWorkspaceOperation = { type: 'dump', sourceId };
     const modal = document.getElementById('workspaceDumpModal');
@@ -2199,7 +2244,7 @@ function initializeWorkspaceSystem() {
     // Dump workspace
     document.getElementById('workspaceDumpConfirmBtn')?.addEventListener('click', async (e) => {
         e.preventDefault();
-        const targetId = document.getElementById('dumpTargetSelect').value;
+        const targetId = document.getElementById('dumpTargetHidden')?.value;
         if (!targetId) {
             showError('Please select a target workspace');
             return;

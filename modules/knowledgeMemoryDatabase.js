@@ -130,7 +130,7 @@ function closeKnowledgeMemoryDatabase() {
 }
 
 /**
- * List all available knowledge memories
+ * List all available knowledge memories (full, for internal/AI use)
  * @returns {Array} Array of memory objects with name, description, category, usage stats
  */
 function listKnowledgeMemories() {
@@ -153,6 +153,64 @@ function listKnowledgeMemories() {
     `);
 
     return stmt.all();
+}
+
+/**
+ * List knowledge memories with server-side pagination, search and category filter.
+ * Used by the Memories DSAP applet for large datasets.
+ * @param {Object} options
+ * @param {number} [options.limit=25]
+ * @param {number} [options.offset=0]
+ * @param {string} [options.search=''] - matches against name and description (case-insensitive LIKE)
+ * @param {string|null} [options.category=null] - exact category match (or null/'' for all)
+ * @returns {{items: Array, total: number}}
+ */
+function listKnowledgeMemoriesPaged({ limit = 25, offset = 0, search = '', category = null } = {}) {
+    if (!db) {
+        throw new Error('Knowledge memory database not initialized');
+    }
+
+    const safeLimit = Math.max(1, Math.min(200, parseInt(limit, 10) || 25));
+    const safeOffset = Math.max(0, parseInt(offset, 10) || 0);
+
+    let where = '1=1';
+    const params = [];
+
+    if (search && search.trim()) {
+        const term = `%${search.trim().toLowerCase()}%`;
+        where += ' AND (LOWER(name) LIKE ? OR LOWER(description) LIKE ?)';
+        params.push(term, term);
+    }
+
+    if (category && category.trim()) {
+        where += ' AND category = ?';
+        params.push(category.trim());
+    }
+
+    // Total count for this filter
+    const countStmt = db.prepare(`SELECT COUNT(*) as count FROM knowledge_memories WHERE ${where}`);
+    const total = countStmt.get(...params).count;
+
+    // Page of results
+    const dataSql = `
+        SELECT 
+            name,
+            description,
+            category,
+            usage_count,
+            last_used_at,
+            confidence,
+            created_at,
+            updated_at
+        FROM knowledge_memories
+        WHERE ${where}
+        ORDER BY usage_count DESC, updated_at DESC
+        LIMIT ? OFFSET ?
+    `;
+    const dataParams = [...params, safeLimit, safeOffset];
+    const items = db.prepare(dataSql).all(...dataParams);
+
+    return { items, total };
 }
 
 /**
@@ -1032,6 +1090,7 @@ module.exports = {
     initializeKnowledgeMemoryDatabase,
     closeKnowledgeMemoryDatabase,
     listKnowledgeMemories,
+    listKnowledgeMemoriesPaged,
     getKnowledgeMemory,
     saveKnowledgeMemory,
     deleteKnowledgeMemory,

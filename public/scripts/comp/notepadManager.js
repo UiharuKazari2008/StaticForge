@@ -977,6 +977,70 @@ class NotepadManager {
         });
 
         this.setupNotebookWorkspaceDropdown();
+        this.setupNotebookNovelActions();
+    }
+
+    setupNotebookNovelActions() {
+        const genBtn = document.getElementById('notebookNovelGenerateBtn');
+        const undoBtn = document.getElementById('notebookNovelUndoBtn');
+        const continueBtn = document.getElementById('notebookNovelContinueBtn');
+        if (genBtn) {
+            genBtn.addEventListener('click', async () => {
+                const note = this.notebookCurrentNote;
+                if (!note || note.note_kind !== 'novel') return;
+                // novelHydrateSession, novelRunGenerate: public/scripts/comp/novelManager.js
+                if (typeof novelHydrateSession === 'function') novelHydrateSession(note);
+                const hintFilename = typeof novelGetActiveImageFilename === 'function'
+                    ? novelGetActiveImageFilename()
+                    : null;
+                await wsClient.novelResolveImage(note.id, hintFilename);
+                if (typeof novelRunGenerate === 'function') {
+                    await novelRunGenerate({ noteId: note.id });
+                }
+            });
+        }
+        if (undoBtn) {
+            undoBtn.addEventListener('click', async () => {
+                if (typeof novelRunUndo === 'function') await novelRunUndo();
+                if (this.notebookCurrentNote?.id) {
+                    const note = await this.loadNoteById(this.notebookCurrentNote.id);
+                    this.notebookCurrentNote = note;
+                    this.notebookTextarea.value = note.content || '';
+                }
+            });
+        }
+        if (continueBtn) {
+            continueBtn.addEventListener('click', () => {
+                const note = this.notebookCurrentNote;
+                if (!note || note.note_kind !== 'novel') return;
+                if (typeof novelHydrateSession === 'function') novelHydrateSession(note);
+                const novelBtn = document.getElementById('novelBtn');
+                if (novelBtn) {
+                    novelBtn.dataset.state = 'on';
+                    novelBtn.classList.add('active');
+                }
+                if (typeof openNovelEditorTool === 'function') openNovelEditorTool();
+            });
+        }
+    }
+
+    notebookUpdateNovelToolbar(note) {
+        const isNovel = note && note.note_kind === 'novel';
+        document.querySelectorAll('.novel-notebook-only').forEach((el) => {
+            el.classList.toggle('hidden', !isNovel);
+        });
+        const undoBtn = document.getElementById('notebookNovelUndoBtn');
+        if (undoBtn && isNovel) {
+            const stack = note.metadata?.undo_stack || [];
+            undoBtn.disabled = stack.length === 0;
+        }
+    }
+
+    notebookSyncNovelSession(note) {
+        if (note && note.note_kind === 'novel' && typeof novelHydrateSession === 'function') {
+            novelHydrateSession(note);
+        }
+        this.notebookUpdateNovelToolbar(note);
     }
 
     setupNotebookWorkspaceDropdown() {
@@ -1305,6 +1369,7 @@ class NotepadManager {
             this.notebookHasUnsavedChanges = false;
             this.notebookUpdateTitle();
             this.notebookUpdateSaveButton();
+            this.notebookSyncNovelSession(note);
             await this.notebookRefreshNotesList(); // Re-render to update active state
         } catch (error) {
             console.error('Error loading note:', error);
@@ -1558,6 +1623,11 @@ class Notepad {
 
         // Open modal
         openModal(this.element);
+
+        // novelHydrateSession: public/scripts/comp/novelManager.js
+        if (this.note && this.note.note_kind === 'novel' && typeof novelHydrateSession === 'function') {
+            novelHydrateSession(this.note);
+        }
     }
 
     updateTitle(unsaved = false) {
@@ -1660,6 +1730,23 @@ class Notepad {
             }
         ];
 
+        if (this.note && this.note.note_kind === 'novel') {
+            options.push(
+                { separator: true },
+                {
+                    icon: 'fas fa-pen-fancy',
+                    text: 'Generate Next',
+                    action: 'novel-generate'
+                },
+                {
+                    icon: 'fas fa-undo',
+                    text: 'Undo',
+                    action: 'novel-undo',
+                    disabled: !(this.note.metadata?.undo_stack?.length > 0)
+                }
+            );
+        }
+
         options.forEach(option => {
             if (option.separator) {
                 const separator = document.createElement('div');
@@ -1694,6 +1781,21 @@ class Notepad {
                             break;
                         case 'add-shortcut':
                             this.handleAddShortcut();
+                            break;
+                        case 'novel-generate':
+                            if (typeof novelHydrateSession === 'function') novelHydrateSession(this.note);
+                            if (typeof novelRunGenerate === 'function') {
+                                novelRunGenerate({ noteId: this.note.id });
+                            }
+                            break;
+                        case 'novel-undo':
+                            if (typeof novelRunUndo === 'function') {
+                                novelRunUndo().then(() => this.manager.loadNoteById(this.note.id).then((note) => {
+                                    this.note = note;
+                                    const textarea = this.element.querySelector(`#notepadTextarea_${this.id}`);
+                                    if (textarea) textarea.value = note.content || '';
+                                }));
+                            }
                             break;
                     }
                 });

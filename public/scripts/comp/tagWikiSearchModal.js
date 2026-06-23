@@ -5,6 +5,7 @@ const DREAMWIKI_RECENT_STORAGE_KEY = 'dreamWikiRecentPages';
 const DREAMWIKI_RECENT_MAX = 20;
 const GRIMOIRE_RIGHT_PANE_LS = 'grimoireRightPaneState';
 const GRIMOIRE_ONLINE_SEARCH_LS = 'grimoireIncludeOnlineSearch';
+const GRIMOIRE_SPLIT_MIN_WIDTH = 1024; // min width to auto-enable practical split (dual pane) UI even without maximize
 
 function dreamWikiRecentRead() {
     try {
@@ -43,6 +44,110 @@ class WikiDisplayBase {
         this.currentTagName = null;
         this.currentStaticWiki = null;
     }
+
+    // Base setAddress: for standalone windows, update the window title to reflect the current pseudo-URL/path.
+    // The full layered bar + protocol logic lives on TagWikiSearchModal for the main browser.
+    setAddress({ displayUrl, fullUrl, mode } = {}) {
+        const url = displayUrl || fullUrl || '';
+        if (!url) return;
+        // Store for cross-pane address bar syncing when this pane is the active one
+        this._currentAddress = { displayUrl: url, fullUrl: fullUrl || url, mode: mode || 'edtx' };
+
+        // If this is a standalone wiki window instance, reflect the address in its title bar
+        if (this.modal && this.modal.classList.contains('wiki-page-viewer-modal')) {
+            const titleEl = this.modal.querySelector('.modal-window-title-main span');
+            if (titleEl) {
+                // Show clean path; icon in window title already indicates type
+                titleEl.textContent = url.replace(/^(edtx|rdf|dsap):\/\//i, '');
+            }
+            return;
+        }
+        // For other base users (split panes etc.), no-op (main Grimoire overrides with full bar logic)
+    }
+
+    // No-op by default for WikiDisplayBase users (WikiWindowInstance standalone viewers,
+    // GrimoireSplitPane, etc.). The main TagWikiSearchModal (which owns the layered address bar)
+    // overrides this with the spinner / .nav-loading / path-hint implementation.
+    setNavigationLoading(loading) {
+        // Intentionally empty for standalone / base cases.
+    }
+
+    // Robust link interception for any content rendered into displayArea.
+    // Prevents links/anchors from "exiting the application" (following real hrefs or causing full nav).
+    // Called after innerHTML sets for wiki content, search pages, lookup pages, etc.
+    _interceptAllLinks() {
+        if (!this.displayArea) return;
+        const area = this.displayArea;
+
+        // 1. General safe external links (force new tab, noopener)
+        area.querySelectorAll('a[href]').forEach(a => {
+            const href = (a.getAttribute('href') || '').trim();
+            if (!href || a.dataset.pseudoHandled) return;
+            a.dataset.pseudoHandled = '1';
+
+            if (/^https?:\/\//i.test(href)) {
+                if (!a.hasAttribute('target')) a.setAttribute('target', '_blank');
+                const rel = (a.getAttribute('rel') || '').toLowerCase();
+                if (!rel.includes('noopener')) {
+                    a.setAttribute('rel', (a.getAttribute('rel') || '') + ' noopener noreferrer');
+                }
+                // For DSAP contexts, show leave warning dialog instead of silent new tab
+                a.addEventListener('click', (e) => {
+                    if (this._dsapActive) {
+                        e.preventDefault();
+                        this.showLeaveDSAPDialog(href, a);
+                    }
+                    // else let the target=_blank happen
+                }, { once: true });
+                return;
+            }
+
+            // 2. Anchor links inside current content - scroll smoothly, no nav
+            // Catches both classed DText anchors and plain <a href="#...">
+            if (href.startsWith('#')) {
+                a.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const id = href.slice(1).trim();
+                    if (!id) {
+                        // bare # or invalid - scroll to top of content area
+                        area.scrollTop = 0;
+                        return;
+                    }
+                    let target;
+                    try {
+                        target = area.querySelector('#' + CSS.escape(id));
+                    } catch (err) {
+                        target = null;
+                    }
+                    if (!target) target = document.getElementById(id);
+                    if (target) {
+                        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                });
+                return;
+            }
+
+            // 3. Pseudo-browser internal links (protocols or known domains) - route through navigate
+            // resolveDsap, isDsapPseudoUrl: public/scripts/comp/dsapRegistry.js
+            if (/^(edtx|rdf|dsap):\/\//i.test(href) ||
+                (typeof isDsapPseudoUrl === 'function' && isDsapPseudoUrl(href)) ||
+                /en\.grimoire\.jp|wiki\.(danbooru|e621)\.(jp|com)|docs\.novelai\.jp/i.test(href)) {
+                a.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    if (typeof this.navigate === 'function') {
+                        this.navigate(href);
+                    } else if (window.tagWikiSearchModal && typeof window.tagWikiSearchModal.navigate === 'function') {
+                        window.tagWikiSearchModal.navigate(href);
+                    }
+                });
+            }
+        });
+
+        // Also run the original specialized setup for wiki content (classes from DText)
+        if (typeof this.setupLinkHandlers === 'function') {
+            try { this.setupLinkHandlers(); } catch(e) {}
+        }
+    }
     
     getDisplayText() {
         if (!this.displayArea) return '';
@@ -51,6 +156,80 @@ class WikiDisplayBase {
             return pageContent.innerText || pageContent.textContent || '';
         }
         return this.displayArea.innerText || this.displayArea.textContent || '';
+    }
+
+    // Show warning dialog when clicking external link while inside a DSAP
+    showLeaveDSAPDialog(href, linkEl) {
+        const dialog = document.createElement('div');
+        dialog.style.cssText = 'position:fixed;z-index:999999;top:50%;left:50%;transform:translate(-50%,-50%);background:#f0f0f0;border:2px solid #003366;padding:14px;min-width:300px;box-shadow:0 6px 20px rgba(0,0,0,0.35);font-family:Arial,Helvetica,sans-serif;font-size:10pt;';
+        const wide = this.isWideEnoughForSplit && this.isWideEnoughForSplit();
+        const rightVisible = this.rightPaneEl && !this.rightPaneEl.classList.contains('hidden');
+        dialog.innerHTML = `
+            <div style="margin-bottom:10px;font-weight:bold;color:#003366;">Leave DSAP?</div>
+            <div style="margin-bottom:14px;line-height:1.3;">This link will leave the currently open DSAP.</div>
+            <div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;">
+                <button type="button" data-act="new" style="padding:4px 10px;background:#c0c0c0;border:1px solid #ff8c00;border-radius:3px;font-size:9pt;cursor:pointer;">Open in New Window</button>
+                ${ (wide || rightVisible) ? `<button type="button" data-act="right" style="padding:4px 10px;background:#c0c0c0;border:1px solid #ff8c00;border-radius:3px;font-size:9pt;cursor:pointer;">Open in Right Side</button>` : '' }
+                <button type="button" data-act="cancel" style="padding:4px 10px;background:#d4d0c8;border:1px solid #666;border-radius:3px;font-size:9pt;cursor:pointer;">Cancel</button>
+            </div>
+        `;
+        document.body.appendChild(dialog);
+
+        const cleanup = () => { if (dialog.parentNode) dialog.parentNode.removeChild(dialog); };
+
+        dialog.querySelectorAll('button').forEach(b => {
+            b.addEventListener('click', () => {
+                const act = b.dataset.act;
+                if (act === 'new') {
+                    window.open(href, '_blank', 'noopener,noreferrer');
+                } else if (act === 'right') {
+                    if (this.rightPane && typeof this.rightPane.navigate === 'function') {
+                        this.showRightPane();
+                        this.rightPane.navigate(href);
+                    } else {
+                        window.open(href, '_blank', 'noopener,noreferrer');
+                    }
+                }
+                cleanup();
+            });
+        });
+
+        // click backdrop to cancel
+        setTimeout(() => {
+            document.addEventListener('click', function onDoc(e) {
+                if (!dialog.contains(e.target)) {
+                    cleanup();
+                    document.removeEventListener('click', onDoc);
+                }
+            }, { once: true });
+        }, 0);
+    }
+
+    showRightPane() {
+        if (!this.rightPaneEl || !this.splitDividerEl || !this.modal) return;
+        this.modal.classList.add('tag-wiki-split-active');
+        this.rightPaneEl.classList.remove('hidden');
+        this.splitDividerEl.classList.remove('hidden');
+        if (typeof this.checkAndUpdateSplitMode === 'function') {
+            setTimeout(() => this.checkAndUpdateSplitMode(), 30);
+        }
+    }
+
+    hideRightPane() {
+        if (!this.rightPaneEl || !this.splitDividerEl || !this.modal) return;
+        this.modal.classList.remove('tag-wiki-split-active');
+        this.rightPaneEl.classList.add('hidden');
+        this.splitDividerEl.classList.add('hidden');
+    }
+
+    toggleRightPane() {
+        if (!this.modal || !this.rightPaneEl) return;
+        const isActive = this.modal.classList.contains('tag-wiki-split-active');
+        if (isActive) {
+            this.hideRightPane();
+        } else {
+            this.showRightPane();
+        }
     }
     
     setupLinkContextMenu(link) {
@@ -175,28 +354,12 @@ class WikiDisplayBase {
     }
     
     copyToClipboard(text) {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(text).then(() => {
-                showGlassToast('success', null, 'Copied to clipboard', false, 3000, '<i class="fas fa-check"></i>');
-            }).catch(err => {
-                console.error('Failed to copy:', err);
-            });
-        } else {
-            // Fallback for older browsers
-            const textarea = document.createElement('textarea');
-            textarea.value = text;
-            textarea.style.position = 'fixed';
-            textarea.style.opacity = '0';
-            document.body.appendChild(textarea);
-            textarea.select();
-            try {
-                document.execCommand('copy');
-                showGlassToast('success', null, 'Copied to clipboard', false, 3000, '<i class="fas fa-check"></i>');
-            } catch (err) {
-                console.error('Failed to copy:', err);
-            }
-            document.body.removeChild(textarea);
-        }
+        // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
+        copyTextToClipboard(text).then(() => {
+            showGlassToast('success', null, 'Copied to clipboard', false, 3000, '<i class="fas fa-check"></i>');
+        }).catch(err => {
+            console.error('Failed to copy:', err);
+        });
     }
     
     getCurrentTagName() {
@@ -208,6 +371,25 @@ class WikiDisplayBase {
 
     hasWikiPageTag() {
         return Boolean(String(this.getCurrentTagName() || '').trim()) && !this.currentStaticWiki;
+    }
+
+    isStaticDocPage() {
+        return !!this.currentStaticWiki;
+    }
+
+    isSearchPage() {
+        return !!this._searchPageMode;
+    }
+
+    canRefreshFromOnline() {
+        // Dynamic wiki tag pages (edtx:// style from Danbooru/e621) can be refreshed from online sources.
+        // Static docs (rdf://), search surfaces, and home pages cannot.
+        if (this.currentStaticWiki) return false;
+        const last = this.history && this.history[this.historyIndex];
+        if (last && (last.type === 'static-wiki-page' || last.type === 'static-wiki-index')) return false;
+        if (this._searchPageMode) return false;
+        const tag = this.getCurrentTagName();
+        return Boolean(String(tag || '').trim());
     }
 
     buildWikiPhasewalkerSubmenuItems(tagText) {
@@ -292,7 +474,8 @@ class WikiDisplayBase {
                         {
                             tooltip: 'New Window',
                             icon: 'fas fa-window-restore',
-                            action: 'wiki-open-new-window'
+                            action: 'wiki-open-new-window',
+                            hidden: () => this.isSearchPage() && !this.getCurrentTagName() && !this.currentStaticWiki
                         },
                         {
                             tooltip: 'Copy Tag',
@@ -321,7 +504,8 @@ class WikiDisplayBase {
                             text: 'Add to Prompt',
                             icon: 'fas fa-plus',
                             action: 'wiki-add-to-prompt',
-                            disabled: () => manualModal.classList.contains('hidden')
+                            disabled: () => manualModal.classList.contains('hidden'),
+                            hidden: () => !this.getCurrentTagName()
                         },
                         {
                             text: 'Add to Favorites',
@@ -354,13 +538,15 @@ class WikiDisplayBase {
                             text: 'Add Reference',
                             icon: 'fas fa-bookmark',
                             action: 'wiki-add-reference',
-                            disabled: () => !this.isDirectiveAvailable()
+                            disabled: () => !this.isDirectiveAvailable(),
+                            hidden: () => !this.getCurrentTagName()
                         },
                         { separator: true },
                         {
                             text: 'Refresh from Online',
                             icon: 'fas fa-sync-alt',
-                            action: 'wiki-refresh-online'
+                            action: 'wiki-refresh-online',
+                            hidden: () => !this.canRefreshFromOnline()
                         },
                         {
                             text: 'Search Google',
@@ -377,7 +563,8 @@ class WikiDisplayBase {
                         {
                             text: 'Add to Desktop',
                             icon: 'fas fa-arrow-down-left',
-                            action: 'wiki-add-to-desktop'
+                            action: 'wiki-add-to-desktop',
+                            hidden: () => this.isSearchPage() || (!this.getCurrentTagName() && !this.currentStaticWiki)
                         }
                     ]
                 }
@@ -579,17 +766,15 @@ class WikiDisplayBase {
     
     openLinkInNewWindow(tagName) {
         if (!tagName || !window.wsClient || !window.wsClient.isConnected() || !window.wikiWindowManager) return;
-        
-        // Fetch the wiki page for this tag
-        window.wsClient.sendMessage('get_tag_wiki_page', {
-            tagName: tagName,
-            source: 'both',
-            format: 'html'
-        }).then(result => {
-            if (result) {
-                window.wikiWindowManager.createWindow(result, { title: tagName, name: tagName });
+
+        const tag = this.buildWikiTagFromTerm(tagName);
+        if (!tag) return;
+
+        this.getTagWikiPage(tag).then((result) => {
+            if (this.hasWikiPageContent(result)) {
+                window.wikiWindowManager.createWindow(result, { title: tag.title, name: tag.name });
             }
-        }).catch(error => {
+        }).catch((error) => {
             console.error('Failed to load wiki page for new window:', error);
         });
     }
@@ -646,11 +831,13 @@ class WikiDisplayBase {
     }
 
     async loadStaticWikiHomeSites() {
-        const wrap = this.displayArea && this.displayArea.querySelector('.dreamwiki-static-wiki-sites');
-        if (!wrap) return;
+        // Append doc buttons into the main horizontal inline flow (no separate docs header/block).
+        // This lets tag-group/search + documentation buttons all flow in the same flex-wrap container.
+        const container = this.displayArea && this.displayArea.querySelector('.dreamwiki-starting-points-inline');
+        if (!container) return;
 
         if (!wsClient || !wsClient.isConnected()) {
-            wrap.innerHTML = '<span class="dreamwiki-docs-empty">Offline</span>';
+            // don't pollute the flow with "offline" text
             return;
         }
 
@@ -658,34 +845,53 @@ class WikiDisplayBase {
             const result = await wsClient.sendMessage('get_wiki_home', {});
             const sites = (result && result.sites) ? result.sites : [];
             if (!sites.length) {
-                wrap.innerHTML = '<span class="dreamwiki-docs-empty">No docs imported</span>';
                 return;
             }
-            wrap.innerHTML = sites.map((site) => {
-                const name = this.escapeHtml(site.name || site.id);
-                const id = this.escapeHtml(site.id);
+            // Clear any previously appended doc buttons to prevent duplicates (e.g. NovelAI appearing twice)
+            container.querySelectorAll('[data-static-wiki-site]').forEach((b) => b.remove());
+
+            const frag = document.createDocumentFragment();
+            sites.forEach((site) => {
+                let name = this.escapeHtml(site.name || site.id);
+                const id = site.id || '';
+                const safeId = this.escapeHtml(id);
+                if (id === 'novelai' || String(id).toLowerCase().includes('novelai')) {
+                    name = 'NovelAI';
+                }
                 const icon = site.icon ? this.escapeHtml(site.icon) : '';
                 const iconHtml = icon
                     ? `<img src="${icon}" alt="" class="dreamwiki-site-btn-icon" aria-hidden="true">`
-                    : '';
-                return `<button type="button" class="btn-secondary btn-small dreamwiki-start-row dreamwiki-site-btn" data-static-wiki-site="${id}">${iconHtml}<span>${name}</span></button>`;
-            }).join('');
-            wrap.querySelectorAll('[data-static-wiki-site]').forEach((btn) => {
+                    : '<i class="fas fa-book" aria-hidden="true"></i>';
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'btn-secondary btn-small dreamwiki-start-row dreamwiki-site-btn';
+                btn.setAttribute('data-static-wiki-site', safeId);
+                btn.innerHTML = `${iconHtml}<span>${name}</span>`;
                 btn.addEventListener('click', () => {
-                    const siteId = btn.getAttribute('data-static-wiki-site');
-                    if (siteId) {
-                        this.showStaticWikiSiteIndex(siteId);
+                    if (id) {
+                        this.showStaticWikiSiteIndex(id);
                     }
                 });
+                frag.appendChild(btn);
             });
+            container.appendChild(frag);
         } catch (err) {
             console.error('loadStaticWikiHomeSites:', err);
-            wrap.innerHTML = '<span class="dreamwiki-docs-empty">Failed to load</span>';
+            // silent fail to not break the flow
         }
     }
 
     showDreamWikiHomepage() {
         if (!this.displayArea) return;
+
+        // deactivateDsapOnShell: public/scripts/comp/dsapRegistry.js
+        if (typeof deactivateDsapOnShell === 'function') deactivateDsapOnShell(this);
+
+        this.setNavigationLoading(false);
+        this._searchPageMode = false;
+        if (this.searchBody) {
+            this.searchBody.classList.remove('search-page-view');
+        }
 
         this.currentSelectedTag = null;
         this.currentTagName = null;
@@ -697,7 +903,7 @@ class WikiDisplayBase {
                   .map((name) => {
                       const safe = this.escapeHtml(name);
                       const enc = encodeURIComponent(name);
-                      return `<div class="tag-wiki-result-item dreamwiki-recent-item" role="button" tabindex="0" data-dreamwiki-recent="${enc}"><span class="tag-wiki-result-name">${safe}</span></div>`;
+                      return `<span class="tag-pill dreamwiki-recent-item" role="button" tabindex="0" data-dreamwiki-recent="${enc}">${safe}</span>`;
                   })
                   .join('')
             : `<div class="dreamwiki-recent-empty">No pages yet.</div>`;
@@ -715,33 +921,31 @@ class WikiDisplayBase {
     <div class="dreamwiki-home-border-dotted"></div>
     <div class="dreamwiki-home-pad dreamwiki-home-pad-md"></div>
     <div class="dreamwiki-home-actions-center">
-        <div class="dreamwiki-home-actions-block">
-            <div class="tag-wiki-no-wiki-header dreamwiki-home-section-label">Tag Groups</div>
-            <div class="dreamwiki-starting-points dreamwiki-starting-points-stack">
-                <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-dreamwiki-page="tag groups">Anime</button>
-                <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-dreamwiki-page="tag_group:index">Furry</button>
-            </div>
-        </div>
-        <div class="dreamwiki-home-actions-block">
-            <div class="tag-wiki-no-wiki-header dreamwiki-home-section-label">Documentation</div>
-            <div class="dreamwiki-starting-points dreamwiki-starting-points-stack dreamwiki-static-wiki-sites">
-                <span class="dreamwiki-docs-loading"><i class="fas fa-spinner-third fa-spin"></i></span>
-            </div>
+        <!-- Tag groups + search + documentation buttons flow horizontally (flex row wrap) with max-width per button.
+             No section header for tag groups per request. -->
+        <div class="dreamwiki-starting-points dreamwiki-starting-points-inline">
+            <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-action="open-search-home">
+                <i class="fas fa-search"></i> Search the Grim
+            </button>
+            <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-dreamwiki-page="tag groups">
+                <i class="nai-sakura"></i> Danbooru Tags
+            </button>
+            <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-dreamwiki-page="tag_group:index">
+                <i class="nai-paw"></i> e621 Tags
+            </button>
+            <!-- Documentation site buttons (e.g. NovelAI) are appended here by loadStaticWikiHomeSites so they participate in the horizontal wrap flow -->
         </div>
     </div>
-    <div class="dreamwiki-home-pad dreamwiki-home-pad-sm"></div>
-    <div class="dreamwiki-home-direct-wrap">
-        <div class="tag-wiki-no-wiki-header dreamwiki-home-section-label">Open wiki page</div>
-        <input type="text" class="form-control hover-show colored dreamwiki-direct-page-input" placeholder="Exact page name (Enter to open)" autocapitalize="false" autocorrect="false" spellcheck="false">
-    </div>
-    <div class="dreamwiki-home-pad dreamwiki-home-pad-md"></div>
     <div class="dreamwiki-recent-panel">
-        <div class="tag-wiki-no-wiki-header">Recently visited</div>
-        <div class="dreamwiki-recent-list dreamwiki-recent-list-cols-3">${recentRows}</div>
+        <h4 class="dreamwiki-recent-heading">Recently visited</h4>
+        <div class="dreamwiki-recent-list tag-cloud">${recentRows}</div>
     </div>
 </div>`;
 
         this.bindDreamWikiHomepageEvents();
+        if (typeof this._interceptAllLinks === 'function') {
+            this._interceptAllLinks();
+        }
     }
 
     bindDreamWikiHomepageEvents() {
@@ -756,19 +960,15 @@ class WikiDisplayBase {
             });
         });
 
-        this.loadStaticWikiHomeSites();
-
-        const directInput = this.displayArea.querySelector('.dreamwiki-direct-page-input');
-        if (directInput) {
-            directInput.addEventListener('keydown', (e) => {
-                if (e.key !== 'Enter') return;
-                e.preventDefault();
-                const q = directInput.value.trim();
-                if (q) {
-                    this.getTagWikiPageDirectly(q);
-                }
+        // Button to open the classic Google-style search homepage
+        const searchHomeBtn = this.displayArea.querySelector('[data-action="open-search-home"]');
+        if (searchHomeBtn) {
+            searchHomeBtn.addEventListener('click', () => {
+                this.navigate('edtx://en.grimoire.jp/search');
             });
         }
+
+        this.loadStaticWikiHomeSites();
 
         const list = this.displayArea.querySelector('.dreamwiki-recent-list');
         if (list) {
@@ -809,9 +1009,14 @@ class WikiDisplayBase {
         }
         if (this.displayArea.querySelector('.static-wiki-index')) {
             this.setupStaticWikiIndexLinks(this.displayArea);
+            if (typeof this._interceptAllLinks === 'function') {
+                this._interceptAllLinks();
+            }
             return;
         }
-        this.setupLinkHandlers();
+        if (typeof this._interceptAllLinks === 'function') {
+            this._interceptAllLinks();
+        }
     }
 
     async showStaticWikiSiteIndex(siteId) {
@@ -857,6 +1062,9 @@ class WikiDisplayBase {
 </div>`;
 
             this.setupStaticWikiIndexLinks(this.displayArea);
+            if (typeof this._interceptAllLinks === 'function') {
+                this._interceptAllLinks();
+            }
 
             this.addToHistory({
                 type: 'static-wiki-index',
@@ -864,6 +1072,13 @@ class WikiDisplayBase {
                 siteName: data.name || siteId,
                 icon: data.icon || null
             });
+
+            // Use document (rdf) protocol + own domain for novelai docs
+            if (siteId === 'novelai' || String(siteId).toLowerCase().includes('novelai')) {
+                this.setAddress({ displayUrl: 'rdf://docs.novelai.jp/', mode: 'rdf' });
+            } else {
+                this.setAddress({ displayUrl: `edtx://en.grimoire.jp/docs/${siteId}`, mode: 'edtx' });
+            }
         } catch (err) {
             console.error('showStaticWikiSiteIndex:', err);
             this.displayArea.innerHTML = `<div class="tag-wiki-error"><i class="fas fa-exclamation-circle"></i> ${this.escapeHtml(err.message || 'Failed to load index')}</div>`;
@@ -895,6 +1110,9 @@ class WikiDisplayBase {
                 siteIcon: data.siteIcon || null
             };
             this.renderWikiPage(content);
+            if (typeof this._interceptAllLinks === 'function') {
+                this._interceptAllLinks();
+            }
             this.addToHistory({
                 type: 'static-wiki-page',
                 siteId,
@@ -931,33 +1149,66 @@ class WikiDisplayBase {
         return undefined;
     }
 
-    async getTagWikiPage(tag) {
+    hasWikiPageContent(result) {
+        if (!result || result.error) return false;
+        if (Array.isArray(result.bodies) && result.bodies.some((body) => body && (body.html || body.body))) {
+            return true;
+        }
+        return typeof result.html === 'string' && result.html.trim().length > 0;
+    }
+
+    buildWikiTagFromTerm(term, extra = {}) {
+        const title = String(term || '').trim();
+        if (!title) return null;
+        const tag = { title, name: title, ...extra };
+        tag.name = this.resolveBooruWikiTagName(tag);
+        return tag;
+    }
+
+    async getTagWikiPage(tag, options = {}) {
         if (!window.wsClient || !window.wsClient.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         const wikiLookupName = this.resolveBooruWikiTagName(tag);
-        const wikiSource = this.resolveWikiPageSource(tag);
-        
+        const wikiSource = options.source || this.resolveWikiPageSource(tag) || 'both';
+        const payload = {
+            tagName: wikiLookupName,
+            source: wikiSource,
+            format: 'html'
+        };
+        if (options.force) {
+            payload.force = true;
+        }
+
         try {
-            const result = await window.wsClient.sendMessage('get_tag_wiki_page', {
-                tagName: wikiLookupName,
-                source: wikiSource,
-                format: 'html'
-            });
-            
+            const result = await window.wsClient.sendMessage('get_tag_wiki_page', payload);
+
             // Store tag name for refresh functionality
             this.currentTagName = wikiLookupName;
-            
+
             return result || {};
         } catch (error) {
             console.error('Get tag wiki page request failed:', error);
             throw error;
+        } finally {
+            this.setNavigationLoading(false);
         }
     }
     
     renderWikiPage(content) {
         if (!this.displayArea) return;
+
+        // deactivateDsapOnShell: public/scripts/comp/dsapRegistry.js
+        if (typeof deactivateDsapOnShell === 'function') deactivateDsapOnShell(this);
+
+        delete this._checkingOnlineTag;  // ensure we exit any pending dedicated online lookup state
+        this.setNavigationLoading(false);
+        this._searchPageMode = false;
+        // Leaving search page view - restore normal sidebar+display layout if it was hidden
+        if (this.searchBody) {
+            this.searchBody.classList.remove('search-page-view');
+        }
         
         if (content.error) {
             const canGoBack = this.history && this.historyIndex > 0;
@@ -989,6 +1240,21 @@ class WikiDisplayBase {
         }
         
         const title = content.tagName || content.title || 'Unknown';
+
+        // Update the layered address bar with a protocol-prefixed pseudo-URL for the loaded page.
+        if (!content.staticWiki && (this.currentTagName || content.tagName)) {
+            const tag = this.currentTagName || content.tagName || title;
+            const enc = encodeURIComponent(String(tag).replace(/\s+/g, '_'));
+            // Protocol + source domain
+            this.setAddress({ displayUrl: `edtx://wiki.danbooru.jp/tag/${enc}`, mode: 'edtx' });
+        } else if (content.staticWiki && content.siteId && content.pageId) {
+            const s = content.siteId;
+            if (s === 'novelai' || String(s).toLowerCase().includes('novelai')) {
+                this.setAddress({ displayUrl: `rdf://docs.novelai.jp/${content.pageId}`, mode: 'rdf' });
+            } else {
+                this.setAddress({ displayUrl: `edtx://en.grimoire.jp/docs/${s}/${content.pageId}`, mode: 'edtx' });
+            }
+        }
 
         if (content.staticWiki && content.siteId && content.pageId) {
             this.currentStaticWiki = {
@@ -1112,8 +1378,10 @@ class WikiDisplayBase {
         // Setup collapsible sections
         this.setupCollapsibleSections();
         
-        // Setup link handlers and context menus
-        this.setupLinkHandlers();
+        // Link handlers + robust interception to prevent "exiting the app" (_interceptAllLinks calls setupLinkHandlers)
+        if (typeof this._interceptAllLinks === 'function') {
+            this._interceptAllLinks();
+        }
         
         // Update custom scrollbar after content changes (for window instances)
         if (this.modal && this.modal.classList.contains('wiki-page-viewer-modal') && window.customScrollbar) {
@@ -1131,11 +1399,17 @@ class WikiDisplayBase {
         const sectionToggles = this.displayArea.querySelectorAll('.tag-wiki-section-toggle');
         sectionToggles.forEach(toggle => {
             toggle.addEventListener('click', () => {
-                const targetId = toggle.dataset.target;
+                const targetId = (toggle.dataset.target || '').trim();
+                if (!targetId) return;
                 // Scope the query to the current display area to avoid conflicts with other windows
-                const content = this.displayArea.querySelector(`#${targetId}`) || 
-                               (this.modal ? this.modal.querySelector(`#${targetId}`) : null) ||
-                               document.getElementById(targetId);
+                let content;
+                try {
+                    content = this.displayArea.querySelector(`#${CSS.escape(targetId)}`) ||
+                              (this.modal ? this.modal.querySelector(`#${CSS.escape(targetId)}`) : null);
+                } catch (err) {
+                    content = null;
+                }
+                if (!content) content = document.getElementById(targetId);
                 const icon = toggle.querySelector('i');
                 
                 if (content && icon) {
@@ -1271,6 +1545,9 @@ class WikiDisplayBase {
         // Add click handlers and context menus for tag wiki links
         const tagLinks = this.displayArea.querySelectorAll('.tag-wiki-link');
         tagLinks.forEach(link => {
+            if (link.dataset.wikiLinkWired) return;
+            link.dataset.wikiLinkWired = '1';
+
             // Click handler
             link.addEventListener('click', async (e) => {
                 e.preventDefault();
@@ -1299,7 +1576,7 @@ class WikiDisplayBase {
                     
                     try {
                         const result = await this.getTagWikiPageDirectly(tagName, link);
-                        if (result && !result.error) {
+                        if (this.hasWikiPageContent(result)) {
                             // Success - remove indicator immediately
                             this.removeLinkLoadingIndicator(link);
                             
@@ -1326,6 +1603,9 @@ class WikiDisplayBase {
         
         const staticLinks = this.displayArea.querySelectorAll('.wiki-static-link');
         staticLinks.forEach((link) => {
+            if (link.dataset.wikiLinkWired) return;
+            link.dataset.wikiLinkWired = '1';
+
             link.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -1340,6 +1620,9 @@ class WikiDisplayBase {
         // Handle anchor links
         const anchorLinks = this.displayArea.querySelectorAll('.tag-wiki-anchor-link');
         anchorLinks.forEach(link => {
+            if (link.dataset.wikiLinkWired) return;
+            link.dataset.wikiLinkWired = '1';
+
             link.addEventListener('click', (e) => {
                 e.preventDefault();
                 const href = link.getAttribute('href');
@@ -1403,13 +1686,16 @@ class WikiDisplayBase {
                 
                 if (isSearchLink && searchQuery) {
                     link.classList.add('tag-wiki-search-link');
-                    link.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (window.tagWikiSearchModal) {
-                            window.tagWikiSearchModal.open(searchQuery);
-                        }
-                    });
+                    if (!link.dataset.wikiLinkWired) {
+                        link.dataset.wikiLinkWired = '1';
+                        link.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (window.tagWikiSearchModal) {
+                                window.tagWikiSearchModal.open(searchQuery);
+                            }
+                        });
+                    }
                     link.style.cursor = 'pointer';
                     link.title = `Search for: ${searchQuery}`;
                     return;
@@ -1430,6 +1716,9 @@ class WikiDisplayBase {
         // Handle embedded images
         const embeddedImages = this.displayArea.querySelectorAll('.wiki-embedded-image');
         embeddedImages.forEach(img => {
+            if (img.dataset.wikiLinkWired) return;
+            img.dataset.wikiLinkWired = '1';
+
             img.style.cursor = 'pointer';
             img.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -1454,9 +1743,12 @@ class WikiDisplayBase {
         mediaEmbeds.forEach(embed => {
             const mediaType = embed.getAttribute('data-type');
             const mediaId = embed.getAttribute('data-id');
-            
+
             if (mediaType && mediaId && window.openImageInViewer) {
                 if (mediaType === 'post') {
+                    if (embed.dataset.wikiLinkWired) return;
+                    embed.dataset.wikiLinkWired = '1';
+
                     const imageUrl = `/cache/wiki_files/post${mediaId}.jpg`;
                     embed.style.cursor = 'pointer';
                     embed.addEventListener('click', (e) => {
@@ -1475,45 +1767,78 @@ class WikiDisplayBase {
     async getTagWikiPageDirectly(tagName, clickedLink = null) {
         if (!window.wsClient || !window.wsClient.isConnected()) {
             console.error('WebSocket not connected');
+            this.setNavigationLoading(false);
             return;
         }
-        
-        // Store tag name for refresh functionality
-        this.currentTagName = tagName;
-        
+
+        // If the main Grimoire browser modal is not yet visible (e.g. a desktop
+        // shortcut, command, or navigation that targets the full browser rather
+        // than a pure standalone viewer), open it first. This ensures the user
+        // immediately sees the container + loading state.
+        if (this.modal && (this.modal.classList.contains('hidden') || this.modal.classList.contains('hidden-alt'))) {
+            this.open('', { skipInitialHome: true });
+        }
+
+        this.setNavigationLoading(true);
+
+        const tag = this.buildWikiTagFromTerm(tagName);
+        if (!tag) {
+            this.setNavigationLoading(false);
+            return;
+        }
+
+        const isOnlineCheck = !!this._checkingOnlineTag;
+
+        // Only force a live fetch for the dedicated "attempting online lookup" flow
+        // (triggered from "no wiki" tag pills in search results). Normal direct loads,
+        // navigation, desktop shortcuts, history, etc. must always prefer the local
+        // database cache for the wiki body (and the derived image cache for post# refs).
+        // The user can explicitly update the stored copy via "Refresh from online".
+        const wantFreshBody = isOnlineCheck;
+
+        // For dedicated online lookup from tag cloud, keep the nice "Attempting..." UI
+        // instead of overwriting with the generic "Loading wiki page..." message.
+        if (this.displayArea && !isOnlineCheck) {
+            this.displayArea.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading wiki page...</div>';
+        }
+
         // Check for errors before rendering - fetch data first
         try {
-            const result = await window.wsClient.sendMessage('get_tag_wiki_page', {
-                tagName,
-                source: 'both',
-                format: 'html'
-            });
-            
+            const result = await this.getTagWikiPage(tag, { force: wantFreshBody });
+
             // Check if there's an error in the result
-            if (result && result.error) {
-                // Update loading indicator to show error message
+            if (!this.hasWikiPageContent(result)) {
+                const errorMessage = (result && result.error)
+                    || `Tag "${tag.title}" has no wiki page on the selected source(s)`;
+
+                if (isOnlineCheck) {
+                    const t = this._checkingOnlineTag;
+                    delete this._checkingOnlineTag;
+                    this._showOnlineLookupSorry(t);
+                    return result || { error: errorMessage };
+                }
+
+                // Update loading indicator to show error message (normal path)
                 if (clickedLink && clickedLink._loadingIndicator) {
-                    this.updateLinkLoadingIndicator(clickedLink, result.error, true);
-                    // Remove indicator after 3 seconds (updateLinkLoadingIndicator clears any existing timeout)
+                    this.updateLinkLoadingIndicator(clickedLink, errorMessage, true);
                     this.removeLinkLoadingIndicator(clickedLink, 3000);
                 } else {
                     // Fallback: show error in display area with back button
                     if (this.displayArea) {
                         const canGoBack = this.history && this.historyIndex > 0;
-                        const backButtonHtml = canGoBack 
+                        const backButtonHtml = canGoBack
                             ? `<button class="btn-secondary btn-small wiki-error-back-btn" style="margin-top: var(--spacing-sm);">
                                 <i class="fas fa-arrow-left"></i> Back
                             </button>`
                             : '';
-                        
+
                         this.displayArea.innerHTML = `
                             <div class="tag-wiki-error">
-                                <i class="fas fa-exclamation-circle"></i> ${this.escapeHtml(result.error)}
+                                <i class="fas fa-exclamation-circle"></i> ${this.escapeHtml(errorMessage)}
                                 ${backButtonHtml}
                             </div>
                         `;
-                        
-                        // Setup back button click handler
+
                         if (canGoBack) {
                             const backBtn = this.displayArea.querySelector('.wiki-error-back-btn');
                             if (backBtn) {
@@ -1526,38 +1851,38 @@ class WikiDisplayBase {
                         }
                     }
                 }
-                return result;
+                return result || { error: errorMessage };
             }
-            
-            // No error - proceed with normal rendering
-            if (result) {
-                // Show loading before rendering
-                if (this.displayArea) {
-                    this.displayArea.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading wiki page...</div>';
-                }
-                
-                this.currentSelectedTag = { title: tagName, name: tagName };
-                this.renderWikiPage(result);
-                dreamWikiRecentAppend(tagName);
 
-                // Add to history if method exists
-                if (this.addToHistory) {
-                    this.addToHistory({
-                        type: 'wiki',
-                        tag: { title: tagName, name: tagName },
-                        content: result
-                    });
-                }
+            // Success path
+            delete this._checkingOnlineTag;
+
+            this.currentSelectedTag = { title: tag.title, name: tag.name };
+            this.renderWikiPage(result);
+            dreamWikiRecentAppend(tag.title);
+
+            if (this.addToHistory) {
+                this.addToHistory({
+                    type: 'wiki',
+                    tag: { title: tag.title, name: tag.name },
+                    content: result
+                });
             }
-            
+
             return result;
         } catch (error) {
             console.error('Get tag wiki page request failed:', error);
             
-            // Update loading indicator to show error message
+            if (isOnlineCheck) {
+                const t = this._checkingOnlineTag;
+                delete this._checkingOnlineTag;
+                this._showOnlineLookupSorry(t);
+                return;
+            }
+            
+            // Update loading indicator to show error message (normal path)
             if (clickedLink && clickedLink._loadingIndicator) {
                 this.updateLinkLoadingIndicator(clickedLink, `Error: ${error.message}`, true);
-                // Remove indicator after 3 seconds (updateLinkLoadingIndicator clears any existing timeout)
                 this.removeLinkLoadingIndicator(clickedLink, 3000);
             } else {
                 // Fallback: show error in display area with back button
@@ -1576,7 +1901,6 @@ class WikiDisplayBase {
                         </div>
                     `;
                     
-                    // Setup back button click handler
                     if (canGoBack) {
                         const backBtn = this.displayArea.querySelector('.wiki-error-back-btn');
                         if (backBtn) {
@@ -1602,13 +1926,19 @@ class WikiDisplayBase {
             }
             return;
         }
-        
-        if (!this.currentTagName) {
-            console.error('No tag name available for refresh');
-            if (typeof showGlassToast !== 'undefined') {
-                showGlassToast('No tag selected', 'error');
+
+        const tag = this.getCurrentTagName();
+        if (this.currentStaticWiki || !tag) {
+            // Never offer/execute "refresh from online" for static docs (novelai etc.) or non-tag pages.
+            // We have no server-side refresh path for bundled static documentation.
+            console.warn('refreshFromOnline: not applicable for current page type (static doc or no tag)');
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('info', null, 'Refresh from online is only available for wiki tag pages.', false, 2200, '<i class="fas fa-info-circle"></i>');
             }
             return;
+        }
+        if (!this.currentTagName) {
+            this.currentTagName = tag;
         }
         
         try {
@@ -1694,6 +2024,12 @@ class WikiDisplayBase {
         if (entry.type === 'home') {
             return 'Grimoire';
         }
+        if (entry.type === 'dsap') {
+            return entry.title || entry.url || 'Applet';
+        }
+        if (entry.type === 'nav-error') {
+            return entry.title || 'Navigation failed';
+        }
         if (entry.type === 'static-wiki-index') {
             return entry.siteName || entry.siteId || 'Documentation';
         }
@@ -1712,6 +2048,8 @@ class WikiDisplayBase {
     getHistoryEntryMenuIcon(entry) {
         if (!entry) return 'fas fa-circle';
         if (entry.type === 'home') return 'fas fa-home';
+        if (entry.type === 'dsap') return 'fas fa-puzzle-piece';
+        if (entry.type === 'nav-error') return 'fas fa-triangle-exclamation';
         if (entry.type === 'static-wiki-index') return 'fas fa-book';
         if (entry.type === 'static-wiki-page') return 'fas fa-file-alt';
         if (entry.type === 'wiki') return 'fas fa-file-alt';
@@ -1850,6 +2188,9 @@ class GrimoireSplitPane extends WikiDisplayBase {
                 this.rebindDisplayContent();
             }
         }
+        // Clear cached address so sync after swap uses the freshly applied state
+        // (history, currentTagName, currentStaticWiki) instead of stale pre-swap address.
+        delete this._currentAddress;
     }
 
     async openTagByName(tagName) {
@@ -1917,6 +2258,24 @@ class GrimoireSplitPane extends WikiDisplayBase {
                 }
             }
         }
+
+        if (entry.type === 'dsap' && entry.url) {
+            this.currentSelectedTag = null;
+            this.currentTagName = null;
+            // navigateDsapIfMatched: public/scripts/comp/dsapRegistry.js
+            if (typeof navigateDsapIfMatched === 'function') {
+                navigateDsapIfMatched(this, entry.url, { skipHistory: true, skipLoadingDelay: true });
+            }
+            return;
+        }
+
+        if (entry.query !== undefined || entry.type === 'search') {
+            const qq = entry.query || '';
+            if (this.displayArea) {
+                this.displayArea.innerHTML = `<div class="search-in-window">Search “${this.escapeHtml(qq || 'home')}” — full search page with gear filters is in the main Grimoire window.</div>`;
+            }
+            return;
+        }
     }
 
     goHome() {
@@ -1927,6 +2286,16 @@ class GrimoireSplitPane extends WikiDisplayBase {
         this.history = [{ type: 'home' }];
         this.historyIndex = 0;
         this.showDreamWikiHomepage();
+    }
+
+    // When the right pane renders or navigates, notify the main host so that if this
+    // pane is currently the active one, the shared address bar + top controls get updated.
+    setAddress(args) {
+        super.setAddress(args);
+        const host = window.tagWikiSearchModal;
+        if (host && typeof host.notifyPaneAddressChanged === 'function') {
+            host.notifyPaneAddressChanged(this);
+        }
     }
 }
 
@@ -2020,6 +2389,58 @@ class WikiWindowManager {
         
         return windowInstance;
     }
+
+    createDsapWindow(dsapUrl, historyToCopy = null) {
+        if (!this.template) {
+            this.init();
+        }
+        if (!this.template) {
+            console.error('Cannot create DSAP window: template not found');
+            return null;
+        }
+
+        const targetUrl = String(dsapUrl || '').trim();
+        const windowId = `wikiWindow_${this.nextId++}`;
+        const windowElement = this.template.cloneNode(true);
+        windowElement.id = windowId;
+        this.updateElementIds(windowElement, windowId);
+
+        const windowIdentifier = `wikiWindow:dsap:${targetUrl}`;
+        windowElement.dataset.windowIdentifier = windowIdentifier;
+
+        if (customScrollbar) {
+            const displayPanel = windowElement.querySelector('.tag-wiki-search-display.form-section-scroll');
+            if (displayPanel) {
+                const scrollableContent = displayPanel.querySelector('.scrollable-content');
+                const scrollbar = displayPanel.querySelector('.custom-scrollbar');
+                const thumb = scrollbar?.querySelector('.custom-scrollbar-thumb');
+                if (scrollableContent && scrollbar && thumb) {
+                    customScrollbar.scrollbars.set(displayPanel, {
+                        scrollableContent,
+                        scrollbar,
+                        thumb
+                    });
+                    customScrollbar.initScrollbarFunctionality(displayPanel, scrollableContent, scrollbar, thumb);
+                    customScrollbar.updateScrollbar(displayPanel);
+                }
+            }
+        }
+
+        document.body.appendChild(windowElement);
+
+        const windowInstance = new WikiWindowInstance(
+            windowId,
+            windowElement,
+            null,
+            null,
+            this,
+            historyToCopy,
+            { dsapUrl: targetUrl }
+        );
+        this.windows.set(windowId, windowInstance);
+        transientWindowsWithPositions.add(windowIdentifier);
+        return windowInstance;
+    }
     
     // Update element IDs to be unique for this window instance
     updateElementIds(element, windowId) {
@@ -2048,7 +2469,7 @@ class WikiWindowManager {
 
 // Wiki Window Instance - manages a standalone wiki window
 class WikiWindowInstance extends WikiDisplayBase {
-    constructor(id, element, initialContent, initialTag, manager, historyToCopy = null) {
+    constructor(id, element, initialContent, initialTag, manager, historyToCopy = null, options = null) {
         super();
         this.id = id;
         this.modal = element;
@@ -2058,6 +2479,7 @@ class WikiWindowInstance extends WikiDisplayBase {
         this.homeBtn = null;
         this.closeBtn = null;
         this.maximizeBtn = null;
+        this.initialDsapUrl = options && options.dsapUrl ? String(options.dsapUrl) : null;
         
         this.currentSelectedTag = initialTag;
         this.initialContent = initialContent;
@@ -2124,7 +2546,12 @@ class WikiWindowInstance extends WikiDisplayBase {
         openModal(this.modal);
         
         // Render initial content
-        if (this.initialContent) {
+        if (this.initialDsapUrl) {
+            // navigateDsapIfMatched: public/scripts/comp/dsapRegistry.js
+            if (typeof navigateDsapIfMatched === 'function') {
+                navigateDsapIfMatched(this, this.initialDsapUrl);
+            }
+        } else if (this.initialContent) {
             this.renderWikiPage(this.initialContent);
             if (this.history.length === 0) {
                 if (this.initialContent.staticWiki) {
@@ -2149,7 +2576,53 @@ class WikiWindowInstance extends WikiDisplayBase {
         }
     }
     
+    navigate(url) {
+        const target = String(url || '').trim();
+        if (!target) return;
+
+        // navigateDsapIfMatched: public/scripts/comp/dsapRegistry.js
+        if (typeof navigateDsapIfMatched === 'function' && navigateDsapIfMatched(this, target)) {
+            return;
+        }
+
+        // Prefer the unified domain registry (same as main Grimoire browser).
+        if (typeof navigateDsapIfMatched === 'function' && navigateDsapIfMatched(this, target)) {
+            return;
+        }
+
+        // Legacy fallback for initial content in standalone wiki windows
+        const routePath = typeof grimoireStripPseudoProtocol === 'function'
+            ? grimoireStripPseudoProtocol(target)
+            : target.replace(/^(edtx|rdf|dsap):\/\//i, '');
+        const lower = routePath.toLowerCase();
+
+        if (lower.includes('wiki.danbooru.jp/tag/') || lower.includes('wiki.e621.com/tag/')) {
+            const m = routePath.match(/\/tag\/([^/?#]+)/i);
+            const tag = m ? decodeURIComponent(m[1]).replace(/_/g, ' ') : '';
+            if (tag) this.getTagWikiPageDirectly(tag);
+            return;
+        }
+
+        if (lower.includes('docs.novelai.jp') || lower.includes('novelai.jp/docs')) {
+            let rest = routePath.replace(/^docs\.novelai\.jp\/?/i, '');
+            const pageId = rest || '';
+            if (pageId) this.openStaticWikiPage('novelai', pageId);
+            else this.showStaticWikiSiteIndex('novelai');
+        }
+    }
+
     openInNewWindow() {
+        if (this._dsapActive && this._dsapState?.url) {
+            // openDsapInStandaloneWindow: public/scripts/comp/dsapRegistry.js
+            if (typeof openDsapInStandaloneWindow === 'function') {
+                const historyToCopy = this.history && this.history.length > 0
+                    ? this.history.slice(0, this.historyIndex + 1)
+                    : null;
+                openDsapInStandaloneWindow(this._dsapState.url, { historyToCopy });
+                return;
+            }
+        }
+
         if (!this.displayArea) return;
         
         const currentContent = this.getCurrentPageContent();
@@ -2175,6 +2648,23 @@ class WikiWindowInstance extends WikiDisplayBase {
     }
     
     goHome() {
+        if (this.initialDsapUrl) {
+            // navigateDsapIfMatched, resolveDsap: public/scripts/comp/dsapRegistry.js
+            const target = this.initialDsapUrl;
+            if (typeof navigateDsapIfMatched === 'function') {
+                navigateDsapIfMatched(this, target, { skipHistory: true, skipLoadingDelay: true });
+            }
+            const match = typeof resolveDsap === 'function' ? resolveDsap(target) : null;
+            this.history = [{
+                type: 'dsap',
+                url: match ? match.canonicalUrl : target,
+                title: match?.entry?.title || 'Applet'
+            }];
+            this.historyIndex = 0;
+            this.updateNavigationButtons();
+            return;
+        }
+
         if (this.initialContent) {
             this.renderWikiPage(this.initialContent);
             if (this.initialContent.staticWiki) {
@@ -2236,6 +2726,26 @@ class WikiWindowInstance extends WikiDisplayBase {
                 }
             }
         }
+
+        if (entry.type === 'dsap' && entry.url) {
+            this.currentSelectedTag = null;
+            this.currentTagName = null;
+            // navigateDsapIfMatched: public/scripts/comp/dsapRegistry.js
+            if (typeof navigateDsapIfMatched === 'function') {
+                navigateDsapIfMatched(this, entry.url, { skipHistory: true, skipLoadingDelay: true });
+            }
+            this.updateNavigationButtons();
+            return;
+        }
+
+        if (entry.query !== undefined || entry.type === 'search') {
+            const qq = entry.query || '';
+            if (this.displayArea) {
+                this.displayArea.innerHTML = `<div class="search-in-window">Search “${this.escapeHtml(qq || 'home')}” — interactive search page is available in the main Grimoire window.</div>`;
+            }
+            this.updateNavigationButtons();
+            return;
+        }
         
         this.updateNavigationButtons();
     }
@@ -2257,8 +2767,8 @@ class WikiWindowInstance extends WikiDisplayBase {
             for (let i = this.historyIndex - 1; i >= 0; i--) {
                 const entry = this.history[i];
                 
-                // For standalone windows, filter out search entries (only show wiki pages)
-                if (isStandalone && entry.type !== 'wiki') {
+                // Standalone windows: wiki, DSAP, and static docs in history menus
+                if (isStandalone && !['wiki', 'dsap', 'static-wiki-page', 'static-wiki-index'].includes(entry.type)) {
                     continue;
                 }
                 
@@ -2294,8 +2804,8 @@ class WikiWindowInstance extends WikiDisplayBase {
             for (let i = this.historyIndex + 1; i < this.history.length; i++) {
                 const entry = this.history[i];
                 
-                // For standalone windows, filter out search entries (only show wiki pages)
-                if (isStandalone && entry.type !== 'wiki') {
+                // Standalone windows: wiki, DSAP, and static docs in history menus
+                if (isStandalone && !['wiki', 'dsap', 'static-wiki-page', 'static-wiki-index'].includes(entry.type)) {
                     continue;
                 }
                 
@@ -2327,6 +2837,25 @@ class WikiWindowInstance extends WikiDisplayBase {
     maximizeToMainWindow() {
         if (!window.tagWikiSearchModal) {
             console.error('Main wiki modal not available');
+            return;
+        }
+
+        if (this._dsapActive && this._dsapState?.url) {
+            const historyToCopy = this.history && this.history.length > 0
+                ? this.history.slice(0, this.historyIndex + 1)
+                : [];
+            const dsapUrl = this._dsapState.url;
+            window.tagWikiSearchModal.open('', { skipInitialHome: true, initialAddress: dsapUrl });
+            // navigateDsapIfMatched: public/scripts/comp/dsapRegistry.js
+            if (typeof navigateDsapIfMatched === 'function') {
+                navigateDsapIfMatched(window.tagWikiSearchModal, dsapUrl, { skipHistory: true, skipLoadingDelay: true });
+            }
+            if (historyToCopy.length > 0) {
+                window.tagWikiSearchModal.history = historyToCopy.map((entry) => ({ ...entry }));
+                window.tagWikiSearchModal.historyIndex = historyToCopy.length - 1;
+                window.tagWikiSearchModal.updateNavigationButtons();
+            }
+            this.close();
             return;
         }
         
@@ -2363,7 +2892,7 @@ class WikiWindowInstance extends WikiDisplayBase {
                 window.tagWikiSearchModal.history = historyToCopy.map(entry => ({ ...entry }));
                 window.tagWikiSearchModal.historyIndex = historyToCopy.length - 1;
                 window.tagWikiSearchModal.updateNavigationButtons();
-            } else if (result && !result.error) {
+            } else if (result && window.tagWikiSearchModal.hasWikiPageContent(result)) {
                 // If no history to copy, ensure the current page is in history
                 // (getTagWikiPageDirectly should have already added it, but ensure it's there)
                 if (window.tagWikiSearchModal.history.length === 0) {
@@ -2395,6 +2924,9 @@ class WikiWindowInstance extends WikiDisplayBase {
     }
     
     destroy() {
+        // deactivateDsapOnShell: public/scripts/comp/dsapRegistry.js
+        if (typeof deactivateDsapOnShell === 'function') deactivateDsapOnShell(this);
+
         // Detach context menus
         if (contextMenu) {
             this.contextMenuElements.forEach(element => {
@@ -2421,6 +2953,7 @@ class WikiWindowInstance extends WikiDisplayBase {
 class TagWikiSearchModal extends WikiDisplayBase {
     constructor() {
         super();
+        this._activePane = 'left';
         this.modal = null;
         this.searchInput = null;
         this.filterDropdown = null;
@@ -2435,6 +2968,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         this.sourceDropdownBtn = null;
         this.sourceDropdownMenu = null;
         this.sourceIcon = null;
+        this._searchPageMode = false; // used to suppress old sidebar + auto-direct-match when treating search as a navigable page (set in navigate for search URLs)
         this.resultsList = null;
         this.backBtn = null;
         this.forwardBtn = null;
@@ -2481,91 +3015,97 @@ class TagWikiSearchModal extends WikiDisplayBase {
         if (!this.modal) return;
         
         this.searchInput = document.getElementById('tagWikiSearchInput');
-        this.filterDropdown = document.getElementById('tagWikiSearchFilterDropdown');
-        this.filterDropdownBtn = document.getElementById('tagWikiSearchFilterDropdownBtn');
-        this.filterDropdownMenu = document.getElementById('tagWikiSearchFilterDropdownMenu');
-        this.filterIcon = document.getElementById('tagWikiSearchFilterIcon');
-        this.searchTypeDropdown = document.getElementById('tagWikiSearchTypeDropdown');
-        this.searchTypeDropdownBtn = document.getElementById('tagWikiSearchTypeDropdownBtn');
-        this.searchTypeDropdownMenu = document.getElementById('tagWikiSearchTypeDropdownMenu');
-        this.searchTypeIcon = document.getElementById('tagWikiSearchTypeIcon');
-        this.sourceDropdown = document.getElementById('tagWikiSearchSourceDropdown');
-        this.sourceDropdownBtn = document.getElementById('tagWikiSearchSourceDropdownBtn');
-        this.sourceDropdownMenu = document.getElementById('tagWikiSearchSourceDropdownMenu');
-        this.sourceIcon = document.getElementById('tagWikiSearchSourceIcon');
-        this.resultsList = document.getElementById('tagWikiSearchResultsList');
         this.displayArea = document.getElementById('tagWikiSearchDisplay');
         this.backBtn = document.getElementById('tagWikiSearchBackBtn');
         this.forwardBtn = document.getElementById('tagWikiSearchForwardBtn');
         this.homeBtn = document.getElementById('tagWikiSearchHomeBtn');
         this.closeBtn = document.getElementById('closeTagWikiSearchModalBtn');
         this.searchBody = this.modal.querySelector('.tag-wiki-search-body');
-        this.resultsScrollPanel = this.modal.querySelector('.tag-wiki-search-results.form-section-scroll');
-        this.resultsCollapseBtn = document.getElementById('tagWikiSearchResultsCollapseBtn');
-        this.resultsSidebarToggleBtn = document.getElementById('tagWikiSearchResultsSidebarToggleBtn');
         this.splitSwapBtn = document.getElementById('tagWikiSearchSplitSwapBtn');
         this.splitDividerEl = document.getElementById('tagWikiSearchSplitDivider');
         this.rightPaneEl = document.getElementById('tagWikiSearchRightPane');
-        this.resultsOverlayBackdrop = document.getElementById('tagWikiSearchResultsOverlayBackdrop');
-        this.onlineToggleBtn = document.getElementById('tagWikiSearchOnlineToggleBtn');
         this.refreshBtn = document.getElementById('tagWikiSearchRefreshBtn');
-        this.searchControlElements = [
-            document.getElementById('tagWikiSearchOnlineToggleBtn'),
-            document.getElementById('tagWikiSearchSourceDropdown'),
-            document.getElementById('tagWikiSearchFilterDropdown'),
-            document.getElementById('tagWikiSearchTypeDropdown')
-        ].filter(Boolean);
-        
-        this.setupOnlineToggle();
-        this.setupClickMenus();
-        this.setupResultsSidebar();
+
+        // Layered pseudo-browser address bar elements (new two-layer widget)
+        this.addressBar = document.getElementById('grimoireAddressBar');
+        this.addressDisplay = document.getElementById('grimoireAddressDisplay');
+        this.addressEdit = document.getElementById('grimoireAddressEdit');
+        this.addressPath = document.getElementById('grimoireAddressPath');
+        this.addressModeIcon = document.getElementById('grimoireAddressModeIcon');
+
+        // Dynamic right-pane toggle button (visible only when wide enough for dual view).
+        // Placed as the last (rightmost) button in the title toolbar, using exact same class as the home button.
+        this.rightToggleBtn = null;
+        const toolbarParent = (this.homeBtn && this.homeBtn.parentNode) || (this.addressBar && this.addressBar.parentNode);
+        if (toolbarParent) {
+            this.rightToggleBtn = document.createElement('button');
+            this.rightToggleBtn.type = 'button';
+            this.rightToggleBtn.className = 'btn-secondary';  // exact same CSS rules as home button (no segment class)
+            this.rightToggleBtn.id = 'tagWikiSearchRightToggleBtn';
+            this.rightToggleBtn.title = 'Toggle Right Side Panel';
+            this.rightToggleBtn.innerHTML = '<i class="fas fa-columns"></i>';
+            this.rightToggleBtn.style.display = 'none';
+            // Insert after the address bar so it is the rightmost/last button on the right side of the browser toolbar
+            if (this.addressBar && this.addressBar.parentNode) {
+                this.addressBar.parentNode.insertBefore(this.rightToggleBtn, this.addressBar.nextSibling);
+            } else if (this.homeBtn && this.homeBtn.nextSibling) {
+                this.homeBtn.parentNode.insertBefore(this.rightToggleBtn, this.homeBtn.nextSibling);
+            } else {
+                toolbarParent.appendChild(this.rightToggleBtn);
+            }
+            this.rightToggleBtn.addEventListener('click', () => this.toggleRightPane());
+        }
+
+        // Note: old sidebar results controls (filter/source/type/online btns that lived in the
+        // removed .tag-wiki-search-results-panel header) are gone. Search options for the
+        // results "page" are now provided exclusively by the gear in showSearchResultsPage
+        // (using the modern highlighted submenu gear menu).
+        this.setupClickMenus(); // still wires any remaining (e.g. for split or other)
         this.setupEventListeners();
         this.setupSplitModeListeners();
         this.setupContextMenu();
-        this.updateSearchControlsVisibility();
-    }
-
-    setupOnlineToggle() {
-        if (!this.onlineToggleBtn) return;
-        this.onlineToggleBtn.dataset.state = this.includeOnline ? 'on' : 'off';
-        this.onlineToggleBtn.title = this.includeOnline
-            ? 'Online search enabled (Danbooru & e621)'
-            : 'Search online (Danbooru & e621)';
-        this.onlineToggleBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            this.includeOnline = !this.includeOnline;
-            this.onlineToggleBtn.dataset.state = this.includeOnline ? 'on' : 'off';
-            try {
-                localStorage.setItem(GRIMOIRE_ONLINE_SEARCH_LS, this.includeOnline ? 'true' : 'false');
-            } catch (err) {
-                /* */
-            }
-            this.updateOnlineToggleState();
-            if (this.searchInput && this.searchInput.value.trim()) {
-                this.performSearch();
-            }
-        });
-        this.updateOnlineToggleState();
-    }
-
-    updateOnlineToggleState() {
-        if (!this.onlineToggleBtn) return;
-        const nameSearch = (this.currentSearchType || 'name') === 'name';
-        this.onlineToggleBtn.disabled = !nameSearch;
-        this.onlineToggleBtn.title = !nameSearch
-            ? 'Online search is only available for name searches'
-            : (this.includeOnline
-                ? 'Online search enabled (Danbooru & e621)'
-                : 'Search online (Danbooru & e621)');
+        // updateSearchControlsVisibility no longer needed (no old header controls to toggle)
     }
 
     setupSplitModeListeners() {
         if (!this.modal) return;
-        this.modal.addEventListener('modalMaximized', () => this.enterSplitMode());
-        this.modal.addEventListener('modalRestored', () => this.exitSplitMode());
+        // Use check logic for both max/restore and resize, so split is available on wide windows too
+        this.modal.addEventListener('modalMaximized', () => this.checkAndUpdateSplitMode());
+        this.modal.addEventListener('modalRestored', () => this.checkAndUpdateSplitMode());
         if (this.splitSwapBtn) {
             this.splitSwapBtn.addEventListener('click', () => this.swapSplitPanes());
+        }
+        // Resize / modal resize support for "wide enough" split (practical dual pane without requiring maximize)
+        this._boundCheckSplitResize = () => this.checkAndUpdateSplitMode();
+        this.modal.addEventListener('modalResized', this._boundCheckSplitResize);
+        window.addEventListener('resize', this._boundCheckSplitResize);
+        // Initial check (size may not be final immediately)
+        setTimeout(() => this.checkAndUpdateSplitMode(), 120);
+    }
+
+    checkAndUpdateSplitMode() {
+        if (!this.modal || !this.rightPaneEl || !this.splitDividerEl) return;
+        const isMaximized = this.modal.classList.contains('modal-maximized');
+        const wideEnough = (this.modal.offsetWidth || 0) >= GRIMOIRE_SPLIT_MIN_WIDTH;
+        if (this.rightToggleBtn) {
+            this.rightToggleBtn.style.display = wideEnough ? '' : 'none';
+            // Optional: reflect current state
+            if (this.modal.classList.contains('tag-wiki-split-active')) {
+                this.rightToggleBtn.title = 'Hide Right Side Panel';
+            } else {
+                this.rightToggleBtn.title = 'Show Right Side Panel';
+            }
+        }
+        const shouldBeSplit = isMaximized || wideEnough;
+        const isCurrentlySplit = this.modal.classList.contains('tag-wiki-split-active');
+
+        if (shouldBeSplit && !isCurrentlySplit) {
+            this.enterSplitMode();
+            this.setActivePane('left');
+        } else if (!shouldBeSplit && isCurrentlySplit && !isMaximized) {
+            // Only auto-hide the split UI (right pane) when not forced by maximize state
+            this.exitSplitMode();
+            this._activePane = 'left';
         }
     }
 
@@ -2663,7 +3203,12 @@ class TagWikiSearchModal extends WikiDisplayBase {
     }
 
     isSplitMode() {
-        return !!(this.modal && this.modal.classList.contains('modal-maximized'));
+        if (!this.modal) return false;
+        if (this.modal.classList.contains('modal-maximized')) return true;
+        // Split (dual wiki panes) is practical when window is wide enough, not only on maximize.
+        // The checkAndUpdateSplitMode + enter/exit will keep the UI in sync (right pane visible, divider, etc.).
+        const w = this.modal.offsetWidth || (this.modal.getBoundingClientRect ? this.modal.getBoundingClientRect().width : 0);
+        return w >= GRIMOIRE_SPLIT_MIN_WIDTH;
     }
 
     isRightPaneDisplay(displayArea) {
@@ -2695,6 +3240,19 @@ class TagWikiSearchModal extends WikiDisplayBase {
                 if (panel) window.customScrollbar.forceReinit(panel);
             }, 50);
         }
+
+        // Make the panes "focusable" via click so the shared top address bar, gear, refresh,
+        // and nav buttons (back/forward/home) target the correct pane's state.
+        if (this.displayArea) {
+            this.displayArea.addEventListener('mousedown', () => this.setActivePane('left'), true);
+        }
+        const rightContent = this.rightPaneEl ? this.rightPaneEl.querySelector('.tag-wiki-search-display, .tag-wiki-display-content') : null;
+        if (rightContent) {
+            rightContent.addEventListener('mousedown', () => this.setActivePane('right'), true);
+        }
+
+        // Default active to the primary (left) when we enter split
+        if (!this._activePane) this._activePane = 'left';
     }
 
     exitSplitMode() {
@@ -2729,6 +3287,9 @@ class TagWikiSearchModal extends WikiDisplayBase {
             this.rebindDisplayContent();
         }
         this.updateNavigationButtons();
+        // Clear cached address so sync after swap will re-derive from the newly applied state
+        // (currentTagName, history, currentStaticWiki etc.) instead of stale _currentAddress.
+        delete this._currentAddress;
     }
 
     swapSplitPanes() {
@@ -2741,6 +3302,107 @@ class TagWikiSearchModal extends WikiDisplayBase {
         if (rightWasBlank) {
             this.goHome();
         }
+        // After swapping contents between physical left and right, force-update the address bar
+        // (both Layer 1 pretty display + icon, and Layer 2 edit input value via currentAddress)
+        // and controls to whatever the active logical pane now holds (the data has moved).
+        this.syncAddressAndControlsToActive();
+    }
+
+    setActivePane(side) {
+        if (!this.isSplitMode() || !this.rightPane) {
+            this._activePane = 'left';
+            return;
+        }
+        const newSide = (side === 'right') ? 'right' : 'left';
+        if (this._activePane === newSide) return;
+        this._activePane = newSide;
+        this.syncAddressAndControlsToActive();
+    }
+
+    get activePane() {
+        if (this.isSplitMode() && this.rightPane && this._activePane === 'right') {
+            return this.rightPane;
+        }
+        return this;
+    }
+
+    syncAddressAndControlsToActive() {
+        const pane = this.activePane;
+        let addr = pane._currentAddress || pane.currentAddress;
+        if (addr && addr.displayUrl) {
+            this.setAddress({ displayUrl: addr.displayUrl, mode: addr.mode }, { force: true });
+        } else {
+            // Fallback derivation from the pane's current state / history
+            const derived = this._getDerivedDisplayUrlForPane(pane);
+            if (derived) {
+                const m = derived.match(/^(edtx|rdf|dsap):/i);
+                this.setAddress({ displayUrl: derived, mode: m ? m[1].toLowerCase() : 'edtx' }, { force: true });
+            }
+        }
+
+        // If the active pane's current history entry is a search, sync the input value
+        const h = pane.history || [];
+        const idx = (typeof pane.historyIndex === 'number') ? pane.historyIndex : -1;
+        const entry = (idx >= 0 && h[idx]) ? h[idx] : null;
+        if (entry && this.searchInput && entry.query !== undefined) {
+            this.searchInput.value = entry.query || '';
+        }
+
+        this.updateSearchControlsVisibility();
+        if (typeof this.updateOnlineToggleState === 'function') {
+            this.updateOnlineToggleState();
+        }
+        // Refresh the back/forward popup menus (they are built from the main instance's history;
+        // the actual button click handlers already delegate to the active pane).
+        if (typeof this.updateNavigationButtons === 'function') {
+            this.updateNavigationButtons();
+        }
+    }
+
+    _getDerivedDisplayUrlForPane(pane) {
+        if (!pane) return 'edtx://en.grimoire.jp/index.dtxt';
+        if (pane.currentStaticWiki) {
+            const sw = pane.currentStaticWiki;
+            const s = sw.siteId || '';
+            const pid = sw.pageId || '';
+            if (s === 'novelai' || /novelai/i.test(s)) {
+                return pid ? `rdf://docs.novelai.jp/${pid}` : 'rdf://docs.novelai.jp/';
+            }
+            return pid ? `edtx://en.grimoire.jp/docs/${s}/${pid}` : `edtx://en.grimoire.jp/docs/${s}`;
+        }
+        const tag = (typeof pane.getCurrentTagName === 'function') ? pane.getCurrentTagName() : null;
+        if (tag) {
+            const enc = encodeURIComponent(String(tag).replace(/\s+/g, '_'));
+            return `edtx://wiki.danbooru.jp/tag/${enc}`;
+        }
+        const entry = (pane.history && typeof pane.historyIndex === 'number') ? pane.history[pane.historyIndex] : null;
+        if (entry) {
+            if (entry.type === 'home') return 'edtx://en.grimoire.jp/index.dtxt';
+            if (entry.query !== undefined) {
+                return entry.query ? `edtx://en.grimoire.jp/search?q=${encodeURIComponent(entry.query)}` : 'edtx://en.grimoire.jp/search';
+            }
+            if (entry.type === 'static-wiki-page' && entry.siteId) {
+                const s = entry.siteId;
+                const pid = entry.pageId || '';
+                if (s === 'novelai' || /novelai/i.test(s)) {
+                    return pid ? `rdf://docs.novelai.jp/${pid}` : 'rdf://docs.novelai.jp/';
+                }
+                return pid ? `edtx://en.grimoire.jp/docs/${s}/${pid}` : `edtx://en.grimoire.jp/docs/${s}`;
+            }
+            if (entry.tag) {
+                const t = entry.tag.name || entry.tag.title || '';
+                const enc = encodeURIComponent(String(t).replace(/\s+/g, '_'));
+                return `edtx://wiki.danbooru.jp/tag/${enc}`;
+            }
+        }
+        return 'edtx://en.grimoire.jp/index.dtxt';
+    }
+
+    notifyPaneAddressChanged(paneInstance) {
+        if (!paneInstance) return;
+        if (this.activePane === paneInstance) {
+            this.syncAddressAndControlsToActive();
+        }
     }
 
     async openLinkOnPane(tagName, side) {
@@ -2750,6 +3412,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
             if (!this.isSplitMode()) return;
             if (!this.rightPane) this.enterSplitMode();
             await this.rightPane.openTagByName(t);
+            this.setActivePane('right'); // after sending content to right, make the controls target it
             return;
         }
         await this.getTagWikiPageDirectly(t);
@@ -2761,22 +3424,10 @@ class TagWikiSearchModal extends WikiDisplayBase {
     
     
     setupClickMenus() {
-        // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
-        if (!contextMenu) return;
-
-        this.filterClickMenuConfig = this.buildGrimoireFilterClickMenuConfig();
-        this.searchTypeClickMenuConfig = this.buildGrimoireSearchTypeClickMenuConfig();
-        this.sourceClickMenuConfig = this.buildGrimoireSourceClickMenuConfig();
-
-        if (this.filterDropdownBtn) {
-            contextMenu.attachClickMenuToElement(this.filterDropdownBtn, this.filterClickMenuConfig);
-        }
-        if (this.searchTypeDropdownBtn) {
-            contextMenu.attachClickMenuToElement(this.searchTypeDropdownBtn, this.searchTypeClickMenuConfig);
-        }
-        if (this.sourceDropdownBtn) {
-            contextMenu.attachClickMenuToElement(this.sourceDropdownBtn, this.sourceClickMenuConfig);
-        }
+        // Old click menus for the sidebar header buttons (filter/source/type) removed along with
+        // the results sidebar. The gear menu (showSearchControlsContextMenu) now provides the
+        // source / search-by / category / online controls for search pages using the modern
+        // submenu + highlighted indicator pattern. The option getters below are still used by the gear.
     }
 
     getGrimoireFilterOptions() {
@@ -2925,36 +3576,17 @@ class TagWikiSearchModal extends WikiDisplayBase {
         }));
     }
 
-    setupResultsSidebar() {
-        if (!this.searchBody || !this.modal) return;
-
-        if (this.resultsCollapseBtn) {
-            this.resultsCollapseBtn.addEventListener('click', () => {
-                this.resultsSidebarManualCollapsed = true;
-                if (this.needsResultsOverlay()) {
-                    this.setResultsOverlayOpen(false);
-                } else {
-                    this.updateResultsSidebar();
-                }
-            });
-        }
-
-        if (this.resultsSidebarToggleBtn) {
-            this.resultsSidebarToggleBtn.addEventListener('click', () => {
-                this.toggleResultsSidebar();
-            });
-        }
-
-        if (this.resultsOverlayBackdrop) {
-            this.resultsOverlayBackdrop.addEventListener('click', () => {
-                this.setResultsOverlayOpen(false);
-            });
-        }
-
-        this._boundResultsSidebarResize = () => this.updateResultsSidebar();
-        this.modal.addEventListener('modalResized', this._boundResultsSidebarResize);
-        this.updateResultsSidebar();
-    }
+    // Old results sidebar (and its toggle/overlay/collapse logic) has been removed.
+    // Search results are now exclusively rendered as a page in the display area.
+    // These are kept as no-ops for any remaining call sites during transition.
+    setupResultsSidebar() {}
+    updateResultsSidebar(expandForResults = false) {}
+    setResultsOverlayOpen(open) {}
+    toggleResultsSidebar() {}
+    needsResultsOverlay() { return false; }
+    isResultsSidebarOpen() { return false; }
+    updateResultsSidebarToggle() {}
+    shouldShowResultsSidebarToggle() { return false; }
 
     updateResultsSidebar(expandForResults = false) {
         if (!this.searchBody || !this.modal) return;
@@ -3013,29 +3645,49 @@ class TagWikiSearchModal extends WikiDisplayBase {
     setupEventListeners() {
         if (!this.modal) return;
         
-        // Search input - Enter key to search
+        // Search input - Enter key to search (skip when address bar is in edit mode)
         if (this.searchInput) {
             this.searchInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey) {
                     e.preventDefault();
-                    this.performSearch();
+                    if (this.addressBar?.classList.contains('edit-active')) {
+                        this.commitAddressFromInput();
+                    } else {
+                        this.performSearch();
+                    }
                 }
             });
         }
         
-        // Navigation buttons
+        // Navigation buttons - delegate to the active pane (left or right in split mode)
+        // so the shared top toolbar controls the focused panel's history / location.
         if (this.backBtn) {
-            this.backBtn.addEventListener('click', () => this.goBack());
+            this.backBtn.addEventListener('click', () => {
+                const p = this.activePane;
+                if (p && typeof p.goBack === 'function') p.goBack();
+                else this.goBack();
+            });
             this.setupBackButtonContextMenu();
         }
         
         if (this.forwardBtn) {
-            this.forwardBtn.addEventListener('click', () => this.goForward());
+            this.forwardBtn.addEventListener('click', () => {
+                const p = this.activePane;
+                if (p && typeof p.goForward === 'function') p.goForward();
+                else this.goForward();
+            });
             this.setupForwardButtonContextMenu();
         }
         
         if (this.homeBtn) {
-            this.homeBtn.addEventListener('click', () => this.goHome());
+            this.homeBtn.addEventListener('click', () => {
+                const p = this.activePane;
+                if (p && typeof p.goHome === 'function') {
+                    p.goHome();
+                } else {
+                    this.goHome();
+                }
+            });
         }
 
         if (this.refreshBtn) {
@@ -3052,15 +3704,503 @@ class TagWikiSearchModal extends WikiDisplayBase {
         
         // Update navigation buttons to populate context menus initially
         this.updateNavigationButtons();
-        
+
+        // Wire the new layered address bar (display <-> edit)
+        this.wireAddressBar();
+        // Initial address for the main Grimoire browser (will evolve with real navigation state)
+        this.setAddress({ displayUrl: 'en.grimoire.jp/index.dtxt', mode: 'edtx' });
+
+        // Expose a convenience for other modules / the address bar future full-router usage
+        if (!window.grimoireNavigate && this.navigate) {
+            window.grimoireNavigate = (u) => this.navigate(u);
+        }
     }
+
+    // --- Layered pseudo-browser address bar controller ---
+    wireAddressBar() {
+        if (!this.addressBar || !this.addressDisplay || !this.addressEdit) return;
+
+        // Click on display layer -> enter edit (reveal input + refresh)
+        this.addressDisplay.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.enterAddressEdit();
+        });
+
+        // Keyboard activation on display layer
+        this.addressDisplay.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                this.enterAddressEdit();
+            }
+        });
+
+        // Hover reveal of Layer 2 is 100% CSS:
+        //   .wiki-address-bar:hover:not(.edit-active) .address-edit-layer { display:flex; ... }
+        //   .wiki-address-bar:focus-within:not(.edit-active) ...
+        // No JS mouseenter/leave is used (good for touch, simpler, no hover state on mobile).
+        //
+        // The JS below is required for things CSS fundamentally cannot do:
+        //   1. Reading the current *full technical URL* from JS state (currentAddress) and writing it
+        //      into the <input> when the user decides to edit. (Layer 1 always shows the pretty path.)
+        //   2. Actually navigating / running the router when the user presses Enter in the input
+        //      (commitAddressFromInput → navigate()).
+        //   3. Managing edit *mode* beyond visibility: outside-click dismissal, Escape to cancel
+        //      (not submit), focus/select of the input, accessibility activation of Layer 1,
+        //      and coordinating with split-pane active state / loading states.
+        //
+        // Click or keyboard-activate Layer 1 → enter committed edit mode (adds .edit-active,
+        // which CSS uses to *hide* Layer 1 completely and keep Layer 2 visible + focused).
+        // Hover is just a temporary peek (CSS only).
+
+        // Commit on Enter inside the address input — this is the *only* place that treats the field value as a new location/search.
+        if (this.searchInput) {
+            // On blur (including after submit or clicking away), switch back to Layer 1.
+            this.searchInput.addEventListener('blur', () => {
+                // Small timeout so that click on refresh (which is inside the layer) has time to process
+                // its own exit logic if needed. Blur will still fire.
+                setTimeout(() => {
+                    if (this.addressBar && this.addressBar.classList.contains('edit-active')) {
+                        this.exitAddressEditAndRestore();
+                    }
+                }, 0);
+            });
+
+            this.searchInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    this.exitAddressEditAndRestore();
+                }
+            });
+        }
+
+        // Refresh button (already wired to refreshToolbar) — after refresh, just close editor (display already correct)
+        if (this.refreshBtn) {
+            this.refreshBtn.addEventListener('click', () => {
+                setTimeout(() => this.exitAddressEditAndRestore(), 120);
+            }, { once: false });
+        }
+
+        // Clicking outside the bar while editing: cancel (restore previous display), do not commit the input value.
+        document.addEventListener('mousedown', (e) => {
+            if (!this.addressBar) return;
+            if (this.addressBar.classList.contains('edit-active')) {
+                if (!this.addressBar.contains(e.target)) {
+                    this.exitAddressEditAndRestore();
+                }
+            }
+        }, { capture: true });
+    }
+
+    setAddress({ displayUrl, mode = 'edtx' } = {}, options = {}) {
+        if (!this.addressPath) return;
+
+        let fullUrl = displayUrl || 'edtx://en.grimoire.jp/index.dtxt';
+
+        const force = !!options.force;
+
+        // When the right pane is active we still let left render update its internal currentAddress,
+        // but we must not clobber the shared address bar visuals (they belong to the active pane)
+        // unless this call is explicitly forcing the update (e.g. from sync after swap or active change).
+        const updatingActiveLeft = (this.activePane === this) || force;
+
+        // Ensure we have an internal fullUrl with protocol for navigation/router.
+        if (!/^(edtx|rdf|dsap):\/\//i.test(fullUrl)) {
+            // isDsapPseudoUrl: public/scripts/comp/dsapRegistry.js
+            if (mode === 'dsap' || (typeof isDsapPseudoUrl === 'function' && isDsapPseudoUrl(fullUrl))) {
+                fullUrl = `dsap://${fullUrl.replace(/^\/+/, '')}`;
+                mode = 'dsap';
+            } else if (mode === 'rdf' || fullUrl.includes('docs.')) {
+                fullUrl = `rdf://${fullUrl.replace(/^\/+/, '')}`;
+            } else {
+                fullUrl = `edtx://${fullUrl.replace(/^\/+/, '')}`;
+            }
+        }
+
+        // For Layer 1 (visible display span): show only the path part (no protocol scheme),
+        // since we have a mode icon that indicates the protocol/type.
+        const displayPath = fullUrl.replace(/^(edtx|rdf|dsap):\/\//i, '');
+
+        this.currentAddress = { fullUrl, displayPath, mode };
+        this._currentAddress = { displayUrl: displayPath, fullUrl, mode };
+
+        if (!updatingActiveLeft) {
+            // Right pane is the active one; its own setAddress + notify will keep the bar in sync.
+            // (unless force was passed from explicit sync)
+            return;
+        }
+
+        this.addressPath.textContent = displayPath;
+
+        if (this.addressPath.dataset.loadingHint) {
+            this.addressPath.dataset.preloadText = displayPath;
+            this.addressPath.textContent = `${displayPath} …`;
+        }
+
+        if (this.addressModeIcon) {
+            // Icon based on protocol or domain (same logic)
+            let icon = 'fas fa-book';
+            const lower = fullUrl.toLowerCase();
+            // isDsapPseudoUrl: public/scripts/comp/dsapRegistry.js
+            if (lower.startsWith('dsap://') || mode === 'dsap' || (typeof isDsapPseudoUrl === 'function' && isDsapPseudoUrl(fullUrl))) {
+                icon = 'fas fa-puzzle-piece';
+            } else if (lower.startsWith('rdf://') || lower.includes('docs.') || mode === 'rdf') {
+                icon = 'fas fa-file-alt';
+            } else if (lower.includes('wiki.danbooru') || lower.includes('wiki.e621')) {
+                icon = 'fas fa-globe';
+            }
+            this.addressModeIcon.className = `address-mode-icon ${icon}`;
+        }
+
+        if (this.addressBar) {
+            this.addressBar.dataset.protocol = (fullUrl.match(/^(edtx|rdf|dsap):/i)?.[1] || mode || 'edtx').toLowerCase();
+        }
+    }
+
+    setNavigationLoading(loading) {
+        if (!this.addressBar || !this.addressModeIcon) return;
+        const icon = this.addressModeIcon;
+        const display = this.addressDisplay;
+
+        if (loading) {
+            if (!icon.dataset.originalClass) {
+                icon.dataset.originalClass = icon.className;
+            }
+            icon.className = 'fas fa-spinner-third fa-spin';
+            this.addressBar.classList.add('nav-loading');
+            if (display) display.style.pointerEvents = 'none';
+            // disable entering edit while loading
+            this.addressBar.style.cursor = 'progress';
+            // visual loading hint on the path without losing the target url
+            if (this.addressPath && !this.addressPath.dataset.loadingHint) {
+                this.addressPath.dataset.loadingHint = '1';
+                const orig = this.addressPath.textContent;
+                if (!this.addressPath.dataset.preloadText) this.addressPath.dataset.preloadText = orig;
+                this.addressPath.textContent = orig + ' …';
+            }
+        } else {
+            if (icon.dataset.originalClass) {
+                icon.className = icon.dataset.originalClass;
+                delete icon.dataset.originalClass;
+            }
+            this.addressBar.classList.remove('nav-loading');
+            if (display) display.style.pointerEvents = '';
+            this.addressBar.style.cursor = '';
+            // restore path
+            if (this.addressPath && this.addressPath.dataset.preloadText) {
+                this.addressPath.textContent = this.addressPath.dataset.preloadText;
+                delete this.addressPath.dataset.preloadText;
+                delete this.addressPath.dataset.loadingHint;
+            }
+        }
+    }
+
+    enterAddressEdit() {
+        if (!this.addressBar || !this.addressEdit || !this.searchInput) return;
+        this.addressBar.classList.add('edit-active');
+        this.addressEdit.classList.remove('hidden');
+
+        // Layer 2 (edit input): prefill with the *full technical URI* including protocol.
+        // Layer 1 (display) shows the pretty path only (protocol stripped, icon indicates type).
+        // Do NOT auto-focus the input here — user may want to directly click the refresh button
+        // without the input stealing focus (and triggering keyboard on touch, etc.).
+        // User can click the input if they want to edit the address.
+        const current = (this.currentAddress && this.currentAddress.fullUrl) || this.addressPath?.textContent || '';
+        this.searchInput.value = current || 'edtx://en.grimoire.jp/index.dtxt';
+    }
+
+    exitAddressEdit() {
+        // Pure exit: just hide the edit layer and restore whatever the display layer was showing.
+        // Do NOT read the input value and turn it into a search here. That only happens on explicit commit (Enter).
+        if (!this.addressBar || !this.addressEdit) return;
+        this.addressBar.classList.remove('edit-active');
+        this.addressEdit.classList.add('hidden');
+    }
+
+    exitAddressEditAndRestore() {
+        // Called on blur/cancel (outside click, mouseleave while not committed, Escape).
+        // Just close the editor; the display layer already shows the last committed address.
+        this.exitAddressEdit();
+    }
+
+    commitAddressFromInput() {
+        // Called only on explicit commit (Enter in the address field).
+        // Parse what the user typed and navigate or search.
+        this.exitAddressEdit(); // close editor first
+
+        const val = (this.searchInput && this.searchInput.value || '').trim();
+        if (!val) {
+            // empty → go home
+            this.setAddress({ displayUrl: 'edtx://en.grimoire.jp/index.dtxt', mode: 'edtx' });
+            this.showDreamWikiHomepage?.();
+            return;
+        }
+
+        // If it looks like a full pseudo address (has domain or scheme), let the router handle it.
+        if (typeof isGrimoirePseudoBrowserAddress === 'function' && isGrimoirePseudoBrowserAddress(val)) {
+            if (typeof this.navigate === 'function') {
+                this.navigate(val);
+            }
+            return;
+        }
+
+        // Bare term → search page
+        this.navigate(`edtx://en.grimoire.jp/search?q=${encodeURIComponent(val)}`);
+    }
+
+    showGrimoireNavigationLoadingPage(displayPath) {
+        if (!this.displayArea) return;
+
+        // deactivateDsapOnShell: public/scripts/comp/dsapRegistry.js
+        if (typeof deactivateDsapOnShell === 'function') deactivateDsapOnShell(this);
+
+        this._searchPageMode = false;
+        if (this.searchBody) {
+            this.searchBody.classList.remove('search-page-view');
+        }
+
+        const safePath = this.escapeHtml(displayPath || '…');
+        this.displayArea.innerHTML = `
+            <div class="grimoire-nav-loading">
+                <div class="grimoire-nav-loading-icon"><i class="fas fa-spinner-third fa-spin"></i></div>
+                <p class="grimoire-nav-loading-title">Loading</p>
+                <p class="grimoire-nav-loading-url">${safePath}</p>
+            </div>`;
+    }
+
+    showGrimoireNavigateErrorPage(options = {}) {
+        if (!this.displayArea) return;
+
+        const {
+            url = '',
+            kind = 'not_found',
+            protocol = '',
+            skipHistory = false,
+            skipLoadingDelay = false
+        } = options;
+
+        const startedAt = this._grimoireNavStartedAt || Date.now();
+        const displayPath = url.replace(/^(edtx|rdf|dsap):\/\//i, '') || url;
+        this._grimoireLastFailedNavUrl = url;
+
+        if (!skipLoadingDelay) {
+            this.showGrimoireNavigationLoadingPage(displayPath);
+        }
+
+        const renderError = () => {
+            // deactivateDsapOnShell: public/scripts/comp/dsapRegistry.js
+            if (typeof deactivateDsapOnShell === 'function') deactivateDsapOnShell(this);
+
+            this._searchPageMode = false;
+            if (this.searchBody) {
+                this.searchBody.classList.remove('search-page-view');
+            }
+
+            const safeUrl = this.escapeHtml(url || displayPath);
+            let title = 'This page can\u2019t be displayed';
+            let detail = `Dreamscape Browser cannot find <strong>${safeUrl}</strong>. Check the address for typos or try again later.`;
+
+            if (kind === 'invalid_protocol') {
+                title = 'Invalid address';
+                const protoLabel = this.escapeHtml(protocol || 'unknown');
+                detail = `The protocol <strong>${protoLabel}://</strong> is not supported. Use <strong>edtx://</strong>, <strong>rdf://</strong>, or <strong>dsap://</strong> addresses in Dreamscape Browser.`;
+            }
+
+            this.displayArea.innerHTML = `
+                <div class="grimoire-nav-error">
+                    <div class="grimoire-nav-error-icon"><i class="fas fa-globe"></i></div>
+                    <h2 class="grimoire-nav-error-title">${title}</h2>
+                    <p class="grimoire-nav-error-url">${safeUrl}</p>
+                    <p class="grimoire-nav-error-detail">${detail}</p>
+                    <div class="grimoire-nav-error-actions">
+                        <button type="button" class="btn-secondary btn-small" data-grimoire-nav-action="retry">
+                            <i class="fas fa-rotate-right"></i> Try again
+                        </button>
+                        <button type="button" class="btn-secondary btn-small" data-grimoire-nav-action="home">
+                            <i class="fas fa-home"></i> Home
+                        </button>
+                    </div>
+                </div>`;
+
+            this.displayArea.querySelector('[data-grimoire-nav-action="retry"]')?.addEventListener('click', () => {
+                const retryUrl = this._grimoireLastFailedNavUrl;
+                if (retryUrl && typeof this.navigate === 'function') {
+                    this.navigate(retryUrl);
+                }
+            });
+            this.displayArea.querySelector('[data-grimoire-nav-action="home"]')?.addEventListener('click', () => {
+                this.goHome();
+            });
+
+            if (!skipHistory && typeof this.addToHistory === 'function') {
+                this.addToHistory({
+                    type: 'nav-error',
+                    url,
+                    kind,
+                    protocol: protocol || null,
+                    title: kind === 'invalid_protocol' ? 'Invalid address' : 'Page not found'
+                });
+            }
+            this.updateNavigationButtons?.();
+        };
+
+        if (skipLoadingDelay) {
+            renderError();
+            this.setNavigationLoading(false);
+            return;
+        }
+
+        requestAnimationFrame(() => {
+            requestAnimationFrame(renderError);
+        });
+
+        const wait = typeof grimoireGetNavLoadingDelayMs === 'function'
+            ? grimoireGetNavLoadingDelayMs(startedAt)
+            : 360;
+        setTimeout(() => this.setNavigationLoading(false), wait);
+    }
+
+    finishGrimoireNavigationLoading(startedAt) {
+        const wait = typeof grimoireGetNavLoadingDelayMs === 'function'
+            ? grimoireGetNavLoadingDelayMs(startedAt || this._grimoireNavStartedAt)
+            : 0;
+        setTimeout(() => this.setNavigationLoading(false), wait);
+    }
+
+    /**
+     * Minimal navigate entry point for the pseudo-browser (Grimoire surface).
+     * Accepts full pseudo-URLs (en.grimoire.jp/..., wiki.danbooru.jp/..., dsap://…).
+     *
+     * All routing is now driven by the Grimoire Domain Registry (dsapRegistry + core domains).
+     * Domain name + aliases resolve to a registered applet/handler. The modal (this file)
+     * acts primarily as the generic browser chrome + thin router.
+     *
+     * See: public/scripts/comp/dsapRegistry.js and grimoireCoreDomains.js
+     */
+    navigate(pseudoUrl = '') {
+        const url = String(pseudoUrl || '').trim();
+        if (!url) return;
+
+        const target = this.activePane;
+        if (target !== this) {
+            this._navigateToPane(target, url);
+            return;
+        }
+
+        this.setNavigationLoading(true);
+        this._grimoireNavStartedAt = Date.now();
+
+        const unsupportedProtocol = typeof grimoireGetUnsupportedProtocol === 'function'
+            ? grimoireGetUnsupportedProtocol(url)
+            : null;
+        if (unsupportedProtocol) {
+            this.exitAddressEdit();
+            const normalized = typeof grimoireNormalizePseudoDisplayUrl === 'function'
+                ? grimoireNormalizePseudoDisplayUrl(url)
+                : { displayUrl: url, mode: 'edtx' };
+            this.setAddress(normalized);
+            this.showGrimoireNavigateErrorPage({
+                url: normalized.displayUrl,
+                kind: 'invalid_protocol',
+                protocol: unsupportedProtocol
+            });
+            return;
+        }
+
+        // Single unified resolution path.
+        // resolveDsap (and the registrations in grimoireCoreDomains.js + individual applets)
+        // now owns: en.grimoire.jp (search/home), wiki.danbooru.jp, wiki.e621.com, docs.novelai.jp,
+        // all DSAP applets, and any future domain.
+        // navigateDsapIfMatched handles loading chrome, activation, history (when the activator doesn't),
+        // address bar, and cleanup.
+        if (typeof resolveDsap === 'function' && resolveDsap(url)) {
+            this.exitAddressEdit();
+            const normalized = typeof grimoireNormalizePseudoDisplayUrl === 'function'
+                ? grimoireNormalizePseudoDisplayUrl(url)
+                : { displayUrl: url, mode: 'dsap' };
+            this.setAddress(normalized);
+            navigateDsapIfMatched(this, url, { navStartedAt: this._grimoireNavStartedAt });
+            return;
+        }
+
+        // Unknown but looks like a Grimoire-style pseudo address → proper error page (no silent search).
+        this.exitAddressEdit();
+        if (typeof isGrimoirePseudoBrowserAddress === 'function' && isGrimoirePseudoBrowserAddress(url)) {
+            const normalized = typeof grimoireNormalizePseudoDisplayUrl === 'function'
+                ? grimoireNormalizePseudoDisplayUrl(url)
+                : { displayUrl: url, mode: 'edtx' };
+            this.setAddress(normalized);
+            this.showGrimoireNavigateErrorPage({
+                url: normalized.displayUrl,
+                kind: 'not_found'
+            });
+            return;
+        }
+
+        // Ultimate fallback: treat bare input as a search term (old behavior for convenience).
+        if (this.searchInput) this.searchInput.value = url;
+        this.performSearch();
+        this.finishGrimoireNavigationLoading();
+    }
+
+    _navigateToPane(pane, url) {
+        if (!pane || !url) return;
+
+        // Unified domain resolution (core domains + DSAP applets) now drives panes too.
+        // See navigate() and grimoireCoreDomains.js + dsapRegistry.js
+        if (typeof navigateDsapIfMatched === 'function' && navigateDsapIfMatched(pane, url)) {
+            return;
+        }
+
+        // Search URLs on a side pane are intentionally routed to the primary surface
+        // (the dedicated search results page + filters live in the main Grimoire area).
+        const routePath = typeof grimoireStripPseudoProtocol === 'function'
+            ? grimoireStripPseudoProtocol(url)
+            : String(url).replace(/^(edtx|rdf|dsap):\/\//i, '');
+        const lower = routePath.toLowerCase();
+
+        if (lower.includes('en.grimoire.jp/search') || lower.includes('/search')) {
+            let q = '';
+            try {
+                const u = new URL(url.startsWith('http') ? url : 'https://dummy/' + url.replace(/^[^?]+/, ''));
+                q = u.searchParams.get('q') || '';
+            } catch (e) {
+                const mm = url.match(/[?&]q=([^&#]+)/);
+                if (mm) q = decodeURIComponent(mm[1]);
+            }
+            if (this.searchInput) this.searchInput.value = q;
+            this.performSearch().finally(() => {
+                this.showSearchResultsPage(q, false);
+            });
+            return;
+        }
+
+        // Final fallback for a pane: if it looks like a bare tag name, try direct wiki.
+        if (typeof pane.getTagWikiPageDirectly === 'function') {
+            pane.getTagWikiPageDirectly(url);
+        }
+    }
+
+    // --- end address bar controller ---
 
     open(initialQuery = '', options = {}) {
         if (!this.modal) return;
         const wasClosed = this.modal.classList.contains('hidden');
         const trimmedQuery = String(initialQuery || '').trim();
         const skipInitialHome = options && options.skipInitialHome;
+        const initialAddress = options && options.initialAddress;
         openModal(this.modal);
+
+        // Sync the layered address bar for the primary Grimoire browser surface (with protocol prefix)
+        if (initialAddress) {
+            const normalized = typeof grimoireNormalizePseudoDisplayUrl === 'function'
+                ? grimoireNormalizePseudoDisplayUrl(initialAddress)
+                : { displayUrl: initialAddress, mode: 'dsap' };
+            this.setAddress(normalized);
+        } else if (trimmedQuery) {
+            this.setAddress({ displayUrl: `edtx://en.grimoire.jp/search?q=${encodeURIComponent(trimmedQuery)}`, mode: 'edtx' });
+        } else if (!skipInitialHome) {
+            this.setAddress({ displayUrl: 'edtx://en.grimoire.jp/index.dtxt', mode: 'edtx' });
+        }
         if (this.isSplitMode()) {
             this.enterSplitMode();
         }
@@ -3159,8 +4299,13 @@ class TagWikiSearchModal extends WikiDisplayBase {
 
     /**
      * Opens a standalone wiki viewer only when get_tag_wiki_page succeeds (direct article).
+     *
+     * IMPORTANT: We open the standalone window *first* (with a visible loading state)
+     * before doing the (potentially cached) fetch. This gives immediate feedback
+     * for both desktop shortcuts and any other direct tag open that targets a
+     * standalone wiki viewer.
      */
-    async openStandaloneWikiIfDirectMatch(tagName) {
+    async openStandaloneWikiIfDirectMatch(tagName, options = {}) {
         const trimmed = String(tagName || '').trim();
         if (!trimmed) return false;
 
@@ -3178,16 +4323,54 @@ class TagWikiSearchModal extends WikiDisplayBase {
             return false;
         }
 
-        try {
-            const result = await window.wsClient.sendMessage('get_tag_wiki_page', {
-                tagName: trimmed,
-                source: 'both',
-                format: 'html'
-            });
+        const tag = options.tag || this.buildWikiTagFromTerm(trimmed);
+        const initialTag = {
+            title: tag.title || trimmed,
+            name: tag.name || this.resolveBooruWikiTagName(tag)
+        };
 
-            if (!result || result.error) {
-                if (typeof showGlassToast === 'function') {
-                    showGlassToast('info', null, 'No matching wiki page', false, 3500, '<i class="fas fa-book"></i>');
+        // Open the standalone modal/window *immediately* with a loading state
+        // so the user sees feedback right away (no more "nothing happens until fetch done").
+        const loadingHtml = '<div class="tag-wiki-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading wiki page...</div>';
+        const loadingContent = {
+            title: initialTag.title,
+            tagName: initialTag.name,
+            html: loadingHtml,
+            loading: true
+        };
+
+        let winInstance = null;
+        try {
+            winInstance = window.wikiWindowManager.createWindow(loadingContent, initialTag, null);
+            if (winInstance && winInstance.modal && typeof bringModalToFront === 'function') {
+                bringModalToFront(winInstance.modal);
+            }
+        } catch (e) {
+            console.error('Failed to create loading standalone wiki window:', e);
+            // Fall through to try direct load (old behavior as last resort)
+        }
+
+        try {
+            const result = await this.getTagWikiPage(tag, { force: !!options.force });
+
+            if (!this.hasWikiPageContent(result)) {
+                const errorMessage = (result && result.error) || 'No matching wiki page';
+                if (winInstance && winInstance.displayArea) {
+                    // Show error inside the already-visible standalone window
+                    const canGoBack = winInstance.history && winInstance.historyIndex > 0;
+                    winInstance.displayArea.innerHTML = `
+                        <div class="tag-wiki-error">
+                            <i class="fas fa-exclamation-circle"></i> ${this.escapeHtml(errorMessage)}
+                            ${canGoBack ? '<button class="btn-secondary btn-small wiki-error-back-btn">Back</button>' : ''}
+                        </div>
+                    `;
+                    // wire back if present
+                    const backBtn = winInstance.displayArea.querySelector('.wiki-error-back-btn');
+                    if (backBtn && winInstance.goBack) {
+                        backBtn.addEventListener('click', () => winInstance.goBack());
+                    }
+                } else if (typeof showGlassToast === 'function') {
+                    showGlassToast('info', null, errorMessage, false, 3500, '<i class="fas fa-book"></i>');
                 }
                 return false;
             }
@@ -3196,15 +4379,38 @@ class TagWikiSearchModal extends WikiDisplayBase {
                 hideCharacterAutocomplete();
             }
 
-            const initialTag = { title: trimmed, name: trimmed };
-            const winInstance = window.wikiWindowManager.createWindow(result, initialTag, null);
-            if (winInstance && winInstance.modal && typeof bringModalToFront === 'function') {
-                bringModalToFront(winInstance.modal);
+            // Populate the already-open standalone window
+            if (winInstance) {
+                winInstance.renderWikiPage(result);
+
+                // Ensure history entry exists for this standalone window
+                if (winInstance.addToHistory && (!winInstance.history || winInstance.history.length === 0)) {
+                    winInstance.addToHistory({
+                        type: 'wiki',
+                        tag: initialTag,
+                        content: result
+                    });
+                } else if (winInstance.updateNavigationButtons) {
+                    winInstance.updateNavigationButtons();
+                }
+            } else {
+                // Fallback: create normally (should be rare)
+                winInstance = window.wikiWindowManager.createWindow(result, initialTag, null);
+                if (winInstance && winInstance.modal && typeof bringModalToFront === 'function') {
+                    bringModalToFront(winInstance.modal);
+                }
             }
+
             return true;
         } catch (err) {
             console.error('openStandaloneWikiIfDirectMatch:', err);
-            if (typeof showGlassToast === 'function') {
+            if (winInstance && winInstance.displayArea) {
+                winInstance.displayArea.innerHTML = `
+                    <div class="tag-wiki-error">
+                        <i class="fas fa-exclamation-circle"></i> Error loading wiki page: ${this.escapeHtml(err.message || 'Unknown error')}
+                    </div>
+                `;
+            } else if (typeof showGlassToast === 'function') {
                 showGlassToast('info', null, 'No matching wiki page', false, 3500, '<i class="fas fa-book"></i>');
             }
             return false;
@@ -3260,18 +4466,140 @@ class TagWikiSearchModal extends WikiDisplayBase {
     }
 
     async refreshToolbar() {
-        if (this.currentTagName) {
-            await this.refreshFromOnline();
+        const p = this.activePane;
+        if (p !== this) {
+            // Right pane (split): best-effort refresh using the pane's own state.
+            // Most right-pane usage is wiki pages or static docs.
+            this.setNavigationLoading(true);
+            try {
+                const tag = (typeof p.getCurrentTagName === 'function') ? p.getCurrentTagName() : null;
+                if (tag && typeof p.refreshFromOnline === 'function') {
+                    await p.refreshFromOnline();
+                    return;
+                }
+                const entry = p.history && p.history[p.historyIndex];
+                if (entry) {
+                    if (entry.content) {
+                        p.renderWikiPage(entry.content);
+                    } else if (entry.tag && typeof p.getTagWikiPageDirectly === 'function') {
+                        p.getTagWikiPageDirectly(entry.tag.title || entry.tag.name);
+                    } else if (entry.type === 'static-wiki-page' && entry.siteId && typeof p.openStaticWikiPage === 'function') {
+                        p.openStaticWikiPage(entry.siteId, entry.pageId);
+                    } else if (entry.type === 'home' && typeof p.goHome === 'function') {
+                        p.goHome();
+                    }
+                }
+            } finally {
+                this.setNavigationLoading(false);
+            }
             return;
         }
-        const query = this.searchInput?.value.trim();
-        if (query) {
-            await this.performSearch();
-            return;
-        }
-        const entry = this.history[this.historyIndex];
-        if (entry && entry.type === 'home') {
+
+        // Refresh is always context-sensitive (for the main / left panel):
+        // - On a wiki tag page (current or from history): force a fresh body fetch (refreshFromOnline).
+        // - On a static doc page (e.g. novelai rdf://): re-fetch the bundled doc page.
+        // - On a search results "page": re-run the search and re-render the dedicated search view (no old sidebar).
+        // - Home or fallback: appropriate home/search.
+        // We also drive the address bar loading indicator for the main browser.
+        this.setNavigationLoading(true);
+        try {
+            // Wiki tag page? Use getter (currentSelectedTag may be set even if currentTagName is not after some restores)
+            let tag = this.getCurrentTagName();
+            if (!tag) {
+                const entry = this.history && this.history[this.historyIndex];
+                if (entry && entry.type === 'wiki' && entry.tag) {
+                    tag = entry.tag.title || entry.tag.name || '';
+                    if (tag) {
+                        this.currentSelectedTag = entry.tag;
+                        this.currentTagName = tag;
+                    }
+                }
+            }
+            if (tag) {
+                await this.refreshFromOnline();
+                return;
+            }
+
+            // Static documentation page (rdf:// etc.)
+            if (this.currentStaticWiki && this.currentStaticWiki.siteId) {
+                const sw = this.currentStaticWiki;
+                if (sw.pageId) {
+                    await this.openStaticWikiPage(sw.siteId, sw.pageId);
+                } else {
+                    this.showStaticWikiSiteIndex(sw.siteId);
+                }
+                return;
+            }
+
+            // Inspect history entry for precise context (search page, static, etc.)
+            const entry = this.history && this.history[this.historyIndex];
+            if (entry) {
+                if (entry.type === 'static-wiki-page' && entry.siteId) {
+                    await this.openStaticWikiPage(entry.siteId, entry.pageId);
+                    return;
+                }
+                if (entry.type === 'static-wiki-index' && entry.siteId) {
+                    this.showStaticWikiSiteIndex(entry.siteId);
+                    return;
+                }
+                if (entry.query !== undefined || entry.type === 'search') {
+                    const q = entry.query || (this.searchInput?.value || '').trim();
+                    if (q && this.searchInput) {
+                        this.searchInput.value = q;
+                    }
+                    if (typeof this.refreshSearchPageResults === 'function') {
+                        this.refreshSearchPageResults();
+                        // Keep the address bar loading indicator visible a bit longer for the async search.
+                        setTimeout(() => this.setNavigationLoading(false), 750);
+                    } else if (q) {
+                        this.performSearch();
+                    }
+                    return;
+                }
+                if (entry.type === 'home') {
+                    this.showDreamWikiHomepage();
+                    return;
+                }
+                if (entry.type === 'dsap' && entry.url) {
+                    // navigateDsapIfMatched: public/scripts/comp/dsapRegistry.js
+                    if (typeof navigateDsapIfMatched === 'function') {
+                        navigateDsapIfMatched(this, entry.url, { skipHistory: true, skipLoadingDelay: true });
+                    }
+                    return;
+                }
+                if (entry.type === 'nav-error' && entry.url) {
+                    this.showGrimoireNavigateErrorPage({
+                        url: entry.url,
+                        kind: entry.kind || 'not_found',
+                        protocol: entry.protocol || '',
+                        skipHistory: true,
+                        skipLoadingDelay: true
+                    });
+                    return;
+                }
+            }
+
+            // Fallback: searchInput has a value → re-execute as search page (avoid old sidebar)
+            const query = (this.searchInput?.value || '').trim();
+            if (query) {
+                if (this.searchInput) this.searchInput.value = query;
+                if (typeof this.refreshSearchPageResults === 'function') {
+                    this.refreshSearchPageResults();
+                    setTimeout(() => this.setNavigationLoading(false), 750);
+                } else {
+                    await this.performSearch();
+                }
+                return;
+            }
+
+            // Default to home
             this.showDreamWikiHomepage();
+        } catch (err) {
+            console.error('refreshToolbar failed:', err);
+        } finally {
+            // Slight delay so the nav loading state is visible even for fast synchronous contexts (home, static re-fetch).
+            // For search-page refreshes we schedule a longer delay above before returning.
+            setTimeout(() => this.setNavigationLoading(false), 90);
         }
     }
     
@@ -3289,15 +4617,12 @@ class TagWikiSearchModal extends WikiDisplayBase {
         const source = this.currentSource || 'both';
         const includeOnline = this.includeOnline && searchType === 'name';
         
-        // Show loading state
-        if (this.resultsList) {
-            const loadingHint = includeOnline
-                ? '<i class="fas fa-spinner-third fa-spin"></i> Searching local &amp; online...'
-                : '<i class="fas fa-spinner-third fa-spin"></i> Searching...';
-            this.resultsList.innerHTML = `<div class="tag-wiki-loading">${loadingHint}</div>`;
+        if (this._searchPageMode) {
+            // Dedicated search page flow.
+        } else {
+            // Legacy sidebar loading removed (sidebar deleted); the modern search page view
+            // or direct wiki render will handle presentation.
         }
-        this.updateResultsSidebar(true);
-        this.updateSearchControlsVisibility();
         
         try {
             const results = await this.searchTagWiki(query, {
@@ -3309,7 +4634,18 @@ class TagWikiSearchModal extends WikiDisplayBase {
             });
             
             this.currentSearchResults = results || [];
-            this.renderResults(this.currentSearchResults);
+
+            if (this._searchPageMode) {
+                // For search page navigation, we do NOT render to the sidebar or trigger direct-match auto-open.
+                // The caller (navigate path) will render the results into the main content via showSearchResultsPage.
+            } else {
+                this.renderResults(this.currentSearchResults);
+            }
+            
+            // Reflect the active search in the layered address bar (with protocol)
+            if (query) {
+                this.setAddress({ displayUrl: `edtx://en.grimoire.jp/search?q=${encodeURIComponent(query)}`, mode: 'edtx' });
+            }
             
             // Add to history
             this.addToHistory({
@@ -3322,10 +4658,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
             });
         } catch (error) {
             console.error('Tag wiki search error:', error);
-            if (this.resultsList) {
-                this.resultsList.innerHTML = `<div class="tag-wiki-error"><i class="fas fa-exclamation-circle"></i> Error: ${error.message}</div>`;
-            }
-            this.updateResultsSidebar(true);
+            // Old sidebar error state removed; errors surface in the search page view or display.
             this.updateSearchControlsVisibility();
         }
     }
@@ -3383,147 +4716,531 @@ class TagWikiSearchModal extends WikiDisplayBase {
         return true;
     }
 
-    updateSearchControlsVisibility() {
-        const show = this.shouldShowSearchControls();
-        this.searchControlElements.forEach((el) => {
-            el.classList.toggle('hidden', !show);
-        });
-    }
-
-    updateResultsPanelTitle() {
-        const titleEl = this.modal && this.modal.querySelector('.tag-wiki-results-panel-title');
-        if (!titleEl) return;
-        if (this.includeOnline && this.currentSearchType === 'name') {
-            let onlineNote = '';
-            if (this.lastOnlineSectionCount != null) {
-                onlineNote += ` · ${this.lastOnlineSectionCount} online wiki`;
-            }
-            if (this.lastOnlineTagOnlyCount > 0) {
-                onlineNote += ` · ${this.lastOnlineTagOnlyCount} online tags`;
-            }
-            titleEl.textContent = `Results (local + cloud${onlineNote})`;
-        } else {
-            titleEl.textContent = 'Results';
-        }
-    }
+    // Old sidebar controls visibility and panel title (panel deleted) are no-ops.
+    updateSearchControlsVisibility() {}
+    updateResultsPanelTitle() {}
 
     renderResults(results) {
-        if (!this.resultsList) return;
-        
-        if (!results || results.length === 0) {
-            this.resultsList.innerHTML = '<div class="tag-wiki-empty-results"><i class="fas fa-search"></i> No results found</div>';
-            this.updateResultsPanelTitle();
-            this.updateResultsSidebar(true);
-            this.updateSearchControlsVisibility();
+        // Legacy sidebar renderer stubbed out (old results panel deleted).
+        // New results "page" rendering lives in showSearchResultsPage.
+        if (this._searchPageMode) return;
+        const q = (this.searchInput && this.searchInput.value.trim()) || '';
+        if (q) this.showSearchResultsPage(q, false);
+    }
+
+    /**
+     * Render a classic Google-like search results "page" into the main display area.
+     * This is used when the pseudo-browser navigates to an en.grimoire.jp/search location.
+     * The old left results sidebar is treated as secondary/overlay and can be hidden for this view.
+     */
+    showSearchResultsPage(query = '', isLoading = false) {
+        if (!this.displayArea) return;
+
+        // deactivateDsapOnShell: public/scripts/comp/dsapRegistry.js
+        if (typeof deactivateDsapOnShell === 'function') deactivateDsapOnShell(this);
+
+        // Respect explicitly passed query from navigation URL ('' means the search homepage form).
+        // Only fall back to current address input value if no explicit query string was provided in the call.
+        let q = String(query ?? '').trim();
+        if (q === '' && this.searchInput) {
+            // Only use input value as fallback for "search what I'm thinking" cases, not when explicitly going to the bare search home.
+            // In practice the callers that want home pass '' and we want the home UI.
+            // If the input has a previous value and we want to search it, the caller should have put ?q= in the url.
+            q = ''; // force home when '' explicitly passed for the form
+        }
+        const results = this.currentSearchResults || [];
+
+        // Activate search-page view mode (hides the persistent results sidebar "overlay")
+        // Only hide the panel if NOT in split/maximised mode (so search page can live in a content pane)
+        const inSplit = !!(this.isSplitMode && this.isSplitMode());
+        if (this.searchBody) {
+            if (!inSplit) {
+                this.searchBody.classList.add('search-page-view');
+            }
+            // also clear any old overlay classes that might be lingering
+            this.searchBody.classList.remove('tag-wiki-results-overlay-open');
+            if (this.modal) this.modal.classList.remove('tag-wiki-results-overlay-open');
+        }
+
+        // --- Classic Google-style search *homepage* when no query ---
+        if (!q && !isLoading) {
+            const homeHtml = `
+<div class="grimoire-google-home">
+  <div class="google-brand">
+    <img src="/static_images/grim_logo.png" alt="Grimoire" class="brand-logo">
+  </div>
+  <div class="google-search-form">
+    <div class="search-box-large">
+      <i class="fas fa-search"></i>
+      <input type="text" class="google-large-input" placeholder="Search the encyclopedia...">
+      <i class="fas fa-cog search-gear" title="Search options &amp; filters"></i>
+    </div>
+    <div class="google-actions">
+      <button class="google-action-btn" data-action="search">Search</button>
+      <button class="google-action-btn" data-action="lucky">I'm Feeling Lucky</button>
+    </div>
+  </div>
+  <div class="google-hint">Tip: Use the top address bar for direct <code>edtx://</code> navigation or tag names.</div>
+</div>`;
+            this.displayArea.innerHTML = homeHtml;
+
+            const largeInput = this.displayArea.querySelector('.google-large-input');
+            const searchBtn = this.displayArea.querySelector('[data-action="search"]');
+            const luckyBtn = this.displayArea.querySelector('[data-action="lucky"]');
+
+            const doHomeSearch = () => {
+                const val = (largeInput && largeInput.value.trim()) || '';
+                if (val) this.navigate(`edtx://en.grimoire.jp/search?q=${encodeURIComponent(val)}`);
+            };
+            if (largeInput) {
+                largeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doHomeSearch(); });
+            }
+            if (searchBtn) searchBtn.addEventListener('click', doHomeSearch);
+            if (luckyBtn) luckyBtn.addEventListener('click', () => {
+                // Feeling lucky: jump to a common demo search
+                const demos = ['1girl', 'solo', 'cat', 'school_uniform'];
+                const pick = demos[Math.floor(Math.random() * demos.length)];
+                this.navigate(`edtx://en.grimoire.jp/search?q=${pick}`);
+            });
+
+            // Gear for search options on the pure homepage (same as results page)
+            const homeGear = this.displayArea.querySelector('.search-gear');
+            if (homeGear && contextMenu && typeof contextMenu.attachClickMenuToElement === 'function') {
+                const cfg = this.showSearchControlsContextMenu(homeGear, true /* returnOnly */);
+                if (cfg) {
+                    contextMenu.attachClickMenuToElement(homeGear, cfg);
+                }
+                homeGear.addEventListener('click', (e) => e.stopPropagation());
+            } else if (homeGear) {
+                homeGear.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (typeof showGlassToast === 'function') {
+                        showGlassToast('info', 'Search', 'Search options (context/click menu system not available)', false, 2000);
+                    }
+                });
+            }
+
             return;
         }
-        
-        const mergedItems = [];
-        const localOnlyItems = [];
-        const onlineWikiItems = [];
-        const onlineTagItems = [];
-        const itemsWithoutWiki = [];
-        
-        results.forEach((result, index) => {
-            if (!result.hasWiki) {
-                if (result.matchType === 'online-tag' || (result.onlineOnly && result.matchType !== 'online')) {
-                    onlineTagItems.push({ result, index });
-                } else {
-                    itemsWithoutWiki.push({ result, index });
-                }
-            } else if (result.matchType === 'online' || (result.onlineOnly && result.hasWiki)) {
-                onlineWikiItems.push({ result, index });
-            } else if (result.matchType === 'merged') {
-                mergedItems.push({ result, index });
-            } else {
-                localOnlyItems.push({ result, index });
+
+        // --- Normal search results page (with query or loading) ---
+        const wikiResults = results.filter(r => r.hasWiki);
+        const noWikiResults = results.filter(r => !r.hasWiki);
+
+        let innerResults = '';
+
+        if (isLoading) {
+            let loadMsg = `Searching${q ? ` for “${this.escapeHtml(q)}”` : ''}...`;
+            if (this._checkingOnlineTag) {
+                loadMsg = `Attempting to redirect to online wiki version for “${this.escapeHtml(this._checkingOnlineTag)}”...`;
             }
-        });
-        
-        let html = '';
-        
-        if (mergedItems.length > 0) {
-            html += mergedItems.map(({ result, index }) =>
-                this.renderResultItem(result, index, 'tag-wiki-result-item-merged')
-            ).join('');
+            innerResults = `
+<div class="search-loading">
+  <i class="fas fa-spinner-third fa-spin"></i>
+  <span>${loadMsg}</span>
+</div>`;
+        } else if (this._checkingOnlineTag && wikiResults.length === 0) {
+            // Special sorry page for failed online check from tag cloud
+            innerResults = `
+<div class="online-sorry">
+  <i class="fas fa-exclamation-triangle"></i>
+  <p>Sorry, no wiki page was found for <strong>${this.escapeHtml(this._checkingOnlineTag)}</strong> on the online sources either.</p>
+</div>`;
+            delete this._checkingOnlineTag;
+        } else if (!wikiResults.length && !noWikiResults.length) {
+            innerResults = `<div class="search-empty-state"><i class="fas fa-search"></i><p>No matching tags or wiki pages found. Try broadening your search.</p></div>`;
+        } else {
+            innerResults = `<div class="search-results-list google-style">`;
+            wikiResults.slice(0, 40).forEach((result) => {
+                const tagName = this.escapeHtml(result.title || result.name || 'Unknown');
+                const cat = this.escapeHtml(result.categoryName || 'Uncategorized');
+                const sourceHtml = this.getSourceIcon(result.source);
+                const cloud = (result.matchType === 'merged' || result.onlineOnly) ? '<i class="fas fa-cloud tag-wiki-online-icon" title="Online"></i>' : '';
+                const imgIcon = result.hasWiki ? '<i class="fas fa-image" title="Contains images / references in wiki"></i>' : '';
+
+                const snippet = `Wiki and usage details for the ${cat} tag. Click to open the full page with examples, related tags, and prompt advice.`;
+
+                innerResults += `
+<div class="google-search-result" data-tag-name="${this.escapeHtml(result.name || tagName)}">
+  <div class="result-title-row">
+    <span class="result-title">${tagName}</span>
+    <span class="result-icons">
+      ${sourceHtml}
+      ${cloud}
+      ${imgIcon}
+    </span>
+  </div>
+  <div class="result-category">${cat}</div>
+  <div class="result-snippet">${this.escapeHtml(snippet)}</div>
+</div>`;
+            });
+            innerResults += `</div>`;
+
+            // No-wiki tags section with tag cloud at the bottom (only if not the sorry case above)
+            if (noWikiResults.length && !this._checkingOnlineTag) {
+                innerResults += `
+<div class="no-wiki-section">
+  <h4>Tags without wiki pages (click to check online)</h4>
+  <div class="tag-cloud">`;
+                noWikiResults.slice(0, 30).forEach((r) => {
+                    const nm = this.escapeHtml(r.title || r.name || 'Unknown');
+                    innerResults += `<span class="tag-pill" data-tag="${nm}">${nm}</span>`;
+                });
+                innerResults += `</div>
+</div>`;
+            }
         }
 
-        if (onlineWikiItems.length > 0) {
-            html += '<div class="tag-wiki-online-section">';
-            html += `<div class="tag-wiki-online-header">Online Wiki Pages (${onlineWikiItems.length})</div>`;
-            html += onlineWikiItems.map(({ result, index }) =>
-                this.renderResultItem(result, index, 'tag-wiki-result-item-online')
-            ).join('');
-            html += '</div>';
+        if (this._checkingOnlineTag) {
+            delete this._checkingOnlineTag;
         }
 
-        if (onlineTagItems.length > 0) {
-            html += '<div class="tag-wiki-online-section tag-wiki-online-tags-section">';
-            html += `<div class="tag-wiki-online-header">Online Tags (no wiki page)</div>`;
-            html += onlineTagItems.map(({ result, index }) => {
-                const category = result.categoryName || 'Uncategorized';
-                const tagName = result.title || result.name || 'Unknown';
-                return `
-                    <div class="tag-wiki-result-item tag-wiki-result-item-no-wiki tag-wiki-result-item-online-tag" data-index="${index}" data-tag-id="${result.id || ''}" data-tag-name="${tagName}">
-                        <div class="tag-wiki-result-name">${this.escapeHtml(tagName)}</div>
-                        <div class="tag-wiki-result-source">${this.getSourceIcon(result.source)}</div>
-                        <div class="tag-wiki-result-category">${this.escapeHtml(category)}</div>
-                    </div>
-                `;
-            }).join('');
-            html += '</div>';
-        } else if (this.includeOnline && this.currentSearchType === 'name' && onlineWikiItems.length === 0) {
-            html += '<div class="tag-wiki-online-section">';
-            html += '<div class="tag-wiki-online-header tag-wiki-online-header-empty">No additional online wiki pages</div>';
-            html += '</div>';
+        const stats = isLoading ? '' : (results.length ? `About ${results.length} results` : 'No results');
+
+        const html = `
+<div class="grimoire-search-page">
+  <div class="search-page-header">
+    <div class="search-page-bar">
+      <i class="fas fa-search search-page-icon"></i>
+      <input type="text" class="search-page-input form-control" value="${this.escapeHtml(q)}" placeholder="Search tags, wikis, and documentation...">
+      <i class="fas fa-cog search-gear" title="Search options &amp; filters"></i>
+      <button type="button" class="btn-secondary search-page-go">Search</button>
+    </div>
+    <div class="search-page-options">
+      <span class="search-page-hint">Results for <strong>${this.escapeHtml(q || 'everything')}</strong>. Use the address bar or top filters.</span>
+    </div>
+  </div>
+
+  <div class="search-page-stats">${stats}</div>
+
+  <div class="search-results-list google-style">
+    ${innerResults}
+  </div>
+</div>`;
+
+        this.displayArea.innerHTML = html;
+
+        // Wire the page-internal search bar
+        const pageInput = this.displayArea.querySelector('.search-page-input');
+        const goBtn = this.displayArea.querySelector('.search-page-go');
+        const doSearch = () => {
+            const newQ = (pageInput && pageInput.value.trim()) || q;
+            if (newQ) {
+                this.navigate(`edtx://en.grimoire.jp/search?q=${encodeURIComponent(newQ)}`);
+            }
+        };
+        if (pageInput) {
+            pageInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') doSearch();
+            });
+        }
+        if (goBtn) goBtn.addEventListener('click', doSearch);
+
+        // Gear icon for search controls (replaces the old sidebar header filters when on the dedicated search page).
+        // Placed immediately to the left of the "Search" go button as requested.
+        // Attach *before* any user click so the context system's mousedown/click listeners see [data-click-menu] and open the menu on the gear click.
+        const gear = this.displayArea.querySelector('.search-gear');
+        if (gear && contextMenu && typeof contextMenu.attachClickMenuToElement === 'function') {
+            // Build fresh config (with current toggle states) and attach for click-to-open.
+            // The show function now returns the config (and attaches only if anchor passed).
+            const cfg = this.showSearchControlsContextMenu(gear, true /* returnOnly */);
+            if (cfg) {
+                contextMenu.attachClickMenuToElement(gear, cfg);
+            }
+            gear.addEventListener('click', (e) => e.stopPropagation());
+        } else if (gear) {
+            gear.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('info', 'Search', 'Search options (context/click menu system not available)', false, 2000);
+                }
+            });
         }
 
-        if (localOnlyItems.length > 0) {
-            html += localOnlyItems.map(({ result, index }) =>
-                this.renderResultItem(result, index, '')
-            ).join('');
-        }
-        
-        if (itemsWithoutWiki.length > 0) {
-            html += '<div class="tag-wiki-no-wiki-section">';
-            html += '<div class="tag-wiki-no-wiki-header">Other Results (No Wiki Pages)</div>';
-            html += itemsWithoutWiki.map(({ result, index }) => {
-                const category = result.categoryName || 'Uncategorized';
-                const tagName = result.title || result.name || 'Unknown';
-                
-                return `
-                    <div class="tag-wiki-result-item tag-wiki-result-item-no-wiki" data-index="${index}" data-tag-id="${result.id || ''}" data-tag-name="${this.escapeHtml(tagName)}">
-                        <div class="tag-wiki-result-name">${this.escapeHtml(tagName)}</div>
-                        <div class="tag-wiki-result-source"><i class="fas fa-question-circle" title="No Wiki"></i></div>
-                        <div class="tag-wiki-result-category">${this.escapeHtml(category)}</div>
-                    </div>
-                `;
-            }).join('');
-            html += '</div>';
-        }
-        
-        this.resultsList.innerHTML = html;
-        
-        const clickableItems = this.resultsList.querySelectorAll('.tag-wiki-result-item:not(.tag-wiki-result-item-no-wiki)');
-        clickableItems.forEach(item => {
-            item.addEventListener('click', () => {
-                const index = parseInt(item.dataset.index, 10);
-                const tag = results[index];
-                if (tag && tag.hasWiki) {
-                    this.selectTag(tag);
+        // Wire clicking a result -> load the wiki page (this path still supports direct tag navigation via getTagWikiPageDirectly / selectTag for other callers)
+        this.displayArea.querySelectorAll('.google-search-result').forEach((el) => {
+            el.addEventListener('click', () => {
+                const tagName = el.dataset.tagName;
+                if (tagName) {
+                    this.getTagWikiPageDirectly(tagName);
                 }
             });
         });
-        
-        const itemsWithWiki = [...mergedItems, ...localOnlyItems, ...onlineWikiItems];
-        this.checkAndOpenDirectMatch(results, itemsWithWiki);
-        this.updateResultsPanelTitle();
-        this.updateResultsSidebar(true);
-        this.updateSearchControlsVisibility();
+
+        // Tag cloud pills (no-wiki results) - click to attempt online wiki check
+        // Uses direct wiki lookup (not search) so it targets the exact clicked tag.
+        this.displayArea.querySelectorAll('.tag-pill').forEach((pill) => {
+            pill.addEventListener('click', () => {
+                const tag = pill.dataset.tag;
+                if (!tag) return;
+                this._checkingOnlineTag = tag;
+                this.includeOnline = true;
+                if (this.searchInput) this.searchInput.value = tag;
+                this._showOnlineLookupPage(tag);
+                // Direct attempt for this exact tag (source 'both' will try online if no local wiki).
+                // The dedicated UI stays visible during fetch (see guard in getTagWikiPageDirectly).
+                this.getTagWikiPageDirectly(tag);
+            });
+        });
+
+        // Attach the full per-tag context menu (copy, favorites, phasewalker, add to prompt, 
+        // new window, desktop, AND the "Open on Left"/"Open on Right" send-to-pane options when in split mode)
+        // to search result items and tag pills in the dedicated search page view.
+        // This makes "send to left and right" available directly from the results list / cloud.
+        this.displayArea.querySelectorAll('.google-search-result, .tag-pill').forEach((el) => {
+            const tagName = el.dataset.tagName || el.dataset.tag;
+            if (tagName) {
+                el.dataset.tagName = tagName; // normalize for setupLinkContextMenu
+                this.setupLinkContextMenu(el);
+            }
+        });
+
+        // Robust interception for any links that might have been rendered (anchors, pseudo, external safety)
+        if (typeof this._interceptAllLinks === 'function') {
+            this._interceptAllLinks();
+        }
+    }
+
+    showSearchControlsContextMenu(anchorEl, returnOnly = false) {
+        if (!contextMenu && !returnOnly) return null;
+
+        const config = {
+            position: 'anchor',
+            anchor: anchorEl,
+            anchorAlign: 'start',
+            sections: [
+                {
+                    type: 'list',
+                    items: [
+                        {
+                            // Web/online search toggle uses *highlighted* as state indicator (standard: no checkmark text, no toggle icons)
+                            text: 'Online search',
+                            icon: 'fas fa-globe',
+                            action: 'toggle-online',
+                            loadfn: (item) => {
+                                item.highlighted = !!this.includeOnline;
+                            }
+                        },
+                        { separator: true },
+                        {
+                            // Source as submenu (open on hover), active indicated by highlighted (no ✓ appended)
+                            text: 'Source',
+                            icon: 'fas fa-database',
+                            openOnHover: true,
+                            optionsfn: () => {
+                                const src = this.currentSource || 'both';
+                                return [
+                                    {
+                                        text: 'Danbooru',
+                                        icon: 'fas fa-globe',
+                                        action: 'source-danbooru',
+                                        loadfn: (item) => { item.highlighted = src === 'danbooru'; }
+                                    },
+                                    {
+                                        text: 'e621',
+                                        icon: 'fas fa-paw',
+                                        action: 'source-e621',
+                                        loadfn: (item) => { item.highlighted = src === 'e621'; }
+                                    },
+                                    {
+                                        text: 'Both',
+                                        icon: 'fas fa-layer-group',
+                                        action: 'source-both',
+                                        loadfn: (item) => { item.highlighted = src === 'both'; }
+                                    }
+                                ];
+                            }
+                        },
+                        {
+                            // Search type (name vs description) as submenu, highlighted for active
+                            text: 'Search by',
+                            icon: 'fas fa-search',
+                            openOnHover: true,
+                            optionsfn: () => {
+                                const typ = this.currentSearchType || 'name';
+                                return [
+                                    {
+                                        text: 'Name',
+                                        icon: 'fas fa-tag',
+                                        action: 'type-name',
+                                        loadfn: (item) => { item.highlighted = typ === 'name'; }
+                                    },
+                                    {
+                                        text: 'Description',
+                                        icon: 'fas fa-file-alt',
+                                        action: 'type-description',
+                                        loadfn: (item) => { item.highlighted = typ === 'description'; }
+                                    }
+                                ];
+                            }
+                        },
+                        { separator: true },
+                        {
+                            // Category remains submenu; items get highlighted for current via loadfn wrapper (no check text)
+                            text: 'Category Filter...',
+                            icon: 'fas fa-filter',
+                            openOnHover: true,
+                            optionsfn: () => this.getGrimoireFilterOptionsForMenu().map((opt) => ({
+                                text: opt.text || opt.label,
+                                icon: (opt.filterValue === '' || !opt.filterValue) ? 'fas fa-tags' : 'fas fa-tag',
+                                action: opt.action || ('filter-' + (opt.filterValue || '')),
+                                filterValue: opt.filterValue,
+                                loadfn: (item) => {
+                                    const cur = (this.currentFilter || '');
+                                    const val = (item.filterValue != null ? String(item.filterValue) : '');
+                                    item.highlighted = val === cur;
+                                }
+                            })),
+                            handlerfn: (sub) => {
+                                if (sub && sub.filterValue !== undefined) {
+                                    this.applyGrimoireFilter(sub.filterValue);
+                                    setTimeout(() => this.refreshSearchPageResults(), 50);
+                                }
+                            }
+                        }
+                    ]
+                }
+            ],
+            onAction: (action) => {
+                switch (action) {
+                    case 'toggle-online':
+                        this.includeOnline = !this.includeOnline;
+                        try {
+                            localStorage.setItem(GRIMOIRE_ONLINE_SEARCH_LS, this.includeOnline ? 'true' : 'false');
+                        } catch (err) { /* */ }
+                        this.updateOnlineToggleState && this.updateOnlineToggleState();
+                        this.refreshSearchPageResults();
+                        break;
+                    case 'source-danbooru':
+                        this.currentSource = 'danbooru';
+                        this.refreshSearchPageResults();
+                        break;
+                    case 'source-e621':
+                        this.currentSource = 'e621';
+                        this.refreshSearchPageResults();
+                        break;
+                    case 'source-both':
+                        this.currentSource = 'both';
+                        this.refreshSearchPageResults();
+                        break;
+                    case 'type-name':
+                        this.currentSearchType = 'name';
+                        this.updateOnlineToggleState && this.updateOnlineToggleState();
+                        this.refreshSearchPageResults();
+                        break;
+                    case 'type-description':
+                        this.currentSearchType = 'description';
+                        this.updateOnlineToggleState && this.updateOnlineToggleState();
+                        this.refreshSearchPageResults();
+                        break;
+                }
+            }
+        };
+
+        if (returnOnly) {
+            return config;
+        }
+
+        // Attach for click-to-open (preferred for gear/options).
+        if (contextMenu && typeof contextMenu.attachClickMenuToElement === 'function') {
+            contextMenu.attachClickMenuToElement(anchorEl, config);
+        } else if (contextMenu && typeof contextMenu.attachToElement === 'function') {
+            contextMenu.attachToElement(anchorEl, config);
+        }
+        return config;
+    }
+
+    getGrimoireFilterOptionsForMenu() {
+        // Reuse or approximate the filter options from existing logic
+        if (typeof this.getGrimoireFilterOptions === 'function') {
+            return this.getGrimoireFilterOptions().map(opt => ({
+                text: opt.label,
+                filterValue: opt.value,
+                action: 'filter-' + opt.value
+            }));
+        }
+        // Fallback simple categories
+        return [
+            { text: 'All', filterValue: '' },
+            { text: 'General', filterValue: '0' },
+            { text: 'Character', filterValue: '4' },
+            { text: 'Copyright', filterValue: '3' },
+            { text: 'Artist', filterValue: '1' },
+            { text: 'Meta', filterValue: '5' }
+        ];
+    }
+
+    refreshSearchPageResults() {
+        // Re-run search with current filter states and re-render into the dedicated search page view.
+        // Temporarily force _searchPageMode so performSearch + renderResults skip the legacy
+        // results sidebar / overlay (we removed reliance on the old split sidebar for search pages).
+        const currentQ = (this.searchInput && this.searchInput.value.trim()) || '';
+        if (!currentQ) return;
+        const wasSearchPageMode = !!this._searchPageMode;
+        this._searchPageMode = true;
+        this.performSearch().finally(() => {
+            this._searchPageMode = wasSearchPageMode;
+            this.showSearchResultsPage(currentQ, false);
+        });
+    }
+
+    // Dedicated "online page lookup" UI for tag cloud clicks (no-wiki tags)
+    // Shows attempting state, then either loads the wiki or a sorry page.
+    _showOnlineLookupPage(tag) {
+        if (!this.displayArea) return;
+        const safe = this.escapeHtml(tag);
+        this.displayArea.innerHTML = `
+<div class="online-lookup dedicated-page">
+  <div class="lookup-hero">
+    <i class="fas fa-globe fa-2x"></i>
+    <h2>Online Wiki Lookup</h2>
+  </div>
+  <p>Attempting to redirect to the online wiki version for <strong>${safe}</strong> (Danbooru &amp; e621)...</p>
+  <div class="lookup-spinner"><i class="fas fa-spinner-third fa-spin fa-3x"></i></div>
+</div>`;
+        this.setAddress({ displayUrl: `edtx://en.grimoire.jp/online-lookup?q=${encodeURIComponent(tag)}`, mode: 'edtx' });
+        if (typeof this._interceptAllLinks === 'function') {
+            this._interceptAllLinks();
+        }
+    }
+
+    _showOnlineLookupSorry(tag) {
+        if (!this.displayArea) return;
+        const safe = this.escapeHtml(tag);
+        this.displayArea.innerHTML = `
+<div class="online-lookup dedicated-page sorry">
+  <div class="lookup-hero">
+    <i class="fas fa-exclamation-circle fa-2x"></i>
+    <h2>Online Lookup Failed</h2>
+  </div>
+  <p>Sorry, no wiki page was found for <strong>${safe}</strong> on the online sources either.</p>
+  <div class="sorry-actions">
+    <button type="button" class="btn-secondary" data-action="search-anyway">Search anyway (local + online)</button>
+    <button type="button" class="btn-secondary" data-action="back-to-home">Back to Grimoire home</button>
+  </div>
+</div>`;
+        // wire actions
+        const anyway = this.displayArea.querySelector('[data-action="search-anyway"]');
+        if (anyway) {
+            anyway.addEventListener('click', () => {
+                this.navigate(`edtx://en.grimoire.jp/search?q=${encodeURIComponent(tag)}`);
+            });
+        }
+        const back = this.displayArea.querySelector('[data-action="back-to-home"]');
+        if (back) {
+            back.addEventListener('click', () => {
+                this.navigate('edtx://en.grimoire.jp/index.dtxt');
+            });
+        }
+        this.setAddress({ displayUrl: `edtx://en.grimoire.jp/search?q=${encodeURIComponent(tag)}`, mode: 'edtx' });
+        if (typeof this._interceptAllLinks === 'function') {
+            this._interceptAllLinks();
+        }
     }
     
     checkAndOpenDirectMatch(allResults, itemsWithWiki) {
         if (!this.searchInput) return;
+        if (this._checkingOnlineTag) return;  // suppress auto-direct during dedicated online lookup from tag cloud
         
         const query = this.searchInput.value.trim().toLowerCase();
         if (!query) return;
@@ -3601,22 +5318,24 @@ class TagWikiSearchModal extends WikiDisplayBase {
             const wikiContent = await this.getTagWikiPage(tag);
             
             // Check for errors before rendering
-            if (wikiContent && wikiContent.error) {
+            if (!this.hasWikiPageContent(wikiContent)) {
+                const errorText = (wikiContent && wikiContent.error)
+                    || `Error loading wiki for "${tag.title || tag.name || 'tag'}"`;
                 const canGoBack = this.history && this.historyIndex > 0;
-                const backButtonHtml = canGoBack 
+                const backButtonHtml = canGoBack
                     ? `<button class="btn-secondary btn-small wiki-error-back-btn" style="margin-top: var(--spacing-sm);">
                         <i class="fas fa-arrow-left"></i> Back
                     </button>`
                     : '';
-                
+
                 if (this.displayArea) {
                     this.displayArea.innerHTML = `
                         <div class="tag-wiki-error">
-                            <i class="fas fa-exclamation-circle"></i> ${this.escapeHtml(wikiContent.error)}
+                            <i class="fas fa-exclamation-circle"></i> ${this.escapeHtml(errorText)}
                             ${backButtonHtml}
                         </div>
                     `;
-                    
+
                     // Setup back button click handler
                     if (canGoBack) {
                         const backBtn = this.displayArea.querySelector('.wiki-error-back-btn');
@@ -3631,11 +5350,11 @@ class TagWikiSearchModal extends WikiDisplayBase {
                 }
                 return;
             }
-            
+
             this.renderWikiPage(wikiContent);
-            
-            // Add to history only if no error
-            if (!wikiContent || !wikiContent.error) {
+
+            // Add to history only if content loaded
+            if (this.hasWikiPageContent(wikiContent)) {
                 dreamWikiRecentAppend(tag.title || tag.name || '');
                 this.addToHistory({
                     type: 'wiki',
@@ -3680,6 +5399,17 @@ class TagWikiSearchModal extends WikiDisplayBase {
             console.warn('openInNewWindow: displayArea is null');
             return;
         }
+
+        if (this._dsapActive && this._dsapState?.url) {
+            // openDsapInStandaloneWindow: public/scripts/comp/dsapRegistry.js
+            if (typeof openDsapInStandaloneWindow === 'function') {
+                const historyToCopy = this.history && this.history.length > 0
+                    ? this.history.slice(0, this.historyIndex + 1)
+                    : null;
+                openDsapInStandaloneWindow(this._dsapState.url, { historyToCopy });
+                return;
+            }
+        }
         
         if (!wikiWindowManager) {
             console.error('openInNewWindow: wikiWindowManager is not available');
@@ -3714,11 +5444,8 @@ class TagWikiSearchModal extends WikiDisplayBase {
     }
     
     clearResults() {
-        if (this.resultsList) {
-            this.resultsList.innerHTML = '';
-        }
+        // Old list cleared (sidebar removed); keep current results for the page view if needed.
         this.currentSearchResults = [];
-        this.updateResultsSidebar();
         this.updateSearchControlsVisibility();
     }
     
@@ -3755,6 +5482,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         this.history = [{ type: 'home' }];
         this.historyIndex = 0;
         this.showDreamWikiHomepage();
+        this.setAddress({ displayUrl: 'edtx://en.grimoire.jp/index.dtxt', mode: 'edtx' });
         this.updateNavigationButtons();
         this.updateSearchControlsVisibility();
     }
@@ -3766,6 +5494,36 @@ class TagWikiSearchModal extends WikiDisplayBase {
             this.currentSelectedTag = null;
             this.currentTagName = null;
             this.showDreamWikiHomepage();
+            this.setAddress({ displayUrl: 'edtx://en.grimoire.jp/index.dtxt', mode: 'edtx' });
+            this.updateNavigationButtons();
+            return;
+        }
+
+        if (entry.type === 'dsap' && entry.url) {
+            this.currentSelectedTag = null;
+            this.currentTagName = null;
+            if (typeof navigateDsapIfMatched === 'function') {
+                navigateDsapIfMatched(this, entry.url, { skipHistory: true, skipLoadingDelay: true });
+            } else if (typeof this.navigate === 'function') {
+                this.navigate(entry.url);
+            }
+            this.updateNavigationButtons();
+            return;
+        }
+
+        if (entry.type === 'nav-error' && entry.url) {
+            this.currentSelectedTag = null;
+            this.currentTagName = null;
+            this.showGrimoireNavigateErrorPage({
+                url: entry.url,
+                kind: entry.kind || 'not_found',
+                protocol: entry.protocol || '',
+                skipHistory: true,
+                skipLoadingDelay: true
+            });
+            if (typeof grimoireNormalizePseudoDisplayUrl === 'function') {
+                this.setAddress(grimoireNormalizePseudoDisplayUrl(entry.url));
+            }
             this.updateNavigationButtons();
             return;
         }
@@ -3794,6 +5552,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
             // Restore wiki view
             if (entry.tag) {
                 this.currentSelectedTag = entry.tag;
+                this.currentTagName = entry.tag.title || entry.tag.name || this.currentTagName || '';
                 if (entry.content) {
                     this.renderWikiPage(entry.content);
                 } else {
@@ -3853,9 +5612,19 @@ class TagWikiSearchModal extends WikiDisplayBase {
                         : 'Search online (Danbooru & e621)';
                 }
             }
-            if (entry.results) {
-                this.currentSearchResults = entry.results;
-                this.renderResults(entry.results);
+            if (entry.query !== undefined) {
+                // Search entry (including the search homepage when query is empty string)
+                if (this.searchInput) {
+                    this.searchInput.value = entry.query || '';
+                }
+                this.currentSearchResults = entry.results || [];
+                this.showSearchResultsPage(entry.query || '', false);
+
+                // Make sure address bar shows the correct pretty url for this history entry
+                const display = entry.query
+                    ? `edtx://en.grimoire.jp/search?q=${encodeURIComponent(entry.query)}`
+                    : 'edtx://en.grimoire.jp/search';
+                this.setAddress({ displayUrl: display, mode: 'edtx' });
             } else {
                 this.updateResultsSidebar(true);
             }
@@ -3882,8 +5651,8 @@ class TagWikiSearchModal extends WikiDisplayBase {
             for (let i = this.historyIndex - 1; i >= 0; i--) {
                 const entry = this.history[i];
                 
-                // For standalone windows, filter out search entries (only show wiki pages)
-                if (isStandalone && entry.type !== 'wiki') {
+                // Standalone windows: wiki, DSAP, and static docs in history menus
+                if (isStandalone && !['wiki', 'dsap', 'static-wiki-page', 'static-wiki-index'].includes(entry.type)) {
                     continue;
                 }
                 
@@ -3919,8 +5688,8 @@ class TagWikiSearchModal extends WikiDisplayBase {
             for (let i = this.historyIndex + 1; i < this.history.length; i++) {
                 const entry = this.history[i];
                 
-                // For standalone windows, filter out search entries (only show wiki pages)
-                if (isStandalone && entry.type !== 'wiki') {
+                // Standalone windows: wiki, DSAP, and static docs in history menus
+                if (isStandalone && !['wiki', 'dsap', 'static-wiki-page', 'static-wiki-index'].includes(entry.type)) {
                     continue;
                 }
                 
@@ -3966,6 +5735,10 @@ if (document.readyState === 'loading') {
 // Export for global access
 if (typeof window !== 'undefined') {
     window.tagWikiSearchModal = tagWikiSearchModal;
+// Convenience router for the pseudo-browser surface (used by the layered address bar, Run entries, internal links, etc.)
+if (tagWikiSearchModal && typeof tagWikiSearchModal.navigate === 'function') {
+    window.grimoireNavigate = window.grimoireNavigate || ((u) => tagWikiSearchModal.navigate(u));
+}
     window.wikiWindowManager = wikiWindowManager;
 }
 

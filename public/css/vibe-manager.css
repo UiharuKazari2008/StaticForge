@@ -1,0 +1,819 @@
+/* Vibe manager + cache manager tabs */
+/* Cache Manager Tabs */
+.cache-manager-tabs {
+    margin-bottom: var(--spacing-sm);
+}
+
+
+/* Vibe Manager Styles */
+
+.vibe-manager-gallery-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    width: 100%;
+    overflow: hidden;
+}
+
+.vibe-manager-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+    padding: 10px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex: 1;
+    width: 100%;
+    max-height: 60vh;
+    min-height: 200px;
+}
+
+/* Custom scrollbar for vibe manager gallery */
+.vibe-manager-gallery::-webkit-scrollbar {
+    width: 8px;
+}
+
+.vibe-manager-gallery::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+.vibe-manager-gallery::-webkit-scrollbar-thumb {
+    background: var(--primary-color);
+    border-radius: 4px;
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .vibe-manager-gallery::-webkit-scrollbar-thumb:hover:not(:disabled) {
+        background: var(--primary-color-light);
+    }
+}
+
+/* Disabled vibe transfer elements during inpainting */
+#vibeReferencesContainer[style*="opacity: 0.5"] {
+    position: relative;
+}
+
+#vibeReferencesContainer[style*="opacity: 0.5"]::after {
+    content: "Vibe transfers disabled during inpainting";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: var(--z-layer-10);
+    pointer-events: none;
+}
+
+.cache-browser-tabs .tab-btn[style*="opacity: 0.5"],
+.cache-manager-tabs .tab-btn[style*="opacity: 0.5"] {
+    position: relative;
+    cursor: not-allowed;
+}
+
+.cache-browser-tabs .tab-btn[style*="opacity: 0.5"]::after,
+.cache-manager-tabs .tab-btn[style*="opacity: 0.5"]::after {
+    content: "⚠️";
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: #ff6b6b;
+    color: white;
+    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    font-size: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: var(--z-layer-10);
+}
+
+.vibe-manager-gallery-item {
+    position: relative;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: var(--transition-gallery-card);
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .vibe-manager-gallery-item:hover:not(:disabled) {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        border-color: rgba(255, 255, 255, 0.3);
+    }
+}
+
+.vibe-manager-gallery-item img {
+    width: 100%;
+    aspect-ratio: 1/1;
+    object-fit: cover;
+    object-position: center top;
+    display: block;
+}
+
+.vibe-manager-gallery-item-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.7) 100%);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 12px;
+    z-index: var(--z-layer-5);
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .vibe-manager-gallery-item:hover:not(:disabled) .vibe-manager-gallery-item-overlay {
+        opacity: 1;
+    }
+}
+
+.vibe-manager-gallery-item-info {
+    color: #fff;
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+
+.vibe-manager-gallery-item-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.vibe-manager-gallery-item-encodings {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-width: 80px;
+    z-index: var(--z-layer-10);
+}
+
+.vibe-manager-encoding-badge {
+    background: rgba(0, 0, 0, 0.8);
+    color: #fff;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.vibe-manager-encoding-badge.no-encodings {
+    background: rgba(255, 0, 0, 0.6);
+    border-color: rgba(255, 0, 0, 0.8);
+}
+
+.vibe-manager-reference-preview {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+    margin-bottom: 16px;
+}
+
+.vibe-manager-reference-preview img {
+    max-width: 100%;
+    max-height: 200px;
+    border-radius: 4px;
+    object-fit: contain;
+}
+
+.vibe-manager-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    color: #ccc;
+    min-height: 200px;
+}
+
+.vibe-manager-loading .spinner {
+    width: 30px;
+    height: 30px;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-top: 3px solid #fff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 16px;
+}
+
+.vibe-manager-loading p {
+    margin: 0;
+    font-size: 0.9rem;
+    color: #ccc;
+}
+
+.vibe-manager-gallery-item.selected {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px var(--primary-color);
+}
+
+.vibe-manager-gallery.selection-mode .vibe-manager-gallery-item {}
+
+.vibe-manager-gallery.selection-mode .vibe-manager-gallery-item:not(.selected):not(:hover) {
+    opacity: 0.7;
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .vibe-manager-gallery.selection-mode .vibe-manager-gallery-item:hover:not(:disabled) {
+        opacity: 1;
+    }
+}
+
+/* Vibe delete items list styling */
+.vibe-delete-items-list {
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 8px;
+    border: 1px solid var(--glass-border-3);
+    border-radius: 8px;
+    background: var(--glass-inset-bg-3);
+}
+
+.vibe-delete-select-all {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem;
+    border-bottom: 1px solid var(--glass-border-2);
+    background: var(--glass-layer-2);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.vibe-delete-select-all input[type="checkbox"] {
+    display: none;
+}
+
+.vibe-delete-select-all .checkmark {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--primary-color);
+    border-radius: var(--border-radius-md);
+    position: relative;
+    transition: var(--transition-glass-surface);
+}
+
+.vibe-delete-select-all input[type="checkbox"]:checked+.checkmark {
+    background: var(--primary-color);
+}
+
+.vibe-delete-select-all input[type="checkbox"]:checked+.checkmark::after {
+    content: '✓';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.vibe-delete-select-all label {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+.vibe-delete-items {
+    padding: 0.75rem;
+}
+
+.vibe-delete-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid var(--glass-border-1);
+    border-radius: var(--border-radius-md);
+    background: var(--glass-layer-1);
+    margin-bottom: 0.5rem;
+    transition: var(--transition-glass-surface);
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .vibe-delete-item:hover:not(:disabled) {
+        background: var(--glass-layer-2);
+        border-color: var(--glass-border-2);
+        box-shadow: var(--glass-shadow-1);
+    }
+}
+
+.vibe-delete-item:last-child {
+    margin-bottom: 0;
+}
+
+.vibe-delete-item input[type="checkbox"] {
+    display: none;
+}
+
+.vibe-delete-item .checkmark {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--primary-color);
+    border-radius: var(--border-radius-md);
+    position: relative;
+    transition: var(--transition-glass-surface);
+    flex-shrink: 0;
+}
+
+.vibe-delete-item input[type="checkbox"]:checked+.checkmark {
+    background: var(--primary-color);
+}
+
+.vibe-delete-item input[type="checkbox"]:checked+.checkmark::after {
+    content: '✓';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.vibe-delete-item label {
+    flex: 1;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    color: var(--text-primary);
+}
+
+.vibe-delete-item .vibe-badge {
+    flex-shrink: 0;
+}
+
+.overlay-buttons-container {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    padding: 10px;
+    z-index: var(--z-layer-2);
+}
+
+.overlay-buttons-container-bottom {
+    display: flex;
+    justify-content: flex-end;
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    padding: 10px;
+    z-index: var(--z-layer-2);
+}
+
+.vibe-delete-item {
+    padding: 12px;
+    border: 1px solid var(--glass-border-3);
+    border-radius: 8px;
+    margin: 4px 0;
+    background: var(--glass-layer-3);
+    transition: var(--transition-tray-menu);
+    user-select: none;
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .vibe-delete-item:hover:not(:disabled) {
+        background: #ff000029;
+        border-color: #a41111;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 10px rgb(255 0 0 / 22%);
+    }
+}
+
+.vibe-delete-item.selected {
+    background: #dc000069;
+    border-color: #f32121;
+    box-shadow: 0 2px 8px rgb(243 33 33 / 30%);
+    color: var(--text-primary);
+}
+
+.vibe-delete-item-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.vibe-delete-item-name {
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.vibe-badge {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.transformation-image-container {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    min-width: calc(calc(100% / 3) - var(--spacing-sm));
+    max-width: calc(calc(100% / 3) - var(--spacing-sm));
+    background: var(--glass-layer-2);
+    border-radius: var(--border-radius-md);
+    border: 1px solid var(--glass-border-2);
+    height: -webkit-fill-available;
+}
+
+.no-items {
+    text-align: center;
+    color: var(--text-secondary);
+    font-style: italic;
+    padding: 2rem;
+}
+
+/* Modal buttons styling */
+.modal-buttons {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-end;
+}
+
+.modal-buttons .btn-secondary,
+.modal-buttons .btn-danger {
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    border: none;
+    font-size: 0.9rem;
+    transition: var(--transition-tray-menu);
+}
+
+.modal-buttons .btn-secondary {
+    background: #6c757d;
+    color: white;
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .modal-buttons .btn-secondary:hover:not(:disabled) {
+        background: #5a6268;
+    }
+}
+
+.modal-buttons .btn-danger {
+    background: #dc3545;
+    color: white;
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .modal-buttons .btn-danger:hover:not(:disabled) {
+        background: #c82333;
+    }
+}
+
+.delete-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.radio-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .radio-option:hover:not(:disabled) {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+}
+
+.radio-option input[type="radio"] {
+    margin: 0;
+}
+
+.radio-label {
+    font-weight: 500;
+    color: #fff;
+}
+
+.delete-items-list {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    padding: 0.5rem;
+    background-color: rgba(0, 0, 0, 0.3);
+}
+
+.delete-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    transition: background-color 0.2s;
+}
+
+.delete-item:last-child {
+    border-bottom: none;
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .delete-item:hover:not(:disabled) {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+}
+
+.delete-item input[type="checkbox"] {
+    margin: 0;
+}
+
+.delete-item-label {
+    flex: 1;
+    font-size: 0.9rem;
+    color: #fff;
+}
+
+.delete-item-badge {
+    font-size: 0.8rem;
+    padding: 0.2rem 0.4rem;
+    border-radius: 3px;
+    background-color: #007bff;
+    color: white;
+}
+
+/* Enhanced vibe image badges */
+.vibe-image-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-top: 0.5rem;
+}
+
+.vibe-badge {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.4rem;
+    border-radius: 3px;
+    color: white;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.vibe-badge.split {
+    background: transparent;
+    padding: 0;
+    display: flex;
+    overflow: hidden;
+    border-radius: 3px;
+    gap: 0;
+}
+
+.vibe-badge.split .badge-text:first-child {
+    background: #007bff;
+    padding: 0.2rem 0.4rem;
+    border-radius: 3px 0 0 3px;
+}
+
+.vibe-badge.split .badge-text:last-child {
+    background: #28a745;
+    padding: 0.2rem 0.4rem;
+    border-radius: 0 3px 3px 3px;
+}
+
+.vibe-badge.vibe-only {
+    background: #d00000;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+}
+
+.vibe-badge .badge-icon {
+    font-size: 0.7rem;
+}
+
+.vibe-badge .badge-text {
+    font-size: 0.7rem;
+    font-weight: 500;
+}
+
+.comment-dialog {
+    width: 90%;
+}
+
+.comment-dialog .comment-content {
+    padding: 1rem 0;
+}
+
+/* Vibe Bundle Preview Styles */
+.vibe-bundle-preview-container {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--background-secondary);
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.vibe-bundle-list {
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1em;
+}
+
+.vibe-bundle-item {
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    gap: 1rem;
+}
+
+.vibe-bundle-item:last-child {
+    margin-bottom: 0;
+}
+
+.vibe-bundle-item-image {
+    width: 48px;
+    height: 48px;
+    border-radius: 4px;
+    object-fit: cover;
+    background: var(--background-secondary);
+    flex-shrink: 0;
+}
+
+.vibe-bundle-item-details {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.vibe-bundle-item-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.vibe-bundle-item-info {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+/* Vibe bundle items now use the same badge structure as vibe manager - no custom styles needed */
+
+.unified-upload-mode-selector.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.unified-upload-mode-selector.disabled .mode-slider-btn {
+    cursor: not-allowed;
+}
+
+.comment-dialog .comment-content p {
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.vibes-comments-content {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.vibe-comment-item {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.vibe-comment-item:last-child {
+    border-bottom: none;
+}
+
+.vibe-comment-item h4 {
+    margin: 0 0 0.5rem 0;
+    color: var(--text-primary);
+    font-size: 1rem;
+}
+
+.vibe-comment-item p {
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    line-height: 1.5;
+    text-align: left;
+    background: var(--glass-layer-dark-5);
+    padding: var(--spacing-sm);
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-lg);
+    font-size: 14px;
+}
+
+#vibeManagerDeleteModal {
+    width: 350px;
+}
+
+.queue-status {
+    font-weight: bold;
+    color: var(--text-secondary);
+    transition: color 0.2s;
+}
+
+.queue-status.notice {
+    background: #f29d0024;
+    color: #d8c8ab;
+    border-color: rgb(255 202 136 / 20%);
+}
+
+.queue-status.warn {
+    background: #904d007d;
+    color: #ffd68a;
+    border-color: rgb(255 214 136 / 20%);
+}
+
+.queue-status.bad {
+    background: #7e121278;
+    color: #ff9999;
+    border-color: rgb(255 136 136 / 20%);
+}
+
+.queue-status.stopped {
+    background: #61000078;
+    color: #ff5959;
+    border-color: rgb(255 136 136 / 20%);
+}
+
+body.scraps-grayscale::after {
+    background: radial-gradient(hsl(0deg 0% 0% / 59%), hsl(0deg 0% 0%));
+}
+
+.gallery-item.initial-placeholder:not(.fade-in),
+.gallery-placeholder.initial-placeholder:not(.fade-in) {
+    opacity: 0;
+}
+
+.gallery-item.fade-in,
+.gallery-placeholder.fade-in {
+    opacity: 0;
+    animation: galleryFadeIn 1s forwards;
+}
+
+@keyframes galleryFadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+.gallery-item.slide-in,
+.gallery-placeholder.slide-in {
+    opacity: 0;
+    transform: translateY(32px);
+    animation: gallerySlideIn 2s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+
+@keyframes gallerySlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(32px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
