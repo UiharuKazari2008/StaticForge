@@ -99,10 +99,9 @@ class LoginPage {
     }
 
     addDigit(digit) {
-        // Clear error when starting a new entry
-        if (this.rollingBuffer.length === 0) {
-            this.clearPinError();
-        }
+        // Clear error as soon as user starts typing
+        this.clearPinError();
+        this.clearPinDotsError();
 
         if (this.rollingBuffer.length < 6) {
             this.rollingBuffer += digit;
@@ -116,6 +115,8 @@ class LoginPage {
     }
 
     removeDigit() {
+        this.clearPinError();
+        this.clearPinDotsError();
         if (this.rollingBuffer.length > 0) {
             this.rollingBuffer = this.rollingBuffer.slice(0, -1);
             this.updatePinDisplay();
@@ -123,6 +124,8 @@ class LoginPage {
     }
 
     clearPin() {
+        this.clearPinError();
+        this.clearPinDotsError();
         this.rollingBuffer = '';
         this.updatePinDisplay();
     }
@@ -469,29 +472,46 @@ class LoginPage {
                 }, 800);
                 
             } else {
-                this.showPinError();
-                this.clearPin();
+                this.showPinError(data.error);
+                // Clear the buffer but don't call clearPin() which would hide the error we just showed
+                this.rollingBuffer = '';
+                this.updatePinDisplay();
             }
         } catch (error) {
             console.error('Login error:', error);
-            this.showPinError();
-            this.clearPin();
+            this.showPinError('Connection error. Please try again.');
+            this.rollingBuffer = '';
+            this.updatePinDisplay();
         } finally {
             this.isLoading = false;
         }
     }
 
-    showPinError() {
+    showPinError(message = 'Invalid PIN code') {
+        if (this.errorMessage) {
+            this.errorMessage.textContent = message;
+            this.errorMessage.classList.remove('hidden');
+        }
+        this.showPinDotsError();
+    }
+
+    showPinDotsError() {
         this.pinDots.forEach(dot => {
             dot.classList.add('error');
         });
-        // Remove error state after animation
+        // Remove error dots state after animation
         setTimeout(() => {
-            this.clearPinError();
+            this.clearPinDotsError();
         }, 1000);
     }
 
     clearPinError() {
+        if (this.errorMessage) {
+            this.errorMessage.classList.add('hidden');
+        }
+    }
+
+    clearPinDotsError() {
         this.pinDots.forEach(dot => {
             dot.classList.remove('error');
         });

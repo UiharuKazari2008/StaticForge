@@ -360,6 +360,20 @@ body {
     border-radius: 5px;
     color: #fff;
     font-size: 0.9em;
+    transition: opacity 0.3s ease, transform 0.3s ease, max-height 0.3s ease;
+    overflow: hidden;
+    will-change: opacity, transform, max-height;
+}
+
+.error-message.hidden {
+    display: block;
+    opacity: 0;
+    max-height: 0;
+    padding: 0;
+    border-width: 0;
+    margin-top: 0;
+    transform: translateY(-10px);
+    pointer-events: none;
 }
 
 .hidden {
