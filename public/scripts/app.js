@@ -16958,10 +16958,6 @@ async function startBackgroundTrayServices() {
             return 'modemTrayIcon';
         },
         () => {
-            revealTrayIconById('generationQuipsTrayIcon');
-            return 'generationQuipsTrayIcon';
-        },
-        () => {
             if (window.naxtApplet && typeof window.naxtApplet.updateBagTrayChrome === 'function') {
                 window.naxtApplet.updateBagTrayChrome();
             }
@@ -17012,8 +17008,6 @@ function setupTrayIconPopovers() {
         'fixedCreditsIndicator',
         'imageGenerationIndicator',
         'searchIndexingIndicator',
-        'generationQuipsTrayIcon',
-        'desktopSaveTrayIndicator',
         'workspaceTrayIcon',
         'serviceWorkerTrayIcon',
         'modemTrayIcon',
