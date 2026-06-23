@@ -361,6 +361,26 @@ function cleanupBiasConfirmPreviewElements() {
     });
 }
 
+function releaseUploadedImageDataHeavyFields() {
+    if (!window.uploadedImageData) return;
+    const data = window.uploadedImageData;
+    if (data.croppedBlobUrl && String(data.croppedBlobUrl).startsWith('blob:')) {
+        URL.revokeObjectURL(data.croppedBlobUrl);
+    }
+    if (data.originalDataUrl && String(data.originalDataUrl).startsWith('blob:')) {
+        URL.revokeObjectURL(data.originalDataUrl);
+    }
+    delete data.croppedBlobUrl;
+    delete data.originalDataUrl;
+    if (data.image_source && (
+        String(data.image_source).startsWith('data:')
+        || String(data.image_source).length > 512
+    )) {
+        delete data.image_source;
+    }
+}
+window.releaseUploadedImageDataHeavyFields = releaseUploadedImageDataHeavyFields;
+
 // Get image and target resolution data and determine orientation
 function getImageBiasOrientation() {
     const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
@@ -1467,18 +1487,30 @@ async function cropImageToResolution() {
         }
 
         // Update the preview image and wait for it to load
+        // releaseVariationImageSrc: public/scripts/comp/manualModalManager.js
+        releaseVariationImageSrc();
+        if (croppedBlobUrl && croppedBlobUrl.startsWith('blob:')) {
+            trackBiasPreviewBlob(croppedBlobUrl);
+        }
+        const manualVariationImage = document.getElementById('manualVariationImage');
         await new Promise((resolve, reject) => {
-            variationImage.onload = function() {
+            if (!manualVariationImage) {
+                resolve();
+                return;
+            }
+            manualVariationImage.onload = function() {
                 updateMaskPreview();
                 resolve();
             };
-            variationImage.onerror = function() {
+            manualVariationImage.onerror = function() {
                 reject(new Error('Failed to load cropped image'));
             };
-            variationImage.src = croppedBlobUrl;
+            manualVariationImage.src = croppedBlobUrl;
         });
 
-        variationImage.classList.remove('hidden');
+        if (manualVariationImage) {
+            manualVariationImage.classList.remove('hidden');
+        }
         window.uploadedImageData.croppedBlobUrl = croppedBlobUrl;
         
         // Update the image bias orientation to ensure it's correct

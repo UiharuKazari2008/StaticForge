@@ -526,11 +526,18 @@ function ensureGalleryReadyForAppMode(isStudioOpen) {
         return;
     }
 
-    const savedPosition = window.savedGalleryPosition || 0;
-    if (savedPosition && typeof displayGalleryFromStartIndex === 'function') {
-        displayGalleryFromStartIndex(savedPosition);
-    } else if (typeof loadGallery === 'function') {
-        loadGallery();
+    // prepareGalleryWindowContent: public/scripts/comp/galleryView.js
+    if (typeof prepareGalleryWindowContent === 'function') {
+        prepareGalleryWindowContent().catch((err) => {
+            console.error('Gallery prepare failed:', err);
+        });
+    } else {
+        const savedPosition = window.savedGalleryPosition || 0;
+        if (savedPosition && typeof displayGalleryFromStartIndex === 'function') {
+            displayGalleryFromStartIndex(savedPosition);
+        } else if (typeof loadGallery === 'function') {
+            loadGallery();
+        }
     }
 }
 
@@ -3025,12 +3032,18 @@ function showGalleryWindow() {
     openModal(galleryWindow);
     ensureModalEdgesWithinWorkArea(galleryWindow);
 
-    // Reload gallery content like manual modal close does
-    const savedPosition = window.savedGalleryPosition || 0;
-    if (savedPosition) {
-        displayGalleryFromStartIndex(savedPosition);
+    // prepareGalleryWindowContent: public/scripts/comp/galleryView.js
+    if (typeof prepareGalleryWindowContent === 'function') {
+        prepareGalleryWindowContent().catch((err) => {
+            console.error('Gallery show failed:', err);
+        });
     } else {
-        loadGallery();
+        const savedPosition = window.savedGalleryPosition || 0;
+        if (savedPosition) {
+            displayGalleryFromStartIndex(savedPosition);
+        } else {
+            loadGallery();
+        }
     }
 
     console.log('Gallery shown in desktop mode');

@@ -665,6 +665,10 @@ app.use(compression({
         if (req.path && req.path.endsWith('/stream')) {
             return false;
         }
+        // Binary image routes already carry length; skip gzip so Content-Length stays reliable for transfer ETA.
+        if (req.path && (req.path.startsWith('/images/') || req.path.startsWith('/previews/'))) {
+            return false;
+        }
         // Use compression for all other requests
         return compression.filter(req, res);
     }
@@ -1111,7 +1115,9 @@ app.use('/previews/:preview', authMiddleware, (req, res) => {
     if (!fs.existsSync(previewPath)) {
         return res.status(404).json({ success: false, error: 'Preview not found' });
     }
+    const previewStat = fs.statSync(previewPath);
     res.setHeader('Cache-Control', 'private, max-age=259200');
+    res.setHeader('Content-Length', previewStat.size);
     res.sendFile(previewFile, { root: previewsDir });
 });
 app.get('/naxCache/:gallerySlug/:filename', authMiddleware, (req, res) => {
@@ -1223,12 +1229,15 @@ app.use('/images/:filename', authMiddleware, async (req, res) => {
         return res.status(404).json({ success: false, error: 'Image not found' });
     }
     
+    const fileStat = fs.statSync(filePath);
+
     // Set appropriate headers
     const ext = path.extname(filename).toLowerCase();
     res.setHeader('Content-Type', (ext === '.jpg' || ext === '.jpeg') ? 'image/jpeg' : 'image/png');
     res.setHeader('Cache-Control', 'private, max-age=259200');
-    res.setHeader('Last-Modified', new Date(fs.statSync(filePath).mtime).toUTCString());
-    res.setHeader('ETag', `"${fs.statSync(filePath).mtime.getTime()}"`);
+    res.setHeader('Content-Length', fileStat.size);
+    res.setHeader('Last-Modified', new Date(fileStat.mtime).toUTCString());
+    res.setHeader('ETag', `"${fileStat.mtime.getTime()}"`);
     res.setHeader('Expires', '0');
     
     // Handle download request

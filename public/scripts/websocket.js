@@ -9,10 +9,10 @@ class BannerManager {
         // No initialization needed for glass toasts
     }
 
-    showWebSocketToast(status, message, icon, autoHide = false, hideDelay = WebSocketClient.TIMEOUT_UI_DEFAULT) {
+    showWebSocketToast(status, message, icon, autoHide = false, hideDelay = WebSocketClient.TIMEOUT_UI_DEFAULT, showProgress = false, progress = 0) {
         // If we already have a toast, update it instead of creating a new one
         if (this.websocketToastId && typeof updateGlassToastComplete === 'function') {
-            this.updateWebSocketToast(status, message, icon);
+            this.updateWebSocketToast(status, message, icon, showProgress, progress);
             return;
         }
 
@@ -26,14 +26,17 @@ class BannerManager {
                     status === 'error' ? 'Connection Error' :
                         status === 'warning' ? 'Connection Warning' : 'Connecting',
                 message,
-                false, // No progress bar
+                showProgress,
                 autoHide ? hideDelay : false, // Only auto-hide if specified
                 icon
             );
+            if (showProgress && typeof updateGlassToastProgress === 'function') {
+                updateGlassToastProgress(this.websocketToastId, progress);
+            }
         }
     }
 
-    updateWebSocketToast(status, message, icon) {
+    updateWebSocketToast(status, message, icon, showProgress = false, progress = 0) {
         if (!this.websocketToastId || typeof updateGlassToastComplete !== 'function') {
             return;
         }
@@ -49,6 +52,10 @@ class BannerManager {
             message: message,
             customIcon: icon
         });
+
+        if (showProgress && typeof updateGlassToastProgress === 'function') {
+            updateGlassToastProgress(this.websocketToastId, progress);
+        }
     }
 
     hideWebSocketToast() {
@@ -1326,9 +1333,115 @@ class WebSocketClient {
         this.preStartupHandoffCompleted = true;
     }
 
+    _hideConnectionDialModal() {
+        const modal = document.getElementById('connectionDialModal');
+        if (!modal || modal.classList.contains('hidden')) {
+            return;
+        }
+        if (typeof closeModal === 'function') {
+            closeModal(modal);
+        } else {
+            modal.classList.add('hidden');
+        }
+    }
+
+    _renderConnectionDialToast() {
+        const phase = this.connectionPhase;
+        const ui = this.connectionUi;
+        const beat = ui.beat || 'initializing';
+        const beatDef = WebSocketClient.CONNECTION_BEATS[beat] || {};
+        const progress = beatDef.progress != null ? beatDef.progress : 0;
+
+        this._hideConnectionDialModal();
+
+        if (phase === 'idle') {
+            this.bannerManager.hideWebSocketTicker();
+            if (this.isConnected()) {
+                this.updateWebSocketStatus('connected');
+                if (!this.initializationCompleted) {
+                    this._adoptConnectionToastForInitProgress();
+                } else {
+                    this.bannerManager.hideWebSocketToast();
+                }
+            } else {
+                this.bannerManager.hideWebSocketToast();
+                this.updateWebSocketStatus('disconnected');
+            }
+            return;
+        }
+
+        if (phase === 'auth') {
+            this.bannerManager.hideWebSocketToast();
+            this.bannerManager.showWebSocketToast(
+                'error',
+                ui.message || 'Authentication required',
+                '<i class="fas fa-lock"></i>',
+                false
+            );
+            this.updateWebSocketStatus('disconnected');
+            return;
+        }
+
+        if (phase === 'failed') {
+            this.bannerManager.hideWebSocketToast();
+            this.bannerManager.showWebSocketToast(
+                'error',
+                ui.message || 'Server Not Responding',
+                '<i class="fas fa-phone-missed"></i>',
+                false
+            );
+            this.updateWebSocketStatus('disconnected');
+            return;
+        }
+
+        let message = ui.message || beatDef.message || 'Connecting…';
+        if (ui.attempt > 0) {
+            message = `${message} (attempt ${ui.attempt} of ${ui.maxAttempts})`;
+        }
+
+        if (phase === 'connected') {
+            const handoffToInit = !this.initializationCompleted;
+            this.bannerManager.showWebSocketToast(
+                handoffToInit ? 'connecting' : 'connected',
+                message,
+                handoffToInit
+                    ? '<i class="fa-duotone fa-star-christmas"></i>'
+                    : '<i class="fas fa-phone"></i>',
+                !handoffToInit,
+                WebSocketClient.TIMEOUT_UI_DEFAULT,
+                true,
+                handoffToInit ? 72 : 100
+            );
+            this.updateWebSocketStatus('connected');
+            if (handoffToInit) {
+                this._adoptConnectionToastForInitProgress();
+            }
+            return;
+        }
+
+        const icon = ui.attempt > 0
+            ? '<i class="fas fa-sync-alt"></i>'
+            : '<i class="fas fa-phone-arrow-up-right"></i>';
+        this.bannerManager.showWebSocketToast(
+            'connecting',
+            message,
+            icon,
+            false,
+            WebSocketClient.TIMEOUT_UI_DEFAULT,
+            true,
+            progress
+        );
+        this.updateWebSocketStatus('connecting');
+    }
+
     _renderConnectionDial() {
         if (this._shouldUsePreStartupDialog()) {
             this._renderPreStartupDialog();
+            return;
+        }
+
+        if (!window.isDesktop && this.connectionDialView !== 'status') {
+            this._renderConnectionDialToast();
             return;
         }
 
@@ -1852,6 +1965,17 @@ class WebSocketClient {
     }
 
     // Progress notification methods
+    _adoptConnectionToastForInitProgress() {
+        if (window.isDesktop || this.progressToastId) {
+            return false;
+        }
+        if (!this.bannerManager.websocketToastId) {
+            return false;
+        }
+        this.progressToastId = this.bannerManager.websocketToastId;
+        return true;
+    }
+
     async showProgressNotification(message = 'Connecting...', progress = 0) {
         if (typeof dismissLaunchHandoffIfNeeded === 'function') {
             await dismissLaunchHandoffIfNeeded();
@@ -1864,7 +1988,7 @@ class WebSocketClient {
             }
             this.showWindowsStartupModal(message, progress);
         } else {
-            // Non-desktop: use toast
+            this._adoptConnectionToastForInitProgress();
             if (!this.progressToastId) {
                 // Create a new progress toast
                 if (typeof showGlassToast === 'function') {
@@ -1886,6 +2010,9 @@ class WebSocketClient {
     async hideProgressNotification() {
         if (this.progressToastId && typeof removeGlassToast === 'function') {
             removeGlassToast(this.progressToastId);
+            if (this.bannerManager.websocketToastId === this.progressToastId) {
+                this.bannerManager.websocketToastId = null;
+            }
             this.progressToastId = null;
         }
         if (window.isDesktop) {
@@ -1901,6 +2028,7 @@ class WebSocketClient {
     }
 
     _updateInitProgressToast(message, progress, addInitializingClass = false) {
+        this._adoptConnectionToastForInitProgress();
         if (!this.progressToastId) {
             if (typeof showGlassToast === 'function') {
                 this.progressToastId = showGlassToast(
@@ -1929,6 +2057,10 @@ class WebSocketClient {
 
         if (typeof updateGlassToastProgress === 'function') {
             updateGlassToastProgress(this.progressToastId, progress);
+        }
+
+        if (addInitializingClass) {
+            document.body.classList.add('initializing');
         }
     }
 
@@ -4434,7 +4566,7 @@ class WebSocketClient {
 
             // Handle completion
             if (data.phase === 'complete') {
-                this.clearStreamingStepQueues();
+                this.clearStreamingStepQueues(null, true);
 
                 if (progressToastId && typeof clearGlassToastImagePreview === 'function') {
                     clearGlassToastImagePreview(progressToastId);
@@ -4793,9 +4925,13 @@ class WebSocketClient {
     // Method to request gallery data with pagination info
     async requestGalleryData(viewType = 'images', offset = 0, limit = 100) {
         try {
+            const workspaceId = (typeof activeWorkspace !== 'undefined' && activeWorkspace)
+                ? activeWorkspace
+                : (window.currentWorkspace || 'default');
             const result = await this.sendMessageWithCallback('request_gallery', {
                 viewType,
                 includePinnedStatus: true,
+                workspaceId,
                 offset,
                 limit,
                 light: false
@@ -6294,8 +6430,11 @@ class WebSocketClient {
             });
         });
 
-        // Set initial status
-        this.updateWebSocketStatus('disconnected');
+        // Set initial status from live connection state (connect() may already be in progress)
+        const initialStatus = this.ws && this.ws.readyState === WebSocket.OPEN
+            ? 'connected'
+            : (this.isConnecting ? 'connecting' : 'disconnected');
+        this.updateWebSocketStatus(initialStatus);
         this._refreshWsFlashTargets();
         this._startWsFlashVisibilityWatcher();
     }

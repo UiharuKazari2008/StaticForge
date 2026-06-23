@@ -109,6 +109,632 @@ let galleryProgressContainerElement = null;
 let galleryProgressModeSwitched = false; // Track if we've switched from marquee to animate mode
 let galleryCatchupBusyLineEl = null;
 
+// In-flight full images gallery load (desktop background startup + open-while-loading)
+let galleryImagesLoadTask = null;
+
+function getGalleryLoadWorkspaceId() {
+    return (typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : 'default';
+}
+
+function canJoinGalleryImagesLoad() {
+    return galleryImagesLoadTask
+        && galleryImagesLoadTask.viewType === 'images'
+        && galleryImagesLoadTask.workspaceId === getGalleryLoadWorkspaceId()
+        && currentGalleryView === 'images';
+}
+
+function subscribeGalleryImagesLoadProgress(callback) {
+    const task = galleryImagesLoadTask;
+    if (!task) {
+        return () => {};
+    }
+    if (task.lastProgress) {
+        callback(task.lastProgress);
+    }
+    task.progressListeners.add(callback);
+    return () => task.progressListeners.delete(callback);
+}
+
+function publishGalleryImagesLoadProgress(progress) {
+    const task = galleryImagesLoadTask;
+    if (!task) {
+        return;
+    }
+    task.lastProgress = progress;
+    task.progressListeners.forEach((listener) => {
+        try {
+            listener(progress);
+        } catch (e) {
+            console.error('Gallery load progress listener error:', e);
+        }
+    });
+}
+
+function displayGalleryContentIfNeeded() {
+    if (isGalleryWindowHidden() || isJumpingToPosition) {
+        return;
+    }
+    const hasDisplayedItems = gallery && gallery.children.length > 0;
+    if (hasDisplayedItems) {
+        return;
+    }
+    if (!allImages || allImages.length === 0) {
+        return;
+    }
+    clearSelection();
+    resetInfiniteScroll();
+    displayGalleryInitialPageOrRestored();
+}
+
+async function joinGalleryImagesLoad(progressCallback, opts) {
+    const task = galleryImagesLoadTask;
+    if (!task) {
+        return;
+    }
+
+    const loadLog = acquireGalleryLoadLogger('images', getGalleryLoadWorkspaceId());
+    loadLog.step('join', 'Joining in-flight gallery load instead of starting a duplicate', {
+        workspaceId: task.workspaceId,
+        showProgress: opts.showProgress === true || (window.isDesktop && !opts.silent)
+    });
+
+    const wantProgress = opts.showProgress === true || (window.isDesktop && !opts.silent);
+    let galleryLoadingProgressShown = false;
+    let unsub = () => {};
+
+    if (wantProgress) {
+        if (!galleryProgressModal && !galleryProgressToastId) {
+            showGalleryLoadingProgressModal();
+            galleryLoadingProgressShown = true;
+        }
+        unsub = subscribeGalleryImagesLoadProgress((p) => {
+            updateGalleryLoadingProgress(p);
+            if (progressCallback) {
+                progressCallback(p);
+            }
+        });
+    } else if (progressCallback) {
+        unsub = subscribeGalleryImagesLoadProgress(progressCallback);
+    }
+
+    try {
+        await task.promise;
+        loadLog.done('joined in-flight gallery load');
+        displayGalleryContentIfNeeded();
+    } finally {
+        unsub();
+        if (galleryLoadingProgressShown) {
+            hideGalleryProgressModal();
+        }
+    }
+}
+
+// prepareGalleryWindowContent: public/scripts/comp/modalUtils.js showGalleryWindow
+async function prepareGalleryWindowContent() {
+    const savedPosition = window.savedGalleryPosition || 0;
+    if (savedPosition && typeof displayGalleryFromStartIndex === 'function') {
+        displayGalleryFromStartIndex(savedPosition);
+        return;
+    }
+
+    if (canJoinGalleryImagesLoad()) {
+        await loadGallery(false, null, { showProgress: true });
+        return;
+    }
+
+    if (typeof isGalleryReady === 'function' ? isGalleryReady() : (allImages && allImages.length > 0)) {
+        displayGalleryContentIfNeeded();
+        return;
+    }
+
+    await loadGallery();
+}
+window.prepareGalleryWindowContent = prepareGalleryWindowContent;
+
+function extractPinnedIndexesFromGallery(gallery) {
+    if (!Array.isArray(gallery)) {
+        return [];
+    }
+    const indexes = [];
+    for (let i = 0; i < gallery.length; i++) {
+        if (gallery[i] && gallery[i].isPinned) {
+            indexes.push(i);
+        }
+    }
+    return indexes;
+}
+
+function applyPinnedIndexesOverlay(gallery, pinnedIndexes) {
+    if (!Array.isArray(gallery) || gallery.length === 0) {
+        return gallery;
+    }
+    const pins = Array.isArray(pinnedIndexes) ? pinnedIndexes : [];
+    const pinCount = pins.length;
+    if (pinCount === 0) {
+        for (let i = 0; i < gallery.length; i++) {
+            if (gallery[i]) {
+                gallery[i].isPinned = false;
+            }
+        }
+        return gallery;
+    }
+    const pinnedSet = new Set(pins);
+    for (let i = 0; i < gallery.length; i++) {
+        if (gallery[i]) {
+            gallery[i].isPinned = pinnedSet.has(i);
+        }
+    }
+    return gallery;
+}
+
+const GALLERY_CHUNK_SIZE = 750;
+const GALLERY_LOAD_LOG_MAX_ENTRIES = 500;
+const GALLERY_LOAD_LOG_CLIENT_SOURCE_ID = 'client:gallery-load';
+
+let galleryLoadLogSession = 0;
+let galleryLoadLogRequestCount = 0;
+let galleryLoadLogViewerEngaged = false;
+const galleryLoadLogBuffer = [];
+
+const galleryLoadLogNoop = {
+    step() {},
+    done() {}
+};
+
+function formatGalleryLoadLogLine(session, decision, reason, details, ts = Date.now()) {
+    const time = new Date(ts).toLocaleTimeString();
+    const detailSuffix = details !== undefined && details !== null
+        ? ` ${JSON.stringify(details)}`
+        : '';
+    return `[#${session} ${time}] ${decision} — ${reason}${detailSuffix}`;
+}
+
+function appendGalleryLoadLogEntry(session, decision, reason, details) {
+    const entry = {
+        session,
+        ts: Date.now(),
+        decision,
+        reason,
+        details
+    };
+    galleryLoadLogBuffer.push(entry);
+    while (galleryLoadLogBuffer.length > GALLERY_LOAD_LOG_MAX_ENTRIES) {
+        galleryLoadLogBuffer.shift();
+    }
+    if (logViewerApplet && logViewerApplet.isClientGalleryLogSourceActive()) {
+        logViewerApplet.onGalleryLoadLogEntry(entry);
+    }
+}
+
+function clearGalleryLoadLogBuffer() {
+    galleryLoadLogBuffer.length = 0;
+    if (logViewerApplet && logViewerApplet.isClientGalleryLogSourceActive()) {
+        logViewerApplet.renderClientGalleryLogContent();
+    }
+}
+
+function markGalleryLoadEventViewerEngaged() {
+    galleryLoadLogViewerEngaged = true;
+}
+
+function shouldLogGalleryLoadForRequest() {
+    galleryLoadLogRequestCount += 1;
+    if (galleryLoadLogRequestCount === 1) {
+        return true;
+    }
+    if (galleryLoadLogViewerEngaged) {
+        return true;
+    }
+    clearGalleryLoadLogBuffer();
+    return false;
+}
+
+function getGalleryLoadLogFormattedText() {
+    if (!galleryLoadLogBuffer.length) {
+        return 'No gallery load events yet.\n\nOpen this source before or during a gallery load to keep capturing decisions.\nLogging is enabled for the first gallery request by default; after that, open Event Viewer to continue debugging.';
+    }
+    return galleryLoadLogBuffer
+        .map((entry) => formatGalleryLoadLogLine(entry.session, entry.decision, entry.reason, entry.details, entry.ts))
+        .join('\n');
+}
+
+function acquireGalleryLoadLogger(viewType, workspaceId) {
+    if (!shouldLogGalleryLoadForRequest()) {
+        return galleryLoadLogNoop;
+    }
+    return createGalleryLoadLogger(viewType, workspaceId);
+}
+
+function createGalleryLoadLogger(viewType, workspaceId) {
+    const session = ++galleryLoadLogSession;
+    const prefix = `📸 Gallery load [#${session}]`;
+    const writeConsole = galleryLoadLogViewerEngaged;
+    return {
+        session,
+        step(decision, reason, details) {
+            appendGalleryLoadLogEntry(session, decision, reason, details);
+            if (writeConsole) {
+                if (details !== undefined) {
+                    console.log(`${prefix} ${decision} — ${reason}`, details);
+                } else {
+                    console.log(`${prefix} ${decision} — ${reason}`);
+                }
+            }
+        },
+        done(outcome, details) {
+            appendGalleryLoadLogEntry(session, 'complete', outcome, details);
+            if (writeConsole) {
+                if (details !== undefined) {
+                    console.log(`${prefix} complete — ${outcome}`, details);
+                } else {
+                    console.log(`${prefix} complete — ${outcome}`);
+                }
+            }
+        }
+    };
+}
+
+window.galleryLoadLogApi = {
+    clientSourceId: GALLERY_LOAD_LOG_CLIENT_SOURCE_ID,
+    markEventViewerEngaged: markGalleryLoadEventViewerEngaged,
+    clearBuffer: clearGalleryLoadLogBuffer,
+    getFormattedText: getGalleryLoadLogFormattedText,
+    getEntryCount: () => galleryLoadLogBuffer.length,
+    isViewerEngaged: () => galleryLoadLogViewerEngaged
+};
+
+function galleryLoadProbeSummary(probe) {
+    if (!probe) {
+        return null;
+    }
+    return {
+        total: probe.total || 0,
+        hash: probe.galleryHash || null,
+        hashShort: probe.galleryHash ? `${probe.galleryHash.slice(0, 12)}…` : null,
+        pinCount: Array.isArray(probe.pinnedIndexes) ? probe.pinnedIndexes.length : 0,
+        workspaceId: probe.workspaceId || null,
+        destructiveAt: probe.lastGalleryDestructiveAt || 0
+    };
+}
+
+function galleryLoadSnapshotSummary(snapshot) {
+    if (!snapshot) {
+        return { hasSnapshot: false };
+    }
+    return {
+        hasSnapshot: true,
+        cachedCount: Array.isArray(snapshot.gallery) ? snapshot.gallery.length : 0,
+        cachedHash: snapshot.galleryHash || null,
+        cachedHashShort: snapshot.galleryHash ? `${snapshot.galleryHash.slice(0, 12)}…` : null,
+        cachedPinCount: Array.isArray(snapshot.pinnedIndexes) ? snapshot.pinnedIndexes.length : 0,
+        cachedAt: snapshot.cachedAt || null
+    };
+}
+
+function reportGalleryBlockProgress(progressCallback, loaded, total, offset) {
+    if (!progressCallback || total <= 0) {
+        return;
+    }
+    const progressRatio = loaded / total;
+    const blocksLeft = Math.max(0, Math.ceil((total - loaded) / GALLERY_CHUNK_SIZE));
+    progressCallback({
+        loaded,
+        total,
+        offset,
+        progress: Math.min(1, progressRatio),
+        phase: progressRatio < 0.75 ? 'initial' : 'remaining',
+        blocksLeft
+    });
+}
+
+async function finalizeGalleryImagesLoad(dataItems, probe, workspaceId, viewType, serverDestructiveAt, loadLog = galleryLoadLogNoop) {
+    const galleryHash = probe.galleryHash;
+    const pinnedIndexes = Array.isArray(probe.pinnedIndexes) ? probe.pinnedIndexes : [];
+    loadLog.step('finalize', 'Applying pinned overlay after gallery data is complete', {
+        itemCount: dataItems.length,
+        pinCount: pinnedIndexes.length,
+        hash: galleryHash ? `${galleryHash.slice(0, 12)}…` : null
+    });
+    applyPinnedIndexesOverlay(dataItems, pinnedIndexes);
+    const slimItems = slimGalleryList(dataItems);
+    setActiveGalleryList(slimItems);
+
+    if (galleryHash && workspaceId) {
+        await galleryMetadataCache.initPromise;
+        await galleryMetadataCache.setGallerySnapshot(workspaceId, viewType, galleryHash, slimItems, {
+            lastGalleryDestructiveAt: serverDestructiveAt,
+            pinnedIndexes
+        });
+        loadLog.step('snapshot-save', 'Saved IndexedDB gallery snapshot', {
+            workspaceId,
+            viewType,
+            itemCount: dataItems.length,
+            pinCount: pinnedIndexes.length
+        });
+    }
+}
+
+async function probeGalleryState(viewType, workspaceId, loadLog = galleryLoadLogNoop) {
+    let probe = await loadGalleryChunk(viewType, 0, 0);
+    if (probe.workspaceId && probe.workspaceId !== workspaceId) {
+        loadLog.step('workspace-sync', 'Server workspace differed from client; re-probing after sync', {
+            clientWorkspaceId: workspaceId,
+            serverWorkspaceId: probe.workspaceId
+        });
+        await window.wsClient.setActiveWorkspace(workspaceId);
+        probe = await loadGalleryChunk(viewType, 0, 0);
+    }
+    loadLog.step('probe', 'Hash probe received from server', galleryLoadProbeSummary(probe));
+    return probe;
+}
+
+async function fetchGalleryBlocksInto(viewType, totalItems, dataItems, progressCallback, loadLog = galleryLoadLogNoop) {
+    dataItems.length = 0;
+    loadLog.step('block-fetch', 'Fetching gallery blocks from server', {
+        viewType,
+        totalItems,
+        chunkSize: GALLERY_CHUNK_SIZE
+    });
+
+    while (dataItems.length < totalItems) {
+        const limit = Math.min(GALLERY_CHUNK_SIZE, totalItems - dataItems.length);
+        const result = await loadGalleryChunk(viewType, dataItems.length, limit);
+        const chunk = result.chunk || [];
+        if (!chunk.length) {
+            loadLog.step('block-fetch-stall', 'Block fetch stopped: empty chunk returned', {
+                offset: dataItems.length,
+                limit,
+                loaded: dataItems.length,
+                expectedTotal: totalItems
+            });
+            break;
+        }
+
+        dataItems.push(...chunk);
+        reportGalleryBlockProgress(progressCallback, dataItems.length, totalItems, dataItems.length);
+
+        if (!result.hasMore && dataItems.length < totalItems) {
+            loadLog.step('block-fetch-stall', 'Block fetch stopped: server reported no more items', {
+                loaded: dataItems.length,
+                expectedTotal: totalItems
+            });
+            break;
+        }
+
+        if (dataItems.length < totalItems) {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+    }
+
+    loadLog.step('block-fetch-done', 'Block fetch finished', {
+        loaded: dataItems.length,
+        expectedTotal: totalItems
+    });
+    return dataItems;
+}
+
+async function verifyGalleryProbeHash(viewType, expectedHash, loadLog = galleryLoadLogNoop) {
+    if (!expectedHash) {
+        loadLog.step('hash-verify-skip', 'Skipped hash verification: no expected hash');
+        return null;
+    }
+    const hashProbe = await loadGalleryChunk(viewType, 0, 0);
+    if (hashProbe.galleryHash !== expectedHash) {
+        loadLog.step('hash-verify-fail', 'Hash verification failed', {
+            expected: `${expectedHash.slice(0, 12)}…`,
+            actual: hashProbe.galleryHash ? `${hashProbe.galleryHash.slice(0, 12)}…` : null
+        });
+        return null;
+    }
+    loadLog.step('hash-verify-ok', 'Hash verification passed', {
+        hash: `${expectedHash.slice(0, 12)}…`
+    });
+    return hashProbe;
+}
+
+async function tryIncrementalGalleryHeadSync(cachedGallery, probe, viewType, progressCallback, loadLog = galleryLoadLogNoop) {
+    const totalItems = probe.total;
+    const cachedLen = cachedGallery.length;
+    const delta = totalItems - cachedLen;
+    if (delta <= 0 || !totalItems) {
+        loadLog.step('incremental-skip', 'Skipped incremental head sync', {
+            reason: delta <= 0 ? 'cached count is not smaller than server total' : 'server total is zero',
+            cachedCount: cachedLen,
+            serverTotal: totalItems
+        });
+        return null;
+    }
+
+    loadLog.step('incremental-try', 'Attempting incremental head sync (new items prepend)', {
+        cachedCount: cachedLen,
+        serverTotal: totalItems,
+        newHeadCount: delta
+    });
+
+    const headItems = [];
+    let offset = 0;
+    while (headItems.length < delta) {
+        const limit = Math.min(GALLERY_CHUNK_SIZE, delta - headItems.length);
+        const result = await loadGalleryChunk(viewType, offset, limit);
+        const chunk = result.chunk || [];
+        if (!chunk.length) {
+            loadLog.step('incremental-abort', 'Incremental sync aborted: empty head chunk', {
+                headLoaded: headItems.length,
+                headNeeded: delta
+            });
+            return null;
+        }
+        headItems.push(...chunk);
+        offset += chunk.length;
+        reportGalleryBlockProgress(progressCallback, headItems.length, totalItems, offset);
+    }
+
+    const overlapSize = Math.min(5, cachedLen);
+    if (overlapSize > 0) {
+        const boundaryResult = await loadGalleryChunk(viewType, delta, overlapSize);
+        const boundaryChunk = boundaryResult.chunk || [];
+        if (!verifyGalleryOverlap(cachedGallery, boundaryChunk, Math.min(overlapSize, boundaryChunk.length))) {
+            loadLog.step('incremental-abort', 'Incremental sync aborted: cached tail does not overlap server boundary', {
+                overlapChecked: Math.min(overlapSize, boundaryChunk.length),
+                boundaryOffset: delta
+            });
+            return null;
+        }
+        loadLog.step('incremental-overlap', 'Cached tail overlaps server boundary', {
+            overlapChecked: Math.min(overlapSize, boundaryChunk.length),
+            boundaryOffset: delta
+        });
+    }
+
+    const dataItems = headItems.concat(cachedGallery);
+    if (dataItems.length !== totalItems) {
+        loadLog.step('incremental-abort', 'Incremental sync aborted: merged count mismatch', {
+            mergedCount: dataItems.length,
+            expectedTotal: totalItems
+        });
+        return null;
+    }
+
+    const hashProbe = await verifyGalleryProbeHash(viewType, probe.galleryHash, loadLog);
+    if (!hashProbe) {
+        loadLog.step('incremental-abort', 'Incremental sync aborted: hash verification failed after merge');
+        return null;
+    }
+
+    loadLog.step('incremental-ok', 'Incremental head sync succeeded', {
+        headFetched: headItems.length,
+        cachedReused: cachedLen,
+        total: dataItems.length
+    });
+    return { dataItems, hashProbe };
+}
+
+async function syncGalleryImagesFromBlocks(probe, storedSnapshot, viewType, workspaceId, progressCallback, serverDestructiveAt, loadLog = galleryLoadLogNoop) {
+    const totalItems = probe.total;
+    const targetHash = probe.galleryHash;
+    const serverAt = Number(serverDestructiveAt) || 0;
+
+    if (storedSnapshot && serverAt > (Number(storedSnapshot.lastGalleryDestructiveAt) || 0)) {
+        loadLog.step('cache-stale', 'IndexedDB snapshot invalidated by server maintenance', {
+            serverDestructiveAt: serverAt,
+            snapshotDestructiveAt: Number(storedSnapshot.lastGalleryDestructiveAt) || 0
+        });
+        storedSnapshot = null;
+    }
+
+    loadLog.step('sync-evaluate', 'Evaluating gallery sync strategy', {
+        probe: galleryLoadProbeSummary(probe),
+        snapshot: galleryLoadSnapshotSummary(storedSnapshot)
+    });
+
+    if (!totalItems || !targetHash) {
+        loadLog.step('sync-defer', 'Deferring to legacy full chunk loader', {
+            reason: !totalItems ? 'missing server total' : 'missing server hash'
+        });
+        return false;
+    }
+
+    const cachedGallery = storedSnapshot && Array.isArray(storedSnapshot.gallery)
+        ? storedSnapshot.gallery
+        : null;
+
+    if (storedSnapshot
+        && storedSnapshot.galleryHash === targetHash
+        && cachedGallery
+        && cachedGallery.length === totalItems) {
+        loadLog.step('cache-hit', 'Using IndexedDB snapshot: hash and item count match server', {
+            itemCount: totalItems,
+            hash: `${targetHash.slice(0, 12)}…`,
+            pinCount: Array.isArray(probe.pinnedIndexes) ? probe.pinnedIndexes.length : 0
+        });
+        await finalizeGalleryImagesLoad(cachedGallery, probe, workspaceId, viewType, serverDestructiveAt, loadLog);
+        loadLog.done('loaded from IndexedDB cache');
+        return true;
+    }
+
+    if (storedSnapshot && cachedGallery) {
+        if (storedSnapshot.galleryHash !== targetHash) {
+            loadLog.step('cache-miss', 'IndexedDB snapshot hash differs from server', {
+                cachedHash: storedSnapshot.galleryHash ? `${storedSnapshot.galleryHash.slice(0, 12)}…` : null,
+                serverHash: `${targetHash.slice(0, 12)}…`
+            });
+        } else if (cachedGallery.length !== totalItems) {
+            loadLog.step('cache-partial', 'IndexedDB snapshot hash matches but item count differs', {
+                cachedCount: cachedGallery.length,
+                serverTotal: totalItems
+            });
+        }
+    } else {
+        loadLog.step('cache-miss', 'No usable IndexedDB snapshot for this workspace/view');
+    }
+
+    if (cachedGallery && cachedGallery.length > 0 && cachedGallery.length < totalItems) {
+        const incremental = await tryIncrementalGalleryHeadSync(cachedGallery, probe, viewType, progressCallback, loadLog);
+        if (incremental) {
+            await finalizeGalleryImagesLoad(
+                incremental.dataItems,
+                { ...probe, pinnedIndexes: incremental.hashProbe.pinnedIndexes },
+                workspaceId,
+                viewType,
+                serverDestructiveAt,
+                loadLog
+            );
+            loadLog.done('loaded via incremental head sync');
+            return true;
+        }
+    }
+
+    loadLog.step('full-block-sync', 'Falling back to full block sync with hash verification', {
+        expectedTotal: totalItems,
+        expectedHash: `${targetHash.slice(0, 12)}…`
+    });
+
+    let expectedHash = targetHash;
+    for (let attempt = 0; attempt < 2; attempt++) {
+        if (attempt > 0) {
+            loadLog.step('full-block-retry', 'Retrying full block sync after hash mismatch', {
+                attempt: attempt + 1,
+                expectedHash: `${expectedHash.slice(0, 12)}…`
+            });
+        }
+
+        const dataItems = [];
+        await fetchGalleryBlocksInto(viewType, totalItems, dataItems, progressCallback, loadLog);
+
+        if (dataItems.length !== totalItems) {
+            loadLog.step('full-block-incomplete', 'Full block sync did not reach expected item count', {
+                loaded: dataItems.length,
+                expectedTotal: totalItems,
+                attempt: attempt + 1
+            });
+            continue;
+        }
+
+        const hashProbe = await verifyGalleryProbeHash(viewType, expectedHash, loadLog);
+        if (hashProbe) {
+            await finalizeGalleryImagesLoad(
+                dataItems,
+                { ...probe, pinnedIndexes: hashProbe.pinnedIndexes, galleryHash: hashProbe.galleryHash },
+                workspaceId,
+                viewType,
+                serverDestructiveAt,
+                loadLog
+            );
+            loadLog.done('loaded via full block sync', { attempts: attempt + 1 });
+            return true;
+        }
+
+        const refreshProbe = await loadGalleryChunk(viewType, 0, 0);
+        expectedHash = refreshProbe.galleryHash || expectedHash;
+        loadLog.step('hash-refresh', 'Server hash changed during block sync; updated expected hash', {
+            nextHash: expectedHash ? `${expectedHash.slice(0, 12)}…` : null
+        });
+    }
+
+    loadLog.step('sync-failed', 'Block sync strategies exhausted; deferring to legacy chunk loader');
+    return false;
+}
+
 // IndexedDB utilities for gallery metadata caching
 class GalleryMetadataCache {
     constructor() {
@@ -134,6 +760,7 @@ class GalleryMetadataCache {
                 if (!this.snapshotCleanupDone) {
                     this.snapshotCleanupDone = true;
                     this.cleanupLegacySnapshotEntries();
+                    this.runMaintenance();
                 }
                 resolve(this.db);
             };
@@ -275,7 +902,6 @@ class GalleryMetadataCache {
     async getGallerySnapshot(workspaceId, viewType, hash, lastGalleryDestructiveAt = 0) {
         if (!this.db || !hash) return null;
         const key = this.buildSnapshotKey(workspaceId, viewType);
-        const serverDestructiveAt = Number(lastGalleryDestructiveAt) || 0;
 
         return new Promise((resolve) => {
             const transaction = this.db.transaction(['gallerySnapshots'], 'readonly');
@@ -293,8 +919,31 @@ class GalleryMetadataCache {
                     resolve(null);
                     return;
                 }
-                const snapshotDestructiveAt = Number(snapshot.lastGalleryDestructiveAt) || 0;
-                if (serverDestructiveAt > snapshotDestructiveAt) {
+                // Hash match is sufficient; lastGalleryDestructiveAt can bump on benign server maintenance.
+                resolve(snapshot);
+            };
+            request.onerror = () => resolve(null);
+        });
+    }
+
+    async getStoredGallerySnapshot(workspaceId, viewType, serverDestructiveAt = 0) {
+        if (!this.db) return null;
+        const key = this.buildSnapshotKey(workspaceId, viewType);
+        const serverAt = Number(serverDestructiveAt) || 0;
+
+        return new Promise((resolve) => {
+            const transaction = this.db.transaction(['gallerySnapshots'], 'readonly');
+            const store = transaction.objectStore('gallerySnapshots');
+            const request = store.get(key);
+
+            request.onsuccess = () => {
+                const snapshot = request.result || null;
+                if (!snapshot) {
+                    resolve(null);
+                    return;
+                }
+                const snapshotAt = Number(snapshot.lastGalleryDestructiveAt) || 0;
+                if (serverAt > snapshotAt) {
                     resolve(null);
                     return;
                 }
@@ -308,6 +957,9 @@ class GalleryMetadataCache {
         if (!this.db || !hash || !Array.isArray(gallery)) return;
         const key = this.buildSnapshotKey(workspaceId, viewType);
         const lastGalleryDestructiveAt = Number(meta.lastGalleryDestructiveAt) || 0;
+        const pinnedIndexes = Array.isArray(meta.pinnedIndexes)
+            ? meta.pinnedIndexes
+            : extractPinnedIndexesFromGallery(gallery);
         const workspaceView = key;
 
         return new Promise((resolve) => {
@@ -323,6 +975,7 @@ class GalleryMetadataCache {
                 hash,
                 gallery,
                 totalItems: gallery.length,
+                pinnedIndexes,
                 lastGalleryDestructiveAt,
                 cachedAt: Date.now()
             };
@@ -330,19 +983,107 @@ class GalleryMetadataCache {
         });
     }
 
+    async updateGallerySnapshotPins(workspaceId, viewType, hash, gallery, pinnedIndexes) {
+        if (!this.db || !hash || !Array.isArray(gallery)) {
+            return;
+        }
+        const stored = await this.getStoredGallerySnapshot(workspaceId, viewType);
+        const lastGalleryDestructiveAt = stored
+            ? (Number(stored.lastGalleryDestructiveAt) || 0)
+            : 0;
+        await this.setGallerySnapshot(workspaceId, viewType, hash, gallery, {
+            lastGalleryDestructiveAt,
+            pinnedIndexes
+        });
+    }
+
+    async runMaintenance() {
+        await this.clearOldEntries();
+        await this.pruneStaleGallerySnapshots();
+    }
+
+    async pruneStaleGallerySnapshots(keepKeys = null) {
+        if (!this.db) return;
+        const keepSet = keepKeys instanceof Set ? keepKeys : null;
+
+        return new Promise((resolve) => {
+            const transaction = this.db.transaction(['gallerySnapshots'], 'readwrite');
+            const store = transaction.objectStore('gallerySnapshots');
+            const request = store.openCursor();
+
+            request.onsuccess = (event) => {
+                const cursor = event.target.result;
+                if (!cursor) {
+                    resolve();
+                    return;
+                }
+                const key = String(cursor.primaryKey || '');
+                if (keepSet && keepSet.has(key)) {
+                    cursor.continue();
+                    return;
+                }
+                if (!keepSet) {
+                    const record = cursor.value || {};
+                    const age = Date.now() - (Number(record.cachedAt) || 0);
+                    if (age < 14 * 24 * 60 * 60 * 1000) {
+                        cursor.continue();
+                        return;
+                    }
+                }
+                cursor.delete();
+                cursor.continue();
+            };
+            request.onerror = () => resolve();
+            transaction.onerror = () => resolve();
+        });
+    }
+
+}
+
+/** Strip embedded metadata blobs from gallery index rows — list fields only. */
+function slimGalleryListItem(item) {
+    if (!item || typeof item !== 'object') {
+        return item;
+    }
+    const filename = item.filename || item.upscaled || item.original || null;
+    const slim = {
+        base: item.base,
+        original: item.original,
+        upscaled: item.upscaled,
+        preview: item.preview,
+        mtime: item.mtime,
+        width: item.width,
+        height: item.height,
+        size: item.size,
+        isLarge: item.isLarge,
+        isPinned: item.isPinned,
+        filename
+    };
+    if (slim.preview == null && slim.base) {
+        slim.preview = `${slim.base}.webp`;
+    }
+    return slim;
+}
+
+function slimGalleryList(gallery) {
+    if (!Array.isArray(gallery)) {
+        return [];
+    }
+    return gallery.map(slimGalleryListItem);
 }
 
 // Global gallery metadata cache instance
 const galleryMetadataCache = new GalleryMetadataCache();
 
-function getGalleryItemSyncKey(item) {
+function getGalleryItemStructureKey(item) {
     if (!item) {
         return '';
     }
-    const file = item.upscaled || item.original || item.base || '';
-    const mtime = item.mtime != null ? item.mtime : 0;
-    const pinned = item.isPinned ? '1' : '0';
-    return `${file}|${mtime}|${pinned}`;
+    const base = item.base || '';
+    const original = item.original || '';
+    const upscaled = item.upscaled || '';
+    const mtime = item.mtime || 0;
+    return `${base}|${original}|${upscaled}|${mtime}`;
 }
 
 function verifyGalleryOverlap(cachedGallery, serverChunk, count) {
@@ -350,11 +1091,42 @@ function verifyGalleryOverlap(cachedGallery, serverChunk, count) {
         return true;
     }
     for (let i = 0; i < count; i++) {
-        if (getGalleryItemSyncKey(cachedGallery[i]) !== getGalleryItemSyncKey(serverChunk[i])) {
+        if (getGalleryItemStructureKey(cachedGallery[i]) !== getGalleryItemStructureKey(serverChunk[i])) {
             return false;
         }
     }
     return true;
+}
+
+async function tryLoadGalleryFromIndexedSnapshot(snapshotWorkspaceId, viewType, galleryHash, totalItems, pinnedIndexes, serverDestructiveAt = 0) {
+    if (!galleryHash || totalItems <= 0) {
+        return false;
+    }
+
+    await galleryMetadataCache.initPromise;
+
+    const storedSnapshot = await galleryMetadataCache.getStoredGallerySnapshot(
+        snapshotWorkspaceId,
+        viewType,
+        serverDestructiveAt
+    );
+    const loadLog = acquireGalleryLoadLogger(viewType, snapshotWorkspaceId);
+    loadLog.step('start', 'Gallery snapshot entry from show/open path');
+    const probe = {
+        galleryHash,
+        total: totalItems,
+        pinnedIndexes: Array.isArray(pinnedIndexes) ? pinnedIndexes : []
+    };
+
+    return syncGalleryImagesFromBlocks(
+        probe,
+        storedSnapshot,
+        viewType,
+        snapshotWorkspaceId,
+        null,
+        serverDestructiveAt,
+        loadLog
+    );
 }
 
 // Gallery view state
@@ -740,6 +1512,7 @@ function processNextPlaceholders() {
         if (placeholderData.fileImageIndex < 0 || placeholderData.fileImageIndex >= allImages.length) {
             // Invalid index - array was modified, remove this placeholder from queue and DOM
             if (placeholderData.element && placeholderData.element.parentNode) {
+                disposeGalleryItemElement(placeholderData.element);
                 placeholderData.element.remove();
             }
             continue;
@@ -755,6 +1528,7 @@ function processNextPlaceholders() {
             if (elementFilename && filename !== elementFilename) {
                 // Stale placeholder - remove it
                 if (placeholderData.element && placeholderData.element.parentNode) {
+                    disposeGalleryItemElement(placeholderData.element);
                     placeholderData.element.remove();
                 }
                 continue;
@@ -799,6 +1573,7 @@ function processNextPlaceholders() {
         } else {
             // Image not found at this index - array was modified, remove placeholder
             if (placeholderData.element && placeholderData.element.parentNode) {
+                disposeGalleryItemElement(placeholderData.element);
                 placeholderData.element.remove();
             }
         }
@@ -915,7 +1690,7 @@ function clearStaleGalleryListCopies() {
  * @param {{ preserveSearchContext?: boolean, rebuildNavCache?: boolean }} options
  */
 function setActiveGalleryList(newGallery, options = {}) {
-    const list = Array.isArray(newGallery) ? newGallery : [];
+    const list = slimGalleryList(Array.isArray(newGallery) ? newGallery : []);
     const preserveSearch = options.preserveSearchContext === true && isGallerySearchModeActive();
 
     allImages = list;
@@ -941,9 +1716,10 @@ function setActiveGalleryList(newGallery, options = {}) {
 /** Prepend a new item to the active gallery; keeps search baseline in sync when present. */
 function prependToActiveGalleryList(item) {
     if (!item) return;
-    allImages.unshift(item);
+    const slimItem = slimGalleryListItem(item);
+    allImages.unshift(slimItem);
     if (window.originalAllImages && window.originalAllImages !== allImages) {
-        window.originalAllImages.unshift(item);
+        window.originalAllImages.unshift(slimItem);
     }
     if (window.filteredImageIndices && Array.isArray(window.filteredImageIndices)) {
         window.filteredImageIndices = window.filteredImageIndices.map((idx) => idx + 1);
@@ -1170,12 +1946,64 @@ function getGalleryPreviewSrcForImage(image) {
     return candidates[0] || '';
 }
 
+// Release decoded pixels held by a gallery thumbnail before DOM teardown or src swap.
+function releaseGalleryItemImage(img) {
+    if (!img) return;
+    img.onload = null;
+    img.onerror = null;
+    const src = img.currentSrc || img.src || '';
+    if (src.startsWith('blob:')) {
+        URL.revokeObjectURL(src);
+    }
+    img.removeAttribute('src');
+}
+
+function disposeGalleryItemElement(item) {
+    if (!item) return;
+    if (intersectionObserver) {
+        intersectionObserver.unobserve(item);
+    }
+    const img = item.querySelector('img');
+    if (img) {
+        releaseGalleryItemImage(img);
+    }
+}
+
+function purgePlaceholderResolutionQueue() {
+    if (placeholderWatcherFrameId) {
+        clearTimeout(placeholderWatcherFrameId);
+        placeholderWatcherFrameId = null;
+    }
+    placeholderWatcherRunning = false;
+    placeholderResolutionDelay = 0;
+    placeholderResolutionFrameCount = 0;
+    placeholderQueueSizeHistory = [];
+    for (const entry of placeholderResolutionQueue) {
+        if (entry?.element) {
+            disposeGalleryItemElement(entry.element);
+        }
+    }
+    placeholderResolutionQueue = [];
+}
+
+function disposeGalleryContents() {
+    if (!gallery) return;
+    gallery.querySelectorAll('.gallery-item, .gallery-placeholder').forEach(disposeGalleryItemElement);
+    purgePlaceholderResolutionQueue();
+    placeholderCleanupQueue.length = 0;
+    visibleItems.clear();
+}
+
 // public/scripts/comp/galleryView.js — gallery item img with preview/full fallbacks and optional retry
 function applyGalleryItemImage(img, image, options = {}) {
     const candidates = getGalleryImageSrcCandidates(image);
     if (!candidates.length || !img) {
         if (typeof options.onComplete === 'function') options.onComplete();
         return;
+    }
+
+    if (img.src || img.currentSrc) {
+        releaseGalleryItemImage(img);
     }
 
     let candidateIndex = 0;
@@ -2301,7 +3129,7 @@ async function loadGallery(addLatest, progressCallback = null, loadOptions = nul
             const result = await window.wsClient.requestGallery('images', true, {
                 offset: 0,
                 limit: 1,
-                light: false,
+                light: true,
                 skipGalleryPagination: true
             });
             const { gallery: latestItems } = result.data || result;
@@ -2345,42 +3173,80 @@ async function loadGallery(addLatest, progressCallback = null, loadOptions = nul
 
         // Load complete gallery by getting all pages
         if (window.wsClient && window.wsClient.isConnected()) {
+            if (canJoinGalleryImagesLoad()) {
+                return joinGalleryImagesLoad(progressCallback, opts);
+            }
+
+            const loadTask = {
+                viewType: 'images',
+                workspaceId: getGalleryLoadWorkspaceId(),
+                progressListeners: new Set(),
+                lastProgress: null,
+                promise: null
+            };
+            galleryImagesLoadTask = loadTask;
+
+            let activeProgressCallback = progressCallback;
             // Show progress modal in desktop mode for full gallery loads (unless silent or external callback)
             if (window.isDesktop && !progressCallback && !silentLoad) {
                 showGalleryLoadingProgressModal();
                 galleryLoadingProgressShown = true;
-                progressCallback = updateGalleryLoadingProgress;
+                activeProgressCallback = updateGalleryLoadingProgress;
             }
 
-            await loadCompleteGallery('images', progressCallback);
+            const emitGalleryLoadProgress = (p) => {
+                publishGalleryImagesLoadProgress(p);
+                if (activeProgressCallback) {
+                    activeProgressCallback(p);
+                }
+            };
 
-            // Apply current sort order to the loaded data
-            sortGalleryData();
+            loadTask.promise = (async () => {
+                await loadCompleteGallery('images', emitGalleryLoadProgress);
 
-            // Only build cache if not in search mode (search mode will build cache after Enter is pressed)
-            if (!window.filteredImageIndices || window.filteredImageIndices.length === allImages.length) {
-                buildGalleryNavigationCache(allImages);
-            }
+                // Apply current sort order to the loaded data
+                sortGalleryData();
 
-            // Dispatch galleryUpdated event so background system can set initial image
-            // This ensures the background is set only after gallery is actually loaded
-            document.dispatchEvent(new CustomEvent('galleryUpdated'));
+                // Only build cache if not in search mode (search mode will build cache after Enter is pressed)
+                if (!window.filteredImageIndices || window.filteredImageIndices.length === allImages.length) {
+                    buildGalleryNavigationCache(allImages);
+                }
 
-            // Check if gallery is hidden in desktop mode
-            const isGalleryHidden = isGalleryWindowHidden();
+                // Dispatch galleryUpdated event so background system can set initial image
+                // This ensures the background is set only after gallery is actually loaded
+                document.dispatchEvent(new CustomEvent('galleryUpdated'));
 
-            // Only update gallery display if:
-            // - Manual modal is not open or is windowed
-            // - Gallery is not hidden in desktop mode
-            // - Not currently jumping to a position
-            if (!isGalleryHidden && !isJumpingToPosition) {
-                if (addLatest) {
-                    await addNewGalleryItemAfterGeneration(allImages[0]);
-                } else {
-                    // Reset infinite scroll state and display initial batch
-                    clearSelection(); // Clear selection when reloading gallery
-                    resetInfiniteScroll();
-                    displayGalleryInitialPageOrRestored();
+                // Check if gallery is hidden in desktop mode
+                const isGalleryHidden = isGalleryWindowHidden();
+
+                // Only update gallery display if:
+                // - Manual modal is not open or is windowed
+                // - Gallery is not hidden in desktop mode
+                // - Not currently jumping to a position
+                if (!isGalleryHidden && !isJumpingToPosition) {
+                    if (addLatest) {
+                        await addNewGalleryItemAfterGeneration(allImages[0]);
+                    } else {
+                        displayGalleryContentIfNeeded();
+                    }
+                }
+
+                // Set first gallery image in Android persistent notification when bridge is present
+                if (allImages.length > 0 && typeof setAndroidNotificationImageFromImage === 'function') {
+                    setAndroidNotificationImageFromImage(allImages[0]);
+                }
+
+                // Call workspace completion callback if it exists (for workspace switching)
+                if (window.workspaceLoadingCompleteCallback) {
+                    window.workspaceLoadingCompleteCallback();
+                }
+            })();
+
+            try {
+                await loadTask.promise;
+            } finally {
+                if (galleryImagesLoadTask === loadTask) {
+                    galleryImagesLoadTask = null;
                 }
             }
 
@@ -2390,16 +3256,6 @@ async function loadGallery(addLatest, progressCallback = null, loadOptions = nul
             }
 
             spinner.classList.add('hidden');
-
-            // Set first gallery image in Android persistent notification when bridge is present
-            if (allImages.length > 0 && typeof setAndroidNotificationImageFromImage === 'function') {
-                setAndroidNotificationImageFromImage(allImages[0]);
-            }
-
-            // Call workspace completion callback if it exists (for workspace switching)
-            if (window.workspaceLoadingCompleteCallback) {
-                window.workspaceLoadingCompleteCallback();
-            }
         } else {
             throw new Error('WebSocket not connected');
         }
@@ -2435,7 +3291,7 @@ async function loadGalleryChunk(viewType = 'images', offset = 0, limit = 100) {
     const requestOptions = {
         offset: offset,
         limit: limit,
-        light: false
+        light: true
     };
     if (limit === 0) {
         requestOptions.skipGalleryPagination = true;
@@ -2449,6 +3305,7 @@ async function loadGalleryChunk(viewType = 'images', offset = 0, limit = 100) {
         hasMore: pagination?.hasMore || false,
         total: pagination?.totalItems || 0,
         galleryHash: payload.galleryHash || payload.hash || null,
+        pinnedIndexes: Array.isArray(payload.pinnedIndexes) ? payload.pinnedIndexes : [],
         lastGalleryDestructiveAt: Number(payload.lastGalleryDestructiveAt) || 0,
         workspaceId: payload.workspaceId || ((typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : 'default')
     };
@@ -2456,24 +3313,21 @@ async function loadGalleryChunk(viewType = 'images', offset = 0, limit = 100) {
 
 // Load complete gallery by getting all pages and building allImages locally
 async function loadCompleteGallery(viewType = 'images', progressCallback = null) {
-    const spinner = document.getElementById('galleryLoadingSpinner');
+    const workspaceId = (typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : 'default';
+    const loadLog = acquireGalleryLoadLogger(viewType, workspaceId);
+    loadLog.step('start', 'Beginning gallery load', { viewType, workspaceId });
 
     try {
-
+        const chunkSize = GALLERY_CHUNK_SIZE;
         let dataItems = [];
         let offset = 0;
-        const chunkSize = 750; // Larger chunks for efficiency
-        let chunkCount = 0;
         let totalItems = 0;
-        const workspaceId = (typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : 'default';
         let probe = null;
         let galleryHash = null;
         let serverDestructiveAt = 0;
         let galleryResponseWorkspaceId = workspaceId;
 
-        // Probe gallery hash first so we can serve the full array from IndexedDB when unchanged.
         if (viewType === 'images') {
-            // Force-clear stale gallery ticker/pagination state before hash-probe requests.
             if (window.wsClient && typeof window.wsClient.completeGalleryLoading === 'function') {
                 window.wsClient.completeGalleryLoading();
             }
@@ -2488,30 +3342,28 @@ async function loadCompleteGallery(viewType = 'images', progressCallback = null)
                 });
             }
             await galleryMetadataCache.initPromise;
-            probe = await loadGalleryChunk(viewType, 0, 0);
-
-            // Server may still be on default workspace until session restore / client sync completes
-            if (probe.workspaceId && probe.workspaceId !== workspaceId) {
-                // window.wsClient.setActiveWorkspace — public/scripts/websocket.js
-                await window.wsClient.setActiveWorkspace(workspaceId);
-                probe = await loadGalleryChunk(viewType, 0, 0);
-            }
+            probe = await probeGalleryState(viewType, workspaceId, loadLog);
             galleryResponseWorkspaceId = probe.workspaceId || workspaceId;
-
             galleryHash = probe.galleryHash || null;
             totalItems = probe.total || 0;
             serverDestructiveAt = probe.lastGalleryDestructiveAt || 0;
 
-            if (galleryHash && galleryResponseWorkspaceId === workspaceId) {
-                const snapshotWorkspaceId = galleryResponseWorkspaceId;
-                const snapshot = await galleryMetadataCache.getGallerySnapshot(
-                    snapshotWorkspaceId,
+            if (galleryHash && galleryResponseWorkspaceId === workspaceId && totalItems > 0) {
+                const storedSnapshot = await galleryMetadataCache.getStoredGallerySnapshot(
+                    workspaceId,
                     viewType,
-                    galleryHash,
                     serverDestructiveAt
                 );
-                if (snapshot && Array.isArray(snapshot.gallery)) {
-                    setActiveGalleryList(snapshot.gallery);
+                const synced = await syncGalleryImagesFromBlocks(
+                    probe,
+                    storedSnapshot,
+                    viewType,
+                    workspaceId,
+                    progressCallback,
+                    serverDestructiveAt,
+                    loadLog
+                );
+                if (synced) {
                     if (window.wsClient && typeof window.wsClient.completeGalleryLoading === 'function') {
                         window.wsClient.completeGalleryLoading();
                     }
@@ -2527,11 +3379,22 @@ async function loadCompleteGallery(viewType = 'images', progressCallback = null)
                     }
                     return;
                 }
+            } else {
+                loadLog.step('sync-skip', 'Skipped block sync evaluator', {
+                    reason: !galleryHash
+                        ? 'missing hash'
+                        : (galleryResponseWorkspaceId !== workspaceId
+                            ? 'workspace mismatch'
+                            : 'server total is zero')
+                });
             }
-
         }
 
-        // First pass: determine total items count for progress calculation
+        loadLog.step('legacy-chunk-loader', 'Using legacy sequential chunk loader', {
+            viewType,
+            knownTotal: totalItems || null
+        });
+
         const needFirstChunkForProgress = progressCallback && totalItems === 0 && !(viewType === 'images' && probe);
         if (needFirstChunkForProgress) {
             const firstChunk = await loadGalleryChunk(viewType, 0, 1);
@@ -2540,25 +3403,21 @@ async function loadCompleteGallery(viewType = 'images', progressCallback = null)
             if (firstChunk.total > 0) {
                 totalItems = firstChunk.total;
             } else if (firstChunk.chunk && firstChunk.chunk.length > 0) {
-                // Fallback to estimating from chunk size if total not provided
                 totalItems = firstChunk.chunk.length;
             }
         }
 
-        // Load all chunks - progress system handles when to stop/switch phases
         let loadedItems = 0;
+        let lastChunkResult = null;
 
-        // Load chunks until no more data or progress system indicates to stop
         while (true) {
-            chunkCount++;
+            const chunkResult = await loadGalleryChunk(viewType, offset, chunkSize);
+            lastChunkResult = chunkResult;
+            const { chunk, hasMore, total, galleryHash: chunkHash, lastGalleryDestructiveAt: chunkDestructive } = chunkResult;
 
-            const { chunk, hasMore, total, galleryHash: chunkHash, lastGalleryDestructiveAt: chunkDestructive } = await loadGalleryChunk(viewType, offset, chunkSize);
-
-            // Update total if we got it from this chunk
             if (total > 0 && totalItems === 0) {
                 totalItems = total;
             }
-
             if (chunkHash) {
                 galleryHash = chunkHash;
             }
@@ -2572,38 +3431,38 @@ async function loadCompleteGallery(viewType = 'images', progressCallback = null)
 
             dataItems.push(...chunk);
             loadedItems += chunk.length;
-            offset += chunkSize;
+            offset += chunk.length;
 
-            // Update total estimate as we load
             if (progressCallback && loadedItems > totalItems) {
                 totalItems = loadedItems;
             }
 
-            // Report progress if callback provided
-            if (progressCallback && totalItems > 0) {
-                const progressRatio = loadedItems / totalItems;
-                const totalChunkRequests = Math.ceil(totalItems / chunkSize);
-                const blocksLeft = Math.max(0, totalChunkRequests - chunkCount);
-                progressCallback({
-                    loaded: loadedItems,
-                    total: totalItems,
-                    offset: offset,
-                    progress: progressRatio,
-                    phase: progressRatio < 0.75 ? 'initial' : 'remaining',
-                    blocksLeft: blocksLeft
-                });
-            }
+            reportGalleryBlockProgress(progressCallback, loadedItems, totalItems, offset);
 
             if (!hasMore) {
                 break;
             }
 
-            // Small delay to avoid overwhelming server
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
         }
 
-        // Set up gallery state with loaded data
-        setActiveGalleryList(dataItems);
+        const finalizeProbe = {
+            galleryHash: galleryHash || (lastChunkResult && lastChunkResult.galleryHash) || null,
+            total: totalItems,
+            pinnedIndexes: probe && Array.isArray(probe.pinnedIndexes) ? probe.pinnedIndexes : []
+        };
+
+        if (finalizeProbe.galleryHash && galleryResponseWorkspaceId === workspaceId) {
+            await finalizeGalleryImagesLoad(dataItems, finalizeProbe, workspaceId, viewType, serverDestructiveAt, loadLog);
+            loadLog.done('loaded via legacy chunk loader with snapshot save');
+        } else {
+            setActiveGalleryList(dataItems);
+            loadLog.done('loaded via legacy chunk loader without snapshot save', {
+                viewType,
+                itemCount: dataItems.length,
+                reason: !finalizeProbe.galleryHash ? 'missing hash' : 'workspace mismatch'
+            });
+        }
 
         if (progressCallback && totalItems > 0) {
             progressCallback({
@@ -2616,18 +3475,12 @@ async function loadCompleteGallery(viewType = 'images', progressCallback = null)
             });
         }
 
-        // Save latest full images gallery snapshot for workspace/hash reuse.
-        if (viewType === 'images' && galleryHash && galleryResponseWorkspaceId === workspaceId) {
-            await galleryMetadataCache.initPromise;
-            await galleryMetadataCache.setGallerySnapshot(workspaceId, viewType, galleryHash, dataItems, {
-                lastGalleryDestructiveAt: serverDestructiveAt
-            });
-        }
         if (window.wsClient && typeof window.wsClient.completeGalleryLoading === 'function') {
             window.wsClient.completeGalleryLoading();
         }
 
     } catch (error) {
+        loadLog.step('error', 'Gallery load failed', { message: error && error.message ? error.message : String(error) });
         if (window.wsClient && typeof window.wsClient.completeGalleryLoading === 'function') {
             window.wsClient.completeGalleryLoading();
         }
@@ -2735,6 +3588,10 @@ function getItemSize() {
 
         // Remove temporary placeholder if we created one
         if (tempPlaceholder && tempPlaceholder.parentNode) {
+            const tempImg = tempPlaceholder.querySelector('img');
+            if (tempImg) {
+                releaseGalleryItemImage(tempImg);
+            }
             tempPlaceholder.remove();
         }
 
@@ -2776,7 +3633,10 @@ function updateGalleryPlaceholders() {
     // Only remove placeholders if we're doing a complete gallery reset
     // (e.g., switching views, applying filters, etc.)
     if (isGalleryResetting) {
-        Array.from(gallery.querySelectorAll('.gallery-placeholder')).forEach(el => el.remove());
+        Array.from(gallery.querySelectorAll('.gallery-placeholder')).forEach((el) => {
+            disposeGalleryItemElement(el);
+            el.remove();
+        });
         isGalleryResetting = false;
     }
 }
@@ -2800,6 +3660,12 @@ function displayCurrentPageOptimized() {
 
     // Set flag for complete gallery reset
     isGalleryResetting = true;
+
+    disposeGalleryContents();
+    if (intersectionObserver) {
+        intersectionObserver.disconnect();
+        intersectionObserver = null;
+    }
 
     // Clear gallery
     gallery.innerHTML = '';
@@ -2883,6 +3749,8 @@ function resetInfiniteScroll() {
         intersectionObserver.disconnect();
         intersectionObserver = null;
     }
+
+    purgePlaceholderResolutionQueue();
 
     // Clean up placeholder cleanup queue for iOS
     if (placeholderCleanupQueue.length > 0) {
@@ -3461,6 +4329,7 @@ function addImgToGalleryItem(item, image) {
 function removeImgFromGalleryItem(item) {
     const img = item.querySelector('img');
     if (img) {
+        releaseGalleryItemImage(img);
         img.remove();
     }
 }
@@ -3494,6 +4363,7 @@ function reindexGallery() {
     // Remove duplicates
     itemsToRemove.forEach(el => {
         if (el && el.parentNode) {
+            disposeGalleryItemElement(el);
             el.remove();
         }
     });
@@ -3529,6 +4399,7 @@ function reindexGallery() {
             } else {
                 // Index is out of bounds - this item shouldn't exist, remove it
                 if (el && el.parentNode) {
+                    disposeGalleryItemElement(el);
                     el.remove();
                 }
             }
@@ -4685,6 +5556,7 @@ function processPlaceholderCleanup() {
 
     // Remove all placeholders in a single batch operation
     for (const placeholder of placeholdersToRemove) {
+        disposeGalleryItemElement(placeholder);
         if (placeholder.parentNode) {
             placeholder.parentNode.removeChild(placeholder);
         }
@@ -5611,6 +6483,11 @@ function refreshGalleryDisplay() {
 
     // Clear current gallery
     if (gallery) {
+        disposeGalleryContents();
+        if (intersectionObserver) {
+            intersectionObserver.disconnect();
+            intersectionObserver = null;
+        }
         gallery.innerHTML = '';
     }
 
@@ -5678,6 +6555,7 @@ function removeImageFromGallery(image) {
 
         // Remove the item from the gallery if found
         if (itemToRemove) {
+            disposeGalleryItemElement(itemToRemove);
             itemToRemove.remove();
         }
 
@@ -5696,6 +6574,7 @@ function removeImageFromGallery(image) {
                 if (item.fileImageIndex === allImagesIndex) {
                     // This placeholder was for the removed image - remove it from DOM and queue
                     if (item.element && item.element.parentNode) {
+                        disposeGalleryItemElement(item.element);
                         item.element.remove();
                     }
                     return false;
@@ -5875,7 +6754,10 @@ function removeMultipleImagesFromGallery(images) {
         indicesToRemove.sort((a, b) => b - a);
 
         // Remove items from gallery
-        itemsToRemove.forEach(item => item.remove());
+        itemsToRemove.forEach((item) => {
+            disposeGalleryItemElement(item);
+            item.remove();
+        });
 
         // Remove from allImages array and clean up placeholder queue
         const removedIndices = [];
@@ -5905,6 +6787,7 @@ function removeMultipleImagesFromGallery(images) {
                 if (item.fileImageIndex === removedIndex) {
                     // This placeholder was for the removed image - remove it from DOM and queue
                     if (item.element && item.element.parentNode) {
+                        disposeGalleryItemElement(item.element);
                         item.element.remove();
                     }
                     return false;
@@ -6378,7 +7261,6 @@ window.wsClient.registerInitStep(30, 'Initializing Gallery System', async () => 
 function toggleGallerySortOrder() {
     // Toggle between desc (newest first) and asc (oldest first)
     gallerySortOrder = gallerySortOrder === 'desc' ? 'asc' : 'desc';
-    gallerySortOrder = gallerySortOrder;
 
     // Update the button state and icon
     const sortOrderBtn = document.getElementById('sortOrderToggleBtn');
@@ -6396,29 +7278,70 @@ function toggleGallerySortOrder() {
         }
     }
 
-    // Sort the current gallery data
-    sortGalleryData();
+    // Flip order in memory — list is already sorted, so reverse is enough
+    flipActiveGallerySortOrder();
 
-    // Re-render the gallery with new sort order
     resetInfiniteScroll();
     displayCurrentPageOptimized();
 }
 
+function compareGalleryItemsByMtime(a, b) {
+    const timeA = a.mtime || 0;
+    const timeB = b.mtime || 0;
+    if (gallerySortOrder === 'desc') {
+        return timeB - timeA;
+    }
+    return timeA - timeB;
+}
+
+function isNarrowGallerySearchActive() {
+    return window.filteredImageIndices
+        && window.filteredImageIndices.length > 0
+        && window.filteredImageIndices.length < allImages.length;
+}
+
+function sortFilteredGalleryIndices() {
+    if (!isNarrowGallerySearchActive()) return;
+    window.filteredImageIndices.sort((idxA, idxB) => {
+        const timeA = allImages[idxA]?.mtime || 0;
+        const timeB = allImages[idxB]?.mtime || 0;
+        return gallerySortOrder === 'desc' ? timeB - timeA : timeA - timeB;
+    });
+}
+
+/** Toggle sort on the active in-memory list (reverse when fully sorted; resort search hits only in narrow filter). */
+function flipActiveGallerySortOrder() {
+    if (!allImages || allImages.length < 2) return;
+
+    if (isNarrowGallerySearchActive()) {
+        sortFilteredGalleryIndices();
+        return;
+    }
+
+    allImages.reverse();
+    if (window.originalAllImages && window.originalAllImages !== allImages) {
+        window.originalAllImages.reverse();
+    }
+}
+
+/** Apply current gallerySortOrder after a fresh load (full sort, not reverse). */
 function sortGalleryData() {
     if (!allImages || allImages.length === 0) return;
 
-    // Sort by modification time (mtime)
-    allImages.sort((a, b) => {
-        const timeA = a.mtime || 0;
-        const timeB = b.mtime || 0;
+    if (isNarrowGallerySearchActive()) {
+        sortFilteredGalleryIndices();
+        return;
+    }
 
-        if (gallerySortOrder === 'desc') {
-            return timeB - timeA; // Newest first
-        } else {
-            return timeA - timeB; // Oldest first
-        }
-    });
+    allImages.sort(compareGalleryItemsByMtime);
+    if (window.originalAllImages && window.originalAllImages !== allImages) {
+        window.originalAllImages.sort(compareGalleryItemsByMtime);
+    }
 }
+
+window.sortGalleryData = sortGalleryData;
+window.toggleGallerySortOrder = toggleGallerySortOrder;
+window.galleryMetadataCache = galleryMetadataCache;
 
 // Track current gallery refresh notification
 let galleryRefreshNotificationId = null;
@@ -8100,6 +9023,11 @@ function handleBulkActionsContextMenu(event) {
 
 function clearGallery() {
     if (gallery) {
+        disposeGalleryContents();
+        if (intersectionObserver) {
+            intersectionObserver.disconnect();
+            intersectionObserver = null;
+        }
         gallery.innerHTML = '';
     }
     // Clear selection when clearing gallery

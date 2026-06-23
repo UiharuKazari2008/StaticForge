@@ -4244,7 +4244,9 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 const progressData = {
                     phase: 'complete',
                     hasDynamicGen: !!opts.dynamic_generation,
-                    isUpscaling: !!opts.upscale
+                    isUpscaling: !!opts.upscale,
+                    contentLength: finalBuffer.length,
+                    filename: name
                 };
                 
                 // Add stage information if available (convert to 1-based indexing for UI)
@@ -4328,7 +4330,9 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 const progressData = {
                     phase: 'complete',
                     hasDynamicGen: !!opts.dynamic_generation,
-                    isUpscaling: true
+                    isUpscaling: true,
+                    contentLength: updatedScaledBuffer.length,
+                    filename: name
                 };
                 
                 // Add stage information if available (convert to 1-based indexing for UI)
@@ -5491,12 +5495,15 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                     
                     // Send completion progress update
                     if (ws && handler) {
+                        const lastSaved = savedFilenames.length > 0 ? savedFilenames[savedFilenames.length - 1] : null;
                         handler.sendGenerationProgress(ws, bodyData.requestId || 'generation', {
                             phase: 'complete',
                             totalStages: stageIndex + 1, // Report as if this was the last stage
                             currentStage: stageIndex + 1,
                             stageType: 'complete',
-                            stoppedEarly: true
+                            stoppedEarly: true,
+                            contentLength: currentBuffer ? currentBuffer.length : null,
+                            filename: lastSaved ? lastSaved.filename : null
                         });
                     }
                     
@@ -5510,13 +5517,16 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                     
                     // Send completion progress update
                     if (ws && handler) {
+                        const lastSaved = savedFilenames.length > 0 ? savedFilenames[savedFilenames.length - 1] : null;
                         handler.sendGenerationProgress(ws, bodyData.requestId || 'generation', {
                             phase: 'complete',
                             totalStages: stageIndex + 1,
                             currentStage: stageIndex + 1,
                             stageType: 'complete',
                             stoppedEarly: true,
-                            breakPointHit: true
+                            breakPointHit: true,
+                            contentLength: currentBuffer ? currentBuffer.length : null,
+                            filename: lastSaved ? lastSaved.filename : null
                         });
                     }
                     
@@ -5576,11 +5586,14 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
         
         // Send completion progress update
         if (ws && handler) {
+            const lastSaved = savedFilenames.length > 0 ? savedFilenames[savedFilenames.length - 1] : null;
             handler.sendGenerationProgress(ws, bodyData.requestId || 'generation', {
                 phase: 'complete',
                 totalStages: totalStages,
                 currentStage: totalStages,
-                stageType: 'complete'
+                stageType: 'complete',
+                contentLength: currentBuffer ? currentBuffer.length : null,
+                filename: lastSaved ? lastSaved.filename : null
             });
         }
         

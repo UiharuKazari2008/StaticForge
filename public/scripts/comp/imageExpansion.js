@@ -1455,6 +1455,9 @@ async function submitImageExpansionReroll() {
                     get: (headerName) => {
                         if (headerName === 'X-Generated-Filename') return result.filename;
                         if (headerName === 'X-Seed') return result.seed;
+                        if (headerName === 'Content-Length' && result.contentLength) {
+                            return String(result.contentLength);
+                        }
                         return null;
                     }
                 }
@@ -1840,6 +1843,9 @@ async function submitImageExpansion() {
                         }
                         if (headerName === 'X-Seed') {
                             return result.seed;
+                        }
+                        if (headerName === 'Content-Length' && result.contentLength) {
+                            return String(result.contentLength);
                         }
                         return null;
                     }

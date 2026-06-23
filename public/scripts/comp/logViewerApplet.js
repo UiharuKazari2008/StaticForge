@@ -15,6 +15,7 @@ const LOG_VIEWER_CONN_STATS_INTERVAL_MS = 1000;
 const LOG_VIEWER_TASKS_INTERVAL_MS = 2000;
 const LOG_VIEWER_DISK_REFRESH_MS = 60000;
 const LOG_VIEWER_STATUS_INTERVAL_KEY = 'eventViewerStatusInterval';
+const LOG_VIEWER_CLIENT_GALLERY_SOURCE = 'client:gallery-load';
 
 const STATUS_REFRESH_PRESETS = [
     { label: '1 second', ms: 1000 },
@@ -577,6 +578,7 @@ class LogViewerApplet {
                     this.currentSource = item.sourceId;
                     this.updateSourceButtonLabel();
                     this.updateTitleBar();
+                    this.updatePm2ControlsVisibility();
                     this.reload();
                 }
             }
@@ -615,6 +617,16 @@ class LogViewerApplet {
         if (!items.length) {
             items.push({ text: 'No sources', disabled: true });
         }
+
+        items.push({ separator: true, text: 'Client' });
+        items.push({
+            text: 'Gallery Load',
+            action: 'select-log-source',
+            sourceId: LOG_VIEWER_CLIENT_GALLERY_SOURCE,
+            loadfn: (item) => {
+                item.highlighted = this.currentSource === LOG_VIEWER_CLIENT_GALLERY_SOURCE;
+            }
+        });
         this.sourceClickMenuConfig.sections[0].items = items;
     }
 
@@ -938,12 +950,57 @@ class LogViewerApplet {
         return source === 'generation' || (source && source.startsWith('generation:'));
     }
 
+    isClientGalleryLogSource(source) {
+        return source === LOG_VIEWER_CLIENT_GALLERY_SOURCE;
+    }
+
+    isClientGalleryLogSourceActive() {
+        return this.isClientGalleryLogSource(this.currentSource)
+            && this.modal
+            && !this.modal.classList.contains('hidden');
+    }
+
+    formatGalleryLogStatusMeta() {
+        const count = window.galleryLoadLogApi ? window.galleryLoadLogApi.getEntryCount() : 0;
+        return `${count} event${count === 1 ? '' : 's'}`;
+    }
+
+    renderClientGalleryLogContent() {
+        if (!this.contentEl) return;
+        const text = window.galleryLoadLogApi
+            ? window.galleryLoadLogApi.getFormattedText()
+            : 'Gallery load log unavailable.';
+        this.contentEl.textContent = text;
+        this.lineCount = text ? text.split('\n').length : 0;
+        this.trimLogLinesIfNeeded();
+        if (typeof customScrollbar !== 'undefined' && customScrollbar.forceReinit && this.scrollWrapper) {
+            customScrollbar.forceReinit(this.scrollWrapper);
+        }
+        if (this.tailFollow) {
+            this.scrollToBottom(true);
+        }
+    }
+
+    onGalleryLoadLogEntry() {
+        if (!this.isClientGalleryLogSourceActive()) {
+            return;
+        }
+        this.renderClientGalleryLogContent();
+        this.setStatus(this.formatGalleryLogStatusMeta());
+    }
+
     getSourceMeta(sourceId) {
+        if (this.isClientGalleryLogSource(sourceId)) {
+            return { id: LOG_VIEWER_CLIENT_GALLERY_SOURCE, label: 'Gallery Load', group: 'client' };
+        }
         return this.sources.find((s) => s.id === sourceId) || null;
     }
 
     getSourceButtonLabel(sourceId) {
         const id = sourceId || this.currentSource;
+        if (this.isClientGalleryLogSource(id)) {
+            return 'Gallery Load';
+        }
         const meta = this.getSourceMeta(id);
         if (!meta) return 'Logs';
         if (meta.group === 'tendai' || this.isTendaiSource(id)) return 'Tendai Logs';
@@ -1019,7 +1076,7 @@ class LogViewerApplet {
     }
 
     updatePm2ControlsVisibility() {
-        const show = this.pm2Available;
+        const show = this.pm2Available && !this.isClientGalleryLogSource(this.currentSource);
         if (this.popoverFlushBtn) this.popoverFlushBtn.classList.toggle('hidden', !show);
         if (this.popoverRebootBtn) this.popoverRebootBtn.classList.toggle('hidden', !show);
         if (this.metricsEl) this.metricsEl.classList.toggle('hidden', !show);
@@ -1365,6 +1422,10 @@ class LogViewerApplet {
         this.applyDefaultWindowSize();
         this.setupGlassPopovers();
 
+        if (window.galleryLoadLogApi) {
+            window.galleryLoadLogApi.markEventViewerEngaged();
+        }
+
         if (!alreadyOpen) {
             openModal(this.modal);
             await this.loadSources();
@@ -1452,7 +1513,7 @@ class LogViewerApplet {
             this.pm2Available = data.pm2Available === true
                 || this.sources.some((s) => s.id && s.id.startsWith('pm2:'));
             this.updatePm2ControlsVisibility();
-            if (!this.sources.some((s) => s.id === this.currentSource)) {
+            if (!this.sources.some((s) => s.id === this.currentSource) && !this.isClientGalleryLogSource(this.currentSource)) {
                 const preferred = this.sources.find((s) => s.id === 'pm2:combined')
                     || this.sources.find((s) => s.id === 'pm2:out')
                     || this.sources.find((s) => s.id === 'server')
@@ -1477,6 +1538,12 @@ class LogViewerApplet {
         this.lineCount = 0;
         this.byteOffset = this.isCombinedSource(this.currentSource) ? { out: 0, err: 0 } : 0;
         this.fileSize = 0;
+
+        if (this.isClientGalleryLogSource(this.currentSource)) {
+            this.renderClientGalleryLogContent();
+            this.setStatus(this.formatGalleryLogStatusMeta());
+            return;
+        }
 
         const lines = this.backlogLines;
         const base = this.getBasePath();
@@ -1583,6 +1650,12 @@ class LogViewerApplet {
 
     async startStream(isReconnect) {
         this.stopStream(true);
+
+        if (this.isClientGalleryLogSource(this.currentSource)) {
+            this.renderClientGalleryLogContent();
+            this.setStatus(this.formatGalleryLogStatusMeta());
+            return;
+        }
 
         const base = this.getBasePath();
         if (!base || this.paused || this.modal?.classList.contains('minimised')

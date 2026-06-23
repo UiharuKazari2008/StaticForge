@@ -2269,6 +2269,7 @@ class WebSocketMessageHandlers {
             }, clientInfo.userType, clientInfo.sessionId, streamingCallback, ws, this, wsServer);
 
             // Send generation response
+            const contentLength = this.resolveGeneratedImageContentLength(result);
             this.sendToClient(ws, {
                 type: 'generate_preset_response',
                 requestId: requestId,
@@ -2278,6 +2279,7 @@ class WebSocketMessageHandlers {
                     saved: result.saved,
                     presetName: presetName,
                     workspace: targetWorkspace,
+                    contentLength,
                     message: `Generation completed for preset "${presetName}"`
                 },
                 timestamp: new Date().toISOString()
@@ -3481,21 +3483,70 @@ class WebSocketMessageHandlers {
     }
 
     // Handle gallery request messages
-    buildGalleryHash(baseArray, pinnedFiles, workspaceId, viewType, existingFilenamesSet = null) {
-        const rawPins = Array.isArray(pinnedFiles) ? pinnedFiles : [];
-        const pinsForHash = (existingFilenamesSet && typeof existingFilenamesSet.has === 'function')
-            ? rawPins.filter(f => existingFilenamesSet.has(f))
-            : rawPins;
-        const pinnedSet = new Set(pinsForHash);
-        const hashSource = baseArray.map(item => {
-            const file = item.upscaled || item.original || '';
-            const pinned = pinnedSet.has(file) ? '1' : '0';
-            return `${item.base}|${item.original || ''}|${item.upscaled || ''}|${item.mtime || 0}|${pinned}`;
+    buildGalleryHash(baseArray, workspaceId, viewType) {
+        // Stable identity hash: file membership only (no mtime, no pin state).
+        const hashItems = [...baseArray].sort((a, b) => String(a.base || '').localeCompare(String(b.base || '')));
+        const hashSource = hashItems.map(item => {
+            return `${item.base}|${item.original || ''}|${item.upscaled || ''}`;
         }).join('\n');
 
         return crypto.createHash('sha256')
             .update(`${workspaceId}::${viewType}::${baseArray.length}::${hashSource}`)
             .digest('hex');
+    }
+
+    buildPinnedIndexes(baseArray, pinnedFiles, existingFilenamesSet = null) {
+        const rawPins = Array.isArray(pinnedFiles) ? pinnedFiles : [];
+        const pinsForHash = (existingFilenamesSet && typeof existingFilenamesSet.has === 'function')
+            ? rawPins.filter(f => existingFilenamesSet.has(f))
+            : rawPins;
+        if (!pinsForHash.length || !baseArray.length) {
+            return [];
+        }
+
+        const fileToIndex = new Map();
+        for (let i = 0; i < baseArray.length; i++) {
+            const { original, upscaled } = baseArray[i];
+            if (original) {
+                fileToIndex.set(original, i);
+            }
+            if (upscaled) {
+                fileToIndex.set(upscaled, i);
+            }
+        }
+
+        const pinnedIndexes = [];
+        for (let p = 0; p < pinsForHash.length; p++) {
+            const idx = fileToIndex.get(pinsForHash[p]);
+            if (idx !== undefined) {
+                pinnedIndexes.push(idx);
+            }
+        }
+        if (pinnedIndexes.length > 1) {
+            pinnedIndexes.sort((a, b) => a - b);
+        }
+        return pinnedIndexes;
+    }
+
+    filterGalleryBaseItems(baseArray, viewType, lightweightMetadata = {}) {
+        const items = [];
+        for (const item of baseArray) {
+            const file = item.upscaled || item.original;
+            if (!file) {
+                continue;
+            }
+            if (viewType === 'upscaled') {
+                const meta = lightweightMetadata[file] || {};
+                const isLarge = meta.width && meta.height
+                    ? isImageLarge(meta.width, meta.height)
+                    : false;
+                if (!item.upscaled && !isLarge) {
+                    continue;
+                }
+            }
+            items.push(item);
+        }
+        return items;
     }
 
     async handleGalleryRequest(ws, message, clientInfo, wsServer) {
@@ -3589,9 +3640,10 @@ class WebSocketMessageHandlers {
             }));
 
             // Get mtime for sorting (lightweight query)
+            let sortMetadata = {};
             if (baseArray.length > 0) {
                 const allFilesForSort = baseArray.flatMap(({ original, upscaled }) => [original, upscaled].filter(Boolean));
-                const sortMetadata = await this.globalResources.getMetadataDatabase().getLightweightMetadata(allFilesForSort);
+                sortMetadata = await this.globalResources.getMetadataDatabase().getLightweightMetadata(allFilesForSort);
 
                 // Add mtime to each item for sorting
                 baseArray.forEach(item => {
@@ -3601,32 +3653,54 @@ class WebSocketMessageHandlers {
                 });
             }
 
-            // Sort by newest first
+            // Sort by newest first, then build the view-filtered index used for hash, pins, and pagination
             baseArray.sort((a, b) => b.mtime - a.mtime);
-            const galleryHash = this.buildGalleryHash(baseArray, pinnedFiles, activeWorkspaceId, viewType, existingOnDisk);
+            const galleryIndexBase = this.filterGalleryBaseItems(baseArray, viewType, sortMetadata);
+            const galleryHash = this.buildGalleryHash(galleryIndexBase, activeWorkspaceId, viewType);
+            const pinnedIndexes = (viewType === 'images' && includePinnedStatus)
+                ? this.buildPinnedIndexes(galleryIndexBase, pinnedFiles, existingOnDisk)
+                : [];
             const workspaceRecord = this.globalResources.getWorkspaceManager().getWorkspace(activeWorkspaceId);
             const lastGalleryDestructiveAt = Number(workspaceRecord?.lastGalleryDestructiveAt) || 0;
 
-            // Apply pagination
-            const totalItems = baseArray.length;
-            const paginatedItems = baseArray.slice(offset, offset + limit);
+            // Apply pagination on the filtered index so offsets, pins, and totals align with the response
+            const totalItems = galleryIndexBase.length;
+            const paginatedItems = galleryIndexBase.slice(offset, offset + limit);
             const hasMore = (offset + limit) < totalItems;
 
             let gallery = [];
 
             if (light) {
-                // Light mode: return basic file info without metadata
-                gallery = paginatedItems.map(({ base, original, upscaled }) => {
+                // Light mode: file identity + lightweight DB fields (mtime/dims) — no full metadata blobs
+                const pageFiles = paginatedItems.flatMap(({ original, upscaled }) => [original, upscaled].filter(Boolean));
+                const lightweightForPage = pageFiles.length > 0
+                    ? await this.globalResources.getMetadataDatabase().getLightweightMetadata(pageFiles)
+                    : {};
+
+                for (const item of paginatedItems) {
+                    const { base, original, upscaled, mtime } = item;
                     const file = upscaled || original;
-                    return {
+                    if (!file) continue;
+
+                    const meta = lightweightForPage[file] || sortMetadata[file] || {};
+                    const isLarge = meta.width && meta.height
+                        ? isImageLarge(meta.width, meta.height)
+                        : false;
+
+                    gallery.push({
                         base,
                         original,
                         upscaled,
+                        filename: file,
                         preview: getPreviewFilename(base),
-                        // Basic info only, no metadata
+                        mtime: mtime || meta.mtime || Date.now(),
+                        width: meta.width || null,
+                        height: meta.height || null,
+                        size: meta.size || 0,
+                        isLarge,
                         isPinned: includePinnedStatus ? pinnedFiles.includes(file) : false
-                    };
-                });
+                    });
+                }
             } else {
                 // Full mode: load metadata for paginated items
                 const filesToLoad = paginatedItems.flatMap(({ original, upscaled }) => [original, upscaled].filter(Boolean));
@@ -3664,16 +3738,11 @@ class WebSocketMessageHandlers {
                     const isLarge = fileMetadata?.width && fileMetadata?.height ?
                         isImageLarge(fileMetadata.width, fileMetadata.height) : false;
 
-                    if (viewType === 'upscaled') {
-                        // For upscaled view, include images that have upscaled versions OR are wallpaper/large
-                        const shouldInclude = upscaled || isLarge;
-                        if (!shouldInclude) continue;
-                    }
-
                     gallery.push({
                         base,
                         original,
                         upscaled,
+                        filename: file,
                         preview,
                         mtime: fileMetadata.mtime || Date.now(),
                         size: fileMetadata.size || 0,
@@ -3689,7 +3758,7 @@ class WebSocketMessageHandlers {
             // Stop keep-alive when complete
             this.stopKeepAliveInterval(requestId);
 
-            // Send response
+            // Send response — pinnedIndexes are global gallery positions; per-item isPinned is set on each row
             this.sendToClient(ws, {
                 type: 'request_gallery_response',
                 requestId: requestId,
@@ -3698,6 +3767,7 @@ class WebSocketMessageHandlers {
                     viewType,
                     workspaceId: activeWorkspaceId,
                     galleryHash,
+                    pinnedIndexes: (viewType === 'images' && includePinnedStatus) ? pinnedIndexes : [],
                     lastGalleryDestructiveAt,
                     pagination: {
                         offset,
@@ -10250,6 +10320,26 @@ class WebSocketMessageHandlers {
         }
     }
 
+    // Resolve byte length for a generated image (buffer or saved file on disk).
+    resolveGeneratedImageContentLength(result) {
+        if (!result) return null;
+        if (result.buffer) {
+            return result.buffer.length;
+        }
+        if (result.image && typeof result.image === 'string') {
+            return Buffer.from(result.image, 'base64').length;
+        }
+        const filename = result.filename || null;
+        if (!filename) return null;
+        try {
+            const filePath = path.join(this.globalResources.getPath('images'), filename);
+            if (fs.existsSync(filePath)) {
+                return fs.statSync(filePath).size;
+            }
+        } catch (_) { /* ignore */ }
+        return null;
+    }
+
     // Send unified image generation progress updates
     sendGenerationProgress(ws, requestId, progressData) {
         let imageData = progressData.imageData || null;
@@ -10276,7 +10366,9 @@ class WebSocketMessageHandlers {
                 totalStages: progressData.totalStages || null,
                 currentStage: progressData.currentStage || null,
                 stageType: progressData.stageType || null,
-                delayMs: progressData.delayMs || null
+                delayMs: progressData.delayMs || null,
+                contentLength: progressData.contentLength || null,
+                filename: progressData.filename || null
             },
             timestamp: new Date().toISOString()
         });
@@ -11758,7 +11850,7 @@ class WebSocketMessageHandlers {
 
                 // Send final result (generateImageWebSocket now includes metadata)
                 const responseData = {
-                    image: result.buffer.toString('base64'),
+                    image: result.buffer ? result.buffer.toString('base64') : null,
                     filename: result.filename,
                     seed: result.seed || null,
                     metadata: result.metadata
@@ -11802,11 +11894,13 @@ class WebSocketMessageHandlers {
                 );
 
                 // Send success response with image data using _response pattern
+                const contentLength = this.resolveGeneratedImageContentLength(result);
                 const responseData = {
-                    image: result.buffer.toString('base64'),
+                    image: result.buffer ? result.buffer.toString('base64') : null,
                     filename: result.filename,
                     seed: result.seed || null,
-                    metadata: result.metadata
+                    metadata: result.metadata,
+                    contentLength
                 };
 
                 // Include compiled prompt if it was processed
@@ -11890,7 +11984,7 @@ class WebSocketMessageHandlers {
                 type: 'image_reroll_response',
                 requestId: requestId,
                 data: {
-                    image: result.buffer.toString('base64'),
+                    image: result.buffer ? result.buffer.toString('base64') : null,
                     filename: result.filename,
                     seed: result.seed || null,
                     originalFilename: filename
@@ -11939,13 +12033,15 @@ class WebSocketMessageHandlers {
             this.stopKeepAliveInterval(requestId);
 
             // Send success response with upscaled image data using _response pattern
+            const contentLength = this.resolveGeneratedImageContentLength(result);
             this.sendToClient(ws, {
                 type: 'image_upscaling_response',
                 requestId: requestId,
                 data: {
-                    image: result.buffer.toString('base64'),
+                    image: result.buffer ? result.buffer.toString('base64') : null,
                     filename: result.filename,
-                    metadata: result.metadata
+                    metadata: result.metadata,
+                    contentLength
                 },
                 timestamp: new Date().toISOString()
             });
@@ -12093,6 +12189,7 @@ class WebSocketMessageHandlers {
             this.stopKeepAliveInterval(ws, requestId);
 
             // Send success response with metadata included
+            const contentLength = this.resolveGeneratedImageContentLength(result);
             this.sendToClient(ws, {
                 type: 'image_expansion_response',
                 requestId: requestId,
@@ -12102,7 +12199,8 @@ class WebSocketMessageHandlers {
                     seed: result.seed,
                     expansionPrompt: result.expansionPrompt,
                     expansionReason: result.expansionReason,
-                    metadata: result.metadata
+                    metadata: result.metadata,
+                    contentLength
                 },
                 timestamp: new Date().toISOString()
             });

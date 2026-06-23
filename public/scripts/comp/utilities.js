@@ -2480,5 +2480,86 @@ function readPngMetadata(buffer) {
     return null;
 }
 
+/**
+ * Format seconds remaining for image transfer status (e.g. "12s left").
+ * @param {number} seconds
+ * @returns {string}
+ */
+function formatImageTransferEta(seconds) {
+    if (!Number.isFinite(seconds) || seconds < 0) return '';
+    if (seconds < 1) return '<1s left';
+    if (seconds < 60) return `${Math.ceil(seconds)}s left`;
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.ceil(seconds % 60);
+    return secs > 0 ? `${mins}m ${secs}s left` : `${mins}m left`;
+}
+
+/**
+ * Fetch an image with byte progress when Content-Length (or knownTotalBytes) is available.
+ * Falls back to direct element src assignment when size is unknown.
+ * @param {string} url
+ * @param {number|null|undefined} knownTotalBytes
+ * @param {(progress: {loaded: number, total: number, ratio: number, etaSeconds: number|null}) => void} [onProgress]
+ * @returns {Promise<{objectUrl: string|null, usedFetch: boolean, total: number, loaded: number}>}
+ */
+async function fetchTrackedImageBlob(url, knownTotalBytes, onProgress) {
+    const response = await fetch(url, { cache: 'no-store', credentials: 'same-origin' });
+    if (!response.ok) {
+        throw new Error(`Failed to load image (${response.status})`);
+    }
+
+    let total = Number(knownTotalBytes) > 0 ? Number(knownTotalBytes) : 0;
+    if (!total) {
+        const headerLen = parseInt(response.headers.get('content-length') || '0', 10);
+        if (Number.isFinite(headerLen) && headerLen > 0) {
+            total = headerLen;
+        }
+    }
+
+    if (!response.body || !total) {
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        return { objectUrl, usedFetch: true, total: blob.size || 0, loaded: blob.size || 0 };
+    }
+
+    const reader = response.body.getReader();
+    const chunks = [];
+    let loaded = 0;
+    let lastProgressAt = Date.now();
+    let lastLoaded = 0;
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        loaded += value.length;
+
+        if (onProgress) {
+            const now = Date.now();
+            const elapsedSec = (now - lastProgressAt) / 1000;
+            let etaSeconds = null;
+            if (elapsedSec >= 0.25 && loaded > lastLoaded) {
+                const bytesPerSec = (loaded - lastLoaded) / elapsedSec;
+                if (bytesPerSec > 0) {
+                    etaSeconds = (total - loaded) / bytesPerSec;
+                }
+                lastProgressAt = now;
+                lastLoaded = loaded;
+            }
+            onProgress({
+                loaded,
+                total,
+                ratio: total > 0 ? loaded / total : 0,
+                etaSeconds
+            });
+        }
+    }
+
+    const mime = response.headers.get('content-type') || 'image/png';
+    const blob = new Blob(chunks, { type: mime });
+    const objectUrl = URL.createObjectURL(blob);
+    return { objectUrl, usedFetch: true, total, loaded };
+}
+
 // These will remain global for now to avoid breaking existing code
 // TODO: Move actual implementations from app.js here

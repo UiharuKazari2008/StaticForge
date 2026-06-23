@@ -172,6 +172,19 @@ const manualPreviewOriginalImage = document.getElementById('manualPreviewOrigina
 const sproutSeedBtn = document.getElementById('sproutSeedBtn');
 const previewSection = document.getElementById('manualPanelSection');
 const variationImage = document.getElementById('manualVariationImage');
+
+function releaseVariationImageSrc() {
+    if (!variationImage) return;
+    variationImage.onload = null;
+    variationImage.onerror = null;
+    const src = variationImage.currentSrc || variationImage.src || '';
+    if (src.startsWith('blob:')) {
+        URL.revokeObjectURL(src);
+    }
+    variationImage.removeAttribute('src');
+}
+window.releaseVariationImageSrc = releaseVariationImageSrc;
+
 const previewCharacterReferenceImageBtn = document.getElementById('previewCharacterReferenceImageBtn');
 const manualRescaleOverlay = manualRescale?.parentElement?.querySelector('.percentage-input-overlay');
 const manualStrengthOverlay = manualStrengthValue?.parentElement?.querySelector('.percentage-input-overlay');
@@ -564,6 +577,7 @@ async function handleManualPreviewImageContextMenuAction(event) {
                     tempImg.src = previewUrl;
 
                     // Set the variation image
+                    releaseVariationImageSrc();
                     variationImage.src = previewUrl;
                     variationImage.classList.remove('hidden');
 
@@ -1548,17 +1562,24 @@ function showManualLoading(show, message = 'Generating Image...') {
 }
 
 // Show manual preview navigation loading overlay
-function showManualPreviewNavigationLoading(show) {
+function showManualPreviewNavigationLoading(show, statusText = '') {
     const navigationLoadingOverlay = document.getElementById('manualPreviewNavigationLoading');
 
     if (navigationLoadingOverlay) {
         if (show) {
             navigationLoadingOverlay.classList.remove('hidden');
+            if (statusText) {
+                navigationLoadingOverlay.title = statusText;
+            } else {
+                navigationLoadingOverlay.removeAttribute('title');
+            }
         } else {
             navigationLoadingOverlay.classList.add('hidden');
+            navigationLoadingOverlay.removeAttribute('title');
         }
     }
 }
+window.showManualPreviewNavigationLoading = showManualPreviewNavigationLoading;
 
 function resetDynamicGenerationControls() {
     const dynamicGenButtons = [
@@ -1788,7 +1809,7 @@ function clearManualForm() {
     updateMainLockButtonState();
     updateDynamicGenerationToggleBtn();
 
-    variationImage.src = '';
+    releaseVariationImageSrc();
 
     // Reset transformation section states
     if (transformationRow) {
@@ -1861,11 +1882,10 @@ function clearManualForm() {
     // Reset inpaint button state and clear mask
     resetInpaint();
     window.strengthValueLoaded = false;
+    // releaseUploadedImageDataHeavyFields: public/scripts/comp/imageBias.js
+    releaseUploadedImageDataHeavyFields();
     window.uploadedImageData = null;
-    // Clear any stored previous bias
-    if (window.uploadedImageData) {
-        delete window.uploadedImageData.previousBias;
-    }
+    releaseVariationImageSrc();
     imageBiasAdjustmentData = {
         originalImage: null,
         targetDimensions: null,
@@ -3097,6 +3117,7 @@ async function hideManualModal(e) {
     window.currentEditImage = null;
     window.currentRequestType = null;
     window.initialEdit = null;
+    window.swapGeneratedPreviewState = null;
     window.lastGeneration = null;
     window.lastGeneratedImageName = null;
     // Director new session functionality is always available
@@ -3691,6 +3712,7 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
 
                 if (variationImage) {
                     // Set the preview image source
+                    releaseVariationImageSrc();
                     variationImage.src = previewUrl;
                     variationImage.classList.remove('hidden');
                 }
@@ -3774,7 +3796,7 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
                 delete window.currentEditMetadata.isVariationEdit;
             }
             if (variationImage) {
-                variationImage.src = '';
+                releaseVariationImageSrc();
             }
 
             // Hide transformation section content
@@ -3797,6 +3819,7 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
 
             if (previewUrl && variationImage) {
                 // Show the image preview for reference
+                releaseVariationImageSrc();
                 variationImage.src = previewUrl;
                 variationImage.classList.remove('hidden');
 
@@ -4641,11 +4664,15 @@ async function handleManualGeneration(e, options = {}) {
             // Load final image from disk via /images/ (service worker caches)
             if (filename) {
                 const imageSrc = `/images/${filename}`;
+                const contentLength = result.contentLength || result.metadata?.file_size || null;
                 const mockResponse = {
                     headers: {
                         get: (headerName) => {
                             if (headerName === 'X-Generated-Filename') {
                                 return filename;
+                            }
+                            if (headerName === 'Content-Length' && contentLength) {
+                                return String(contentLength);
                             }
                             return null;
                         }
@@ -4714,6 +4741,7 @@ async function handleManualGeneration(e, options = {}) {
  */
 async function handleImageResult(imageSrc, clearContextFn, seed = null, response = null, metadata = null) {
     // Release streaming/data preview pixels before loading final /images/ URL
+    releaseManualPreviewImageSrc();
     if (window.wsClient) {
         window.wsClient.releaseDataImageSrc(document.getElementById('manualPreviewImage'));
     }
@@ -4870,7 +4898,7 @@ async function handleImageResult(imageSrc, clearContextFn, seed = null, response
             }
         }, 1000);
 
-        img.onload = null;
+        releaseManualPreviewElementImageSrc(img);
     };
     img.src = imageSrc;
 }

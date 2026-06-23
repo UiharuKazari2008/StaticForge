@@ -621,11 +621,22 @@ class SpellbookModalManager {
         await displayGalleryFromStartIndex(targetIndex, true);
     }
 
-    clearResults() {
-        if (this.previewImage) {
-            this.previewImage.removeAttribute('src');
-            this.previewImage.classList.add('hidden');
+    releaseSpellbookPreviewImageSrc() {
+        if (!this.previewImage) return;
+        this.previewImage.onload = null;
+        this.previewImage.onerror = null;
+        const src = this.previewImage.currentSrc || this.previewImage.src || '';
+        if (src.startsWith('blob:') || src.startsWith('data:')) {
+            if (src.startsWith('blob:')) {
+                URL.revokeObjectURL(src);
+            }
         }
+        this.previewImage.removeAttribute('src');
+        this.previewImage.classList.add('hidden');
+    }
+
+    clearResults() {
+        this.releaseSpellbookPreviewImageSrc();
 
         this.generatedFilename = null;
         this.generatedWorkspace = null;
@@ -1202,6 +1213,7 @@ class SpellbookModalManager {
                         resolve();
                         console.warn('Spellbook preview image load timed out after 10 seconds');
                     }, 10000);
+                    this.releaseSpellbookPreviewImageSrc();
                     this.previewImage.src = imageUrl;
                     if (this.previewImage.decode) {
                         this.previewImage.decode().then(finish).catch(() => {
@@ -1595,6 +1607,7 @@ class SpellbookModalManager {
 
                 // Update the preview image to show the upscaled version (file on disk)
                 if (this.previewImage) {
+                    this.releaseSpellbookPreviewImageSrc();
                     this.previewImage.src = `/images/${upscaledFilename}`;
                     this.previewImage.classList.remove('hidden');
                 }

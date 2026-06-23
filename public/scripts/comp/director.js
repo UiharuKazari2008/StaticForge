@@ -4,6 +4,34 @@
 // and returning mock responses without making actual API calls
 window.directorDryrun = false;
 
+const DIRECTOR_MAX_SESSION_MESSAGES = 200;
+
+function trimDirectorSessionMessages(messages, max = DIRECTOR_MAX_SESSION_MESSAGES) {
+    if (!Array.isArray(messages) || messages.length <= max) {
+        return messages;
+    }
+    return messages.slice(messages.length - max);
+}
+
+function assignTrimmedDirectorSessionMessages(session, messages) {
+    if (!session || !Array.isArray(messages)) {
+        return messages;
+    }
+    const beforeLen = messages.length;
+    const capped = trimDirectorSessionMessages(messages);
+    if (capped.length < beforeLen) {
+        showGlassToast(
+            'info',
+            'Director',
+            `Older messages were removed to keep this session at ${DIRECTOR_MAX_SESSION_MESSAGES} messages.`,
+            false,
+            6000
+        );
+    }
+    session.messages = capped;
+    return capped;
+}
+
 // Director Class - Encapsulates all director functionality
 class Director {
     constructor() {
@@ -1439,6 +1467,11 @@ class Director {
     }
 
     _doRenderSessionMessages(messages) {
+        const cappedMessages = this.currentSession
+            ? assignTrimmedDirectorSessionMessages(this.currentSession, messages)
+            : trimDirectorSessionMessages(messages);
+        messages = cappedMessages;
+
         this.directorChatMessages.innerHTML = '';
 
         // Use document fragment for batch DOM operations
@@ -1846,6 +1879,7 @@ class Director {
 
         this.currentSession.messages = this.currentSession.messages || [];
         this.currentSession.messages.push(userMessage);
+        assignTrimmedDirectorSessionMessages(this.currentSession, this.currentSession.messages);
 
         // Update UI with optimized DOM operations
         const messageElement = this.createMessageElement(userMessage);
@@ -2004,6 +2038,7 @@ class Director {
         if (window.currentSession) {
             window.currentSession.messages = window.currentSession.messages || [];
             window.currentSession.messages.push(message);
+            assignTrimmedDirectorSessionMessages(window.currentSession, window.currentSession.messages);
         }
 
         // Create and append the message element with optimized DOM operations

@@ -336,7 +336,7 @@ function getLightboxDataSource() {
                 base: img.base,
                 upscaled: img.upscaled,
                 original: img.original,
-                metadata: img.metadata
+                metadata: img.metadata || null
             }
         };
     });
@@ -644,7 +644,6 @@ async function initializePhotoSwipe() {
                             onClick: (e) => {
                                 const currentItem = pswp.currSlide;
                                 if (currentItem && currentItem.data?.data) {
-                                    // Close PhotoSwipe first, then open expansion modal
                                     pswp.close();
                                     const imageData = currentItem.data.data;
                                     openManualModalWithContent({
@@ -659,7 +658,7 @@ async function initializePhotoSwipe() {
                             className: 'chat-button',
                             icon: '<i class="fa-light fa-person-to-portal"></i>',
                             label: 'Create Persona',
-                            onClick: () => {
+                            onClick: async () => {
                                 const currentItem = pswp.currSlide;
                                 if (currentItem && currentItem.data?.data) {
                                     // Get the filename - prefer upscaled, fallback to original
@@ -668,7 +667,15 @@ async function initializePhotoSwipe() {
                                     if (filename && window.chatSystem) {
                                         // Close PhotoSwipe first, then open chat modal
                                         pswp.close();
-                                        const characterName = imageData.characterName || imageData.metadata?.character_name || null;
+                                        let characterName = imageData.characterName || null;
+                                        if (!characterName) {
+                                            try {
+                                                const metadata = await getImageMetadata(filename);
+                                                characterName = metadata?.character_name || null;
+                                            } catch (_) {
+                                                characterName = null;
+                                            }
+                                        }
                                         window.chatSystem.openChatModal(filename, characterName);
                                     }
                                 }

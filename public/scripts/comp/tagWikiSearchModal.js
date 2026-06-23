@@ -6,6 +6,18 @@ const DREAMWIKI_RECENT_MAX = 20;
 const GRIMOIRE_RIGHT_PANE_LS = 'grimoireRightPaneState';
 const GRIMOIRE_ONLINE_SEARCH_LS = 'grimoireIncludeOnlineSearch';
 const GRIMOIRE_SPLIT_MIN_WIDTH = 1024; // min width to auto-enable practical split (dual pane) UI even without maximize
+const TAG_WIKI_MAX_HISTORY = 100;
+
+function capTagWikiHistoryEntries(history, historyIndex) {
+    if (!Array.isArray(history) || history.length <= TAG_WIKI_MAX_HISTORY) {
+        return { history, historyIndex };
+    }
+    const trimCount = history.length - TAG_WIKI_MAX_HISTORY;
+    return {
+        history: history.slice(trimCount),
+        historyIndex: Math.max(0, (historyIndex || 0) - trimCount)
+    };
+}
 
 function dreamWikiRecentRead() {
     try {
@@ -2206,6 +2218,9 @@ class GrimoireSplitPane extends WikiDisplayBase {
         }
         this.history.push(entry);
         this.historyIndex = this.history.length - 1;
+        const capped = capTagWikiHistoryEntries(this.history, this.historyIndex);
+        this.history = capped.history;
+        this.historyIndex = capped.historyIndex;
         this.blank = false;
     }
 
@@ -2643,6 +2658,9 @@ class WikiWindowInstance extends WikiDisplayBase {
         
         this.history.push(entry);
         this.historyIndex = this.history.length - 1;
+        const capped = capTagWikiHistoryEntries(this.history, this.historyIndex);
+        this.history = capped.history;
+        this.historyIndex = capped.historyIndex;
         
         this.updateNavigationButtons();
     }
@@ -5469,6 +5487,9 @@ class TagWikiSearchModal extends WikiDisplayBase {
         
         this.history.push(entry);
         this.historyIndex = this.history.length - 1;
+        const capped = capTagWikiHistoryEntries(this.history, this.historyIndex);
+        this.history = capped.history;
+        this.historyIndex = capped.historyIndex;
         
         this.updateNavigationButtons();
         this.updateSearchControlsVisibility();

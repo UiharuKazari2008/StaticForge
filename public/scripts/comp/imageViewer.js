@@ -1324,6 +1324,15 @@ class ImageViewer {
 
         // Remove element listeners if possible (though standard destroy removes element)
         const imgElement = this.element ? this.element.querySelector(`#imageViewerImage_${this.id}`) : null;
+        if (imgElement) {
+            imgElement.onload = null;
+            imgElement.onerror = null;
+            const src = imgElement.currentSrc || imgElement.src || '';
+            if (src.startsWith('blob:')) {
+                URL.revokeObjectURL(src);
+            }
+            imgElement.removeAttribute('src');
+        }
         if (imgElement && this.boundTouchStart) {
             imgElement.removeEventListener('touchstart', this.boundTouchStart);
         }
