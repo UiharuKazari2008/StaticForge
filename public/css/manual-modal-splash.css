@@ -85,3 +85,449 @@
     line-height: 1;
     font-variation-settings: "wght" 700;
 }
+
+/* Preview Animation Container */
+.manual-preview-container {
+    position: relative;
+    overflow: hidden;
+}
+
+/* Stars Layer */
+.preview-stars {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    opacity: 0;
+    transition: opacity 0.25s ease-in-out;
+}
+
+.preview-star {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    background: #fff;
+    border-radius: 50%;
+    animation: previewTwinkle 4s infinite;
+}
+
+.preview-star:nth-child(odd) {
+    animation-delay: 0s;
+}
+
+.preview-star:nth-child(even) {
+    animation-delay: 1.5s;
+}
+
+.preview-star:nth-child(3n) {
+    animation-delay: 0.75s;
+}
+
+.preview-star:nth-child(4n) {
+    animation-delay: 2.25s;
+}
+
+@keyframes previewTwinkle {
+
+    0%,
+    100% {
+        opacity: 0.3;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 1;
+        transform: scale(1.5);
+    }
+}
+
+/* Star positions using percentages */
+.preview-star:nth-child(1) {
+    top: 10%;
+    left: 15%;
+}
+
+.preview-star:nth-child(2) {
+    top: 20%;
+    left: 85%;
+}
+
+.preview-star:nth-child(3) {
+    top: 30%;
+    left: 25%;
+}
+
+.preview-star:nth-child(4) {
+    top: 40%;
+    left: 75%;
+}
+
+.preview-star:nth-child(5) {
+    top: 50%;
+    left: 10%;
+}
+
+.preview-star:nth-child(6) {
+    top: 60%;
+    left: 90%;
+}
+
+.preview-star:nth-child(7) {
+    top: 70%;
+    left: 35%;
+}
+
+.preview-star:nth-child(8) {
+    top: 80%;
+    left: 65%;
+}
+
+.preview-star:nth-child(9) {
+    top: 15%;
+    left: 50%;
+}
+
+.preview-star:nth-child(10) {
+    top: 25%;
+    left: 5%;
+}
+
+.preview-star:nth-child(11) {
+    top: 35%;
+    left: 95%;
+}
+
+.preview-star:nth-child(12) {
+    top: 45%;
+    left: 45%;
+}
+
+.preview-star:nth-child(13) {
+    top: 55%;
+    left: 20%;
+}
+
+.preview-star:nth-child(14) {
+    top: 65%;
+    left: 80%;
+}
+
+.preview-star:nth-child(15) {
+    top: 75%;
+    left: 30%;
+}
+
+.preview-star:nth-child(16) {
+    top: 85%;
+    left: 70%;
+}
+
+.preview-star:nth-child(17) {
+    top: 5%;
+    left: 40%;
+}
+
+.preview-star:nth-child(18) {
+    top: 90%;
+    left: 15%;
+}
+
+.preview-star:nth-child(19) {
+    top: 95%;
+    left: 55%;
+}
+
+.preview-star:nth-child(20) {
+    top: 8%;
+    left: 70%;
+}
+
+/* Additional 15 stars positioned at top, bottom, and edges */
+.preview-star:nth-child(21) {
+    top: 2%;
+    left: 5%;
+}
+
+.preview-star:nth-child(22) {
+    top: 2%;
+    left: 95%;
+}
+
+.preview-star:nth-child(23) {
+    top: 5%;
+    left: 10%;
+}
+
+.preview-star:nth-child(24) {
+    top: 5%;
+    left: 90%;
+}
+
+.preview-star:nth-child(25) {
+    top: 8%;
+    left: 20%;
+}
+
+.preview-star:nth-child(26) {
+    top: 8%;
+    left: 80%;
+}
+
+.preview-star:nth-child(27) {
+    top: 12%;
+    left: 2%;
+}
+
+.preview-star:nth-child(28) {
+    top: 12%;
+    left: 98%;
+}
+
+.preview-star:nth-child(29) {
+    top: 98%;
+    left: 5%;
+}
+
+.preview-star:nth-child(30) {
+    top: 98%;
+    left: 95%;
+}
+
+.preview-star:nth-child(31) {
+    top: 95%;
+    left: 10%;
+}
+
+.preview-star:nth-child(32) {
+    top: 95%;
+    left: 90%;
+}
+
+.preview-star:nth-child(33) {
+    top: 92%;
+    left: 20%;
+}
+
+.preview-star:nth-child(34) {
+    top: 92%;
+    left: 80%;
+}
+
+.preview-star:nth-child(35) {
+    top: 88%;
+    left: 2%;
+}
+
+/* Lines Layer */
+.preview-lines-layer {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    cursor: progress;
+}
+
+.preview-lines-background {
+    z-index: 0;
+    pointer-events: none;
+}
+
+.preview-lines-foreground {
+    z-index: var(--z-layer-1);
+    pointer-events: none;
+}
+
+.preview-line {
+    position: absolute;
+    bottom: -310px;
+    width: 10px;
+    height: 300px;
+    background: rgba(255, 255, 255, 0.8);
+    animation: previewRiseUp 1.5s linear infinite;
+    opacity: 0;
+    visibility: hidden;
+}
+
+.preview-lines-background .preview-line {
+    background: var(--active-tab-bg, rgba(100, 150, 255, 1));
+    width: 5px;
+    height: 175px;
+    box-shadow: 0 0 15px var(--active-tab-border, rgba(100, 150, 255, 0.8));
+    animation: previewRiseUp 4s linear infinite;
+}
+
+.preview-lines-foreground .preview-line {
+    background: var(--primary-color-light, rgba(255, 100, 150, 0.9));
+}
+
+/* Background lines run whenever preview animation is active; foreground waits until diffusion (preview-foreground-lines-active). */
+.preview-animation-active:not(.preview-foreground-lines-active) .preview-lines-foreground .preview-line {
+    animation-play-state: paused;
+}
+
+.preview-animation-active.preview-foreground-lines-active .preview-lines-foreground .preview-line {
+    animation-play-state: running;
+}
+
+/* Line positions using percentages */
+.preview-line:nth-child(1) {
+    left: 8%;
+    animation-delay: 0s;
+}
+
+.preview-line:nth-child(2) {
+    left: 23%;
+    animation-delay: 0.8s;
+}
+
+.preview-line:nth-child(3) {
+    left: 67%;
+    animation-delay: 1.6s;
+}
+
+.preview-line:nth-child(4) {
+    left: 41%;
+    animation-delay: 2.4s;
+}
+
+.preview-line:nth-child(5) {
+    left: 89%;
+    animation-delay: 3.2s;
+}
+
+.preview-line:nth-child(6) {
+    left: 15%;
+    animation-delay: 4s;
+}
+
+.preview-line:nth-child(7) {
+    left: 73%;
+    animation-delay: 4.8s;
+}
+
+.preview-line:nth-child(8) {
+    left: 34%;
+    animation-delay: 5.6s;
+}
+
+.preview-line:nth-child(9) {
+    left: 56%;
+    animation-delay: 6.4s;
+}
+
+.preview-line:nth-child(10) {
+    left: 92%;
+    animation-delay: 7.2s;
+}
+
+.preview-line:nth-child(11) {
+    left: 28%;
+    animation-delay: 8s;
+}
+
+.preview-line:nth-child(12) {
+    left: 81%;
+    animation-delay: 8.8s;
+}
+
+.preview-line:nth-child(13) {
+    left: 47%;
+    animation-delay: 9.6s;
+}
+
+.preview-line:nth-child(14) {
+    left: 19%;
+    animation-delay: 10.4s;
+}
+
+.preview-line:nth-child(15) {
+    left: 75%;
+    animation-delay: 11.2s;
+}
+
+/* Height variations using viewport units for responsive sizing */
+.preview-line:nth-child(3n) {
+    height: 110px;
+}
+
+.preview-line:nth-child(5n) {
+    height: 90px;
+}
+
+.preview-line:nth-child(7n) {
+    height: 130px;
+}
+
+.preview-line:nth-child(11n) {
+    height: 95px;
+}
+
+/* Background lines - make them even more prominent */
+.preview-lines-background .preview-line:nth-child(3n) {
+    height: 140px;
+}
+
+.preview-lines-background .preview-line:nth-child(5n) {
+    height: 160px;
+}
+
+.preview-lines-background .preview-line:nth-child(7n) {
+    height: 130px;
+}
+
+.preview-lines-background .preview-line:nth-child(11n) {
+    height: 150px;
+}
+
+@keyframes previewRiseUp {
+    0% {
+        transform: translateY(0);
+        opacity: 0;
+    }
+
+    5% {
+        opacity: 1;
+    }
+
+    95% {
+        opacity: 1;
+    }
+
+    100% {
+        transform: translateY(-100vh);
+        opacity: 0;
+    }
+}
+
+/* Animation states */
+.preview-animation-active .preview-stars {
+    opacity: 1;
+}
+
+/* Fade out animations */
+.preview-fade-out .preview-line {
+    animation-play-state: paused;
+}
+
+.preview-fade-out .preview-stars {
+    transition: opacity 3s ease-out;
+}
+
+/* Container fade out animation */
+.preview-lines-layer.fadeOut {
+    animation: fadeOutContainer 0.8s ease-out forwards;
+}
+
+@keyframes fadeOutContainer {
+    from {
+        opacity: 1;
+    }
+
+    to {
+        opacity: 0;
+    }
+}

@@ -607,43 +607,6 @@ html:has(body.desktop-mode) {
     margin-right: 0.25rem;
 }
 
-.main-menu-row .btn-primary,
-.main-menu-row .btn-secondary,
-.main-menu-row .btn-danger {
-    font-weight: 300;
-    font-variation-settings: "wght" 300;
-    background: transparent;
-    border: 1px solid transparent;
-    box-shadow: none;
-    min-width: 32px;
-}
-
-.main-menu-row .btn-primary i,
-.main-menu-row .btn-secondary i,
-.main-menu-row .btn-danger i {
-    font-size: 1.3em;
-}
-
-/* Override main-menu-row styles for round buttons */
-.main-menu-row .round-button,
-.floating-controls .round-button {
-    background: var(--header-bg, var(--glass-layer-dark-5));
-    border: 1px solid var(--header-border, var(--glass-border-2));
-    box-shadow: var(--glass-shadow-3), inset 0 0 15px #ffffff2b;
-    min-width: 54px;
-    min-height: 54px;
-    -webkit-backdrop-filter: var(--glass-blur-2, brightness(0.15)) saturate(0.5);
-    backdrop-filter: var(--glass-blur-2, brightness(0.15)) saturate(0.5);
-}
-
-.main-menu-row .round-button.btn-primary,
-.floating-controls .round-button.btn-primary {
-    background: radial-gradient(var(--primary-glass-color), var(--primary-glass-color));
-    color: var(--text-accent-tinted);
-    border-color: var(--primary-glass-border);
-    box-shadow: var(--glass-shadow-3), inset 0 0 15px #ffffff2b;
-}
-
 /* Preview Animation Container */
 .manual-preview-container {
     position: relative;
@@ -1088,4 +1051,99 @@ html:has(body.desktop-mode) {
     to {
         opacity: 0;
     }
+}
+
+/* Preview UI while generation is active — scripts/comp/manualModalManager.js */
+.generating .manual-preview-controls,
+.generating .manual-preview-controls-top-left {
+    opacity: 0;
+}
+
+.generating .manual-preview-controls-top-right > button {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Rentan context overlay stays visible during generation (parent opacity would hide it) */
+.generating .manual-preview-controls-top-right .dynamic-generation-overlay:not(.hidden) {
+    opacity: 1 !important;
+}
+
+.generating .manual-preview-controls-top-right .dynamic-generation-overlay:not(.hidden) .overlay-weather-info {
+    opacity: 1 !important;
+}
+
+.generating .manual-preview-image-container-inner {
+    max-height: 75%;
+    max-width: 75%;
+}
+
+.streaming .manual-preview-image-container-inner {
+    max-height: 87.5%;
+    max-width: 87.5%;
+}
+
+.generating.manual-preview-dynamic-gen-active .manual-preview-image-container-inner {
+    max-height: 65%;
+    max-width: 65%;
+}
+
+.generating.manual-preview-dynamic-gen-active .manual-preview-image-container-inner #manualPreviewImage {
+    opacity: 0.5;
+}
+
+.generating .manual-preview-image-container-inner #manualPreviewImage {
+    box-shadow: 0 0px 0px 0px hsl(0deg 0% 0% / 0%);
+}
+
+.generating .manual-preview-container {
+    background: hsl(0 0% 0% / 100%);
+}
+
+.generating .model-control,
+.generating #manualGenerateBtn {
+    pointer-events: none;
+    touch-action: none;
+    opacity: 0.45;
+}
+
+/* Balance Display */
+.balance-display {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    font-weight: 600;
+    font-variation-settings: "wght" 600;
+    font-size: 1.15em;
+    -webkit-filter: drop-shadow(0px 0px 3px black);
+    filter: drop-shadow(0px 0px 3px black);
+    font-family: 'Oxanium';
+    line-height: 1;
+}
+
+.balance-display.low-credits {
+    color: #fd7e14;
+}
+
+.balance-display .balanceAmount {
+    margin-bottom: -0.15em;
+}
+
+.price-list {
+    font-family: 'Oxanium';
+    line-height: 1;
+    margin-bottom: -0.15em;
+}
+
+/* Request Type Toggle */
+.request-type-toggle {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.request-type-toggle .toggle-btn {
+    flex: 1;
+    min-width: 120px;
+    justify-content: center;
 }

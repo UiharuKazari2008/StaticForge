@@ -1492,8 +1492,15 @@ function escapePresetHtml(text) {
     return div.innerHTML;
 }
 
+let _presetWsHandlersWired = false;
+
 // Set up WebSocket event handlers
 function setupWebSocketEventHandlers() {
+    if (_presetWsHandlersWired || !wsClient) {
+        return;
+    }
+    _presetWsHandlersWired = true;
+
     if (wsClient) {
         // Listen for preset response events
         wsClient.on('get_presets_response', handleGetPresetsResponse);
@@ -1505,12 +1512,124 @@ function setupWebSocketEventHandlers() {
     }
 }
 
+function wireInlinePresetListeners() {
+    const manualPresetName = document.getElementById('manualPresetName');
+    const manualLoadBtn = document.getElementById('manualLoadBtn');
+    const manualSaveBtn = document.getElementById('manualSaveBtn');
+    const manualPresetToggleBtn = document.getElementById('manualPresetToggleBtn');
+    const manualPresetGroup = document.getElementById('manualPresetGroup');
+
+    if (manualPresetName && manualPresetName.dataset.wired !== 'true') {
+        manualPresetName.dataset.wired = 'true';
+        const onPresetNameChange = () => {
+            // validatePresetWithTimeout, updateManualPresetPlaceholder: public/scripts/app.js
+            validatePresetWithTimeout();
+            updateManualPresetPlaceholder();
+        };
+        manualPresetName.addEventListener('input', onPresetNameChange);
+        manualPresetName.addEventListener('keyup', onPresetNameChange);
+        manualPresetName.addEventListener('change', onPresetNameChange);
+        manualPresetName.addEventListener('input', handlePresetAutocompleteInput);
+        manualPresetName.addEventListener('keydown', handlePresetAutocompleteKeydown);
+    }
+
+    if (manualLoadBtn && manualLoadBtn.dataset.wired !== 'true') {
+        manualLoadBtn.dataset.wired = 'true';
+        manualLoadBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const presetName = manualPresetName ? manualPresetName.value.trim() : '';
+            if (presetName) {
+                // openManualModalWithContent: public/scripts/comp/manualModalManager.js
+                openManualModalWithContent({ type: 'preset', name: presetName, title: presetName });
+            }
+        });
+    }
+
+    if (manualSaveBtn && manualSaveBtn.dataset.wired !== 'true') {
+        manualSaveBtn.dataset.wired = 'true';
+        manualSaveBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            // handleManualSave: public/scripts/app.js
+            handleManualSave();
+        });
+    }
+
+    if (manualPresetToggleBtn && manualPresetGroup && manualPresetToggleBtn.dataset.wired !== 'true') {
+        manualPresetToggleBtn.dataset.wired = 'true';
+        manualPresetToggleBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (manualPresetGroup.classList.contains('hidden')) {
+                manualPresetGroup.classList.remove('hidden');
+            } else {
+                manualPresetGroup.classList.add('hidden');
+            }
+            // updateManualPresetToggleBtn, updateManualPresetPlaceholder: public/scripts/app.js
+            updateManualPresetToggleBtn();
+            updateManualPresetPlaceholder();
+        });
+    }
+}
+
+function wireSeedListeners() {
+    const sproutSeedBtn = document.getElementById('sproutSeedBtn');
+    const loadSeedBtn = document.getElementById('loadSeedBtn');
+    const manualSeedEl = document.getElementById('manualSeed');
+    const clearSeedBtnEl = document.getElementById('clearSeedBtn');
+
+    if (manualSeedEl && manualSeedEl.dataset.wired !== 'true') {
+        manualSeedEl.dataset.wired = 'true';
+        manualSeedEl.addEventListener('input', (e) => {
+            clearSeedBtnEl?.classList.toggle('hidden', !e.target.value);
+        });
+        manualSeedEl.addEventListener('change', (e) => {
+            clearSeedBtnEl?.classList.toggle('hidden', !e.target.value);
+            // updateSproutSeedButtonFromPreviewSeed: public/scripts/app.js
+            updateSproutSeedButtonFromPreviewSeed();
+        });
+        manualSeedEl.addEventListener('blur', (e) => {
+            clearSeedBtnEl?.classList.toggle('hidden', !e.target.value);
+        });
+    }
+
+    if (clearSeedBtnEl && clearSeedBtnEl.dataset.wired !== 'true') {
+        clearSeedBtnEl.dataset.wired = 'true';
+        clearSeedBtnEl.addEventListener('click', (e) => {
+            e.preventDefault();
+            // clearSeed: public/scripts/app.js
+            clearSeed();
+        });
+    }
+
+    if (sproutSeedBtn && sproutSeedBtn.dataset.wired !== 'true') {
+        sproutSeedBtn.dataset.wired = 'true';
+        // toggleSproutSeed: public/scripts/app.js
+        sproutSeedBtn.addEventListener('click', toggleSproutSeed);
+        if (typeof contextMenu !== 'undefined' && contextMenu.attachToElement) {
+            // getSproutSeedContextMenuConfig: public/scripts/comp/manualModalManager.js
+            contextMenu.attachToElement(sproutSeedBtn, getSproutSeedContextMenuConfig());
+        }
+    }
+
+    if (loadSeedBtn && loadSeedBtn.dataset.wired !== 'true') {
+        loadSeedBtn.dataset.wired = 'true';
+        // loadSeedFromPreview: public/scripts/app.js
+        loadSeedBtn.addEventListener('click', loadSeedFromPreview);
+    }
+
+    // updateSproutSeedButton: public/scripts/app.js
+    if (typeof updateSproutSeedButton === 'function') {
+        updateSproutSeedButton();
+    }
+}
+
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     // Set up WebSocket event handlers when WebSocket client is available
     if (wsClient) {
         setupWebSocketEventHandlers();
         wsClient.registerInitStep(46, 'Initializing Preset Manager', async () => {
+            wireInlinePresetListeners();
+            wireSeedListeners();
             initializePresetManager();
             initializeUpdatePresetModal();
         });
@@ -1581,5 +1700,327 @@ function handlePresetUpdated(data) {
         
         // Reload presets to get updated data
         loadPresets();
+    }
+}
+
+// ============================================================================
+// PRESET AUTOCOMPLETE (manual preset name field — Phase 2 batch 6)
+// selectPresetItem, hidePresetAutocomplete: public/scripts/comp/autocompleteUtils.js
+// presetAutocompleteTimeout, currentPresetAutocompleteTarget, selectedPresetAutocompleteIndex: manualDropdownManager.js
+// ============================================================================
+
+const presetAutocompleteOverlay = document.getElementById('presetAutocompleteOverlay');
+const presetAutocompleteList = document.querySelector('.preset-autocomplete-list');
+
+function handlePresetAutocompleteInput(e) {
+    const target = e.target;
+    const value = target.value;
+
+    if (presetAutocompleteTimeout) {
+        clearTimeout(presetAutocompleteTimeout);
+    }
+
+    presetAutocompleteTimeout = setTimeout(() => {
+        if (value.length >= 2) {
+            searchPresets(value, target);
+        } else {
+            hidePresetAutocomplete();
+        }
+    }, 300);
+}
+
+function handlePresetAutocompleteKeydown(e) {
+    if (presetAutocompleteOverlay && !presetAutocompleteOverlay.classList.contains('hidden')) {
+        const items = presetAutocompleteList ? presetAutocompleteList.querySelectorAll('.preset-autocomplete-item') : [];
+
+        switch (e.key) {
+            case 'ArrowDown':
+                selectedPresetAutocompleteIndex = Math.min(selectedPresetAutocompleteIndex + 1, items.length - 1);
+                updatePresetAutocompleteSelection();
+                break;
+            case 'ArrowUp':
+                selectedPresetAutocompleteIndex = Math.max(selectedPresetAutocompleteIndex - 1, -1);
+                updatePresetAutocompleteSelection();
+                break;
+            case 'Enter':
+                if (selectedPresetAutocompleteIndex >= 0 && items[selectedPresetAutocompleteIndex]) {
+                    selectPresetItem(items[selectedPresetAutocompleteIndex].dataset.name);
+                }
+                break;
+            case 'Escape':
+                hidePresetAutocomplete();
+                break;
+        }
+    }
+}
+
+async function searchPresets(query, target) {
+    try {
+        let presetResults = [];
+
+        if (window.wsClient && window.wsClient.isConnected()) {
+            try {
+                presetResults = await window.wsClient.searchPresets(query);
+            } catch (wsError) {
+                console.error('WebSocket preset search failed:', wsError);
+                throw new Error('Preset search service unavailable');
+            }
+        } else {
+            throw new Error('WebSocket not connected');
+        }
+
+        if (presetResults && Array.isArray(presetResults) && presetResults.length > 0) {
+            showPresetAutocompleteSuggestions(presetResults, target);
+        } else {
+            hidePresetAutocomplete();
+        }
+    } catch (error) {
+        console.error('Preset search error:', error);
+        hidePresetAutocomplete();
+    }
+}
+
+function showPresetAutocompleteSuggestions(results, target) {
+    if (!presetAutocompleteList || !presetAutocompleteOverlay) {
+        console.error('Preset autocomplete elements not found');
+        return;
+    }
+
+    currentPresetAutocompleteTarget = target;
+    selectedPresetAutocompleteIndex = -1;
+
+    presetAutocompleteList.innerHTML = '';
+    results.forEach((result) => {
+        const item = document.createElement('div');
+        item.className = 'preset-autocomplete-item';
+        item.dataset.name = result.name;
+
+        item.innerHTML = `
+            <span class="preset-name">${result.name}</span>
+            <span class="preset-details">${window.optionsData?.modelsShort[result.model.toUpperCase()] || result.model || 'Default'}</span>
+        `;
+
+        item.addEventListener('click', () => selectPresetItem(result.name));
+
+        presetAutocompleteList.appendChild(item);
+    });
+
+    presetAutocompleteOverlay.classList.remove('size-small', 'size-medium', 'size-large');
+    if (results.length <= 3) {
+        presetAutocompleteOverlay.classList.add('size-small');
+    } else if (results.length <= 8) {
+        presetAutocompleteOverlay.classList.add('size-medium');
+    } else {
+        presetAutocompleteOverlay.classList.add('size-large');
+    }
+
+    const rect = target.getBoundingClientRect();
+    const overlayHeight = Math.min(400, window.innerHeight * 0.5);
+    const spaceAbove = rect.top;
+    const spaceBelow = window.innerHeight - rect.bottom;
+
+    presetAutocompleteOverlay.style.left = rect.left + 'px';
+    presetAutocompleteOverlay.style.width = rect.width + 'px';
+
+    if (spaceAbove >= overlayHeight) {
+        presetAutocompleteOverlay.style.top = (rect.top - 5) + 'px';
+        presetAutocompleteOverlay.style.transform = 'translateY(-100%)';
+        presetAutocompleteOverlay.style.maxHeight = overlayHeight + 'px';
+    } else {
+        presetAutocompleteOverlay.style.top = (rect.bottom + 5) + 'px';
+        presetAutocompleteOverlay.style.transform = 'none';
+        presetAutocompleteOverlay.style.maxHeight = Math.min(spaceBelow - 10, overlayHeight) + 'px';
+    }
+
+    presetAutocompleteOverlay.classList.remove('hidden');
+}
+
+function updatePresetAutocompleteSelection() {
+    if (!presetAutocompleteList) return;
+
+    const items = presetAutocompleteList.querySelectorAll('.preset-autocomplete-item');
+    items.forEach((item, index) => {
+        item.classList.toggle('selected', index === selectedPresetAutocompleteIndex);
+    });
+
+    if (selectedPresetAutocompleteIndex >= 0 && items[selectedPresetAutocompleteIndex]) {
+        const selectedItem = items[selectedPresetAutocompleteIndex];
+        selectedItem.scrollIntoView({
+            block: 'nearest',
+            behavior: 'smooth'
+        });
+    }
+}
+
+// ============================================================================
+// MANUAL PRESET HELPERS (extracted from app.js — removal manifest Phase 1)
+// ============================================================================
+
+async function handlePresetUpdate(data) {
+    await loadOptions();
+
+
+    // Show notification
+    if (data.message) {
+        showGlassToast('info', null, data.message);
+    }
+}
+
+// Manual-modal preset delete (app.js: deletePreset)
+async function deleteManualPreset(presetName) {
+    if (!presetName) {
+        showError('No preset name provided');
+        return;
+    }
+
+    const confirmed = await showConfirmationDialog(
+        `Are you sure you want to delete the preset "${presetName}"?`,
+        [
+            { text: 'Delete', value: true, className: 'btn-danger' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ]
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        selectCustomPreset('');
+        // Use WebSocket for preset deletion
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        const result = await window.wsClient.deletePreset(presetName);
+
+        // Show success message
+        if (result && result.data && result.data.message) {
+            showGlassToast('success', null, result.data.message, false, undefined, '<i class="fas fa-book-sparkles"></i>');
+        } else {
+            showGlassToast('success', null, `Preset "${presetName}" deleted`, false, undefined, '<i class="fas fa-book-sparkles"></i>');
+        }
+
+        // Clear the manual preset name input and hide delete button
+        if (manualPresetName) {
+            manualPresetName.value = '';
+            updateManualPresetPlaceholder();
+            updatePresetLoadSaveState();
+        }
+
+    } catch (error) {
+        console.error('Error deleting preset:', error);
+        showError('Failed to delete preset: ' + error.message);
+    }
+}
+
+function convertPresetToMetadataFormat(presetData) {
+    // Create a copy to avoid modifying the original
+    const metadata = { ...presetData };
+
+    // Handle resolution case conversion
+    if (metadata.resolution) {
+        metadata.resolution = metadata.resolution.toLowerCase();
+    }
+
+    // Handle model case conversion
+    if (metadata.model) {
+        metadata.model = metadata.model.toUpperCase();
+    }
+
+    // Convert image field to image_source for compatibility
+    if (metadata.image && !metadata.image_source) {
+        metadata.image_source = metadata.image;
+    }
+
+    // Convert sampler values to expected format
+    if (metadata.sampler) {
+        metadata.sampler = SAMPLER_MAP.find(s => s.request === metadata.sampler)?.meta || metadata.sampler;
+    }
+
+    // Convert noise scheduler values to expected format
+    if (metadata.noiseScheduler) {
+        metadata.noiseScheduler = NOISE_MAP.find(s => s.request === metadata.noiseScheduler)?.meta || metadata.noiseScheduler;
+    }
+
+    return metadata;
+}
+
+function isValidPresetName(name) {
+    if (!name) return false;
+    return window.optionsData.presets && window.optionsData.presets.filter(e => e.name === name).length > 0;
+}
+
+function updateManualPresetToggleBtn() {
+    const presetName = manualPresetName.value.trim();
+    const valid = isValidPresetName(presetName);
+
+    // Determine state based on priority: on/invalid > open > off
+    let state = 'off'; // default
+
+    if (presetName !== "") {
+        if (valid) {
+            state = 'on'; // valid preset name
+        } else {
+            state = 'invalid'; // preset name exists but not valid (needs saving)
+        }
+    }
+
+    // If not on/invalid, check if group is open (lower priority)
+    if (state === 'off' && !manualPresetGroup.classList.contains('hidden')) {
+        state = 'open';
+    }
+
+    // Update button state
+    manualPresetToggleBtn.setAttribute('data-state', state);
+
+    // Update placeholder visibility
+    updateManualPresetPlaceholder();
+}
+
+function updateManualPresetPlaceholder() {
+    const manualPresetPlaceholder = document.getElementById('manualPresetPlaceholder');
+    const manualPresetPlaceholderText = document.getElementById('manualPresetPlaceholderText');
+    const presetName = manualPresetName.value.trim();
+
+    // If manualPresetGroup is hidden, show placeholder with preset name
+    if (manualPresetGroup.classList.contains('hidden')) {
+        manualPresetPlaceholder.classList.add('show');
+        if (presetName) {
+            manualPresetPlaceholderText.textContent = presetName;
+        } else {
+            manualPresetPlaceholderText.textContent = '';
+        }
+    } else {
+        // If manualPresetGroup is shown, hide the placeholder
+        manualPresetPlaceholder.classList.remove('show');
+        manualPresetPlaceholderText.textContent = '';
+    }
+    updateManualModalTitlebar(presetName);
+}
+
+async function saveManualPreset(presetName, config) {
+    try {
+        // Use WebSocket for preset saving
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        const result = await window.wsClient.savePreset(presetName, config);
+
+        // Handle the response properly
+        if (result && result.data && result.data.message) {
+            showGlassToast('success', null, result.data.message, false, undefined, '<i class="fas fa-book-sparkles"></i>');
+        } else if (result && result.message) {
+            showGlassToast('success', null, result.message, false, undefined, '<i class="fas fa-book-sparkles"></i>');
+        } else {
+            showGlassToast('success', null, `Preset "${presetName}" saved successfully`, false, undefined, '<i class="fas fa-book-sparkles"></i>');
+        }
+
+        // Refresh the preset list
+        await loadOptions();
+    } catch (error) {
+        console.error('Error saving preset:', error);
+        showError('Failed to save preset: ' + error.message);
     }
 }

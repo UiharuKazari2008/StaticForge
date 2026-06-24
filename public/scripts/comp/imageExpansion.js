@@ -57,12 +57,33 @@ function isExpansionCompiledPromptEditorOpen() {
 function clearExpansionCompiledCharacterFields() {
     const promptContainer = document.getElementById('expansionCompiledCharacterPromptsContainer');
     const ucContainer = document.getElementById('expansionCompiledCharacterUcContainer');
-    if (promptContainer) {
-        promptContainer.innerHTML = '';
-    }
-    if (ucContainer) {
-        ucContainer.innerHTML = '';
-    }
+
+    [promptContainer, ucContainer].forEach((container) => {
+        if (!container) return;
+
+        container.querySelectorAll('textarea').forEach((textarea) => {
+            // stopEmphasisHighlighting, emphasisHighlightingTarget: public/scripts/comp/emphasisManager.js
+            if (emphasisHighlightingTarget === textarea) {
+                stopEmphasisHighlighting();
+            }
+            // cleanupSafeEventListeners: public/scripts/comp/utilities.js
+            cleanupSafeEventListeners(textarea);
+        });
+
+        container.querySelectorAll('.prompt-textarea-toolbar.search-mode').forEach((toolbar) => {
+            // closeSearch: public/scripts/comp/promptTextareaToolbar.js
+            if (window.promptTextareaToolbar) {
+                window.promptTextareaToolbar.closeSearch(toolbar);
+            }
+        });
+
+        // teardownDropdown: public/scripts/comp/dropdown.js
+        container.querySelectorAll('.custom-dropdown').forEach((dropdown) => {
+            teardownDropdown(dropdown);
+        });
+
+        container.innerHTML = '';
+    });
 }
 
 /** Reinit custom scrollbars on prompt/UC tab panes — customScrollbar.js */
@@ -906,6 +927,17 @@ function closeImageExpansionModal() {
     }
 
     closeExpansionCompiledPromptEditor();
+
+    expansionModalData.compiledPrompt = null;
+    expansionModalData.savedPromptOverrides = null;
+    expansionModalData.overrideParams = {};
+    expansionModalData.compiledPromptReady = false;
+    expansionModalData.expandSourcePixels = null;
+    expansionModalData.filename = null;
+    expansionModalData.originalImage = null;
+    expansionModalData.targetImage = null;
+    expansionModalData.lastImage = null;
+    expansionModalData.originalDimensions = null;
 
     const modal = document.getElementById('imageExpansionDialog');
     if (modal) {

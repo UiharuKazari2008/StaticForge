@@ -560,6 +560,66 @@ function initializeManualModalShortcuts() {
     document.addEventListener('keyup', handleKeyUp);
     window.addEventListener('blur', handleShortcutWindowBlur);
     document.addEventListener('visibilitychange', handleShortcutVisibilityChange);
+    wireEscapeAndCharacterDetailKeys();
+}
+
+function wireEscapeAndCharacterDetailKeys() {
+    if (document.body.dataset.escapeCharacterDetailKeysWired === 'true') return;
+    document.body.dataset.escapeCharacterDetailKeysWired = 'true';
+
+    const metadataDialog = document.getElementById('metadataDialog');
+
+    document.addEventListener('keydown', (e) => {
+        const characterAutocompleteOverlay = document.getElementById('characterAutocompleteOverlay');
+
+        if (e.key === 'Escape') {
+            if (metadataDialog && !metadataDialog.classList.contains('hidden')) {
+                // hideMetadataDialog: public/scripts/app.js
+                hideMetadataDialog();
+            } else if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
+                const autocompleteList = document.querySelector('.character-autocomplete-list');
+                if (autocompleteList && autocompleteList.querySelector('.character-detail-content')) {
+                    // hideCharacterDetail: public/scripts/comp/autocompleteUtils.js
+                    hideCharacterDetail();
+                    return;
+                }
+                // hideCharacterAutocomplete: public/scripts/comp/autocompleteUtils.js
+                hideCharacterAutocomplete();
+            } else {
+                const activeElement = document.activeElement;
+                if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+                    const selection = window.getSelection();
+                    if (selection && selection.toString().length > 0) {
+                        const range = selection.getRangeAt(0);
+                        const endOffset = range.endOffset;
+                        selection.removeAllRanges();
+                        if (activeElement.setSelectionRange) {
+                            activeElement.setSelectionRange(endOffset, endOffset);
+                        }
+                    } else {
+                        activeElement.blur();
+                    }
+                    return;
+                }
+            }
+        } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
+                const autocompleteList = document.querySelector('.character-autocomplete-list');
+                if (autocompleteList && autocompleteList.querySelector('.character-detail-content')) {
+                    // handleCharacterDetailArrowKeys: public/scripts/comp/autocompleteUtils.js
+                    handleCharacterDetailArrowKeys(e.key);
+                }
+            }
+        } else if (e.key === 'Enter') {
+            if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
+                const autocompleteList = document.querySelector('.character-autocomplete-list');
+                if (autocompleteList && autocompleteList.querySelector('.character-detail-content')) {
+                    // handleCharacterDetailEnter: public/scripts/comp/autocompleteUtils.js
+                    handleCharacterDetailEnter();
+                }
+            }
+        }
+    });
 }
 
 // Create the shortcuts overlay

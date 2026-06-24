@@ -267,6 +267,10 @@ class NaxVibesApplet {
     init() {
         this.modal = document.getElementById('naxVibesModal');
         if (!this.modal) return;
+        if (this._modalEventsWired) {
+            return;
+        }
+        this._modalEventsWired = true;
 
         this.grid = document.getElementById('naxVibesGrid');
         this.statusBar = document.getElementById('naxVibesStatusBar');
@@ -2116,6 +2120,11 @@ function naxVibesDsapDriver(host) {
     }
 
     function wireEvents() {
+        if (root.dataset.nvEventsWired === 'true') {
+            return;
+        }
+        root.dataset.nvEventsWired = 'true';
+
         // Presets — all go through app browser navigation so URI + history are updated
         root.querySelectorAll('.nv-tab[data-preset]').forEach((btn) => {
             btn.addEventListener('click', () => setPreset(btn.dataset.preset));
@@ -2235,6 +2244,12 @@ function naxVibesDsapDriver(host) {
                             }
                         } catch (e) {
                             console.warn('NAX Vibes DSAP refresh failed:', e);
+                        }
+                    },
+                    destroy(host) {
+                        const rootEl = host?.getRoot?.()?.querySelector('[data-dsap]') || host?.getRoot?.();
+                        if (rootEl) {
+                            delete rootEl.dataset.nvEventsWired;
                         }
                     }
                 }

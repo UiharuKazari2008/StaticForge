@@ -16,6 +16,11 @@ class PromptTextareaToolbar {
     }
 
     init() {
+        if (this._toolbarInitialized) {
+            return;
+        }
+        this._toolbarInitialized = true;
+
         this.setupEventListeners();
         this.initializeTokenCounters();
         this.initializeDropdowns();

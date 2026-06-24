@@ -1,0 +1,165 @@
+/* Request body replacements modal — public/scripts/comp/requestBodyReplacementsModal.js */
+#requestBodyReplacementsModal {
+    width: 750px;
+}
+
+#createRequestBodyReplacementModal {
+    width: 550px;
+}
+
+/* REQUEST BODY REPLACEMENTS MODAL */
+.request-body-replacements-modal-content {
+    max-width: 900px;
+    width: 90vw;
+    height: -webkit-fill-available;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.request-body-replacements-modal-content .modal-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.request-body-replacements-modal-content .modal-header,
+.request-body-replacements-modal-content .modal-footer {
+    flex-shrink: 0;
+}
+
+
+/* Stage Display Badges */
+.text-replacement-stages {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.stages-all {
+    color: var(--accent-primary);
+    background: rgba(var(--accent-primary-rgb), 0.1);
+    padding: 0.125rem 0.375rem;
+    border-radius: 4px;
+    border: 1px solid rgba(var(--accent-primary-rgb), 0.3);
+}
+
+.stages-specific {
+    color: var(--accent-warning);
+    background: rgba(var(--accent-warning-rgb), 0.1);
+    padding: 0.125rem 0.375rem;
+    border-radius: 4px;
+    border: 1px solid rgba(var(--accent-warning-rgb), 0.3);
+}
+
+.stages-range {
+    color: var(--accent-info);
+    background: rgba(var(--accent-info-rgb), 0.1);
+    padding: 0.125rem 0.375rem;
+    border-radius: 4px;
+    border: 1px solid rgba(var(--accent-info-rgb), 0.3);
+}
+
+/* Extend/Replace Mode Indicators */
+.text-replacement-extend {
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.125rem 0.375rem;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+.text-replacement-extend.replace {
+    color: var(--accent-warning);
+    background: rgba(var(--accent-warning-rgb), 0.1);
+    border: 1px solid rgba(var(--accent-warning-rgb), 0.3);
+}
+
+.text-replacement-extend.extend {
+    color: var(--accent-success);
+    background: rgba(var(--accent-success-rgb), 0.1);
+    border: 1px solid rgba(var(--accent-success-rgb), 0.3);
+}
+
+/* Request Body Replacements Inline Editing */
+.text-replacement-name-container {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.text-replacement-edit-actions {
+    display: flex;
+    gap: 0.25rem;
+    align-items: center;
+    margin-left: 0.5rem;
+}
+
+.text-replacement-edit-actions .btn-small {
+    min-height: 22px;
+    min-width: 36px;
+    padding: 0px;
+}
+
+/* Inline editing styles */
+.text-replacement-item.editing .text-replacement-name input {
+    width: 100%;
+    min-width: 0;
+}
+
+.text-replacement-item.editing .text-replacement-value-container {
+    margin-top: 0.5rem;
+}
+
+.text-replacement-item.editing .text-replacement-array-item {
+    margin-bottom: 0.5rem;
+}
+
+.text-replacement-item.editing .text-replacement-array-item:last-child {
+    margin-bottom: 0;
+}
+
+/* Button visibility transitions */
+.text-replacement-actions button,
+.text-replacement-extend,
+.text-replacement-stages,
+.text-replacement-type {
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.text-replacement-item.editing .delete-btn,
+.text-replacement-item.editing .text-replacement-extend,
+.text-replacement-item.editing .text-replacement-stages,
+.text-replacement-item.editing .text-replacement-type {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.text-replacement-edit-actions {
+    opacity: 0;
+    animation: fadeIn 0.2s ease forwards;
+}
+
+.text-replacement-stage-controls {
+    display: flex;
+    gap: var(--spacing-md);
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}

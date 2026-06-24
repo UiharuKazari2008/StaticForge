@@ -64,6 +64,10 @@ class ConfigEditorApplet {
     init() {
         this.modal = document.getElementById('configEditorModal');
         if (!this.modal) return;
+        if (this._initWired) {
+            return;
+        }
+        this._initWired = true;
 
         this.valueModal = document.getElementById('configEditorValueModal');
         this.treePanel = this.modal.querySelector('.config-editor-tree-panel');

@@ -33,9 +33,10 @@ const novelsDsapDriver = {
     _state: null,
 
     init(host) {
-        this._state = { host, workspaceId: novelsDsapResolveWorkspaceId(host) };
+        this._state = { host, workspaceId: novelsDsapResolveWorkspaceId(host), _onClick: null };
         const root = host.getRoot();
-        root.addEventListener('click', (e) => this._onClick(e));
+        this._state._onClick = (e) => this._onClick(e);
+        root.addEventListener('click', this._state._onClick);
         this._render(host);
     },
 
@@ -45,6 +46,13 @@ const novelsDsapDriver = {
     },
 
     destroy(host) {
+        const state = this._state;
+        if (state) {
+            const root = host?.getRoot?.();
+            if (root && state._onClick) {
+                root.removeEventListener('click', state._onClick);
+            }
+        }
         this._state = null;
     },
 

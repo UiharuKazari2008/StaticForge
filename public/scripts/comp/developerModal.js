@@ -27,6 +27,11 @@ class DeveloperModal {
     }
     
     setup() {
+        if (this._setupWired) {
+            return;
+        }
+        this._setupWired = true;
+
         this.modal = document.getElementById('developerModal');
         this.devModeToggle = document.getElementById('devModeToggle');
         this.hostInput = document.getElementById('devHostInput');
@@ -49,6 +54,11 @@ class DeveloperModal {
     }
     
     setupDevBridgeListeners() {
+        if (this._devBridgeListenersWired) {
+            return;
+        }
+        this._devBridgeListenersWired = true;
+
         // Listen for dev bridge connection events
         window.addEventListener('devBridgeConnected', () => {
             this.updateStatus();
@@ -111,6 +121,13 @@ class DeveloperModal {
         
         // Save to localStorage
         localStorage.setItem('staticforge_dev_mode', devMode.toString());
+        try {
+            if (devMode) {
+                document.cookie = 'staticforge_dev_mode=1; path=/; SameSite=Lax';
+            } else {
+                document.cookie = 'staticforge_dev_mode=; path=/; Max-Age=0';
+            }
+        } catch (e) { /* ignore */ }
         
         // Only save host/port if they have values, otherwise remove from localStorage
         if (host) {

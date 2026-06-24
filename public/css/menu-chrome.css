@@ -1,0 +1,82 @@
+/* Top banners, main-menu row controls, floating bar overlay hover — public/app.html #main-menu-bar, #main-controls-bar */
+
+.main-menu-row .btn-primary,
+.main-menu-row .btn-secondary,
+.main-menu-row .btn-danger {
+    font-weight: 300;
+    font-variation-settings: "wght" 300;
+    background: transparent;
+    border: 1px solid transparent;
+    box-shadow: none;
+    min-width: 32px;
+}
+
+.main-menu-row .btn-primary i,
+.main-menu-row .btn-secondary i,
+.main-menu-row .btn-danger i {
+    font-size: 1.3em;
+}
+
+/* Override main-menu-row styles for round buttons */
+.main-menu-row .round-button,
+.floating-controls .round-button {
+    background: var(--header-bg, var(--glass-layer-dark-5));
+    border: 1px solid var(--header-border, var(--glass-border-2));
+    box-shadow: var(--glass-shadow-3), inset 0 0 15px #ffffff2b;
+    min-width: 54px;
+    min-height: 54px;
+    -webkit-backdrop-filter: var(--glass-blur-2, brightness(0.15)) saturate(0.5);
+    backdrop-filter: var(--glass-blur-2, brightness(0.15)) saturate(0.5);
+}
+
+.main-menu-row .round-button.btn-primary,
+.floating-controls .round-button.btn-primary {
+    background: radial-gradient(var(--primary-glass-color), var(--primary-glass-color));
+    color: var(--text-accent-tinted);
+    border-color: var(--primary-glass-border);
+    box-shadow: var(--glass-shadow-3), inset 0 0 15px #ffffff2b;
+}
+
+/* Banner Container */
+.banner-container {
+    position: fixed;
+    top: var(--true-inset-top, 0px);
+    left: 0;
+    right: 0;
+    z-index: var(--z-system);
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    pointer-events: none;
+}
+
+/* Update Banner Styles - Uses same design as status banner */
+.update-banner {
+    width: 100%;
+    height: 0;
+    overflow: hidden;
+    transition: height 0.3s ease;
+    pointer-events: auto;
+    /* Override toast positioning and styling */
+    position: static;
+    margin: 0;
+    border-radius: 0;
+    border: none;
+    border-bottom: 1px solid var(--glass-border-2);
+    box-shadow: none;
+    transform: none;
+    z-index: var(--z-system);
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+
+    .floating-bar-right:hover:not(:disabled) .main-menu-bar-overlay,
+    .floating-bar-left:hover:not(:disabled) .main-menu-bar-overlay {
+        opacity: 1;
+    }
+
+    #main-controls-bar:hover:not(:disabled) .main-menu-bar-overlay .balanceDisplay {
+        opacity: 1;
+    }
+}

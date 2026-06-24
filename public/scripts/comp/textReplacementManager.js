@@ -160,6 +160,33 @@ function initializeTextReplacementManager() {
 
     // Initialize create text replacement modal
     initializeCreateTextReplacementModal();
+    wireTextReplacementLockContextMenuHandler();
+    wireTextReplacementLockModalListeners();
+}
+
+function wireTextReplacementLockContextMenuHandler() {
+    if (document.body.dataset.textReplacementLockContextMenuWired === 'true') return;
+    document.body.dataset.textReplacementLockContextMenuWired = 'true';
+
+    document.addEventListener('contextMenuAction', function (event) {
+        const { action } = event.detail;
+        if (!action || !action.startsWith('toggleTextReplacementLock_')) return;
+
+        const index = parseInt(action.replace('toggleTextReplacementLock_', ''), 10);
+        const allReplacements = window.lastGenerationTextReplacements || [];
+
+        if (!isNaN(index) && allReplacements[index]) {
+            const seed = allReplacements[index];
+            const canLock = seed.can_lock !== undefined ? seed.can_lock !== false : true;
+
+            if (canLock) {
+                seed.locked = !seed.locked;
+                const lockedSeeds = allReplacements.filter(s => s.locked === true);
+                window.lockedTextReplacements = lockedSeeds;
+                updateMainLockButtonState();
+            }
+        }
+    });
 }
 
 // Show text replacement manager modal
@@ -2600,8 +2627,2722 @@ async function setDynamicReplacementEmphasis(globalIndex, itemElement) {
 }
 
 
+
+function wireTextReplacementLockModalListeners() {
+    if (document.body.dataset.textReplacementLockModalWired === 'true') return;
+    document.body.dataset.textReplacementLockModalWired = 'true';
+
+    if (textReplacementLockBtn) {
+        textReplacementLockBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (!inspectorEditorHasLoadedData()) {
+                showGlassToast('warning', null, 'No Data to Inspector.', false, 3000, '<i class="fas fa-glasses-round"></i>');
+                return;
+            }
+            renderTextReplacementModal();
+            linkToolWindowToParent(textReplacementLockModal, manualModal);
+            openModal(textReplacementLockModal);
+        });
+
+        const lockBtnContextMenu = {
+            sections: [
+                {
+                    type: 'list',
+                    title: 'Renkin System',
+                    items: [],
+                    initfn: function (section, target) {
+                        section.items.length = 0;
+                        const textReplacements = window.lastGenerationTextReplacements || [];
+                        if (textReplacements.length === 0) {
+                            section.items.push({
+                                text: 'No Expanders',
+                                icon: 'fas fa-info-circle',
+                                disabled: true
+                            });
+                        } else {
+                            textReplacements.forEach((seed, index) => {
+                                const isLocked = seed.locked === true;
+                                const canLock = seed.can_lock !== undefined ? seed.can_lock !== false : true;
+                                const displayKey = seed.key ? `!${seed.key}` : 'Unknown';
+                                section.items.push({
+                                    text: displayKey,
+                                    icon: isLocked ? 'fas fa-lock' : 'fas fa-unlock',
+                                    className: isLocked ? 'text-success' : '',
+                                    disabled: !canLock,
+                                    keepMenuOpen: true,
+                                    action: canLock ? `toggleTextReplacementLock_${index}` : null,
+                                    loadfn: function (item, target) {
+                                        const allReplacements = window.lastGenerationTextReplacements || [];
+                                        const currentSeed = allReplacements[index];
+                                        if (currentSeed) {
+                                            const currentlyLocked = currentSeed.locked === true;
+                                            item.icon = currentlyLocked ? 'fas fa-lock' : 'fas fa-unlock';
+                                            item.className = currentlyLocked ? 'text-success' : '';
+                                            item.checked = currentlyLocked;
+                                        }
+                                    }
+                                });
+                            });
+                        }
+                    }
+                },
+                {
+                    type: 'list',
+                    items: [
+                        { text: 'Lock All', icon: 'fas fa-lock', action: 'lockAllReplacements' },
+                        { text: 'Unlock All', icon: 'fas fa-unlock', action: 'unlockAllReplacements' },
+                        { text: 'Compile Tendai', icon: 'fas fa-wand-magic-sparkles', action: 'compileTendaiReplacements' },
+                        {
+                            text: 'Delete Managed',
+                            icon: 'fas fa-trash-alt',
+                            action: 'deleteManagedPhases',
+                            loadfn: function (item) {
+                                // hasManagedBracketArtifacts: public/scripts/comp/bracketGenerationApplet.js
+                                const hasManaged = hasManagedBracketArtifacts();
+                                item.disabled = !hasManaged;
+                            }
+                        }
+                    ]
+                }
+            ]
+        };
+        contextMenu.attachToElement(textReplacementLockBtn, lockBtnContextMenu);
+    }
+
+    if (closeTextReplacementLockModalBtn) {
+        closeTextReplacementLockModalBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const lockedSeeds = currentTextReplacementSeeds.filter(seed => seed.locked === true);
+            window.lockedTextReplacements = lockedSeeds;
+            closeModal(textReplacementLockModal);
+        });
+    }
+
+    const toggleCompiledPromptsSectionBtn = document.getElementById('toggleCompiledPromptsSectionBtn');
+    if (toggleCompiledPromptsSectionBtn) {
+        toggleCompiledPromptsSectionBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            toggleCompiledPromptsSection();
+        });
+    }
+
+    const refreshInspectorTextReplacementsBtn = document.getElementById('refreshInspectorTextReplacementsBtn');
+    if (refreshInspectorTextReplacementsBtn) {
+        refreshInspectorTextReplacementsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            refreshInspectorTextReplacementsFromPrompts();
+        });
+    }
+
+    const textReplacementActionsDropdownBtn = document.getElementById('textReplacementActionsDropdownBtn');
+    if (textReplacementActionsDropdownBtn && contextMenu) {
+        const textReplacementActionsClickMenuConfig = {
+            position: 'anchor',
+            anchorAlign: 'end',
+            maxHeight: 280,
+            sections: [{
+                type: 'list',
+                items: [
+                    { text: 'Select All', icon: 'fas fa-check-square', action: 'text-replacement-select-all' },
+                    { text: 'Deselect All', icon: 'fas fa-square', action: 'text-replacement-deselect-all' },
+                    { separator: true },
+                    { text: 'Global Expanders', icon: 'fas fa-book-font', action: 'text-replacement-open-global' },
+                    { text: 'Local Expanders', icon: 'fas fa-notebook', action: 'text-replacement-open-local' }
+                ]
+            }],
+            onAction: (action) => {
+                if (action === 'text-replacement-select-all') {
+                    selectAllTextReplacements();
+                } else if (action === 'text-replacement-deselect-all') {
+                    deselectAllTextReplacements();
+                } else if (action === 'text-replacement-open-global') {
+                    showTextReplacementManager();
+                } else if (action === 'text-replacement-open-local') {
+                    showRequestBodyReplacementsModal();
+                }
+            }
+        };
+        contextMenu.attachClickMenuToElement(textReplacementActionsDropdownBtn, textReplacementActionsClickMenuConfig);
+    }
+
+    const closeManualSelectionModalBtn = document.getElementById('closeTextReplacementManualSelectionModalBtn');
+    const applyManualSelectionBtn = document.getElementById('applyManualSelectionBtn');
+    const randomSelectionBtn = document.getElementById('randomSelectionBtn');
+
+    if (closeManualSelectionModalBtn) {
+        closeManualSelectionModalBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const modal = document.getElementById('textReplacementManualSelectionModal');
+            closeModal(modal);
+        });
+    }
+
+    if (applyManualSelectionBtn) {
+        applyManualSelectionBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            applyManualSelection();
+        });
+    }
+
+    if (randomSelectionBtn) {
+        randomSelectionBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (currentManualSelectionSeed && currentManualSelectionIndex !== null) {
+                const menuElement = document.getElementById('manualSelectionDropdownMenu');
+                const selectedElement = document.getElementById('manualSelectionDropdownSelected');
+                if (menuElement && selectedElement) {
+                    const optionElements = menuElement.querySelectorAll('.custom-dropdown-option[data-value][data-key][data-index]');
+                    if (optionElements.length > 0) {
+                        const randomOption = optionElements[Math.floor(Math.random() * optionElements.length)];
+                        copyTextReplacementOptionToSeed(currentManualSelectionSeed, {
+                            value: randomOption.dataset.value,
+                            key: randomOption.dataset.key,
+                            index: parseInt(randomOption.dataset.index, 10),
+                            nax_tag: randomOption.dataset.naxTag,
+                            nax_gallery_slug: randomOption.dataset.naxGallerySlug,
+                            nax_preset_id: randomOption.dataset.naxPresetId,
+                            nax_kind: randomOption.dataset.naxKind
+                        });
+                        currentManualSelectionSeed.locked = true;
+                        selectedElement.textContent = currentManualSelectionSeed.value;
+                        updateTextReplacementLockItem(currentManualSelectionIndex, currentManualSelectionSeed);
+                        const item = document.querySelector(`.text-replacement-lock-item[data-index="${currentManualSelectionIndex}"]`);
+                        if (item) {
+                            item.classList.add('selected');
+                            const lockButton = item.querySelector('.text-replacement-lock-btn');
+                            if (lockButton) {
+                                lockButton.setAttribute('data-state', 'on');
+                            }
+                        }
+                        updateLockStatusText();
+                        const lockedSeeds = currentTextReplacementSeeds.filter(s => s.locked === true);
+                        window.lockedTextReplacements = lockedSeeds;
+                        updateMainLockButtonState();
+                    }
+                }
+            }
+        });
+    }
+}
+
+
 // Initialize when DOM is loaded
 window.wsClient.registerInitStep(45, 'Initializing Text Replacement Manager', async () => {
     initializeTextReplacementManager();
     initializeFavoritesManager();
 });
+// TEXT REPLACEMENT LOCK MODAL FUNCTIONS
+let currentTextReplacementSeeds = [];
+
+function copyTextReplacementOptionToSeed(seed, option) {
+    if (!seed || !option) return;
+    seed.value = option.value;
+    seed.key = option.key;
+    seed.index = option.index;
+    if (option.nax_tag != null) seed.nax_tag = option.nax_tag;
+    if (option.nax_gallery_slug != null) seed.nax_gallery_slug = option.nax_gallery_slug;
+    if (option.nax_preset_id != null) seed.nax_preset_id = option.nax_preset_id;
+    if (option.nax_kind != null) seed.nax_kind = option.nax_kind;
+}
+
+// Helper function to get display-friendly replacement type names
+function getReplacementTypeDisplay(type) {
+    switch (type) {
+        case 'incrementing':
+            return 'Incrementing';
+        case 'bracketed_incrementing':
+        case 'bracketed_expanded':
+        case 'bracketed_prefix':
+        case 'bracketed_expanded_pick':
+        case 'bracketed_prefix_pick':
+        case 'bracketed_expanded_combine':
+        case 'bracketed_prefix_combine':
+        case 'combine':
+            return 'Random';
+        case 'combine_incrementing':
+            return 'Incrementing (pool)';
+        case 'pick_incrementing':
+            return 'Incrementing (pick)';
+        case 'regular':
+            return 'Static';
+        case 'nax_internal':
+            return 'Atelier';
+        default:
+            return type.charAt(0).toUpperCase() + type.slice(1);
+    }
+}
+
+// Get icon for replacement type
+function getReplacementTypeIcon(type) {
+    switch (type) {
+        case 'incrementing':
+            return '<i class="fas fa-arrow-up-1-9"></i>';
+        case 'bracketed_incrementing':
+        case 'bracketed_expanded':
+        case 'bracketed_prefix':
+        case 'bracketed_expanded_pick':
+        case 'bracketed_prefix_pick':
+        case 'bracketed_expanded_combine':
+        case 'bracketed_prefix_combine':
+        case 'combine':
+            return '<i class="fas fa-dice"></i>';
+        case 'combine_incrementing':
+            return '<i class="fas fa-arrow-up-1-9"></i>';
+        case 'pick_incrementing':
+            return '<i class="fas fa-arrow-up-1-9"></i>';
+        case 'regular':
+            return '<i class="fas fa-arrows-rotate"></i>';
+        case 'nax_internal':
+            return '<i class="fas fa-flask"></i>';
+        default:
+            return '<i class="fas fa-tag"></i>';
+    }
+}
+
+// Get location badge class based on source
+function getLocationBadgeClass(source) {
+    const sourceLower = source.toLowerCase();
+    if (sourceLower.includes('prompt') || sourceLower === 'prompt') {
+        return 'location-prompt';
+    } else if (sourceLower.includes('negative') || sourceLower.includes('uc') || sourceLower === 'negative_prompt' || sourceLower === 'input_prompt_negative') {
+        return 'location-uc';
+    } else if (sourceLower.includes('character')) {
+        return 'location-character';
+    }
+    return '';
+}
+
+function getLocationIcon(source) {
+    const sourceLower = source.toLowerCase();
+    if (sourceLower.includes('prompt') || sourceLower === 'prompt') {
+        return '<i class="ri-code-block"></i>';
+    } else if (sourceLower.includes('negative') || sourceLower.includes('uc') || sourceLower === 'negative_prompt' || sourceLower === 'input_prompt_negative') {
+        return '<i class="ri-eraser-fill"></i>';
+    } else if (sourceLower.includes('character')) {
+        return '<i class="fas fa-user"></i>';
+    }
+    return '<i class="fas fa-circle"></i>';
+}
+
+function getLocationColor(source) {
+    const sourceLower = source.toLowerCase();
+    if (sourceLower.includes('prompt') || sourceLower === 'prompt') {
+        return '#81ffcb';
+    } else if (sourceLower.includes('negative') || sourceLower.includes('uc') || sourceLower === 'negative_prompt' || sourceLower === 'input_prompt_negative') {
+        return '#ff8199';
+    } else if (sourceLower.includes('character')) {
+        return '#b481ff';
+    }
+    return 'var(--text-secondary)';
+}
+
+function getReplacementTypeColor(type) {
+    switch (type) {
+        case 'incrementing':
+            return '#81b4ff'; // Blue for sequential/incrementing
+        case 'bracketed_incrementing':
+        case 'bracketed_expanded':
+        case 'bracketed_prefix':
+        case 'bracketed_expanded_pick':
+        case 'bracketed_prefix_pick':
+        case 'bracketed_expanded_combine':
+        case 'bracketed_prefix_combine':
+        case 'combine':
+            return '#ff81ff'; // Pink/purple for random/combine
+        case 'combine_incrementing':
+        case 'pick_incrementing':
+            return '#81b4ff'; // Blue for sequential
+        case 'regular':
+            return '#ffb981'; // Orange for standard replacement
+        case 'nax_internal':
+            return '#c9a0ff'; // Atelier / NAX expanders
+        default:
+            return '#9ca3af'; // Gray for default
+    }
+}
+
+function hasEmphasisGroup(text) { return hasEmphasisGroupForDisplay(text); }
+
+
+// Get icon for dynamic replacement category (based on schema-defined categories)
+function getCategoryIcon(category) {
+    const categoryLower = (category || '').toLowerCase();
+
+    // Schema-defined categories from dynamicGenerationHandlers.js:
+    // 'Weather', 'Time of Day', 'Seasonal', 'Holiday', 'Spelling', 'Dialog', 
+    // 'Conflict Resolution', 'Enhancement', 'Lighting', 'Atmosphere'
+
+    if (categoryLower.includes('weather')) {
+        return '<i class="fas fa-cloud-rain"></i>';
+    } else if (categoryLower.includes('time of day') || categoryLower.includes('time')) {
+        return '<i class="fas fa-clock"></i>';
+    } else if (categoryLower.includes('seasonal')) {
+        return '<i class="fas fa-leaf"></i>';
+    } else if (categoryLower.includes('holiday')) {
+        return '<i class="fas fa-calendar-star"></i>';
+    } else if (categoryLower.includes('spelling')) {
+        return '<i class="fas fa-spell-check"></i>';
+    } else if (categoryLower.includes('text overlay') || categoryLower.includes('overlay')) {
+        return '<i class="fas fa-comment-dots"></i>';
+    } else if (categoryLower.includes('conflict resolution') || categoryLower.includes('conflict')) {
+        return '<i class="fas fa-wrench"></i>';
+    } else if (categoryLower.includes('enhancement') || categoryLower.includes('enhance')) {
+        return '<i class="fas fa-sparkles"></i>';
+    } else if (categoryLower.includes('lighting') || categoryLower.includes('light')) {
+        return '<i class="fas fa-lightbulb"></i>';
+    } else if (categoryLower.includes('atmosphere')) {
+        return '<i class="fas fa-cloud-sun"></i>';
+    } else if (categoryLower.includes('action verb') || categoryLower.includes('action')) {
+        return '<i class="fas fa-running"></i>';
+    } else if (categoryLower.includes('directive')) {
+        return '<i class="fas fa-bullseye"></i>';
+    }
+
+    return '<i class="fas fa-tag"></i>';
+}
+
+// Toggle compiled prompts section visibility
+function toggleCompiledPromptsSection() {
+    const toggleBtn = document.getElementById('toggleCompiledPromptsSectionBtn');
+    const expandableSection = document.getElementById('compiledPromptExpandableSection');
+
+    if (!toggleBtn || !expandableSection) return;
+
+    const isHidden = expandableSection.classList.contains('hidden');
+
+    if (isHidden) {
+        expandableSection.classList.remove('hidden');
+        toggleBtn.innerHTML = '<i class="fas fa-subtitles"></i>';
+        toggleBtn.classList.add('active');
+    } else {
+        expandableSection.classList.add('hidden');
+        toggleBtn.innerHTML = '<i class="fa-regular fa-subtitles"></i>';
+        toggleBtn.classList.remove('active');
+    }
+}
+
+// Populate compiled prompts section with emphasis highlighting
+function populateCompiledPromptsSection() {
+    const expandableSection = document.getElementById('compiledPromptExpandableSection');
+    const noDataMessage = document.getElementById('compiledPromptsNoData');
+    const basePromptDisplay = document.getElementById('compiledBasePromptDisplay');
+    const basePromptOverlay = document.getElementById('compiledBasePromptOverlay');
+    const basePromptContainer = document.getElementById('compiledBasePromptContainer');
+    const baseUcDisplay = document.getElementById('compiledBaseUcDisplay');
+    const baseUcOverlay = document.getElementById('compiledBaseUcOverlay');
+    const baseUcContainer = document.getElementById('compiledBaseUcContainer');
+    const characterPromptsContainer = document.getElementById('compiledCharacterPromptsContainer');
+
+    if (!expandableSection) return;
+
+    // Get metadata from the last generation or current preview image
+    const metadata = window.currentManualPreviewImage?.metadata || window.lastGeneration?.metadata;
+    const sessionCp = window.dynamicGenerationData?.compiled_prompt;
+
+    const pickCharacterPromptsArray = (cp) => {
+        if (!cp) return null;
+        const arr = cp.characterPrompts || cp.character_prompts;
+        return Array.isArray(arr) && arr.length > 0 ? arr : null;
+    };
+
+    let finalPrompt = '';
+    let finalUc = '';
+    let finalCharacterPrompts = [];
+
+    if (metadata) {
+        if (typeof metadata.compiled_prompt === 'string') {
+            finalPrompt = metadata.compiled_prompt;
+        } else {
+            const dgCp = metadata.dynamic_generation?.compiled_prompt;
+            finalPrompt = (dgCp && dgCp.prompt) || metadata.prompt || '';
+            if (!finalPrompt && sessionCp) {
+                finalPrompt = sessionCp.prompt || '';
+            }
+        }
+
+        if (metadata.compiled_uc !== undefined && metadata.compiled_uc !== null) {
+            finalUc = metadata.compiled_uc;
+        } else {
+            const dgCpUc = metadata.dynamic_generation?.compiled_prompt;
+            finalUc = (dgCpUc && dgCpUc.uc) || metadata.uc || '';
+            if (!finalUc && sessionCp) {
+                finalUc = sessionCp.uc || '';
+            }
+        }
+
+        if (metadata.compiled_characterPrompts && Array.isArray(metadata.compiled_characterPrompts) && metadata.compiled_characterPrompts.length > 0) {
+            finalCharacterPrompts = metadata.compiled_characterPrompts;
+        } else {
+            const dgCp = metadata.dynamic_generation?.compiled_prompt;
+            const fromDg = pickCharacterPromptsArray(dgCp);
+            if (fromDg) {
+                finalCharacterPrompts = fromDg;
+            } else if (metadata.characterPrompts && Array.isArray(metadata.characterPrompts) && metadata.characterPrompts.length > 0) {
+                finalCharacterPrompts = metadata.characterPrompts;
+            } else {
+                const fromSessionChars = pickCharacterPromptsArray(sessionCp);
+                if (fromSessionChars) {
+                    finalCharacterPrompts = fromSessionChars;
+                }
+            }
+        }
+    } else if (sessionCp) {
+        finalPrompt = sessionCp.prompt || '';
+        finalUc = sessionCp.uc || '';
+        const fromSession = pickCharacterPromptsArray(sessionCp);
+        if (fromSession) {
+            finalCharacterPrompts = fromSession;
+        }
+    }
+
+    const hasPrompt = finalPrompt && String(finalPrompt).trim();
+    const hasUc = finalUc && String(finalUc).trim();
+    const hasChars = finalCharacterPrompts && finalCharacterPrompts.length > 0;
+
+    if (!hasPrompt && !hasUc && !hasChars) {
+        // No metadata available, show message
+        if (noDataMessage) noDataMessage.classList.remove('hidden');
+        if (basePromptContainer) basePromptContainer.classList.add('hidden');
+        if (baseUcContainer) baseUcContainer.classList.add('hidden');
+        if (characterPromptsContainer) characterPromptsContainer.innerHTML = '';
+        return;
+    }
+
+    // Hide no data message
+    if (noDataMessage) noDataMessage.classList.add('hidden');
+
+    // Populate base prompt
+    if (finalPrompt && finalPrompt.trim()) {
+        basePromptContainer.classList.remove('hidden');
+        basePromptDisplay.textContent = finalPrompt;
+
+        // Apply emphasis highlighting
+        const highlightedHtml = highlightEmphasisInText(finalPrompt);
+        basePromptOverlay.innerHTML = highlightedHtml;
+    } else {
+        basePromptContainer.classList.add('hidden');
+    }
+
+    // Populate base UC
+    if (finalUc && finalUc.trim()) {
+        baseUcContainer.classList.remove('hidden');
+        baseUcDisplay.textContent = finalUc;
+
+        // Apply emphasis highlighting
+        const highlightedHtml = highlightEmphasisInText(finalUc);
+        baseUcOverlay.innerHTML = highlightedHtml;
+    } else {
+        baseUcContainer.classList.add('hidden');
+    }
+
+    // Populate character prompts
+    if (characterPromptsContainer) {
+        characterPromptsContainer.innerHTML = '';
+
+        if (finalCharacterPrompts && Array.isArray(finalCharacterPrompts)) {
+            finalCharacterPrompts.forEach((char, index) => {
+                if (!char.prompt && !char.uc) return; // Skip if both are empty
+
+                const charContainer = document.createElement('div');
+                charContainer.className = 'compiled-prompt-field-container';
+
+                // Character name/label
+                const charName = char.chara_name || char.name || `Character ${index + 1}`;
+
+                // Character input prompt
+                if (char.prompt && char.prompt.trim()) {
+                    const charInputLabel = document.createElement('label');
+                    charInputLabel.className = 'compiled-prompt-label';
+                    charInputLabel.innerHTML = `<i class="ri-code-block"></i> Prompt - ${charName}`;
+
+                    const charInputWrapper = document.createElement('div');
+                    charInputWrapper.className = 'compiled-prompt-display-wrapper';
+
+                    const charInputDisplay = document.createElement('div');
+                    charInputDisplay.className = 'compiled-prompt-display';
+                    charInputDisplay.textContent = char.prompt;
+
+                    const charInputOverlay = document.createElement('div');
+                    charInputOverlay.className = 'emphasis-highlight-overlay';
+
+                    // Apply emphasis highlighting
+                    charInputOverlay.innerHTML = highlightEmphasisInText(char.prompt);
+
+                    charInputWrapper.appendChild(charInputDisplay);
+                    charInputWrapper.appendChild(charInputOverlay);
+
+                    charContainer.appendChild(charInputLabel);
+                    charContainer.appendChild(charInputWrapper);
+                }
+
+                // Character UC
+                if (char.uc && char.uc.trim()) {
+                    const charUcLabel = document.createElement('label');
+                    charUcLabel.className = 'compiled-prompt-label';
+                    charUcLabel.innerHTML = `<i class="ri-eraser-fill"></i> Negative - ${charName}`;
+
+                    const charUcWrapper = document.createElement('div');
+                    charUcWrapper.className = 'compiled-prompt-display-wrapper';
+
+                    const charUcDisplay = document.createElement('div');
+                    charUcDisplay.className = 'compiled-prompt-display';
+                    charUcDisplay.textContent = char.uc;
+
+                    const charUcOverlay = document.createElement('div');
+                    charUcOverlay.className = 'emphasis-highlight-overlay';
+
+                    // Apply emphasis highlighting
+                    charUcOverlay.innerHTML = highlightEmphasisInText(char.uc);
+
+                    charUcWrapper.appendChild(charUcDisplay);
+                    charUcWrapper.appendChild(charUcOverlay);
+
+                    charContainer.appendChild(charUcLabel);
+                    charContainer.appendChild(charUcWrapper);
+                }
+
+                characterPromptsContainer.appendChild(charContainer);
+            });
+        }
+    }
+}
+
+function getInspectorAppliedTextReplacementSeeds() {
+    if (Array.isArray(window.lastGenerationTextReplacements) && window.lastGenerationTextReplacements.length > 0) {
+        return window.lastGenerationTextReplacements.slice();
+    }
+    const metadata = window.currentManualPreviewImage?.metadata || window.lastGeneration;
+    const fromPreview = metadata?.text_replacements_seed || metadata?.forge_data?.text_replacements_seed;
+    if (Array.isArray(fromPreview) && fromPreview.length > 0) {
+        return fromPreview.slice();
+    }
+    return [];
+}
+
+/** Editor has loaded prompt/metadata — Inspector may open even before generation. collectManualFormValues: manualModalManager.js */
+function inspectorEditorHasLoadedData() {
+    if (typeof collectManualFormValues === 'function') {
+        const values = collectManualFormValues();
+        if (values.prompt?.trim() || values.uc?.trim() || values.input_prompt_negative?.trim()) {
+            return true;
+        }
+        if (Array.isArray(values.characterPrompts) && values.characterPrompts.some(c => c.prompt?.trim() || c.uc?.trim())) {
+            return true;
+        }
+    }
+    if (window.currentManualPreviewImage?.metadata) return true;
+    if (window.lastGeneration) return true;
+    if (window.dynamicGenerationData?.compiled_prompt) return true;
+    if (Array.isArray(window.lastGenerationTextReplacements) && window.lastGenerationTextReplacements.length > 0) {
+        return true;
+    }
+    return false;
+}
+
+function syncInspectorTextReplacementsToLoadedMetadata(seeds) {
+    const normalized = Array.isArray(seeds) ? seeds : [];
+    window.lastGenerationTextReplacements = normalized;
+    window.lockedTextReplacements = normalized.filter(s => s.locked === true);
+
+    if (window.currentManualPreviewImage?.metadata) {
+        window.currentManualPreviewImage.metadata.text_replacements_seed = normalized;
+        if (window.currentManualPreviewImage.metadata.forge_data) {
+            window.currentManualPreviewImage.metadata.forge_data.text_replacements_seed = normalized;
+        }
+    }
+    if (window.lastGeneration && typeof window.lastGeneration === 'object') {
+        window.lastGeneration.text_replacements_seed = normalized;
+        if (window.lastGeneration.forge_data) {
+            window.lastGeneration.forge_data.text_replacements_seed = normalized;
+        }
+    }
+
+    updateMainLockButtonState();
+    if (typeof refreshTokenBarCounts === 'function') {
+        refreshTokenBarCounts();
+    }
+}
+
+async function refreshInspectorTextReplacementsFromPrompts() {
+    if (!inspectorEditorHasLoadedData()) {
+        showGlassToast('warning', null, 'No editor data loaded to scan.', false, 3000, '<i class="fas fa-glasses-round"></i>');
+        return;
+    }
+
+    const refreshBtn = document.getElementById('refreshInspectorTextReplacementsBtn');
+    if (refreshBtn) refreshBtn.disabled = true;
+
+    try {
+        const values = collectManualFormValues();
+        const payload = {
+            prompt: values.prompt,
+            uc: values.uc,
+            input_prompt_negative: values.input_prompt_negative,
+            allCharacterPrompts: values.characterPrompts,
+            model: values.model,
+            presetName: values.presetName,
+            text_replacements: values.text_replacements,
+            text_replacements_seed: window.lastGenerationTextReplacements || [],
+            dynamic_generation: window.dynamicGenerationData,
+            periodKey: window.currentPeriodKey
+        };
+
+        const result = await window.wsClient.sendMessage('scan_text_replacements', payload);
+        if (!result?.success) {
+            throw new Error(result?.error || 'Scan failed');
+        }
+
+        const seeds = Array.isArray(result.text_replacements_seed) ? result.text_replacements_seed : [];
+        syncInspectorTextReplacementsToLoadedMetadata(seeds);
+        refreshTextReplacementLockModalIfOpen();
+
+        const addedMsg = seeds.length === 1 ? '1 expander' : `${seeds.length} expanders`;
+        showGlassToast('success', null, seeds.length > 0 ? `Found ${addedMsg} in prompts` : 'No expanders found in prompts', false, 2500, '<i class="fas fa-rotate"></i>');
+    } catch (error) {
+        console.error('Error refreshing inspector text replacements:', error);
+        showGlassToast('error', null, error.message || 'Failed to scan prompts for expanders', false, 4000, '<i class="fas fa-exclamation-triangle"></i>');
+    } finally {
+        if (refreshBtn) refreshBtn.disabled = false;
+    }
+}
+
+// ============================================================================
+// TEXT REPLACEMENT LOCK MODAL (textReplacementManager.js)
+// ============================================================================
+
+function buildInspectorStageTargetBadgeHtml(seed) {
+    if (!hasReplacementStageConfiguration(seed?.body_replacement_stages)) return '';
+    return `<div class="text-replacement-stages text-replacement-stage-scope" title="Replacement stage scope">${getStagesDisplayText(seed.body_replacement_stages)}</div>`;
+}
+
+// Open the Genso lock modal
+function renderTextReplacementModal() {
+    const modal = document.getElementById('textReplacementLockModal');
+    const listContainer = document.getElementById('textReplacementLockList');
+
+    if (!modal || !listContainer) {
+        return;
+    }
+
+    // Clear previous content
+    listContainer.innerHTML = '';
+
+    currentTextReplacementSeeds = getInspectorAppliedTextReplacementSeeds();
+
+    // Populate compiled prompts section
+    populateCompiledPromptsSection();
+
+    // Render the Genso list
+    renderTextReplacementLockList();
+
+    // Scroll the list container to the top
+    const scrollableContainer = document.getElementById('textReplacementLockListContainer');
+    if (scrollableContainer) {
+        scrollableContainer.querySelector('.scrollable-content').scrollTop = 0;
+    }
+}
+
+// Refresh the Genso lock modal if it's currently open
+function refreshTextReplacementLockModalIfOpen() {
+    const modal = document.getElementById('textReplacementLockModal');
+
+    // Check if modal exists and is currently visible (not hidden)
+    if (!modal || modal.classList.contains('hidden')) {
+        return;
+    }
+
+    renderTextReplacementModal();
+}
+
+// Select all Genso
+function selectAllTextReplacements() {
+    const buttons = document.querySelectorAll('.text-replacement-lock-btn');
+    buttons.forEach(button => {
+        const item = button.closest('.text-replacement-lock-item');
+        const index = parseInt(item.dataset.index);
+
+        // Update UI
+        item.classList.add('selected');
+        button.setAttribute('data-state', 'on');
+
+        // Update data
+        if (currentTextReplacementSeeds[index]) {
+            currentTextReplacementSeeds[index].locked = true;
+        }
+    });
+
+    const lockedSeeds = currentTextReplacementSeeds.filter(seed => seed.locked === true);
+    window.lockedTextReplacements = lockedSeeds;
+
+    updateLockStatusText();
+}
+
+// Deselect all text replacements
+function deselectAllTextReplacements() {
+    const buttons = document.querySelectorAll('.text-replacement-lock-btn');
+    buttons.forEach(button => {
+        const item = button.closest('.text-replacement-lock-item');
+        const index = parseInt(item.dataset.index);
+
+        // Update UI
+        item.classList.remove('selected');
+        button.setAttribute('data-state', 'off');
+
+        // Update data
+        if (currentTextReplacementSeeds[index]) {
+            currentTextReplacementSeeds[index].locked = false;
+        }
+    });
+
+    window.lockedTextReplacements = [];
+
+    updateLockStatusText();
+}
+
+// Update the lock status text in the modal
+function updateLockStatusText() {
+    const statusText = document.getElementById('textReplacementLockStatusText');
+    if (!statusText) return;
+
+    const selectedCount = document.querySelectorAll('.text-replacement-lock-item.selected').length;
+    const lockableCount = document.querySelectorAll('.text-replacement-lock-btn').length;
+
+    if (lockableCount === 0) {
+        statusText.textContent = 'No lockable replacements';
+        return;
+    }
+
+    if (selectedCount === 0) {
+        statusText.textContent = 'No replacements locked';
+    } else if (selectedCount === lockableCount) {
+        statusText.textContent = 'All lockable replacements locked';
+    } else {
+        statusText.textContent = `${selectedCount} of ${lockableCount} lockable replacements locked`;
+    }
+}
+
+// Update the main lock button indicator state
+function updateMainLockButtonState() {
+    if (!textReplacementLockBtn) return;
+
+    const lockedCount = window.lockedTextReplacements ? window.lockedTextReplacements.length : 0;
+
+    // Count ALL Genso seeds (not just lockable)
+    const allSeedsCount = window.lastGenerationTextReplacements ? window.lastGenerationTextReplacements.length : 0;
+    const lockableSeedsCount = window.lastGenerationTextReplacements ?
+        window.lastGenerationTextReplacements.filter(r => r.can_lock !== undefined ? r.can_lock !== false : true).length : 0;
+
+    // Check for Rentan modifications (Tendai)
+    let dynamicReplacementsCount = 0;
+    if (window.dynamicGenerationData?.compiled_prompt?.text_replacements) {
+        // Rentan: Tendai Modifications
+        const dtr = window.dynamicGenerationData.compiled_prompt.text_replacements;
+        if (dtr.prompt) dynamicReplacementsCount += dtr.prompt.length;
+        if (dtr.uc) dynamicReplacementsCount += dtr.uc.length;
+        if (dtr.character_prompts) {
+            dtr.character_prompts.forEach(char => {
+                if (char?.prompt) dynamicReplacementsCount += char.prompt.length;
+                if (char?.uc) dynamicReplacementsCount += char.uc.length;
+            });
+        }
+    }
+
+    const totalReplacementsAvailable = allSeedsCount + dynamicReplacementsCount;
+
+    if (totalReplacementsAvailable === 0) {
+        if (inspectorEditorHasLoadedData()) {
+            textReplacementLockBtn.removeAttribute('disabled');
+            textReplacementLockBtn.setAttribute('data-state', 'off');
+            textReplacementLockBtn.title = 'Open Inspector';
+        } else {
+            textReplacementLockBtn.setAttribute('disabled', '');
+            textReplacementLockBtn.setAttribute('data-state', 'off');
+            textReplacementLockBtn.title = 'No Genso Expanders Available';
+        }
+    } else {
+        // Replacements available, show button
+        textReplacementLockBtn.removeAttribute('disabled', '');
+
+        if (lockedCount === 0) {
+            // None locked, button is off
+            textReplacementLockBtn.setAttribute('data-state', 'off');
+            const tooltipParts = [];
+            if (allSeedsCount > 0) tooltipParts.push(`${allSeedsCount} Expander${allSeedsCount !== 1 ? 's' : ''}`);
+            if (dynamicReplacementsCount > 0) tooltipParts.push(`${dynamicReplacementsCount} Tsubo${dynamicReplacementsCount !== 1 ? 's' : ''}`);
+            textReplacementLockBtn.title = tooltipParts.length > 0 ? tooltipParts.join(' + ') + ' available' : 'Open Genso and Rentan';
+        } else if (lockedCount === lockableSeedsCount && lockableSeedsCount > 0 && dynamicReplacementsCount === 0) {
+            // All lockable seeds are locked, button is on (only if no dynamic replacements)
+            textReplacementLockBtn.setAttribute('data-state', 'on');
+            textReplacementLockBtn.title = 'All Lockable Expanders or Tsubo\'s locked';
+        } else {
+            // Some locked or dynamic replacements present, button is partial
+            textReplacementLockBtn.setAttribute('data-state', 'partial');
+            const tooltipParts = [];
+            if (lockedCount > 0) tooltipParts.push(`${lockedCount} locked`);
+            if (lockableSeedsCount - lockedCount > 0) tooltipParts.push(`${lockableSeedsCount - lockedCount} unlocked`);
+            if (dynamicReplacementsCount > 0) tooltipParts.push(`${dynamicReplacementsCount} Tsubo`);
+            textReplacementLockBtn.title = tooltipParts.join(', ');
+        }
+    }
+}
+
+// Text replacement manual selection modal variables
+let currentManualSelectionSeed = null;
+let currentManualSelectionIndex = null;
+
+// Open text replacement manual selection modal
+let manualSelectionDropdownWired = false;
+
+// Initialize manual selection modal dropdown (called once during app initialization)
+function initializeManualSelectionDropdown() {
+    if (manualSelectionDropdownWired) {
+        return;
+    }
+    manualSelectionDropdownWired = true;
+
+    const container = document.getElementById('manualSelectionDropdownContainer');
+    const button = document.getElementById('manualSelectionDropdownBtn');
+    const menu = document.getElementById('manualSelectionDropdownMenu');
+
+    if (container && button && menu) {
+        setupDropdown(
+            container,
+            button,
+            menu,
+            () => { }, // No render function needed as we populate manually
+            () => document.getElementById('manualSelectionDropdownSelected').textContent,
+            { preventFocusTransfer: true }
+        );
+    }
+}
+
+async function openTextReplacementManualSelectionModal(seed, index) {
+    currentManualSelectionSeed = seed;
+    currentManualSelectionIndex = index;
+
+    const modal = document.getElementById('textReplacementManualSelectionModal');
+    const selectedElement = document.getElementById('manualSelectionDropdownSelected');
+    const menuElement = document.getElementById('manualSelectionDropdownMenu');
+
+    if (!modal || !selectedElement || !menuElement) {
+        return;
+    }
+
+
+    // Set initial selected value
+    selectedElement.textContent = 'Loading options...';
+
+    // Clear menu
+    menuElement.innerHTML = '';
+
+    // Request options from server
+    try {
+        const result = await window.wsClient.sendMessage('get_text_replacement_options', {
+            pattern: seed.pattern || `!${seed.key}`,
+            presetName: seed.presetName,
+            model: window.currentModel,
+            periodKey: window.currentPeriodKey
+        });
+
+        if (result && result.success && result.options) {
+            populateManualSelectionDropdown(result.options, seed.value);
+        } else {
+            selectedElement.textContent = 'No options available';
+            menuElement.innerHTML = '<div class="custom-dropdown-option">No options available</div>';
+        }
+    } catch (error) {
+        selectedElement.textContent = 'Error loading options';
+        menuElement.innerHTML = '<div class="custom-dropdown-option">Error loading options</div>';
+    }
+
+    openModal(modal);
+}
+
+// Populate the manual selection dropdown with options
+function populateManualSelectionDropdown(options, currentValue) {
+    const selectedElement = document.getElementById('manualSelectionDropdownSelected');
+    const menuElement = document.getElementById('manualSelectionDropdownMenu');
+
+    if (!selectedElement || !menuElement) return;
+
+    // Set current selection - find the option that matches currentValue
+    const currentOption = options.find(opt => opt.value === currentValue);
+    selectedElement.textContent = currentOption ? currentOption.value : (currentValue || 'Select an option...');
+
+    // Clear menu
+    menuElement.innerHTML = '';
+
+    // Add options
+    options.forEach(option => {
+        const optionElement = document.createElement('div');
+        optionElement.className = 'custom-dropdown-option' +
+            (option.value === currentValue ? ' selected' : '');
+        optionElement.dataset.value = option.value;
+        optionElement.dataset.key = option.key;
+        optionElement.dataset.index = option.index;
+        if (option.nax_tag != null) optionElement.dataset.naxTag = option.nax_tag;
+        if (option.nax_gallery_slug != null) optionElement.dataset.naxGallerySlug = option.nax_gallery_slug;
+        if (option.nax_preset_id != null) optionElement.dataset.naxPresetId = option.nax_preset_id;
+        if (option.nax_kind != null) optionElement.dataset.naxKind = option.nax_kind;
+        optionElement.textContent = option.value;
+
+        optionElement.addEventListener('click', () => {
+            selectedElement.textContent = option.value;
+            closeDropdown(menuElement, document.getElementById('manualSelectionDropdownBtn'));
+
+            if (currentManualSelectionSeed) {
+                copyTextReplacementOptionToSeed(currentManualSelectionSeed, option);
+            }
+        });
+
+        menuElement.appendChild(optionElement);
+    });
+}
+
+// Apply manual selection
+function applyManualSelection() {
+    if (!currentManualSelectionSeed || currentManualSelectionIndex === null) return;
+
+    const selectedElement = document.getElementById('manualSelectionDropdownSelected');
+    if (!selectedElement) return;
+
+    const selectedValue = selectedElement.textContent;
+    if (selectedValue === 'Select an option...' || selectedValue === 'Loading options...' || selectedValue === 'No options available' || selectedValue === 'Error loading options') {
+        return;
+    }
+
+    // The seed data should already be updated by the dropdown click handler
+    // Just make sure it's locked
+    currentManualSelectionSeed.locked = true;
+
+    // Update the UI in the lock modal to show it's locked
+    updateTextReplacementLockItem(currentManualSelectionIndex, currentManualSelectionSeed);
+
+    // Also update the lock button state in the UI
+    const item = document.querySelector(`.text-replacement-lock-item[data-index="${currentManualSelectionIndex}"]`);
+    if (item) {
+        // Mark as selected (locked)
+        item.classList.add('selected');
+        // Update the lock button state
+        const lockButton = item.querySelector('.text-replacement-lock-btn');
+        if (lockButton) {
+            lockButton.setAttribute('data-state', 'on');
+        }
+    }
+
+    // Update the lock status text
+    updateLockStatusText();
+
+    // Update the locked replacements for immediate use in generation
+    const lockedSeeds = currentTextReplacementSeeds.filter(seed => seed.locked === true);
+    window.lockedTextReplacements = lockedSeeds;
+
+    // Update the main lock button indicator
+    updateMainLockButtonState();
+
+    // Close the modal
+    const modal = document.getElementById('textReplacementManualSelectionModal');
+    closeModal(modal);
+}
+
+// Select random text replacement
+function selectRandomTextReplacement(seed, index) {
+    // Request options from server to get all possible values
+    window.wsClient.sendMessage('get_text_replacement_options', {
+        pattern: seed.pattern || `!${seed.key}`,
+        presetName: seed.presetName,
+        model: window.currentModel,
+        periodKey: window.currentPeriodKey
+    }).then(result => {
+        if (result && result.success && result.options && result.options.length > 0) {
+            const randomOption = result.options[Math.floor(Math.random() * result.options.length)];
+
+            copyTextReplacementOptionToSeed(seed, randomOption);
+            seed.locked = true;
+            seed.can_lock = true;
+
+            // Update the UI in the lock modal
+            updateTextReplacementLockItem(index, seed);
+
+            // Also update the lock button state in the UI
+            const item = document.querySelector(`.text-replacement-lock-item[data-index="${index}"]`);
+            if (item) {
+                // Mark as selected (locked)
+                item.classList.add('selected');
+                // Update the lock button state
+                const lockButton = item.querySelector('.text-replacement-lock-btn');
+                if (lockButton) {
+                    lockButton.setAttribute('data-state', 'on');
+                }
+            }
+
+            // Update the lock status text
+            updateLockStatusText();
+
+            // Update the locked replacements for immediate use in generation
+            const lockedSeeds = currentTextReplacementSeeds.filter(s => s.locked === true);
+            window.lockedTextReplacements = lockedSeeds;
+
+            // Update the main lock button indicator
+            updateMainLockButtonState();
+        } else {
+            console.warn('No options available for random selection');
+        }
+    }).catch(error => {
+        console.error('Error getting options for random selection:', error);
+    });
+}
+
+// Resolve prompt textarea for a text-replacement seed source (server assigns sources; merge is server-side)
+function getTextareaForReplacementSource(source) {
+    if (!source) return null;
+    if (source === 'prompt') return document.getElementById('manualPrompt');
+    if (source === 'negative_prompt') return document.getElementById('manualUc');
+    if (source === 'input_prompt_negative') return document.getElementById('manualPromptNegative');
+    if (!source.startsWith('character_') || !characterPromptsContainer) return null;
+
+    const charIndex = parseInt(source.split('_')[1], 10);
+    if (isNaN(charIndex)) return null;
+    const item = characterPromptsContainer.querySelectorAll('.character-prompt-item')[charIndex];
+    if (!item) return null;
+
+    if (source.endsWith('_input_prompt_negative')) {
+        return document.getElementById(`${item.id}_promptNegative`);
+    }
+    if (source.endsWith('_uc')) {
+        return document.getElementById(`${item.id}_uc`);
+    }
+    if (source.endsWith('_prompt')) {
+        return document.getElementById(`${item.id}_prompt`);
+    }
+    return null;
+}
+
+// Replace placeholder in the corresponding prompt textarea
+function replacePlaceholderInPrompt(seed, index) {
+    const textarea = getTextareaForReplacementSource(seed.source);
+    if (!textarea) {
+        console.warn('Could not find textarea for replacement source:', seed.source);
+        return;
+    }
+
+    // Get the original pattern to replace
+    const patternToReplace = seed.pattern || `!${seed.key}`;
+
+    // Escape special regex characters in the pattern
+    const escapedPattern = patternToReplace.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // Replace the pattern with the resolved value
+    const currentText = textarea.value;
+    const newText = currentText.replace(new RegExp(escapedPattern, 'g'), seed.value);
+
+    // Update the textarea
+    textarea.value = newText;
+
+    // Trigger input event to update any dependent UI
+    const inputEvent = new Event('input', { bubbles: true });
+    textarea.dispatchEvent(inputEvent);
+
+    // Remove this replacement from the current seeds and locked replacements
+    removeTextReplacement(index);
+
+    // Show a brief success indication
+    showGlassToast('success', null, `Replaced "${patternToReplace}" with "${seed.value}" and removed from replacements`, false, 2500, '<i class="fas fa-exchange-alt"></i>');
+}
+
+// Remove a text replacement from both current seeds and locked replacements
+function removeTextReplacement(index) {
+    // Remove from current text replacement seeds
+    if (currentTextReplacementSeeds && currentTextReplacementSeeds[index]) {
+        currentTextReplacementSeeds.splice(index, 1);
+
+        // Update the indices of remaining items and refresh the UI
+        const modal = document.getElementById('textReplacementLockModal');
+        if (modal) {
+            const listContainer = modal.querySelector('.text-replacement-lock-list');
+            if (listContainer) {
+                // Re-render the entire list with updated indices
+                renderTextReplacementLockList();
+            }
+        }
+    }
+
+    // Remove from locked replacements if it exists there
+    if (window.lockedTextReplacements && Array.isArray(window.lockedTextReplacements)) {
+        // Find and remove the replacement at the specified index
+        if (window.lockedTextReplacements[index]) {
+            window.lockedTextReplacements.splice(index, 1);
+        }
+    }
+
+    // Update the main lock button indicator
+    updateMainLockButtonState();
+}
+
+// Re-render the text replacement lock list after changes
+function renderTextReplacementLockList() {
+    const listContainer = document.getElementById('textReplacementLockList');
+    if (!listContainer) return;
+
+    listContainer.innerHTML = '';
+
+    // Check if we have any replacements (Genso seeds or Rentan modifications)
+    let hasDynamicReplacements = false;
+    if (window.dynamicGenerationData?.compiled_prompt?.text_replacements) {
+        // Rentan: Tendai Modifications
+        const tr = window.dynamicGenerationData.compiled_prompt.text_replacements;
+        hasDynamicReplacements = (tr.prompt?.length > 0) || (tr.uc?.length > 0) ||
+            (tr.character_prompts?.some(char => char?.prompt?.length > 0 || char?.uc?.length > 0));
+    }
+
+    if (currentTextReplacementSeeds.length === 0 && !hasDynamicReplacements) {
+        const emptyHint = inspectorEditorHasLoadedData()
+            ? 'No Expanders in use, Click Refresh to scan prompts for prefixes.'
+            : 'No Genso Expanders Available. Load data or generate an image first.';
+        listContainer.innerHTML = `<div style="text-align: center; padding: 20px; color: var(--text-secondary);">${emptyHint}</div>`;
+        updateLockStatusText();
+        return;
+    }
+
+    currentTextReplacementSeeds.forEach((seed, index) => {
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'text-replacement-lock-item';
+        itemDiv.dataset.index = index;
+
+        const isLocked = seed.locked === true;
+        const canLock = seed.can_lock !== undefined ? seed.can_lock !== false : true;
+        const canResolve = seed.can_resolve !== undefined ? seed.can_resolve !== false : canLock;
+
+        itemDiv.classList.toggle('selected', isLocked);
+
+        const stageTargetBadge = buildInspectorStageTargetBadgeHtml(seed);
+
+        // Check if source is UC/negative and add class
+        const source = seed.source || '';
+        if (source === 'negative_prompt' || source === 'input_prompt_negative' ||
+            (source.startsWith('character_') && (source.endsWith('_uc') || source.endsWith('_input_prompt_negative')))) {
+            itemDiv.classList.add('negative-prompt');
+        }
+
+        // Extract character index if it's a character prompt
+        // Source format: character_${charIndex}_prompt, character_${charIndex}_uc, character_${charIndex}_input_prompt_negative
+        let characterIndex = null;
+        if (source.startsWith('character_')) {
+            const parts = source.split('_');
+            if (parts.length >= 2) {
+                const indexPart = parts[1];
+                const parsedIndex = parseInt(indexPart, 10);
+                if (!isNaN(parsedIndex)) {
+                    characterIndex = parsedIndex;
+                }
+            }
+        }
+
+        const indexDisplay = seed.index !== null && seed.index !== undefined ? `<span class="text-replacement-index">${seed.index}</span>` : '';
+        let originalPattern = seed.pattern;
+        if (!originalPattern) {
+            if (seed.type && seed.type.startsWith('bracketed_')) {
+                originalPattern = seed.pattern;
+            } else {
+                originalPattern = `!${seed.key}${seed.type === 'combine_incrementing' ? '~+#' : seed.type === 'pick_incrementing' ? '~#' : seed.type === 'combine' ? '~+' : '~'}`;
+            }
+        }
+
+        const isStatic = seed.type === 'regular';
+        const locationIcon = getLocationIcon(seed.source);
+        const locationColor = getLocationColor(seed.source);
+        const typeIcon = getReplacementTypeIcon(seed.type);
+        const typeColor = getReplacementTypeColor(seed.type);
+
+        // Build character badge if it's a character prompt
+        const characterBadge = characterIndex !== null ? `
+            <span class="text-replacement-badge text-replacement-badge-character">
+                <i class="fas fa-person"></i>
+                <span style="font-size: 0.75em;">${characterIndex + 1}</span>
+            </span>
+        ` : '';
+
+        itemDiv.innerHTML = `
+            <div class="text-replacement-lock-content">
+                <div class="text-replacement-lock-info">
+                    <div class="text-replacement-full-value">${seed.value}</div>
+                </div>
+                <div class="text-replacement-lock-row">
+                    <div class="text-replacement-lock-badges">
+                        <span class="text-replacement-badge text-replacement-badge-combined">
+                            <span class="badge-icon-location" style="color: ${locationColor};">${locationIcon}</span>
+                            ${characterBadge}
+                            <span class="badge-icon-type" style="color: ${typeColor};">${typeIcon}</span>
+                        </span>
+                        ${stageTargetBadge}
+                    </div>
+                    <div class="text-replacement-lock-pattern">
+                        ${!isStatic ? `<span class="text-replacement-original">${originalPattern}</span>
+                        <i class="fas fa-arrow-right text-replacement-arrow"></i>
+                        <span class="text-replacement-selected">!${seed.key}${indexDisplay}</span>` : `<span class="text-replacement-original">!${seed.key}</span>`}
+                    </div>
+                    <div class="text-replacement-lock-actions">
+                        <button type="button" class="text-replacement-lock-btn btn-secondary btn-small toggle-btn" data-state="${isLocked ? 'on' : 'off'}" id="tr-lock-${index}">
+                            <i class="fas fa-lock"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Add event listeners for the buttons
+        if (canLock) {
+            // Lock button
+            const lockButton = itemDiv.querySelector('.text-replacement-lock-btn');
+            lockButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                const isCurrentlyLocked = itemDiv.classList.contains('selected');
+                const newState = !isCurrentlyLocked;
+
+                itemDiv.classList.toggle('selected', newState);
+                lockButton.setAttribute('data-state', newState ? 'on' : 'off');
+
+                currentTextReplacementSeeds[index].locked = newState;
+                updateLockStatusText();
+
+                // Update locked replacements
+                const lockedSeeds = currentTextReplacementSeeds.filter(seed => seed.locked === true);
+                window.lockedTextReplacements = lockedSeeds;
+                updateMainLockButtonState();
+            });
+        } else {
+            // For non-lockable replacements, show info only
+            // Check if source is UC/negative and add class
+            const source = seed.source || '';
+            if (source === 'negative_prompt' || source === 'input_prompt_negative' ||
+                (source.startsWith('character_') && (source.endsWith('_uc') || source.endsWith('_input_prompt_negative')))) {
+                itemDiv.classList.add('negative-prompt');
+            }
+
+            // Extract character index if it's a character prompt
+            // Source format: character_${charIndex}_prompt, character_${charIndex}_uc, character_${charIndex}_input_prompt_negative
+            let characterIndex = null;
+            if (source.startsWith('character_')) {
+                const parts = source.split('_');
+                if (parts.length >= 2) {
+                    const indexPart = parts[1];
+                    const parsedIndex = parseInt(indexPart, 10);
+                    if (!isNaN(parsedIndex)) {
+                        characterIndex = parsedIndex;
+                    }
+                }
+            }
+
+            const originalPattern = seed.pattern || `!${seed.key}`;
+            const isStatic = seed.type === 'regular';
+            const locationIcon = getLocationIcon(seed.source);
+            const locationColor = getLocationColor(seed.source);
+            const typeIcon = getReplacementTypeIcon(seed.type);
+            const typeColor = getReplacementTypeColor(seed.type);
+
+            // Build character badge if it's a character prompt
+            const characterBadge = characterIndex !== null ? `
+                <span class="text-replacement-badge text-replacement-badge-character">
+                    <i class="fas fa-person"></i>
+                    <span style="font-size: 0.75em; margin-left: 2px;">${characterIndex + 1}</span>
+                </span>
+            ` : '';
+
+            itemDiv.innerHTML = `
+                <div class="text-replacement-lock-content">
+                    <div class="text-replacement-lock-info">
+                        <div class="text-replacement-full-value">${seed.value}</div>
+                    </div>
+                    <div class="text-replacement-lock-row">
+                        <div class="text-replacement-lock-badges">
+                            <span class="text-replacement-badge text-replacement-badge-combined">
+                                <span class="badge-icon-location" style="color: ${locationColor};">${locationIcon}</span>
+                                ${characterBadge}
+                                <span class="badge-icon-type" style="color: ${typeColor};">${typeIcon}</span>
+                            </span>
+                            ${stageTargetBadge}
+                        </div>
+                        <div class="text-replacement-lock-pattern">
+                            ${!isStatic ? `<span class="text-replacement-original">${originalPattern}</span>
+                            <i class="fas fa-arrow-right text-replacement-arrow"></i>
+                            <span class="text-replacement-selected">!${seed.key}</span>` : `<span class="text-replacement-original">!${seed.key}</span>`}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Add context menu to the item
+        if (contextMenu) {
+            contextMenu.attachToElement(itemDiv, {
+                sections: [
+                    {
+                        type: 'icons',
+                        position: 'outer',
+                        icons: [
+                            {
+                                tooltip: 'Toggle Lock Resolution',
+                                icon: 'fas fa-lock',
+                                action: 'lock',
+                                keepMenuOpen: true,
+                                hidden: !canLock,
+                                loadfn: (item, target) => {
+                                    const idx = parseInt(target.dataset.index);
+                                    item.checked = currentTextReplacementSeeds[idx]?.locked === true;
+                                }
+                            },
+                            {
+                                tooltip: 'Randomize Value',
+                                icon: 'fas fa-dice',
+                                action: 'random-selection',
+                                hidden: !canLock
+                            },
+                            {
+                                tooltip: 'Copy Value',
+                                icon: 'nai-clipboard',
+                                action: 'copy-value'
+                            },
+                            {
+                                tooltip: 'Apply to Prompt',
+                                icon: 'fas fa-pen-field',
+                                action: 'apply-prompt'
+                            },
+                        ]
+                    },
+                    {
+                        type: 'list',
+                        items: [
+                            {
+                                text: 'Resolve to...',
+                                icon: 'fas fa-book-font',
+                                optionsfn: (target) => {
+                                    const idx = parseInt(target.dataset.index);
+                                    const seed = currentTextReplacementSeeds[idx];
+                                    if (!seed) return [];
+
+                                    // Create cache key based on seed properties (not index, as it may change)
+                                    const cacheKey = `textReplacementOptions_${seed.key}_${seed.pattern || ''}_${seed.presetName || ''}_${window.currentModel || ''}_${window.currentPeriodKey || ''}`;
+
+                                    // Initialize cache if needed
+                                    if (!window.textReplacementOptionsCache) {
+                                        window.textReplacementOptionsCache = {};
+                                    }
+
+                                    // Check if we have cached options for this seed
+                                    if (window.textReplacementOptionsCache[cacheKey]) {
+                                        const cached = window.textReplacementOptionsCache[cacheKey];
+
+                                        // If already loading, return loading option
+                                        if (cached.loading) {
+                                            return [{
+                                                icon: 'fas fa-spinner-third fa-spin',
+                                                text: 'Please Wait...',
+                                                action: 'loading-placeholder',
+                                                disabled: true
+                                            }];
+                                        }
+
+                                        // If we have cached options, return them
+                                        if (cached.options && Array.isArray(cached.options) && cached.options.length > 0) {
+                                            const distinctKeys = new Set(cached.options.map(o => o.key));
+                                            const showSelectorSubtext = distinctKeys.size > 1;
+                                            return cached.options.map(opt => ({
+                                                icon: 'fas fa-bookmark',
+                                                text: opt.value,
+                                                subtext: showSelectorSubtext ? `!${opt.key}` : undefined,
+                                                badge: opt.index !== null && opt.index !== undefined ? ('#' + String(opt.index)) : null,
+                                                action: `select-option-${opt.value}`,
+                                                data: { value: opt.value, key: opt.key, index: opt.index }
+                                            }));
+                                        }
+
+                                        // If cached but no options (error or empty), return that
+                                        if (cached.options && Array.isArray(cached.options) && cached.options.length === 0) {
+                                            if (cached.error) {
+                                                return [{
+                                                    icon: 'fas fa-exclamation-triangle',
+                                                    text: 'Error loading options',
+                                                    action: 'error-loading',
+                                                    disabled: true
+                                                }];
+                                            } else {
+                                                return [{
+                                                    icon: 'fas fa-empty-set',
+                                                    text: 'No options available',
+                                                    action: 'no-options',
+                                                    disabled: true
+                                                }];
+                                            }
+                                        }
+                                    }
+
+                                    // Mark as loading (prevent duplicate requests)
+                                    window.textReplacementOptionsCache[cacheKey] = { loading: true };
+
+                                    // Fetch options asynchronously
+                                    window.wsClient.sendMessage('get_text_replacement_options', {
+                                        pattern: seed.pattern || `!${seed.key}`,
+                                        presetName: seed.presetName,
+                                        model: window.currentModel,
+                                        periodKey: window.currentPeriodKey
+                                    }).then(result => {
+                                        if (result && result.success && result.options && Array.isArray(result.options) && result.options.length > 0) {
+                                            // Cache the options
+                                            window.textReplacementOptionsCache[cacheKey] = {
+                                                loading: false,
+                                                options: result.options
+                                            };
+
+                                            // If submenu is still open, refresh it
+                                            if (contextMenu && contextMenu.currentSubmenuState) {
+                                                contextMenu.refreshSubmenu();
+                                            }
+                                        } else {
+                                            // No options available (empty array, null, undefined, or no success)
+                                            window.textReplacementOptionsCache[cacheKey] = {
+                                                loading: false,
+                                                options: [],
+                                                error: false
+                                            };
+                                            if (contextMenu && contextMenu.currentSubmenuState) {
+                                                contextMenu.refreshSubmenu();
+                                            }
+                                        }
+                                    }).catch(error => {
+                                        console.error('Error fetching text replacement options:', error);
+                                        window.textReplacementOptionsCache[cacheKey] = {
+                                            loading: false,
+                                            options: [],
+                                            error: true
+                                        };
+                                        if (contextMenu && contextMenu.currentSubmenuState) {
+                                            contextMenu.refreshSubmenu();
+                                        }
+                                    });
+
+                                    // Return loading option
+                                    return [{
+                                        icon: 'fas fa-spinner-third fa-spin',
+                                        text: 'Please Wait...',
+                                        action: 'loading-placeholder',
+                                        disabled: true
+                                    }];
+                                },
+                                handlerfn: (subItem, target) => {
+                                    const action = subItem.action;
+                                    if (action === 'loading-placeholder' || action === 'no-options' || action === 'error-loading') {
+                                        // Do nothing for placeholder/error states
+                                        return;
+                                    }
+
+                                    if (action && action.startsWith('select-option-')) {
+                                        const idx = parseInt(target.dataset.index);
+                                        const seed = currentTextReplacementSeeds[idx];
+                                        if (!seed) return;
+
+                                        // Get the selected option data
+                                        const optionData = subItem.data;
+                                        if (optionData) {
+                                            // Update the seed data
+                                            seed.value = optionData.value;
+                                            seed.key = optionData.key;
+                                            seed.index = optionData.index;
+                                            seed.locked = true;
+                                            seed.can_lock = true;
+
+                                            // Update the UI in the lock modal
+                                            updateTextReplacementLockItem(idx, seed);
+
+                                            // Also update the lock button state in the UI
+                                            const item = document.querySelector(`.text-replacement-lock-item[data-index="${idx}"]`);
+                                            if (item) {
+                                                // Mark as selected (locked)
+                                                item.classList.add('selected');
+                                                // Update the lock button state
+                                                const lockButton = item.querySelector('.text-replacement-lock-btn');
+                                                if (lockButton) {
+                                                    lockButton.setAttribute('data-state', 'on');
+                                                }
+                                            }
+
+                                            // Update the lock status text
+                                            updateLockStatusText();
+
+                                            // Update the locked replacements for immediate use in generation
+                                            const lockedSeeds = currentTextReplacementSeeds.filter(s => s.locked === true);
+                                            window.lockedTextReplacements = lockedSeeds;
+
+                                            // Update the main lock button indicator
+                                            updateMainLockButtonState();
+
+                                            // Close the context menu after selection
+                                            if (contextMenu) {
+                                                contextMenu.hideMenu();
+                                            }
+                                        }
+                                    }
+                                },
+                                openOnHover: false,
+                                hidden: !canResolve
+                            },
+                        ]
+                    }],
+                onAction: (actionName, target) => {
+                    if (actionName === 'apply-prompt') {
+                        replacePlaceholderInPrompt(seed, index);
+                    } else if (actionName === 'random-selection') {
+                        selectRandomTextReplacement(seed, index);
+                    } else if (actionName === 'copy-value') {
+                        const textToCopy = seed.value || '';
+                        if (textToCopy) {
+                            // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
+                            copyTextToClipboard(textToCopy).then(() => {
+                                showGlassToast('success', null, 'Copied to clipboard', false, 2000, '<i class="nai-clipboard"></i>');
+                            }).catch(err => {
+                                console.error('Failed to copy:', err);
+                                showGlassToast('error', null, 'Failed to copy to clipboard', false, 2000, '<i class="fas fa-exclamation-triangle"></i>');
+                            });
+                        }
+                    } else if (actionName === 'lock') {
+                        const idx = parseInt(target.dataset.index);
+                        const isCurrentlyLocked = currentTextReplacementSeeds[idx]?.locked === true;
+                        const newState = !isCurrentlyLocked;
+
+                        target.classList.toggle('selected', newState);
+                        const lockButton = target.querySelector('.text-replacement-lock-btn');
+                        if (lockButton) {
+                            lockButton.setAttribute('data-state', newState ? 'on' : 'off');
+                        }
+
+                        currentTextReplacementSeeds[idx].locked = newState;
+                        updateLockStatusText();
+
+                        const lockedSeeds = currentTextReplacementSeeds.filter(seed => seed.locked === true);
+                        window.lockedTextReplacements = lockedSeeds;
+                        updateMainLockButtonState();
+                    }
+                }
+            });
+        }
+
+        listContainer.appendChild(itemDiv);
+    });
+
+    // Check if dynamic replacements exist
+    const dtr = window.dynamicGenerationData?.compiled_prompt?.text_replacements;
+    const replacements = [];
+
+    // Collect all replacements from different sources (only if dtr exists)
+    if (dtr && dtr.prompt && dtr.prompt.length > 0) {
+        dtr.prompt.forEach((rep, index) => {
+            replacements.push({ ...rep, targetType: 'prompt', targetSource: 'base', index });
+        });
+    }
+
+    if (dtr && dtr.uc && dtr.uc.length > 0) {
+        dtr.uc.forEach((rep, index) => {
+            replacements.push({ ...rep, targetType: 'uc', targetSource: 'base', index });
+        });
+    }
+
+    if (dtr && dtr.character_prompts && dtr.character_prompts.length > 0) {
+        dtr.character_prompts.forEach((char, charIndex) => {
+            if (char && char.prompt && char.prompt.length > 0) {
+                char.prompt.forEach((rep, index) => {
+                    replacements.push({ ...rep, targetType: 'character', targetSource: charIndex, targetField: 'prompt', index });
+                });
+            }
+            if (char && char.uc && char.uc.length > 0) {
+                char.uc.forEach((rep, index) => {
+                    replacements.push({ ...rep, targetType: 'character', targetSource: charIndex, targetField: 'uc', index });
+                });
+            }
+        });
+    }
+
+    if (replacements.length > 0) {
+        // Add section header
+        const sectionHeader = document.createElement('div');
+        sectionHeader.className = 'dynamic-replacements-section-header';
+        sectionHeader.innerHTML = `
+            <div class="section-title">
+                <i class="ri-pencil-ai-2-fill"></i>
+                <span>Tendai Replacements</span>
+            </div>
+        `;
+        listContainer.appendChild(sectionHeader);
+
+        // Add expiration status banner if compiled prompt exists
+        const compiledPrompt = window.dynamicGenerationData?.compiled_prompt;
+        if (compiledPrompt && compiledPrompt.expiresAt) {
+            const now = Date.now();
+            const isExpired = now >= compiledPrompt.expiresAt;
+            const msUntilExpiry = compiledPrompt.expiresAt - now;
+            const minutesUntilExpiry = Math.round(msUntilExpiry / (60 * 1000));
+            const hoursUntilExpiry = Math.round(minutesUntilExpiry / 60 * 10) / 10;
+            const expiryDate = new Date(compiledPrompt.expiresAt);
+
+            const expirationBanner = document.createElement('div');
+            if (isExpired) {
+                // Calculate days since expiration
+                const daysSinceExpiry = Math.floor(Math.abs(msUntilExpiry) / (1000 * 60 * 60 * 24));
+                const currentYear = new Date().getFullYear();
+                const expiryYear = expiryDate.getFullYear();
+
+                let expiredTimeText;
+                if (daysSinceExpiry < 7) {
+                    // Less than 7 days ago: "Expired X Days ago (HH:mm)"
+                    const timeStr = expiryDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    if (daysSinceExpiry === 0) {
+                        expiredTimeText = `Expired Today (${timeStr})`;
+                    } else {
+                        const dayText = daysSinceExpiry === 1 ? '1 Day' : `${daysSinceExpiry} Days`;
+                        expiredTimeText = `Expired ${dayText} ago (${timeStr})`;
+                    }
+                } else {
+                    // 7 or more days ago: "Expired on MMM dd, YYYY (HH:mm)" with year only if different
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    const month = monthNames[expiryDate.getMonth()];
+                    const day = expiryDate.getDate();
+                    const year = expiryYear !== currentYear ? `, ${expiryYear}` : '';
+                    const timeStr = expiryDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    expiredTimeText = `Expired on ${month} ${day}${year} (${timeStr})`;
+                }
+
+                expirationBanner.className = 'text-replacement-expiration-banner expired';
+                expirationBanner.innerHTML = `
+                    <i class="fas fa-triangle-exclamation"></i>
+                    <div class="expiration-info">
+                        <div class="expiration-status">Cache Expired</div>
+                        <div class="expiration-time">${expiredTimeText}</div>
+                    </div>
+                `;
+            } else {
+                const timeText = hoursUntilExpiry >= 1
+                    ? `${hoursUntilExpiry}h ${minutesUntilExpiry % 60}m`
+                    : `${minutesUntilExpiry}m`;
+                expirationBanner.className = 'text-replacement-expiration-banner valid';
+                expirationBanner.innerHTML = `
+                    <i class="fas fa-circle-check"></i>
+                    <div class="expiration-info">
+                        <div class="expiration-status">Cache Valid</div>
+                        <div class="expiration-time">Expires at ${expiryDate.toLocaleTimeString()} (${timeText})</div>
+                    </div>
+                `;
+            }
+            listContainer.appendChild(expirationBanner);
+        }
+
+        // Add context cards from compiled prompt
+        const compiled = window.dynamicGenerationData?.compiled_prompt;
+        if (compiled && compiled.context) {
+            const contextCardsContainer = document.createElement('div');
+            contextCardsContainer.className = 'dynamic-replacements-context-cards';
+
+            // Build context cards using the same logic from showCompiledPromptModal
+            const context = compiled.context;
+            const weather = context.weather || {};
+            const time = context.time || {};
+
+            // Get unit preference
+            let useMetric = localStorage.getItem('weather_units_metric') !== 'false';
+
+            // Helper functions (reuse from showCompiledPromptModal scope)
+            const celsiusToFahrenheit = (celsius) => Math.round((celsius * 9 / 5) + 32);
+            const mpsToMph = (mps) => Math.round(mps * 2.237);
+            const getWeatherIcon = (condition, isNight = false) => {
+                if (!condition) return isNight ? '<i class="wi wi-night-clear"></i>' : '<i class="wi wi-day-sunny"></i>';
+
+                const timePrefix = isNight ? 'night-alt' : 'day';
+
+                // Icons that don't change between day/night
+                const timeNeutralIcons = {
+                    'overcast': 'cloudy',
+                    'fog': 'fog',
+                    'depositing rime fog': 'fog',
+                    'moderate snow fall': 'snow',
+                    'heavy snow fall': 'snow',
+                    'snow grains': 'snow',
+                    'heavy snow showers': 'snow'
+                };
+
+                if (timeNeutralIcons[condition]) {
+                    return `<i class="wi wi-${timeNeutralIcons[condition]}"></i>`;
+                }
+
+                // Time-dependent icons
+                const iconMap = {
+                    'clear sky': isNight ? 'night-clear' : 'day-sunny',
+                    'mainly clear': isNight ? 'night-alt-partly-cloudy' : 'day-sunny-overcast',
+                    'partly cloudy': `${timePrefix}-cloudy`,
+                    'light drizzle': `${timePrefix}-showers`,
+                    'moderate drizzle': `${timePrefix}-showers`,
+                    'dense drizzle': `${timePrefix}-showers`,
+                    'light freezing drizzle': `${timePrefix}-snow`,
+                    'dense freezing drizzle': `${timePrefix}-snow`,
+                    'slight rain': `${timePrefix}-rain`,
+                    'moderate rain': `${timePrefix}-rain`,
+                    'heavy rain': `${timePrefix}-rain`,
+                    'light freezing rain': `${timePrefix}-snow`,
+                    'heavy freezing rain': `${timePrefix}-snow`,
+                    'slight snow fall': `${timePrefix}-snow`,
+                    'slight rain showers': `${timePrefix}-showers`,
+                    'moderate rain showers': `${timePrefix}-rain`,
+                    'violent rain showers': `${timePrefix}-storm-showers`,
+                    'slight snow showers': `${timePrefix}-snow`,
+                    'thunderstorm': `${timePrefix}-thunderstorm`,
+                    'thunderstorm with slight hail': `${timePrefix}-thunderstorm`,
+                    'thunderstorm with heavy hail': `${timePrefix}-thunderstorm`
+                };
+
+                const iconClass = iconMap[condition] || (isNight ? 'night-clear' : 'day-sunny');
+                return `<i class="wi wi-${iconClass}"></i>`;
+            };
+            const getWindDirection = (degrees) => {
+                if (degrees === null || degrees === undefined) return 'N/A';
+                const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+                const index = Math.round(degrees / 22.5) % 16;
+                return directions[index];
+            };
+
+            // Build weather content
+            let weatherContent = '';
+            if (weather.condition || weather.temperature !== undefined) {
+                // Determine if it's night based on timePeriod
+                const isNight = context.timePeriod?.isDaytime === false;
+                const weatherIcon = getWeatherIcon(weather.condition, isNight);
+                const tempC = weather.temperature;
+                const tempF = tempC !== undefined ? celsiusToFahrenheit(tempC) : null;
+                const tempDisplay = useMetric ?
+                    (tempC !== undefined ? `${tempC}°C` : 'N/A') :
+                    (tempF !== undefined ? `${tempF}°F` : 'N/A');
+                const feelsC = weather.feelsLike;
+                const feelsF = feelsC !== undefined ? celsiusToFahrenheit(feelsC) : null;
+                const feelsDisplay = useMetric ?
+                    (feelsC !== undefined ? `${feelsC}°C` : 'N/A') :
+                    (feelsF !== undefined ? `${feelsF}°F` : 'N/A');
+                const windMps = weather.windSpeed;
+                const windMph = windMps !== undefined ? mpsToMph(windMps) : null;
+                const windDisplay = useMetric ?
+                    (windMps !== undefined ? `${windMps} m/s` : 'N/A') :
+                    (windMph !== undefined ? `${windMph} mph` : 'N/A');
+
+                const weatherCondition = weather.condition || 'Unknown';
+                const humidityValue = weather.humidity !== undefined ? `${weather.humidity}%` : null;
+                const windDirection = weather.windDirection !== undefined ? getWindDirection(weather.windDirection) : null;
+
+                const displayTemp = useMetric ? tempC : tempF;
+                const displayFeels = useMetric ? feelsC : feelsF;
+
+                // Determine card background
+                let cardBackgroundClass = '';
+                if (context.season && weather.pressure !== undefined) {
+                    const seasonName = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
+                    const season = typeof seasonName === 'string' ? seasonName.toLowerCase() : String(seasonName).toLowerCase();
+                    const pressure = weather.pressure;
+
+                    if (season.includes('spring')) {
+                        if (pressure < 1000) cardBackgroundClass = 'season-spring-stormy';
+                        else if (pressure < 1013) cardBackgroundClass = 'season-spring-unstable';
+                        else if (pressure < 1020) cardBackgroundClass = 'season-spring-normal';
+                        else cardBackgroundClass = 'season-spring-stable';
+                    } else if (season.includes('summer')) {
+                        if (pressure < 1000) cardBackgroundClass = 'season-summer-stormy';
+                        else if (pressure < 1013) cardBackgroundClass = 'season-summer-unstable';
+                        else if (pressure < 1020) cardBackgroundClass = 'season-summer-normal';
+                        else cardBackgroundClass = 'season-summer-stable';
+                    } else if (season.includes('fall') || season.includes('autumn')) {
+                        if (pressure < 1000) cardBackgroundClass = 'season-fall-stormy';
+                        else if (pressure < 1013) cardBackgroundClass = 'season-fall-unstable';
+                        else if (pressure < 1020) cardBackgroundClass = 'season-fall-normal';
+                        else cardBackgroundClass = 'season-fall-stable';
+                    } else if (season.includes('winter')) {
+                        if (pressure < 1000) cardBackgroundClass = 'season-winter-stormy';
+                        else if (pressure < 1013) cardBackgroundClass = 'season-winter-unstable';
+                        else if (pressure < 1020) cardBackgroundClass = 'season-winter-normal';
+                        else cardBackgroundClass = 'season-winter-stable';
+                    }
+                } else if (context.season) {
+                    const seasonName = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
+                    const season = typeof seasonName === 'string' ? seasonName.toLowerCase() : String(seasonName).toLowerCase();
+                    if (season.includes('spring')) cardBackgroundClass = 'season-spring-normal';
+                    else if (season.includes('summer')) cardBackgroundClass = 'season-summer-normal';
+                    else if (season.includes('fall') || season.includes('autumn')) cardBackgroundClass = 'season-fall-normal';
+                    else if (season.includes('winter')) cardBackgroundClass = 'season-winter-normal';
+                }
+
+                const mainCardHtml = `
+                    <div class="weather-main-card ${cardBackgroundClass}">
+                        <div class="weather-current-temp">
+                            <div class="weather-temp-value">
+                                <span class="weather-temp-number clickable" onclick="toggleWeatherUnits(event)" data-metric="${tempC !== undefined ? tempC : ''}" data-imperial="${tempF !== undefined ? tempF : ''}">${displayTemp !== undefined ? displayTemp : '--'}</span>
+                                <span class="weather-temp-unit">${useMetric ? '°C' : '°F'}</span>
+                            </div>
+                            ${displayFeels !== undefined ? `<div class="weather-feels-like" data-metric="${feelsC !== undefined ? feelsC : ''}" data-imperial="${feelsF !== undefined ? feelsF : ''}">Feels like ${displayFeels}°${useMetric ? 'C' : 'F'}</div>` : ''}
+                        </div>
+                        <div class="weather-condition-display">
+                            <div class="weather-condition-icon">${weatherIcon}</div>
+                            <div class="weather-condition-text">${weatherCondition}</div>
+                            <div class="weather-condition-details">
+                                ${humidityValue ? `<div class="weather-condition-detail"><i class="fa-solid fa-droplet"></i>${humidityValue}</div>` : ''}
+                                ${windDisplay !== 'N/A' ? `<div class="weather-condition-detail"><i class="fa-solid fa-wind"></i><span class="weather-wind-speed" data-metric="${windMps !== undefined ? windMps : ''}" data-imperial="${windMph !== undefined ? windMph : ''}">${windDisplay}</span>${windDirection ? ` (${windDirection})` : ''}</div>` : ''}
+                            </div>
+                        </div>
+                        ${weather.cloudCoverage !== undefined || weather.visibility !== undefined || weather.uvIndex !== undefined ? `
+                        <div class="weather-card-header">
+                            <div class="weather-quick-indicators">
+                                ${weather.uvIndex !== undefined && weather.uvIndex > 0 ? `
+                                <div class="weather-quick-indicator">
+                                    <div class="weather-quick-indicator-label">
+                                        <i class="fa-solid fa-sun"></i>
+                                        <span>UV ${weather.uvIndex}</span>
+                                    </div>
+                                    <div class="weather-quick-progress-bar">
+                                        <div class="weather-quick-progress-fill uv-index" style="width: ${Math.min((weather.uvIndex / 12) * 100, 100)}%"></div>
+                                    </div>
+                                </div>
+                                ` : ''}
+                                ${weather.cloudCoverage !== undefined ? `
+                                <div class="weather-quick-indicator">
+                                    <div class="weather-quick-indicator-label">
+                                        <i class="fa-solid fa-cloud"></i>
+                                        <span>${weather.cloudCoverage}%</span>
+                                    </div>
+                                    <div class="weather-quick-progress-bar">
+                                        <div class="weather-quick-progress-fill cloud-coverage" style="width: ${weather.cloudCoverage}%"></div>
+                                    </div>
+                                </div>
+                                ` : ''}
+                                ${weather.visibility !== undefined ? `
+                                <div class="weather-quick-indicator">
+                                    <div class="weather-quick-indicator-label">
+                                        <i class="fa-solid fa-eye"></i>
+                                        <span class="weather-visibility" data-metric="${weather.visibility / 1000}" data-unit="km">${useMetric ? `${(weather.visibility / 1000).toFixed(1)} km` : `${(weather.visibility * 0.000621371).toFixed(1)} mi`}</span>
+                                    </div>
+                                    <div class="weather-quick-progress-bar">
+                                        <div class="weather-quick-progress-fill visibility" style="width: ${Math.min((weather.visibility / 10000) * 100, 100)}%"></div>
+                                    </div>
+                                </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                        ` : ''}
+                    </div>
+                `;
+
+                weatherContent = `<div class="weather-display">${mainCardHtml}</div>`;
+            }
+
+            // Build period card
+            let periodCardHtml = '';
+            const timePeriodInfo = context.timePeriod || {};
+
+            // Calculate season progress and template (needed for both period and holiday cards)
+            const seasonProgress = context.season ? calculateSeasonProgress(time, context.season) : 50;
+            const seasonNameForTemplate = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
+            const seasonForTemplate = typeof seasonNameForTemplate === 'string' ? seasonNameForTemplate : String(seasonNameForTemplate || '');
+            const hasHoliday = context.season?.holiday?.primaryHoliday;
+
+            if (context.season && timePeriodInfo.period) {
+                let periodBgClass = 'period-default';
+                const seasonName = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
+                const season = typeof seasonName === 'string' ? seasonName.toLowerCase() : String(seasonName).toLowerCase();
+                const period = timePeriodInfo.period ? timePeriodInfo.period.toLowerCase() : '';
+
+                if (season.includes('spring')) {
+                    if (period.includes('dawn') || period.includes('sunrise')) periodBgClass = 'period-spring-dawn';
+                    else if (period.includes('morning')) periodBgClass = 'period-spring-morning';
+                    else if (period.includes('noon') || period.includes('afternoon')) periodBgClass = 'period-spring-day';
+                    else if (period.includes('dusk') || period.includes('sunset') || period.includes('evening')) periodBgClass = 'period-spring-dusk';
+                    else if (period.includes('night')) periodBgClass = 'period-spring-night';
+                } else if (season.includes('summer')) {
+                    if (period.includes('dawn') || period.includes('sunrise')) periodBgClass = 'period-summer-dawn';
+                    else if (period.includes('morning') || period.includes('noon') || period.includes('afternoon')) periodBgClass = 'period-summer-day';
+                    else if (period.includes('dusk') || period.includes('sunset') || period.includes('evening')) periodBgClass = 'period-summer-dusk';
+                    else if (period.includes('night')) periodBgClass = 'period-summer-night';
+                } else if (season.includes('fall') || season.includes('autumn')) {
+                    if (period.includes('dawn') || period.includes('sunrise')) periodBgClass = 'period-fall-dawn';
+                    else if (period.includes('morning') || period.includes('noon') || period.includes('afternoon')) periodBgClass = 'period-fall-day';
+                    else if (period.includes('dusk') || period.includes('sunset') || period.includes('evening')) periodBgClass = 'period-fall-dusk';
+                    else if (period.includes('night')) periodBgClass = 'period-fall-night';
+                } else if (season.includes('winter')) {
+                    if (period.includes('dawn') || period.includes('sunrise')) periodBgClass = 'period-winter-dawn';
+                    else if (period.includes('morning') || period.includes('noon') || period.includes('afternoon')) periodBgClass = 'period-winter-day';
+                    else if (period.includes('dusk') || period.includes('sunset') || period.includes('evening')) periodBgClass = 'period-winter-dusk';
+                    else if (period.includes('night')) periodBgClass = 'period-winter-night';
+                }
+
+                let shortTitle = 'Time';
+                if (timePeriodInfo.periodKey) {
+                    const periodKeyMap = {
+                        'predawn': 'Pre-Dawn', 'pre_dawn': 'Pre-Dawn',
+                        'dawn': 'Dawn', 'sunrise': 'Sunrise',
+                        'morning': 'Morning',
+                        'latemorning': 'Late Morning', 'late_morning': 'Late Morning',
+                        'noon': 'Noon', 'daytime': 'Daytime',
+                        'earlyafternoon': 'Early Afternoon', 'early_afternoon': 'Early Afternoon',
+                        'afternoon': 'Afternoon',
+                        'lateafternoon': 'Late Afternoon', 'late_afternoon': 'Late Afternoon',
+                        'goldenhour': 'Golden Hour', 'golden_hour': 'Golden Hour',
+                        'evening': 'Evening',
+                        'sunset': 'Sunset', 'dusk': 'Dusk', 'twilight': 'Twilight',
+                        'night': 'Night', 'midnight': 'Midnight',
+                        'latenight': 'Late Night', 'late_night': 'Late Night'
+                    };
+                    shortTitle = periodKeyMap[timePeriodInfo.periodKey.toLowerCase()] ||
+                        timePeriodInfo.periodKey.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+                }
+
+                const clockTime = time.hour !== undefined ? `${time.hour}:${String(time.minute || 0).padStart(2, '0')}` : '';
+                const dateStr = time.dayOfWeekName && time.monthName ?
+                    `${time.dayOfWeekName}, ${time.monthName} ${time.dayOfMonth}, ${time.year}` :
+                    (time.month !== undefined && time.dayOfMonth !== undefined && time.year !== undefined ?
+                        `${time.month + 1}/${time.dayOfMonth}/${time.year}` : '');
+                const location = context.location || {};
+                const locationText = location.city && location.country ?
+                    `${location.city}, ${location.country}` :
+                    location.city || location.country || '';
+
+                const sunProgressRaw = timePeriodInfo.sunProgressRaw !== undefined ? timePeriodInfo.sunProgressRaw : 0;
+                const lightLevelRaw = timePeriodInfo.lightLevelRaw !== undefined ? timePeriodInfo.lightLevelRaw : 0;
+                const sunPhase = timePeriodInfo.sunPhase || 'rising';
+                let sunPositionPercent;
+                if (sunPhase === 'rising') {
+                    // Rising: sunProgressRaw 0-0.5 maps to 0-50% of total bar
+                    sunPositionPercent = (sunProgressRaw / 0.5) * 50;
+                } else if (sunPhase === 'setting') {
+                    // Setting: sunProgressRaw 0.5-1.0 maps to 50-100% of total bar
+                    sunPositionPercent = 50 + ((sunProgressRaw - 0.5) / 0.5) * 50;
+                } else {
+                    sunPositionPercent = sunPhase === 'pre-dawn' ? 0 : (sunPhase === 'post-dusk' ? 100 : 50);
+                }
+
+                periodCardHtml = `
+                    <div class="period-info-card ${periodBgClass}">
+                        <div class="period-info-content">
+                            <div class="period-main-info">
+                                <div class="period-title-section">
+                                    <div class="period-title clickable" onclick="togglePeriodDetails(this)">
+                                        ${shortTitle}
+                                        <i class="fa-solid fa-chevron-down period-expand-icon"></i>
+                                    </div>
+                                    ${context.season ? `<div class="period-season-badge season-${seasonForTemplate.toLowerCase()}">${getSeasonIcon(seasonForTemplate)} ${seasonForTemplate}</div>` : ''}
+                                    ${time.hour !== undefined ? `
+                                    <div class="period-title-indicators">
+                                        ${context.season ? `
+                                        <div class="period-title-indicator">
+                                            <div class="period-title-indicator-label">
+                                                <span>Season</span>
+                                                <span class="period-title-indicator-value">${seasonProgress}%</span>
+                                            </div>
+                                            <div class="period-title-progress-bar season-position season-${seasonForTemplate.toLowerCase()}">
+                                                <div class="period-progress-marker" style="left: ${seasonProgress}%"></div>
+                                            </div>
+                                        </div>
+                                        ` : ''}
+                                        ${lightLevelRaw !== undefined && lightLevelRaw > 0 ? `
+                                        <div class="period-title-indicator">
+                                            <div class="period-title-indicator-label">
+                                                <span>Sun</span>
+                                            </div>
+                                            <div class="period-title-progress-bar sun-position">
+                                                <div class="period-progress-marker" style="left: ${sunPositionPercent}%"></div>
+                                            </div>
+                                        </div>
+                                        <div class="period-title-indicator">
+                                            <div class="period-title-indicator-label">
+                                                <span>Light</span>
+                                            </div>
+                                            <div class="period-title-progress-bar light-level">
+                                                <div class="period-progress-fill light-level" style="width: ${lightLevelRaw * 10}%"></div>
+                                            </div>
+                                        </div>
+                                        ` : ''}
+                                    </div>
+                                    ` : ''}
+                                </div>
+                                ${clockTime || dateStr || locationText ? `
+                                <div class="period-time-date">
+                                    ${clockTime ? `<div class="period-time">${clockTime}</div>` : ''}
+                                    ${dateStr ? `<div class="period-date">${dateStr}</div>` : ''}
+                                    ${locationText ? `<div class="period-location"><i class="fas fa-map-marker-alt"></i> ${locationText}</div>` : ''}
+                                </div>
+                                ` : ''}
+                            </div>
+                            <div class="period-details hidden">
+                                ${timePeriodInfo.lighting ? `<div class="period-detail"><i class="fa-solid fa-lightbulb"></i><div class="detail-content"><div class="detail-label">Lighting</div><div class="detail-value selectable">${Array.isArray(timePeriodInfo.lighting) ? timePeriodInfo.lighting.map(el => {
+                    const text = typeof el === 'object' ? el.text : el;
+                    const bias = typeof el === 'object' ? el.bias : 1.0;
+                    return `${text} (${bias.toFixed(2)})`;
+                }).join(', ') : timePeriodInfo.lighting}</div></div></div>` : ''}
+                                ${timePeriodInfo.atmosphere ? `<div class="period-detail"><i class="fa-solid fa-smog"></i><div class="detail-content"><div class="detail-label">Atmosphere</div><div class="detail-value selectable">${Array.isArray(timePeriodInfo.atmosphere) ? timePeriodInfo.atmosphere.map(el => {
+                    const text = typeof el === 'object' ? el.text : el;
+                    const bias = typeof el === 'object' ? el.bias : 1.0;
+                    return `${text} (${bias.toFixed(2)})`;
+                }).join(', ') : timePeriodInfo.atmosphere}</div></div></div>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Build holiday card
+            let holidayCardHtml = '';
+            if (hasHoliday) {
+                const holiday = context.season.holiday;
+                const holidayName = holiday.primaryHoliday?.name || 'Holiday';
+                const daysUntil = holiday.primaryHoliday?.daysUntil ?? holiday.progressiveElements?.daysUntil;
+                const daysUntilText = daysUntil !== undefined && daysUntil !== null ? daysUntil : '?';
+                const daysUntilLabel = daysUntil === 0 ? 'TODAY' : daysUntil === 1 ? 'day' : 'days';
+
+                // Calculate holiday progress (0-100%)
+                let holidayProgress = 50; // Default
+                if (daysUntil !== undefined && daysUntil !== null) {
+                    // Assume holiday has a buffer period (e.g., 30 days before/after)
+                    const bufferDays = 30;
+                    if (daysUntil >= 0 && daysUntil <= bufferDays) {
+                        // Before holiday: progress increases as we approach
+                        holidayProgress = Math.max(0, Math.min(100, ((bufferDays - daysUntil) / bufferDays) * 100));
+                    } else if (daysUntil < 0) {
+                        // After holiday: progress decreases
+                        const daysPast = Math.abs(daysUntil);
+                        holidayProgress = Math.max(0, Math.min(100, ((bufferDays - daysPast) / bufferDays) * 100));
+                    }
+                }
+
+                // Get holiday data
+                const holidayData = holiday.primaryHoliday || {};
+                const atmosphere = holidayData.atmosphere || holiday.atmosphere || '';
+                const decorations = holidayData.decorations || holiday.decorations || '';
+                const colors = holidayData.colors || holiday.colors || '';
+                const activities = holidayData.activities || holiday.activities || '';
+
+                // Get country flag icon and region name based on region
+                const getCountryFlagIcon = (region) => {
+                    const flagMap = {
+                        'us': 'fa-flag-usa',
+                        'asia': 'fa-flag',
+                        'japan': 'fa-flag'
+                    };
+                    return flagMap[region?.toLowerCase()] || 'fa-flag';
+                };
+                const getRegionName = (region) => {
+                    const regionMap = {
+                        'us': 'United States',
+                        'asia': 'Asia',
+                        'japan': 'Japan'
+                    };
+                    return regionMap[region?.toLowerCase()] || region || 'Global';
+                };
+                // Get holiday CSS class name
+                const getHolidayClass = (name) => {
+                    if (!name) return 'holiday-default';
+                    const nameLower = name.toLowerCase();
+                    // Map holiday names to CSS classes
+                    if (nameLower.includes('christmas') || nameLower.includes('holiday season')) return 'holiday-christmas';
+                    if (nameLower.includes('new year') && !nameLower.includes('japanese') && !nameLower.includes('chinese')) return 'holiday-new-year';
+                    if (nameLower.includes('halloween')) return 'holiday-halloween';
+                    if (nameLower.includes('thanksgiving')) return 'holiday-thanksgiving';
+                    if (nameLower.includes('independence day') || nameLower.includes('4th of july')) return 'holiday-independence-day';
+                    if (nameLower.includes('valentine')) return 'holiday-valentines-day';
+                    if (nameLower.includes('easter') || nameLower.includes('spring holiday')) return 'holiday-easter';
+                    if (nameLower.includes('chinese new year')) return 'holiday-chinese-new-year';
+                    if (nameLower.includes('setsubun')) return 'holiday-setsubun';
+                    if (nameLower.includes('hinamatsuri')) return 'holiday-hinamatsuri';
+                    if (nameLower.includes('summer festival')) return 'holiday-summer-festival';
+                    if (nameLower.includes('japanese new year') || nameLower.includes('oshogatsu')) return 'holiday-japanese-new-year';
+                    if (nameLower.includes('cherry blossom') || nameLower.includes('hanami')) return 'holiday-cherry-blossom';
+                    if (nameLower.includes('tanabata') || nameLower.includes('star festival')) return 'holiday-tanabata';
+                    if (nameLower.includes('golden week') || nameLower.includes('shukujitsu')) return 'holiday-golden-week';
+                    if (nameLower.includes('children') || nameLower.includes('kodomo')) return 'holiday-childrens-day';
+                    if (nameLower.includes('mid-autumn') || nameLower.includes('tsukimi')) return 'holiday-mid-autumn';
+                    if (nameLower.includes('obon') || nameLower.includes('bon odori')) return 'holiday-obon';
+                    return 'holiday-default';
+                };
+                const region = holidayData.region || holiday.region || 'us';
+                const flagIconClass = getCountryFlagIcon(region);
+                const regionName = getRegionName(region);
+                const holidayClass = getHolidayClass(holidayName);
+
+                holidayCardHtml = `
+                    <div class="period-info-card holiday-info-card ${holidayClass}">
+                        <div class="period-info-content">
+                            <div class="period-main-info">
+                                <div class="period-title-section">
+                                    <div class="period-title clickable" onclick="togglePeriodDetails(this)">
+                                        ${holidayName}
+                                        <i class="fa-solid fa-chevron-down period-expand-icon"></i>
+                                    </div>
+                                    ${time.hour !== undefined ? `
+                                    <div class="period-title-indicators">
+                                        <div class="period-season-badge">
+                                            <i class="fa-solid ${flagIconClass}"></i>
+                                            <span>${regionName}</span>
+                                        </div>
+                                        <div class="period-title-indicator">
+                                            <div class="period-title-indicator-label">
+                                                <span>Holiday</span>
+                                                <span class="period-title-indicator-value">${holidayProgress.toFixed(0)}%</span>
+                                            </div>
+                                            <div class="period-title-progress-bar light-level">
+                                                <div class="period-progress-fill light-level" style="width: ${holidayProgress}%"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    ` : ''}
+                                </div>
+                                <div class="period-time-date">
+                                    <div class="period-time" style="font-size: 1.5rem; font-weight: 600;">
+                                        ${daysUntilText} ${daysUntilLabel}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="period-details hidden">
+                                ${atmosphere ? `<div class="period-detail"><i class="fa-solid fa-smog"></i><div class="detail-content"><div class="detail-label">Atmosphere</div><div class="detail-value selectable">${atmosphere}</div></div></div>` : ''}
+                                ${decorations ? `<div class="period-detail"><i class="fa-solid fa-gifts"></i><div class="detail-content"><div class="detail-label">Decorations</div><div class="detail-value selectable">${decorations}</div></div></div>` : ''}
+                                ${colors ? `<div class="period-detail"><i class="fa-solid fa-palette"></i><div class="detail-content"><div class="detail-label">Colors</div><div class="detail-value selectable">${colors}</div></div></div>` : ''}
+                                ${activities ? `<div class="period-detail"><i class="fa-solid fa-people-group"></i><div class="detail-content"><div class="detail-label">Activities</div><div class="detail-value selectable">${activities}</div></div></div>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Combine context cards
+            const contextCardsHtml = periodCardHtml + holidayCardHtml + weatherContent;
+            if (contextCardsHtml) {
+                contextCardsContainer.innerHTML = contextCardsHtml;
+                listContainer.appendChild(contextCardsContainer);
+            }
+        }
+
+        // Render each replacement (reuse the same function from textReplacementManager.js)
+        replacements.forEach((replacement, globalIndex) => {
+            const itemElement = createDynamicReplacementItemForLockModal(replacement, globalIndex);
+            listContainer.appendChild(itemElement);
+        });
+    }
+
+    // Usage section (render phases, calls, per-tool rows with icons/background, reasons, token totals)
+    try {
+        const usageRoot =
+            window.dynamicGenerationData?.compiled_prompt?.usage ||
+            window.lastGeneration?.forge_data?.dynamic_generation?.compiled_prompt?.usage ||
+            null;
+        if (usageRoot && typeof usageRoot === 'object') {
+            // Header
+            const usageHeader = document.createElement('div');
+            usageHeader.className = 'dynamic-replacements-section-header';
+            usageHeader.innerHTML = `
+                <div class="section-title">
+                    <i class="fas fa-gauge-high"></i>
+                    <span>Compiler Timeline & Costs</span>
+                </div>
+            `;
+            listContainer.appendChild(usageHeader);
+
+            // Helpers
+            const getCallIcon = (call) => {
+                if (!call) return '<i class="fas fa-circle"></i>';
+                if (call.callType === 'tool_call') return '<i class="fas fa-wrench"></i>';
+                if (call.callType === 'request') return '<i class="fas fa-code"></i>';
+                return '<i class="fas fa-circle"></i>';
+            };
+            const formatTokens = (u) => {
+                if (!u) return '';
+                const toNum = (v) => {
+                    if (typeof v === 'number') return v;
+                    const n = Number(v);
+                    return isNaN(n) ? 0 : n;
+                };
+                const fmt = (v) => toNum(v).toLocaleString();
+                const input = u.input ?? 0;
+                const output = u.output ?? 0;
+                const cache = u.cache ?? 0;
+                const reasoning = u.reasoning ?? 0;
+                const totalRaw = (u.total !== undefined && u.total !== null)
+                    ? u.total
+                    : (toNum(input) + toNum(output) + toNum(cache) + toNum(reasoning));
+                return `<i class="fas fa-up-right" title="Input"></i> ${fmt(input)} • <i class="fas fa-down-left" title="Output"></i> ${fmt(output)} • <i class="fas fa-cloud-check" title="Cache"></i> ${fmt(cache)} • <i class="fas fa-gears" title="Reasoning"></i> ${fmt(reasoning)} • <i class="fas fa-equals" title="Total"></i> ${fmt(totalRaw)}`;
+            };
+
+            // Check if we have both phase1 and phase2 (2 passes)
+            const phaseKeys = Object.keys(usageRoot).filter(key => key === 'phase1' || key === 'phase2');
+            const hasTwoPasses = phaseKeys.length === 2 && usageRoot.phase1 && usageRoot.phase2;
+
+            Object.keys(usageRoot).forEach((phaseKey) => {
+                const phaseData = usageRoot[phaseKey];
+                if (!phaseData) return;
+
+                // Map phase keys to display names
+                const phaseDisplayName = phaseKey === 'phase1' ? 'Pass 1' :
+                    phaseKey === 'phase2' ? 'Pass 2' :
+                        phaseKey;
+
+                // Phase header with totals
+                // Use the final call's usage for totals (stateful APIs return cumulative totals)
+                let phaseTotals = phaseData.total;
+                const calls = Array.isArray(phaseData.calls) ? phaseData.calls : [];
+
+                // Handle case where phaseData.total is an array (multiple usage snapshots)
+                if (Array.isArray(phaseTotals) && phaseTotals.length > 0) {
+                    // Use the last element (most recent/cumulative totals)
+                    phaseTotals = phaseTotals[phaseTotals.length - 1];
+                }
+
+                // Check if phaseTotals is missing or all zeros
+                const isTotalsEmpty = !phaseTotals || phaseTotals.total === 0;
+
+                // If total is missing or all zeros, use the last call's usage
+                if (isTotalsEmpty && calls.length > 0) {
+                    // Find the last call with usage data
+                    const lastCallWithUsage = [...calls].reverse().find(call => call && call.usage);
+                    if (lastCallWithUsage && lastCallWithUsage.usage) {
+                        phaseTotals = {
+                            total: lastCallWithUsage.usage.total || 0,
+                            input: lastCallWithUsage.usage.input || 0,
+                            output: lastCallWithUsage.usage.output || 0,
+                            cache: lastCallWithUsage.usage.cache || 0,
+                            reasoning: lastCallWithUsage.usage.reasoning || 0
+                        };
+                    } else {
+                        phaseTotals = null;
+                    }
+                }
+
+                // Only show totals if we have meaningful data
+                const hasValidTotals = phaseTotals && (phaseTotals.total > 0 || phaseTotals.input > 0 || phaseTotals.output > 0 || phaseTotals.cache > 0 || phaseTotals.reasoning > 0);
+
+                // Only create and append header if we have valid totals
+                if (hasValidTotals) {
+                    const phaseHeader = document.createElement('div');
+                    phaseHeader.className = 'usage-phase-header';
+                    // Show phase title when there are 2 passes
+                    if (hasTwoPasses && (phaseKey === 'phase1' || phaseKey === 'phase2')) {
+                        phaseHeader.innerHTML = `
+                            <div class="phase-title">
+                                <i class="fas fa-diagram-project"></i>
+                                <span>${phaseDisplayName}</span>
+                            </div>
+                            <div style="color: var(--hover-show-colored-text); font-size: 12px;">${formatTokens(phaseTotals)}</div>
+                        `;
+                    } else {
+                        // Single phase - just show totals
+                        phaseHeader.innerHTML = `
+                            <div style="color: var(--hover-show-colored-text); font-size: 12px;">${formatTokens(phaseTotals)}</div>
+                        `;
+                    }
+                    listContainer.appendChild(phaseHeader);
+                }
+                calls.forEach((call) => {
+                    const callDiv = document.createElement('div');
+                    callDiv.className = 'text-replacement-lock-item usage-call';
+
+                    const typeIcon = getCallIcon(call);
+                    const tokens = formatTokens(call.usage || {});
+
+                    if (call.callType === 'tool_call' && Array.isArray(call.tools) && call.tools.length > 0) {
+                        // Build inner per-tool rows: name row and reason row, colored with toast manager background/icon
+                        const toolsBlocks = call.tools.map((t) => {
+                            const toolName = t?.name || '';
+                            const toolStyle = getToolIconAndBackground(toolName, 'completed');
+                            const display = getToolDisplayName(toolName) || toolName || 'Tool';
+                            const toolParams = t?.parameters || {};
+                            // Reason priority: tool.reason -> parameters.reason -> call.reason
+                            const toolReason = (t && t.reason) || (toolParams && toolParams.reason) || call.reason || '';
+                            const tagReasons = (toolName === 'searchTagsBatch' && Array.isArray(toolParams?.tags)) ? toolParams.tags : null;
+
+                            // Special handling for publishAnalysisResults
+                            if (toolName === 'publishAnalysisResults') {
+                                const { prompt_breakdown, image_analysis, existing_context } = toolParams;
+
+                                // Build prompt breakdown section
+                                let promptBreakdownHtml = '';
+                                if (prompt_breakdown) {
+                                    const { main_subject, scene_environment, actions_poses, mood_atmosphere, style_elements } = prompt_breakdown;
+                                    promptBreakdownHtml = `
+                                        <div class="usage-tool-section">
+                                            <div class="usage-section-header">
+                                                <i class="fas fa-file-alt"></i>
+                                                <span>Prompt Analysis</span>
+                                            </div>
+                                            <div class="usage-section-content">
+                                                ${main_subject ? `<div class="usage-detail-row"><span class="usage-detail-label">Subject:</span><span class="usage-detail-value selectable">${main_subject}</span></div>` : ''}
+                                                ${scene_environment ? `<div class="usage-detail-row"><span class="usage-detail-label">Environment:</span><span class="usage-detail-value selectable">${scene_environment}</span></div>` : ''}
+                                                ${mood_atmosphere ? `<div class="usage-detail-row"><span class="usage-detail-label">Mood:</span><span class="usage-detail-value selectable">${mood_atmosphere}</span></div>` : ''}
+                                                ${actions_poses && actions_poses.length > 0 ? `<div class="usage-detail-row"><span class="usage-detail-label">Actions:</span><span class="usage-detail-value selectable">${actions_poses.join(', ')}</span></div>` : ''}
+                                                ${style_elements && style_elements.length > 0 ? `<div class="usage-detail-row"><span class="usage-detail-label">Style:</span><span class="usage-detail-value selectable">${style_elements.join(', ')}</span></div>` : ''}
+                                            </div>
+                                        </div>
+                                    `;
+                                }
+
+                                // Build image analysis section
+                                let imageAnalysisHtml = '';
+                                if (image_analysis) {
+                                    const { visual_elements, time_visible, weather_visible, scene_type_visible, matches_prompt, differences } = image_analysis;
+                                    imageAnalysisHtml = `
+                                        <div class="usage-tool-section">
+                                            <div class="usage-section-header">
+                                                <i class="fas fa-image"></i>
+                                                <span>Image Analysis</span>
+                                            </div>
+                                            <div class="usage-section-content">
+                                                ${time_visible ? `<div class="usage-detail-row"><span class="usage-detail-label">Time:</span><span class="usage-detail-value selectable">${time_visible}</span></div>` : ''}
+                                                ${weather_visible ? `<div class="usage-detail-row"><span class="usage-detail-label">Weather:</span><span class="usage-detail-value selectable">${weather_visible}</span></div>` : ''}
+                                                ${scene_type_visible ? `<div class="usage-detail-row"><span class="usage-detail-label">Scene Type:</span><span class="usage-detail-value selectable">${scene_type_visible}</span></div>` : ''}
+                                                <div class="usage-detail-row"><span class="usage-detail-label">Matches Prompt:</span><span class="usage-detail-value ${matches_prompt ? 'match-yes' : 'match-no'}">${matches_prompt ? 'Yes' : 'No'}</span></div>
+                                                ${visual_elements && visual_elements.length > 0 ? `<div class="usage-detail-row"><span class="usage-detail-label">Elements:</span><span class="usage-detail-value selectable">${visual_elements.join(', ')}</span></div>` : ''}
+                                                ${differences && differences.length > 0 ? `<div class="usage-detail-row"><span class="usage-detail-label">Differences:</span><span class="usage-detail-value selectable">${differences.join(', ')}</span></div>` : ''}
+                                            </div>
+                                        </div>
+                                    `;
+                                }
+
+                                // Build context detection section (existing logic)
+                                let contextDetectionHtml = '';
+                                if (existing_context) {
+                                    const contextFields = ['time', 'season', 'holiday', 'location', 'weather_condition', 'sky'];
+                                    const detectedIcons = contextFields.map(fieldName => {
+                                        const field = existing_context[fieldName];
+                                        let isMuted = true;
+                                        let tooltipText = fieldName;
+
+                                        if (field) {
+                                            if (fieldName === 'location') {
+                                                const sceneType = field.scene_type || 'unknown';
+                                                isMuted = sceneType === 'unknown';
+                                                tooltipText = `Location: ${sceneType}`;
+                                            } else if (field.found && field.value && field.value !== 'none') {
+                                                isMuted = false;
+                                                tooltipText = `${fieldName}: ${field.value}`;
+                                            } else {
+                                                tooltipText = `${fieldName}: Not found`;
+                                            }
+                                        } else {
+                                            tooltipText = `${fieldName}: Not found`;
+                                        }
+
+                                        const iconClass = getContextFieldIcon(fieldName);
+
+                                        return `
+                                            <span class="usage-context-icon ${isMuted ? 'muted' : ''}" title="${tooltipText}">
+                                                <i class="fas ${iconClass}"></i>
+                                            </span>
+                                        `;
+                                    }).join('');
+
+                                    const sceneType = existing_context.location?.scene_type || 'unknown';
+
+                                    contextDetectionHtml = `
+                                        <div class="usage-tool-section">
+                                            <div class="usage-section-header">
+                                                <i class="fas fa-search"></i>
+                                                <span>Context Detection</span>
+                                            </div>
+                                            <div class="usage-section-content">
+                                                <div class="usage-context-row">
+                                                    <span class="usage-context-label">Detected:</span>
+                                                    <div class="usage-context-icons">
+                                                        ${detectedIcons}
+                                                    </div>
+                                                </div>
+                                                ${sceneType !== 'unknown' ? `
+                                                <div class="usage-context-row">
+                                                    <span class="usage-context-label">Scene:</span>
+                                                    <span class="usage-context-value selectable">${sceneType}</span>
+                                                </div>
+                                                ` : ''}
+                                            </div>
+                                        </div>
+                                    `;
+                                }
+
+                                return `
+                                    <div class="usage-tool-block expanded" style="background: ${toolStyle.backgroundColor};">
+                                        <div class="usage-tool-name-row">
+                                            <div class="usage-tool-icon">${toolStyle.icon}</div>
+                                            <div class="text-replacement-lock-pattern">
+                                                <span class="usage-tool-name selectable">${display}</span>
+                                            </div>
+                                        </div>
+                                        ${promptBreakdownHtml}
+                                        ${imageAnalysisHtml}
+                                        ${contextDetectionHtml}
+                                    </div>
+                                `;
+                            }
+
+                            // Special handling for planTextReplacements
+                            if (toolName === 'planTextReplacements') {
+                                const { planned_changes, research, conflicts_to_resolve } = toolParams;
+                                const plannedChanges = Array.isArray(planned_changes) ? planned_changes : [];
+                                const researchCompleted = research?.completed || [];
+                                const researchNeeded = research?.needed || [];
+                                const conflictsToResolve = Array.isArray(conflicts_to_resolve) ? conflicts_to_resolve : [];
+
+                                // Build planned changes section
+                                let plannedChangesHtml = '';
+                                if (plannedChanges.length > 0) {
+                                    const changesByCategory = {};
+                                    plannedChanges.forEach(change => {
+                                        const category = change.category || 'Other';
+                                        if (!changesByCategory[category]) {
+                                            changesByCategory[category] = [];
+                                        }
+                                        changesByCategory[category].push(change);
+                                    });
+
+                                    const categoryDetails = Object.keys(changesByCategory).map(category => {
+                                        const changes = changesByCategory[category];
+                                        const changeDetails = changes.map(change => `
+                                            <div class="usage-change-item">
+                                                <div class="usage-change-header">
+                                                    <span class="usage-change-action">${change.action || 'modify'}</span>
+                                                    <span class="usage-change-segments">Segments: ${change.target_segments?.join(', ') || 'N/A'}</span>
+                                                </div>
+                                                <div class="usage-change-reason">${change.reason || 'No reason provided'}</div>
+                                                ${change.planned_modifications && change.planned_modifications.length > 0 ?
+                                                `<div class="usage-change-tags">Tags: ${change.planned_modifications.join(', ')}</div>` : ''}
+                                                ${change.emphasis_value !== undefined ?
+                                                `<div class="usage-change-emphasis">Emphasis: ${change.emphasis_value}</div>` : ''}
+                                            </div>
+                                        `).join('');
+
+                                        return `
+                                            <div class="usage-category-section">
+                                                <div class="usage-category-header">
+                                                    <span class="usage-category-name">${category}</span>
+                                                    <span class="usage-category-count">${changes.length} change${changes.length !== 1 ? 's' : ''}</span>
+                                                </div>
+                                                <div class="usage-category-changes">
+                                                    ${changeDetails}
+                                                </div>
+                                            </div>
+                                        `;
+                                    }).join('');
+
+                                    plannedChangesHtml = `
+                                        <div class="usage-tool-section">
+                                            <div class="usage-section-header">
+                                                <i class="fas fa-clipboard-list"></i>
+                                                <span>Planned Changes (${plannedChanges.length})</span>
+                                            </div>
+                                            <div class="usage-section-content">
+                                                ${categoryDetails}
+                                            </div>
+                                        </div>
+                                    `;
+                                }
+
+                                // Build research section
+                                let researchHtml = '';
+                                if (researchCompleted.length > 0 || researchNeeded.length > 0) {
+                                    const completedItems = researchCompleted.map(item => `
+                                        <div class="usage-research-item completed">
+                                            <span class="usage-research-topic">${item.topic}</span>
+                                            <span class="usage-research-tool">Tool: ${item.tool_name} (#${item.call_number})</span>
+                                        </div>
+                                    `).join('');
+
+                                    const neededItems = researchNeeded.map(item => `
+                                        <div class="usage-research-item needed">
+                                            <span class="usage-research-topic">${item.topic}</span>
+                                            ${item.tool_name ? `<span class="usage-research-tool">Planned: ${item.tool_name}</span>` : ''}
+                                        </div>
+                                    `).join('');
+
+                                    researchHtml = `
+                                        <div class="usage-tool-section">
+                                            <div class="usage-section-header">
+                                                <i class="fas fa-search"></i>
+                                                <span>Research Status</span>
+                                            </div>
+                                            <div class="usage-section-content">
+                                                ${researchCompleted.length > 0 ? `
+                                                    <div class="usage-research-group">
+                                                        <div class="usage-research-group-header">
+                                                            <i class="fas fa-check-circle"></i>
+                                                            <span>Completed (${researchCompleted.length})</span>
+                                                        </div>
+                                                        <div class="usage-research-items">
+                                                            ${completedItems}
+                                                        </div>
+                                                    </div>
+                                                ` : ''}
+                                                ${researchNeeded.length > 0 ? `
+                                                    <div class="usage-research-group">
+                                                        <div class="usage-research-group-header">
+                                                            <i class="fas fa-clock"></i>
+                                                            <span>Needed (${researchNeeded.length})</span>
+                                                        </div>
+                                                        <div class="usage-research-items">
+                                                            ${neededItems}
+                                                        </div>
+                                                    </div>
+                                                ` : ''}
+                                            </div>
+                                        </div>
+                                    `;
+                                }
+
+                                // Build conflicts section
+                                let conflictsHtml = '';
+                                if (conflictsToResolve.length > 0) {
+                                    const conflictItems = conflictsToResolve.map(conflict => `
+                                        <div class="usage-conflict-item">
+                                            <i class="fas fa-exclamation-triangle"></i>
+                                            <span>${conflict}</span>
+                                        </div>
+                                    `).join('');
+
+                                    conflictsHtml = `
+                                        <div class="usage-tool-section">
+                                            <div class="usage-section-header">
+                                                <i class="fas fa-exclamation-triangle"></i>
+                                                <span>Conflicts to Resolve (${conflictsToResolve.length})</span>
+                                            </div>
+                                            <div class="usage-section-content">
+                                                <div class="usage-conflicts-list">
+                                                    ${conflictItems}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    `;
+                                }
+
+                                return `
+                                    <div class="usage-tool-block expanded" style="background: ${toolStyle.backgroundColor};">
+                                        <div class="usage-tool-name-row">
+                                            <div class="usage-tool-icon">${toolStyle.icon}</div>
+                                            <div class="text-replacement-lock-pattern">
+                                                <span class="usage-tool-name selectable">${display}</span>
+                                            </div>
+                                        </div>
+                                        ${plannedChangesHtml}
+                                        ${researchHtml}
+                                        ${conflictsHtml}
+                                    </div>
+                                `;
+                            }
+
+
+                            // Two stacked rows (name + reason), both with same background
+                            return `
+                                <div class="usage-tool-block" style="background: ${toolStyle.backgroundColor};">
+                                    <div class="usage-tool-name-row">
+                                        <div class="usage-tool-icon">${toolStyle.icon}</div>
+                                        <div class="text-replacement-lock-pattern">
+                                            <span class="usage-tool-name selectable">${display}</span>
+                                        </div>
+                                    </div>
+                                ${Array.isArray(tagReasons) && tagReasons.length > 0 ? `
+                                    ${tagReasons.map(tr => {
+                                const tagName = tr?.name || '';
+                                const tagReason = tr?.reason || '';
+                                const showReason = Boolean(tagReason && tagReason.trim());
+                                return `
+                                            <div class="usage-tag-row">
+                                                <div class="usage-tool-icon"><i class="fas fa-tag"></i></div>
+                                                <div class="usage-tag-line">
+                                                    <span class="usage-tag-name selectable">${tagName}</span>
+                                                    ${showReason ? `<span class="usage-tag-sep">•</span><span class="usage-tag-reason">${tagReason}</span>` : ''}
+                                                </div>
+                                            </div>
+                                        `;
+                            }).join('')}
+                                ` : (toolReason ? `
+                                    <div class="usage-tool-reason-row">
+                                        <div class="text-replacement-lock-pattern">
+                                            <span class="usage-tool-reason selectable">${toolReason}</span>
+                                        </div>
+                                    </div>
+                                ` : '')}
+                                </div>
+                            `;
+                        }).join('');
+
+                        callDiv.innerHTML = `
+                            <div class="text-replacement-lock-content">
+                                <div class="text-replacement-lock-row">
+                                    <div class="usage-type-icon">${typeIcon}</div>
+                                    <div class="text-replacement-lock-pattern">
+                                        <span class="usage-call-title">Tool Call</span>
+                                    </div>
+                                </div>
+                                <div class="usage-tool-rows">
+                                    ${toolsBlocks}
+                                </div>
+                                <div class="text-replacement-lock-row">
+                                    <div class="text-replacement-lock-pattern"><span class="usage-tokens">${tokens}</span></div>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        // Non-tool call (e.g., request): single line + optional reason + totals
+                        const displayName = (call.callType === 'request') ? 'Structured Build Data' : (call.functionName || call.callType || 'Call');
+                        const reason = call.reason || '';
+                        callDiv.innerHTML = `
+                            <div class="text-replacement-lock-content">
+                                <div class="text-replacement-lock-row">
+                                    <div class="usage-type-icon">${typeIcon}</div>
+                                    <div class="text-replacement-lock-pattern">
+                                        <span class="usage-call-title">${displayName}</span>
+                                    </div>
+                                </div>
+                                ${reason ? `<div class="text-replacement-lock-info"><div class="text-replacement-full-value">${reason}</div></div>` : ''}
+                                <div class="text-replacement-lock-row">
+                                    <div class="text-replacement-lock-pattern"><span class="usage-tokens">${tokens}</span></div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    listContainer.appendChild(callDiv);
+                });
+            });
+        }
+    } catch (err) {
+        console.warn('Failed to render usage section:', err);
+    }
+
+    updateLockStatusText();
+}
+
+// Update text replacement lock item display
+function updateTextReplacementLockItem(index, updatedSeed) {
+    const item = document.querySelector(`.text-replacement-lock-item[data-index="${index}"]`);
+    if (!item) return;
+
+    // Update the value display
+    const valueElement = item.querySelector('.text-replacement-full-value');
+    if (valueElement) {
+        valueElement.textContent = updatedSeed.value;
+    }
+
+    // Update the selected pattern display
+    const selectedElement = item.querySelector('.text-replacement-selected');
+    if (selectedElement && updatedSeed.key) {
+        const indexDisplay = updatedSeed.index !== null && updatedSeed.index !== undefined ? `<span class="text-replacement-index">${updatedSeed.index}</span>` : '';
+        selectedElement.innerHTML = `!${updatedSeed.key}${indexDisplay}`;
+    }
+
+    const badgesRow = item.querySelector('.text-replacement-lock-badges');
+    if (badgesRow) {
+        const existingTargetBadge = badgesRow.querySelector('.text-replacement-stage-scope');
+        const targetHtml = buildInspectorStageTargetBadgeHtml(updatedSeed);
+        if (targetHtml) {
+            if (existingTargetBadge) {
+                existingTargetBadge.outerHTML = targetHtml;
+            } else {
+                badgesRow.insertAdjacentHTML('beforeend', targetHtml);
+            }
+        } else if (existingTargetBadge) {
+            existingTargetBadge.remove();
+        }
+    }
+
+    // Update the data
+    if (currentTextReplacementSeeds && currentTextReplacementSeeds[index]) {
+        currentTextReplacementSeeds[index] = updatedSeed;
+    }
+}

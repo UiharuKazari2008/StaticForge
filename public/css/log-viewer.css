@@ -515,10 +515,6 @@
     transform: translateY(0);
 }
 
-.log-viewer-glass-popover.hidden:not(.show) {
-    display: none;
-}
-
 .log-viewer-glass-popover-inner {
     display: flex;
     flex-direction: column;
@@ -677,4 +673,27 @@
     font-size: 0.85rem;
     line-height: 1;
     min-height: 100%;
+}
+
+#logViewerModal .log-viewer-runtime-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: stretch;
+}
+
+#logViewerModal .log-viewer-runtime-actions .btn-small {
+    flex: 1 1 0;
+}
+
+#logViewerModal .log-viewer-runtime-compile-progress {
+    padding: 0.35rem 0.75rem 0.55rem;
+}
+
+#logViewerModal .log-viewer-runtime-compile-progress-label {
+    margin-top: 0.35rem;
+    font-size: 0.72rem;
+    color: var(--text-muted, rgba(255, 255, 255, 0.65));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }

@@ -128,6 +128,8 @@ class ExplorerApplet {
         this._contextMenuTarget = null;
         this._contextMenuConfig = null;
         this._contextMenuWired = false;
+        this._eventsWired = false;
+        this._detailsHeaderWired = false;
         this._loading = false;
         this._loadingMore = false;
         this._navToken = 0;
@@ -148,24 +150,32 @@ class ExplorerApplet {
         this.setupDetailsHeader();
         this.setupExplorerContextMenu();
 
-        const gridHost = document.getElementById('explorerGridHost');
-        if (gridHost) {
-            this.grid = new VfsVirtualGrid(gridHost, {
-                viewMode: this.viewMode,
-                populateIconBox: (box, item) => this._populateIconBox(box, item),
-                onItemOpen: (item) => this.openItem(item),
-                onSelectionChange: (sel) => this.onSelectionChange(sel),
-                onItemContextMenu: (item, e) => this.showItemContextMenu(item, e),
-                onNearEnd: () => this.loadMore(),
-                onItemDrop: (item, e) => this.handleItemDrop(item, e),
-                onFileDrop: (files) => this.uploadFilesToPath(this.currentPath, files),
-                onItemsDrop: (dragItems, target) => this.handleItemsDrop(dragItems, target)
-            });
-        }
+        this.ensureExplorerGrid();
 
         this._applyViewModeForPath(this.currentPath);
         this.updateSortLabel();
         this.updateViewsLabel();
+    }
+
+    ensureExplorerGrid() {
+        if (this.grid) {
+            return;
+        }
+        const gridHost = document.getElementById('explorerGridHost');
+        if (!gridHost) {
+            return;
+        }
+        this.grid = new VfsVirtualGrid(gridHost, {
+            viewMode: this.viewMode,
+            populateIconBox: (box, item) => this._populateIconBox(box, item),
+            onItemOpen: (item) => this.openItem(item),
+            onSelectionChange: (sel) => this.onSelectionChange(sel),
+            onItemContextMenu: (item, e) => this.showItemContextMenu(item, e),
+            onNearEnd: () => this.loadMore(),
+            onItemDrop: (item, e) => this.handleItemDrop(item, e),
+            onFileDrop: (files) => this.uploadFilesToPath(this.currentPath, files),
+            onItemsDrop: (dragItems, target) => this.handleItemsDrop(dragItems, target)
+        });
     }
 
     getDefaultPath() {
@@ -183,6 +193,12 @@ class ExplorerApplet {
     setupDetailsHeader() {
         const header = this.el?.detailsHeader;
         if (!header) return;
+        if (this._detailsHeaderWired) {
+            this.updateDetailsHeaderSort();
+            this.updateDetailsHeaderVisibility();
+            return;
+        }
+        this._detailsHeaderWired = true;
         header.querySelectorAll('[data-sort-field]').forEach((col) => {
             col.addEventListener('click', () => this.toggleSortByField(col.dataset.sortField));
         });
@@ -1945,6 +1961,11 @@ class ExplorerApplet {
     }
 
     bindEvents() {
+        if (this._eventsWired) {
+            return;
+        }
+        this._eventsWired = true;
+
         const e = this.el;
         if (e.backBtn) e.backBtn.addEventListener('click', () => this.goBack());
         if (e.forwardBtn) e.forwardBtn.addEventListener('click', () => this.goForward());
@@ -2546,6 +2567,7 @@ class ExplorerApplet {
     async open(path) {
         if (!this.modal) this.init();
         if (!this.modal) return;
+        this.ensureExplorerGrid();
         openModal(this.modal);
         // public/scripts/comp/modalUtils.js — activate immediately so focus overlay does not swallow grid clicks
         if (typeof bringModalToFront === 'function') {
@@ -2561,6 +2583,14 @@ class ExplorerApplet {
     }
 
     close() {
+        if (this._searchDebounce) {
+            clearTimeout(this._searchDebounce);
+            this._searchDebounce = null;
+        }
+        if (this.grid) {
+            this.grid.destroy();
+            this.grid = null;
+        }
         if (this.modal) closeModal(this.modal);
     }
 

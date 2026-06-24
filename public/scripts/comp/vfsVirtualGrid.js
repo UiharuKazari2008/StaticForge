@@ -44,6 +44,9 @@ class VfsVirtualGrid {
         this._mounted = new Map();
         this._nodePool = new Map();
         this._onScroll = this._onScroll.bind(this);
+        this._onScrollSchedule = this._scheduleScrollUpdate.bind(this);
+        this._onMarqueeStart = (e) => this._handleMarqueeStart(e);
+        this._dropZoneHandlers = null;
         this._buildDom();
     }
 
@@ -66,32 +69,77 @@ class VfsVirtualGrid {
         this.scrollEl.appendChild(this.contentEl);
         this.scrollEl.appendChild(this.loadMoreEl);
         this.container.appendChild(this.scrollEl);
-        this.scrollEl.addEventListener('scroll', () => this._scheduleScrollUpdate(), { passive: true });
-        this.scrollEl.addEventListener('mousedown', (e) => this._handleMarqueeStart(e));
+        this.scrollEl.addEventListener('scroll', this._onScrollSchedule, { passive: true });
+        this.scrollEl.addEventListener('mousedown', this._onMarqueeStart);
 
         const bindDropZone = (el) => {
-            el.addEventListener('dragover', (e) => {
+            const onDragOver = (e) => {
                 const types = e.dataTransfer?.types || [];
                 if (types.includes('Files')) {
                     e.preventDefault();
                     this.container.classList.add('explorer-drop-target');
                 }
-            });
-            el.addEventListener('dragleave', (e) => {
+            };
+            const onDragLeave = (e) => {
                 if (!el.contains(e.relatedTarget)) {
                     this.container.classList.remove('explorer-drop-target');
                 }
-            });
-            el.addEventListener('drop', (e) => {
+            };
+            const onDrop = (e) => {
                 if (e.target.closest('.explorer-item')) return;
                 const files = [...(e.dataTransfer?.files || [])];
                 if (!files.length) return;
                 e.preventDefault();
                 this.container.classList.remove('explorer-drop-target');
                 this.onFileDrop(files, e);
-            });
+            };
+            el.addEventListener('dragover', onDragOver);
+            el.addEventListener('dragleave', onDragLeave);
+            el.addEventListener('drop', onDrop);
+            return { onDragOver, onDragLeave, onDrop };
         };
-        bindDropZone(this.scrollEl);
+        this._dropZoneHandlers = { el: this.scrollEl, ...bindDropZone(this.scrollEl) };
+    }
+
+    destroy() {
+        if (this._scrollRaf) {
+            cancelAnimationFrame(this._scrollRaf);
+            this._scrollRaf = 0;
+        }
+
+        if (this.scrollEl) {
+            this.scrollEl.removeEventListener('scroll', this._onScrollSchedule);
+            this.scrollEl.removeEventListener('mousedown', this._onMarqueeStart);
+        }
+
+        if (this._dropZoneHandlers?.el) {
+            const { el, onDragOver, onDragLeave, onDrop } = this._dropZoneHandlers;
+            el.removeEventListener('dragover', onDragOver);
+            el.removeEventListener('dragleave', onDragLeave);
+            el.removeEventListener('drop', onDrop);
+            this._dropZoneHandlers = null;
+        }
+
+        this._releaseAllMounted();
+        this._nodePool.clear();
+        this._mounted.clear();
+        this.items = [];
+        this.selectedIds.clear();
+
+        if (this._bodyMarqueeEl) {
+            this._bodyMarqueeEl.remove();
+            this._bodyMarqueeEl = null;
+        }
+
+        if (this.container) {
+            this.container.classList.remove('explorer-drop-target', 'explorer-marquee-active', 'explorer-item-drag-active');
+            this.container.innerHTML = '';
+        }
+
+        this.scrollEl = null;
+        this.spacerEl = null;
+        this.contentEl = null;
+        this.loadMoreEl = null;
     }
 
     _ensureBodyMarqueeEl() {

@@ -1,0 +1,145 @@
+/* Confirmation and credit-cost dialogs — scripts/comp/confirmationDialog.js */
+/* Confirmation Dialog Styles */
+/* Now uses standard .modal class for positioning and structure */
+#confirmationDialog.modal {
+    width: auto;
+    min-width: 400px;
+    max-width: min(500px, calc(90vw - calc(2 * var(--spacing-md))));
+}
+
+#confirmationDialog .modal-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.confirmation-message {
+    font-size: 0.9rem;
+    line-height: 1.4;
+    text-align: center;
+}
+
+.confirmation-input-wrapper {
+    display: flex;
+    gap: 8px;
+}
+
+/* Form groups inside confirmation dialog */
+.confirmation-message .form-group {
+    margin-bottom: var(--spacing-md);
+    text-align: left;
+    flex: auto;
+}
+
+.confirmation-message .form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: var(--spacing-xs);
+    font-size: 0.85em;
+}
+
+.confirmation-message .meta-value {
+    background: var(--glass-layer-2);
+    border: 1px solid var(--glass-border-2);
+    border-radius: var(--border-radius-md);
+    padding: var(--spacing-sm);
+    font-family: monospace;
+    word-break: break-all;
+    font-size: 0.8em;
+}
+
+.confirmation-controls {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.confirmation-btn {
+    padding: 8px 16px;
+    border: 1px solid var(--glass-border-2);
+    border-radius: var(--border-radius-sm);
+    background: var(--glass-layer-dark-3);
+    color: var(--text-primary);
+    transition: var(--transition-tray-menu);
+    font-size: 0.85rem;
+    font-weight: 500;
+    min-width: 80px;
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .confirmation-btn:hover:not(:disabled) {
+        background: var(--glass-layer-dark-4);
+        border-color: var(--glass-border-3);
+    }
+
+    .confirmation-btn.confirmation-confirm:hover:not(:disabled) {
+        background: #4ecdc4;
+        border-color: #4ecdc4;
+        color: white;
+    }
+
+    .confirmation-btn.confirmation-cancel:hover:not(:disabled) {
+        background: #ff6b35;
+        border-color: #ff6b35;
+        color: white;
+    }
+}
+
+/* Credit Cost Dialog Styles */
+.credit-cost-dialog {
+    position: fixed;
+    background: var(--glass-layer-dark-5);
+    border: 1px solid var(--glass-border-3);
+    box-shadow: 0 8px 25px var(--shadow-secondary);
+    -webkit-backdrop-filter: var(--glass-blur-2, none);
+    backdrop-filter: var(--glass-blur-2, none);
+    border-radius: var(--border-radius-lg);
+    z-index: var(--z-critical);
+    padding: var(--spacing-sm);
+    width: 350px;
+    display: block;
+    transform: translateZ(0);
+}
+
+.credit-cost-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.credit-cost-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.credit-cost-header i {
+    color: var(--accent-primary);
+    font-size: 1.2em;
+}
+
+.credit-cost-message {
+    color: var(--text-secondary);
+    line-height: 1.5;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 5px;
+}
+
+.credit-cost-message .credit-cost-cost {
+    color: var(--text-accent);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.credit-cost-buttons {
+    display: flex;
+    gap: var(--spacing-sm);
+    justify-content: flex-end;
+}
+

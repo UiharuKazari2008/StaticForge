@@ -77,6 +77,11 @@ class ChatSystem {
     }
 
     initializeEventListeners() {
+        if (this._listenersWired) {
+            return;
+        }
+        this._listenersWired = true;
+
         // Chat modal events
         document.getElementById('closeChatBtn')?.addEventListener('click', () => this.closeChatModal());
         document.getElementById('startChatBtn')?.addEventListener('click', () => this.startChat());
@@ -366,6 +371,10 @@ class ChatSystem {
     }
 
     closeChatInterfaceModal() {
+        if (this.sentinelObserver) {
+            this.sentinelObserver.disconnect();
+            this.sentinelObserver = null;
+        }
         const modal = document.getElementById('chatInterfaceModal');
         closeModal(modal);
     }

@@ -5,6 +5,7 @@ const DREAMWIKI_RECENT_STORAGE_KEY = 'dreamWikiRecentPages';
 const DREAMWIKI_RECENT_MAX = 20;
 const GRIMOIRE_RIGHT_PANE_LS = 'grimoireRightPaneState';
 const GRIMOIRE_ONLINE_SEARCH_LS = 'grimoireIncludeOnlineSearch';
+const GRIMOIRE_SPLIT_PANEL_LS = 'grimoireSplitPanelEnabled';
 const GRIMOIRE_SPLIT_MIN_WIDTH = 1024; // min width to auto-enable practical split (dual pane) UI even without maximize
 const TAG_WIKI_MAX_HISTORY = 100;
 
@@ -3058,7 +3059,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         if (toolbarParent) {
             this.rightToggleBtn = document.createElement('button');
             this.rightToggleBtn.type = 'button';
-            this.rightToggleBtn.className = 'btn-secondary';  // exact same CSS rules as home button (no segment class)
+            this.rightToggleBtn.className = 'btn-secondary btn-toggle';
             this.rightToggleBtn.id = 'tagWikiSearchRightToggleBtn';
             this.rightToggleBtn.title = 'Toggle Right Side Panel';
             this.rightToggleBtn.innerHTML = '<i class="fas fa-columns"></i>';
@@ -3086,45 +3087,119 @@ class TagWikiSearchModal extends WikiDisplayBase {
     }
 
     setupSplitModeListeners() {
-        if (!this.modal) return;
+        if (!this.modal || this._splitModeListenersWired) return;
+        this._splitModeListenersWired = true;
+
         // Use check logic for both max/restore and resize, so split is available on wide windows too
-        this.modal.addEventListener('modalMaximized', () => this.checkAndUpdateSplitMode());
-        this.modal.addEventListener('modalRestored', () => this.checkAndUpdateSplitMode());
+        this._boundCheckSplitMaximized = () => this.checkAndUpdateSplitMode();
+        this._boundCheckSplitResize = () => this.checkAndUpdateSplitMode();
+        this._boundSplitSwapClick = () => this.swapSplitPanes();
+
+        this.modal.addEventListener('modalMaximized', this._boundCheckSplitMaximized);
+        this.modal.addEventListener('modalRestored', this._boundCheckSplitMaximized);
         if (this.splitSwapBtn) {
-            this.splitSwapBtn.addEventListener('click', () => this.swapSplitPanes());
+            this.splitSwapBtn.addEventListener('click', this._boundSplitSwapClick);
         }
         // Resize / modal resize support for "wide enough" split (practical dual pane without requiring maximize)
-        this._boundCheckSplitResize = () => this.checkAndUpdateSplitMode();
         this.modal.addEventListener('modalResized', this._boundCheckSplitResize);
         window.addEventListener('resize', this._boundCheckSplitResize);
         // Initial check (size may not be final immediately)
         setTimeout(() => this.checkAndUpdateSplitMode(), 120);
     }
 
+    teardownSplitModeListeners() {
+        if (!this._splitModeListenersWired) return;
+
+        if (this.modal) {
+            if (this._boundCheckSplitMaximized) {
+                this.modal.removeEventListener('modalMaximized', this._boundCheckSplitMaximized);
+                this.modal.removeEventListener('modalRestored', this._boundCheckSplitMaximized);
+            }
+            if (this._boundCheckSplitResize) {
+                this.modal.removeEventListener('modalResized', this._boundCheckSplitResize);
+            }
+        }
+        if (this._boundCheckSplitResize) {
+            window.removeEventListener('resize', this._boundCheckSplitResize);
+        }
+        if (this.splitSwapBtn && this._boundSplitSwapClick) {
+            this.splitSwapBtn.removeEventListener('click', this._boundSplitSwapClick);
+        }
+
+        this._boundCheckSplitMaximized = null;
+        this._boundCheckSplitResize = null;
+        this._boundSplitSwapClick = null;
+        this._splitModeListenersWired = false;
+    }
+
     checkAndUpdateSplitMode() {
         if (!this.modal || !this.rightPaneEl || !this.splitDividerEl) return;
         const isMaximized = this.modal.classList.contains('modal-maximized');
         const wideEnough = (this.modal.offsetWidth || 0) >= GRIMOIRE_SPLIT_MIN_WIDTH;
-        if (this.rightToggleBtn) {
-            this.rightToggleBtn.style.display = wideEnough ? '' : 'none';
-            // Optional: reflect current state
-            if (this.modal.classList.contains('tag-wiki-split-active')) {
-                this.rightToggleBtn.title = 'Hide Right Side Panel';
-            } else {
-                this.rightToggleBtn.title = 'Show Right Side Panel';
-            }
-        }
-        const shouldBeSplit = isMaximized || wideEnough;
         const isCurrentlySplit = this.modal.classList.contains('tag-wiki-split-active');
+        this.updateSplitToggleButton(wideEnough, isCurrentlySplit, isMaximized);
+
+        const userWantsSplit = this.loadSplitPanelPreference();
+        const shouldBeSplit = isMaximized || (wideEnough && userWantsSplit);
 
         if (shouldBeSplit && !isCurrentlySplit) {
             this.enterSplitMode();
             this.setActivePane('left');
         } else if (!shouldBeSplit && isCurrentlySplit && !isMaximized) {
-            // Only auto-hide the split UI (right pane) when not forced by maximize state
             this.exitSplitMode();
             this._activePane = 'left';
         }
+    }
+
+    loadSplitPanelPreference() {
+        try {
+            const stored = localStorage.getItem(GRIMOIRE_SPLIT_PANEL_LS);
+            if (stored === null) {
+                return true;
+            }
+            return stored === 'true';
+        } catch (e) {
+            return true;
+        }
+    }
+
+    saveSplitPanelPreference(enabled) {
+        try {
+            localStorage.setItem(GRIMOIRE_SPLIT_PANEL_LS, enabled ? 'true' : 'false');
+        } catch (e) {
+            /* */
+        }
+    }
+
+    updateSplitToggleButton(wideEnough, isCurrentlySplit, isMaximized) {
+        if (!this.rightToggleBtn) {
+            return;
+        }
+        const showToggle = wideEnough || isCurrentlySplit || isMaximized;
+        this.rightToggleBtn.style.display = showToggle ? '' : 'none';
+        this.rightToggleBtn.classList.toggle('active', isCurrentlySplit);
+        this.rightToggleBtn.dataset.state = isCurrentlySplit ? 'on' : 'off';
+        this.rightToggleBtn.title = isCurrentlySplit
+            ? 'Hide Right Side Panel'
+            : 'Show Right Side Panel';
+    }
+
+    toggleRightPane() {
+        if (!this.modal || !this.rightPaneEl) return;
+        const isActive = this.modal.classList.contains('tag-wiki-split-active');
+        if (isActive) {
+            this.exitSplitMode();
+            this.saveSplitPanelPreference(false);
+        } else {
+            this.enterSplitMode();
+            this.saveSplitPanelPreference(true);
+        }
+        const wideEnough = (this.modal.offsetWidth || 0) >= GRIMOIRE_SPLIT_MIN_WIDTH;
+        this.updateSplitToggleButton(
+            wideEnough,
+            this.modal.classList.contains('tag-wiki-split-active'),
+            this.modal.classList.contains('modal-maximized')
+        );
     }
 
     needsResultsOverlay() {
@@ -3661,8 +3736,9 @@ class TagWikiSearchModal extends WikiDisplayBase {
     }
     
     setupEventListeners() {
-        if (!this.modal) return;
-        
+        if (!this.modal || this._eventsWired) return;
+        this._eventsWired = true;
+
         // Search input - Enter key to search (skip when address bar is in edit mode)
         if (this.searchInput) {
             this.searchInput.addEventListener('keydown', (e) => {
@@ -4219,9 +4295,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         } else if (!skipInitialHome) {
             this.setAddress({ displayUrl: 'edtx://en.grimoire.jp/index.dtxt', mode: 'edtx' });
         }
-        if (this.isSplitMode()) {
-            this.enterSplitMode();
-        }
+        setTimeout(() => this.checkAndUpdateSplitMode(), 150);
         
         if (wasClosed) {
             // Initialize custom scrollbars after modal is opened

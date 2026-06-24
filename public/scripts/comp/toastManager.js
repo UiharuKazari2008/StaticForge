@@ -325,7 +325,7 @@ function _showDesktopPopupForToast(toastId, type, title, message, timeout, custo
         null,
         { position: 'top', arrowPosition: 'bottom-right' }
     );
-    // startPopoverAutoHideTimer: public/scripts/app.js
+    // startPopoverAutoHideTimer: public/scripts/comp/systemTrayManager.js
     if (typeof startPopoverAutoHideTimer === 'function') {
         startPopoverAutoHideTimer(anchor);
     }

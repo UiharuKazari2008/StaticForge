@@ -86,6 +86,75 @@ class WebSocketServer {
                     timestamp: new Date().toISOString()
                 });
             });
+
+            plumbing.subscribe('ws:broadcast:runtimeCompileError', (data) => {
+                this.broadcast({
+                    type: 'runtime_compile_error',
+                    data: {
+                        errors: data.errors || [],
+                        compiled: data.compiled || 0,
+                        skipped: data.skipped || 0,
+                        timestamp: data.timestamp || Date.now()
+                    },
+                    timestamp: new Date().toISOString()
+                });
+            });
+
+            plumbing.subscribe('ws:broadcast:runtimeCompileProgress', (data) => {
+                this.broadcast({
+                    type: 'runtime_compile_progress',
+                    data: {
+                        current: data.current || 0,
+                        total: data.total || 0,
+                        file: data.file || null,
+                        percent: data.percent || 0,
+                        stats: data.stats || null,
+                        inProgress: data.inProgress === true,
+                        timestamp: data.timestamp || Date.now()
+                    },
+                    timestamp: new Date().toISOString()
+                });
+            });
+
+            plumbing.subscribe('ws:broadcast:runtimeCompileComplete', (data) => {
+                this.broadcast({
+                    type: 'runtime_compile_complete',
+                    data: {
+                        compiled: data.compiled || 0,
+                        failedCount: data.failedCount != null ? data.failedCount : (data.errors ? data.errors.length : 0),
+                        errors: data.errors || [],
+                        stats: data.stats || null,
+                        runId: data.runId || null,
+                        timestamp: data.timestamp || Date.now()
+                    },
+                    timestamp: new Date().toISOString()
+                });
+            });
+
+            plumbing.subscribe('ws:broadcast:runtimeCompileLogs', (data) => {
+                this.broadcast({
+                    type: 'runtime_compile_logs',
+                    data: {
+                        entries: data.entries || [],
+                        runId: data.runId || null,
+                        timestamp: data.timestamp || Date.now()
+                    },
+                    timestamp: new Date().toISOString()
+                });
+            });
+
+            plumbing.subscribe('ws:broadcast:workspaceCssUpdated', (data) => {
+                this.broadcast({
+                    type: 'workspace_css_updated',
+                    data: {
+                        webPath: data.webPath || '/css/workspaces.css',
+                        hash: data.hash || null,
+                        sourceHash: data.sourceHash || null,
+                        timestamp: data.timestamp || Date.now()
+                    },
+                    timestamp: new Date().toISOString()
+                });
+            });
         } catch (error) {
             console.error('❌ Failed to set up WebSocket plumbing subscriptions:', error);
             // Retry after a short delay

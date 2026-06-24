@@ -14,6 +14,7 @@ let selectedEnhancerGroupIndex = -1;
 let lastSearchText = '';
 const AUTOFILL_SEARCH_DEBOUNCE_MS = 120;
 const AUTOFILL_SEARCH_CONTINUATION_DEBOUNCE_MS = 40;
+let _mainPromptAutocompleteScrollWired = false;
 
 // Spell check navigation state
 let spellCheckNavigationMode = false;
@@ -9367,5 +9368,88 @@ async function showTextReplacementDialog(selectedText) {
                 resolve(false);
             }
         });
+    });
+}
+
+function wireAutocompleteDismissListeners() {
+    if (document.body.dataset.autocompleteDismissWired === 'true') return;
+    document.body.dataset.autocompleteDismissWired = 'true';
+
+    document.addEventListener('click', function (e) {
+        if (shouldDismissAutofillFromClick && !shouldDismissAutofillFromClick(e)) {
+            return;
+        }
+        hideCharacterAutocomplete();
+    });
+    document.addEventListener('click', hidePresetAutocomplete);
+}
+
+wireAutocompleteDismissListeners();
+
+/**
+ * Main manual prompt/UC/negative field autocomplete + emphasis wiring.
+ * Wired via registerInitStep 47.55.
+ */
+function wireMainPromptAutocompleteListeners() {
+    if (document.body.dataset.mainPromptAutocompleteWired === 'true') return;
+    document.body.dataset.mainPromptAutocompleteWired = 'true';
+
+    if (manualPrompt) {
+        addSafeEventListener(manualPrompt, 'input', handleCharacterAutocompleteInput, 'autocomplete');
+        addSafeEventListener(manualPrompt, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
+        addSafeEventListener(manualPrompt, 'focus', () => startEmphasisHighlighting(manualPrompt), 'focus');
+        addSafeEventListener(manualPrompt, 'blur', () => {
+            applyFormattedText(manualPrompt, true);
+            updateEmphasisHighlighting(manualPrompt);
+            autoResizeTextarea(manualPrompt);
+            stopEmphasisHighlighting();
+            // scheduleMaybeSyncMainPromptSubjectTagsFromCharacterPrompts: public/scripts/app.js
+            scheduleMaybeSyncMainPromptSubjectTagsFromCharacterPrompts();
+        }, 'blur');
+    }
+
+    if (manualUc) {
+        addSafeEventListener(manualUc, 'input', handleCharacterAutocompleteInput, 'autocomplete');
+        addSafeEventListener(manualUc, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
+        addSafeEventListener(manualUc, 'focus', () => startEmphasisHighlighting(manualUc), 'focus');
+        addSafeEventListener(manualUc, 'blur', () => {
+            applyFormattedText(manualUc, true);
+            updateEmphasisHighlighting(manualUc);
+            autoResizeTextarea(manualUc);
+            stopEmphasisHighlighting();
+        }, 'blur');
+        addTextareaInputSideEffect(manualUc, () => autoResizeTextarea(manualUc), 'resize');
+    }
+
+    const manualPromptNegative = document.getElementById('manualPromptNegative');
+    if (manualPromptNegative) {
+        addSafeEventListener(manualPromptNegative, 'input', handleCharacterAutocompleteInput, 'autocomplete');
+        addSafeEventListener(manualPromptNegative, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
+        addSafeEventListener(manualPromptNegative, 'focus', () => startEmphasisHighlighting(manualPromptNegative), 'focus');
+        addSafeEventListener(manualPromptNegative, 'blur', () => {
+            applyFormattedText(manualPromptNegative, true);
+            updateEmphasisHighlighting(manualPromptNegative);
+            autoResizeTextarea(manualPromptNegative);
+            stopEmphasisHighlighting();
+        }, 'blur');
+        addTextareaInputSideEffect(manualPromptNegative, () => autoResizeTextarea(manualPromptNegative), 'resize');
+    }
+
+    // attachPromptTextareaContextMenu: public/scripts/comp/promptTextareaContextMenu.js
+    if (attachPromptTextareaContextMenu) {
+        if (manualPrompt) attachPromptTextareaContextMenu(manualPrompt);
+        if (manualUc) attachPromptTextareaContextMenu(manualUc);
+        if (manualPromptNegative) attachPromptTextareaContextMenu(manualPromptNegative);
+    }
+
+    if (!_mainPromptAutocompleteScrollWired) {
+        _mainPromptAutocompleteScrollWired = true;
+        window.addEventListener('scroll', updateAutocompletePositions);
+    }
+}
+
+if (typeof wsClient !== 'undefined' && wsClient) {
+    wsClient.registerInitStep(47.55, 'Main prompt autocomplete listeners', async () => {
+        wireMainPromptAutocompleteListeners();
     });
 }

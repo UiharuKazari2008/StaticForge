@@ -31,3 +31,326 @@
 .generating .generation-preview-quip {
     z-index: 17;
 }
+
+/* Generation Quips Tray */
+.generation-quips-tray-icon {
+    color: var(--text-secondary);
+    cursor: default;
+}
+
+.generation-quips-tray-icon.quips-running i {
+    color: #ce93d8;
+    animation: quips-tray-pulse 1.8s ease-in-out infinite;
+}
+
+.generation-quips-tray-icon.quips-running-other i {
+    color: #90caf9;
+    animation: quips-tray-pulse-other 2.4s ease-in-out infinite;
+}
+
+@keyframes quips-tray-pulse-other {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.92); }
+}
+
+@keyframes quips-tray-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+}
+
+.generation-quips-tray-icon.quips-ready i {
+    /* use default tray icon color */
+}
+
+.generation-quips-tray-icon.quips-partial i {
+    color: #ffb74d;
+}
+
+.generation-quips-tray-icon.quips-error i {
+    color: #e57373;
+}
+
+.generation-quips-tray-icon.quips-idle i {
+    color: var(--text-secondary);
+    opacity: 0.75;
+}
+
+.generation-quips-tray-icon.quips-request-ready i {
+    color: #81d4fa;
+}
+
+.naxt-bag-tray-icon.naxt-bag-tray-atelier-open {
+    opacity: 0.45;
+}
+
+.generation-quips-tray-icon {
+    position: relative;
+}
+
+.generation-quips-auto-indicator {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #81c784;
+    box-shadow: 0 0 4px rgba(129, 199, 132, 0.9);
+}
+
+.generation-quips-tray-icon.quips-auto-pending .generation-quips-auto-indicator {
+    animation: quips-auto-indicator-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes quips-auto-indicator-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.45; transform: scale(0.85); }
+}
+
+.quips-auto-update-dialog .quips-auto-update-intro {
+    margin: 0 0 0.75rem;
+    text-align: left;
+    line-height: 1.4;
+}
+
+.quips-auto-update-dialog .form-group {
+    margin-bottom: 0.5rem;
+    text-align: left;
+}
+
+.quips-auto-update-dialog .form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.35rem;
+    font-size: 0.85em;
+}
+
+.quips-auto-update-dialog .custom-dropdown {
+    width: 100%;
+}
+
+.quips-auto-update-dialog .custom-dropdown-btn {
+    width: 100%;
+    justify-content: space-between;
+}
+
+.quips-auto-update-dialog .quips-auto-update-meta {
+    margin-top: 0.75rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.generation-quips-tray-popup {
+    min-width: 0;
+    max-width: 220px;
+    width: max-content;
+    padding: 0.45em 0.5em;
+    font-size: 0.82em;
+    z-index: 12000;
+}
+
+.generation-quips-tray-popup .popover-content,
+.generation-quips-tray-popup-inner {
+    gap: 0;
+    min-width: 0;
+}
+
+.generation-quips-tray-popup-header-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.35em;
+}
+
+.generation-quips-tray-popup-header-row > .popover-body {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    margin: 0;
+}
+
+.generation-quips-tray-popup-close.context-menu-icon-btn {
+    width: 18px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0;
+    border-radius: 2px;
+    margin: 0;
+    flex-shrink: 0;
+}
+
+.generation-quips-tray-popup .popover-body {
+    font-size: 1em;
+    line-height: 1.3;
+    white-space: normal;
+}
+
+.generation-quips-tray-popup-status {
+    font-weight: 500;
+}
+
+.generation-quips-tray-popup-detail {
+    color: var(--text-secondary);
+    font-size: 0.88em;
+    margin-top: 0.15em;
+}
+
+.generation-quips-tray-popup-progress-wrap {
+    margin-top: 0.35em;
+    height: 5px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.generation-quips-tray-popup-progress-wrap > div {
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #ce93d8, #81d4fa);
+    transition: width 0.35s ease;
+}
+
+.generation-quips-tray-popup-previews {
+    margin-top: 0.45em;
+    max-height: 120px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3em;
+}
+
+.generation-quips-tray-preview {
+    padding: 0.3em 0.4em;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.generation-quips-tray-preview-term {
+    display: block;
+    font-size: 0.75em;
+    color: #ce93d8;
+    margin-bottom: 0.1em;
+}
+
+.generation-quips-tray-preview-phrase {
+    display: block;
+    font-size: 0.85em;
+}
+
+.quip-wiki-doc {
+    padding: 0.5rem 0.25rem 1.5rem;
+}
+
+.quip-wiki-nav {
+    margin-bottom: 1.25rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+.quip-wiki-nav-link {
+    color: var(--primary-color, #7eb8ff);
+    text-decoration: none;
+}
+
+.quip-wiki-nav-link:hover {
+    text-decoration: underline;
+}
+
+.quip-wiki-section {
+    margin-bottom: 2rem;
+}
+
+.quip-wiki-section h2 {
+    margin: 0 0 1rem;
+    font-size: 1.15rem;
+}
+
+.quip-wiki-controls {
+    margin-top: 2rem;
+    padding: 1rem 1.1rem;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.quip-wiki-controls-title {
+    margin: 0 0 1rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+}
+
+.quip-wiki-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+    gap: 0.65rem 1rem;
+    margin: 0 0 1.1rem;
+}
+
+.quip-wiki-stat {
+    margin: 0;
+}
+
+.quip-wiki-stat dt {
+    margin: 0;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.6;
+}
+
+.quip-wiki-stat dd {
+    margin: 0.15rem 0 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.quip-wiki-controls-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.quip-wiki-term {
+    margin-bottom: 1.25rem;
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.quip-wiki-term-title {
+    margin: 0 0 0.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.quip-wiki-phrase-count {
+    font-size: 0.75rem;
+    font-weight: normal;
+    opacity: 0.65;
+}
+
+.quip-wiki-phrases {
+    margin: 0;
+    padding-left: 1.25rem;
+}
+
+.quip-wiki-phrases li {
+    margin-bottom: 0.35rem;
+    line-height: 1.45;
+}
+
+.quip-wiki-empty {
+    opacity: 0.7;
+    font-style: italic;
+}
+
+/* Hide quips while Enshutsuka reasoning popups are on screen */
+.generating .manual-preview-content:has(.progress-reasoning-container .progress-reasoning-item) .generation-preview-quip {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    transition: opacity 0.3s ease-out, visibility 0.3s ease-out;
+}

@@ -101,11 +101,24 @@ class LogViewerApplet {
         this._glassPopoverOutsideHandler = null;
         this._lastDiskUpdateAt = 0;
         this._cachedDiskFreeText = '';
+        this.runtimeCompileStatus = null;
+        this._runtimeCompilePopoverLocked = false;
+        this._runtimeCompileWsWired = false;
+        this.runtimeDevToggleBtn = null;
+        this.runtimeCompileBtn = null;
+        this.runtimeActionsRow = null;
+        this.runtimeProgressWrap = null;
+        this.runtimeProgressFill = null;
+        this.runtimeProgressLabel = null;
     }
 
     init() {
         this.modal = document.getElementById('logViewerModal');
         if (!this.modal) return;
+        if (this._initWired) {
+            return;
+        }
+        this._initWired = true;
 
         const storedInterval = parseInt(localStorage.getItem(LOG_VIEWER_STATUS_INTERVAL_KEY), 10);
         if (STATUS_REFRESH_PRESETS.some((p) => p.ms === storedInterval)) {
@@ -242,6 +255,10 @@ class LogViewerApplet {
 
     onWindowHidden() {
         this.hideAllGlassPopovers();
+        if (this.observerTimeout) {
+            cancelAnimationFrame(this.observerTimeout);
+            this.observerTimeout = null;
+        }
         this.stopStream(true);
         this.stopTrimInterval();
         this.stopConnStatsInterval();
@@ -319,6 +336,18 @@ class LogViewerApplet {
             <div class="log-viewer-glass-popover-inner">
                 <div class="log-viewer-glass-popover-header"><i class="fas fa-clock"></i> Uptime</div>
                 <div class="log-viewer-glass-popover-body" id="logViewerUptimePopoverBody"></div>
+                <div class="log-viewer-runtime-compile-progress hidden" id="logViewerRuntimeCompileProgress">
+                    <div class="log-viewer-popover-metric-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+                        <div class="log-viewer-popover-metric-fill" id="logViewerRuntimeCompileProgressFill" style="width:0%"></div>
+                    </div>
+                    <div class="log-viewer-runtime-compile-progress-label" id="logViewerRuntimeCompileProgressLabel">Compiling…</div>
+                </div>
+                <div class="log-viewer-glass-popover-actions log-viewer-runtime-actions" id="logViewerRuntimeActionsRow">
+                    <button type="button" id="logViewerRuntimeDevToggleBtn" class="btn-secondary btn-small" title="Toggle source vs optimised asset serving for this browser">Prod Mode</button>
+                    <button type="button" id="logViewerRuntimeCompileBtn" class="btn-primary btn-small" title="Recompile all public/css and public/scripts">
+                        <i class="fas fa-compress"></i> Compile
+                    </button>
+                </div>
                 <div class="log-viewer-glass-popover-actions">
                     <button type="button" id="logViewerPopoverRebootBtn" class="btn-danger btn-small hidden" title="PM2 restart DreamScape Server (this process only)">
                         <i class="fas fa-rotate-right"></i> Restart DSS
@@ -326,6 +355,16 @@ class LogViewerApplet {
                 </div>
             </div>`;
         document.body.appendChild(this.uptimePopover);
+
+        this.runtimeActionsRow = document.getElementById('logViewerRuntimeActionsRow');
+        this.runtimeDevToggleBtn = document.getElementById('logViewerRuntimeDevToggleBtn');
+        this.runtimeCompileBtn = document.getElementById('logViewerRuntimeCompileBtn');
+        this.runtimeProgressWrap = document.getElementById('logViewerRuntimeCompileProgress');
+        this.runtimeProgressFill = document.getElementById('logViewerRuntimeCompileProgressFill');
+        this.runtimeProgressLabel = document.getElementById('logViewerRuntimeCompileProgressLabel');
+        this.runtimeDevToggleBtn?.addEventListener('click', () => this.toggleRuntimeDevMode());
+        this.runtimeCompileBtn?.addEventListener('click', () => this.requestRuntimeCompile());
+        this.wireRuntimeCompileWsHandlers();
 
         this.connectionPopover = document.createElement('div');
         this.connectionPopover.className = 'log-viewer-glass-popover log-viewer-connection-glass-popover hidden';
@@ -415,6 +454,9 @@ class LogViewerApplet {
     }
 
     hideAllGlassPopovers() {
+        if (this._runtimeCompilePopoverLocked) {
+            return;
+        }
         [this.settingsPopover, this.uptimePopover, this.connectionPopover].forEach((pop) => {
             if (!pop) return;
             pop.classList.remove('show');
@@ -690,7 +732,218 @@ class LogViewerApplet {
                 <div class="log-viewer-uptime-row"><span>PM2 id</span><strong>${pm2Id != null ? pm2Id : '—'}</strong></div>
                 <div class="log-viewer-uptime-row"><span>PID</span><strong>${pid != null ? pid : '—'}</strong></div>
                 <div class="log-viewer-uptime-row"><span>Restarts</span><strong>${restarts}</strong></div>
+            </div>
+            ${this.renderRuntimeCompileSection()}`;
+        this.updateRuntimeDevToggleLabel();
+    }
+
+    formatRuntimeBytes(bytes) {
+        if (bytes == null || isNaN(bytes)) return '—';
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    }
+
+    isRuntimeDevMode() {
+        try {
+            return localStorage.getItem('staticforge_dev_mode') === 'true';
+        } catch (e) {
+            return false;
+        }
+    }
+
+    syncRuntimeDevModeCookie(devMode) {
+        try {
+            if (devMode) {
+                document.cookie = 'staticforge_dev_mode=1; path=/; SameSite=Lax';
+            } else {
+                document.cookie = 'staticforge_dev_mode=; path=/; Max-Age=0';
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    updateRuntimeDevToggleLabel() {
+        if (!this.runtimeDevToggleBtn) return;
+        const devMode = this.isRuntimeDevMode();
+        this.runtimeDevToggleBtn.textContent = devMode ? 'Prod Mode' : 'Dev Mode';
+        this.runtimeDevToggleBtn.title = devMode
+            ? 'Switch to optimised production assets for this browser'
+            : 'Switch to source assets for debugging in this browser';
+    }
+
+    toggleRuntimeDevMode() {
+        const nextDev = !this.isRuntimeDevMode();
+        try {
+            localStorage.setItem('staticforge_dev_mode', nextDev.toString());
+        } catch (e) { /* ignore */ }
+        this.syncRuntimeDevModeCookie(nextDev);
+        this.updateRuntimeDevToggleLabel();
+        this.refreshUptimePopover();
+    }
+
+    renderRuntimeCompileSection() {
+        const s = this.runtimeCompileStatus || {};
+        const stats = s.stats || {};
+        const failedCount = s.failedCount != null ? s.failedCount : 0;
+        const stateLabel = s.inProgress
+            ? 'Compiling'
+            : (failedCount > 0 ? 'Errors' : (s.complete ? 'Ready' : 'Pending'));
+        const savedBytes = this.formatRuntimeBytes(stats.bytesSaved);
+        const ratioBytes = stats.percentBytesSaved != null ? `${stats.percentBytesSaved}%` : '—';
+        const clientMode = this.isRuntimeDevMode() ? 'Dev (source)' : 'Prod (optimised)';
+        const lastRun = s.lastRunAt ? new Date(s.lastRunAt).toLocaleString() : '—';
+        const failedRow = failedCount > 0
+            ? `<div class="log-viewer-uptime-row"><span>Failed to compile</span><strong>${failedCount.toLocaleString('en-US')}</strong></div>`
+            : '';
+
+        return `
+            <div class="log-viewer-popover-section" id="logViewerRuntimeCompileSection">
+                <div class="log-viewer-popover-section-title">Runtime Assets</div>
+                <div class="log-viewer-uptime-row"><span>State</span><strong>${stateLabel}</strong></div>
+                <div class="log-viewer-uptime-row"><span>Client mode</span><strong>${clientMode}</strong></div>
+                <div class="log-viewer-uptime-row"><span>Files</span><strong>${(stats.compiledFiles || s.compiled || 0).toLocaleString('en-US')} compiled / ${(stats.totalFiles || 0).toLocaleString('en-US')} total</strong></div>
+                ${failedRow}
+                <div class="log-viewer-uptime-row"><span>Saved</span><strong>${savedBytes} (${ratioBytes})</strong></div>
+                <div class="log-viewer-uptime-row"><span>Last compile</span><strong>${lastRun}</strong></div>
             </div>`;
+    }
+
+    applyRuntimeCompileStatus(runtimeCompile) {
+        if (!runtimeCompile) return;
+        this.runtimeCompileStatus = runtimeCompile;
+        this.updateRuntimeDevToggleLabel();
+        if (this.activeGlassPopover === 'uptime') {
+            const section = document.getElementById('logViewerRuntimeCompileSection');
+            if (section) {
+                section.outerHTML = this.renderRuntimeCompileSection();
+            }
+        }
+    }
+
+    setRuntimeCompileProgressUI(progress) {
+        const percent = progress && progress.percent != null ? progress.percent : 0;
+        const current = progress && progress.current != null ? progress.current : 0;
+        const total = progress && progress.total != null ? progress.total : 0;
+        const file = progress && progress.file ? progress.file.split('/').pop() : '';
+        if (this.runtimeProgressFill) {
+            this.runtimeProgressFill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+        }
+        if (this.runtimeProgressLabel) {
+            this.runtimeProgressLabel.textContent = total > 0
+                ? `Compiling ${current}/${total} (${percent}%)${file ? ` — ${file}` : ''}`
+                : 'Compiling…';
+        }
+    }
+
+    showRuntimeCompileProgressUI(show) {
+        this.runtimeActionsRow?.classList.toggle('hidden', show);
+        this.runtimeProgressWrap?.classList.toggle('hidden', !show);
+    }
+
+    onRuntimeCompileProgress(message) {
+        const data = message && message.data ? message.data : message;
+        if (!data) return;
+        this.setRuntimeCompileProgressUI(data);
+        if (this.activeGlassPopover === 'uptime' && data.inProgress) {
+            this._runtimeCompilePopoverLocked = true;
+            this.showRuntimeCompileProgressUI(true);
+        }
+    }
+
+    onRuntimeCompileComplete(message) {
+        const data = message && message.data ? message.data : message;
+        this._runtimeCompilePopoverLocked = false;
+        this.showRuntimeCompileProgressUI(false);
+        if (data) {
+            this.runtimeCompileStatus = {
+                complete: true,
+                inProgress: false,
+                compiled: data.compiled,
+                failedCount: data.failedCount != null ? data.failedCount : (data.errors ? data.errors.length : 0),
+                stats: data.stats || (this.runtimeCompileStatus && this.runtimeCompileStatus.stats),
+                lastRunAt: Date.now()
+            };
+        }
+        if (this.activeGlassPopover === 'uptime') {
+            this.refreshUptimePopover();
+        }
+    }
+
+    formatRuntimeCompileLogEntry(entry) {
+        if (!entry) return '';
+        const ts = entry.timestamp || new Date().toISOString();
+        const loc = entry.line != null
+            ? `:${entry.line}${entry.column != null ? `:${entry.column}` : ''}`
+            : '';
+        const tool = entry.tool || 'minifier';
+        const type = entry.type || 'warning';
+        const file = entry.file || '(unknown)';
+        const runId = entry.runId || '-';
+        return `[${ts}] [${runId}] [${tool}] [${type}] ${file}${loc} — ${entry.message}`;
+    }
+
+    isRuntimeMinifyLogSource(source) {
+        return source === 'runtime-minify';
+    }
+
+    isRuntimeMinifyLogSourceActive() {
+        return this.isRuntimeMinifyLogSource(this.currentSource)
+            && this.modal
+            && !this.modal.classList.contains('hidden');
+    }
+
+    appendRuntimeMinifyLogEntries(entries) {
+        if (!Array.isArray(entries) || entries.length === 0) return;
+        const lines = entries.map((entry) => this.formatRuntimeCompileLogEntry(entry)).join('\n');
+        if (this.isRuntimeMinifyLogSourceActive()) {
+            this.appendLogContent(`${lines}\n`);
+            this.setStatus(this.formatStatusMeta());
+        }
+    }
+
+    onRuntimeCompileLogs(message) {
+        const data = message && message.data ? message.data : message;
+        const entries = data && Array.isArray(data.entries) ? data.entries : [];
+        this.appendRuntimeMinifyLogEntries(entries);
+    }
+
+    wireRuntimeCompileWsHandlers() {
+        if (this._runtimeCompileWsWired) return;
+        const ws = this.getWsClient();
+        if (!ws || typeof ws.on !== 'function') return;
+        this._runtimeCompileWsWired = true;
+        ws.on('runtime_compile_progress', (message) => this.onRuntimeCompileProgress(message));
+        ws.on('runtime_compile_complete', (message) => this.onRuntimeCompileComplete(message));
+        ws.on('runtime_compile_logs', (message) => this.onRuntimeCompileLogs(message));
+    }
+
+    async requestRuntimeCompile() {
+        const ws = this.getWsClient();
+        if (!ws || !ws.isConnected() || typeof ws.recompileRuntimeAssets !== 'function') {
+            return;
+        }
+        this._runtimeCompilePopoverLocked = true;
+        this.showRuntimeCompileProgressUI(true);
+        this.setRuntimeCompileProgressUI({ current: 0, total: 0, percent: 0 });
+        try {
+            const result = await ws.recompileRuntimeAssets({ force: true, silent: true });
+            if (result) {
+                this.runtimeCompileStatus = {
+                    complete: true,
+                    inProgress: false,
+                    compiled: result.compiled,
+                    failedCount: result.failedCount != null ? result.failedCount : (result.errors ? result.errors.length : 0),
+                    stats: result.stats || null,
+                    lastRunAt: Date.now()
+                };
+            }
+        } catch (error) {
+            console.error('Runtime compile request failed:', error);
+        } finally {
+            this._runtimeCompilePopoverLocked = false;
+            this.showRuntimeCompileProgressUI(false);
+            this.refreshUptimePopover();
+        }
     }
 
     renderPopoverMetricRow(label, percent) {
@@ -1108,6 +1361,9 @@ class LogViewerApplet {
     applyPm2Status(status) {
         if (!status) return;
         this.pm2Status = status;
+        if (status.runtimeCompile) {
+            this.applyRuntimeCompileStatus(status.runtimeCompile);
+        }
         const cpu = typeof status.cpu === 'number' ? status.cpu : 0;
         const memory = typeof status.memory === 'number' ? status.memory : 0;
         const ramPct = (memory / LOG_VIEWER_RAM_BAR_MAX_BYTES) * 100;
@@ -1421,6 +1677,7 @@ class LogViewerApplet {
         const alreadyOpen = !this.modal.classList.contains('hidden');
         this.applyDefaultWindowSize();
         this.setupGlassPopovers();
+        this.wireRuntimeCompileWsHandlers();
 
         if (window.galleryLoadLogApi) {
             window.galleryLoadLogApi.markEventViewerEngaged();

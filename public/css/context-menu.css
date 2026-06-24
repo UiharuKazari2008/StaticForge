@@ -1,4 +1,15 @@
 /* Context menus */
+/* Allow context menu events on disabled buttons */
+button:disabled[data-context-menu],
+input:disabled[data-context-menu],
+[data-context-menu]:disabled {
+    pointer-events: auto;
+}
+
+.context-menu.context-menu-click-triggered {
+    min-width: 165px;
+}
+
 /* Context menu corner press effects */
 .gallery-item.context-open.top-left {
     transform: matrix3d(1, 0, 0, -0.0001, 0, 1, 0, -0.0001, 0, 0, 1, 0, 0, 0, 0, 1);
@@ -75,7 +86,6 @@
     touch-action: none;
     /* Prevent default touch behaviors from passing through */
 }
-
 
 /* Submenu styles */
 .context-menu-item.has-submenu {
@@ -265,6 +275,61 @@ span.context-menu-item-state {
     align-items: center;
     justify-content: center;
     padding: var(--spacing-xs) 0;
+}
+
+/* Context menu balance / subscription rows — public/scripts/app.js */
+.menu-item-row i.nai-anla {
+    margin: 0 0.25em;
+}
+
+.balance-list {
+    color: var(--glass-layer-5-opaque);
+    border-color: #ffeaad3d;
+    padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.menu-item-row.balance-list {
+    color: var(--text-accent-tinted);
+}
+
+.anlas-subscription-section {
+    display: flex;
+    flex-direction: column;
+    padding-top: var(--spacing-md);
+    gap: var(--spacing-sm);
+    font-size: 0.85em;
+}
+
+.anlas-subscription-value {
+    font-family: 'Oxanium';
+    line-height: 1;
+    margin-bottom: -0.15em;
+}
+
+.price-list-container {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    gap: var(--spacing-sm);
+}
+
+.price-list-label {
+    text-transform: uppercase;
+    font-family: 'Kanit';
+    font-size: 0.75em;
+}
+
+.price-list-fixed,
+.price-list-paid {
+    line-height: 1;
+    display: inline-flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    gap: var(--spacing-xs);
 }
 
 /* Context Menu Items - Matching Custom Dropdown Options */
@@ -739,25 +804,26 @@ span.context-menu-item-state {
 }
 
 /* Separator Styles */
-.context-menu-separator,
-.custom-dropdown-separator {
+.context-menu-separator {
     height: 1px;
     background: var(--glass-border-2, rgba(255, 255, 255, 0.2));
     margin: 4px var(--spacing-md) 2px;
     position: relative;
 }
 
-.context-menu-separator:has(span),
-.custom-dropdown-separator:has(span) {
+.context-menu-separator:has(span) {
     height: auto;
     position: relative;
     background: transparent;
     border-bottom: 1px solid var(--glass-border-2, rgba(255, 255, 255, 0.2));
 }
 
-.dark .context-menu-separator,
-.dark .custom-dropdown-separator {
+.dark .context-menu-separator {
     background: var(--glass-inset-bg-1);
+}
+
+.dark .context-menu-separator:has(span) {
+    border-bottom-color: var(--glass-border-dark-2);
 }
 
 .context-menu-separator-name {
@@ -862,4 +928,22 @@ span.context-menu-item-state {
 
 .context-menu.position-down {
     transform-origin: top center;
+}
+
+@media (max-width: 480px) {
+    .context-menu {
+        position: fixed !important;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        min-width: 230px;
+        max-width: 280px;
+        width: auto;
+    }
+
+    .context-menu-overlay {
+        background: rgba(0, 0, 0, 0.25);
+        -webkit-backdrop-filter: var(--glass-blur-1, saturate(0.5));
+        backdrop-filter: var(--glass-blur-1, saturate(0.5));
+    }
 }

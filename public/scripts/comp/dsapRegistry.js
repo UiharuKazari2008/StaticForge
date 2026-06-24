@@ -567,10 +567,20 @@ function runDsapShimOnShell(shell, match, options = {}) {
     trackDsapEntryShell(entry, shell);
 }
 
+function teardownDsapDropdownsInRoot(rootEl) {
+    if (!rootEl || typeof teardownDropdown !== 'function') return;
+    rootEl.querySelectorAll('.custom-dropdown').forEach((el) => teardownDropdown(el));
+}
+
 function deactivateDsapOnShell(shell, options = {}) {
     if (!shell || !shell._dsapState) return;
 
     const state = shell._dsapState;
+
+    // setupDropdown adds document-level listeners — tear down before DOM is replaced.
+    const rootEl = state.rootEl || state.host?.getRoot?.();
+    teardownDsapDropdownsInRoot(rootEl);
+
     if (state.driver && typeof state.driver.destroy === 'function') {
         try {
             state.driver.destroy(state.host);

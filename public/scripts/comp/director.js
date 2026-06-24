@@ -258,6 +258,11 @@ class Director {
 
     // Setup context menu action handlers
     setupDirectorContextMenuHandlers() {
+        if (this._directorContextMenuWired) {
+            return;
+        }
+        this._directorContextMenuWired = true;
+
         document.addEventListener('contextMenuAction', (event) => {
             const { action, target } = event.detail;
             
@@ -374,6 +379,11 @@ class Director {
 
     // Setup event listeners
     setupDirectorEventListeners() {
+        if (this._directorEventsWired) {
+            return;
+        }
+        this._directorEventsWired = true;
+
         // Director toggle button
         if (this.directorBtn) {
         this.directorBtn.addEventListener('click', () => this.toggleDirector());
@@ -828,6 +838,14 @@ class Director {
     }
     
     async showSessionChat(session) {
+        if (this.currentSession && this.currentSession !== session && Array.isArray(this.currentSession.messages)) {
+            assignTrimmedDirectorSessionMessages(this.currentSession, this.currentSession.messages);
+            const prevIdx = this.directorSessions.findIndex(s => s.id === this.currentSession.id);
+            if (prevIdx !== -1) {
+                this.directorSessions[prevIdx].messages = this.currentSession.messages;
+            }
+        }
+
         this.currentView = 'sessionChat';
         this.currentSession = session;
         window.currentSession = session; // Keep global reference for compatibility
@@ -1444,7 +1462,8 @@ class Director {
             window.wsClient.send({
                 type: 'director_get_messages',
                 requestId: Date.now().toString(),
-                sessionId: sessionId
+                sessionId: sessionId,
+                limit: DIRECTOR_MAX_SESSION_MESSAGES
             });
         } else {
             console.warn('WebSocket not connected, using mock data');
@@ -1471,6 +1490,13 @@ class Director {
             ? assignTrimmedDirectorSessionMessages(this.currentSession, messages)
             : trimDirectorSessionMessages(messages);
         messages = cappedMessages;
+
+        if (this.currentSession) {
+            const sessionIdx = this.directorSessions.findIndex(s => s.id === this.currentSession.id);
+            if (sessionIdx !== -1) {
+                this.directorSessions[sessionIdx].messages = this.currentSession.messages;
+            }
+        }
 
         this.directorChatMessages.innerHTML = '';
 
@@ -2524,6 +2550,9 @@ class Director {
 
     // Director WebSocket message handlers
     setupDirectorWebSocketHandlers() {
+        if (this._directorWsHandlersWired) return;
+        this._directorWsHandlersWired = true;
+
         // Handle Director sessions response
         window.wsClient.on('director_get_sessions_response', (data) => {
             if (data.data && data.data.success) {

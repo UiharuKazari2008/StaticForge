@@ -691,6 +691,10 @@
     justify-content: center;;
 }
 
+.tag-wiki-display-content .dreamwiki-recent-item {
+    cursor: pointer;
+}
+
 .tag-wiki-display-content .dreamwiki-recent-empty {
     padding: var(--spacing-sm);
     text-align: center;
@@ -1430,6 +1434,34 @@
         background: var(--glass-layer-3);
     }
 
+    .tag-wiki-body-content details summary:hover:not(:disabled),
+    .tag-wiki-page-content details summary:hover:not(:disabled),
+    .tag-wiki-body-content details.tag-wiki-expand-section summary:hover:not(:disabled),
+    .tag-wiki-page-content details.tag-wiki-expand-section summary:hover:not(:disabled) {
+        background-color: var(--wiki-expand-header-hover);
+    }
+
+    .tag-wiki-body-content .wiki-embedded-image:hover:not(:disabled),
+    .tag-wiki-page-content .wiki-embedded-image:hover:not(:disabled) {
+        opacity: 0.8;
+        transform: scale(1.05);
+    }
+
+    .tag-wiki-body-content a[class*="tag-wiki-"]:hover:not(:disabled),
+    .tag-wiki-page-content a[class*="tag-wiki-"]:hover:not(:disabled) {
+        color: rgb(0, 155, 230);
+        text-decoration: underline;
+    }
+
+    .tag-wiki-body-content a.tag-wiki-wiki-link:hover:not(:disabled),
+    .tag-wiki-body-content a[href*="wiki"]:hover:not(:disabled),
+    .tag-wiki-page-content a.tag-wiki-wiki-link:hover:not(:disabled),
+    .tag-wiki-page-content a[href*="wiki"]:hover:not(:disabled) {
+        color: rgb(255, 90, 91);
+        text-decoration: underline;
+    }
+}
+
 /* =========================================================
    Google-like Search Results Page (for en.grimoire.jp/search navigation)
    Clean vertical list with search bar + options + single-line snippets.
@@ -1798,37 +1830,6 @@
     opacity: 0.8;
 }
 
-    .tag-wiki-body-content details summary:hover:not(:disabled),
-    .tag-wiki-page-content details summary:hover:not(:disabled),
-    .tag-wiki-body-content details.tag-wiki-expand-section summary:hover:not(:disabled),
-    .tag-wiki-page-content details.tag-wiki-expand-section summary:hover:not(:disabled) {
-        background-color: var(--wiki-expand-header-hover);
-    }
-
-    .tag-wiki-body-content .wiki-embedded-image:hover:not(:disabled),
-    .tag-wiki-page-content .wiki-embedded-image:hover:not(:disabled) {
-        opacity: 0.8;
-        transform: scale(1.05);
-    }
-
-    .tag-wiki-body-content a[class*="tag-wiki-"]:hover:not(:disabled),
-    .tag-wiki-page-content a[class*="tag-wiki-"]:hover:not(:disabled) {
-        color: rgb(0, 155, 230);
-        text-decoration: underline;
-    }
-
-    .tag-wiki-body-content a.tag-wiki-wiki-link:hover:not(:disabled),
-    .tag-wiki-body-content a[href*="wiki"]:hover:not(:disabled),
-    .tag-wiki-page-content a.tag-wiki-wiki-link:hover:not(:disabled),
-    .tag-wiki-page-content a[href*="wiki"]:hover:not(:disabled) {
-        color: rgb(255, 90, 91);
-        text-decoration: underline;
-    }
-
-}
-
-
-
 
 
 
@@ -1920,6 +1921,6 @@
 }
 
 #tagWikiSearchModal {
-    width: 1050px;
-    height: 750px;
+    width: 750px;
+    height: 900px;
 }

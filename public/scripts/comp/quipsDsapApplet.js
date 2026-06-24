@@ -835,7 +835,8 @@ const quipsDsapDriver = {
         const root = host.getRoot();
         if (!root) return;
 
-        root.addEventListener('click', (e) => this._onClick(e));
+        this._state._onClick = (e) => this._onClick(e);
+        root.addEventListener('click', this._state._onClick);
 
         if (quipsDsapIsPhrasebookView(host)) {
             void this._loadPhrasebook();
@@ -856,6 +857,15 @@ const quipsDsapDriver = {
     destroy(host) {
         const state = this._state;
         if (!state) return;
+
+        const root = host?.getRoot?.();
+        if (root && state._onClick) {
+            root.removeEventListener('click', state._onClick);
+        }
+
+        if (root && typeof teardownDropdown === 'function') {
+            root.querySelectorAll('.custom-dropdown').forEach((el) => teardownDropdown(el));
+        }
 
         if (window.wsClient && typeof window.wsClient.off === 'function') {
             state.wsHandlers.forEach(({ event, fn }) => window.wsClient.off(event, fn));
@@ -1099,6 +1109,7 @@ const quipsDsapDriver = {
         const selectedEl = root.querySelector(`#${config.selectedId}`);
         const hidden = root.querySelector(`#${config.hiddenId}`);
         if (!container || !btn || !menu || !selectedEl || !hidden) return;
+        if (container.getAttribute('data-dropdown-initialized') === 'true') return;
 
         let currentValue = config.initialValue;
         hidden.value = String(currentValue);
@@ -1125,6 +1136,7 @@ const quipsDsapDriver = {
         const selectedEl = root.querySelector(`#${config.selectedId}`);
         const hidden = root.querySelector(`#${config.hiddenId}`);
         if (!container || !btn || !menu || !selectedEl || !hidden) return;
+        if (container.getAttribute('data-dropdown-initialized') === 'true') return;
 
         let currentValue = config.initialValue;
         hidden.value = String(currentValue);
@@ -1180,6 +1192,7 @@ const quipsDsapDriver = {
         const selectedEl = root.querySelector('#quipsDsapWorkspaceSelected');
         const hidden = root.querySelector('#quipsDsapWorkspaceHidden');
         if (!container || !btn || !menu || !selectedEl || !hidden) return;
+        if (container.getAttribute('data-dropdown-initialized') === 'true') return;
 
         const wsList = (status?.workspaces || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
         if (!wsList.length && typeof workspaces !== 'undefined') {

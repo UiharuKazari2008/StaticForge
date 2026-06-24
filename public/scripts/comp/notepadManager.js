@@ -2062,6 +2062,12 @@ class Notepad {
     }
 
     destroy() {
+        const dropdown = this.element.querySelector(`#notepadDropdown_${this.id}`);
+        // teardownDropdown: public/scripts/comp/dropdown.js
+        if (dropdown) {
+            teardownDropdown(dropdown);
+        }
+
         closeModal(this.element);
         setTimeout(() => {
             if (this.element && this.element.parentNode) {

@@ -17,6 +17,7 @@ function sendSse(res, event, data) {
 function streamLogFile(res, logger, source, startOffset, options = {}) {
     const pm2Service = options.pm2Service || null;
     const getHostMetrics = options.getHostMetrics || null;
+    const getRuntimeCompileStatus = options.getRuntimeCompileStatus || null;
     const statusIntervalMs = Math.max(1000, Math.min(60000, Number(options.statusIntervalMs) || PM2_STATUS_INTERVAL_MS));
     const isCombined = logger.isCombinedLogSource(source);
     let offset = isCombined
@@ -44,7 +45,8 @@ function streamLogFile(res, logger, source, startOffset, options = {}) {
                 if (!closed && status) {
                     const enriched = {
                         ...status,
-                        ...(getHostMetrics ? getHostMetrics() : {})
+                        ...(getHostMetrics ? getHostMetrics() : {}),
+                        ...(getRuntimeCompileStatus ? { runtimeCompile: getRuntimeCompileStatus() } : {})
                     };
                     sendSse(res, 'pm2status', { status: enriched });
                 }

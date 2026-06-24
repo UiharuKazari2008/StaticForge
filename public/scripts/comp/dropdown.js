@@ -166,10 +166,43 @@ function toggleDropdown(menu, button) {
 }
 
 /**
+ * Remove document-level listeners registered by setupDropdown.
+ * Call before removing dropdown DOM (dynamic toolbars, character fields, etc.).
+ */
+function teardownDropdown(container) {
+    if (!container || container.getAttribute('data-dropdown-initialized') !== 'true') {
+        return;
+    }
+
+    const button = container._dropdownButton;
+    const menu = container._dropdownMenu;
+    if (menu && button) {
+        closeDropdown(menu, button);
+    }
+
+    if (container._dropdownOutsideClick) {
+        document.removeEventListener('click', container._dropdownOutsideClick);
+        container._dropdownOutsideClick = null;
+    }
+
+    container._dropdownButton = null;
+    container._dropdownMenu = null;
+    container.removeAttribute('data-dropdown-initialized');
+}
+
+/**
  * Sets up a dropdown menu with open/close logic and optional keyboard navigation.
  */
 function setupDropdown(container, button, menu, render, getSelectedValue, options = {}) {
     if (!container || !button || !menu) return;
+
+    // Each setup adds a document click listener — skip if already wired.
+    if (container.getAttribute('data-dropdown-initialized') === 'true') {
+        return;
+    }
+    container.setAttribute('data-dropdown-initialized', 'true');
+    container._dropdownButton = button;
+    container._dropdownMenu = menu;
     
     const enableKeyboardNav = options.enableKeyboardNav || false;
     const enableRightKey = options.enableRightKey || false;
@@ -304,11 +337,13 @@ function setupDropdown(container, button, menu, render, getSelectedValue, option
         menu.tabIndex = 0;
     }
     
-    document.addEventListener('click', e => {
+    const outsideClickHandler = e => {
         if (!container.contains(e.target)) {
             closeDropdown(menu, button);
         }
-    });
+    };
+    container._dropdownOutsideClick = outsideClickHandler;
+    document.addEventListener('click', outsideClickHandler);
 }
 
 /**

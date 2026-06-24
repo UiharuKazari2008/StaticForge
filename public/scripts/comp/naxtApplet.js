@@ -1406,6 +1406,11 @@ class NaxtApplet {
     }
 
     setupListeners() {
+        if (this._listenersWired) {
+            return;
+        }
+        this._listenersWired = true;
+
         if (this.homeBtn) this.homeBtn.addEventListener('click', () => void this.goHome());
         if (this.closeBtn) {
             this.closeBtn.addEventListener('click', (e) => {
@@ -1673,6 +1678,14 @@ class NaxtApplet {
 
     close() {
         if (!this.modal || typeof closeModal !== 'function') return;
+        if (this.sentinelObserver) {
+            this.sentinelObserver.disconnect();
+            this.sentinelObserver = null;
+        }
+        if (this.imgVisibilityObserver) {
+            this.imgVisibilityObserver.disconnect();
+            this.imgVisibilityObserver = null;
+        }
         closeModal(this.modal).then(() => {
             this.browseSessionActive = false;
             if (this.grid) this.grid.innerHTML = '';

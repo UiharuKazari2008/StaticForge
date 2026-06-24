@@ -1,0 +1,48 @@
+/* Shared text-replacement UI primitives used by genso manager, request body replacements,
+   favorites popup, and preset list previews. Loaded after genso-manager.css;
+   requestBodyReplacements.css overrides inline-edit rules where flows diverge. */
+
+.selected-text-preview {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    background: var(--background-secondary);
+    padding: 0.5rem;
+    border-radius: 4px;
+    margin-top: 0.5rem;
+    word-break: break-word;
+    border-left: 3px solid var(--accent-secondary);
+}
+
+.text-replacement-form {
+    margin: 1rem 0;
+}
+
+#presetList .text-replacement-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    line-clamp: 6;
+    -webkit-line-clamp: 6;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
+    white-space: pre;
+}
+
+@media (max-width: 767px) {
+    .text-replacement-actions button {
+        flex: 1 0 auto;
+    }
+
+    .text-replacement-header {
+        align-items: center;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        gap: var(--spacing-md);
+    }
+
+    .text-replacement-actions {
+        width: 100%;
+        justify-content: space-between;
+        flex-wrap: wrap;
+    }
+}

@@ -60,6 +60,14 @@ function syncPhotoSwipeContainedScrollOffset(pswp) {
 
 let photoSwipeMountResizeObserver = null;
 
+function disconnectPhotoSwipeMountResizeObserver() {
+    if (!photoSwipeMountResizeObserver) {
+        return;
+    }
+    photoSwipeMountResizeObserver.disconnect();
+    photoSwipeMountResizeObserver = null;
+}
+
 function ensurePhotoSwipeMountResizeObserver() {
     const mount = getPhotoSwipeMount();
     if (!mount || photoSwipeMountResizeObserver) {
@@ -247,6 +255,7 @@ function preparePhotoSwipeDesktopShellBeforeOpen() {
 }
 
 function teardownPhotoSwipeDesktopShell() {
+    disconnectPhotoSwipeMountResizeObserver();
     const shell = getPhotoSwipeShell();
     if (!shell || shell.classList.contains('hidden')) return;
     if (!document.body.classList.contains('desktop-mode')) return;

@@ -1,3 +1,46 @@
+function normalizeStaticFilePath(url) {
+    try {
+        return new URL(url, window.location.origin).pathname;
+    } catch (_) {
+        return String(url).split('?')[0];
+    }
+}
+
+function isCssStaticFilePath(pathname) {
+    return pathname.startsWith('/css/') && pathname.endsWith('.css');
+}
+
+function isScriptStaticFilePath(pathname) {
+    return pathname.startsWith('/scripts/') && pathname.endsWith('.js');
+}
+
+function isApplySafeStaticFilePath(pathname) {
+    if (isCssStaticFilePath(pathname)) {
+        return true;
+    }
+    if (pathname.startsWith('/dist/')) {
+        return true;
+    }
+    return /\.(woff2?|ttf|otf|eot|svg)$/i.test(pathname);
+}
+
+function buildShaBustUrl(pathname, hash) {
+    if (!hash) {
+        return pathname;
+    }
+    const base = pathname.split('?')[0];
+    return `${base}?sha=${hash}`;
+}
+
+function pathnameMatchesAssetUrl(assetPath, rawUrl) {
+    try {
+        const linkPath = new URL(rawUrl, window.location.origin).pathname;
+        return linkPath === assetPath || linkPath === assetPath.split('?')[0];
+    } catch (_) {
+        return String(rawUrl).startsWith(assetPath);
+    }
+}
+
 class ServiceWorkerManager {
     constructor() {
         this.swRegistration = null;
@@ -34,6 +77,10 @@ class ServiceWorkerManager {
         this.lastPingResponseTime = null;
         this.healthCheckInterval = null;
         this.healthCheckStartTime = null;
+        this.swConfig = { cssOnlyAutoApply: true };
+        this.pendingApplyFiles = null;
+        this.pendingUpdateKind = 'restart';
+        this.lastAppliedWorkspaceCssHash = null;
 
         this.init();
     }
@@ -418,6 +465,7 @@ class ServiceWorkerManager {
 
                 // Wait for service worker to be ready, with iOS-specific handling
                 await this.waitForServiceWorkerReady();
+                await this.fetchSwConfig();
 
             } catch (error) {
                 console.error('Service Worker registration failed:', error);
@@ -759,10 +807,15 @@ class ServiceWorkerManager {
                 return;
             }
 
-            // Check if we're already updating
+            // Check if we're already updating — clear stale flag unless SW is actually downloading
             if (this.isUpdating) {
-                console.warn('Update already in progress, skipping new request');
-                return;
+                const liveState = await this.checkDownloadState();
+                if (!liveState || !liveState.isDownloading) {
+                    this.isUpdating = false;
+                } else {
+                    console.warn('Update already in progress, syncing with existing download');
+                    return;
+                }
             }
 
             console.log('Checking for static file updates...');
@@ -847,6 +900,279 @@ class ServiceWorkerManager {
             }
         }
         return filesToUpdate;
+    }
+
+    async fetchSwConfig() {
+        if (!this.swRegistration || !this.swRegistration.active) {
+            return this.swConfig;
+        }
+        try {
+            const response = await this._requestSwConfig();
+            if (response && typeof response.cssOnlyAutoApply === 'boolean') {
+                this.swConfig = { cssOnlyAutoApply: response.cssOnlyAutoApply };
+            }
+        } catch (_) { /* keep default */ }
+        return this.swConfig;
+    }
+
+    _requestSwConfig() {
+        return new Promise((resolve, reject) => {
+            const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            const handler = (event) => {
+                if (event.data.type === 'SW_CONFIG' && event.data.requestId === requestId) {
+                    this.messageHandlers.delete(requestId);
+                    navigator.serviceWorker.removeEventListener('message', handler);
+                    resolve(event.data);
+                }
+            };
+            this.messageHandlers.set(requestId, handler);
+            navigator.serviceWorker.addEventListener('message', handler);
+            this.swRegistration.active.postMessage({
+                type: 'GET_SW_CONFIG',
+                requestId
+            });
+            setTimeout(() => {
+                if (this.messageHandlers.has(requestId)) {
+                    this.messageHandlers.delete(requestId);
+                    navigator.serviceWorker.removeEventListener('message', handler);
+                    reject(new Error('SW config request timed out'));
+                }
+            }, 3000);
+        });
+    }
+
+    isCssOnlyAutoApplyEnabled() {
+        return this.swConfig.cssOnlyAutoApply !== false;
+    }
+
+    isCssOnlyUpdate(files) {
+        if (!Array.isArray(files) || files.length === 0) {
+            return false;
+        }
+        return files.every((file) => isCssStaticFilePath(normalizeStaticFilePath(file.url)));
+    }
+
+    hasScriptUpdate(files) {
+        if (!Array.isArray(files) || files.length === 0) {
+            return false;
+        }
+        return files.some((file) => isScriptStaticFilePath(normalizeStaticFilePath(file.url)));
+    }
+
+    isApplySafeUpdate(files) {
+        if (!Array.isArray(files) || files.length === 0) {
+            return false;
+        }
+        return files.every((file) => isApplySafeStaticFilePath(normalizeStaticFilePath(file.url)));
+    }
+
+    classifyStaticCacheUpdate(files) {
+        if (!Array.isArray(files) || files.length === 0) {
+            return 'restart';
+        }
+        if (this.hasScriptUpdate(files)) {
+            return 'restart';
+        }
+        if (this.isCssOnlyUpdate(files)) {
+            return 'css-only';
+        }
+        if (this.isApplySafeUpdate(files)) {
+            return 'apply-safe';
+        }
+        return 'restart';
+    }
+
+    _resolveUpdatedFilesFromCacheComplete(data) {
+        if (Array.isArray(data.updatedFiles) && data.updatedFiles.length > 0) {
+            return data.updatedFiles;
+        }
+        const fromFiles = Array.isArray(data.files) ? data.files : [];
+        if (fromFiles.length > 0 && fromFiles[0] && fromFiles[0].url) {
+            return fromFiles;
+        }
+        return [];
+    }
+
+    refreshStaticStylesheet(pathname, hash) {
+        const nextUrl = buildShaBustUrl(pathname, hash);
+        document.querySelectorAll('link[rel="stylesheet"]').forEach((link) => {
+            const href = link.getAttribute('href');
+            if (!href || !pathnameMatchesAssetUrl(pathname, href)) {
+                return;
+            }
+            link.href = nextUrl;
+        });
+    }
+
+    bumpStaticAssetReferences(pathname, hash) {
+        const nextUrl = buildShaBustUrl(pathname, hash);
+        document.querySelectorAll(`link[href*="${pathname}"], script[src*="${pathname}"]`).forEach((el) => {
+            const attr = el.tagName === 'SCRIPT' ? 'src' : 'href';
+            const val = el.getAttribute(attr);
+            if (!val || !pathnameMatchesAssetUrl(pathname, val)) {
+                return;
+            }
+            el.setAttribute(attr, nextUrl);
+        });
+    }
+
+    async applyStaticCacheUpdate(files, options = {}) {
+        const list = Array.isArray(files) && files.length > 0 ? files : this.pendingApplyFiles;
+        if (!Array.isArray(list) || list.length === 0) {
+            return;
+        }
+
+        const workspaceUpdates = [];
+        const cssUpdates = [];
+        const assetUpdates = [];
+
+        for (const file of list) {
+            const pathname = normalizeStaticFilePath(file.url);
+            if (pathname.endsWith('/css/workspaces.css')) {
+                workspaceUpdates.push(file.hash);
+            } else if (isCssStaticFilePath(pathname)) {
+                cssUpdates.push({ pathname, hash: file.hash });
+            } else if (isApplySafeStaticFilePath(pathname)) {
+                assetUpdates.push({ pathname, hash: file.hash });
+            }
+        }
+
+        await new Promise((resolve) => {
+            requestAnimationFrame(() => {
+                cssUpdates.forEach((entry) => {
+                    this.refreshStaticStylesheet(entry.pathname, entry.hash);
+                });
+                assetUpdates.forEach((entry) => {
+                    this.bumpStaticAssetReferences(entry.pathname, entry.hash);
+                });
+                resolve();
+            });
+        });
+
+        for (const hash of workspaceUpdates) {
+            // refreshWorkspaceStylesheet: public/scripts/comp/workspaceUtils.js
+            await refreshWorkspaceStylesheet(hash);
+            this.lastAppliedWorkspaceCssHash = hash || this.lastAppliedWorkspaceCssHash;
+        }
+
+        // switchWorkspaceTheme: public/scripts/comp/workspaceUtils.js
+        switchWorkspaceTheme(activeWorkspace);
+
+        this.pendingApplyFiles = null;
+        this.pendingUpdateKind = 'restart';
+        this.resetPendingUpdateFuse();
+        this.hideUpdateToast();
+
+        if (this._isDesktopTrayMode()) {
+            this._hideServiceWorkerTrayPopup();
+        }
+
+        if (!options.silent && typeof showGlassToast === 'function') {
+            showGlassToast(
+                'success',
+                'Updates Applied',
+                'Styles and assets refreshed without restarting.',
+                false,
+                3000,
+                '<i class="fas fa-check-circle"></i>'
+            );
+        }
+    }
+
+    _processStaticCacheComplete(data) {
+        const updatedFiles = this._resolveUpdatedFilesFromCacheComplete(data);
+        const filesCount = updatedFiles.length > 0
+            ? updatedFiles.length
+            : (data.total > 0 ? data.total : 0);
+
+        if (filesCount === 0) {
+            console.log('Download completed but no files were updated');
+            this.hideUpdateToast();
+            return;
+        }
+
+        const silent = data.silent === true;
+        const updateKind = this.classifyStaticCacheUpdate(updatedFiles);
+        this.pendingUpdateKind = updateKind;
+        const canApplyWithoutRestart = updateKind === 'css-only' || updateKind === 'apply-safe';
+        this.pendingApplyFiles = canApplyWithoutRestart ? updatedFiles.slice() : null;
+
+        console.log('Static cache update classified:', updateKind, updatedFiles);
+
+        if (canApplyWithoutRestart) {
+            if (silent && this.isCssOnlyAutoApplyEnabled()) {
+                this.applyStaticCacheUpdate(updatedFiles, { silent: true });
+                return;
+            }
+            this.tripPendingUpdateFuse();
+            this.trayPopup.dismissedUntilComplete = false;
+            this.trayPopup.filesTotal = filesCount;
+            if (this.initUpdateModalActive) {
+                return;
+            }
+            setTimeout(() => {
+                this.showUpdateCompleteToast('apply');
+            }, 1000);
+            return;
+        }
+
+        this.tripPendingUpdateFuse();
+        this.trayPopup.dismissedUntilComplete = false;
+        this.trayPopup.filesTotal = filesCount;
+        if (this.initUpdateModalActive) {
+            return;
+        }
+        setTimeout(() => {
+            this.showUpdateCompleteToast('restart');
+        }, 1000);
+    }
+
+    /**
+     * Silently cache specific static files; resolves when SW finishes.
+     * public/scripts/websocket.js (workspace_css_updated)
+     */
+    async cacheStaticFilesSilent(files) {
+        if (!this.swRegistration || !this.swRegistration.active) {
+            return { cached: 0, skipped: true };
+        }
+        if (!Array.isArray(files) || files.length === 0) {
+            return { cached: 0, skipped: true };
+        }
+
+        const filesToUpdate = await this.getFilesNeedingUpdate(files);
+        if (filesToUpdate.length === 0) {
+            return { cached: 0, skipped: false };
+        }
+
+        return new Promise((resolve) => {
+            let settled = false;
+            const finish = (result) => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                navigator.serviceWorker.removeEventListener('message', handler);
+                resolve(result);
+            };
+
+            const handler = (event) => {
+                if (event.data.type === 'STATIC_CACHE_COMPLETE') {
+                    const updatedFiles = this._resolveUpdatedFilesFromCacheComplete(event.data);
+                    finish({ cached: updatedFiles.length, skipped: false });
+                } else if (event.data.type === 'STATIC_CACHE_ERROR') {
+                    finish({ cached: 0, skipped: false, error: event.data.error });
+                }
+            };
+
+            navigator.serviceWorker.addEventListener('message', handler);
+            this.swRegistration.active.postMessage({
+                type: 'CACHE_STATIC_FILES',
+                files: filesToUpdate,
+                silent: true
+            });
+
+            setTimeout(() => finish({ cached: 0, skipped: false, timedOut: true }), 60000);
+        });
     }
     
     showCheckingForUpdatesToast() {
@@ -937,9 +1263,8 @@ class ServiceWorkerManager {
 
     // Methods to update the existing checking toast instead of replacing it
     showUpdateToastFromChecking(files) {
-        // Convert checking toast to download progress toast
+        // Convert checking toast to download progress toast (isUpdating set on STATIC_CACHE_STARTED)
         this.updateAvailable = true;
-        this.isUpdating = true;
         this.updateProgress = 0;
 
         // Desktop mode: tray popup
@@ -1057,7 +1382,6 @@ class ServiceWorkerManager {
         }
 
         this.updateAvailable = true;
-        this.isUpdating = true;
         this.updateProgress = 0;
 
         // Desktop mode: tray popup
@@ -1369,23 +1693,13 @@ class ServiceWorkerManager {
                 
                 console.log('Download completed:', event.data);
                 
-                // Only show completion toast if files were actually downloaded
-                // Use files.length as fallback if total is 0 (handles race condition)
                 const filesCount = event.data.total > 0 ? event.data.total : (event.data.files ? event.data.files.length : 0);
                 if (filesCount > 0) {
-                    this.tripPendingUpdateFuse();
-                    this.trayPopup.dismissedUntilComplete = false;
-                    this.trayPopup.filesTotal = filesCount;
-                    // Pre-startup init flow shows windowsUpdateModal and waits for user choice.
                     if (this.initUpdateModalActive) {
                         break;
                     }
-                    // Show completion message with restart button
-                    setTimeout(() => {
-                        this.showUpdateCompleteToast();
-                    }, 1000);
+                    this._processStaticCacheComplete(event.data);
                 } else {
-                    // No files downloaded - just clear the update state silently
                     console.log('Download completed but no files were downloaded');
                     this.hideUpdateToast();
                 }
@@ -2161,11 +2475,12 @@ class ServiceWorkerManager {
                 return;
             }
             
-            // Check if we're already updating
+            // Clear stale isUpdating unless SW is actively downloading
             if (this.isUpdating) {
-                console.warn('Update already in progress, skipping');
-                finishInitDownload({ success: false, reason: 'Update already in progress' });
-                return;
+                const liveState = await this.checkDownloadState();
+                if (!liveState || !liveState.isDownloading) {
+                    this.isUpdating = false;
+                }
             }
 
             let updatesDownloaded = 0;
@@ -2218,11 +2533,22 @@ class ServiceWorkerManager {
                         // Check files.length as fallback if total was 0 due to race condition
                         const filesWereDownloaded = updatesDownloaded > 0 || (event.data.files && event.data.files.length > 0);
                         if (!hasErrors && filesWereDownloaded) {
-                            // Use actual files count if we have it
                             const actualFilesCount = event.data.files ? event.data.files.length : updatesDownloaded;
                             updatesDownloaded = actualFilesCount;
+                            const updatedFiles = this._resolveUpdatedFilesFromCacheComplete(event.data);
+                            const updateKind = this.classifyStaticCacheUpdate(updatedFiles);
+                            const canApplyWithoutRestart = (updateKind === 'css-only' || updateKind === 'apply-safe')
+                                && this.isCssOnlyAutoApplyEnabled();
 
-                            if (useInitModal) {
+                            if (canApplyWithoutRestart) {
+                                this.applyStaticCacheUpdate(updatedFiles).then(() => {
+                                    finishInitDownload({
+                                        success: true,
+                                        filesDownloaded: actualFilesCount,
+                                        userChoice: 'apply'
+                                    });
+                                });
+                            } else if (useInitModal) {
                                 this._showInitUpdateRestartPrompt(
                                     `Updates downloaded (${actualFilesCount} files). Restart to apply changes.`
                                 );
@@ -2234,7 +2560,6 @@ class ServiceWorkerManager {
                                     });
                                 });
                             } else {
-                                // Tray completion popup prompts restart/later; continue init regardless.
                                 finishInitDownload({ success: true, filesDownloaded: updatesDownloaded, userChoice: 'later' });
                             }
                         } else {
@@ -2262,9 +2587,7 @@ class ServiceWorkerManager {
                 this.showUpdateToast(files);
             }
 
-            this.isUpdating = true;
-
-            // Start caching
+            // Start caching (isUpdating set on STATIC_CACHE_STARTED)
             this.swRegistration.active.postMessage({
                 type: 'CACHE_STATIC_FILES',
                 files: files
@@ -2380,8 +2703,45 @@ class ServiceWorkerManager {
         }
     }
     
-    // Show update complete toast with restart button
-    showUpdateCompleteToast() {
+    // Show update complete toast with restart or apply button
+    showUpdateCompleteToast(mode = 'restart') {
+        if (mode === 'apply') {
+            if (this._isDesktopTrayMode()) {
+                const filesTotal = this.trayPopup.filesTotal || this.lastUpdateFilesTotal || 0;
+                this._showServiceWorkerTrayPopup('complete', {
+                    filesTotal,
+                    progress: 100,
+                    message: 'Updates ready — apply without restart'
+                });
+                this.updateToastId = 'service-worker-tray-popup';
+            } else if (this.updateToastId && typeof updateGlassToastButtons === 'function') {
+                const applyButton = {
+                    text: 'Apply Now',
+                    type: 'primary',
+                    onClick: () => {
+                        this.applyStaticCacheUpdate(this.pendingApplyFiles);
+                    },
+                    closeOnClick: true
+                };
+                const laterButton = {
+                    text: 'Later',
+                    type: 'secondary',
+                    onClick: () => {},
+                    closeOnClick: true
+                };
+                updateGlassToastButtons(this.updateToastId, [applyButton, laterButton]);
+                if (typeof updateGlassToastComplete === 'function') {
+                    updateGlassToastComplete(this.updateToastId, {
+                        type: 'success',
+                        title: 'Updates Complete',
+                        message: 'CSS and assets can be applied without restarting.',
+                        customIcon: '<i class="fas fa-check-circle"></i>'
+                    });
+                }
+            }
+            return;
+        }
+
         // Desktop mode: tray popup completion prompt
         if (this._isDesktopTrayMode()) {
             const filesTotal = this.trayPopup.filesTotal || this.lastUpdateFilesTotal || 0;

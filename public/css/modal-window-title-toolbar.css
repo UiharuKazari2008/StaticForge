@@ -1,0 +1,360 @@
+/* Modal window title bar toolbar chrome — shared modal shell */
+.modal-window-title-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    height: 48px;
+    min-height: 48px;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    padding: var(--spacing-sm) 0;
+    box-sizing: border-box;
+    gap: var(--spacing-xs);
+    flex-shrink: 0;
+    overflow-x: auto;
+    overflow-y: visible;
+    scrollbar-width: thin;
+    line-height: 1;
+    cursor: auto;
+    user-select: text;
+}
+
+.modal-window-title-toolbar > .button-group,
+.modal-window-title-toolbar > .custom-dropdown,
+.modal-window-title-toolbar > [class^="btn-"],
+.modal-window-title-toolbar > .form-control,
+.modal-window-title-toolbar > input.form-control:not([type="hidden"]) {
+    flex-shrink: 0;
+}
+
+.modal-window-title-toolbar .custom-dropdown {
+    width: auto;
+}
+
+.modal-window-title-toolbar .custom-dropdown [class^="btn-"] {
+    width: auto;
+    min-width: 2.25rem;
+    min-height: 32px;
+    padding: 0.35em 0.55em;
+    background: var(--glass-layer-dark-4);
+    border: 1px solid var(--glass-border-3);
+    color: var(--text-accent-tinted);
+    box-shadow: var(--glass-shadow-2), inset 0 0 12px var(--glass-inset-bg-4);
+}
+
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) [class^="btn-"] {
+    min-width: 2.25rem;
+    padding: 0.35em 0.55em;
+}
+
+/* Let the address bar (direct child of the toolbar) participate in flex growth like the old search group did.
+   This removes the "empty space at the end of the toolbar" after the refresh button / before the sidebar toggle. */
+.modal-window-title-toolbar > .wiki-address-bar {
+    flex: 1 1 auto;
+    min-width: 180px;
+    align-self: center;
+}
+
+/* Make sure the final sidebar toggle doesn't get pushed away; the address bar now claims the middle space */
+.modal-window-title-toolbar > #tagWikiSearchResultsSidebarToggleBtn {
+    flex-shrink: 0;
+    margin-left: 4px; /* small breathing room after the address bar */
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) {
+    flex: 1 1 auto;
+    min-width: 0;
+    align-self: center;
+    height: 32px;
+    min-height: 32px;
+    overflow: visible;
+}
+
+.modal-window-title-toolbar .button-group,
+.modal-window-title-toolbar [class^="btn-"] {
+    user-select: none;
+}
+
+.modal-window-title-toolbar .button-group:not(:has(.form-control, input:not([type="hidden"]))):not(:has(> .toolbar-input-segment)) {
+    box-shadow: none;
+}
+
+.modal-window-title-toolbar .form-control,
+.modal-window-title-toolbar input.form-control,
+.modal-window-title-toolbar>.button-group:has(.form-control, input:not([type="hidden"])),
+.modal-window-title-toolbar [class^="btn-"],
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) [class^="btn-"],
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .toolbar-input-segment,
+.modal-window-title-toolbar .wiki-address-bar,
+.modal-window-title-toolbar .wiki-address-bar .address-display-layer,
+.modal-window-title-toolbar .wiki-address-bar .address-edit-layer,
+.modal-window-title-toolbar .custom-dropdown,
+.modal-window-title-toolbar .custom-dropdown [class^="btn-"],
+.modal-window-title-toolbar .gallery-toggle-group,
+.modal-window-title-toolbar .gallery-toggle-btn,
+.modal-window-title-toolbar .websocket-ticker,
+.modal-window-title-toolbar .log-viewer-toolbar-right [class^="btn-"] {
+    transition: none;
+}
+
+.modal-window-title-toolbar>[class^="btn-"]:not(.btn-primary):not(.btn-danger):not(.btn-toggle),
+.modal-window-title-toolbar>.button-group:not(:has(.form-control, input:not([type="hidden"]))) [class^="btn-"]:not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment) {
+    background: var(--glass-layer-dark-4);
+    border: 1px solid var(--glass-border-3);
+    color: var(--text-accent-tinted);
+    box-shadow: var(--glass-shadow-2), inset 0 0 12px var(--glass-inset-bg-4);
+}
+
+.modal-window-title-toolbar>.form-control,
+.modal-window-title-toolbar>input.form-control:not([type="hidden"]) {
+    background: var(--glass-layer-dark-4);
+    border: 1px solid var(--glass-border-3);
+    color: var(--text-accent-tinted);
+    box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
+    min-height: 32px;
+    height: 32px;
+    padding-block: 0;
+    line-height: 1;
+    box-sizing: border-box;
+    font-family: inherit;
+    font-size: 0.8125rem;
+}
+
+.modal-window-title-toolbar .form-control::placeholder,
+.modal-window-title-toolbar input.form-control::placeholder {
+    color: var(--text-accent-tinted);
+    opacity: 0.55;
+}
+
+.modal-window-title-toolbar>.form-control:disabled,
+.modal-window-title-toolbar>input.form-control:disabled {
+    background: var(--glass-layer-dark-2);
+    border-color: var(--glass-border-2);
+    color: var(--text-muted);
+    box-shadow: inset var(--glass-shadow-1);
+}
+
+.modal-window-title-toolbar>[class^="btn-"]:disabled:not(.btn-primary):not(.btn-danger):not(.btn-toggle),
+.modal-window-title-toolbar>.button-group:not(:has(.form-control, input:not([type="hidden"]))) [class^="btn-"]:disabled:not(.btn-primary):not(.btn-danger):not(.btn-toggle) {
+    background: var(--glass-layer-dark-2);
+    border-color: var(--glass-border-2);
+    color: var(--text-muted);
+    box-shadow: inset var(--glass-shadow-1);
+}
+
+.modal-window-title-toolbar > .btn-primary,
+.modal-window-title-toolbar > .btn-danger,
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-primary,
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-danger {
+    min-width: 2.25rem;
+    min-height: 32px;
+    height: 32px;
+    padding: 0.35em 0.55em;
+    line-height: 1;
+    box-sizing: border-box;
+    font-size: inherit;
+}
+
+.modal-window-title-toolbar > .btn-primary,
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-primary {
+    background: var(--primary-glass-color);
+    border: 1px solid var(--primary-glass-border);
+    color: var(--text-accent-tinted);
+    box-shadow: var(--glass-shadow-2), inset 0 0 12px var(--glass-inset-bg-4);
+    font-weight: 700;
+    font-variation-settings: "wght" 700;
+}
+
+.modal-window-title-toolbar > .btn-primary:disabled,
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-primary:disabled {
+    opacity: 0.5;
+    background: var(--glass-layer-dark-2);
+    border-color: var(--glass-border-2);
+    color: var(--text-muted);
+    box-shadow: inset var(--glass-shadow-1);
+    font-weight: 600;
+    font-variation-settings: "wght" 600;
+}
+
+.modal-window-title-toolbar > .btn-danger,
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-danger {
+    background: var(--danger-glass-color);
+    border: 1px solid var(--danger-glass-border);
+    color: hsl(0 100% 85%);
+    box-shadow: var(--glass-shadow-2), inset 0 0 12px var(--glass-inset-bg-4);
+}
+
+.modal-window-title-toolbar > .btn-danger:disabled,
+.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-danger:disabled {
+    opacity: 0.6;
+    background: var(--glass-layer-dark-2);
+    border-color: var(--glass-border-2);
+    color: var(--text-muted);
+    box-shadow: inset var(--glass-shadow-1);
+}
+
+.modal-window-title-toolbar>.button-group:has(.form-control, input:not([type="hidden"])) {
+    background: var(--glass-layer-dark-4);
+    border: 1px solid var(--glass-border-3);
+    box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
+    overflow: visible;
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:not([type="hidden"]),
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))> [class^="btn-"],
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .custom-dropdown [class^="btn-"] {
+    background: transparent;
+    box-shadow: none;
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control,
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:not([type="hidden"]) {
+    border-radius: 0;
+    border-top: none;
+    border-bottom: none;
+    border-left: 1px solid transparent;
+    border-right: 1px solid transparent;
+    color: var(--text-accent-tinted);
+    flex: 1;
+    min-width: 0;
+    min-height: 32px;
+    height: 32px;
+    padding-block: 0;
+    line-height: 1;
+    box-sizing: border-box;
+    font-family: inherit;
+    font-size: 0.8125rem;
+}
+
+.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))> [class^="btn-"] {
+    min-height: 32px;
+    height: 32px;
+    padding-block: 0;
+    line-height: 1;
+    box-sizing: border-box;
+    border-top: none;
+    border-bottom: none;
+    border-left: 1px solid transparent;
+    border-right: 1px solid transparent;
+    color: var(--text-accent-tinted);
+}
+
+.modal-window-controls {
+    display: flex;
+    flex-direction: row;
+    position: absolute;
+    right: calc(var(--spacing-md) + 1px);
+    top: -1px;
+    gap: 0;
+    padding: 0;
+    border: 1px solid var(--glass-border-5);
+    border-bottom-left-radius: calc(var(--border-radius-md) + 1px);
+    border-bottom-right-radius: calc(var(--border-radius-md) + 1px);
+    border-top-width: 0px;
+    z-index: var(--z-layer-10);
+}
+
+.modal-window-controls .indicator {
+    min-width: 38px;
+}
+
+.modal-window-title,
+.modal-window-title-main,
+.modal-window-title-main span,
+.modal-window-controls,
+.modal-window-controls button,
+.modal-window-controls button i {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: geometricPrecision;
+}
+
+.modal-window-title {
+    display: flex;
+    position: absolute;
+    top: -1px;
+    left: -1px;
+    min-height: 28px;
+    width: calc(100% + 2px);
+    flex-direction: column;
+    gap: 0;
+    padding: 1px var(--spacing-md) 0px var(--spacing-md);
+    font-size: 0.75em;
+    align-items: flex-start;
+    justify-content: center;
+    border-bottom: 1px solid var(--glass-border-5);
+    border-radius: var(--border-radius-lg) var(--border-radius-lg) 0 0;
+    background: linear-gradient(180deg, hsl(0deg 0% 100% / 25%), hsl(0deg 0% 100% / 28%) 50%, hsl(0deg 0% 75% / 25%) 50.5%, hsl(0deg 0% 100% / 25%));
+    z-index: var(--z-layer-9);
+    cursor: grab;
+    user-select: none;
+    box-shadow: inset 0px -2px 10px var(--hover-show-active-border);
+}
+
+.modal.toolbar-visible .modal-window-title {
+    background: linear-gradient(180deg, hsl(0deg 0% 100% / 25%), hsl(0deg 0% 100% / 28%) 16.9%, hsl(0deg 0% 75% / 25%) 17%, hsl(0deg 0% 100% / 25%), hsl(0deg 0% 100% / 30%));
+    overflow: visible;
+}
+
+.modal:not(.active-window) .modal-window-title {
+    box-shadow: inset 0px -2px 10px transparent;
+}
+
+.modal-window-title.dragging {
+    cursor: grabbing;
+}
+
+.modal-window-title-main {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    color: var(--text-primary);
+    gap: 6px;
+    flex: 1;
+    height: 26px;
+    min-height: 26px;
+    min-width: 0;
+    padding-right: 150px;
+    -webkit-filter: drop-shadow(0px 0px 5px rgba(0, 0, 0, 0.4));
+    filter: drop-shadow(0px 0px 5px rgba(0, 0, 0, 0.4));
+    text-shadow: -1px -1px 0 rgba(0, 0, 0, 0.45),
+        1px -1px 0 rgba(0, 0, 0, 0.45),
+        -1px 1px 0 rgba(0, 0, 0, 0.45),
+        1px 1px 0 rgba(0, 0, 0, 0.45),
+        0 -1px 0 rgba(0, 0, 0, 0.45),
+        0 1px 0 rgba(0, 0, 0, 0.45),
+        -1px 0 0 rgba(0, 0, 0, 0.45),
+        1px 0 0 rgba(0, 0, 0, 0.45);
+}
+
+.modal-window-title-main span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+    font-variation-settings: "wght" 450;
+    font-weight: 450;
+}
+
+.modal-window-title-main .icon-fa,
+.modal-window-title-main i:first-child {
+    font-size: 1.25em;
+}
+
+.modal-window-title-main .icon-image {
+    width: 1.5em;
+    height: 1.5em;
+    object-fit: contain;
+    flex-shrink: 0;
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+    image-rendering: pixelated;
+}

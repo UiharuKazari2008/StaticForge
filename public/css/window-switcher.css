@@ -1,0 +1,141 @@
+/* Window switcher overlay — scripts/comp/windowSwitcher.js */
+/* Window Switcher Overlay - Vista Style */
+.window-switcher-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out;
+    pointer-events: none;
+    z-index: var(--z-critical);
+}
+
+.window-switcher-overlay.visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+.window-switcher-content {
+    background:
+        linear-gradient(to bottom,
+            rgba(255, 255, 255, 0.18) 0%,
+            rgba(255, 255, 255, 0.1) 45%,
+            rgba(0, 0, 0, 0.15) 50%,
+            rgba(0, 0, 0, 0.2) 100%),
+        linear-gradient(to top,
+            color-mix(in srgb, var(--primary-glass-color) 75%, transparent) 0%,
+            color-mix(in srgb, var(--primary-glass-color) 65%, transparent) 50%,
+            color-mix(in srgb, var(--primary-glass-color) 70%, transparent) 100%);
+    -webkit-backdrop-filter: saturate(2.5) var(--glass-blur-4);
+    backdrop-filter: saturate(2.5) var(--glass-blur-4);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-top: 1px solid rgba(255, 255, 255, 0.22);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 24px 32px;
+    box-shadow:
+        var(--glass-shadow-4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.22),
+        inset 0 -1px 1px rgba(0, 0, 0, 0.2);
+    min-width: 400px;
+    max-width: 600px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+}
+
+.window-switcher-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-align: center;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    margin-bottom: 8px;
+}
+
+.window-switcher-icons {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.window-switcher-icon {
+    width: 64px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    transition: var(--transition-tray-menu);
+    position: relative;
+    background: var(--glass-layer-2);
+    border: 1px solid var(--glass-border-2);
+}
+
+.window-switcher-icon i {
+    font-size: 2rem;
+    color: var(--text-primary);
+    -webkit-filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+}
+
+.window-switcher-icon .icon-image {
+    width: 2rem;
+    height: 2rem;
+    object-fit: contain;
+    display: inline-block !important;
+    /* Always show image icon if available */
+    -webkit-filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+}
+
+/* Hide Font Awesome icon in window switcher when image icon is present */
+.window-switcher-icon:has(.icon-image) .icon-fa,
+.window-switcher-icon:has(.icon-image) i.icon-fa {
+    display: none !important;
+}
+
+.window-switcher-icon.selected {
+    background:
+        linear-gradient(to bottom,
+            rgba(255, 255, 255, 0.22) 0%,
+            rgba(255, 255, 255, 0.12) 45%,
+            rgba(0, 0, 0, 0.2) 50%,
+            rgba(0, 0, 0, 0.3) 100%),
+        linear-gradient(to top,
+            color-mix(in srgb, var(--primary-glass-color) 85%, transparent) 0%,
+            color-mix(in srgb, var(--primary-glass-color) 75%, transparent) 50%,
+            color-mix(in srgb, var(--primary-glass-color) 65%, transparent) 100%);
+    border: 3px solid var(--primary-glass-border);
+    box-shadow:
+        0 0 12px color-mix(in srgb, var(--primary-glass-color) 50%, transparent),
+        inset 0 1px 0 rgba(255, 255, 255, 0.25),
+        inset 0 -1px 1px rgba(0, 0, 0, 0.15);
+    transform: scale(1.1);
+}
+
+.window-switcher-icon.selected i,
+.window-switcher-icon.selected .icon-fa {
+    color: var(--text-primary);
+    -webkit-filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.4));
+    filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.4));
+}
+
+.window-switcher-icon.selected .icon-image {
+    -webkit-filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.4));
+    filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.4));
+    height: 38px;
+    width: 38px;
+}
+
+

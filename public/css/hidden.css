@@ -25,5 +25,5 @@ body:not(.desktop-mode) .desktop-only {
 }
 
 body.desktop-mode .singleapp-only {
-    display: none;
+    display: none !important;
 }

@@ -7,6 +7,14 @@ const MODAL_Z_ON_TOP_BASE = 2800; // Base z-index for on-top modals (matches --z
 const MODAL_Z_INCREMENT = 10; // Increment between modal layers
 let modalStack = []; // Array to track modal stack order
 
+// Bootstrap / connection overlays — never shown as taskbar window buttons
+const TASKBAR_SYSTEM_MODAL_IDS = new Set([
+    'windowsStartupModal',
+    'windowsUpdateModal',
+    'connectionDialModal',
+    'desktopPreStartupModal'
+]);
+
 // Window position caching
 let windowPositionSaveTimer = null;
 let windowPositionSaveMaxTimer = null;
@@ -14,8 +22,8 @@ const WINDOW_POSITION_SAVE_DEBOUNCE = 10000; // Shared with desktopShortcuts.sav
 const WINDOW_POSITION_SAVE_MAX_WAIT = 60000; // 60 seconds max wait (aligned with server maxWaitMs)
 const VIEWPORT_RESIZE_POSITION_DELAY_MS = 500; // Wait for resize to settle before clamp/save
 
-// Global window positions (not per-workspace)
-let globalWindowPositions = {}; // windowId -> { topLeft: { index, x, y }, bottomRight: { index, x, y } }
+// Global window positions (not per-workspace) — var so desktopShortcuts.js / websocket.js share one binding
+var globalWindowPositions = {}; // windowId -> { topLeft: { index, x, y }, bottomRight: { index, x, y } }
 let lastSentWindowPositionsHash = null;
 let lastCommittedWindowPositions = null;
 let viewportResizePositionTimer = null;
@@ -50,6 +58,8 @@ document.addEventListener('visibilitychange', () => {
 const MODAL_DESKTOP_TOP_BIAS_PX = 18;
 // Minimum on-screen strip when dragging partially off-screen (matches title bar band)
 const MODAL_MIN_VISIBLE_PX = 27;
+// On restore/layout sync: snap up only when more than this fraction hangs below the work area
+const MODAL_RESTORE_MAX_BOTTOM_OVERFLOW_RATIO = 0.1;
 // Inset from work-area edges when opening/restoring/clamping window position
 const MODAL_EDGE_MARGIN_PX = 0;
 // WCO / Android: nudge maximized bounds up slightly so the window meets the caption (few px gap).
@@ -78,6 +88,10 @@ function getModalWorkAreaBounds() {
     };
 }
 
+function getModalDragMaxTopEdge(minVisible = MODAL_MIN_VISIBLE_PX) {
+    return getModalWorkAreaBounds().bottom - minVisible;
+}
+
 function getModalWorkAreaInnerBounds() {
     const workArea = getModalWorkAreaBounds();
     return {
@@ -90,7 +104,7 @@ function getModalWorkAreaInnerBounds() {
     };
 }
 
-function clampModalViewportRect(left, top, width, height, edgeMarginPx) {
+function clampModalViewportRect(left, top, width, height, edgeMarginPx, options = {}) {
     const workArea = getModalWorkAreaBounds();
     const margin = edgeMarginPx != null ? edgeMarginPx : MODAL_EDGE_MARGIN_PX;
     const bounds = {
@@ -121,7 +135,13 @@ function clampModalViewportRect(left, top, width, height, edgeMarginPx) {
         if (newTop < bounds.top) {
             newTop = bounds.top;
         }
-        if (newTop + height > bounds.bottom) {
+        if (options.allowPartialBottomOverflow) {
+            const overflowBelow = (newTop + height) - bounds.bottom;
+            const maxOverflow = height * MODAL_RESTORE_MAX_BOTTOM_OVERFLOW_RATIO;
+            if (overflowBelow > maxOverflow) {
+                newTop = bounds.bottom - height;
+            }
+        } else if (newTop + height > bounds.bottom) {
             newTop = bounds.bottom - height;
         }
     }
@@ -340,6 +360,20 @@ function commitWindowPositionsSnapshot() {
     lastCommittedWindowPositions = JSON.parse(JSON.stringify(globalWindowPositions || {}));
 }
 
+function replaceGlobalWindowPositions(next) {
+    const source = next || {};
+    Object.keys(globalWindowPositions).forEach((key) => {
+        delete globalWindowPositions[key];
+    });
+    Object.assign(globalWindowPositions, source);
+}
+
+function clearGlobalWindowPositions() {
+    Object.keys(globalWindowPositions).forEach((key) => {
+        delete globalWindowPositions[key];
+    });
+}
+
 function cancelPendingWindowPositionUpdates(options = {}) {
     const { revert = true } = options;
 
@@ -370,7 +404,7 @@ function cancelPendingWindowPositionUpdates(options = {}) {
     }
 
     if (revert && lastCommittedWindowPositions) {
-        globalWindowPositions = JSON.parse(JSON.stringify(lastCommittedWindowPositions));
+        replaceGlobalWindowPositions(lastCommittedWindowPositions);
     }
 }
 
@@ -384,9 +418,10 @@ function clampModalEdgesWithinWorkAreaSync(modal, edgeMarginPx) {
         return false;
     }
 
-    const clamped = clampModalViewportRect(rect.left, rect.top, rect.width, rect.height, edgeMarginPx);
+    const restoreClamp = { allowPartialBottomOverflow: true };
+    const clamped = clampModalViewportRect(rect.left, rect.top, rect.width, rect.height, edgeMarginPx, restoreClamp);
     if (Math.abs(clamped.left - rect.left) > 0.5 || Math.abs(clamped.top - rect.top) > 0.5) {
-        setModalOffsetsFromViewportTopLeft(modal, clamped.left, clamped.top);
+        setModalOffsetsFromViewportTopLeft(modal, clamped.left, clamped.top, restoreClamp);
         modal.setAttribute('data-modal-moved', 'true');
         return true;
     }
@@ -574,6 +609,18 @@ function prepareAppModeWindowLayout() {
 function applyDesktopWindowPositionsAfterLoad() {
     ensureGalleryVisibleForDesktopEntry();
     restoreOpenDesktopWindowPositions();
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            if (typeof desktopShortcuts !== 'undefined' && desktopShortcuts) {
+                desktopShortcuts._layoutHydrationComplete = true;
+                desktopShortcuts.pendingChanges = false;
+                desktopShortcuts.pendingWindowPositionSave = false;
+                if (typeof desktopShortcuts.hideSaveTrayIndicator === 'function') {
+                    desktopShortcuts.hideSaveTrayIndicator();
+                }
+            }
+        });
+    });
 }
 
 function ensureGalleryVisibleForDesktopEntry() {
@@ -606,6 +653,9 @@ function restoreOpenDesktopWindowPositions() {
     }
 
     candidates.forEach((modal) => {
+        if (TASKBAR_SYSTEM_MODAL_IDS.has(modal.id)) {
+            return;
+        }
         if (modal.classList.contains('hidden') || modal.classList.contains('hidden-alt')) {
             return;
         }
@@ -1095,10 +1145,11 @@ function clampModalOffsetsForRect(offsetX, offsetY, width, height, options = {})
         if (topEdge < minTop) {
             topEdge = minTop;
         }
-        if (bottomEdge > workArea.bottom) {
-            bottomEdge = workArea.bottom;
-            topEdge = bottomEdge - height;
+        const maxTop = getModalDragMaxTopEdge(minVisible);
+        if (topEdge > maxTop) {
+            topEdge = maxTop;
         }
+        bottomEdge = topEdge + height;
         if (topEdge < workArea.top && bottomEdge > workArea.top) {
             topEdge = workArea.top;
         }
@@ -1161,8 +1212,11 @@ function clampModalOffsetsForTopAnchor(offsetX, offsetY, width, height, options 
     if (allowOffscreen) {
         if (topEdge < 0) {
             constrainedY = -trueInsetTop;
-        } else if (bottomEdge > workArea.bottom) {
-            constrainedY = workArea.bottom - height - trueInsetTop;
+        } else {
+            const maxTopEdge = getModalDragMaxTopEdge(minVisible);
+            if (topEdge > maxTopEdge) {
+                constrainedY = maxTopEdge - trueInsetTop;
+            }
         }
     } else if (height <= workArea.height) {
         if (topEdge < workArea.top + MODAL_EDGE_MARGIN_PX) {
@@ -1177,7 +1231,7 @@ function clampModalOffsetsForTopAnchor(offsetX, offsetY, width, height, options 
     return { offsetX: constrainedX, offsetY: constrainedY };
 }
 
-function setModalPositionFromViewportRect(modal, rect) {
+function setModalPositionFromViewportRect(modal, rect, options = {}) {
     if (!modal || !rect) {
         return;
     }
@@ -1189,7 +1243,8 @@ function setModalPositionFromViewportRect(modal, rect) {
     const maxHeight = modal.dataset.windowMaxHeight ? parseInt(modal.dataset.windowMaxHeight, 10) : Infinity;
     const width = roundCssPixel(Math.max(minWidth, Math.min(rect.width, maxWidth)));
     const height = roundCssPixel(Math.max(minHeight, Math.min(rect.height, maxHeight)));
-    const clamped = clampModalViewportRect(rect.left, rect.top, width, height);
+    const restoreClamp = options.allowPartialBottomOverflow ? { allowPartialBottomOverflow: true } : {};
+    const clamped = clampModalViewportRect(rect.left, rect.top, width, height, null, restoreClamp);
     const left = roundToDevicePixel(clamped.left);
     const top = roundToDevicePixel(clamped.top);
 
@@ -1203,12 +1258,16 @@ function setModalPositionFromViewportRect(modal, rect) {
     let offsetX = centerX - window.innerWidth / 2;
     let offsetY = centerY - window.innerHeight / 2 - (0.5 * trueInsetTop) + getDesktopModalTopBias();
 
-    const offsetClamped = clampModalOffsetsForRect(offsetX, offsetY, width, height);
-    setModalOffsetPx(modal, offsetClamped.offsetX, offsetClamped.offsetY, { snap: true, settle: true });
+    if (options.allowPartialBottomOverflow) {
+        setModalOffsetPx(modal, offsetX, offsetY, { snap: true, settle: true });
+    } else {
+        const offsetClamped = clampModalOffsetsForRect(offsetX, offsetY, width, height);
+        setModalOffsetPx(modal, offsetClamped.offsetX, offsetClamped.offsetY, { snap: true, settle: true });
+    }
     modal.setAttribute('data-modal-moved', 'true');
 }
 
-function setModalOffsetsFromViewportTopLeft(modal, left, top) {
+function setModalOffsetsFromViewportTopLeft(modal, left, top, options = {}) {
     if (!modal) {
         return;
     }
@@ -1218,7 +1277,8 @@ function setModalOffsetsFromViewportTopLeft(modal, left, top) {
     const layout = getModalLayoutDimensions(modal);
     const width = layout.width;
     const height = layout.height;
-    const clamped = clampModalViewportRect(left, top, width, height);
+    const restoreClamp = options.allowPartialBottomOverflow ? { allowPartialBottomOverflow: true } : {};
+    const clamped = clampModalViewportRect(left, top, width, height, null, restoreClamp);
     left = clamped.left;
     top = clamped.top;
     const trueInsetTop = getModalTrueInsetTop();
@@ -1227,8 +1287,12 @@ function setModalOffsetsFromViewportTopLeft(modal, left, top) {
         const centerX = left + width / 2;
         let offsetX = centerX - window.innerWidth / 2;
         let offsetY = top - trueInsetTop;
-        const offsetClamped = clampModalOffsetsForTopAnchor(offsetX, offsetY, width, height);
-        setModalOffsetPx(modal, offsetClamped.offsetX, offsetClamped.offsetY, { snap: true, settle: true });
+        if (options.allowPartialBottomOverflow) {
+            setModalOffsetPx(modal, offsetX, offsetY, { snap: true, settle: true });
+        } else {
+            const offsetClamped = clampModalOffsetsForTopAnchor(offsetX, offsetY, width, height);
+            setModalOffsetPx(modal, offsetClamped.offsetX, offsetClamped.offsetY, { snap: true, settle: true });
+        }
         modal.setAttribute('data-modal-moved', 'true');
         return;
     }
@@ -1238,8 +1302,12 @@ function setModalOffsetsFromViewportTopLeft(modal, left, top) {
     let offsetX = centerX - window.innerWidth / 2;
     let offsetY = centerY - window.innerHeight / 2 - (0.5 * trueInsetTop) + getDesktopModalTopBias();
 
-    const offsetClamped = clampModalOffsetsForRect(offsetX, offsetY, width, height);
-    setModalOffsetPx(modal, offsetClamped.offsetX, offsetClamped.offsetY, { snap: true, settle: true });
+    if (options.allowPartialBottomOverflow) {
+        setModalOffsetPx(modal, offsetX, offsetY, { snap: true, settle: true });
+    } else {
+        const offsetClamped = clampModalOffsetsForRect(offsetX, offsetY, width, height);
+        setModalOffsetPx(modal, offsetClamped.offsetX, offsetClamped.offsetY, { snap: true, settle: true });
+    }
     modal.setAttribute('data-modal-moved', 'true');
 }
 
@@ -1381,6 +1449,22 @@ function isModalWithinViewportBounds(modal, minVisible = MODAL_MIN_VISIBLE_PX) {
     return visibleWidth >= minVisible && visibleHeight >= minVisible;
 }
 
+function getWindowPositionKey(modal) {
+    if (!modal) {
+        return null;
+    }
+
+    const isTransient = modal.classList.contains('transient');
+    if (isTransient && modal.dataset.windowIdentifier) {
+        return modal.dataset.windowIdentifier;
+    }
+    if (!isTransient) {
+        const modalType = getModalType(modal);
+        return modal.id || modalType;
+    }
+    return null;
+}
+
 function resetModalToViewportCenter(modal) {
     if (!modal) {
         return;
@@ -1406,6 +1490,31 @@ function resetModalToViewportCenter(modal) {
     modal.removeAttribute('data-modal-moved');
 }
 
+function resetModalWindowLayout(modal) {
+    if (!modal) {
+        return;
+    }
+
+    const windowKey = getWindowPositionKey(modal);
+    if (windowKey && globalWindowPositions[windowKey]) {
+        delete globalWindowPositions[windowKey];
+    }
+
+    if (isModalMaximized(modal)) {
+        restoreModalFromMaximize(modal);
+    }
+
+    clearModalPixelAnchor(modal);
+    modal.style.removeProperty('width');
+    modal.style.removeProperty('height');
+    modal.removeAttribute('data-window-position-restored');
+
+    applyModalDefaultWindowSize(modal);
+    resetModalToViewportCenter(modal);
+    ensureModalEdgesWithinWorkArea(modal);
+    debouncedSaveWindowPositions();
+}
+
 function ensureModalEdgesWithinWorkArea(modal, edgeMarginPx) {
     if (!modal || modal.classList.contains('hidden') || isModalMaximized(modal)) {
         return;
@@ -1421,9 +1530,10 @@ function ensureModalEdgesWithinWorkArea(modal, edgeMarginPx) {
             return;
         }
 
-        const clamped = clampModalViewportRect(rect.left, rect.top, rect.width, rect.height, edgeMarginPx);
+        const restoreClamp = { allowPartialBottomOverflow: true };
+        const clamped = clampModalViewportRect(rect.left, rect.top, rect.width, rect.height, edgeMarginPx, restoreClamp);
         if (Math.abs(clamped.left - rect.left) > 0.5 || Math.abs(clamped.top - rect.top) > 0.5) {
-            setModalOffsetsFromViewportTopLeft(modal, clamped.left, clamped.top);
+            setModalOffsetsFromViewportTopLeft(modal, clamped.left, clamped.top, restoreClamp);
         } else {
             settleModalPixelAnchor(modal);
         }
@@ -2190,6 +2300,11 @@ function openModal(modal) {
     void modal.offsetWidth;
     modal.classList.add('opening');
 
+    // body.initializing.no-animation disables CSS animations — animationend never fires; clear opening immediately
+    if (document.body.classList.contains('initializing') && document.body.classList.contains('no-animation')) {
+        modal.classList.remove('opening');
+    }
+
     // Update taskbar (debounced for performance)
     debouncedUpdateTaskbarWindows();
 
@@ -2236,6 +2351,8 @@ function openModal(modal) {
                         return;
                     }
                     settleModalPixelAnchor(modal);
+                } else if (modal.hasAttribute('data-window-position-restored')) {
+                    settleModalPixelAnchor(modal);
                 } else {
                     ensureModalEdgesWithinWorkArea(modal);
                 }
@@ -2246,7 +2363,7 @@ function openModal(modal) {
 
     if (modal.dataset.windowPositionMode === 'cascade-parent') {
         requestAnimationFrame(() => requestAnimationFrame(() => cascadeModalFromParentIfConfigured(modal)));
-    } else if (isMoveable && modal.dataset.windowPositionMode !== 'manual-only') {
+    } else if (isMoveable && modal.dataset.windowPositionMode !== 'manual-only' && !modal.hasAttribute('data-window-position-restored')) {
         ensureModalWithinViewport(modal);
     }
 }
@@ -2814,7 +2931,11 @@ function updateGalleryWindowMode() {
 
     } else if (!shouldBeWindowed && isWindowed) {
         prepareAppModeWindowLayout();
-        cancelPendingWindowPositionUpdates({ revert: true });
+        // flushSaveWindowPositions: persist layout before tearing down desktop mode
+        if (typeof flushSaveWindowPositions === 'function') {
+            flushSaveWindowPositions();
+        }
+        cancelPendingWindowPositionUpdates({ revert: false });
 
         // Switch to maximized mode (exit desktop mode)
         galleryWindow.classList.remove('windowed');
@@ -2870,8 +2991,8 @@ function updateGalleryWindowMode() {
             }
         }
 
-        // Clear window positions
-        globalWindowPositions = {};
+        // Clear in-memory window positions (server copy retained)
+        clearGlobalWindowPositions();
 
         // Clear start menu content
         const startMenuItems = document.getElementById('startMenuItems');
@@ -3260,7 +3381,7 @@ function updateTaskbarActiveStates() {
 
     // Get all open modals (not hidden and not closing) - includes minimised windows
     const openModals = Array.from(document.querySelectorAll('.modal:not(.hidden)'))
-        .filter(modal => !modal.classList.contains('closing'));
+        .filter(modal => !modal.classList.contains('closing') && !TASKBAR_SYSTEM_MODAL_IDS.has(modal.id));
 
     // Group modals by type to check grouping state
     const modalGroups = new Map();
@@ -3369,7 +3490,7 @@ function updateTaskbarWindows() {
     // Get all open modals (not hidden and not closing) - includes minimised windows
     // Exclude modals that are closing (they'll be hidden soon)
     const openModals = Array.from(document.querySelectorAll('.modal:not(.hidden)'))
-        .filter(modal => !modal.classList.contains('closing'));
+        .filter(modal => !modal.classList.contains('closing') && !TASKBAR_SYSTEM_MODAL_IDS.has(modal.id));
 
     // Group modals by type
     const modalGroups = new Map();
@@ -4317,21 +4438,28 @@ function showTaskbarItemContextMenu(e, modal, taskbarItem) {
         });
     }
 
-    // Add "Center" option to bottom items
+    // Add window layout actions to bottom items
     bottomItems.unshift({
         icon: 'fa-regular fa-compress-arrows-alt',
         text: 'Center',
         action: 'taskbar-window-center'
     });
+    bottomItems.unshift({
+        icon: 'fas fa-undo',
+        text: 'Reset',
+        action: 'taskbar-window-reset'
+    });
 
-    // Reorder bottom items: Center, Minimize, Maximize, Close
+    // Reorder bottom items: Center, Reset, Minimize, Maximize, Close
     const orderedBottomItems = [];
     const centerItem = bottomItems.find(item => item.action === 'taskbar-window-center');
+    const resetItem = bottomItems.find(item => item.action === 'taskbar-window-reset');
     const minimizeItem = bottomItems.find(item => item.action === 'taskbar-window-minimize');
     const maximizeItem = bottomItems.find(item => item.action === 'taskbar-window-maximize');
     const closeItem = bottomItems.find(item => item.action === 'taskbar-window-close');
 
     if (centerItem) orderedBottomItems.push(centerItem);
+    if (resetItem) orderedBottomItems.push(resetItem);
     if (minimizeItem) orderedBottomItems.push(minimizeItem);
     if (maximizeItem && !maximizeItem.hidden) orderedBottomItems.push(maximizeItem);
 
@@ -4447,21 +4575,28 @@ function showTaskbarGroupContextMenu(e, groupItem, modals) {
                 }
             });
 
-            // Add "Center" option to bottom items
+            // Add window layout actions to bottom items
             bottomItems.unshift({
                 icon: 'fa-regular fa-compress-arrows-alt',
                 text: 'Center',
                 action: 'taskbar-window-center'
             });
+            bottomItems.unshift({
+                icon: 'fas fa-undo',
+                text: 'Reset',
+                action: 'taskbar-window-reset'
+            });
 
-            // Reorder bottom items: Center, Minimize, Maximize, Close
+            // Reorder bottom items: Center, Reset, Minimize, Maximize, Close
             const orderedBottomItems = [];
             const centerItem = bottomItems.find(item => item.action === 'taskbar-window-center');
+            const resetItem = bottomItems.find(item => item.action === 'taskbar-window-reset');
             const minimizeItem = bottomItems.find(item => item.action === 'taskbar-window-minimize');
             const maximizeItem = bottomItems.find(item => item.action === 'taskbar-window-maximize');
             const closeItem = bottomItems.find(item => item.action === 'taskbar-window-close');
 
             if (centerItem) orderedBottomItems.push(centerItem);
+            if (resetItem) orderedBottomItems.push(resetItem);
             if (minimizeItem) orderedBottomItems.push(minimizeItem);
             if (maximizeItem && !maximizeItem.hidden) orderedBottomItems.push(maximizeItem);
 
@@ -4644,6 +4779,10 @@ document.addEventListener('contextMenuAction', (e) => {
             clearModalPixelAnchor(modal);
             setModalOffsetPx(modal, 0, 0, { snap: true, settle: true });
             modal.removeAttribute('data-modal-moved');
+            break;
+
+        case 'taskbar-window-reset':
+            resetModalWindowLayout(modal);
             break;
 
         case 'taskbar-window-minimize':
@@ -7977,57 +8116,6 @@ function quadrantToPixelPosition(quadrantPos, containerWidth, containerHeight) {
     return { x, y };
 }
 
-function getWindowPositionStorageKey(windowKey) {
-    const el = document.getElementById(windowKey);
-    if (el) {
-        return windowKey;
-    }
-
-    for (const modal of document.querySelectorAll('.modal, #galleryWindow.windowed')) {
-        if (modal.id === windowKey) {
-            return windowKey;
-        }
-        if (modal.dataset.windowIdentifier === windowKey) {
-            return windowKey;
-        }
-        const modalType = typeof getModalType === 'function' ? getModalType(modal) : null;
-        if (modalType === windowKey) {
-            return windowKey;
-        }
-    }
-
-    return windowKey;
-}
-
-function isPersistedWindowCurrentlyOpen(windowKey) {
-    const el = document.getElementById(windowKey);
-    if (el) {
-        return !el.classList.contains('hidden') && !el.classList.contains('hidden-alt');
-    }
-
-    for (const modal of document.querySelectorAll('.modal, #galleryWindow.windowed')) {
-        const modalType = typeof getModalType === 'function' ? getModalType(modal) : null;
-        const key = modal.id || modal.dataset.windowIdentifier || modalType;
-        if (key !== windowKey) {
-            continue;
-        }
-        return !modal.classList.contains('hidden') && !modal.classList.contains('hidden-alt');
-    }
-
-    return false;
-}
-
-function pruneClosedWindowPositions(visibleKeys) {
-    for (const windowKey of Object.keys(globalWindowPositions)) {
-        if (visibleKeys.has(windowKey)) {
-            continue;
-        }
-        if (!isPersistedWindowCurrentlyOpen(getWindowPositionStorageKey(windowKey))) {
-            delete globalWindowPositions[windowKey];
-        }
-    }
-}
-
 function hashWindowPositionsSnapshot(positions) {
     return JSON.stringify(positions);
 }
@@ -8131,8 +8219,6 @@ function saveWindowPositions(options = {}) {
         }
     });
 
-    const visibleKeys = new Set(Object.keys(windowPositions));
-    pruneClosedWindowPositions(visibleKeys);
     Object.assign(globalWindowPositions, windowPositions);
 
     const saveHash = hashWindowPositionsSnapshot(globalWindowPositions);
@@ -8160,18 +8246,8 @@ function restoreWindowPosition(modal) {
     }
 
     // For transient windows, use dataset identifier instead of ID (IDs change on recreation)
-    const isTransient = modal.classList.contains('transient');
-    let windowKey = null;
-
-    if (isTransient && modal.dataset.windowIdentifier) {
-        // Use the stable dataset identifier for transient windows
-        windowKey = modal.dataset.windowIdentifier;
-    } else if (!isTransient) {
-        // Non-transient window - use ID or type
-        const modalType = getModalType(modal);
-        windowKey = modal.id || modalType;
-    } else {
-        // Transient window without identifier - can't restore
+    const windowKey = getWindowPositionKey(modal);
+    if (!windowKey) {
         return;
     }
 
@@ -8202,14 +8278,15 @@ function restoreWindowPosition(modal) {
                 targetWidth = Math.min(targetWidth, maxWidth);
                 targetHeight = Math.min(targetHeight, maxHeight);
 
+                const restoreClamp = { allowPartialBottomOverflow: true };
                 setModalPositionFromViewportRect(modal, {
                     left: topLeftPixel.x,
                     top: topLeftPixel.y,
                     width: targetWidth,
                     height: targetHeight
-                });
+                }, restoreClamp);
             } else {
-                setModalOffsetsFromViewportTopLeft(modal, topLeftPixel.x, topLeftPixel.y);
+                setModalOffsetsFromViewportTopLeft(modal, topLeftPixel.x, topLeftPixel.y, { allowPartialBottomOverflow: true });
             }
 
             modal.setAttribute('data-modal-moved', 'true');

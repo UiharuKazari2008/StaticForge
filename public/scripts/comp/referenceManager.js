@@ -1008,7 +1008,10 @@ function getPreciseReferenceCount() {
 function clearAllVibeReferenceItems() {
     const container = document.getElementById('vibeReferencesContainer');
     if (!container) return;
-    container.querySelectorAll('.vibe-reference-item:not(.precise-reference-item)').forEach(el => el.remove());
+    container.querySelectorAll('.vibe-reference-item:not(.precise-reference-item)').forEach(el => {
+        teardownVibeReferenceItem(el);
+        el.remove();
+    });
     if (container.querySelectorAll('.vibe-reference-item, .precise-reference-item').length === 0) {
         container.classList.add('hidden');
     }
@@ -1533,6 +1536,7 @@ async function refreshVibeReferencesDisplay() {
         
         if (vibeRef) {
             // Create new item with preserved IE, strength, and toggle values
+            teardownVibeReferenceItem(item);
             const newItem = createVibeReferenceItem(vibeRef, currentIe, currentStrength, currentToggleState, currentTextInjectionState);
             item.parentNode.replaceChild(newItem, item);
         }
@@ -1876,11 +1880,13 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, to
     });
 
     // Close dropdown when clicking outside
-    document.addEventListener('click', (e) => {
+    const outsideClickHandler = (e) => {
         if (!ieDropdown.contains(e.target)) {
             ieDropdownMenu.classList.add('hidden');
         }
-    });
+    };
+    item._ieDropdownOutsideClick = outsideClickHandler;
+    document.addEventListener('click', outsideClickHandler);
 
     ieDropdown.appendChild(ieDropdownBtn);
     ieDropdown.appendChild(ieDropdownMenu);
@@ -2095,11 +2101,18 @@ async function addVibeReferenceToContainer(vibeId, selectedIe, strength, textInj
     }
 }
 
+function teardownVibeReferenceItem(item) {
+    if (!item || !item._ieDropdownOutsideClick) return;
+    document.removeEventListener('click', item._ieDropdownOutsideClick);
+    item._ieDropdownOutsideClick = null;
+}
+
 function removeVibeReference(vibeId) {
     if (!vibeReferencesContainer) return;
 
     const item = vibeReferencesContainer.querySelector(`[data-vibe-id="${vibeId}"]`);
     if (item) {
+        teardownVibeReferenceItem(item);
         item.remove();
 
         // Hide section if no more items
@@ -3369,12 +3382,19 @@ async function handleDeleteAction(option, target, event) {
     }
 }
 
+let referenceManagerContextMenuWired = false;
+let referenceBrowserContextMenuWired = false;
+
 // Initialize context menu for reference manager items
 function initializeReferenceManagerContextMenu() {
+    if (referenceManagerContextMenuWired) {
+        return;
+    }
     if (!contextMenu) {
         console.warn('Context menu system not available');
         return;
     }
+    referenceManagerContextMenuWired = true;
 
     // Create and store the context menu configuration
     const contextMenuConfig = createReferenceManagerContextMenuConfig();
@@ -3386,10 +3406,14 @@ function initializeReferenceManagerContextMenu() {
 
 // Initialize context menu for reference browser items
 function initializeReferenceBrowserContextMenu() {
+    if (referenceBrowserContextMenuWired) {
+        return;
+    }
     if (!contextMenu) {
         console.warn('Context menu system not available');
         return;
     }
+    referenceBrowserContextMenuWired = true;
 
     // Create and store the context menu configuration
     const contextMenuConfig = createReferenceBrowserContextMenuConfig();
@@ -7366,7 +7390,204 @@ function resetUploadModal() {
     }
 }
 
+let cacheManagerInitWired = false;
+
+function wireDirectorReferenceListeners() {
+    const addDirectorReferenceBtn = document.getElementById('addDirectorReferenceBtn');
+    const clearDirectorReferenceBtn = document.getElementById('clearDirectorReferenceBtn');
+    const directorReferenceStyleBtn = document.getElementById('directorReferenceStyleBtn');
+    const directorReferenceFidelityInput = document.getElementById('directorReferenceFidelityInput');
+    const directorReferenceFidelityOverlay = directorReferenceFidelityInput?.parentElement?.querySelector('.percentage-input-overlay');
+
+    if (addDirectorReferenceBtn && addDirectorReferenceBtn.dataset.wired !== 'true') {
+        addDirectorReferenceBtn.dataset.wired = 'true';
+        addDirectorReferenceBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            showCacheBrowser();
+        });
+    }
+
+    if (clearDirectorReferenceBtn && clearDirectorReferenceBtn.dataset.wired !== 'true') {
+        clearDirectorReferenceBtn.dataset.wired = 'true';
+        clearDirectorReferenceBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            // clearDirectorReference: public/scripts/comp/manualModalManager.js
+            clearDirectorReference();
+        });
+    }
+
+    if (directorReferenceStyleBtn && directorReferenceStyleBtn.dataset.wired !== 'true') {
+        directorReferenceStyleBtn.dataset.wired = 'true';
+        directorReferenceStyleBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            // toggleDirectorReferenceStyle: public/scripts/comp/manualModalManager.js
+            toggleDirectorReferenceStyle();
+        });
+    }
+
+    if (directorReferenceFidelityInput && directorReferenceFidelityInput.dataset.wired !== 'true') {
+        directorReferenceFidelityInput.dataset.wired = 'true';
+        directorReferenceFidelityInput.addEventListener('wheel', function (e) {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.05) : (e.shiftKey ? 0.1 : 0.05);
+            const currentValue = parseFloat(this.value) || 1.0;
+            const newValue = Math.max(0.0, Math.min(1.0, currentValue + delta));
+            this.value = newValue.toFixed(2);
+            if (directorReferenceFidelityOverlay) {
+                updatePercentageOverlay(directorReferenceFidelityInput, directorReferenceFidelityOverlay, 0);
+            }
+        });
+
+        if (directorReferenceFidelityOverlay) {
+            directorReferenceFidelityInput.addEventListener('input', () => updatePercentageOverlay(directorReferenceFidelityInput, directorReferenceFidelityOverlay, 0));
+            directorReferenceFidelityInput.addEventListener('blur', () => updatePercentageOverlay(directorReferenceFidelityInput, directorReferenceFidelityOverlay, 0));
+            updatePercentageOverlay(directorReferenceFidelityInput, directorReferenceFidelityOverlay, 0);
+        }
+    }
+}
+
+function wireCacheBrowserCloseAndTabs() {
+    const closeCacheBrowserBtn = document.getElementById('closeCacheBrowserBtn');
+    const closeCacheBrowserContainerBtn = document.getElementById('closeCacheBrowserContainerBtn');
+
+    if (closeCacheBrowserBtn && closeCacheBrowserBtn.dataset.wired !== 'true') {
+        closeCacheBrowserBtn.dataset.wired = 'true';
+        closeCacheBrowserBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            hideCacheBrowser();
+        });
+    }
+
+    if (closeCacheBrowserContainerBtn && closeCacheBrowserContainerBtn.dataset.wired !== 'true') {
+        closeCacheBrowserContainerBtn.dataset.wired = 'true';
+        closeCacheBrowserContainerBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            hideCacheBrowser();
+        });
+    }
+
+    const cacheBrowserTabButtons = document.querySelectorAll('.cache-browser-tabs .gallery-toggle-btn');
+    cacheBrowserTabButtons.forEach(button => {
+        if (button.dataset.wired === 'true') return;
+        button.dataset.wired = 'true';
+        button.addEventListener('click', function (e) {
+            e.preventDefault();
+            const targetTab = this.getAttribute('data-tab');
+            const toggleGroup = this.closest('.gallery-toggle-group');
+            const tabTitle = this.getAttribute('data-title');
+
+            if (toggleGroup) {
+                toggleGroup.setAttribute('data-active', targetTab);
+                toggleGroup.querySelectorAll('.gallery-toggle-btn').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+            }
+
+            this.classList.add('active');
+
+            // switchCacheBrowserTab: not yet defined (app.js callsite only)
+            if (typeof switchCacheBrowserTab === 'function') {
+                switchCacheBrowserTab(targetTab, tabTitle);
+            }
+        });
+    });
+}
+
+function wireCacheBrowserToolbarRefs() {
+    const cacheBrowserOptionsBtn = document.getElementById('cacheBrowserOptionsBtn');
+    if (cacheBrowserOptionsBtn && cacheBrowserOptionsBtn.dataset.wired !== 'true') {
+        cacheBrowserOptionsBtn.dataset.wired = 'true';
+        cacheBrowserOptionsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            showCacheManagerModal();
+        });
+    }
+
+    const showAllReferencesBtn = document.getElementById('showAllReferencesBtn');
+    if (showAllReferencesBtn && showAllReferencesBtn.dataset.wired !== 'true') {
+        showAllReferencesBtn.dataset.wired = 'true';
+        showAllReferencesBtn.addEventListener('click', () => {
+            // toggleShowAllReferences: public/scripts/comp/referenceManager.js
+            toggleShowAllReferences();
+        });
+    }
+}
+
+function wireUploadClipboardListeners() {
+    if (document.body.dataset.uploadClipboardWired === 'true') return;
+    document.body.dataset.uploadClipboardWired = 'true';
+
+    const uploadBtn = document.getElementById('uploadBtn');
+    const imageUploadInput = document.getElementById('imageUploadInput');
+
+    if (uploadBtn && uploadBtn.dataset.wired !== 'true') {
+        uploadBtn.dataset.wired = 'true';
+        uploadBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            unifiedUploadModalManager.show();
+            closeSubMenu();
+        });
+    }
+
+    if (imageUploadInput && imageUploadInput.dataset.wired !== 'true') {
+        imageUploadInput.dataset.wired = 'true';
+        // handleImageUpload: public/scripts/app.js
+        imageUploadInput.addEventListener('change', handleImageUpload);
+    }
+
+    document.addEventListener('paste', handleClipboardPaste);
+
+    if (deleteImageBaseBtn && deleteImageBaseBtn.dataset.wired !== 'true') {
+        deleteImageBaseBtn.dataset.wired = 'true';
+        deleteImageBaseBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            // handleDeleteBaseImage: public/scripts/comp/imageBias.js
+            handleDeleteBaseImage();
+        });
+    }
+
+    if (previewBaseImageBtn && previewBaseImageBtn.dataset.wired !== 'true') {
+        previewBaseImageBtn.dataset.wired = 'true';
+        previewBaseImageBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const variationImage = document.getElementById('manualVariationImage');
+            if (variationImage && variationImage.src && variationImage.src !== '') {
+                showLightbox({ url: variationImage.src });
+            } else {
+                showGlassToast('error', 'Preview Failed', 'No base image available', false, undefined, '<i class="fas fa-image-slash"></i>');
+            }
+        });
+    }
+
+    const previewCharacterReferenceImageBtn = document.getElementById('previewCharacterReferenceImageBtn');
+    if (previewCharacterReferenceImageBtn && previewCharacterReferenceImageBtn.dataset.wired !== 'true') {
+        previewCharacterReferenceImageBtn.dataset.wired = 'true';
+        previewCharacterReferenceImageBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const directorReferenceImage = document.getElementById('directorReferenceImage');
+            if (directorReferenceImage && directorReferenceImage.src && directorReferenceImage.src !== '') {
+                showLightbox({ url: directorReferenceImage.src });
+            } else {
+                showGlassToast('error', 'Preview Failed', 'No character reference image available', false, undefined, '<i class="fas fa-image-slash"></i>');
+            }
+        });
+    }
+
+    // updateUploadDeleteButtonVisibility: public/scripts/comp/imageBias.js
+    updateUploadDeleteButtonVisibility();
+}
+
 function initializeCacheManager() {
+    if (cacheManagerInitWired) {
+        return;
+    }
+    cacheManagerInitWired = true;
+
+    wireDirectorReferenceListeners();
+    wireCacheBrowserCloseAndTabs();
+    wireCacheBrowserToolbarRefs();
+    wireUploadClipboardListeners();
+
     // Reference manager button
     if (cacheManagerBtn) {
         cacheManagerBtn.addEventListener('click', showCacheManagerModal);
@@ -7694,8 +7915,15 @@ function initializeCacheManager() {
     initializeReferenceBrowserContextMenu();
 }
 
+let cacheMetadataToolbarDropdownsWired = false;
+
 // Initialize toolbar dropdowns for cache metadata modal textareas
 function initializeCacheMetadataToolbarDropdowns() {
+    if (cacheMetadataToolbarDropdownsWired) {
+        return;
+    }
+    cacheMetadataToolbarDropdownsWired = true;
+
     // Initialize prompt textarea actions dropdown
     const cachePromptDropdown = document.getElementById('cachePromptActionsDropdown');
     const cachePromptDropdownBtn = document.getElementById('cachePromptActionsDropdownBtn');

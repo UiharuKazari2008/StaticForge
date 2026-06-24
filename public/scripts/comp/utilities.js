@@ -47,6 +47,159 @@ const UTILS_CONFIG = {
 };
 
 /**
+ * Application-wide constants (timeouts, validation limits, UI ratios).
+ * Loaded early so extracted comp modules can reference before app.js.
+ * @constant {Object}
+ */
+const APP_CONSTANTS = {
+    TIMEOUT_UI_DEFAULT: 3000,
+    TIMEOUT_FOCUS: 100,
+    TIMEOUT_GENERATION: 1000,
+    TIMEOUT_CONNECTION_STABILITY: 2000,
+    TIMEOUT_GEOLOCATION: 10000,
+    TIMEOUT_GEOLOCATION_MAX_AGE: 300000,
+    PROGRESS_INIT_BASE: 25,
+    PROGRESS_INIT_STEPS: 75,
+    VALIDATION_HOUR_MIN: 0,
+    VALIDATION_HOUR_MAX: 23,
+    VALIDATION_MINUTE_MIN: 0,
+    VALIDATION_MINUTE_MAX: 59,
+    VALIDATION_DAY_MIN: 1,
+    VALIDATION_DAY_MAX: 31,
+    VALIDATION_MONTH_MIN: 1,
+    VALIDATION_MONTH_MAX: 12,
+    UI_RATIO_MIN: 0.1,
+    UI_RATIO_MAX: 2.0,
+    UI_RATIO_DEFAULT: 1.0,
+    CONVERSION_MPS_TO_MPH: 2.237,
+    CONVERSION_MPH_TO_MPS: 1 / 2.237
+};
+
+/** Pipeline stage type identifiers — shared by pipeline comp modules and app.js */
+const STAGE_TYPES = {
+    EXPAND_CANVAS: 'expand-canvas',
+    ENHANCE: 'enhance',
+    VARIATION: 'variation'
+};
+
+/** Magnitude → strength/noise presets for enhance pipeline stages */
+const MAGNITUDE_PRESETS = {
+    1.0: { strength: 0.2, noise: 0.0 },
+    1.5: { strength: 0.3, noise: 0.0 },
+    2.0: { strength: 0.4, noise: 0.0 },
+    2.5: { strength: 0.45, noise: 0.0 },
+    3.0: { strength: 0.5, noise: 0.0 },
+    3.5: { strength: 0.55, noise: 0.0 },
+    4.0: { strength: 0.6, noise: 0.0 },
+    4.5: { strength: 0.65, noise: 0.0 },
+    5.0: { strength: 0.7, noise: 0.1 },
+    5.5: { strength: 0.75, noise: 0.15 }
+};
+
+/**
+ * @param {number} hour - Hour (0-23)
+ * @param {number} minute - Minute (0-59)
+ * @returns {string} FontAwesome clock icon class
+ */
+function getAnalogClockIcon(hour, minute) {
+    const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+
+    if (minute >= 45) {
+        const nextHour = hour12 === 12 ? 1 : hour12 + 1;
+        switch (nextHour) {
+            case 1: return 'fa-clock-one';
+            case 2: return 'fa-clock-two';
+            case 3: return 'fa-clock-three';
+            case 4: return 'fa-clock-four';
+            case 5: return 'fa-clock-five';
+            case 6: return 'fa-clock-six';
+            case 7: return 'fa-clock-seven';
+            case 8: return 'fa-clock-eight';
+            case 9: return 'fa-clock-nine';
+            case 10: return 'fa-clock-ten';
+            case 11: return 'fa-clock-eleven';
+            case 12: return 'fa-clock-twelve';
+        }
+    } else if (minute >= 15 && minute < 45) {
+        switch (hour12) {
+            case 1: return 'fa-clock-one-thirty';
+            case 2: return 'fa-clock-two-thirty';
+            case 3: return 'fa-clock-three-thirty';
+            case 4: return 'fa-clock-four-thirty';
+            case 5: return 'fa-clock-five-thirty';
+            case 6: return 'fa-clock-six-thirty';
+            case 7: return 'fa-clock-seven-thirty';
+            case 8: return 'fa-clock-eight-thirty';
+            case 9: return 'fa-clock-nine-thirty';
+            case 10: return 'fa-clock-ten-thirty';
+            case 11: return 'fa-clock-eleven-thirty';
+            case 12: return 'fa-clock-twelve-thirty';
+        }
+    } else {
+        switch (hour12) {
+            case 1: return 'fa-clock-one';
+            case 2: return 'fa-clock-two';
+            case 3: return 'fa-clock-three';
+            case 4: return 'fa-clock-four';
+            case 5: return 'fa-clock-five';
+            case 6: return 'fa-clock-six';
+            case 7: return 'fa-clock-seven';
+            case 8: return 'fa-clock-eight';
+            case 9: return 'fa-clock-nine';
+            case 10: return 'fa-clock-ten';
+            case 11: return 'fa-clock-eleven';
+            case 12: return 'fa-clock-twelve';
+        }
+    }
+}
+
+/**
+ * @param {string} timezone - IANA timezone (e.g. "America/New_York")
+ * @returns {{ name: string, offset: number, formatted: string }|null}
+ */
+function formatTimezoneInfo(timezone) {
+    if (!timezone) return null;
+
+    try {
+        const now = new Date();
+        const formatter = new Intl.DateTimeFormat('en', {
+            timeZone: timezone,
+            timeZoneName: 'short'
+        });
+
+        const parts = formatter.formatToParts(now);
+        const tzName = parts.find(part => part.type === 'timeZoneName')?.value || timezone;
+
+        const offsetMs = now.toLocaleString('en', { timeZone: timezone, timeZoneName: 'short' }).match(/GMT([+-]\d{1,2}):?(\d{2})?/);
+        const offsetHours = offsetMs ? parseInt(offsetMs[1]) + (parseInt(offsetMs[2] || 0) / 60) : 0;
+
+        return {
+            name: tzName,
+            offset: offsetHours,
+            formatted: tzName
+        };
+    } catch (error) {
+        return {
+            name: 'UTC',
+            offset: 0,
+            formatted: 'UTC+0'
+        };
+    }
+}
+
+function escapeHtml(text) {
+    if (text == null) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function escapeHtmlAttribute(text) {
+    if (text == null) return '';
+    return text.replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/**
  * Global options data storage
  * @type {object|null}
  */

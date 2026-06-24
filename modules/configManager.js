@@ -1482,6 +1482,10 @@ class ConfigManager {
                 this._broadcastWorkspaceDesktopPersisted();
             }
 
+            if (configType === 'workspaces') {
+                this._scheduleWorkspaceCssRecompile();
+            }
+
             return true;
         } catch (error) {
             console.error(`❌ Error writing ${configType} to disk:`, error);
@@ -1507,6 +1511,20 @@ class ConfigManager {
             });
         } catch (error) {
             console.warn('⚠️ Failed to broadcast workspace desktop persisted event:', error.message);
+        }
+    }
+
+    /**
+     * Recompile server-generated workspace theme CSS after workspaces config is saved.
+     * modules/workspaceCssService.js
+     * @private
+     */
+    _scheduleWorkspaceCssRecompile() {
+        try {
+            const workspaceCssService = require('./workspaceCssService');
+            workspaceCssService.scheduleRecompile();
+        } catch (error) {
+            console.warn('⚠️ Failed to schedule workspace CSS recompile:', error.message);
         }
     }
     

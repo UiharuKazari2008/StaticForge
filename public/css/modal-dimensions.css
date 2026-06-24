@@ -16,7 +16,9 @@
 #textReplacementManagerModal,
 #favoritesManagerModal,
 #updatePresetModal,
-#imageExpansionDialog {
+#tokenDisplayModal,
+#openNoteModal,
+#updateNoteModal {
     width: 500px;
 }
 
@@ -38,17 +40,12 @@
     width: 475px;
 }
 
-#createTextReplacementModal,
-#createRequestBodyReplacementModal {
+#createTextReplacementModal {
     width: 550px;
 }
 
 #compiledPromptModal {
     width: 700px;
-}
-
-#requestBodyReplacementsModal {
-    width: 750px;
 }
 
 #notebookModal {
@@ -65,4 +62,36 @@
 [id^="emphasisGroupsTool_"] {
     width: 480px;
     height: 640px;
+}
+
+#directorRulesModal {
+    width: 500px;
+    height: 650px;
+}
+
+#openNoteModal {
+    height: 520px;
+}
+
+#tagWikiSearchModal {
+    width: 1050px;
+    height: 750px;
+}
+
+#naxtModal {
+    width: 1050px;
+    height: 980px;
+}
+
+#naxtModal #naxtDatasetDropdownBtn {
+    min-width: 2.25rem;
+    padding: 0.35em 0.55em;
+}
+
+#naxtModal #naxtDatasetDropdownBtn #naxtDatasetSelected {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    max-width: none;
+    overflow: visible;
 }

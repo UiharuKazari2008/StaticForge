@@ -18,6 +18,11 @@ class CharacterSearchModal extends WikiDisplayBase {
     }
 
     async init() {
+        if (this._initWired) {
+            return;
+        }
+        this._initWired = true;
+
         this.modal = document.getElementById('characterSearchModal');
         if (!this.modal) return;
 
@@ -30,7 +35,7 @@ class CharacterSearchModal extends WikiDisplayBase {
         this.setupContextMenu();
 
         // Load data when first opened if not already loaded
-        const openObserver = new MutationObserver((mutations) => {
+        this._openObserver = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
                 if (mutation.attributeName === 'class') {
                     const isVisible = !this.modal.classList.contains('hidden');
@@ -40,7 +45,7 @@ class CharacterSearchModal extends WikiDisplayBase {
                 }
             });
         });
-        openObserver.observe(this.modal, { attributes: true });
+        this._openObserver.observe(this.modal, { attributes: true });
     }
 
     async loadCharacterData() {

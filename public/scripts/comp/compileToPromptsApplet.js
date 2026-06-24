@@ -243,6 +243,18 @@ function wireCompileToPromptsModal() {
             renderCompileToPromptsList();
         });
     }
+
+    const closeCompiledPromptBtn = document.getElementById('closeCompiledPromptBtn');
+    if (closeCompiledPromptBtn && closeCompiledPromptBtn.dataset.wired !== 'true') {
+        closeCompiledPromptBtn.dataset.wired = 'true';
+        closeCompiledPromptBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const compiledModal = document.getElementById('compiledPromptModal');
+            if (compiledModal) {
+                closeModal(compiledModal);
+            }
+        });
+    }
 }
 
 window.wsClient.registerInitStep(46, 'Compile to Prompts', async () => {

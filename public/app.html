@@ -26,6 +26,33 @@
 
         // Detect Shift key on startup for step-by-step mode (desktop mode only)
         window.shiftKeyOnStartup = false;
+
+        // Sync developer mode to cookie so the server can serve source css/js when enabled
+        try {
+            if (localStorage.getItem('staticforge_dev_mode') === 'true') {
+                document.cookie = 'staticforge_dev_mode=1; path=/; SameSite=Lax';
+            } else {
+                document.cookie = 'staticforge_dev_mode=; path=/; Max-Age=0';
+            }
+        } catch (e) { /* ignore */ }
+
+        // One-time static cache generation bump (SW v2)
+        try {
+            var swCacheGen = 2;
+            var swCacheGenKey = 'staticforge_sw_static_cache_gen';
+            var swCacheReloadKey = 'staticforge_sw_gen_reload';
+            if (parseInt(localStorage.getItem(swCacheGenKey) || '0', 10) < swCacheGen) {
+                localStorage.setItem(swCacheGenKey, String(swCacheGen));
+                if (window.caches && window.caches.delete) {
+                    caches.delete('static-cache-v1');
+                    caches.delete('static-cache-v2');
+                }
+                if (!sessionStorage.getItem(swCacheReloadKey)) {
+                    sessionStorage.setItem(swCacheReloadKey, '1');
+                    location.reload();
+                }
+            }
+        } catch (e) { /* ignore */ }
     </script>
 
     <!-- PWA Meta Tags -->
@@ -159,65 +186,88 @@
         media="screen and (device-width: 1024px) and (device-height: 768px) and (-webkit-device-pixel-ratio: 2)"
         href="/static_images/apple-splash-2048x1536.png">
 
-    <link rel="stylesheet" href="/css/fonts.css">
+    <link rel="stylesheet" href="/css/fonts.css?sha=50290922c173f3d86af783567eb8f018856521bcc53aaaff52aeaa1cb8e0b947">
     <link rel="stylesheet" href="/dist/fontawesome/css/fontawesome.min.css">
     <link rel="stylesheet" href="/dist/fontawesome/css/all.min.css">
-    <link rel="stylesheet" href="/css/app.css">
+    <link rel="stylesheet" href="/css/app.css?sha=1296810ef1c26eb28ef30956696d5a9e5f8ee698e004bf83e61031f7fbe40cc4">
+    <link rel="stylesheet" id="workspace-styles" href="/css/workspaces.css?sha=c7ddb91358306223f825d1adf76a828929ce7f818e700f6a037813f8cbda9c32">
+    <link rel="stylesheet" href="/css/custom-dropdown.css?sha=dfaf5b76c498040d19bfb5b3980e5a05b754ec8d8fc1bd3b57e53cc70e032868">
     <!-- Feature-scoped styles (split from app.css) -->
-    <link rel="stylesheet" href="/css/desktop-shell.css">
-    <link rel="stylesheet" href="/css/desktop-settings.css">
-    <link rel="stylesheet" href="/css/modal-dimensions.css">
-    <link rel="stylesheet" href="/css/modal-theme-glass.css">
-    <link rel="stylesheet" href="/css/context-menu.css">
-    <link rel="stylesheet" href="/css/gallery-toolbar.css">
-    <link rel="stylesheet" href="/css/lightbox.css">
-    <link rel="stylesheet" href="/css/manual-modal.css">
-    <link rel="stylesheet" href="/css/manual-modal-prompt-form.css">
-    <link rel="stylesheet" href="/css/novel-tool.css">
-    <link rel="stylesheet" href="/css/manual-modal-preview-tools.css">
-    <link rel="stylesheet" href="/css/manual-modal-generate.css">
-    <link rel="stylesheet" href="/css/manual-modal-viewer.css">
-    <link rel="stylesheet" href="/css/genso-lock.css">
-    <link rel="stylesheet" href="/css/weather-location.css">
-    <link rel="stylesheet" href="/css/director.css">
-    <link rel="stylesheet" href="/css/vibe-manager.css">
-    <link rel="stylesheet" href="/css/chat-modal.css">
-    <link rel="stylesheet" href="/css/unified-upload.css">
-    <link rel="stylesheet" href="/css/genso-manager.css">
-    <link rel="stylesheet" href="/css/fatal-error.css">
-    <link rel="stylesheet" href="/css/run-applet.css">
-    <link rel="stylesheet" href="/css/about-melaton.css">
-    <link rel="stylesheet" href="/css/desktop-boot.css">
-    <link rel="stylesheet" href="/css/connection-dial.css">
-    <link rel="stylesheet" href="/css/config-editor.css">
-    <link rel="stylesheet" href="/css/naxt-shell.css">
-    <link rel="stylesheet" href="/css/notepad.css">
-    <link rel="stylesheet" href="/css/websocket-requests.css">
-    <link rel="stylesheet" href="/css/log-viewer.css">
-    <link rel="stylesheet" href="/css/spellbook.css">
-    <link rel="stylesheet" href="/css/bracket-generation.css">
-    <link rel="stylesheet" href="/css/generation-quips.css">
-    <link rel="stylesheet" href="/css/manual-modal-splash.css">
-    <link rel="stylesheet" href="/css/token-display.css">
-    <link rel="stylesheet" href="/css/compiled-prompt-lcd.css">
-    <link rel="stylesheet" href="/css/tag-wiki-search.css">
-    <link rel="stylesheet" href="/css/explorer.css">
-    <link rel="stylesheet" href="/css/emphasis-groups-tool.css">
-    <link rel="stylesheet" href="/css/windows-classic-theme.css">
-    <link rel="stylesheet" href="/css/service-worker-tray.css">
-    <link rel="stylesheet" href="/css/gallery-loading.css">
-    <link rel="stylesheet" href="/css/7.scoped.css">
-    <link rel="stylesheet" href="/css/developer-tools.css">
-    <link rel="stylesheet" href="/css/pin-modal.css">
+    <link rel="stylesheet" href="/css/desktop-shell.css?sha=21a7eb59facf0e0db154f5598dbfab77d24bf25bcbb4210f3c0a994cc7961b16">
+    <link rel="stylesheet" href="/css/menu-chrome.css?sha=5f5ff8b47fd7823668c8d552523dadb1d4f59625694574163b1223d10f2fadf7">
+    <link rel="stylesheet" href="/css/desktop-settings.css?sha=767b1601a6de2c6fa5184000b1f52f09d0a8effb2df3f934ad8a59f6f6514e15">
+    <link rel="stylesheet" href="/css/modal-dimensions.css?sha=471160598aa816ddc8d28660c544edec31dfe6e183fb361fec30f519b266e06c">
+    <link rel="stylesheet" href="/css/modal-theme-glass.css?sha=b09c941e003cc801655f1a7b3bb42c05e2015199b3502da0924c0c29df626feb">
+    <link rel="stylesheet" href="/css/modal-window-title-toolbar.css?sha=486e5c948e0d4eb67195155edffefb1efc2cc2e677da03900fcbcc37d1a48d91">
+    <link rel="stylesheet" href="/css/context-menu.css?sha=2c22633c0530bfab7c6ba33db7404277080817295af53b38656a9527b2a00efb">
+    <link rel="stylesheet" href="/css/gallery-toolbar.css?sha=83daef32f2f40f2cc706069d59c1671d9560de4ac450672c7892571680320205">
+    <link rel="stylesheet" href="/css/gallery-core.css?sha=a4e07ca845c746d28e7547bd9d4e84bb0e91630b2253dc6f558c3b320cdd5298">
+    <link rel="stylesheet" href="/css/gallery-move.css?sha=e5a6d2bd7933e2ec3ef023f653e2dce331cefb9b16fa350441662f99ab245c35">
+    <link rel="stylesheet" href="/css/lightbox.css?sha=d938c3e16f853dfdc51b0ccf81c1fa3a33234b78dad1160445c0152528732cf9">
+    <link rel="stylesheet" href="/css/manual-modal.css?sha=b213e7425e85c11b5467339e34fe40bfe6f63afcf87bb1bb445c877fe74a27ca">
+    <link rel="stylesheet" href="/css/manual-modal-prompt-form.css?sha=66b2d36974c01da621cc9292e86cdf4a0958d74bbb5befe0401fd80c011129b6">
+    <link rel="stylesheet" href="/css/novel-tool.css?sha=4c43c10ffd4691478e68c40cbf8916d0b58629a672e9564f0fc5bd8ddecceb68">
+    <link rel="stylesheet" href="/css/manual-modal-preview-tools.css?sha=17062181c8f16d1dea3d59b92a477ae40f18ab97b780cf0e802687635c4ba4be">
+    <link rel="stylesheet" href="/css/manual-modal-generate.css?sha=adb1af789e71507fec1052751a2936db5343657ab035541be7331d48389c7437">
+    <link rel="stylesheet" href="/css/manual-modal-viewer.css?sha=a51ff26420c52a9df4650de0807c2f8b5cef29aee4c61c45a89967c78e65036e">
+    <link rel="stylesheet" href="/css/custom-scrollbar.css?sha=159c96f7c1f679ff8c812853271b4ac1ad6035b20c34839df546549a08a00f7c">
+    <link rel="stylesheet" href="/css/genso-lock.css?sha=811e84d2be57d0e73b8374a59957216ceefee4d9e07d454bc47d5c2a28cd3fa1">
+    <link rel="stylesheet" href="/css/imageExpansion.css?sha=969019d7f8640dd13b0c6cd5d0fd9840b5698a73b2a771e04c3dc2f759f386bd">
+    <link rel="stylesheet" href="/css/weather-location.css?sha=9a3d546d8cb25e396954e7f7bed97776e9b719fbb867302317e479815dd11924">
+    <link rel="stylesheet" href="/css/weather-cards.css?sha=fa8e6ecddf82a7bfc92eee1dce067907db5cf2bc08f7356abb6c8f8eb305f5e9">
+    <link rel="stylesheet" href="/css/weather-lcd.css?sha=f9aab1c50696cd77a56a3f5f50056aa4e9f9457c69fea8726c9a9d770ee7fb50">
+    <link rel="stylesheet" href="/css/director.css?sha=9f91b61b2d900f11cf69d1910670f20563a0a4b86de9e2fdf74d4e7cb851a1ee">
+    <link rel="stylesheet" href="/css/vibe-manager.css?sha=192c314fb91d90920312509ed5d3afcdc7213a27bd4168ba94f31e9309eaeb21">
+    <link rel="stylesheet" href="/css/mask-editor.css?sha=ca5a9ef5ba4603c3bd6b654d8709482a3f08fbe69cc9362e2c7d26c620fbf34e">
+    <link rel="stylesheet" href="/css/cache-browser.css?sha=d88b13f7a362c6cbff1c5704aa7a3657d11be6af08724724e568e74d5e894f6f">
+    <link rel="stylesheet" href="/css/chat-modal.css?sha=ce1ef3dea75ae561349a261e73429177ebf989f55f00c6df095fd3b8f0ccf2d2">
+    <link rel="stylesheet" href="/css/unified-upload.css?sha=a4c153b977ef1a349247dfa288714cb8f0ea3189d0bca3dba19d58d7b39413a2">
+    <link rel="stylesheet" href="/css/genso-manager.css?sha=c8fd17bcdbc27ed3601c90fde0736a24ec56a32cb7ca20c5087b7a09647d93df">
+    <link rel="stylesheet" href="/css/shared-text-replacement.css?sha=ecfae35847f995fa56ecae9eceec086625b719e3ef3e62ea8964459f8611d785">
+    <link rel="stylesheet" href="/css/autocomplete.css?sha=4f655264e56ce434a52d8266f6c5abfe359ffaf07853ae75f73e81d9e41582f5">
+    <link rel="stylesheet" href="/css/spell-check.css?sha=98b3edc883d80a065f927b085d3766399f269dbb5ee586d61eaf82b75d536ff1">
+    <link rel="stylesheet" href="/css/toasts.css?sha=421723ed1c449058ef64296c665571c0958b25ce69cc066815b7c0f3fd755832">
+    <link rel="stylesheet" href="/css/memoriesDsap.css?sha=3c1fd24846b5ec21dec69ec790c1914f2aab93b00a0a44015c9854daed35ba0a">
+    <link rel="stylesheet" href="/css/fatal-error.css?sha=5438dde85f86b0f5ddfe9915b6dc91c447b6f34fcfd60c3dd90a04c97a3d5a3b">
+    <link rel="stylesheet" href="/css/run-applet.css?sha=f060c1f073aa49cf070eeb11b746c6596107f250d829f5fe2e161b6c3ad76739">
+    <link rel="stylesheet" href="/css/keyboard-shortcuts.css?sha=2f14bc21c4b3c9d562fc5bbda90d4ecc9000a5cc4bdddada50f0f7ac58ada641">
+    <link rel="stylesheet" href="/css/window-switcher.css?sha=d38cda0799f954911b9604699c63421e899ef5ca39970459a50391856d433487">
+    <link rel="stylesheet" href="/css/confirmation-dialogs.css?sha=19a119c0ece33ed64327ac2865bae10bf7b642f4bd54d61ea20caf6509086fcd">
+    <link rel="stylesheet" href="/css/about-melaton.css?sha=f0d9a665210db4ed483f7ce059b708715afdc9c545ffd2c12c2ab6decf770e7e">
+    <link rel="stylesheet" href="/css/desktop-boot.css?sha=7c8a9e0494c085520951d44809911ed2b5c3030cdd88dc3de2bceca5111df472">
+    <link rel="stylesheet" href="/css/connection-dial.css?sha=3d982a24241205f2f99eb6b3bba6e387c08eeb4b67c01a017865e58b22f7f653">
+    <link rel="stylesheet" href="/css/config-editor.css?sha=2b3fdd824e379bacb1009b93d9a9ddb82cef3470a0b62380aaf1e8694285a396">
+    <link rel="stylesheet" href="/css/naxt-shell.css?sha=2fdc95cfa907e34e0aea3eeb1fd4c7115927f11ec05998ddc3d70a98d78be821">
+    <link rel="stylesheet" href="/css/notepad.css?sha=751505a74425c08ebbeb3163a6b573e06659b4fa9554e3597d50439927e66dc1">
+    <link rel="stylesheet" href="/css/websocket-requests.css?sha=08831199973119539b70b89c7ea3e1e7a5539220847349b064db373cce5eea59">
+    <link rel="stylesheet" href="/css/log-viewer.css?sha=0c445831299b17f904f924cd6e879b32ed871ef71bd0cd38fba3184e96e871e0">
+    <link rel="stylesheet" href="/css/requestBodyReplacements.css?sha=090169a275a74eca77abf04eb8294165c41b10c829e771eb9ab96c89d7eee19d">
+    <link rel="stylesheet" href="/css/spellbook.css?sha=0edcb4290644ad6539133aecb47bcaa3249d71a752261ba5a1bc6719fe5bcd6c">
+    <link rel="stylesheet" href="/css/bracket-generation.css?sha=6972b32114018daf80474002985d0ca6afff6e5a60014ba3fb2a0731535b6743">
+    <link rel="stylesheet" href="/css/generation-quips.css?sha=1897431b19b1ccbdb25a0efab57923d1475fda2b6327f05d85c45a120de79fc4">
+    <link rel="stylesheet" href="/css/manual-modal-splash.css?sha=5407099fa43f237b708153f9399f22b03b9767a0469546384a8938316e84722b">
+    <link rel="stylesheet" href="/css/token-display.css?sha=34385c7898772fcbd2a649143b5d721fe15dc35fa0ea0065c942f3f29bc27137">
+    <link rel="stylesheet" href="/css/compiled-prompt-lcd.css?sha=2683605acc63e344daeb2dffc5d9ba1ed779b5ab2278094f9e03d8b870ffb2bb">
+    <link rel="stylesheet" href="/css/tag-wiki-search.css?sha=807ad263136e0702d0f3cf5a76fa186d64199716d898208cee74c35a4172ac1d">
+    <link rel="stylesheet" href="/css/grimoire-browser.css?sha=3962d4785a5edfcd6335b58ce7a85898e5cb284e9e94fe18f94c0ec0458178dc">
+    <link rel="stylesheet" href="/css/explorer.css?sha=130264ec3f65f7194a709a0c2183923e000b3f87b46175ab606716abe260d548">
+    <link rel="stylesheet" href="/css/emphasis-groups-tool.css?sha=710510a7392f773725568502036d3f89dc6a808fb38e181ef5000f01b765c127">
+    <link rel="stylesheet" href="/css/emphasis-manager.css?sha=a7a39214460fe73f327f13b0635f0bfb82eb0fc672d9c8b6a67a099c2958edb0">
+    <link rel="stylesheet" href="/css/windows-classic-theme.css?sha=afbfc00060e72b7b3bf73513a944697ebbfcf8b80cfaca35de7d3c86b7df0ead">
+    <link rel="stylesheet" href="/css/service-worker-tray.css?sha=b37a99b6fd1a16568f0637ddaffa1f944123b80dbe5023918afa42e8fa1ebffb">
+    <link rel="stylesheet" href="/css/gallery-loading.css?sha=f60c7893f80dae7af53c5548d988cfc81061ca846baded3d262148ae1c2df9ba">
+    <link rel="stylesheet" href="/css/7.scoped.css?sha=081ae08623440190dd94ce8e95833fe038c9b1c73d64cff21a9b5a3f81a263f0">
+    <link rel="stylesheet" href="/css/developer-tools.css?sha=8d4d0d005da049389ce8125acb422a3f639e262f5fdc4d87b21c68e98b5c5631">
+    <link rel="stylesheet" href="/css/pin-modal.css?sha=1706ababd20b415b9c9ba3024b46c061b6e0611cf781bc402e8be267ce82aa11">
     <link rel="stylesheet" href="/dist/photoswipe/photoswipe.css">
-    <link rel="stylesheet" href="/css/blockContainer.css">
-    <link rel="stylesheet" href="/css/image-loupe.css">
-    <link rel="stylesheet" href="/css/virtual-keyboard.css">
+    <link rel="stylesheet" href="/css/blockContainer.css?sha=e80f1fb7180d09a2be9c1c0a4b88be25fe7fe377f0e623687d84eb18d0646de5">
+    <link rel="stylesheet" href="/css/image-loupe.css?sha=6977372acb7ad98f4d2ee0d6d29d2dda596ac357b1b6ed01a38aeea66a6edaf9">
+    <link rel="stylesheet" href="/css/virtual-keyboard.css?sha=dc74cd9ea44cc9226e40352022c7246de40e8112fa68505f80e6c492f2b6bc74">
     <link rel="stylesheet" href="/dist/mdi/materialdesignicons.min.css">
     <link rel="stylesheet" href="/dist/fonts/weather-icons.min.css">
     <link rel="stylesheet" href="/dist/remixicon/remixicon.css">
     <!-- Terminal: global .hidden — must stay last in the stylesheet stack -->
-    <link rel="stylesheet" href="/css/hidden.css">
+    <link rel="stylesheet" href="/css/hidden.css?sha=96b476a84b8425288ed3d51ec514ff158588daa61c3713a04c96dd159ed5331e">
     <script src="/scripts/comp/tagSets.js"></script>
     <script src="/scripts/comp/blockContainer.js"></script>
     <script src="/scripts/utils/deviceUtils.js"></script>
@@ -6232,7 +6282,7 @@ Examples:
     <!-- Tag Wiki Search Modal -->
     <div id="tagWikiSearchModal" class="modal toolbar-visible hidden resizeable-window"
         data-window-identifier="grimoire"
-        data-window-max-width="1800" data-window-max-height="1200" data-window-min-width="800"
+        data-window-max-width="1800" data-window-max-height="1400" data-window-min-width="650"
         data-window-min-height="600">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
@@ -7555,12 +7605,54 @@ Examples:
     <script src="scripts/comp/bracketGenerationApplet.js"></script>
     <script src="scripts/comp/promptTextareaContextMenu.js"></script>
     <script src="scripts/comp/dynamicGenerationLockState.js"></script>
+    <script src="scripts/comp/dynamicGenerationCarousel.js"></script>
+    <script src="scripts/comp/dynamicGenerationManager.js"></script>
     <script src="scripts/comp/generationQuips.js"></script>
     <script src="scripts/comp/generationQuipsTray.js"></script>
     <script src="scripts/comp/novelManager.js"></script>
     <script src="scripts/comp/novelContextMenu.js"></script>
     <script src="scripts/comp/manualModalManager.js"></script>
+    <script src="scripts/comp/manualPreviewManager.js"></script>
+    <script src="scripts/comp/manualGenerationParams.js"></script>
+    <script src="scripts/comp/apiKeyModal.js"></script>
+    <script src="scripts/comp/metadataDialogManager.js"></script>
+    <script src="scripts/comp/randomPromptManager.js"></script>
+    <script src="scripts/comp/directorLearningAdmin.js"></script>
+    <script src="scripts/comp/characterPromptManager.js"></script>
+    <script src="scripts/comp/manualTabManager.js"></script>
+    <script src="scripts/comp/textOverlayManager.js"></script>
+    <script src="scripts/comp/pipelineStageControls.js"></script>
+    <script src="scripts/comp/pipelineStageManager.js"></script>
+    <script src="scripts/comp/focusOverlayManager.js"></script>
+    <script src="scripts/comp/mainMenuManager.js"></script>
+    <script src="scripts/comp/compareViewManager.js"></script>
+    <script src="scripts/comp/compiledPromptInspector.js"></script>
+    <script src="scripts/comp/exitConfirmation.js"></script>
+    <script src="scripts/comp/systemTrayManager.js"></script>
+    <script src="scripts/comp/windowControlsOverlay.js"></script>
     <script src="protected/t5-tokenizer.js"></script>
+    <script src="scripts/comp/errorDisplay.js"></script>
+    <script src="scripts/comp/themePreferences.js"></script>
+    <script src="scripts/comp/appBootstrap.js"></script>
+    <script src="scripts/comp/balanceDisplay.js"></script>
+    <script src="scripts/comp/dynamicGenerationOverrides.js"></script>
+    <script src="scripts/comp/generationOrchestrator.js"></script>
+    <script src="scripts/comp/androidNotificationBridge.js"></script>
+    <script src="scripts/comp/connectionManager.js"></script>
+    <script src="scripts/comp/trayIndicators.js"></script>
+    <script src="scripts/comp/seedSproutManager.js"></script>
+    <script src="scripts/comp/manualFormHelpers.js"></script>
+    <script src="scripts/comp/uploadHandlers.js"></script>
+    <script src="scripts/comp/manualUploadHandlers.js"></script>
+    <script src="scripts/comp/galleryActions.js"></script>
+    <script src="scripts/comp/bulkOperationsManager.js"></script>
+    <script src="scripts/comp/generateButtonPopover.js"></script>
+    <script src="scripts/comp/uiResize.js"></script>
+    <script src="scripts/comp/cacheAndReadOnly.js"></script>
+    <script src="scripts/comp/windowManagementHelpers.js"></script>
+    <script src="scripts/comp/generationProgress.js"></script>
+    <script src="scripts/appWebSocketHandlers.js"></script>
+    <script src="scripts/appInitSteps.js"></script>
     <script src="scripts/app.js"></script>
 </body>
 

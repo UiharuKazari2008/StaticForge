@@ -32,6 +32,10 @@ class RunApplet {
         this.resultsShell = this.modal ? this.modal.querySelector('.run-applet-results-shell') : null;
         this.prefixHintEl = document.getElementById('runAppletPrefixHint');
         if (!this.modal || !this.input) return;
+        if (this._initWired) {
+            return;
+        }
+        this._initWired = true;
 
         if (this.prefixHintEl) {
             // RUN_SEARCH_PREFIX_HINT: public/scripts/comp/runCommandIndex.js

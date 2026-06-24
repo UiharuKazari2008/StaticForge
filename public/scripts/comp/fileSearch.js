@@ -69,6 +69,21 @@ class FileSearch {
     }
 
     setupEventListeners() {
+        if (this._eventsWired) {
+            return;
+        }
+        this._eventsWired = true;
+
+        const searchToggleBtn = document.getElementById('searchToggleBtn');
+        if (searchToggleBtn && searchToggleBtn.dataset.wired !== 'true') {
+            searchToggleBtn.dataset.wired = 'true';
+            searchToggleBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                // toggleSearchContainer: public/scripts/app.js
+                toggleSearchContainer();
+            });
+        }
+
         // Search input events
         this.searchInput.addEventListener('input', (e) => {
             this.handleSearchInput(e.target.value);
@@ -183,15 +198,19 @@ class FileSearch {
             });
         }
 
-        // Handle view changes to reset cache
+        // Handle view changes to reset cache / clear search on view switch
         if (window.galleryToggleGroup) {
             window.galleryToggleGroup.addEventListener('click', (e) => {
-                if (e.target.classList.contains('gallery-toggle-btn')) {
-                    const newView = e.target.getAttribute('data-view');
-                    if (newView && newView !== this.cacheViewType) {
-                        this.cacheInitialized = false;
-                        this.cacheViewType = null;
-                    }
+                if (!e.target.classList.contains('gallery-toggle-btn')) {
+                    return;
+                }
+                const newView = e.target.getAttribute('data-view');
+                if (newView && newView !== this.cacheViewType) {
+                    this.cacheInitialized = false;
+                    this.cacheViewType = null;
+                }
+                if (!e.target.classList.contains('active')) {
+                    this.clearSearch(false, true);
                 }
             });
         }
@@ -231,22 +250,6 @@ class FileSearch {
 
         // Ensure mobile expanded state is maintained
         this.ensureMobileExpandedState();
-
-        // Set up interval to maintain mobile expanded state
-        setInterval(() => {
-            this.ensureMobileExpandedState();
-        }, 1000); // Check every second
-
-        if (window.galleryToggleGroup) {
-            window.galleryToggleGroup.addEventListener('click', (e) => {
-                if (e.target.classList.contains('gallery-toggle-btn') && !e.target.classList.contains('active')) {
-                    // Gallery view is changing, clear search system
-                    this.clearSearch(false, true);
-                }
-            });
-        }
-
-
     }
 
     async initializeSearchIfNeeded() {
@@ -1332,3 +1335,89 @@ class FileSearch {
 document.addEventListener('DOMContentLoaded', () => {
     window.fileSearch = new FileSearch();
 });
+
+// ============================================================================
+// FILE SEARCH CONTAINER HELPERS (extracted from app.js — removal manifest Phase 1)
+// Dependencies: closeSubMenu, searchToggleBtn, clearGallery, displayGalleryFromStartIndex (app.js)
+// ============================================================================
+
+function isInSearchMode() {
+    const searchContainer = document.querySelector('#main-menu-bar .file-search-container');
+    return searchContainer && !searchContainer.classList.contains('closed');
+}
+
+function toggleSearchContainer() {
+    const searchContainer = document.querySelector('#main-menu-bar .file-search-container');
+    const clearSearchBtn = document.getElementById('clearSearchBtn');
+    const mainMenuContents = document.querySelector('#main-menu-bar .main-menu-contents');
+
+    if (searchContainer) {
+        const isClosed = searchContainer.classList.contains('closed');
+
+        if (isClosed) {
+            closeSubMenu();
+            searchContainer.classList.remove('closed');
+            if (clearSearchBtn) {
+                clearSearchBtn.classList.remove('hidden');
+            }
+            if (searchToggleBtn) {
+                searchToggleBtn.classList.add('active');
+            }
+            if (mainMenuContents) {
+                mainMenuContents.classList.add('hidden');
+            }
+            const searchInput = document.getElementById('fileSearchInput');
+            if (searchInput) {
+                searchInput.disabled = true;
+                if (window.fileSearch) {
+                    window.fileSearch.initializeSearchIfNeeded().then(() => {
+                        searchInput.disabled = false;
+                        setTimeout(() => searchInput.focus(), 100);
+                    }).catch((error) => {
+                        console.error('Failed to initialize search:', error);
+                        searchInput.disabled = false;
+                    });
+                } else {
+                    setTimeout(() => {
+                        if (searchInput) {
+                            searchInput.disabled = false;
+                            searchInput.focus();
+                        }
+                    }, 100);
+                }
+            }
+        } else {
+            closeSearchContainer();
+        }
+    }
+}
+
+function closeSearchContainer() {
+    const searchContainer = document.querySelector('.file-search-container');
+    const clearSearchBtn = document.getElementById('clearSearchBtn');
+    const searchInput = document.getElementById('fileSearchInput');
+    const mainMenuContents = document.querySelector('.main-menu-contents');
+
+    if (searchContainer) {
+        searchContainer.classList.add('closed');
+        if (clearSearchBtn) {
+            clearSearchBtn.classList.add('hidden');
+        }
+        if (searchToggleBtn) {
+            searchToggleBtn.classList.remove('active');
+        }
+        if (mainMenuContents) {
+            mainMenuContents.classList.remove('hidden');
+        }
+        if (searchInput) {
+            searchInput.value = '';
+            searchInput.blur();
+        }
+        if (window.fileSearch) {
+            window.fileSearch.clearSearch(true, true);
+        }
+
+        clearGallery();
+        displayGalleryFromStartIndex(0);
+    }
+}

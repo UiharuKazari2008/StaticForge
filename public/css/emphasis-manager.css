@@ -1,0 +1,997 @@
+/* Emphasis mode and highlighting — scripts/comp/emphasisManager.js */
+/* Emphasis mode styles */
+.prompt-textarea-toolbar.emphasis-mode .toolbar-regular-buttons,
+.prompt-textarea-toolbar.emphasis-mode .toolbar-search-elements {
+    display: none;
+}
+
+.prompt-textarea-toolbar.emphasis-mode .toolbar-emphasis-elements {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    justify-content: flex-start;
+}
+
+.prompt-textarea-toolbar .toggle-btn[data-state="on"] {
+    transform: none;
+}
+
+.toolbar-emphasis-elements {
+    display: none;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.toolbar-emphasis-elements .emphasis-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.toolbar-emphasis-elements .emphasis-value {
+    font-weight: bold;
+    font-variation-settings: "wght" 500;
+    font-size: 1.1em;
+    text-align: center;
+}
+
+.toolbar-emphasis-elements .emphasis-type {
+    font-size: 0.8em;
+    color: var(--text-secondary);
+    padding: 2px 6px;
+}
+
+.toolbar-emphasis-elements .emphasis-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.toolbar-emphasis-elements .emphasis-btn {
+    padding: 2px 12px;
+    min-width: 45px;
+}
+
+.toolbar-emphasis-elements .emphasis-btn.toolbar-btn {
+    padding: 2px 8px;
+    min-width: 35px;
+}
+
+.toolbar-emphasis-elements .emphasis-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    margin-left: var(--spacing-xs);
+}
+
+.toolbar-emphasis-elements .emphasis-apply:hover:not(:disabled) {
+    background: var(--success-hover-color, #218838);
+    border-color: var(--success-hover-color, #218838);
+}
+
+.toolbar-emphasis-elements .emphasis-cancel:hover:not(:disabled) {
+    background: var(--danger-hover-color, #c82333);
+    border-color: var(--danger-hover-color, #c82333);
+}
+
+.prompt-textarea-toolbar .toolbar-search-elements .text-search-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-weight: bold;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.prompt-textarea-toolbar .toolbar-search-elements .text-search-input-container {
+    flex: 1;
+    min-width: 150px;
+}
+
+.prompt-textarea-toolbar .toolbar-search-elements .text-search-input {
+    width: 100%;
+    padding: 4px 8px;
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--border-radius-sm);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 14px;
+    transition: border-color 0.2s ease;
+    cursor: text;
+    pointer-events: auto;
+}
+
+.prompt-textarea-toolbar .toolbar-search-elements .text-search-input:focus {
+    outline: none;
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 2px rgba(0, 191, 255, 0.2);
+}
+
+.prompt-textarea-toolbar .toolbar-search-elements .text-search-match-count {
+    font-family: var(--font-mono);
+    font-weight: bold;
+    font-variation-settings: "wght" 700;
+    padding: 2px 8px;
+    border-radius: var(--border-radius-sm);
+    background: var(--glass-layer-2);
+    border: 1px solid var(--glass-border-1);
+    min-width: 40px;
+    text-align: center;
+    color: #96e5ff;
+}
+
+@keyframes searchModeSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.prompt-textarea-container.textarea-focused .prompt-textarea-toolbar {
+    opacity: 1;
+    max-height: 43px;
+}
+
+.toolbar-left {
+    display: flex;
+    align-items: center;
+    justify-content: start;
+    width: 100%
+}
+
+.toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    justify-content: end;
+}
+
+.token-count {
+    font-size: 0.85em;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+}
+
+.toolbar-btn:focus {
+    outline: none;
+}
+
+/* Loading states for dataset tag toolbar */
+.dataset-tag-dropdown-wrapper.loading .custom-dropdown-btn {
+    opacity: 0.7;
+    cursor: wait;
+}
+
+/* Loading spinner for dataset tag toolbar */
+.dataset-tag-loading-spinner {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-primary);
+    font-size: 14px;
+    margin-right: 8px;
+    padding: 4px 8px;
+    background-color: rgba(0, 123, 255, 0.1);
+    border-radius: 4px;
+    border: 1px solid rgba(0, 123, 255, 0.2);
+}
+
+.divider {
+    border-right: 1px solid var(--glass-border-3);
+    padding-right: var(--spacing-xs);
+    margin-right: var(--spacing-xs);
+}
+
+.prompt-textarea-toolbar .divider,
+.dynamic-generation-actions .divider {
+    border-right: 1px solid var(--glass-inset-bg-1);
+    display: block;
+    height: 24px;
+}
+
+/* Wide prompt toolbar actions — inline above 768px, toolbox menu below */
+.prompt-textarea-toolbar .toolbar-wide-btn,
+.prompt-textarea-toolbar .toolbar-wide-divider {
+    display: none;
+}
+
+@media (min-width: 768px) {
+    .prompt-textarea-toolbar .toolbar-wide-btn {
+        display: inline-flex;
+    }
+
+    .prompt-textarea-toolbar .toolbar-wide-divider {
+        display: block;
+    }
+
+    .custom-dropdown-menu .toolbar-menu-only {
+        display: none;
+    }
+}
+
+@container manual-modal (max-width: 767px) {
+    #manualModal .prompt-textarea-toolbar .toolbar-wide-btn,
+    #manualModal .prompt-textarea-toolbar .toolbar-wide-divider {
+        display: none !important;
+    }
+
+    #manualModal .custom-dropdown-menu .toolbar-menu-only {
+        display: flex !important;
+    }
+}
+
+/* Prompt textarea specific height */
+.prompt-textarea,
+.character-prompt-textarea {
+    width: 100%;
+    height: auto;
+    resize: none;
+    min-height: 80px;
+    border: 1px solid transparent;
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    padding: 0.45em;
+    border-radius: var(--border-radius-md);
+    transition: var(--transition-textarea-field);
+    line-height: 1.35;
+    line-break: anywhere;
+    background: transparent;
+    position: relative;
+    z-index: var(--z-layer-2);
+    overflow: hidden;
+}
+
+#manualPrompt {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
+
+.prompt-textarea:hover:not(:disabled),
+.prompt-textarea:focus,
+.prompt-textarea:active,
+.character-prompt-textarea:hover:not(:disabled),
+.character-prompt-textarea:focus,
+.character-prompt-textarea:active {
+    background: rgba(255, 255, 255, 0.25);
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+    -webkit-tap-highlight-color: transparent;
+    border: 1px solid rgba(255, 255, 255, 1);
+}
+
+/* Inset textarea styling */
+.textarea-inset,
+.textarea-inset:hover:not(:disabled) {
+    background: #ffffff1f;
+    border: 1px solid var(--glass-inset-bg-5);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+    transition: var(--transition-glass-surface);
+    position: relative;
+}
+
+.prompt-textarea.textarea-inset,
+.character-prompt-textarea.textarea-inset,
+.prompt-textarea.textarea-inset:hover:not(:disabled),
+.character-prompt-textarea.textarea-inset:hover:not(:disabled) {
+    transition: var(--transition-textarea-field);
+}
+
+.textarea-inset::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, transparent 50%, rgba(0, 0, 0, 0.1) 100%);
+    border-radius: var(--border-radius-md);
+    pointer-events: none;
+    z-index: var(--z-layer-1);
+}
+
+.textarea-inset:focus {
+    background: rgba(255, 255, 255, 0.25);
+    border: 1px solid rgba(255, 255, 255, 1);
+    box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.4);
+    outline: none;
+}
+
+.textarea-inset textarea {
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    width: 100%;
+    height: 100%;
+    resize: none;
+    outline: none;
+    position: relative;
+    z-index: var(--z-layer-2);
+}
+
+.textarea-inset textarea::placeholder {
+    color: var(--text-muted);
+}
+
+/* Resolution group with upscale toggle */
+.resolution-group {
+    display: flex;
+    gap: var(--spacing-sm);
+    align-items: center;
+}
+
+.resolution-group .form-control {
+    flex: 1;
+}
+
+/* Custom resolution inputs */
+.custom-resolution-inputs {
+    display: flex;
+    gap: var(--spacing-sm);
+    align-items: center;
+    flex: auto;
+}
+
+.custom-resolution-inputs input[type="number"] {
+    text-align: center;
+    padding: 0.25em 0.6em;
+    font-size: 1em;
+    font-family: var(--font-primary);
+    flex: auto;
+    color: #ff8153;
+    background: transparent;
+    min-width: 64px;
+    font-weight: 400;
+}
+
+.custom-resolution-inputs .height-value:not(:hover) {
+    padding: 0.25em 1.2em 0.25em 0em;
+}
+
+.custom-resolution-inputs .width-value:not(:hover) {
+    padding: 0.25em 0em 0.25em 1.2em;
+}
+
+.custom-resolution-inputs .x-seperator {
+    color: var(--text-accent-tinted);
+    font-size: 0.85em;
+}
+
+.custom-resolution-inputs input[type="number"]::-webkit-outer-spin-button,
+.custom-resolution-inputs input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.custom-resolution-inputs input[type="number"] {
+    appearance: textfield;
+    -webkit-appearance: textfield;
+}
+
+/* Seed input group with clear button and layer1 seed toggle */
+.seed-input-group {
+    display: flex;
+    gap: var(--spacing-sm);
+    align-items: center;
+}
+
+.seed-input-group .form-control {
+    flex: 1;
+}
+
+/* Icon-only toggle buttons */
+.toggle-btn.icon-only {
+    min-width: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition-glass-surface);
+}
+
+
+/* Form row layout updates */
+.form-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+    transition: var(--transition-glass-surface);
+}
+
+.form-row.center-align {
+    align-items: center;
+    justify-content: center;
+}
+
+.form-col {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.form-col .form-row {
+    margin-bottom: 0;
+}
+
+.form-row.separator {
+    border-top: 2px solid var(--border-divider);
+    padding-top: 10px;
+}
+
+.form-row .form-group {
+    flex: 1;
+}
+
+/* Ensure form controls have consistent sizing */
+.form-row .form-control {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Manual preset placeholder styling */
+.manual-preset-placeholder {
+    width: 0;
+    overflow: hidden;
+    transition: width 0.3s ease-in-out, opacity 0.3s ease-in-out;
+    opacity: 0;
+    font-size: 14px;
+    color: var(--text-accent-tinted);
+    font-style: italic;
+    font-weight: 450;
+    font-variation-settings: "wght" 450;
+    display: flex;
+    align-items: center;
+}
+
+.manual-preset-placeholder.show {
+    width: auto;
+    opacity: 1;
+}
+
+#manualPresetPlaceholderText {
+    white-space: nowrap;
+}
+
+
+.modal-actions.btn-group {
+    justify-content: flex-end;
+}
+
+#transformationRow:not(.display-image) #transformationSection {
+    display: none;
+}
+
+#transformationRow .btn-danger {
+    min-width: 32px;
+    padding: 0.5em;
+}
+
+#transformationRow:not(.display-vibe):not(.display-character) #vibeReferencesContainer {
+    display: none;
+}
+
+#directorReferenceSection {
+    display: none !important;
+}
+
+#transformationRow.display-vibe:not(.display-image):not(.display-character) .vibe-references-container {
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-areas: ". . .";
+}
+
+#transformationRow.display-character:not(.display-vibe):not(.display-image) .vibe-references-container {
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-areas: ". . .";
+}
+
+#transformationRow.display-vibe.display-image.display-character .vibe-references-container {
+    grid-template-columns: 1fr;
+    grid-template-areas: ".";
+}
+
+#transformationRow:not(.display-image):not(.display-vibe):not(.display-character) {
+    display: none;
+}
+
+/* Director Reference Section Visibility — legacy slot hidden; precise refs use vibeReferencesContainer */
+#transformationRow:not(.display-character) #directorReferenceSection {
+    display: none;
+}
+
+.precise-reference-strength-fidelity-pair {
+    display: flex;
+    gap: var(--spacing-xs);
+    align-items: stretch;
+}
+
+.precise-reference-strength-fidelity-pair .precise-reference-input-side {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+}
+
+.precise-reference-strength-fidelity-pair .precise-reference-input-side .percentage-input-overlay,
+.precise-reference-strength-fidelity-pair .precise-reference-input-side .precise-reference-ratio-input {
+    transition: opacity var(--transition-normal);
+}
+
+.precise-reference-strength-fidelity-pair .precise-reference-opposite-label {
+    display: none;
+    position: absolute;
+    inset: 0;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    pointer-events: none;
+    z-index: 5;
+    opacity: 1;
+    color: var(--hover-show-colored-text, var(--text-primary));
+}
+
+/* Hover strength: dim fidelity input (right), show its opposite label on top */
+.precise-reference-strength-fidelity-pair:has(.precise-reference-strength-side:hover, .precise-reference-strength-side:focus-within) .precise-reference-fidelity-side .percentage-input-overlay,
+.precise-reference-strength-fidelity-pair:has(.precise-reference-strength-side:hover, .precise-reference-strength-side:focus-within) .precise-reference-fidelity-side .precise-reference-ratio-input {
+    opacity: 0.15;
+}
+
+.precise-reference-strength-fidelity-pair:has(.precise-reference-strength-side:hover, .precise-reference-strength-side:focus-within) .precise-reference-fidelity-side .precise-reference-opposite-label {
+    display: flex;
+}
+
+.precise-reference-strength-fidelity-pair:has(.precise-reference-strength-side:hover, .precise-reference-strength-side:focus-within) .precise-reference-strength-side .precise-reference-opposite-label {
+    display: none;
+}
+
+/* Hover fidelity: dim strength input (left), show its opposite label on top */
+.precise-reference-strength-fidelity-pair:has(.precise-reference-fidelity-side:hover, .precise-reference-fidelity-side:focus-within) .precise-reference-strength-side .percentage-input-overlay,
+.precise-reference-strength-fidelity-pair:has(.precise-reference-fidelity-side:hover, .precise-reference-fidelity-side:focus-within) .precise-reference-strength-side .precise-reference-ratio-input {
+    opacity: 0.15;
+}
+
+.precise-reference-strength-fidelity-pair:has(.precise-reference-fidelity-side:hover, .precise-reference-fidelity-side:focus-within) .precise-reference-strength-side .precise-reference-opposite-label {
+    display: flex;
+}
+
+.precise-reference-strength-fidelity-pair:has(.precise-reference-fidelity-side:hover, .precise-reference-fidelity-side:focus-within) .precise-reference-fidelity-side .precise-reference-opposite-label {
+    display: none;
+}
+
+.precise-reference-preview-clickable {
+    cursor: pointer;
+}
+
+.precise-reference-preview-clickable .overlay-icon-container {
+    pointer-events: none;
+}
+
+.precise-reference-type-toggles {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.precise-reference-type-toggles .toggle-btn {
+    min-width: 42px;
+    min-height: 32px;
+}
+
+
+/* Remove the old layer1 seed toggle group styles since it's now integrated */
+#layer1SeedToggleGroup {
+    display: none;
+}
+
+#layer1SeedToggleGroup.show {
+    display: block;
+}
+
+.form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-md);
+}
+
+/* File Search Styles */
+
+.file-search-container {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    margin-left: 0;
+    position: relative;
+    width: 0;
+    opacity: 0;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: var(--transition-search-panel);
+    z-index: var(--z-layer-1);
+    gap: var(--spacing-sm);
+}
+
+.file-search-container.closed {
+    width: 0;
+    opacity: 0;
+    transform: scaleX(0);
+    overflow: hidden;
+    min-height: 0;
+}
+
+.file-search-container:not(.closed) {
+    width: auto;
+    opacity: 1;
+    transform: scaleX(1);
+}
+
+.search-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    justify-content: center;
+}
+
+.search-icon {
+    position: absolute;
+    left: 10px;
+    color: var(--text-muted);
+    font-size: 14px;
+    pointer-events: none;
+    z-index: var(--z-layer-1);
+}
+
+.file-search-input {
+    width: 500px;
+    max-width: 75vw;
+    min-width: 200px;
+    font-family: var(--font-secondary);
+    font-size: 12pt;
+    padding: 0.2em 0.6em 0;
+}
+
+.file-search-input::placeholder {
+    color: var(--text-muted);
+}
+
+/* File search autofill overlay positioning */
+#fileSearchAutofill {
+    position: fixed;
+    z-index: var(--z-modal);
+    display: flex;
+    overflow: hidden;
+    transition: var(--transition-tray-menu);
+    min-width: 300px;
+    max-width: 400px;
+    max-height: min(500px, calc(100svh - var(--menubar-height, 8.5em) - var(--spacing-xxl)));
+    transition: max-height 0.2s ease;
+}
+
+/* List scrolls inside the bounded overlay (matches .top-down / .bottom-up from existing script) */
+#fileSearchAutofill .character-autocomplete-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--glass-border-2) transparent;
+    flex-direction: column-reverse;
+}
+
+#fileSearchAutofill.expanded {
+    max-height: min(800px, calc(100svh - var(--menubar-height, 8.5em) - var(--spacing-xxl)));
+}
+
+/* Custom scrollbar styling for webkit browsers */
+#fileSearchAutofill .character-autocomplete-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+#fileSearchAutofill .character-autocomplete-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#fileSearchAutofill .character-autocomplete-list::-webkit-scrollbar-thumb {
+    background: var(--glass-border-2);
+    border-radius: 3px;
+}
+
+#fileSearchAutofill .character-autocomplete-list::-webkit-scrollbar-thumb:hover:not(:disabled) {
+    background: var(--glass-border-1);
+}
+
+#fileSearchAutofillList .character-autocomplete-item.more-indicator {
+    order: -10;
+}
+
+#fileSearchAutofillList .character-autocomplete-item.search-status-display {
+    order: -5;
+}
+
+@media (max-width: 1400px) {
+    .file-search-input {
+        width: 240px;
+    }
+}
+
+@media (max-width: 1200px) {
+    .file-search-input {
+        width: 200px;
+    }
+}
+
+@media (max-width: 1000px) {
+
+    .file-search-input {
+        width: 180px;
+        font-size: 13px;
+    }
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateZ(0) translate(-50%, -50%) scale(0.8);
+        -webkit-filter: blur(4px);
+        filter: blur(4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateZ(0) translate(-50%, -50%) scale(1);
+        -webkit-filter: blur(0px);
+        filter: blur(0px);
+    }
+}
+
+@keyframes modalSlideInTopAnchor {
+    from {
+        opacity: 0;
+        transform: translateZ(0) translate(-50%, 0) scale(0.8);
+        -webkit-filter: blur(4px);
+        filter: blur(4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateZ(0) translate(-50%, 0) scale(1);
+        -webkit-filter: blur(0px);
+        filter: blur(0px);
+    }
+}
+
+@keyframes modalSlideOut {
+    from {
+        opacity: 1;
+        transform: translateZ(0) translate(-50%, -50%) scale(1);
+        -webkit-filter: blur(0px);
+        filter: blur(0px);
+    }
+
+    to {
+        opacity: 0;
+        transform: translateZ(0) translate(-50%, -50%) scale(0.9);
+        -webkit-filter: blur(4px);
+        filter: blur(4px);
+    }
+}
+
+@keyframes modalSlideOutTopAnchor {
+    from {
+        opacity: 1;
+        transform: translateZ(0) translate(-50%, 0) scale(1);
+        -webkit-filter: blur(0px);
+        filter: blur(0px);
+    }
+
+    to {
+        opacity: 0;
+        transform: translateZ(0) translate(-50%, 0) scale(0.9);
+        -webkit-filter: blur(4px);
+        filter: blur(4px);
+    }
+}
+
+@keyframes modalFadeIn {
+    from {
+        opacity: 0;
+        -webkit-filter: blur(4px);
+        filter: blur(4px);
+    }
+
+    to {
+        opacity: 1;
+        -webkit-filter: blur(0px);
+        filter: blur(0px);
+    }
+}
+
+@keyframes modalFadeOut {
+    from {
+        opacity: 1;
+        -webkit-filter: blur(0px);
+        filter: blur(0px);
+    }
+
+    to {
+        opacity: 0;
+        -webkit-filter: blur(4px);
+        filter: blur(4px);
+    }
+}
+
+@keyframes modalMinimize {
+    from {
+        opacity: 1;
+        transform: translateZ(0) translate(-50%, -50%) scale(1);
+    }
+
+    to {
+        opacity: 0;
+        transform: translateZ(0) translate(calc(-50% + var(--minimize-target-x, 0px)),
+                calc(-50% + var(--minimize-target-y, calc(50vh - 25px)))) scale(var(--minimize-target-scale, 0.3));
+    }
+}
+
+@keyframes modalUnminimize {
+    from {
+        opacity: 0;
+        transform: translateZ(0) translate(calc(-50% + var(--minimize-target-x, 0px)),
+                calc(-50% + var(--minimize-target-y, calc(50vh - 25px)))) scale(var(--minimize-target-scale, 0.3));
+    }
+
+    to {
+        opacity: 1;
+        transform: translateZ(0) translate(-50%, -50%) scale(1);
+    }
+}
+
+@keyframes backdropFadeIn {
+    from {
+        opacity: 0;
+        -webkit-backdrop-filter: saturate(0.0);
+        backdrop-filter: saturate(0.0);
+    }
+
+    to {
+        opacity: 1;
+        -webkit-backdrop-filter: saturate(0.15);
+        backdrop-filter: saturate(0.15);
+    }
+}
+
+@keyframes backdropFadeOut {
+    from {
+        opacity: 1;
+        -webkit-backdrop-filter: saturate(0.15);
+        backdrop-filter: saturate(0.15);
+    }
+
+    to {
+        opacity: 0;
+        -webkit-backdrop-filter: saturate(0.0);
+        backdrop-filter: saturate(0.0);
+    }
+}
+
+.modal-content h2 {
+    color: #ff4500;
+    margin-bottom: 15px;
+    text-align: center;
+}
+
+.modal-content p {
+    margin-bottom: 20px;
+    text-align: center;
+    color: #cccccc;
+}
+
+.modal-content input:not([type="radio"]):not([type="checkbox"]) {
+    width: 100%;
+    font-size: 1rem;
+}
+
+
+/* Emphasis highlighting styles */
+.emphasis-highlight {
+    position: relative;
+    display: inline;
+    padding: 1px 2px;
+    margin: 0 -2px;
+    border-radius: 3px;
+    transition: var(--transition-highlight);
+}
+
+/* Emphasis highlighting overlay */
+.emphasis-highlight-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: var(--z-layer-1);
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow: hidden;
+    background: transparent;
+}
+
+.emphasis-highlight-overlay,
+.search-highlight-overlay,
+.search-highlight-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: var(--z-layer-1);
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    line-height: 1.35;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow: hidden;
+    padding: 0.45em;
+    background: transparent;
+    border: none;
+    outline: none;
+    resize: none;
+    line-break: anywhere;
+    color: transparent;
+}
+
+.prompt-textarea-container .prompt-textarea,
+.prompt-textarea-container .prompt-textarea:hover:not(:disabled),
+.prompt-textarea-container .prompt-textarea:focus,
+.prompt-textarea-container .prompt-textarea:active,
+.character-prompt-textarea-container .character-prompt-textarea,
+.character-prompt-textarea-container .character-prompt-textarea:hover:not(:disabled),
+.character-prompt-textarea-container .character-prompt-textarea:focus,
+.character-prompt-textarea-container .character-prompt-textarea:active,
+.character-prompt-tabs .tab-pane textarea,
+.character-prompt-tabs .tab-pane textarea:hover:not(:disabled),
+.character-prompt-tabs .tab-pane textarea:focus,
+.character-prompt-tabs .tab-pane textarea:active {
+    display: block;
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
+
+.emphasis-highlight-overlay {
+    z-index: var(--z-layer-1);
+}
+
+.search-highlight-overlay {
+    z-index: var(--z-layer-3);
+}
+
+/* Director prompt and text overlay prompt containers need matching font styling for highlights */
+.prompt-textarea-container.director-prompt .search-highlight-overlay,
+.prompt-textarea-container.text-overlay-prompt .search-highlight-overlay {
+    font-family: var(--font-quinary);
+    font-size: 0.95em;
+    line-height: 1;
+    padding: var(--spacing-sm);
+}
+
+/* Cache Manager Tabs */
+.cache-manager-tabs {
+    margin-bottom: var(--spacing-sm);
+}
+
+

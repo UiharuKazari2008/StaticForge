@@ -728,6 +728,8 @@ class BracketGenerationApplet {
     init() {
         this.modal = document.getElementById('bracketGenerationModal');
         if (!this.modal) return;
+        if (this.modal.dataset.bracketGenInitWired === 'true') return;
+        this.modal.dataset.bracketGenInitWired = 'true';
 
         this.stepsContainer = document.getElementById('bracketStepsContainer');
 
@@ -871,7 +873,9 @@ class BracketGenerationApplet {
         const dropdown = document.getElementById('bracketGenKeywordDropdown');
         const btn = document.getElementById('bracketGenKeywordDropdownBtn');
         const menu = document.getElementById('bracketGenKeywordDropdownMenu');
-        if (!dropdown || !btn || !menu || typeof setupDropdown !== 'function') return;
+        // setupDropdown: public/scripts/comp/dropdown.js
+        if (!dropdown || !btn || !menu) return;
+        if (dropdown.getAttribute('data-dropdown-initialized') === 'true') return;
 
         setupDropdown(
             dropdown,
@@ -940,7 +944,9 @@ class BracketGenerationApplet {
         const dropdown = document.getElementById('bracketGenGearDropdown');
         const btn = document.getElementById('bracketGenGearDropdownBtn');
         const menu = document.getElementById('bracketGenGearDropdownMenu');
-        if (!dropdown || !btn || !menu || typeof setupDropdown !== 'function') return;
+        // setupDropdown: public/scripts/comp/dropdown.js
+        if (!dropdown || !btn || !menu) return;
+        if (dropdown.getAttribute('data-dropdown-initialized') === 'true') return;
 
         setupDropdown(
             dropdown,

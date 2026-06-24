@@ -1226,8 +1226,17 @@ const memoriesDsapScopedCss = `
 }
 `;
 
+let _memoriesCategoryOutsideClick = null;
+
 const memoriesDsapDriver = {
     _state: null,
+
+    _memoriesWireClick(root, selector, handler) {
+        const el = root.querySelector(selector);
+        if (!el || el.dataset.memoriesWired === '1') return;
+        el.dataset.memoriesWired = '1';
+        el.addEventListener('click', handler);
+    },
 
     init(host) {
         // Fresh state per activation (the shell re-inits us when the URL changes via navigate)
@@ -1238,7 +1247,8 @@ const memoriesDsapDriver = {
             current: null,          // detail memory
             isEdit: false,
             original: null,
-            wsHandlers: []
+            wsHandlers: [],
+            searchTimer: null
         };
 
         const root = host.getRoot();
@@ -1307,30 +1317,18 @@ const memoriesDsapDriver = {
 
     /** Wire buttons that exist in both (or either) views */
     _wireCommonControls(root) {
-        const editBtn = root.querySelector('#memoriesEditBtn');
-        if (editBtn) editBtn.addEventListener('click', () => this._enterEdit());
-
-        const saveBtn = root.querySelector('#memoriesSaveBtn');
-        if (saveBtn) saveBtn.addEventListener('click', () => this._save());
-
-        const cancelBtn = root.querySelector('#memoriesCancelBtn');
-        if (cancelBtn) cancelBtn.addEventListener('click', () => this._exitEdit(true));
-
-        const delBtn = root.querySelector('#memoriesDeleteBtn');
-        if (delBtn) delBtn.addEventListener('click', () => this._deleteCurrent());
-
-        const addEnt = root.querySelector('#memoriesAddEntityBtn');
-        if (addEnt) addEnt.addEventListener('click', () => this._addEntity());
-
-        const addRel = root.querySelector('#memoriesAddRelationBtn');
-        if (addRel) addRel.addEventListener('click', () => this._addRelation());
-
-        const addObs = root.querySelector('#memoriesAddObsBtn');
-        if (addObs) addObs.addEventListener('click', () => this._addObservation());
+        this._memoriesWireClick(root, '#memoriesEditBtn', () => this._enterEdit());
+        this._memoriesWireClick(root, '#memoriesSaveBtn', () => this._save());
+        this._memoriesWireClick(root, '#memoriesCancelBtn', () => this._exitEdit(true));
+        this._memoriesWireClick(root, '#memoriesDeleteBtn', () => this._deleteCurrent());
+        this._memoriesWireClick(root, '#memoriesAddEntityBtn', () => this._addEntity());
+        this._memoriesWireClick(root, '#memoriesAddRelationBtn', () => this._addRelation());
+        this._memoriesWireClick(root, '#memoriesAddObsBtn', () => this._addObservation());
 
         // Pager buttons + per-page selector (only present in list view)
         const pager = root.querySelector('#memoriesPager');
-        if (pager) {
+        if (pager && pager.dataset.memoriesWired !== '1') {
+            pager.dataset.memoriesWired = '1';
             pager.addEventListener('click', (e) => {
                 const btn = e.target.closest('[data-pager]');
                 if (!btn) return;
@@ -1347,11 +1345,11 @@ const memoriesDsapDriver = {
 
         // Live search → URL navigation (debounced so we don't spam history on every keystroke)
         const searchInput = root.querySelector('#memoriesSearchInput');
-        if (searchInput) {
-            let searchTimer = null;
+        if (searchInput && searchInput.dataset.memoriesWired !== '1') {
+            searchInput.dataset.memoriesWired = '1';
             searchInput.addEventListener('input', () => {
-                clearTimeout(searchTimer);
-                searchTimer = setTimeout(() => {
+                clearTimeout(this._state.searchTimer);
+                this._state.searchTimer = setTimeout(() => {
                     const meta = this._state.listMeta || {};
                     const newSearch = searchInput.value || '';
                     // Only navigate if the value actually changed from what the URL says
@@ -1374,7 +1372,7 @@ const memoriesDsapDriver = {
             // Also allow pressing Enter to force immediate navigation
             searchInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
-                    clearTimeout(searchTimer);
+                    clearTimeout(this._state.searchTimer);
                     const meta = this._state.listMeta || {};
                     const url = memoriesDsapBuildListUrl({
                         page: 1,
@@ -1389,15 +1387,11 @@ const memoriesDsapDriver = {
             });
         }
 
-        // Button on the main page (in stats bar) to access static rules
-        const rulesAccessBtn = root.querySelector('#memoriesStaticRulesBtn');
-        if (rulesAccessBtn) {
-            rulesAccessBtn.addEventListener('click', () => {
-                if (typeof this._state.host.navigate === 'function') {
-                    this._state.host.navigate(`dsap://${MEMORIES_DSAP_URL}/static_rules`);
-                }
-            });
-        }
+        this._memoriesWireClick(root, '#memoriesStaticRulesBtn', () => {
+            if (typeof this._state.host.navigate === 'function') {
+                this._state.host.navigate(`dsap://${MEMORIES_DSAP_URL}/static_rules`);
+            }
+        });
     },
 
     refresh(host) {
@@ -1408,6 +1402,17 @@ const memoriesDsapDriver = {
     destroy(host) {
         const state = this._state;
         if (!state) return;
+
+        if (state.searchTimer) {
+            clearTimeout(state.searchTimer);
+            state.searchTimer = null;
+        }
+
+        if (_memoriesCategoryOutsideClick) {
+            document.removeEventListener('click', _memoriesCategoryOutsideClick, true);
+            _memoriesCategoryOutsideClick = null;
+        }
+
         state.wsHandlers.forEach((fn) => {
             try { if (window.wsClient && typeof window.wsClient.off === 'function') window.wsClient.off('list_knowledge_memories_response', fn); } catch (_) {}
         });
@@ -1443,8 +1448,7 @@ const memoriesDsapDriver = {
         const selectedEl = root.querySelector('#memoriesPerPageSelected');
         const hidden = root.querySelector('#memoriesPerPageHidden');
         if (!container || !btn || !menu || !selectedEl || !hidden) return;
-        if (container.dataset.wired === '1') return;
-        container.dataset.wired = '1';
+        if (container.getAttribute('data-dropdown-initialized') === 'true') return;
 
         const items = MEMORIES_PER_PAGE_OPTIONS.map((n) => ({ value: String(n), name: String(n) }));
 
@@ -2191,6 +2195,9 @@ const memoriesDsapDriver = {
             });
         };
 
+        if (btn.dataset.memoriesCategoryWired === '1') return;
+        btn.dataset.memoriesCategoryWired = '1';
+
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             rebuildMenu();
@@ -2199,10 +2206,16 @@ const memoriesDsapDriver = {
             menu.classList.toggle('hidden', !isHidden);
         });
 
-        // close on outside click
-        document.addEventListener('click', (e) => {
-            if (!root.contains(e.target)) menu.classList.add('hidden');
-        }, { capture: true, once: false });
+        if (!_memoriesCategoryOutsideClick) {
+            _memoriesCategoryOutsideClick = (e) => {
+                const activeRoot = memoriesDsapDriver._state?.host?.getRoot?.();
+                const activeMenu = activeRoot?.querySelector('#memoriesCategoryMenu');
+                if (activeMenu && activeRoot && !activeRoot.contains(e.target)) {
+                    activeMenu.classList.add('hidden');
+                }
+            };
+            document.addEventListener('click', _memoriesCategoryOutsideClick, true);
+        }
     },
 
     // Simple wire for the list view's "Delete Memories..." button:

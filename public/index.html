@@ -17,6 +17,13 @@
             script.async = true;
             document.head.appendChild(script);
         }
+        try {
+            if (localStorage.getItem('staticforge_dev_mode') === 'true') {
+                document.cookie = 'staticforge_dev_mode=1; path=/; SameSite=Lax';
+            } else {
+                document.cookie = 'staticforge_dev_mode=; path=/; Max-Age=0';
+            }
+        } catch (e) { /* ignore */ }
     </script>
 
     <!-- Preload critical assets for faster loading -->

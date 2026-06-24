@@ -1,0 +1,1852 @@
+/* Weather card UI — scripts/comp/weatherLocationManager.js */
+/* Weather Card Header with Date/Time */
+.weather-card-header {
+    display: flex;
+    justify-content: flex-end;
+    align-items: flex-start;
+    position: absolute;
+    top: var(--spacing-lg);
+    right: var(--spacing-lg);
+}
+
+/* Season + Pressure based color schemes for main weather card */
+.weather-main-card {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--spacing-xs);
+    padding: var(--spacing-lg);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    transition: background 0.3s ease, border 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Spring season variations */
+.weather-main-card.season-spring-normal {
+    background:
+        radial-gradient(circle at 20% 80%, rgba(150, 200, 120, 0.15) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(100, 160, 80, 0.1) 0%, transparent 50%),
+        linear-gradient(135deg, rgba(120, 180, 100, 0.3) 0%, rgba(80, 140, 60, 0.4) 100%);
+    border: 1px solid rgba(140, 200, 120, 0.5);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 20px rgba(140, 200, 120, 0.2);
+}
+
+.weather-main-card.season-spring-stable {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(160, 220, 140, 0.2) 0%, transparent 40%),
+        radial-gradient(circle at 70% 30%, rgba(120, 180, 100, 0.15) 0%, transparent 40%),
+        linear-gradient(135deg, rgba(140, 200, 120, 0.35) 0%, rgba(100, 160, 80, 0.45) 100%);
+    border: 1px solid rgba(160, 220, 140, 0.6);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.15),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 25px rgba(160, 220, 140, 0.25);
+}
+
+.weather-main-card.season-spring-unstable {
+    background:
+        radial-gradient(circle at 25% 75%, rgba(120, 180, 160, 0.2) 0%, transparent 45%),
+        radial-gradient(circle at 75% 25%, rgba(80, 140, 120, 0.15) 0%, transparent 45%),
+        linear-gradient(135deg, rgba(100, 160, 140, 0.35) 0%, rgba(60, 120, 100, 0.45) 100%);
+    border: 1px solid rgba(120, 180, 160, 0.6);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 20px rgba(120, 180, 160, 0.2);
+}
+
+.weather-main-card.season-spring-stormy {
+    background:
+        radial-gradient(circle at 20% 80%, rgba(100, 140, 180, 0.25) 0%, transparent 40%),
+        radial-gradient(circle at 80% 20%, rgba(60, 100, 140, 0.2) 0%, transparent 40%),
+        linear-gradient(135deg, rgba(80, 120, 160, 0.4) 0%, rgba(40, 80, 120, 0.5) 100%);
+    border: 1px solid rgba(100, 140, 180, 0.7);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+        0 8px 32px rgba(0, 0, 0, 0.4),
+        0 0 30px rgba(100, 140, 180, 0.3);
+}
+
+/* Summer season variations */
+.weather-main-card.season-summer-normal {
+    background:
+        radial-gradient(circle at 20% 80%, rgba(240, 200, 100, 0.15) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(220, 160, 60, 0.1) 0%, transparent 50%),
+        linear-gradient(135deg, rgba(220, 180, 80, 0.3) 0%, rgba(200, 140, 40, 0.4) 100%);
+    border: 1px solid rgba(240, 200, 100, 0.5);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.12),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 20px rgba(240, 200, 100, 0.2);
+}
+
+.weather-main-card.season-summer-stable {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(255, 220, 100, 0.2) 0%, transparent 40%),
+        radial-gradient(circle at 70% 30%, rgba(240, 180, 60, 0.15) 0%, transparent 40%),
+        linear-gradient(135deg, rgba(240, 200, 80, 0.35) 0%, rgba(220, 160, 40, 0.45) 100%);
+    border: 1px solid rgba(255, 220, 100, 0.6);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.18),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 25px rgba(255, 220, 100, 0.25);
+}
+
+.weather-main-card.season-summer-unstable {
+    background:
+        radial-gradient(circle at 25% 75%, rgba(220, 180, 120, 0.2) 0%, transparent 45%),
+        radial-gradient(circle at 75% 25%, rgba(180, 140, 80, 0.15) 0%, transparent 45%),
+        linear-gradient(135deg, rgba(200, 160, 100, 0.35) 0%, rgba(160, 120, 60, 0.45) 100%);
+    border: 1px solid rgba(220, 180, 120, 0.6);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 20px rgba(220, 180, 120, 0.2);
+}
+
+.weather-main-card.season-summer-stormy {
+    background:
+        radial-gradient(circle at 20% 80%, rgba(180, 140, 160, 0.25) 0%, transparent 40%),
+        radial-gradient(circle at 80% 20%, rgba(140, 100, 120, 0.2) 0%, transparent 40%),
+        linear-gradient(135deg, rgba(160, 120, 140, 0.4) 0%, rgba(120, 80, 100, 0.5) 100%);
+    border: 1px solid rgba(180, 140, 160, 0.7);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+        0 8px 32px rgba(0, 0, 0, 0.4),
+        0 0 30px rgba(180, 140, 160, 0.3);
+}
+
+/* Fall/Autumn season variations */
+.weather-main-card.season-fall-normal {
+    background:
+        radial-gradient(circle at 20% 80%, rgba(220, 160, 100, 0.15) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(200, 120, 60, 0.1) 0%, transparent 50%),
+        linear-gradient(135deg, rgba(200, 140, 80, 0.3) 0%, rgba(180, 100, 40, 0.4) 100%);
+    border: 1px solid rgba(220, 160, 100, 0.5);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 20px rgba(220, 160, 100, 0.2);
+}
+
+.weather-main-card.season-fall-stable {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(240, 180, 100, 0.2) 0%, transparent 40%),
+        radial-gradient(circle at 70% 30%, rgba(220, 140, 60, 0.15) 0%, transparent 40%),
+        linear-gradient(135deg, rgba(220, 160, 80, 0.35) 0%, rgba(200, 120, 40, 0.45) 100%);
+    border: 1px solid rgba(240, 180, 100, 0.6);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.15),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 25px rgba(240, 180, 100, 0.25);
+}
+
+.weather-main-card.season-fall-unstable {
+    background:
+        radial-gradient(circle at 25% 75%, rgba(200, 140, 120, 0.2) 0%, transparent 45%),
+        radial-gradient(circle at 75% 25%, rgba(160, 100, 80, 0.15) 0%, transparent 45%),
+        linear-gradient(135deg, rgba(180, 120, 100, 0.35) 0%, rgba(140, 80, 60, 0.45) 100%);
+    border: 1px solid rgba(200, 140, 120, 0.6);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.08),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 20px rgba(200, 140, 120, 0.2);
+}
+
+.weather-main-card.season-fall-stormy {
+    background:
+        radial-gradient(circle at 20% 80%, rgba(160, 120, 140, 0.25) 0%, transparent 40%),
+        radial-gradient(circle at 80% 20%, rgba(120, 80, 100, 0.2) 0%, transparent 40%),
+        linear-gradient(135deg, rgba(140, 100, 120, 0.4) 0%, rgba(100, 60, 80, 0.5) 100%);
+    border: 1px solid rgba(160, 120, 140, 0.7);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+        0 8px 32px rgba(0, 0, 0, 0.4),
+        0 0 30px rgba(160, 120, 140, 0.3);
+}
+
+/* Winter season variations */
+.weather-main-card.season-winter-normal {
+    background:
+        radial-gradient(circle at 20% 80%, rgba(160, 200, 240, 0.15) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(120, 160, 200, 0.1) 0%, transparent 50%),
+        linear-gradient(135deg, rgba(140, 180, 220, 0.3) 0%, rgba(100, 140, 180, 0.4) 100%);
+    border: 1px solid rgba(160, 200, 240, 0.5);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.15),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 20px rgba(160, 200, 240, 0.2);
+}
+
+.weather-main-card.season-winter-stable {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(180, 220, 255, 0.2) 0%, transparent 40%),
+        radial-gradient(circle at 70% 30%, rgba(140, 180, 220, 0.15) 0%, transparent 40%),
+        linear-gradient(135deg, rgba(160, 200, 240, 0.35) 0%, rgba(120, 160, 200, 0.45) 100%);
+    border: 1px solid rgba(180, 220, 255, 0.6);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.2),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 25px rgba(180, 220, 255, 0.25);
+}
+
+.weather-main-card.season-winter-unstable {
+    background:
+        radial-gradient(circle at 25% 75%, rgba(140, 180, 220, 0.2) 0%, transparent 45%),
+        radial-gradient(circle at 75% 25%, rgba(100, 140, 180, 0.15) 0%, transparent 45%),
+        linear-gradient(135deg, rgba(120, 160, 200, 0.35) 0%, rgba(80, 120, 160, 0.45) 100%);
+    border: 1px solid rgba(140, 180, 220, 0.6);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.12),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 20px rgba(140, 180, 220, 0.2);
+}
+
+.weather-main-card.season-winter-stormy {
+    background:
+        radial-gradient(circle at 20% 80%, rgba(120, 140, 180, 0.25) 0%, transparent 40%),
+        radial-gradient(circle at 80% 20%, rgba(80, 100, 140, 0.2) 0%, transparent 40%),
+        linear-gradient(135deg, rgba(100, 120, 160, 0.4) 0%, rgba(60, 80, 120, 0.5) 100%);
+    border: 1px solid rgba(120, 140, 180, 0.7);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.08),
+        0 8px 32px rgba(0, 0, 0, 0.4),
+        0 0 30px rgba(120, 140, 180, 0.3);
+}
+
+.weather-date-time {
+    text-align: right;
+    color: #fff;
+    line-height: 1.4;
+}
+
+.location-text {
+    font-size: 0.9rem;
+    opacity: 0.8;
+    margin-top: var(--spacing-xs);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.location-text i {
+    font-size: 0.8em;
+}
+
+.time-text {
+    font-size: 2.5rem;
+    font-weight: 250;
+    opacity: 0.95;
+    margin-bottom: 4px;
+    font-variation-settings: "wght" 250;
+}
+
+.date-season-container {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    justify-content: flex-end;
+}
+
+.date-text {
+    font-size: 0.85rem;
+    opacity: 0.8;
+    font-weight: 500;
+}
+
+.season-badge {
+    font-size: 0.7rem;
+    opacity: 0.9;
+    font-style: italic;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 2px 6px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    font-weight: 600;
+}
+
+.info-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+/* Period Information Card */
+.period-info-card {
+    width: 100%;
+    border-radius: var(--spacing-xs);
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    transition: var(--transition-glass-surface);
+    border: 1px solid #ffffff5e;
+}
+
+.period-info-content {
+    padding: var(--spacing-lg);
+    position: relative;
+    z-index: 2;
+}
+
+.period-main-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--spacing-md);
+}
+
+.period-title-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    flex: 1;
+}
+
+.period-title {
+    font-size: 1.8rem;
+    font-weight: 600;
+    color: #fff;
+    z-index: 3;
+    font-weight: 200;
+    font-variation-settings: "wght" 200;
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    user-select: none;
+    transition: opacity 0.2s ease;
+    width: fit-content;
+}
+
+.period-title:hover:not(:disabled) {
+    opacity: 0.85;
+}
+
+/* Period title indicators (season and sun progress) */
+.period-title-indicators {
+    display: flex;
+    gap: var(--spacing-md);
+    align-items: center;
+}
+
+.period-title-indicator {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 80px;
+    max-width: 120px;
+}
+
+.period-title-indicator-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: #fff;
+    font-size: 0.75rem;
+    opacity: 0.85;
+    font-weight: 500;
+}
+
+.period-title-indicator-value {
+    font-weight: 600;
+    opacity: 1;
+}
+
+.period-title-progress-bar {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+}
+
+.period-title-progress-bar.sun-position {
+    background: linear-gradient(90deg, rgb(13 9 5 / 34%) 0%, rgb(255 220 100 / 28%) 50%, rgb(13 9 5 / 34%) 100%);
+    position: relative;
+}
+
+.period-title-progress-bar.sun-position::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: rgba(255, 220, 100, 0.4);
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+.period-title-progress-bar.season-position {
+    position: relative;
+}
+
+/* Reuse season-specific gradients */
+.period-title-progress-bar.season-position.season-spring {
+    background: linear-gradient(90deg,
+            rgba(150, 200, 120, 0.3) 0%,
+            rgba(255, 192, 203, 0.3) 50%,
+            rgba(100, 180, 100, 0.3) 100%);
+}
+
+.period-title-progress-bar.season-position.season-spring::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: rgba(255, 192, 203, 0.5);
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+.period-title-progress-bar.season-position.season-summer {
+    background: linear-gradient(90deg,
+            rgba(255, 220, 100, 0.3) 0%,
+            rgba(255, 180, 50, 0.4) 50%,
+            rgba(255, 150, 80, 0.3) 100%);
+}
+
+.period-title-progress-bar.season-position.season-summer::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: rgba(255, 180, 50, 0.6);
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+.period-title-progress-bar.season-position.season-autumn,
+.period-title-progress-bar.season-position.season-fall {
+    background: linear-gradient(90deg,
+            rgba(255, 160, 80, 0.3) 0%,
+            rgba(200, 80, 60, 0.4) 50%,
+            rgba(140, 100, 60, 0.3) 100%);
+}
+
+.period-title-progress-bar.season-position.season-autumn::before,
+.period-title-progress-bar.season-position.season-fall::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: rgba(200, 80, 60, 0.6);
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+.period-title-progress-bar.season-position.season-winter {
+    background: linear-gradient(90deg,
+            rgba(180, 200, 240, 0.3) 0%,
+            rgba(220, 240, 255, 0.4) 50%,
+            rgba(150, 180, 220, 0.3) 100%);
+}
+
+.period-title-progress-bar.season-position.season-winter::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: rgba(220, 240, 255, 0.5);
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+/* Reuse marker styling for title indicators */
+.period-title-progress-bar .period-progress-marker {
+    width: 10px;
+    height: 10px;
+}
+
+/* Light level in title uses white fill instead of marker */
+.period-title-progress-bar.light-level .period-progress-fill {
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.9));
+}
+
+.period-title-progress-bar.season-position.season-spring .period-progress-marker {
+    background: rgba(255, 192, 203, 0.95);
+    box-shadow: 0 0 8px rgba(255, 192, 203, 0.7), 0 0 16px rgba(255, 192, 203, 0.4);
+}
+
+.period-title-progress-bar.season-position.season-summer .period-progress-marker {
+    background: rgba(255, 180, 50, 0.95);
+    box-shadow: 0 0 8px rgba(255, 180, 50, 0.7), 0 0 16px rgba(255, 180, 50, 0.4);
+}
+
+.period-title-progress-bar.season-position.season-autumn .period-progress-marker,
+.period-title-progress-bar.season-position.season-fall .period-progress-marker {
+    background: rgba(200, 80, 60, 0.95);
+    box-shadow: 0 0 8px rgba(200, 80, 60, 0.7), 0 0 16px rgba(200, 80, 60, 0.4);
+}
+
+.period-title-progress-bar.season-position.season-winter .period-progress-marker {
+    background: rgba(220, 240, 255, 0.95);
+    box-shadow: 0 0 8px rgba(220, 240, 255, 0.7), 0 0 16px rgba(220, 240, 255, 0.4);
+}
+
+.period-expand-icon {
+    font-size: 1.2rem;
+    opacity: 0.6;
+    transition: transform 0.3s ease;
+}
+
+.period-expand-icon.expanded {
+    transform: rotate(180deg);
+}
+
+.period-season-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    width: fit-content;
+    text-transform: capitalize;
+}
+
+.period-season-badge i {
+    font-size: 0.85rem;
+    opacity: 0.9;
+}
+
+/* Season-specific badge colors */
+.period-season-badge.season-spring {
+    background: rgba(150, 200, 120, 0.3);
+    border-color: rgba(150, 200, 120, 0.5);
+}
+
+.period-season-badge.season-summer {
+    background: rgba(255, 200, 80, 0.3);
+    border-color: rgba(255, 200, 80, 0.5);
+}
+
+.period-season-badge.season-autumn,
+.period-season-badge.season-fall {
+    background: rgba(220, 100, 60, 0.3);
+    border-color: rgba(220, 100, 60, 0.5);
+}
+
+.period-season-badge.season-winter {
+    background: rgba(180, 200, 240, 0.3);
+    border-color: rgba(180, 200, 240, 0.5);
+}
+
+.period-details {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    align-items: flex-start;
+    max-height: 500px;
+    overflow: hidden;
+    transition: max-height 0.3s ease, margin-top 0.3s ease, opacity 0.3s ease;
+    margin-top: var(--spacing-md);
+    opacity: 1;
+}
+
+.period-details.hidden {
+    max-height: 0;
+    margin-top: 0;
+    opacity: 0;
+}
+
+.period-detail {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    color: #fff;
+    width: 100%;
+    padding: var(--spacing-xs) 0;
+}
+
+.period-detail i {
+    opacity: 0.8;
+    font-size: 1rem;
+    flex-shrink: 0;
+    min-width: 20px;
+}
+
+.detail-content {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    flex: 1;
+}
+
+.detail-label {
+    font-size: 0.7rem;
+    opacity: 0.6;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 500;
+}
+
+.detail-value {
+    font-size: 0.9rem;
+    font-weight: 500;
+    line-height: 1.3;
+    opacity: 0.9;
+}
+
+/* Base period backgrounds */
+.period-default {
+    background: linear-gradient(135deg, rgba(100, 100, 150, 0.6) 0%, rgba(150, 100, 200, 0.4) 100%);
+}
+
+/* Spring period backgrounds */
+.period-spring-dawn {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(255, 200, 150, 0.4) 0%, transparent 60%),
+        radial-gradient(circle at 70% 30%, rgba(200, 220, 255, 0.3) 0%, transparent 60%),
+        linear-gradient(135deg, rgba(255, 220, 180, 0.5) 0%, rgba(200, 180, 220, 0.4) 100%);
+}
+
+.period-spring-morning {
+    background:
+        radial-gradient(circle at 40% 60%, rgba(255, 235, 150, 0.3) 0%, transparent 50%),
+        linear-gradient(135deg, rgba(180, 220, 140, 0.4) 0%, rgba(140, 180, 100, 0.5) 100%);
+}
+
+.period-spring-day {
+    background:
+        radial-gradient(circle at 50% 20%, rgba(255, 255, 200, 0.4) 0%, transparent 70%),
+        linear-gradient(135deg, rgba(120, 200, 100, 0.4) 0%, rgba(80, 160, 60, 0.5) 100%);
+}
+
+.period-spring-dusk {
+    background:
+        radial-gradient(circle at 70% 80%, rgba(255, 150, 100, 0.5) 0%, rgba(200, 100, 150, 0.3) 50%, transparent 80%),
+        linear-gradient(135deg, rgba(200, 140, 100, 0.5) 0%, rgba(150, 100, 120, 0.4) 100%);
+}
+
+.period-spring-night {
+    background:
+        radial-gradient(circle at 80% 20%, rgba(100, 100, 180, 0.4) 0%, transparent 60%),
+        linear-gradient(135deg, rgba(80, 100, 140, 0.5) 0%, rgba(60, 80, 120, 0.4) 100%);
+}
+
+/* Summer period backgrounds */
+.period-summer-dawn {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(255, 180, 120, 0.5) 0%, transparent 60%),
+        radial-gradient(circle at 70% 30%, rgba(255, 220, 150, 0.3) 0%, transparent 60%),
+        linear-gradient(135deg, rgba(255, 200, 100, 0.5) 0%, rgba(255, 160, 80, 0.4) 100%);
+}
+
+.period-summer-day {
+    background:
+        radial-gradient(circle at 20% 20%, rgba(255, 255, 220, 0.4) 0%, transparent 80%),
+        radial-gradient(circle at 80% 80%, rgba(255, 240, 150, 0.3) 0%, transparent 60%),
+        linear-gradient(135deg, rgba(255, 220, 80, 0.4) 0%, rgba(255, 180, 40, 0.5) 100%);
+}
+
+.period-summer-dusk {
+    background:
+        radial-gradient(circle at 70% 70%, rgba(255, 120, 80, 0.6) 0%, rgba(200, 80, 120, 0.4) 40%, transparent 80%),
+        linear-gradient(135deg, rgba(255, 140, 60, 0.5) 0%, rgba(200, 100, 80, 0.4) 100%);
+}
+
+.period-summer-night {
+    background:
+        radial-gradient(circle at 60% 40%, rgba(80, 100, 160, 0.4) 0%, transparent 60%),
+        linear-gradient(135deg, rgba(60, 80, 140, 0.5) 0%, rgba(40, 60, 100, 0.4) 100%);
+}
+
+/* Fall/Autumn period backgrounds */
+.period-fall-dawn {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(255, 160, 100, 0.4) 0%, transparent 60%),
+        radial-gradient(circle at 70% 30%, rgba(200, 140, 120, 0.3) 0%, transparent 60%),
+        linear-gradient(135deg, rgba(220, 160, 100, 0.5) 0%, rgba(180, 120, 80, 0.4) 100%);
+}
+
+.period-fall-day {
+    background:
+        radial-gradient(circle at 50% 30%, rgba(255, 200, 120, 0.3) 0%, transparent 70%),
+        linear-gradient(135deg, rgba(200, 140, 80, 0.4) 0%, rgba(160, 100, 40, 0.5) 100%);
+}
+
+.period-fall-dusk {
+    background:
+        radial-gradient(circle at 80% 60%, rgba(255, 100, 60, 0.5) 0%, rgba(180, 80, 100, 0.3) 50%, transparent 80%),
+        linear-gradient(135deg, rgba(180, 120, 80, 0.5) 0%, rgba(120, 80, 60, 0.4) 100%);
+}
+
+.period-fall-night {
+    background:
+        radial-gradient(circle at 70% 30%, rgba(80, 60, 100, 0.4) 0%, transparent 60%),
+        linear-gradient(135deg, rgba(60, 80, 100, 0.5) 0%, rgba(40, 60, 80, 0.4) 100%);
+}
+
+/* Winter period backgrounds */
+.period-winter-dawn {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(200, 220, 255, 0.4) 0%, transparent 60%),
+        radial-gradient(circle at 70% 30%, rgba(180, 200, 240, 0.3) 0%, transparent 60%),
+        linear-gradient(135deg, rgba(180, 200, 240, 0.5) 0%, rgba(140, 160, 200, 0.4) 100%);
+}
+
+.period-winter-day {
+    background:
+        radial-gradient(circle at 40% 20%, rgba(220, 240, 255, 0.3) 0%, transparent 80%),
+        linear-gradient(135deg, rgba(160, 200, 240, 0.4) 0%, rgba(120, 160, 200, 0.5) 100%);
+}
+
+.period-winter-dusk {
+    background:
+        radial-gradient(circle at 70% 80%, rgba(200, 120, 160, 0.4) 0%, rgba(150, 100, 140, 0.3) 50%, transparent 80%),
+        linear-gradient(135deg, rgba(140, 180, 220, 0.5) 0%, rgba(100, 120, 160, 0.4) 100%);
+}
+
+.period-winter-night {
+    background:
+        radial-gradient(circle at 60% 40%, rgba(40, 60, 120, 0.5) 0%, transparent 60%),
+        radial-gradient(circle at 80% 80%, rgba(20, 40, 80, 0.3) 0%, transparent 50%),
+        linear-gradient(135deg, rgba(30, 50, 100, 0.6) 0%, rgba(20, 40, 80, 0.4) 100%);
+}
+
+.period-info-card.foggy .period-info-content::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.1);
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+    z-index: -1;
+}
+
+.period-info-card.cloudy .period-info-content::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(200, 200, 200, 0.1);
+    z-index: -1;
+}
+
+.period-info-card.clear .period-info-content::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.05);
+    z-index: -1;
+}
+
+/* Holiday card backgrounds */
+.holiday-info-card.holiday-christmas {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(220, 50, 50, 0.3) 0%, transparent 60%),
+        radial-gradient(circle at 70% 30%, rgba(50, 150, 50, 0.3) 0%, transparent 60%),
+        radial-gradient(circle at 50% 50%, rgba(255, 215, 0, 0.2) 0%, transparent 50%),
+        linear-gradient(135deg, rgba(200, 40, 40, 0.4) 0%, rgba(40, 140, 40, 0.4) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 30px rgba(220, 50, 50, 0.2);
+}
+
+.holiday-info-card.holiday-new-year {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(255, 215, 0, 0.4) 0%, transparent 60%),
+        radial-gradient(circle at 70% 30%, rgba(192, 192, 192, 0.3) 0%, transparent 60%),
+        linear-gradient(135deg, rgba(255, 215, 0, 0.4) 0%, rgba(192, 192, 192, 0.3) 100%);
+    border: 1px solid rgba(255, 215, 0, 0.4);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.15),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 30px rgba(255, 215, 0, 0.25);
+}
+
+.holiday-info-card.holiday-halloween {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(255, 140, 0, 0.4) 0%, transparent 60%),
+        radial-gradient(circle at 70% 30%, rgba(50, 0, 50, 0.4) 0%, transparent 60%),
+        linear-gradient(135deg, rgba(255, 140, 0, 0.4) 0%, rgba(50, 0, 50, 0.5) 100%);
+    border: 1px solid rgba(255, 140, 0, 0.5);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+        0 8px 32px rgba(0, 0, 0, 0.4),
+        0 0 30px rgba(255, 140, 0, 0.3);
+}
+
+.holiday-info-card.holiday-thanksgiving {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(255, 140, 0, 0.3) 0%, transparent 60%),
+        radial-gradient(circle at 70% 30%, rgba(139, 69, 19, 0.3) 0%, transparent 60%),
+        linear-gradient(135deg, rgba(255, 165, 0, 0.4) 0%, rgba(139, 69, 19, 0.4) 100%);
+    border: 1px solid rgba(255, 140, 0, 0.4);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 25px rgba(255, 140, 0, 0.2);
+}
+
+.holiday-info-card.holiday-independence-day {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(220, 20, 60, 0.4) 0%, transparent 60%),
+        radial-gradient(circle at 70% 30%, rgba(30, 144, 255, 0.4) 0%, transparent 60%),
+        radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.2) 0%, transparent 50%),
+        linear-gradient(135deg, rgba(220, 20, 60, 0.4) 0%, rgba(30, 144, 255, 0.4) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.15),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 30px rgba(220, 20, 60, 0.25);
+}
+
+.holiday-info-card.holiday-valentines-day {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(255, 20, 147, 0.4) 0%, transparent 60%),
+        radial-gradient(circle at 70% 30%, rgba(255, 105, 180, 0.3) 0%, transparent 60%),
+        linear-gradient(135deg, rgba(255, 20, 147, 0.4) 0%, rgba(255, 105, 180, 0.3) 100%);
+    border: 1px solid rgba(255, 20, 147, 0.5);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.12),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 30px rgba(255, 20, 147, 0.25);
+}
+
+.holiday-info-card.holiday-easter {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(255, 255, 224, 0.3) 0%, transparent 60%),
+        radial-gradient(circle at 70% 30%, rgba(221, 160, 221, 0.3) 0%, transparent 60%),
+        radial-gradient(circle at 50% 50%, rgba(144, 238, 144, 0.2) 0%, transparent 50%),
+        linear-gradient(135deg, rgba(255, 255, 224, 0.3) 0%, rgba(221, 160, 221, 0.3) 100%);
+    border: 1px solid rgba(255, 255, 224, 0.4);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.15),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 25px rgba(255, 255, 224, 0.2);
+}
+
+.holiday-info-card.holiday-chinese-new-year {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(220, 20, 60, 0.4) 0%, transparent 60%),
+        radial-gradient(circle at 70% 30%, rgba(255, 215, 0, 0.4) 0%, transparent 60%),
+        linear-gradient(135deg, rgba(220, 20, 60, 0.4) 0%, rgba(255, 215, 0, 0.4) 100%);
+    border: 1px solid rgba(220, 20, 60, 0.5);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 30px rgba(220, 20, 60, 0.25);
+}
+
+.holiday-info-card.holiday-setsubun {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(220, 20, 60, 0.3) 0%, transparent 60%),
+        radial-gradient(circle at 70% 30%, rgba(255, 255, 255, 0.3) 0%, transparent 60%),
+        linear-gradient(135deg, rgba(220, 20, 60, 0.3) 0%, rgba(255, 255, 255, 0.3) 100%);
+    border: 1px solid rgba(220, 20, 60, 0.4);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 25px rgba(220, 20, 60, 0.2);
+}
+
+.holiday-info-card.holiday-hinamatsuri {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(255, 192, 203, 0.4) 0%, transparent 60%),
+        radial-gradient(circle at 70% 30%, rgba(255, 255, 255, 0.3) 0%, transparent 60%),
+        radial-gradient(circle at 50% 50%, rgba(255, 215, 0, 0.2) 0%, transparent 50%),
+        linear-gradient(135deg, rgba(255, 192, 203, 0.4) 0%, rgba(255, 255, 255, 0.3) 100%);
+    border: 1px solid rgba(255, 192, 203, 0.5);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.15),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 25px rgba(255, 192, 203, 0.25);
+}
+
+.holiday-info-card.holiday-summer-festival {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(25, 25, 112, 0.4) 0%, transparent 60%),
+        radial-gradient(circle at 70% 30%, rgba(255, 215, 0, 0.3) 0%, transparent 60%),
+        linear-gradient(135deg, rgba(25, 25, 112, 0.4) 0%, rgba(255, 215, 0, 0.3) 100%);
+    border: 1px solid rgba(25, 25, 112, 0.5);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 30px rgba(25, 25, 112, 0.25);
+}
+
+.holiday-info-card.holiday-japanese-new-year {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(220, 20, 60, 0.3) 0%, transparent 60%),
+        radial-gradient(circle at 70% 30%, rgba(255, 255, 255, 0.3) 0%, transparent 60%),
+        radial-gradient(circle at 50% 50%, rgba(255, 215, 0, 0.2) 0%, transparent 50%),
+        linear-gradient(135deg, rgba(220, 20, 60, 0.3) 0%, rgba(255, 255, 255, 0.3) 100%);
+    border: 1px solid rgba(220, 20, 60, 0.4);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 25px rgba(220, 20, 60, 0.2);
+}
+
+.holiday-info-card.holiday-cherry-blossom {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(255, 192, 203, 0.4) 0%, transparent 60%),
+        radial-gradient(circle at 70% 30%, rgba(255, 182, 193, 0.3) 0%, transparent 60%),
+        radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.2) 0%, transparent 50%),
+        linear-gradient(135deg, rgba(255, 192, 203, 0.4) 0%, rgba(255, 182, 193, 0.3) 100%);
+    border: 1px solid rgba(255, 192, 203, 0.5);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.15),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 30px rgba(255, 192, 203, 0.25);
+}
+
+.holiday-info-card.holiday-tanabata {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(30, 144, 255, 0.4) 0%, transparent 60%),
+        radial-gradient(circle at 70% 30%, rgba(255, 215, 0, 0.3) 0%, transparent 60%),
+        radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.2) 0%, transparent 50%),
+        linear-gradient(135deg, rgba(30, 144, 255, 0.4) 0%, rgba(255, 215, 0, 0.3) 100%);
+    border: 1px solid rgba(30, 144, 255, 0.5);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.12),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 30px rgba(30, 144, 255, 0.25);
+}
+
+.holiday-info-card.holiday-golden-week {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(220, 20, 60, 0.3) 0%, transparent 60%),
+        radial-gradient(circle at 70% 30%, rgba(255, 255, 255, 0.3) 0%, transparent 60%),
+        radial-gradient(circle at 50% 50%, rgba(50, 205, 50, 0.2) 0%, transparent 50%),
+        linear-gradient(135deg, rgba(220, 20, 60, 0.3) 0%, rgba(255, 255, 255, 0.3) 100%);
+    border: 1px solid rgba(220, 20, 60, 0.4);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 25px rgba(220, 20, 60, 0.2);
+}
+
+.holiday-info-card.holiday-childrens-day {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(30, 144, 255, 0.4) 0%, transparent 60%),
+        radial-gradient(circle at 70% 30%, rgba(255, 255, 255, 0.3) 0%, transparent 60%),
+        radial-gradient(circle at 50% 50%, rgba(255, 215, 0, 0.2) 0%, transparent 50%),
+        linear-gradient(135deg, rgba(30, 144, 255, 0.4) 0%, rgba(255, 255, 255, 0.3) 100%);
+    border: 1px solid rgba(30, 144, 255, 0.5);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.12),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 25px rgba(30, 144, 255, 0.25);
+}
+
+.holiday-info-card.holiday-mid-autumn {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(255, 255, 255, 0.3) 0%, transparent 60%),
+        radial-gradient(circle at 70% 30%, rgba(192, 192, 192, 0.3) 0%, transparent 60%),
+        radial-gradient(circle at 50% 50%, rgba(255, 215, 0, 0.2) 0%, transparent 50%),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.3) 0%, rgba(192, 192, 192, 0.3) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 30px rgba(255, 255, 255, 0.2);
+}
+
+.holiday-info-card.holiday-obon {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(255, 255, 255, 0.3) 0%, transparent 60%),
+        radial-gradient(circle at 70% 30%, rgba(255, 215, 0, 0.3) 0%, transparent 60%),
+        radial-gradient(circle at 50% 50%, rgba(138, 43, 226, 0.2) 0%, transparent 50%),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 215, 0, 0.3) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 25px rgba(255, 255, 255, 0.2);
+}
+
+.holiday-info-card.holiday-default {
+    background:
+        radial-gradient(circle at 30% 70%, rgba(150, 100, 200, 0.3) 0%, transparent 60%),
+        radial-gradient(circle at 70% 30%, rgba(200, 150, 100, 0.3) 0%, transparent 60%),
+        linear-gradient(135deg, rgba(150, 100, 200, 0.4) 0%, rgba(200, 150, 100, 0.4) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 25px rgba(150, 100, 200, 0.2);
+}
+
+/* Period time and date display (top right) */
+.period-time-date {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    color: #fff;
+    text-align: right;
+}
+
+.period-time {
+    font-size: 3rem;
+    font-weight: 600;
+    font-variation-settings: "wght" 600;
+    line-height: 1.2;
+    opacity: 0.95;
+    font-family: 'Oxanium';
+}
+
+.period-date {
+    font-size: 0.85rem;
+    opacity: 0.75;
+    font-weight: 400;
+}
+
+.period-location {
+    font-size: 0.75rem;
+    opacity: 0.7;
+    font-weight: 400;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.period-location i {
+    font-size: 0.7rem;
+    opacity: 0.6;
+}
+
+/* Period indicators (progress bars) */
+.period-indicators {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    padding: var(--spacing-lg);
+    background: rgb(0 0 0 / 80%);
+    border-top: 1px solid rgb(255 255 255 / 15%);
+}
+
+.period-indicator {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.period-indicator-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: #fff;
+    font-size: 0.85rem;
+    opacity: 0.9;
+}
+
+.period-indicator-value {
+    font-weight: 600;
+    opacity: 1;
+}
+
+.period-progress-bar {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+}
+
+.period-progress-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.5s ease;
+    background: linear-gradient(90deg, rgba(255, 220, 100, 0.6), rgba(255, 220, 100, 0.9));
+}
+
+.period-progress-fill.light-level {
+    background: linear-gradient(90deg, rgba(255, 220, 100, 0.6), rgba(255, 220, 100, 0.9));
+}
+
+.period-progress-bar.sun-position {
+    background: linear-gradient(90deg,
+            rgba(50, 50, 100, 0.3) 0%,
+            rgba(255, 220, 100, 0.3) 50%,
+            rgba(50, 50, 100, 0.3) 100%);
+    position: relative;
+}
+
+/* Noon/peak marker at center */
+.period-progress-bar.sun-position::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: rgba(255, 220, 100, 0.4);
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+/* Season position bar with season-specific gradients */
+.period-progress-bar.season-position {
+    position: relative;
+}
+
+/* Spring: Fresh greens and pastels */
+.period-progress-bar.season-position.season-spring {
+    background: linear-gradient(90deg,
+            rgba(150, 200, 120, 0.3) 0%,
+            /* Early spring - light green */
+            rgba(255, 192, 203, 0.3) 50%,
+            /* Mid spring - pink blossoms */
+            rgba(100, 180, 100, 0.3) 100%
+            /* Late spring - deeper green */
+        );
+}
+
+.period-progress-bar.season-position.season-spring::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: rgba(255, 192, 203, 0.5);
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+/* Summer: Warm yellows and hot oranges */
+.period-progress-bar.season-position.season-summer {
+    background: linear-gradient(90deg,
+            rgba(255, 220, 100, 0.3) 0%,
+            /* Early summer - bright yellow */
+            rgba(255, 180, 50, 0.4) 50%,
+            /* Peak summer - hot orange */
+            rgba(255, 150, 80, 0.3) 100%
+            /* Late summer - warm orange */
+        );
+}
+
+.period-progress-bar.season-position.season-summer::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: rgba(255, 180, 50, 0.6);
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+/* Autumn/Fall: Warm reds, oranges, and browns */
+.period-progress-bar.season-position.season-autumn,
+.period-progress-bar.season-position.season-fall {
+    background: linear-gradient(90deg,
+            rgba(255, 160, 80, 0.3) 0%,
+            /* Early autumn - orange */
+            rgba(200, 80, 60, 0.4) 50%,
+            /* Peak autumn - deep red */
+            rgba(140, 100, 60, 0.3) 100%
+            /* Late autumn - brown */
+        );
+}
+
+.period-progress-bar.season-position.season-autumn::before,
+.period-progress-bar.season-position.season-fall::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: rgba(200, 80, 60, 0.6);
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+/* Winter: Cool blues and whites */
+.period-progress-bar.season-position.season-winter {
+    background: linear-gradient(90deg,
+            rgba(180, 200, 240, 0.3) 0%,
+            /* Early winter - light blue */
+            rgba(220, 240, 255, 0.4) 50%,
+            /* Peak winter - bright white-blue */
+            rgba(150, 180, 220, 0.3) 100%
+            /* Late winter - deeper blue */
+        );
+}
+
+.period-progress-bar.season-position.season-winter::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: rgba(220, 240, 255, 0.5);
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+.period-progress-marker {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 12px;
+    height: 12px;
+    background: rgba(255, 220, 100, 0.9);
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(255, 220, 100, 0.6);
+    pointer-events: none;
+}
+
+/* Season-specific marker colors */
+.period-progress-bar.season-position.season-spring .period-progress-marker {
+    background: rgba(255, 192, 203, 0.95);
+    box-shadow: 0 0 10px rgba(255, 192, 203, 0.7), 0 0 20px rgba(255, 192, 203, 0.4);
+}
+
+.period-progress-bar.season-position.season-summer .period-progress-marker {
+    background: rgba(255, 180, 50, 0.95);
+    box-shadow: 0 0 10px rgba(255, 180, 50, 0.7), 0 0 20px rgba(255, 180, 50, 0.4);
+}
+
+.period-progress-bar.season-position.season-autumn .period-progress-marker,
+.period-progress-bar.season-position.season-fall .period-progress-marker {
+    background: rgba(200, 80, 60, 0.95);
+    box-shadow: 0 0 10px rgba(200, 80, 60, 0.7), 0 0 20px rgba(200, 80, 60, 0.4);
+}
+
+.period-progress-bar.season-position.season-winter .period-progress-marker {
+    background: rgba(220, 240, 255, 0.95);
+    box-shadow: 0 0 10px rgba(220, 240, 255, 0.7), 0 0 20px rgba(220, 240, 255, 0.4);
+}
+
+/* Period weather indicators section */
+.period-weather-indicators {
+    padding: var(--spacing-lg);
+    background: rgb(0 0 0 / 80%);
+    border-top: 1px solid rgb(255 255 255 / 15%);
+}
+
+.period-weather-indicators-title {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    color: #fff;
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: var(--spacing-md);
+    opacity: 0.9;
+}
+
+.period-weather-indicators-title i {
+    opacity: 0.8;
+}
+
+.period-weather-indicators-grid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+/* Progress fill variants for weather data */
+.period-progress-fill.cloud-coverage {
+    background: linear-gradient(90deg, rgba(150, 150, 150, 0.6), rgba(150, 150, 150, 0.9));
+}
+
+.period-progress-fill.visibility {
+    background: linear-gradient(90deg, rgba(100, 180, 255, 0.6), rgba(100, 180, 255, 0.9));
+}
+
+.period-progress-fill.solar-radiation {
+    background: linear-gradient(90deg, rgba(255, 180, 50, 0.6), rgba(255, 140, 0, 0.9));
+}
+
+.period-progress-fill.wind-speed {
+    background: linear-gradient(90deg, rgba(120, 200, 255, 0.6), rgba(80, 160, 240, 0.9));
+}
+
+/* Weather card header */
+.weather-card-header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) 0;
+}
+
+/* Weather quick indicators (cloud coverage and visibility) */
+.weather-quick-indicators {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.weather-quick-indicator {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-width: 120px;
+    min-width: 80px;
+}
+
+.weather-quick-indicator-label {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.weather-quick-indicator-label i {
+    font-size: 0.85rem;
+    opacity: 0.7;
+}
+
+.weather-quick-progress-bar {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.weather-quick-progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+
+.weather-quick-progress-fill.cloud-coverage {
+    background: linear-gradient(90deg, rgb(161 189 255 / 70%), rgb(255 255 255 / 90%));
+}
+
+.weather-quick-progress-fill.visibility {
+    background: linear-gradient(90deg, rgba(100, 180, 255, 0.6), rgba(100, 180, 255, 0.9));
+}
+
+.weather-quick-progress-fill.uv-index {
+    background: linear-gradient(90deg, rgba(255, 180, 50, 0.6), rgba(255, 140, 0, 0.9));
+}
+
+.weather-quick-progress-fill.pressure {
+    background: linear-gradient(90deg, rgba(120, 160, 200, 0.6), rgba(100, 140, 180, 0.9));
+}
+
+
+/* Responsive adjustments */
+@media (max-width: 767px) {
+    .period-main-info {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--spacing-sm);
+    }
+
+    .period-title-section {
+        gap: 4px;
+    }
+
+    .period-title {
+        font-size: 1.4rem;
+    }
+
+    .period-expand-icon {
+        font-size: 1rem;
+    }
+
+    .period-title-indicators {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+    }
+
+    .period-title-indicator {
+        max-width: 100%;
+        width: 100%;
+    }
+
+    .period-title-indicator-label {
+        font-size: 0.7rem;
+    }
+
+    .period-season-badge {
+        font-size: 0.75rem;
+        padding: 3px 10px;
+    }
+
+    .period-time-date {
+        align-items: flex-start;
+    }
+
+    .period-time {
+        font-size: 1.2rem;
+    }
+
+    .period-date {
+        font-size: 0.75rem;
+    }
+
+    .period-details {
+        gap: var(--spacing-xs);
+    }
+
+    .period-detail {
+        gap: var(--spacing-xs);
+    }
+
+    .detail-label {
+        font-size: 0.65rem;
+    }
+
+    .detail-value {
+        font-size: 0.85rem;
+    }
+
+    .period-indicators {
+        gap: var(--spacing-sm);
+    }
+
+    .period-indicator-label {
+        font-size: 0.75rem;
+    }
+
+    .period-weather-indicators-title {
+        font-size: 0.8rem;
+    }
+
+    .weather-quick-indicators {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+        width: 100%;
+    }
+
+    .weather-quick-indicator {
+        max-width: 100%;
+        width: 100%;
+    }
+}
+
+.info-list.compact {
+    gap: var(--spacing-xs);
+}
+
+.replacement-item {
+    background: var(--bg-primary);
+    padding: 8px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.8rem;
+}
+
+/* Director Rules Manager Styles */
+.director-rules-modal-content .modal-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.director-rules-list-container .scrollable-content {
+    padding-right: var(--spacing-md);
+}
+
+.director-rules-list-container {
+    flex: 1;
+    min-height: 0;
+}
+
+.director-rules-list {
+    gap: var(--spacing-sm);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.director-rule-item {
+    background: var(--glass-inset-bg-1);
+    border: 1px solid var(--glass-border-saturated);
+    border-radius: var(--border-radius-md);
+    overflow: hidden;
+    transition: var(--transition-tray-menu);
+}
+
+.director-rule-item:hover:not(:disabled) {
+    border-color: var(--border-primary);
+    box-shadow: 0 2px 8px rgba(255, 69, 0, 0.1);
+}
+
+.director-rule-content {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-xs);
+}
+
+.director-rule-text {
+    flex: 1;
+    padding: var(--spacing-xs) var(--spacing-xs);
+    background: var(--glass-layer-dark-1);
+    border: 1px solid transparent;
+    border-radius: var(--border-radius-sm);
+    min-height: 40px;
+    font-size: 0.8em;
+    line-height: 1;
+    color: var(--text-primary);
+    cursor: text;
+    transition: var(--transition-tray-menu);
+}
+
+.director-rule-text:hover:not(:disabled) {
+    background: var(--bg-primary);
+    border-color: var(--glass-border-2);
+}
+
+.director-rule-text:focus {
+    outline: none;
+    background: var(--bg-primary);
+    border-color: var(--border-primary);
+    box-shadow: 0 0 0 2px rgba(255, 69, 0, 0.1);
+}
+
+.director-rule-text:empty::before {
+    content: "Click to edit rule...";
+    color: var(--text-muted);
+}
+
+.director-rule-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
+/* Director Feedback Item Styles */
+.director-feedback-item {
+    margin-bottom: var(--spacing-md);
+}
+
+.director-feedback-item .director-rule-content {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
+}
+
+.director-feedback-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.director-feedback-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.director-feedback-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    flex-wrap: wrap;
+}
+
+.director-feedback-date {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.director-feedback-date i {
+    color: var(--text-muted);
+}
+
+.director-feedback-action {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    text-transform: capitalize;
+}
+
+.director-feedback-action i {
+    color: var(--text-muted);
+}
+
+.director-feedback-item .director-rule-text {
+    width: 100%;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    min-height: 60px;
+    max-height: 200px;
+    overflow-y: auto;
+    padding: var(--spacing-sm);
+}
+
+.director-feedback-details {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm);
+    background: var(--glass-layer-dark-2);
+    border-radius: var(--border-radius-sm);
+}
+
+.director-feedback-detail-row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.detail-label {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text-accent);
+    text-transform: uppercase;
+}
+
+.detail-label i {
+    font-size: 0.75rem;
+}
+
+.detail-value {
+    line-height: 1.5;
+    color: var(--text-primary);
+    word-break: break-word;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.empty-state {
+    text-align: center;
+    padding: var(--spacing-xxl) var(--spacing-lg);
+    color: var(--text-muted);
+}
+
+.empty-state i {
+    font-size: 3rem;
+    margin-bottom: var(--spacing-lg);
+    opacity: 0.5;
+}
+
+.empty-state p {
+    margin: var(--spacing-sm) 0;
+    font-size: 0.95rem;
+}
+
+.empty-state .text-muted {
+    font-size: 0.85rem;
+    opacity: 0.7;
+}
+
+.info-section {
+    margin-bottom: var(--spacing-lg);
+}
+
+.info-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+    color: var(--text-accent);
+    font-weight: 600;
+}
+
+.info-header i {
+    font-size: 1.2rem;
+}
+
+.info-content p {
+    margin-bottom: var(--spacing-sm);
+    line-height: 1.6;
+}
+
+.info-content ul {
+    list-style: none;
+    padding-left: var(--spacing-lg);
+    margin: var(--spacing-sm) 0;
+}
+
+.info-content li {
+    margin-bottom: var(--spacing-xs);
+    position: relative;
+}
+
+.info-content li::before {
+    content: "•";
+    color: var(--text-accent);
+    font-weight: bold;
+    position: absolute;
+    left: calc(-1 * var(--spacing-lg));
+}
+
+.reasoning-content {
+    background: var(--bg-secondary);
+    padding: var(--spacing-md);
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    white-space: pre-wrap;
+    font-family: system-ui, sans-serif;
+    line-height: 1.5;
+}
+
+.image-bias-adjustment-content .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 20px 0 0 0;
+}
+
+/* Responsive Design */
+@media (max-width: 767px) {
+    .image-bias-adjustment-content {
+        width: 95vw;
+        max-height: 95vh;
+    }
+
+    .image-bias-adjustment-body {
+        gap: 16px;
+    }
+
+    .bias-controls-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }
+
+    .bias-control-group:last-child {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 480px) {
+    .bias-controls-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .image-preview-container {
+        min-height: 250px;
+    }
+}
+
+/* Bias Adjustment Confirmation Dialog */
+.bias-confirm-content {
+    max-width: 800px;
+    width: 90%;
+    height: min-content;
+    max-height: 90vh;
+    overflow-y: auto;
+    background: var(--glass-layer-3);
+    -webkit-backdrop-filter: var(--glass-blur-3, none);
+    backdrop-filter: var(--glass-blur-3, none);
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-xl);
+    box-shadow: var(--glass-shadow-3);
+    transform: translateZ(0);
+}
+
+.bias-confirm-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-lg);
+    border-bottom: 1px solid var(--border-secondary);
+}
+
+.bias-confirm-header h3 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.bias-confirm-body {
+    padding: var(--spacing-lg);
+}
+
+.bias-confirm-body p {
+    margin-bottom: var(--spacing-lg);
+    color: var(--text-secondary);
+    font-size: 1rem;
+}
+
+.bias-confirm-previews {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-lg);
+}
+
+.preview-section {
+    text-align: center;
+}
+
+.preview-section h4 {
+    margin-bottom: var(--spacing-md);
+    color: var(--text-primary);
+    font-size: 1.1rem;
+    font-weight: 500;
+}
+
+.preview-image-container {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--border-radius-lg);
+    padding: var(--spacing-md);
+    min-height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.preview-image-container img {
+    max-width: 100%;
+    max-height: 180px;
+    object-fit: contain;
+    border-radius: var(--border-radius-md);
+}
+
+.bias-confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-md);
+    padding: var(--spacing-lg);
+    border-top: 1px solid var(--border-secondary);
+}
+
+@media (max-width: 767px) {
+    .bias-confirm-content {
+        width: 95%;
+        max-height: 95vh;
+    }
+
+    .bias-confirm-previews {
+        grid-template-columns: 1fr;
+        gap: var(--spacing-md);
+    }
+}
+

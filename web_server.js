@@ -33,6 +33,8 @@ const { handleNaxImageRequest } = require('./modules/naxImageServer');
 const { isAdminUser } = require('./modules/auth');
 const { streamLogFile } = require('./modules/logStreamService');
 const pm2Service = require('./modules/pm2Service');
+const runtimeAssetService = require('./modules/runtimeAssetService');
+const workspaceCssService = require('./modules/workspaceCssService');
 
 // Server readiness tracking
 const serverReadiness = {
@@ -41,6 +43,7 @@ const serverReadiness = {
     stages: {
         'initializing': 'Server starting up...',
         'syncing_previews': 'Syncing previews...',
+        'runtime_compile': 'Compiling runtime CSS and JavaScript...',
         'account_init': 'Loading account data...',
         'database_init': 'Setting up databases...',
         'websocket_init': 'Starting WebSocket server...',
@@ -49,6 +52,131 @@ const serverReadiness = {
     startTime: Date.now(),
     lastUpdate: Date.now()
 };
+
+let runtimeCompileComplete = false;
+
+function broadcastRuntimeCompileErrors(result) {
+    const errors = result && Array.isArray(result.errors) ? result.errors : [];
+    if (errors.length === 0) {
+        return;
+    }
+    try {
+        const plumbing = globalResources.getDataPlumbing();
+        plumbing.publish('ws:broadcast:runtimeCompileError', {
+            errors,
+            compiled: result.compiled || 0,
+            skipped: result.skipped || 0,
+            timestamp: Date.now()
+        });
+    } catch (error) {
+        console.error('Failed to broadcast runtime compile errors:', error.message);
+    }
+}
+
+function broadcastRuntimeCompileProgress(progress) {
+    try {
+        const plumbing = globalResources.getDataPlumbing();
+        plumbing.publish('ws:broadcast:runtimeCompileProgress', {
+            ...progress,
+            timestamp: Date.now()
+        });
+    } catch (error) {
+        console.error('Failed to broadcast runtime compile progress:', error.message);
+    }
+}
+
+function broadcastRuntimeCompileComplete(result) {
+    try {
+        const plumbing = globalResources.getDataPlumbing();
+        const errors = result.errors || [];
+        plumbing.publish('ws:broadcast:runtimeCompileComplete', {
+            compiled: result.compiled || 0,
+            failedCount: errors.length,
+            errors,
+            stats: result.stats || null,
+            runId: result.runId || null,
+            timestamp: Date.now()
+        });
+    } catch (error) {
+        console.error('Failed to broadcast runtime compile complete:', error.message);
+    }
+}
+
+function broadcastRuntimeCompileLogs(payload) {
+    try {
+        const plumbing = globalResources.getDataPlumbing();
+        plumbing.publish('ws:broadcast:runtimeCompileLogs', payload || {});
+    } catch (error) {
+        console.error('Failed to broadcast runtime compile logs:', error.message);
+    }
+}
+
+async function broadcastWorkspaceCssUpdated(result) {
+    if (!result || result.status !== 'compiled') {
+        return;
+    }
+    try {
+        const plumbing = globalResources.getDataPlumbing();
+        plumbing.publish('ws:broadcast:workspaceCssUpdated', {
+            webPath: result.webPath || workspaceCssService.WEB_PATH,
+            hash: result.servedHash || result.sourceHash || null,
+            sourceHash: result.sourceHash || null,
+            timestamp: Date.now()
+        });
+    } catch (error) {
+        console.error('Failed to broadcast workspace CSS update:', error.message);
+    }
+}
+
+function getRuntimeAutoRecompileConfig() {
+    const config = globalResources.getConfig() || {};
+    return config.runtimeAssets && config.runtimeAssets.autoRecompile === true;
+}
+
+runtimeAssetService.init({
+    projectRoot: __dirname,
+    getAutoRecompile: getRuntimeAutoRecompileConfig,
+    refreshCache: async () => {
+        await initializeCacheData(true);
+    },
+    broadcastErrors: broadcastRuntimeCompileErrors,
+    broadcastProgress: broadcastRuntimeCompileProgress,
+    broadcastComplete: broadcastRuntimeCompileComplete,
+    broadcastManifest: async (options = {}) => {
+        const silent = options.silent === true;
+        const updateMessage = options.message || 'Runtime assets recompiled';
+        const files = buildServiceWorkerCacheManifest();
+        const plumbing = globalResources.getDataPlumbing();
+        plumbing.publish('ws:broadcast:serviceWorkerCacheUpdate', {
+            files,
+            silent,
+            message: updateMessage,
+            runtimeAssetsRecompiled: options.runtimeAssetsRecompiled === true,
+            timestamp: Date.now()
+        });
+    }
+});
+
+runtimeAssetService.initCompileLogStore(globalResources.getPath('logs'));
+runtimeAssetService.setCompileLogBroadcastCallback(broadcastRuntimeCompileLogs);
+
+workspaceCssService.init({
+    projectRoot: __dirname,
+    getWorkspacesConfig: () => globalResources.getWorkspacesConfig(),
+    compileCssSource: (source, rel, hash, opts) => runtimeAssetService.compileCss(source, rel, hash, opts),
+    hashSource: (source) => runtimeAssetService.hashSource(source),
+    buildHeader: (rel, hash) => runtimeAssetService.buildHeader(rel, hash),
+    atomicWrite: (filePath, content) => runtimeAssetService.atomicWrite(filePath, content),
+    onCompiled: async (result, options) => {
+        if (result.status !== 'compiled') {
+            return;
+        }
+        if (options && options.broadcast === false) {
+            return;
+        }
+        await broadcastWorkspaceCssUpdated(result);
+    }
+});
 
 // Update server readiness stage
 function updateServerStage(stage, isReady = false) {
@@ -440,7 +568,7 @@ function buildServiceWorkerCacheManifest() {
         return {
             url: route.url,
             name: route.name,
-            hash: file.md5 || 'no-hash',
+            hash: file.hash || file.md5 || 'no-hash',
             size: file.size || 0,
             modified: file.modified || Date.now(),
             type: 'route'
@@ -459,7 +587,7 @@ function buildServiceWorkerCacheManifest() {
         )
         .map(file => ({
             url: file.path,
-            hash: file.md5,
+            hash: file.hash || file.md5,
             size: file.size,
             modified: file.modified
         }));
@@ -467,32 +595,35 @@ function buildServiceWorkerCacheManifest() {
     return [...routeEntries, ...staticFiles];
 }
 
-// Refresh server hash cache and broadcast manifest to all connected clients
+// Recompile runtime assets, refresh server hash cache, and broadcast manifest to clients
 async function refreshAndBroadcastServiceWorkerCache(options = {}) {
     const silent = options.silent === true;
     const updateMessage = options.message || 'Application updates are available';
 
-    await initializeCacheData(true);
-
-    const files = buildServiceWorkerCacheManifest();
-    const plumbing = globalResources.getDataPlumbing();
-    plumbing.publish('ws:broadcast:serviceWorkerCacheUpdate', {
-        files,
+    const compileResult = await runtimeAssetService.recompileAndRefresh({
+        force: options.force === true,
         silent,
-        message: updateMessage,
-        timestamp: Date.now()
+        showConsoleProgress: options.showConsoleProgress === true,
+        message: updateMessage
     });
 
+    const files = buildServiceWorkerCacheManifest();
     const wsServer = globalResources.getWebSocketServer();
     const clientsNotified = wsServer && typeof wsServer.getConnectionCount === 'function'
         ? wsServer.getConnectionCount()
         : 0;
+    const errors = Array.isArray(compileResult.errors) ? compileResult.errors : [];
 
     return {
-        success: true,
-        message: 'Service worker cache refreshed and broadcast to clients',
+        success: errors.length === 0,
+        message: errors.length === 0
+            ? 'Runtime assets recompiled and service worker cache refreshed'
+            : 'Runtime assets recompiled with errors',
         assetsCount: files.length,
         clientsNotified,
+        compiled: compileResult.compiled || 0,
+        skipped: compileResult.skipped || 0,
+        failedCount: errors.length,
         timestamp: Date.now()
     };
 }
@@ -516,22 +647,29 @@ async function generateCacheData(directory) {
                     file.includes('.git')) {
                     continue;
                 }
-                
-                // Calculate MD5 hash
-                const fileBuffer = fs.readFileSync(filePath);
-                const hash = crypto.createHash('md5').update(fileBuffer).digest('hex');
-                
+
                 // Convert to web path (remove /public prefix for clean URLs)
                 const relativePath = path.relative(__dirname, filePath).replace(/\\/g, '/');
                 const webPath = relativePath.startsWith('public/') 
                     ? '/' + relativePath.substring(7) // Remove 'public/' prefix
                     : '/' + relativePath;
-                
+
+                // SHA-256 of bytes actually served to clients (optimised copy for managed css/scripts)
+                let hashPath = filePath;
+                if (runtimeAssetService.isRuntimeManagedWebPath(webPath)) {
+                    const servedPath = runtimeAssetService.resolveServedAssetPath(__dirname, webPath);
+                    if (servedPath && fs.existsSync(servedPath)) {
+                        hashPath = servedPath;
+                    }
+                }
+                const hashStats = fs.statSync(hashPath);
+                const hash = runtimeAssetService.hashServedFile(hashPath);
+
                 assets.push({
                     path: webPath,
-                    md5: hash,
-                    size: stats.size,
-                    modified: stats.mtime.getTime()
+                    hash,
+                    size: hashStats.size,
+                    modified: hashStats.mtime.getTime()
                 });
             } catch (error) {
                 console.warn(`⚠️ Error processing file ${file}:`, error.message);
@@ -540,7 +678,13 @@ async function generateCacheData(directory) {
         
         // Sort by path for consistent ordering
         assets.sort((a, b) => a.path.localeCompare(b.path));
-        
+
+        const workspaceEntry = workspaceCssService.getManifestEntry(__dirname);
+        if (workspaceEntry && !assets.some((entry) => entry.path === workspaceEntry.path)) {
+            assets.push(workspaceEntry);
+            assets.sort((a, b) => a.path.localeCompare(b.path));
+        }
+
         return assets;
     } catch (error) {
         console.error('❌ Error scanning directory:', error.message);
@@ -1363,6 +1507,18 @@ app.use('/image/opti/:filename', authMiddleware, async (req, res) => {
 });
 
 app.options('/', (req, res) => {
+    if (!runtimeCompileComplete) {
+        const uptime = Date.now() - serverReadiness.startTime;
+        const stageMessage = serverReadiness.stages.runtime_compile || 'Compiling runtime assets...';
+        return res.status(503).json({
+            success: false,
+            error: 'Runtime assets are compiling',
+            stage: 'runtime_compile',
+            stageMessage,
+            uptime,
+            retryAfter: 5
+        });
+    }
     try {
         res.json(buildServiceWorkerCacheManifest());
     } catch (error) {
@@ -1373,6 +1529,7 @@ app.options('/', (req, res) => {
 app.options('/status', (req, res) => {
     const uptime = Date.now() - serverReadiness.startTime;
     const stageMessage = serverReadiness.stages[serverReadiness.stage] || 'Unknown stage';
+    const runtimeCompile = runtimeAssetService.getStatus();
     
     res.json({
         isReady: serverReadiness.isReady,
@@ -1380,7 +1537,10 @@ app.options('/status', (req, res) => {
         stageMessage: stageMessage,
         uptime: uptime,
         lastUpdate: serverReadiness.lastUpdate,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        runtimeCompileComplete,
+        runtimeCompile: runtimeAssetService.getPublicStatus(),
+        runtimeAutoRecompile: getRuntimeAutoRecompileConfig()
     });
 });
 
@@ -1703,6 +1863,7 @@ app.get('/traces/:id', authMiddleware, (req, res) => {
         streamLogFile(res, globalResources.getLogger(), source, offset, {
             pm2Service,
             getHostMetrics: () => pm2Service.getHostMetrics(),
+            getRuntimeCompileStatus: () => runtimeAssetService.getPublicStatus(),
             statusIntervalMs: Number.isFinite(statusInterval) ? statusInterval : undefined
         });
     });
@@ -3128,7 +3289,11 @@ async function handleAdminUnixSocketMessage(message, socket) {
 
         switch (type) {
             case 'refresh_service_worker_cache':
-                result = await refreshAndBroadcastServiceWorkerCache(data || {});
+            case 'recompile_runtime_assets':
+                result = await refreshAndBroadcastServiceWorkerCache({
+                    ...(data || {}),
+                    silent: (data && data.silent) === true
+                });
                 break;
             default:
                 throw new Error(`Unknown Unix socket message type: ${type}`);
@@ -3166,6 +3331,21 @@ async function handleAdminUnixSocketMessage(message, socket) {
     });
     
     // Account & Cache Initialization
+    await globalResources.logger.bootStep('Runtime Asset Compilation', async () => {
+        updateServerStage('runtime_compile');
+        const result = await runtimeAssetService.compileOnBoot(__dirname, { showConsoleProgress: true });
+        runtimeCompileComplete = true;
+        if (result.errors.length > 0) {
+            globalResources.logger.error(`Runtime compile: ${result.errors.length} file(s) failed (keeping previous optimised copies)`);
+            for (const entry of result.errors) {
+                globalResources.logger.error(`  ${entry.file}: ${entry.error}`);
+            }
+            broadcastRuntimeCompileErrors(result);
+        } else {
+            globalResources.logger.bootSubStep(`${result.compiled} compiled, ${result.skipped} up-to-date`);
+        }
+    });
+
     await globalResources.logger.bootStep('Account & Cache', async () => {
         updateServerStage('account_init');
         await initializeAccountData();
@@ -3229,6 +3409,42 @@ async function handleAdminUnixSocketMessage(message, socket) {
     // Finalize Setup
     await globalResources.logger.bootStep('Finalizing', async () => {
         globalResources.logger.bootSubStep('Security system initialized');
+
+        // Serve optimised css/scripts from .cache unless debug mode (before public static)
+        app.use(async (req, res, next) => {
+            try {
+                if (req.method !== 'GET' && req.method !== 'HEAD') {
+                    return next();
+                }
+                const webPath = req.path;
+                if (!runtimeAssetService.isRuntimeManagedWebPath(webPath)) {
+                    return next();
+                }
+                const debugMode = runtimeAssetService.isDebugRequest(req);
+                if (!debugMode && runtimeAssetService.isAutoRecompileEnabled()) {
+                    await runtimeAssetService.ensureCompiledForRequest(__dirname, webPath);
+                }
+                const servedPath = runtimeAssetService.resolveServedPath(
+                    __dirname,
+                    webPath,
+                    debugMode
+                );
+                if (!fs.existsSync(servedPath)) {
+                    return next();
+                }
+                res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
+                res.setHeader('Pragma', 'no-cache');
+                res.setHeader('Expires', '0');
+                if (servedPath.includes(`${path.sep}.cache${path.sep}runtime-assets${path.sep}`)) {
+                    res.setHeader('X-StaticForge-Runtime-Asset', 'optimized');
+                } else {
+                    res.setHeader('X-StaticForge-Runtime-Asset', 'source');
+                }
+                res.sendFile(servedPath);
+            } catch (err) {
+                next(err);
+            }
+        });
 
         // Serve static files from public directory (after routes to avoid conflicts)
         app.use(express.static('public', {

@@ -1409,6 +1409,17 @@ function hideImageBiasAdjustmentModal() {
     // Deregister event listeners when modal is hidden
     deregisterImageBiasEventListeners();
 
+    cleanupBiasConfirmPreviewElements();
+    cleanupBlobUrls();
+
+    if (imageBiasAdjustmentData.originalImage) {
+        imageBiasAdjustmentData.originalImage.onload = null;
+        imageBiasAdjustmentData.originalImage.onerror = null;
+        imageBiasAdjustmentData.originalImage.src = '';
+        imageBiasAdjustmentData.originalImage = null;
+    }
+    imageBiasAdjustmentData.targetDimensions = null;
+
     // Clean up test results
     const resultsDiv = document.getElementById('biasTestResults');
     if (resultsDiv) {
@@ -1597,7 +1608,14 @@ function cropImageWithDynamicBias(dataUrl, bias) {
 }
 
 // Setup image bias adjustment event listeners
+let _imageBiasAdjustmentListenersWired = false;
+
 function setupImageBiasAdjustmentListeners() {
+    if (_imageBiasAdjustmentListenersWired) {
+        return;
+    }
+    _imageBiasAdjustmentListenersWired = true;
+
     // Modal controls
     const closeBtn = document.getElementById('closeImageBiasAdjustmentBtn');
     const cancelBtn = document.getElementById('cancelBiasAdjustmentBtn');
@@ -1838,12 +1856,20 @@ function addBiasAdjustmentButton() {
 }
 
 // Initialize image bias adjustment functionality
+let _imageBiasAdjustmentInitialized = false;
+
 function initializeImageBiasAdjustment() {
+    if (_imageBiasAdjustmentInitialized) {
+        return;
+    }
+    _imageBiasAdjustmentInitialized = true;
+
     setupImageBiasAdjustmentListeners();
 
-    // Connect existing bias adjustment button
+    // Connect existing bias adjustment button (static markup in app.html)
     const adjustBtn = document.getElementById('imageBiasAdjustBtn');
-    if (adjustBtn) {
+    if (adjustBtn && !adjustBtn.dataset.biasAdjustWired) {
+        adjustBtn.dataset.biasAdjustWired = 'true';
         adjustBtn.addEventListener('click', showImageBiasAdjustmentModal);
     }
 
@@ -1865,6 +1891,13 @@ function initializeImageBiasAdjustment() {
     }
 }
 
+function wireImageBiasHiddenChange() {
+    if (!imageBiasHidden || imageBiasHidden.dataset.wired === 'true') return;
+    imageBiasHidden.dataset.wired = 'true';
+    imageBiasHidden.addEventListener('change', handleImageBiasChange);
+}
+
 window.wsClient.registerInitStep(38, 'Initializing Image Bias System', async () => {
+    wireImageBiasHiddenChange();
     await initializeImageBiasAdjustment();
 });

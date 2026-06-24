@@ -3047,8 +3047,15 @@ function toggleProtectSyntax(target) {
 // Token Display Modal System
 // ============================================================================
 
+let tokenInfoClickHandlersWired = false;
+
 // Initialize token info container click handlers
 function initializeTokenInfoClickHandlers() {
+    if (tokenInfoClickHandlersWired) {
+        return;
+    }
+    tokenInfoClickHandlersWired = true;
+
     // Add click handlers to all token-info-containers
     document.addEventListener('click', (e) => {
         const tokenInfo = e.target.closest('.token-info-container');

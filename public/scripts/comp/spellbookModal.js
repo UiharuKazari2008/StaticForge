@@ -26,6 +26,11 @@ class SpellbookModalManager {
     }
 
     init() {
+        if (this._initWired) {
+            return;
+        }
+        this._initWired = true;
+
         this.cacheElements();
         this.setupEventListeners();
         this.setProgressCancelVisible(false);
@@ -153,11 +158,14 @@ class SpellbookModalManager {
         this.setupContextMenu();
 
         // Escape key to close modal
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && this.modal && !this.modal.classList.contains('hidden')) {
-                this.closeModal();
-            }
-        });
+        if (!this._escapeKeyHandler) {
+            this._escapeKeyHandler = (e) => {
+                if (e.key === 'Escape' && this.modal && !this.modal.classList.contains('hidden')) {
+                    this.closeModal();
+                }
+            };
+            document.addEventListener('keydown', this._escapeKeyHandler);
+        }
     }
 
     updateSpellbookDynamicGenerationProgressOverlay(phase, data) {

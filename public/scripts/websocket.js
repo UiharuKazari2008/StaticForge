@@ -195,6 +195,10 @@ class BannerManager {
             'update_user_global_settings': 'Save User Settings',
             'get_nax_vibes_gallery': 'Browse Vibes',
             'clear_nax_vibes_gallery_cache': 'Refresh Browse Vibes Cache',
+            'generate_nax_custom_tag': 'Create Custom Tag (NAX)',
+            'delete_nax_custom_tag': 'Delete Custom Tag (NAX)',
+            'fetch_autofill_wiki_previews': 'Fetch Wiki',
+            'resolve_grimoire_url': 'Fetch GrURL',
             'search_files': 'Find Images',
             'search_characters': 'Find Characters',
             'lookup_city': 'Lookup Location',
@@ -235,6 +239,7 @@ class BannerManager {
             'workspace_update_background_color': 'Update Background',
             'workspace_update_background_image': 'Update Background Image',
             'workspace_update_background_opacity': 'Update Background Opacity',
+            'gallery_position_hint': 'Gallery Position Hint',
             'workspace_update_settings': 'Upload Settings',
             'workspace_update_window_positions': 'Upload Settings',
             'workspace_update_primary_font': 'Update Font',
@@ -259,6 +264,9 @@ class BannerManager {
             'vfs_resolve_path': 'Resolve Path',
             'vfs_create_folder': 'Create Folder',
             'vfs_rename_folder': 'Rename Folder',
+            'vfs_rename_file': 'Rename File',
+            'vfs_rename_entry': 'Rename File',
+            'vfs_rename_shortcut_entry': 'Rename File',
             'vfs_delete_folder': 'Delete Folder',
             'vfs_move_items': 'Move Items',
             'vfs_copy_items': 'Copy Items',
@@ -273,6 +281,7 @@ class BannerManager {
             'get_text_replacement_options': 'Resolve Placeholder',
             'scan_text_replacements': 'Scan Expanders',
             'resolve_dynamic_context': 'Resolve Context',
+            'resolve_text_replacements': 'Resolve Expanders',
             'compile_dynamic_generation': 'Compile to Prompts',
             'apply_tendai_preview': 'Apply Tendai',
 
@@ -310,6 +319,8 @@ class BannerManager {
             // Cache and system operations
             'get_cache_manifest': 'Get Cache Manifest',
             'refresh_server_cache': 'Refresh Cache',
+            'recompile_runtime_assets': 'Compile Application',
+            'set_runtime_assets_auto_recompile': 'Set Auto-Recompile',
             'rebuild_metadata_cache': 'Rebuild Metadata Cache',
             'clear_search_cache': 'Clear Search Cache',
             'broadcast_resource_update': 'Update Resources',
@@ -352,6 +363,19 @@ class BannerManager {
             'save_preset_group': 'Save Preset',
             'delete_preset_group': 'Delete Preset',
             'get_preset_groups': 'Get Presets',
+
+            // Config editor operations
+            'config_editor_list': 'List Config Keys',
+            'config_editor_get_node': 'Get Config Node',
+            'config_editor_save': 'Save Config',
+
+            // Novel operations
+            'novel_list': 'List Novels',
+            'novel_get': 'Get Novel',
+            'novel_update': 'Update Novel',
+            'novel_generate': 'Generate Novel',
+            'novel_undo': 'Undo Novel Edit',
+            'novel_resolve_image': 'Resolve Novel Image',
 
             // Notes operations
             'notes_create': 'Save Notebook Page',
@@ -2065,7 +2089,7 @@ class WebSocketClient {
     }
 
     updateProgressNotification(message, progress) {
-        // Post–gallery-handoff: use toast only — never reopen startup modal (re-applies windows-classic-theme)
+        // Post–gallery-handoff: use toast only — never reopen startup modal
         if (window.isDesktop && this.initStartupUiDismissed) {
             this._updateInitProgressToast(message, progress, false);
             return;
@@ -2120,14 +2144,9 @@ class WebSocketClient {
 
         if (!modal || !statusElement || !progressBar) return;
 
-        // Classic theme only during boot splash (windows-startup); loadWorkspaces removes it for Aero
-        if (document.body.classList.contains('windows-startup')
-            && !document.body.classList.contains('windows-classic-theme')) {
-            document.body.classList.add('windows-classic-theme');
-        }
-
         // Top-left corner layout (#windowsStartupModal CSS); skip center clamp / pixel-settle — modalUtils.js
         modal.dataset.windowPositionMode = 'manual-only';
+        modal.dataset.windowRestorePosition = 'false';
         clearModalPixelAnchor(modal);
         modal.style.setProperty('--modal-offset-x', '20px');
         modal.style.setProperty('--modal-offset-y', '20px');
@@ -2170,6 +2189,10 @@ class WebSocketClient {
             progressBar.style.width = `${Math.min(100, Math.max(0, progress))}%`;
         }
 
+        if (document.body.classList.contains('windows-startup') && typeof setActiveWindow === 'function') {
+            setActiveWindow('windowsStartupModal');
+        }
+
         // Update button visibility when progress updates
         this.updateStepByStepButton();
     }
@@ -2189,10 +2212,10 @@ class WebSocketClient {
             }
         }
 
-        // Remove startup background
+        // Remove startup background when boot splash is done (Aero already applied in loadWorkspaces)
         document.body.classList.remove('windows-startup');
         document.body.classList.remove('boot-from-launch');
-        // Keep windows-classic-theme until workspace theme is loaded (handled in workspace loading step)
+        document.body.classList.remove('no-animation');
     }
 
     // Windows Update Modal Methods (Desktop Mode Only)
@@ -2280,7 +2303,7 @@ class WebSocketClient {
         }
     }
 
-    showWindowsUpdateRestartPrompt(message = 'Updates have been installed. Restart is required.') {
+    showWindowsUpdateRestartPrompt(message = 'Updates have been installed. Restart is required.', mode = 'restart') {
         if (!window.isDesktop) return;
 
         const modal = document.getElementById('windowsUpdateModal');
@@ -2288,6 +2311,7 @@ class WebSocketClient {
         const progressBar = document.getElementById('windowsUpdateProgressBar');
         const skipBtn = document.getElementById('windowsUpdateSkipBtn');
         const restartActions = document.getElementById('windowsUpdateRestartActions');
+        const restartBtn = document.getElementById('windowsUpdateRestartBtn');
         const progressContainer = modal?.querySelector('.windows-update-progress-container');
 
         if (!modal || !statusElement || !restartActions) return;
@@ -2297,6 +2321,9 @@ class WebSocketClient {
         if (restartActions) restartActions.classList.remove('hidden');
         if (skipBtn) skipBtn.style.display = 'none';
         if (progressBar) progressBar.style.width = '100%';
+        if (restartBtn) {
+            restartBtn.textContent = mode === 'apply' ? 'Apply Now' : 'Restart Now';
+        }
 
         statusElement.textContent = message;
     }
@@ -2460,6 +2487,7 @@ class WebSocketClient {
         try {
             for (const step of this.initSteps) {
                 this.currentInitStep++;
+                const stepSkipped = this.initializationCompleted && !step.runOnReconnect;
                 // Calculate progress: base percentage + steps percentage
                 const stepProgress = WebSocketClient.PROGRESS_INIT_BASE +
                     ((this.currentInitStep / this.totalInitSteps) * WebSocketClient.PROGRESS_INIT_STEPS);
@@ -2488,6 +2516,12 @@ class WebSocketClient {
                     await step.stepFunction();   // run the step
                 } catch (error) {
                     console.error(`❌ Error in init step "${step.message}":`, error);
+                    // scripts/comp/fatalErrorBootstrap.js — presentDreamscapeApplicationError
+                    presentDreamscapeApplicationError(
+                        'Init step failed: ' + step.message,
+                        error && error.message ? error.message : String(error),
+                        error && error.stack ? error.stack : ''
+                    );
                 }
             }
 
@@ -2501,6 +2535,12 @@ class WebSocketClient {
             }, 500);
         } catch (error) {
             console.error('❌ Error during initialization:', error);
+            // scripts/comp/fatalErrorBootstrap.js — presentDreamscapeApplicationError
+            presentDreamscapeApplicationError(
+                'Initialization failed',
+                error && error.message ? error.message : String(error),
+                error && error.stack ? error.stack : ''
+            );
             this.updateProgressNotification('Initialization failed', 100);
             this.initializationLock = false; // Release initialization lock on error
             setTimeout(async () => {
@@ -2747,7 +2787,7 @@ class WebSocketClient {
                             await window.serviceWorkerManager.checkAndDownloadUpdatesForInit();
                         } catch (error) {
                             console.warn('⚠️ Update check failed (non-critical):', error);
-                            // Don't block initialization if update check fails
+                            // Don't block initialization if update check failsss
                         }
                     }
                 }
@@ -2991,6 +3031,10 @@ class WebSocketClient {
 
         // Clear WebSocket indicator timeouts
         this.clearWebSocketIndicatorTimeouts();
+
+        this._stopWsFlashVisibilityWatcher();
+
+        this._teardownGenerationUiState();
 
         if (this.ws) {
             this.ws.close(1000, 'Manual disconnect');
@@ -3490,14 +3534,14 @@ class WebSocketClient {
             }
 
             // Show success/error message
-            if (message.success) {
-                const successMessage = `Server cache refreshed successfully. ${message.data?.assetsCount || 0} assets updated.`;
+            if (message.data?.success) {
+                const successMessage = message.data.message || `Server cache refreshed successfully. ${message.data.assetsCount || 0} assets updated.`;
 
                 if (typeof showGlassToast === 'function') {
                     showGlassToast('success', 'Cache Refreshed', successMessage, false, 5000, '<i class="fas fa-sync"></i>');
                 }
             } else {
-                const errorMessage = message.error || 'Failed to refresh server cache';
+                const errorMessage = message.data?.error || message.data?.message || message.error || 'Failed to refresh server cache';
 
                 if (typeof showGlassToast === 'function') {
                     showGlassToast('error', 'Cache Refresh Failed', errorMessage, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
@@ -3529,11 +3573,67 @@ class WebSocketClient {
         if (message.type === 'service_worker_cache_update') {
             const files = message.data && Array.isArray(message.data.files) ? message.data.files : [];
             const silent = message.data && message.data.silent === true;
+            const cacheOptions = {
+                runtimeAssetsRecompiled: message.data && message.data.runtimeAssetsRecompiled === true
+            };
 
             if (files.length > 0 && window.serviceWorkerManager && typeof window.serviceWorkerManager.updateStaticCache === 'function') {
-                window.serviceWorkerManager.updateStaticCache(files, silent);
+                window.serviceWorkerManager.updateStaticCache(files, silent, cacheOptions);
             } else if (!silent && window.serviceWorkerManager && typeof window.serviceWorkerManager.checkStaticFileUpdates === 'function') {
                 window.serviceWorkerManager.checkStaticFileUpdates(silent);
+            }
+            return;
+        }
+
+        if (message.type === 'workspace_css_updated') {
+            const data = message.data || {};
+            const webPath = data.webPath || '/css/workspaces.css';
+            const hash = data.hash || data.sourceHash;
+            if (!hash) {
+                return;
+            }
+            if (window.serviceWorkerManager) {
+                window.serviceWorkerManager.cacheStaticFilesSilent([{ url: webPath, hash }]).then(() => {
+                    // applyWorkspaceCssFromServer: public/scripts/comp/workspaceUtils.js
+                    applyWorkspaceCssFromServer(hash, webPath);
+                }).catch(() => {
+                    applyWorkspaceCssFromServer(hash, webPath);
+                });
+            }
+            return;
+        }
+
+        if (message.type === 'runtime_compile_error') {
+            const errors = message.data && Array.isArray(message.data.errors) ? message.data.errors : [];
+            if (errors.length > 0 && typeof showRuntimeCompileErrors === 'function') {
+                showRuntimeCompileErrors(errors);
+            }
+            return;
+        }
+
+        if (message.type === 'runtime_compile_progress') {
+            if (typeof handleRuntimeCompileProgressBroadcast === 'function') {
+                handleRuntimeCompileProgressBroadcast(message.data);
+            }
+            return;
+        }
+
+        if (message.type === 'runtime_compile_complete') {
+            if (typeof handleRuntimeCompileCompleteBroadcast === 'function') {
+                handleRuntimeCompileCompleteBroadcast(message.data);
+            }
+            return;
+        }
+
+        if (message.type === 'runtime_compile_logs') {
+            this.triggerEvent('runtime_compile_logs', message);
+            return;
+        }
+
+        if (message.type === 'workspace_css_updated') {
+            const data = message.data || {};
+            if (typeof applyWorkspaceCssFromServer === 'function') {
+                applyWorkspaceCssFromServer(data.hash || data.sourceHash, data.webPath);
             }
             return;
         }
@@ -4281,10 +4381,12 @@ class WebSocketClient {
         if (modalType) {
             if (this.streamingStepQueues[modalType]) {
                 this.discardStreamingStepImageData(this.streamingStepQueues[modalType]);
+                delete this.streamingStepQueues[modalType];
             }
         } else {
             Object.keys(this.streamingStepQueues).forEach(key => {
                 this.discardStreamingStepImageData(this.streamingStepQueues[key]);
+                delete this.streamingStepQueues[key];
             });
         }
 
@@ -5071,6 +5173,14 @@ class WebSocketClient {
         const requestId = this.generateRequestId();
         requestBody.requestId = requestId;
         return this.sendMessageWithRequestId('apply_tendai_preview', requestId, requestBody);
+    }
+
+    async recompileRuntimeAssets(options = {}) {
+        return this.sendMessageWithRequestId('recompile_runtime_assets', this.generateRequestId(), options);
+    }
+
+    async setRuntimeAssetsAutoRecompile(enabled) {
+        return this.sendMessageWithRequestId('set_runtime_assets_auto_recompile', this.generateRequestId(), { enabled: !!enabled });
     }
 
     async resolveTextReplacements(text, presetName = null, model = null, periodKey = null) {
@@ -6667,6 +6777,36 @@ class WebSocketClient {
                 this._refreshWsFlashTargets();
             }, 5000);
         }
+    }
+
+    _stopWsFlashVisibilityWatcher() {
+        if (this._wsFlashVisibilityObserver) {
+            this._wsFlashVisibilityObserver.disconnect();
+            this._wsFlashVisibilityObserver = null;
+        }
+        if (this._wsFlashVisibilityInterval) {
+            clearInterval(this._wsFlashVisibilityInterval);
+            this._wsFlashVisibilityInterval = null;
+        }
+        if (this._wsFlashVisibilityRefreshRaf) {
+            cancelAnimationFrame(this._wsFlashVisibilityRefreshRaf);
+            this._wsFlashVisibilityRefreshRaf = null;
+        }
+        if (this._wsFlashRafId) {
+            cancelAnimationFrame(this._wsFlashRafId);
+            this._wsFlashRafId = null;
+        }
+        this._wsFlashPendingUp = null;
+        this._wsFlashPendingDown = null;
+    }
+
+    _teardownGenerationUiState() {
+        if (this.progressStates) {
+            for (const requestId of [...this.progressStates.keys()]) {
+                this.cleanupGenerationProgressState(requestId);
+            }
+        }
+        this.clearStreamingStepQueues(null, true);
     }
 
     // Queue DOM flash work off the WebSocket message path (rAF runs after current task).

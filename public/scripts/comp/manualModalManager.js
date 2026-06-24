@@ -205,6 +205,12 @@ const creativeDirectiveInput = document.getElementById('creativeDirectiveInput')
 const windowPaidToggle = document.getElementById('windowPaidRequestToggle');
 const manualRequestSaveBtn = document.getElementById('manualRequestSaveBtn');
 const manualPreviewToggleDialogsBtn = document.getElementById('manualPreviewToggleDialogsBtn');
+const windowManualPreviewToggleDialogsBtn = document.getElementById('windowManualPreviewToggleDialogsBtn');
+const manualPreviewWorkspaceBtn = document.getElementById('manualPreviewWorkspaceBtn');
+const closeWorkspaceOverlayBtn = document.getElementById('closeWorkspaceOverlayBtn');
+const manualPreviewPrevBtn = document.getElementById('manualPreviewPrevBtn');
+const manualPreviewNextBtn = document.getElementById('manualPreviewNextBtn');
+const manualPreviewHandle = document.getElementById('manualPreviewHandle');
 
 // Dynamic Generation System
 const dynamicGenerationToggleBtn = document.getElementById('dynamicGenerationToggleBtn');
@@ -3865,6 +3871,7 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
                     } else if (image.file) {
                         // File upload - create object URL
                         const previewUrl = URL.createObjectURL(image.file);
+                        trackManualPreviewBlobUrl(previewUrl); // trackManualPreviewBlobUrl: public/scripts/app.js
                         await loadTempImagePreview(previewUrl, image);
                     }
                 } else {
@@ -5561,3 +5568,666 @@ function hideDynamicGenerationProgressOverlay() {
 if (dynamicGenerationProgressCancelBtn) {
     dynamicGenerationProgressCancelBtn.addEventListener('click', () => cancelManualDynamicGenerationFromUser());
 }
+
+// ============================================================================
+// MANUAL PREVIEW TOOLBAR LISTENERS (moved from app.js)
+// ============================================================================
+
+let manualPreviewToolbarListenersRegistered = false;
+
+function handleManualPreviewCloseClick(e) {
+    e.preventDefault();
+    const isWindowed = manualModal && manualModal.classList.contains('windowed');
+
+    if (window.isDesktop && isWindowed) {
+        hideManualPreviewResponsive();
+    } else if (window.innerWidth >= 1100) {
+        // hideManualModal: public/scripts/app.js
+        hideManualModal(e);
+    } else {
+        hideManualPreviewResponsive();
+    }
+}
+
+function handleManualPreviewDownloadClick(e) {
+    e.preventDefault();
+    const previewImage = document.getElementById('manualPreviewImage');
+    if (previewImage && previewImage.dataset.blobUrl) {
+        const blobUrl = previewImage.dataset.blobUrl;
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = `generated-image-${Date.now()}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+}
+
+async function handleManualPreviewCopyClick(e) {
+    e.preventDefault();
+    const previewImage = document.getElementById('manualPreviewImage');
+    if (previewImage && previewImage.dataset.blobUrl) {
+        try {
+            const response = await fetch(previewImage.dataset.blobUrl);
+            const blob = await response.blob();
+            // copyBlobToClipboard: public/scripts/utils/dreamscapeClipboard.js
+            await copyBlobToClipboard(blob, { name: 'generated-image.png' });
+            const sizeText = formatClipboardBlobSize(blob);
+            if (showGlassToast) {
+                showGlassToast('success', 'Image copied to clipboard!', `(${sizeText})`, false, 3000, '<i class="fa-regular fa-clipboard-check"></i>');
+            }
+        } catch (error) {
+            console.error('Failed to copy image to clipboard:', error);
+            if (showGlassToast) {
+                showGlassToast('error', 'Failed to copy image to clipboard', '', false, 3000, '<i class="fa-regular fa-clipboard"></i>');
+            }
+        }
+    }
+}
+
+function handleManualPreviewUpscaleClick(e) {
+    e.preventDefault();
+    if (window.currentManualPreviewImage) {
+        upscaleImage(window.currentManualPreviewImage, e);
+    } else {
+        showGlassToast('error', 'Upscale Failed', 'No image available', false, undefined, '<i class="fas fa-image-slash"></i>');
+    }
+}
+
+function handleManualPreviewLoadClick(e) {
+    e.preventDefault();
+    if (window.currentManualPreviewImage) {
+        // registerCompareBaselineFromCurrentPreview: public/scripts/app.js
+        registerCompareBaselineFromCurrentPreview();
+        if (window.innerWidth <= 1300 && manualModal.classList.contains('show-preview')) {
+            hideManualPreviewResponsive();
+        }
+        openManualModalWithContent({
+            type: 'image',
+            image: window.currentManualPreviewImage
+        }, e);
+    } else {
+        showGlassToast('error', 'Load Failed', 'No image available', false, undefined, '<i class="fas fa-camera-slash"></i>');
+    }
+}
+
+function handleManualPreviewVariationClick(e) {
+    e.preventDefault();
+    if (window.currentManualPreviewImage) {
+        const filename = window.currentManualPreviewImage.original;
+        if (filename) {
+            const source = `file:${filename}`;
+            const previewUrl = `/images/${filename}`;
+
+            window.uploadedImageData = {
+                image_source: source,
+                width: 0,
+                height: 0,
+                bias: 2,
+                isBiasMode: true,
+                isClientSide: false
+            };
+
+            const tempImg = new Image();
+            tempImg.onload = () => {
+                window.uploadedImageData.width = tempImg.width;
+                window.uploadedImageData.height = tempImg.height;
+                tempImg.onload = null;
+                tempImg.onerror = null;
+                tempImg.removeAttribute('src');
+                updateImageBiasOrientation();
+            };
+            tempImg.onerror = () => {
+                console.warn('Failed to load image dimensions, using defaults');
+                window.uploadedImageData.width = 512;
+                window.uploadedImageData.height = 512;
+                tempImg.onload = null;
+                tempImg.onerror = null;
+                tempImg.removeAttribute('src');
+                updateImageBiasOrientation();
+            };
+            tempImg.src = previewUrl;
+
+            releaseVariationImageSrc();
+            const manualVariationImage = document.getElementById('manualVariationImage');
+            if (manualVariationImage) {
+                manualVariationImage.src = previewUrl;
+                manualVariationImage.classList.remove('hidden');
+            }
+
+            if (manualStrengthValue) manualStrengthValue.value = '0.8';
+            if (manualNoiseValue) manualNoiseValue.value = '0.1';
+            updatePercentageOverlays();
+
+            if (transformationRow) {
+                transformationRow.classList.add('display-image');
+            }
+            document.getElementById('manualImg2ImgGroup').classList.remove('hidden');
+            updateInpaintButtonState();
+            renderImageBiasDropdown('2');
+            updateUploadDeleteButtonVisibility();
+            hideManualPreviewResponsive();
+        } else {
+            showGlassToast('error', 'Variation Failed', 'No image found', false, undefined, '<i class="fas fa-image-slash"></i>');
+        }
+    } else {
+        showGlassToast('error', 'Variation Failed', 'No image available', false, undefined, '<i class="fas fa-image-slash"></i>');
+    }
+}
+
+function handleManualPreviewDeleteClick(e) {
+    e.preventDefault();
+    // deleteManualPreviewImage: public/scripts/app.js
+    deleteManualPreviewImage();
+}
+
+function initManualPreviewDialogsToggleState(btn) {
+    if (!btn) return;
+    const savedState = localStorage.getItem('dialogsVisible');
+    if (savedState !== null) {
+        btn.dataset.state = savedState;
+    }
+}
+
+function handleManualPreviewToggleDialogsClick(e) {
+    e.preventDefault();
+    const btn = e.currentTarget;
+    const currentState = btn.dataset.state;
+    const newState = currentState === 'on' ? 'off' : 'on';
+    btn.dataset.state = newState;
+
+    const otherBtn = btn === manualPreviewToggleDialogsBtn
+        ? windowManualPreviewToggleDialogsBtn
+        : manualPreviewToggleDialogsBtn;
+    if (otherBtn) {
+        otherBtn.dataset.state = newState;
+    }
+
+    localStorage.setItem('dialogsVisible', newState);
+
+    const dialogContainer = document.getElementById('manualPreviewDialogs');
+    if (!dialogContainer) return;
+
+    if (newState === 'off') {
+        dialogContainer.classList.add('hidden');
+    } else if (window.currentManualPreviewImage && window.currentManualPreviewImage.metadata) {
+        // collectDialogsFromMetadata, processDialogPositions, renderManualPreviewDialogs: public/scripts/app.js
+        let allDialogs = collectDialogsFromMetadata(window.currentManualPreviewImage.metadata);
+        if (allDialogs.length > 0) {
+            allDialogs = processDialogPositions(allDialogs);
+            renderManualPreviewDialogs(allDialogs, false);
+        } else {
+            dialogContainer.classList.add('hidden');
+        }
+    } else {
+        dialogContainer.classList.add('hidden');
+    }
+}
+
+function handleManualPreviewPinClick(e) {
+    e.preventDefault();
+    if (window.currentManualPreviewImage) {
+        // togglePinImage: public/scripts/app.js
+        togglePinImage(window.currentManualPreviewImage, manualPreviewPinBtn);
+    } else {
+        showGlassToast('error', 'Pin Failed', 'No image available', false, undefined, '<i class="fas fa-image-slash"></i>');
+    }
+}
+
+function handleManualPreviewScrapClick(e) {
+    e.preventDefault();
+    if (window.currentManualPreviewImage) {
+        if (currentGalleryView === 'scraps') {
+            // removeFromScraps: public/scripts/app.js
+            removeFromScraps(window.currentManualPreviewImage);
+        } else {
+            moveManualPreviewToScraps();
+        }
+    } else {
+        showGlassToast('error', 'Load Failed', 'No image available', false, undefined, '<i class="fas fa-image-slash"></i>');
+    }
+}
+
+function handleManualPreviewWorkspaceClick(e) {
+    e.preventDefault();
+    // showWorkspaceImageOverlay: public/scripts/comp/manualPreviewManager.js
+    showWorkspaceImageOverlay();
+}
+
+function handleCloseWorkspaceOverlayClick(e) {
+    e.preventDefault();
+    // hideWorkspaceImageOverlay: public/scripts/comp/manualPreviewManager.js
+    hideWorkspaceImageOverlay();
+}
+
+function handleManualPreviewNavClick(e) {
+    e.preventDefault();
+    // navigateManualPreview: public/scripts/comp/manualPreviewManager.js
+    navigateManualPreview(e);
+}
+
+function handleManualPreviewHandleClick(e) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!manualModal) return;
+
+    if (!manualModal.classList.contains('show-preview')) {
+        showManualPreview();
+    } else {
+        hideManualPreviewResponsive();
+    }
+}
+
+function registerManualPreviewToolbarListeners() {
+    if (manualPreviewToolbarListenersRegistered) return;
+
+    if (manualPreviewCloseBtn) {
+        manualPreviewCloseBtn.addEventListener('click', handleManualPreviewCloseClick);
+    }
+    if (manualPreviewDownloadBtn) {
+        manualPreviewDownloadBtn.addEventListener('click', handleManualPreviewDownloadClick);
+    }
+    if (manualPreviewCopyBtn) {
+        manualPreviewCopyBtn.addEventListener('click', handleManualPreviewCopyClick);
+    }
+    if (manualPreviewUpscaleBtn) {
+        manualPreviewUpscaleBtn.addEventListener('click', handleManualPreviewUpscaleClick);
+    }
+    if (manualPreviewLoadBtn) {
+        manualPreviewLoadBtn.addEventListener('click', handleManualPreviewLoadClick);
+    }
+    if (manualPreviewVariationBtn) {
+        manualPreviewVariationBtn.addEventListener('click', handleManualPreviewVariationClick);
+    }
+    if (manualPreviewDeleteBtn) {
+        manualPreviewDeleteBtn.addEventListener('click', handleManualPreviewDeleteClick);
+    }
+
+    [manualPreviewToggleDialogsBtn, windowManualPreviewToggleDialogsBtn].forEach((btn) => {
+        if (btn) {
+            initManualPreviewDialogsToggleState(btn);
+            btn.addEventListener('click', handleManualPreviewToggleDialogsClick);
+        }
+    });
+
+    if (manualPreviewPinBtn) {
+        manualPreviewPinBtn.addEventListener('click', handleManualPreviewPinClick);
+    }
+    if (manualPreviewScrapBtn) {
+        manualPreviewScrapBtn.addEventListener('click', handleManualPreviewScrapClick);
+    }
+    if (manualPreviewWorkspaceBtn) {
+        manualPreviewWorkspaceBtn.addEventListener('click', handleManualPreviewWorkspaceClick);
+    }
+    if (closeWorkspaceOverlayBtn) {
+        closeWorkspaceOverlayBtn.addEventListener('click', handleCloseWorkspaceOverlayClick);
+    }
+    if (manualPreviewPrevBtn) {
+        manualPreviewPrevBtn.addEventListener('click', handleManualPreviewNavClick);
+    }
+    if (manualPreviewNextBtn) {
+        manualPreviewNextBtn.addEventListener('click', handleManualPreviewNavClick);
+    }
+    if (manualPreviewHandle) {
+        manualPreviewHandle.addEventListener('click', handleManualPreviewHandleClick);
+    }
+
+    manualPreviewToolbarListenersRegistered = true;
+}
+
+function deregisterManualPreviewToolbarListeners() {
+    if (!manualPreviewToolbarListenersRegistered) return;
+
+    if (manualPreviewCloseBtn) {
+        manualPreviewCloseBtn.removeEventListener('click', handleManualPreviewCloseClick);
+    }
+    if (manualPreviewDownloadBtn) {
+        manualPreviewDownloadBtn.removeEventListener('click', handleManualPreviewDownloadClick);
+    }
+    if (manualPreviewCopyBtn) {
+        manualPreviewCopyBtn.removeEventListener('click', handleManualPreviewCopyClick);
+    }
+    if (manualPreviewUpscaleBtn) {
+        manualPreviewUpscaleBtn.removeEventListener('click', handleManualPreviewUpscaleClick);
+    }
+    if (manualPreviewLoadBtn) {
+        manualPreviewLoadBtn.removeEventListener('click', handleManualPreviewLoadClick);
+    }
+    if (manualPreviewVariationBtn) {
+        manualPreviewVariationBtn.removeEventListener('click', handleManualPreviewVariationClick);
+    }
+    if (manualPreviewDeleteBtn) {
+        manualPreviewDeleteBtn.removeEventListener('click', handleManualPreviewDeleteClick);
+    }
+
+    [manualPreviewToggleDialogsBtn, windowManualPreviewToggleDialogsBtn].forEach((btn) => {
+        if (btn) {
+            btn.removeEventListener('click', handleManualPreviewToggleDialogsClick);
+        }
+    });
+
+    if (manualPreviewPinBtn) {
+        manualPreviewPinBtn.removeEventListener('click', handleManualPreviewPinClick);
+    }
+    if (manualPreviewScrapBtn) {
+        manualPreviewScrapBtn.removeEventListener('click', handleManualPreviewScrapClick);
+    }
+    if (manualPreviewWorkspaceBtn) {
+        manualPreviewWorkspaceBtn.removeEventListener('click', handleManualPreviewWorkspaceClick);
+    }
+    if (closeWorkspaceOverlayBtn) {
+        closeWorkspaceOverlayBtn.removeEventListener('click', handleCloseWorkspaceOverlayClick);
+    }
+    if (manualPreviewPrevBtn) {
+        manualPreviewPrevBtn.removeEventListener('click', handleManualPreviewNavClick);
+    }
+    if (manualPreviewNextBtn) {
+        manualPreviewNextBtn.removeEventListener('click', handleManualPreviewNavClick);
+    }
+    if (manualPreviewHandle) {
+        manualPreviewHandle.removeEventListener('click', handleManualPreviewHandleClick);
+    }
+
+    manualPreviewToolbarListenersRegistered = false;
+}
+
+function wireGenerateButtonContextMenus() {
+    const manualGenerateBtnEl = document.getElementById('manualGenerateBtn');
+    const manualGenerateBtnAltEl = document.getElementById('manualGenerateBtnAlt');
+    if (!manualGenerateBtnEl && !manualGenerateBtnAltEl) return;
+    if (document.body.dataset.generateButtonContextMenusWired === 'true') return;
+    document.body.dataset.generateButtonContextMenusWired = 'true';
+
+    const generateStageMenuConfig = getGenerateButtonContextMenuConfig();
+    if (manualGenerateBtnEl && typeof contextMenu !== 'undefined' && contextMenu.attachToElement) {
+        contextMenu.attachToElement(manualGenerateBtnEl, generateStageMenuConfig);
+    }
+    if (manualGenerateBtnAltEl && typeof contextMenu !== 'undefined' && contextMenu.attachToElement) {
+        contextMenu.attachToElement(manualGenerateBtnAltEl, generateStageMenuConfig);
+    }
+
+    // initializeManualPreviewImageContextMenu: public/scripts/comp/manualModalManager.js
+    initializeManualPreviewImageContextMenu();
+}
+
+function toggleManualModalWindowed() {
+    const manualModalEl = document.getElementById('manualModal');
+    if (!manualModalEl) return;
+
+    if (manualModalEl.classList.contains('windowed')) {
+        manualModalEl.classList.remove('windowed');
+        document.body.classList.add('editor-open');
+        manualModalEl.style.removeProperty('width');
+        manualModalEl.style.removeProperty('height');
+        manualModalEl.style.removeProperty('z-index');
+        manualModalEl.style.removeProperty('--modal-offset-x');
+        manualModalEl.style.removeProperty('--modal-offset-y');
+        manualModalEl.removeAttribute('data-modal-moved');
+
+        if (!window.isDesktop && typeof modalStack !== 'undefined') {
+            const modalIndex = modalStack.indexOf(manualModalEl);
+            if (modalIndex !== -1) {
+                modalStack.splice(modalIndex, 1);
+                updateModalStackZIndexes();
+            }
+        } else if (window.isDesktop && typeof modalStack !== 'undefined') {
+            updateModalStackZIndexes();
+        }
+
+        updateTaskbarWindows();
+    } else {
+        manualModalEl.classList.add('windowed');
+        document.body.classList.remove('editor-open');
+        assignModalZIndex(manualModalEl);
+        updateTaskbarWindows();
+    }
+}
+
+async function saveRequestAsDesktopShortcut() {
+    try {
+        const isImg2Img = window.uploadedImageData || (window.currentEditMetadata && window.currentEditMetadata.isVariationEdit);
+        const values = collectManualFormValues();
+
+        function validateFields(requiredFields, msg) {
+            for (const field of requiredFields) {
+                if (field === 'resolutionValue') {
+                    if (!values[field] && (!values.width || !values.height)) {
+                        showError(msg);
+                        return false;
+                    }
+                } else if (!values[field]) {
+                    showError(msg);
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        if (!validateFields(['model', 'prompt', 'resolutionValue'], 'Please fill in all required fields (Model, Prompt, Resolution)')) return;
+
+        const requestBody = {
+            prompt: values.prompt,
+            steps: values.steps,
+            guidance: values.guidance,
+            rescale: values.rescale,
+            allow_paid: forcePaidRequest,
+            workspace: activeWorkspace
+        };
+
+        const resolutionData = processResolutionValue(values.resolutionValue);
+        if (resolutionData.isCustom) {
+            requestBody.width = resolutionData.width;
+            requestBody.height = resolutionData.height;
+        } else {
+            requestBody.resolution = resolutionData.resolution;
+        }
+
+        if (isImg2Img) {
+            requestBody.strength = parseFloat(manualStrengthValue.value) || 0.8;
+            requestBody.noise = parseFloat(manualNoiseValue.value) || 0.1;
+
+            if (window.uploadedImageData && !window.uploadedImageData.isPlaceholder) {
+                requestBody.image = window.uploadedImageData.image_source;
+            } else if (window.currentEditMetadata && window.currentEditMetadata.sourceFilename) {
+                requestBody.image = `file:${window.currentEditMetadata.sourceFilename}`;
+            }
+            requestBody.image_bias = window.uploadedImageData.image_bias || window.uploadedImageData.bias;
+
+            if (!requestBody.image) {
+                showError('No source image found for variation');
+                return;
+            }
+
+            if (window.currentMaskCompressed) {
+                requestBody.mask_compressed = window.currentMaskCompressed.replace('data:image/png;base64,', '');
+            } else if (window.currentMaskData) {
+                const compressedMask = saveMaskCompressed();
+                if (compressedMask) {
+                    requestBody.mask_compressed = compressedMask.replace('data:image/png;base64,', '');
+                }
+            }
+        }
+
+        addSharedFieldsToRequestBody(requestBody, values);
+
+        const generationParams = {
+            model: values.model.toLowerCase(),
+            ...requestBody
+        };
+
+        delete generationParams.skip_pipeline_stages;
+
+        if (generationParams.seed && generationParams.seed !== '') {
+            const seedChoice = await showConfirmationDialog(
+                `A seed value "${generationParams.seed}" is currently set. Do you want to save this preset with a static seed or make it automatic?`,
+                [
+                    { text: 'Static Seed', value: 'static', className: 'btn-secondary', icon: 'fas fa-lock' },
+                    { text: 'Automatic', value: 'automatic', className: 'btn-primary' },
+                    { text: 'Cancel', value: 'cancel', className: 'btn-secondary' }
+                ]
+            );
+
+            if (seedChoice === 'cancel' || seedChoice === null) {
+                return;
+            }
+
+            if (seedChoice === 'automatic') {
+                delete generationParams.seed;
+            }
+        }
+
+        const previewImage = document.getElementById('manualPreviewImage');
+        let embeddedPreview = null;
+
+        if (previewImage && previewImage.src && !previewImage.src.includes('data:image/svg')) {
+            try {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+
+                await new Promise((resolve, reject) => {
+                    img.onload = resolve;
+                    img.onerror = reject;
+                    img.src = previewImage.src;
+                });
+
+                const canvas = document.createElement('canvas');
+                canvas.width = 256;
+                canvas.height = 256;
+                const ctx = canvas.getContext('2d');
+
+                const sourceSize = Math.min(img.width, img.height);
+                const sourceX = (img.width - sourceSize) / 2;
+                const sourceY = (img.height - sourceSize) / 2;
+
+                ctx.drawImage(img, sourceX, sourceY, sourceSize, sourceSize, 0, 0, 256, 256);
+                embeddedPreview = canvas.toDataURL('image/png').split(',')[1];
+
+                releaseManualPreviewElementImageSrc(img);
+                canvas.width = 0;
+                canvas.height = 0;
+            } catch (error) {
+                console.warn('Failed to create preview image:', error);
+            }
+        }
+
+        const presetNameEl = document.getElementById('manualPresetName');
+        const name = (presetNameEl && presetNameEl.value.trim()) || 'Untitled';
+
+        if (typeof desktopShortcuts !== 'undefined' && desktopShortcuts.addShortcut) {
+            await desktopShortcuts.addShortcut({
+                name: name,
+                type: 'request',
+                data: {
+                    requestBody: generationParams,
+                    preview: embeddedPreview
+                }
+            });
+            showGlassToast('success', null, 'Request saved as desktop shortcut', false, 3000, '<i class="fas fa-floppy-disk"></i>');
+        } else {
+            showGlassToast('error', 'Error', 'Desktop shortcuts not available', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        }
+    } catch (error) {
+        console.error('Failed to save request as desktop shortcut:', error);
+        showGlassToast('error', 'Error', 'Failed to save request shortcut', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+    }
+}
+
+function wireManualModalChromeListeners() {
+    if (document.body.dataset.manualModalChromeWired === 'true') return;
+    document.body.dataset.manualModalChromeWired = 'true';
+
+    const generateButtons = document.querySelectorAll('#manualGenerateBtn, #manualGenerateBtnAlt');
+    generateButtons.forEach(button => {
+        if (button.dataset.wired === 'true') return;
+        button.dataset.wired = 'true';
+        // showGenerateButtonPopoverFor, hideGenerateButtonPopoverFor: public/scripts/app.js
+        button.addEventListener('mouseenter', (e) => showGenerateButtonPopoverFor(e.target));
+        button.addEventListener('mouseleave', (e) => hideGenerateButtonPopoverFor(e.target));
+    });
+
+    if (closeManualBtn && closeManualBtn.dataset.wired !== 'true') {
+        closeManualBtn.dataset.wired = 'true';
+        closeManualBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            hideManualModal(e);
+        });
+    }
+
+    const restoreManualBtn = document.getElementById('restoreManualBtn');
+    const unmaximizeManualBtn = document.getElementById('unmaximizeManualBtn');
+    const closeManualModalBtn = document.getElementById('closeManualModalBtn');
+
+    if (restoreManualBtn && restoreManualBtn.dataset.wired !== 'true') {
+        restoreManualBtn.dataset.wired = 'true';
+        restoreManualBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            toggleManualModalWindowed();
+        });
+    }
+
+    if (unmaximizeManualBtn && unmaximizeManualBtn.dataset.wired !== 'true') {
+        unmaximizeManualBtn.dataset.wired = 'true';
+        unmaximizeManualBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            toggleManualModalWindowed();
+        });
+    }
+
+    if (closeManualModalBtn && closeManualModalBtn.dataset.wired !== 'true') {
+        closeManualModalBtn.dataset.wired = 'true';
+        closeManualModalBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            hideManualModal(e);
+        });
+    }
+
+    if (manualForm && manualForm.dataset.wired !== 'true') {
+        manualForm.dataset.wired = 'true';
+        manualForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const presetNameEl = document.getElementById('manualPresetName');
+            if (document.activeElement === presetNameEl) {
+                return;
+            }
+            handleManualGeneration(e);
+        });
+    }
+
+    if (manualRequestSaveBtn && manualRequestSaveBtn.dataset.wired !== 'true') {
+        manualRequestSaveBtn.dataset.wired = 'true';
+        manualRequestSaveBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            await saveRequestAsDesktopShortcut();
+        });
+    }
+
+    if (manualControlsToggle && manualControlsToggle.dataset.wired !== 'true') {
+        manualControlsToggle.dataset.wired = 'true';
+        manualControlsToggle.addEventListener('click', (e) => {
+            e.preventDefault();
+            manualModal.classList.toggle('min-controls');
+            manualControlsToggle.querySelector('i').classList.remove('fa-square-sliders', 'fa-down-to-dotted-line');
+            if (manualModal.classList.contains('min-controls')) {
+                manualControlsToggle.querySelector('i').classList.add('fa-down-to-dotted-line');
+            } else {
+                manualControlsToggle.querySelector('i').classList.add('fa-square-sliders');
+            }
+        });
+    }
+
+    if (vibeNormalizeToggle && vibeNormalizeToggle.dataset.wired !== 'true') {
+        vibeNormalizeToggle.dataset.wired = 'true';
+        vibeNormalizeToggle.addEventListener('click', (e) => {
+            e.preventDefault();
+            const currentState = vibeNormalizeToggle.getAttribute('data-state') === 'on';
+            vibeNormalizeToggle.setAttribute('data-state', !currentState ? 'on' : 'off');
+        });
+    }
+}
+
+window.wsClient.registerInitStep(47, 'Manual preview toolbar listeners', async () => {
+    registerManualPreviewToolbarListeners();
+    wireGenerateButtonContextMenus();
+    wireManualModalChromeListeners();
+});

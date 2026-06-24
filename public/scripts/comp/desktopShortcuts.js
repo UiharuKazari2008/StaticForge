@@ -20,6 +20,7 @@ class DesktopShortcutsManager {
         this.pendingChanges = false;
         this.pendingWindowPositionSave = false;
         this._saveTrayState = 'hidden';
+        this._layoutHydrationComplete = false;
         
         // Positioning settings
         this.snapThreshold = 50; // pixels to snap to grid
@@ -119,6 +120,10 @@ class DesktopShortcutsManager {
             return;
         }
 
+        if (!window.isDesktop) {
+            this._layoutHydrationComplete = true;
+        }
+
         // Listen for WebSocket events
         this.initializeWebSocketListeners();
         this.setupSelectionHandlers();
@@ -149,7 +154,7 @@ class DesktopShortcutsManager {
     }
 
     refreshSaveTrayIndicator() {
-        if (!window.isDesktop) {
+        if (!window.isDesktop || !this._layoutHydrationComplete) {
             this.hideSaveTrayIndicator();
             return;
         }
@@ -185,13 +190,11 @@ class DesktopShortcutsManager {
                 trayIcon.title = 'Desktop changes received by server…';
                 break;
             case 'saved':
-                this.hideSaveTrayIndicator();
-                break;
             default:
                 dot.classList.add('hidden');
-                // updateWorkspaceTrayIcon: public/scripts/app.js
+                // updateWorkspaceTrayIcon: public/scripts/comp/trayIndicators.js
                 if (typeof updateWorkspaceTrayIcon === 'function') {
-                    updateWorkspaceTrayIcon({ reveal: false });
+                    updateWorkspaceTrayIcon();
                 }
                 this._saveTrayState = 'hidden';
                 break;
@@ -199,6 +202,9 @@ class DesktopShortcutsManager {
     }
 
     handleWorkspaceDesktopPersisted() {
+        if (!this._layoutHydrationComplete) {
+            return;
+        }
         if (this.hasPendingDesktopChanges()) {
             return;
         }
@@ -207,6 +213,9 @@ class DesktopShortcutsManager {
     }
 
     markDesktopChangesReceivedByServer() {
+        if (!this._layoutHydrationComplete) {
+            return;
+        }
         if (this.hasPendingDesktopChanges()) {
             this.refreshSaveTrayIndicator();
             return;
@@ -361,12 +370,15 @@ class DesktopShortcutsManager {
                 this.shortcuts = [];
             }
             
-            // Set global window positions directly
-            globalWindowPositions = data?.windowPositions || {};
+            // Set global window positions (mutate shared object — modalUtils.js)
+            replaceGlobalWindowPositions(data?.windowPositions);
             // commitWindowPositionsSnapshot: public/scripts/comp/modalUtils.js
             if (typeof commitWindowPositionsSnapshot === 'function') {
                 commitWindowPositionsSnapshot();
             }
+            this.pendingChanges = false;
+            this.pendingWindowPositionSave = false;
+            this.hideSaveTrayIndicator();
         } catch (error) {
             console.error('Failed to load desktop shortcuts:', error);
             this.shortcuts = [];
@@ -2804,6 +2816,10 @@ class DesktopShortcutsManager {
     // Debounced save to server (optionally includes window positions in the same flush)
     debouncedSave(options = {}) {
         const { includeWindowPositions = false } = options;
+
+        if (!this._layoutHydrationComplete) {
+            return;
+        }
 
         if (includeWindowPositions) {
             this.pendingWindowPositionSave = true;

@@ -1,0 +1,119 @@
+/* Custom scrollbar — public/scripts/comp/customScrollbar.js */
+/* Shared custom scrollbar design (used by both form-section-scroll and has-custom-scrollbar) */
+.custom-scrollbar {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 8px;
+    height: 100%;
+    background: transparent;
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    z-index: var(--z-modal);
+}
+
+.has-custom-scrollbar.scrollbar-padding .custom-scrollbar {
+    top: var(--spacing-sm);
+    height: calc(100% - calc(var(--spacing-sm) * 2));
+}
+
+.custom-scrollbar-thumb {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 80px;
+    background: var(--glass-layer-5);
+    border-top-left-radius: var(--border-radius-lg);
+    border-bottom-left-radius: var(--border-radius-lg);
+    transition: top 0.35s ease-out, background 0.2s ease;
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+
+    /* Show scrollbar on hover */
+    .has-custom-scrollbar:hover:not(:disabled) .custom-scrollbar,
+    .form-section-scroll:hover:not(:disabled) .custom-scrollbar {
+        opacity: 1;
+    }
+
+    .custom-scrollbar-thumb:hover:not(:disabled) {
+        background: var(--primary-color-light);
+    }
+}
+
+/* Shared scrollable-content styles */
+.scrollable-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: visible;
+    scrollbar-width: none;
+    /* Firefox */
+    -ms-overflow-style: none;
+    /* IE/Edge */
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+}
+
+.scrollable-content::-webkit-scrollbar {
+    display: none;
+}
+
+.scrollable-content>.scrollable-content {
+    padding: 0;
+}
+
+/* Generic custom scrollbar container support (works with data-custom-scrollbar attribute) */
+/* This class provides overflow control - individual properties override any overflow shorthand */
+.has-custom-scrollbar {
+    overflow-y: hidden;
+    overflow-x: visible;
+    position: relative;
+}
+
+/* Form-section-scroll specific styles */
+.form-section-scroll {
+    overflow-y: hidden;
+    overflow-x: visible;
+    height: 100%;
+    padding: 0;
+    position: relative;
+    flex: 1;
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
+}
+
+.form-section-scroll .scrollable-content {
+    padding: var(--spacing-md);
+}
+
+.form-section.form-section-scroll>.scrollable-content {
+    gap: var(--spacing-md);
+}
+
+/* Form-section-scroll specific scrollbar positioning (has padding) */
+.form-section-scroll .custom-scrollbar {
+    top: var(--spacing-lg);
+    height: calc(100% - calc(var(--spacing-lg) * 2));
+}
+
+.form-section.model-control {
+    gap: 0;
+    line-height: 1;
+    padding: 0 var(--spacing-md) var(--spacing-md) var(--spacing-md);
+    justify-content: flex-end;
+    align-items: stretch;
+}
+
+.form-section.model-control .control-holder {
+    flex-wrap: wrap;
+}
+
+/* Custom scrollbar styles for form-section-scroll only */
+.form-section-scroll::-webkit-scrollbar {
+    display: none;
+}
+

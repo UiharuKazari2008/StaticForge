@@ -18,6 +18,22 @@ let isNavigating = false; // Track if we're in the middle of navigation
 let loadingDropdowns = new Set(); // Track which dropdowns are loading
 let isInitializing = false; // Track if we're in initial loading state
 
+// teardownDropdown: public/scripts/comp/dropdown.js
+function teardownDatasetTagDropdownEntry(entry) {
+    if (!entry || !entry.dropdown) return;
+    teardownDropdown(entry.dropdown);
+}
+
+function teardownDatasetTagDropdownLevelsFrom(fromLevel) {
+    for (let i = dropdowns.length - 1; i >= fromLevel; i--) {
+        teardownDatasetTagDropdownEntry(dropdowns[i]);
+    }
+}
+
+function teardownAllDatasetTagDropdowns() {
+    teardownDatasetTagDropdownLevelsFrom(0);
+}
+
 // Helper function to remove active state from all dropdown buttons except the specified one
 function removeActiveStateFromOtherDropdowns(exceptLevel = -1) {
     dropdowns.forEach((dropdown, index) => {
@@ -66,20 +82,28 @@ function scrollToOption(optionElement) {
     menu.scrollTop = finalScrollTop;
 }
 
+let _datasetTagWsConnectedHandler = null;
+
+function wireDatasetTagWsConnected() {
+    if (_datasetTagWsConnectedHandler || !window.wsClient) {
+        return;
+    }
+    _datasetTagWsConnectedHandler = () => {
+        loadDatasetTagGroups();
+    };
+    window.wsClient.on('connected', _datasetTagWsConnectedHandler);
+}
+
 // Initialize the dataset tag toolbar
 function initializeDatasetTagToolbar() {
     createDatasetTagToolbar();
     
     // Wait for WebSocket to be available before loading data
     if (window.wsClient) {
-        // If WebSocket is already available, load data
         if (window.wsClient.isConnected()) {
             loadDatasetTagGroups();
         } else {
-            // Wait for connection
-            window.wsClient.on('connected', () => {
-                loadDatasetTagGroups();
-            });
+            wireDatasetTagWsConnected();
         }
     } else {
         // Wait for WebSocket client to be created
@@ -88,9 +112,7 @@ function initializeDatasetTagToolbar() {
                 if (window.wsClient.isConnected()) {
                     loadDatasetTagGroups();
                 } else {
-                    window.wsClient.on('connected', () => {
-                        loadDatasetTagGroups();
-                    });
+                    wireDatasetTagWsConnected();
                 }
             } else {
                 setTimeout(checkWebSocket, 100);
@@ -223,6 +245,7 @@ function hideDatasetTagToolbar() {
     // Remove global keyboard handler
     removeGlobalKeyboardHandler();
     
+    teardownAllDatasetTagDropdowns();
     currentTarget = null;
     currentPath = [];
     selectedTags = [];
@@ -235,6 +258,7 @@ function hideDatasetTagToolbar() {
 // Create hierarchical dropdowns
 function createDropdowns() {
     const container = datasetTagToolbar.querySelector('.dataset-tag-dropdowns-container');
+    teardownAllDatasetTagDropdowns();
     container.innerHTML = '';
     container.classList.remove('hidden'); // Ensure dropdowns are visible
     dropdowns = [];
@@ -461,6 +485,7 @@ async function selectDropdownOption(option, level) {
     
     // Clear all subsequent dropdowns and paths
     const container = datasetTagToolbar.querySelector('.dataset-tag-dropdowns-container');
+    teardownDatasetTagDropdownLevelsFrom(level + 1);
     const existingDropdowns = container.querySelectorAll(`[data-level]`);
     existingDropdowns.forEach(d => {
         const dropdownLevel = parseInt(d.dataset.level);
@@ -496,6 +521,7 @@ async function createNextDropdown(level, path) {
         if (window.wsClient && window.wsClient.isConnected()) {
             const container = datasetTagToolbar.querySelector('.dataset-tag-dropdowns-container');
             
+            teardownDatasetTagDropdownLevelsFrom(level);
             // Remove any existing dropdowns at this level and beyond
             const existingDropdowns = container.querySelectorAll(`[data-level]`);
             existingDropdowns.forEach(d => {
@@ -563,6 +589,7 @@ async function createTagSelectionDropdown(level, path) {
         if (window.wsClient && window.wsClient.isConnected()) {
             const container = datasetTagToolbar.querySelector('.dataset-tag-dropdowns-container');
             
+            teardownDatasetTagDropdownLevelsFrom(level);
             // Remove any existing dropdowns at this level and beyond
             const existingDropdowns = container.querySelectorAll(`[data-level]`);
             existingDropdowns.forEach(d => {
@@ -821,6 +848,7 @@ function handleReset() {
     selectedTags = [];
     
     const container = datasetTagToolbar.querySelector('.dataset-tag-dropdowns-container');
+    teardownAllDatasetTagDropdowns();
     container.innerHTML = '';
     dropdowns = [];
     
@@ -1009,6 +1037,7 @@ async function navigateToPath(targetPath, selectTag = null) {
         currentPath = [];
         const container = datasetTagToolbar.querySelector('.dataset-tag-dropdowns-container');
         
+        teardownAllDatasetTagDropdowns();
         container.innerHTML = '';
         dropdowns = [];
         
@@ -1763,6 +1792,7 @@ function handleNavigateLeft(level) {
         // Go back to previous dropdown
         const container = datasetTagToolbar.querySelector('.dataset-tag-dropdowns-container');
         const existingDropdowns = container.querySelectorAll(`[data-level]`);
+        teardownDatasetTagDropdownLevelsFrom(level);
         existingDropdowns.forEach(d => {
             const dropdownLevel = parseInt(d.dataset.level);
             if (dropdownLevel >= level) {

@@ -16,7 +16,13 @@ let currentTouchCount = 0; // Track current number of touches for button simulat
 const negativeBtn = document.getElementById('maskNegativeBtn');
 const inpaintBtn = document.getElementById('inpaintBtn');
 
+let inpaintInitButtonsWired = false;
+
 window.wsClient.registerInitStep(39, 'Initializing Inpaint Editor', async () => {
+    if (inpaintInitButtonsWired) {
+        return;
+    }
+    inpaintInitButtonsWired = true;
     inpaintBtn.addEventListener('click', openMaskEditor);
     negativeBtn.addEventListener('click', invertMask);
 });
@@ -38,6 +44,8 @@ function resetInpaint() {
     updateInpaintButtonState();
     updateMaskPreview();
 }
+
+let maskEditorToolbarWired = false;
 
 // Initialize mask editor
 function initializeMaskEditor() {
@@ -66,6 +74,11 @@ function initializeMaskEditor() {
     }
     // Hide the floating brush cursor div (we use overlay canvas now)
     brushCursor.classList.add('hidden');
+
+    if (maskEditorToolbarWired) {
+        return;
+    }
+    maskEditorToolbarWired = true;
 
     // Tool buttons
     const brushBtn = document.getElementById('maskBrushBtn');
@@ -968,26 +981,26 @@ function saveMaskCompressed() {
 }
 // Helper: Set mask editor canvas from a data URL
 function setMaskEditorFromDataUrl(dataUrl) {
-    // Ensure mask editor is initialized
-    if (!window.maskEditorCanvas || !window.maskEditorCtx) {
-        if (typeof initializeMaskEditor === 'function') initializeMaskEditor();
+    // Ensure mask editor is initialized — initializeMaskEditor: public/scripts/comp/inpaint.js
+    if (!maskEditorCanvas || !maskEditorCtx) {
+        initializeMaskEditor();
     }
-    if (!window.maskEditorCanvas) return; // Still not available, abort
+    if (!maskEditorCanvas || !maskEditorCtx) return;
 
     const img = new Image();
     img.onload = function() {
         try {
-            window.maskEditorCanvas.width = img.width;
-            window.maskEditorCanvas.height = img.height;
+            maskEditorCanvas.width = img.width;
+            maskEditorCanvas.height = img.height;
             
             // Update preview canvas dimensions to match
-            if (window.maskBrushPreviewCanvas && window.maskBrushPreviewCtx) {
-                window.maskBrushPreviewCanvas.width = img.width;
-                window.maskBrushPreviewCanvas.height = img.height;
+            if (maskBrushPreviewCanvas && maskBrushPreviewCtx) {
+                maskBrushPreviewCanvas.width = img.width;
+                maskBrushPreviewCanvas.height = img.height;
             }
             
-            window.maskEditorCtx.clearRect(0, 0, img.width, img.height);
-            window.maskEditorCtx.drawImage(img, 0, 0);
+            maskEditorCtx.clearRect(0, 0, img.width, img.height);
+            maskEditorCtx.drawImage(img, 0, 0);
         } catch (error) {
             console.error('Error processing mask image:', error);
         } finally {

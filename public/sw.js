@@ -1,5 +1,8 @@
 importScripts('/dist/workbox/workbox-sw.js');
 
+// Compile-time: auto-apply CSS-only / apply-safe static cache updates without restart prompt
+const CSS_ONLY_AUTO_APPLY = true;
+
 // Enable Workbox logging in development
 if (workbox) {
   workbox.setConfig({ debug: false });
@@ -62,7 +65,9 @@ let downloadState = {
     startTime: null,
     lastProgressTime: null,
     files: [],
-    abortController: null
+    abortController: null,
+    silent: false,
+    updatedFiles: []
 };
 
 // Helper function to add cache-busting headers to responses
@@ -748,7 +753,7 @@ workbox.routing.registerRoute(
 // Message handling for client communication
 self.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'CACHE_STATIC_FILES') {
-        cacheStaticFiles(event.data.files);
+        cacheStaticFiles(event.data.files, event.data.silent === true);
     } else if (event.data && event.data.type === 'NO_UPDATES_AVAILABLE') {
         // Notify clients that no updates are available
         self.clients.matchAll().then(clients => {
@@ -774,6 +779,8 @@ self.addEventListener('message', (event) => {
         getDownloadState(event.data.requestId);
     } else if (event.data && event.data.type === 'CANCEL_DOWNLOAD') {
         cancelDownload();
+    } else if (event.data && event.data.type === 'GET_SW_CONFIG') {
+        getSwConfig(event.data.requestId);
     } else if (event.data && event.data.type === 'ping') {
         // Respond to health check ping
         event.ports && event.ports[0] && event.ports[0].postMessage({
@@ -1005,7 +1012,7 @@ function stopStallDetection() {
 }
 
 // Cache static files from server
-async function cacheStaticFiles(files) {
+async function cacheStaticFiles(files, silent = false) {
     // Check if already downloading
     if (downloadState.isDownloading) {
         console.warn('Download already in progress, sending current status');
@@ -1045,6 +1052,8 @@ async function cacheStaticFiles(files) {
         downloadState.lastProgressTime = Date.now();
         downloadState.files = files;
         downloadState.abortController = new AbortController();
+        downloadState.silent = silent === true;
+        downloadState.updatedFiles = [];
         
         // Start stall detection
         startStallDetection();
@@ -1112,6 +1121,7 @@ async function cacheStaticFiles(files) {
                         });
 
                         await cache.put(file.url, responseWithHash);
+                        downloadState.updatedFiles.push({ url: file.url, hash: file.hash });
 
                         // Verify it was cached with the new hash
                         const cachedResponse = await cache.match(file.url);
@@ -1186,7 +1196,9 @@ async function cacheStaticFiles(files) {
         // Capture values before resetting state (defensive against race conditions)
         const completedCount = downloadState.completed > 0 ? downloadState.completed : files.length;
         const totalCount = downloadState.total > 0 ? downloadState.total : files.length;
-        
+        const updatedFiles = downloadState.updatedFiles.slice();
+        const wasSilent = downloadState.silent === true;
+
         // Notify client of completion
         self.clients.matchAll().then(clients => {
             clients.forEach(client => {
@@ -1194,11 +1206,13 @@ async function cacheStaticFiles(files) {
                     type: 'STATIC_CACHE_COMPLETE',
                     files: files,
                     completed: completedCount,
-                    total: totalCount
+                    total: totalCount,
+                    updatedFiles: updatedFiles,
+                    silent: wasSilent
                 });
             });
         });
-        
+
         // Reset download state
         downloadState = {
             isDownloading: false,
@@ -1208,7 +1222,9 @@ async function cacheStaticFiles(files) {
             startTime: null,
             lastProgressTime: null,
             files: [],
-            abortController: null
+            abortController: null,
+            silent: false,
+            updatedFiles: []
         };
     } catch (error) {
         // Check if error is due to abort
@@ -1242,9 +1258,28 @@ async function cacheStaticFiles(files) {
             startTime: null,
             lastProgressTime: null,
             files: [],
-            abortController: null
+            abortController: null,
+            silent: false,
+            updatedFiles: []
         };
     }
+}
+
+function getSwConfig(requestId) {
+    const payload = { cssOnlyAutoApply: CSS_ONLY_AUTO_APPLY === true };
+    if (!requestId) {
+        return payload;
+    }
+    self.clients.matchAll().then(clients => {
+        clients.forEach(client => {
+            client.postMessage({
+                type: 'SW_CONFIG',
+                requestId,
+                cssOnlyAutoApply: payload.cssOnlyAutoApply
+            });
+        });
+    });
+    return payload;
 }
 
 // Cache internal data

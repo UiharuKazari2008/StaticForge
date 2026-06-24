@@ -1,4 +1,12 @@
 /* Phasewalker / bracket generation — scripts/comp/bracketGenerationApplet.js */
+.desktop-shortcut[data-shortcut-type="bracket-generation"] .desktop-shortcut-icon {
+    box-shadow: none;
+    font-size: 2.5rem;
+    color: var(--text-accent-tinted);
+    -webkit-filter: drop-shadow(1px 1px 5px #000000a0);
+    filter: drop-shadow(1px 1px 5px #000000a0);
+}
+
 #bracketGenerationModal .bracket-gen-step-item .character-name-editable.inline-name-edit {
     text-transform: none;
 }

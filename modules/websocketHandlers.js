@@ -20,6 +20,7 @@ const {
     mergeAutofillSearchSettingsPatch
 } = require('./autofillSearchSettings');
 const grimoireDomainRegistry = require('./grimoireDomainRegistry');
+const runtimeAssetService = require('./runtimeAssetService');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -347,8 +348,6 @@ class WebSocketMessageHandlers {
             'workspace_remove_images_from_group',
             'workspace_update_color',
             'workspace_update_background_color',
-            'workspace_update_background_image',
-            'workspace_update_background_opacity',
             'workspace_update_primary_font',
             'workspace_update_textarea_font',
             'workspace_update_settings',
@@ -415,8 +414,16 @@ class WebSocketMessageHandlers {
             'get_api_key_services',
             'update_api_key_selections',
             'add_api_key',
-            'delete_api_key',
             'clear_search_cache',
+            'refresh_server_cache',
+            'recompile_runtime_assets',
+            'set_runtime_assets_auto_recompile',
+            'config_editor_save',
+            'generate_nax_custom_tag',
+            'delete_nax_custom_tag',
+            'novel_update',
+            'novel_generate',
+            'novel_undo',
             'desktop_add_shortcut',
             'desktop_update_shortcut',
             'desktop_remove_shortcut',
@@ -447,9 +454,6 @@ class WebSocketMessageHandlers {
             'delete_chat_message',
             'unblock_ip',
             'export_ip_to_gateway',
-            'generate_nax_custom_tag',
-            'delete_nax_custom_tag',
-            'config_editor_save',
             'update_user_global_settings',
             'generation_quips_run',
             'generation_quips_clear',
@@ -1544,12 +1548,99 @@ class WebSocketMessageHandlers {
                 await this.handleUpdateKnowledgeMemory(ws, message, clientInfo, wsServer);
                 break;
 
+            case 'recompile_runtime_assets':
+                await this.handleRecompileRuntimeAssets(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'set_runtime_assets_auto_recompile':
+                await this.handleSetRuntimeAssetsAutoRecompile(ws, message, clientInfo, wsServer);
+                break;
+
             default:
                 this.sendError(ws, 'Unknown message type', message.type);
         }
     }
 
     // CITY LOOKUP HANDLER
+    async handleRecompileRuntimeAssets(ws, message, clientInfo, wsServer) {
+        if (clientInfo.userType !== 'admin') {
+            this.sendToClient(ws, {
+                type: 'recompile_runtime_assets_response',
+                requestId: message.requestId,
+                data: { success: false, error: 'Admin access required' },
+                timestamp: new Date().toISOString()
+            });
+            return;
+        }
+
+        try {
+            const result = await runtimeAssetService.recompileAndRefresh({
+                force: message.data && message.data.force === true,
+                silent: message.data && message.data.silent === true,
+                showConsoleProgress: true
+            });
+
+            this.sendToClient(ws, {
+                type: 'recompile_runtime_assets_response',
+                requestId: message.requestId,
+                data: {
+                    success: result.errors.length === 0,
+                    compiled: result.compiled,
+                    failedCount: result.errors.length,
+                    errors: result.errors,
+                    stats: result.stats || null
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Error recompiling runtime assets:', error);
+            this.sendToClient(ws, {
+                type: 'recompile_runtime_assets_response',
+                requestId: message.requestId,
+                data: { success: false, error: error.message },
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+    async handleSetRuntimeAssetsAutoRecompile(ws, message, clientInfo, wsServer) {
+        if (clientInfo.userType !== 'admin') {
+            this.sendToClient(ws, {
+                type: 'set_runtime_assets_auto_recompile_response',
+                requestId: message.requestId,
+                data: { success: false, error: 'Admin access required' },
+                timestamp: new Date().toISOString()
+            });
+            return;
+        }
+
+        try {
+            const enabled = message.data && message.data.enabled === true;
+            this.globalResources.updateConfigValue('config', ['runtimeAssets', 'autoRecompile'], enabled, {
+                save: true,
+                reload: true
+            });
+
+            this.sendToClient(ws, {
+                type: 'set_runtime_assets_auto_recompile_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    autoRecompile: runtimeAssetService.isAutoRecompileEnabled()
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Error updating runtime auto-recompile setting:', error);
+            this.sendToClient(ws, {
+                type: 'set_runtime_assets_auto_recompile_response',
+                requestId: message.requestId,
+                data: { success: false, error: error.message },
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
     async handleCityLookup(ws, message, clientInfo, wsServer) {
         const { cityName, requestId } = message;
 
@@ -12347,29 +12438,32 @@ class WebSocketMessageHandlers {
             // Start keep-alive for cache refresh operation
             this.startKeepAliveInterval(ws, message.requestId, 5000); // Every 5 seconds for cache refresh
 
-            // Use plumbing system to trigger cache refresh
-            const plumbing = this.globalResources.getDataPlumbing();
-            if (plumbing.callbacks.has('refreshCache')) {
-                await plumbing.trigger('refreshCache');
-            } else {
-                console.warn('⚠️ Cache refresh callback not registered in plumbing system');
-            }
+            // Recompile runtime assets, refresh hash cache, and broadcast manifest (runtimeAssetService.js)
+            const compileResult = await runtimeAssetService.recompileAndRefresh({
+                showConsoleProgress: true
+            });
 
             // Stop keep-alive when complete
             this.stopKeepAliveInterval(message.requestId);
 
             // Get updated cache data from globalResources
             const globalCacheData = this.globalResources.getGlobalCacheData();
+            const compileOk = compileResult.errors.length === 0;
 
-            console.log(`✅ Server cache refreshed successfully via WebSocket: ${globalCacheData.length} assets`);
+            console.log(`✅ Server cache refreshed via WebSocket: ${globalCacheData.length} assets (${compileResult.compiled} compiled)`);
 
             wsServer.sendToClient(ws, {
                 type: 'refresh_server_cache_response',
                 requestId: message.requestId,
                 data: {
-                    success: true,
-                    message: 'Server cache refreshed successfully',
+                    success: compileOk,
+                    message: compileOk
+                        ? 'Server cache refreshed successfully'
+                        : 'Runtime assets recompiled with errors',
                     assetsCount: globalCacheData.length,
+                    compiled: compileResult.compiled,
+                    failedCount: compileResult.errors.length,
+                    errors: compileResult.errors,
                     timestamp: Date.now().valueOf(),
                     assets: globalCacheData
                 },

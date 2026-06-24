@@ -16,6 +16,11 @@ class IPManagementSystem {
     }
     
     bindEvents() {
+        if (this._eventsWired) {
+            return;
+        }
+        this._eventsWired = true;
+
         // IP Management Modal
         document.getElementById('closeIPManagementBtn').addEventListener('click', () => {
             this.closeIPManagementModal();

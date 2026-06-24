@@ -381,3 +381,304 @@
         color: #d70000;
     }
 }
+
+/* Favorites dialog & manager — scripts/comp/gensoManager.js */
+/* Favorites dialog styles */
+.favorites-dialog {
+    max-width: 400px;
+}
+
+.favorites-dialog .form-group {
+    margin-bottom: 15px;
+}
+
+.favorites-dialog label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+/* Genso Dialog (Popup Style) */
+.favorites-text-replacement-dialog {
+    position: fixed;
+    background: var(--glass-layer-dark-5);
+    border: 1px solid var(--glass-border-3);
+    box-shadow: 0 8px 25px var(--shadow-secondary);
+    -webkit-backdrop-filter: var(--glass-blur-2, none);
+    backdrop-filter: var(--glass-blur-2, none);
+    border-radius: var(--border-radius-lg);
+    z-index: var(--z-dialog);
+    padding: var(--spacing-sm);
+    width: min(450px, 85vw);
+    display: none;
+    transform: translateZ(0);
+}
+
+.favorites-text-replacement-dialog .confirmation-dialog-content {
+    padding: 0;
+}
+
+.favorites-text-replacement-dialog .selected-text-preview {
+    margin: 10px 0;
+    padding: 8px 12px;
+    background: var(--glass-layer-2);
+    border: 1px solid var(--glass-border-2);
+    border-radius: var(--border-radius);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-secondary);
+    word-break: break-all;
+}
+
+.favorites-text-replacement-dialog .text-replacement-form {
+    margin: 15px 0;
+}
+
+.favorites-text-replacement-dialog .form-row {
+    margin-bottom: 10px;
+}
+
+.favorites-text-replacement-dialog .form-row label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.favorites-text-replacement-dialog .form-hint {
+    margin-top: 8px;
+    padding: 6px 10px;
+    background: var(--glass-layer-1);
+    border: 1px solid var(--glass-border-1);
+    border-radius: var(--border-radius);
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.favorites-text-replacement-dialog .form-hint i {
+    margin-right: 5px;
+    color: var(--accent-primary);
+}
+
+/* Favorites Manager Modal Styles */
+.favorites-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--glass-border-2);
+    background: var(--glass-layer-1);
+    margin: -var(--spacing-sm) -var(--spacing-sm) 0 -var(--spacing-sm);
+    padding: 0 var(--spacing-sm);
+    flex-shrink: 0;
+}
+
+.favorites-tab {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 500;
+    border-bottom: 2px solid transparent;
+    transition: var(--transition-tray-menu);
+    position: relative;
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .favorites-tab:hover:not(:disabled) {
+        color: var(--text-primary);
+        background: var(--glass-layer-2);
+    }
+}
+
+.favorites-tab.active {
+    color: var(--accent-primary);
+    border-bottom-color: var(--accent-primary);
+    background: var(--glass-layer-2);
+}
+
+.favorites-tab i {
+    font-size: 16px;
+}
+
+.favorites-count {
+    background: var(--glass-layer-3);
+    color: var(--text-secondary);
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    min-width: 18px;
+    text-align: center;
+}
+
+.favorites-tab.active .favorites-count {
+    background: var(--accent-primary);
+    color: white;
+}
+
+.favorites-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.favorites-tab-content {
+    flex: 1;
+    display: none;
+    flex-direction: column;
+}
+
+.favorites-tab-content.active {
+    display: flex;
+}
+
+.favorites-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-secondary);
+}
+
+.favorites-empty i {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+.favorites-empty p {
+    margin: 8px 0;
+    font-size: 14px;
+}
+
+.favorites-empty-hint {
+    font-size: 12px !important;
+    opacity: 0.7;
+}
+
+.favorites-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    margin-bottom: 8px;
+    background: var(--glass-layer-1);
+    border: 1px solid var(--glass-border-1);
+    border-radius: var(--border-radius);
+    transition: var(--transition-tray-menu);
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .favorites-item:hover:not(:disabled) {
+        background: var(--glass-layer-2);
+        border-color: var(--glass-border-2);
+    }
+}
+
+.favorites-item-content {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.favorites-item-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: var(--glass-layer-2);
+    border: 1px solid var(--glass-border-2);
+    border-radius: var(--border-radius);
+    color: var(--accent-primary);
+}
+
+.favorites-item-icon i {
+    font-size: 14px;
+}
+
+.favorites-item-details {
+    flex: 1;
+    min-width: 0;
+}
+
+.favorites-item-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+    word-break: break-word;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.favorites-item-type-badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.favorites-item-type-badge.tag-badge {
+    background: var(--accent-primary);
+    color: white;
+}
+
+.favorites-item-type-badge.text-replacement-badge {
+    background: var(--accent-secondary);
+    color: white;
+}
+
+.favorites-item-description {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+    word-break: break-word;
+}
+
+.favorites-item-meta {
+    display: flex;
+    gap: 12px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+}
+
+.favorites-item-date,
+.favorites-item-count {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.favorites-item-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.favorites-text-replacement-dialog .confirmation-dialog-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 350px;
+    max-width: 450px;
+}
+
+.favorites-text-replacement-dialog .confirmation-message {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    line-height: 1.4;
+    text-align: left;
+    padding: 8px 0;
+}
+
+.favorites-text-replacement-dialog .confirmation-controls {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}

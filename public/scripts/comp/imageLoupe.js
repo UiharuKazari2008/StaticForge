@@ -1698,6 +1698,11 @@ class ImageLoupe {
         }
         this._destroyed = true;
 
+        if (this._vpHoverSyncRaf) {
+            cancelAnimationFrame(this._vpHoverSyncRaf);
+            this._vpHoverSyncRaf = null;
+        }
+
         document.removeEventListener('pointermove', this._onPointerMove);
         document.removeEventListener('pointerup', this._onPointerUp);
         document.removeEventListener('pointercancel', this._onPointerUp);

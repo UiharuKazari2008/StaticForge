@@ -100,14 +100,16 @@ const LOG_SOURCE_FILES = {
     console: CONSOLE_LOG_FILENAME,
     server: 'server.log',
     error: 'error.log',
-    generation: 'generation-detailed.log'
+    generation: 'generation-detailed.log',
+    'runtime-minify': 'runtime-minify.log'
 };
 
 const LOG_SOURCE_LABELS = {
     console: 'Console (stdout/stderr)',
     server: 'Server',
     error: 'Errors',
-    generation: 'Generation (active)'
+    generation: 'Generation (active)',
+    'runtime-minify': 'Minifier (CSS/JS)'
 };
 
 function formatConsoleTimestamp() {
@@ -185,10 +187,19 @@ function stripAnsiEscapes(text) {
     return String(text).replace(/\x1b\[[0-9;]*m/g, '');
 }
 
+function stripRuntimeCompileProgressFromLog(content) {
+    return String(content)
+        .replace(/\r/g, '\n')
+        .split('\n')
+        .filter((line) => !/\[Runtime Compile\] \[[=> ]*\] \d+\/\d+/.test(line))
+        .join('\n');
+}
+
 function formatLogContent(content, source) {
     const normalized = content.replace(/\r\n/g, '\n');
     if (source && (source === 'pm2:out' || source === 'pm2:err' || source === 'pm2:combined' || source.startsWith('pm2'))) {
-        return stripAnsiEscapes(normalized).replace(/\n{2,}/g, '\n');
+        const stripped = stripAnsiEscapes(normalized).replace(/\n{2,}/g, '\n');
+        return stripRuntimeCompileProgressFromLog(stripped);
     }
     return normalized;
 }

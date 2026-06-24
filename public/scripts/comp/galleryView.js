@@ -150,6 +150,21 @@ function publishGalleryImagesLoadProgress(progress) {
     });
 }
 
+function shouldShowGalleryLoadProgress(loadOptions, progressCallback) {
+    if (progressCallback) {
+        return false;
+    }
+    const opts = (loadOptions && typeof loadOptions === 'object') ? loadOptions : {};
+    if (opts.showProgress === true) {
+        return true;
+    }
+    // startupBoot: gallery loading in background (desktop tray / mobile without auto-launch)
+    if (opts.silent === true && opts.startupBoot !== true) {
+        return false;
+    }
+    return true;
+}
+
 function displayGalleryContentIfNeeded() {
     if (isGalleryWindowHidden() || isJumpingToPosition) {
         return;
@@ -175,10 +190,10 @@ async function joinGalleryImagesLoad(progressCallback, opts) {
     const loadLog = acquireGalleryLoadLogger('images', getGalleryLoadWorkspaceId());
     loadLog.step('join', 'Joining in-flight gallery load instead of starting a duplicate', {
         workspaceId: task.workspaceId,
-        showProgress: opts.showProgress === true || (window.isDesktop && !opts.silent)
+        showProgress: shouldShowGalleryLoadProgress(opts, progressCallback)
     });
 
-    const wantProgress = opts.showProgress === true || (window.isDesktop && !opts.silent);
+    const wantProgress = shouldShowGalleryLoadProgress(opts, progressCallback);
     let galleryLoadingProgressShown = false;
     let unsub = () => {};
 
@@ -1189,6 +1204,27 @@ function findTrueImageIndex(image) {
         const imgFilename = img.filename || img.original || img.upscaled;
         return imgFilename === filename;
     });
+}
+
+// Filename-based alias for callers that only have a filename string (extracted from app.js)
+function findTrueImageIndexInGallery(filename) {
+    if (!filename) return -1;
+
+    if (window.originalAllImages && window.originalAllImages.length > 0) {
+        return window.originalAllImages.findIndex(img => {
+            const imgFilename = img.filename || img.original || img.upscaled;
+            return imgFilename === filename;
+        });
+    }
+
+    if (allImages && Array.isArray(allImages)) {
+        return allImages.findIndex(img => {
+            const imgFilename = img.filename || img.original || img.upscaled;
+            return imgFilename === filename;
+        });
+    }
+
+    return -1;
 }
 
 // Helper function to find an image object by filename (exposed globally for use by app.js)
@@ -3116,7 +3152,6 @@ function buildGalleryNavigationCache(images) {
 // Load gallery images with optimized rendering to prevent flickering
 async function loadGallery(addLatest, progressCallback = null, loadOptions = null) {
     const opts = (loadOptions && typeof loadOptions === 'object') ? loadOptions : {};
-    const silentLoad = opts.silent === true;
 
     // Check if spinner already exists (added in step 89)
     const spinner = document.getElementById('galleryLoadingSpinner');
@@ -3187,8 +3222,8 @@ async function loadGallery(addLatest, progressCallback = null, loadOptions = nul
             galleryImagesLoadTask = loadTask;
 
             let activeProgressCallback = progressCallback;
-            // Show progress modal in desktop mode for full gallery loads (unless silent or external callback)
-            if (window.isDesktop && !progressCallback && !silentLoad) {
+            // Desktop: progress modal; mobile: toast (showGalleryDataProgressModal)
+            if (shouldShowGalleryLoadProgress(opts, progressCallback)) {
                 showGalleryLoadingProgressModal();
                 galleryLoadingProgressShown = true;
                 activeProgressCallback = updateGalleryLoadingProgress;
@@ -7255,7 +7290,198 @@ window.wsClient.registerInitStep(30, 'Initializing Gallery System', async () => 
             throttledInfiniteScroll();
         });
     }
+
+    wireGalleryToolbarListeners();
+    wireGalleryKeyboardNav();
+    wireMainMenuBarColumnWheel();
 });
+
+function wireGalleryToolbarListeners() {
+    const galleryToggleGroup = document.getElementById('galleryToggleGroup');
+    if (!galleryToggleGroup || galleryToggleGroup.dataset.toolbarWired === 'true') return;
+    galleryToggleGroup.dataset.toolbarWired = 'true';
+
+    galleryToggleGroup.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        if (window.innerWidth <= 577) {
+            return false;
+        }
+        const direction = e.deltaY > 0 ? -1 : 1;
+        adjustGalleryColumnSize(direction);
+    }, { passive: false });
+
+    const decreaseColumnsBtn = document.getElementById('decreaseColumnsBtn');
+    const increaseColumnsBtn = document.getElementById('increaseColumnsBtn');
+
+    if (decreaseColumnsBtn && decreaseColumnsBtn.dataset.wired !== 'true') {
+        decreaseColumnsBtn.dataset.wired = 'true';
+        decreaseColumnsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (window.innerWidth <= 577) {
+                return false;
+            }
+            adjustGalleryColumnSize(-1);
+        });
+    }
+
+    if (increaseColumnsBtn && increaseColumnsBtn.dataset.wired !== 'true') {
+        increaseColumnsBtn.dataset.wired = 'true';
+        increaseColumnsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (window.innerWidth <= 577) {
+                return false;
+            }
+            adjustGalleryColumnSize(1);
+        });
+    }
+
+    const sortOrderToggleBtn = document.getElementById('sortOrderToggleBtn');
+    if (sortOrderToggleBtn && sortOrderToggleBtn.dataset.wired !== 'true') {
+        sortOrderToggleBtn.dataset.wired = 'true';
+        sortOrderToggleBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            toggleGallerySortOrder();
+        });
+    }
+
+    const galleryVisualIndexBtn = document.getElementById('galleryVisualIndexBtn');
+    if (galleryVisualIndexBtn && galleryVisualIndexBtn.dataset.wired !== 'true') {
+        galleryVisualIndexBtn.dataset.wired = 'true';
+        galleryVisualIndexBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            openGalleryJumpIndexToolWindow();
+        });
+    }
+
+    galleryToggleGroup.querySelectorAll('.gallery-toggle-btn').forEach(btn => {
+        if (btn.dataset.wired === 'true') return;
+        btn.dataset.wired = 'true';
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const view = e.currentTarget.getAttribute('data-view');
+            switchGalleryView(view);
+        });
+    });
+}
+
+function wireGalleryKeyboardNav() {
+    if (document.body.dataset.galleryKeyboardNavWired === 'true') return;
+    document.body.dataset.galleryKeyboardNavWired = 'true';
+
+    document.addEventListener('keydown', (e) => {
+        if (!document.body.classList.contains('desktop-mode')) return;
+        const handledKeys = new Set(['PageUp', 'PageDown', 'ArrowUp', 'ArrowDown', 'Home', 'End']);
+        if (!handledKeys.has(e.key)) return;
+
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
+            return;
+        }
+
+        const galleryWindow = document.querySelector('#galleryWindow');
+        if (!galleryWindow || galleryWindow.classList.contains('hidden')) {
+            return;
+        }
+
+        if (typeof isModalActive === 'function') {
+            if (!isModalActive(galleryWindow)) return;
+        } else {
+            const modalStack = window.modalStack || [];
+            if (modalStack.length > 0 && modalStack[modalStack.length - 1] !== galleryWindow) return;
+        }
+
+        const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : (allImages ? allImages.length : 0);
+        if (effectiveLength === 0) return;
+
+        const runLegacyPageJump = (direction) => {
+            const currentFirstVisibleIndex = getFirstVisibleRowIndex();
+            const cols = realGalleryColumns || 5;
+            const currentRow = Math.floor(currentFirstVisibleIndex / cols);
+            const targetRow = direction > 0 ? (currentRow + 10) : Math.max(0, currentRow - 10);
+            const targetIndex = Math.min(targetRow * cols, effectiveLength - 1);
+            const finalTargetIndex = Math.max(0, targetIndex);
+            displayGalleryFromStartIndex(finalTargetIndex, false);
+        };
+
+        if (e.key === 'PageUp' || e.key === 'PageDown') {
+            e.preventDefault();
+            e.stopPropagation();
+            const direction = e.key === 'PageDown' ? 1 : -1;
+            if (typeof jumpToNextGalleryTimeBoundary === 'function') {
+                if (e.shiftKey) {
+                    jumpToNextGalleryTimeBoundary(direction, {
+                        thresholdMs: 12 * 60 * 60 * 1000,
+                        scanWindow: null
+                    });
+                } else {
+                    jumpToNextGalleryTimeBoundary(direction);
+                }
+            }
+            return;
+        }
+
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            e.stopPropagation();
+            const direction = e.key === 'ArrowDown' ? 1 : -1;
+            if (e.shiftKey) {
+                runLegacyPageJump(direction);
+                if (refreshGalleryJumpIndexUI) {
+                    refreshGalleryJumpIndexUI();
+                } else if (triggerGalleryVirtualScrollFromShortcut) {
+                    triggerGalleryVirtualScrollFromShortcut();
+                }
+                return;
+            }
+
+            const galleryContainer = galleryWindow.querySelector('.gallery-container');
+            const scrollStep = galleryContainer ? Math.max(64, Math.floor(galleryContainer.clientHeight * 0.82)) : Math.floor(window.innerHeight * 0.82);
+            if (galleryContainer) {
+                galleryContainer.scrollBy({ top: direction * scrollStep, behavior: 'smooth' });
+            } else {
+                window.scrollBy({ top: direction * scrollStep, behavior: 'smooth' });
+            }
+            return;
+        }
+
+        if (e.key === 'Home' || e.key === 'End') {
+            e.preventDefault();
+            e.stopPropagation();
+            const targetIndex = e.key === 'Home' ? 0 : Math.max(0, effectiveLength - 1);
+            displayGalleryFromStartIndex(targetIndex, false);
+            if (refreshGalleryJumpIndexUI) {
+                refreshGalleryJumpIndexUI();
+            } else if (triggerGalleryVirtualScrollFromShortcut) {
+                triggerGalleryVirtualScrollFromShortcut();
+            }
+        }
+    });
+}
+
+function wireMainMenuBarColumnWheel() {
+    const mainMenuBar = document.getElementById('main-menu-bar');
+    if (!mainMenuBar || mainMenuBar.dataset.columnWheelWired === 'true') return;
+    if (typeof adjustGalleryColumnSize !== 'function') return;
+    mainMenuBar.dataset.columnWheelWired = 'true';
+
+    let lastWheelTime = 0;
+    const wheelThrottle = 500;
+
+    mainMenuBar.addEventListener('wheel', function (e) {
+        if (Math.abs(e.deltaY) < Math.abs(e.deltaX)) return;
+
+        const now = Date.now();
+        if (now - lastWheelTime < wheelThrottle) {
+            e.preventDefault();
+            return;
+        }
+
+        e.preventDefault();
+        lastWheelTime = now;
+
+        const direction = e.deltaY > 0 ? -1 : 1;
+        adjustGalleryColumnSize(direction);
+    }, { passive: false });
+}
 
 // Gallery sort order functions
 function toggleGallerySortOrder() {
@@ -9085,6 +9311,636 @@ function sendGalleryPositionHint() {
             console.debug('Failed to send gallery position hint:', error);
         }
     }, 500);
+}
+
+// ============================================================================
+// GALLERY IMAGE OPERATIONS (Phase 2 batch 12)
+// ============================================================================
+
+function findTrueImageIndexInGallery(filename) {
+    if (!filename) return -1;
+
+    // If we have filtered results, use the original array
+    if (window.originalAllImages && window.originalAllImages.length > 0) {
+        return window.originalAllImages.findIndex(img => {
+            const imgFilename = img.filename || img.original || img.upscaled;
+            return imgFilename === filename;
+        });
+    }
+
+    // Otherwise, use the current allImages array
+    if (allImages && Array.isArray(allImages)) {
+        return allImages.findIndex(img => {
+            const imgFilename = img.filename || img.original || img.upscaled;
+            return imgFilename === filename;
+        });
+    }
+
+    return -1;
+}
+
+async function moveToScraps(image) {
+    try {
+        const filename = image.filename || image.original || image.upscaled;
+        if (!filename) {
+            showError('No filename available for this image');
+            return;
+        }
+
+        // Use WebSocket API if available, otherwise fall back to HTTP
+        if (window.wsClient && window.wsClient.isConnected()) {
+            try {
+                await window.wsClient.addScrap(activeWorkspace, filename);
+            } catch (wsError) {
+                showError('Failed to move to scraps: ' + wsError.message);
+                throw new Error('Failed to move to scraps');
+            }
+        } else {
+            console.error('Move to scraps failed:', error);
+            showError(`Failed to move to scraps: ${error.error}`);
+            return;
+        }
+
+        showGlassToast('success', null, 'Image Scraped', false, 3000, '<i class="fas fa-bin-bottles-recycle"></i>');
+
+        // If currently viewing scraps, reload them
+        switchGalleryView(currentGalleryView, true);
+    } catch (error) {
+        console.error('Error moving to scraps:', error);
+        showError('Failed to move image to scraps');
+    }
+}
+
+// Direct function to move image to scraps by filename (used by gallery context menu)
+async function moveImageToScrapsDirect(filename, event = null) {
+    try {
+        if (!filename) {
+            showError('No filename provided for moving to scraps');
+            return;
+        }
+
+        // Show confirmation dialog
+        const confirmed = await showConfirmationDialog(
+            'Are you sure you want to move this image to scraps?',
+            [
+                { text: 'Move to Scraps', value: true, className: 'btn-danger' },
+                { text: 'Cancel', value: false, className: 'btn-secondary' }
+            ],
+            event
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        // Use WebSocket API if available, otherwise fall back to HTTP
+        if (window.wsClient && window.wsClient.isConnected()) {
+            try {
+                await window.wsClient.addScrap(activeWorkspace, filename);
+            } catch (wsError) {
+                showError('Failed to move to scraps: ' + wsError.message);
+                throw new Error('Failed to move to scraps');
+            }
+        } else {
+            console.error('WebSocket not connected for moving to scraps');
+            showError('Failed to move to scraps: WebSocket not connected');
+            return;
+        }
+
+        showGlassToast('success', null, 'Image Scraped', false, 3000, '<i class="fas fa-bin-bottles-recycle"></i>');
+
+        // Remove image from current gallery view locally (only if not viewing scraps)
+        if (currentGalleryView !== 'scraps' && typeof removeImageFromGallery === 'function') {
+            // Find the image object using the helper function from galleryView.js
+            const imageToRemove = findImageByFilename(filename);
+
+            if (imageToRemove) {
+                removeImageFromGallery(imageToRemove);
+            }
+        } else if (currentGalleryView === 'scraps') {
+            // If viewing scraps, we need to reload to show the new scrap
+            switchGalleryView(currentGalleryView, true);
+        }
+    } catch (error) {
+        console.error('Error moving image to scraps:', error);
+        showError('Failed to move image to scraps');
+    }
+}
+
+// Move manual preview image to scraps and advance to next image
+async function moveManualPreviewToScraps() {
+    if (!window.currentManualPreviewImage) {
+        showError('No image to move to scraps');
+        return;
+    }
+
+    try {
+        // Show navigation loading overlay
+        showManualPreviewNavigationLoading(true);
+
+        const filename = window.currentManualPreviewImage.filename || window.currentManualPreviewImage.original || window.currentManualPreviewImage.upscaled;
+        if (!filename) {
+            showError('No filename available for this image');
+            showManualPreviewNavigationLoading(false);
+            return;
+        }
+
+        // Use WebSocket API
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        await window.wsClient.addScrap(activeWorkspace, filename);
+
+        // Get the current index and view type
+        const currentIndex = window.currentManualPreviewIndex ?? 0;
+        const viewType = currentGalleryView || 'images';
+
+        // Request the same image at the current index (which will now be a different image)
+        try {
+            const newImage = await window.wsClient.requestImageByIndex(currentIndex, viewType);
+
+            if (newImage) {
+                // Update the preview with the new image at the same index
+                await updateManualPreview(currentIndex, null, newImage.metadata);
+                showGlassToast('success', null, 'Image scrapped', undefined, undefined, '<i class="fas fa-bin-bottles-recycle"></i>');
+            } else {
+                // No image at this index anymore, try the previous index
+                if (currentIndex > 0) {
+                    const prevImage = await window.wsClient.requestImageByIndex(currentIndex - 1, viewType);
+                    if (prevImage) {
+                        await updateManualPreview(currentIndex - 1, null, prevImage.metadata);
+                        showGlassToast('success', null, 'Image scrapped', undefined, undefined, '<i class="fas fa-bin-bottles-recycle"></i>');
+                    } else {
+                        resetManualPreview();
+                        showGlassToast('success', null, 'Image scrapped!', undefined, undefined, '<i class="fas fa-bin-bottles-recycle"></i>');
+                    }
+                } else {
+                    resetManualPreview();
+                    showGlassToast('success', null, 'Image scrapped!', undefined, undefined, '<i class="fas fa-bin-bottles-recycle"></i>');
+                }
+            }
+        } catch (error) {
+            console.warn('Failed to load new image after scrap:', error);
+            resetManualPreview();
+            showGlassToast('success', null, 'Image scrapped!', undefined, undefined, '<i class="fas fa-bin-bottles-recycle"></i>');
+        }
+
+        // Refresh gallery after processing is complete
+        loadGallery(true);
+    } catch (error) {
+        console.error('Error moving to scraps:', error);
+        showError('Failed to move image to scraps');
+    } finally {
+        // Hide navigation loading overlay
+        showManualPreviewNavigationLoading(false);
+    }
+}
+
+// Remove image from scraps
+async function removeFromScraps(image) {
+    try {
+        const filename = image.filename || image.original || image.upscaled;
+        if (!filename) {
+            showError('No filename available for this image');
+            return;
+        }
+
+        // Use WebSocket API
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        await window.wsClient.removeScrap(activeWorkspace, filename);
+
+        showGlassToast('success', null, 'Image removed from scraps', undefined, undefined, '<i class="nai-dot-reset"></i>');
+
+        // Remove image from current gallery view locally (only if viewing scraps)
+        if (currentGalleryView === 'scraps' && typeof removeImageFromGallery === 'function') {
+            removeImageFromGallery(image);
+        } else if (currentGalleryView !== 'scraps') {
+            // If not viewing scraps, we might need to reload to show it in the main view
+            switchGalleryView(currentGalleryView, true);
+        }
+    } catch (error) {
+        console.error('Error removing from scraps:', error);
+        showError('Failed to remove image from scraps');
+    }
+}
+
+// Toggle pin status of an image
+async function togglePinImage(image, pinBtn = null) {
+    try {
+        const filename = image.filename || image.original || image.upscaled;
+        if (!filename) {
+            showError('No filename available for this image');
+            return;
+        }
+
+        // Get pin status from local data, not API
+        const imageIndex = findTrueImageIndexInGallery(filename);
+        let isPinned = false;
+        if (imageIndex !== -1 && allImages[imageIndex].isPinned !== undefined) {
+            isPinned = allImages[imageIndex].isPinned;
+        }
+
+        if (isPinned) {
+            // Remove from pinned
+            if (!window.wsClient || !window.wsClient.isConnected()) {
+                throw new Error('WebSocket not connected');
+            }
+
+            await window.wsClient.removePinned(activeWorkspace, filename);
+            showGlassToast('success', null, 'Image unpinned', undefined, undefined, '<i class="fa-regular fa-star"></i>');
+        } else {
+            // Add to pinned
+            if (!window.wsClient || !window.wsClient.isConnected()) {
+                throw new Error('WebSocket not connected');
+            }
+
+            await window.wsClient.addPinned(activeWorkspace, filename);
+            showGlassToast('success', null, 'Image pinned', undefined, undefined, '<i class="fa-solid fa-star"></i>');
+        }
+
+        // Update the local gallery data FIRST before updating UI
+        if (imageIndex !== -1) {
+            allImages[imageIndex].isPinned = !isPinned;
+        }
+
+        // Update UI based on local data (no API calls)
+        if (pinBtn) {
+            pinBtn.innerHTML = isPinned ? '<i class="fa-regular fa-star"></i>' : '<i class="fa-solid fa-star"></i>';
+            pinBtn.title = isPinned ? 'Pin image' : 'Unpin image';
+        } else {
+            updateSpecificPinButton(filename);
+        }
+
+        // Update all pin buttons in the gallery for this image
+        updateGalleryPinButtons(filename, !isPinned);
+        syncServiceWorkerImageCacheRules();
+    } catch (error) {
+        console.error('Error toggling pin status:', error);
+        showError('Failed to toggle pin status');
+    }
+}
+
+// Check if an image is pinned (only checks local data, never makes API calls)
+function checkIfImageIsPinned(filename) {
+    // Only check local gallery data - server should always provide isPinned
+    if (allImages && Array.isArray(allImages)) {
+        const image = allImages.find(img => {
+            const imgFilename = img.filename || img.original || img.upscaled;
+            return imgFilename === filename;
+        });
+        if (image && image.isPinned !== undefined) {
+            return image.isPinned;
+        }
+    }
+
+    // Default to false if not found (newly generated images can't be pinned)
+    return false;
+}
+
+let imageCacheRulesSyncTimer = null;
+function buildPreviewUrlForCache(image) {
+    if (!image) return null;
+
+    let previewValue = image.preview || null;
+    if (!previewValue) {
+        const baseFilename = image.filename || image.original || image.upscaled;
+        if (!baseFilename) return null;
+        previewValue = baseFilename.replace(/\.(jpg|jpeg|png|webp)$/i, '.webp');
+    }
+
+    if (typeof getGalleryPreviewUrl === 'function') {
+        previewValue = getGalleryPreviewUrl(previewValue);
+    } else if (globalThis.deviceUtils && typeof globalThis.deviceUtils.getGalleryPreviewUrl === 'function') {
+        previewValue = globalThis.deviceUtils.getGalleryPreviewUrl(previewValue);
+    }
+
+    if (!previewValue) return null;
+    return `/previews/${encodeURIComponent(previewValue)}`;
+}
+
+function buildImageUrlForCache(image) {
+    if (!image) return null;
+    const filename = image.filename || image.original || image.upscaled;
+    if (!filename) return null;
+    return `/images/${filename}`;
+}
+
+function syncServiceWorkerImageCacheRules() {
+    if (imageCacheRulesSyncTimer) {
+        clearTimeout(imageCacheRulesSyncTimer);
+    }
+
+    imageCacheRulesSyncTimer = setTimeout(async () => {
+        try {
+            if (!globalThis.serviceWorkerManager || typeof globalThis.serviceWorkerManager.syncImageCacheRules !== 'function') {
+                return;
+            }
+
+            const images = Array.isArray(allImages) ? allImages : [];
+            if (!images.length) {
+                await globalThis.serviceWorkerManager.syncImageCacheRules([], []);
+                return;
+            }
+
+            const favoriteUrls = [];
+            const lockedPreviewUrls = [];
+            const seenFavorites = new Set();
+            const seenLockedPreviews = new Set();
+
+            for (const image of images) {
+                if (image && image.isPinned) {
+                    const imageUrl = buildImageUrlForCache(image);
+                    if (imageUrl && !seenFavorites.has(imageUrl)) {
+                        seenFavorites.add(imageUrl);
+                        favoriteUrls.push(imageUrl);
+                    }
+                }
+            }
+
+            for (let i = 0; i < images.length && lockedPreviewUrls.length < 500; i++) {
+                const previewUrl = buildPreviewUrlForCache(images[i]);
+                if (previewUrl && !seenLockedPreviews.has(previewUrl)) {
+                    seenLockedPreviews.add(previewUrl);
+                    lockedPreviewUrls.push(previewUrl);
+                }
+            }
+
+            await globalThis.serviceWorkerManager.syncImageCacheRules(
+                favoriteUrls,
+                lockedPreviewUrls,
+                {
+                    maxEntries: 5000,
+                    maxSizeBytes: 2 * 1024 * 1024 * 1024,
+                    maxIdleMs: 7 * 24 * 60 * 60 * 1000
+                }
+            );
+        } catch (error) {
+            console.error('Failed to sync service worker image cache rules:', error);
+        }
+    }, 300);
+}
+
+// Get image metadata via WebSocket with fallback to HTTP
+async function getImageMetadata(filename) {
+    try {
+        const previewImage = window.currentManualPreviewImage;
+        if (previewImage && previewImage.metadata) {
+            const matches = previewImage.filename === filename
+                || previewImage.upscaled === filename
+                || previewImage.original === filename;
+            if (matches) {
+                return previewImage.metadata;
+            }
+        }
+
+        const lastGen = window.lastGeneration;
+        if (lastGen) {
+            const matches = lastGen.filename === filename
+                || lastGen.upscaled === filename
+                || lastGen.original === filename;
+            if (matches) {
+                if (lastGen.metadata) {
+                    return lastGen.metadata;
+                }
+                if (previewImage && previewImage.metadata) {
+                    return previewImage.metadata;
+                }
+            }
+        }
+
+        // IndexedDB metadata cache — public/scripts/comp/galleryView.js galleryMetadataCache
+        if (window.galleryMetadataCache) {
+            await window.galleryMetadataCache.initPromise;
+            const base = String(filename || '').replace(/\.(png|jpg|jpeg|webp)$/i, '');
+            if (base) {
+                const cached = await window.galleryMetadataCache.getMetadata(base);
+                if (cached) {
+                    const { base: _base, cachedAt: _cachedAt, ...metadata } = cached;
+                    if (Object.keys(metadata).length > 0) {
+                        return metadata;
+                    }
+                }
+            }
+        }
+
+        // Use WebSocket API
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        const metadata = await window.wsClient.requestImageMetadata(filename);
+        return metadata;
+    } catch (error) {
+        console.error('Error getting image metadata:', error);
+        showGlassToast('error', 'Image metadata request error', error.message, false);
+        throw error;
+    }
+}
+
+// Update pin button appearance based on pin status (uses local data only)
+function updatePinButtonAppearance(pinBtn, filename) {
+    // Get pin status from local data only
+    const isPinned = checkIfImageIsPinned(filename);
+    if (isPinned) {
+        pinBtn.innerHTML = '<i class="fa-solid fa-star"></i>';
+        pinBtn.title = 'Unpin image';
+    } else {
+        pinBtn.innerHTML = '<i class="fa-regular fa-star"></i>';
+        pinBtn.title = 'Pin image';
+    }
+}
+
+// Update specific pin button for an image
+function updateSpecificPinButton(filename) {
+    const galleryItems = document.querySelectorAll('.gallery-item');
+    for (const item of galleryItems) {
+        const img = item.querySelector('img');
+        const pinBtn = item.querySelector('.btn-secondary[title*="Pin"]');
+
+        if (img && pinBtn) {
+            const itemFilename = img.getAttribute('data-filename') || img.src.split('/').pop();
+            if (itemFilename === filename) {
+                updatePinButtonAppearance(pinBtn, filename);
+                break; // Found the specific item, no need to continue
+            }
+        }
+    }
+}
+
+// Update all pin buttons in the gallery for a specific image
+function updateGalleryPinButtons(filename, isPinned) {
+    try {
+        // Find all gallery items with this filename (including placeholders)
+        const galleryItems = document.querySelectorAll(`.gallery-item[data-filename="${filename}"], .gallery-placeholder[data-filename="${filename}"]`);
+
+        galleryItems.forEach(item => {
+            // The pin button has class 'btn-primary round-button', not 'btn-secondary'
+            const pinBtn = item.querySelector('.btn-primary.round-button[title*="Pin"], .btn-primary.round-button[title*="Unpin"], button[title*="Pin"], button[title*="Unpin"]');
+            if (pinBtn) {
+                if (isPinned) {
+                    pinBtn.innerHTML = '<i class="fa-solid fa-star"></i>';
+                    pinBtn.title = 'Unpin image';
+                } else {
+                    pinBtn.innerHTML = '<i class="fa-regular fa-star"></i>';
+                    pinBtn.title = 'Pin image';
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error updating gallery pin buttons:', error);
+    }
+}
+
+// Flag to track if app data has been loaded
+
+// Download image
+function downloadImage(image) {
+    let filename, url;
+
+    // Handle different image object structures
+    if (image.url) {
+        // For newly generated images (lightbox)
+        url = image.url;
+        filename = image.filename;
+    } else if (image.upscaled || image.original) {
+        // For gallery images - prefer highest quality version
+        if (image.upscaled) {
+            filename = image.upscaled;
+        } else {
+            filename = image.original;
+        }
+        url = null; // Will use server endpoint
+    } else {
+        // Fallback - assume it's a filename string
+        filename = image;
+        url = null;
+    }
+
+    if (url) {
+        // For newly generated images
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.click();
+    } else {
+        // For existing images
+        const link = document.createElement('a');
+        link.href = `/images/${filename}?download=true`;
+        link.download = filename;
+        link.click();
+    }
+}
+
+// Download image as slim PNG (without blueprint data)
+function downloadImageSlim(image) {
+    let filename;
+
+    // Handle different image object structures
+    if (image.upscaled || image.original) {
+        // For gallery images - prefer highest quality version
+        if (image.upscaled) {
+            filename = image.upscaled;
+        } else {
+            filename = image.original;
+        }
+    } else {
+        // Fallback - assume it's a filename string
+        filename = image;
+    }
+
+    // Use the slim endpoint
+    const link = document.createElement('a');
+    link.href = `/image/slim/${filename}`;
+    link.download = filename;
+    link.click();
+}
+
+// Download image as optimized JPG
+function downloadImageOptimized(image) {
+    let filename;
+
+    // Handle different image object structures
+    if (image.upscaled || image.original) {
+        // For gallery images - prefer highest quality version
+        if (image.upscaled) {
+            filename = image.upscaled;
+        } else {
+            filename = image.original;
+        }
+    } else {
+        // Fallback - assume it's a filename string
+        filename = image;
+    }
+
+    // Use the optimized endpoint
+    const link = document.createElement('a');
+    link.href = `/image/opti/${filename}`;
+    link.download = filename;
+    link.click();
+}
+
+// Delete image
+async function deleteImage(image, event = null) {
+    // Show confirmation dialog
+    const confirmed = await showConfirmationDialog(
+        'Are you sure you want to delete this image? This will permanently delete both the original and upscaled versions.',
+        [
+            { text: 'Delete', value: true, className: 'btn-danger' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ],
+        event
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        // Determine which filename to use for deletion
+        let filenameToDelete = null;
+
+        // For regular images, prioritize original, then upscaled
+        if (image.original) {
+            filenameToDelete = image.original;
+        } else if (image.upscaled) {
+            filenameToDelete = image.upscaled;
+        }
+
+        if (!filenameToDelete) {
+            throw new Error('No filename available for deletion');
+        }
+
+
+        // Use WebSocket bulk delete request
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        const result = await window.wsClient.deleteImagesBulk([filenameToDelete]);
+
+        if (result.successful > 0) {
+            showGlassToast('success', null, 'Image deleted!', false, 5000, '<i class="fas fa-trash"></i>');
+
+            // Close lightbox
+            hideLightbox();
+
+            // Remove image from gallery and add placeholder
+            removeImageFromGallery(image);
+
+            // Skip the next gallery reload event since we've already updated locally
+            window.skipNextGalleryRefresh = (window.skipNextGalleryRefresh || 0) + 1;
+        } else {
+            throw new Error('Delete failed');
+        }
+
+    } catch (error) {
+        console.error('Delete error:', error);
+        showError('Failed to delete image: ' + error.message);
+    }
 }
 
 // Add context menu event listener

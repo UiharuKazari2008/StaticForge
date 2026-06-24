@@ -2759,3 +2759,234 @@ function openReferenceBrowserWithFilter(filterMode) {
     }
 }
 
+let manualBlurTimeout;
+
+function validateManualDimensionsWithTimeout() {
+    if (manualSelectedResolution !== 'custom') return;
+
+    if (manualBlurTimeout) clearTimeout(manualBlurTimeout);
+
+    manualBlurTimeout = setTimeout(() => {
+        if (document.activeElement === manualWidth || document.activeElement === manualHeight) {
+            return;
+        }
+
+        const originalWidth = parseInt(manualWidth.value) || 1024;
+        const originalHeight = parseInt(manualHeight.value) || 1024;
+        let width = originalWidth;
+        let height = originalHeight;
+        let currentArea = width * height;
+
+        const widthRemainder = width % 64;
+        const heightRemainder = height % 64;
+        let widthChanged = false;
+        let heightChanged = false;
+
+        if (widthRemainder !== 0) {
+            width = widthRemainder >= 32 ? width + (64 - widthRemainder) : width - widthRemainder;
+            width = Math.max(64, width);
+            widthChanged = true;
+        }
+        if (heightRemainder !== 0) {
+            height = heightRemainder >= 32 ? height + (64 - heightRemainder) : height - heightRemainder;
+            height = Math.max(64, height);
+            heightChanged = true;
+        }
+
+        currentArea = width * height;
+        const neededAreaCap = currentArea > currentMaxArea;
+
+        if (neededAreaCap) {
+            const capped = capDimensionsToMaxArea(width, height, currentMaxArea, 64, 64, 64);
+            width = capped.width;
+            height = capped.height;
+            widthChanged = true;
+            heightChanged = true;
+        }
+
+        if (widthChanged || heightChanged) {
+            if (width !== originalWidth) {
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualWidth, width);
+            }
+            if (height !== originalHeight) {
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualHeight, height);
+            }
+
+            const manualResolutionHidden = document.getElementById('manualResolution');
+            if (manualResolutionHidden) {
+                manualResolutionHidden.value = `custom_${width}x${height}`;
+            }
+
+            updateManualPriceDisplay();
+            updateManualUpscaleToggleState();
+            debouncedCropImageToResolution();
+
+            if (neededAreaCap) {
+                showGlassToast('warning', null, `Dimensions scaled down to fit maximum area limit (${width}x${height})`);
+            } else if (widthChanged || heightChanged) {
+                showGlassToast('info', null, `Dimensions adjusted to 64px steps (${width}x${height})`);
+            }
+        }
+    }, 100);
+}
+
+function wireManualDimensionInput(el, siblingEl) {
+    if (!el || el.dataset.wired === 'true') return;
+    el.dataset.wired = 'true';
+
+    el.addEventListener('input', () => {
+        updateCustomResolutionValue();
+        updateManualPriceDisplay();
+        updateManualUpscaleToggleState();
+    });
+    el.addEventListener('blur', () => {
+        validateManualDimensionsWithTimeout();
+    });
+
+    let isWheelUpdating = false;
+
+    el.addEventListener('wheel', function (e) {
+        if (manualSelectedResolution !== 'custom' || isWheelUpdating) return;
+        e.preventDefault();
+        isWheelUpdating = true;
+
+        const currentWidth = parseInt(manualWidth.value) || 1024;
+        const currentHeight = parseInt(manualHeight.value) || 1024;
+        const currentArea = currentWidth * currentHeight;
+        const delta = e.deltaY > 0 ? -64 : 64;
+        const isWidth = el === manualWidth;
+        const adjusted = isWidth ? currentWidth + delta : currentHeight + delta;
+        const other = isWidth
+            ? Math.round(currentArea / adjusted)
+            : Math.round(currentArea / adjusted);
+        const newWidth = isWidth ? adjusted : other;
+        const newHeight = isWidth ? other : adjusted;
+        const result = correctDimensions(newWidth, newHeight, { step: 64, maxArea: currentMaxArea });
+
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualWidth, result.width);
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualHeight, result.height);
+
+        const manualResolutionHidden = document.getElementById('manualResolution');
+        if (manualResolutionHidden) {
+            manualResolutionHidden.value = `custom_${result.width}x${result.height}`;
+        }
+
+        updateManualPriceDisplay();
+        debouncedCropImageToResolution();
+        isWheelUpdating = false;
+    });
+
+    el.addEventListener('keydown', function (e) {
+        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+        e.preventDefault();
+        if (manualSelectedResolution !== 'custom' || isWheelUpdating) return;
+        isWheelUpdating = true;
+
+        const currentWidth = parseInt(manualWidth.value) || 1024;
+        const currentHeight = parseInt(manualHeight.value) || 1024;
+        const currentArea = currentWidth * currentHeight;
+        const delta = e.key === 'ArrowUp' ? 64 : -64;
+        const isWidth = el === manualWidth;
+        const adjusted = isWidth ? currentWidth + delta : currentHeight + delta;
+        const other = isWidth
+            ? Math.round(currentArea / adjusted)
+            : Math.round(currentArea / adjusted);
+        const newWidth = isWidth ? adjusted : other;
+        const newHeight = isWidth ? other : adjusted;
+        const result = correctDimensions(newWidth, newHeight, { step: 64, maxArea: currentMaxArea });
+
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualWidth, result.width);
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualHeight, result.height);
+
+        const manualResolutionHidden = document.getElementById('manualResolution');
+        if (manualResolutionHidden) {
+            manualResolutionHidden.value = `custom_${result.width}x${result.height}`;
+        }
+
+        updateManualPriceDisplay();
+        debouncedCropImageToResolution();
+        isWheelUpdating = false;
+    });
+}
+
+function wireManualResolutionDimensionListeners() {
+    if (document.body.dataset.manualResolutionListenersWired === 'true') return;
+    document.body.dataset.manualResolutionListenersWired = 'true';
+
+    if (resolutionAreaToggle && resolutionAreaToggle.dataset.wired !== 'true') {
+        resolutionAreaToggle.dataset.wired = 'true';
+        resolutionAreaToggle.addEventListener('click', (e) => {
+            e.preventDefault();
+            toggleResolutionAreaLimit();
+        });
+    }
+
+    if (manualCustomResolutionBtn && manualCustomResolutionBtn.dataset.wired !== 'true') {
+        manualCustomResolutionBtn.dataset.wired = 'true';
+        manualCustomResolutionBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (manualSelectedResolution === 'custom') {
+                const currentWidth = parseInt(manualWidth.value) || 1024;
+                const currentHeight = parseInt(manualHeight.value) || 1024;
+                const matchingResolution = RESOLUTIONS.find(r => r.width === currentWidth && r.height === currentHeight);
+                if (matchingResolution) {
+                    const matchingGroup = RESOLUTION_GROUPS.find(g =>
+                        g.options.some(opt => opt.value === matchingResolution.value)
+                    );
+                    selectManualResolution(matchingResolution.value, matchingGroup?.group || 'Normal');
+                } else {
+                    selectManualResolution('normal_portrait', 'Normal');
+                }
+            }
+        });
+    }
+
+    wireManualDimensionInput(manualWidth, manualHeight);
+    wireManualDimensionInput(manualHeight, manualWidth);
+}
+
+function wireManualDropdownSetup() {
+    if (document.body.dataset.manualDropdownSetupWired === 'true') return;
+    document.body.dataset.manualDropdownSetupWired = 'true';
+
+    setupDropdown(
+        manualResolutionDropdown,
+        manualResolutionDropdownBtn,
+        manualResolutionDropdownMenu,
+        renderManualResolutionDropdown,
+        () => manualSelectedResolution,
+        { preventFocusTransfer: true }
+    );
+
+    setupDropdown(manualSamplerDropdown, manualSamplerDropdownBtn, manualSamplerDropdownMenu, renderManualSamplerDropdown, () => manualSelectedSampler, { preventFocusTransfer: true });
+
+    setupDropdown(manualModelDropdown, manualModelDropdownBtn, manualModelDropdownMenu, renderManualModelDropdown, () => manualSelectedModel, { preventFocusTransfer: true });
+
+    setupDropdown(datasetDropdown, datasetDropdownBtn, datasetDropdownMenu, renderDatasetDropdown, () => selectedDatasets, { preventFocusTransfer: true });
+
+    setupDropdown(subTogglesDropdown, subTogglesBtn, subTogglesDropdownMenu, renderSubTogglesDropdown, () => selectedDatasets, { preventFocusTransfer: true });
+
+    setupDropdown(ucPresetsDropdown, ucPresetsDropdownBtn, ucPresetsDropdownMenu, renderUcPresetsDropdown, () => selectedUcPreset, { preventFocusTransfer: true });
+
+    setupDropdown(nsfwDropdown, nsfwToggleBtn, nsfwDropdownMenu, renderNsfwDropdown, () => selectedNsfwValue, { preventFocusTransfer: true });
+
+    setupDropdown(manualWorkspaceDropdown, manualWorkspaceDropdownBtn, manualWorkspaceDropdownMenu, renderManualWorkspaceDropdown, () => manualSelectedWorkspace, { preventFocusTransfer: true });
+
+    // renderAddItemDropdown: public/scripts/app.js
+    setupDropdown(addItemDropdown, addItemDropdownBtn, addItemDropdownMenu, renderAddItemDropdown, () => '', { preventFocusTransfer: true });
+
+    manualSelectedWorkspace = activeWorkspace;
+    updateManualWorkspaceDisplay();
+    // initializeManualSelectionDropdown: public/scripts/comp/textReplacementManager.js
+    initializeManualSelectionDropdown();
+    updatePresetLoadSaveState();
+    updateManualPresetPlaceholder();
+}
+
+if (typeof wsClient !== 'undefined' && wsClient) {
+    wsClient.registerInitStep(47.5, 'Manual resolution and dropdown listeners', async () => {
+        wireManualResolutionDimensionListeners();
+        wireManualDropdownSetup();
+    });
+}
+

@@ -169,6 +169,18 @@ class WebSocketRequestsModal {
             clearInterval(this.updateInterval);
             this.updateInterval = null;
         }
+        if (this.observerTimeout) {
+            cancelAnimationFrame(this.observerTimeout);
+            this.observerTimeout = null;
+        }
+    }
+
+    teardown() {
+        this.stopAutoUpdate();
+        if (this.observer) {
+            this.observer.disconnect();
+            this.observer = null;
+        }
     }
 
     update(force) {

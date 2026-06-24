@@ -219,10 +219,7 @@ class CustomScrollbar {
 
         element.appendChild(scrollbar);
 
-        // Initialize scrollbar functionality
-        this.initScrollbarFunctionality(element, scrollableContent, scrollbar, thumb, customWrapperClass);
-
-        // Store reference
+        // Store reference before init — initScrollbarFunctionality attaches listeners/observers to this entry
         this.scrollbars.set(element, {
             scrollableContent,
             scrollbar,
@@ -230,22 +227,31 @@ class CustomScrollbar {
             wrapperClass: customWrapperClass
         });
 
+        // Initialize scrollbar functionality
+        this.initScrollbarFunctionality(element, scrollableContent, scrollbar, thumb, customWrapperClass);
+
         // Initial update - use requestAnimationFrame to ensure layout is complete
         this._scheduleUpdateScrollbar(element);
     }
 
     initScrollbarFunctionality(element, scrollableContent, scrollbar, thumb, wrapperClass = 'scrollable-content') {
+        const data = this.scrollbars.get(element);
+        const boundListeners = [];
+        const trackListener = (target, type, handler, options) => {
+            target.addEventListener(type, handler, options);
+            boundListeners.push({ target, type, handler, options });
+        };
+
         let isDragging = false;
         let startY = 0;
         let startScrollTop = 0;
 
-        // Update scrollbar on scroll
-        scrollableContent.addEventListener('scroll', () => {
+        const onScroll = () => {
             this._scheduleUpdateScrollbar(element);
-        });
+        };
+        trackListener(scrollableContent, 'scroll', onScroll);
 
-        // Mouse wheel handling - only prevent default on non-touch devices
-        scrollableContent.addEventListener('wheel', (e) => {
+        const onWheel = (e) => {
             // Only prevent default on non-touch devices to allow touch scrolling
             if (!('ontouchstart' in window)) {
                 // Check if this is the innermost scrollable element to prevent conflicts
@@ -275,10 +281,10 @@ class CustomScrollbar {
                     }
                 }
             }
-        }, { passive: false });
+        };
+        trackListener(scrollableContent, 'wheel', onWheel, { passive: false });
 
-        // Thumb drag handling
-        thumb.addEventListener('mousedown', (e) => {
+        const onThumbMouseDown = (e) => {
             isDragging = true;
             startY = e.clientY;
             startScrollTop = scrollableContent.scrollTop;
@@ -287,10 +293,10 @@ class CustomScrollbar {
             document.addEventListener('mouseup', handleMouseUp);
 
             e.preventDefault();
-        });
+        };
+        trackListener(thumb, 'mousedown', onThumbMouseDown);
 
-        // Touch drag handling for thumb
-        thumb.addEventListener('touchstart', (e) => {
+        const onThumbTouchStart = (e) => {
             isDragging = true;
             startY = e.touches[0].clientY;
             startScrollTop = scrollableContent.scrollTop;
@@ -299,7 +305,8 @@ class CustomScrollbar {
             document.addEventListener('touchend', handleTouchEnd);
 
             e.preventDefault(); // Prevent scrolling the page while dragging scrollbar
-        }, { passive: false });
+        };
+        trackListener(thumb, 'touchstart', onThumbTouchStart, { passive: false });
 
         const handleMouseMove = (e) => {
             if (!isDragging) return;
@@ -341,8 +348,7 @@ class CustomScrollbar {
             document.removeEventListener('touchend', handleTouchEnd);
         };
 
-        // Track click handling
-        scrollbar.addEventListener('click', (e) => {
+        const onTrackClick = (e) => {
             if (e.target === thumb) return;
 
             const rect = scrollbar.getBoundingClientRect();
@@ -353,7 +359,8 @@ class CustomScrollbar {
             const scrollDistance = scrollRatio * maxScrollDistance;
 
             scrollableContent.scrollTop = scrollDistance;
-        });
+        };
+        trackListener(scrollbar, 'click', onTrackClick);
 
         // Touch event handling for mobile devices
         if ('ontouchstart' in window) {
@@ -361,13 +368,14 @@ class CustomScrollbar {
             let touchStartScrollTop = 0;
             let isTouchScrolling = false;
 
-            scrollableContent.addEventListener('touchstart', (e) => {
+            const onTouchStart = (e) => {
                 touchStartY = e.touches[0].clientY;
                 touchStartScrollTop = scrollableContent.scrollTop;
                 isTouchScrolling = true;
-            }, { passive: true });
+            };
+            trackListener(scrollableContent, 'touchstart', onTouchStart, { passive: true });
 
-            scrollableContent.addEventListener('touchmove', (e) => {
+            const onTouchMove = (e) => {
                 if (!isTouchScrolling) return;
 
                 // Check if this is the innermost scrollable element to prevent conflicts
@@ -393,11 +401,13 @@ class CustomScrollbar {
                         scrollableContent.scrollTop = touchStartScrollTop + deltaY;
                     }
                 }
-            }, { passive: false });
+            };
+            trackListener(scrollableContent, 'touchmove', onTouchMove, { passive: false });
 
-            scrollableContent.addEventListener('touchend', () => {
+            const onTouchEnd = () => {
                 isTouchScrolling = false;
-            }, { passive: true });
+            };
+            trackListener(scrollableContent, 'touchend', onTouchEnd, { passive: true });
         }
 
         // Resize observer to update scrollbar when content or container changes
@@ -421,6 +431,10 @@ class CustomScrollbar {
             childList: true,
             subtree: true
         });
+
+        data._boundListeners = boundListeners;
+        data._resizeObserver = resizeObserver;
+        data._mutationObserver = mutationObserver;
     }
 
     // Helper function to get max scroll distance
@@ -559,6 +573,22 @@ class CustomScrollbar {
         if (data) {
             try {
                 this._cancelScheduledUpdate(element);
+
+                if (data._resizeObserver) {
+                    data._resizeObserver.disconnect();
+                    data._resizeObserver = null;
+                }
+                if (data._mutationObserver) {
+                    data._mutationObserver.disconnect();
+                    data._mutationObserver = null;
+                }
+                if (data._boundListeners) {
+                    data._boundListeners.forEach(({ target, type, handler, options }) => {
+                        target.removeEventListener(type, handler, options);
+                    });
+                    data._boundListeners = null;
+                }
+
                 // Restore original structure
                 const { scrollableContent } = data;
 

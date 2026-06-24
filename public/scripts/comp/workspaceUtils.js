@@ -116,8 +116,105 @@ const AVAILABLE_TEXTAREA_FONTS = [
     { value: 'Solway', label: 'Solway' }
 ];
 
+function isWorkspaceCssDevMode() {
+    try {
+        return localStorage.getItem('staticforge_dev_mode') === 'true';
+    } catch (_) {
+        return false;
+    }
+}
+
+function getWorkspaceStylesLink() {
+    return document.getElementById('workspace-styles');
+}
+
+function refreshWorkspaceStylesheet(hash) {
+    const link = getWorkspaceStylesLink();
+    if (!link || link.tagName !== 'LINK') {
+        return Promise.resolve();
+    }
+    if (workspaceStyleElement && workspaceStyleElement.tagName === 'STYLE') {
+        workspaceStyleElement.remove();
+        workspaceStyleElement = null;
+    }
+    const bust = hash || Date.now();
+    const nextHref = `/css/workspaces.css?sha=${encodeURIComponent(bust)}`;
+    const targetHref = new URL(nextHref, document.baseURI).href;
+    if (link.href === targetHref) {
+        return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+        let settled = false;
+        const done = () => {
+            if (settled) return;
+            settled = true;
+            link.removeEventListener('load', done);
+            link.removeEventListener('error', done);
+            clearTimeout(timeoutId);
+            resolve();
+        };
+        const timeoutId = setTimeout(done, 10000);
+        link.addEventListener('load', done);
+        link.addEventListener('error', done);
+        requestAnimationFrame(() => {
+            link.href = nextHref;
+            if (window.serviceWorkerManager) {
+                window.serviceWorkerManager.lastAppliedWorkspaceCssHash = bust;
+            }
+        });
+    });
+}
+
+function workspaceCssLinkMatchesHash(link, hash) {
+    if (!link || !hash) {
+        return false;
+    }
+    try {
+        const url = new URL(link.href, document.baseURI);
+        const existing = url.searchParams.get('sha') || url.searchParams.get('h');
+        return existing === String(hash);
+    } catch (_) {
+        return false;
+    }
+}
+
+async function applyWorkspaceCssFromServer(hash, webPath) {
+    if (isWorkspaceCssDevMode()) {
+        generateAllWorkspaceStyles();
+        if (typeof switchWorkspaceTheme === 'function') {
+            switchWorkspaceTheme(activeWorkspace);
+        }
+        return;
+    }
+
+    const fileUrl = webPath || '/css/workspaces.css';
+    const fileHash = hash || Date.now();
+    const swm = window.serviceWorkerManager;
+    if (swm && swm.lastAppliedWorkspaceCssHash === fileHash) {
+        return;
+    }
+    const link = getWorkspaceStylesLink();
+    if (workspaceCssLinkMatchesHash(link, fileHash)) {
+        if (swm) {
+            swm.lastAppliedWorkspaceCssHash = fileHash;
+        }
+        return;
+    }
+    if (swm && typeof swm.cacheStaticFilesSilent === 'function') {
+        await swm.cacheStaticFilesSilent([{ url: fileUrl, hash: fileHash }]);
+    }
+    await refreshWorkspaceStylesheet(fileHash);
+    if (typeof switchWorkspaceTheme === 'function') {
+        switchWorkspaceTheme(activeWorkspace);
+    }
+}
+
 // Generate all workspace styles in a single style element
 function generateAllWorkspaceStyles() {
+    if (!isWorkspaceCssDevMode()) {
+        return;
+    }
+
     // Remove existing style element if it exists
     if (workspaceStyleElement) {
         workspaceStyleElement.remove();
@@ -195,6 +292,10 @@ html.disable-blur [data-workspace="${workspaceId}"] {
 
 // Generate styles for a specific workspace only (more efficient for single updates)
 function generateWorkspaceStyles(workspaceId) {
+    if (!isWorkspaceCssDevMode()) {
+        return;
+    }
+
     const workspace = workspaces[workspaceId];
     if (!workspace) return;
 
@@ -827,11 +928,13 @@ async function loadWorkspaces() {
 
         // If desktop mode, switch from Windows Classic to Aero theme
         if (document.body.classList.contains('windows-classic-theme')) {
-            // runWithThemeSwitchOverlay: public/scripts/app.js
+            // runWithThemeSwitchOverlay: public/scripts/comp/themePreferences.js
             await runWithThemeSwitchOverlay(() => {
                 loadBlurPreference();
                 document.body.classList.remove('windows-classic-theme');
-                document.body.classList.remove('no-animation');
+                if (!document.body.classList.contains('windows-startup')) {
+                    document.body.classList.remove('no-animation');
+                }
             });
         } else {
             loadBlurPreference();
@@ -1743,10 +1846,11 @@ function updateWorkspaceData(workspaceId, updates) {
     
     // Only regenerate styles if this affects the current theme
     if (workspaceId === activeWorkspace) {
-        // For color/background changes, use the more efficient single workspace update
         if (updates.color || updates.backgroundColor) {
-            generateWorkspaceStyles(workspaceId);
-            switchWorkspaceTheme(activeWorkspace);
+            if (isWorkspaceCssDevMode()) {
+                generateWorkspaceStyles(workspaceId);
+                switchWorkspaceTheme(activeWorkspace);
+            }
         }
     }
     
@@ -2101,8 +2205,15 @@ async function confirmDeleteWorkspace(id, name) {
     }
 }
 
+let workspaceSystemWired = false;
+
 // Initialize workspace system
 function initializeWorkspaceSystem() {
+    if (workspaceSystemWired) {
+        return;
+    }
+    workspaceSystemWired = true;
+
     // Setup workspace dropdown using standard custom dropdown system
     const workspaceDropdown = document.getElementById('workspaceDropdown');
     const workspaceDropdownBtn = document.getElementById('workspaceDropdownBtn');
@@ -2269,8 +2380,15 @@ function initializeWorkspaceSystem() {
     window.workspaceStylesInitialized = true;
 }
 
+let workspaceSettingsFormWired = false;
+
 // Initialize workspace settings form event listeners
 function initializeWorkspaceSettingsForm() {
+    if (workspaceSettingsFormWired) {
+        return;
+    }
+    workspaceSettingsFormWired = true;
+
     // Live styling for color pickers themselves (apply chosen color to their background and border)
     const colorInput = document.getElementById('workspaceColorInput');
     const bgColorInput = document.getElementById('workspaceBackgroundColorInput');
@@ -2428,8 +2546,15 @@ if (window.wsClient) {
     throw new Error('WebSocket client not initialized');
 }
 
+let workspaceWsEventsWired = false;
+
 // Initialize WebSocket workspace event listeners
 function initializeWebSocketWorkspaceEvents() {
+    if (workspaceWsEventsWired) {
+        return;
+    }
+    workspaceWsEventsWired = true;
+
     // Listen for workspace updates from WebSocket
     document.addEventListener('workspaceUpdated', async (event) => {
         const data = event.detail;
@@ -2941,10 +3066,8 @@ let workspaceManagerEventListenersRegistered = false;
 
 function registerWorkspaceManagerEventListeners() {
     if (workspaceManagerEventListenersRegistered) return;
-    
-    // Initialize drag and drop functionality
-    initializeWorkspaceDragAndDrop();
-    
+
+    // Drag handles are wired when renderWorkspaceManagementList rebuilds the list.
     workspaceManagerEventListenersRegistered = true;
 }
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Unix socket client — asks the running server to refresh SW hash cache
+ * Unix socket client — recompile runtime assets, refresh SW hash cache,
  * and broadcast the manifest to all connected clients.
  *
  * Used by scripts/notify-service-worker-update.sh
@@ -16,8 +16,8 @@ const jsonOutput = process.argv.includes('--json');
 
 const message = {
     id: Date.now(),
-    type: 'refresh_service_worker_cache',
-    data: { silent }
+    type: 'recompile_runtime_assets',
+    data: { silent, showConsoleProgress: false }
 };
 
 const client = net.createConnection(SOCKET_PATH);
@@ -36,7 +36,12 @@ function finish(code, payload) {
         if (jsonOutput) {
             process.stdout.write(`${JSON.stringify(payload)}\n`);
         } else {
-            console.log(`Service worker cache refreshed (${payload.assetsCount} assets, ${payload.clientsNotified} clients notified)`);
+            const compiled = payload.compiled != null ? payload.compiled : '?';
+            console.log(
+                `Runtime assets recompiled (${compiled} updated), ` +
+                `service worker cache refreshed (${payload.assetsCount} assets, ` +
+                `${payload.clientsNotified} clients notified)`
+            );
         }
     } else {
         const errText = typeof payload === 'string' ? payload : (payload && payload.error) || 'Request failed';

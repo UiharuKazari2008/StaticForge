@@ -7,8 +7,15 @@
 let requestBodyReplacements = [];
 let originalRequestBodyReplacements = [];
 
+let requestBodyReplacementsModalWired = false;
+
 // Initialize request body replacements modal
 function initializeRequestBodyReplacementsModal() {
+    if (requestBodyReplacementsModalWired) {
+        return;
+    }
+    requestBodyReplacementsModalWired = true;
+
     const modal = document.getElementById('requestBodyReplacementsModal');
     const closeBtn = document.getElementById('closeRequestBodyReplacementsBtn');
     const addBtn = document.getElementById('addRequestBodyReplacementBtn');
@@ -42,8 +49,15 @@ function initializeRequestBodyReplacementsModal() {
     initializeCreateRequestBodyReplacementModal();
 }
 
+let createRequestBodyReplacementModalWired = false;
+
 // Initialize create request body replacement modal
 function initializeCreateRequestBodyReplacementModal() {
+    if (createRequestBodyReplacementModalWired) {
+        return;
+    }
+    createRequestBodyReplacementModalWired = true;
+
     const modal = document.getElementById('createRequestBodyReplacementModal');
     const closeBtn = document.getElementById('closeCreateRequestBodyReplacementBtn');
     const saveBtn = document.getElementById('createRequestBodyReplacementSaveBtn');
