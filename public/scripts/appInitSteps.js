@@ -197,7 +197,8 @@ if (window.wsClient) {
 
                             if (wallpaperUrl) {
                                 const position = wallpaperPosition || 'center';
-                                document.documentElement.style.setProperty('--desktop-wallpaper', `url('${wallpaperUrl}')`);
+                                // formatCssUrl: public/scripts/comp/workspaceUtils.js
+                                document.documentElement.style.setProperty('--desktop-wallpaper', formatCssUrl(wallpaperUrl));
                                 document.documentElement.style.setProperty('--desktop-wallpaper-position', position);
 
                                 // Preload the wallpaper image

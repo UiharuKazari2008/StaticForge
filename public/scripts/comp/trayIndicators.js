@@ -400,7 +400,7 @@ function updateWorkspaceTrayIcon(options = {}) {
     const icon = document.getElementById('workspaceTrayIcon');
     if (!icon) return;
 
-    const reveal = options.reveal !== false && !isDesktopTrayBootPending();
+    const reveal = options.reveal !== false && (options.reveal === true || !isDesktopTrayBootPending());
 
     const activeWorkspaceId = (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null) || window.activeWorkspace || 'default';
     const workspacesData = (typeof workspaces !== 'undefined' ? workspaces : null) || window.workspaces || {};

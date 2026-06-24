@@ -219,8 +219,14 @@ class WebSocketServer {
                 authenticated: clientInfo.authenticated,
                 timestamp: new Date().toISOString()
             };
+            if (clientInfo.authenticated) {
+                connectionPayload.userType = clientInfo.userType || 'admin';
+            }
             if (clientInfo.authenticated && clientInfo.userType === 'admin') {
                 connectionPayload.logViewerPathUuid = this.globalResources.getLogViewerPathUuid();
+            }
+            if (clientInfo.authenticated) {
+                connectionPayload.vfsPathUuid = this.globalResources.getVfsPathUuid();
             }
             this.sendToClient(ws, connectionPayload);
 

@@ -7065,7 +7065,11 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         const expandedBuffer = __runtimeGr.getPngMetadata().updateMetadata(result.buffer, expansionMetadata);
         
         // Save with "_expanded" suffix and fresh timestamp
-        const baseName = __runtimeGr.getPngMetadata().getBaseName(sourceFilename);
+        const namingFilename = sourceFilename || filename;
+        const baseName = __runtimeGr.getPngMetadata().getBaseName(namingFilename);
+        if (!baseName) {
+            throw new Error('Could not derive output filename from source image');
+        }
         // Remove old timestamp from basename (format: timestamp_name)
         const nameWithoutTimestamp = baseName.replace(/^\d+_/, '');
         const timestamp = Date.now();

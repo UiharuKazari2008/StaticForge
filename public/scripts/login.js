@@ -4,6 +4,7 @@ class LoginPage {
         this.errorMessage = document.getElementById('errorMessage');
         this.currentPin = '';
         this.isLoading = false;
+        this.pinReady = false;
         this.rollingBuffer = '';
         this.pinDots = document.querySelectorAll('.pin-dot');
         this.pinDisplay = document.querySelector('.pin-display');
@@ -26,23 +27,33 @@ class LoginPage {
             opacityRange: [0.05, 0.3]
         });
         
-        this.init();
+        this.setupServiceWorkerListener();
+        this.startBackground();
+        this.transitionToImage(0);
+        this.initAfterLoginBoot();
+    }
+
+    async initAfterLoginBoot() {
+        // ensureLoginBootComplete: public/scripts/comp/serviceWorkerManager.js
+        if (window.serviceWorkerManager && typeof window.serviceWorkerManager.ensureLoginBootComplete === 'function') {
+            await window.serviceWorkerManager.ensureLoginBootComplete();
+        }
+        document.body.classList.remove('login-booting');
+        this.pinReady = true;
+        this.setupKeyboardListener();
+        this.setupPinPadListener();
+        this.updatePinDisplay();
+        this.updateAriaAttributes();
+        this.sendTelemetryPing();
     }
 
     init() {
-        this.setupKeyboardListener();
-        this.setupPinPadListener();
-        this.startBackground();
-        this.updatePinDisplay();
-        this.updateAriaAttributes();
-        this.transitionToImage(0);
-        this.sendTelemetryPing();
-        this.setupServiceWorkerListener();
+        // Legacy entry — boot deferred to initAfterLoginBoot
     }
 
     setupKeyboardListener() {
         document.addEventListener('keydown', (e) => {
-            if (this.isLoading) return;
+            if (!this.pinReady || this.isLoading) return;
             if (e.key >= '0' && e.key <= '9') {
                 this.addDigit(e.key);
             } else if (e.key === 'Enter') {
@@ -58,7 +69,7 @@ class LoginPage {
     setupPinPadListener() {
         this.pinButtons.forEach(button => {
             button.addEventListener('click', (e) => {
-                if (this.isLoading) return;
+                if (!this.pinReady || this.isLoading) return;
                 
                 const number = button.getAttribute('data-number');
                 const action = button.getAttribute('data-action');
@@ -257,8 +268,8 @@ class LoginPage {
                 
                 // Check if service worker manager is available
                 if (window.serviceWorkerManager) {
-                    // Use the service worker manager to check for static file updates
-                    await window.serviceWorkerManager.checkStaticFileUpdates();
+                    // checkLoginCriticalUpdates: public/scripts/comp/serviceWorkerManager.js
+                    await window.serviceWorkerManager.checkLoginCriticalUpdates();
                     // Don't show success here - let the service worker messages handle the progress
                 } else {
                     console.error('❌ Service worker manager not available');
@@ -673,6 +684,12 @@ class LoginPage {
             if (response.ok) {
                 const data = await response.json();
                 if (data.authenticated && data.redirect) {
+                    if (data.userType) {
+                        localStorage.setItem('userType', data.userType);
+                    }
+                    if (data.userType === 'admin' && data.logViewerPathUuid) {
+                        localStorage.setItem('logViewerPathUuid', data.logViewerPathUuid);
+                    }
                     console.log('🔐 User already authenticated, redirecting...');
                     window.location.href = data.redirect;
                     return;
@@ -686,5 +703,5 @@ class LoginPage {
 
 // Create the login page instance
 document.addEventListener('DOMContentLoaded', () => { 
-    new LoginPage(); 
+    window.loginPage = new LoginPage(); 
 }); 

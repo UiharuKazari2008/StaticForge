@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const workspaceCssGenerator = require('./workspaceCssGenerator');
+const runtimeAssetCompiler = require('./runtimeAssetCompiler');
 
 const WEB_PATH = '/css/workspaces.css';
 const SOURCE_REL = 'virtual/public/css/workspaces.css';
@@ -25,6 +26,17 @@ let recompileTimer = null;
 let recompileInProgress = false;
 let lastSourceHash = null;
 
+function hydrateLastSourceHashFromDisk(root) {
+    const compiledPath = getCompiledPath(root);
+    if (!compiledPath || !fs.existsSync(compiledPath)) {
+        return;
+    }
+    const existing = runtimeAssetCompiler.readExistingSourceHash(compiledPath);
+    if (existing) {
+        lastSourceHash = existing;
+    }
+}
+
 function init(options = {}) {
     projectRoot = options.projectRoot || null;
     getWorkspacesConfig = options.getWorkspacesConfig || null;
@@ -33,6 +45,60 @@ function init(options = {}) {
     buildHeader = options.buildHeader || null;
     atomicWrite = options.atomicWrite || null;
     onCompiledCallback = options.onCompiled || null;
+    if (projectRoot) {
+        hydrateLastSourceHashFromDisk(projectRoot);
+    }
+}
+
+function isInitialized() {
+    return !!(projectRoot && typeof compileCssSource === 'function');
+}
+
+function ensureInitialized(options = {}) {
+    if (isInitialized()) {
+        return true;
+    }
+    if (!options.projectRoot || typeof options.compileCssSource !== 'function') {
+        return false;
+    }
+    init(options);
+    return isInitialized();
+}
+
+function buildSkippedCompileResult(compiledPath, sourceHash) {
+    const output = fs.readFileSync(compiledPath);
+    return {
+        status: 'skipped',
+        webPath: WEB_PATH,
+        sourceHash,
+        servedHash: crypto.createHash('sha256').update(output).digest('hex'),
+        compiledPath
+    };
+}
+
+function resolveSourceHash(root) {
+    const targetRoot = root || projectRoot;
+    if (!targetRoot) {
+        return null;
+    }
+
+    const compiledPath = getCompiledPath(targetRoot);
+    if (compiledPath && fs.existsSync(compiledPath)) {
+        const fromHeader = runtimeAssetCompiler.readExistingSourceHash(compiledPath);
+        if (fromHeader) {
+            return fromHeader;
+        }
+    }
+
+    const sourceCachePath = getSourceCachePath(targetRoot);
+    if (sourceCachePath && fs.existsSync(sourceCachePath)) {
+        const source = fs.readFileSync(sourceCachePath, 'utf8');
+        return typeof hashSource === 'function'
+            ? hashSource(source)
+            : crypto.createHash('sha256').update(source).digest('hex');
+    }
+
+    return null;
 }
 
 function getSourceCachePath(root) {
@@ -69,13 +135,17 @@ async function compileWorkspaceCss(options = {}) {
         const sourceCachePath = getSourceCachePath(root);
         const compiledPath = getCompiledPath(root);
 
-        if (!options.force && lastSourceHash === sourceHash && fs.existsSync(compiledPath)) {
-            return {
-                status: 'skipped',
-                webPath: WEB_PATH,
-                sourceHash,
-                compiledPath
-            };
+        if (!options.force) {
+            const existingSourceHash = fs.existsSync(compiledPath)
+                ? runtimeAssetCompiler.readExistingSourceHash(compiledPath)
+                : null;
+            if (existingSourceHash === sourceHash) {
+                lastSourceHash = sourceHash;
+                return buildSkippedCompileResult(compiledPath, sourceHash);
+            }
+            if (lastSourceHash === sourceHash && fs.existsSync(compiledPath)) {
+                return buildSkippedCompileResult(compiledPath, sourceHash);
+            }
         }
 
         if (typeof atomicWrite === 'function') {
@@ -120,11 +190,17 @@ async function compileWorkspaceCss(options = {}) {
 }
 
 function scheduleRecompile(options = {}) {
+    if (!isInitialized()) {
+        return;
+    }
     if (recompileTimer) {
         clearTimeout(recompileTimer);
     }
     recompileTimer = setTimeout(() => {
         recompileTimer = null;
+        if (!isInitialized()) {
+            return;
+        }
         compileWorkspaceCss(options).catch((err) => {
             console.error('[Workspace CSS] Recompile failed:', err.message);
         });
@@ -148,10 +224,11 @@ function getManifestEntry(root) {
     if (!compiledPath || !fs.existsSync(compiledPath)) {
         return null;
     }
+    const hash = resolveSourceHash(root);
+    if (!hash) {
+        return null;
+    }
     const stats = fs.statSync(compiledPath);
-    const hash = crypto.createHash('sha256')
-        .update(fs.readFileSync(compiledPath))
-        .digest('hex');
     return {
         path: WEB_PATH,
         hash,
@@ -164,12 +241,15 @@ module.exports = {
     WEB_PATH,
     SOURCE_REL,
     init,
+    isInitialized,
+    ensureInitialized,
     generateSourceCss,
     compileWorkspaceCss,
     scheduleRecompile,
     resolveServedPath,
     isWorkspaceCssPath,
     getManifestEntry,
+    resolveSourceHash,
     getCompiledPath,
     getSourceCachePath
 };

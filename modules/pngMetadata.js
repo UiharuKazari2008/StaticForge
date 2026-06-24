@@ -931,6 +931,9 @@ class PngMetadata {
 
     // Helper: get base name for pairing
     getBaseName(filename) {
+        if (typeof filename !== 'string' || !filename) {
+            return '';
+        }
         return filename
             .replace(/_upscaled(?=\.)/, '')  // Remove _upscaled suffix
             .replace(/@blur(?=\.)/, '')  // Remove @blur suffix

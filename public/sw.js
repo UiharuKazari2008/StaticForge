@@ -2,6 +2,7 @@ importScripts('/dist/workbox/workbox-sw.js');
 
 // Compile-time: auto-apply CSS-only / apply-safe static cache updates without restart prompt
 const CSS_ONLY_AUTO_APPLY = true;
+const SW_SCRIPT_EPOCH = 3; // bump on breaking SW changes
 
 // Enable Workbox logging in development
 if (workbox) {
@@ -576,9 +577,10 @@ workbox.routing.registerRoute(
         // Determine the route path and endpoint
         const routePath = url.pathname === '/index.html' ? '/' : url.pathname;
         const endpoint = routePath;
+        const bypassRouteCache = request.headers.get('X-SW-Bypass-Cache') === '1';
         
-        // Try to serve from cache first
-        const cachedResponse = await cache.match(routePath);
+        // Try to serve from cache first (skip when CACHE_STATIC_FILES needs a fresh network fetch)
+        const cachedResponse = bypassRouteCache ? null : await cache.match(routePath);
         if (cachedResponse) {
           response = addCacheBustingHeaders(cachedResponse);
         } else {
@@ -1086,16 +1088,25 @@ async function cacheStaticFiles(files, silent = false) {
             downloadState.lastProgressTime = Date.now();
             
             try {
+                const isRouteEntry = file.type === 'route'
+                    || file.url === '/'
+                    || file.url === '/app'
+                    || file.url === '/launch'
+                    || file.url === '/index.html';
+                const fetchHeaders = {
+                    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+                    'Pragma': 'no-cache',
+                    'Expires': '0'
+                };
+                if (isRouteEntry) {
+                    fetchHeaders['X-SW-Bypass-Cache'] = '1';
+                }
                 // Fetch with cache-busting headers to prevent browser caching
                 const fetchStartTime = Date.now();
                 const response = await fetch(file.url, {
                   cache: 'no-store',
                   signal: signal,
-                  headers: {
-                    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-                    'Pragma': 'no-cache',
-                    'Expires': '0'
-                  }
+                  headers: fetchHeaders
                 });
                 
                 // Update progress time after fetch completes (even if it fails)
@@ -1509,48 +1520,8 @@ async function deleteAndPrecache(url, requestId) {
   }
 }
 
-// Install event - cache critical files
+// Install event — SW script only; assets cached via client-initiated CACHE_STATIC_FILES
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    (async () => {
-      // Preload critical routes from server endpoints
-      const criticalRoutes = [
-        { endpoint: '/', route: '/' },
-        { endpoint: '/app', route: '/app' },
-        { endpoint: '/launch', route: '/launch' }
-      ];
-      const cache = await caches.open(STATIC_CACHE);
-      
-      for (const { endpoint, route } of criticalRoutes) {
-        try {
-          const response = await fetch(endpoint, {
-            cache: 'no-store',
-            headers: {
-              'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-              'Pragma': 'no-cache',
-              'Expires': '0'
-            }
-          });
-          
-          if (response.ok && response.status >= 200 && response.status < 300 && shouldCacheResponse(response)) {
-            // Keep original response headers in cache.
-            const responseWithHeaders = new Response(response.body, {
-              status: response.status,
-              statusText: response.statusText,
-              headers: response.headers
-            });
-            
-            // Cache at the route path
-            await cache.put(route, responseWithHeaders);
-            console.log(`Preloaded ${endpoint} into cache at route ${route}`);
-          }
-        } catch (error) {
-          console.warn(`Failed to preload ${endpoint}:`, error);
-        }
-      }
-    })()
-  );
-  
   self.skipWaiting();
 });
 
@@ -1570,7 +1541,11 @@ self.addEventListener('activate', (event) => {
       );
     }).then(async () => {
       await enforceImageCachePolicy();
-      return self.clients.claim();
+      await self.clients.claim();
+      const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      clients.forEach((client) => {
+        client.postMessage({ type: 'SW_SCRIPT_UPDATED', epoch: SW_SCRIPT_EPOCH });
+      });
     })
   );
 });

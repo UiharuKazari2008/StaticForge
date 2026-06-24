@@ -683,8 +683,15 @@ class WebSocketClient {
         this.flashWebSocketArrow = this.flashWebSocketArrow.bind(this);
         this.send = this.send.bind(this);
 
-        // Initialize
-        this.init();
+        // Boot is triggered from serviceWorkerManager after SW registration — public/scripts/comp/serviceWorkerManager.js
+    }
+
+    async beginApplicationBoot() {
+        // ensureBootComplete: public/scripts/comp/serviceWorkerManager.js
+        if (window.serviceWorkerManager && typeof window.serviceWorkerManager.ensureBootComplete === 'function') {
+            await window.serviceWorkerManager.ensureBootComplete();
+        }
+        return this.init();
     }
 
     _setConnectionPhase(phase, patch = {}) {
@@ -1147,6 +1154,42 @@ class WebSocketClient {
         return Boolean(window.isDesktop && !this.preStartupHandoffCompleted && this.connectionDialView !== 'status');
     }
 
+    _shouldUseConnectivityErrorInsteadOfConnectionDial() {
+        if (!window.isDesktop) return false;
+        if (this.connectionPhase !== 'failed') return false;
+        if (this.connectionDialView === 'status') return false;
+        if (!this.circuitBreaker) return false;
+        if (this._shouldUsePreStartupDialog()) return true;
+        return Boolean(this.preStartupHandoffCompleted);
+    }
+
+    _presentConnectivityFailure() {
+        const message = this.connectionUi.message || 'NO CARRIER — Connection failed';
+        const headline = this.preStartupHandoffCompleted && this.initializationCompleted
+            ? 'Connection lost'
+            : 'Could not connect';
+        const summary = this.preStartupHandoffCompleted && this.initializationCompleted
+            ? 'Dreamscape lost its connection to the server. Check your network and try again.'
+            : 'Dreamscape could not reach the server. Check your connection and try again.';
+        // presentDreamscapeConnectivityError: public/scripts/comp/fatalErrorBootstrap.js
+        if (typeof presentDreamscapeConnectivityError === 'function') {
+            const recoveryMode = this.initializationCompleted ? 'retry' : 'reload';
+            presentDreamscapeConnectivityError(headline, summary, message, '', { recoveryMode: recoveryMode });
+        }
+    }
+
+    _applyFailedConnectionSideEffects() {
+        const ui = this.connectionUi;
+        this.bannerManager.showWebSocketTicker(
+            'error',
+            ui.message || 'Server Not Responding',
+            'fa-phone-missed',
+            false
+        );
+        this.updateWebSocketStatus('disconnected');
+        this._updateServiceWorkerTrayIcon();
+    }
+
     _setupPreStartupModalHandlers() {
         if (this.preStartupAuthHandlersSetup) return;
         this.preStartupAuthHandlersSetup = true;
@@ -1322,6 +1365,8 @@ class WebSocketClient {
             if (payload?.userType && payload.userType !== 'admin') {
                 throw new Error('Administrator credentials are required.');
             }
+            // syncAuthLocalStorageFromServer: public/scripts/comp/connectionManager.js
+            syncAuthLocalStorageFromServer(payload);
 
             this._updatePreStartupAuthError('');
             if (passwordInput) {
@@ -1459,7 +1504,19 @@ class WebSocketClient {
     }
 
     _renderConnectionDial() {
+        const phase = this.connectionPhase;
+
+        if (phase !== 'failed' && typeof dismissDreamscapeConnectivityError === 'function') {
+            // dismissDreamscapeConnectivityError: public/scripts/comp/fatalErrorBootstrap.js
+            dismissDreamscapeConnectivityError();
+        }
+
         if (this._shouldUsePreStartupDialog()) {
+            if (phase === 'failed' && this._shouldUseConnectivityErrorInsteadOfConnectionDial()) {
+                this._presentConnectivityFailure();
+                this._applyFailedConnectionSideEffects();
+                return;
+            }
             this._renderPreStartupDialog();
             return;
         }
@@ -1484,7 +1541,6 @@ class WebSocketClient {
 
         this._setupConnectionDialModalHandlers();
 
-        const phase = this.connectionPhase;
         const ui = this.connectionUi;
         const beat = ui.beat || 'initializing';
         const beatDef = WebSocketClient.CONNECTION_BEATS[beat] || {};
@@ -1515,6 +1571,13 @@ class WebSocketClient {
             return;
         }
 
+        if (phase === 'failed' && this._shouldUseConnectivityErrorInsteadOfConnectionDial()) {
+            hideModal();
+            this._presentConnectivityFailure();
+            this._applyFailedConnectionSideEffects();
+            return;
+        }
+
         if (typeof openModal === 'function') {
             openModal(modal);
         } else {
@@ -1534,14 +1597,7 @@ class WebSocketClient {
             if (statsEl) statsEl.classList.add('hidden');
             if (closeBtn) closeBtn.disabled = false;
             this._updateConnectionDialProgress(beat, phase);
-            this.bannerManager.showWebSocketTicker(
-                'error',
-                ui.message || 'Server Not Responding',
-                'fa-phone-missed',
-                false
-            );
-            this.updateWebSocketStatus('disconnected');
-            this._updateServiceWorkerTrayIcon();
+            this._applyFailedConnectionSideEffects();
             return;
         }
 
@@ -1931,13 +1987,7 @@ class WebSocketClient {
                                         if (appData.serverVersion && appData.serverVersion !== this.clientVersion) {
                                             console.warn(`⚠️ Version mismatch detected! Client: ${this.clientVersion}, Server: ${appData.serverVersion}`);
 
-                                            // Trigger service worker update check
-                                            if (window.serviceWorkerManager) {
-                                                console.log('🔄 Triggering service worker update check due to version mismatch...');
-                                                await window.serviceWorkerManager.checkStaticFileUpdates(true);
-                                            }
-
-                                            // Show version mismatch warning
+                                            // Show version mismatch warning (boot gate owns update checks)
                                             if (typeof showGlassToast === 'function') {
                                                 showGlassToast('warning', 'Version Mismatch',
                                                     appData.versionMessage || 'A new version is available. Some features may not work correctly.',
@@ -2661,6 +2711,11 @@ class WebSocketClient {
             return;
         }
 
+        // ensureBootComplete: public/scripts/comp/serviceWorkerManager.js
+        if (window.serviceWorkerManager && typeof window.serviceWorkerManager.ensureBootComplete === 'function') {
+            await window.serviceWorkerManager.ensureBootComplete();
+        }
+
         this.initWebSocketIndicators();
         this.setupRequestsModalHandlers();
 
@@ -2702,18 +2757,6 @@ class WebSocketClient {
                 console.error('❌ Host availability check failed:', pingError.message);
                 this.isConnecting = false;
                 this.connectionLock = false; // Release connection lock on ping failure
-
-                // Check for updates using HTTP method since WebSocket connection failed
-                if (!this.initializationCompleted && window.serviceWorkerManager && !this.updateCheckAttempted) {
-                    this.updateCheckAttempted = true; // Prevent duplicate checks
-                    try {
-                        console.log('🔍 WebSocket connection failed, checking for updates via HTTP...');
-                        await window.serviceWorkerManager.checkAndDownloadUpdatesForInit();
-                    } catch (updateError) {
-                        console.warn('⚠️ Update check via HTTP failed (non-critical):', updateError);
-                        // Don't block error handling if update check fails
-                    }
-                }
 
                 const failureMessage = this.circuitBreaker
                     ? (pingError.message || 'NO CARRIER — Server may be unavailable.')
@@ -2778,20 +2821,7 @@ class WebSocketClient {
                     }
                 }
 
-                // Check for updates after successful connection but before authentication
-                if (!this.initializationCompleted) {
-                    if (!this.updateCheckAttempted && window.serviceWorkerManager) {
-                        this.updateCheckAttempted = true; // Prevent duplicate checks
-                        try {
-                            console.log('🔍 Checking for updates after connection (before authentication)...');
-                            await window.serviceWorkerManager.checkAndDownloadUpdatesForInit();
-                        } catch (error) {
-                            console.warn('⚠️ Update check failed (non-critical):', error);
-                            // Don't block initialization if update check failsss
-                        }
-                    }
-                }
-
+                // Boot gate owns update checks — proceed to init steps after handoff
                 await this._completePreStartupHandoff();
                 await this._completeConnectionDialHandoff();
 
@@ -2906,19 +2936,6 @@ class WebSocketClient {
                 console.error('❌ WebSocket error:', error);
                 this.isConnecting = false;
                 this.connectionLock = false; // Release connection lock on error
-
-                // Check for updates using HTTP method since WebSocket connection failed
-                // Only check if we haven't completed initialization yet
-                if (!this.initializationCompleted && window.serviceWorkerManager && !this.updateCheckAttempted) {
-                    this.updateCheckAttempted = true; // Prevent duplicate checks
-                    try {
-                        console.log('🔍 WebSocket connection error, checking for updates via HTTP...');
-                        await window.serviceWorkerManager.checkAndDownloadUpdatesForInit();
-                    } catch (updateError) {
-                        console.warn('⚠️ Update check via HTTP failed (non-critical):', updateError);
-                        // Don't block error handling if update check fails
-                    }
-                }
 
                 // Reset generation button state if generation was interrupted
                 if (typeof updateManualGenerateBtnState === 'function') {
@@ -3310,12 +3327,8 @@ class WebSocketClient {
         this.logGenerationQuipsWs('in', message);
 
         if (message.type === 'connection') {
-            if (message.logViewerPathUuid && localStorage.getItem('userType') === 'admin') {
-                localStorage.setItem('logViewerPathUuid', message.logViewerPathUuid);
-            }
-            if (message.vfsPathUuid && typeof bootstrapVfsPathUuidFromOptions === 'function') {
-                bootstrapVfsPathUuidFromOptions(message);
-            }
+            // syncAuthLocalStorageFromServer: public/scripts/comp/connectionManager.js
+            syncAuthLocalStorageFromServer(message);
             return;
         }
 
@@ -3576,6 +3589,12 @@ class WebSocketClient {
             const cacheOptions = {
                 runtimeAssetsRecompiled: message.data && message.data.runtimeAssetsRecompiled === true
             };
+
+            // Queue until boot gate completes — public/scripts/comp/serviceWorkerManager.js
+            if (window.serviceWorkerManager && !window.serviceWorkerManager.isBootComplete()) {
+                window.serviceWorkerManager.queueCacheUpdateUntilBoot(files, silent, cacheOptions);
+                return;
+            }
 
             if (files.length > 0 && window.serviceWorkerManager && typeof window.serviceWorkerManager.updateStaticCache === 'function') {
                 window.serviceWorkerManager.updateStaticCache(files, silent, cacheOptions);

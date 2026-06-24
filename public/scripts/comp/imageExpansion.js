@@ -515,7 +515,7 @@ function getExpansionPreviewParamsFromUI() {
 
     return {
         filename: expansionModalData.targetImage,
-        sourceFilename: expansionModalData.originalImage,
+        sourceFilename: expansionModalData.originalImage || expansionModalData.targetImage,
         resolution: expansionModalData.selectedResolution,
         imageBias: expansionModalData.selectedBias,
         upscaleAfterComplete,
@@ -722,7 +722,7 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
     if (metadata?.forge_data?.expansion_source) {
         console.log('📋 Image is expanded, source image:', metadata.forge_data.expansion_source);
         expansionModalData.expansionMode = 'current';
-        expansionModalData.originalImage = metadata.forge_data.expansion_source;
+        expansionModalData.originalImage = metadata.forge_data.expansion_source || imageFilename;
 
         console.log('📋 Loading previous expansion settings');
     }
@@ -1828,7 +1828,7 @@ async function submitImageExpansion() {
         // Send expansion request via WebSocket with streaming enabled
         const result = await wsClient.expandImage({
             filename: imageToExpand, // The image to actually expand (target)
-            sourceFilename: expansionModalData.originalImage, // The source image for metadata tracking
+            sourceFilename: expansionModalData.originalImage || imageToExpand, // The source image for metadata tracking
             expansionMode: expansionModalData.expansionMode, // Track which mode was used
             resolution: expansionModalData.selectedResolution,
             imageBias: expansionModalData.selectedBias,

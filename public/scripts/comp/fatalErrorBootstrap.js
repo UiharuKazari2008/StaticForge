@@ -16,6 +16,11 @@
     var listModalEl = null;
     var listModalInitialized = false;
     var windowTemplate = null;
+    var connectivityWindowEl = null;
+    var connectivityOverlayEl = null;
+    var connectivityTemplate = null;
+    var connectivityDetail = null;
+    var connectivityErrorEntry = null;
 
     function escapeHtml(s) {
         return String(s == null ? '' : s)
@@ -44,6 +49,16 @@
         try {
             if (!document.getElementById('dreamscapeAppErrorWindowTemplate')) return false;
             if (!document.getElementById('dreamscapeAppErrorModal')) return false;
+            if (typeof openModal !== 'function') return false;
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function canUseConnectivityUI() {
+        try {
+            if (!document.getElementById('dreamscapeConnectivityErrorTemplate')) return false;
             if (typeof openModal !== 'function') return false;
             return true;
         } catch (e) {
@@ -350,7 +365,9 @@
 
         var titleEl = windowEl.querySelector('.dreamscape-app-error-window-title');
         if (titleEl) {
-            titleEl.textContent = 'Spectator Fault Detection - Error #' + entry.id;
+            titleEl.textContent = entry.connectivityOnly
+                ? 'Spectator Fault Detection'
+                : ('Spectator Fault Detection - Error #' + entry.id);
         }
 
         var bodyEl = windowEl.querySelector('.dreamscape-app-error-body');
@@ -358,7 +375,9 @@
             bodyEl.innerHTML = buildStandaloneDetailHtml(entry.detail);
         }
 
-        windowEl.dataset.windowIdentifier = 'appErrorWindow:' + entry.id;
+        windowEl.dataset.windowIdentifier = entry.connectivityOnly
+            ? 'appErrorWindow:connectivity'
+            : ('appErrorWindow:' + entry.id);
         if (typeof transientWindowsWithPositions !== 'undefined') {
             transientWindowsWithPositions.add(windowEl.dataset.windowIdentifier);
         }
@@ -561,6 +580,268 @@
         location.reload();
     }
 
+    function retryConnectivityRecovery() {
+        dismissConnectivityError();
+        // manualReconnect: public/scripts/websocket.js
+        if (wsClient && typeof wsClient.manualReconnect === 'function') {
+            wsClient.connectionDialView = 'transient';
+            wsClient.manualReconnect();
+            return;
+        }
+        restartApplication();
+    }
+
+    function exitApplication() {
+        __dreamscapeFatalNavBypass = true;
+        if (typeof bypassConfirmation !== 'undefined') {
+            bypassConfirmation = true;
+        }
+        // runClientShutdownSequence / runClientShutdownDirect: public/scripts/comp/modalUtils.js
+        if (typeof runClientShutdownSequence === 'function') {
+            runClientShutdownSequence(function () { window.close(); });
+            return;
+        }
+        if (typeof runClientShutdownDirect === 'function') {
+            runClientShutdownDirect();
+            return;
+        }
+        window.close();
+        setTimeout(function () {
+            try {
+                location.href = 'about:blank';
+            } catch (e) { /* ignore */ }
+        }, 400);
+    }
+
+    function dismissConnectivityError() {
+        if (connectivityWindowEl) {
+            var el = connectivityWindowEl;
+            connectivityWindowEl = null;
+            try {
+                // closeModal: public/scripts/comp/modalUtils.js
+                if (typeof closeModal === 'function') {
+                    closeModal(el).then(function () {
+                        if (el.parentNode) el.parentNode.removeChild(el);
+                    });
+                } else if (el.parentNode) {
+                    el.parentNode.removeChild(el);
+                }
+            } catch (e) { /* ignore */ }
+        }
+        if (connectivityOverlayEl && connectivityOverlayEl.parentNode) {
+            connectivityOverlayEl.parentNode.removeChild(connectivityOverlayEl);
+        }
+        connectivityOverlayEl = null;
+    }
+
+    function dismissConnectionDialogs() {
+        var connModal = document.getElementById('connectionDialModal');
+        var preStartup = document.getElementById('desktopPreStartupModal');
+        try {
+            // closeModal: public/scripts/comp/modalUtils.js
+            if (typeof closeModal === 'function') {
+                if (connModal && !connModal.classList.contains('hidden')) closeModal(connModal);
+                if (preStartup && !preStartup.classList.contains('hidden')) closeModal(preStartup);
+            } else {
+                if (connModal) connModal.classList.add('hidden');
+                if (preStartup) preStartup.classList.add('hidden');
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    function showConnectivitySpectatorDetail() {
+        if (!connectivityDetail) return;
+        if (!canUseAppErrorUI()) {
+            showOverlay(connectivityDetail);
+            return;
+        }
+        if (connectivityErrorEntry && connectivityErrorEntry.windowEl &&
+            document.body.contains(connectivityErrorEntry.windowEl)) {
+            var bodyEl = connectivityErrorEntry.windowEl.querySelector('.dreamscape-app-error-body');
+            if (bodyEl) {
+                bodyEl.innerHTML = buildStandaloneDetailHtml(connectivityDetail);
+            }
+            bringStandaloneToFront(connectivityErrorEntry);
+            return;
+        }
+        connectivityErrorEntry = {
+            id: null,
+            detail: connectivityDetail,
+            windowEl: null,
+            connectivityOnly: true
+        };
+        createStandaloneWindow(connectivityErrorEntry);
+    }
+
+    function wireConnectivityActions(rootEl) {
+        if (!rootEl) return;
+
+        rootEl.addEventListener('click', function (ev) {
+            var btn = ev.target.closest('[data-connectivity-action]');
+            if (!btn) return;
+            var act = btn.getAttribute('data-connectivity-action');
+            if (act === 'details') {
+                showConnectivitySpectatorDetail();
+            } else if (act === 'retry') {
+                retryConnectivityRecovery();
+            } else if (act === 'restart') {
+                restartApplication();
+            } else if (act === 'exit') {
+                exitApplication();
+            }
+        });
+
+        var closeBtn = rootEl.querySelector('.dreamscape-connectivity-close-btn');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function () {
+                exitApplication();
+            });
+        }
+    }
+
+    function populateConnectivityRecoveryButton(rootEl, options) {
+        var recoveryBtn = rootEl.querySelector('.dreamscape-connectivity-recovery-btn');
+        if (!recoveryBtn) return;
+        var isRetry = options.recoveryMode === 'retry';
+        recoveryBtn.setAttribute('data-connectivity-action', isRetry ? 'retry' : 'restart');
+        recoveryBtn.textContent = isRetry ? 'Retry' : 'Restart';
+        recoveryBtn.title = isRetry ? 'Try connecting again' : 'Reload the application';
+    }
+
+    function populateConnectivityContent(rootEl, options) {
+        var windowTitle = options.windowTitle || 'No Connection';
+        var headline = options.headline || 'Could not connect';
+        var simpleMessage = options.simpleMessage || 'Check your network connection and try again.';
+        var detail = options.detail;
+
+        var titleEl = rootEl.querySelector('.dreamscape-connectivity-window-title');
+        if (titleEl) titleEl.textContent = windowTitle;
+
+        var headlineEl = rootEl.querySelector('.dreamscape-connectivity-headline');
+        if (headlineEl) headlineEl.textContent = headline;
+
+        var summaryEl = rootEl.querySelector('.dreamscape-connectivity-summary');
+        if (summaryEl) summaryEl.textContent = simpleMessage;
+
+        populateConnectivityRecoveryButton(rootEl, options);
+    }
+
+    function bringConnectivityToFront() {
+        if (!connectivityWindowEl) return;
+        try {
+            // bringModalToFront / openModal: public/scripts/comp/modalUtils.js
+            if (typeof bringModalToFront === 'function') {
+                bringModalToFront(connectivityWindowEl);
+            } else if (typeof openModal === 'function') {
+                openModal(connectivityWindowEl);
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    function showConnectivityWindow(options) {
+        dismissConnectionDialogs();
+
+        if (connectivityWindowEl && document.body.contains(connectivityWindowEl)) {
+            populateConnectivityContent(connectivityWindowEl, options);
+            bringConnectivityToFront();
+            return;
+        }
+
+        if (!connectivityTemplate) {
+            connectivityTemplate = document.getElementById('dreamscapeConnectivityErrorTemplate');
+        }
+        if (!connectivityTemplate) {
+            showConnectivityOverlay(options);
+            return;
+        }
+
+        var windowEl = connectivityTemplate.cloneNode(true);
+        windowEl.id = 'dreamscapeConnectivityErrorWindow';
+        windowEl.classList.remove('hidden');
+        windowEl.dataset.windowIdentifier = 'connectivityError';
+
+        populateConnectivityContent(windowEl, options);
+        wireConnectivityActions(windowEl);
+
+        document.body.appendChild(windowEl);
+        connectivityWindowEl = windowEl;
+
+        // openModal: public/scripts/comp/modalUtils.js
+        if (typeof openModal === 'function') {
+            openModal(windowEl);
+        }
+    }
+
+    function showConnectivityOverlay(options) {
+        dismissConnectivityError();
+        dismissConnectionDialogs();
+
+        var windowTitle = options.windowTitle || 'No Connection';
+        var headline = options.headline || 'Could not connect';
+        var simpleMessage = options.simpleMessage || 'Check your network connection and try again.';
+        var detail = options.detail;
+
+        var root = document.createElement('div');
+        root.id = 'dreamscapeConnectivityErrorOverlay';
+        root.setAttribute('role', 'alertdialog');
+        root.setAttribute('aria-modal', 'true');
+        root.innerHTML = (
+            '<div class="dreamscape-connectivity-overlay-card">' +
+            '<div class="modal-body modal-padding">' +
+            '<div class="dreamscape-connectivity-message-row">' +
+            '<div class="dreamscape-connectivity-icon" aria-hidden="true"><i class="fas fa-plug-circle-xmark"></i></div>' +
+            '<div class="dreamscape-connectivity-message-text">' +
+            '<p class="dreamscape-connectivity-headline">' + escapeHtml(headline) + '</p>' +
+            '<p class="dreamscape-connectivity-summary">' + escapeHtml(simpleMessage) + '</p>' +
+            '</div></div></div>' +
+            '<div class="modal-footer modal-footer-colored modal-footer-padded" style="margin-top:0">' +
+            '<div class="modal-footer-left">' +
+            '<button type="button" class="btn-secondary btn-small" data-connectivity-action="details" title="Open technical details">Details</button>' +
+            '</div>' +
+            '<div class="modal-footer-right">' +
+            '<button type="button" class="btn-secondary btn-small dreamscape-connectivity-recovery-btn" data-connectivity-action="restart" title="Reload the application">Restart</button>' +
+            '<button type="button" class="btn-danger btn-small" data-connectivity-action="exit" title="Close the application">Shutdown</button>' +
+            '</div></div></div>'
+        );
+
+        wireConnectivityActions(root);
+        populateConnectivityRecoveryButton(root, options);
+        document.body.appendChild(root);
+        connectivityOverlayEl = root;
+    }
+
+    function presentConnectivityError(headline, simpleMessage, reason, stack, userOptions) {
+        var errStack = stack || '';
+        var detail = normalizeDetail(
+            headline || 'Could not connect',
+            reason || simpleMessage || 'Connection failed',
+            '',
+            '',
+            '',
+            errStack,
+            parseScriptUrlFromStack(errStack)
+        );
+        var options = {
+            windowTitle: 'No Connection',
+            headline: headline || 'Could not connect',
+            simpleMessage: simpleMessage || 'The application could not connect. Check your network and try again.',
+            detail: detail,
+            recoveryMode: (userOptions && userOptions.recoveryMode) || 'reload'
+        };
+        connectivityDetail = detail;
+        connectivityErrorEntry = null;
+
+        try {
+            if (canUseConnectivityUI()) {
+                showConnectivityWindow(options);
+            } else {
+                showConnectivityOverlay(options);
+            }
+        } catch (e) {
+            showConnectivityOverlay(options);
+        }
+    }
+
     function deleteIndexedDatabase(dbName) {
         return new Promise(function (resolve) {
             var deleteReq = indexedDB.deleteDatabase(dbName);
@@ -748,6 +1029,13 @@
             parseScriptUrlFromStack(errStack)
         ));
     };
+
+    // Boot / network connectivity failure — simple UI with expandable technical details
+    window.presentDreamscapeConnectivityError = function (headline, simpleMessage, reason, stack, options) {
+        presentConnectivityError(headline, simpleMessage, reason, stack, options);
+    };
+
+    window.dismissDreamscapeConnectivityError = dismissConnectivityError;
 
     // Defer throw so DevTools console invocation still hits the page error handler
     window.triggerTestUncaughtException = function (message) {

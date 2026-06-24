@@ -119,7 +119,7 @@ async function broadcastWorkspaceCssUpdated(result) {
         const plumbing = globalResources.getDataPlumbing();
         plumbing.publish('ws:broadcast:workspaceCssUpdated', {
             webPath: result.webPath || workspaceCssService.WEB_PATH,
-            hash: result.servedHash || result.sourceHash || null,
+            hash: result.sourceHash || null,
             sourceHash: result.sourceHash || null,
             timestamp: Date.now()
         });
@@ -1692,6 +1692,9 @@ app.options('/app', authMiddleware, (req, res) => {
     }
     if (isAdminUser(req)) {
         response.logViewerPathUuid = globalResources.getLogViewerPathUuid();
+    }
+    if (req.userType) {
+        response.userType = req.userType;
     }
     response.vfsPathUuid = globalResources.getVfsPathUuid();
     res.json(response);

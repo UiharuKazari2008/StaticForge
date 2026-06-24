@@ -12184,7 +12184,7 @@ class WebSocketMessageHandlers {
                 data.resolution,
                 data.imageBias,
                 overrideParams,
-                data.sourceFilename || null,
+                data.sourceFilename || data.filename,
                 data.enableAI || false,
                 ws,
                 this,
@@ -12272,7 +12272,7 @@ class WebSocketMessageHandlers {
                 ws,
                 this,
                 requestId, // Pass the requestId for consistent progress tracking
-                data.sourceFilename, // The original source image for metadata tracking
+                data.sourceFilename || data.filename, // The original source image for metadata tracking
                 data.enableAI || false // Enable/disable AI processing
             );
 

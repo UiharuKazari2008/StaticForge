@@ -1282,8 +1282,9 @@ class LogViewerApplet {
             });
             if (!response.ok) return false;
             const data = await response.json();
+            // syncAuthLocalStorageFromServer: public/scripts/comp/connectionManager.js
+            syncAuthLocalStorageFromServer(data);
             if (data.logViewerPathUuid) {
-                localStorage.setItem('logViewerPathUuid', data.logViewerPathUuid);
                 return true;
             }
         } catch (_) { /* ignore */ }

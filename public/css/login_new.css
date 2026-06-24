@@ -112,6 +112,16 @@ body {
 
 
 
+/* Login boot gate — hide PIN until critical assets are ready */
+body.login-booting .login-container {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+body.login-booting .login-product-name {
+    opacity: 0.45;
+}
+
 /* Login form */
 .login-container {
     background-color: rgba(255, 255, 255, 0.1);

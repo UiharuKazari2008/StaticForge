@@ -121,6 +121,8 @@ class PinModal {
             const data = await response.json();
             if (response.ok) {
                 await this.resolve();
+                // syncAuthLocalStorageFromServer: public/scripts/comp/connectionManager.js
+                syncAuthLocalStorageFromServer(data);
             } else {
                 this.showPinError();
                 this.clearPin();

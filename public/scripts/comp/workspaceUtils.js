@@ -421,6 +421,20 @@ function hslToRgbaString(h, s, l, alpha) {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+/** Escape a string for use inside a double-quoted CSS url() argument. Keep in sync with modules/workspaceCssGenerator.js */
+function escapeCssUrlString(value) {
+    return String(value)
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"')
+        .replace(/\n/g, '\\A ')
+        .replace(/\r/g, '\\D ')
+        .replace(/\f/g, '\\C ');
+}
+
+function formatCssUrl(url) {
+    return `url("${escapeCssUrlString(url)}")`;
+}
+
 // Generate CSS variables for a specific workspace
 function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor, workspaceWallpaper = null, workspaceWallpaperPosition = 'center', primaryFont = '', textareaFont = '', isBlurDisabled = false, gradientBrightnessRatio = 1.0, gradientTintRatio = 0.35) {
     // Color adjustment variables for consistent theming
@@ -709,7 +723,7 @@ function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor,
     
     // Add wallpaper variables if wallpaper is set for this workspace
     if (workspaceWallpaper) {
-        variables.push(`--desktop-wallpaper: url('${workspaceWallpaper}');`);
+        variables.push(`--desktop-wallpaper: ${formatCssUrl(workspaceWallpaper)};`);
         variables.push(`--desktop-wallpaper-position: ${workspaceWallpaperPosition};`);
     }
 

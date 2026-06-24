@@ -40,6 +40,10 @@
     width: 475px;
 }
 
+#dreamscapeOsInstallWizardModal {
+    width: 550px;
+}
+
 #createTextReplacementModal {
     width: 550px;
 }

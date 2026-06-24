@@ -1,4 +1,21 @@
 /** Session, fetchWithAuth, server ping (Phase 2 batch 13). */
+
+function syncAuthLocalStorageFromServer(payload) {
+    if (!payload || typeof payload !== 'object') {
+        return;
+    }
+    if (payload.userType) {
+        localStorage.setItem('userType', payload.userType);
+    }
+    if (payload.userType === 'admin' && payload.logViewerPathUuid) {
+        localStorage.setItem('logViewerPathUuid', payload.logViewerPathUuid);
+    }
+    // bootstrapVfsPathUuidFromOptions: public/scripts/comp/vfsClient.js
+    if (payload.vfsPathUuid && typeof bootstrapVfsPathUuidFromOptions === 'function') {
+        bootstrapVfsPathUuidFromOptions(payload);
+    }
+}
+
 async function handleLogout() {
     try {
         const response = await fetchWithAuth('/', {

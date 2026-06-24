@@ -12,7 +12,8 @@ const TASKBAR_SYSTEM_MODAL_IDS = new Set([
     'windowsStartupModal',
     'windowsUpdateModal',
     'connectionDialModal',
-    'desktopPreStartupModal'
+    'desktopPreStartupModal',
+    'dreamscapeOsInstallWizardModal'
 ]);
 
 // Window position caching

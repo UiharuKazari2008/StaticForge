@@ -41,6 +41,33 @@ function pathnameMatchesAssetUrl(assetPath, rawUrl) {
     }
 }
 
+const WIZARD_FILE_THRESHOLD = 20;
+const DOWNLOAD_STALL_MS = 60000;
+const INSTALL_WIZARD_SESSION_KEY = 'dreamscapeOsInstallWizard';
+const LOGIN_BOOT_SESSION_KEY = 'dreamscapeLoginBoot';
+
+const LOGIN_CRITICAL_EXACT_PATHS = new Set([
+    '/',
+    '/index.html',
+    '/css/login_new.css',
+    '/css/blockContainer.css',
+    '/scripts/login.js',
+    '/scripts/comp/blockContainer.js',
+    '/scripts/comp/serviceWorkerManager.js',
+    '/.login.jpg',
+    '/manifest.json',
+    '/browserconfig.xml',
+    '/sw.js'
+]);
+
+const LOGIN_CRITICAL_PREFIXES = [
+    '/dist/fontawesome/',
+    '/dist/mdi/',
+    '/dist/remixicon/',
+    '/static_images/icon-',
+    '/static_images/apple-touch-icon'
+];
+
 class ServiceWorkerManager {
     constructor() {
         this.swRegistration = null;
@@ -55,6 +82,7 @@ class ServiceWorkerManager {
             el: null,
             anchorEl: null,
             state: 'hidden', // hidden | checking | downloading | available | complete
+            kind: 'sw-update', // sw-update | runtime-compile
             dismissedUntilComplete: false,
             progress: 0,
             message: '',
@@ -64,6 +92,7 @@ class ServiceWorkerManager {
         this.pendingRequests = new Map();
         this.updateToastId = null;
         this.checkingToastId = null;
+        this.runtimeCompileNotifyId = null;
         this.initUpdateModalActive = false;
         this.timeoutToastId = null;
         this.swReadyTimeout = null;
@@ -81,6 +110,22 @@ class ServiceWorkerManager {
         this.pendingApplyFiles = null;
         this.pendingUpdateKind = 'restart';
         this.lastAppliedWorkspaceCssHash = null;
+
+        // Boot gate state — public/scripts/websocket.js awaits ensureBootComplete()
+        this.bootPhase = 'idle';
+        this.bootComplete = false;
+        this.loginBootComplete = false;
+        this.bootPromise = null;
+        this.loginBootPromise = null;
+        this._bootOrchestrating = false;
+        this._loginBootOrchestrating = false;
+        this._bootCompleteResolvers = [];
+        this._loginBootCompleteResolvers = [];
+        this._pendingCacheUpdateQueue = [];
+        this.installWizardToastId = null;
+        this.installWizardUsed = false;
+        this._installWizardEtaState = null;
+        this._activeDownloadAttach = null;
 
         this.init();
     }
@@ -112,13 +157,190 @@ class ServiceWorkerManager {
         }
     }
 
+    _isInstallWizardActive() {
+        return Boolean(
+            this.installWizardUsed ||
+            this.bootPhase === 'wizard' ||
+            document.body.classList.contains('dreamscape-install-wizard') ||
+            this._readInstallWizardSession()?.active
+        );
+    }
+
     _isPreStartupUpdatePhase() {
+        if (this._isInstallWizardActive()) {
+            return false;
+        }
         // wsClient: public/scripts/websocket.js
         return Boolean(
             window.isDesktop &&
             window.wsClient &&
             !window.wsClient.preStartupHandoffCompleted
         );
+    }
+
+    isBootComplete() {
+        return this.bootComplete === true;
+    }
+
+    ensureBootComplete() {
+        if (this.bootComplete) {
+            return Promise.resolve();
+        }
+        if (this.bootPromise) {
+            return this.bootPromise;
+        }
+        return new Promise((resolve) => {
+            this._bootCompleteResolvers.push(resolve);
+        });
+    }
+
+    ensureLoginBootComplete() {
+        if (this.loginBootComplete) {
+            return Promise.resolve();
+        }
+        if (this.loginBootPromise) {
+            return this.loginBootPromise;
+        }
+        return new Promise((resolve) => {
+            this._loginBootCompleteResolvers.push(resolve);
+        });
+    }
+
+    _resolveBootComplete() {
+        this.bootComplete = true;
+        this.bootPhase = 'complete';
+        document.body.classList.remove('dreamscape-install-wizard');
+        this._hideInstallWizardUi();
+        this._flushPendingCacheUpdates();
+        const resolvers = this._bootCompleteResolvers.splice(0);
+        resolvers.forEach((fn) => fn());
+    }
+
+    _resolveLoginBootComplete() {
+        this.loginBootComplete = true;
+        document.body.classList.remove('login-booting');
+        const resolvers = this._loginBootCompleteResolvers.splice(0);
+        resolvers.forEach((fn) => fn());
+    }
+
+    _showBootFatalError(error) {
+        const message = error && error.message ? error.message : 'Service worker failed to initialize';
+        // presentDreamscapeConnectivityError: public/scripts/comp/fatalErrorBootstrap.js
+        if (typeof presentDreamscapeConnectivityError === 'function') {
+            presentDreamscapeConnectivityError(
+                'Dreamscape OS could not start',
+                'The application could not connect to the server. Check your network connection and try again.',
+                message,
+                error && error.stack ? error.stack : ''
+            );
+        } else if (typeof presentDreamscapeApplicationError === 'function') {
+            presentDreamscapeApplicationError(
+                'Dreamscape OS could not start',
+                message,
+                error && error.stack ? error.stack : ''
+            );
+        } else if (typeof showGlassToast === 'function') {
+            showGlassToast(
+                'error',
+                'Dreamscape OS could not start',
+                message,
+                false,
+                false,
+                '<i class="fas fa-exclamation-triangle"></i>'
+            );
+        } else {
+            alert(`Dreamscape OS could not start: ${message}`);
+        }
+    }
+
+    _readInstallWizardSession() {
+        try {
+            const raw = sessionStorage.getItem(INSTALL_WIZARD_SESSION_KEY);
+            return raw ? JSON.parse(raw) : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    _writeInstallWizardSession(patch) {
+        try {
+            const prev = this._readInstallWizardSession() || {};
+            sessionStorage.setItem(INSTALL_WIZARD_SESSION_KEY, JSON.stringify({ ...prev, ...patch, active: true }));
+        } catch (_) { /* ignore */ }
+    }
+
+    _clearInstallWizardSession() {
+        try {
+            sessionStorage.removeItem(INSTALL_WIZARD_SESSION_KEY);
+        } catch (_) { /* ignore */ }
+    }
+
+    _readLoginBootSession() {
+        try {
+            const raw = sessionStorage.getItem(LOGIN_BOOT_SESSION_KEY);
+            return raw ? JSON.parse(raw) : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    _writeLoginBootSession() {
+        try {
+            sessionStorage.setItem(LOGIN_BOOT_SESSION_KEY, JSON.stringify({ active: true }));
+        } catch (_) { /* ignore */ }
+    }
+
+    _clearLoginBootSession() {
+        try {
+            sessionStorage.removeItem(LOGIN_BOOT_SESSION_KEY);
+        } catch (_) { /* ignore */ }
+    }
+
+    _isLoginCriticalPath(url) {
+        const pathname = normalizeStaticFilePath(url);
+        if (LOGIN_CRITICAL_EXACT_PATHS.has(pathname)) {
+            return true;
+        }
+        return LOGIN_CRITICAL_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+    }
+
+    filterLoginCriticalFiles(files) {
+        if (!Array.isArray(files)) {
+            return [];
+        }
+        return files.filter((file) => file && this._isLoginCriticalPath(file.url));
+    }
+
+    async _fetchManifest() {
+        const response = await fetch('/', {
+            method: 'OPTIONS',
+            headers: {
+                'X-Service-Worker-Version': '2.0',
+                'X-Requested-With': 'ServiceWorker'
+            }
+        });
+        if (!response.ok) {
+            return [];
+        }
+        return response.json();
+    }
+
+    _flushPendingCacheUpdates() {
+        if (!this._pendingCacheUpdateQueue.length) {
+            return;
+        }
+        const queue = this._pendingCacheUpdateQueue.splice(0);
+        queue.forEach((entry) => {
+            if (entry.files && entry.files.length > 0) {
+                this.updateStaticCache(entry.files, entry.silent, entry.cacheOptions);
+            } else {
+                this.checkStaticFileUpdates(entry.silent);
+            }
+        });
+    }
+
+    queueCacheUpdateUntilBoot(files, silent, cacheOptions) {
+        this._pendingCacheUpdateQueue.push({ files, silent, cacheOptions });
     }
 
     _showInitUpdateModal(message, progress = 0) {
@@ -246,33 +468,44 @@ class ServiceWorkerManager {
         if (!this.trayPopup.el) return;
         this.trayPopup.el.classList.remove('show');
         this.trayPopup.state = 'hidden';
+        if (this.trayPopup.kind === 'runtime-compile') {
+            this.trayPopup.kind = 'sw-update';
+        }
     }
 
     _renderServiceWorkerTrayPopup() {
         this._ensureServiceWorkerTrayPopup();
         const popover = this.trayPopup.el;
         const state = this.trayPopup.state;
+        const isRuntimeCompile = this.trayPopup.kind === 'runtime-compile';
 
-        const titleByState = {
-            checking: 'Checking for updates',
-            available: 'Updates available',
-            downloading: 'Downloading updates',
-            complete: 'Updates complete'
-        };
+        const titleByState = isRuntimeCompile
+            ? {
+                downloading: 'Compiling runtime assets',
+                complete: 'Compile complete',
+                checking: 'Compile issue'
+            }
+            : {
+                checking: 'Checking for updates',
+                available: 'Updates available',
+                downloading: 'Downloading updates',
+                complete: 'Updates complete'
+            };
 
         const showProgress = state === 'downloading';
         const progressVal = Math.max(0, Math.min(100, Math.round(this.trayPopup.progress || 0)));
 
         const message = this.trayPopup.message || '';
         const filesTotal = Number.isFinite(this.trayPopup.filesTotal) ? this.trayPopup.filesTotal : 0;
-        const headerTitle = titleByState[state] || 'Service Worker';
+        const headerTitle = titleByState[state] || (isRuntimeCompile ? 'Runtime assets' : 'Service Worker');
+        const headerIcon = isRuntimeCompile ? 'fa-compress' : 'fa-laptop-arrow-down';
 
         const wrap = document.createElement('div');
         wrap.className = 'popover-content';
 
         const header = document.createElement('div');
         header.className = 'popover-header';
-        header.innerHTML = `<i class="fa-regular fa-laptop-arrow-down"></i><span>${headerTitle}</span>`;
+        header.innerHTML = `<i class="fa-regular ${headerIcon}"></i><span>${headerTitle}</span>`;
 
         const closeBtn = document.createElement('button');
         closeBtn.type = 'button';
@@ -282,10 +515,14 @@ class ServiceWorkerManager {
         closeBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            if (this.trayPopup.state === 'downloading') {
-                this.trayPopup.dismissedUntilComplete = true;
+            if (isRuntimeCompile) {
+                this._hideRuntimeCompileNotify();
+            } else {
+                if (this.trayPopup.state === 'downloading') {
+                    this.trayPopup.dismissedUntilComplete = true;
+                }
+                this._hideServiceWorkerTrayPopup();
             }
-            this._hideServiceWorkerTrayPopup();
         });
 
         const headerRow = document.createElement('div');
@@ -297,7 +534,15 @@ class ServiceWorkerManager {
         const body = document.createElement('div');
         body.className = 'popover-body';
 
-        if (state === 'available') {
+        if (isRuntimeCompile) {
+            if (state === 'downloading') {
+                body.textContent = message || 'Optimising CSS and JavaScript…';
+            } else if (state === 'complete') {
+                body.textContent = message || 'Runtime assets compiled successfully.';
+            } else {
+                body.textContent = message || 'Runtime compile finished with errors.';
+            }
+        } else if (state === 'available') {
             body.innerHTML = message || 'Resource updates are available.';
         } else if (state === 'downloading') {
             body.innerHTML = filesTotal > 0
@@ -320,6 +565,9 @@ class ServiceWorkerManager {
 
             const bar = document.createElement('div');
             bar.setAttribute('role', 'progressbar');
+            bar.setAttribute('aria-valuemin', '0');
+            bar.setAttribute('aria-valuemax', '100');
+            bar.setAttribute('aria-valuenow', String(progressVal));
             bar.className = 'animate';
 
             const fill = document.createElement('div');
@@ -329,7 +577,7 @@ class ServiceWorkerManager {
             wrap.appendChild(progressWrap);
         }
 
-        if (state === 'available') {
+        if (!isRuntimeCompile && state === 'available') {
             const actions = document.createElement('div');
             actions.className = 'service-worker-tray-popup-actions';
 
@@ -359,7 +607,7 @@ class ServiceWorkerManager {
             wrap.appendChild(actions);
         }
 
-        if (state === 'complete') {
+        if (!isRuntimeCompile && state === 'complete') {
             const actions = document.createElement('div');
             actions.className = 'service-worker-tray-popup-actions';
 
@@ -392,12 +640,16 @@ class ServiceWorkerManager {
         popover.appendChild(wrap);
     }
 
-    _showServiceWorkerTrayPopup(nextState, { message = '', progress = null, filesTotal = null } = {}) {
+    _showServiceWorkerTrayPopup(nextState, { message = '', progress = null, filesTotal = null, kind = null } = {}) {
         if (!this._isDesktopTrayMode()) {
             return false;
         }
 
-        if (nextState === 'downloading' && this.trayPopup.dismissedUntilComplete) {
+        if (kind !== null) {
+            this.trayPopup.kind = kind;
+        }
+
+        if (nextState === 'downloading' && this.trayPopup.kind !== 'runtime-compile' && this.trayPopup.dismissedUntilComplete) {
             // Stay hidden until completion.
             this.trayPopup.state = 'hidden';
             return false;
@@ -467,6 +719,24 @@ class ServiceWorkerManager {
                 await this.waitForServiceWorkerReady();
                 await this.fetchSwConfig();
 
+                if (window.isLoginPage) {
+                    if (document.readyState === 'loading') {
+                        await new Promise((resolve) => {
+                            document.addEventListener('DOMContentLoaded', resolve, { once: true });
+                        });
+                    }
+                    this.loginBootPromise = this.runLoginBootSequence();
+                } else {
+                    this.bootPromise = this.runBootSequence().then(() => {
+                        // beginApplicationBoot: public/scripts/websocket.js
+                        if (window.wsClient && typeof window.wsClient.beginApplicationBoot === 'function') {
+                            window.wsClient.beginApplicationBoot();
+                        }
+                    }).catch((err) => {
+                        console.error('Boot sequence failed:', err);
+                    });
+                }
+
             } catch (error) {
                 console.error('Service Worker registration failed:', error);
                 console.error('Service Worker error details:', {
@@ -475,10 +745,20 @@ class ServiceWorkerManager {
                     stack: error.stack
                 });
                 this.handleServiceWorkerError(error);
+                if (window.isLoginPage) {
+                    this._resolveLoginBootComplete();
+                } else {
+                    this._showBootFatalError(error);
+                }
             }
         } else {
             console.warn('Service Worker not supported in this browser');
             this.handleServiceWorkerNotSupported();
+            if (window.isLoginPage) {
+                this._resolveLoginBootComplete();
+            } else {
+                this._showBootFatalError(new Error('Service Worker not supported in this browser'));
+            }
         }
     }
 
@@ -555,11 +835,6 @@ class ServiceWorkerManager {
                     clearInterval(checkInterval);
                 }
 
-                // Check for static file updates once ready (only if not already done)
-                if (!this.initialCheckDone) {
-                    this.initialCheckDone = true;
-                    this.checkStaticFileUpdates(true);
-                }
                 resolve();
             };
 
@@ -571,30 +846,17 @@ class ServiceWorkerManager {
             // Initial check
             checkReady();
 
-            // Set a timeout for iOS devices (they can be slower)
+            // Hard wait — no timeout bypass; boot gate requires a controlling SW
             const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-            const timeoutMs = isIOS ? 15000 : 10000; // Longer timeout for iOS
+            const timeoutMs = isIOS ? 120000 : 90000;
 
             this.swReadyTimeout = setTimeout(() => {
-                console.warn('⚠️ Service Worker ready timeout - proceeding anyway (this is normal)');
-                console.warn('Service Worker state at timeout:', {
-                    active: !!this.swRegistration?.active,
-                    waiting: !!this.swRegistration?.waiting,
-                    installing: !!this.swRegistration?.installing,
-                    controller: !!navigator.serviceWorker?.controller,
-                    state: this.swRegistration?.active?.state || 'unknown'
-                });
-
-                // Clear interval
+                console.error('Service Worker ready timeout — boot blocked');
                 if (checkInterval) {
                     clearInterval(checkInterval);
                 }
-
-                // Remove event listener
                 navigator.serviceWorker.removeEventListener('controllerchange', controllerChangeHandler);
-
-                this.handleServiceWorkerTimeout();
-                resolve();
+                reject(new Error('Service worker failed to become ready in time'));
             }, timeoutMs);
         });
     }
@@ -671,6 +933,9 @@ class ServiceWorkerManager {
     }
     
     async checkStaticFileUpdates(noToast = false) {
+        if (!window.isLoginPage && !this.bootComplete && !this._bootOrchestrating) {
+            return;
+        }
         try {
             // First check if there's already a download in progress
             const swState = await this.checkDownloadState();
@@ -750,7 +1015,11 @@ class ServiceWorkerManager {
         });
     }
 
-    async updateStaticCache(files, noToast = false) {
+    async updateStaticCache(files, noToast = false, cacheOptions = null) {
+        if (!window.isLoginPage && !this.bootComplete && !this._bootOrchestrating) {
+            this.queueCacheUpdateUntilBoot(files, noToast, cacheOptions);
+            return;
+        }
         if (!this.swRegistration || !this.swRegistration.active) {
             console.warn('Service Worker not ready');
             this.showServiceWorkerNotReadyToast();
@@ -864,13 +1133,35 @@ class ServiceWorkerManager {
         }
     }
     
+    async _matchCachedFile(cache, file) {
+        const candidates = new Set();
+        if (file && file.url) {
+            candidates.add(file.url);
+        }
+        const path = normalizeStaticFilePath(file.url);
+        candidates.add(path);
+        if (path === '/index.html') {
+            candidates.add('/');
+        }
+        if (path === '/') {
+            candidates.add('/index.html');
+        }
+        for (const key of candidates) {
+            const match = await cache.match(key);
+            if (match) {
+                return match;
+            }
+        }
+        return null;
+    }
+
     async getFilesNeedingUpdate(files) {
         const filesToUpdate = [];
         
         for (const file of files) {
             try {
                 const cache = await caches.open('static-cache-v1');
-                const cachedResponse = await cache.match(file.url);
+                const cachedResponse = await this._matchCachedFile(cache, file);
                 
                 if (!cachedResponse) {
                     filesToUpdate.push(file);
@@ -1098,6 +1389,10 @@ class ServiceWorkerManager {
         this.pendingApplyFiles = canApplyWithoutRestart ? updatedFiles.slice() : null;
 
         console.log('Static cache update classified:', updateKind, updatedFiles);
+
+        if (this._isInstallWizardActive()) {
+            return;
+        }
 
         if (canApplyWithoutRestart) {
             if (silent && this.isCssOnlyAutoApplyEnabled()) {
@@ -1375,6 +1670,10 @@ class ServiceWorkerManager {
     }
 
     showUpdateToast(files) {
+        if (this._isInstallWizardActive()) {
+            return;
+        }
+
         // Hide checking toast if it exists
         if (this.checkingToastId && this.checkingToastId !== 'service-worker-tray-popup' && typeof removeGlassToast === 'function') {
             removeGlassToast(this.checkingToastId);
@@ -1407,6 +1706,10 @@ class ServiceWorkerManager {
     
     updateProgressToast(progress) {
         this.updateProgress = progress;
+
+        if (this._isInstallWizardActive()) {
+            return;
+        }
 
         if (this.initUpdateModalActive && window.wsClient) {
             const { completed, total } = this.lastUpdateCounts;
@@ -1447,6 +1750,114 @@ class ServiceWorkerManager {
             this.updateAvailable = false;
         }
         this.isUpdating = false;
+    }
+
+    _resolveRuntimeCompilePercent(data) {
+        if (!data) return 0;
+        if (data.percent != null && Number.isFinite(data.percent)) {
+            return Math.max(0, Math.min(100, data.percent));
+        }
+        if (data.total > 0 && data.current != null) {
+            return Math.max(0, Math.min(100, (data.current / data.total) * 100));
+        }
+        return 0;
+    }
+
+    _hideRuntimeCompileNotify() {
+        if (!this.runtimeCompileNotifyId) return;
+        if (this._isDesktopTrayMode() && this.runtimeCompileNotifyId === 'service-worker-tray-popup') {
+            this._hideServiceWorkerTrayPopup();
+        } else if (typeof removeGlassToast === 'function') {
+            removeGlassToast(this.runtimeCompileNotifyId);
+        }
+        this.runtimeCompileNotifyId = null;
+    }
+
+    handleRuntimeCompileProgress(data) {
+        if (!data || data.inProgress === false) return;
+
+        const percent = this._resolveRuntimeCompilePercent(data);
+        const label = data.total > 0
+            ? `Compiling ${data.current}/${data.total} (${Math.round(percent)}%)`
+            : 'Compiling runtime assets…';
+
+        if (this._isPreStartupUpdatePhase()) {
+            this._setPreStartupUpdateStageMessage(label);
+        }
+
+        if (this._isDesktopTrayMode()) {
+            this._showServiceWorkerTrayPopup('downloading', {
+                kind: 'runtime-compile',
+                message: 'Optimising CSS and JavaScript…',
+                progress: percent,
+                filesTotal: data.total || 0
+            });
+            this.runtimeCompileNotifyId = 'service-worker-tray-popup';
+            return;
+        }
+
+        if (!this.runtimeCompileNotifyId) {
+            // showGlassToast in toastManager.js
+            this.runtimeCompileNotifyId = showGlassToast(
+                'info',
+                'Runtime Compile',
+                'Compiling runtime assets…',
+                true,
+                false,
+                '<i class="fas fa-compress"></i>'
+            );
+        }
+        // updateGlassToastProgress in toastManager.js
+        updateGlassToastProgress(this.runtimeCompileNotifyId, percent);
+    }
+
+    handleRuntimeCompileComplete(data) {
+        const failedCount = data?.failedCount ?? (Array.isArray(data?.errors) ? data.errors.length : 0);
+        const success = failedCount === 0;
+
+        if (this._isPreStartupUpdatePhase()) {
+            this._setPreStartupUpdateStageMessage(
+                success ? 'Runtime assets compiled' : `${failedCount} file(s) failed to compile`
+            );
+        }
+
+        if (this._isDesktopTrayMode()) {
+            if (success) {
+                this._showServiceWorkerTrayPopup('complete', {
+                    kind: 'runtime-compile',
+                    message: 'Runtime assets compiled successfully.',
+                    progress: 100
+                });
+                this.runtimeCompileNotifyId = 'service-worker-tray-popup';
+                setTimeout(() => {
+                    if (this.runtimeCompileNotifyId === 'service-worker-tray-popup' && this.trayPopup.kind === 'runtime-compile') {
+                        this._hideRuntimeCompileNotify();
+                    }
+                }, 2200);
+            } else if (this.runtimeCompileNotifyId === 'service-worker-tray-popup') {
+                this._showServiceWorkerTrayPopup('checking', {
+                    kind: 'runtime-compile',
+                    message: `${failedCount} file(s) failed to compile.`,
+                    progress: 100
+                });
+            } else {
+                this.runtimeCompileNotifyId = null;
+            }
+            return;
+        }
+
+        this._hideRuntimeCompileNotify();
+
+        if (success && typeof showGlassToast === 'function') {
+            showGlassToast(
+                'success',
+                'Runtime Compile',
+                'Runtime assets compiled successfully.',
+                false,
+                3000,
+                '<i class="fas fa-check-circle"></i>'
+            );
+        }
     }
     
     async cacheInternalData(url, data) {
@@ -1643,24 +2054,25 @@ class ServiceWorkerManager {
                 break;
                 
             case 'STATIC_CACHE_PROGRESS':
-                const progress = Math.round((completed / total) * 100);
+                const progressTotal = total || 0;
+                const progress = progressTotal > 0 ? Math.round((completed / progressTotal) * 100) : 0;
                 this.updateProgress = progress;
                 this.lastProgressUpdate = Date.now();
-                this.lastUpdateCounts = { completed: completed || 0, total: total || 0 };
-                this.lastUpdateFilesTotal = total || this.lastUpdateFilesTotal || 0;
+                this.lastUpdateCounts = { completed: completed || 0, total: progressTotal };
+                this.lastUpdateFilesTotal = progressTotal || this.lastUpdateFilesTotal || 0;
                 this.updateProgressToast(progress);
                 
-                console.log(`Progress update: ${completed}/${total} (${progress}%)`);
+                console.log(`Progress update: ${completed}/${progressTotal} (${progress}%)`);
                 
                 // Reset stall detection - we got progress
                 if (this.stallDetectionTimeout) {
                     clearTimeout(this.stallDetectionTimeout);
                 }
-                // Set new stall detection timeout (35 seconds - slightly longer than service worker's 30s)
+                // Set new stall detection timeout (60 seconds — align with attachToDownloadProgress)
                 this.stallDetectionTimeout = setTimeout(() => {
-                    console.warn('Download appears stalled - no progress for 35 seconds');
+                    console.warn('Download appears stalled - no progress for 60 seconds');
                     this.handleStalledDownload();
-                }, 35000);
+                }, DOWNLOAD_STALL_MS);
                 
                 // If this is a heartbeat, log it for debugging and track it
                 if (event.data.heartbeat) {
@@ -1694,6 +2106,15 @@ class ServiceWorkerManager {
                 console.log('Download completed:', event.data);
                 
                 const filesCount = event.data.total > 0 ? event.data.total : (event.data.files ? event.data.files.length : 0);
+                if (this._activeDownloadAttach) {
+                    this._activeDownloadAttach({
+                        success: filesCount >= 0,
+                        filesDownloaded: event.data.completed || filesCount,
+                        completed: event.data.completed != null ? event.data.completed : filesCount,
+                        total: event.data.total != null ? event.data.total : filesCount,
+                        hasErrors: false
+                    });
+                }
                 if (filesCount > 0) {
                     if (this.initUpdateModalActive) {
                         break;
@@ -1787,6 +2208,20 @@ class ServiceWorkerManager {
             case 'ping':
                 // Handle ping response from service worker (response to our health check)
                 this.lastPingResponseTime = Date.now();
+                break;
+
+            case 'SW_SCRIPT_UPDATED':
+                if (this.bootPhase === 'wizard' || this._readInstallWizardSession()?.active) {
+                    this._writeInstallWizardSession({ phase: this.bootPhase || 'verify' });
+                    if (this.swRegistration && this.swRegistration.waiting) {
+                        this.checkForWaiting();
+                    }
+                } else if (this._loginBootOrchestrating || this._readLoginBootSession()?.active) {
+                    this._writeLoginBootSession();
+                    if (this.swRegistration && this.swRegistration.waiting) {
+                        this.checkForWaiting();
+                    }
+                }
                 break;
         }
     }
@@ -2432,183 +2867,70 @@ class ServiceWorkerManager {
     async downloadUpdatesForInit(files) {
         const useInitModal = this._isPreStartupUpdatePhase();
 
-        return new Promise(async (resolve) => {
-            const finishInitDownload = (result) => {
-                if (useInitModal && result.userChoice !== 'restart') {
+        const onProgress = ({ completed, total, progress }) => {
+            this.lastUpdateCounts = { completed, total };
+            if (useInitModal) {
+                this._updateInitUpdateModal(
+                    total > 0 ? `Downloading updates (${completed}/${total})...` : 'Downloading updates...',
+                    progress
+                );
+            }
+        };
+
+        if (useInitModal) {
+            this._showInitUpdateModal(`Downloading ${files.length} updates...`, 0);
+            window.wsClient.setUpdateModalCallbacks(
+                () => {
+                    if (this._attachDownloadSkipHandler) {
+                        this._attachDownloadSkipHandler();
+                    }
+                },
+                () => this.forceRestart(),
+                null
+            );
+        } else if (this._isDesktopTrayMode()) {
+            this.showUpdateToast(files);
+        }
+
+        const result = await this.attachToDownloadProgress({
+            files,
+            onProgress,
+            allowSkip: useInitModal,
+            onSkip: () => {
+                if (useInitModal) {
                     this._hideInitUpdateModal();
                 }
-                resolve(result);
-            };
-
-            if (!this.swRegistration || !this.swRegistration.active) {
-                console.warn('Service Worker not ready for updates');
-                finishInitDownload({ success: false, reason: 'Service Worker not ready' });
-                return;
             }
-            
-            // Check if service worker is already downloading
-            const swState = await this.checkDownloadState();
-            if (swState && swState.isDownloading) {
-                console.warn('Service worker is already downloading, waiting for it to complete');
-                // Wait for the existing download to complete
-                const waitForCompletion = () => {
-                    return new Promise((waitResolve) => {
-                        const checkInterval = setInterval(async () => {
-                            const currentState = await this.checkDownloadState();
-                            if (!currentState || !currentState.isDownloading) {
-                                clearInterval(checkInterval);
-                                waitResolve();
-                            }
-                        }, 1000);
-                        
-                        // Timeout after 60 seconds
-                        setTimeout(() => {
-                            clearInterval(checkInterval);
-                            waitResolve();
-                        }, 60000);
-                    });
-                };
-                
-                await waitForCompletion();
-                // After waiting, check if we still need to download these files
-                finishInitDownload({ success: false, reason: 'Download was already in progress' });
-                return;
-            }
-            
-            // Clear stale isUpdating unless SW is actively downloading
-            if (this.isUpdating) {
-                const liveState = await this.checkDownloadState();
-                if (!liveState || !liveState.isDownloading) {
-                    this.isUpdating = false;
-                }
-            }
-
-            let updatesDownloaded = 0;
-            let hasErrors = false;
-            let skipRequested = false;
-            let downloadCompleted = false;
-
-            const handleSkipDuringDownload = () => {
-                if (skipRequested || downloadCompleted) return;
-                skipRequested = true;
-                downloadCompleted = true;
-                navigator.serviceWorker.removeEventListener('message', progressHandler);
-                this.isUpdating = false;
-                finishInitDownload({ success: false, userChoice: 'skip', reason: 'User skipped' });
-            };
-
-            // Listen for progress updates
-            const progressHandler = (event) => {
-                if (skipRequested || downloadCompleted) return; // Ignore if already handled
-
-                if (event.data.type === 'STATIC_CACHE_STARTED') {
-                    // Download started
-                    console.log('Download started in service worker');
-                } else if (event.data.type === 'STATIC_CACHE_PROGRESS') {
-                    const completed = event.data.completed || 0;
-                    const total = event.data.total || 0;
-                    const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
-                    this.updateProgress = progress;
-                    this.lastUpdateCounts = { completed, total };
-                    if (useInitModal) {
-                        this._updateInitUpdateModal(
-                            total > 0 ? `Downloading updates (${completed}/${total})...` : 'Downloading updates...',
-                            progress
-                        );
-                    }
-                } else if (event.data.type === 'STATIC_CACHE_COMPLETE') {
-                    // Use files.length as fallback if total is 0 (handles race condition with fast downloads)
-                    updatesDownloaded = event.data.total > 0 ? event.data.total : (event.data.files ? event.data.files.length : 0);
-                    navigator.serviceWorker.removeEventListener('message', progressHandler);
-                    
-                    // Clear isUpdating state immediately to prevent stuck UI
-                    this.isUpdating = false;
-                    this.updateProgress = 100;
-
-                    if (!skipRequested && !downloadCompleted) {
-                        downloadCompleted = true;
-                        console.log(`Update download completed with ${updatesDownloaded} files downloaded${hasErrors ? ' (with errors)' : ''}`);
-
-                        // Show Restart and Skip buttons if updates were downloaded successfully
-                        // Check files.length as fallback if total was 0 due to race condition
-                        const filesWereDownloaded = updatesDownloaded > 0 || (event.data.files && event.data.files.length > 0);
-                        if (!hasErrors && filesWereDownloaded) {
-                            const actualFilesCount = event.data.files ? event.data.files.length : updatesDownloaded;
-                            updatesDownloaded = actualFilesCount;
-                            const updatedFiles = this._resolveUpdatedFilesFromCacheComplete(event.data);
-                            const updateKind = this.classifyStaticCacheUpdate(updatedFiles);
-                            const canApplyWithoutRestart = (updateKind === 'css-only' || updateKind === 'apply-safe')
-                                && this.isCssOnlyAutoApplyEnabled();
-
-                            if (canApplyWithoutRestart) {
-                                this.applyStaticCacheUpdate(updatedFiles).then(() => {
-                                    finishInitDownload({
-                                        success: true,
-                                        filesDownloaded: actualFilesCount,
-                                        userChoice: 'apply'
-                                    });
-                                });
-                            } else if (useInitModal) {
-                                this._showInitUpdateRestartPrompt(
-                                    `Updates downloaded (${actualFilesCount} files). Restart to apply changes.`
-                                );
-                                this._waitForInitUpdateUserChoice().then((choice) => {
-                                    finishInitDownload({
-                                        success: true,
-                                        filesDownloaded: actualFilesCount,
-                                        userChoice: choice.action
-                                    });
-                                });
-                            } else {
-                                finishInitDownload({ success: true, filesDownloaded: updatesDownloaded, userChoice: 'later' });
-                            }
-                        } else {
-                            // No files downloaded or had errors - resolve but don't show restart buttons
-                            finishInitDownload({ success: false, filesDownloaded: updatesDownloaded, hasErrors });
-                        }
-                    }
-                } else if (event.data.type === 'STATIC_CACHE_ERROR') {
-                    console.error(`Cache error for ${event.data.file}: ${event.data.error}`);
-                    hasErrors = true;
-                    // Continue with other files - don't resolve here
-                }
-            };
-
-            navigator.serviceWorker.addEventListener('message', progressHandler);
-
-            if (useInitModal) {
-                window.wsClient.setUpdateModalCallbacks(
-                    handleSkipDuringDownload,
-                    () => this.forceRestart(),
-                    null
-                );
-            } else if (this._isDesktopTrayMode()) {
-                // Desktop mode: show tray popup for init downloads after pre-startup handoff.
-                this.showUpdateToast(files);
-            }
-
-            // Start caching (isUpdating set on STATIC_CACHE_STARTED)
-            this.swRegistration.active.postMessage({
-                type: 'CACHE_STATIC_FILES',
-                files: files
-            });
-
-            // Timeout after 30 seconds
-            setTimeout(() => {
-                if (!skipRequested && !downloadCompleted) {
-                    navigator.serviceWorker.removeEventListener('message', progressHandler);
-                    downloadCompleted = true;
-                    this.isUpdating = false;
-                    console.log(`Update download timed out with ${updatesDownloaded} files downloaded${hasErrors ? ' (with errors)' : ''}`);
-                    finishInitDownload({
-                        success: !hasErrors && updatesDownloaded > 0,
-                        filesDownloaded: updatesDownloaded,
-                        hasErrors,
-                        timedOut: true
-                    });
-                }
-            }, 30000);
         });
+
+        if (useInitModal && result.userChoice !== 'restart') {
+            this._hideInitUpdateModal();
+        }
+
+        if (result.success && result.filesDownloaded > 0 && !result.hasErrors) {
+            const updateKind = this.classifyStaticCacheUpdate(files);
+            const canApplyWithoutRestart = (updateKind === 'css-only' || updateKind === 'apply-safe')
+                && this.isCssOnlyAutoApplyEnabled();
+
+            if (canApplyWithoutRestart) {
+                await this.applyStaticCacheUpdate(files);
+                return { success: true, filesDownloaded: result.filesDownloaded, userChoice: 'apply' };
+            }
+            if (useInitModal) {
+                this._showInitUpdateRestartPrompt(
+                    `Updates downloaded (${result.filesDownloaded} files). Restart to apply changes.`
+                );
+                const choice = await this._waitForInitUpdateUserChoice();
+                return { success: true, filesDownloaded: result.filesDownloaded, userChoice: choice.action };
+            }
+            return { success: true, filesDownloaded: result.filesDownloaded, userChoice: 'later' };
+        }
+
+        if (result.stalled) {
+            console.error(`Update download stalled at ${result.completed}/${result.total}`);
+        }
+
+        return result;
     }
 
     // Show Restart and Skip buttons for initialization updates
@@ -2705,6 +3027,10 @@ class ServiceWorkerManager {
     
     // Show update complete toast with restart or apply button
     showUpdateCompleteToast(mode = 'restart') {
+        if (this._isInstallWizardActive()) {
+            return;
+        }
+
         if (mode === 'apply') {
             if (this._isDesktopTrayMode()) {
                 const filesTotal = this.trayPopup.filesTotal || this.lastUpdateFilesTotal || 0;
@@ -2803,6 +3129,576 @@ class ServiceWorkerManager {
         } catch (error) {
             console.error('❌ Error during force restart:', error);
             alert('Restart failed. Please refresh the page manually to apply updates.');
+        }
+    }
+
+    // Shared stall-based download progress attach — boot gate, wizard, init, login
+    attachToDownloadProgress(options = {}) {
+        const {
+            files = null,
+            onProgress = null,
+            allowSkip = false,
+            onSkip = null,
+            stallMs = DOWNLOAD_STALL_MS
+        } = options;
+
+        return new Promise(async (resolve) => {
+            if (!this.swRegistration || !this.swRegistration.active) {
+                resolve({ success: false, reason: 'Service Worker not ready' });
+                return;
+            }
+
+            let completed = 0;
+            let total = 0;
+            let hasErrors = false;
+            let finished = false;
+            let skipRequested = false;
+            let stallTimer = null;
+            let progressHandler = null;
+
+            const cleanup = () => {
+                if (stallTimer) {
+                    clearTimeout(stallTimer);
+                    stallTimer = null;
+                }
+                if (progressHandler) {
+                    navigator.serviceWorker.removeEventListener('message', progressHandler);
+                    progressHandler = null;
+                }
+                if (this._activeDownloadAttach === finishDownload) {
+                    this._activeDownloadAttach = null;
+                }
+            };
+
+            const resetStallTimer = () => {
+                if (stallTimer) {
+                    clearTimeout(stallTimer);
+                }
+                stallTimer = setTimeout(() => {
+                    handleStallTimeout();
+                }, stallMs);
+            };
+
+            const reportProgress = (c, t) => {
+                completed = c || 0;
+                total = t || 0;
+                this.lastUpdateCounts = { completed, total };
+                const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+                this.updateProgress = progress;
+                if (typeof onProgress === 'function') {
+                    onProgress({ completed, total, progress });
+                }
+            };
+
+            const finishDownload = async (result) => {
+                if (finished) {
+                    return;
+                }
+                if (!result.stalled && result.userChoice !== 'skip' && !result.hasErrors && result.success !== true) {
+                    const liveState = await this.checkDownloadState();
+                    if (liveState && liveState.isDownloading) {
+                        return;
+                    }
+                }
+                finished = true;
+                cleanup();
+                const finalState = await this.checkDownloadState();
+                if (!finalState || !finalState.isDownloading) {
+                    this.isUpdating = false;
+                }
+                const c = result.completed != null ? result.completed : (finalState?.completed ?? completed);
+                const t = result.total != null ? result.total : (finalState?.total ?? total);
+                resolve({
+                    ...result,
+                    completed: c,
+                    total: t,
+                    filesDownloaded: result.filesDownloaded != null ? result.filesDownloaded : c
+                });
+            };
+
+            const handleStallTimeout = async () => {
+                const swState = await this.checkDownloadState();
+                const c = swState?.completed ?? completed;
+                const t = swState?.total ?? total;
+                if (swState && swState.isDownloading) {
+                    console.warn(`Download stalled at ${c}/${t} — no progress for ${stallMs / 1000}s`);
+                    await finishDownload({
+                        success: false,
+                        stalled: true,
+                        timedOut: true,
+                        completed: c,
+                        total: t,
+                        filesDownloaded: c,
+                        hasErrors
+                    });
+                }
+            };
+
+            progressHandler = (event) => {
+                if (skipRequested || finished) {
+                    return;
+                }
+                const { type } = event.data || {};
+                if (type === 'STATIC_CACHE_STARTED') {
+                    this.isUpdating = true;
+                    total = event.data.total || total;
+                    reportProgress(completed, total);
+                    resetStallTimer();
+                } else if (type === 'STATIC_CACHE_PROGRESS') {
+                    reportProgress(event.data.completed || 0, event.data.total || 0);
+                    resetStallTimer();
+                } else if (type === 'STATIC_CACHE_COMPLETE') {
+                    const filesCount = event.data.total > 0
+                        ? event.data.total
+                        : (event.data.files ? event.data.files.length : completed);
+                    reportProgress(filesCount, filesCount || total);
+                    finishDownload({
+                        success: !hasErrors && filesCount >= 0,
+                        filesDownloaded: filesCount,
+                        completed: filesCount,
+                        total: filesCount || total,
+                        hasErrors
+                    });
+                } else if (type === 'STATIC_CACHE_ERROR') {
+                    hasErrors = true;
+                }
+            };
+
+            navigator.serviceWorker.addEventListener('message', progressHandler);
+            this._activeDownloadAttach = finishDownload;
+            this._attachDownloadSkipHandler = null;
+
+            if (allowSkip) {
+                this._attachDownloadSkipHandler = () => {
+                    if (skipRequested || finished) return;
+                    skipRequested = true;
+                    this.isUpdating = false;
+                    cleanup();
+                    if (typeof onSkip === 'function') {
+                        onSkip();
+                    }
+                    resolve({ success: false, userChoice: 'skip', reason: 'User skipped' });
+                };
+            }
+
+            const resolveIfFilesAlreadyCached = async (fileList) => {
+                if (!fileList || fileList.length === 0) {
+                    return false;
+                }
+                const stillPending = await this.getFilesNeedingUpdate(fileList);
+                if (stillPending.length > 0) {
+                    return false;
+                }
+                await finishDownload({
+                    success: true,
+                    filesDownloaded: fileList.length,
+                    completed: fileList.length,
+                    total: fileList.length,
+                    hasErrors
+                });
+                return true;
+            };
+
+            const swState = await this.checkDownloadState();
+            if (swState && swState.isDownloading) {
+                console.log('Joining in-progress download:', `${swState.completed}/${swState.total}`);
+                this.isUpdating = true;
+                reportProgress(swState.completed || 0, swState.total || 0);
+                resetStallTimer();
+                return;
+            }
+
+            if (!files || files.length === 0) {
+                cleanup();
+                resolve({ success: true, filesDownloaded: 0, completed: 0, total: 0 });
+                return;
+            }
+
+            if (await resolveIfFilesAlreadyCached(files)) {
+                return;
+            }
+
+            if (allowSkip && typeof onSkip === 'function') {
+                // Skip wired by caller (init modal)
+            }
+
+            this.swRegistration.active.postMessage({
+                type: 'CACHE_STATIC_FILES',
+                files
+            });
+            resetStallTimer();
+
+            // Catch fast completions that finish before progress events propagate
+            setTimeout(async () => {
+                if (!finished) {
+                    await resolveIfFilesAlreadyCached(files);
+                }
+            }, 250);
+        });
+    }
+
+    _resetInstallWizardEtaState() {
+        this._installWizardEtaState = {
+            lastCompleted: 0,
+            lastTime: Date.now(),
+            lastRate: null,
+            lastEtaText: '',
+            stallSince: null
+        };
+    }
+
+    _formatInstallWizardEta(remainingSeconds) {
+        if (remainingSeconds == null || !isFinite(remainingSeconds) || remainingSeconds <= 0) {
+            return '';
+        }
+        if (remainingSeconds < 60) {
+            return '< 1 min remaining';
+        }
+        const mins = Math.round(remainingSeconds / 60);
+        if (mins <= 1) {
+            return '~1 min remaining';
+        }
+        return `~${mins} min remaining`;
+    }
+
+    _computeInstallWizardEta(completed, total) {
+        if (!total || completed >= total) {
+            return '';
+        }
+
+        const state = this._installWizardEtaState;
+        if (!state) {
+            return '';
+        }
+
+        const now = Date.now();
+        if (completed <= state.lastCompleted) {
+            if (!state.stallSince) {
+                state.stallSince = now;
+            }
+            if (now - state.stallSince > 3000) {
+                state.lastRate = null;
+                state.lastEtaText = '';
+            }
+            return state.lastEtaText;
+        }
+
+        state.stallSince = null;
+        const elapsedSec = (now - state.lastTime) / 1000;
+        if (elapsedSec >= 0.5 && completed > state.lastCompleted) {
+            const rate = (completed - state.lastCompleted) / elapsedSec;
+            if (rate > 0) {
+                const remainingSec = (total - completed) / rate;
+                state.lastRate = rate;
+                state.lastEtaText = this._formatInstallWizardEta(remainingSec);
+            }
+        }
+
+        state.lastCompleted = completed;
+        state.lastTime = now;
+        return state.lastEtaText;
+    }
+
+    _buildInstallWizardStatus(phase, completed, total) {
+        const phases = {
+            prepare: {
+                phase: 'Preparing installation…',
+                detail: total > 0 ? `${total} files to download` : 'Checking for files to download…'
+            },
+            download: {
+                phase: 'Downloading application files',
+                detail: total > 0 ? `${completed} of ${total} files` : 'Starting download…'
+            },
+            verify: {
+                phase: 'Verifying installation',
+                detail: 'Checking cached files…'
+            },
+            stalled: {
+                phase: 'Download paused',
+                detail: total > 0 ? `Waiting to resume (${completed} of ${total} files)…` : 'Waiting to resume…'
+            },
+            finishing: {
+                phase: 'Finishing installation',
+                detail: 'Restarting Dreamscape OS…'
+            }
+        };
+
+        const labels = phases[phase] || phases.download;
+        const eta = phase === 'download' && total > 0
+            ? this._computeInstallWizardEta(completed, total)
+            : '';
+
+        return { ...labels, eta };
+    }
+
+    _showInstallWizardUi(pendingCount) {
+        this.installWizardUsed = true;
+        this._resetInstallWizardEtaState();
+        document.body.classList.add('dreamscape-install-wizard', 'initializing');
+        this._writeInstallWizardSession({ phase: 'wizard', pendingCount });
+
+        const status = this._buildInstallWizardStatus('prepare', 0, pendingCount);
+
+        if (window.isDesktop) {
+            const modal = document.getElementById('dreamscapeOsInstallWizardModal');
+            const phaseEl = document.getElementById('dreamscapeOsInstallWizardPhase');
+            const detailEl = document.getElementById('dreamscapeOsInstallWizardDetail');
+            const etaEl = document.getElementById('dreamscapeOsInstallWizardEta');
+            const progressBar = document.getElementById('dreamscapeOsInstallWizardProgressBar');
+            if (modal && phaseEl && detailEl && progressBar) {
+                phaseEl.textContent = status.phase;
+                detailEl.textContent = status.detail;
+                if (etaEl) {
+                    etaEl.textContent = status.eta;
+                }
+                progressBar.style.width = '0%';
+                modal.classList.remove('hidden');
+                modal.classList.add('opening');
+                if (typeof openModal === 'function') {
+                    openModal(modal);
+                }
+            }
+        } else if (typeof showGlassToast === 'function') {
+            this.installWizardToastId = showGlassToast(
+                'info',
+                'Installing Dreamscape OS',
+                `${status.phase} ${status.detail}`,
+                true,
+                false,
+                '<i class="fa-duotone fa-star-christmas"></i>'
+            );
+        }
+    }
+
+    _updateInstallWizardUi(completed, total, phase = 'download') {
+        const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+        const status = this._buildInstallWizardStatus(phase, completed, total);
+        const toastMessage = status.eta
+            ? `${status.phase} — ${status.detail} (${status.eta})`
+            : `${status.phase} — ${status.detail}`;
+
+        const modal = document.getElementById('dreamscapeOsInstallWizardModal');
+        const phaseEl = document.getElementById('dreamscapeOsInstallWizardPhase');
+        const detailEl = document.getElementById('dreamscapeOsInstallWizardDetail');
+        const etaEl = document.getElementById('dreamscapeOsInstallWizardEta');
+        const progressBar = document.getElementById('dreamscapeOsInstallWizardProgressBar');
+        if (modal && !modal.classList.contains('hidden') && phaseEl && detailEl && progressBar) {
+            phaseEl.textContent = status.phase;
+            detailEl.textContent = status.detail;
+            if (etaEl) {
+                etaEl.textContent = status.eta;
+            }
+            progressBar.style.width = `${progress}%`;
+        } else if (this.installWizardToastId) {
+            // updateGlassToastComplete / updateGlassToastProgress: public/scripts/comp/toastManager.js
+            if (typeof updateGlassToastComplete === 'function') {
+                updateGlassToastComplete(this.installWizardToastId, {
+                    type: 'info',
+                    title: 'Installing Dreamscape OS',
+                    message: toastMessage,
+                    customIcon: '<i class="fa-duotone fa-star-christmas"></i>',
+                    showProgress: true
+                });
+            }
+            if (typeof updateGlassToastProgress === 'function') {
+                updateGlassToastProgress(this.installWizardToastId, progress);
+            }
+        }
+    }
+
+    _hideInstallWizardUi() {
+        document.body.classList.remove('dreamscape-install-wizard');
+        this._installWizardEtaState = null;
+        const modal = document.getElementById('dreamscapeOsInstallWizardModal');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.classList.remove('opening');
+            if (typeof closeModal === 'function') {
+                closeModal(modal);
+            }
+        }
+        if (this.installWizardToastId && typeof removeGlassToast === 'function') {
+            removeGlassToast(this.installWizardToastId);
+            this.installWizardToastId = null;
+        }
+    }
+
+    async _finishInstallWizardWithRestart() {
+        this._updateInstallWizardUi(0, 0, 'finishing');
+        this._clearInstallWizardSession();
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        this.forceRestart();
+    }
+
+    async _runInstallWizard(filesToUpdate) {
+        this._showInstallWizardUi(filesToUpdate.length);
+        this._updateInstallWizardUi(0, filesToUpdate.length, 'download');
+        const result = await this.attachToDownloadProgress({
+            files: filesToUpdate,
+            onProgress: ({ completed, total }) => {
+                this._updateInstallWizardUi(completed, total, 'download');
+            }
+        });
+        if (result.stalled) {
+            this._updateInstallWizardUi(
+                result.completed || 0,
+                result.total || 0,
+                'stalled'
+            );
+            throw new Error(`Install wizard download stalled at ${result.completed}/${result.total}`);
+        }
+        if (!result.success && !result.hasErrors) {
+            throw new Error(result.reason || 'Install wizard download failed');
+        }
+        this._updateInstallWizardUi(result.completed || filesToUpdate.length, result.total || filesToUpdate.length, 'verify');
+        return result;
+    }
+
+    async runBootSequence() {
+        if (this.bootComplete) {
+            return;
+        }
+        this._bootOrchestrating = true;
+        let installWizardUsed = false;
+        try {
+            const resumeSession = this._readInstallWizardSession();
+            if (resumeSession && resumeSession.active) {
+                installWizardUsed = true;
+                this.installWizardUsed = true;
+                this.bootPhase = resumeSession.phase === 'verify' ? 'verify' : 'wizard';
+            } else {
+                this.bootPhase = 'waiting_sw';
+            }
+
+            await this.waitForServiceWorkerReady();
+            this.bootPhase = 'checking';
+            await this.checkForUpdates();
+
+            let verifyPass = 0;
+            const MAX_VERIFY_PASSES = 5;
+            let lastPendingFingerprint = '';
+
+            while (true) {
+                this.bootPhase = this.bootPhase === 'wizard' ? 'wizard' : 'checking';
+                const manifest = await this._fetchManifest();
+                let filesToUpdate = await this.getFilesNeedingUpdate(manifest);
+
+                if (filesToUpdate.length === 0) {
+                    break;
+                }
+
+                const pendingFingerprint = filesToUpdate.map((f) => `${f.url}:${f.hash}`).sort().join('|');
+                if (pendingFingerprint === lastPendingFingerprint) {
+                    verifyPass++;
+                } else {
+                    verifyPass = 1;
+                    lastPendingFingerprint = pendingFingerprint;
+                }
+                if (verifyPass > MAX_VERIFY_PASSES) {
+                    console.warn('Boot update verify exceeded max passes; continuing startup');
+                    break;
+                }
+
+                if (filesToUpdate.length > WIZARD_FILE_THRESHOLD || installWizardUsed) {
+                    installWizardUsed = true;
+                    this.installWizardUsed = true;
+                    this.bootPhase = 'wizard';
+                    await this._runInstallWizard(filesToUpdate);
+                    this.bootPhase = 'verify';
+                    this._writeInstallWizardSession({ phase: 'verify', pendingCount: filesToUpdate.length });
+                    this._updateInstallWizardUi(0, 0, 'verify');
+                    continue;
+                }
+
+                await this.checkAndDownloadUpdatesForInit();
+                this.bootPhase = 'verify';
+            }
+
+            if (installWizardUsed) {
+                await this._finishInstallWizardWithRestart();
+                return;
+            }
+
+            this._clearInstallWizardSession();
+            this._hideInstallWizardUi();
+            document.body.classList.remove('initializing');
+            this._resolveBootComplete();
+        } catch (error) {
+            this._showBootFatalError(error);
+            throw error;
+        } finally {
+            this._bootOrchestrating = false;
+        }
+    }
+
+    async runLoginBootSequence() {
+        if (this.loginBootComplete) {
+            return;
+        }
+        this._loginBootOrchestrating = true;
+        try {
+            if (this._readLoginBootSession()?.active) {
+                document.body.classList.add('login-booting');
+            }
+
+            await this.waitForServiceWorkerReady();
+            await this.checkForUpdates();
+
+            while (true) {
+                const manifest = await this._fetchManifest();
+                const criticalManifest = this.filterLoginCriticalFiles(manifest);
+                let filesToUpdate = await this.getFilesNeedingUpdate(criticalManifest);
+
+                if (filesToUpdate.length === 0) {
+                    break;
+                }
+
+                const loginPage = window.loginPage;
+                if (loginPage && typeof loginPage.showProgressBar === 'function') {
+                    loginPage.showProgressBar();
+                    loginPage.updateProgressStatus(0, 'Preparing sign-in…');
+                }
+
+                await this.attachToDownloadProgress({
+                    files: filesToUpdate,
+                    onProgress: ({ completed, total, progress }) => {
+                        if (loginPage && typeof loginPage.updateProgressStatus === 'function') {
+                            loginPage.updateProgressStatus(
+                                progress,
+                                total > 0 ? `Preparing sign-in (${completed}/${total})…` : 'Preparing sign-in…'
+                            );
+                        }
+                    }
+                });
+
+                // Verify pass on critical set only
+            }
+
+            this._clearLoginBootSession();
+            if (window.loginPage && typeof window.loginPage.hideProgressBar === 'function') {
+                window.loginPage.hideProgressBar();
+            }
+            this._resolveLoginBootComplete();
+        } catch (error) {
+            console.error('Login boot sequence failed:', error);
+            this._resolveLoginBootComplete();
+        } finally {
+            this._loginBootOrchestrating = false;
+        }
+    }
+
+    async checkLoginCriticalUpdates() {
+        try {
+            const manifest = await this._fetchManifest();
+            const criticalFiles = this.filterLoginCriticalFiles(manifest);
+            const filesToUpdate = await this.getFilesNeedingUpdate(criticalFiles);
+            if (filesToUpdate.length === 0) {
+                return { success: true, filesDownloaded: 0 };
+            }
+            return this.attachToDownloadProgress({ files: filesToUpdate });
+        } catch (error) {
+            console.error('Failed to check login critical updates:', error);
+            return { success: false, error: error.message };
         }
     }
 

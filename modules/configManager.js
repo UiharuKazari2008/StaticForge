@@ -1522,6 +1522,24 @@ class ConfigManager {
     _scheduleWorkspaceCssRecompile() {
         try {
             const workspaceCssService = require('./workspaceCssService');
+            const runtimeAssetCompiler = require('./runtimeAssetCompiler');
+            const gr = this.globalResources;
+
+            if (!workspaceCssService.isInitialized() && gr && typeof gr.getPath === 'function') {
+                workspaceCssService.ensureInitialized({
+                    projectRoot: gr.getPath('root'),
+                    getWorkspacesConfig: () => gr.getWorkspacesConfig(),
+                    compileCssSource: (source, rel, hash, opts) => runtimeAssetCompiler.compileCss(source, rel, hash, opts),
+                    hashSource: runtimeAssetCompiler.hashSource,
+                    buildHeader: runtimeAssetCompiler.buildHeader,
+                    atomicWrite: runtimeAssetCompiler.atomicWrite
+                });
+            }
+
+            if (!workspaceCssService.isInitialized()) {
+                return;
+            }
+
             workspaceCssService.scheduleRecompile();
         } catch (error) {
             console.warn('⚠️ Failed to schedule workspace CSS recompile:', error.message);

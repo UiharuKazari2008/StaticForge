@@ -61,16 +61,25 @@ function updateHtmlStylesheetShaLinks(root) {
                 if (!/\brel\s*=\s*["']stylesheet["']/i.test(attrs)) {
                     return full;
                 }
-                const hrefMatch = attrs.match(/\bhref\s*=\s*["'](\/css\/[^"'?]+)["']/i);
+                const hrefMatch = attrs.match(/\bhref\s*=\s*["'](\/css\/[^"']+)["']/i);
                 if (!hrefMatch) {
                     return full;
                 }
-                const cssPath = hrefMatch[1];
-                const servedPath = resolveServedAssetPath(targetRoot, cssPath);
-                if (!servedPath || !fs.existsSync(servedPath)) {
+                const cssPath = hrefMatch[1].split('?')[0];
+                let hash;
+                if (cssPath === runtimeAssetCompiler.WORKSPACE_CSS_WEB_PATH) {
+                    const workspaceCssService = require('./workspaceCssService');
+                    hash = workspaceCssService.resolveSourceHash(targetRoot);
+                } else {
+                    const servedPath = resolveServedAssetPath(targetRoot, cssPath);
+                    if (!servedPath || !fs.existsSync(servedPath)) {
+                        return full;
+                    }
+                    hash = hashServedFile(servedPath);
+                }
+                if (!hash) {
                     return full;
                 }
-                const hash = hashServedFile(servedPath);
                 const nextHref = `${cssPath}?sha=${hash}`;
                 const nextAttrs = attrs.replace(/\bhref\s*=\s*["'][^"']+["']/i, `href="${nextHref}"`);
                 if (nextAttrs === attrs) {

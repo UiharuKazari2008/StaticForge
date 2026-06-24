@@ -750,6 +750,7 @@ module.exports = {
     webPathToCompiledPath,
     hashSource,
     parseHeaderSourceHash,
+    readExistingSourceHash,
     buildHeader,
     atomicWrite,
     compileCss,

@@ -226,3 +226,88 @@
     justify-content: flex-end;
     margin-top: var(--spacing-md);
 }
+
+/* Connectivity error (boot / network) — scripts/comp/fatalErrorBootstrap.js */
+.dreamscape-connectivity-error-window {
+    width: auto;
+    min-width: 320px;
+    max-width: min(420px, calc(100vw - 32px));
+}
+
+.dreamscape-connectivity-message-row {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 12px;
+    text-align: left;
+}
+
+.dreamscape-connectivity-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    font-size: 32px;
+    line-height: 1;
+    color: var(--danger-color, #f44336);
+}
+
+.dreamscape-connectivity-icon i {
+    font-size: 32px;
+    line-height: 32px;
+}
+
+.dreamscape-connectivity-message-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    text-align: left;
+}
+
+.dreamscape-connectivity-headline {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    text-align: left;
+}
+
+.dreamscape-connectivity-summary {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    text-align: left;
+    opacity: 0.88;
+}
+
+body.windows-classic-theme .dreamscape-connectivity-icon {
+    color: var(--WindowText);
+}
+
+#dreamscapeConnectivityErrorOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;
+    background: #0c4a8c;
+    color: #e8f4ff;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: max(16px, var(--inset-top)) max(16px, var(--inset-right)) max(16px, var(--inset-bottom)) max(16px, var(--inset-left));
+    box-sizing: border-box;
+    overflow: auto;
+}
+
+#dreamscapeConnectivityErrorOverlay .dreamscape-connectivity-overlay-card {
+    max-width: 36rem;
+    width: 100%;
+    background: rgba(0, 24, 48, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: var(--border-radius-md);
+    padding: 1.25rem 1.5rem;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}

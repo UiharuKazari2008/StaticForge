@@ -133,6 +133,8 @@ async function startBackgroundTrayServices() {
             await flushDeferredAccountTrayNotifications();
             flushDeferredNetworkTrayNotifications();
             window._systemTrayBootComplete = true;
+            // updateWorkspaceTrayIcon: public/scripts/comp/trayIndicators.js
+            updateWorkspaceTrayIcon();
             resolve();
         }, delay + SYSTEM_TRAY_BOOT_STAGGER_MS);
     });

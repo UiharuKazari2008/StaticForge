@@ -274,3 +274,50 @@ body.desktop-mode.windows-startup.boot-from-launch {
     background: #000000;
     background-image: none;
 }
+
+/* Dreamscape OS installation wizard (>20 files during boot) */
+#dreamscapeOsInstallWizardModal {
+    max-width: calc(100vw - 48px);
+    z-index: var(--z-modal-top) !important;
+}
+
+.dreamscape-os-install-wizard-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+}
+
+.dreamscape-os-install-wizard-phase {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary, #fff);
+}
+
+.dreamscape-os-install-wizard-detail {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.dreamscape-os-install-wizard-eta {
+    font-size: 12px;
+    color: var(--text-secondary);
+    min-height: 1.2em;
+}
+
+.dreamscape-os-install-wizard-eta:empty {
+    display: none;
+}
+
+.dreamscape-os-install-wizard-progress {
+    width: 100%;
+    margin-top: 4px;
+}
+
+body.dreamscape-install-wizard {
+    overflow: hidden;
+}
+
+body.dreamscape-install-wizard .modal:not(#dreamscapeOsInstallWizardModal):not(.on-top) {
+    pointer-events: none;
+}
