@@ -94,8 +94,9 @@ class LoginPage {
 
     updateAriaAttributes() {
         const isMinimized = this.loginContainer.classList.contains('minimize');
+        const digits = this.rollingBuffer.length;
         this.pinDisplay.setAttribute('aria-expanded', !isMinimized);
-        this.pinDisplay.setAttribute('aria-label', isMinimized ? 'Show PIN pad' : 'Hide PIN pad');
+        this.pinDisplay.setAttribute('aria-label', (isMinimized ? 'Show PIN pad' : 'Hide PIN pad') + (digits > 0 ? `, ${digits} digit${digits === 1 ? '' : 's'} entered` : ''));
     }
 
     addDigit(digit) {
@@ -107,6 +108,7 @@ class LoginPage {
         if (this.rollingBuffer.length < 6) {
             this.rollingBuffer += digit;
             this.updatePinDisplay();
+            this.updateAriaAttributes();
             
             // Auto-submit when 6 digits are entered
             if (this.rollingBuffer.length === 6) {
@@ -119,12 +121,14 @@ class LoginPage {
         if (this.rollingBuffer.length > 0) {
             this.rollingBuffer = this.rollingBuffer.slice(0, -1);
             this.updatePinDisplay();
+            this.updateAriaAttributes();
         }
     }
 
     clearPin() {
         this.rollingBuffer = '';
         this.updatePinDisplay();
+        this.updateAriaAttributes();
     }
 
     async clearCachesAndReload() {
