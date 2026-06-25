@@ -1568,20 +1568,58 @@ function showManualLoading(show, message = 'Generating Image...') {
 }
 
 // Show manual preview navigation loading overlay
-function showManualPreviewNavigationLoading(show, statusText = '') {
+function showManualPreviewNavigationLoading(show, statusText = '', progressPercent = null) {
     const navigationLoadingOverlay = document.getElementById('manualPreviewNavigationLoading');
+    const progressWrap = document.getElementById('manualPreviewNavigationProgress');
+    const progressFill = document.getElementById('manualPreviewNavigationProgressFill');
+    const progressLabel = document.getElementById('manualPreviewNavigationProgressLabel');
+    const progressBar = progressWrap?.querySelector('.manual-preview-navigation-progress-bar');
+    const spinnerIcon = navigationLoadingOverlay?.querySelector('.manual-preview-navigation-loading-icon');
 
     if (navigationLoadingOverlay) {
         if (show) {
             navigationLoadingOverlay.classList.remove('hidden');
-            if (statusText) {
-                navigationLoadingOverlay.title = statusText;
-            } else {
+            const isIndeterminate = progressPercent === 'indeterminate';
+            const hasProgress = isIndeterminate
+                || (progressPercent != null && Number.isFinite(Number(progressPercent)));
+            if (hasProgress) {
+                navigationLoadingOverlay.classList.add('download-progress');
+                if (progressWrap) progressWrap.classList.remove('hidden');
+                if (spinnerIcon) spinnerIcon.classList.add('hidden');
+                if (progressBar) {
+                    progressBar.classList.toggle('indeterminate', isIndeterminate);
+                }
+                if (!isIndeterminate && progressFill) {
+                    const pct = Math.max(0, Math.min(100, Math.round(Number(progressPercent))));
+                    progressFill.style.width = `${pct}%`;
+                } else if (progressFill) {
+                    progressFill.style.width = '';
+                }
+                if (progressLabel) {
+                    progressLabel.textContent = statusText || (isIndeterminate ? 'Downloading…' : `Downloading ${Math.round(Number(progressPercent))}%`);
+                }
                 navigationLoadingOverlay.removeAttribute('title');
+            } else {
+                navigationLoadingOverlay.classList.remove('download-progress');
+                if (progressWrap) progressWrap.classList.add('hidden');
+                if (spinnerIcon) spinnerIcon.classList.remove('hidden');
+                if (progressBar) progressBar.classList.remove('indeterminate');
+                if (progressFill) progressFill.style.width = '0%';
+                if (statusText) {
+                    navigationLoadingOverlay.title = statusText;
+                } else {
+                    navigationLoadingOverlay.removeAttribute('title');
+                }
             }
         } else {
             navigationLoadingOverlay.classList.add('hidden');
+            navigationLoadingOverlay.classList.remove('download-progress');
             navigationLoadingOverlay.removeAttribute('title');
+            if (progressWrap) progressWrap.classList.add('hidden');
+            if (spinnerIcon) spinnerIcon.classList.remove('hidden');
+            if (progressBar) progressBar.classList.remove('indeterminate');
+            if (progressFill) progressFill.style.width = '0%';
+            if (progressLabel) progressLabel.textContent = 'Downloading…';
         }
     }
 }
@@ -2899,16 +2937,9 @@ async function openManualModalWithContent(content = null, event = null) {
                 }
             }
 
-            // Set up preview to show the image being edited
-            if (allImages && Array.isArray(allImages)) {
-                const filename = loadImage.filename || loadImage.upscaled || loadImage.original;
-                if (filename) {
-                    const galleryIndex = findTrueImageIndexInGallery(filename);
-                    if (galleryIndex >= 0) {
-                        await updateManualPreview(galleryIndex);
-                    }
-                }
-            }
+            // Preview is loaded in loadIntoManualForm via updateManualPreviewDirectly / loadTempImagePreview.
+            // Do not call updateManualPreview here — it releases the current src and reloads by gallery
+            // index, which races with the direct load and clears the preview back to the placeholder.
 
             // Save current gallery position
             const isWindowed = manualModal.classList.contains('windowed')
@@ -3883,7 +3914,7 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
                         imageToShow = image.original;
                     }
                     if (imageToShow) {
-                        updateManualPreviewDirectly(image, window.currentEditMetadata);
+                        await updateManualPreviewDirectly(image, window.currentEditMetadata);
                     }
                 }
             }
@@ -4546,7 +4577,49 @@ async function handleManualGeneration(e, options = {}) {
                 metadata.dynamic_generation.compiled_prompt = compiled_prompt;
             }
 
-            // Store text replacement seeds — per-image metadata when present, else generation response pool
+            // Wait for queued streaming frames, then fetch final image before other UI work
+            if (window.wsClient && window.wsClient.waitForStreamingStepsComplete) {
+                await window.wsClient.waitForStreamingStepsComplete('manual');
+            }
+
+            if (filename) {
+                const imageSrc = `/images/${filename}`;
+                const wsClient = window.wsClient;
+                let contentLength = result.contentLength || result.metadata?.file_size || null;
+                if ((!contentLength || contentLength <= 0) && wsClient?.pendingGenerationDownloadBytes > 0) {
+                    const pendingName = wsClient.pendingGenerationDownloadFilename;
+                    if (!pendingName || pendingName === filename) {
+                        contentLength = wsClient.pendingGenerationDownloadBytes;
+                    }
+                }
+                if (wsClient) {
+                    wsClient.pendingGenerationDownloadBytes = null;
+                    wsClient.pendingGenerationDownloadFilename = null;
+                }
+                const mockResponse = {
+                    headers: {
+                        get: (headerName) => {
+                            if (headerName === 'X-Generated-Filename') {
+                                return filename;
+                            }
+                            if (headerName === 'Content-Length' && contentLength) {
+                                return String(contentLength);
+                            }
+                            return null;
+                        }
+                    }
+                };
+
+                await handleImageResult(imageSrc, undefined, seed || values.seed, mockResponse, metadata);
+            } else {
+                console.log('✅ Streaming image generation completed');
+            }
+
+            manualForm.classList.remove('streaming');
+            stopPreviewAnimation();
+            hideDynamicGenerationProgressOverlayImmediate();
+
+            // Post-preview UI updates (preview fetch already completed above)
             const metaSeeds = metadata?.text_replacements_seed || metadata?.forge_data?.text_replacements_seed;
             const seedsForInspector = (Array.isArray(metaSeeds) && metaSeeds.length > 0)
                 ? metaSeeds
@@ -4606,97 +4679,7 @@ async function handleManualGeneration(e, options = {}) {
                 // Refresh the text replacement lock modal if it's currently open
                 refreshTextReplacementLockModalIfOpen();
             }
- 
-            if (filename && metadata) {
-                window.lastGeneration = metadata;
-                window.lastGeneration.filename = filename;
-                window.currentManualPreviewImage = { filename, original: filename, upscaled: null, base: filename };
-                if (typeof updateAndroidNotificationImageFromCurrentPreview === 'function') {
-                    updateAndroidNotificationImageFromCurrentPreview();
-                }
-                // Director new session functionality is always available
 
-                // Update character names and generated image name from metadata
-                if (metadata?.dynamic_generation?.compiled_prompt) {
-                    const compiledPrompt = metadata.dynamic_generation.compiled_prompt;
-
-                    // Load character names into inputs
-                    if (compiledPrompt.character_names && Array.isArray(compiledPrompt.character_names)) {
-                        const charaContainers = document.querySelectorAll('.character-container');
-                        compiledPrompt.character_names.forEach((name, index) => {
-                            if (name && charaContainers[index]) {
-                                const nameInput = charaContainers[index].querySelector('input[id^="charaName"]');
-                                if (nameInput && nameInput.value !== name) {
-                                    nameInput.value = name;
-                                    console.log(`✨ Updated character name ${index + 1}: "${name}"`);
-                                }
-                            }
-                        });
-
-                        // Update character prompt item names
-                        updateCharacterPromptItemNames(compiledPrompt.character_names);
-                    }
-
-                    // Display generated image name, clear if not provided
-                    if (compiledPrompt.generated_image_name) {
-                        window.lastGeneratedImageName = compiledPrompt.generated_image_name;
-                        console.log(`🖼️ Generated image name: "${compiledPrompt.generated_image_name}"`);
-                        updateGeneratedImageNameDisplay(compiledPrompt.generated_image_name);
-                    } else {
-                        window.lastGeneratedImageName = null;
-                        updateGeneratedImageNameDisplay(null);
-                    }
-                } else {
-                    // No dynamic_generation data, clear display
-                    window.lastGeneratedImageName = null;
-                    updateGeneratedImageNameDisplay(null);
-                }
-            }
-
-            // Extract seed if available and add to history
-            if (seed) {
-                const seedInt = parseInt(seed);
-                window.lastGeneratedSeed = seedInt;
-                sproutSeedBtn.classList.add('available');
-                addSeedToHistory(seedInt);
-            }
-
-            // Wait for all queued streaming steps to be displayed before finalizing
-            if (window.wsClient && window.wsClient.waitForStreamingStepsComplete) {
-                console.log('⏳ Waiting for streaming steps to complete...');
-                await window.wsClient.waitForStreamingStepsComplete('manual');
-                console.log('✅ All streaming steps displayed');
-            }
-
-            // Load final image from disk via /images/ (service worker caches)
-            if (filename) {
-                const imageSrc = `/images/${filename}`;
-                const contentLength = result.contentLength || result.metadata?.file_size || null;
-                const mockResponse = {
-                    headers: {
-                        get: (headerName) => {
-                            if (headerName === 'X-Generated-Filename') {
-                                return filename;
-                            }
-                            if (headerName === 'Content-Length' && contentLength) {
-                                return String(contentLength);
-                            }
-                            return null;
-                        }
-                    }
-                };
-
-                await handleImageResult(imageSrc, undefined, seed || values.seed, mockResponse, metadata);
-            } else {
-                console.log('✅ Streaming image generation completed');
-            }
-
-            // Remove streaming class before setting final image
-            manualForm.classList.remove('streaming');
-
-            // Now stop the animation AFTER the image is displayed
-            stopPreviewAnimation();
-            hideDynamicGenerationProgressOverlayImmediate();
         } else {
             throw new Error('Invalid response from WebSocket');
         }
@@ -4747,13 +4730,91 @@ async function handleManualGeneration(e, options = {}) {
  * TODO: Move function implementation from app.js
  */
 async function handleImageResult(imageSrc, clearContextFn, seed = null, response = null, metadata = null) {
-    // Release streaming/data preview pixels before loading final /images/ URL
+    const manualModalOpen = manualModal && !manualModal.classList.contains('hidden');
+
+    const applyGenerationMetadataUi = (meta) => {
+        if (!meta?.dynamic_generation?.compiled_prompt) {
+            window.lastGeneratedImageName = null;
+            updateGeneratedImageNameDisplay(null);
+            return;
+        }
+        const compiledPrompt = meta.dynamic_generation.compiled_prompt;
+        if (compiledPrompt.character_names && Array.isArray(compiledPrompt.character_names)) {
+            const charaContainers = document.querySelectorAll('.character-container');
+            compiledPrompt.character_names.forEach((name, index) => {
+                if (name && charaContainers[index]) {
+                    const nameInput = charaContainers[index].querySelector('input[id^="charaName"]');
+                    if (nameInput && nameInput.value !== name) {
+                        nameInput.value = name;
+                    }
+                }
+            });
+            updateCharacterPromptItemNames(compiledPrompt.character_names);
+        }
+        if (compiledPrompt.generated_image_name) {
+            window.lastGeneratedImageName = compiledPrompt.generated_image_name;
+            updateGeneratedImageNameDisplay(compiledPrompt.generated_image_name);
+        } else {
+            window.lastGeneratedImageName = null;
+            updateGeneratedImageNameDisplay(null);
+        }
+    };
+
+    if (manualModalOpen) {
+        const headerContentLength = response?.headers?.get?.('Content-Length') || response?.headers?.get?.('content-length');
+        const knownLen = parseInt(headerContentLength || '0', 10);
+        const navOverlay = document.getElementById('manualPreviewNavigationLoading');
+        if (Number.isFinite(knownLen) && knownLen > 0) {
+            showManualPreviewNavigationLoading(true, 'Downloading…', 0);
+        } else if (!navOverlay?.classList.contains('download-progress')) {
+            showManualPreviewNavigationLoading(true, 'Downloading…', 'indeterminate');
+        }
+
+        const genFilename = metadata?.filename
+            || response?.headers?.get?.('X-Generated-Filename')
+            || null;
+        if (metadata) {
+            window.lastGeneration = metadata;
+            if (genFilename) {
+                window.lastGeneration.filename = genFilename;
+            }
+            window.currentManualPreviewImage = {
+                filename: genFilename,
+                original: genFilename,
+                upscaled: null,
+                base: genFilename
+            };
+        }
+
+        if (seed !== null) {
+            window.lastGeneratedSeed = seed;
+            sproutSeedBtn.classList.add('available');
+            updateSproutSeedButtonFromPreviewSeed();
+            addSeedToHistory(seed);
+        }
+
+        document.querySelectorAll('.manual-preview-image-container, #manualPanelSection').forEach(element => {
+            element.classList.remove('swapped');
+        });
+        await updateManualPreview(0, response, metadata);
+
+        manualPreviewOriginalImage.classList.remove('hidden');
+        if (genFilename && typeof updateAndroidNotificationImageFromCurrentPreview === 'function') {
+            updateAndroidNotificationImageFromCurrentPreview();
+        }
+        if (genFilename && typeof novelOnImageGenerated === 'function' && metadata) {
+            novelOnImageGenerated(genFilename, metadata);
+        }
+        applyGenerationMetadataUi(metadata);
+        createConfetti();
+        return;
+    }
+
     releaseManualPreviewImageSrc();
     if (window.wsClient) {
         window.wsClient.releaseDataImageSrc(document.getElementById('manualPreviewImage'));
     }
 
-    // Store the seed for manual preview
     if (seed !== null) {
         window.lastGeneratedSeed = seed;
         sproutSeedBtn.classList.add('available');
@@ -4768,55 +4829,16 @@ async function handleImageResult(imageSrc, clearContextFn, seed = null, response
         }
     }
 
-    // Handle metadata - either from direct parameter or from response headers (legacy)
     if (metadata) {
-        // Use metadata passed directly (new WebSocket flow)
         window.lastGeneration = metadata;
         manualPreviewOriginalImage.classList.remove('hidden');
 
         const genFilename = metadata.filename || window.lastGeneration?.filename || response?.headers?.get?.('X-Generated-Filename');
-        // novelOnImageGenerated: public/scripts/comp/novelManager.js
         if (genFilename && typeof novelOnImageGenerated === 'function') {
             novelOnImageGenerated(genFilename, metadata);
         }
-
-        // Update character names and generated image name from metadata
-        if (metadata?.dynamic_generation?.compiled_prompt) {
-            const compiledPrompt = metadata.dynamic_generation.compiled_prompt;
-
-            // Load character names into inputs
-            if (compiledPrompt.character_names && Array.isArray(compiledPrompt.character_names)) {
-                const charaContainers = document.querySelectorAll('.character-container');
-                compiledPrompt.character_names.forEach((name, index) => {
-                    if (name && charaContainers[index]) {
-                        const nameInput = charaContainers[index].querySelector('input[id^="charaName"]');
-                        if (nameInput && nameInput.value !== name) {
-                            nameInput.value = name;
-                            console.log(`✨ Updated character name ${index + 1}: "${name}"`);
-                        }
-                    }
-                });
-
-                // Update character prompt item names
-                updateCharacterPromptItemNames(compiledPrompt.character_names);
-            }
-
-            // Display generated image name, clear if not provided
-            if (compiledPrompt.generated_image_name) {
-                window.lastGeneratedImageName = compiledPrompt.generated_image_name;
-                console.log(`🖼️ Generated image name: "${compiledPrompt.generated_image_name}"`);
-                updateGeneratedImageNameDisplay(compiledPrompt.generated_image_name);
-            } else {
-                window.lastGeneratedImageName = null;
-                updateGeneratedImageNameDisplay(null);
-            }
-        } else {
-            // No dynamic_generation data, clear display
-            window.lastGeneratedImageName = null;
-            updateGeneratedImageNameDisplay(null);
-        }
+        applyGenerationMetadataUi(metadata);
     } else if (response && response.headers) {
-        // Legacy flow: Extract seed from response header if available
         const headerSeed = response.headers.get('X-Seed');
         if (headerSeed) {
             const seedInt = parseInt(headerSeed);
@@ -4825,7 +4847,6 @@ async function handleImageResult(imageSrc, clearContextFn, seed = null, response
             updateSproutSeedButtonFromPreviewSeed();
             addSeedToHistory(seedInt);
         }
-        // Fetch metadata for the generated image if we have a filename
         const filename = response.headers.get('X-Generated-Filename');
         if (filename) {
             try {
@@ -4833,59 +4854,13 @@ async function handleImageResult(imageSrc, clearContextFn, seed = null, response
                 window.lastGeneration = fetchedMetadata;
                 window.lastGeneration.filename = filename;
                 manualPreviewOriginalImage.classList.remove('hidden');
-                // Director new session functionality is always available
-
-                // Update character names and generated image name from metadata
-                if (fetchedMetadata?.dynamic_generation?.compiled_prompt) {
-                    const compiledPrompt = fetchedMetadata.dynamic_generation.compiled_prompt;
-
-                    // Load character names into inputs
-                    if (compiledPrompt.character_names && Array.isArray(compiledPrompt.character_names)) {
-                        const charaContainers = document.querySelectorAll('.character-container');
-                        compiledPrompt.character_names.forEach((name, index) => {
-                            if (name && charaContainers[index]) {
-                                const nameInput = charaContainers[index].querySelector('input[id^="charaName"]');
-                                if (nameInput && nameInput.value !== name) {
-                                    nameInput.value = name;
-                                    console.log(`✨ Updated character name ${index + 1}: "${name}"`);
-                                }
-                            }
-                        });
-
-                        // Update character prompt item names
-                        updateCharacterPromptItemNames(compiledPrompt.character_names);
-                    }
-
-                    // Display generated image name, clear if not provided
-                    if (compiledPrompt.generated_image_name) {
-                        window.lastGeneratedImageName = compiledPrompt.generated_image_name;
-                        console.log(`🖼️ Generated image name: "${compiledPrompt.generated_image_name}"`);
-                        updateGeneratedImageNameDisplay(compiledPrompt.generated_image_name);
-                    } else {
-                        window.lastGeneratedImageName = null;
-                        updateGeneratedImageNameDisplay(null);
-                    }
-                } else {
-                    // No dynamic_generation data, clear display
-                    window.lastGeneratedImageName = null;
-                    updateGeneratedImageNameDisplay(null);
-                }
+                applyGenerationMetadataUi(fetchedMetadata);
             } catch (error) {
                 console.warn('Failed to fetch metadata for generated image:', error);
-                // Clear display on error
                 window.lastGeneratedImageName = null;
                 updateGeneratedImageNameDisplay(null);
             }
         }
-    }
-
-    if (!manualModal.classList.contains('hidden')) {
-        document.querySelectorAll('.manual-preview-image-container, #manualPanelSection').forEach(element => {
-            element.classList.remove('swapped');
-        });
-        await updateManualPreview(0, response, metadata);
-        createConfetti();
-        return;
     }
 
     const img = new Image();

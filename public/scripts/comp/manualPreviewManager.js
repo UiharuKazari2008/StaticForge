@@ -23,6 +23,15 @@ function releaseManualPreviewElementImageSrc(img) {
     img.removeAttribute('src');
 }
 
+/** Revoke blob URLs only — keep data:/http preview visible until the next src finishes loading. */
+function prepareManualPreviewSrcSwap(img) {
+    if (!img) return;
+    const src = img.currentSrc || img.src || '';
+    if (src.startsWith('blob:')) {
+        releaseManualPreviewElementImageSrc(img);
+    }
+}
+
 function releaseManualPreviewOriginalImageSrc() {
     const originalImage = document.getElementById('manualPreviewOriginalImage');
     if (!originalImage) return;
@@ -539,7 +548,8 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                     const viewType = currentGalleryView || 'images';
                     imageData = await window.wsClient.requestImageByIndex(index, viewType);
                     if (imageData) {
-                        imageUrl = `/images/${imageData.original}`;
+                        const previewFilename = imageData.upscaled || imageData.original || imageData.filename;
+                        imageUrl = previewFilename ? `/images/${previewFilename}` : null;
                     }
                 } catch (error) {
                     console.warn('Failed to get image by index:', error);
@@ -557,25 +567,62 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
             previewImage.dataset.manualPreviewUrl = imageUrl;
             let timedOut = false;
             let trackedBlobUrl = null;
+            const isGenerationFinalize = !!(response && response.headers);
             const contentLengthHeader = response?.headers?.get?.('Content-Length') || response?.headers?.get?.('content-length');
             const knownContentLength = parseInt(contentLengthHeader || '0', 10);
-            const useTrackedFetch = !!response && Number.isFinite(knownContentLength) && knownContentLength > 0;
+            const useTrackedFetch = isGenerationFinalize
+                || (!!response && Number.isFinite(knownContentLength) && knownContentLength > 0);
+
+            if (isGenerationFinalize && previewImage.src) {
+                previewImage.classList.remove('hidden');
+                previewPlaceholder.classList.add('hidden');
+            }
+
+            const reportDownloadProgress = (progress) => {
+                if (progress.total > 0) {
+                    const pct = Math.min(100, Math.round(progress.ratio * 100));
+                    const eta = progress.etaSeconds != null ? formatImageTransferEta(progress.etaSeconds) : '';
+                    const sizeHint = progress.loaded > 0
+                        ? ` · ${formatImageTransferBytes(progress.loaded)} / ${formatImageTransferBytes(progress.total)}`
+                        : '';
+                    const label = eta
+                        ? `Downloading ${pct}% · ${eta}${sizeHint}`
+                        : `Downloading ${pct}%${sizeHint}`;
+                    showManualPreviewNavigationLoading(true, label, pct);
+                } else if (progress.loaded > 0) {
+                    const label = `Downloading ${formatImageTransferBytes(progress.loaded)}…`;
+                    showManualPreviewNavigationLoading(true, label, 'indeterminate');
+                } else {
+                    showManualPreviewNavigationLoading(true, 'Downloading…', isGenerationFinalize ? 0 : null);
+                }
+            };
+
+            const finalizeFetchInit = isGenerationFinalize
+                ? { headers: { 'X-Preview-Finalize': '1' } }
+                : {};
 
             if (useTrackedFetch) {
                 try {
+                    if (isGenerationFinalize) {
+                        showManualPreviewNavigationLoading(true, 'Downloading…', knownContentLength > 0 ? 0 : 'indeterminate');
+                    }
                     const fetchResult = await fetchTrackedImageBlob(imageUrl, knownContentLength, (progress) => {
-                        if (progress.total > 0) {
-                            const pct = Math.min(100, Math.round(progress.ratio * 100));
-                            const eta = progress.etaSeconds != null ? formatImageTransferEta(progress.etaSeconds) : '';
-                            const status = eta ? `Downloading image ${pct}% · ${eta}` : `Downloading image ${pct}%`;
-                            showManualPreviewNavigationLoading(true, status);
+                        if (isGenerationFinalize || progress.total > 0 || progress.loaded > 0) {
+                            reportDownloadProgress(progress);
                         }
-                    });
+                    }, finalizeFetchInit);
                     if (fetchResult.objectUrl) {
                         trackedBlobUrl = fetchResult.objectUrl;
+                        trackManualPreviewBlobUrl(trackedBlobUrl);
+                        if (isGenerationFinalize && fetchResult.total > 0) {
+                            showManualPreviewNavigationLoading(true, 'Processing image…', 100);
+                        }
                     }
                 } catch (fetchError) {
                     console.warn('Tracked generation result fetch failed, falling back to direct image load:', fetchError);
+                    if (isGenerationFinalize) {
+                        showManualPreviewNavigationLoading(true, 'Loading image…');
+                    }
                 }
             }
 
@@ -599,28 +646,25 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                     settled = true;
                     imageWidth = previewImage.naturalWidth;
                     imageHeight = previewImage.naturalHeight;
-                    // If we already timed out, swap from placeholder to the loaded image now.
                     previewImage.classList.remove('hidden');
                     previewPlaceholder.classList.add('hidden');
                     cleanup();
-                    // If the editor continued after timeout, apply sizing once the image finally loads.
                     if (timedOut && imageWidth && imageHeight) {
                         sizeManualPreviewContainer(imageWidth, imageHeight);
                     }
                     resolve();
                 };
-                timeoutId = setTimeout(() => {
-                    if (settled) return;
-                    // Don't reject here: allow the rest of the editor to keep loading.
-                    // Keep the load/error handlers active so the image can still load later.
-                    timedOut = true;
-                    resolve();
-                }, 10000);
-                releaseManualPreviewElementImageSrc(previewImage);
+                if (!isGenerationFinalize) {
+                    timeoutId = setTimeout(() => {
+                        if (settled) return;
+                        timedOut = true;
+                        resolve();
+                    }, 10000);
+                }
+                prepareManualPreviewSrcSwap(previewImage);
                 previewImage.onload = finish;
                 previewImage.onerror = () => {
                     if (settled) return;
-                    // Ignore stale errors if a newer preview request repointed the element.
                     if (previewImage.dataset.manualPreviewUrl !== imageUrl) return;
                     settled = true;
                     cleanup();
@@ -638,13 +682,15 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
 
             // If a newer preview request started while we waited, don't clobber UI state.
             if (previewImage.dataset.manualPreviewUrl !== imageUrl) return;
-            if (!timedOut) {
+            if (!timedOut || isGenerationFinalize) {
                 previewImage.classList.remove('hidden');
                 previewPlaceholder.classList.add('hidden');
             } else {
-                // Keep the placeholder visible until the image finishes loading in the background.
-                previewImage.classList.add('hidden');
-                previewPlaceholder.classList.remove('hidden');
+                const hasVisiblePreview = Boolean(previewImage.src) && !previewImage.classList.contains('hidden');
+                if (!hasVisiblePreview) {
+                    previewImage.classList.add('hidden');
+                    previewPlaceholder.classList.remove('hidden');
+                }
             }
 
             // Preview URL for download/copy (same-origin /images/)
@@ -653,7 +699,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
             // Keep compare source layer ready for instant toggles
             const compareSourceImage = document.getElementById('manualPreviewCompareSourceImage');
             if (compareSourceImage && compareSourceImageData?.url) {
-                releaseManualPreviewElementImageSrc(compareSourceImage);
+                prepareManualPreviewSrcSwap(compareSourceImage);
                 compareSourceImage.src = compareSourceImageData.url;
                 compareSourceImage.classList.remove('hidden');
             }
@@ -990,7 +1036,7 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
                     timedOut = true;
                     resolve();
                 }, 10000);
-                releaseManualPreviewElementImageSrc(previewImage);
+                prepareManualPreviewSrcSwap(previewImage);
                 previewImage.onload = finish;
                 previewImage.onerror = () => {
                     if (settled) return;
@@ -1026,7 +1072,7 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
             // Keep compare source layer ready for instant toggles
             const compareSourceImage = document.getElementById('manualPreviewCompareSourceImage');
             if (compareSourceImage && compareSourceImageData?.url) {
-                releaseManualPreviewElementImageSrc(compareSourceImage);
+                prepareManualPreviewSrcSwap(compareSourceImage);
                 compareSourceImage.src = compareSourceImageData.url;
                 compareSourceImage.classList.remove('hidden');
             }

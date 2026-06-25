@@ -339,8 +339,9 @@ async function enforceImageCachePolicy() {
 async function handleImageRequest(event) {
   const { request } = event;
   const canonicalUrl = getCanonicalUrl(request.url);
+  const bypassImageCache = request.headers.get('X-Preview-Finalize') === '1';
   const cache = await caches.open(IMAGE_CACHE);
-  const cachedResponse = await cache.match(canonicalUrl);
+  const cachedResponse = bypassImageCache ? null : await cache.match(canonicalUrl);
 
   if (cachedResponse) {
     let discardCached = !cachedResponse.ok;

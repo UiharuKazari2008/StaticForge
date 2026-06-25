@@ -3299,15 +3299,89 @@ html.disable-blur .manual-loading-overlay {
     opacity: 1;
     transition: opacity var(--transition-normal);
     transform: translateZ(0);
-    pointer-events: auto;
+    pointer-events: none;
+    background: transparent;
+}
+
+.manual-preview-navigation-loading.download-progress {
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 25%;
 }
 
 .manual-preview-navigation-loading-content {
     text-align: center;
     padding: 20px;
-    width: 90%;
+    width: min(90%, 320px);
     font-size: 4.5em;
     color: var(--active-tab-bg);
+    pointer-events: auto;
+}
+
+.manual-preview-navigation-loading.download-progress .manual-preview-navigation-loading-content {
+    width: 60%;
+    padding: var(--spacing-md) var(--spacing-lg);
+    font-size: 1rem;
+    background: var(--glass-layer-dark-3);
+    border: 1px solid var(--glass-border-4);
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--glass-shadow-3);
+}
+
+.manual-preview-navigation-loading-icon.hidden {
+    display: none;
+}
+
+.manual-preview-navigation-progress {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    width: 100%;
+}
+
+.manual-preview-navigation-progress.hidden {
+    display: none;
+}
+
+.manual-preview-navigation-progress-label {
+    margin: 0;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: 0.02em;
+}
+
+.manual-preview-navigation-progress-bar {
+    width: 100%;
+    height: 8px;
+    border-radius: var(--border-radius-sm);
+    background: hsl(0 0% 100% / 18%);
+    overflow: hidden;
+    border: 1px solid hsl(0 0% 100% / 22%);
+    position: relative;
+}
+
+.manual-preview-navigation-progress-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--active-tab-bg), hsl(0 0% 100% / 92%));
+    transition: width 0.15s ease;
+}
+
+.manual-preview-navigation-progress-bar.indeterminate .manual-preview-navigation-progress-fill {
+    width: 35%;
+    transition: none;
+    animation: manual-preview-download-indeterminate 1.1s ease-in-out infinite;
+}
+
+@keyframes manual-preview-download-indeterminate {
+    0% {
+        transform: translateX(-120%);
+    }
+    100% {
+        transform: translateX(320%);
+    }
 }
 
 .manual-loading-content {

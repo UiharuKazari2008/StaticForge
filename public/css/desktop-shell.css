@@ -589,15 +589,7 @@ body:not(.desktop-mode) .desktop-taskbar {
     position: relative;
     isolation: isolate;
     box-sizing: border-box;
-    transition:
-        background-color var(--transition-fast),
-        border-color var(--transition-fast),
-        box-shadow var(--transition-fast),
-        min-width var(--transition-fast),
-        max-width var(--transition-fast),
-        width var(--transition-fast),
-        padding var(--transition-fast),
-        opacity var(--transition-fast);
+    transition: color var(--transition-fast);
 
     /* Vista-style layered glass background */
     background:
@@ -617,6 +609,26 @@ body:not(.desktop-mode) .desktop-taskbar {
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.1),
         inset 0 -1px 0 rgba(0, 0, 0, 0.25);
+}
+
+/* Active fill, border, and outer glow fade together via one opacity transition */
+.taskbar-window-item::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    z-index: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--transition-fast);
+    box-sizing: border-box;
+    border: 1px solid var(--btn-hover-bg-primary);
+    border-bottom-color: var(--dropdown-selected-bg);
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.06) 48%, rgba(0, 0, 0, 0.08) 52%, rgba(0, 0, 0, 0.12) 100%), linear-gradient(to top, var(--btn-hover-bg-primary) 0%, var(--primary-glass-color) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.3),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.2),
+        0 0 8px var(--primary-glass-color);
 }
 
 @supports not ((-webkit-touch-callout: none) or (hover: hover)) {
@@ -641,17 +653,13 @@ body:not(.desktop-mode) .desktop-taskbar {
 }
 
 .taskbar-window-item.active {
-    /* Active state with workspace color tint */
-    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.06) 48%, rgba(0, 0, 0, 0.08) 52%, rgba(0, 0, 0, 0.12) 100%), linear-gradient(to top, var(--btn-hover-bg-primary) 0%, var(--primary-glass-color) 100%);
-    border: 1px solid var(--btn-hover-bg-primary);
-    border-bottom-color: var(--dropdown-selected-bg);
     color: white;
     font-weight: 650;
     font-variation-settings: "wght" 650;
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.3),
-        inset 0 -1px 0 rgba(0, 0, 0, 0.2),
-        0 0 8px var(--primary-glass-color);
+}
+
+.taskbar-window-item.active::before {
+    opacity: 1;
 }
 
 .taskbar-window-item.minimised {
@@ -669,9 +677,10 @@ body:not(.desktop-mode) .desktop-taskbar {
     width: 180px;
     height: 100%;
     box-sizing: border-box;
+    position: relative;
+    z-index: 1;
     opacity: 1;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.48);
-    transition: opacity 0.1s ease-out;
 }
 
 .taskbar-window-item i {
@@ -715,39 +724,57 @@ body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window
     color: var(--text-primary);
 }
 
-/* Animation for new taskbar items appearing */
+/* Animation for new taskbar items appearing — shell grows from the left, icon/title fade in */
+.taskbar-window-item.entering,
+.taskbar-window-item.leaving {
+    transition: none;
+    flex: 0 0 auto;
+}
+
+.taskbar-window-item.entering::before {
+    transition: none;
+}
+
 .taskbar-window-item.entering {
-    animation: taskbar-item-grow 0.2s ease-out;
+    min-width: 0;
+    max-width: 0;
+    animation: taskbar-item-grow 0.25s ease-out forwards;
 }
 
 .taskbar-window-item.entering .taskbar-window-item-content {
-    animation: taskbar-item-content-fade-in 0.2s ease-out;
+    opacity: 0;
+    transition: none;
+    animation: taskbar-item-content-fade-in 0.2s ease-out 0.08s forwards;
 }
 
-/* Animation for taskbar items being removed */
+/* Animation for taskbar items being removed — shrink and fade together; icon/text fade slightly faster */
 .taskbar-window-item.leaving {
-    animation: taskbar-item-shrink 0.2s ease-out forwards;
+    animation: taskbar-item-shrink 0.22s ease-in forwards;
+}
+
+.taskbar-window-item.leaving.active::before {
+    transition: none;
+    animation: taskbar-item-overlay-fade-out 0.14s ease-in forwards;
 }
 
 .taskbar-window-item.leaving .taskbar-window-item-content {
-    animation: taskbar-item-content-fade-out 0.15s ease-out forwards;
+    transition: none;
+    animation: taskbar-item-content-fade-out 0.14s ease-in forwards;
 }
 
 @keyframes taskbar-item-grow {
     from {
         min-width: 0;
         max-width: 0;
-        padding: 0;
-        border-width: 0;
-        opacity: 0;
+        border-left-width: 0;
+        border-right-width: 0;
     }
 
     to {
         min-width: 180px;
         max-width: 180px;
-        padding: 0;
-        border-width: 1px;
-        opacity: 1;
+        border-left-width: 1px;
+        border-right-width: 1px;
     }
 }
 
@@ -755,17 +782,15 @@ body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window
     from {
         min-width: 180px;
         max-width: 180px;
-        padding: 0;
-        border-width: 1px;
-        opacity: 1;
+        border-left-width: 1px;
+        border-right-width: 1px;
     }
 
     to {
         min-width: 0;
         max-width: 0;
-        padding: 0;
-        border-width: 0;
-        opacity: 0;
+        border-left-width: 0;
+        border-right-width: 0;
     }
 }
 
@@ -780,6 +805,16 @@ body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window
 }
 
 @keyframes taskbar-item-content-fade-out {
+    from {
+        opacity: 1;
+    }
+
+    to {
+        opacity: 0;
+    }
+}
+
+@keyframes taskbar-item-overlay-fade-out {
     from {
         opacity: 1;
     }

@@ -193,7 +193,7 @@
     <link rel="stylesheet" id="workspace-styles" href="/css/workspaces.css?sha=c66448726ca4e116490ce9b1c0abd9fe81438caec4f762e2089d2477dd840060">
     <link rel="stylesheet" href="/css/custom-dropdown.css?sha=936ed6a4d34f3c6fc91f1d7df15ccef69544b4748f6695a8fa45872fa467833f">
     <!-- Feature-scoped styles (split from app.css) -->
-    <link rel="stylesheet" href="/css/desktop-shell.css?sha=9c1ffe6b377b650cbe6cb30c6aa260ac6b68877187556227b8afadf6b9024f63">
+    <link rel="stylesheet" href="/css/desktop-shell.css?sha=d9815846d1aaabee4f458aa76007878505cb1534a20e63f15cac97f00d65a277">
     <link rel="stylesheet" href="/css/menu-chrome.css?sha=6c563dcfa260395c1cf136775a7255ee7e144d353322072937f278c0a43b9ddd">
     <link rel="stylesheet" href="/css/desktop-settings.css?sha=1966944010337e66f1a9076f221195fa29279ada3eabf51b113668d81112aab9">
     <link rel="stylesheet" href="/css/modal-dimensions.css?sha=a67f1d407e2168b769d856a9f0c520b72293d266106fc845082e52a93dfcd6d7">
@@ -204,7 +204,7 @@
     <link rel="stylesheet" href="/css/gallery-core.css?sha=0295180c3c769344d5f48677f716c97d0d8995bff56002838a78bbc7a2d398f7">
     <link rel="stylesheet" href="/css/gallery-move.css?sha=5c187b14367e3bfaf645adae47dc3765e5fda34082c6fa7044ec219958d05fd3">
     <link rel="stylesheet" href="/css/lightbox.css?sha=4032c7779c2537bcd3e839dbd4b1ba19df4000770166c805fe1da9325ca2f11a">
-    <link rel="stylesheet" href="/css/manual-modal.css?sha=4023f6260f4443063f543a53418a600e25f067a2b451d095c02b039b99ca793b">
+    <link rel="stylesheet" href="/css/manual-modal.css?sha=b17dbc5fe7a544492a14149e3dc8152c4068002738a0bedb8c414706ad6e04e6">
     <link rel="stylesheet" href="/css/manual-modal-prompt-form.css?sha=3d4e1ed3326119a7d2f288dfe65469a62cab7e1b2544d229ec5a36f0c3e15f55">
     <link rel="stylesheet" href="/css/novel-tool.css?sha=9ed554614bdfc1459f27bf77eefaa614c9e2e8ca6cfe2cbeee2b71c0491ccc58">
     <link rel="stylesheet" href="/css/manual-modal-preview-tools.css?sha=95931ca7b1c1f581fb3df131004b61eced2caaee68df8989ff23d16a6ba13a83">
@@ -286,7 +286,10 @@
             } catch (e) { /* ignore */ }
         })();
         window.dismissLaunchHandoffIfNeeded = function () {
-            return new Promise(function (resolve) {
+            if (window._launchHandoffDismissPromise) {
+                return window._launchHandoffDismissPromise;
+            }
+            window._launchHandoffDismissPromise = new Promise(function (resolve) {
                 var el = document.getElementById('launchHandoff');
                 if (!el) {
                     try { sessionStorage.removeItem('dreamscapeLaunchHandoff'); } catch (e) { /* ignore */ }
@@ -301,17 +304,28 @@
                     try { sessionStorage.removeItem('dreamscapeLaunchHandoff'); } catch (e) { /* ignore */ }
                     resolve();
                 }
-                el.addEventListener('transitionend', function te(ev) {
-                    if (ev.propertyName === 'opacity') {
-                        el.removeEventListener('transitionend', te);
+                // body.initializing.no-animation disables transitions — transitionend never fires
+                var skipTransition = document.body.classList.contains('initializing')
+                    && document.body.classList.contains('no-animation');
+                if (!skipTransition) {
+                    el.addEventListener('transitionend', function te(ev) {
+                        if (ev.propertyName === 'opacity') {
+                            el.removeEventListener('transitionend', te);
+                            done();
+                        }
+                    });
+                }
+                requestAnimationFrame(function () {
+                    el.classList.add('launch-handoff--fade');
+                    if (skipTransition) {
                         done();
                     }
                 });
-                requestAnimationFrame(function () {
-                    el.classList.add('launch-handoff--fade');
-                });
-                setTimeout(done, 450);
+                if (!skipTransition) {
+                    setTimeout(done, 450);
+                }
             });
+            return window._launchHandoffDismissPromise;
         };
     </script>
     <script>
@@ -2021,7 +2035,13 @@
                         <!-- Manual Preview Navigation Loading Overlay -->
                         <div id="manualPreviewNavigationLoading" class="manual-preview-navigation-loading hidden">
                             <div class="manual-preview-navigation-loading-content">
-                                <div class="mdi mdi-1-5 mdi-image-sync"></div>
+                                <div class="manual-preview-navigation-loading-icon mdi mdi-1-5 mdi-image-sync"></div>
+                                <div id="manualPreviewNavigationProgress" class="manual-preview-navigation-progress hidden">
+                                    <p id="manualPreviewNavigationProgressLabel" class="manual-preview-navigation-progress-label">Downloading…</p>
+                                    <div class="manual-preview-navigation-progress-bar">
+                                        <div id="manualPreviewNavigationProgressFill" class="manual-preview-navigation-progress-fill"></div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 

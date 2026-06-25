@@ -29,10 +29,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (window.serviceWorkerManager && typeof window.serviceWorkerManager.ensureBootComplete === 'function') {
         await window.serviceWorkerManager.ensureBootComplete();
-    } else if (window.wsClient && typeof window.wsClient.beginApplicationBoot === 'function') {
-        await window.wsClient.beginApplicationBoot();
-    } else if (window.wsClient && !window.wsClient.initializationStarted) {
-        window.wsClient.init();
+    }
+    // beginApplicationBoot may already have been triggered from serviceWorkerManager; ensure init runs
+    if (window.wsClient && !window.wsClient.initializationStarted) {
+        if (typeof window.wsClient.beginApplicationBoot === 'function') {
+            await window.wsClient.beginApplicationBoot();
+        } else {
+            await window.wsClient.init();
+        }
     }
 
     // loadBlurPreference: public/scripts/comp/themePreferences.js

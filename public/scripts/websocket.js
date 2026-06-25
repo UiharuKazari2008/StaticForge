@@ -2366,6 +2366,14 @@ class WebSocketClient {
 
         if (!modal || !statusElement || !restartActions) return;
 
+        if (modal.classList.contains('hidden')) {
+            if (typeof openModal === 'function') {
+                openModal(modal);
+            } else {
+                modal.classList.remove('hidden');
+            }
+        }
+
         // Hide progress container, show restart actions
         if (progressContainer) progressContainer.classList.add('hidden');
         if (restartActions) restartActions.classList.remove('hidden');
@@ -4687,7 +4695,31 @@ class WebSocketClient {
 
             // Handle completion
             if (data.phase === 'complete') {
-                this.clearStreamingStepQueues(null, true);
+                if (data.contentLength && Number(data.contentLength) > 0) {
+                    this.pendingGenerationDownloadBytes = Number(data.contentLength);
+                    this.pendingGenerationDownloadFilename = data.filename || null;
+                }
+
+                const manualModalEl = document.getElementById('manualModal');
+                const manualFormEl = document.getElementById('manualForm');
+                const spellbookActive = this.isSpellbookGenerationActive();
+                const retainPreviewForFinalize = spellbookActive
+                    || (manualModalEl
+                        && !manualModalEl.classList.contains('hidden')
+                        && manualFormEl?.classList.contains('generating'));
+                if (retainPreviewForFinalize && typeof showManualPreviewNavigationLoading === 'function') {
+                    const dlBytes = data.contentLength && Number(data.contentLength) > 0
+                        ? Number(data.contentLength)
+                        : null;
+                    showManualPreviewNavigationLoading(
+                        true,
+                        dlBytes ? 'Downloading…' : 'Preparing download…',
+                        dlBytes ? 0 : 'indeterminate'
+                    );
+                }
+
+                // Final /images/ load swaps the preview — do not clear streaming frame early.
+                this.clearStreamingStepQueues(null, !retainPreviewForFinalize);
 
                 if (progressToastId && typeof clearGlassToastImagePreview === 'function') {
                     clearGlassToastImagePreview(progressToastId);

@@ -2633,6 +2633,13 @@ function readPngMetadata(buffer) {
     return null;
 }
 
+function formatImageTransferBytes(bytes) {
+    if (!Number.isFinite(bytes) || bytes < 0) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 /**
  * Format seconds remaining for image transfer status (e.g. "12s left").
  * @param {number} seconds
@@ -2652,11 +2659,19 @@ function formatImageTransferEta(seconds) {
  * Falls back to direct element src assignment when size is unknown.
  * @param {string} url
  * @param {number|null|undefined} knownTotalBytes
- * @param {(progress: {loaded: number, total: number, ratio: number, etaSeconds: number|null}) => void} [onProgress]
+ * @param {(progress: {loaded: number, total: number, ratio: number, etaSeconds: number|null, indeterminate: boolean}) => void} [onProgress]
+ * @param {RequestInit} [fetchInit] - extra fetch options (e.g. headers to bypass SW cache)
  * @returns {Promise<{objectUrl: string|null, usedFetch: boolean, total: number, loaded: number}>}
  */
-async function fetchTrackedImageBlob(url, knownTotalBytes, onProgress) {
-    const response = await fetch(url, { cache: 'no-store', credentials: 'same-origin' });
+async function fetchTrackedImageBlob(url, knownTotalBytes, onProgress, fetchInit = {}) {
+    const response = await fetch(url, {
+        cache: 'no-store',
+        credentials: 'same-origin',
+        ...fetchInit,
+        headers: {
+            ...(fetchInit.headers || {})
+        }
+    });
     if (!response.ok) {
         throw new Error(`Failed to load image (${response.status})`);
     }
@@ -2669,10 +2684,24 @@ async function fetchTrackedImageBlob(url, knownTotalBytes, onProgress) {
         }
     }
 
-    if (!response.body || !total) {
+    const emitProgress = (loaded, totalBytes, etaSeconds = null) => {
+        if (!onProgress) return;
+        const hasTotal = totalBytes > 0;
+        onProgress({
+            loaded,
+            total: totalBytes,
+            ratio: hasTotal ? Math.min(1, loaded / totalBytes) : 0,
+            etaSeconds,
+            indeterminate: !hasTotal
+        });
+    };
+
+    if (!response.body) {
         const blob = await response.blob();
+        const blobSize = blob.size || 0;
+        emitProgress(blobSize, total || blobSize, null);
         const objectUrl = URL.createObjectURL(blob);
-        return { objectUrl, usedFetch: true, total: blob.size || 0, loaded: blob.size || 0 };
+        return { objectUrl, usedFetch: true, total: total || blobSize, loaded: blobSize };
     }
 
     const reader = response.body.getReader();
@@ -2681,37 +2710,36 @@ async function fetchTrackedImageBlob(url, knownTotalBytes, onProgress) {
     let lastProgressAt = Date.now();
     let lastLoaded = 0;
 
+    emitProgress(0, total, null);
+
     while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         chunks.push(value);
         loaded += value.length;
 
-        if (onProgress) {
-            const now = Date.now();
-            const elapsedSec = (now - lastProgressAt) / 1000;
-            let etaSeconds = null;
-            if (elapsedSec >= 0.25 && loaded > lastLoaded) {
-                const bytesPerSec = (loaded - lastLoaded) / elapsedSec;
-                if (bytesPerSec > 0) {
-                    etaSeconds = (total - loaded) / bytesPerSec;
-                }
-                lastProgressAt = now;
-                lastLoaded = loaded;
+        const now = Date.now();
+        const elapsedSec = (now - lastProgressAt) / 1000;
+        let etaSeconds = null;
+        if (total > 0 && elapsedSec >= 0.25 && loaded > lastLoaded) {
+            const bytesPerSec = (loaded - lastLoaded) / elapsedSec;
+            if (bytesPerSec > 0) {
+                etaSeconds = (total - loaded) / bytesPerSec;
             }
-            onProgress({
-                loaded,
-                total,
-                ratio: total > 0 ? loaded / total : 0,
-                etaSeconds
-            });
+            lastProgressAt = now;
+            lastLoaded = loaded;
+        } else if (!total && elapsedSec >= 0.25) {
+            lastProgressAt = now;
         }
+        emitProgress(loaded, total, etaSeconds);
     }
 
     const mime = response.headers.get('content-type') || 'image/png';
     const blob = new Blob(chunks, { type: mime });
+    const finalTotal = total || blob.size || loaded;
+    emitProgress(blob.size || loaded, finalTotal, null);
     const objectUrl = URL.createObjectURL(blob);
-    return { objectUrl, usedFetch: true, total, loaded };
+    return { objectUrl, usedFetch: true, total: finalTotal, loaded: blob.size || loaded };
 }
 
 // These will remain global for now to avoid breaking existing code

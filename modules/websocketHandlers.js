@@ -414,6 +414,7 @@ class WebSocketMessageHandlers {
             'get_api_key_services',
             'update_api_key_selections',
             'add_api_key',
+            'delete_api_key',
             'clear_search_cache',
             'refresh_server_cache',
             'recompile_runtime_assets',
@@ -11940,11 +11941,13 @@ class WebSocketMessageHandlers {
                 );
 
                 // Send final result (generateImageWebSocket now includes metadata)
+                const contentLength = this.resolveGeneratedImageContentLength(result);
                 const responseData = {
                     image: result.buffer ? result.buffer.toString('base64') : null,
                     filename: result.filename,
                     seed: result.seed || null,
-                    metadata: result.metadata
+                    metadata: result.metadata,
+                    contentLength
                 };
 
                 // Include compiled prompt if it was processed

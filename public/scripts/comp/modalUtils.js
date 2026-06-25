@@ -1637,7 +1637,7 @@ function setActiveWindow(modalId) {
         currentActiveWindowId = null;
         mainActiveWindowId = null;
     }
-    debouncedUpdateTaskbarWindows();
+    updateTaskbarActiveStates();
 }
 
 function initializeModalDragging() {
@@ -3376,6 +3376,31 @@ function observeModals() {
     }
 }
 
+// Wire click/context handlers on an individual (non-group) taskbar item
+function wireIndividualTaskbarItemHandlers(item, modal) {
+    item.onclick = () => {
+        restoreMinimizedModal(modal, item);
+        if (modal.classList.contains('hidden')) {
+            if (modal.id === 'galleryWindow') {
+                showGalleryWindow();
+            } else {
+                modal.classList.remove('hidden');
+            }
+        }
+        bringModalToFront(modal);
+    };
+    item.oncontextmenu = (e) => {
+        e.preventDefault();
+        showTaskbarItemContextMenu(e, modal, item);
+    };
+}
+
+// Toggle active/minimised on a taskbar item without disturbing entering/leaving animations
+function syncTaskbarItemStateClasses(item, isActive, isMinimised) {
+    item.classList.toggle('active', isActive && !isMinimised);
+    item.classList.toggle('minimised', !!isMinimised);
+}
+
 // Lightweight function to update active states and content without recreating DOM elements or triggering animations
 function updateTaskbarActiveStates() {
     if (!taskbarWindows) return;
@@ -3399,6 +3424,8 @@ function updateTaskbarActiveStates() {
 
     // Update active/minimised states and content (no DOM recreation, no animations)
     existingItems.forEach(item => {
+        if (item.classList.contains('leaving') || item.classList.contains('entering')) return;
+
         const modalId = item.dataset.modalId;
         const groupType = item.dataset.groupType;
 
@@ -3412,16 +3439,8 @@ function updateTaskbarActiveStates() {
                 const title = getModalTitle(modal);
                 const { icon, imageIcon } = getModalIcons(modal);
 
-                // Update classes without recreating the element
-                // Preserve entering/leaving animation classes
-                const hasEntering = item.classList.contains('entering');
-                const hasLeaving = item.classList.contains('leaving');
-
-                item.className = 'taskbar-window-item';
-                if (hasEntering) item.classList.add('entering');
-                if (hasLeaving) item.classList.add('leaving');
-                if (isActive && !isMinimised) item.classList.add('active');
-                if (isMinimised) item.classList.add('minimised');
+                // Toggle state classes in place — never reset className (re-adding entering restarts CSS animations)
+                syncTaskbarItemStateClasses(item, isActive, isMinimised);
 
                 // Update icon and text content without recreating elements (preserves event listeners)
                 // Only update if elements already exist - don't add/remove elements here (that's handled by updateTaskbarWindows)
@@ -3460,16 +3479,7 @@ function updateTaskbarActiveStates() {
                 const hasActive = modals.some(m => isModalActiveForTaskbar(m) && !m.classList.contains('minimised'));
                 const allMinimised = modals.every(m => m.classList.contains('minimised'));
 
-                // Update classes - preserve entering/leaving
-                const hasEntering = item.classList.contains('entering');
-                const hasLeaving = item.classList.contains('leaving');
-
-                let className = 'taskbar-window-item taskbar-window-group';
-                if (hasEntering) className += ' entering';
-                if (hasLeaving) className += ' leaving';
-                if (hasActive && !allMinimised) className += ' active';
-                if (allMinimised) className += ' minimised';
-                item.className = className;
+                syncTaskbarItemStateClasses(item, hasActive && !allMinimised, allMinimised);
 
                 // Update count badge if it exists
                 const countBadge = item.querySelector('.taskbar-group-count');
@@ -3562,7 +3572,8 @@ function updateTaskbarWindows() {
 
         if (!shouldExist) {
             item.classList.add('leaving');
-            item.addEventListener('animationend', () => {
+            item.addEventListener('animationend', (e) => {
+                if (e.target !== item || e.animationName !== 'taskbar-item-shrink') return;
                 item.remove();
             }, { once: true });
         }
@@ -3584,11 +3595,8 @@ function updateTaskbarWindows() {
                 // Update existing group item - FORCE update everything
                 groupItem.dataset.groupedModals = JSON.stringify(modalIds);
 
-                // Update classes - always recalculate, don't preserve entering/leaving
-                let className = 'taskbar-window-item taskbar-window-group';
-                if (hasActive && !allMinimised) className += ' active';
-                if (allMinimised) className += ' minimised';
-                groupItem.className = className;
+                // Toggle state in place — preserve entering/leaving animation classes
+                syncTaskbarItemStateClasses(groupItem, hasActive && !allMinimised, allMinimised);
 
                 // ALWAYS update count badge - don't check if it exists, just update it
                 let countBadge = groupItem.querySelector('.taskbar-group-count');
@@ -3643,8 +3651,9 @@ function updateTaskbarWindows() {
                     }
                 });
 
-                // Remove entering class after animation
-                groupItem.addEventListener('animationend', () => {
+                // Remove entering class after shell grow animation completes
+                groupItem.addEventListener('animationend', (e) => {
+                    if (e.target !== groupItem || e.animationName !== 'taskbar-item-grow') return;
                     groupItem.classList.remove('entering');
                 }, { once: true });
 
@@ -3665,11 +3674,18 @@ function updateTaskbarWindows() {
                 const title = getModalTitle(modal);
                 const { icon, imageIcon } = getModalIcons(modal);
 
-                // Update classes - always recalculate
-                let className = 'taskbar-window-item';
-                if (isActive && !isMinimised) className += ' active';
-                if (isMinimised) className += ' minimised';
-                existingItem.className = className;
+                // Promote temporary minimize placeholder to a visible item with reveal animation
+                const wasHiddenTemp = existingItem.style.opacity === '0';
+                if (wasHiddenTemp) {
+                    existingItem.style.opacity = '';
+                    existingItem.classList.add('entering');
+                    existingItem.addEventListener('animationend', (e) => {
+                        if (e.target !== existingItem || e.animationName !== 'taskbar-item-grow') return;
+                        existingItem.classList.remove('entering');
+                    }, { once: true });
+                }
+
+                syncTaskbarItemStateClasses(existingItem, isActive, isMinimised);
 
                 // Update content if changed - check both font icon and image icon
                 const currentTitle = existingItem.querySelector('span')?.textContent;
@@ -3714,51 +3730,7 @@ function updateTaskbarWindows() {
                             <span>${title}</span>
                         </div>
                     `;
-
-                    // Reattach event listeners
-                    const newItem = existingItem.cloneNode(true);
-
-                    newItem.addEventListener('click', () => {
-                        restoreMinimizedModal(modal, newItem);
-                        if (modal.classList.contains('hidden')) {
-                            if (modal.id === 'galleryWindow') {
-                                showGalleryWindow();
-                            } else {
-                                modal.classList.remove('hidden');
-                            }
-                        }
-                        bringModalToFront(modal);
-                    });
-
-                    newItem.addEventListener('contextmenu', (e) => {
-                        e.preventDefault();
-                        showTaskbarItemContextMenu(e, modal, newItem);
-                    });
-
-                    existingItem.replaceWith(newItem);
-                } else {
-                    // Content unchanged, just update event listeners if needed
-                    // (They should already be attached, but ensure they work)
-                    const clickHandler = () => {
-                        restoreMinimizedModal(modal, existingItem);
-                        if (modal.classList.contains('hidden')) {
-                            if (modal.id === 'galleryWindow') {
-                                showGalleryWindow();
-                            } else {
-                                modal.classList.remove('hidden');
-                            }
-                        }
-                        bringModalToFront(modal);
-                    };
-
-                    // Remove old listeners and add new ones
-                    const newItem = existingItem.cloneNode(true);
-                    newItem.addEventListener('click', clickHandler);
-                    newItem.addEventListener('contextmenu', (e) => {
-                        e.preventDefault();
-                        showTaskbarItemContextMenu(e, modal, newItem);
-                    });
-                    existingItem.replaceWith(newItem);
+                    wireIndividualTaskbarItemHandlers(existingItem, modal);
                 }
             } else {
                 // Create new individual item
@@ -3779,27 +3751,11 @@ function updateTaskbarWindows() {
                     </div>
                 `;
 
-                // Click handler
-                item.addEventListener('click', () => {
-                    restoreMinimizedModal(modal, item);
-                    if (modal.classList.contains('hidden')) {
-                        if (modal.id === 'galleryWindow') {
-                            showGalleryWindow();
-                        } else {
-                            modal.classList.remove('hidden');
-                        }
-                    }
-                    bringModalToFront(modal);
-                });
+                wireIndividualTaskbarItemHandlers(item, modal);
 
-                // Right click handler
-                item.addEventListener('contextmenu', (e) => {
-                    e.preventDefault();
-                    showTaskbarItemContextMenu(e, modal, item);
-                });
-
-                // Remove entering class after animation
-                item.addEventListener('animationend', () => {
+                // Remove entering class after shell grow animation completes
+                item.addEventListener('animationend', (e) => {
+                    if (e.target !== item || e.animationName !== 'taskbar-item-grow') return;
                     item.classList.remove('entering');
                 }, { once: true });
 

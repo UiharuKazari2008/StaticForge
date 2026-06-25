@@ -223,7 +223,20 @@ class ServiceWorkerManager {
         resolvers.forEach((fn) => fn());
     }
 
+    _kickApplicationBootAfterBootGate() {
+        // beginApplicationBoot: public/scripts/websocket.js
+        if (window.wsClient && typeof window.wsClient.beginApplicationBoot === 'function') {
+            window.wsClient.beginApplicationBoot();
+        } else if (window.wsClient && !window.wsClient.initializationStarted) {
+            window.wsClient.init();
+        }
+    }
+
     _showBootFatalError(error) {
+        // dismissLaunchHandoffIfNeeded: public/app.html
+        if (typeof dismissLaunchHandoffIfNeeded === 'function') {
+            dismissLaunchHandoffIfNeeded();
+        }
         const message = error && error.message ? error.message : 'Service worker failed to initialize';
         // presentDreamscapeConnectivityError: public/scripts/comp/fatalErrorBootstrap.js
         if (typeof presentDreamscapeConnectivityError === 'function') {
@@ -356,6 +369,7 @@ class ServiceWorkerManager {
 
     _showInitUpdateRestartPrompt(message) {
         if (!this.initUpdateModalActive || !window.wsClient) return;
+        this._setPreStartupUpdateStageMessage('Updates ready — restart required');
         window.wsClient.showWindowsUpdateRestartPrompt(message);
     }
 
@@ -728,12 +742,13 @@ class ServiceWorkerManager {
                     this.loginBootPromise = this.runLoginBootSequence();
                 } else {
                     this.bootPromise = this.runBootSequence().then(() => {
-                        // beginApplicationBoot: public/scripts/websocket.js
-                        if (window.wsClient && typeof window.wsClient.beginApplicationBoot === 'function') {
-                            window.wsClient.beginApplicationBoot();
-                        }
+                        this._kickApplicationBootAfterBootGate();
                     }).catch((err) => {
                         console.error('Boot sequence failed:', err);
+                        if (!this.bootComplete) {
+                            this._resolveBootComplete();
+                        }
+                        this._kickApplicationBootAfterBootGate();
                     });
                 }
 
@@ -749,6 +764,8 @@ class ServiceWorkerManager {
                     this._resolveLoginBootComplete();
                 } else {
                     this._showBootFatalError(error);
+                    this._resolveBootComplete();
+                    this._kickApplicationBootAfterBootGate();
                 }
             }
         } else {
@@ -758,6 +775,8 @@ class ServiceWorkerManager {
                 this._resolveLoginBootComplete();
             } else {
                 this._showBootFatalError(new Error('Service Worker not supported in this browser'));
+                this._resolveBootComplete();
+                this._kickApplicationBootAfterBootGate();
             }
         }
     }
@@ -2903,16 +2922,15 @@ class ServiceWorkerManager {
             }
         });
 
-        if (useInitModal && result.userChoice !== 'restart') {
-            this._hideInitUpdateModal();
-        }
-
         if (result.success && result.filesDownloaded > 0 && !result.hasErrors) {
             const updateKind = this.classifyStaticCacheUpdate(files);
             const canApplyWithoutRestart = (updateKind === 'css-only' || updateKind === 'apply-safe')
                 && this.isCssOnlyAutoApplyEnabled();
 
             if (canApplyWithoutRestart) {
+                if (useInitModal) {
+                    this._hideInitUpdateModal();
+                }
                 await this.applyStaticCacheUpdate(files);
                 return { success: true, filesDownloaded: result.filesDownloaded, userChoice: 'apply' };
             }
@@ -2924,6 +2942,10 @@ class ServiceWorkerManager {
                 return { success: true, filesDownloaded: result.filesDownloaded, userChoice: choice.action };
             }
             return { success: true, filesDownloaded: result.filesDownloaded, userChoice: 'later' };
+        }
+
+        if (useInitModal && result.userChoice !== 'restart') {
+            this._hideInitUpdateModal();
         }
 
         if (result.stalled) {
@@ -3557,6 +3579,10 @@ class ServiceWorkerManager {
     async runBootSequence() {
         if (this.bootComplete) {
             return;
+        }
+        // dismissLaunchHandoffIfNeeded: public/app.html — app boot UI (wizard, startup) must not sit under the handoff layer
+        if (typeof dismissLaunchHandoffIfNeeded === 'function') {
+            await dismissLaunchHandoffIfNeeded();
         }
         this._bootOrchestrating = true;
         let installWizardUsed = false;
