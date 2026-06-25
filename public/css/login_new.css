@@ -154,12 +154,18 @@ body.login-booting .login-product-name {
     justify-content: center;
     cursor: pointer;
     border-radius: 8px;
-    transition: outline 0.2s ease;
+    transition: outline 0.2s ease, background-color 0.2s ease;
+    padding: 10px;
+}
+
+.pin-display:hover {
+    background-color: rgba(255, 255, 255, 0.05);
 }
 
 .pin-display:focus-visible {
     outline: 3px solid #6366f1;
     outline-offset: 4px;
+    background-color: rgba(255, 255, 255, 0.1);
 }
 
 .pin-dots {

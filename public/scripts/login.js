@@ -44,6 +44,7 @@ class LoginPage {
         this.setupPinPadListener();
         this.updatePinDisplay();
         this.updateAriaAttributes();
+        this.updateTabOrder();
         this.sendTelemetryPing();
     }
 
@@ -92,6 +93,7 @@ class LoginPage {
             this.loginContainer.classList.add('transition');
             this.loginContainer.classList.toggle('minimize');
             this.updateAriaAttributes();
+            this.updateTabOrder();
         };
 
         this.pinDisplay.addEventListener('click', togglePinPad);
@@ -105,19 +107,31 @@ class LoginPage {
 
     updateAriaAttributes() {
         const isMinimized = this.loginContainer.classList.contains('minimize');
+        const digitsEntered = this.rollingBuffer.length;
         this.pinDisplay.setAttribute('aria-expanded', !isMinimized);
-        this.pinDisplay.setAttribute('aria-label', isMinimized ? 'Show PIN pad' : 'Hide PIN pad');
+
+        let label = isMinimized ? 'Show PIN pad' : 'Hide PIN pad';
+        if (digitsEntered > 0) {
+            label += `, ${digitsEntered} digits entered`;
+        }
+        this.pinDisplay.setAttribute('aria-label', label);
+    }
+
+    updateTabOrder() {
+        const isMinimized = this.loginContainer.classList.contains('minimize');
+        this.pinButtons.forEach(button => {
+            button.setAttribute('tabindex', isMinimized ? '-1' : '0');
+        });
     }
 
     addDigit(digit) {
-        // Clear error when starting a new entry
-        if (this.rollingBuffer.length === 0) {
-            this.clearPinError();
-        }
+        // Clear error immediately on new input
+        this.clearPinError();
 
         if (this.rollingBuffer.length < 6) {
             this.rollingBuffer += digit;
             this.updatePinDisplay();
+            this.updateAriaAttributes();
             
             // Auto-submit when 6 digits are entered
             if (this.rollingBuffer.length === 6) {
@@ -129,13 +143,17 @@ class LoginPage {
     removeDigit() {
         if (this.rollingBuffer.length > 0) {
             this.rollingBuffer = this.rollingBuffer.slice(0, -1);
+            this.clearPinError();
             this.updatePinDisplay();
+            this.updateAriaAttributes();
         }
     }
 
     clearPin() {
         this.rollingBuffer = '';
+        this.clearPinError();
         this.updatePinDisplay();
+        this.updateAriaAttributes();
     }
 
     async clearCachesAndReload() {
@@ -506,6 +524,10 @@ class LoginPage {
         this.pinDots.forEach(dot => {
             dot.classList.remove('error');
         });
+        if (this.errorMessage) {
+            this.errorMessage.classList.add('hidden');
+            this.errorMessage.textContent = '';
+        }
     }
 
     // Show login success feedback
