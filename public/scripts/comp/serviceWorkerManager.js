@@ -2870,7 +2870,7 @@ class ServiceWorkerManager {
             this.initialCheckDone = true;
             console.log('Update download process completed:', downloadResult);
 
-            // Pre-startup modal stays open until user responds (restart/later/skip) inside downloadUpdatesForInit
+            // Restart-required updates reload inside downloadUpdatesForInit
 
         } catch (error) {
             console.error('❌ Error during update check:', error);
@@ -2934,14 +2934,15 @@ class ServiceWorkerManager {
                 await this.applyStaticCacheUpdate(files);
                 return { success: true, filesDownloaded: result.filesDownloaded, userChoice: 'apply' };
             }
+
+            // Boot init downloads: script updates must reload to execute — same as install wizard finish
             if (useInitModal) {
-                this._showInitUpdateRestartPrompt(
-                    `Updates downloaded (${result.filesDownloaded} files). Restart to apply changes.`
-                );
-                const choice = await this._waitForInitUpdateUserChoice();
-                return { success: true, filesDownloaded: result.filesDownloaded, userChoice: choice.action };
+                this._updateInitUpdateModal('Restarting Dreamscape...', 100);
+                this._setPreStartupUpdateStageMessage('Restarting Dreamscape...');
             }
-            return { success: true, filesDownloaded: result.filesDownloaded, userChoice: 'later' };
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            this.forceRestart();
+            return { success: true, filesDownloaded: result.filesDownloaded, userChoice: 'restart' };
         }
 
         if (useInitModal && result.userChoice !== 'restart') {
