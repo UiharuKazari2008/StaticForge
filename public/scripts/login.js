@@ -44,6 +44,7 @@ class LoginPage {
         this.setupPinPadListener();
         this.updatePinDisplay();
         this.updateAriaAttributes();
+        this.updateTabOrder();
         this.sendTelemetryPing();
     }
 
@@ -91,6 +92,7 @@ class LoginPage {
         const togglePinPad = () => {
             this.loginContainer.classList.add('transition');
             this.loginContainer.classList.toggle('minimize');
+            this.updateTabOrder();
             this.updateAriaAttributes();
         };
 
@@ -106,10 +108,29 @@ class LoginPage {
     updateAriaAttributes() {
         const isMinimized = this.loginContainer.classList.contains('minimize');
         this.pinDisplay.setAttribute('aria-expanded', !isMinimized);
-        this.pinDisplay.setAttribute('aria-label', isMinimized ? 'Show PIN pad' : 'Hide PIN pad');
+
+        let ariaLabel = isMinimized ? 'Show PIN pad' : 'Hide PIN pad';
+        if (!isMinimized && this.rollingBuffer.length > 0) {
+            ariaLabel += `, ${this.rollingBuffer.length} digit${this.rollingBuffer.length === 1 ? '' : 's'} entered`;
+        }
+        this.pinDisplay.setAttribute('aria-label', ariaLabel);
+    }
+
+    updateTabOrder() {
+        const isMinimized = this.loginContainer.classList.contains('minimize');
+        this.pinButtons.forEach(button => {
+            button.setAttribute('tabindex', isMinimized ? '-1' : '0');
+        });
     }
 
     addDigit(digit) {
+        // Auto-expand if minimized
+        if (this.loginContainer.classList.contains('minimize')) {
+            this.loginContainer.classList.remove('minimize');
+            this.updateTabOrder();
+            this.updateAriaAttributes();
+        }
+
         // Clear error when starting a new entry
         if (this.rollingBuffer.length === 0) {
             this.clearPinError();
@@ -127,6 +148,7 @@ class LoginPage {
     }
 
     removeDigit() {
+        this.clearPinError();
         if (this.rollingBuffer.length > 0) {
             this.rollingBuffer = this.rollingBuffer.slice(0, -1);
             this.updatePinDisplay();
@@ -428,6 +450,7 @@ class LoginPage {
                 dot.classList.remove('filled');
             }
         });
+        this.updateAriaAttributes();
     }
 
     async handleLogin() {

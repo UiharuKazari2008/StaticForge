@@ -1,3 +1,6 @@
 ## 2026-06-15 - [Accessibility & Keyboard Navigation on Login Page]
 **Learning:** Interactive non-form elements (like the PIN display div) lack standard keyboard triggers and ARIA states, making them inaccessible to screen readers and keyboard-only users. Using `:focus-visible` is essential for providing clear focus indicators for keyboard users without cluttering the UI for mouse users.
 **Action:** Always apply `role="button"`, `tabindex="0"`, and handle `Enter`/`Space` keys for interactive divs. Use `aria-expanded` and `aria-label` to communicate state changes to assistive technologies. Apply high-contrast `:focus-visible` styles to all interactive elements.
+## 2025-05-14 - Login PIN Pad Accessibility & Interaction
+**Learning:** Collapsible interactive components like the PIN pad must synchronize their visibility with both screen reader attributes (aria-expanded/aria-label) and keyboard navigation state (tabindex). Failing to remove hidden elements from the tab order creates a "focus trap" where users can focus on invisible controls.
+**Action:** Always implement a synchronization method (e.g., `updateTabOrder`) to toggle `tabindex` of children when a container's visibility state changes.
