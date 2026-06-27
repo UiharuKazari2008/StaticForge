@@ -354,6 +354,11 @@ if (window.wsClient) {
         }
 
         await updateMenuBarHeight();
+
+        // setupNovelContextMenu: public/scripts/comp/novelContextMenu.js
+        if (typeof setupNovelContextMenu === 'function') {
+            setupNovelContextMenu();
+        }
     });
 
     window.wsClient.registerInitStep(31, 'Loading Gallery', async () => {

@@ -268,8 +268,55 @@ class NaxtApplet {
         this.loadElevatePinsFromLocal();
         this.setupClickMenus();
         this.setupListeners();
+        this.wireKeyboardOverlayEntries();
         this.updateBagChrome();
         this.updateMarkFilterButton();
+    }
+
+    wireKeyboardOverlayEntries() {
+        if (this._keyboardOverlayWired) return;
+        this._keyboardOverlayWired = true;
+        if (!this._escapeKeyHandler) {
+            this._escapeKeyHandler = (e) => {
+                if (e.key !== 'Escape') return;
+                if (this.customTagModal && !this.customTagModal.classList.contains('hidden')) {
+                    this.closeCustomTagTool();
+                    return true;
+                }
+            };
+        }
+        // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+        registerKeyboardListener({
+            id: 'naxtModal.escape',
+            handler: this._escapeKeyHandler,
+            type: 'whenFocused',
+            modalId: 'naxtModal',
+            priority: 80,
+            critical: true,
+            showInOverlay: false
+        });
+        registerKeyboardListener({
+            id: 'overlay.naxtModal.close',
+            type: 'whenFocused',
+            modalId: 'naxtModal',
+            label: 'Close',
+            keys: 'Alt+Q',
+            overlayIcon: 'fas fa-times',
+            overlayGroup: 'Atelier',
+            overlayOnly: true,
+            priority: -10
+        });
+        registerKeyboardListener({
+            id: 'overlay.naxtModal.search',
+            type: 'whenFocused',
+            modalId: 'naxtModal',
+            label: 'Search tags',
+            keys: 'Enter',
+            overlayIcon: 'fas fa-search',
+            overlayGroup: 'Atelier',
+            overlayOnly: true,
+            priority: -10
+        });
     }
 
     getScrollRoot() {

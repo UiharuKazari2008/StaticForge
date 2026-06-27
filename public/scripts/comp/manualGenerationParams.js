@@ -1,14 +1,10 @@
 /**
  * Manual generation parameter listeners (steps, guidance, rescale, strength, noise, paid toggles, upscale, variety).
- * Wired via registerInitStep 47.4; originals removed from app.js setupEventListeners (Phase 2 batch 8).
+ * Wired via registerInitStep 474; originals removed from app.js setupEventListeners (Phase 2 batch 8).
  */
 
-function wireManualGenerationParamsListeners() {
-    if (document.body.dataset.manualGenerationParamsWired === 'true') return;
-    document.body.dataset.manualGenerationParamsWired = 'true';
-
-    if (paidRequestToggle && paidRequestToggle.dataset.wired !== 'true') {
-        paidRequestToggle.dataset.wired = 'true';
+function attachManualGenerationParamsListeners(signal) {
+    if (paidRequestToggle) {
         paidRequestToggle.addEventListener('click', (e) => {
             e.preventDefault();
             forcePaidRequest = !forcePaidRequest;
@@ -16,11 +12,10 @@ function wireManualGenerationParamsListeners() {
             if (windowPaidToggle) {
                 windowPaidToggle.setAttribute('data-state', forcePaidRequest ? 'on' : 'off');
             }
-        });
+        }, { signal });
     }
 
-    if (windowPaidToggle && windowPaidToggle.dataset.wired !== 'true') {
-        windowPaidToggle.dataset.wired = 'true';
+    if (windowPaidToggle) {
         windowPaidToggle.addEventListener('click', (e) => {
             e.preventDefault();
             forcePaidRequest = !forcePaidRequest;
@@ -28,29 +23,26 @@ function wireManualGenerationParamsListeners() {
             if (paidRequestToggle) {
                 paidRequestToggle.setAttribute('data-state', forcePaidRequest ? 'on' : 'off');
             }
-        });
+        }, { signal });
     }
 
-    if (manualUpscale && manualUpscale.dataset.wired !== 'true') {
-        manualUpscale.dataset.wired = 'true';
+    if (manualUpscale) {
         manualUpscale.addEventListener('click', (e) => {
             e.preventDefault();
             // toggleManualUpscale: public/scripts/app.js
             toggleManualUpscale();
-        });
+        }, { signal });
     }
 
-    if (manualSteps && manualSteps.dataset.wired !== 'true') {
-        manualSteps.dataset.wired = 'true';
+    if (manualSteps) {
         manualSteps.addEventListener('input', () => {
             updateManualPriceDisplay();
             updateAllStagesInheritedValues();
-        });
+        }, { signal });
     }
 
-    if (manualStrengthValue && manualStrengthValue.dataset.wired !== 'true') {
-        manualStrengthValue.dataset.wired = 'true';
-        manualStrengthValue.addEventListener('input', updateManualPriceDisplay);
+    if (manualStrengthValue) {
+        manualStrengthValue.addEventListener('input', updateManualPriceDisplay, { signal });
         manualStrengthValue.addEventListener('wheel', function (e) {
             e.preventDefault();
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
@@ -61,17 +53,16 @@ function wireManualGenerationParamsListeners() {
             if (manualStrengthOverlay) {
                 updatePercentageOverlay(manualStrengthValue, manualStrengthOverlay);
             }
-        });
+        }, { signal });
         if (manualStrengthOverlay) {
-            manualStrengthValue.addEventListener('input', () => updatePercentageOverlay(manualStrengthValue, manualStrengthOverlay));
-            manualStrengthValue.addEventListener('blur', () => updatePercentageOverlay(manualStrengthValue, manualStrengthOverlay));
+            manualStrengthValue.addEventListener('input', () => updatePercentageOverlay(manualStrengthValue, manualStrengthOverlay), { signal });
+            manualStrengthValue.addEventListener('blur', () => updatePercentageOverlay(manualStrengthValue, manualStrengthOverlay), { signal });
             updatePercentageOverlay(manualStrengthValue, manualStrengthOverlay);
         }
     }
 
-    if (manualNoiseValue && manualNoiseValue.dataset.wired !== 'true') {
-        manualNoiseValue.dataset.wired = 'true';
-        manualNoiseValue.addEventListener('input', updateManualPriceDisplay);
+    if (manualNoiseValue) {
+        manualNoiseValue.addEventListener('input', updateManualPriceDisplay, { signal });
         manualNoiseValue.addEventListener('wheel', function (e) {
             e.preventDefault();
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
@@ -82,10 +73,10 @@ function wireManualGenerationParamsListeners() {
             if (manualNoiseOverlay) {
                 updatePercentageOverlay(manualNoiseValue, manualNoiseOverlay);
             }
-        });
+        }, { signal });
         if (manualNoiseOverlay) {
-            manualNoiseValue.addEventListener('input', () => updatePercentageOverlay(manualNoiseValue, manualNoiseOverlay));
-            manualNoiseValue.addEventListener('blur', () => updatePercentageOverlay(manualNoiseValue, manualNoiseOverlay));
+            manualNoiseValue.addEventListener('input', () => updatePercentageOverlay(manualNoiseValue, manualNoiseOverlay), { signal });
+            manualNoiseValue.addEventListener('blur', () => updatePercentageOverlay(manualNoiseValue, manualNoiseOverlay), { signal });
             updatePercentageOverlay(manualNoiseValue, manualNoiseOverlay);
         }
     }
@@ -125,25 +116,23 @@ function wireManualGenerationParamsListeners() {
             }
             updateManualPriceDisplay();
             updateAllStagesInheritedValues();
-        }, { passive: true });
+        }, { passive: true, signal });
     }
 
-    if (manualGuidance && manualGuidance.dataset.wired !== 'true') {
-        manualGuidance.dataset.wired = 'true';
+    if (manualGuidance) {
         manualGuidance.addEventListener('wheel', function (e) {
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.01 : 0.1) : (e.shiftKey ? 0.01 : 0.1);
             const currentValue = parseFloat(this.value) || 5.0;
             const newValue = Math.max(0.0, Math.min(10.0, currentValue + delta));
             this.value = newValue.toFixed(2);
             updateAllStagesInheritedValues();
-        }, { passive: true });
+        }, { passive: true, signal });
         manualGuidance.addEventListener('input', () => {
             updateAllStagesInheritedValues();
-        });
+        }, { signal });
     }
 
-    if (manualRescale && manualRescale.dataset.wired !== 'true') {
-        manualRescale.dataset.wired = 'true';
+    if (manualRescale) {
         manualRescale.addEventListener('wheel', function (e) {
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
             const currentValue = parseFloat(this.value) || 0.0;
@@ -153,20 +142,19 @@ function wireManualGenerationParamsListeners() {
                 updatePercentageOverlay(manualRescale, manualRescaleOverlay);
             }
             updateAllStagesInheritedValues();
-        }, { passive: true });
+        }, { passive: true, signal });
         if (manualRescaleOverlay) {
             manualRescale.addEventListener('input', () => {
                 updatePercentageOverlay(manualRescale, manualRescaleOverlay);
                 updateAllStagesInheritedValues();
-            });
-            manualRescale.addEventListener('blur', () => updatePercentageOverlay(manualRescale, manualRescaleOverlay));
+            }, { signal });
+            manualRescale.addEventListener('blur', () => updatePercentageOverlay(manualRescale, manualRescaleOverlay), { signal });
             updatePercentageOverlay(manualRescale, manualRescaleOverlay);
         }
     }
 
     const varietyBtnEl = document.getElementById('varietyBtn');
-    if (varietyBtnEl && varietyBtnEl.dataset.wired !== 'true') {
-        varietyBtnEl.dataset.wired = 'true';
+    if (varietyBtnEl) {
         varietyBtnEl.addEventListener('click', function (e) {
             e.preventDefault();
             varietyEnabled = !varietyEnabled;
@@ -176,12 +164,19 @@ function wireManualGenerationParamsListeners() {
                 this.setAttribute('data-state', 'off');
             }
             updateAllStagesInheritedValues();
-        });
+        }, { signal });
     }
 }
 
+function initManualGenerationParamsListenerScope() {
+    const manualModalEl = document.getElementById('manualModal');
+    if (!manualModalEl) return;
+    // attachModalListeners: public/scripts/comp/modalListenerScope.js
+    attachModalListeners(manualModalEl, attachManualGenerationParamsListeners);
+}
+
 if (typeof wsClient !== 'undefined' && wsClient) {
-    wsClient.registerInitStep(47.4, 'Manual generation params listeners', async () => {
-        wireManualGenerationParamsListeners();
+    wsClient.registerInitStep(474, 'Manual generation params listener scope', async () => {
+        initManualGenerationParamsListenerScope();
     });
 }

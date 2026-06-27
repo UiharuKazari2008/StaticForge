@@ -231,8 +231,10 @@ function cycleManualResolutionSizeTier() {
     return null;
 }
 
-function shortcutListItem(key, label, icon, alt) {
-    return { key, label, icon: icon || '', alt: !!alt };
+function shortcutListItem(key, label, icon, alt, overlayValid) {
+    const item = { key, label, icon: icon || '', alt: !!alt };
+    if (typeof overlayValid === 'function') item.overlayValid = overlayValid;
+    return item;
 }
 
 function shortcutListDivider() {
@@ -268,9 +270,9 @@ const MANUAL_FN_ALT_ROW = [
     { key: 'F3', label: 'Reset Emp.', icon: 'fas fa-eraser' },
     { key: 'F5', label: 'Staged Gen.', icon: 'fas fa-arrow-down-square-triangle' },
     { key: 'F7', label: 'Maximum', icon: 'fas fa-bolt' },
-    { key: 'F8', label: 'Compare Source', icon: 'fas fa-eye-dropper' },
+    { key: 'F8', label: 'Compare Source', icon: 'fas fa-eye-dropper', overlayValid: () => isCompareSourceAvailableForOverlay() },
     { key: 'F9', label: 'Res. Group', icon: 'fas fa-layer-group' },
-    { key: 'F10', label: 'Compare View', icon: 'fas fa-columns-3' }
+    { key: 'F10', label: 'Compare View', icon: 'fas fa-columns-3', overlayValid: () => isCompareSourceAvailableForOverlay() }
 ];
 
 const MANUAL_CLASSIC_LEFT = [
@@ -301,14 +303,14 @@ const MANUAL_CLASSIC_RIGHT = [
     shortcutListItem('F7', 'Reset to Normal', 'nai-dot-reset'),
     shortcutListItem('ALT + F7', 'Maximum Quality', 'fas fa-bolt', true),
     shortcutListItem('F8', 'Lock Seed', 'fas fa-seedling'),
-    shortcutListItem('ALT + F8', 'Toggle/Replace Compare Source', 'fas fa-eye-dropper', true),
+    shortcutListItem('ALT + F8', 'Toggle/Replace Compare Source', 'fas fa-eye-dropper', true, () => isCompareSourceAvailableForOverlay()),
     shortcutListDivider(),
     shortcutListItem('F9', 'Cycle Ratio', 'fas fa-expand-arrows-alt'),
     shortcutListItem('ALT + F9', 'Cycle Res. Group', 'fas fa-layer-group', true),
     shortcutListItem('F10', 'Comparison', 'fas fa-eye-dropper'),
-    shortcutListItem('ALT + F10', 'Cycle Compare View', 'fas fa-columns-3', true),
-    shortcutListItem('ALT + L/SHFT', 'Peek Source', 'fas fa-eye-dropper', true),
-    shortcutListItem('ALT + R/SHFT', 'Peek Result', 'fas fa-eye-dropper', true),
+    shortcutListItem('ALT + F10', 'Cycle Compare View', 'fas fa-columns-3', true, () => isCompareSourceAvailableForOverlay()),
+    shortcutListItem('ALT + L/SHFT', 'Peek Source', 'fas fa-eye-dropper', true, () => isCompareSourceAvailableForOverlay()),
+    shortcutListItem('ALT + R/SHFT', 'Peek Result', 'fas fa-eye-dropper', true, () => isCompareSourceAvailableForOverlay()),
     shortcutListItem('F11', '', ''),
     shortcutListItem('F12', '', '')
 ];
@@ -366,6 +368,94 @@ const SHORTCUT_PROFILES = {
     }
 };
 
+const OVERLAY_SCOPE_MANUAL = { type: 'whenFocused', modalId: 'manualModal', idPrefix: 'manual' };
+const OVERLAY_SCOPE_EXPANSION = { type: 'whenFocused', modalId: 'expansionCompiledPromptDialog', idPrefix: 'expansion' };
+const OVERLAY_SCOPE_BRACKET = { type: 'whenFocused', modalId: 'bracketGenerationModal', idPrefix: 'bracket' };
+
+function normalizeOverlayFnKey(keys) {
+    const raw = String(keys || '').trim();
+    if (!raw) return raw;
+    const stripped = raw.replace(/^ALT\+/i, '').trim();
+    if (/^ESCAPE$/i.test(stripped)) return 'Esc';
+    return stripped;
+}
+
+function registerShortcutOverlayListItem(scope, item, options) {
+    if (!item || item.divider || !item.key || !item.label) return;
+    const suffix = options && options.suffix
+        ? options.suffix
+        : item.key.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase();
+    const overlayValid = (options && options.overlayValid) || item.overlayValid || null;
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: `overlay.${scope.idPrefix}.${suffix}`,
+        type: scope.type,
+        modalId: scope.modalId,
+        label: item.label,
+        keys: item.key,
+        overlayIcon: item.icon || null,
+        overlayGroup: options && options.group ? options.group : null,
+        overlayAlt: item.alt === true,
+        overlayFnRow: options && options.fnRow ? options.fnRow : null,
+        overlayValid,
+        overlayOnly: true,
+        priority: -10
+    });
+}
+
+function registerShortcutOverlayFnRow(scope, fnRowDefs, fnRowKind) {
+    mergeFnRowDefs(fnRowDefs).forEach((def) => {
+        if (def.empty || (!def.label && !def.icon)) return;
+        registerShortcutOverlayListItem(scope, def, {
+            fnRow: fnRowKind,
+            suffix: `${fnRowKind}-${def.key}`.toLowerCase(),
+            overlayValid: def.overlayValid || null
+        });
+    });
+}
+
+function registerKeyboardShortcutOverlays() {
+    MANUAL_CLASSIC_LEFT.forEach((item, index) => {
+        registerShortcutOverlayListItem(OVERLAY_SCOPE_MANUAL, item, { group: 'classic-left', suffix: `left-${index}` });
+    });
+    MANUAL_CLASSIC_RIGHT.forEach((item, index) => {
+        registerShortcutOverlayListItem(OVERLAY_SCOPE_MANUAL, item, { group: 'classic-right', suffix: `right-${index}` });
+    });
+    registerShortcutOverlayFnRow(OVERLAY_SCOPE_MANUAL, MANUAL_FN_ROW, 'primary');
+    registerShortcutOverlayFnRow(OVERLAY_SCOPE_MANUAL, MANUAL_FN_ALT_ROW, 'alt');
+
+    SHORTCUT_PROFILES.expansion.classicLeft.forEach((item, index) => {
+        registerShortcutOverlayListItem(OVERLAY_SCOPE_EXPANSION, item, { suffix: `exp-${index}` });
+    });
+    registerShortcutOverlayFnRow(OVERLAY_SCOPE_EXPANSION, SHORTCUT_PROFILES.expansion.fnRow, 'primary');
+
+    SHORTCUT_PROFILES.bracket.wideList.forEach((item, index) => {
+        registerShortcutOverlayListItem(OVERLAY_SCOPE_BRACKET, item, { suffix: `bracket-${index}` });
+    });
+    registerShortcutOverlayFnRow(OVERLAY_SCOPE_BRACKET, SHORTCUT_PROFILES.bracket.fnRow, 'primary');
+
+    if (window.isDesktop) {
+        registerKeyboardListener({
+            id: 'overlay.global.ctrlTab',
+            type: 'global',
+            label: 'Switch Window',
+            keys: 'Ctrl+Tab',
+            overlayIcon: 'fas fa-window-restore',
+            overlayGroup: 'Desktop',
+            overlayOnly: true,
+            priority: -10
+        });
+    }
+}
+
+let keyboardShortcutOverlaysRegistered = false;
+
+function ensureKeyboardShortcutOverlaysRegistered() {
+    if (keyboardShortcutOverlaysRegistered) return;
+    keyboardShortcutOverlaysRegistered = true;
+    registerKeyboardShortcutOverlays();
+}
+
 let shortcutsClassicLeftGrid = null;
 let shortcutsClassicRightGrid = null;
 let shortcutsWideListEl = null;
@@ -375,6 +465,19 @@ let shortcutsWideFnAltRowEl = null;
 
 function isBareFunctionKey(key) {
     return /^F(\d{1,2})$/i.test(String(key || '').trim());
+}
+
+function isAltFunctionKeyCombo(key) {
+    const normalized = String(key || '').replace(/\s+/g, '');
+    return /^ALT\+F\d{1,2}$/i.test(normalized);
+}
+
+function resolveRegistryOverlayFnRow(entry) {
+    if (entry.overlayFnRow) return entry.overlayFnRow;
+    const keys = String(entry.overlayKeys || '').trim();
+    if (isBareFunctionKey(keys)) return 'primary';
+    if (isAltFunctionKeyCombo(keys)) return 'alt';
+    return null;
 }
 
 function mergeFnRowDefs(fnRowDefs) {
@@ -518,107 +621,201 @@ function getShortcutOverlayContextFlags() {
     };
 }
 
-function getActiveShortcutContext(flags) {
-    if (flags.shouldHandleBracketGenShortcuts) return 'bracket';
-    if (flags.shouldHandleExpansionPromptEditorShortcuts) return 'expansion';
-    if (flags.shouldHandleManualModalActions) return 'manual';
-    return null;
+function overlayRegistryEntryToListItem(entry) {
+    return shortcutListItem(
+        entry.overlayKeys,
+        entry.overlayLabel,
+        entry.overlayIcon || '',
+        entry.overlayAlt === true
+    );
 }
 
-function renderShortcutsOverlayContent(contextKey) {
-    const profile = SHORTCUT_PROFILES[contextKey];
-    if (!profile) return;
+function renderShortcutsOverlayFromRegistry() {
+    // getActiveKeyboardOverlayEntries: public/scripts/comp/modalKeyboardRegistry.js
+    const entries = getActiveKeyboardOverlayEntries();
+    if (!entries.length) {
+        hideShortcutsOverlay();
+        return false;
+    }
 
-    renderShortcutListItems(shortcutsClassicLeftGrid, profile.classicLeft);
-    renderShortcutListItems(shortcutsClassicRightGrid, profile.classicRight);
+    const classicLeftItems = [];
+    const classicRightItems = [];
+    const wideListItems = [];
+    const fnRowDefs = [];
+    const fnAltRowDefs = [];
+    let wideLastGroup = null;
 
-    const wideList = profile.wideList && profile.wideList.length
-        ? profile.wideList
-        : (profile.classicLeft || []).concat(profile.classicRight || []).filter((item) => {
-            if (item.divider) return true;
-            return !isBareFunctionKey(item.key);
-        });
+    entries.forEach((entry) => {
+        const fnRow = resolveRegistryOverlayFnRow(entry);
+        if (fnRow === 'primary') {
+            fnRowDefs.push({
+                key: normalizeOverlayFnKey(entry.overlayKeys),
+                label: entry.overlayLabel,
+                icon: entry.overlayIcon || ''
+            });
+            return;
+        }
+        if (fnRow === 'alt') {
+            fnAltRowDefs.push({
+                key: normalizeOverlayFnKey(entry.overlayKeys),
+                label: entry.overlayLabel,
+                icon: entry.overlayIcon || ''
+            });
+            return;
+        }
 
+        const item = overlayRegistryEntryToListItem(entry);
+        const group = entry.overlayGroup;
+        if (group === 'classic-left') {
+            classicLeftItems.push(item);
+        } else if (group === 'classic-right') {
+            classicRightItems.push(item);
+        } else {
+            classicLeftItems.push(item);
+        }
+
+        if (group && group !== wideLastGroup && wideListItems.length) {
+            wideListItems.push(shortcutListDivider());
+        }
+        wideLastGroup = group;
+        wideListItems.push(item);
+    });
+
+    const wideList = wideListItems.filter((item) => {
+        if (item.divider) return true;
+        return !isBareFunctionKey(item.key);
+    });
+
+    renderShortcutListItems(shortcutsClassicLeftGrid, classicLeftItems);
+    renderShortcutListItems(shortcutsClassicRightGrid, classicRightItems);
     renderShortcutListItems(shortcutsWideListEl, wideList);
-    renderFnKeyRow(shortcutsWideFnAltGroupsEl, profile.fnAltRow || [], { altRow: true });
-    renderFnKeyRow(shortcutsWideFnPrimaryGroupsEl, profile.fnRow);
+    renderFnKeyRow(shortcutsWideFnAltGroupsEl, fnAltRowDefs, { altRow: true });
+    renderFnKeyRow(shortcutsWideFnPrimaryGroupsEl, fnRowDefs);
 
     const wideListPanel = shortcutsWideListEl && shortcutsWideListEl.closest('.shortcuts-wide-list');
     if (wideListPanel) {
         wideListPanel.classList.toggle('is-empty', !wideList.length);
     }
     if (shortcutsWideFnAltRowEl) {
-        shortcutsWideFnAltRowEl.classList.toggle('is-empty', !fnRowHasActiveKeys(profile.fnAltRow));
+        shortcutsWideFnAltRowEl.classList.toggle('is-empty', !fnRowHasActiveKeys(fnAltRowDefs));
     }
+    return true;
+}
+
+function refreshShortcutsOverlayIfVisible() {
+    if (!shortcutsOverlay || !shortcutsOverlay.classList.contains('visible')) return;
+    if (activeAltKeyCodes.size === 0 || suppressAltOverlayUntilRelease) return;
+    renderShortcutsOverlayFromRegistry();
 }
 
 // Initialize keyboard shortcuts
 function initializeManualModalShortcuts() {
     createShortcutsOverlay();
     createWindowSwitcherOverlay();
-    document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('keyup', handleKeyUp);
+    ensureKeyboardShortcutOverlaysRegistered();
+    // setKeyboardOverlayRefreshCallback: public/scripts/comp/modalKeyboardRegistry.js
+    setKeyboardOverlayRefreshCallback(refreshShortcutsOverlayIfVisible);
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'keyboardShortcuts.keydown',
+        handler: handleKeyDown,
+        type: 'global',
+        eventType: 'keydown',
+        priority: 50,
+        critical: false,
+        showInOverlay: false
+    });
+    registerKeyboardListener({
+        id: 'keyboardShortcuts.keyup',
+        handler: handleKeyUp,
+        type: 'global',
+        eventType: 'keyup',
+        priority: 50,
+        critical: false,
+        showInOverlay: false
+    });
     window.addEventListener('blur', handleShortcutWindowBlur);
     document.addEventListener('visibilitychange', handleShortcutVisibilityChange);
     wireEscapeAndCharacterDetailKeys();
+}
+
+function handleEscapeAndCharacterDetailKeys(e) {
+    const characterAutocompleteOverlay = document.getElementById('characterAutocompleteOverlay');
+    const metadataDialog = document.getElementById('metadataDialog');
+
+    if (e.key === 'Escape') {
+        if (metadataDialog && !metadataDialog.classList.contains('hidden')) {
+            // hideMetadataDialog: public/scripts/app.js
+            hideMetadataDialog();
+            return true;
+        }
+        if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
+            const autocompleteList = document.querySelector('.character-autocomplete-list');
+            if (autocompleteList && autocompleteList.querySelector('.character-detail-content')) {
+                // hideCharacterDetail: public/scripts/comp/autocompleteUtils.js
+                hideCharacterDetail();
+                return true;
+            }
+            // hideCharacterAutocomplete: public/scripts/comp/autocompleteUtils.js
+            hideCharacterAutocomplete();
+            return true;
+        }
+        const activeElement = document.activeElement;
+        if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+            const selection = window.getSelection();
+            if (selection && selection.toString().length > 0) {
+                const range = selection.getRangeAt(0);
+                const endOffset = range.endOffset;
+                selection.removeAllRanges();
+                if (activeElement.setSelectionRange) {
+                    activeElement.setSelectionRange(endOffset, endOffset);
+                }
+            } else {
+                activeElement.blur();
+            }
+            return true;
+        }
+        return false;
+    }
+
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
+            const autocompleteList = document.querySelector('.character-autocomplete-list');
+            if (autocompleteList && autocompleteList.querySelector('.character-detail-content')) {
+                // handleCharacterDetailArrowKeys: public/scripts/comp/autocompleteUtils.js
+                handleCharacterDetailArrowKeys(e.key);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    if (e.key === 'Enter') {
+        if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
+            const autocompleteList = document.querySelector('.character-autocomplete-list');
+            if (autocompleteList && autocompleteList.querySelector('.character-detail-content')) {
+                // handleCharacterDetailEnter: public/scripts/comp/autocompleteUtils.js
+                handleCharacterDetailEnter();
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 function wireEscapeAndCharacterDetailKeys() {
     if (document.body.dataset.escapeCharacterDetailKeysWired === 'true') return;
     document.body.dataset.escapeCharacterDetailKeysWired = 'true';
 
-    const metadataDialog = document.getElementById('metadataDialog');
-
-    document.addEventListener('keydown', (e) => {
-        const characterAutocompleteOverlay = document.getElementById('characterAutocompleteOverlay');
-
-        if (e.key === 'Escape') {
-            if (metadataDialog && !metadataDialog.classList.contains('hidden')) {
-                // hideMetadataDialog: public/scripts/app.js
-                hideMetadataDialog();
-            } else if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
-                const autocompleteList = document.querySelector('.character-autocomplete-list');
-                if (autocompleteList && autocompleteList.querySelector('.character-detail-content')) {
-                    // hideCharacterDetail: public/scripts/comp/autocompleteUtils.js
-                    hideCharacterDetail();
-                    return;
-                }
-                // hideCharacterAutocomplete: public/scripts/comp/autocompleteUtils.js
-                hideCharacterAutocomplete();
-            } else {
-                const activeElement = document.activeElement;
-                if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
-                    const selection = window.getSelection();
-                    if (selection && selection.toString().length > 0) {
-                        const range = selection.getRangeAt(0);
-                        const endOffset = range.endOffset;
-                        selection.removeAllRanges();
-                        if (activeElement.setSelectionRange) {
-                            activeElement.setSelectionRange(endOffset, endOffset);
-                        }
-                    } else {
-                        activeElement.blur();
-                    }
-                    return;
-                }
-            }
-        } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-            if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
-                const autocompleteList = document.querySelector('.character-autocomplete-list');
-                if (autocompleteList && autocompleteList.querySelector('.character-detail-content')) {
-                    // handleCharacterDetailArrowKeys: public/scripts/comp/autocompleteUtils.js
-                    handleCharacterDetailArrowKeys(e.key);
-                }
-            }
-        } else if (e.key === 'Enter') {
-            if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
-                const autocompleteList = document.querySelector('.character-autocomplete-list');
-                if (autocompleteList && autocompleteList.querySelector('.character-detail-content')) {
-                    // handleCharacterDetailEnter: public/scripts/comp/autocompleteUtils.js
-                    handleCharacterDetailEnter();
-                }
-            }
-        }
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'keyboardShortcuts.escapeCharacterDetail',
+        handler: handleEscapeAndCharacterDetailKeys,
+        type: 'global',
+        priority: 60,
+        critical: true,
+        showInOverlay: false
     });
 }
 
@@ -672,8 +869,6 @@ function createShortcutsOverlay() {
     shortcutsOverlay.appendChild(classicLayout);
     shortcutsOverlay.appendChild(wideLayout);
     document.body.appendChild(shortcutsOverlay);
-
-    renderShortcutsOverlayContent('manual');
 }
 
 // Create the window switcher overlay
@@ -700,7 +895,7 @@ function handleKeyDown(event) {
             const isPlainTypingKey = k.length === 1 || k === 'Backspace' || k === 'Delete' || k === 'Enter' ||
                 k === 'Tab' || k.startsWith('Arrow');
             if (isPlainTypingKey && !/^F\d{1,2}$/i.test(k)) {
-                return;
+                return true;
             }
         }
     }
@@ -745,16 +940,16 @@ function handleKeyDown(event) {
         shouldHandleExpansionPromptEditorShortcuts,
         shouldHandleBracketGenShortcuts
     } = shortcutContextFlags;
-
-    const shouldShowShortcutOverlay =
-        shouldHandleManualModalActions ||
-        shouldHandleExpansionPromptEditorShortcuts ||
-        shouldHandleBracketGenShortcuts;
     
     if (windowSwitcherActive) return;
 
-    // Handle Alt key press
-    if (event.key === 'Alt' && shouldShowShortcutOverlay) {
+    // Handle Alt key press — universal overlay from keyboard registry
+    if (event.key === 'Alt') {
+        if (suppressAltOverlayUntilRelease) return;
+        ensureKeyboardShortcutOverlaysRegistered();
+        // getActiveKeyboardOverlayEntries: public/scripts/comp/modalKeyboardRegistry.js
+        const overlayEntries = getActiveKeyboardOverlayEntries();
+        if (!overlayEntries.length) return;
         event.preventDefault();
         event.stopPropagation();
         activeAltKeyCodes.add(event.code || 'AltLeft');
@@ -1184,18 +1379,18 @@ function handleKeyUp(event) {
             suppressAltOverlayUntilRelease = false;
             altKeyPressed = false;
             hideShortcutsOverlay();
-        }
 
-        // Double-tap Alt opens Run applet (runApplet: public/scripts/comp/runApplet.js)
-        if (!event.ctrlKey && !event.shiftKey && !event.metaKey && window.runApplet) {
-            const now = Date.now();
-            if (runAppletLastAltUpTime && now - runAppletLastAltUpTime < RUN_APPLET_DOUBLE_ALT_MS) {
-                runAppletLastAltUpTime = 0;
-                event.preventDefault();
-                window.runApplet.toggle();
-                return;
+            // Double-tap Alt opens Run applet (runApplet: public/scripts/comp/runApplet.js)
+            if (!event.ctrlKey && !event.shiftKey && !event.metaKey && window.runApplet) {
+                const now = Date.now();
+                if (runAppletLastAltUpTime && now - runAppletLastAltUpTime < RUN_APPLET_DOUBLE_ALT_MS) {
+                    runAppletLastAltUpTime = 0;
+                    event.preventDefault();
+                    window.runApplet.toggle();
+                    return;
+                }
+                runAppletLastAltUpTime = now;
             }
-            runAppletLastAltUpTime = now;
         }
     }
 
@@ -1391,12 +1586,10 @@ function handleShortcutVisibilityChange() {
 // Show shortcuts overlay
 function showShortcutsOverlay() {
     if (!shortcutsOverlay) return;
+    if (suppressAltOverlayUntilRelease) return;
 
-    const flags = getShortcutOverlayContextFlags();
-    const contextKey = getActiveShortcutContext(flags);
-    if (contextKey) {
-        renderShortcutsOverlayContent(contextKey);
-    }
+    ensureKeyboardShortcutOverlaysRegistered();
+    if (!renderShortcutsOverlayFromRegistry()) return;
 
     const isWideViewport = window.innerWidth > window.innerHeight;
     shortcutsOverlay.classList.toggle('shortcuts-overlay--wide', isWideViewport);
@@ -1418,8 +1611,12 @@ function hideShortcutsOverlay() {
 
 // Clean up event listeners
 function cleanupManualModalShortcuts() {
-    document.removeEventListener('keydown', handleKeyDown);
-    document.removeEventListener('keyup', handleKeyUp);
+    // deregisterKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    deregisterKeyboardListener('keyboardShortcuts.keydown');
+    deregisterKeyboardListener('keyboardShortcuts.keyup');
+    deregisterKeyboardListener('keyboardShortcuts.escapeCharacterDetail');
+    // setKeyboardOverlayRefreshCallback: public/scripts/comp/modalKeyboardRegistry.js
+    setKeyboardOverlayRefreshCallback(null);
     window.removeEventListener('blur', handleShortcutWindowBlur);
     document.removeEventListener('visibilitychange', handleShortcutVisibilityChange);
     resetShortcutModifierState();

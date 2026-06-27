@@ -192,7 +192,12 @@ class ContextMenuController {
     shouldShowItem(item) {
         // Check if item is explicitly hidden
         if (typeof item.hidden === 'function') {
-            if (item.hidden()) {
+            try {
+                if (item.hidden()) {
+                    return false;
+                }
+            } catch (error) {
+                console.error('Error executing item hidden fn:', error);
                 return false;
             }
         } else if (item.hidden === true) {
@@ -3259,12 +3264,13 @@ class ContextMenuController {
     }
 }
 
-// Create global instance (var so other classic scripts can reference contextMenu)
-const contextMenu = new ContextMenuController();
+// Global singleton — bare `contextMenu` in other classic scripts resolves via window
+window.contextMenu = new ContextMenuController();
 
 // Export for module usage
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = ContextMenuController;
+    module.exports.contextMenu = window.contextMenu;
 }
 
 /*

@@ -112,8 +112,37 @@ let galleryCatchupBusyLineEl = null;
 // In-flight full images gallery load (desktop background startup + open-while-loading)
 let galleryImagesLoadTask = null;
 
+// Tracks which view/workspace load results are still valid (rapid view switches).
+let galleryLoadTokenCounter = 0;
+let lastGalleryDisplayKey = '';
+
 function getGalleryLoadWorkspaceId() {
     return (typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : 'default';
+}
+
+function getGalleryDisplayKey() {
+    return `${getGalleryLoadWorkspaceId()}:${currentGalleryView}`;
+}
+
+function markGalleryDisplayed() {
+    lastGalleryDisplayKey = getGalleryDisplayKey();
+}
+
+function issueGalleryLoadToken(viewType) {
+    return {
+        id: ++galleryLoadTokenCounter,
+        viewType,
+        workspaceId: getGalleryLoadWorkspaceId()
+    };
+}
+
+function isGalleryLoadTokenCurrent(token) {
+    if (!token) {
+        return true;
+    }
+    return token.id === galleryLoadTokenCounter
+        && currentGalleryView === token.viewType
+        && getGalleryLoadWorkspaceId() === token.workspaceId;
 }
 
 function canJoinGalleryImagesLoad() {
@@ -169,8 +198,9 @@ function displayGalleryContentIfNeeded() {
     if (isGalleryWindowHidden() || isJumpingToPosition) {
         return;
     }
+    const displayKey = getGalleryDisplayKey();
     const hasDisplayedItems = gallery && gallery.children.length > 0;
-    if (hasDisplayedItems) {
+    if (hasDisplayedItems && lastGalleryDisplayKey === displayKey) {
         return;
     }
     if (!allImages || allImages.length === 0) {
@@ -179,6 +209,7 @@ function displayGalleryContentIfNeeded() {
     clearSelection();
     resetInfiniteScroll();
     displayGalleryInitialPageOrRestored();
+    markGalleryDisplayed();
 }
 
 async function joinGalleryImagesLoad(progressCallback, opts) {
@@ -215,7 +246,9 @@ async function joinGalleryImagesLoad(progressCallback, opts) {
     try {
         await task.promise;
         loadLog.done('joined in-flight gallery load');
-        displayGalleryContentIfNeeded();
+        if (isGalleryLoadTokenCurrent(task.loadToken)) {
+            displayGalleryContentIfNeeded();
+        }
     } finally {
         unsub();
         if (galleryLoadingProgressShown) {
@@ -442,7 +475,11 @@ function reportGalleryBlockProgress(progressCallback, loaded, total, offset) {
     });
 }
 
-async function finalizeGalleryImagesLoad(dataItems, probe, workspaceId, viewType, serverDestructiveAt, loadLog = galleryLoadLogNoop) {
+async function finalizeGalleryImagesLoad(dataItems, probe, workspaceId, viewType, serverDestructiveAt, loadLog = galleryLoadLogNoop, loadToken = null) {
+    if (!isGalleryLoadTokenCurrent(loadToken)) {
+        loadLog.step('stale-discard', 'Discarded stale gallery load before apply', { viewType });
+        return;
+    }
     const galleryHash = probe.galleryHash;
     const pinnedIndexes = Array.isArray(probe.pinnedIndexes) ? probe.pinnedIndexes : [];
     loadLog.step('finalize', 'Applying pinned overlay after gallery data is complete', {
@@ -624,7 +661,7 @@ async function tryIncrementalGalleryHeadSync(cachedGallery, probe, viewType, pro
     return { dataItems, hashProbe };
 }
 
-async function syncGalleryImagesFromBlocks(probe, storedSnapshot, viewType, workspaceId, progressCallback, serverDestructiveAt, loadLog = galleryLoadLogNoop) {
+async function syncGalleryImagesFromBlocks(probe, storedSnapshot, viewType, workspaceId, progressCallback, serverDestructiveAt, loadLog = galleryLoadLogNoop, loadToken = null) {
     const totalItems = probe.total;
     const targetHash = probe.galleryHash;
     const serverAt = Number(serverDestructiveAt) || 0;
@@ -662,7 +699,7 @@ async function syncGalleryImagesFromBlocks(probe, storedSnapshot, viewType, work
             hash: `${targetHash.slice(0, 12)}…`,
             pinCount: Array.isArray(probe.pinnedIndexes) ? probe.pinnedIndexes.length : 0
         });
-        await finalizeGalleryImagesLoad(cachedGallery, probe, workspaceId, viewType, serverDestructiveAt, loadLog);
+        await finalizeGalleryImagesLoad(cachedGallery, probe, workspaceId, viewType, serverDestructiveAt, loadLog, loadToken);
         loadLog.done('loaded from IndexedDB cache');
         return true;
     }
@@ -692,7 +729,8 @@ async function syncGalleryImagesFromBlocks(probe, storedSnapshot, viewType, work
                 workspaceId,
                 viewType,
                 serverDestructiveAt,
-                loadLog
+                loadLog,
+                loadToken
             );
             loadLog.done('loaded via incremental head sync');
             return true;
@@ -733,7 +771,8 @@ async function syncGalleryImagesFromBlocks(probe, storedSnapshot, viewType, work
                 workspaceId,
                 viewType,
                 serverDestructiveAt,
-                loadLog
+                loadLog,
+                loadToken
             );
             loadLog.done('loaded via full block sync', { attempts: attempt + 1 });
             return true;
@@ -2205,6 +2244,39 @@ function updateGalleryJumpIndexActiveCard() {
     }
 }
 
+function getGalleryJumpIndexTargetEntry(preferredEntry) {
+    if (preferredEntry) return preferredEntry;
+    if (!galleryJumpIndexEntries || galleryJumpIndexEntries.length === 0) return null;
+    if (Number.isFinite(galleryJumpIndexHoveredBoundaryIndex)) {
+        return galleryJumpIndexEntries.find((entry) => entry.index === galleryJumpIndexHoveredBoundaryIndex) || null;
+    }
+    const currentIndex = getCurrentGalleryAnchorIndex();
+    let nearest = null;
+    let nearestDistance = Infinity;
+    galleryJumpIndexEntries.forEach((entry) => {
+        const d = Math.abs(entry.index - currentIndex);
+        if (d < nearestDistance) {
+            nearestDistance = d;
+            nearest = entry;
+        }
+    });
+    return nearest;
+}
+
+async function jumpGalleryJumpIndexTarget(preferredEntry) {
+    const entry = getGalleryJumpIndexTargetEntry(preferredEntry);
+    if (!entry) return false;
+    updateGalleryJumpIndexSummary(entry.index);
+    await displayGalleryFromStartIndex(entry.index, true);
+    if (!window.isDesktop) {
+        // closeModal — public/scripts/comp/modalUtils.js
+        closeModal(galleryJumpIndexToolEl);
+    } else {
+        refreshGalleryJumpIndexUI();
+    }
+    return true;
+}
+
 async function waitForGalleryDataStableForJumpIndex(timeoutMs = 9000) {
     const startedAt = Date.now();
     while ((Date.now() - startedAt) < timeoutMs) {
@@ -2243,15 +2315,8 @@ async function regenerateGalleryJumpIndex() {
                 <img src="${previewSrc}" alt="" loading="lazy" />
                 <div class="gallery-jump-index-card-meta">${entry.groupCount} images</div>
             `;
-            card.addEventListener('click', async () => {
-                updateGalleryJumpIndexSummary(entry.index);
-                await displayGalleryFromStartIndex(entry.index, true);
-                if (!window.isDesktop) {
-                    // closeModal — public/scripts/comp/modalUtils.js
-                    closeModal(galleryJumpIndexToolEl);
-                } else {
-                    refreshGalleryJumpIndexUI();
-                }
+            card.addEventListener('click', () => {
+                jumpGalleryJumpIndexTarget(entry);
             });
             card.addEventListener('mouseenter', () => {
                 galleryJumpIndexHoveredBoundaryIndex = entry.index;
@@ -2607,6 +2672,7 @@ function displayGalleryInitialPageOrRestored() {
     } else {
         displayCurrentPageOptimized();
     }
+    markGalleryDisplayed();
 }
 
 // Late gallery_scroll_state (race with loadGallery): public/scripts/websocket.js
@@ -2659,6 +2725,7 @@ window.applyFilteredImages = function (images, originalIndices = null) {
         triggerBuildGalleryNavigationCache();
 
         displayCurrentPageOptimized();
+        markGalleryDisplayed();
         updateGalleryTitleBar();
         updateGalleryPlaceholders();
     } catch (e) {
@@ -2871,7 +2938,19 @@ async function switchGalleryView(view, force = false, progressCallback = null) {
         clearStaleGalleryListCopies();
     }
 
+    // Clear DOM and in-memory list so the new view cannot reuse stale tiles or skip redraw
+    // (displayGalleryContentIfNeeded bails when gallery.children.length > 0).
+    clearGallery();
+    resetInfiniteScroll();
+    setActiveGalleryList([]);
+    const galleryWindow = document.querySelector('#galleryWindow');
+    const galleryContainer = galleryWindow ? galleryWindow.querySelector('.gallery-container') : null;
+    if (galleryContainer && document.body.classList.contains('desktop-mode')) {
+        galleryContainer.scrollTop = 0;
+    }
+
     currentGalleryView = view;
+    const loadToken = issueGalleryLoadToken(view);
 
     // Update button states
     galleryToggleGroup.querySelectorAll('.gallery-toggle-btn').forEach(btn => {
@@ -2905,19 +2984,19 @@ async function switchGalleryView(view, force = false, progressCallback = null) {
     switch (view) {
         case 'scraps':
             document.body.classList.add('scraps-grayscale');
-            await loadScraps(combinedProgressCallback);
+            await loadScraps(combinedProgressCallback, loadToken);
             break;
         case 'images':
             document.body.classList.remove('scraps-grayscale');
-            await loadGallery(false, combinedProgressCallback);
+            await loadGallery(false, combinedProgressCallback, { loadToken });
             break;
         case 'pinned':
             document.body.classList.remove('scraps-grayscale');
-            await loadPinned(combinedProgressCallback);
+            await loadPinned(combinedProgressCallback, loadToken);
             break;
         case 'upscaled':
             document.body.classList.remove('scraps-grayscale');
-            await loadUpscaled(combinedProgressCallback);
+            await loadUpscaled(combinedProgressCallback, loadToken);
             break;
     }
 
@@ -2937,11 +3016,14 @@ async function switchGalleryView(view, force = false, progressCallback = null) {
 }
 
 // Load scraps for current workspace
-async function loadScraps(progressCallback = null) {
+async function loadScraps(progressCallback = null, loadToken = null) {
     try {
         // Load complete scraps gallery
         if (window.wsClient && window.wsClient.isConnected()) {
-            await loadCompleteGallery('scraps', progressCallback);
+            await loadCompleteGallery('scraps', progressCallback, loadToken);
+            if (!isGalleryLoadTokenCurrent(loadToken)) {
+                return;
+            }
 
             // Apply current sort order to the loaded data
             sortGalleryData();
@@ -2960,6 +3042,9 @@ async function loadScraps(progressCallback = null) {
         updateGalleryPlaceholders();
     } catch (error) {
         console.error('Error loading scraps:', error);
+        if (!isGalleryLoadTokenCurrent(loadToken)) {
+            return;
+        }
         setActiveGalleryList([]);
         if (!isJumpingToPosition) {
             resetInfiniteScroll();
@@ -2969,11 +3054,14 @@ async function loadScraps(progressCallback = null) {
 }
 
 // Load pinned images for current workspace
-async function loadPinned(progressCallback = null) {
+async function loadPinned(progressCallback = null, loadToken = null) {
     try {
         // Load complete pinned gallery
         if (window.wsClient && window.wsClient.isConnected()) {
-            await loadCompleteGallery('pinned', progressCallback);
+            await loadCompleteGallery('pinned', progressCallback, loadToken);
+            if (!isGalleryLoadTokenCurrent(loadToken)) {
+                return;
+            }
 
             // Apply current sort order to the loaded data
             sortGalleryData();
@@ -2990,6 +3078,9 @@ async function loadPinned(progressCallback = null) {
         updateGalleryPlaceholders();
     } catch (error) {
         console.error('Error loading pinned images:', error);
+        if (!isGalleryLoadTokenCurrent(loadToken)) {
+            return;
+        }
         setActiveGalleryList([]);
         if (!isJumpingToPosition) {
             resetInfiniteScroll();
@@ -2999,11 +3090,14 @@ async function loadPinned(progressCallback = null) {
 }
 
 // Load upscaled images for current workspace
-async function loadUpscaled(progressCallback = null) {
+async function loadUpscaled(progressCallback = null, loadToken = null) {
     try {
         // Load complete upscaled gallery
         if (window.wsClient && window.wsClient.isConnected()) {
-            await loadCompleteGallery('upscaled', progressCallback);
+            await loadCompleteGallery('upscaled', progressCallback, loadToken);
+            if (!isGalleryLoadTokenCurrent(loadToken)) {
+                return;
+            }
 
             // Apply current sort order to the loaded data
             sortGalleryData();
@@ -3020,6 +3114,9 @@ async function loadUpscaled(progressCallback = null) {
         updateGalleryPlaceholders();
     } catch (error) {
         console.error('Error loading upscaled images:', error);
+        if (!isGalleryLoadTokenCurrent(loadToken)) {
+            return;
+        }
         setActiveGalleryList([]);
         if (!isJumpingToPosition) {
             resetInfiniteScroll();
@@ -3152,6 +3249,7 @@ function buildGalleryNavigationCache(images) {
 // Load gallery images with optimized rendering to prevent flickering
 async function loadGallery(addLatest, progressCallback = null, loadOptions = null) {
     const opts = (loadOptions && typeof loadOptions === 'object') ? loadOptions : {};
+    const loadToken = opts.loadToken || null;
 
     // Check if spinner already exists (added in step 89)
     const spinner = document.getElementById('galleryLoadingSpinner');
@@ -3215,6 +3313,7 @@ async function loadGallery(addLatest, progressCallback = null, loadOptions = nul
             const loadTask = {
                 viewType: 'images',
                 workspaceId: getGalleryLoadWorkspaceId(),
+                loadToken,
                 progressListeners: new Set(),
                 lastProgress: null,
                 promise: null
@@ -3237,7 +3336,10 @@ async function loadGallery(addLatest, progressCallback = null, loadOptions = nul
             };
 
             loadTask.promise = (async () => {
-                await loadCompleteGallery('images', emitGalleryLoadProgress);
+                await loadCompleteGallery('images', emitGalleryLoadProgress, loadToken);
+                if (!isGalleryLoadTokenCurrent(loadToken)) {
+                    return;
+                }
 
                 // Apply current sort order to the loaded data
                 sortGalleryData();
@@ -3261,6 +3363,8 @@ async function loadGallery(addLatest, progressCallback = null, loadOptions = nul
                 if (!isGalleryHidden && !isJumpingToPosition) {
                     if (addLatest) {
                         await addNewGalleryItemAfterGeneration(allImages[0]);
+                    } else if (window.isWorkspaceSwitching) {
+                        displayGalleryInitialPageOrRestored();
                     } else {
                         displayGalleryContentIfNeeded();
                     }
@@ -3347,7 +3451,7 @@ async function loadGalleryChunk(viewType = 'images', offset = 0, limit = 100) {
 }
 
 // Load complete gallery by getting all pages and building allImages locally
-async function loadCompleteGallery(viewType = 'images', progressCallback = null) {
+async function loadCompleteGallery(viewType = 'images', progressCallback = null, loadToken = null) {
     const workspaceId = (typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : 'default';
     const loadLog = acquireGalleryLoadLogger(viewType, workspaceId);
     loadLog.step('start', 'Beginning gallery load', { viewType, workspaceId });
@@ -3396,9 +3500,14 @@ async function loadCompleteGallery(viewType = 'images', progressCallback = null)
                     workspaceId,
                     progressCallback,
                     serverDestructiveAt,
-                    loadLog
+                    loadLog,
+                    loadToken
                 );
                 if (synced) {
+                    if (!isGalleryLoadTokenCurrent(loadToken)) {
+                        loadLog.step('stale-discard', 'Discarded stale gallery load after block sync', { viewType });
+                        return;
+                    }
                     if (window.wsClient && typeof window.wsClient.completeGalleryLoading === 'function') {
                         window.wsClient.completeGalleryLoading();
                     }
@@ -3488,15 +3597,17 @@ async function loadCompleteGallery(viewType = 'images', progressCallback = null)
         };
 
         if (finalizeProbe.galleryHash && galleryResponseWorkspaceId === workspaceId) {
-            await finalizeGalleryImagesLoad(dataItems, finalizeProbe, workspaceId, viewType, serverDestructiveAt, loadLog);
+            await finalizeGalleryImagesLoad(dataItems, finalizeProbe, workspaceId, viewType, serverDestructiveAt, loadLog, loadToken);
             loadLog.done('loaded via legacy chunk loader with snapshot save');
-        } else {
+        } else if (isGalleryLoadTokenCurrent(loadToken)) {
             setActiveGalleryList(dataItems);
             loadLog.done('loaded via legacy chunk loader without snapshot save', {
                 viewType,
                 itemCount: dataItems.length,
                 reason: !finalizeProbe.galleryHash ? 'missing hash' : 'workspace mismatch'
             });
+        } else {
+            loadLog.step('stale-discard', 'Discarded stale gallery load from legacy chunk loader', { viewType });
         }
 
         if (progressCallback && totalItems > 0) {
@@ -7143,6 +7254,8 @@ function updateBulkActionsBar() {
             gallery.dataset.bulkContextMenuActive = '';
         }
     }
+    // notifyKeyboardOverlayContextChanged: public/scripts/comp/modalKeyboardRegistry.js
+    notifyKeyboardOverlayContextChanged();
 }
 
 // Helper function to find an image's index in the array (filtered or full)
@@ -7296,6 +7409,228 @@ window.wsClient.registerInitStep(30, 'Initializing Gallery System', async () => 
     wireMainMenuBarColumnWheel();
 });
 
+function isGalleryWindowKeyboardContext(e) {
+    if (!document.body.classList.contains('desktop-mode')) return false;
+    if (e && e.target) {
+        const tag = e.target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable) {
+            return false;
+        }
+    }
+    const galleryWindow = document.getElementById('galleryWindow');
+    if (!galleryWindow || galleryWindow.classList.contains('hidden')) {
+        return false;
+    }
+    if (typeof isModalActive === 'function') {
+        if (!isModalActive(galleryWindow)) return false;
+    } else {
+        const stack = modalStack || [];
+        if (stack.length > 0 && stack[stack.length - 1] !== galleryWindow) return false;
+    }
+    return true;
+}
+
+function onGalleryWindowEscapeKeydown(e) {
+    if (e.key !== 'Escape') return;
+    if (!document.body.classList.contains('desktop-mode')) return;
+    const galleryEl = document.getElementById('gallery');
+    if (galleryEl && galleryEl.classList.contains('selection-mode')) return;
+    const galleryWindow = document.getElementById('galleryWindow');
+    if (!galleryWindow || galleryWindow.classList.contains('hidden') || !galleryWindow.classList.contains('windowed')) return;
+    if (currentActiveWindowId && currentActiveWindowId !== 'galleryWindow') return;
+    e.preventDefault();
+    e.stopPropagation();
+    // hideGalleryWindow — public/scripts/comp/modalUtils.js
+    hideGalleryWindow();
+    return true;
+}
+
+function onGalleryJumpIndexEscapeKeydown(e) {
+    if (e.key !== 'Escape') return;
+    if (!galleryJumpIndexToolEl || galleryJumpIndexToolEl.classList.contains('hidden')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    // closeModal — public/scripts/comp/modalUtils.js
+    closeModal(galleryJumpIndexToolEl);
+    return true;
+}
+
+function onGalleryJumpIndexEnterKeydown(e) {
+    if (e.key !== 'Enter') return;
+    if (!galleryJumpIndexToolEl || galleryJumpIndexToolEl.classList.contains('hidden')) return;
+    const tag = e.target && e.target.tagName;
+    if (tag === 'TEXTAREA') return;
+    if (e.target && e.target.closest && e.target.closest('.custom-dropdown-menu:not(.hidden)')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    jumpGalleryJumpIndexTarget();
+    return true;
+}
+
+function onGalleryFunctionKeydown(e) {
+    if (!/^F\d{1,2}$/i.test(e.key)) return;
+    if (!isGalleryWindowKeyboardContext(e)) return;
+
+    let handled = false;
+    switch (e.key.toUpperCase()) {
+        case 'F1':
+            switchGalleryView('images');
+            handled = true;
+            break;
+        case 'F2':
+            switchGalleryView('pinned');
+            handled = true;
+            break;
+        case 'F3':
+            switchGalleryView('upscaled');
+            handled = true;
+            break;
+        case 'F4':
+            switchGalleryView('scraps');
+            handled = true;
+            break;
+        case 'F5':
+            displayGalleryFromStartIndex(0, false);
+            if (refreshGalleryJumpIndexUI) {
+                refreshGalleryJumpIndexUI();
+            } else if (triggerGalleryVirtualScrollFromShortcut) {
+                triggerGalleryVirtualScrollFromShortcut();
+            }
+            handled = true;
+            break;
+        case 'F6':
+            toggleGallerySortOrder();
+            handled = true;
+            break;
+        case 'F7':
+            openGalleryJumpIndexToolWindow();
+            handled = true;
+            break;
+        case 'F8':
+            // toggleSearchContainer: public/scripts/comp/fileSearch.js
+            if (typeof toggleSearchContainer === 'function') {
+                if (typeof isSearchContainerOpen === 'function' && !isSearchContainerOpen()) {
+                    toggleSearchContainer();
+                } else if (typeof isSearchContainerOpen !== 'function') {
+                    toggleSearchContainer();
+                } else {
+                    const searchInput = document.getElementById('fileSearchInput');
+                    if (searchInput) searchInput.focus();
+                }
+            }
+            handled = true;
+            break;
+        default:
+            break;
+    }
+
+    if (handled) {
+        e.preventDefault();
+        e.stopPropagation();
+        return true;
+    }
+}
+
+function isGalleryBatchOverlayContextActive() {
+    const galleryEl = document.getElementById('gallery');
+    return !!(galleryEl && galleryEl.classList.contains('selection-mode'));
+}
+
+function wireGalleryKeyboardOverlayEntries() {
+    if (document.body.dataset.galleryKeyboardOverlayWired === 'true') return;
+    document.body.dataset.galleryKeyboardOverlayWired = 'true';
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerModalOverlayEntries('galleryWindow', 'Gallery', [
+        { id: 'overlay.galleryWindow.f1', label: 'Main gallery', keys: 'F1', icon: 'mdi mdi-1-25 mdi-image-multiple' },
+        { id: 'overlay.galleryWindow.f2', label: 'Favorites', keys: 'F2', icon: 'fa-solid fa-star' },
+        { id: 'overlay.galleryWindow.f3', label: 'Upscaled', keys: 'F3', icon: 'fas fa-arrow-up-right-dots' },
+        { id: 'overlay.galleryWindow.f4', label: 'Trash', keys: 'F4', icon: 'fas fa-bin-recycle' },
+        { id: 'overlay.galleryWindow.f5', label: 'Jump to top', keys: 'F5', icon: 'fas fa-arrow-up' },
+        { id: 'overlay.galleryWindow.f6', label: 'Sort flip', keys: 'F6', icon: 'fa-light fa-sort-amount-down' },
+        { id: 'overlay.galleryWindow.f7', label: 'Visual index', keys: 'F7', icon: 'fas fa-list-ol' },
+        { id: 'overlay.galleryWindow.f8', label: 'Open search', keys: 'F8', icon: 'fas fa-search' },
+        { id: 'overlay.galleryWindow.scrollUp', label: 'Scroll up', keys: '↑', icon: 'fas fa-chevron-up' },
+        { id: 'overlay.galleryWindow.scrollDown', label: 'Scroll down', keys: '↓', icon: 'fas fa-chevron-down' },
+        { id: 'overlay.galleryWindow.home', label: 'First image', keys: 'Home', icon: 'fas fa-angles-up' },
+        { id: 'overlay.galleryWindow.end', label: 'Last image', keys: 'End', icon: 'fas fa-angles-down' },
+        { id: 'overlay.galleryWindow.batchEscape', label: 'Clear selection', keys: 'Esc ×2', icon: 'fas fa-xmark', overlayValid: () => isGalleryBatchOverlayContextActive() && getSelectedCount() > 0 },
+        { id: 'overlay.galleryWindow.batchSelectAll', label: 'Select all', keys: 'Ctrl+A', icon: 'fas fa-check-double', overlayValid: isGalleryBatchOverlayContextActive },
+        { id: 'overlay.galleryWindow.batchDelete', label: 'Delete selected', keys: 'Del', icon: 'fas fa-trash', overlayValid: () => isGalleryBatchOverlayContextActive() && getSelectedCount() > 0 },
+        { id: 'overlay.galleryWindow.close', label: 'Close gallery', keys: 'Alt+Q', icon: 'fas fa-times' }
+    ]);
+    registerModalOverlayEntries('galleryJumpIndexTool', 'Gallery', [
+        { id: 'overlay.galleryJumpIndexTool.enterJump', label: 'Jump to boundary', keys: 'Enter', icon: 'fas fa-location-arrow' },
+        { id: 'overlay.galleryJumpIndexTool.close', label: 'Close visual index', keys: 'Esc', icon: 'fas fa-times' }
+    ]);
+}
+
+function wireGalleryJumpIndexKeyboardListeners() {
+    if (document.body.dataset.galleryJumpIndexKeyboardWired === 'true') return;
+    document.body.dataset.galleryJumpIndexKeyboardWired = 'true';
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'galleryJumpIndexTool.escape',
+        handler: onGalleryJumpIndexEscapeKeydown,
+        type: 'whenFocused',
+        modalId: 'galleryJumpIndexTool',
+        priority: 80,
+        critical: true,
+        label: 'Close visual index',
+        keys: 'Esc',
+        overlayIcon: 'fas fa-times',
+        overlayGroup: 'Gallery',
+        showInOverlay: false
+    });
+    registerKeyboardListener({
+        id: 'galleryJumpIndexTool.enterJump',
+        handler: onGalleryJumpIndexEnterKeydown,
+        type: 'whenFocused',
+        modalId: 'galleryJumpIndexTool',
+        priority: 75,
+        label: 'Jump to boundary',
+        keys: 'Enter',
+        overlayIcon: 'fas fa-location-arrow',
+        overlayGroup: 'Gallery',
+        showInOverlay: false
+    });
+}
+
+function wireGalleryModalListenerScope() {
+    const galleryWindow = document.getElementById('galleryWindow');
+    if (!galleryWindow || galleryWindow.dataset.galleryModalScopeWired === 'true') return;
+    galleryWindow.dataset.galleryModalScopeWired = 'true';
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'galleryWindow.scrollNav',
+        handler: onGalleryWindowKeydown,
+        type: 'whenFocused',
+        modalId: 'galleryWindow',
+        priority: 57,
+        critical: false,
+        showInOverlay: false
+    });
+    registerKeyboardListener({
+        id: 'galleryWindow.batchSelectionKeydown',
+        handler: onGalleryBatchSelectionKeydown,
+        type: 'whenFocused',
+        modalId: 'galleryWindow',
+        priority: 55,
+        critical: false,
+        showInOverlay: false
+    });
+    registerKeyboardListener({
+        id: 'galleryWindow.functionKeys',
+        handler: onGalleryFunctionKeydown,
+        type: 'whenFocused',
+        modalId: 'galleryWindow',
+        priority: 58,
+        critical: false,
+        showInOverlay: false
+    });
+    wireGalleryKeyboardOverlayEntries();
+    wireGalleryJumpIndexKeyboardListeners();
+}
+
 function wireGalleryToolbarListeners() {
     const galleryToggleGroup = document.getElementById('galleryToggleGroup');
     if (!galleryToggleGroup || galleryToggleGroup.dataset.toolbarWired === 'true') return;
@@ -7367,94 +7702,81 @@ function wireGalleryToolbarListeners() {
 function wireGalleryKeyboardNav() {
     if (document.body.dataset.galleryKeyboardNavWired === 'true') return;
     document.body.dataset.galleryKeyboardNavWired = 'true';
+    wireGalleryModalListenerScope();
+}
 
-    document.addEventListener('keydown', (e) => {
-        if (!document.body.classList.contains('desktop-mode')) return;
-        const handledKeys = new Set(['PageUp', 'PageDown', 'ArrowUp', 'ArrowDown', 'Home', 'End']);
-        if (!handledKeys.has(e.key)) return;
+function onGalleryWindowKeydown(e) {
+    const handledKeys = new Set(['PageUp', 'PageDown', 'ArrowUp', 'ArrowDown', 'Home', 'End']);
+    if (!handledKeys.has(e.key)) return;
+    if (!isGalleryWindowKeyboardContext(e)) return;
 
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
-            return;
-        }
+    const galleryWindow = document.getElementById('galleryWindow');
+    const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : (allImages ? allImages.length : 0);
+    if (effectiveLength === 0) return;
 
-        const galleryWindow = document.querySelector('#galleryWindow');
-        if (!galleryWindow || galleryWindow.classList.contains('hidden')) {
-            return;
-        }
+    const runLegacyPageJump = (direction) => {
+        const currentFirstVisibleIndex = getFirstVisibleRowIndex();
+        const cols = realGalleryColumns || 5;
+        const currentRow = Math.floor(currentFirstVisibleIndex / cols);
+        const targetRow = direction > 0 ? (currentRow + 10) : Math.max(0, currentRow - 10);
+        const targetIndex = Math.min(targetRow * cols, effectiveLength - 1);
+        const finalTargetIndex = Math.max(0, targetIndex);
+        displayGalleryFromStartIndex(finalTargetIndex, false);
+    };
 
-        if (typeof isModalActive === 'function') {
-            if (!isModalActive(galleryWindow)) return;
-        } else {
-            const modalStack = window.modalStack || [];
-            if (modalStack.length > 0 && modalStack[modalStack.length - 1] !== galleryWindow) return;
-        }
-
-        const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : (allImages ? allImages.length : 0);
-        if (effectiveLength === 0) return;
-
-        const runLegacyPageJump = (direction) => {
-            const currentFirstVisibleIndex = getFirstVisibleRowIndex();
-            const cols = realGalleryColumns || 5;
-            const currentRow = Math.floor(currentFirstVisibleIndex / cols);
-            const targetRow = direction > 0 ? (currentRow + 10) : Math.max(0, currentRow - 10);
-            const targetIndex = Math.min(targetRow * cols, effectiveLength - 1);
-            const finalTargetIndex = Math.max(0, targetIndex);
-            displayGalleryFromStartIndex(finalTargetIndex, false);
-        };
-
-        if (e.key === 'PageUp' || e.key === 'PageDown') {
-            e.preventDefault();
-            e.stopPropagation();
-            const direction = e.key === 'PageDown' ? 1 : -1;
-            if (typeof jumpToNextGalleryTimeBoundary === 'function') {
-                if (e.shiftKey) {
-                    jumpToNextGalleryTimeBoundary(direction, {
-                        thresholdMs: 12 * 60 * 60 * 1000,
-                        scanWindow: null
-                    });
-                } else {
-                    jumpToNextGalleryTimeBoundary(direction);
-                }
-            }
-            return;
-        }
-
-        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-            e.preventDefault();
-            e.stopPropagation();
-            const direction = e.key === 'ArrowDown' ? 1 : -1;
+    if (e.key === 'PageUp' || e.key === 'PageDown') {
+        e.preventDefault();
+        e.stopPropagation();
+        const direction = e.key === 'PageDown' ? 1 : -1;
+        if (typeof jumpToNextGalleryTimeBoundary === 'function') {
             if (e.shiftKey) {
-                runLegacyPageJump(direction);
-                if (refreshGalleryJumpIndexUI) {
-                    refreshGalleryJumpIndexUI();
-                } else if (triggerGalleryVirtualScrollFromShortcut) {
-                    triggerGalleryVirtualScrollFromShortcut();
-                }
-                return;
-            }
-
-            const galleryContainer = galleryWindow.querySelector('.gallery-container');
-            const scrollStep = galleryContainer ? Math.max(64, Math.floor(galleryContainer.clientHeight * 0.82)) : Math.floor(window.innerHeight * 0.82);
-            if (galleryContainer) {
-                galleryContainer.scrollBy({ top: direction * scrollStep, behavior: 'smooth' });
+                jumpToNextGalleryTimeBoundary(direction, {
+                    thresholdMs: 12 * 60 * 60 * 1000,
+                    scanWindow: null
+                });
             } else {
-                window.scrollBy({ top: direction * scrollStep, behavior: 'smooth' });
+                jumpToNextGalleryTimeBoundary(direction);
             }
-            return;
         }
+        return true;
+    }
 
-        if (e.key === 'Home' || e.key === 'End') {
-            e.preventDefault();
-            e.stopPropagation();
-            const targetIndex = e.key === 'Home' ? 0 : Math.max(0, effectiveLength - 1);
-            displayGalleryFromStartIndex(targetIndex, false);
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        e.stopPropagation();
+        const direction = e.key === 'ArrowDown' ? 1 : -1;
+        if (e.shiftKey) {
+            runLegacyPageJump(direction);
             if (refreshGalleryJumpIndexUI) {
                 refreshGalleryJumpIndexUI();
             } else if (triggerGalleryVirtualScrollFromShortcut) {
                 triggerGalleryVirtualScrollFromShortcut();
             }
+            return true;
         }
-    });
+
+        const galleryContainer = galleryWindow.querySelector('.gallery-container');
+        const scrollStep = galleryContainer ? Math.max(64, Math.floor(galleryContainer.clientHeight * 0.82)) : Math.floor(window.innerHeight * 0.82);
+        if (galleryContainer) {
+            galleryContainer.scrollBy({ top: direction * scrollStep, behavior: 'smooth' });
+        } else {
+            window.scrollBy({ top: direction * scrollStep, behavior: 'smooth' });
+        }
+        return true;
+    }
+
+    if (e.key === 'Home' || e.key === 'End') {
+        e.preventDefault();
+        e.stopPropagation();
+        const targetIndex = e.key === 'Home' ? 0 : Math.max(0, effectiveLength - 1);
+        displayGalleryFromStartIndex(targetIndex, false);
+        if (refreshGalleryJumpIndexUI) {
+            refreshGalleryJumpIndexUI();
+        } else if (triggerGalleryVirtualScrollFromShortcut) {
+            triggerGalleryVirtualScrollFromShortcut();
+        }
+        return true;
+    }
 }
 
 function wireMainMenuBarColumnWheel() {
@@ -8865,10 +9187,19 @@ function onGalleryBatchSelectionKeydown(e) {
             e.stopPropagation();
             clearSelection();
             galleryBatchEscapePrevTs = 0;
-        } else {
-            galleryBatchEscapePrevTs = now;
+            return true;
         }
+        galleryBatchEscapePrevTs = now;
         return;
+    }
+
+    if (e.key === 'Delete') {
+        if (getSelectedCount() === 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        // handleBulkDelete — public/scripts/comp/bulkOperationsManager.js
+        handleBulkDelete(e);
+        return true;
     }
 
     const mod = e.ctrlKey || e.metaKey;
@@ -8878,7 +9209,7 @@ function onGalleryBatchSelectionKeydown(e) {
         document.dispatchEvent(new CustomEvent('contextMenuAction', {
             detail: { action: 'bulk-select-all', target: galleryEl }
         }));
-        return;
+        return true;
     }
 
     if (e.code === 'KeyX' && mod) {
@@ -8887,7 +9218,7 @@ function onGalleryBatchSelectionKeydown(e) {
         e.stopPropagation();
         // public/scripts/comp/contextMenu.js — openBulkActionsMoveSubmenuCentered
         contextMenu.openBulkActionsMoveSubmenuCentered(galleryEl);
-        return;
+        return true;
     }
 
     if ((e.code === 'Comma' || e.code === 'Period') && e.ctrlKey && !e.metaKey) {
@@ -8917,12 +9248,13 @@ function onGalleryBatchSelectionKeydown(e) {
             e.preventDefault();
             e.stopPropagation();
             bulkSelectFilteredIndexRange(0, anchor - 1);
-        } else {
-            if (anchor < 0 || anchor >= last) return;
-            e.preventDefault();
-            e.stopPropagation();
-            bulkSelectFilteredIndexRange(anchor + 1, last);
+            return true;
         }
+        if (anchor < 0 || anchor >= last) return;
+        e.preventDefault();
+        e.stopPropagation();
+        bulkSelectFilteredIndexRange(anchor + 1, last);
+        return true;
     }
 }
 
@@ -9256,9 +9588,23 @@ function clearGallery() {
         }
         gallery.innerHTML = '';
     }
+    lastGalleryDisplayKey = '';
     // Clear selection when clearing gallery
     clearSelection();
 }
+
+/** Clear DOM and scroll state before loading a different workspace gallery. */
+function resetGalleryForWorkspaceSwitch() {
+    scrollPositionPreservationEnabled = false;
+    clearGallery();
+    resetInfiniteScroll();
+    const galleryWindow = document.querySelector('#galleryWindow');
+    const galleryContainer = galleryWindow ? galleryWindow.querySelector('.gallery-container') : null;
+    if (galleryContainer && document.body.classList.contains('desktop-mode')) {
+        galleryContainer.scrollTop = 0;
+    }
+}
+window.resetGalleryForWorkspaceSwitch = resetGalleryForWorkspaceSwitch;
 
 // Send first-visible row index + anchor filename to server (session restore + optional prefetch)
 function sendGalleryPositionHint() {
@@ -9946,4 +10292,3 @@ async function deleteImage(image, event = null) {
 // Add context menu event listener
 document.addEventListener('contextMenuAction', handleGalleryContextMenuAction);
 document.addEventListener('contextMenuAction', handleBulkActionsContextMenu);
-document.addEventListener('keydown', onGalleryBatchSelectionKeydown, true);

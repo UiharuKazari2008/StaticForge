@@ -1368,6 +1368,62 @@ body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window
     color: #ffa726;
 }
 
+/* Developer warnings tray (keyboard registry) */
+.dev-warnings-tray-icon {
+    color: #ffb74d;
+    cursor: pointer;
+}
+
+.dev-warnings-tray-icon.has-warnings {
+    animation: pulse-ping-warning 2s ease-in-out infinite;
+}
+
+.dev-warnings-tray-popup {
+    width: min(420px, calc(100vw - 24px));
+    max-height: min(360px, calc(100vh - 80px));
+    z-index: 5000;
+}
+
+.dev-warnings-tray-popup .popover-body {
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.dev-warnings-tray-popup-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.dev-warnings-tray-popup-row {
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.dev-warnings-tray-popup-row:last-child {
+    border-bottom: none;
+}
+
+.dev-warnings-tray-popup-time {
+    font-size: 0.75em;
+}
+
+.dev-warnings-tray-popup-message {
+    font-size: 0.9em;
+}
+
+.dev-warnings-tray-popup-detail {
+    font-size: 0.75em;
+    word-break: break-word;
+}
+
+.dev-warnings-tray-popup-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 8px;
+}
+
 .taskbar-clock {
     display: flex;
     align-items: center;

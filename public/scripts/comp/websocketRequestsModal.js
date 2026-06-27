@@ -20,10 +20,11 @@ class WebSocketRequestsModal {
         this.serviceWorkerIcon = null;
         this.updateInterval = null;
         this.isUpdating = false;
-        this.observer = null;
         this.lastActiveHash = null;
         this.lastPreviousHash = null;
         this.renderTarget = null;
+        this._domReady = false;
+        this._modalListenerScopeRegistered = false;
         
         this.init();
     }
@@ -64,58 +65,26 @@ class WebSocketRequestsModal {
             console.warn('WebSocket Requests Modal not found');
             return;
         }
+        this._domReady = true;
+    }
 
-        // Close button handler
-        const closeBtn = document.getElementById('closeWebsocketRequestsModalBtn');
-        if (closeBtn) {
-            closeBtn.addEventListener('click', () => {
-                this.close();
-            });
-        }
-
-        // Update when modal is opened - use a debounced check
-        let lastClassState = this.modal.classList.contains('hidden');
-        const checkModalOpen = () => {
-            const isHidden = this.modal.classList.contains('hidden');
-            // Only react if the state actually changed
-            if (isHidden !== lastClassState) {
-                lastClassState = isHidden;
-                if (!isHidden) {
-                    // Modal opened - update and start auto-update
-                    this.update();
-                    this.startAutoUpdate();
-                } else {
-                    // Modal closed - stop auto-update
-                    this.stopAutoUpdate();
-                }
+    registerModalListenerScope() {
+        if (!this.modal || this._modalListenerScopeRegistered) return;
+        this._modalListenerScopeRegistered = true;
+        // attachModalListeners: public/scripts/comp/modalListenerScope.js
+        attachModalListeners(this.modal, (signal) => {
+            const closeBtn = document.getElementById('closeWebsocketRequestsModalBtn');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', () => {
+                    this.close();
+                }, { signal });
             }
-        };
-
-        // Use MutationObserver to watch for class changes (but debounced)
-        this.observer = new MutationObserver(() => {
-            // Use requestAnimationFrame to debounce rapid mutations
-            if (this.observerTimeout) {
-                cancelAnimationFrame(this.observerTimeout);
-            }
-            this.observerTimeout = requestAnimationFrame(checkModalOpen);
-        });
-        this.observer.observe(this.modal, {
-            attributes: true,
-            attributeFilter: ['class']
-        });
-
-        // Also check on open/close events if they exist
-        if (typeof window.addEventListener === 'function') {
-            // Listen for custom events if modal system uses them
-            this.modal.addEventListener('modal-opened', () => {
-                this.update();
-                this.startAutoUpdate();
-            });
-
-            this.modal.addEventListener('modal-closed', () => {
+            this.update();
+            this.startAutoUpdate();
+            signal.addEventListener('abort', () => {
                 this.stopAutoUpdate();
             });
-        }
+        });
     }
 
     open() {
@@ -177,10 +146,6 @@ class WebSocketRequestsModal {
 
     teardown() {
         this.stopAutoUpdate();
-        if (this.observer) {
-            this.observer.disconnect();
-            this.observer = null;
-        }
     }
 
     update(force) {
@@ -610,11 +575,24 @@ class WebSocketRequestsModal {
 // Initialize the modal manager
 let websocketRequestsModal = null;
 
+function initWebSocketRequestsModal() {
+    if (!websocketRequestsModal) {
+        websocketRequestsModal = new WebSocketRequestsModal();
+    }
+    websocketRequestsModal.registerModalListenerScope();
+}
+
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-        websocketRequestsModal = new WebSocketRequestsModal();
+        initWebSocketRequestsModal();
     });
 } else {
-    websocketRequestsModal = new WebSocketRequestsModal();
+    initWebSocketRequestsModal();
+}
+
+if (typeof wsClient !== 'undefined' && wsClient) {
+    wsClient.registerInitStep(480, 'WebSocket requests modal listener scope', async () => {
+        initWebSocketRequestsModal();
+    });
 }

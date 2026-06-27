@@ -1781,6 +1781,9 @@ async function setActiveWorkspace(id) {
         // Wait for fade out
         await new Promise(resolve => setTimeout(resolve, 300));
 
+        // resetGalleryForWorkspaceSwitch: public/scripts/comp/galleryView.js
+        resetGalleryForWorkspaceSwitch();
+
         // Use WebSocket API if available, otherwise fall back to HTTP
         if (window.wsClient && window.wsClient.isConnected()) {
             await window.wsClient.setActiveWorkspace(id);
@@ -2519,6 +2522,102 @@ function initializeWorkspaceSettingsForm() {
         textareaFontSelected.textContent = initDef2.label || 'Default';
         textareaFontSelected.style.fontFamily = initDef2.value ? `'${initDef2.value}', monospace` : (initDef2.fontFamily || 'var(--font-mono)');
     }
+
+    wireWorkspaceModalKeyboard();
+}
+
+let workspaceModalKeyboardWired = false;
+
+function handleWorkspaceManageModalKeydown(e) {
+    const modal = document.getElementById('workspaceManageModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'n' || e.key === 'N')) {
+        e.preventDefault();
+        e.stopPropagation();
+        showAddWorkspaceModal();
+        return true;
+    }
+}
+
+function handleWorkspaceEditModalKeydown(e) {
+    const modal = document.getElementById('workspaceEditModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        hideWorkspaceEditModal();
+        return true;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const btn = document.getElementById('workspaceSaveBtn');
+        if (btn && !btn.disabled) btn.click();
+        return true;
+    }
+}
+
+function handleWorkspaceDumpModalKeydown(e) {
+    const modal = document.getElementById('workspaceDumpModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        hideWorkspaceDumpModal();
+        return true;
+    }
+
+    if (e.key === 'Enter' && !modalKeyboardSkipPrimaryEnter(e.target)) {
+        return modalKeyboardTriggerPrimaryEnter(e, modal, '.modal-actions .btn-primary:not(:disabled)');
+    }
+}
+
+function wireWorkspaceModalKeyboard() {
+    if (workspaceModalKeyboardWired) return;
+    workspaceModalKeyboardWired = true;
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'workspaceManageModal.keydown',
+        handler: handleWorkspaceManageModalKeydown,
+        type: 'whenFocused',
+        modalId: 'workspaceManageModal',
+        priority: 75,
+        showInOverlay: false
+    });
+    registerKeyboardListener({
+        id: 'workspaceEditModal.keydown',
+        handler: handleWorkspaceEditModalKeydown,
+        type: 'whenFocused',
+        modalId: 'workspaceEditModal',
+        priority: 85,
+        critical: true,
+        showInOverlay: false
+    });
+    registerKeyboardListener({
+        id: 'workspaceDumpModal.keydown',
+        handler: handleWorkspaceDumpModalKeydown,
+        type: 'whenFocused',
+        modalId: 'workspaceDumpModal',
+        priority: 85,
+        critical: true,
+        showInOverlay: false
+    });
+    registerModalOverlayEntries('workspaceManageModal', 'Workspaces', [
+        { id: 'overlay.workspaceManage.new', label: 'New workspace', keys: 'Ctrl+N', icon: 'fas fa-plus' },
+        { id: 'overlay.workspaceManage.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
+    ]);
+    registerModalOverlayEntries('workspaceEditModal', 'Workspaces', [
+        { id: 'overlay.workspaceEdit.save', label: 'Save', keys: 'Ctrl+S', icon: 'fas fa-save' },
+        { id: 'overlay.workspaceEdit.close', label: 'Close', keys: 'Esc', icon: 'fas fa-times' }
+    ]);
+    registerModalOverlayEntries('workspaceDumpModal', 'Workspaces', [
+        { id: 'overlay.workspaceDump.confirm', label: 'Confirm', keys: 'Enter', icon: 'fas fa-check' },
+        { id: 'overlay.workspaceDump.close', label: 'Close', keys: 'Esc', icon: 'fas fa-times' }
+    ]);
 }
 
 // Register initialization steps with WebSocket client

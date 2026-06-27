@@ -128,6 +128,51 @@ class ChatSystem {
             selectedId: 'personaDefaultVerbositySelected',
             hiddenId: 'personaDefaultVerbosityHidden'
         });
+
+        this.wireKeyboardOverlayEntries();
+    }
+
+    wireKeyboardOverlayEntries() {
+        if (this._keyboardOverlayWired) return;
+        this._keyboardOverlayWired = true;
+        // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+        registerKeyboardListener({
+            id: 'overlay.chatInterfaceModal.send',
+            type: 'whenFocused',
+            modalId: 'chatInterfaceModal',
+            label: 'Send message',
+            keys: 'Enter',
+            overlayIcon: 'fas fa-paper-plane',
+            overlayGroup: 'Chat',
+            overlayOnly: true,
+            priority: -10
+        });
+        registerKeyboardListener({
+            id: 'personaSettingsModal.keydown',
+            handler: (e) => {
+                const modal = document.getElementById('personaSettingsModal');
+                if (!modal || modal.classList.contains('hidden')) return;
+
+                if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.savePersonaSettings();
+                    return true;
+                }
+            },
+            type: 'whenFocused',
+            modalId: 'personaSettingsModal',
+            priority: 78,
+            critical: true,
+            showInOverlay: false
+        });
+        registerModalOverlayEntries('chatInterfaceModal', 'Chat', [
+            { id: 'overlay.chatInterfaceModal.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
+        ]);
+        registerModalOverlayEntries('personaSettingsModal', 'Chat', [
+            { id: 'overlay.personaSettings.save', label: 'Save', keys: 'Ctrl+S', icon: 'fas fa-save' },
+            { id: 'overlay.personaSettings.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
+        ]);
     }
 
     async initializeWithPersonaSettings() {

@@ -6,8 +6,7 @@
  */
 
 const _pipelineStageWireControllers = new Map();
-let _pipelineGlobalTogglesWired = false;
-let _pipelineGlobalTogglesController = null;
+let _pipelineDragDocumentController = null;
 
 function buildPipelineStageToolbar(stageId) {
     // Stage controls
@@ -230,9 +229,14 @@ function initializePipelineStageDragAndDrop() {
         // Add dragging class
         draggedItem.classList.add('dragging');
 
-        // Add event listeners for drag movement - only mouse events on document
-        document.addEventListener('mousemove', onDrag);
-        document.addEventListener('mouseup', endDrag);
+        // Per-drag document listeners — AbortController aligned with modalListenerScope.js
+        if (_pipelineDragDocumentController) {
+            _pipelineDragDocumentController.abort();
+        }
+        _pipelineDragDocumentController = new AbortController();
+        const dragSignal = _pipelineDragDocumentController.signal;
+        document.addEventListener('mousemove', onDrag, { signal: dragSignal });
+        document.addEventListener('mouseup', endDrag, { signal: dragSignal });
 
         // Prevent text selection during drag
         document.body.style.userSelect = 'none';
@@ -339,11 +343,11 @@ function initializePipelineStageDragAndDrop() {
 
         e.preventDefault();
 
-        // Remove document event listeners
-        document.removeEventListener('mousemove', onDrag);
-        document.removeEventListener('mouseup', endDrag);
+        if (_pipelineDragDocumentController) {
+            _pipelineDragDocumentController.abort();
+            _pipelineDragDocumentController = null;
+        }
 
-        // Remove dragging classes
         draggedItem.classList.remove('dragging');
         const items = Array.from(list.children);
         items.forEach(item => item.classList.remove('drag-over'));
@@ -359,7 +363,6 @@ function initializePipelineStageDragAndDrop() {
 
         enforceManagedStageSandwichRules();
 
-        // Reset draggedItem
         draggedItem = null;
         draggedIndex = null;
     }
@@ -1542,12 +1545,7 @@ function unwirePipelineStageControls(stageId) {
     }
 }
 
-function wirePipelineGlobalToggles() {
-    if (_pipelineGlobalTogglesWired) return;
-    _pipelineGlobalTogglesWired = true;
-    _pipelineGlobalTogglesController = new AbortController();
-    const { signal } = _pipelineGlobalTogglesController;
-
+function attachPipelineGlobalToggleListeners(signal) {
     // saveStage0Btn, enableStageGenerationBtn: public/scripts/comp/manualModalManager.js
     if (saveStage0Btn) {
         saveStage0Btn.addEventListener('click', () => {
@@ -1579,8 +1577,25 @@ function wirePipelineGlobalToggles() {
     }
 }
 
+function onManualModalPipelineScopeOpened(signal) {
+    attachPipelineGlobalToggleListeners(signal);
+    signal.addEventListener('abort', () => {
+        if (_pipelineDragDocumentController) {
+            _pipelineDragDocumentController.abort();
+            _pipelineDragDocumentController = null;
+        }
+    });
+}
+
+function initPipelineGlobalToggleListenerScope() {
+    const manualModalEl = document.getElementById('manualModal');
+    if (!manualModalEl) return;
+    // attachModalListeners: public/scripts/comp/modalListenerScope.js
+    attachModalListeners(manualModalEl, onManualModalPipelineScopeOpened);
+}
+
 if (typeof wsClient !== 'undefined' && wsClient) {
-    wsClient.registerInitStep(47.45, 'Pipeline global toggles', async () => {
-        wirePipelineGlobalToggles();
+    wsClient.registerInitStep(475, 'Pipeline global toggle listener scope', async () => {
+        initPipelineGlobalToggleListenerScope();
     });
 }

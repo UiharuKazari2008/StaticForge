@@ -1141,7 +1141,6 @@ html:not(.disable-blur) .websocket-ticker {
     .modal,
     .glass-toast,
     .dialog-bubble,
-    .developer-modal-overlay,
     .login-container,
     .pin-button {
         -webkit-backdrop-filter: none !important;

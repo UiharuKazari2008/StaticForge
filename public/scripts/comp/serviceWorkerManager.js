@@ -95,6 +95,8 @@ class ServiceWorkerManager {
         this.runtimeCompileNotifyId = null;
         this.initUpdateModalActive = false;
         this.timeoutToastId = null;
+        this.stallToastId = null;
+        this.stallRetryButtonsWired = false;
         this.swReadyTimeout = null;
         this.initialCheckDone = false;
         this.downloadState = null;
@@ -126,8 +128,40 @@ class ServiceWorkerManager {
         this.installWizardUsed = false;
         this._installWizardEtaState = null;
         this._activeDownloadAttach = null;
+        this._installWizardKeyboardWired = false;
 
+        this._wireInstallWizardKeyboardListeners();
         this.init();
+    }
+
+    _wireInstallWizardKeyboardListeners() {
+        if (this._installWizardKeyboardWired) return;
+        this._installWizardKeyboardWired = true;
+
+        // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+        registerKeyboardListener({
+            id: 'overlay.dreamscapeOsInstallWizard.close',
+            type: 'whenFocused',
+            modalId: 'dreamscapeOsInstallWizardModal',
+            label: 'Cancel',
+            keys: 'Alt+Q',
+            overlayIcon: 'fas fa-times',
+            overlayGroup: 'Startup',
+            overlayOnly: true,
+            priority: -10
+        });
+
+        registerKeyboardListener({
+            id: 'overlay.dreamscapeOsInstallWizard.enter',
+            type: 'whenFocused',
+            modalId: 'dreamscapeOsInstallWizardModal',
+            label: 'Continue',
+            keys: 'Enter',
+            overlayIcon: 'fas fa-forward',
+            overlayGroup: 'Startup',
+            overlayOnly: true,
+            priority: -10
+        });
     }
 
     _isDesktopTrayMode() {
@@ -2061,6 +2095,7 @@ class ServiceWorkerManager {
                 this.lastUpdateCounts = { completed: 0, total: event.data.total || 0 };
                 this.lastUpdateFilesTotal = event.data.total || 0;
                 console.log('Service worker started downloading updates');
+                this._clearStallToast();
                 // Clear any stall detection timeout
                 if (this.stallDetectionTimeout) {
                     clearTimeout(this.stallDetectionTimeout);
@@ -2074,12 +2109,17 @@ class ServiceWorkerManager {
                 
             case 'STATIC_CACHE_PROGRESS':
                 const progressTotal = total || 0;
+                const prevCompleted = this.lastUpdateCounts.completed || 0;
                 const progress = progressTotal > 0 ? Math.round((completed / progressTotal) * 100) : 0;
                 this.updateProgress = progress;
                 this.lastProgressUpdate = Date.now();
                 this.lastUpdateCounts = { completed: completed || 0, total: progressTotal };
                 this.lastUpdateFilesTotal = progressTotal || this.lastUpdateFilesTotal || 0;
                 this.updateProgressToast(progress);
+
+                if ((completed || 0) > prevCompleted) {
+                    this._clearStallToast();
+                }
                 
                 console.log(`Progress update: ${completed}/${progressTotal} (${progress}%)`);
                 
@@ -2106,6 +2146,7 @@ class ServiceWorkerManager {
                 this.updateProgress = 100;
                 this.updateProgressToast(100);
                 this.lastUpdateCounts = { completed: event.data.completed || 0, total: event.data.total || 0 };
+                this._clearStallToast();
                 
                 // Stop periodic state checking
                 this.stopPeriodicStateCheck();
@@ -2190,6 +2231,7 @@ class ServiceWorkerManager {
                 console.log('Download cancelled');
                 this.isUpdating = false;
                 this.updateProgress = 0;
+                this._clearStallToast();
                 this.stopPeriodicStateCheck();
                 this.stopHeartbeatTracking();
                 this.lastHeartbeatTime = null;
@@ -2473,6 +2515,39 @@ class ServiceWorkerManager {
         };
     }
 
+    _clearStallToast() {
+        if (this.stallToastId && typeof removeGlassToast === 'function') {
+            removeGlassToast(this.stallToastId);
+        }
+        this.stallToastId = null;
+        this.stallRetryButtonsWired = false;
+    }
+
+    _wireStallToastRetryButton() {
+        if (this.stallRetryButtonsWired || !this.stallToastId) {
+            return;
+        }
+        this.stallRetryButtonsWired = true;
+        setTimeout(() => {
+            if (this.stallToastId && typeof updateGlassToastButtons === 'function') {
+                const retryButton = {
+                    text: 'Retry',
+                    type: 'primary',
+                    onClick: async () => {
+                        console.log('User requested retry after stall');
+                        this._clearStallToast();
+                        await this.cancelDownload();
+                        setTimeout(() => {
+                            this.checkStaticFileUpdates();
+                        }, 1000);
+                    },
+                    closeOnClick: true
+                };
+                updateGlassToastButtons(this.stallToastId, [retryButton]);
+            }
+        }, 1000);
+    }
+
     async handleStalledDownload() {
         console.warn('Handling stalled download');
         
@@ -2494,35 +2569,20 @@ class ServiceWorkerManager {
                 const message = timeSinceProgress > 0
                     ? `Download stalled (no progress for ${Math.round(timeSinceProgress/1000)}s). Current: ${swState.completed}/${swState.total}. Click to retry.`
                     : `Download appears stalled. Current: ${swState.completed}/${swState.total}. Click to retry.`;
-                    
-                const toastId = showGlassToast(
-                    'warning',
-                    'Download Stalled',
-                    message,
-                    false,
-                    20000,
-                    '<i class="fas fa-exclamation-triangle"></i>'
-                );
-                
-                // Add retry button after a moment
-                setTimeout(() => {
-                    if (typeof updateGlassToastButtons === 'function') {
-                        const retryButton = {
-                            text: 'Retry',
-                            type: 'primary',
-                            onClick: async () => {
-                                console.log('User requested retry after stall');
-                                await this.cancelDownload();
-                                // Wait a moment then retry
-                                setTimeout(() => {
-                                    this.checkStaticFileUpdates();
-                                }, 1000);
-                            },
-                            closeOnClick: true
-                        };
-                        updateGlassToastButtons(toastId, [retryButton]);
-                    }
-                }, 1000);
+
+                if (this.stallToastId && typeof updateGlassToastMessage === 'function') {
+                    updateGlassToastMessage(this.stallToastId, message);
+                } else {
+                    this.stallToastId = showGlassToast(
+                        'warning',
+                        'Download Stalled',
+                        message,
+                        false,
+                        false,
+                        '<i class="fas fa-exclamation-triangle"></i>'
+                    );
+                    this._wireStallToastRetryButton();
+                }
             }
             
             // Optionally offer to cancel and retry
@@ -2531,6 +2591,7 @@ class ServiceWorkerManager {
             // Service worker says it's not downloading, but we think it is
             // This might mean the download completed or crashed
             console.warn('Service worker reports no download in progress, but we thought it was');
+            this._clearStallToast();
             this.isUpdating = false;
             this.stopPeriodicStateCheck();
         }
@@ -2548,6 +2609,7 @@ class ServiceWorkerManager {
         this.isUpdating = false;
         this.updateProgress = 0;
         this.lastProgressUpdate = null;
+        this._clearStallToast();
         
         this.stopPeriodicStateCheck();
         this.stopHeartbeatTracking();

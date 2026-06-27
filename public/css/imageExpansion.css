@@ -4,7 +4,10 @@
 }
 
 #expansionCompiledPromptDialog {
-    width: 560px;
+    width: 700px;
+    height: 650px;
+    min-width: 480px;
+    min-height: 380px;
 }
 
 #expansionCompiledPromptDialog .prompt-tabs {

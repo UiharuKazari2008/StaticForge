@@ -1,6 +1,6 @@
 /**
  * Metadata dialog show/hide, table population, and expansion toggles.
- * DOM refs: manualModalManager.js. Wired via registerInitStep 47.6.
+ * DOM refs: manualModalManager.js. Wired via registerInitStep 476.
  */
 
 // Metadata dialog functions
@@ -167,49 +167,46 @@ function toggleDialogExpanded(type) {
     }
 }
 
-function wireMetadataDialogListeners() {
-    if (document.body.dataset.metadataDialogWired === 'true') return;
-    document.body.dataset.metadataDialogWired = 'true';
-
-    if (closeMetadataDialog && closeMetadataDialog.dataset.wired !== 'true') {
-        closeMetadataDialog.dataset.wired = 'true';
+function attachMetadataDialogListeners(signal) {
+    if (closeMetadataDialog) {
         closeMetadataDialog.addEventListener('click', (e) => {
             e.preventDefault();
             hideMetadataDialog();
-        });
+        }, { signal });
     }
 
-    if (dialogPromptBtn && dialogPromptBtn.dataset.wired !== 'true') {
-        dialogPromptBtn.dataset.wired = 'true';
+    if (dialogPromptBtn) {
         dialogPromptBtn.addEventListener('click', (e) => {
             e.preventDefault();
             toggleDialogExpanded('prompt');
-        });
+        }, { signal });
     }
 
-    if (dialogUcBtn && dialogUcBtn.dataset.wired !== 'true') {
-        dialogUcBtn.dataset.wired = 'true';
+    if (dialogUcBtn) {
         dialogUcBtn.addEventListener('click', (e) => {
             e.preventDefault();
             toggleDialogExpanded('uc');
-        });
+        }, { signal });
     }
 
-    if (document.body.dataset.metadataExpandedCloseWired !== 'true') {
-        document.body.dataset.metadataExpandedCloseWired = 'true';
-        document.addEventListener('click', (e) => {
-            if (e.target.classList.contains('close-expanded')) {
-                const expandedSection = e.target.closest('.metadata-expanded');
-                if (expandedSection) {
-                    expandedSection.classList.add('hidden');
-                }
+    document.addEventListener('click', (e) => {
+        if (e.target.classList.contains('close-expanded')) {
+            const expandedSection = e.target.closest('.metadata-expanded');
+            if (expandedSection) {
+                expandedSection.classList.add('hidden');
             }
-        });
-    }
+        }
+    }, { signal });
+}
+
+function initMetadataDialogListenerScope() {
+    if (!metadataDialog) return;
+    // attachModalListeners: public/scripts/comp/modalListenerScope.js
+    attachModalListeners(metadataDialog, attachMetadataDialogListeners);
 }
 
 if (typeof wsClient !== 'undefined' && wsClient) {
-    wsClient.registerInitStep(47.6, 'Metadata dialog listeners', async () => {
-        wireMetadataDialogListeners();
+    wsClient.registerInitStep(476, 'Metadata dialog listener scope', async () => {
+        initMetadataDialogListenerScope();
     });
 }

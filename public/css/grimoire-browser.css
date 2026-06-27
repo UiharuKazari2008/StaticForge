@@ -1,4 +1,12 @@
 /* Grimoire pseudo-browser: address bar, search pages — scripts/comp/tagWikiSearchModal.js */
+#tagWikiWindowTemplate,
+[id^="wikiWindow_"] {
+    width: 1050px;
+    height: 750px;
+    min-width: 800px;
+    min-height: 600px;
+}
+
 /* =====================================================
    Wiki / Pseudo-Browser Layered Address Bar
    Two-layer widget replacing the plain search+refresh group.
@@ -1575,7 +1583,9 @@ body.user-icons .icon-image {
     transition: background 0.1s ease;
 }
 
-.google-search-result:hover {
+.google-search-result:hover,
+.google-search-result.keyboard-selected,
+.tag-pill.keyboard-selected {
     background: var(--glass-layer-2);
 }
 

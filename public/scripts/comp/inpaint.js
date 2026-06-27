@@ -17,12 +17,117 @@ const negativeBtn = document.getElementById('maskNegativeBtn');
 const inpaintBtn = document.getElementById('inpaintBtn');
 
 let inpaintInitButtonsWired = false;
+let inpaintModalScopeWired = false;
+let maskEditorKeyboardWired = false;
+
+function isMaskEditorKeyboardContext() {
+    const modal = document.getElementById('maskEditorDialog');
+    if (!modal || modal.classList.contains('hidden')) return false;
+    // isModalActive: public/scripts/comp/modalUtils.js
+    if (window.isDesktop && typeof isModalActive === 'function') {
+        return isModalActive(modal);
+    }
+    return true;
+}
+
+function clickMaskEditorControl(id) {
+    const btn = document.getElementById(id);
+    if (!btn || btn.disabled) return false;
+    btn.click();
+    return true;
+}
+
+function onMaskEditorKeydown(e) {
+    if (!isMaskEditorKeyboardContext()) return;
+
+    if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        e.stopPropagation();
+        clickMaskEditorControl('saveMaskBtn');
+        return true;
+    }
+
+    if (!/^F\d{1,2}$/i.test(e.key)) return;
+
+    let handled = false;
+    switch (e.key.toUpperCase()) {
+        case 'F1':
+            setTool('brush');
+            handled = true;
+            break;
+        case 'F2':
+            setTool('eraser');
+            handled = true;
+            break;
+        case 'F3':
+            toggleBrushShape();
+            handled = true;
+            break;
+        case 'F4':
+            handled = clickMaskEditorControl('clearMaskBtn');
+            break;
+        case 'F5':
+            handled = clickMaskEditorControl('maskNegativeBtn');
+            break;
+        case 'F6':
+            handled = clickMaskEditorControl('deleteMaskBtn');
+            break;
+        default:
+            break;
+    }
+
+    if (handled) {
+        e.preventDefault();
+        e.stopPropagation();
+        return true;
+    }
+}
+
+function wireMaskEditorKeyboardShortcuts() {
+    if (maskEditorKeyboardWired) return;
+    maskEditorKeyboardWired = true;
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'maskEditorDialog.keydown',
+        handler: onMaskEditorKeydown,
+        type: 'whenFocused',
+        modalId: 'maskEditorDialog',
+        priority: 75,
+        critical: true,
+        showInOverlay: false
+    });
+    registerModalOverlayEntries('maskEditorDialog', 'Mask Editor', [
+        { id: 'overlay.maskEditorDialog.brush', label: 'Brush', keys: 'F1', icon: 'nai-pen' },
+        { id: 'overlay.maskEditorDialog.eraser', label: 'Eraser', keys: 'F2', icon: 'nai-eraser' },
+        { id: 'overlay.maskEditorDialog.shape', label: 'Toggle shape', keys: 'F3', icon: 'fas fa-square' },
+        { id: 'overlay.maskEditorDialog.clear', label: 'Clear mask', keys: 'F4', icon: 'fas fa-empty-set' },
+        { id: 'overlay.maskEditorDialog.invert', label: 'Invert mask', keys: 'F5', icon: 'fas fa-adjust' },
+        { id: 'overlay.maskEditorDialog.delete', label: 'Delete mask', keys: 'F6', icon: 'fas fa-trash' },
+        { id: 'overlay.maskEditorDialog.save', label: 'Save', keys: 'Ctrl+S', icon: 'nai-save' },
+        { id: 'overlay.maskEditorDialog.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
+    ]);
+}
+
+function wireInpaintModalListenerScope() {
+    if (inpaintModalScopeWired) return;
+    const maskEditorDialog = document.getElementById('maskEditorDialog');
+    if (!maskEditorDialog) return;
+    inpaintModalScopeWired = true;
+    wireMaskEditorKeyboardShortcuts();
+    // attachModalListeners: public/scripts/comp/modalListenerScope.js
+    attachModalListeners(maskEditorDialog, (signal) => {
+        document.addEventListener('mouseup', handleGlobalMouseUp, { signal });
+        document.addEventListener('mousemove', handleGlobalMouseMove, { signal });
+        document.addEventListener('mousedown', handleGlobalMouseDown, { signal });
+    });
+}
 
 window.wsClient.registerInitStep(39, 'Initializing Inpaint Editor', async () => {
     if (inpaintInitButtonsWired) {
         return;
     }
     inpaintInitButtonsWired = true;
+    wireInpaintModalListenerScope();
     inpaintBtn.addEventListener('click', openMaskEditor);
     negativeBtn.addEventListener('click', invertMask);
 });
@@ -235,10 +340,7 @@ function registerInpaintEventListeners() {
     // Wheel event for brush size adjustment
     maskEditorCanvas.addEventListener('wheel', handleCanvasWheel);
 
-    // Global mouse events for continuous drawing
-    document.addEventListener('mouseup', handleGlobalMouseUp);
-    document.addEventListener('mousemove', handleGlobalMouseMove);
-    document.addEventListener('mousedown', handleGlobalMouseDown);
+    // Global mouse events scoped to maskEditorDialog open — wireInpaintModalListenerScope
 
     // Touch events for mobile - must be non-passive to allow preventDefault
     maskEditorCanvas.addEventListener('touchstart', handleTouchStart, { passive: false });
@@ -275,9 +377,7 @@ function deregisterInpaintEventListeners() {
     }
     
     maskEditorCanvas.removeEventListener('wheel', handleCanvasWheel);
-    document.removeEventListener('mouseup', handleGlobalMouseUp);
-    document.removeEventListener('mousemove', handleGlobalMouseMove);
-    document.removeEventListener('mousedown', handleGlobalMouseDown);
+    // Global mouse listeners abort with maskEditorDialog scope — wireInpaintModalListenerScope
     maskEditorCanvas.removeEventListener('touchstart', handleTouchStart);
     maskEditorCanvas.removeEventListener('touchmove', handleTouchMove);
     maskEditorCanvas.removeEventListener('touchend', handleTouchEnd);

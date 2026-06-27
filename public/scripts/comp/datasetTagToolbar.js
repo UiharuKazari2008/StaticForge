@@ -7,7 +7,7 @@ let currentPath = [];
 let selectedTags = [];
 let dropdowns = [];
 let allCategories = [];
-let globalKeyboardHandler = null;
+let datasetTagToolbarKeyboardScopeWired = false;
 let currentActiveDropdown = 0; // Track which dropdown is currently active for keyboard nav
 let lastSelectedPath = []; // Track the path we came from for Left navigation
 // Tag-to-path index is now queried from server on demand
@@ -126,7 +126,7 @@ function initializeDatasetTagToolbar() {
 function createDatasetTagToolbar() {
     datasetTagToolbar = document.createElement('div');
     datasetTagToolbar.id = 'datasetTagToolbar';
-    datasetTagToolbar.className = 'dataset-tag-toolbar hidden';
+    datasetTagToolbar.className = 'modal hidden transient tool-window on-top dataset-tag-toolbar';
     datasetTagToolbar.innerHTML = `
         <div class="dataset-tag-toolbar-content">
             <div class="dataset-tag-label">Quick Access</div>
@@ -145,6 +145,8 @@ function createDatasetTagToolbar() {
     `;
     
     document.body.appendChild(datasetTagToolbar);
+
+    wireDatasetTagToolbarKeyboardScope();
     
     // Add event listeners
         datasetTagToolbar.addEventListener('keydown', handleDatasetTagToolbarKeydown);
@@ -222,10 +224,9 @@ function showDatasetTagToolbar() {
     positionToolbar();
 
     // Show the toolbar
-    datasetTagToolbar.classList.remove('hidden');
-    
-    // Add global keyboard navigation
-    addGlobalKeyboardHandler();
+    // openModal, assignModalZIndex — public/scripts/comp/modalUtils.js
+    openModal(datasetTagToolbar);
+    assignModalZIndex(datasetTagToolbar);
     
     // Load categories and create dropdowns
     loadDatasetTagGroups().then(() => {
@@ -238,13 +239,8 @@ function showDatasetTagToolbar() {
 
 // Hide the dataset tag toolbar
 function hideDatasetTagToolbar() {
-    if (datasetTagToolbar) {
-        datasetTagToolbar.classList.add('hidden');
-    }
-    
-    // Remove global keyboard handler
-    removeGlobalKeyboardHandler();
-    
+    if (!datasetTagToolbar) return;
+
     teardownAllDatasetTagDropdowns();
     currentTarget = null;
     currentPath = [];
@@ -253,6 +249,9 @@ function hideDatasetTagToolbar() {
     currentActiveDropdown = 0;
     isInitializing = false;
     hideLoadingSpinner();
+
+    // closeModal — public/scripts/comp/modalUtils.js
+    closeModal(datasetTagToolbar);
 }
 
 // Create hierarchical dropdowns
@@ -1126,37 +1125,59 @@ async function navigateToPath(targetPath, selectTag = null) {
     }
 }
 
-// Global keyboard navigation when toolbar is open
-function addGlobalKeyboardHandler() {
-    removeGlobalKeyboardHandler(); // Remove any existing handler
-    
-    globalKeyboardHandler = function(event) {
-        // Only handle if toolbar is visible and we have dropdowns
-        if (!datasetTagToolbar || datasetTagToolbar.classList.contains('hidden') || dropdowns.length === 0) {
-            return;
-        }
-        
-        // Don't interfere if user is typing in an input/textarea (except our target)
-        const activeElement = document.activeElement;
-        if (activeElement && 
-            (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA') && 
-            activeElement !== currentTarget &&
-            !datasetTagToolbar.contains(activeElement)) {
-            return;
-        }
-        
-        // Handle keyboard navigation
-        handleGlobalKeyboardNav(event);
-    };
-    
-    document.addEventListener('keydown', globalKeyboardHandler, true); // Use capture phase
+// Global keyboard navigation while toolbar is open (scoped via modalListenerScope)
+function handleDatasetTagToolbarGlobalKeydown(event) {
+    if (!datasetTagToolbar || datasetTagToolbar.classList.contains('hidden')) return;
+
+    if (dropdowns.length === 0) {
+        return;
+    }
+
+    // Don't interfere if user is typing in an input/textarea (except our target)
+    const activeElement = document.activeElement;
+    if (activeElement &&
+        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA') &&
+        activeElement !== currentTarget &&
+        !datasetTagToolbar.contains(activeElement)) {
+        return;
+    }
+
+    return handleGlobalKeyboardNav(event);
 }
 
-function removeGlobalKeyboardHandler() {
-    if (globalKeyboardHandler) {
-        document.removeEventListener('keydown', globalKeyboardHandler, true);
-        globalKeyboardHandler = null;
-    }
+function wireDatasetTagToolbarKeyboardScope() {
+    if (!datasetTagToolbar || datasetTagToolbarKeyboardScopeWired) return;
+    datasetTagToolbarKeyboardScopeWired = true;
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'datasetTagToolbar.keydown',
+        handler: handleDatasetTagToolbarGlobalKeydown,
+        type: 'whenFocused',
+        modalId: 'datasetTagToolbar',
+        priority: 70,
+        critical: false,
+        showInOverlay: false
+    });
+    [
+        { id: 'overlay.datasetTagToolbar.close', label: 'Close toolbar', keys: 'Esc', icon: 'fas fa-times' },
+        { id: 'overlay.datasetTagToolbar.down', label: 'Next option', keys: '↓', icon: 'fas fa-chevron-down' },
+        { id: 'overlay.datasetTagToolbar.up', label: 'Previous option', keys: '↑', icon: 'fas fa-chevron-up' },
+        { id: 'overlay.datasetTagToolbar.select', label: 'Select option', keys: 'Enter', icon: 'fas fa-check' },
+        { id: 'overlay.datasetTagToolbar.right', label: 'Next dropdown', keys: '→', icon: 'fas fa-chevron-right' },
+        { id: 'overlay.datasetTagToolbar.left', label: 'Previous dropdown', keys: '←', icon: 'fas fa-chevron-left' }
+    ].forEach((entry) => {
+        registerKeyboardListener({
+            id: entry.id,
+            type: 'whenFocused',
+            modalId: 'datasetTagToolbar',
+            label: entry.label,
+            keys: entry.keys,
+            overlayIcon: entry.icon,
+            overlayGroup: 'Tag Toolbar',
+            overlayOnly: true,
+            priority: -10
+        });
+    });
 }
 
 function handleGlobalKeyboardNav(event) {
@@ -1371,6 +1392,7 @@ function handleGlobalKeyboardNav(event) {
             }
         }, 1);
     }
+    return handled;
 }
 
 // Position the toolbar

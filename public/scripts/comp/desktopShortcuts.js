@@ -461,15 +461,88 @@ class DesktopShortcutsManager {
             this._lastDesktopContextCoords = { x: e.clientX, y: e.clientY };
         });
 
-        document.addEventListener('keydown', (e) => {
-            if (!document.body.classList.contains('desktop-mode')) return;
-            if (!this.selectedShortcutIds.size) return;
-            if (this._isEditableShortcutTarget(e.target) || this._isEditableShortcutTarget(document.activeElement)) return;
-            if (!this._isDesktopKeyboardFocused(e)) return;
-            if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+        this.wireKeyboardListeners();
+    }
+
+    isDesktopShortcutKeyboardContext(e) {
+        if (!document.body.classList.contains('desktop-mode')) return false;
+        if (!this.selectedShortcutIds.size) return false;
+        if (currentActiveWindowId) return false;
+        if (this._isEditableShortcutTarget(e.target) || this._isEditableShortcutTarget(document.activeElement)) return false;
+        return this._isDesktopKeyboardFocused(e);
+    }
+
+    wireKeyboardListeners() {
+        if (document.body.dataset.desktopShortcutKeyboardWired === 'true') return;
+        document.body.dataset.desktopShortcutKeyboardWired = 'true';
+
+        const handleRename = (e) => {
+            if (e.key !== 'F2' || e.altKey || e.ctrlKey || e.metaKey) return false;
+            if (!this.isDesktopShortcutKeyboardContext(e)) return false;
+            if (this.getSelectedCount() !== 1) return false;
             e.preventDefault();
-            this.removeSelectedShortcuts();
+            e.stopPropagation();
+            void this.promptRenameSelectedShortcut();
+            return true;
+        };
+
+        const handleDelete = (e) => {
+            if (e.key !== 'Delete' && e.key !== 'Backspace') return false;
+            if (e.altKey || e.ctrlKey || e.metaKey) return false;
+            if (!this.isDesktopShortcutKeyboardContext(e)) return false;
+            e.preventDefault();
+            e.stopPropagation();
+            void this.removeSelectedShortcuts();
+            return true;
+        };
+
+        // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+        registerKeyboardListener({
+            id: 'desktopShortcuts.rename',
+            handler: handleRename,
+            type: 'global',
+            priority: 55,
+            desktopContextOnly: true,
+            overlayValid: () => this.getSelectedCount() === 1,
+            label: 'Rename',
+            keys: 'F2',
+            overlayIcon: 'fas fa-i-cursor',
+            overlayGroup: 'Desktop'
         });
+        registerKeyboardListener({
+            id: 'desktopShortcuts.delete',
+            handler: handleDelete,
+            type: 'global',
+            priority: 55,
+            desktopContextOnly: true,
+            overlayValid: () => this.getSelectedCount() >= 1,
+            label: 'Remove shortcut',
+            keys: 'Delete',
+            overlayIcon: 'fas fa-trash',
+            overlayGroup: 'Desktop'
+        });
+    }
+
+    async promptRenameSelectedShortcut() {
+        const ids = [...this.selectedShortcutIds];
+        if (ids.length !== 1) return;
+        const shortcutId = ids[0];
+        const shortcut = this.shortcuts.find(s => s.id === shortcutId);
+        if (!shortcut) return;
+
+        const newName = await showInputDialog(
+            'Rename Shortcut',
+            shortcut.name,
+            'Enter shortcut name',
+            [
+                { text: 'Rename', value: true, className: 'btn-primary' },
+                { text: 'Cancel', value: false, className: 'btn-secondary' }
+            ]
+        );
+
+        if (newName && newName.trim() && newName.trim() !== shortcut.name) {
+            await this.renameShortcut(shortcutId, newName.trim());
+        }
     }
 
     _isEditableShortcutTarget(el) {
@@ -545,6 +618,8 @@ class DesktopShortcutsManager {
             el.dataset.selected = isSelected ? 'true' : 'false';
         });
         this.desktopContainer?.classList.toggle('desktop-has-selection', this.selectedShortcutIds.size > 0);
+        // notifyKeyboardOverlayContextChanged: public/scripts/comp/modalKeyboardRegistry.js
+        notifyKeyboardOverlayContextChanged();
     }
 
     getSelectedShortcuts() {

@@ -37,8 +37,10 @@
 }
 
 #chatInterfaceModal {
-    height: 550px;
-    width: 900px;
+    width: 800px;
+    height: 500px;
+    min-width: 800px;
+    min-height: 500px;
 }
 
 .chat-interface-header {

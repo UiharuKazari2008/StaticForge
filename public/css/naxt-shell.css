@@ -4,6 +4,13 @@
     height: 980px;
 }
 
+#naxVibesModal {
+    width: 1050px;
+    height: 750px;
+    min-width: 800px;
+    min-height: 600px;
+}
+
 #naxtModal #naxtDatasetDropdownBtn {
     min-width: 2.25rem;
     padding: 0.35em 0.55em;

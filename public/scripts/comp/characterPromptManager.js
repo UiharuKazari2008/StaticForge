@@ -222,76 +222,176 @@ function confirmPosition() {
     }
 }
 
-function wireCharacterPromptPositionListeners() {
-    if (document.documentElement.dataset.characterPromptPositionWired === '1') return;
-    document.documentElement.dataset.characterPromptPositionWired = '1';
-        // Position dialog event listeners
-        const cancelPositionBtn = document.getElementById('cancelPositionBtn');
-        const confirmPositionBtn = document.getElementById('confirmPositionBtn');
-    
-        if (cancelPositionBtn) {
-            cancelPositionBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                hidePositionDialog();
-            });
-        }
-    
-        if (confirmPositionBtn) {
-            confirmPositionBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                confirmPosition();
-            });
-        }
-    
-        const positionGrid = document.querySelector('#positionDialog .position-grid');
-        if (positionGrid && !positionGrid.hasAttribute('data-position-grid-bound')) {
-            positionGrid.setAttribute('data-position-grid-bound', 'true');
-            positionGrid.addEventListener('click', (e) => {
-                const cell = e.target.closest('.position-cell');
-                if (!cell || !positionGrid.contains(cell)) return;
-                if (cell.classList.contains('position-cell-occupied')) return;
-                e.preventDefault();
-                positionGrid.querySelectorAll('.position-cell').forEach(c => c.classList.remove('selected'));
-                cell.classList.add('selected');
-                selectedPositionCell = cell;
-            });
-        }
-    
-        if (!document.body.hasAttribute('data-position-dialog-keydown-bound')) {
-            document.body.setAttribute('data-position-dialog-keydown-bound', 'true');
-            document.addEventListener('keydown', (e) => {
-                if (!isPositionDialogTopModal()) return;
-                if (e.key === 'Escape') {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    hidePositionDialog();
-                    return;
-                }
-                if (e.key === 'Enter') {
-                    const pd = document.getElementById('positionDialog');
-                    if (e.target.closest('#positionDialog') && e.target.tagName === 'BUTTON') return;
-                    if (pd && !pd.contains(e.target)) return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    confirmPosition();
-                }
-            }, true);
-        }
-
-        const autoPositionBtn = document.getElementById('autoPositionBtn');
-        if (autoPositionBtn && autoPositionBtn.dataset.wired !== 'true') {
-            autoPositionBtn.dataset.wired = 'true';
-            autoPositionBtn.addEventListener('click', function (e) {
-                e.preventDefault();
-                const currentState = this.getAttribute('data-state');
-                const newState = currentState === 'on' ? 'off' : 'on';
-                this.setAttribute('data-state', newState);
-                updateAutoPositionToggle();
-            });
-        }
+function handlePositionDialogKeydown(e) {
+    if (!isPositionDialogTopModal()) return;
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        hidePositionDialog();
+        return true;
+    }
+    if (e.key === 'Enter') {
+        const pd = document.getElementById('positionDialog');
+        if (e.target.closest('#positionDialog') && e.target.tagName === 'BUTTON') return;
+        if (pd && !pd.contains(e.target)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        confirmPosition();
+        return true;
+    }
 }
 
-// --- Character prompt CRUD (Phase 2 batch 12) ---
+let positionDialogKeyboardWired = false;
+
+function wirePositionDialogKeyboard() {
+    if (positionDialogKeyboardWired) return;
+    positionDialogKeyboardWired = true;
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'positionDialog.keydown',
+        handler: handlePositionDialogKeydown,
+        type: 'whenFocused',
+        modalId: 'positionDialog',
+        priority: 78,
+        critical: true,
+        showInOverlay: false
+    });
+    registerModalOverlayEntries('positionDialog', 'Position', [
+        { id: 'overlay.positionDialog.confirm', label: 'Confirm', keys: 'Enter', icon: 'fas fa-check' },
+        { id: 'overlay.positionDialog.close', label: 'Cancel', keys: 'Esc', icon: 'fas fa-times' }
+    ]);
+}
+
+function handleCharacterDataConfirmKeydown(e) {
+    const modal = document.getElementById('characterDataConfirmModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        const closeBtn = document.getElementById('cancelGenerationBtn');
+        if (closeBtn && !closeBtn.disabled) closeBtn.click();
+        else closeModal(modal);
+        return true;
+    }
+
+    if (modalKeyboardHandleActionDigits(e, modal, '.modal-actions')) {
+        return true;
+    }
+
+    if (e.key === 'Enter') {
+        return modalKeyboardTriggerPrimaryEnter(e, modal, '.modal-actions .btn-primary:not(:disabled)');
+    }
+}
+
+let characterDataConfirmKeyboardWired = false;
+
+function characterDataConfirmOverlayDigitsValid() {
+    const modal = document.getElementById('characterDataConfirmModal');
+    if (!modal || modal.classList.contains('hidden')) return false;
+    const buttons = modal.querySelectorAll('.modal-actions button:not(:disabled)');
+    return buttons.length >= 2;
+}
+
+function characterDataConfirmOverlayEnterValid() {
+    const modal = document.getElementById('characterDataConfirmModal');
+    if (!modal || modal.classList.contains('hidden')) return false;
+    return !!modal.querySelector('.modal-actions .btn-primary:not(:disabled)');
+}
+
+function wireCharacterDataConfirmKeyboard() {
+    if (characterDataConfirmKeyboardWired) return;
+    characterDataConfirmKeyboardWired = true;
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'characterDataConfirmModal.keydown',
+        handler: handleCharacterDataConfirmKeydown,
+        type: 'whenFocused',
+        modalId: 'characterDataConfirmModal',
+        priority: 82,
+        critical: true,
+        showInOverlay: false
+    });
+    registerModalOverlayEntries('characterDataConfirmModal', 'Dialog', [
+        { id: 'overlay.characterDataConfirm.escape', label: 'Cancel', keys: 'Esc', icon: 'fas fa-times' },
+        { id: 'overlay.characterDataConfirm.enter', label: 'Remove data', keys: 'Enter', icon: 'fas fa-check', overlayValid: characterDataConfirmOverlayEnterValid },
+        { id: 'overlay.characterDataConfirm.digits', label: 'Choose option', keys: '1–9', icon: 'fas fa-list-ol', overlayValid: characterDataConfirmOverlayDigitsValid }
+    ]);
+}
+
+function attachCharacterPromptPositionDialogListeners(signal) {
+    const cancelPositionBtn = document.getElementById('cancelPositionBtn');
+    const confirmPositionBtn = document.getElementById('confirmPositionBtn');
+
+    if (cancelPositionBtn) {
+        cancelPositionBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            hidePositionDialog();
+        }, { signal });
+    }
+
+    if (confirmPositionBtn) {
+        confirmPositionBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            confirmPosition();
+        }, { signal });
+    }
+
+    const positionGrid = document.querySelector('#positionDialog .position-grid');
+    if (positionGrid) {
+        positionGrid.addEventListener('click', (e) => {
+            const cell = e.target.closest('.position-cell');
+            if (!cell || !positionGrid.contains(cell)) return;
+            if (cell.classList.contains('position-cell-occupied')) return;
+            e.preventDefault();
+            positionGrid.querySelectorAll('.position-cell').forEach(c => c.classList.remove('selected'));
+            cell.classList.add('selected');
+            selectedPositionCell = cell;
+        }, { signal });
+    }
+
+}
+
+function attachCharacterPromptManualModalListeners(signal) {
+    const autoPositionBtn = document.getElementById('autoPositionBtn');
+    if (autoPositionBtn) {
+        autoPositionBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            const currentState = this.getAttribute('data-state');
+            const newState = currentState === 'on' ? 'off' : 'on';
+            this.setAttribute('data-state', newState);
+            updateAutoPositionToggle();
+        }, { signal });
+    }
+}
+
+function initCharacterPromptListenerScope() {
+    const positionDialogEl = document.getElementById('positionDialog');
+    const manualModalEl = document.getElementById('manualModal');
+    // attachModalListeners: public/scripts/comp/modalListenerScope.js
+    if (positionDialogEl) {
+        attachModalListeners(positionDialogEl, attachCharacterPromptPositionDialogListeners);
+    }
+    if (manualModalEl) {
+        attachModalListeners(manualModalEl, attachCharacterPromptManualModalListeners);
+    }
+}
+
+function wireCharacterPromptManager() {
+    initCharacterPromptListenerScope();
+    wirePositionDialogKeyboard();
+    wireCharacterDataConfirmKeyboard();
+}
+
+if (typeof wsClient !== 'undefined' && wsClient.registerInitStep) {
+    wsClient.registerInitStep(472, 'Character prompt listener scope', async () => {
+        wireCharacterPromptManager();
+    });
+} else if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => wireCharacterPromptManager());
+} else {
+    wireCharacterPromptManager();
+}
 
 function buildCharacterUcTabContainerHtml(characterId, ucValue, promptNegativeValue) {
     const uc = escapeHtml(ucValue || '');
@@ -1395,16 +1495,4 @@ function updateCharacterPromptPreview(characterId) {
 }
 
 
-function wireCharacterPromptManager() {
-    wireCharacterPromptPositionListeners();
-}
-
-if (typeof wsClient !== 'undefined' && wsClient.registerInitStep) {
-    wsClient.registerInitStep(47.1, 'Character prompt manager', async () => {
-        wireCharacterPromptManager();
-    });
-} else if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => wireCharacterPromptManager());
-} else {
-    wireCharacterPromptManager();
-}
+// --- Character prompt CRUD (Phase 2 batch 12) ---

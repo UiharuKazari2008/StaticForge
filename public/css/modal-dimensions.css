@@ -76,26 +76,3 @@
 #openNoteModal {
     height: 520px;
 }
-
-#tagWikiSearchModal {
-    width: 1050px;
-    height: 750px;
-}
-
-#naxtModal {
-    width: 1050px;
-    height: 980px;
-}
-
-#naxtModal #naxtDatasetDropdownBtn {
-    min-width: 2.25rem;
-    padding: 0.35em 0.55em;
-}
-
-#naxtModal #naxtDatasetDropdownBtn #naxtDatasetSelected {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    max-width: none;
-    overflow: visible;
-}

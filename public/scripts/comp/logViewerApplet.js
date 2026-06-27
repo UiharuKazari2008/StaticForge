@@ -1,5 +1,6 @@
 /**
  * Event Viewer applet — admin-only server log tail via HTTP + SSE.
+ * public/scripts/comp/serverManagement.js (PM2 restart/flush, runtime compile, dev mode)
  * public/scripts/comp/modalUtils.js (openModal, closeModal)
  * public/scripts/comp/confirmationDialog.js (showConfirmationDialog)
  * public/scripts/comp/dropdown.js (setupDropdown, renderGroupedDropdown)
@@ -16,6 +17,7 @@ const LOG_VIEWER_TASKS_INTERVAL_MS = 2000;
 const LOG_VIEWER_DISK_REFRESH_MS = 60000;
 const LOG_VIEWER_STATUS_INTERVAL_KEY = 'eventViewerStatusInterval';
 const LOG_VIEWER_CLIENT_GALLERY_SOURCE = 'client:gallery-load';
+const LOG_VIEWER_DEV_WARNINGS_SOURCE = 'client:dev-warnings';
 
 const STATUS_REFRESH_PRESETS = [
     { label: '1 second', ms: 1000 },
@@ -82,13 +84,11 @@ class LogViewerApplet {
         this.currentSource = 'pm2:combined';
         this.sources = [];
         this.sourceGroups = [];
-        this.pm2Available = false;
         this.pm2Status = null;
         this.pm2StatusIntervalMs = 3000;
         this.popoverFlushBtn = null;
         this.popoverRebootBtn = null;
         this.popoverReloadBtn = null;
-        this.restartBroomDefault = true;
         this.streamStatusText = 'Ready';
         this.streamGeneration = 0;
         this.reconnectTimer = null;
@@ -99,11 +99,12 @@ class LogViewerApplet {
         this.observer = null;
         this.observerTimeout = null;
         this._glassPopoverOutsideHandler = null;
+        this._glassPopoverOutsideAbort = null;
+        this._glassPopoverListenersWired = false;
         this._lastDiskUpdateAt = 0;
         this._cachedDiskFreeText = '';
-        this.runtimeCompileStatus = null;
         this._runtimeCompilePopoverLocked = false;
-        this._runtimeCompileWsWired = false;
+        this._runtimeCompileUiBound = false;
         this.runtimeDevToggleBtn = null;
         this.runtimeCompileBtn = null;
         this.runtimeActionsRow = null;
@@ -161,8 +162,12 @@ class LogViewerApplet {
             closeBtn.addEventListener('click', () => this.close());
         }
 
+        this.wireKeyboardOverlayEntries();
+
         this.setupSourceClickMenu();
         this.setupGlassPopovers();
+        this.wireLogViewerModalListenerScope();
+        this.bindRuntimeCompileUi();
 
         if (this.linesBtn) {
             this.linesBtn.addEventListener('click', (e) => {
@@ -243,6 +248,7 @@ class LogViewerApplet {
         this.byteOffset = 0;
         this.fileSize = 0;
         this.pm2Status = null;
+        serverManagement.pm2Status = null;
         this.isLive = false;
         this.streamStatusText = 'Ready';
         this._lastStatOut = 0;
@@ -328,7 +334,6 @@ class LogViewerApplet {
                 </div>
             </div>`;
         document.body.appendChild(this.settingsPopover);
-        setTimeout(() => this.wireLogViewerStatusIntervalDropdown(), 0);
 
         this.uptimePopover = document.createElement('div');
         this.uptimePopover.className = 'log-viewer-glass-popover log-viewer-uptime-glass-popover hidden';
@@ -364,7 +369,6 @@ class LogViewerApplet {
         this.runtimeProgressLabel = document.getElementById('logViewerRuntimeCompileProgressLabel');
         this.runtimeDevToggleBtn?.addEventListener('click', () => this.toggleRuntimeDevMode());
         this.runtimeCompileBtn?.addEventListener('click', () => this.requestRuntimeCompile());
-        this.wireRuntimeCompileWsHandlers();
 
         this.connectionPopover = document.createElement('div');
         this.connectionPopover.className = 'log-viewer-glass-popover log-viewer-connection-glass-popover hidden';
@@ -407,8 +411,43 @@ class LogViewerApplet {
                 if (pop?.contains(e.target) || anchor?.contains(e.target)) return;
                 this.hideAllGlassPopovers();
             };
-            document.addEventListener('click', this._glassPopoverOutsideHandler);
         }
+    }
+
+    wireLogViewerModalListenerScope() {
+        if (!this.modal || this._glassPopoverListenersWired) return;
+        this._glassPopoverListenersWired = true;
+        if (!this._logViewerModalScopeHandler) {
+            this._logViewerModalScopeHandler = (signal) => {
+                this.wireLogViewerStatusIntervalDropdown();
+                signal.addEventListener('abort', () => {
+                    this._teardownSettingsPopoverDropdowns();
+                }, { once: true });
+            };
+        }
+        attachModalListeners(this.modal, this._logViewerModalScopeHandler);
+    }
+
+    _teardownSettingsPopoverDropdowns() {
+        const container = document.getElementById('logViewerStatusIntervalDropdown');
+        // teardownDropdown: public/scripts/comp/dropdown.js
+        if (container && typeof teardownDropdown === 'function') {
+            teardownDropdown(container);
+        }
+    }
+
+    _bindGlassPopoverOutsideClick() {
+        this._glassPopoverOutsideAbort?.abort();
+        if (!this._glassPopoverOutsideHandler) return;
+        this._glassPopoverOutsideAbort = new AbortController();
+        document.addEventListener('click', this._glassPopoverOutsideHandler, {
+            signal: this._glassPopoverOutsideAbort.signal
+        });
+    }
+
+    _unbindGlassPopoverOutsideClick() {
+        this._glassPopoverOutsideAbort?.abort();
+        this._glassPopoverOutsideAbort = null;
     }
 
     getGlassPopoverEl(which) {
@@ -447,6 +486,7 @@ class LogViewerApplet {
         }
         this.activeGlassPopover = which;
         pop.classList.remove('hidden');
+        this._bindGlassPopoverOutsideClick();
         requestAnimationFrame(() => {
             pop.classList.add('show');
             this.positionGlassPopover(pop, anchor);
@@ -457,6 +497,7 @@ class LogViewerApplet {
         if (this._runtimeCompilePopoverLocked) {
             return;
         }
+        this._unbindGlassPopoverOutsideClick();
         [this.settingsPopover, this.uptimePopover, this.connectionPopover].forEach((pop) => {
             if (!pop) return;
             pop.classList.remove('show');
@@ -669,6 +710,14 @@ class LogViewerApplet {
                 item.highlighted = this.currentSource === LOG_VIEWER_CLIENT_GALLERY_SOURCE;
             }
         });
+        items.push({
+            text: 'Developer Warnings',
+            action: 'select-log-source',
+            sourceId: LOG_VIEWER_DEV_WARNINGS_SOURCE,
+            loadfn: (item) => {
+                item.highlighted = this.currentSource === LOG_VIEWER_DEV_WARNINGS_SOURCE;
+            }
+        });
         this.sourceClickMenuConfig.sections[0].items = items;
     }
 
@@ -696,7 +745,7 @@ class LogViewerApplet {
     refreshUptimePopover() {
         const body = document.getElementById('logViewerUptimePopoverBody');
         if (!body) return;
-        const s = this.pm2Status || {};
+        const s = serverManagement.pm2Status || {};
         const connMs = this.getConnectionUptimeMs();
         const appMs = s.applicationUptimeMs;
         const hostMs = s.hostUptimeMs ?? s.serverUptimeMs;
@@ -745,26 +794,12 @@ class LogViewerApplet {
     }
 
     isRuntimeDevMode() {
-        try {
-            return localStorage.getItem('staticforge_dev_mode') === 'true';
-        } catch (e) {
-            return false;
-        }
-    }
-
-    syncRuntimeDevModeCookie(devMode) {
-        try {
-            if (devMode) {
-                document.cookie = 'staticforge_dev_mode=1; path=/; SameSite=Lax';
-            } else {
-                document.cookie = 'staticforge_dev_mode=; path=/; Max-Age=0';
-            }
-        } catch (e) { /* ignore */ }
+        return serverManagement.isRuntimeDevMode();
     }
 
     updateRuntimeDevToggleLabel() {
         if (!this.runtimeDevToggleBtn) return;
-        const devMode = this.isRuntimeDevMode();
+        const devMode = serverManagement.isRuntimeDevMode();
         this.runtimeDevToggleBtn.textContent = devMode ? 'Prod Mode' : 'Dev Mode';
         this.runtimeDevToggleBtn.title = devMode
             ? 'Switch to optimised production assets for this browser'
@@ -772,17 +807,13 @@ class LogViewerApplet {
     }
 
     toggleRuntimeDevMode() {
-        const nextDev = !this.isRuntimeDevMode();
-        try {
-            localStorage.setItem('staticforge_dev_mode', nextDev.toString());
-        } catch (e) { /* ignore */ }
-        this.syncRuntimeDevModeCookie(nextDev);
+        serverManagement.toggleRuntimeDevMode();
         this.updateRuntimeDevToggleLabel();
         this.refreshUptimePopover();
     }
 
     renderRuntimeCompileSection() {
-        const s = this.runtimeCompileStatus || {};
+        const s = serverManagement.getRuntimeCompileStatus() || {};
         const stats = s.stats || {};
         const failedCount = s.failedCount != null ? s.failedCount : 0;
         const stateLabel = s.inProgress
@@ -790,7 +821,7 @@ class LogViewerApplet {
             : (failedCount > 0 ? 'Errors' : (s.complete ? 'Ready' : 'Pending'));
         const savedBytes = this.formatRuntimeBytes(stats.bytesSaved);
         const ratioBytes = stats.percentBytesSaved != null ? `${stats.percentBytesSaved}%` : '—';
-        const clientMode = this.isRuntimeDevMode() ? 'Dev (source)' : 'Prod (optimised)';
+        const clientMode = serverManagement.isRuntimeDevMode() ? 'Dev (source)' : 'Prod (optimised)';
         const lastRun = s.lastRunAt ? new Date(s.lastRunAt).toLocaleString() : '—';
         const failedRow = failedCount > 0
             ? `<div class="log-viewer-uptime-row"><span>Failed to compile</span><strong>${failedCount.toLocaleString('en-US')}</strong></div>`
@@ -809,15 +840,62 @@ class LogViewerApplet {
     }
 
     applyRuntimeCompileStatus(runtimeCompile) {
-        if (!runtimeCompile) return;
-        this.runtimeCompileStatus = runtimeCompile;
-        this.updateRuntimeDevToggleLabel();
-        if (this.activeGlassPopover === 'uptime') {
-            const section = document.getElementById('logViewerRuntimeCompileSection');
-            if (section) {
-                section.outerHTML = this.renderRuntimeCompileSection();
+        serverManagement.setRuntimeCompileStatus(runtimeCompile);
+    }
+
+    bindRuntimeCompileUi() {
+        if (this._runtimeCompileUiBound) return;
+        this._runtimeCompileUiBound = true;
+        serverManagement.addRuntimeCompileListener((event, payload) => {
+            if (event === 'progress') {
+                this.setRuntimeCompileProgressUI(payload);
+                if (this.activeGlassPopover === 'uptime' && payload && payload.inProgress) {
+                    this._runtimeCompilePopoverLocked = true;
+                    this.showRuntimeCompileProgressUI(true);
+                }
+                return;
             }
-        }
+            if (event === 'complete') {
+                this._runtimeCompilePopoverLocked = false;
+                this.showRuntimeCompileProgressUI(false);
+                if (this.activeGlassPopover === 'uptime') {
+                    this.refreshUptimePopover();
+                }
+                return;
+            }
+            if (event === 'logs') {
+                this.appendRuntimeMinifyLogEntries(payload);
+                return;
+            }
+            if (event === 'devMode' || event === 'status') {
+                this.updateRuntimeDevToggleLabel();
+                if (this.activeGlassPopover === 'uptime') {
+                    if (event === 'status') {
+                        const section = document.getElementById('logViewerRuntimeCompileSection');
+                        if (section) {
+                            section.outerHTML = this.renderRuntimeCompileSection();
+                        }
+                    } else {
+                        this.refreshUptimePopover();
+                    }
+                }
+                return;
+            }
+            if (event === 'compileStart') {
+                this._runtimeCompilePopoverLocked = true;
+                this.showRuntimeCompileProgressUI(true);
+                this.setRuntimeCompileProgressUI({ current: 0, total: 0, percent: 0 });
+                return;
+            }
+            if (event === 'compileEnd') {
+                this._runtimeCompilePopoverLocked = false;
+                this.showRuntimeCompileProgressUI(false);
+                if (this.activeGlassPopover === 'uptime') {
+                    this.refreshUptimePopover();
+                }
+            }
+        });
+        serverManagement.wireRuntimeCompileWsHandlers();
     }
 
     setRuntimeCompileProgressUI(progress) {
@@ -840,32 +918,11 @@ class LogViewerApplet {
         this.runtimeProgressWrap?.classList.toggle('hidden', !show);
     }
 
-    onRuntimeCompileProgress(message) {
-        const data = message && message.data ? message.data : message;
-        if (!data) return;
-        this.setRuntimeCompileProgressUI(data);
-        if (this.activeGlassPopover === 'uptime' && data.inProgress) {
-            this._runtimeCompilePopoverLocked = true;
-            this.showRuntimeCompileProgressUI(true);
-        }
-    }
-
-    onRuntimeCompileComplete(message) {
-        const data = message && message.data ? message.data : message;
-        this._runtimeCompilePopoverLocked = false;
-        this.showRuntimeCompileProgressUI(false);
-        if (data) {
-            this.runtimeCompileStatus = {
-                complete: true,
-                inProgress: false,
-                compiled: data.compiled,
-                failedCount: data.failedCount != null ? data.failedCount : (data.errors ? data.errors.length : 0),
-                stats: data.stats || (this.runtimeCompileStatus && this.runtimeCompileStatus.stats),
-                lastRunAt: Date.now()
-            };
-        }
-        if (this.activeGlassPopover === 'uptime') {
-            this.refreshUptimePopover();
+    async requestRuntimeCompile() {
+        try {
+            await serverManagement.requestRuntimeCompile();
+        } catch (error) {
+            // requestRuntimeCompile logs in serverManagement.js
         }
     }
 
@@ -898,51 +955,6 @@ class LogViewerApplet {
         if (this.isRuntimeMinifyLogSourceActive()) {
             this.appendLogContent(`${lines}\n`);
             this.setStatus(this.formatStatusMeta());
-        }
-    }
-
-    onRuntimeCompileLogs(message) {
-        const data = message && message.data ? message.data : message;
-        const entries = data && Array.isArray(data.entries) ? data.entries : [];
-        this.appendRuntimeMinifyLogEntries(entries);
-    }
-
-    wireRuntimeCompileWsHandlers() {
-        if (this._runtimeCompileWsWired) return;
-        const ws = this.getWsClient();
-        if (!ws || typeof ws.on !== 'function') return;
-        this._runtimeCompileWsWired = true;
-        ws.on('runtime_compile_progress', (message) => this.onRuntimeCompileProgress(message));
-        ws.on('runtime_compile_complete', (message) => this.onRuntimeCompileComplete(message));
-        ws.on('runtime_compile_logs', (message) => this.onRuntimeCompileLogs(message));
-    }
-
-    async requestRuntimeCompile() {
-        const ws = this.getWsClient();
-        if (!ws || !ws.isConnected() || typeof ws.recompileRuntimeAssets !== 'function') {
-            return;
-        }
-        this._runtimeCompilePopoverLocked = true;
-        this.showRuntimeCompileProgressUI(true);
-        this.setRuntimeCompileProgressUI({ current: 0, total: 0, percent: 0 });
-        try {
-            const result = await ws.recompileRuntimeAssets({ force: true, silent: true });
-            if (result) {
-                this.runtimeCompileStatus = {
-                    complete: true,
-                    inProgress: false,
-                    compiled: result.compiled,
-                    failedCount: result.failedCount != null ? result.failedCount : (result.errors ? result.errors.length : 0),
-                    stats: result.stats || null,
-                    lastRunAt: Date.now()
-                };
-            }
-        } catch (error) {
-            console.error('Runtime compile request failed:', error);
-        } finally {
-            this._runtimeCompilePopoverLocked = false;
-            this.showRuntimeCompileProgressUI(false);
-            this.refreshUptimePopover();
         }
     }
 
@@ -1077,9 +1089,7 @@ class LogViewerApplet {
     }
 
     getPm2ProcessLabel() {
-        const name = this.pm2Status?.processName || 'Dreamscape';
-        const id = this.pm2Status?.pm2Id;
-        return id != null ? `${name} (id ${id})` : name;
+        return serverManagement.getPm2ProcessLabel();
     }
 
     toggleTasksSidebar(forceOpen) {
@@ -1207,8 +1217,22 @@ class LogViewerApplet {
         return source === LOG_VIEWER_CLIENT_GALLERY_SOURCE;
     }
 
+    isDevWarningsLogSource(source) {
+        return source === LOG_VIEWER_DEV_WARNINGS_SOURCE;
+    }
+
+    isClientSideLogSource(source) {
+        return this.isClientGalleryLogSource(source) || this.isDevWarningsLogSource(source);
+    }
+
     isClientGalleryLogSourceActive() {
         return this.isClientGalleryLogSource(this.currentSource)
+            && this.modal
+            && !this.modal.classList.contains('hidden');
+    }
+
+    isDevWarningsLogSourceActive() {
+        return this.isDevWarningsLogSource(this.currentSource)
             && this.modal
             && !this.modal.classList.contains('hidden');
     }
@@ -1242,9 +1266,41 @@ class LogViewerApplet {
         this.setStatus(this.formatGalleryLogStatusMeta());
     }
 
+    formatDevWarningsLogStatusMeta() {
+        const count = devWarningsLogApi ? devWarningsLogApi.getEntryCount() : 0;
+        return `${count} warning${count === 1 ? '' : 's'}`;
+    }
+
+    renderDevWarningsLogContent() {
+        if (!this.contentEl) return;
+        const text = devWarningsLogApi
+            ? devWarningsLogApi.getFormattedText()
+            : 'Developer warnings log unavailable.';
+        this.contentEl.textContent = text;
+        this.lineCount = text ? text.split('\n').length : 0;
+        this.trimLogLinesIfNeeded();
+        if (typeof customScrollbar !== 'undefined' && customScrollbar.forceReinit && this.scrollWrapper) {
+            customScrollbar.forceReinit(this.scrollWrapper);
+        }
+        if (this.tailFollow) {
+            this.scrollToBottom(true);
+        }
+    }
+
+    onDevWarningLogEntry() {
+        if (!this.isDevWarningsLogSourceActive()) {
+            return;
+        }
+        this.renderDevWarningsLogContent();
+        this.setStatus(this.formatDevWarningsLogStatusMeta());
+    }
+
     getSourceMeta(sourceId) {
         if (this.isClientGalleryLogSource(sourceId)) {
             return { id: LOG_VIEWER_CLIENT_GALLERY_SOURCE, label: 'Gallery Load', group: 'client' };
+        }
+        if (this.isDevWarningsLogSource(sourceId)) {
+            return { id: LOG_VIEWER_DEV_WARNINGS_SOURCE, label: 'Developer Warnings', group: 'client' };
         }
         return this.sources.find((s) => s.id === sourceId) || null;
     }
@@ -1253,6 +1309,9 @@ class LogViewerApplet {
         const id = sourceId || this.currentSource;
         if (this.isClientGalleryLogSource(id)) {
             return 'Gallery Load';
+        }
+        if (this.isDevWarningsLogSource(id)) {
+            return 'Developer Warnings';
         }
         const meta = this.getSourceMeta(id);
         if (!meta) return 'Logs';
@@ -1267,28 +1326,11 @@ class LogViewerApplet {
     }
 
     getBasePath() {
-        const uuid = localStorage.getItem('logViewerPathUuid');
-        if (!uuid) return null;
-        return `/${uuid}`;
+        return serverManagement.getAdminApiBasePath();
     }
 
     async ensureLogViewerPath() {
-        if (this.getBasePath()) return true;
-        try {
-            const response = await fetch('/app', {
-                method: 'OPTIONS',
-                credentials: 'same-origin',
-                cache: 'no-store'
-            });
-            if (!response.ok) return false;
-            const data = await response.json();
-            // syncAuthLocalStorageFromServer: public/scripts/comp/connectionManager.js
-            syncAuthLocalStorageFromServer(data);
-            if (data.logViewerPathUuid) {
-                return true;
-            }
-        } catch (_) { /* ignore */ }
-        return false;
+        return serverManagement.ensureAdminApiPath();
     }
 
     getScrollEl() {
@@ -1330,7 +1372,7 @@ class LogViewerApplet {
     }
 
     updatePm2ControlsVisibility() {
-        const show = this.pm2Available && !this.isClientGalleryLogSource(this.currentSource);
+        const show = serverManagement.isPm2Available() && !this.isClientSideLogSource(this.currentSource);
         if (this.popoverFlushBtn) this.popoverFlushBtn.classList.toggle('hidden', !show);
         if (this.popoverRebootBtn) this.popoverRebootBtn.classList.toggle('hidden', !show);
         if (this.metricsEl) this.metricsEl.classList.toggle('hidden', !show);
@@ -1362,9 +1404,7 @@ class LogViewerApplet {
     applyPm2Status(status) {
         if (!status) return;
         this.pm2Status = status;
-        if (status.runtimeCompile) {
-            this.applyRuntimeCompileStatus(status.runtimeCompile);
-        }
+        serverManagement.setPm2Status(status);
         const cpu = typeof status.cpu === 'number' ? status.cpu : 0;
         const memory = typeof status.memory === 'number' ? status.memory : 0;
         const ramPct = (memory / LOG_VIEWER_RAM_BAR_MAX_BYTES) * 100;
@@ -1487,8 +1527,7 @@ class LogViewerApplet {
         const selectedEl = document.getElementById('logViewerStatusIntervalSelected');
         const hidden = document.getElementById('logViewerStatusIntervalHidden');
         if (!container || !btn || !menu || !selectedEl || !hidden) return;
-        if (container.dataset.wired === '1') return;
-        container.dataset.wired = '1';
+        if (container.getAttribute('data-dropdown-initialized') === 'true') return;
 
         const items = STATUS_REFRESH_PRESETS.map((p) => ({ value: String(p.ms), name: p.label }));
 
@@ -1514,122 +1553,23 @@ class LogViewerApplet {
         setupDropdown(container, btn, menu, renderMenu, () => hidden.value, { preventFocusTransfer: true });
     }
 
-    wireRestartBroomToggleInDialog() {
-        const toggle = document.querySelector('#confirmationDialog .log-viewer-restart-broom-toggle');
-        if (!toggle || toggle.dataset.wired === '1') return;
-        toggle.dataset.wired = '1';
-        toggle.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const on = toggle.getAttribute('data-state') === 'on';
-            toggle.setAttribute('data-state', on ? 'off' : 'on');
-        });
-    }
-
-    async postPm2Action(path, body = {}) {
-        const base = this.getBasePath();
-        if (!base) throw new Error('Log path unavailable');
-        const response = await fetch(`${base}${path}`, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        });
-        const data = await response.json();
-        if (!response.ok || !data.success) {
-            throw new Error(data.error || 'PM2 action failed');
-        }
-        return data;
-    }
-
     async requestFlushPm2Logs() {
-        const procLabel = this.getPm2ProcessLabel();
-        const confirmed = await showConfirmationDialog(
-            `Clear PM2 log files for DreamScape Server (${procLabel})? Only this process is affected. The log view will reset.`,
-            [
-                { text: 'Flush DSS Logs', value: true, icon: 'fas fa-broom', className: 'btn-danger' },
-                { text: 'Cancel', value: false, className: 'btn-secondary' }
-            ],
-            null,
-            { title: 'Flush DSS Logs', icon: 'fas fa-broom' }
-        );
-        if (!confirmed) return;
-
-        try {
-            await this.postPm2Action('/pm2/flush');
-            showGlassToast('success', 'System', 'Log files flushed', false, 3000, '<i class="fas fa-broom"></i>');
-            await this.reload();
-        } catch (error) {
-            showGlassToast('error', 'System', error.message, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
-        }
+        await serverManagement.requestFlushPm2Logs({
+            onSuccess: () => this.reload()
+        });
     }
 
     async requestRestartServer() {
-        const procLabel = this.getPm2ProcessLabel();
-        const broomState = this.restartBroomDefault ? 'on' : 'off';
-        const dialogPromise = showConfirmationDialog(
-            `Restart DreamScape Server via PM2 (${procLabel})? Pending work will be flushed, databases saved, and connections will drop until the server is back online.
-            <div class="log-viewer-restart-broom-row">
-                <button type="button" class="btn-secondary btn-small toggle-btn log-viewer-restart-broom-toggle" data-state="${broomState}" title="Flush PM2 logs before restart" aria-label="Flush PM2 logs before restart">
-                    <i class="fas fa-broom"></i>
-                </button>
-                <span class="log-viewer-restart-broom-hint">Flush logs before restart</span>
-            </div>`,
-            [
-                { text: 'Restart DSS', value: true, icon: 'fas fa-rotate-right', className: 'btn-danger' },
-                { text: 'Cancel', value: false, className: 'btn-secondary' }
-            ],
-            null,
-            {
-                title: 'Restart DSS',
-                icon: 'fas fa-rotate-right',
-                resolveValue: (value, dialog) => {
-                    if (!value) return false;
-                    const toggle = dialog?.querySelector('.log-viewer-restart-broom-toggle');
-                    const broom = toggle ? toggle.getAttribute('data-state') !== 'off' : true;
-                    return { confirmed: true, broom };
-                }
+        await serverManagement.requestRestartServer({
+            onPrepare: () => {
+                this.cancelReconnect();
+                this.stopStream();
+            },
+            onStatus: (text) => this.setStatus(text),
+            onError: () => {
+                if (!this.paused) this.startStream();
             }
-        );
-        setTimeout(() => this.wireRestartBroomToggleInDialog(), 0);
-        const confirmed = await dialogPromise;
-        if (!confirmed || confirmed === false) return;
-
-        const broom = typeof confirmed === 'object' ? confirmed.broom !== false : true;
-        this.restartBroomDefault = broom;
-
-        try {
-            this.cancelReconnect();
-            this.stopStream();
-            suppressWebSocketReconnectForReload();
-            this.setStatus('Preparing DSS restart…');
-            await this.postPm2Action('/pm2/restart', { broom });
-            this.setStatus('DSS restarting — waiting for disconnect…');
-
-            // waitForServerDisconnect, runClientShutdownSequence — modalUtils.js
-            const disconnected = typeof waitForServerDisconnect === 'function'
-                ? await waitForServerDisconnect({ timeoutMs: 120000 })
-                : false;
-
-            if (!disconnected) {
-                showGlassToast('error', 'DreamScape Server', 'Server did not disconnect in time — reload manually when ready', false, 10000, '<i class="fas fa-exclamation-triangle"></i>');
-                this.setStatus('DSS restart timed out — server may still be shutting down');
-                return;
-            }
-
-            this.setStatus('Server disconnected — restarting application…');
-            if (typeof runClientShutdownSequence === 'function') {
-                await runClientShutdownSequence(() => location.reload());
-            } else if (typeof bypassConfirmation !== 'undefined') {
-                bypassConfirmation = true;
-                location.reload();
-            } else {
-                location.reload();
-            }
-        } catch (error) {
-            showGlassToast('error', 'System', error.message, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
-            if (!this.paused) this.startStream();
-        }
+        });
     }
 
     updateTailFollow() {
@@ -1664,21 +1604,25 @@ class LogViewerApplet {
     async open(options = {}) {
         if (!this.modal) return;
 
-        const userType = localStorage.getItem('userType');
-        if (userType !== 'admin') {
+        if (!serverManagement.isAdminSession()) {
             showGlassToast('error', 'Access Denied', 'Admin access required for Event Viewer', false, 5000, '<i class="fas fa-lock"></i>');
             return;
         }
 
-        if (!(await this.ensureLogViewerPath())) {
+        if (!(await serverManagement.ensureAdminApiPath())) {
             showGlassToast('error', 'Event Viewer', 'Log path unavailable — please log in again as admin', false, 5000, '<i class="fas fa-scroll"></i>');
             return;
+        }
+
+        const requestedSource = options.source;
+        const sourceChanged = requestedSource && requestedSource !== this.currentSource;
+        if (requestedSource) {
+            this.currentSource = requestedSource;
         }
 
         const alreadyOpen = !this.modal.classList.contains('hidden');
         this.applyDefaultWindowSize();
         this.setupGlassPopovers();
-        this.wireRuntimeCompileWsHandlers();
 
         if (window.galleryLoadLogApi) {
             window.galleryLoadLogApi.markEventViewerEngaged();
@@ -1691,6 +1635,11 @@ class LogViewerApplet {
             this.updateSourceButtonLabel();
             this.updateTitleBar();
             this.startTrimInterval();
+            await this.reload();
+        } else if (sourceChanged) {
+            this.updatePm2ControlsVisibility();
+            this.updateSourceButtonLabel();
+            this.updateTitleBar();
             await this.reload();
         }
 
@@ -1768,10 +1717,11 @@ class LogViewerApplet {
             }
             this.sources = data.sources || [];
             this.sourceGroups = data.groups || [];
-            this.pm2Available = data.pm2Available === true
+            const pm2Available = data.pm2Available === true
                 || this.sources.some((s) => s.id && s.id.startsWith('pm2:'));
+            serverManagement.setPm2Available(pm2Available);
             this.updatePm2ControlsVisibility();
-            if (!this.sources.some((s) => s.id === this.currentSource) && !this.isClientGalleryLogSource(this.currentSource)) {
+            if (!this.sources.some((s) => s.id === this.currentSource) && !this.isClientSideLogSource(this.currentSource)) {
                 const preferred = this.sources.find((s) => s.id === 'pm2:combined')
                     || this.sources.find((s) => s.id === 'pm2:out')
                     || this.sources.find((s) => s.id === 'server')
@@ -1800,6 +1750,12 @@ class LogViewerApplet {
         if (this.isClientGalleryLogSource(this.currentSource)) {
             this.renderClientGalleryLogContent();
             this.setStatus(this.formatGalleryLogStatusMeta());
+            return;
+        }
+
+        if (this.isDevWarningsLogSource(this.currentSource)) {
+            this.renderDevWarningsLogContent();
+            this.setStatus(this.formatDevWarningsLogStatusMeta());
             return;
         }
 
@@ -1909,9 +1865,14 @@ class LogViewerApplet {
     async startStream(isReconnect) {
         this.stopStream(true);
 
-        if (this.isClientGalleryLogSource(this.currentSource)) {
-            this.renderClientGalleryLogContent();
-            this.setStatus(this.formatGalleryLogStatusMeta());
+        if (this.isClientSideLogSource(this.currentSource)) {
+            if (this.isClientGalleryLogSource(this.currentSource)) {
+                this.renderClientGalleryLogContent();
+                this.setStatus(this.formatGalleryLogStatusMeta());
+            } else {
+                this.renderDevWarningsLogContent();
+                this.setStatus(this.formatDevWarningsLogStatusMeta());
+            }
             return;
         }
 
@@ -1976,6 +1937,49 @@ class LogViewerApplet {
                 this.scheduleReconnect();
             }
         }
+    }
+
+    wireKeyboardOverlayEntries() {
+        if (this._keyboardOverlayWired) return;
+        this._keyboardOverlayWired = true;
+        if (!this._logViewerActionHandler) {
+            this._logViewerActionHandler = (e) => {
+                if (!this.modal || this.modal.classList.contains('hidden')) return;
+
+                if (e.key === ' ' || e.code === 'Space') {
+                    if (modalKeyboardSkipPrimaryEnter(e.target)) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (this.paused) this.resume();
+                    else {
+                        this.pausedByMinimize = false;
+                        this.pause();
+                    }
+                    return true;
+                }
+
+                if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (this.linesBtn) this.toggleGlassPopover('settings', this.linesBtn);
+                    return true;
+                }
+            };
+        }
+        // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+        registerKeyboardListener({
+            id: 'logViewerModal.actions',
+            handler: this._logViewerActionHandler,
+            type: 'whenFocused',
+            modalId: 'logViewerModal',
+            priority: 75,
+            showInOverlay: false
+        });
+        registerModalOverlayEntries('logViewerModal', 'Event Viewer', [
+            { id: 'overlay.logViewer.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' },
+            { id: 'overlay.logViewer.pause', label: 'Pause / resume', keys: 'Space', icon: 'fas fa-pause' },
+            { id: 'overlay.logViewer.filter', label: 'View settings', keys: 'Ctrl+F', icon: 'fas fa-filter' }
+        ]);
     }
 }
 

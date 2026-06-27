@@ -1815,9 +1815,6 @@ function setupUcDropdownContextMenu() {
     };
 
     contextMenu.attachToElement(ucPresetsDropdownBtn, contextMenuConfig);
-
-    // Listen for context menu actions
-    document.addEventListener('contextMenuAction', handleUcContextMenuAction);
 }
 
 /**
@@ -2099,9 +2096,6 @@ function setupDatasetDropdownContextMenu() {
     };
 
     contextMenu.attachToElement(datasetDropdownBtn, contextMenuConfig);
-
-    // Listen for context menu actions
-    document.addEventListener('contextMenuAction', handleDatasetContextMenuAction);
 }
 
 /**
@@ -2945,9 +2939,26 @@ function wireManualResolutionDimensionListeners() {
     wireManualDimensionInput(manualHeight, manualWidth);
 }
 
+function wireManualModalListenerScope() {
+    if (document.body.dataset.manualModalListenerScopeWired === 'true') return;
+    const manualModal = document.getElementById('manualModal');
+    if (!manualModal) return;
+    document.body.dataset.manualModalListenerScopeWired = 'true';
+    // attachModalListeners — modalListenerScope.js; closeAllDropdownsInRoot — dropdown.js
+    attachModalListeners(manualModal, (signal) => {
+        document.addEventListener('contextMenuAction', handleUcContextMenuAction, { signal });
+        document.addEventListener('contextMenuAction', handleDatasetContextMenuAction, { signal });
+        signal.addEventListener('abort', () => {
+            closeAllDropdownsInRoot(manualModal);
+        }, { once: true });
+    });
+}
+
 function wireManualDropdownSetup() {
     if (document.body.dataset.manualDropdownSetupWired === 'true') return;
     document.body.dataset.manualDropdownSetupWired = 'true';
+
+    wireManualModalListenerScope();
 
     setupDropdown(
         manualResolutionDropdown,
@@ -2984,7 +2995,7 @@ function wireManualDropdownSetup() {
 }
 
 if (typeof wsClient !== 'undefined' && wsClient) {
-    wsClient.registerInitStep(47.5, 'Manual resolution and dropdown listeners', async () => {
+    wsClient.registerInitStep(486, 'Manual resolution and dropdown listeners', async () => {
         wireManualResolutionDimensionListeners();
         wireManualDropdownSetup();
     });

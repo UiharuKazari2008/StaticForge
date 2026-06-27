@@ -1,6 +1,6 @@
 /**
  * Director feedback modal and rules/feedback admin (legacy modal paths).
- * Wired via registerInitStep 47.8.
+ * Wired via registerInitStep 478.
  */
 
 // Director Feedback Modal Functions
@@ -521,49 +521,90 @@ function closeDirectorRulesModal() {
     }
 }
 
-function wireDirectorLearningAdminListeners() {
-    if (document.body.dataset.directorLearningAdminWired === 'true') return;
-    document.body.dataset.directorLearningAdminWired = 'true';
-
+function attachDirectorFeedbackModalListeners(signal) {
     const closeDirectorFeedbackBtn = document.getElementById('closeDirectorFeedbackBtn');
-    if (closeDirectorFeedbackBtn && closeDirectorFeedbackBtn.dataset.wired !== 'true') {
-        closeDirectorFeedbackBtn.dataset.wired = 'true';
+    if (closeDirectorFeedbackBtn) {
         closeDirectorFeedbackBtn.addEventListener('click', (e) => {
             e.preventDefault();
             closeDirectorFeedbackModal();
-        });
+        }, { signal });
     }
 
     const saveFeedbackBtn = document.getElementById('saveFeedbackBtn');
-    if (saveFeedbackBtn && saveFeedbackBtn.dataset.wired !== 'true') {
-        saveFeedbackBtn.dataset.wired = 'true';
+    if (saveFeedbackBtn) {
         saveFeedbackBtn.addEventListener('click', (e) => {
             e.preventDefault();
             saveDirectorFeedback();
-        });
-    }
-
-    const closeDirectorRulesBtn = document.getElementById('closeDirectorRulesBtn');
-    if (closeDirectorRulesBtn && closeDirectorRulesBtn.dataset.wired !== 'true') {
-        closeDirectorRulesBtn.dataset.wired = 'true';
-        closeDirectorRulesBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            closeDirectorRulesModal();
-        });
-    }
-
-    const addDirectorRuleBtn = document.getElementById('addDirectorRuleBtn');
-    if (addDirectorRuleBtn && addDirectorRuleBtn.dataset.wired !== 'true') {
-        addDirectorRuleBtn.dataset.wired = 'true';
-        addDirectorRuleBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            addDirectorRule();
-        });
+        }, { signal });
     }
 }
 
+function attachDirectorRulesModalListeners(signal) {
+    const closeDirectorRulesBtn = document.getElementById('closeDirectorRulesBtn');
+    if (closeDirectorRulesBtn) {
+        closeDirectorRulesBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            closeDirectorRulesModal();
+        }, { signal });
+    }
+
+    const addDirectorRuleBtn = document.getElementById('addDirectorRuleBtn');
+    if (addDirectorRuleBtn) {
+        addDirectorRuleBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            addDirectorRule();
+        }, { signal });
+    }
+}
+
+function handleDirectorFeedbackModalKeydown(e) {
+    const modal = document.getElementById('directorFeedbackModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        saveDirectorFeedback();
+        return true;
+    }
+}
+
+let directorFeedbackKeyboardWired = false;
+
+function wireDirectorFeedbackKeyboard() {
+    if (directorFeedbackKeyboardWired) return;
+    directorFeedbackKeyboardWired = true;
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'directorFeedbackModal.keydown',
+        handler: handleDirectorFeedbackModalKeydown,
+        type: 'whenFocused',
+        modalId: 'directorFeedbackModal',
+        priority: 78,
+        critical: true,
+        showInOverlay: false
+    });
+    registerModalOverlayEntries('directorFeedbackModal', 'Rentan', [
+        { id: 'overlay.directorFeedback.submit', label: 'Submit feedback', keys: 'Ctrl+Enter', icon: 'fas fa-paper-plane' },
+        { id: 'overlay.directorFeedback.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
+    ]);
+}
+
+function initDirectorLearningAdminListenerScope() {
+    const feedbackModal = document.getElementById('directorFeedbackModal');
+    const rulesModal = document.getElementById('directorRulesModal');
+    // attachModalListeners: public/scripts/comp/modalListenerScope.js
+    if (feedbackModal) {
+        attachModalListeners(feedbackModal, attachDirectorFeedbackModalListeners);
+    }
+    if (rulesModal) {
+        attachModalListeners(rulesModal, attachDirectorRulesModalListeners);
+    }
+    wireDirectorFeedbackKeyboard();
+}
+
 if (typeof wsClient !== 'undefined' && wsClient) {
-    wsClient.registerInitStep(47.8, 'Director learning admin listeners', async () => {
-        wireDirectorLearningAdminListeners();
+    wsClient.registerInitStep(478, 'Director learning admin listener scope', async () => {
+        initDirectorLearningAdminListenerScope();
     });
 }

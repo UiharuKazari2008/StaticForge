@@ -1831,6 +1831,7 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, to
             ieDropdownBtn.dataset.selectedModel = encoding.model;
             ieDropdownBtn.dataset.selectedIe = encoding.informationExtraction;
             ieDropdownMenu.classList.add('hidden');
+            unregisterDropdownGuard(ieDropdown);
         });
 
         ieDropdownMenu.appendChild(option);
@@ -1844,6 +1845,7 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, to
         
         requestOption.addEventListener('click', async () => {
             ieDropdownMenu.classList.add('hidden');
+            unregisterDropdownGuard(ieDropdown);
             
             // Check if vibe is locked
             if (vibeRef.locked) {
@@ -1874,19 +1876,14 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, to
     ieDropdownBtn.addEventListener('click', () => {
         if (ieDropdownMenu.classList.contains('hidden')) {
             ieDropdownMenu.classList.remove('hidden');
+            registerDropdownGuard(ieDropdown, ieDropdownMenu, ieDropdownBtn);
         } else {
             ieDropdownMenu.classList.add('hidden');
+            unregisterDropdownGuard(ieDropdown);
         }
     });
 
-    // Close dropdown when clicking outside
-    const outsideClickHandler = (e) => {
-        if (!ieDropdown.contains(e.target)) {
-            ieDropdownMenu.classList.add('hidden');
-        }
-    };
-    item._ieDropdownOutsideClick = outsideClickHandler;
-    document.addEventListener('click', outsideClickHandler);
+    item._ieDropdownContainer = ieDropdown;
 
     ieDropdown.appendChild(ieDropdownBtn);
     ieDropdown.appendChild(ieDropdownMenu);
@@ -2102,9 +2099,25 @@ async function addVibeReferenceToContainer(vibeId, selectedIe, strength, textInj
 }
 
 function teardownVibeReferenceItem(item) {
-    if (!item || !item._ieDropdownOutsideClick) return;
-    document.removeEventListener('click', item._ieDropdownOutsideClick);
-    item._ieDropdownOutsideClick = null;
+    if (!item) return;
+    if (item._ieDropdownContainer) {
+        const ieDropdown = item._ieDropdownContainer;
+        const menu = ieDropdown.querySelector('.custom-dropdown-menu');
+        const button = ieDropdown.querySelector('button');
+        if (menu) {
+            menu.classList.add('hidden');
+            menu.classList.remove('custom-dropdown-closing', 'custom-dropdown-opening');
+        }
+        if (button) {
+            button.classList.remove('active');
+        }
+        unregisterDropdownGuard(ieDropdown);
+        item._ieDropdownContainer = null;
+    }
+    if (item._ieDropdownOutsideClick) {
+        document.removeEventListener('click', item._ieDropdownOutsideClick);
+        item._ieDropdownOutsideClick = null;
+    }
 }
 
 function removeVibeReference(vibeId) {
@@ -3384,6 +3397,37 @@ async function handleDeleteAction(option, target, event) {
 
 let referenceManagerContextMenuWired = false;
 let referenceBrowserContextMenuWired = false;
+let referenceManagerModalScopeWired = false;
+
+function wireReferenceManagerModalListenerScope() {
+    if (referenceManagerModalScopeWired) return;
+    referenceManagerModalScopeWired = true;
+
+    if (cacheManagerModal) {
+        // attachModalListeners — modalListenerScope.js; closeAllDropdownsInRoot — dropdown.js
+        attachModalListeners(cacheManagerModal, (signal) => {
+            document.addEventListener('contextMenuAction', handleReferenceManagerContextMenuAction, { signal });
+            document.addEventListener('contextMenuAction', handleReferenceBrowserContextMenuAction, { signal });
+            signal.addEventListener('abort', () => {
+                closeAllDropdownsInRoot(cacheManagerModal);
+            }, { once: true });
+        });
+    }
+
+    const manualModal = document.getElementById('manualModal');
+    if (manualModal) {
+        attachModalListeners(manualModal, (signal) => {
+            document.addEventListener('paste', handleClipboardPaste, { signal });
+            signal.addEventListener('abort', () => {
+                if (vibeReferencesContainer) {
+                    vibeReferencesContainer.querySelectorAll('.vibe-reference-item').forEach((item) => {
+                        teardownVibeReferenceItem(item);
+                    });
+                }
+            }, { once: true });
+        });
+    }
+}
 
 // Initialize context menu for reference manager items
 function initializeReferenceManagerContextMenu() {
@@ -3399,9 +3443,6 @@ function initializeReferenceManagerContextMenu() {
     // Create and store the context menu configuration
     const contextMenuConfig = createReferenceManagerContextMenuConfig();
     window.referenceManagerContextMenuConfig = contextMenuConfig;
-
-    // Listen for context menu actions
-    document.addEventListener('contextMenuAction', handleReferenceManagerContextMenuAction);
 }
 
 // Initialize context menu for reference browser items
@@ -3418,9 +3459,6 @@ function initializeReferenceBrowserContextMenu() {
     // Create and store the context menu configuration
     const contextMenuConfig = createReferenceBrowserContextMenuConfig();
     window.referenceBrowserContextMenuConfig = contextMenuConfig;
-
-    // Listen for context menu actions
-    document.addEventListener('contextMenuAction', handleReferenceBrowserContextMenuAction);
 
     // Attach context menus to any existing gallery items (in case browser was refreshed while open)
     attachContextMenuToBrowserItems();
@@ -7535,8 +7573,6 @@ function wireUploadClipboardListeners() {
         imageUploadInput.addEventListener('change', handleImageUpload);
     }
 
-    document.addEventListener('paste', handleClipboardPaste);
-
     if (deleteImageBaseBtn && deleteImageBaseBtn.dataset.wired !== 'true') {
         deleteImageBaseBtn.dataset.wired = 'true';
         deleteImageBaseBtn.addEventListener('click', (e) => {
@@ -7577,12 +7613,70 @@ function wireUploadClipboardListeners() {
     updateUploadDeleteButtonVisibility();
 }
 
+let referenceManagerKeyboardWired = false;
+
+function handleCacheManagerModalKeydown(e) {
+    if (!cacheManagerModal || cacheManagerModal.classList.contains('hidden')) return;
+
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const btn = cacheManagerWorkspaceDropdownBtn || document.getElementById('cacheManagerWorkspaceDropdownBtn');
+        if (btn) btn.focus();
+        return true;
+    }
+}
+
+function handleUnifiedUploadModalKeydown(e) {
+    if (!unifiedUploadModal || unifiedUploadModal.classList.contains('hidden')) return;
+
+    if (e.key === 'Enter' && !modalKeyboardSkipPrimaryEnter(e.target)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const btn = unifiedUploadConfirmBtn || document.getElementById('unifiedUploadConfirmBtn');
+        if (btn && !btn.disabled) btn.click();
+        return true;
+    }
+}
+
+function wireReferenceManagerKeyboardShortcuts() {
+    if (referenceManagerKeyboardWired) return;
+    referenceManagerKeyboardWired = true;
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'cacheManagerModal.keydown',
+        handler: handleCacheManagerModalKeydown,
+        type: 'whenFocused',
+        modalId: 'cacheManagerModal',
+        priority: 75,
+        showInOverlay: false
+    });
+    registerKeyboardListener({
+        id: 'unifiedUploadModal.keydown',
+        handler: handleUnifiedUploadModalKeydown,
+        type: 'whenFocused',
+        modalId: 'unifiedUploadModal',
+        priority: 75,
+        showInOverlay: false
+    });
+    registerModalOverlayEntries('cacheManagerModal', 'References', [
+        { id: 'overlay.cacheManager.filter', label: 'Focus workspace filter', keys: 'Ctrl+F', icon: 'fas fa-search' },
+        { id: 'overlay.cacheManager.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
+    ]);
+    registerModalOverlayEntries('unifiedUploadModal', 'Upload', [
+        { id: 'overlay.unifiedUpload.import', label: 'Import', keys: 'Enter', icon: 'fas fa-upload' },
+        { id: 'overlay.unifiedUpload.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
+    ]);
+}
+
 function initializeCacheManager() {
     if (cacheManagerInitWired) {
         return;
     }
     cacheManagerInitWired = true;
 
+    wireReferenceManagerModalListenerScope();
+    wireReferenceManagerKeyboardShortcuts();
     wireDirectorReferenceListeners();
     wireCacheBrowserCloseAndTabs();
     wireCacheBrowserToolbarRefs();

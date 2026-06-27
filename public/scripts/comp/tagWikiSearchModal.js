@@ -7,6 +7,18 @@ const GRIMOIRE_RIGHT_PANE_LS = 'grimoireRightPaneState';
 const GRIMOIRE_ONLINE_SEARCH_LS = 'grimoireIncludeOnlineSearch';
 const GRIMOIRE_SPLIT_PANEL_LS = 'grimoireSplitPanelEnabled';
 const GRIMOIRE_SPLIT_MIN_WIDTH = 1024; // min width to auto-enable practical split (dual pane) UI even without maximize
+
+function isGrimoireEditableShortcutTarget(el) {
+    if (!el || el === document.body) return false;
+    const tag = el.tagName;
+    if (tag === 'TEXTAREA') return true;
+    if (tag === 'INPUT') {
+        const type = (el.type || 'text').toLowerCase();
+        return type !== 'button' && type !== 'submit' && type !== 'checkbox' && type !== 'radio' && type !== 'range';
+    }
+    if (el.isContentEditable) return true;
+    return false;
+}
 const TAG_WIKI_MAX_HISTORY = 100;
 
 function capTagWikiHistoryEntries(history, historyIndex) {
@@ -99,6 +111,10 @@ class WikiDisplayBase {
             a.dataset.pseudoHandled = '1';
 
             if (/^https?:\/\//i.test(href)) {
+                // In-app tag wiki links are handled by setupLinkHandlers (verify before navigate)
+                if (a.classList.contains('tag-wiki-link')) {
+                    return;
+                }
                 if (!a.hasAttribute('target')) a.setAttribute('target', '_blank');
                 const rel = (a.getAttribute('rel') || '').toLowerCase();
                 if (!rel.includes('noopener')) {
@@ -126,16 +142,7 @@ class WikiDisplayBase {
                         area.scrollTop = 0;
                         return;
                     }
-                    let target;
-                    try {
-                        target = area.querySelector('#' + CSS.escape(id));
-                    } catch (err) {
-                        target = null;
-                    }
-                    if (!target) target = document.getElementById(id);
-                    if (target) {
-                        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }
+                    this.scrollToWikiAnchor(id);
                 });
                 return;
             }
@@ -243,6 +250,10 @@ class WikiDisplayBase {
         } else {
             this.showRightPane();
         }
+    }
+
+    _notifyGrimoireKeyboardOverlayContextChanged() {
+        // TagWikiSearchModal overrides — public/scripts/comp/tagWikiSearchModal.js
     }
     
     setupLinkContextMenu(link) {
@@ -1197,9 +1208,6 @@ class WikiDisplayBase {
         try {
             const result = await window.wsClient.sendMessage('get_tag_wiki_page', payload);
 
-            // Store tag name for refresh functionality
-            this.currentTagName = wikiLookupName;
-
             return result || {};
         } catch (error) {
             console.error('Get tag wiki page request failed:', error);
@@ -1388,6 +1396,9 @@ class WikiDisplayBase {
         
         this.displayArea.innerHTML = displayHtml;
         
+        // Assign stable dtext-* ids to collapsible sections for [[#anchor]] navigation
+        this._applyWikiSectionAnchors();
+        
         // Setup collapsible sections
         this.setupCollapsibleSections();
         
@@ -1554,6 +1565,103 @@ class WikiDisplayBase {
         }
     }
     
+    scrollToWikiAnchor(rawAnchor) {
+        let anchor = String(rawAnchor || '').trim();
+        if (anchor.startsWith('#')) anchor = anchor.slice(1);
+        if (!anchor) return false;
+
+        const normalizeDtextId = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        const normalized = normalizeDtextId(anchor);
+        const candidates = [];
+        if (normalized) candidates.push('dtext-' + normalized);
+        candidates.push(anchor.toLowerCase(), anchor);
+
+        const area = this.displayArea;
+        const seen = new Set();
+        for (const id of candidates) {
+            if (!id || seen.has(id)) continue;
+            seen.add(id);
+            let target = null;
+            if (area) {
+                try {
+                    target = area.querySelector('#' + CSS.escape(id));
+                } catch (err) {
+                    target = null;
+                }
+            }
+            if (!target) target = document.getElementById(id);
+            if (target) {
+                this._expandWikiSectionAncestors(target);
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                return true;
+            }
+        }
+
+        // Fallback: match collapsible section headers (e.g. [section,expanded=Arachnid:])
+        if (area && normalized) {
+            const toggles = area.querySelectorAll('.tag-wiki-section-toggle');
+            for (const toggle of toggles) {
+                const label = toggle.querySelector('span');
+                const labelSlug = normalizeDtextId(label ? label.textContent : toggle.textContent);
+                if (labelSlug !== normalized) continue;
+                this._expandWikiSectionAncestors(toggle);
+                toggle.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                return true;
+            }
+        }
+        return false;
+    }
+
+    _applyWikiSectionAnchors() {
+        if (!this.displayArea) return;
+        const normalizeDtextId = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        const usedIds = new Set();
+        this.displayArea.querySelectorAll('[id]').forEach((el) => {
+            if (el.id) usedIds.add(el.id);
+        });
+
+        this.displayArea.querySelectorAll('.tag-wiki-section-toggle').forEach((toggle) => {
+            const label = toggle.querySelector('span');
+            const slug = normalizeDtextId(label ? label.textContent : toggle.textContent);
+            if (!slug) return;
+            const anchorId = 'dtext-' + slug;
+            if (usedIds.has(anchorId)) return;
+            toggle.id = anchorId;
+            usedIds.add(anchorId);
+
+            const targetId = (toggle.dataset.target || '').trim();
+            if (!targetId) return;
+            let content;
+            try {
+                content = this.displayArea.querySelector('#' + CSS.escape(targetId));
+            } catch (err) {
+                content = null;
+            }
+            if (content && !content.id) {
+                content.id = anchorId + '-content';
+                usedIds.add(content.id);
+            }
+        });
+    }
+
+    _expandWikiSectionAncestors(element) {
+        if (!element || !this.displayArea) return;
+        let parent = element.parentElement;
+        while (parent && parent !== this.displayArea) {
+            if (parent.classList.contains('tag-wiki-section-content') && parent.classList.contains('hidden')) {
+                parent.classList.remove('hidden');
+                const section = parent.closest('.tag-wiki-section');
+                const toggle = section ? section.querySelector('.tag-wiki-section-toggle') : null;
+                const icon = toggle ? toggle.querySelector('i') : null;
+                if (icon) {
+                    icon.classList.remove('fa-chevron-right');
+                    icon.classList.add('fa-chevron-down');
+                }
+            }
+            parent = parent.parentElement;
+        }
+    }
+
     setupLinkHandlers() {
         // Add click handlers and context menus for tag wiki links
         const tagLinks = this.displayArea.querySelectorAll('.tag-wiki-link');
@@ -1565,48 +1673,46 @@ class WikiDisplayBase {
             link.addEventListener('click', async (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                const tagName = link.dataset.tagName;
-                const anchor = link.dataset.anchor;
-                if (tagName) {
-                    // Check if navigating to the same page
-                    const currentTagName = this.getCurrentTagName();
-                    if (currentTagName && currentTagName.toLowerCase() === tagName.toLowerCase()) {
-                        // Same page - just handle anchor if present
+                let tagName = String(link.dataset.tagName || '').trim();
+                let anchor = String(link.dataset.anchor || '').trim();
+
+                // Same-page anchors: [[#section]] / [[#section|label]] (DText emits tagName "#section")
+                if (tagName.startsWith('#')) {
+                    this.scrollToWikiAnchor(anchor || tagName.slice(1));
+                    return;
+                }
+                if (!tagName && anchor) {
+                    this.scrollToWikiAnchor(anchor);
+                    return;
+                }
+                if (!tagName) return;
+
+                // Check if navigating to the same page
+                const currentTagName = this.getCurrentTagName();
+                if (currentTagName && currentTagName.toLowerCase() === tagName.toLowerCase()) {
+                    // Same page - just handle anchor if present
+                    if (anchor) {
+                        setTimeout(() => this.scrollToWikiAnchor(anchor), 100);
+                    }
+                    return; // Block navigation to same page
+                }
+                
+                // Show loading indicator
+                this.showLinkLoadingIndicator(link);
+                
+                try {
+                    const result = await this.getTagWikiPageDirectly(tagName, link);
+                    if (this.hasWikiPageContent(result)) {
+                        // Success - remove indicator immediately
+                        this.removeLinkLoadingIndicator(link);
+                        
                         if (anchor) {
-                            setTimeout(() => {
-                                const anchorId = 'dtext-' + anchor.toLowerCase();
-                                const targetElement = document.getElementById(anchorId);
-                                if (targetElement) {
-                                    targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                                }
-                            }, 100);
+                            setTimeout(() => this.scrollToWikiAnchor(anchor), 100);
                         }
-                        return; // Block navigation to same page
                     }
-                    
-                    // Show loading indicator
-                    this.showLinkLoadingIndicator(link);
-                    
-                    try {
-                        const result = await this.getTagWikiPageDirectly(tagName, link);
-                        if (this.hasWikiPageContent(result)) {
-                            // Success - remove indicator immediately
-                            this.removeLinkLoadingIndicator(link);
-                            
-                            if (anchor) {
-                                setTimeout(() => {
-                                    const anchorId = 'dtext-' + anchor.toLowerCase();
-                                    const targetElement = document.getElementById(anchorId);
-                                    if (targetElement) {
-                                        targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                                    }
-                                }, 100);
-                            }
-                        }
-                        // If error, indicator will be updated in getTagWikiPageDirectly
-                    } catch (error) {
-                        // Error handling is done in getTagWikiPageDirectly
-                    }
+                    // If error, indicator will be updated in getTagWikiPageDirectly
+                } catch (error) {
+                    // Error handling is done in getTagWikiPageDirectly
                 }
             });
             
@@ -1640,11 +1746,7 @@ class WikiDisplayBase {
                 e.preventDefault();
                 const href = link.getAttribute('href');
                 if (href && href.startsWith('#')) {
-                    const anchor = href.substring(1);
-                    const targetElement = document.getElementById(anchor);
-                    if (targetElement) {
-                        targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }
+                    this.scrollToWikiAnchor(href.substring(1));
                 }
             });
         });
@@ -1784,6 +1886,8 @@ class WikiDisplayBase {
             return;
         }
 
+        const deferNavigation = !!clickedLink;
+
         // If the main Grimoire browser modal is not yet visible (e.g. a desktop
         // shortcut, command, or navigation that targets the full browser rather
         // than a pure standalone viewer), open it first. This ensures the user
@@ -1791,8 +1895,6 @@ class WikiDisplayBase {
         if (this.modal && (this.modal.classList.contains('hidden') || this.modal.classList.contains('hidden-alt'))) {
             this.open('', { skipInitialHome: true });
         }
-
-        this.setNavigationLoading(true);
 
         const tag = this.buildWikiTagFromTerm(tagName);
         if (!tag) {
@@ -1809,11 +1911,47 @@ class WikiDisplayBase {
         // The user can explicitly update the stored copy via "Refresh from online".
         const wantFreshBody = isOnlineCheck;
 
-        // For dedicated online lookup from tag cloud, keep the nice "Attempting..." UI
-        // instead of overwriting with the generic "Loading wiki page..." message.
-        if (this.displayArea && !isOnlineCheck) {
-            this.displayArea.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading wiki page...</div>';
+        // In-page link clicks: keep the current article visible until we know the target exists.
+        if (!deferNavigation) {
+            this.setNavigationLoading(true);
+            if (this.displayArea && !isOnlineCheck) {
+                this.displayArea.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading wiki page...</div>';
+            }
         }
+
+        const reportLinkClickError = (errorMessage) => {
+            if (clickedLink && clickedLink._loadingIndicator) {
+                this.updateLinkLoadingIndicator(clickedLink, errorMessage, true);
+                this.removeLinkLoadingIndicator(clickedLink, 3000);
+                return;
+            }
+            if (this.displayArea) {
+                const canGoBack = this.history && this.historyIndex > 0;
+                const backButtonHtml = canGoBack
+                    ? `<button class="btn-secondary btn-small wiki-error-back-btn" style="margin-top: var(--spacing-sm);">
+                        <i class="fas fa-arrow-left"></i> Back
+                    </button>`
+                    : '';
+
+                this.displayArea.innerHTML = `
+                    <div class="tag-wiki-error">
+                        <i class="fas fa-exclamation-circle"></i> ${this.escapeHtml(errorMessage)}
+                        ${backButtonHtml}
+                    </div>
+                `;
+
+                if (canGoBack) {
+                    const backBtn = this.displayArea.querySelector('.wiki-error-back-btn');
+                    if (backBtn) {
+                        backBtn.addEventListener('click', () => {
+                            if (this.goBack) {
+                                this.goBack();
+                            }
+                        });
+                    }
+                }
+            }
+        };
 
         // Check for errors before rendering - fetch data first
         try {
@@ -1831,45 +1969,18 @@ class WikiDisplayBase {
                     return result || { error: errorMessage };
                 }
 
-                // Update loading indicator to show error message (normal path)
-                if (clickedLink && clickedLink._loadingIndicator) {
-                    this.updateLinkLoadingIndicator(clickedLink, errorMessage, true);
-                    this.removeLinkLoadingIndicator(clickedLink, 3000);
-                } else {
-                    // Fallback: show error in display area with back button
-                    if (this.displayArea) {
-                        const canGoBack = this.history && this.historyIndex > 0;
-                        const backButtonHtml = canGoBack
-                            ? `<button class="btn-secondary btn-small wiki-error-back-btn" style="margin-top: var(--spacing-sm);">
-                                <i class="fas fa-arrow-left"></i> Back
-                            </button>`
-                            : '';
-
-                        this.displayArea.innerHTML = `
-                            <div class="tag-wiki-error">
-                                <i class="fas fa-exclamation-circle"></i> ${this.escapeHtml(errorMessage)}
-                                ${backButtonHtml}
-                            </div>
-                        `;
-
-                        if (canGoBack) {
-                            const backBtn = this.displayArea.querySelector('.wiki-error-back-btn');
-                            if (backBtn) {
-                                backBtn.addEventListener('click', () => {
-                                    if (this.goBack) {
-                                        this.goBack();
-                                    }
-                                });
-                            }
-                        }
-                    }
-                }
+                reportLinkClickError(errorMessage);
                 return result || { error: errorMessage };
             }
 
             // Success path
             delete this._checkingOnlineTag;
 
+            if (deferNavigation && clickedLink) {
+                this.removeLinkLoadingIndicator(clickedLink);
+            }
+
+            this.currentTagName = this.resolveBooruWikiTagName(tag);
             this.currentSelectedTag = { title: tag.title, name: tag.name };
             this.renderWikiPage(result);
             dreamWikiRecentAppend(tag.title);
@@ -1893,39 +2004,7 @@ class WikiDisplayBase {
                 return;
             }
             
-            // Update loading indicator to show error message (normal path)
-            if (clickedLink && clickedLink._loadingIndicator) {
-                this.updateLinkLoadingIndicator(clickedLink, `Error: ${error.message}`, true);
-                this.removeLinkLoadingIndicator(clickedLink, 3000);
-            } else {
-                // Fallback: show error in display area with back button
-                if (this.displayArea) {
-                    const canGoBack = this.history && this.historyIndex > 0;
-                    const backButtonHtml = canGoBack 
-                        ? `<button class="btn-secondary btn-small wiki-error-back-btn" style="margin-top: var(--spacing-sm);">
-                            <i class="fas fa-arrow-left"></i> Back
-                        </button>`
-                        : '';
-                    
-                    this.displayArea.innerHTML = `
-                        <div class="tag-wiki-error">
-                            <i class="fas fa-exclamation-circle"></i> Error: ${this.escapeHtml(error.message)}
-                            ${backButtonHtml}
-                        </div>
-                    `;
-                    
-                    if (canGoBack) {
-                        const backBtn = this.displayArea.querySelector('.wiki-error-back-btn');
-                        if (backBtn) {
-                            backBtn.addEventListener('click', () => {
-                                if (this.goBack) {
-                                    this.goBack();
-                                }
-                            });
-                        }
-                    }
-                }
-            }
+            reportLinkClickError(`Error: ${error.message}`);
             
             throw error;
         }
@@ -2973,6 +3052,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
     constructor() {
         super();
         this._activePane = 'left';
+        this._searchResultIndex = -1;
         this.modal = null;
         this.searchInput = null;
         this.filterDropdown = null;
@@ -3094,42 +3174,33 @@ class TagWikiSearchModal extends WikiDisplayBase {
         this._boundCheckSplitMaximized = () => this.checkAndUpdateSplitMode();
         this._boundCheckSplitResize = () => this.checkAndUpdateSplitMode();
         this._boundSplitSwapClick = () => this.swapSplitPanes();
+        this._boundAddressOutsideMousedown = (e) => {
+            if (!this.addressBar) return;
+            if (this.addressBar.classList.contains('edit-active')) {
+                if (!this.addressBar.contains(e.target)) {
+                    this.exitAddressEditAndRestore();
+                }
+            }
+        };
 
-        this.modal.addEventListener('modalMaximized', this._boundCheckSplitMaximized);
-        this.modal.addEventListener('modalRestored', this._boundCheckSplitMaximized);
-        if (this.splitSwapBtn) {
-            this.splitSwapBtn.addEventListener('click', this._boundSplitSwapClick);
-        }
-        // Resize / modal resize support for "wide enough" split (practical dual pane without requiring maximize)
-        this.modal.addEventListener('modalResized', this._boundCheckSplitResize);
-        window.addEventListener('resize', this._boundCheckSplitResize);
-        // Initial check (size may not be final immediately)
-        setTimeout(() => this.checkAndUpdateSplitMode(), 120);
+        // attachModalListeners: public/scripts/comp/modalListenerScope.js
+        attachModalListeners(this.modal, (signal) => {
+            this.modal.addEventListener('modalMaximized', this._boundCheckSplitMaximized, { signal });
+            this.modal.addEventListener('modalRestored', this._boundCheckSplitMaximized, { signal });
+            this.modal.addEventListener('modalResized', this._boundCheckSplitResize, { signal });
+            if (this.splitSwapBtn) {
+                this.splitSwapBtn.addEventListener('click', this._boundSplitSwapClick, { signal });
+            }
+            window.addEventListener('resize', this._boundCheckSplitResize, { signal });
+            document.addEventListener('mousedown', this._boundAddressOutsideMousedown, { capture: true, signal });
+            setTimeout(() => this.checkAndUpdateSplitMode(), 120);
+        });
     }
 
     teardownSplitModeListeners() {
-        if (!this._splitModeListenersWired) return;
-
-        if (this.modal) {
-            if (this._boundCheckSplitMaximized) {
-                this.modal.removeEventListener('modalMaximized', this._boundCheckSplitMaximized);
-                this.modal.removeEventListener('modalRestored', this._boundCheckSplitMaximized);
-            }
-            if (this._boundCheckSplitResize) {
-                this.modal.removeEventListener('modalResized', this._boundCheckSplitResize);
-            }
-        }
-        if (this._boundCheckSplitResize) {
-            window.removeEventListener('resize', this._boundCheckSplitResize);
-        }
-        if (this.splitSwapBtn && this._boundSplitSwapClick) {
-            this.splitSwapBtn.removeEventListener('click', this._boundSplitSwapClick);
-        }
-
-        this._boundCheckSplitMaximized = null;
-        this._boundCheckSplitResize = null;
-        this._boundSplitSwapClick = null;
-        this._splitModeListenersWired = false;
+        if (!this.modal) return;
+        // detachModalListeners: public/scripts/comp/modalListenerScope.js
+        detachModalListeners(this.modal);
     }
 
     checkAndUpdateSplitMode() {
@@ -3399,6 +3470,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         // (both Layer 1 pretty display + icon, and Layer 2 edit input value via currentAddress)
         // and controls to whatever the active logical pane now holds (the data has moved).
         this.syncAddressAndControlsToActive();
+        this._notifyGrimoireKeyboardOverlayContextChanged();
     }
 
     setActivePane(side) {
@@ -3808,6 +3880,270 @@ class TagWikiSearchModal extends WikiDisplayBase {
         if (!window.grimoireNavigate && this.navigate) {
             window.grimoireNavigate = (u) => this.navigate(u);
         }
+
+        this.wireKeyboardOverlayEntries();
+    }
+
+    _triggerGrimoireNavigation(which) {
+        const p = this.activePane;
+        if (which === 'back') {
+            if (p && typeof p.goBack === 'function') p.goBack();
+            else this.goBack();
+        } else if (which === 'forward') {
+            if (p && typeof p.goForward === 'function') p.goForward();
+            else this.goForward();
+        } else if (which === 'home') {
+            if (p && typeof p.goHome === 'function') p.goHome();
+            else this.goHome();
+        }
+    }
+
+    _focusGrimoireAddressBar() {
+        this.enterAddressEdit();
+        if (this.searchInput) {
+            this.searchInput.focus();
+            this.searchInput.select();
+        }
+    }
+
+    _getActiveSearchResultContainer() {
+        const pane = this.activePane;
+        if (!pane || !pane.displayArea) return null;
+        if (typeof pane.isSearchPage === 'function' && !pane.isSearchPage()) return null;
+        if (!pane.displayArea.querySelector('.search-results-list')) return null;
+        return pane.displayArea;
+    }
+
+    _getSearchResultItems(container) {
+        if (!container) return [];
+        return Array.from(container.querySelectorAll('.google-search-result, .tag-pill'));
+    }
+
+    _updateSearchResultHighlight(container) {
+        const items = this._getSearchResultItems(container);
+        items.forEach((el, i) => {
+            el.classList.toggle('keyboard-selected', i === this._searchResultIndex);
+        });
+        const selected = items[this._searchResultIndex];
+        if (selected) {
+            selected.scrollIntoView({ block: 'nearest' });
+        }
+        this._notifyGrimoireKeyboardOverlayContextChanged();
+    }
+
+    _handleGrimoireSearchResultKeydown(e) {
+        const container = this._getActiveSearchResultContainer();
+        if (!container) {
+            this._searchResultIndex = -1;
+            return false;
+        }
+        const items = this._getSearchResultItems(container);
+        if (!items.length) return false;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (this._searchResultIndex < 0) this._searchResultIndex = 0;
+            else this._searchResultIndex = Math.min(this._searchResultIndex + 1, items.length - 1);
+            this._updateSearchResultHighlight(container);
+            return true;
+        }
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (this._searchResultIndex < 0) this._searchResultIndex = 0;
+            else this._searchResultIndex = Math.max(this._searchResultIndex - 1, 0);
+            this._updateSearchResultHighlight(container);
+            return true;
+        }
+        if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+            if (isGrimoireEditableShortcutTarget(e.target)) return false;
+            const idx = this._searchResultIndex >= 0 ? this._searchResultIndex : 0;
+            const el = items[idx];
+            if (el) {
+                e.preventDefault();
+                el.click();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    _handleGrimoireKeydown(e) {
+        if (!this.modal || this.modal.classList.contains('hidden')) return;
+
+        const inAddressEdit = this.addressBar && this.addressBar.classList.contains('edit-active');
+        const isEditable = isGrimoireEditableShortcutTarget(e.target);
+
+        if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'l' || e.key === 'L')) {
+            e.preventDefault();
+            this._focusGrimoireAddressBar();
+            return true;
+        }
+
+        if (isEditable) {
+            if (inAddressEdit && (e.key === 'Enter' || e.key === 'Escape')) return;
+            if (e.target && e.target.classList && e.target.classList.contains('search-page-input')) {
+                if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) {
+                    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') return;
+                }
+            } else {
+                return;
+            }
+        }
+
+        if ((e.altKey && e.key === 'ArrowLeft') || e.key === 'BrowserBack') {
+            e.preventDefault();
+            this._triggerGrimoireNavigation('back');
+            return true;
+        }
+        if ((e.altKey && e.key === 'ArrowRight') || e.key === 'BrowserForward') {
+            e.preventDefault();
+            this._triggerGrimoireNavigation('forward');
+            return true;
+        }
+        if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'h' || e.key === 'H')) {
+            e.preventDefault();
+            this._triggerGrimoireNavigation('home');
+            return true;
+        }
+        if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.key === '\\') {
+            if (this.rightToggleBtn && this.rightToggleBtn.style.display !== 'none') {
+                e.preventDefault();
+                this.toggleRightPane();
+                return true;
+            }
+        }
+        if (e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey && (e.key === 's' || e.key === 'S')) {
+            if (this.isSplitMode()) {
+                e.preventDefault();
+                this.swapSplitPanes();
+                return true;
+            }
+        }
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && (e.key === 'c' || e.key === 'C')) {
+            const pane = this.activePane;
+            const hasTag = pane && typeof pane.hasWikiPageTag === 'function' && pane.hasWikiPageTag();
+            if (hasTag) {
+                e.preventDefault();
+                if (typeof pane.handleWikiDisplayContextMenuAction === 'function') {
+                    pane.handleWikiDisplayContextMenuAction('wiki-copy-tag');
+                } else {
+                    this.handleWikiDisplayContextMenuAction('wiki-copy-tag');
+                }
+                return true;
+            }
+        }
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && (e.key === 'a' || e.key === 'A')) {
+            const pane = this.activePane;
+            const tag = pane && typeof pane.getCurrentTagName === 'function' ? pane.getCurrentTagName() : '';
+            if (tag) {
+                e.preventDefault();
+                if (pane && typeof pane.addToPrompt === 'function') {
+                    pane.addToPrompt();
+                } else {
+                    this.addToPrompt();
+                }
+                return true;
+            }
+        }
+
+        return this._handleGrimoireSearchResultKeydown(e);
+    }
+
+    wireKeyboardOverlayEntries() {
+        if (this._keyboardOverlayWired) return;
+        this._keyboardOverlayWired = true;
+        if (!this._escapeKeyHandler) {
+            this._escapeKeyHandler = (e) => {
+                if (e.key !== 'Escape') return;
+                if (this.addressBar && this.addressBar.classList.contains('edit-active')) {
+                    this.exitAddressEditAndRestore();
+                    return true;
+                }
+            };
+        }
+        if (!this._grimoireKeydownHandler) {
+            this._grimoireKeydownHandler = (e) => this._handleGrimoireKeydown(e);
+        }
+        // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+        registerKeyboardListener({
+            id: 'tagWikiSearchModal.escape',
+            handler: this._escapeKeyHandler,
+            type: 'whenFocused',
+            modalId: 'tagWikiSearchModal',
+            priority: 80,
+            critical: true,
+            showInOverlay: false
+        });
+        registerKeyboardListener({
+            id: 'tagWikiSearchModal.keydown',
+            handler: this._grimoireKeydownHandler,
+            type: 'whenFocused',
+            modalId: 'tagWikiSearchModal',
+            priority: 75,
+            showInOverlay: false
+        });
+        [
+            { id: 'overlay.tagWikiSearchModal.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' },
+            { id: 'overlay.tagWikiSearchModal.back', label: 'Back', keys: 'Alt+←', icon: 'fas fa-arrow-left', overlayAlt: true, overlayValid: () => this.history && this.historyIndex > 0 },
+            { id: 'overlay.tagWikiSearchModal.forward', label: 'Forward', keys: 'Alt+→', icon: 'fas fa-arrow-right', overlayAlt: true, overlayValid: () => this.history && this.historyIndex < this.history.length - 1 },
+            { id: 'overlay.tagWikiSearchModal.home', label: 'Home', keys: 'Ctrl+H', icon: 'fas fa-home' },
+            { id: 'overlay.tagWikiSearchModal.focusAddress', label: 'Focus address bar', keys: 'Ctrl+L', icon: 'fas fa-link' },
+            { id: 'overlay.tagWikiSearchModal.splitToggle', label: 'Toggle split panel', keys: 'Alt+\\', icon: 'fas fa-columns', overlayAlt: true, overlayValid: () => this.rightToggleBtn && this.rightToggleBtn.style.display !== 'none' },
+            { id: 'overlay.tagWikiSearchModal.swapPanels', label: 'Swap panels', keys: 'Alt+Shift+S', icon: 'fas fa-arrow-right-arrow-left', overlayAlt: true, overlayValid: () => this.isSplitMode() },
+            { id: 'overlay.tagWikiSearchModal.copyTag', label: 'Copy tag', keys: 'Ctrl+Shift+C', icon: 'fas fa-copy', overlayValid: () => this._grimoireOverlayHasWikiTag() },
+            { id: 'overlay.tagWikiSearchModal.addTag', label: 'Add to prompt', keys: 'Ctrl+Shift+A', icon: 'fas fa-plus', overlayValid: () => this._grimoireOverlayCanAddToPrompt() },
+            { id: 'overlay.tagWikiSearchModal.resultDown', label: 'Next result', keys: '↓', icon: 'fas fa-chevron-down', overlayValid: () => this._grimoireOverlayHasSearchResults() },
+            { id: 'overlay.tagWikiSearchModal.resultUp', label: 'Previous result', keys: '↑', icon: 'fas fa-chevron-up', overlayValid: () => this._grimoireOverlayHasSearchResults() },
+            { id: 'overlay.tagWikiSearchModal.search', label: 'Search / open result', keys: 'Enter', icon: 'fas fa-search', overlayValid: () => this._grimoireOverlayHasSearchResults() }
+        ].forEach((entry) => {
+            registerKeyboardListener({
+                id: entry.id,
+                type: 'whenFocused',
+                modalId: 'tagWikiSearchModal',
+                label: entry.label,
+                keys: entry.keys,
+                overlayIcon: entry.icon,
+                overlayGroup: 'Grimoire',
+                overlayAlt: entry.overlayAlt === true,
+                overlayValid: typeof entry.overlayValid === 'function' ? entry.overlayValid : null,
+                overlayOnly: true,
+                priority: -10
+            });
+        });
+    }
+
+    _grimoireOverlayHasWikiTag() {
+        const pane = this.activePane;
+        return !!(pane && typeof pane.hasWikiPageTag === 'function' && pane.hasWikiPageTag());
+    }
+
+    _grimoireOverlayCanAddToPrompt() {
+        const manualModalEl = document.getElementById('manualModal');
+        const isManualOpen = manualModalEl && !manualModalEl.classList.contains('hidden');
+        if (!isManualOpen) return false;
+        const pane = this.activePane;
+        const tag = pane && typeof pane.getCurrentTagName === 'function' ? pane.getCurrentTagName() : '';
+        return !!tag;
+    }
+
+    _grimoireOverlayHasSearchResults() {
+        return this._getSearchResultItems(this._getActiveSearchResultContainer()).length > 0;
+    }
+
+    _notifyGrimoireKeyboardOverlayContextChanged() {
+        // notifyKeyboardOverlayContextChanged: public/scripts/comp/modalKeyboardRegistry.js
+        notifyKeyboardOverlayContextChanged();
+    }
+
+    toggleRightPane() {
+        if (!this.modal || !this.rightPaneEl) return;
+        const isActive = this.modal.classList.contains('tag-wiki-split-active');
+        if (isActive) {
+            this.hideRightPane();
+        } else {
+            this.showRightPane();
+        }
+        this._notifyGrimoireKeyboardOverlayContextChanged();
     }
 
     // --- Layered pseudo-browser address bar controller ---
@@ -3874,15 +4210,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
             }, { once: false });
         }
 
-        // Clicking outside the bar while editing: cancel (restore previous display), do not commit the input value.
-        document.addEventListener('mousedown', (e) => {
-            if (!this.addressBar) return;
-            if (this.addressBar.classList.contains('edit-active')) {
-                if (!this.addressBar.contains(e.target)) {
-                    this.exitAddressEditAndRestore();
-                }
-            }
-        }, { capture: true });
+        // Address bar outside-click handled in setupSplitModeListeners via modal listener scope.
     }
 
     setAddress({ displayUrl, mode = 'edtx' } = {}, options = {}) {
@@ -4544,6 +4872,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
             }
         }
 
+        this.teardownSplitModeListeners();
         closeModal(this.modal).then(() => {
             this.currentSearchResults = [];
             this.currentSelectedTag = null;
@@ -4826,6 +5155,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
      * The old left results sidebar is treated as secondary/overlay and can be hidden for this view.
      */
     showSearchResultsPage(query = '', isLoading = false) {
+        this._searchResultIndex = -1;
         if (!this.displayArea) return;
 
         // deactivateDsapOnShell: public/scripts/comp/dsapRegistry.js
@@ -5444,6 +5774,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
             }
 
             this.renderWikiPage(wikiContent);
+            this.currentTagName = this.resolveBooruWikiTagName(tag);
 
             // Add to history only if content loaded
             if (this.hasWikiPageContent(wikiContent)) {
@@ -5811,6 +6142,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
             contextMenu.detachFromElement(this.forwardBtn);
             contextMenu.attachToElement(this.forwardBtn, this.forwardMenuConfig);
         }
+        this._notifyGrimoireKeyboardOverlayContextChanged();
     }
 }
 

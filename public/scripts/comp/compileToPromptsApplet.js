@@ -257,6 +257,41 @@ function wireCompileToPromptsModal() {
     }
 }
 
-window.wsClient.registerInitStep(46, 'Compile to Prompts', async () => {
+let compileToPromptsKeyboardWired = false;
+
+function handleCompileToPromptsKeydown(e) {
+    const modal = document.getElementById('compileToPromptsModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+
+    if (e.key === 'Enter' && !modalKeyboardSkipPrimaryEnter(e.target)) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleCompileToPromptsApply(e.shiftKey);
+        return true;
+    }
+}
+
+function wireCompileToPromptsKeyboard() {
+    if (compileToPromptsKeyboardWired) return;
+    compileToPromptsKeyboardWired = true;
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'compileToPromptsModal.keydown',
+        handler: handleCompileToPromptsKeydown,
+        type: 'whenFocused',
+        modalId: 'compileToPromptsModal',
+        priority: 75,
+        critical: true,
+        showInOverlay: false
+    });
+    registerModalOverlayEntries('compileToPromptsModal', 'Compile Prompts', [
+        { id: 'overlay.compileToPromptsModal.apply', label: 'Apply', keys: 'Enter', icon: 'fas fa-check' },
+        { id: 'overlay.compileToPromptsModal.applyClose', label: 'Apply and close', keys: 'Shift+Enter', icon: 'fas fa-check-double' },
+        { id: 'overlay.compileToPromptsModal.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
+    ]);
+}
+
+window.wsClient.registerInitStep(462, 'Compile to Prompts', async () => {
     wireCompileToPromptsModal();
+    wireCompileToPromptsKeyboard();
 });

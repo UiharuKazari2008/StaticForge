@@ -287,6 +287,14 @@ body.windows-classic-theme .dreamscape-connectivity-icon {
     color: var(--WindowText);
 }
 
+#dreamscapeConnectivityErrorTemplate,
+#dreamscapeConnectivityErrorWindow {
+    width: 420px;
+    height: 180px;
+    min-width: 320px;
+    min-height: 160px;
+}
+
 #dreamscapeConnectivityErrorOverlay {
     position: fixed;
     inset: 0;

@@ -138,6 +138,8 @@ function setCompareSourceData(data) {
     updateCompareDisplayState();
     updateCompareControlsState();
     syncCompareLoupeRevealToLoupe();
+    // notifyKeyboardOverlayContextChanged: public/scripts/comp/modalKeyboardRegistry.js
+    notifyKeyboardOverlayContextChanged();
     return true;
 }
 
@@ -214,6 +216,10 @@ function getEffectiveCompareSlide() {
 
 function isCompareLoupeRevealReady() {
     return Boolean(compareSourceImageData && compareSourceImageData.url && !isCompareViewCompositingBlocked());
+}
+
+function isCompareSourceAvailableForOverlay() {
+    return Boolean(compareSourceImageData && compareSourceImageData.url);
 }
 
 function isCompareLoupeRevealActive() {
@@ -445,6 +451,8 @@ function clearCompareSourceImage() {
     updateCompareDisplayState();
     updateCompareControlsState();
     syncCompareLoupeRevealToLoupe();
+    // notifyKeyboardOverlayContextChanged: public/scripts/comp/modalKeyboardRegistry.js
+    notifyKeyboardOverlayContextChanged();
 }
 
 function applyCompareDefaultSettingsStub() {
@@ -1149,7 +1157,90 @@ function syncCompareSourceBeforeGeneration(requestBody) {
     updateCompareControlsState();
 }
 
+function compareViewPointerMoveHandler(e) {
+    updateComparePointerDrag(e);
+}
+
+function compareViewPointerUpHandler(e) {
+    endComparePointerDrag(e);
+}
+
+function compareViewKeydownHandler(e) {
+    if (e.key === 'Alt') {
+        compareAltHeld = true;
+    } else if (e.code === 'ShiftLeft') {
+        compareShiftLeftHeld = true;
+        compareLastShiftSide = 'left';
+    } else if (e.code === 'ShiftRight') {
+        compareShiftRightHeld = true;
+        compareLastShiftSide = 'right';
+    } else if (e.key === 'Shift') {
+        compareShiftLeftHeld = true;
+        compareShiftRightHeld = true;
+    }
+    updateCompareShiftOverrides();
+}
+
+function compareViewKeyupHandler(e) {
+    if (e.key === 'Alt') {
+        compareAltHeld = false;
+    } else if (e.code === 'ShiftLeft') {
+        compareShiftLeftHeld = false;
+    } else if (e.code === 'ShiftRight') {
+        compareShiftRightHeld = false;
+    } else if (e.key === 'Shift') {
+        compareShiftLeftHeld = false;
+        compareShiftRightHeld = false;
+    }
+    updateCompareShiftOverrides();
+}
+
+function compareViewWindowBlurHandler() {
+    compareAltHeld = false;
+    compareShiftLeftHeld = false;
+    compareShiftRightHeld = false;
+    compareLastShiftSide = null;
+    compareTempShowSourceActive = false;
+    compareTempHideSourceActive = false;
+    compareDragActive = false;
+    compareDragPointerId = null;
+    if (compareSourceImageData) {
+        updateCompareDisplayState();
+    }
+}
+
+let compareViewModalScopeWired = false;
+let compareViewKeyboardWired = false;
+
+function wireCompareViewKeyboardListeners() {
+    if (compareViewKeyboardWired) return;
+    compareViewKeyboardWired = true;
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'compareView.keydown',
+        handler: compareViewKeydownHandler,
+        type: 'whenOpen',
+        modalId: 'manualModal',
+        eventType: 'keydown',
+        priority: 65,
+        critical: false,
+        showInOverlay: false
+    });
+    registerKeyboardListener({
+        id: 'compareView.keyup',
+        handler: compareViewKeyupHandler,
+        type: 'whenOpen',
+        modalId: 'manualModal',
+        eventType: 'keyup',
+        priority: 65,
+        critical: false,
+        showInOverlay: false
+    });
+}
+
 function wireCompareViewListeners() {
+    wireCompareViewKeyboardListeners();
+    const manualModal = document.getElementById('manualModal');
     const manualPreviewUseAsSourceBtn = document.getElementById('manualPreviewUseAsSourceBtn');
     const manualPreviewImage = document.getElementById('manualPreviewImage');
 
@@ -1171,57 +1262,15 @@ function wireCompareViewListeners() {
         manualPreviewImage.addEventListener('pointerleave', endComparePointerDrag);
     }
 
-    document.addEventListener('pointermove', (e) => {
-        updateComparePointerDrag(e);
-    });
-
-    document.addEventListener('pointerup', (e) => {
-        endComparePointerDrag(e);
-    });
-
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Alt') {
-            compareAltHeld = true;
-        } else if (e.code === 'ShiftLeft') {
-            compareShiftLeftHeld = true;
-            compareLastShiftSide = 'left';
-        } else if (e.code === 'ShiftRight') {
-            compareShiftRightHeld = true;
-            compareLastShiftSide = 'right';
-        } else if (e.key === 'Shift') {
-            compareShiftLeftHeld = true;
-            compareShiftRightHeld = true;
-        }
-        updateCompareShiftOverrides();
-    });
-
-    document.addEventListener('keyup', (e) => {
-        if (e.key === 'Alt') {
-            compareAltHeld = false;
-        } else if (e.code === 'ShiftLeft') {
-            compareShiftLeftHeld = false;
-        } else if (e.code === 'ShiftRight') {
-            compareShiftRightHeld = false;
-        } else if (e.key === 'Shift') {
-            compareShiftLeftHeld = false;
-            compareShiftRightHeld = false;
-        }
-        updateCompareShiftOverrides();
-    });
-
-    window.addEventListener('blur', () => {
-        compareAltHeld = false;
-        compareShiftLeftHeld = false;
-        compareShiftRightHeld = false;
-        compareLastShiftSide = null;
-        compareTempShowSourceActive = false;
-        compareTempHideSourceActive = false;
-        compareDragActive = false;
-        compareDragPointerId = null;
-        if (compareSourceImageData) {
-            updateCompareDisplayState();
-        }
-    });
+    if (manualModal && !compareViewModalScopeWired) {
+        compareViewModalScopeWired = true;
+        // attachModalListeners: public/scripts/comp/modalListenerScope.js
+        attachModalListeners(manualModal, (signal) => {
+            document.addEventListener('pointermove', compareViewPointerMoveHandler, { signal });
+            document.addEventListener('pointerup', compareViewPointerUpHandler, { signal });
+            window.addEventListener('blur', compareViewWindowBlurHandler, { signal });
+        });
+    }
 
     updateCompareControlsState();
 }

@@ -1,4 +1,17 @@
 /* Novel tool windows — public/scripts/comp/novelManager.js */
+#novelEditorTool {
+    width: 560px;
+    height: 480px;
+    min-width: 480px;
+    min-height: 360px;
+}
+
+#novelProgressTool {
+    width: 400px;
+    height: 320px;
+    min-width: 360px;
+    min-height: 240px;
+}
 
 .novel-editor-tool > .modal-content,
 .novel-progress-tool > .modal-content {

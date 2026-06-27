@@ -876,6 +876,12 @@ class PromptTextareaToolbar {
         
         const textareaKeydownHandler = (e) => {
             if (toolbar.classList.contains('search-mode') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.closeSearch(toolbar);
+                    return;
+                }
                 // Don't exit for navigation keys, but exit for typing
                 if (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete') {
                     this.closeSearch(toolbar);

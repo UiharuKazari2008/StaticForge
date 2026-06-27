@@ -88,11 +88,6 @@
     flex-shrink: 0;
 }
 
-.spell-check-section .suggestion-btn.suggestion-phrase {
-    border-color: rgb(90 160 255 / 45%);
-    background: rgb(30 60 120 / 35%);
-}
-
 .spell-check-row-expanded {
     display: none;
 }

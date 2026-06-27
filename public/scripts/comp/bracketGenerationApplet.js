@@ -754,6 +754,34 @@ class BracketGenerationApplet {
         this.setupStepTabNavigation();
         this.initializeStepDragDrop();
         this.updateKeywordDropdownLabel();
+        this.wireKeyboardOverlayEntries();
+    }
+
+    wireKeyboardOverlayEntries() {
+        if (this._keyboardOverlayWired) return;
+        this._keyboardOverlayWired = true;
+        registerKeyboardListener({
+            id: 'overlay.bracketGenerationModal.close',
+            type: 'whenFocused',
+            modalId: 'bracketGenerationModal',
+            label: 'Close',
+            keys: 'Alt+Q',
+            overlayIcon: 'fas fa-times',
+            overlayGroup: 'Phasewalker',
+            overlayOnly: true,
+            priority: -10
+        });
+        registerKeyboardListener({
+            id: 'overlay.bracketGenerationModal.stepTab',
+            type: 'whenFocused',
+            modalId: 'bracketGenerationModal',
+            label: 'Next step field',
+            keys: 'Tab',
+            overlayIcon: 'fas fa-arrow-right',
+            overlayGroup: 'Phasewalker',
+            overlayOnly: true,
+            priority: -10
+        });
     }
 
     setupStepTabNavigation() {
@@ -1772,6 +1800,9 @@ class BracketGenerationApplet {
                 draggedItem.classList.add('dragging');
                 document.body.style.userSelect = 'none';
 
+                const dragScope = new AbortController();
+                const dragSignal = dragScope.signal;
+
                 const onMove = (ev) => {
                     ev.preventDefault();
                     if (!draggedItem) return;
@@ -1788,8 +1819,7 @@ class BracketGenerationApplet {
                 };
 
                 const onUp = () => {
-                    document.removeEventListener('mousemove', onMove);
-                    document.removeEventListener('mouseup', onUp);
+                    dragScope.abort();
                     if (draggedItem) draggedItem.classList.remove('dragging');
                     document.body.style.userSelect = '';
                     this.saveStepTextareasToState();
@@ -1820,8 +1850,8 @@ class BracketGenerationApplet {
                     this.renderSteps();
                 };
 
-                document.addEventListener('mousemove', onMove);
-                document.addEventListener('mouseup', onUp);
+                document.addEventListener('mousemove', onMove, { signal: dragSignal });
+                document.addEventListener('mouseup', onUp, { signal: dragSignal });
             });
         });
     }

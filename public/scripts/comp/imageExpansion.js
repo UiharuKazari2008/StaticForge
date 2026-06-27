@@ -1477,8 +1477,12 @@ async function submitImageExpansionReroll() {
             });
             progressToastId = null;
 
-            if (wsClient && wsClient.waitForStreamingStepsComplete) {
-                await wsClient.waitForStreamingStepsComplete('manual');
+            let finalizeResult = { prefetchedBlobUrl: null, skippedDownloadUi: false };
+            if (wsClient && wsClient.finalizeGenerationPreview) {
+                finalizeResult = await wsClient.finalizeGenerationPreview('manual', {
+                    filename: result.filename,
+                    contentLength: result.contentLength
+                });
             }
 
             const imageSrc = `/images/${result.filename}`;
@@ -1492,7 +1496,9 @@ async function submitImageExpansionReroll() {
                         }
                         return null;
                     }
-                }
+                },
+                prefetchedBlobUrl: finalizeResult.prefetchedBlobUrl || null,
+                skippedDownloadUi: finalizeResult.skippedDownloadUi === true
             };
 
             await handleImageResult(imageSrc, undefined, result.seed, mockResponse, result.metadata);
@@ -1854,11 +1860,15 @@ async function submitImageExpansion() {
             // Clear the toast ID for future expansions
             progressToastId = null;
 
-            // Wait for all queued streaming steps to be displayed before finalizing
-            if (wsClient && wsClient.waitForStreamingStepsComplete) {
-                console.log('⏳ Waiting for streaming steps to complete...');
+            // Finalize buffered streaming steps before setting final image
+            let finalizeResult = { prefetchedBlobUrl: null, skippedDownloadUi: false };
+            if (wsClient && wsClient.finalizeGenerationPreview) {
+                finalizeResult = await wsClient.finalizeGenerationPreview('manual', {
+                    filename: result.filename,
+                    contentLength: result.contentLength
+                });
+            } else if (wsClient && wsClient.waitForStreamingStepsComplete) {
                 await wsClient.waitForStreamingStepsComplete('manual');
-                console.log('✅ All streaming steps displayed');
             }
 
             // Remove streaming class before setting final image
@@ -1881,7 +1891,9 @@ async function submitImageExpansion() {
                         }
                         return null;
                     }
-                }
+                },
+                prefetchedBlobUrl: finalizeResult.prefetchedBlobUrl || null,
+                skippedDownloadUi: finalizeResult.skippedDownloadUi === true
             };
 
             // Update the current manual preview image object to include the expanded version
@@ -2067,8 +2079,63 @@ function updateExpansionPercentageOverlay(input, overlay, minVal = 0) {
     overlay.textContent = `${percentage}%`;
 }
 
+let imageExpansionKeyboardWired = false;
+
+function isImageExpansionKeyboardContext() {
+    const modal = document.getElementById('imageExpansionDialog');
+    if (!modal || modal.classList.contains('hidden')) return false;
+
+    const child = document.getElementById('expansionCompiledPromptDialog');
+    if (child && !child.classList.contains('hidden') && !child.classList.contains('minimised')) {
+        if (window.isDesktop && child.classList.contains('active-window')) {
+            return false;
+        }
+        if (!window.isDesktop) {
+            return false;
+        }
+    }
+
+    // isModalActive: public/scripts/comp/modalUtils.js
+    if (window.isDesktop && typeof isModalActive === 'function') {
+        return isModalActive(modal);
+    }
+    return true;
+}
+
+function onImageExpansionKeydown(e) {
+    if (!isImageExpansionKeyboardContext()) return;
+
+    if (e.key === 'F5') {
+        e.preventDefault();
+        e.stopPropagation();
+        const btn = document.getElementById('submitExpansionBtn');
+        if (btn && !btn.disabled) btn.click();
+        return true;
+    }
+}
+
+function wireImageExpansionKeyboardShortcuts() {
+    if (imageExpansionKeyboardWired) return;
+    imageExpansionKeyboardWired = true;
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'imageExpansionDialog.keydown',
+        handler: onImageExpansionKeydown,
+        type: 'whenFocused',
+        modalId: 'imageExpansionDialog',
+        priority: 75,
+        critical: true,
+        showInOverlay: false
+    });
+    registerModalOverlayEntries('imageExpansionDialog', 'Expansion', [
+        { id: 'overlay.imageExpansionDialog.run', label: 'Run expansion', keys: 'F5', icon: 'nai-sparkles' },
+        { id: 'overlay.imageExpansionDialog.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
+    ]);
+}
+
 // Initialize expansion modal when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
+    wireImageExpansionKeyboardShortcuts();
     // Setup all dropdowns
     setupExpansionResolutionDropdown();
     setupExpansionBiasDropdown();

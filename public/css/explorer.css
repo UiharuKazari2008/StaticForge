@@ -1,4 +1,11 @@
 /* Explorer applet — scripts/comp/explorerApplet.js */
+#explorerModal {
+    width: 900px;
+    height: 600px;
+    min-width: 700px;
+    min-height: 500px;
+}
+
 /* Explorer Applet Styles — shell uses naxt-modal-content; see #explorerModal rules below */
 
 .explorer-drives-container {

@@ -2,14 +2,80 @@
 // Shows cost confirmation for paid requests
 
 let creditCostDialogActive = false;
+let creditCostDialogKeyboardRegistered = false;
+let creditCostDialogConfirmHandler = null;
+let creditCostDialogCancelHandler = null;
+
+function handleCreditCostDialogKeydown(e) {
+    if (!creditCostDialogActive) return;
+    const dialog = document.getElementById('creditCostDialog');
+    if (!dialog || dialog.classList.contains('hidden')) return;
+
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        if (creditCostDialogCancelHandler) {
+            creditCostDialogCancelHandler(e);
+        }
+        return true;
+    }
+    if (e.key === 'Enter') {
+        if (e.target.closest('.credit-cost-buttons') && e.target.tagName === 'BUTTON') {
+            return;
+        }
+        e.preventDefault();
+        if (creditCostDialogConfirmHandler) {
+            creditCostDialogConfirmHandler(e);
+        }
+        return true;
+    }
+}
+
+function ensureCreditCostDialogKeyboardRegistered() {
+    if (creditCostDialogKeyboardRegistered) return;
+    creditCostDialogKeyboardRegistered = true;
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'creditCostDialog.keydown',
+        handler: handleCreditCostDialogKeydown,
+        type: 'whenOpen',
+        modalId: 'creditCostDialog',
+        priority: 85,
+        critical: true,
+        showInOverlay: false
+    });
+    registerKeyboardListener({
+        id: 'overlay.creditCost.escape',
+        type: 'whenOpen',
+        modalId: 'creditCostDialog',
+        label: 'Cancel',
+        keys: 'Esc',
+        overlayIcon: 'fas fa-times',
+        overlayGroup: 'Dialog',
+        overlayOnly: true,
+        priority: -10
+    });
+    registerKeyboardListener({
+        id: 'overlay.creditCost.enter',
+        type: 'whenOpen',
+        modalId: 'creditCostDialog',
+        label: 'Confirm',
+        keys: 'Enter',
+        overlayIcon: 'fas fa-check',
+        overlayGroup: 'Dialog',
+        overlayOnly: true,
+        priority: -10
+    });
+}
 
 // Create and show credit cost confirmation dialog
 function showCreditCostDialog(cost, event = null, outputResolution = null, isUpscaling = false, imageWidth = null, imageHeight = null, isFreeUpscaling = false) {
     return new Promise((resolve, reject) => {
+        ensureCreditCostDialogKeyboardRegistered();
+
         // Create fresh dialog elements each time
         const dialog = document.createElement('div');
         dialog.id = 'creditCostDialog';
-        dialog.className = 'credit-cost-dialog hidden';
+        dialog.className = 'modal hidden transient tool-window on-top credit-cost-dialog';
 
         // Build content programmatically
         const content = document.createElement('div');
@@ -251,44 +317,36 @@ function showCreditCostDialog(cost, event = null, outputResolution = null, isUps
             resolve(false);
         };
 
-        const creditCostKeyHandler = (e) => {
-            if (!creditCostDialogActive) return;
-            if (e.key === 'Escape') {
-                e.preventDefault();
-                handleCancel(e);
-            } else if (e.key === 'Enter') {
-                if (e.target.closest('.credit-cost-buttons') && e.target.tagName === 'BUTTON') {
-                    return;
-                }
-                e.preventDefault();
-                handleConfirm(e);
-            }
-        };
+        creditCostDialogConfirmHandler = handleConfirm;
+        creditCostDialogCancelHandler = handleCancel;
 
         confirmBtn.addEventListener('click', handleConfirm);
         cancelBtn.addEventListener('click', handleCancel);
-        dialog._creditCostKeyHandler = creditCostKeyHandler;
-        document.addEventListener('keydown', creditCostKeyHandler);
 
         // Position dialog near mouse or button
         positionCreditCostDialog(event, dialog);
 
-        // Show dialog
-        dialog.classList.remove('hidden');
+        dialog.dataset.windowPositionMode = 'manual-only';
+        // openModal, assignModalZIndex — public/scripts/comp/modalUtils.js
+        openModal(dialog);
+        assignModalZIndex(dialog);
         creditCostDialogActive = true;
     });
 }
 
 // Clean up and remove credit cost dialog
 function cleanupCreditCostDialog(dialog) {
-    if (dialog && dialog._creditCostKeyHandler) {
-        document.removeEventListener('keydown', dialog._creditCostKeyHandler);
-        delete dialog._creditCostKeyHandler;
-    }
-    if (dialog && dialog.parentNode) {
-        dialog.parentNode.removeChild(dialog);
-    }
     creditCostDialogActive = false;
+    creditCostDialogConfirmHandler = null;
+    creditCostDialogCancelHandler = null;
+    if (dialog) {
+        // closeModal — public/scripts/comp/modalUtils.js
+        closeModal(dialog).then(() => {
+            if (dialog.parentNode) {
+                dialog.parentNode.removeChild(dialog);
+            }
+        });
+    }
 }
 
 // Hide credit cost dialog (legacy function for compatibility)

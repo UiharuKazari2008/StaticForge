@@ -156,16 +156,44 @@ class SpellbookModalManager {
         }
 
         this.setupContextMenu();
+        this.wireEscapeKeyScope();
+    }
 
-        // Escape key to close modal
-        if (!this._escapeKeyHandler) {
-            this._escapeKeyHandler = (e) => {
-                if (e.key === 'Escape' && this.modal && !this.modal.classList.contains('hidden')) {
-                    this.closeModal();
+    wireEscapeKeyScope() {
+        if (!this.modal || this._escapeKeyScopeWired) return;
+        this._escapeKeyScopeWired = true;
+        if (!this._spellbookActionHandler) {
+            this._spellbookActionHandler = (e) => {
+                if (!this.modal || this.modal.classList.contains('hidden')) return;
+
+                if (e.key === 'Enter' && !modalKeyboardSkipPrimaryEnter(e.target)) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (this.generateBtn && !this.generateBtn.disabled) this.handleGenerate();
+                    return true;
+                }
+
+                if (e.key === 'F5') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.loadPresets();
+                    return true;
                 }
             };
-            document.addEventListener('keydown', this._escapeKeyHandler);
         }
+        registerKeyboardListener({
+            id: 'spellbookModal.actions',
+            handler: this._spellbookActionHandler,
+            type: 'whenFocused',
+            modalId: 'spellbookGenerationModal',
+            priority: 75,
+            showInOverlay: false
+        });
+        registerModalOverlayEntries('spellbookGenerationModal', 'Spellbook', [
+            { id: 'overlay.spellbook.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' },
+            { id: 'overlay.spellbook.cast', label: 'Cast spell', keys: 'Enter', icon: 'nai-sparkles', overlayValid: () => this.generateBtn && !this.generateBtn.disabled },
+            { id: 'overlay.spellbook.refresh', label: 'Refresh presets', keys: 'F5', icon: 'fas fa-rotate' }
+        ]);
     }
 
     updateSpellbookDynamicGenerationProgressOverlay(phase, data) {
@@ -1037,6 +1065,8 @@ class SpellbookModalManager {
         if (this.generateBtn) {
             this.generateBtn.disabled = false;
         }
+        // notifyKeyboardOverlayContextChanged: public/scripts/comp/modalKeyboardRegistry.js
+        notifyKeyboardOverlayContextChanged();
 
         if (this.editorBtn) {
             this.editorBtn.disabled = false;
@@ -1074,6 +1104,8 @@ class SpellbookModalManager {
         if (this.generateBtn) {
             this.generateBtn.disabled = true;
         }
+        // notifyKeyboardOverlayContextChanged: public/scripts/comp/modalKeyboardRegistry.js
+        notifyKeyboardOverlayContextChanged();
 
         if (this.editorBtn) {
             this.editorBtn.disabled = true;
@@ -1186,11 +1218,27 @@ class SpellbookModalManager {
                 showProgress: false
             });
 
-            // Wait for all queued streaming steps to be displayed before finalizing
-            if (window.wsClient && window.wsClient.waitForStreamingStepsComplete) {
-                console.log('⏳ Waiting for spellbook streaming steps to complete...');
+            // Finalize buffered streaming steps and show final image (prefetch when ready)
+            let finalizeResult = { prefetchedBlobUrl: null, skippedDownloadUi: false };
+            if (window.wsClient && window.wsClient.finalizeGenerationPreview) {
+                let contentLength = result.contentLength || result.metadata?.file_size || null;
+                if ((!contentLength || contentLength <= 0) && window.wsClient.pendingGenerationDownloadBytes > 0) {
+                    const pendingName = window.wsClient.pendingGenerationDownloadFilename;
+                    if (!pendingName || pendingName === filename) {
+                        contentLength = window.wsClient.pendingGenerationDownloadBytes;
+                    }
+                }
+                finalizeResult = await window.wsClient.finalizeGenerationPreview('spellbook', {
+                    filename,
+                    contentLength
+                });
+            } else if (window.wsClient && window.wsClient.waitForStreamingStepsComplete) {
                 await window.wsClient.waitForStreamingStepsComplete('spellbook');
-                console.log('✅ All spellbook streaming steps displayed');
+            }
+
+            if (window.wsClient) {
+                window.wsClient.pendingGenerationDownloadBytes = null;
+                window.wsClient.pendingGenerationDownloadFilename = null;
             }
 
             // Create confetti effect
@@ -1199,8 +1247,37 @@ class SpellbookModalManager {
 
             // Display the generated image in the modal
             if (filename && this.previewImage) {
-                // Construct image URL
                 const imageUrl = `/images/${filename}`;
+                const needsDownloadOverlay = !finalizeResult.skippedDownloadUi && !finalizeResult.prefetchedBlobUrl;
+
+                if (needsDownloadOverlay) {
+                    // showManualPreviewNavigationLoading: public/scripts/comp/manualModalManager.js
+                    const knownLen = result.contentLength || null;
+                    try {
+                        const fetchResult = await fetchTrackedImageBlob(
+                            imageUrl,
+                            knownLen,
+                            (progress) => {
+                                if (progress.total > 0) {
+                                    const pct = Math.min(100, Math.round(progress.ratio * 100));
+                                    showManualPreviewNavigationLoading(true, `Downloading ${pct}%`, pct);
+                                } else if (progress.loaded > 0) {
+                                    showManualPreviewNavigationLoading(true, 'Downloading…', 'indeterminate');
+                                } else {
+                                    showManualPreviewNavigationLoading(true, 'Downloading…', 0);
+                                }
+                            },
+                            { headers: { 'X-Preview-Finalize': '1' } }
+                        );
+                        if (fetchResult.objectUrl) {
+                            finalizeResult.prefetchedBlobUrl = fetchResult.objectUrl;
+                        }
+                    } catch (fetchErr) {
+                        console.warn('Spellbook final image fetch failed, falling back to direct load:', fetchErr);
+                    }
+                }
+
+                const resolvedSrc = finalizeResult.prefetchedBlobUrl || imageUrl;
                 await new Promise((resolve, reject) => {
                     let timeoutId;
                     const cleanup = () => {
@@ -1222,7 +1299,7 @@ class SpellbookModalManager {
                         console.warn('Spellbook preview image load timed out after 10 seconds');
                     }, 10000);
                     this.releaseSpellbookPreviewImageSrc();
-                    this.previewImage.src = imageUrl;
+                    this.previewImage.src = resolvedSrc;
                     if (this.previewImage.decode) {
                         this.previewImage.decode().then(finish).catch(() => {
                             this.previewImage.onload = finish;
@@ -1280,6 +1357,10 @@ class SpellbookModalManager {
                 return;
             }
             console.error('Generation error:', error);
+
+            if (window.wsClient) {
+                window.wsClient.clearStreamingStepQueues(null, true);
+            }
 
             // Stop progress animation
             if (this.spellbookProgressInterval) {
@@ -2363,6 +2444,16 @@ class SpellbookModalManager {
         // Close the modal
         this.closeModal();
     }
+}
+
+function getSpellbookStepPreviewDimensions() {
+    const container = document.querySelector('.spellbook-preview-image-container');
+    if (!container) return null;
+    const rect = container.getBoundingClientRect();
+    const width = Math.round(rect.width || container.clientWidth || 0);
+    const height = Math.round(rect.height || container.clientHeight || 0);
+    if (width <= 0 || height <= 0) return null;
+    return { width, height };
 }
 
 // Initialize when DOM is loaded

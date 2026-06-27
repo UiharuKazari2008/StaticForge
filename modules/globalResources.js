@@ -325,9 +325,6 @@ class GlobalResources {
             // Custom words (scripts/create-custom-words.js)
             customWords: path.join(rootDir, '.cache', 'customWords.json'),
 
-            // Dev bridge database (scripts/dev-bridge.js)
-            devBridgeDb: path.join(rootDir, '.cache', 'dev_bridge.db'),
-
             // T5 tokenizer config (public/protected/t5_tokenizer.json)
             t5TokenizerConfig: path.resolve(rootDir, 'public/protected/t5_tokenizer.json'),
 

@@ -675,6 +675,8 @@ function showVirtualKeyboard() {
         modal.classList.add('virtual-keyboard--docked');
         modal.classList.remove('hidden');
         modal.classList.remove('opening', 'closing');
+        // Mobile docked path bypasses openModal — modalListenerScope.js
+        onModalOpened(modal);
         requestAnimationFrame(() => {
             updateVirtualKeyboardDockPadding();
             updateVirtualKeyboardWideLayout();
@@ -695,6 +697,7 @@ function hideVirtualKeyboard() {
             closeModal(modal);
         }
     } else {
+        onModalClosed(modal);
         modal.classList.add('hidden');
         modal.classList.remove('virtual-keyboard--docked');
         clearVirtualKeyboardDockPadding();
@@ -745,6 +748,7 @@ function setVirtualKeyboardEnabled(on) {
     if (!virtualKeyboardEnabled) {
         hideVirtualKeyboard();
     }
+    wireVirtualKeyboardEnableScope();
 }
 
 function syncVirtualKeyboardPresentation() {
@@ -771,6 +775,39 @@ function syncVirtualKeyboardPresentation() {
 }
 
 let virtualKeyboardResizeTimer = null;
+let virtualKeyboardEnableScope = null;
+let virtualKeyboardModalScopeWired = false;
+
+function wireVirtualKeyboardEnableScope() {
+    if (virtualKeyboardEnableScope) {
+        virtualKeyboardEnableScope.abort();
+        virtualKeyboardEnableScope = null;
+    }
+    if (!virtualKeyboardEnabled) return;
+    virtualKeyboardEnableScope = new AbortController();
+    const signal = virtualKeyboardEnableScope.signal;
+    document.addEventListener('focusin', onVirtualKeyboardFocusIn, { capture: true, signal });
+    document.addEventListener('focusout', onVirtualKeyboardFocusOut, { capture: true, signal });
+}
+
+function wireVirtualKeyboardModalListenerScope() {
+    const modal = getVirtualKeyboardModal();
+    if (!modal || virtualKeyboardModalScopeWired) return;
+    virtualKeyboardModalScopeWired = true;
+    // attachModalListeners: public/scripts/comp/modalListenerScope.js
+    attachModalListeners(modal, (signal) => {
+        window.addEventListener('resize', () => {
+            clearTimeout(virtualKeyboardResizeTimer);
+            virtualKeyboardResizeTimer = setTimeout(() => {
+                syncVirtualKeyboardPresentation();
+                if (!isVirtualKeyboardDesktopChrome() && virtualKeyboardVisible) {
+                    updateVirtualKeyboardDockPadding();
+                }
+                updateVirtualKeyboardWideLayout();
+            }, 200);
+        }, { signal });
+    });
+}
 
 function initVirtualKeyboard() {
     if (virtualKeyboardInitialized) return;
@@ -781,8 +818,8 @@ function initVirtualKeyboard() {
     virtualKeyboardEnabled = readVirtualKeyboardEnabledFromStorage();
     document.documentElement.classList.toggle('virtual-keyboard-enabled', virtualKeyboardEnabled);
 
-    document.addEventListener('focusin', onVirtualKeyboardFocusIn, true);
-    document.addEventListener('focusout', onVirtualKeyboardFocusOut, true);
+    wireVirtualKeyboardEnableScope();
+    wireVirtualKeyboardModalListenerScope();
 
     const modal = getVirtualKeyboardModal();
     const dragHeader = modal && modal.querySelector('.virtual-keyboard-drag-header');
@@ -800,17 +837,6 @@ function initVirtualKeyboard() {
         });
         virtualKeyboardLayoutObserver.observe(modal);
     }
-
-    window.addEventListener('resize', () => {
-        clearTimeout(virtualKeyboardResizeTimer);
-        virtualKeyboardResizeTimer = setTimeout(() => {
-            syncVirtualKeyboardPresentation();
-            if (!isVirtualKeyboardDesktopChrome() && virtualKeyboardVisible) {
-                updateVirtualKeyboardDockPadding();
-            }
-            updateVirtualKeyboardWideLayout();
-        }, 200);
-    });
 
     updateVirtualKeyboardWideLayout();
 }

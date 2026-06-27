@@ -1,4 +1,11 @@
 /* Log viewer applet — scripts/comp/logViewerApplet.js */
+#logViewerModal {
+    width: 1000px;
+    height: 700px;
+    min-width: 680px;
+    min-height: 420px;
+}
+
 /* Log Viewer Modal */
 #logViewerModal .modal-window-title-toolbar .log-viewer-source-btn {
     flex: 0 1 auto;

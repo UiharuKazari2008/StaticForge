@@ -148,15 +148,14 @@ function isAutofillTagsOnlyMode(config) {
 }
 
 function filterAutofillDisplayResults(results, config) {
-    const allowed = new Set();
-    if (config.tags) allowed.add('tag');
-    if (config.characters) allowed.add('character');
-    if (config.expanders) allowed.add('textReplacement');
-    if (config.dynamicPlaceholders) allowed.add('dynamicPlaceholder');
-
     return results.filter(function (result) {
+        if (!result) return false;
         if (result.type === 'spellcheck' || result.type === 'wordLookup') return false;
-        return allowed.has(result.type);
+        if (config.characters && isCharacterResult(result)) return true;
+        if (config.tags && isTagResult(result)) return true;
+        if (config.expanders && result.type === 'textReplacement') return true;
+        if (config.dynamicPlaceholders && result.type === 'dynamicPlaceholder') return true;
+        return false;
     });
 }
 
@@ -337,7 +336,7 @@ window.handleSearchResponse = function (message) {
                         serviceName = result.model;
                     } else if (result.model.includes('v4_5')) {
                         serviceName = 'v4_5';
-                    } else if (result.type === 'character') {
+                    } else if (isCharacterResult(result)) {
                         serviceName = 'characters';
                     } else if (result.type === 'textReplacement') {
                         serviceName = 'textReplacements';
@@ -2261,12 +2260,15 @@ function isApiTagResult(result) {
 
 function isCharacterResult(result) {
     if (!result) return false;
+    if (result.type === 'spellcheck' || result.type === 'wordLookup') return false;
     if (result.type === 'character' || result.type === 'characterTag') return true;
     return !!(result.character && result.type !== 'tag');
 }
 
 function isTagResult(result) {
     if (!result || isCharacterResult(result)) return false;
+    if (result.type === 'textReplacement' || result.type === 'dynamicPlaceholder') return false;
+    if (result.type === 'spellcheck' || result.type === 'wordLookup') return false;
     if (result.type === 'tag') return true;
     if (isLocalTagResult(result)) return true;
     if (isDualMatchTagResult(result)) return true;
@@ -2896,7 +2898,7 @@ function prepareCharacterResultsForDisplay(results, query) {
     const extras = [];
 
     for (const result of results) {
-        if (result.type !== 'character') {
+        if (result.type !== 'character' && result.type !== 'characterTag') {
             extras.push(result);
             continue;
         }
@@ -2947,7 +2949,7 @@ async function enhanceCharacterResultsWithPredictionary(results, query) {
     const characterMap = new Map(); // Track best character by name
 
     for (const result of results) {
-        if (result.type === 'character') {
+        if (result.type === 'character' || result.type === 'characterTag') {
             const predictionaryScore = await calculateEnhancedSimilarity(query, result.name, 'character');
             const existingSimilarity = result.similarity || 0;
 
@@ -3315,7 +3317,7 @@ async function rebuildAndDisplayResults() {
         }
 
         // For tags, prefer stronger text match tier before generic tiebreakers
-        if (aType === 'tag' && bType === 'tag') {
+        if (isTagResult(a) && isTagResult(b)) {
             const aTier = aRanking.textMatchTier || 0;
             const bTier = bRanking.textMatchTier || 0;
             if (aTier !== bTier) {
@@ -3347,16 +3349,18 @@ async function rebuildAndDisplayResults() {
         // 3. Type hierarchy within same tier
         if (aIsTopTier && bIsTopTier) {
             // Within top tier: spellcheck > characters > textReplacements
-            const topTypeOrder = { spellcheck: 4, character: 3, textReplacement: 2, dynamicPlaceholder: 1 };
-            const aTopPriority = topTypeOrder[aType] || 0;
-            const bTopPriority = topTypeOrder[bType] || 0;
+            const topTypeOrder = { spellcheck: 4, character: 3, characterTag: 3, textReplacement: 2, dynamicPlaceholder: 1 };
+            const aTopPriority = topTypeOrder[aType] || (isCharacterResult(a) ? 3 : 0);
+            const bTopPriority = topTypeOrder[bType] || (isCharacterResult(b) ? 3 : 0);
             if (aTopPriority !== bTopPriority) {
                 return bTopPriority - aTopPriority;
             }
         } else if (!aIsTopTier && !bIsTopTier) {
             // Within bottom tier: tags have priority over any other types
-            if (aType === 'tag' && bType !== 'tag') return -1;
-            if (aType !== 'tag' && bType === 'tag') return 1;
+            const aIsTag = isTagResult(a);
+            const bIsTag = isTagResult(b);
+            if (aIsTag && !bIsTag) return -1;
+            if (!aIsTag && bIsTag) return 1;
         }
 
         // 4. Frequency/popularity as final tiebreaker
@@ -4418,6 +4422,14 @@ function shouldAutocompleteConsumeVerticalArrow() {
     return false;
 }
 
+function isAutofillOverlayEnteredForNavigation() {
+    return spellCheckNavigationMode || wordLookupNavigationMode || autocompleteNavigationMode;
+}
+
+function isAutofillHorizontalSubNavigation() {
+    return spellCheckNavigationMode || wordLookupNavigationMode;
+}
+
 function dismissAutocompleteForTextareaNavigation() {
     if (characterAutocompleteTimeout) {
         clearTimeout(characterAutocompleteTimeout);
@@ -4697,6 +4709,21 @@ function handleCharacterAutocompleteKeydown(e) {
         return;
     }
 
+    if (e.key === 'Escape') {
+        const t = e.target;
+        if (t && t.type === 'textarea' &&
+            (t.classList.contains('prompt-textarea') || t.classList.contains('character-prompt-textarea'))) {
+            const searchToolbar = t.closest('.prompt-textarea-container, .character-prompt-textarea-container')
+                ?.querySelector('.prompt-textarea-toolbar.search-mode');
+            if (searchToolbar && window.promptTextareaToolbar) {
+                e.preventDefault();
+                e.stopPropagation();
+                window.promptTextareaToolbar.closeSearch(searchToolbar);
+                return;
+            }
+        }
+    }
+
     const characterAutocompleteOverlayOpen = characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden');
 
     // Plain typing on prompt fields — do not run overlay/shortcut logic on keydown (input/beforeinput handle autofill).
@@ -4791,6 +4818,16 @@ function handleCharacterAutocompleteKeydown(e) {
         const wordLookupSection = getWordLookupSection();
         const resultItems = getAutocompleteResultItems();
 
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+            if (!isAutofillHorizontalSubNavigation()) {
+                dismissAutocompleteForTextareaNavigation();
+                return;
+            }
+        } else if (e.key === 'ArrowUp' && !isAutofillOverlayEnteredForNavigation()) {
+            dismissAutocompleteForTextareaNavigation();
+            return;
+        }
+
         switch (e.key) {
             case 'ArrowDown':
                 if (!shouldAutocompleteConsumeVerticalArrow()) {
@@ -4875,7 +4912,11 @@ function handleCharacterAutocompleteKeydown(e) {
                 }
 
                 if (wordLookupNavigationMode && selectedWordLookupWordIndex <= 0) {
-                    if (enterSpellCheckNavigation(true)) break;
+                    if (enterSpellCheckNavigation(true)) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        break;
+                    }
                     dismissAutocompleteForTextareaNavigation();
                     break;
                 }
@@ -4886,8 +4927,16 @@ function handleCharacterAutocompleteKeydown(e) {
                 }
 
                 if (!spellCheckNavigationMode && !wordLookupNavigationMode && selectedCharacterAutocompleteIndex <= 0) {
-                    if (enterWordLookupNavigation(true)) break;
-                    if (enterSpellCheckNavigation(true)) break;
+                    if (enterWordLookupNavigation(true)) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        break;
+                    }
+                    if (enterSpellCheckNavigation(true)) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        break;
+                    }
                     dismissAutocompleteForTextareaNavigation();
                     break;
                 }
@@ -5072,7 +5121,7 @@ function handleCharacterAutocompleteKeydown(e) {
                 break;
 
             case 'ArrowLeft':
-                if (autocompleteNavigationMode || spellCheckNavigationMode || wordLookupNavigationMode) {
+                if (isAutofillHorizontalSubNavigation()) {
                     e.preventDefault();
 
                     if (spellCheckNavigationMode) {
@@ -5094,21 +5143,12 @@ function handleCharacterAutocompleteKeydown(e) {
                                 updateWordLookupSelection();
                             }
                         }
-                        return;
-                    }
-
-                    if (selectedCharacterAutocompleteIndex >= 0) {
-                        hideCharacterAutocomplete();
-                        autocompleteNavigationMode = false;
-                    } else {
-                        hideCharacterAutocomplete();
-                        autocompleteNavigationMode = false;
                     }
                 }
                 break;
 
             case 'ArrowRight':
-                if (autocompleteNavigationMode || spellCheckNavigationMode || wordLookupNavigationMode) {
+                if (isAutofillHorizontalSubNavigation()) {
                     e.preventDefault();
 
                     if (spellCheckNavigationMode) {
@@ -5133,54 +5173,22 @@ function handleCharacterAutocompleteKeydown(e) {
                                 updateWordLookupSelection();
                             }
                         }
-                        return;
-                    }
-
-                    // Inject suggestion: comma + suffix if space before cursor, else replace query span.
-                    // Genso (!) expanders: insert expanded text (same as insertTextReplacement), not literal !placeholder.
-                    if (selectedCharacterAutocompleteIndex >= 0 && resultItems.length > 0) {
-                        const selectedItem = resultItems[selectedCharacterAutocompleteIndex];
-                        if (selectedItem.dataset.type === 'textReplacement') {
-                            const expandText = getTextReplacementExpandTextFromItem(selectedItem);
-                            if (expandText && currentCharacterAutocompleteTarget) {
-                                insertTextReplacement(expandText);
-                                return;
-                            }
-                        }
-                        const insertText = getAutocompleteRightArrowInsertText(selectedItem);
-                        if (insertText && currentCharacterAutocompleteTarget) {
-                            const originalValue = currentCharacterAutocompleteTarget.value || '';
-                            const originalCursorPosition = typeof currentCharacterAutocompleteTarget.selectionStart === 'number'
-                                ? currentCharacterAutocompleteTarget.selectionStart
-                                : originalValue.length;
-                            const hadWhitespaceBeforeCursor = /\s/.test(
-                                originalCursorPosition > 0 ? originalValue[originalCursorPosition - 1] : ''
-                            );
-                            injectAutocompleteSuggestionAtCursor(currentCharacterAutocompleteTarget, insertText);
-                            let restoredCursorPosition = Math.min(
-                                originalCursorPosition,
-                                currentCharacterAutocompleteTarget.value.length
-                            );
-                            if (hadWhitespaceBeforeCursor) {
-                                const expectedInsertStart = originalValue.substring(0, originalCursorPosition).replace(/\s+$/, '').length;
-                                const expectedInsertPrefix = ', ' + insertText;
-                                if (currentCharacterAutocompleteTarget.value.substring(expectedInsertStart, expectedInsertStart + expectedInsertPrefix.length) === expectedInsertPrefix) {
-                                    restoredCursorPosition = expectedInsertStart;
-                                }
-                            }
-                            currentCharacterAutocompleteTarget.setSelectionRange(restoredCursorPosition, restoredCursorPosition);
-                            currentCharacterAutocompleteTarget.focus();
-                            return;
-                        }
                     }
                 }
                 break;
             case 'Tab':
+                if (!isAutofillPromptTabKey(e)) break;
                 if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
-                    if (wordLookupNavigationMode || spellCheckNavigationMode || !autocompleteNavigationMode) {
+                    if (wordLookupNavigationMode) {
                         e.preventDefault();
                         e.stopPropagation();
-                        applyTabAutofillPreview(currentCharacterAutocompleteTarget);
+                        handlePromptTabCycling(e);
+                        return;
+                    }
+                    if (spellCheckNavigationMode || !autocompleteNavigationMode) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        applyTabAutofillPreview(e.target);
                         return;
                     }
                 }
@@ -5316,9 +5324,7 @@ function handleCharacterAutocompleteKeydown(e) {
         if (!manualModal.classList.contains('hidden')) {
             switch (e.key) {
                 case 'Tab':
-                    if (document.activeElement.type === 'textarea' && (document.activeElement.classList.contains('prompt-textarea') || document.activeElement.classList.contains('character-prompt-textarea'))) {
-                        if (e.metaKey || e.ctrlKey || e.altKey)
-                            return;
+                    if (isAutofillPromptTabKey(e) && !manualModal.classList.contains('hidden')) {
                         e.preventDefault();
                         handlePromptTabCycling(e);
                     }
@@ -6208,9 +6214,8 @@ function buildSpellCheckSuggestionButtons(word, suggestions, wordIndex) {
     if (!suggestions || suggestions.length === 0) return '';
     const rowIndexAttr = typeof wordIndex === 'number' && wordIndex >= 0 ? ` data-word-index="${wordIndex}"` : '';
     return suggestions.map(function (suggestion) {
-        const phraseClass = /\s/.test(suggestion) ? ' suggestion-phrase' : '';
         return `
-        <button class="suggestion-btn${phraseClass}" data-original="${word}" data-suggestion="${suggestion}"${rowIndexAttr} title="${/\s/.test(suggestion) ? 'Tag phrase' : ''}">
+        <button class="suggestion-btn" data-original="${word}" data-suggestion="${suggestion}"${rowIndexAttr}>
             ${suggestion}
         </button>
     `;
@@ -8460,6 +8465,10 @@ function calculateComprehensiveRanking(result, query, bestTextReplacement = null
                 score += 400;
             }
             break;
+
+        case 'dynamicPlaceholder':
+            score += 40;
+            break;
     }
 
     const frequency = getTagNCount(result) || result.frequency || result.n || 0;
@@ -8735,6 +8744,15 @@ function mergeTagResults(result1, result2) {
 
     const preferred = getTagScore(result2) > getTagScore(result1) ? result2 : result1;
     return mergeTagEnhancementFields(result1, result2, preferred);
+}
+
+// Plain Tab in a prompt textarea (no modifiers) — autofill Tab preview / prompt cycling.
+function isAutofillPromptTabKey(e) {
+    if (!e || e.key !== 'Tab') return false;
+    if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return false;
+    const t = e.target;
+    return t && t.type === 'textarea' &&
+        (t.classList.contains('prompt-textarea') || t.classList.contains('character-prompt-textarea'));
 }
 
 // Handle Tab cycling between main prompt and character prompts
@@ -9371,24 +9389,26 @@ async function showTextReplacementDialog(selectedText) {
     });
 }
 
-function wireAutocompleteDismissListeners() {
-    if (document.body.dataset.autocompleteDismissWired === 'true') return;
-    document.body.dataset.autocompleteDismissWired = 'true';
-
-    document.addEventListener('click', function (e) {
-        if (shouldDismissAutofillFromClick && !shouldDismissAutofillFromClick(e)) {
-            return;
-        }
-        hideCharacterAutocomplete();
+function wireAutocompleteDismissListenerScope() {
+    if (document.body.dataset.autocompleteDismissScopeWired === 'true') return;
+    const manualModal = document.getElementById('manualModal');
+    if (!manualModal) return;
+    document.body.dataset.autocompleteDismissScopeWired = 'true';
+    // attachModalListeners — modalListenerScope.js
+    attachModalListeners(manualModal, (signal) => {
+        document.addEventListener('click', function (e) {
+            if (shouldDismissAutofillFromClick && !shouldDismissAutofillFromClick(e)) {
+                return;
+            }
+            hideCharacterAutocomplete();
+        }, { signal });
+        document.addEventListener('click', hidePresetAutocomplete, { signal });
     });
-    document.addEventListener('click', hidePresetAutocomplete);
 }
-
-wireAutocompleteDismissListeners();
 
 /**
  * Main manual prompt/UC/negative field autocomplete + emphasis wiring.
- * Wired via registerInitStep 47.55.
+ * Wired via registerInitStep 487.
  */
 function wireMainPromptAutocompleteListeners() {
     if (document.body.dataset.mainPromptAutocompleteWired === 'true') return;
@@ -9449,7 +9469,8 @@ function wireMainPromptAutocompleteListeners() {
 }
 
 if (typeof wsClient !== 'undefined' && wsClient) {
-    wsClient.registerInitStep(47.55, 'Main prompt autocomplete listeners', async () => {
+    wsClient.registerInitStep(487, 'Main prompt autocomplete listeners', async () => {
+        wireAutocompleteDismissListenerScope();
         wireMainPromptAutocompleteListeners();
     });
 }

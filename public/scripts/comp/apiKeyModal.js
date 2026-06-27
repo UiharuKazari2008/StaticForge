@@ -1,6 +1,6 @@
 /**
  * API key manager modal — full logic (Phase 2 batch 12).
- * Wired via registerInitStep 47.5.
+ * Wired via registerInitStep 485.
  */
 
 const apiKeyModalState = {
@@ -594,9 +594,95 @@ async function saveNewApiKey() {
     }
 }
 
+function wireApiKeyModalListenerScope() {
+    const apiKeyModal = document.getElementById('apiKeyModal');
+    if (apiKeyModal && apiKeyModal.dataset.listenerScopeWired !== 'true') {
+        apiKeyModal.dataset.listenerScopeWired = 'true';
+        // attachModalListeners — modalListenerScope.js; closeAllDropdownsInRoot — dropdown.js
+        attachModalListeners(apiKeyModal, (signal) => {
+            signal.addEventListener('abort', () => {
+                closeAllDropdownsInRoot(apiKeyModal);
+            }, { once: true });
+        });
+    }
+
+    const addApiKeyModal = document.getElementById('addApiKeyModal');
+    if (addApiKeyModal && addApiKeyModal.dataset.listenerScopeWired !== 'true') {
+        addApiKeyModal.dataset.listenerScopeWired = 'true';
+        attachModalListeners(addApiKeyModal, (signal) => {
+            signal.addEventListener('abort', () => {
+                closeAllDropdownsInRoot(addApiKeyModal);
+            }, { once: true });
+        });
+    }
+}
+
+function wireApiKeyModalKeyboard() {
+    if (document.body.dataset.apiKeyModalKeyboardWired === 'true') return;
+    document.body.dataset.apiKeyModalKeyboardWired = 'true';
+
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'apiKeyModal.keydown',
+        handler: (e) => {
+            const modal = document.getElementById('apiKeyModal');
+            if (!modal || modal.classList.contains('hidden')) return;
+
+            if (e.key === 'F5') {
+                e.preventDefault();
+                e.stopPropagation();
+                loadApiKeyModalData(true);
+                return true;
+            }
+        },
+        type: 'whenFocused',
+        modalId: 'apiKeyModal',
+        priority: 78,
+        critical: true,
+        showInOverlay: false
+    });
+    registerKeyboardListener({
+        id: 'addApiKeyModal.keydown',
+        handler: (e) => {
+            const modal = document.getElementById('addApiKeyModal');
+            if (!modal || modal.classList.contains('hidden')) return;
+
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                closeAddApiKeyModal();
+                return true;
+            }
+
+            if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+                e.preventDefault();
+                e.stopPropagation();
+                saveNewApiKey();
+                return true;
+            }
+        },
+        type: 'whenFocused',
+        modalId: 'addApiKeyModal',
+        priority: 85,
+        critical: true,
+        showInOverlay: false
+    });
+    registerModalOverlayEntries('apiKeyModal', 'API Keys', [
+        { id: 'overlay.apiKeyModal.refresh', label: 'Refresh', keys: 'F5', icon: 'fas fa-rotate' },
+        { id: 'overlay.apiKeyModal.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
+    ]);
+    registerModalOverlayEntries('addApiKeyModal', 'API Keys', [
+        { id: 'overlay.addApiKey.save', label: 'Save', keys: 'Ctrl+S', icon: 'fas fa-save' },
+        { id: 'overlay.addApiKey.close', label: 'Close', keys: 'Esc', icon: 'fas fa-times' }
+    ]);
+}
+
 function wireApiKeyModalListeners() {
     if (document.body.dataset.apiKeyModalWired === 'true') return;
     document.body.dataset.apiKeyModalWired = 'true';
+
+    wireApiKeyModalListenerScope();
+    wireApiKeyModalKeyboard();
 
     const apiKeyModal = document.getElementById('apiKeyModal');
     const closeApiKeyModalBtn = document.getElementById('closeApiKeyModalBtn');
@@ -651,7 +737,7 @@ function wireApiKeyModalListeners() {
 }
 
 if (typeof wsClient !== 'undefined' && wsClient) {
-    wsClient.registerInitStep(47.5, 'API key modal listeners', async () => {
+    wsClient.registerInitStep(485, 'API key modal listeners', async () => {
         wireApiKeyModalListeners();
     });
 }

@@ -6,11 +6,13 @@ let confirmationDialogActive = false;
 let confirmationDialogCallback = null;
 let confirmationDialogCancelCallback = null;
 let currentResolve = null;
-let confirmationDialogKeydownHandler = null;
 /** Options array for the open dialog (Escape resolves like Cancel). */
 let confirmationDialogKeydownOptionsRef = null;
 /** When set, dialog is input mode (Escape → null). */
 let confirmationDialogKeydownInputRef = null;
+let confirmationDialogKeydownScopeWired = false;
+/** Invoked once per open with modal listener signal (injected dialog wiring). */
+let confirmationDialogInjectReadyFn = null;
 
 /** Padding from viewport edges when clamping event-placed dialogs (modalUtils.js). */
 const CONFIRMATION_DIALOG_EDGE_PADDING = 20;
@@ -34,61 +36,134 @@ function getConfirmationPrimaryButtonIndex(options) {
     return 0;
 }
 
-function registerConfirmationDialogKeydown() {
-    if (confirmationDialogKeydownHandler) {
-        document.removeEventListener('keydown', confirmationDialogKeydownHandler);
+function getConfirmationDialogActionButtonCount() {
+    if (!confirmationDialogActive || !confirmationDialog) return 0;
+    const buttons = confirmationDialog.querySelectorAll('#confirmationControls button:not(:disabled)');
+    return buttons ? buttons.length : 0;
+}
+
+function confirmationOverlayDigitsValid() {
+    return getConfirmationDialogActionButtonCount() >= 2;
+}
+
+function confirmationOverlayEnterValid() {
+    if (!confirmationDialogActive || !confirmationDialog) return false;
+    const primaryBtn = confirmationDialog.querySelector('#confirmationControls [data-dialog-primary="1"]')
+        || confirmationDialog.querySelector('#confirmationControls .btn.btn-primary:not(:disabled)')
+        || confirmationDialog.querySelector('#confirmationControls .btn.btn-danger:not(:disabled)')
+        || confirmationDialog.querySelector('#confirmationControls .btn.primary:not(:disabled)');
+    return !!primaryBtn;
+}
+
+function handleConfirmationDialogKeydown(e) {
+    if (!confirmationDialogActive || !confirmationDialog || confirmationDialog.classList.contains('hidden')) return;
+
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        const res = currentResolve;
+        const opts = confirmationDialogKeydownOptionsRef;
+        const inputRef = confirmationDialogKeydownInputRef;
+        hideConfirmationDialog();
+        if (res) {
+            res(inputRef != null ? null : getConfirmationCancelResolveValue(opts));
+        }
+        return;
     }
-    confirmationDialogKeydownHandler = (e) => {
-        if (!confirmationDialogActive || !confirmationDialog || confirmationDialog.classList.contains('hidden')) return;
 
-        if (e.key === 'Escape') {
+    if (/^[1-9]$/.test(e.key)) {
+        if (confirmationDialogKeydownInputRef && document.activeElement === confirmationDialogKeydownInputRef) return;
+        const controlsFooter = confirmationDialog.querySelector('#confirmationControls');
+        const buttons = controlsFooter ? controlsFooter.querySelectorAll('button:not(:disabled)') : [];
+        if (!buttons.length) return;
+        const digit = parseInt(e.key, 10);
+        const idxFromRight = digit - 1;
+        const btnIndex = buttons.length - 1 - idxFromRight;
+        if (btnIndex >= 0 && btnIndex < buttons.length) {
             e.preventDefault();
             e.stopPropagation();
-            const res = currentResolve;
-            const opts = confirmationDialogKeydownOptionsRef;
-            const inputRef = confirmationDialogKeydownInputRef;
-            hideConfirmationDialog();
-            if (res) {
-                res(inputRef != null ? null : getConfirmationCancelResolveValue(opts));
-            }
+            buttons[btnIndex].click();
+        }
+        return;
+    }
+
+    if (e.key === 'Enter') {
+        if (e.target.tagName === 'TEXTAREA') return;
+        if (e.target.tagName === 'SELECT') return;
+        if (e.target.isContentEditable) return;
+        const controlsFooter = confirmationDialog.querySelector('#confirmationControls');
+        if (controlsFooter && e.target.closest('#confirmationControls') === controlsFooter && e.target.tagName === 'BUTTON') {
             return;
         }
+        const primaryBtn = confirmationDialog.querySelector('#confirmationControls [data-dialog-primary="1"]')
+            || confirmationDialog.querySelector('#confirmationControls .btn.btn-primary:not(:disabled)')
+            || confirmationDialog.querySelector('#confirmationControls .btn.btn-danger:not(:disabled)')
+            || confirmationDialog.querySelector('#confirmationControls .btn.primary:not(:disabled)');
+        if (!primaryBtn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        primaryBtn.click();
+    }
+}
 
-        if (/^[1-9]$/.test(e.key)) {
-            if (confirmationDialogKeydownInputRef && document.activeElement === confirmationDialogKeydownInputRef) return;
-            const controlsFooter = confirmationDialog.querySelector('#confirmationControls');
-            const buttons = controlsFooter ? controlsFooter.querySelectorAll('button:not(:disabled)') : [];
-            if (!buttons.length) return;
-            const digit = parseInt(e.key, 10);
-            const idxFromRight = digit - 1;
-            const btnIndex = buttons.length - 1 - idxFromRight;
-            if (btnIndex >= 0 && btnIndex < buttons.length) {
-                e.preventDefault();
-                e.stopPropagation();
-                buttons[btnIndex].click();
+function wireConfirmationDialogKeydownScope() {
+    if (!confirmationDialog || confirmationDialogKeydownScopeWired) return;
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'confirmationDialog.keydown',
+        handler: handleConfirmationDialogKeydown,
+        type: 'whenOpen',
+        modalId: 'confirmationDialog',
+        priority: 85,
+        critical: true,
+        showInOverlay: false
+    });
+    registerKeyboardListener({
+        id: 'overlay.confirmation.escape',
+        type: 'whenOpen',
+        modalId: 'confirmationDialog',
+        label: 'Cancel',
+        keys: 'Esc',
+        overlayIcon: 'fas fa-times',
+        overlayGroup: 'Dialog',
+        overlayOnly: true,
+        priority: -10
+    });
+    registerKeyboardListener({
+        id: 'overlay.confirmation.enter',
+        type: 'whenOpen',
+        modalId: 'confirmationDialog',
+        label: 'Confirm',
+        keys: 'Enter',
+        overlayIcon: 'fas fa-check',
+        overlayGroup: 'Dialog',
+        overlayOnly: true,
+        priority: -10,
+        overlayValid: confirmationOverlayEnterValid
+    });
+    registerKeyboardListener({
+        id: 'overlay.confirmation.digits',
+        type: 'whenOpen',
+        modalId: 'confirmationDialog',
+        label: 'Choose option',
+        keys: '1–9',
+        overlayIcon: 'fas fa-list-ol',
+        overlayGroup: 'Dialog',
+        overlayOnly: true,
+        priority: -10,
+        overlayValid: confirmationOverlayDigitsValid
+    });
+    attachModalListeners(confirmationDialog, (signal) => {
+        if (typeof confirmationDialogInjectReadyFn === 'function') {
+            try {
+                confirmationDialogInjectReadyFn(signal);
+            } catch (err) {
+                console.error('[confirmationDialog] onDialogReady failed', err);
             }
-            return;
+            confirmationDialogInjectReadyFn = null;
         }
-
-        if (e.key === 'Enter') {
-            if (e.target.tagName === 'TEXTAREA') return;
-            if (e.target.tagName === 'SELECT') return;
-            if (e.target.isContentEditable) return;
-            const controlsFooter = confirmationDialog.querySelector('#confirmationControls');
-            if (controlsFooter && e.target.closest('#confirmationControls') === controlsFooter && e.target.tagName === 'BUTTON') {
-                return;
-            }
-            const primaryBtn = confirmationDialog.querySelector('#confirmationControls [data-dialog-primary="1"]')
-                || confirmationDialog.querySelector('#confirmationControls .btn.btn-primary:not(:disabled)')
-                || confirmationDialog.querySelector('#confirmationControls .btn.btn-danger:not(:disabled)')
-                || confirmationDialog.querySelector('#confirmationControls .btn.primary:not(:disabled)');
-            if (!primaryBtn) return;
-            e.preventDefault();
-            e.stopPropagation();
-            primaryBtn.click();
-        }
-    };
-    document.addEventListener('keydown', confirmationDialogKeydownHandler);
+    });
+    confirmationDialogKeydownScopeWired = true;
 }
 
 // Create and show confirmation dialog with multiple options
@@ -134,6 +209,7 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
                 </div>
             `;
             document.body.appendChild(confirmationDialog);
+            wireConfirmationDialogKeydownScope();
 
             // Close button handler
             const closeBtn = confirmationDialog.querySelector('.close-btn');
@@ -254,7 +330,8 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
 
         confirmationDialogKeydownOptionsRef = options;
         confirmationDialogKeydownInputRef = null;
-        registerConfirmationDialogKeydown();
+        confirmationDialogInjectReadyFn = typeof config.onDialogReady === 'function' ? config.onDialogReady : null;
+        wireConfirmationDialogKeydownScope();
 
         // Event-placed dialogs: position manually after open, never restore/clamp automatically
         const usesManualPlacement = config.manualPosition || !!event || config.position === 'bottom-right';
@@ -449,12 +526,9 @@ async function hideConfirmationDialog() {
         confirmationDialog.removeAttribute('data-window-position-mode');
         confirmationDialog.removeAttribute('data-confirmation-preplaced');
 
-        if (confirmationDialogKeydownHandler) {
-            document.removeEventListener('keydown', confirmationDialogKeydownHandler);
-            confirmationDialogKeydownHandler = null;
-        }
         confirmationDialogKeydownOptionsRef = null;
         confirmationDialogKeydownInputRef = null;
+        confirmationDialogInjectReadyFn = null;
         currentResolve = null;
     }
 }
@@ -502,6 +576,7 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
                 </div>
             `;
             document.body.appendChild(confirmationDialog);
+            wireConfirmationDialogKeydownScope();
         }
 
         // Update title and icon from config for input dialog
@@ -631,7 +706,8 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
 
         confirmationDialogKeydownOptionsRef = options;
         confirmationDialogKeydownInputRef = input;
-        registerConfirmationDialogKeydown();
+        confirmationDialogInjectReadyFn = typeof config.onDialogReady === 'function' ? config.onDialogReady : null;
+        wireConfirmationDialogKeydownScope();
 
         const usesManualPlacement = config.manualPosition || !!event || config.position === 'bottom-right';
         if (usesManualPlacement) {

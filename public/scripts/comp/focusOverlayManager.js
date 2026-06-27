@@ -8,6 +8,32 @@
  * focusOverlay (manualModalManager.js), focusCoverEnabled, androidFocusLockActive (app.js)
  */
 
+let focusOverlayDismissFromKeyboard = null;
+
+function onFocusOverlayDismissKeydown(e) {
+    const overlay = typeof focusOverlay !== 'undefined' ? focusOverlay : document.getElementById('focus-overlay');
+    if (!overlay || !overlay.classList.contains('active')) return;
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Escape') return;
+    window.focus();
+    if (!androidFocusLockActive && focusOverlayDismissFromKeyboard) {
+        focusOverlayDismissFromKeyboard();
+    }
+    return true;
+}
+
+function wireFocusOverlayKeyboardListener() {
+    if (document.body.dataset.focusOverlayKeyboardWired === 'true') return;
+    document.body.dataset.focusOverlayKeyboardWired = 'true';
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'focusOverlay.dismiss',
+        handler: onFocusOverlayDismissKeydown,
+        type: 'global',
+        priority: 25,
+        showInOverlay: false
+    });
+}
+
 function setupAndroidBiometricLockHandlers() {
     if (typeof window.AndroidPersistentNotification === 'undefined') return;
     if (_androidBiometricLockHandlersAttached) return;
@@ -218,23 +244,32 @@ function wireFocusOverlayListeners() {
             }, 300); // Match the CSS transition duration
         };
 
+        focusOverlayDismissFromKeyboard = hideFocusOverlay;
+        wireFocusOverlayKeyboardListener();
+
+        const showFocusOverlayWithKeydown = () => {
+            showFocusOverlay();
+        };
+        const hideFocusOverlayWithKeydown = () => {
+            hideFocusOverlay();
+        };
+
         // FOCUS OVERLAY SYSTEM - Window blur/focus events
         window.addEventListener('blur', () => {
-            // Small delay to prevent flickering during quick focus changes
-            focusTimeout = setTimeout(showFocusOverlay, 100);
+            focusTimeout = setTimeout(showFocusOverlayWithKeydown, 100);
         });
 
         window.addEventListener('focus', () => {
             clearTimeout(focusTimeout);
-            hideFocusOverlay();
+            hideFocusOverlayWithKeydown();
         });
 
         // FOCUS OVERLAY SYSTEM - Document visibility change (tab switching)
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
-                showFocusOverlay();
+                showFocusOverlayWithKeydown();
             } else {
-                hideFocusOverlay();
+                hideFocusOverlayWithKeydown();
             }
         });
 
@@ -242,17 +277,7 @@ function wireFocusOverlayListeners() {
         focusOverlay.addEventListener('click', () => {
             window.focus();
             if (!androidFocusLockActive) {
-                hideFocusOverlay();
-            }
-        });
-
-        document.addEventListener('keydown', (e) => {
-            if (focusOverlay.classList.contains('active') &&
-                (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape')) {
-                window.focus();
-                if (!androidFocusLockActive) {
-                    hideFocusOverlay();
-                }
+                hideFocusOverlayWithKeydown();
             }
         });
     }

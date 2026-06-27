@@ -214,10 +214,6 @@
     background: rgba(150, 200, 120, 0.05);
 }
 
-#expansionCompiledPromptDialog {
-    width: 560px;
-}
-
 #expansionCompiledPromptDialog .prompt-tabs {
     display: flex;
     flex-direction: column;
@@ -287,8 +283,4 @@
 
 #expansionCompiledPromptDialog .prompt-textarea-container {
     min-height: 12rem;
-}
-
-#expansionCompiledPromptDialog {
-    width: 560px;
 }

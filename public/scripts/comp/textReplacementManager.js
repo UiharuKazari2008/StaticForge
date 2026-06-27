@@ -52,6 +52,138 @@ function getReplacementBias(replacement) {
     return extractBiasFromTextForDisplay(replacement.select_text);
 }
 
+function handleTextReplacementManagerKeydown(e) {
+    const modal = document.getElementById('textReplacementManagerModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleTextReplacementSearch();
+        return true;
+    }
+
+    if (e.target.closest('.text-replacement-manager-content')) {
+        if (e.key === 'PageDown' && textReplacementPaginationInfo.currentPage < (textReplacementPaginationInfo.totalPages || 1)) {
+            e.preventDefault();
+            e.stopPropagation();
+            textReplacementPaginationInfo.currentPage++;
+            loadTextReplacements();
+            return true;
+        }
+        if (e.key === 'PageUp' && textReplacementPaginationInfo.currentPage > 1) {
+            e.preventDefault();
+            e.stopPropagation();
+            textReplacementPaginationInfo.currentPage--;
+            loadTextReplacements();
+            return true;
+        }
+        if (e.key === 'ArrowRight' && textReplacementPaginationInfo.currentPage < (textReplacementPaginationInfo.totalPages || 1)) {
+            e.preventDefault();
+            e.stopPropagation();
+            textReplacementPaginationInfo.currentPage++;
+            loadTextReplacements();
+            return true;
+        }
+        if (e.key === 'ArrowLeft' && textReplacementPaginationInfo.currentPage > 1) {
+            e.preventDefault();
+            e.stopPropagation();
+            textReplacementPaginationInfo.currentPage--;
+            loadTextReplacements();
+            return true;
+        }
+    }
+}
+
+function handleCreateTextReplacementKeydown(e) {
+    const modal = document.getElementById('createTextReplacementModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        hideCreateTextReplacementModal();
+        return true;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleCreateTextReplacementSubmit();
+        return true;
+    }
+}
+
+function handleTextReplacementLockModalKeydown(e) {
+    const modal = document.getElementById('textReplacementLockModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        const closeBtn = document.getElementById('closeTextReplacementLockModalBtn');
+        if (closeBtn && !closeBtn.disabled) closeBtn.click();
+        else closeModal(modal);
+        return true;
+    }
+
+    if (e.key === 'Enter' && !modalKeyboardSkipPrimaryEnter(e.target)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const closeBtn = document.getElementById('closeTextReplacementLockModalBtn');
+        if (closeBtn && !closeBtn.disabled) closeBtn.click();
+        return true;
+    }
+}
+
+let textReplacementKeyboardWired = false;
+
+function wireTextReplacementKeyboardShortcuts() {
+    if (textReplacementKeyboardWired) return;
+    textReplacementKeyboardWired = true;
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'textReplacementManagerModal.keydown',
+        handler: handleTextReplacementManagerKeydown,
+        type: 'whenFocused',
+        modalId: 'textReplacementManagerModal',
+        priority: 75,
+        showInOverlay: false
+    });
+    registerKeyboardListener({
+        id: 'createTextReplacementModal.keydown',
+        handler: handleCreateTextReplacementKeydown,
+        type: 'whenFocused',
+        modalId: 'createTextReplacementModal',
+        priority: 85,
+        critical: true,
+        showInOverlay: false
+    });
+    registerKeyboardListener({
+        id: 'textReplacementLockModal.keydown',
+        handler: handleTextReplacementLockModalKeydown,
+        type: 'whenFocused',
+        modalId: 'textReplacementLockModal',
+        priority: 76,
+        critical: true,
+        showInOverlay: false
+    });
+    registerModalOverlayEntries('textReplacementManagerModal', 'Text Replacements', [
+        { id: 'overlay.textReplacementManager.pageDown', label: 'Next page', keys: 'Page Down', icon: 'fas fa-chevron-down' },
+        { id: 'overlay.textReplacementManager.pageUp', label: 'Previous page', keys: 'Page Up', icon: 'fas fa-chevron-up' },
+        { id: 'overlay.textReplacementManager.search', label: 'Search', keys: 'Ctrl+F', icon: 'fas fa-search' },
+        { id: 'overlay.textReplacementManager.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
+    ]);
+    registerModalOverlayEntries('createTextReplacementModal', 'Text Replacements', [
+        { id: 'overlay.createTextReplacement.save', label: 'Save', keys: 'Ctrl+S', icon: 'fas fa-save' },
+        { id: 'overlay.createTextReplacement.close', label: 'Close', keys: 'Esc', icon: 'fas fa-times' }
+    ]);
+    registerModalOverlayEntries('textReplacementLockModal', 'Inspector', [
+        { id: 'overlay.textReplacementLock.apply', label: 'Apply locks', keys: 'Enter', icon: 'fas fa-check' },
+        { id: 'overlay.textReplacementLock.close', label: 'Close', keys: 'Esc', icon: 'fas fa-times' }
+    ]);
+}
+
 // Initialize create text replacement modal
 function initializeCreateTextReplacementModal() {
     const modal = document.getElementById('createTextReplacementModal');
@@ -59,16 +191,6 @@ function initializeCreateTextReplacementModal() {
     const cancelBtn = document.getElementById('createTextReplacementCancelBtn');
     const saveBtn = document.getElementById('createTextReplacementSaveBtn');
     const typeSelect = document.getElementById('textReplacementTypeSelect');
-
-    if (modal) {
-
-        // Close on escape key
-        modal.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                hideCreateTextReplacementModal();
-            }
-        });
-    }
 
     if (closeBtn) {
         closeBtn.addEventListener('click', hideCreateTextReplacementModal);
@@ -138,54 +260,41 @@ function initializeTextReplacementManager() {
         });
     }
 
-    // Close on outside click
-    const modal = document.getElementById('textReplacementManagerModal');
-    if (modal) {
-
-        // Add keyboard navigation for pagination
-        modal.addEventListener('keydown', async (e) => {
-            if (e.target.closest('.text-replacement-manager-content')) {
-                if (e.key === 'PageDown' && textReplacementPaginationInfo.currentPage < (textReplacementPaginationInfo.totalPages || 1)) {
-                    e.preventDefault();
-                    textReplacementPaginationInfo.currentPage++;
-                    await loadTextReplacements();
-                } else if (e.key === 'PageUp' && textReplacementPaginationInfo.currentPage > 1) {
-                    e.preventDefault();
-                    textReplacementPaginationInfo.currentPage--;
-                    await loadTextReplacements();
-                }
-            }
-        });
-    }
-
     // Initialize create text replacement modal
     initializeCreateTextReplacementModal();
     wireTextReplacementLockContextMenuHandler();
     wireTextReplacementLockModalListeners();
+    wireTextReplacementKeyboardShortcuts();
 }
 
 function wireTextReplacementLockContextMenuHandler() {
     if (document.body.dataset.textReplacementLockContextMenuWired === 'true') return;
     document.body.dataset.textReplacementLockContextMenuWired = 'true';
 
-    document.addEventListener('contextMenuAction', function (event) {
-        const { action } = event.detail;
-        if (!action || !action.startsWith('toggleTextReplacementLock_')) return;
+    const manualModal = document.getElementById('manualModal');
+    if (!manualModal) return;
 
-        const index = parseInt(action.replace('toggleTextReplacementLock_', ''), 10);
-        const allReplacements = window.lastGenerationTextReplacements || [];
+    // attachModalListeners: public/scripts/comp/modalListenerScope.js
+    attachModalListeners(manualModal, (signal) => {
+        document.addEventListener('contextMenuAction', function (event) {
+            const { action } = event.detail;
+            if (!action || !action.startsWith('toggleTextReplacementLock_')) return;
 
-        if (!isNaN(index) && allReplacements[index]) {
-            const seed = allReplacements[index];
-            const canLock = seed.can_lock !== undefined ? seed.can_lock !== false : true;
+            const index = parseInt(action.replace('toggleTextReplacementLock_', ''), 10);
+            const allReplacements = window.lastGenerationTextReplacements || [];
 
-            if (canLock) {
-                seed.locked = !seed.locked;
-                const lockedSeeds = allReplacements.filter(s => s.locked === true);
-                window.lockedTextReplacements = lockedSeeds;
-                updateMainLockButtonState();
+            if (!isNaN(index) && allReplacements[index]) {
+                const seed = allReplacements[index];
+                const canLock = seed.can_lock !== undefined ? seed.can_lock !== false : true;
+
+                if (canLock) {
+                    seed.locked = !seed.locked;
+                    const lockedSeeds = allReplacements.filter(s => s.locked === true);
+                    window.lockedTextReplacements = lockedSeeds;
+                    updateMainLockButtonState();
+                }
             }
-        }
+        }, { signal });
     });
 }
 

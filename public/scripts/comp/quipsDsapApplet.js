@@ -822,6 +822,7 @@ const quipsDsapScopedCss = `
 
 const quipsDsapDriver = {
     _state: null,
+    _settingsDropdownScopeRegistered: false,
 
     init(host) {
         this._state = {
@@ -837,6 +838,8 @@ const quipsDsapDriver = {
 
         this._state._onClick = (e) => this._onClick(e);
         root.addEventListener('click', this._state._onClick);
+
+        this._wireSettingsDropdownModalScope(host);
 
         if (quipsDsapIsPhrasebookView(host)) {
             void this._loadPhrasebook();
@@ -871,6 +874,37 @@ const quipsDsapDriver = {
             state.wsHandlers.forEach(({ event, fn }) => window.wsClient.off(event, fn));
         }
         this._state = null;
+        this._settingsDropdownScopeRegistered = false;
+    },
+
+    _getHostModal(host) {
+        return host?.shell?.modal || null;
+    },
+
+    _teardownSettingsDropdowns(host) {
+        const root = host?.getRoot?.();
+        if (!root || typeof teardownDropdown !== 'function') return;
+        root.querySelectorAll('.custom-dropdown').forEach((el) => teardownDropdown(el));
+    },
+
+    _wireSettingsDropdownModalScope(host) {
+        const modal = this._getHostModal(host);
+        if (!modal || this._settingsDropdownScopeRegistered) return;
+        this._settingsDropdownScopeRegistered = true;
+        if (!this._quipsModalScopeHandler) {
+            this._quipsModalScopeHandler = (signal) => {
+                const activeHost = this._state?.host;
+                signal.addEventListener('abort', () => {
+                    if (activeHost) {
+                        this._teardownSettingsDropdowns(activeHost);
+                    }
+                }, { once: true });
+                if (activeHost && quipsDsapIsSettingsView(activeHost) && this._state?.settingsDraft) {
+                    this._wireSettingsDropdowns();
+                }
+            };
+        }
+        attachModalListeners(modal, this._quipsModalScopeHandler);
     },
 
     _bindWsEvents(host) {

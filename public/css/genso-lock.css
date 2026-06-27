@@ -1,4 +1,11 @@
 /* Genso lock / text replacement lock modal */
+#compileToPromptsModal {
+    width: 700px;
+    height: 650px;
+    min-width: 480px;
+    min-height: 380px;
+}
+
 /* Genso Lock Modal Content */
 .text-replacement-lock-modal-content .modal-body {
     flex: 1;

@@ -96,7 +96,6 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "mcp-server": "node mcp-server.js",
     "configure-nekoai": "node scripts/configure-nekoai.js",
     "install:deps": "node scripts/configure-nekoai.js && pnpm install",
     "nekoai:registry": "NEKOAI_JS_SOURCE=registry node scripts/configure-nekoai.js",

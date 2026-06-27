@@ -821,6 +821,16 @@ function calculatePreviewRatio() {
     return previewRatio;
 }
 
+function getManualModalStepPreviewDimensions() {
+    const container = document.querySelector('.manual-preview-image-container');
+    if (!container) return null;
+    const rect = container.getBoundingClientRect();
+    const width = Math.round(rect.width || container.clientWidth || 0);
+    const height = Math.round(rect.height || container.clientHeight || 0);
+    if (width <= 0 || height <= 0) return null;
+    return { width, height };
+}
+
 
 let manualPreviewSize = { height: 0, width: 0 };
 
@@ -4577,8 +4587,21 @@ async function handleManualGeneration(e, options = {}) {
                 metadata.dynamic_generation.compiled_prompt = compiled_prompt;
             }
 
-            // Wait for queued streaming frames, then fetch final image before other UI work
-            if (window.wsClient && window.wsClient.waitForStreamingStepsComplete) {
+            // Finalize buffered streaming steps and prefetch final image before other UI work
+            let finalizeResult = { prefetchedBlobUrl: null, skippedDownloadUi: false };
+            if (window.wsClient && window.wsClient.finalizeGenerationPreview) {
+                let contentLength = result.contentLength || result.metadata?.file_size || null;
+                if ((!contentLength || contentLength <= 0) && window.wsClient.pendingGenerationDownloadBytes > 0) {
+                    const pendingName = window.wsClient.pendingGenerationDownloadFilename;
+                    if (!pendingName || pendingName === filename) {
+                        contentLength = window.wsClient.pendingGenerationDownloadBytes;
+                    }
+                }
+                finalizeResult = await window.wsClient.finalizeGenerationPreview('manual', {
+                    filename,
+                    contentLength
+                });
+            } else if (window.wsClient && window.wsClient.waitForStreamingStepsComplete) {
                 await window.wsClient.waitForStreamingStepsComplete('manual');
             }
 
@@ -4607,7 +4630,9 @@ async function handleManualGeneration(e, options = {}) {
                             }
                             return null;
                         }
-                    }
+                    },
+                    prefetchedBlobUrl: finalizeResult.prefetchedBlobUrl || null,
+                    skippedDownloadUi: finalizeResult.skippedDownloadUi === true
                 };
 
                 await handleImageResult(imageSrc, undefined, seed || values.seed, mockResponse, metadata);
@@ -4761,13 +4786,16 @@ async function handleImageResult(imageSrc, clearContextFn, seed = null, response
     };
 
     if (manualModalOpen) {
+        const skipDownloadOverlay = response?.skippedDownloadUi === true || !!response?.prefetchedBlobUrl;
         const headerContentLength = response?.headers?.get?.('Content-Length') || response?.headers?.get?.('content-length');
         const knownLen = parseInt(headerContentLength || '0', 10);
         const navOverlay = document.getElementById('manualPreviewNavigationLoading');
-        if (Number.isFinite(knownLen) && knownLen > 0) {
-            showManualPreviewNavigationLoading(true, 'Downloading…', 0);
-        } else if (!navOverlay?.classList.contains('download-progress')) {
-            showManualPreviewNavigationLoading(true, 'Downloading…', 'indeterminate');
+        if (!skipDownloadOverlay) {
+            if (Number.isFinite(knownLen) && knownLen > 0) {
+                showManualPreviewNavigationLoading(true, 'Downloading…', 0);
+            } else if (!navOverlay?.classList.contains('download-progress')) {
+                showManualPreviewNavigationLoading(true, 'Downloading…', 'indeterminate');
+            }
         }
 
         const genFilename = metadata?.filename
@@ -4811,6 +4839,11 @@ async function handleImageResult(imageSrc, clearContextFn, seed = null, response
     }
 
     releaseManualPreviewImageSrc();
+    if (response?.prefetchedBlobUrl && response.prefetchedBlobUrl.startsWith('blob:')) {
+        try {
+            URL.revokeObjectURL(response.prefetchedBlobUrl);
+        } catch (_e) { /* ignore */ }
+    }
     if (window.wsClient) {
         window.wsClient.releaseDataImageSrc(document.getElementById('manualPreviewImage'));
     }
@@ -5548,8 +5581,6 @@ if (dynamicGenerationProgressCancelBtn) {
 // MANUAL PREVIEW TOOLBAR LISTENERS (moved from app.js)
 // ============================================================================
 
-let manualPreviewToolbarListenersRegistered = false;
-
 function handleManualPreviewCloseClick(e) {
     e.preventDefault();
     const isWindowed = manualModal && manualModal.classList.contains('windowed');
@@ -5794,117 +5825,57 @@ function handleManualPreviewHandleClick(e) {
     }
 }
 
-function registerManualPreviewToolbarListeners() {
-    if (manualPreviewToolbarListenersRegistered) return;
-
+function attachManualPreviewToolbarListeners(signal) {
     if (manualPreviewCloseBtn) {
-        manualPreviewCloseBtn.addEventListener('click', handleManualPreviewCloseClick);
+        manualPreviewCloseBtn.addEventListener('click', handleManualPreviewCloseClick, { signal });
     }
     if (manualPreviewDownloadBtn) {
-        manualPreviewDownloadBtn.addEventListener('click', handleManualPreviewDownloadClick);
+        manualPreviewDownloadBtn.addEventListener('click', handleManualPreviewDownloadClick, { signal });
     }
     if (manualPreviewCopyBtn) {
-        manualPreviewCopyBtn.addEventListener('click', handleManualPreviewCopyClick);
+        manualPreviewCopyBtn.addEventListener('click', handleManualPreviewCopyClick, { signal });
     }
     if (manualPreviewUpscaleBtn) {
-        manualPreviewUpscaleBtn.addEventListener('click', handleManualPreviewUpscaleClick);
+        manualPreviewUpscaleBtn.addEventListener('click', handleManualPreviewUpscaleClick, { signal });
     }
     if (manualPreviewLoadBtn) {
-        manualPreviewLoadBtn.addEventListener('click', handleManualPreviewLoadClick);
+        manualPreviewLoadBtn.addEventListener('click', handleManualPreviewLoadClick, { signal });
     }
     if (manualPreviewVariationBtn) {
-        manualPreviewVariationBtn.addEventListener('click', handleManualPreviewVariationClick);
+        manualPreviewVariationBtn.addEventListener('click', handleManualPreviewVariationClick, { signal });
     }
     if (manualPreviewDeleteBtn) {
-        manualPreviewDeleteBtn.addEventListener('click', handleManualPreviewDeleteClick);
+        manualPreviewDeleteBtn.addEventListener('click', handleManualPreviewDeleteClick, { signal });
     }
 
     [manualPreviewToggleDialogsBtn, windowManualPreviewToggleDialogsBtn].forEach((btn) => {
         if (btn) {
             initManualPreviewDialogsToggleState(btn);
-            btn.addEventListener('click', handleManualPreviewToggleDialogsClick);
+            btn.addEventListener('click', handleManualPreviewToggleDialogsClick, { signal });
         }
     });
 
     if (manualPreviewPinBtn) {
-        manualPreviewPinBtn.addEventListener('click', handleManualPreviewPinClick);
+        manualPreviewPinBtn.addEventListener('click', handleManualPreviewPinClick, { signal });
     }
     if (manualPreviewScrapBtn) {
-        manualPreviewScrapBtn.addEventListener('click', handleManualPreviewScrapClick);
+        manualPreviewScrapBtn.addEventListener('click', handleManualPreviewScrapClick, { signal });
     }
     if (manualPreviewWorkspaceBtn) {
-        manualPreviewWorkspaceBtn.addEventListener('click', handleManualPreviewWorkspaceClick);
+        manualPreviewWorkspaceBtn.addEventListener('click', handleManualPreviewWorkspaceClick, { signal });
     }
     if (closeWorkspaceOverlayBtn) {
-        closeWorkspaceOverlayBtn.addEventListener('click', handleCloseWorkspaceOverlayClick);
+        closeWorkspaceOverlayBtn.addEventListener('click', handleCloseWorkspaceOverlayClick, { signal });
     }
     if (manualPreviewPrevBtn) {
-        manualPreviewPrevBtn.addEventListener('click', handleManualPreviewNavClick);
+        manualPreviewPrevBtn.addEventListener('click', handleManualPreviewNavClick, { signal });
     }
     if (manualPreviewNextBtn) {
-        manualPreviewNextBtn.addEventListener('click', handleManualPreviewNavClick);
+        manualPreviewNextBtn.addEventListener('click', handleManualPreviewNavClick, { signal });
     }
     if (manualPreviewHandle) {
-        manualPreviewHandle.addEventListener('click', handleManualPreviewHandleClick);
+        manualPreviewHandle.addEventListener('click', handleManualPreviewHandleClick, { signal });
     }
-
-    manualPreviewToolbarListenersRegistered = true;
-}
-
-function deregisterManualPreviewToolbarListeners() {
-    if (!manualPreviewToolbarListenersRegistered) return;
-
-    if (manualPreviewCloseBtn) {
-        manualPreviewCloseBtn.removeEventListener('click', handleManualPreviewCloseClick);
-    }
-    if (manualPreviewDownloadBtn) {
-        manualPreviewDownloadBtn.removeEventListener('click', handleManualPreviewDownloadClick);
-    }
-    if (manualPreviewCopyBtn) {
-        manualPreviewCopyBtn.removeEventListener('click', handleManualPreviewCopyClick);
-    }
-    if (manualPreviewUpscaleBtn) {
-        manualPreviewUpscaleBtn.removeEventListener('click', handleManualPreviewUpscaleClick);
-    }
-    if (manualPreviewLoadBtn) {
-        manualPreviewLoadBtn.removeEventListener('click', handleManualPreviewLoadClick);
-    }
-    if (manualPreviewVariationBtn) {
-        manualPreviewVariationBtn.removeEventListener('click', handleManualPreviewVariationClick);
-    }
-    if (manualPreviewDeleteBtn) {
-        manualPreviewDeleteBtn.removeEventListener('click', handleManualPreviewDeleteClick);
-    }
-
-    [manualPreviewToggleDialogsBtn, windowManualPreviewToggleDialogsBtn].forEach((btn) => {
-        if (btn) {
-            btn.removeEventListener('click', handleManualPreviewToggleDialogsClick);
-        }
-    });
-
-    if (manualPreviewPinBtn) {
-        manualPreviewPinBtn.removeEventListener('click', handleManualPreviewPinClick);
-    }
-    if (manualPreviewScrapBtn) {
-        manualPreviewScrapBtn.removeEventListener('click', handleManualPreviewScrapClick);
-    }
-    if (manualPreviewWorkspaceBtn) {
-        manualPreviewWorkspaceBtn.removeEventListener('click', handleManualPreviewWorkspaceClick);
-    }
-    if (closeWorkspaceOverlayBtn) {
-        closeWorkspaceOverlayBtn.removeEventListener('click', handleCloseWorkspaceOverlayClick);
-    }
-    if (manualPreviewPrevBtn) {
-        manualPreviewPrevBtn.removeEventListener('click', handleManualPreviewNavClick);
-    }
-    if (manualPreviewNextBtn) {
-        manualPreviewNextBtn.removeEventListener('click', handleManualPreviewNavClick);
-    }
-    if (manualPreviewHandle) {
-        manualPreviewHandle.removeEventListener('click', handleManualPreviewHandleClick);
-    }
-
-    manualPreviewToolbarListenersRegistered = false;
 }
 
 function wireGenerateButtonContextMenus() {
@@ -6108,57 +6079,47 @@ async function saveRequestAsDesktopShortcut() {
     }
 }
 
-function wireManualModalChromeListeners() {
-    if (document.body.dataset.manualModalChromeWired === 'true') return;
-    document.body.dataset.manualModalChromeWired = 'true';
-
+function attachManualModalChromeListeners(signal) {
     const generateButtons = document.querySelectorAll('#manualGenerateBtn, #manualGenerateBtnAlt');
     generateButtons.forEach(button => {
-        if (button.dataset.wired === 'true') return;
-        button.dataset.wired = 'true';
         // showGenerateButtonPopoverFor, hideGenerateButtonPopoverFor: public/scripts/app.js
-        button.addEventListener('mouseenter', (e) => showGenerateButtonPopoverFor(e.target));
-        button.addEventListener('mouseleave', (e) => hideGenerateButtonPopoverFor(e.target));
+        button.addEventListener('mouseenter', (e) => showGenerateButtonPopoverFor(e.target), { signal });
+        button.addEventListener('mouseleave', (e) => hideGenerateButtonPopoverFor(e.target), { signal });
     });
 
-    if (closeManualBtn && closeManualBtn.dataset.wired !== 'true') {
-        closeManualBtn.dataset.wired = 'true';
+    if (closeManualBtn) {
         closeManualBtn.addEventListener('click', (e) => {
             e.preventDefault();
             hideManualModal(e);
-        });
+        }, { signal });
     }
 
     const restoreManualBtn = document.getElementById('restoreManualBtn');
     const unmaximizeManualBtn = document.getElementById('unmaximizeManualBtn');
     const closeManualModalBtn = document.getElementById('closeManualModalBtn');
 
-    if (restoreManualBtn && restoreManualBtn.dataset.wired !== 'true') {
-        restoreManualBtn.dataset.wired = 'true';
+    if (restoreManualBtn) {
         restoreManualBtn.addEventListener('click', (e) => {
             e.preventDefault();
             toggleManualModalWindowed();
-        });
+        }, { signal });
     }
 
-    if (unmaximizeManualBtn && unmaximizeManualBtn.dataset.wired !== 'true') {
-        unmaximizeManualBtn.dataset.wired = 'true';
+    if (unmaximizeManualBtn) {
         unmaximizeManualBtn.addEventListener('click', (e) => {
             e.preventDefault();
             toggleManualModalWindowed();
-        });
+        }, { signal });
     }
 
-    if (closeManualModalBtn && closeManualModalBtn.dataset.wired !== 'true') {
-        closeManualModalBtn.dataset.wired = 'true';
+    if (closeManualModalBtn) {
         closeManualModalBtn.addEventListener('click', (e) => {
             e.preventDefault();
             hideManualModal(e);
-        });
+        }, { signal });
     }
 
-    if (manualForm && manualForm.dataset.wired !== 'true') {
-        manualForm.dataset.wired = 'true';
+    if (manualForm) {
         manualForm.addEventListener('submit', (e) => {
             e.preventDefault();
             const presetNameEl = document.getElementById('manualPresetName');
@@ -6166,19 +6127,17 @@ function wireManualModalChromeListeners() {
                 return;
             }
             handleManualGeneration(e);
-        });
+        }, { signal });
     }
 
-    if (manualRequestSaveBtn && manualRequestSaveBtn.dataset.wired !== 'true') {
-        manualRequestSaveBtn.dataset.wired = 'true';
+    if (manualRequestSaveBtn) {
         manualRequestSaveBtn.addEventListener('click', async (e) => {
             e.preventDefault();
             await saveRequestAsDesktopShortcut();
-        });
+        }, { signal });
     }
 
-    if (manualControlsToggle && manualControlsToggle.dataset.wired !== 'true') {
-        manualControlsToggle.dataset.wired = 'true';
+    if (manualControlsToggle) {
         manualControlsToggle.addEventListener('click', (e) => {
             e.preventDefault();
             manualModal.classList.toggle('min-controls');
@@ -6188,21 +6147,26 @@ function wireManualModalChromeListeners() {
             } else {
                 manualControlsToggle.querySelector('i').classList.add('fa-square-sliders');
             }
-        });
+        }, { signal });
     }
 
-    if (vibeNormalizeToggle && vibeNormalizeToggle.dataset.wired !== 'true') {
-        vibeNormalizeToggle.dataset.wired = 'true';
+    if (vibeNormalizeToggle) {
         vibeNormalizeToggle.addEventListener('click', (e) => {
             e.preventDefault();
             const currentState = vibeNormalizeToggle.getAttribute('data-state') === 'on';
             vibeNormalizeToggle.setAttribute('data-state', !currentState ? 'on' : 'off');
-        });
+        }, { signal });
     }
 }
 
-window.wsClient.registerInitStep(47, 'Manual preview toolbar listeners', async () => {
-    registerManualPreviewToolbarListeners();
+function initManualModalListenerScope() {
+    if (!manualModal) return;
+    // attachModalListeners: public/scripts/comp/modalListenerScope.js
+    attachModalListeners(manualModal, attachManualPreviewToolbarListeners);
+    attachModalListeners(manualModal, attachManualModalChromeListeners);
+}
+
+window.wsClient.registerInitStep(470, 'Manual modal listener scope', async () => {
+    initManualModalListenerScope();
     wireGenerateButtonContextMenus();
-    wireManualModalChromeListeners();
 });

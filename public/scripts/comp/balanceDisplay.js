@@ -11,7 +11,7 @@ try {
 // wireManualGenerationParamsListeners → manualGenerationParams.js (step 47.4)
 // wireManualResolutionDimensionListeners, wireManualDropdownSetup → manualDropdownManager.js (step 47.5)
 // wireUploadClipboardListeners → referenceManager.js (step 40)
-// wireSeedListeners, wireInlinePresetListeners → presetManager.js (step 46)
+// wireSeedListeners, wireInlinePresetListeners → presetManager.js (step 461)
 function toggleSubMenu() {
     const menu = document.querySelectorAll('.sub-menu-toggle');
     if (menu) {
@@ -56,8 +56,8 @@ function updateBalanceDisplay(balance) {
         const oldPaid = previousBalance.purchasedTrainingSteps || 0;
         const oldTotal = previousBalance.totalCredits || 0;
 
-        // Detect balance change (increase or decrease)
-        if (fixedCredits !== oldFixed || purchasedCredits !== oldPaid || totalCredits !== oldTotal) {
+        // Detect balance change (increase or decrease) — only when total credits changed
+        if (totalCredits !== oldTotal) {
             const fixedChange = fixedCredits - oldFixed;
             const paidChange = purchasedCredits - oldPaid;
 

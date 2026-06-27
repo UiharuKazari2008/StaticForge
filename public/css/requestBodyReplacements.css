@@ -1,6 +1,9 @@
 /* Request body replacements modal — public/scripts/comp/requestBodyReplacementsModal.js */
 #requestBodyReplacementsModal {
-    width: 750px;
+    width: 500px;
+    height: 1024px;
+    min-width: 500px;
+    min-height: 400px;
 }
 
 #createRequestBodyReplacementModal {

@@ -940,6 +940,49 @@ function isToolWindow(modal) {
     return modalElement && modalElement.classList.contains('tool-window');
 }
 
+// Full windows close with Alt+Q; Esc is reserved for confirmations and small pickers.
+const ESCAPE_CLOSE_MODAL_IDS = new Set([
+    'confirmationDialog',
+    'creditCostDialog',
+    'pinModal',
+    'positionDialog',
+    'datasetTagToolbar',
+    'galleryJumpIndexTool',
+    'metadataDialog',
+    'textReplacementManualSelectionModal',
+    'textReplacementLockModal',
+    'createTextReplacementModal',
+    'createRequestBodyReplacementModal',
+    'updatePresetModal',
+    'addApiKeyModal',
+    'workspaceEditModal',
+    'workspaceDumpModal',
+    'cacheMetadataModal',
+    'configEditorValueModal',
+    'timeDateModal',
+    'weatherLocationModal',
+    'connectionDialModal',
+    'naxVibesEncodingPickerModal',
+    'naxtCustomTagModal',
+    'vibeManagerDeleteModal',
+    'vibeManagerMoveModal',
+    'bulkChangePresetModal',
+    'vfsImportChoiceModal',
+    'openNoteModal',
+    'updateNoteModal',
+    'tokenDisplayModal',
+    'virtualKeyboardModal',
+    'runModal'
+]);
+
+function modalClosesWithEscape(modal) {
+    if (!modal) return false;
+    const el = typeof modal === 'string' ? document.getElementById(modal) : modal;
+    if (!el) return false;
+    if (el.classList.contains('alert-theme')) return true;
+    return ESCAPE_CLOSE_MODAL_IDS.has(el.id);
+}
+
 // Link a tool window to a parent modal so it closes when the parent closes
 function linkToolWindowToParent(toolWindow, parentModal) {
     if (!toolWindow || !parentModal) return;
@@ -984,11 +1027,18 @@ function getModalMinDimensions(modal) {
 }
 
 function applyModalDefaultWindowSize(modal) {
-    if (!modal || modal.hasAttribute('data-window-position-restored')) {
+    if (!modal) {
         return;
     }
     if (!modal.dataset.windowDefaultWidth && !modal.dataset.windowDefaultHeight) {
         return;
+    }
+    if (modal.hasAttribute('data-window-position-restored')) {
+        const inlineW = parseFloat(modal.style.width);
+        const inlineH = parseFloat(modal.style.height);
+        if (inlineW > 0 && inlineH > 0) {
+            return;
+        }
     }
 
     const { minWidth, minHeight } = getModalMinDimensions(modal);
@@ -1475,6 +1525,8 @@ function resetModalToViewportCenter(modal) {
     modal.style.removeProperty('width');
     modal.style.removeProperty('height');
 
+    applyModalDefaultWindowSize(modal);
+
     const layout = getModalLayoutDimensions(modal);
     const width = layout.width;
     const height = layout.height;
@@ -1510,7 +1562,6 @@ function resetModalWindowLayout(modal) {
     modal.style.removeProperty('height');
     modal.removeAttribute('data-window-position-restored');
 
-    applyModalDefaultWindowSize(modal);
     resetModalToViewportCenter(modal);
     ensureModalEdgesWithinWorkArea(modal);
     debouncedSaveWindowPositions();
@@ -1640,7 +1691,21 @@ function setActiveWindow(modalId) {
     updateTaskbarActiveStates();
 }
 
+function getTopOpenModal() {
+    if (modalStack.length === 0) return null;
+    return modalStack[modalStack.length - 1];
+}
+
 function initializeModalDragging() {
+    // Tier A permanent globals (modal-listener-refactor-plan.md) — keep on document/window; gate in handlers:
+    // focus, visibilitychange — focus grace period (top of modalUtils.js)
+    // mousedown/mousemove/mouseup, touchstart/touchmove/touchend — drag/resize (below)
+    // click — minimize button, desktop empty-space clear-active (below)
+    // contextMenuAction — taskbar context menu (initializeDesktopTaskbar)
+    // DOMContentLoaded — bootstrap dragging, taskbar, start menu (bottom of modalUtils.js)
+    // Gallery window resize — attachModalListeners(galleryWindow) in activateGalleryResizeListener
+    // Start menu outside-click — AbortController in openStartMenu/closeStartMenu
+
     // Add drag functionality to all modal title bars
     document.addEventListener('mousedown', handleModalInteraction);
     document.addEventListener('mousemove', handleModalInteraction);
@@ -2314,6 +2379,10 @@ function openModal(modal) {
         document.body.classList.add('modal-open');
     }
 
+    // Per-modal listener scope — modalListenerScope.js
+    onModalOpened(modal);
+    const modalListenerSignal = getModalListenerSignal(modal);
+
     // Add click handler to bring modal to front when clicking anywhere inside it
     const clickHandler = (e) => {
         // Verify the click is actually inside this modal (prevent activation when clicking in other windows)
@@ -2326,9 +2395,10 @@ function openModal(modal) {
             handleModalClick(modal);
         }
     };
-    modal.addEventListener('mousedown', clickHandler);
+    const clickHandlerOptions = modalListenerSignal ? { signal: modalListenerSignal } : undefined;
+    modal.addEventListener('mousedown', clickHandler, clickHandlerOptions);
 
-    // Store the click handler for cleanup
+    // Store the click handler for cleanup (legacy path during migration)
     modal._modalClickHandler = clickHandler;
 
     // Remove opening class after animation completes
@@ -2483,7 +2553,10 @@ function closeMainModal(modal) {
         modal.removeAttribute('data-modal-z-index');
         modal.removeAttribute('data-modal-stack-position');
 
-        // Clean up click handler
+        // Abort per-modal listener scope — modalListenerScope.js
+        onModalClosed(modal);
+
+        // Clean up click handler (legacy path during migration)
         if (modal._modalClickHandler) {
             modal.removeEventListener('mousedown', modal._modalClickHandler);
             delete modal._modalClickHandler;
@@ -3200,10 +3273,20 @@ function activateAllResizeListeners() {
 
 /**
  * Activates the gallery resize listener.
+ * Listeners attach via attachModalListeners(galleryWindow) and detach when the gallery window closes.
  */
 function activateGalleryResizeListener() {
-    window.addEventListener('resize', debounceGalleryResize(updateGalleryWindowMode, 150));
-    window.addEventListener('resize', scheduleDesktopViewportResizePositionSync);
+    if (!galleryWindow) {
+        galleryWindow = document.getElementById('galleryWindow');
+    }
+    if (galleryWindow) {
+        attachModalListeners(galleryWindow, (signal) => {
+            const debouncedGalleryModeUpdate = debounceGalleryResize(updateGalleryWindowMode, 150);
+            window.addEventListener('resize', debouncedGalleryModeUpdate, { signal });
+            window.addEventListener('resize', scheduleDesktopViewportResizePositionSync, { signal });
+            modalListenerDevLog('gallery resize listeners attached', { id: galleryWindow.id });
+        });
+    }
     // Perform one check in case the window was resized during loading
     updateGalleryWindowMode();
 }
@@ -5426,6 +5509,19 @@ async function runClientRestartDirect() {
     await runClientShutdownSequence(() => location.reload());
 }
 
+async function runRestartDssDirect() {
+    closeStartMenuAfterPowerAction();
+    if (!serverManagement.isAdminSession()) {
+        showGlassToast('error', 'Access Denied', 'Admin access required to restart DreamScape Server', false, 5000, '<i class="fas fa-lock"></i>');
+        return;
+    }
+    if (!(await serverManagement.ensureAdminApiPath())) {
+        showGlassToast('error', 'Restart DSS', 'Admin API path unavailable — please log in again as admin', false, 5000, '<i class="fas fa-scroll"></i>');
+        return;
+    }
+    await serverManagement.requestRestartServer();
+}
+
 async function runClientShutdownDirect() {
     closeStartMenuAfterPowerAction();
     await runClientShutdownSequence(() => window.close());
@@ -5449,13 +5545,19 @@ let startMenuPowerMenu = null;
 let startMenuPowerToggle = null;
 
 function getStartMenuPowerMenuItems() {
+    const isAdmin = localStorage.getItem('userType') === 'admin';
     const items = [
         { id: 'shutdown', icon: 'fas fa-power-off', text: 'Shutdown', danger: true, action: () => runClientShutdownDirect() },
         { id: 'restart', icon: 'fas fa-rotate-right', text: 'Restart', action: () => runClientRestartDirect() },
         { id: 'leave-desktop', icon: 'fas fa-window-maximize', text: 'Leave Desktop Mode', desktopOnly: true, action: () => runLeaveDesktopModeDirect() },
-        { id: 'logout', icon: 'fas fa-right-from-bracket', text: 'Log Out', action: () => runLogoutDirect() }
+        { id: 'logout', icon: 'fas fa-right-from-bracket', text: 'Sign Out', action: () => runLogoutDirect() },
+        { id: 'restart-dss', icon: 'fas fa-rotate-right', text: 'Restart (Remote)', danger: true, adminOnly: true, action: () => runRestartDssDirect() },
     ];
-    return items.filter((item) => !item.desktopOnly || isDesktopStartMenuEnvironment());
+    return items.filter((item) => {
+        if (item.desktopOnly && !isDesktopStartMenuEnvironment()) return false;
+        if (item.adminOnly && !isAdmin) return false;
+        return true;
+    });
 }
 
 function renderStartMenuPowerDropdown(menu) {
@@ -5515,6 +5617,31 @@ function closeStartMenuAfterPowerAction() {
     closeStartMenu();
 }
 
+let startMenuOutsideClickController = null;
+
+function handleStartMenuOutsideClick(e) {
+    if (!startMenu || startMenu.classList.contains('hidden')) return;
+    if (startMenu.contains(e.target)) return;
+    if (e.target.closest('#taskbarStartBtn')) return;
+    if (e.target.closest('.start-menu-popout')) return;
+    closeStartMenu();
+}
+
+function wireStartMenuOutsideClick() {
+    if (startMenuOutsideClickController) {
+        startMenuOutsideClickController.abort();
+    }
+    startMenuOutsideClickController = new AbortController();
+    document.addEventListener('click', handleStartMenuOutsideClick, { signal: startMenuOutsideClickController.signal });
+}
+
+function unwireStartMenuOutsideClick() {
+    if (startMenuOutsideClickController) {
+        startMenuOutsideClickController.abort();
+        startMenuOutsideClickController = null;
+    }
+}
+
 function initializeStartMenu() {
     startMenu = document.getElementById('startMenu');
     startMenuItems = document.getElementById('startMenuItems');
@@ -5529,31 +5656,26 @@ function initializeStartMenu() {
     // Build start menu
     buildStartMenu();
 
-    // Toggle start menu on button click
+    // Toggle start menu on button click (once — initializeStartMenu may run more than once)
     const startBtn = document.getElementById('taskbarStartBtn');
-    if (startBtn) {
+    if (startBtn && startBtn.dataset.startMenuToggleWired !== 'true') {
+        startBtn.dataset.startMenuToggleWired = 'true';
         startBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             toggleStartMenu();
         });
     }
-
-    // Close start menu when clicking outside
-    document.addEventListener('click', (e) => {
-        const startBtn = document.getElementById('taskbarStartBtn');
-        if (startMenu && !startMenu.classList.contains('hidden')
-            && !startMenu.contains(e.target)
-            && !e.target.closest('#taskbarStartBtn')
-            && !e.target.closest('.start-menu-popout')) {
-            closeStartMenu();
-        }
-    });
 }
 
 let startMenuPopoutStack = [];
 let startMenuPopoutTimers = { open: null, close: null };
 const START_MENU_POPOUT_OPEN_DELAY = 120;
 const START_MENU_POPOUT_CLOSE_DELAY = 220;
+
+function isStartMenuPopoutHoverEnabled() {
+    if (!window.matchMedia) return true;
+    return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+}
 
 function clearStartMenuPopoutTimers() {
     if (startMenuPopoutTimers.open) {
@@ -5629,27 +5751,32 @@ function createStartMenuPopoutRow(item, level) {
     }
 
     if (item.hasSubmenu) {
-        row.addEventListener('mouseenter', () => {
-            clearStartMenuPopoutTimers();
-            startMenuPopoutTimers.open = setTimeout(() => {
-                showStartMenuPopout(row, () => resolveStartMenuSubmenuItems(item), level + 1);
-            }, START_MENU_POPOUT_OPEN_DELAY);
-        });
-        row.addEventListener('mouseleave', (e) => {
-            const nextPopout = startMenuPopoutStack[level + 1];
-            if (nextPopout && e.relatedTarget && nextPopout.contains(e.relatedTarget)) return;
-            clearStartMenuPopoutTimers();
-            startMenuPopoutTimers.close = setTimeout(() => {
-                while (startMenuPopoutStack.length > level + 1) {
-                    const el = startMenuPopoutStack.pop();
-                    if (el && el.parentNode) el.parentNode.removeChild(el);
-                }
-                row.classList.remove('popout-open');
-            }, START_MENU_POPOUT_CLOSE_DELAY);
-        });
+        const openNestedPopout = () => {
+            showStartMenuPopout(row, () => resolveStartMenuSubmenuItems(item), level + 1);
+        };
+
+        if (isStartMenuPopoutHoverEnabled()) {
+            row.addEventListener('mouseenter', () => {
+                clearStartMenuPopoutTimers();
+                startMenuPopoutTimers.open = setTimeout(openNestedPopout, START_MENU_POPOUT_OPEN_DELAY);
+            });
+            row.addEventListener('mouseleave', (e) => {
+                const nextPopout = startMenuPopoutStack[level + 1];
+                if (nextPopout && e.relatedTarget && nextPopout.contains(e.relatedTarget)) return;
+                clearStartMenuPopoutTimers();
+                startMenuPopoutTimers.close = setTimeout(() => {
+                    while (startMenuPopoutStack.length > level + 1) {
+                        const el = startMenuPopoutStack.pop();
+                        if (el && el.parentNode) el.parentNode.removeChild(el);
+                    }
+                    row.classList.remove('popout-open');
+                }, START_MENU_POPOUT_CLOSE_DELAY);
+            });
+        }
+
         row.addEventListener('click', (e) => {
             e.stopPropagation();
-            showStartMenuPopout(row, () => resolveStartMenuSubmenuItems(item), level + 1);
+            openNestedPopout();
         });
     } else {
         row.addEventListener('click', (e) => {
@@ -5698,17 +5825,19 @@ function showStartMenuPopout(anchorEl, itemsSource, level = 0) {
     startMenuPopoutStack.push(popout);
     anchorEl.classList.add('popout-open');
 
-    popout.addEventListener('mouseenter', () => clearStartMenuPopoutTimers());
-    popout.addEventListener('mouseleave', () => {
-        clearStartMenuPopoutTimers();
-        startMenuPopoutTimers.close = setTimeout(() => {
-            while (startMenuPopoutStack.length > level) {
-                const el = startMenuPopoutStack.pop();
-                if (el && el.parentNode) el.parentNode.removeChild(el);
-            }
-            anchorEl.classList.remove('popout-open');
-        }, START_MENU_POPOUT_CLOSE_DELAY);
-    });
+    if (isStartMenuPopoutHoverEnabled()) {
+        popout.addEventListener('mouseenter', () => clearStartMenuPopoutTimers());
+        popout.addEventListener('mouseleave', () => {
+            clearStartMenuPopoutTimers();
+            startMenuPopoutTimers.close = setTimeout(() => {
+                while (startMenuPopoutStack.length > level) {
+                    const el = startMenuPopoutStack.pop();
+                    if (el && el.parentNode) el.parentNode.removeChild(el);
+                }
+                anchorEl.classList.remove('popout-open');
+            }, START_MENU_POPOUT_CLOSE_DELAY);
+        });
+    }
 }
 
 function wireStartMenuFolderItem(menuItemEl, item) {
@@ -5716,18 +5845,21 @@ function wireStartMenuFolderItem(menuItemEl, item) {
         showStartMenuPopout(menuItemEl, () => resolveStartMenuSubmenuItems(item), 0);
     };
 
-    menuItemEl.addEventListener('mouseenter', () => {
-        clearStartMenuPopoutTimers();
-        startMenuPopoutTimers.open = setTimeout(openPopout, START_MENU_POPOUT_OPEN_DELAY);
-    });
-    menuItemEl.addEventListener('mouseleave', (e) => {
-        const popout = startMenuPopoutStack[0];
-        if (popout && e.relatedTarget && popout.contains(e.relatedTarget)) return;
-        clearStartMenuPopoutTimers();
-        startMenuPopoutTimers.close = setTimeout(() => {
-            closeAllStartMenuPopouts();
-        }, START_MENU_POPOUT_CLOSE_DELAY);
-    });
+    if (isStartMenuPopoutHoverEnabled()) {
+        menuItemEl.addEventListener('mouseenter', () => {
+            clearStartMenuPopoutTimers();
+            startMenuPopoutTimers.open = setTimeout(openPopout, START_MENU_POPOUT_OPEN_DELAY);
+        });
+        menuItemEl.addEventListener('mouseleave', (e) => {
+            const popout = startMenuPopoutStack[0];
+            if (popout && e.relatedTarget && popout.contains(e.relatedTarget)) return;
+            clearStartMenuPopoutTimers();
+            startMenuPopoutTimers.close = setTimeout(() => {
+                closeAllStartMenuPopouts();
+            }, START_MENU_POPOUT_CLOSE_DELAY);
+        });
+    }
+
     menuItemEl.addEventListener('click', (e) => {
         e.stopPropagation();
         if (menuItemEl.classList.contains('popout-open')) {
@@ -5889,6 +6021,7 @@ function openStartMenu() {
 
     startMenu.addEventListener('animationend', onOpenEnd);
     setTimeout(clearOpening, 280);
+    wireStartMenuOutsideClick();
 }
 
 function closeStartMenu(options = {}) {
@@ -5899,9 +6032,11 @@ function closeStartMenu(options = {}) {
 
     if (startMenu.classList.contains('hidden') && !startMenu.classList.contains('start-menu-closing')) {
         if (startBtn) startBtn.classList.remove('active');
+        unwireStartMenuOutsideClick();
         return;
     }
 
+    unwireStartMenuOutsideClick();
     closeAllStartMenuSubmenus();
     if (startBtn) startBtn.classList.remove('active');
 
@@ -6587,6 +6722,7 @@ let desktopSettingsScopeHandlersWired = false;
 let desktopSettingsDropdownsWired = false;
 let desktopSettingsStartMenuTextWired = false;
 let desktopSettingsStartMenuStyleWired = false;
+let desktopSettingsModalScopeWired = false;
 let desktopSettingsPersistedStartMenuButton = { preset: 'start-ja', customText: '', style: 'workspace' };
 
 // Alignment options for dropdowns
@@ -7168,7 +7304,55 @@ function updateDesktopSettingsPreview() {
 }
 
 // Initialize modal (dropdowns and button handlers)
+function wireDesktopSettingsModalListenerScope() {
+    if (desktopSettingsModalScopeWired) return;
+    const modal = document.getElementById('desktopSettingsModal');
+    if (!modal) return;
+    desktopSettingsModalScopeWired = true;
+    // attachModalListeners, closeAllDropdownsInRoot — modalListenerScope.js, dropdown.js
+    attachModalListeners(modal, (signal) => {
+        signal.addEventListener('abort', () => {
+            closeAllDropdownsInRoot(modal);
+        }, { once: true });
+    });
+}
+
+function handleDesktopSettingsModalKeydown(e) {
+    const modal = document.getElementById('desktopSettingsModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+
+    if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        e.stopPropagation();
+        saveDesktopSettings();
+        return true;
+    }
+}
+
+let desktopSettingsKeyboardWired = false;
+
+function wireDesktopSettingsKeyboard() {
+    if (desktopSettingsKeyboardWired) return;
+    desktopSettingsKeyboardWired = true;
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'desktopSettingsModal.keydown',
+        handler: handleDesktopSettingsModalKeydown,
+        type: 'whenFocused',
+        modalId: 'desktopSettingsModal',
+        priority: 78,
+        critical: true,
+        showInOverlay: false
+    });
+    registerModalOverlayEntries('desktopSettingsModal', 'Settings', [
+        { id: 'overlay.desktopSettings.save', label: 'Save settings', keys: 'Ctrl+S', icon: 'fas fa-save' },
+        { id: 'overlay.desktopSettings.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
+    ]);
+}
+
 function initializeDesktopSettingsModal() {
+    wireDesktopSettingsModalListenerScope();
+    wireDesktopSettingsKeyboard();
     setupDesktopSettingsScopeToggle();
 
     // Setup dropdowns
@@ -8434,10 +8618,82 @@ function renderAboutMelatoninSystemInfo(data) {
     systemInfoElement.innerHTML = html || '<p class="text-danger">No system information available</p>';
 }
 
+function isKeyboardEditableTarget(el) {
+    if (!el || el === document.body || el === document.documentElement) return false;
+    if (el.matches?.('input, textarea, select')) return true;
+    if (el.isContentEditable) return true;
+    return !!el.closest?.('input, textarea, select, [contenteditable="true"], [contenteditable=""]');
+}
+
+function resolveWindowToCloseWithAltQ() {
+    if (currentActiveWindowId) {
+        const active = document.getElementById(currentActiveWindowId);
+        if (active && !active.classList.contains('hidden') && !active.classList.contains('closing')) {
+            return active;
+        }
+    }
+    const top = getTopOpenModal();
+    if (!top || top.classList.contains('hidden') || top.classList.contains('closing')) {
+        return null;
+    }
+    return top;
+}
+
+function canCloseWindowWithAltQ() {
+    const modal = resolveWindowToCloseWithAltQ();
+    if (!modal) return false;
+    if (document.body.classList.contains('desktop-mode')) {
+        return !!(currentActiveWindowId || modalStack.length > 0);
+    }
+    return modalStack.length > 0;
+}
+
+function handleAltQCloseWindowKeydown(e) {
+    if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return false;
+    if ((e.key || '').toLowerCase() !== 'q') return false;
+    if (isKeyboardEditableTarget(e.target) || isKeyboardEditableTarget(document.activeElement)) return false;
+    if (!canCloseWindowWithAltQ()) return false;
+
+    const modal = resolveWindowToCloseWithAltQ();
+    if (!modal) return false;
+
+    const closeBtn = modal.querySelector('.close-btn');
+    if (closeBtn && !closeBtn.disabled) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeBtn.click();
+        return true;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+    closeModal(modal);
+    return true;
+}
+
+function initializeUniversalModalKeyboardShortcuts() {
+    if (document.body.dataset.universalModalKeyboardWired === 'true') return;
+    document.body.dataset.universalModalKeyboardWired = 'true';
+
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'universal.closeWindow.altQ',
+        handler: handleAltQCloseWindowKeydown,
+        type: 'global',
+        priority: 75,
+        critical: true,
+        label: 'Close window',
+        keys: 'Alt+Q',
+        overlayIcon: 'fas fa-times',
+        overlayGroup: 'Window'
+    });
+}
+
 // Initialize modal dragging when DOM is ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         initializeModalDragging();
+        initializeUniversalModalKeyboardShortcuts();
         if (window.isEditorStandaloneWindow) {
             return;
         }
@@ -8448,6 +8704,7 @@ if (document.readyState === 'loading') {
     });
 } else {
     initializeModalDragging();
+    initializeUniversalModalKeyboardShortcuts();
     if (!window.isEditorStandaloneWindow) {
         initializeGalleryWindow();
         initializeDesktopTaskbar();

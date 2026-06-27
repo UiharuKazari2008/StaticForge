@@ -263,7 +263,7 @@ class Director {
         }
         this._directorContextMenuWired = true;
 
-        document.addEventListener('contextMenuAction', (event) => {
+        this._directorContextMenuHandler = (event) => {
             const { action, target } = event.detail;
             
             // Find the session item that was right-clicked
@@ -289,7 +289,15 @@ class Director {
                     this.deleteSessionFromContextMenu(session);
                     break;
             }
-        });
+        };
+
+        const manualModal = document.getElementById('manualModal');
+        if (manualModal) {
+            // attachModalListeners: public/scripts/comp/modalListenerScope.js
+            attachModalListeners(manualModal, (signal) => {
+                document.addEventListener('contextMenuAction', this._directorContextMenuHandler, { signal });
+            });
+        }
     }
 
     // Delete session (context menu version)
@@ -935,14 +943,19 @@ class Director {
             }
         };
 
-        document.addEventListener('click', this._clickOutsideHandler);
+        if (this._clickOutsideScope) {
+            this._clickOutsideScope.abort();
+        }
+        this._clickOutsideScope = new AbortController();
+        document.addEventListener('click', this._clickOutsideHandler, { signal: this._clickOutsideScope.signal });
     }
 
     removeClickOutsideListener() {
-        if (this._clickOutsideHandler) {
-            document.removeEventListener('click', this._clickOutsideHandler);
-            this._clickOutsideHandler = null;
+        if (this._clickOutsideScope) {
+            this._clickOutsideScope.abort();
+            this._clickOutsideScope = null;
         }
+        this._clickOutsideHandler = null;
     }
 
     hideAllViews() {
@@ -2537,15 +2550,20 @@ class Director {
             }
         };
 
-        document.addEventListener('click', this.previewClickOutsideHandler);
+        if (this._previewClickOutsideScope) {
+            this._previewClickOutsideScope.abort();
+        }
+        this._previewClickOutsideScope = new AbortController();
+        document.addEventListener('click', this.previewClickOutsideHandler, { signal: this._previewClickOutsideScope.signal });
     }
 
     // Remove click outside handler
     removePreviewClickOutsideHandler() {
-        if (this.previewClickOutsideHandler) {
-            document.removeEventListener('click', this.previewClickOutsideHandler);
-            this.previewClickOutsideHandler = null;
+        if (this._previewClickOutsideScope) {
+            this._previewClickOutsideScope.abort();
+            this._previewClickOutsideScope = null;
         }
+        this.previewClickOutsideHandler = null;
     }
 
     // Director WebSocket message handlers
@@ -5526,6 +5544,8 @@ class Director {
                 }
             });
         }
+
+        wireMeasurementsModalKeyboard(this);
     }
 
     // Create a small inline bar gauge for 0-10 values
@@ -5974,6 +5994,25 @@ class Director {
 window.directorInstance = null;
 
 // Initialize the Director
+let measurementsModalKeyboardWired = false;
+
+function wireMeasurementsModalKeyboard(director) {
+    if (measurementsModalKeyboardWired) return;
+    measurementsModalKeyboardWired = true;
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'overlay.measurementsModal.close',
+        type: 'whenFocused',
+        modalId: 'measurementsModal',
+        label: 'Close',
+        keys: 'Alt+Q',
+        overlayIcon: 'fas fa-times',
+        overlayGroup: 'Director',
+        overlayOnly: true,
+        priority: -10
+    });
+}
+
 function initializeDirector() {
     if (!window.directorInstance) {
         window.directorInstance = new Director();

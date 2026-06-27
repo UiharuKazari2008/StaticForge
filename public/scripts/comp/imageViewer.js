@@ -199,10 +199,10 @@ class ImageViewer {
         this.dragStartPanX = 0;
         this.dragStartPanY = 0;
 
+        this.wireBoundHandlers();
         this.init();
         this.loadImage();
         this.setupEventListeners();
-        this.setupWindowBlurHandler();
         this.setupContextMenu();
         this.setupResizeHandler();
         this.element.addEventListener('modalMaximized', () => {
@@ -213,6 +213,47 @@ class ImageViewer {
         });
     }
 
+    wireBoundHandlers() {
+        this.boundDragMove = (e) => this.handleDragMove(e);
+        this.boundDragEnd = (e) => this.handleDragEnd(e);
+        this.boundTouchStart = (e) => this.handleTouchStart(e);
+        this.boundTouchMove = (e) => this.handleTouchMove(e);
+        this.boundTouchEnd = (e) => this.handleTouchEnd(e);
+        this.boundBlurHandler = () => {
+            if (this.isDragging) {
+                this.isDragging = false;
+                this.updateCursor();
+            }
+        };
+        this.boundContextMenuHandler = (e) => this.handleContextMenuAction(e);
+    }
+
+    wireModalListenerScope() {
+        if (this.element._imageViewerModalScopeWired) return;
+        this.element._imageViewerModalScopeWired = true;
+        // attachModalListeners: public/scripts/comp/modalListenerScope.js
+        attachModalListeners(this.element, (signal) => {
+            document.addEventListener('mousemove', this.boundDragMove, { signal });
+            document.addEventListener('mouseup', this.boundDragEnd, { signal });
+            document.addEventListener('touchmove', this.boundTouchMove, { passive: false, signal });
+            document.addEventListener('touchend', this.boundTouchEnd, { signal });
+            window.addEventListener('blur', this.boundBlurHandler, { signal });
+            document.addEventListener('contextMenuAction', this.boundContextMenuHandler, { signal });
+        });
+
+        registerKeyboardListener({
+            id: `imageViewer.overlayClose.${this.id}`,
+            type: 'whenFocused',
+            modalId: this.id,
+            label: 'Close',
+            keys: 'Alt+Q',
+            overlayIcon: 'fas fa-times',
+            overlayGroup: 'Lumen',
+            overlayOnly: true,
+            priority: -10
+        });
+    }
+
     init() {
         // Set title with "Lumen [name]" format
         const titleElement = this.element.querySelector(`#imageViewerTitle_${this.id}`);
@@ -220,9 +261,12 @@ class ImageViewer {
             titleElement.textContent = `Lumen [${this.title}]`;
         }
 
+        this.wireModalListenerScope();
         openModal(this.element);
+        // Backup scope open — openModal skips Lumen position restore, not onModalOpened (modalListenerScope.js)
+        onModalOpened(this.element);
 
-        // Restore after visible — openModal skips Lumen while hidden (public/scripts/comp/modalUtils.js)
+        // Restore after visible — openModal skips Lumen position restore (public/scripts/comp/modalUtils.js)
         const windowKey = this.element.dataset.windowIdentifier;
         const hasSavedLayout = window.isDesktop && windowKey
             && typeof globalWindowPositions !== 'undefined'
@@ -371,17 +415,6 @@ class ImageViewer {
             });
         }
 
-        this.boundDragMove = (e) => this.handleDragMove(e);
-        this.boundDragEnd = (e) => this.handleDragEnd(e);
-
-        document.addEventListener('mousemove', this.boundDragMove);
-        document.addEventListener('mouseup', this.boundDragEnd);
-
-        // Touch events
-        this.boundTouchStart = (e) => this.handleTouchStart(e);
-        this.boundTouchMove = (e) => this.handleTouchMove(e);
-        this.boundTouchEnd = (e) => this.handleTouchEnd(e);
-
         if (imgElement) {
             imgElement.addEventListener('touchstart', this.boundTouchStart, { passive: false });
         }
@@ -393,9 +426,6 @@ class ImageViewer {
                 }
             }, { passive: false });
         }
-
-        document.addEventListener('touchmove', this.boundTouchMove, { passive: false });
-        document.addEventListener('touchend', this.boundTouchEnd);
 
         // Close button
         const closeBtn = this.element.querySelector(`.close-btn`);
@@ -643,9 +673,7 @@ class ImageViewer {
         // Attach context menu
         contextMenu.attachToElement(container, contextMenuConfig);
 
-        // Handle context menu actions on document level
-        this.boundContextMenuHandler = (e) => this.handleContextMenuAction(e);
-        document.addEventListener('contextMenuAction', this.boundContextMenuHandler);
+        // contextMenuAction scoped via wireModalListenerScope — modalListenerScope.js
     }
 
     handleContextMenuAction(event) {
@@ -1070,17 +1098,6 @@ class ImageViewer {
         this.updateCursor();
     }
 
-    setupWindowBlurHandler() {
-        this.boundBlurHandler = () => {
-            if (this.isDragging) {
-                this.isDragging = false;
-                this.updateCursor();
-            }
-        };
-
-        window.addEventListener('blur', this.boundBlurHandler);
-    }
-
     setupResizeHandler() {
         this.boundResizeHandler = () => {
             // When modal is resized, recalculate fit-to-screen if currently at fit
@@ -1309,18 +1326,8 @@ class ImageViewer {
     }
 
     destroy() {
-        if (this.boundDragMove) {
-            document.removeEventListener('mousemove', this.boundDragMove);
-        }
-        if (this.boundDragEnd) {
-            document.removeEventListener('mouseup', this.boundDragEnd);
-        }
-        if (this.boundTouchMove) {
-            document.removeEventListener('touchmove', this.boundTouchMove);
-        }
-        if (this.boundTouchEnd) {
-            document.removeEventListener('touchend', this.boundTouchEnd);
-        }
+        // Backup scope close — closeModal already calls onModalClosed (modalListenerScope.js)
+        onModalClosed(this.element);
 
         // Remove element listeners if possible (though standard destroy removes element)
         const imgElement = this.element ? this.element.querySelector(`#imageViewerImage_${this.id}`) : null;
@@ -1337,14 +1344,14 @@ class ImageViewer {
             imgElement.removeEventListener('touchstart', this.boundTouchStart);
         }
 
-        if (this.boundBlurHandler) {
-            window.removeEventListener('blur', this.boundBlurHandler);
+        if (this._keyboardRegistryId) {
+            // deregisterKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+            deregisterKeyboardListener(this._keyboardRegistryId);
+            this._keyboardRegistryId = null;
         }
+
         if (this.boundResizeHandler && this.element) {
             this.element.removeEventListener('modalResized', this.boundResizeHandler);
-        }
-        if (this.boundContextMenuHandler) {
-            document.removeEventListener('contextMenuAction', this.boundContextMenuHandler);
         }
 
         if (this.element && this.element.parentNode) {

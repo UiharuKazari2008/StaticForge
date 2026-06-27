@@ -1008,6 +1008,13 @@ class FileSearch {
             if (window.filteredImageIndices) {
                 delete window.filteredImageIndices;
             }
+        } else {
+            const hadNarrowFilter = Array.isArray(window.filteredImageIndices)
+                && window.originalAllImages
+                && window.filteredImageIndices.length < window.originalAllImages.length;
+            if (hadNarrowFilter && typeof window.applyFilteredImages === 'function') {
+                window.applyFilteredImages(window.originalAllImages, null);
+            }
         }
 
         // Clear search UI

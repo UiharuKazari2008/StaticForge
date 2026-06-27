@@ -204,6 +204,110 @@ function getActivePhotoSwipe() {
     return null;
 }
 
+function getPhotoSwipePageSkipCount() {
+    const viewportHeight = window.innerHeight;
+    return Math.max(1, Math.floor(viewportHeight / 200));
+}
+
+function isPhotoSwipeWindowKeyboardContext() {
+    const shell = getPhotoSwipeShell();
+    if (!shell || shell.classList.contains('hidden')) return false;
+    // isModalActive — public/scripts/comp/modalUtils.js
+    if (typeof isModalActive === 'function') {
+        return isModalActive(shell);
+    }
+    const stack = modalStack || [];
+    return stack.length > 0 && stack[stack.length - 1] === shell;
+}
+
+function onPhotoSwipeWindowEscapeKeydown(e) {
+    if (e.key !== 'Escape') return;
+    if (!isPhotoSwipeWindowKeyboardContext()) return;
+    const pswp = getActivePhotoSwipe();
+    if (pswp) {
+        e.preventDefault();
+        e.stopPropagation();
+        pswp.close();
+        return true;
+    }
+    const shell = getPhotoSwipeShell();
+    if (document.body.classList.contains('desktop-mode') && shell && shell.classList.contains('windowed')) {
+        return;
+    }
+}
+
+function onPhotoSwipePageNavKeydown(e) {
+    if (e.key !== 'PageDown' && e.key !== 'PageUp') return;
+    if (!isPhotoSwipeWindowKeyboardContext()) return;
+    const pswp = getActivePhotoSwipe();
+    if (!pswp || !pswp.isOpen) return;
+    const tag = e.target && e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target && e.target.isContentEditable)) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    const skipCount = getPhotoSwipePageSkipCount();
+    const currentIndex = pswp.currIndex;
+    const totalImages = pswp.numItems;
+    if (e.key === 'PageDown') {
+        const nextIndex = Math.min(currentIndex + skipCount, totalImages - 1);
+        if (nextIndex !== currentIndex) {
+            pswp.goTo(nextIndex);
+        }
+    } else {
+        const prevIndex = Math.max(currentIndex - skipCount, 0);
+        if (prevIndex !== currentIndex) {
+            pswp.goTo(prevIndex);
+        }
+    }
+    return true;
+}
+
+function wirePhotoSwipeKeyboardListeners() {
+    if (document.body.dataset.photoSwipeKeyboardWired === 'true') return;
+    document.body.dataset.photoSwipeKeyboardWired = 'true';
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'photoSwipeWindow.escape',
+        handler: onPhotoSwipeWindowEscapeKeydown,
+        type: 'whenFocused',
+        modalId: 'photoSwipeWindow',
+        priority: 80,
+        critical: true,
+        label: 'Close image',
+        keys: 'Esc',
+        overlayIcon: 'fas fa-times',
+        overlayGroup: 'PhotoSwipe',
+        showInOverlay: false
+    });
+    registerKeyboardListener({
+        id: 'photoSwipeWindow.pageNav',
+        handler: onPhotoSwipePageNavKeydown,
+        type: 'whenFocused',
+        modalId: 'photoSwipeWindow',
+        priority: 58,
+        critical: false,
+        showInOverlay: false
+    });
+    [
+        { id: 'overlay.photoSwipeWindow.pageDown', label: 'Skip forward', keys: 'Page Down', icon: 'fas fa-chevron-down' },
+        { id: 'overlay.photoSwipeWindow.pageUp', label: 'Skip back', keys: 'Page Up', icon: 'fas fa-chevron-up' },
+        { id: 'overlay.photoSwipeWindow.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
+    ].forEach((entry) => {
+        registerKeyboardListener({
+            id: entry.id,
+            type: 'whenFocused',
+            modalId: 'photoSwipeWindow',
+            label: entry.label,
+            keys: entry.keys,
+            overlayIcon: entry.icon,
+            overlayGroup: 'PhotoSwipe',
+            overlayOnly: true,
+            priority: -10
+        });
+    });
+}
+
 function wirePhotoSwipeShellControlsOnce() {
     const shell = getPhotoSwipeShell();
     if (!shell || shell.dataset.photoswipeShellWired === 'true') return;
@@ -787,66 +891,6 @@ async function initializePhotoSwipe() {
             }
         });
 
-        // Add PageDown/PageUp keyboard navigation
-        lightbox.on('afterInit', function() {
-            if (!lightbox.pswp) return;
-            
-            // Calculate how many images to skip based on viewport
-            const calculateSkipCount = () => {
-                // Get viewport height
-                const viewportHeight = window.innerHeight;
-                // Estimate image height (most images are roughly square, so use viewport height)
-                // Skip approximately one viewport worth of images
-                return Math.max(1, Math.floor(viewportHeight / 200)); // At least 1, roughly 3-5 images per page
-            };
-            
-            // Add keyboard event listener
-            const handleKeyDown = (e) => {
-                // Only handle if PhotoSwipe is open
-                if (!lightbox.pswp || !lightbox.pswp.isOpen) return;
-                
-                // Don't handle if user is typing in an input
-                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
-                    return;
-                }
-                
-                if (e.key === 'PageDown') {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    
-                    const skipCount = calculateSkipCount();
-                    const currentIndex = lightbox.pswp.currIndex;
-                    const totalImages = lightbox.pswp.numItems;
-                    const nextIndex = Math.min(currentIndex + skipCount, totalImages - 1);
-                    
-                    if (nextIndex !== currentIndex) {
-                        lightbox.pswp.goTo(nextIndex);
-                    }
-                } else if (e.key === 'PageUp') {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    
-                    const skipCount = calculateSkipCount();
-                    const currentIndex = lightbox.pswp.currIndex;
-                    const prevIndex = Math.max(currentIndex - skipCount, 0);
-                    
-                    if (prevIndex !== currentIndex) {
-                        lightbox.pswp.goTo(prevIndex);
-                    }
-                }
-            };
-            
-            // Add event listener when PhotoSwipe opens
-            lightbox.on('openingAnimationEnd', () => {
-                document.addEventListener('keydown', handleKeyDown, true);
-            });
-            
-            // Remove event listener when PhotoSwipe closes
-            lightbox.on('close', () => {
-                document.removeEventListener('keydown', handleKeyDown, true);
-            });
-        });
-
         lightbox.on('close', () => {
             teardownPhotoSwipeDesktopShell();
         });
@@ -869,6 +913,7 @@ async function initializePhotoSwipe() {
         });
 
         // Initialize the lightbox
+        wirePhotoSwipeKeyboardListeners();
         lightbox.init();
     } catch (error) {
         console.error('Failed to initialize PhotoSwipe:', error);

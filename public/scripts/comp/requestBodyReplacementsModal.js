@@ -7,96 +7,130 @@
 let requestBodyReplacements = [];
 let originalRequestBodyReplacements = [];
 
-let requestBodyReplacementsModalWired = false;
-
-// Initialize request body replacements modal
-function initializeRequestBodyReplacementsModal() {
-    if (requestBodyReplacementsModalWired) {
-        return;
-    }
-    requestBodyReplacementsModalWired = true;
-
+function handleRequestBodyReplacementsModalKeydown(e) {
     const modal = document.getElementById('requestBodyReplacementsModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'n' || e.key === 'N')) {
+        e.preventDefault();
+        e.stopPropagation();
+        showCreateRequestBodyReplacementModal();
+        return true;
+    }
+}
+
+function handleCreateRequestBodyReplacementKeydown(e) {
+    const modal = document.getElementById('createRequestBodyReplacementModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        hideCreateRequestBodyReplacementModal();
+        return true;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleCreateRequestBodyReplacementSubmit();
+        return true;
+    }
+}
+
+let requestBodyReplacementsKeyboardWired = false;
+
+function wireRequestBodyReplacementsKeyboard() {
+    if (requestBodyReplacementsKeyboardWired) return;
+    requestBodyReplacementsKeyboardWired = true;
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'requestBodyReplacementsModal.keydown',
+        handler: handleRequestBodyReplacementsModalKeydown,
+        type: 'whenFocused',
+        modalId: 'requestBodyReplacementsModal',
+        priority: 75,
+        showInOverlay: false
+    });
+    registerKeyboardListener({
+        id: 'createRequestBodyReplacementModal.keydown',
+        handler: handleCreateRequestBodyReplacementKeydown,
+        type: 'whenFocused',
+        modalId: 'createRequestBodyReplacementModal',
+        priority: 85,
+        critical: true,
+        showInOverlay: false
+    });
+    registerModalOverlayEntries('requestBodyReplacementsModal', 'Text Replacements', [
+        { id: 'overlay.requestBodyReplacements.create', label: 'New expander', keys: 'Ctrl+N', icon: 'fas fa-plus' },
+        { id: 'overlay.requestBodyReplacements.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
+    ]);
+    registerModalOverlayEntries('createRequestBodyReplacementModal', 'Text Replacements', [
+        { id: 'overlay.createRequestBodyReplacement.save', label: 'Save', keys: 'Ctrl+S', icon: 'fas fa-save' },
+        { id: 'overlay.createRequestBodyReplacement.close', label: 'Close', keys: 'Esc', icon: 'fas fa-times' }
+    ]);
+}
+
+function attachRequestBodyReplacementsModalListeners(signal) {
     const closeBtn = document.getElementById('closeRequestBodyReplacementsBtn');
     const addBtn = document.getElementById('addRequestBodyReplacementBtn');
     const manageBtn = document.getElementById('manageTextReplacementsBtn');
 
-    if (modal) {
-        // Close on escape key
-        modal.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                hideRequestBodyReplacementsModal();
-            }
-        });
-    }
-
     if (closeBtn) {
-        closeBtn.addEventListener('click', hideRequestBodyReplacementsModal);
+        closeBtn.addEventListener('click', hideRequestBodyReplacementsModal, { signal });
     }
 
     if (addBtn) {
-        addBtn.addEventListener('click', showCreateRequestBodyReplacementModal);
+        addBtn.addEventListener('click', showCreateRequestBodyReplacementModal, { signal });
     }
 
     if (manageBtn) {
         manageBtn.addEventListener('click', () => {
             hideRequestBodyReplacementsModal();
             showTextReplacementManager();
-        });
+        }, { signal });
     }
-
-    // Initialize create modal
-    initializeCreateRequestBodyReplacementModal();
 }
 
-let createRequestBodyReplacementModalWired = false;
-
-// Initialize create request body replacement modal
-function initializeCreateRequestBodyReplacementModal() {
-    if (createRequestBodyReplacementModalWired) {
-        return;
-    }
-    createRequestBodyReplacementModalWired = true;
-
-    const modal = document.getElementById('createRequestBodyReplacementModal');
+function attachCreateRequestBodyReplacementModalListeners(signal) {
     const closeBtn = document.getElementById('closeCreateRequestBodyReplacementBtn');
     const saveBtn = document.getElementById('createRequestBodyReplacementSaveBtn');
-    const typeSelect = document.getElementById('requestBodyReplacementTypeSelect');
     const extendBtn = document.getElementById('requestBodyReplacementExtendBtn');
-
-    if (modal) {
-        // Close on escape key
-        modal.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                hideCreateRequestBodyReplacementModal();
-            }
-        });
-    }
+    const addArrayItemBtn = document.getElementById('addCreateRequestBodyArrayItemBtn');
 
     if (closeBtn) {
-        closeBtn.addEventListener('click', hideCreateRequestBodyReplacementModal);
+        closeBtn.addEventListener('click', hideCreateRequestBodyReplacementModal, { signal });
     }
 
     if (saveBtn) {
-        saveBtn.addEventListener('click', handleCreateRequestBodyReplacementSubmit);
+        saveBtn.addEventListener('click', handleCreateRequestBodyReplacementSubmit, { signal });
     }
-
-    // Setup custom dropdown for stage type
-    setupCreateStageTypeDropdown();
 
     if (extendBtn) {
         extendBtn.addEventListener('click', () => {
             const isExtend = extendBtn.getAttribute('data-state') === 'on';
             extendBtn.setAttribute('data-state', isExtend ? 'off' : 'on');
             extendBtn.title = isExtend ? 'Replace Mode' : 'Extend Mode';
-        });
+        }, { signal });
     }
 
-    // Add event listener for add array item button
-    const addArrayItemBtn = document.getElementById('addCreateRequestBodyArrayItemBtn');
     if (addArrayItemBtn) {
-        addArrayItemBtn.addEventListener('click', addCreateRequestBodyArrayItem);
+        addArrayItemBtn.addEventListener('click', addCreateRequestBodyArrayItem, { signal });
     }
+}
+
+function initRequestBodyReplacementsModalListenerScope() {
+    const mainModal = document.getElementById('requestBodyReplacementsModal');
+    const createModal = document.getElementById('createRequestBodyReplacementModal');
+    // attachModalListeners: public/scripts/comp/modalListenerScope.js
+    if (mainModal) {
+        attachModalListeners(mainModal, attachRequestBodyReplacementsModalListeners);
+    }
+    if (createModal) {
+        attachModalListeners(createModal, attachCreateRequestBodyReplacementModalListeners);
+    }
+    setupCreateStageTypeDropdown();
+    wireRequestBodyReplacementsKeyboard();
 }
 
 // Show request body replacements modal
@@ -1489,6 +1523,6 @@ function escapeHtml(text) {
 }
 
 // Initialize when DOM is loaded
-window.wsClient.registerInitStep(46, 'Initializing Request Body Replacements Modal', async () => {
-    initializeRequestBodyReplacementsModal();
+window.wsClient.registerInitStep(460, 'Request body replacements listener scope', async () => {
+    initRequestBodyReplacementsModalListenerScope();
 });

@@ -245,6 +245,7 @@ class WebSocketMessageHandlers {
         }
         this.keepAliveIntervals = new Map(); // Store keep-alive intervals by requestId
         this.cancelledGenerationRequestIds = new Set(); // Client-cancelled image generation request IDs
+        this.activeGenerationByClient = new WeakMap(); // ws -> Set<requestId>
         this.metadataCache = new MetadataCache(1000); // LRU cache with 1000 items
         this.metadataCache.startCleanup(); // Start periodic cleanup
         this.vfsHandlers = new VfsWebSocketHandlers(this);
@@ -2327,6 +2328,8 @@ class WebSocketMessageHandlers {
                 return;
             }
 
+            this.registerActiveGeneration(ws, requestId);
+
             // Use target_workspace from preset if no workspace specified (for REST API calls)
             const targetWorkspace = workspace || (preset.target_workspace && preset.target_workspace !== 'default' ? preset.target_workspace : this.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId));
 
@@ -2351,13 +2354,15 @@ class WebSocketMessageHandlers {
                 };
             }
 
-            // Generate image using the preset
+            // Generate image using the preset (include client step preview dims for streaming JPEG resize)
             const result = await generateImageWebSocket(this.globalResources, {
                 ...preset,
                 workspace: targetWorkspace,
                 presetName: presetName,
                 allow_paid: allow_paid,
-                requestId
+                requestId,
+                stepPreviewWidth: message.stepPreviewWidth,
+                stepPreviewHeight: message.stepPreviewHeight
             }, clientInfo.userType, clientInfo.sessionId, streamingCallback, ws, this, wsServer);
 
             // Send generation response
@@ -2381,6 +2386,7 @@ class WebSocketMessageHandlers {
             console.error('Preset generation error:', error);
             this.sendError(ws, 'Failed to generate preset', error.message, message.requestId);
         } finally {
+            this.unregisterActiveGeneration(ws, requestId);
             this.clearGenerationCancelled(requestId);
         }
     }
@@ -4382,12 +4388,7 @@ class WebSocketMessageHandlers {
                     data: activeWorkspaceData
                 } : null
             };
-            const config = this.globalResources.getConfig();
             options.defaultGrokModel = this.globalResources.getGrokService().getDefaultGrokModel();
-            if (config.enable_dev) {
-                options.devPort = config.devPort || 65202;
-                options.devHost = config.devHost || 'localhost';
-            }
 
             // Send response
             this.sendToClient(ws, {
@@ -10390,26 +10391,96 @@ class WebSocketMessageHandlers {
         });
     }
 
-    // Step preview frames are large; skip them when the link is backed up or high-latency (align RTT with public/scripts/websocket.js pingWarningThreshold).
-    STEP_PREVIEW_RTT_MS_THRESHOLD = 500;
+    // Step preview frames are batched to reduce WebSocket message overhead on high-latency links.
+    STEP_PREVIEW_BATCH_FLUSH_MS = 120;
+    STEP_PREVIEW_BATCH_MAX_FRAMES = 8;
     STEP_PREVIEW_BUFFERED_BYTES_THRESHOLD = 512 * 1024;
+    STEP_PREVIEW_INITIAL_MIN_FRAMES = 5;
+    STEP_PREVIEW_INITIAL_MAX_WAIT_MS = 1000;
 
-    shouldSendStepPreviewImages(ws) {
-        try {
-            if (ws.bufferedAmount > this.STEP_PREVIEW_BUFFERED_BYTES_THRESHOLD) {
-                return false;
+    createStepPreviewBatcher(ws, requestId, progressBase = {}) {
+        const pendingFrames = [];
+        let flushTimer = null;
+        let initialWaitTimer = null;
+        let initialPhaseComplete = false;
+        const maxFrames = this.STEP_PREVIEW_BATCH_MAX_FRAMES;
+        const flushMs = this.STEP_PREVIEW_BATCH_FLUSH_MS;
+        const bufferedThreshold = this.STEP_PREVIEW_BUFFERED_BYTES_THRESHOLD;
+        const initialMinFrames = this.STEP_PREVIEW_INITIAL_MIN_FRAMES;
+        const initialMaxWaitMs = this.STEP_PREVIEW_INITIAL_MAX_WAIT_MS;
+
+        const isSendBufferHigh = () => {
+            return ws && typeof ws.bufferedAmount === 'number'
+                && ws.bufferedAmount >= bufferedThreshold;
+        };
+
+        const clearInitialWaitTimer = () => {
+            if (initialWaitTimer) {
+                clearTimeout(initialWaitTimer);
+                initialWaitTimer = null;
             }
-            const wsServer = this.globalResources.getWebSocketServer();
-            const clientInfo = wsServer && wsServer.clients && wsServer.clients.get(ws);
-            if (clientInfo && typeof clientInfo.lastClientRttMs === 'number' && Number.isFinite(clientInfo.lastClientRttMs)) {
-                if (clientInfo.lastClientRttMs > this.STEP_PREVIEW_RTT_MS_THRESHOLD) {
-                    return false;
+        };
+
+        const flushNow = () => {
+            if (flushTimer) {
+                clearTimeout(flushTimer);
+                flushTimer = null;
+            }
+            clearInitialWaitTimer();
+            if (pendingFrames.length === 0) return;
+            initialPhaseComplete = true;
+            const stepFrames = pendingFrames.splice(0, pendingFrames.length);
+            const lastFrame = stepFrames[stepFrames.length - 1];
+            this.sendGenerationProgress(ws, requestId, {
+                ...progressBase,
+                phase: 'generating',
+                stepFrames,
+                currentStep: lastFrame.currentStep,
+                totalSteps: lastFrame.totalSteps,
+                imageData: lastFrame.imageData,
+                imageFormat: lastFrame.imageFormat || 'jpeg'
+            });
+        };
+
+        const scheduleFlush = () => {
+            if (flushTimer) return;
+            flushTimer = setTimeout(flushNow, flushMs);
+        };
+
+        const scheduleInitialWaitFlush = () => {
+            if (initialWaitTimer || initialPhaseComplete) return;
+            initialWaitTimer = setTimeout(flushNow, initialMaxWaitMs);
+        };
+
+        return {
+            add(frame) {
+                pendingFrames.push(frame);
+                if (!initialPhaseComplete) {
+                    if (pendingFrames.length >= initialMinFrames) {
+                        flushNow();
+                    } else {
+                        scheduleInitialWaitFlush();
+                    }
+                    return;
                 }
+                if (pendingFrames.length >= maxFrames || isSendBufferHigh()) {
+                    flushNow();
+                } else {
+                    scheduleFlush();
+                }
+            },
+            flush() {
+                flushNow();
+            },
+            dispose() {
+                if (flushTimer) {
+                    clearTimeout(flushTimer);
+                    flushTimer = null;
+                }
+                clearInitialWaitTimer();
+                pendingFrames.length = 0;
             }
-            return true;
-        } catch {
-            return true;
-        }
+        };
     }
 
     // Resolve byte length for a generated image (buffer or saved file on disk).
@@ -10435,8 +10506,12 @@ class WebSocketMessageHandlers {
     // Send unified image generation progress updates
     sendGenerationProgress(ws, requestId, progressData) {
         let imageData = progressData.imageData || null;
-        if (imageData && !this.shouldSendStepPreviewImages(ws)) {
-            imageData = null;
+        let stepFrames = progressData.stepFrames || null;
+        if (stepFrames && Array.isArray(stepFrames) && stepFrames.length > 0) {
+            const lastFrame = stepFrames[stepFrames.length - 1];
+            if (!imageData && lastFrame && lastFrame.imageData) {
+                imageData = lastFrame.imageData;
+            }
         }
 
         this.sendToClient(ws, {
@@ -10453,7 +10528,9 @@ class WebSocketMessageHandlers {
                 reasoning: progressData.reasoning || null, // for 3rd line display
                 toolName: progressData.toolName || null, // tool name for icon/styling
                 toolReason: progressData.toolReason || null, // tool-specific reason
-                imageData, // base64 image data for preview (omitted when connection is slow or high-latency)
+                imageData,
+                imageFormat: progressData.imageFormat || (stepFrames && stepFrames[0] ? stepFrames[0].imageFormat : null) || null,
+                stepFrames,
                 // Staged generation fields
                 totalStages: progressData.totalStages || null,
                 currentStage: progressData.currentStage || null,
@@ -10514,6 +10591,35 @@ class WebSocketMessageHandlers {
     clearGenerationCancelled(requestId) {
         if (requestId) {
             this.cancelledGenerationRequestIds.delete(requestId);
+        }
+    }
+
+    registerActiveGeneration(ws, requestId) {
+        if (!ws || typeof requestId !== 'string' || !requestId) return;
+        let activeIds = this.activeGenerationByClient.get(ws);
+        if (!activeIds) {
+            activeIds = new Set();
+            this.activeGenerationByClient.set(ws, activeIds);
+        }
+        activeIds.add(requestId);
+    }
+
+    unregisterActiveGeneration(ws, requestId) {
+        if (!ws || typeof requestId !== 'string' || !requestId) return;
+        const activeIds = this.activeGenerationByClient.get(ws);
+        if (!activeIds) return;
+        activeIds.delete(requestId);
+        if (activeIds.size === 0) {
+            this.activeGenerationByClient.delete(ws);
+        }
+    }
+
+    cancelActiveGenerationsForClient(ws) {
+        const activeIds = this.activeGenerationByClient.get(ws);
+        if (!activeIds || activeIds.size === 0) return;
+        for (const requestId of [...activeIds]) {
+            this.markGenerationCancelled(requestId);
+            this.stopKeepAliveInterval(requestId);
         }
     }
 
@@ -11907,6 +12013,7 @@ class WebSocketMessageHandlers {
 
             // Start keep-alive for long-running image generation
             this.startKeepAliveInterval(ws, requestId, 15000); // Every 15 seconds for image generation
+            this.registerActiveGeneration(ws, requestId);
 
             if (enableStreaming) {
                 // Handle streaming generation
@@ -12047,6 +12154,7 @@ class WebSocketMessageHandlers {
                 timestamp: new Date().toISOString()
             });
         } finally {
+            this.unregisterActiveGeneration(ws, requestId);
             this.clearGenerationCancelled(requestId);
         }
     }
@@ -12240,6 +12348,7 @@ class WebSocketMessageHandlers {
 
             // Start keep-alive for long-running expansion
             this.startKeepAliveInterval(ws, requestId, 15000);
+            this.registerActiveGeneration(ws, requestId);
 
             // Setup streaming callback if enabled
             let streamingCallback = null;
@@ -12276,7 +12385,9 @@ class WebSocketMessageHandlers {
                 this,
                 requestId, // Pass the requestId for consistent progress tracking
                 data.sourceFilename || data.filename, // The original source image for metadata tracking
-                data.enableAI || false // Enable/disable AI processing
+                data.enableAI || false, // Enable/disable AI processing
+                data.stepPreviewWidth,
+                data.stepPreviewHeight
             );
 
             // Stop keep-alive
@@ -12316,6 +12427,9 @@ class WebSocketMessageHandlers {
                 error: error.message || 'Image expansion failed',
                 timestamp: new Date().toISOString()
             });
+        } finally {
+            this.unregisterActiveGeneration(ws, requestId);
+            this.clearGenerationCancelled(requestId);
         }
     }
 
@@ -12336,6 +12450,7 @@ class WebSocketMessageHandlers {
 
             // Start keep-alive for long-running reroll
             this.startKeepAliveInterval(ws, requestId, 15000);
+            this.registerActiveGeneration(ws, requestId);
 
             // Setup streaming callback if enabled
             let streamingCallback = null;
@@ -12354,7 +12469,9 @@ class WebSocketMessageHandlers {
                 streamingCallback,
                 ws,
                 this,
-                requestId
+                requestId,
+                data.stepPreviewWidth,
+                data.stepPreviewHeight
             );
 
             // Stop keep-alive
@@ -12388,6 +12505,9 @@ class WebSocketMessageHandlers {
                 error: error.message || 'Image expansion reroll failed',
                 timestamp: new Date().toISOString()
             });
+        } finally {
+            this.unregisterActiveGeneration(ws, requestId);
+            this.clearGenerationCancelled(requestId);
         }
     }
 

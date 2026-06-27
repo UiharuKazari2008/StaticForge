@@ -1,7 +1,7 @@
 /**
  * Manual preview hub: blurred background, update/navigation, dialogs, workspace overlay, lightbox.
  * showManualPreview / hideManualPreview / registerManualPreviewEventListeners: manualModalManager.js
- * Wired via registerInitStep 47.05.
+ * Wired via registerInitStep 471.
  */
 
 // Manual preview image src lifecycle
@@ -570,8 +570,11 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
             const isGenerationFinalize = !!(response && response.headers);
             const contentLengthHeader = response?.headers?.get?.('Content-Length') || response?.headers?.get?.('content-length');
             const knownContentLength = parseInt(contentLengthHeader || '0', 10);
-            const useTrackedFetch = isGenerationFinalize
-                || (!!response && Number.isFinite(knownContentLength) && knownContentLength > 0);
+            const prefetchedBlobUrl = response?.prefetchedBlobUrl || null;
+            const useTrackedFetch = !prefetchedBlobUrl && (
+                isGenerationFinalize
+                || (!!response && Number.isFinite(knownContentLength) && knownContentLength > 0)
+            );
 
             if (isGenerationFinalize && previewImage.src) {
                 previewImage.classList.remove('hidden');
@@ -624,6 +627,9 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                         showManualPreviewNavigationLoading(true, 'Loading image…');
                     }
                 }
+            } else if (prefetchedBlobUrl) {
+                trackedBlobUrl = prefetchedBlobUrl;
+                trackManualPreviewBlobUrl(trackedBlobUrl);
             }
 
             const loadSrc = trackedBlobUrl || imageUrl;
@@ -1915,12 +1921,12 @@ async function loadImageIntoManualPreview(imageIndex) {
     }
 }
 
-function wireManualPreviewManager() {
-    // Preview toolbar, prev/next nav, workspace overlay clicks: manualModalManager.js (step 47)
+function initManualPreviewManager() {
+    // Preview toolbar, prev/next nav, workspace overlay clicks: manualModalManager.js (step 470)
 }
 
 if (typeof wsClient !== 'undefined' && wsClient) {
-    wsClient.registerInitStep(47.05, 'Manual preview manager', async () => {
-        wireManualPreviewManager();
+    wsClient.registerInitStep(471, 'Manual preview manager', async () => {
+        initManualPreviewManager();
     });
 }

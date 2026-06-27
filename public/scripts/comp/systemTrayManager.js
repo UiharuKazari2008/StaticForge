@@ -152,7 +152,7 @@ function setupTrayIconPopovers() {
         'serviceWorkerTrayIcon',
         'modemTrayIcon',
         'pingWarningIndicator',
-        'taskbarWebsocketIndicator'
+        'devWarningsTrayIcon'
     ];
 
     const trayIconElements = new Set();
@@ -161,17 +161,23 @@ function setupTrayIconPopovers() {
         const icon = document.getElementById(iconId);
         if (!icon) return;
 
+        const title = (icon.getAttribute('title') || '').trim();
+        if (!title) {
+            icon.removeAttribute('title');
+            return;
+        }
+
         trayIconElements.add(icon);
 
         window.PopoverManager.attach(icon, {
-            content: icon.title || '',
+            content: title,
             hoverOnly: true,
             position: 'top',
             arrowPosition: 'bottom-right',
             onShow: (popover, element) => {
-                const title = element.title || '';
-                if (title) {
-                    window.PopoverManager.updateContent(element, title);
+                const liveTitle = (element.getAttribute('title') || '').trim();
+                if (liveTitle) {
+                    window.PopoverManager.updateContent(element, liveTitle);
                 }
             }
         });
@@ -185,8 +191,10 @@ function setupTrayIconPopovers() {
             const mutation = mutations[i];
             if (mutation.type !== 'attributes' || mutation.attributeName !== 'title') continue;
             const icon = mutation.target;
-            if (!trayIconElements.has(icon) || !icon.title) continue;
-            window.PopoverManager.updateContent(icon, icon.title);
+            if (!trayIconElements.has(icon)) continue;
+            const liveTitle = (icon.getAttribute('title') || '').trim();
+            if (!liveTitle) continue;
+            window.PopoverManager.updateContent(icon, liveTitle);
         }
     });
 
@@ -200,7 +208,9 @@ function setupTrayIconPopovers() {
 let activePopoverTimer = null;
 let popoverInteractionListeners = null;
 
-function startPopoverAutoHideTimer(indicator) {
+const TRAY_POPOVER_FALLBACK_MAX_MS = 15000;
+
+function startPopoverAutoHideTimer(indicator, maxMs = TRAY_POPOVER_FALLBACK_MAX_MS) {
     if (activePopoverTimer) {
         clearTimeout(activePopoverTimer);
         activePopoverTimer = null;
@@ -211,132 +221,53 @@ function startPopoverAutoHideTimer(indicator) {
         popoverInteractionListeners = null;
     }
 
-    const isFocused = document.hasFocus() && !document.hidden;
-    let hasInteracted = false;
+    const popoverData = window.PopoverManager?.activePopovers?.get(indicator);
+    if (!popoverData?.popover?.classList.contains('show')) return;
+
+    // PopoverManager schedules hideTimeout for tray notifications; only backfill when missing.
+    if (popoverData.hideTimeout || popoverData.maxShowTimeout) {
+        return;
+    }
 
     const startTimer = () => {
         if (activePopoverTimer) {
             clearTimeout(activePopoverTimer);
         }
-
         activePopoverTimer = setTimeout(() => {
             if (PopoverManager) {
                 PopoverManager.hide(indicator);
             }
             activePopoverTimer = null;
-
             if (popoverInteractionListeners) {
                 popoverInteractionListeners.cleanup();
                 popoverInteractionListeners = null;
             }
-        }, 15000);
+        }, maxMs);
     };
 
-    if (isFocused) {
-        const onMouseMove = () => {
-            hasInteracted = true;
-            startTimer();
-            cleanupListeners();
-        };
+    startTimer();
 
-        const onTouchStart = () => {
-            hasInteracted = true;
-            startTimer();
-            cleanupListeners();
-        };
-
-        const onFocus = () => {
-            if (hasInteracted) {
-                startTimer();
+    const onVisibilityChange = () => {
+        if (document.hidden) {
+            if (activePopoverTimer) {
+                clearTimeout(activePopoverTimer);
+                activePopoverTimer = null;
             }
-        };
+        } else if (popoverData.popover?.classList.contains('show')) {
+            startTimer();
+        }
+    };
 
-        const onVisibilityChange = () => {
-            if (!document.hidden && hasInteracted) {
-                startTimer();
-            } else if (document.hidden) {
-                if (activePopoverTimer) {
-                    clearTimeout(activePopoverTimer);
-                    activePopoverTimer = null;
-                }
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    popoverInteractionListeners = {
+        cleanup: () => {
+            if (activePopoverTimer) {
+                clearTimeout(activePopoverTimer);
+                activePopoverTimer = null;
             }
-        };
-
-        const cleanupListeners = () => {
-            document.removeEventListener('mousemove', onMouseMove, { passive: true });
-            document.removeEventListener('touchstart', onTouchStart, { passive: true });
-            window.removeEventListener('focus', onFocus);
             document.removeEventListener('visibilitychange', onVisibilityChange);
-        };
-
-        popoverInteractionListeners = {
-            cleanup: cleanupListeners
-        };
-
-        document.addEventListener('mousemove', onMouseMove, { passive: true, once: true });
-        document.addEventListener('touchstart', onTouchStart, { passive: true, once: true });
-        window.addEventListener('focus', onFocus);
-        document.addEventListener('visibilitychange', onVisibilityChange);
-    } else {
-        const onFocus = () => {
-            const onMouseMove = () => {
-                hasInteracted = true;
-                startTimer();
-                cleanupListeners();
-            };
-
-            const onTouchStart = () => {
-                hasInteracted = true;
-                startTimer();
-                cleanupListeners();
-            };
-
-            const onVisibilityChange = () => {
-                if (document.hidden) {
-                    if (activePopoverTimer) {
-                        clearTimeout(activePopoverTimer);
-                        activePopoverTimer = null;
-                    }
-                } else if (hasInteracted) {
-                    startTimer();
-                }
-            };
-
-            const cleanupListeners = () => {
-                document.removeEventListener('mousemove', onMouseMove, { passive: true });
-                document.removeEventListener('touchstart', onTouchStart, { passive: true });
-                window.removeEventListener('focus', onFocus);
-                document.removeEventListener('visibilitychange', onVisibilityChange);
-            };
-
-            popoverInteractionListeners = {
-                cleanup: cleanupListeners
-            };
-
-            document.addEventListener('mousemove', onMouseMove, { passive: true, once: true });
-            document.addEventListener('touchstart', onTouchStart, { passive: true, once: true });
-            document.addEventListener('visibilitychange', onVisibilityChange);
-
-            window.removeEventListener('focus', onFocus);
-        };
-
-        window.addEventListener('focus', onFocus);
-
-        const onVisibilityChange = () => {
-            if (!document.hidden) {
-                onFocus();
-            }
-        };
-
-        document.addEventListener('visibilitychange', onVisibilityChange);
-
-        popoverInteractionListeners = {
-            cleanup: () => {
-                window.removeEventListener('focus', onFocus);
-                document.removeEventListener('visibilitychange', onVisibilityChange);
-            }
-        };
-    }
+        }
+    };
 }
 
 function attachFixedCreditsTrayContextMenu(indicator) {
@@ -681,7 +612,9 @@ function setupServiceWorkerTrayContextMenu() {
                         text: 'Restart to Apply Updates',
                         action: 'sw-restart-apply-updates',
                         className: 'text-warning',
-                        hidden: () => !(window.serviceWorkerManager && window.serviceWorkerManager.hasPendingUpdates())
+                        hidden: () => !(window.serviceWorkerManager
+                            && typeof window.serviceWorkerManager.hasPendingUpdates === 'function'
+                            && window.serviceWorkerManager.hasPendingUpdates())
                     },
                     {
                         icon: 'fa-regular fa-sync',
@@ -744,6 +677,8 @@ async function wireSystemTrayListeners() {
     await startBackgroundTrayServices();
     setupTrayIconPopovers();
     wireTrayIndicatorContextMenus();
+    // updateDevWarningsTrayIcon: public/scripts/comp/modalKeyboardRegistry.js
+    updateDevWarningsTrayIcon();
 }
 
 window.prepareSystemTrayBackground = prepareSystemTrayBackground;

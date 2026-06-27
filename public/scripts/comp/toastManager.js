@@ -291,6 +291,9 @@ function _getDesktopPopupAnchorForTitle(title) {
     if (title === 'High Latency Detected') {
         return document.getElementById('pingWarningIndicator');
     }
+    if (title === 'Generation Complete') {
+        return document.getElementById('imageGenerationIndicator');
+    }
     if (DESKTOP_POPUP_TOAST_TITLES.has(title)) {
         return document.getElementById('fixedCreditsIndicator');
     }
@@ -314,16 +317,33 @@ function _showDesktopPopupForToast(toastId, type, title, message, timeout, custo
         return false;
     }
 
+    const resolvedTimeout = timeout === false ? 8000 : timeout;
+    const revealGenerationIndicator = title === 'Generation Complete' && anchor.classList.contains('hidden');
+    if (revealGenerationIndicator) {
+        anchor.classList.remove('hidden');
+    }
+
     showPopover(
         anchor,
         type,
         title,
         message,
         false,
-        timeout === false ? false : timeout,
+        resolvedTimeout,
         customIcon,
         null,
-        { position: 'top', arrowPosition: 'bottom-right' }
+        {
+            position: 'top',
+            arrowPosition: 'bottom-right',
+            onHide: () => {
+                if (activeToasts.has(toastId)) {
+                    activeToasts.delete(toastId);
+                }
+                if (revealGenerationIndicator && typeof updateImageGenerationIndicator === 'function') {
+                    updateImageGenerationIndicator();
+                }
+            }
+        }
     );
     // startPopoverAutoHideTimer: public/scripts/comp/systemTrayManager.js
     if (typeof startPopoverAutoHideTimer === 'function') {
@@ -1297,7 +1317,9 @@ function updateGlassToastComplete(toastId, options = {}) {
             resolvedTitle,
             resolvedMessage,
             resolvedShowProgress,
-            timeout ?? storedBefore?.timeout ?? 5000,
+            timeout !== null && timeout !== undefined
+                ? timeout
+                : (storedBefore?.timeout === false ? 8000 : (storedBefore?.timeout ?? 5000)),
             resolvedIcon
         )) {
             return;

@@ -2,6 +2,67 @@
 const openDropdowns = new Set();
 const DROPDOWN_PANEL_FADE_OUT_MS = 300;
 
+/** Dropdowns with an open menu — guarded by a single document click listener. */
+const dropdownGuardEntries = new Map();
+let dropdownGuardClickHandler = null;
+
+function ensureDropdownGuardListener() {
+    if (dropdownGuardClickHandler) return;
+    dropdownGuardClickHandler = (e) => {
+        dropdownGuardEntries.forEach((entry) => {
+            if (!entry.container.contains(e.target)) {
+                closeDropdown(entry.menu, entry.button);
+            }
+        });
+    };
+    document.addEventListener('click', dropdownGuardClickHandler);
+}
+
+function teardownDropdownGuardListener() {
+    if (!dropdownGuardClickHandler) return;
+    document.removeEventListener('click', dropdownGuardClickHandler);
+    dropdownGuardClickHandler = null;
+}
+
+/**
+ * Register a dropdown for outside-click dismissal while its menu is open.
+ * Replaces per-dropdown permanent document click listeners from setupDropdown.
+ */
+function registerDropdownGuard(container, menu, button) {
+    if (!container || !menu || !button) return;
+
+    if (container._dropdownOutsideClick) {
+        document.removeEventListener('click', container._dropdownOutsideClick);
+        container._dropdownOutsideClick = null;
+    }
+
+    dropdownGuardEntries.set(container, { container, menu, button });
+    ensureDropdownGuardListener();
+}
+
+function unregisterDropdownGuard(container) {
+    if (!container) return;
+    dropdownGuardEntries.delete(container);
+    if (dropdownGuardEntries.size === 0) {
+        teardownDropdownGuardListener();
+    }
+}
+
+function getDropdownContainer(menu, button) {
+    return (menu && menu._dropdownContainer) || (button && button._dropdownContainer) || null;
+}
+
+function closeAllDropdownsInRoot(root) {
+    if (!root) return;
+    root.querySelectorAll('.custom-dropdown[data-dropdown-initialized="true"]').forEach((container) => {
+        const menu = container._dropdownMenu;
+        const button = container._dropdownButton;
+        if (menu && button) {
+            closeDropdown(menu, button);
+        }
+    });
+}
+
 function _clearDropdownAnimation(menu, className, handler) {
     menu.classList.remove(className);
     if (handler) {
@@ -127,12 +188,22 @@ function openDropdown(menu, button) {
     _playDropdownOpenAnimation(menu);
 
     openDropdowns.add({ menu, button });
+
+    const container = getDropdownContainer(menu, button);
+    if (container) {
+        registerDropdownGuard(container, menu, button);
+    }
 }
 
 /**
  * Closes a dropdown menu.
  */
 function closeDropdown(menu, button) {
+    const container = getDropdownContainer(menu, button);
+    if (container) {
+        unregisterDropdownGuard(container);
+    }
+
     if (menu.classList.contains('hidden') && !menu.classList.contains('custom-dropdown-closing')) {
         if (button) button.classList.remove('active');
         openDropdowns.forEach(dropdown => {
@@ -180,6 +251,8 @@ function teardownDropdown(container) {
         closeDropdown(menu, button);
     }
 
+    unregisterDropdownGuard(container);
+
     if (container._dropdownOutsideClick) {
         document.removeEventListener('click', container._dropdownOutsideClick);
         container._dropdownOutsideClick = null;
@@ -203,7 +276,9 @@ function setupDropdown(container, button, menu, render, getSelectedValue, option
     container.setAttribute('data-dropdown-initialized', 'true');
     container._dropdownButton = button;
     container._dropdownMenu = menu;
-    
+    menu._dropdownContainer = container;
+    button._dropdownContainer = container;
+
     const enableKeyboardNav = options.enableKeyboardNav || false;
     const enableRightKey = options.enableRightKey || false;
     const onNavigateRight = options.onNavigateRight || null;
@@ -337,13 +412,7 @@ function setupDropdown(container, button, menu, render, getSelectedValue, option
         menu.tabIndex = 0;
     }
     
-    const outsideClickHandler = e => {
-        if (!container.contains(e.target)) {
-            closeDropdown(menu, button);
-        }
-    };
-    container._dropdownOutsideClick = outsideClickHandler;
-    document.addEventListener('click', outsideClickHandler);
+    // Outside click handled by registerDropdownGuard when menu opens (openDropdown).
 }
 
 /**

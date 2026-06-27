@@ -236,61 +236,60 @@ function toggleManualShowBoth() {
     createDebouncedContextResolution();
 }
 
-function wireManualTabListeners() {
-    if (document.documentElement.dataset.manualTabListenersWired === '1') return;
-    document.documentElement.dataset.manualTabListenersWired = '1';
-        // Tab switching functionality for prompt/UC tabs (Manual Generation Model)
-        const manualTabButtons = document.querySelectorAll('#manualModal .prompt-tabs .gallery-toggle-group .gallery-toggle-btn');
-        const showBothBtn = document.getElementById('showBothBtn');
-    
-        // Add focus event listeners to all textareas to track the last focused one
-        document.addEventListener('focusin', (e) => {
-            if (e.target.matches('.prompt-textarea, .character-prompt-textarea')) {
-                window.lastFocusedPromptTextarea = e.target;
-            }
-        });
-    
-        manualTabButtons.forEach(button => {
-            let tabSwitchFocusSource = null;
-            button.addEventListener('mousedown', () => {
-                const active = document.activeElement;
-                tabSwitchFocusSource = (active && active.matches('.prompt-textarea, .character-prompt-textarea'))
-                    ? active
-                    : null;
-            });
-            button.addEventListener('click', (e) => {
-                e.preventDefault();
-                const targetTab = button.getAttribute('data-tab');
-                switchManualTab(targetTab, tabSwitchFocusSource);
-            });
-        });
-    
-        // Show both panes functionality
-        if (showBothBtn) {
-            showBothBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                toggleManualShowBoth();
-            });
+function attachManualTabListeners(signal) {
+    const manualTabButtons = document.querySelectorAll('#manualModal .prompt-tabs .gallery-toggle-group .gallery-toggle-btn');
+    const showBothBtn = document.getElementById('showBothBtn');
+
+    document.addEventListener('focusin', (e) => {
+        if (e.target.matches('.prompt-textarea, .character-prompt-textarea')) {
+            window.lastFocusedPromptTextarea = e.target;
         }
-    
-        // Creative tab toolbar buttons - sync with main buttons
-        const creativeTabShowBothBtn = document.getElementById('creativeTabShowBothBtn');
-    
-        if (creativeTabShowBothBtn) {
-            creativeTabShowBothBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                // Trigger the main button's click
-                showBothBtn.click();
-            });
-        }
+    }, { signal });
+
+    manualTabButtons.forEach(button => {
+        let tabSwitchFocusSource = null;
+        button.addEventListener('mousedown', () => {
+            const active = document.activeElement;
+            tabSwitchFocusSource = (active && active.matches('.prompt-textarea, .character-prompt-textarea'))
+                ? active
+                : null;
+        }, { signal });
+        button.addEventListener('click', (e) => {
+            e.preventDefault();
+            const targetTab = button.getAttribute('data-tab');
+            switchManualTab(targetTab, tabSwitchFocusSource);
+        }, { signal });
+    });
+
+    if (showBothBtn) {
+        showBothBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            toggleManualShowBoth();
+        }, { signal });
+    }
+
+    const creativeTabShowBothBtn = document.getElementById('creativeTabShowBothBtn');
+    if (creativeTabShowBothBtn) {
+        creativeTabShowBothBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            showBothBtn.click();
+        }, { signal });
+    }
+}
+
+function initManualTabListenerScope() {
+    const manualModalEl = document.getElementById('manualModal');
+    if (!manualModalEl) return;
+    // attachModalListeners: public/scripts/comp/modalListenerScope.js
+    attachModalListeners(manualModalEl, attachManualTabListeners);
 }
 
 if (typeof wsClient !== 'undefined' && wsClient.registerInitStep) {
-    wsClient.registerInitStep(47.2, 'Manual tab listeners', async () => {
-        wireManualTabListeners();
+    wsClient.registerInitStep(473, 'Manual tab listener scope', async () => {
+        initManualTabListenerScope();
     });
 } else if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => wireManualTabListeners());
+    document.addEventListener('DOMContentLoaded', () => initManualTabListenerScope());
 } else {
-    wireManualTabListeners();
+    initManualTabListenerScope();
 }

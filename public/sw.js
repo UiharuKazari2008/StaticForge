@@ -1551,79 +1551,6 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Development Bridge Network Monitoring
-let devBridgeClient = null;
-
-// Listen for messages from the main thread
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SET_DEV_CONFIG') {
-    if (devBridgeClient) {
-      devBridgeClient.close();
-    }
-    // Only initialize if dev mode is enabled
-    if (event.data.devMode === true) {
-      initDevBridge(event.data.devHost, event.data.devPort);
-    }
-  }
-});
-
-// Initialize dev bridge connection
-function initDevBridge(devHost = 'localhost', devPort = 9221) {
-  // Always try to connect to dev bridge, but handle failures gracefully
-  // The dev bridge server will only be available when dev mode is enabled
-  const wsUrl = `ws://${devHost}:${devPort}`;
-  
-  try {
-    devBridgeClient = new WebSocket(wsUrl);
-      
-      devBridgeClient.onopen = () => {
-        console.log('🔧 Service Worker: Dev Bridge connected');
-      };
-      
-      devBridgeClient.onmessage = (event) => {
-        // Handle messages from dev bridge server
-        try {
-          const message = JSON.parse(event.data);
-          if (message.type === 'welcome') {
-            console.log('🔧 Service Worker: Dev Bridge client ID:', message.clientId);
-          }
-        } catch (error) {
-          console.error('🔧 Service Worker: Invalid dev bridge message:', error);
-        }
-      };
-      
-      devBridgeClient.onclose = () => {
-        console.log('🔧 Service Worker: Dev Bridge disconnected');
-        devBridgeClient = null;
-      };
-      
-      devBridgeClient.onerror = (error) => {
-        // Don't log this as an error since dev mode might not be enabled
-        console.log('🔧 Service Worker: Dev Bridge not available (dev mode may be disabled)');
-      };
-      
-    } catch (error) {
-      // Don't log this as an error since dev mode might not be enabled
-      console.log('🔧 Service Worker: Dev Bridge not available (dev mode may be disabled)');
-    }
-}
-
-// Send network log to dev bridge
-function logNetworkRequest(requestData) {
-  if (devBridgeClient && devBridgeClient.readyState === WebSocket.OPEN) {
-    try {
-      devBridgeClient.send(JSON.stringify({
-        type: 'network',
-        networkType: 'service_worker_request',
-        ...requestData,
-        timestamp: Date.now()
-      }));
-    } catch (error) {
-      console.error('🔧 Service Worker: Failed to send network log:', error);
-    }
-  }
-}
-
 // Send network activity event to all clients
 function notifyClientsOfNetworkActivity(type, requestData) {
   self.clients.matchAll().then(clients => {
@@ -1636,24 +1563,6 @@ function notifyClientsOfNetworkActivity(type, requestData) {
       });
     });
   });
-}
-
-// Send log to dev bridge
-function logToDevBridge(level, message, data = null) {
-  if (devBridgeClient && devBridgeClient.readyState === WebSocket.OPEN) {
-    try {
-      devBridgeClient.send(JSON.stringify({
-        type: 'log',
-        logType: 'service_worker',
-        level: level,
-        message: message,
-        data: data,
-        timestamp: Date.now()
-      }));
-    } catch (error) {
-      console.error('🔧 Service Worker: Failed to send log:', error);
-    }
-  }
 }
 
 // Check if URL is a local server request

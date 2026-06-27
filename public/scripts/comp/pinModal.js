@@ -18,10 +18,11 @@ class PinModal {
     }
 
     setupKeyboardListener() {
-        document.addEventListener('keydown', (e) => {
-            if (this.modal.classList.contains('hidden')) return;
+        if (this._keyboardScopeWired || !this.modal) return;
+        this._keyboardScopeWired = true;
+        this._keyboardHandler = (e) => {
             if (this.isLoading) return;
-            
+
             if (e.key >= '0' && e.key <= '9') {
                 this.addDigit(e.key);
             } else if (e.key === 'Enter') {
@@ -31,6 +32,51 @@ class PinModal {
             } else if (e.key === 'Backspace') {
                 this.removeDigit();
             }
+        };
+        // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+        registerKeyboardListener({
+            id: 'pinModal.keydown',
+            handler: this._keyboardHandler,
+            type: 'whenOpen',
+            modalId: 'pinModal',
+            priority: 90,
+            critical: true,
+            showInOverlay: false
+        });
+        registerKeyboardListener({
+            id: 'overlay.pinModal.digits',
+            type: 'whenOpen',
+            modalId: 'pinModal',
+            label: 'Enter digit',
+            keys: '0–9',
+            overlayIcon: 'fas fa-keyboard',
+            overlayGroup: 'PIN',
+            overlayOnly: true,
+            priority: -10
+        });
+        registerKeyboardListener({
+            id: 'overlay.pinModal.enter',
+            type: 'whenOpen',
+            modalId: 'pinModal',
+            label: 'Submit PIN',
+            keys: 'Enter',
+            overlayIcon: 'fas fa-sign-in-alt',
+            overlayGroup: 'PIN',
+            overlayOnly: true,
+            priority: -10,
+            overlayValid: () => this.currentPin.length === 6
+        });
+        registerKeyboardListener({
+            id: 'overlay.pinModal.backspace',
+            type: 'whenOpen',
+            modalId: 'pinModal',
+            label: 'Delete digit',
+            keys: 'Backspace',
+            overlayIcon: 'fas fa-backspace',
+            overlayGroup: 'PIN',
+            overlayOnly: true,
+            priority: -10,
+            overlayValid: () => this.currentPin.length > 0
         });
     }
 
@@ -85,6 +131,8 @@ class PinModal {
                 dot.classList.remove('filled');
             }
         });
+        // notifyKeyboardOverlayContextChanged: public/scripts/comp/modalKeyboardRegistry.js
+        notifyKeyboardOverlayContextChanged();
     }
 
     showPinError() {

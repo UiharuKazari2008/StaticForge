@@ -1365,11 +1365,101 @@ function wireCompiledPromptModalClose() {
     });
 }
 
+let timeDateWeatherKeyboardWired = false;
+
+function handleTimeDateModalKeydown(e) {
+    const modal = document.getElementById('timeDateModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        closeModal(modal);
+        return true;
+    }
+
+    if (e.key === 'Enter' && !modalKeyboardSkipPrimaryEnter(e.target)) {
+        e.preventDefault();
+        e.stopPropagation();
+        saveTimeDateModal();
+        return true;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const btn = document.getElementById('saveTimeDateBtn');
+        if (btn && !btn.disabled) btn.click();
+        return true;
+    }
+}
+
+function handleWeatherLocationModalKeydown(e) {
+    const modal = document.getElementById('weatherLocationModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        closeModal(modal);
+        return true;
+    }
+
+    if (e.key === 'Enter' && !modalKeyboardSkipPrimaryEnter(e.target)) {
+        e.preventDefault();
+        e.stopPropagation();
+        verifyWeatherLocation();
+        return true;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const btn = document.getElementById('saveWeatherLocationBtn');
+        if (btn && !btn.disabled) btn.click();
+        return true;
+    }
+}
+
+function wireTimeDateWeatherKeyboard() {
+    if (timeDateWeatherKeyboardWired) return;
+    timeDateWeatherKeyboardWired = true;
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'timeDateModal.keydown',
+        handler: handleTimeDateModalKeydown,
+        type: 'whenFocused',
+        modalId: 'timeDateModal',
+        priority: 78,
+        critical: true,
+        showInOverlay: false
+    });
+    registerKeyboardListener({
+        id: 'weatherLocationModal.keydown',
+        handler: handleWeatherLocationModalKeydown,
+        type: 'whenFocused',
+        modalId: 'weatherLocationModal',
+        priority: 78,
+        critical: true,
+        showInOverlay: false
+    });
+    registerModalOverlayEntries('timeDateModal', 'Rentan', [
+        { id: 'overlay.timeDateModal.save', label: 'Save', keys: 'Ctrl+S', icon: 'fas fa-save' },
+        { id: 'overlay.timeDateModal.close', label: 'Close', keys: 'Esc', icon: 'fas fa-times' }
+    ]);
+    registerModalOverlayEntries('weatherLocationModal', 'Rentan', [
+        { id: 'overlay.weatherLocationModal.verify', label: 'Verify', keys: 'Enter', icon: 'fas fa-check' },
+        { id: 'overlay.weatherLocationModal.save', label: 'Save', keys: 'Ctrl+S', icon: 'fas fa-save' },
+        { id: 'overlay.weatherLocationModal.close', label: 'Close', keys: 'Esc', icon: 'fas fa-times' }
+    ]);
+}
+
 function wireDynamicGenerationUI() {
     if (dynamicGenerationUIWired) return;
     dynamicGenerationUIWired = true;
     wireTimeDateModalControls();
     wireWeatherLocationModalControls();
+    wireTimeDateWeatherKeyboard();
     wireTimeDateWheelInputs();
     wireDynamicGenerationButtons();
     wireCompiledPromptModalClose();

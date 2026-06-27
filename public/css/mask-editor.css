@@ -795,9 +795,13 @@ body.desktop-mode .page-background {
 }
 
 /* Image Viewer Modal Styles */
+#imageViewerModalTemplate,
+[id^="imageViewer_"],
 .image-viewer-modal {
-    width: 800px;
-    height: 600px;
+    width: 640px;
+    height: 480px;
+    min-width: 400px;
+    min-height: 300px;
 }
 
 .image-viewer-content {

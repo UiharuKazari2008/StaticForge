@@ -641,7 +641,7 @@ class SearchService {
                 // Only perform spell checking for "Text:" searches
                 try {
                     if (this.spellChecker && typeof this.spellChecker.checkText === 'function') {
-                        spellCheckData = await this.performSpellCheckWithTagHints(textAfterPrefix);
+                        spellCheckData = this.performSpellCheck(textAfterPrefix);
 
                         // Send spell check results separately if WebSocket is available
                         if (ws && spellCheckData) {
@@ -1554,81 +1554,6 @@ class SearchService {
         }
     }
 
-    async performSpellCheckWithTagHints(spellCheckText) {
-        const base = this.performSpellCheck(spellCheckText);
-        if (!base || !base.hasErrors) {
-            return base;
-        }
-
-        await this.ensureServicesInitialized();
-        const suggestions = { ...(base.suggestions || {}) };
-        const tagLookup = this.globalResources && typeof this.globalResources.getTagDatabase === 'function'
-            ? this.globalResources.getTagDatabase()
-            : null;
-
-        const mergeSuggestions = (word, incoming) => {
-            if (!word || !incoming || incoming.length === 0) return;
-            const existing = suggestions[word] || [];
-            const merged = [];
-            const seen = new Set();
-            for (const item of [...incoming, ...existing]) {
-                const key = String(item).toLowerCase();
-                if (seen.has(key)) continue;
-                seen.add(key);
-                merged.push(item);
-            }
-            suggestions[word] = merged.slice(0, 10);
-        };
-
-        const addTagTitleSuggestions = (word, titles) => {
-            for (const title of titles) {
-                const normalized = String(title || '').replace(/_/g, ' ').trim();
-                if (!normalized) continue;
-                const titleTokens = normalized.split(/\s+/).filter(Boolean);
-                if (titleTokens.length === 1) {
-                    if (tagLookup && tagLookup.getTokenMatchScore(word, titleTokens[0]) >= 40) {
-                        mergeSuggestions(word, [normalized]);
-                    }
-                } else if (tagLookup) {
-                    const coverage = tagLookup.getQueryTokenCoverageScore(spellCheckText, normalized);
-                    if (coverage >= 50) {
-                        mergeSuggestions(word, [normalized]);
-                    }
-                }
-            }
-        };
-
-        if (this.tagAutofillSearch) {
-            for (const word of base.misspelled) {
-                try {
-                    const rows = await this.tagAutofillSearch.searchTags(word, { limit: 6 });
-                    addTagTitleSuggestions(word, rows.map(r => r.name || r.title));
-                } catch (e) {
-                    // non-fatal
-                }
-            }
-            if (base.misspelled.length >= 2) {
-                try {
-                    const phraseRows = await this.tagAutofillSearch.searchTags(spellCheckText, { limit: 4 });
-                    addTagTitleSuggestions(base.misspelled[0], phraseRows.map(r => r.name || r.title));
-                } catch (e) {
-                    // non-fatal
-                }
-            }
-        }
-
-        const tagDb = this._getTagSearchDatabaseModule();
-        const normalizedPhrase = tagDb && typeof tagDb.normalizeTagSearchQuery === 'function'
-            ? tagDb.normalizeTagSearchQuery(spellCheckText)
-            : spellCheckText.trim().toLowerCase();
-        const cached = this._lookupNovelAiTagCache(normalizedPhrase, 'nai-diffusion-3');
-        if (cached && cached.tags) {
-            addTagTitleSuggestions(base.misspelled[0], cached.tags.map(t => t.tag));
-        }
-
-        return { ...base, suggestions };
-    }
-
     searchTextReplacements(searchQuery, hasPickSuffix) {
         // Access text replacements from globalResources instance
         if (!this.globalResources) return [];
@@ -1863,7 +1788,7 @@ class SearchService {
                 });
             }
 
-            const spellCheckData = await this.performSpellCheckWithTagHints(query);
+            const spellCheckData = this.performSpellCheck(query);
 
             if (ws) {
                 if (spellCheckData && spellCheckData.hasErrors) {

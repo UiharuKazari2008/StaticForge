@@ -51,7 +51,8 @@ class RunApplet {
         }
 
         this.input.addEventListener('input', () => this.handleInput());
-        this.input.addEventListener('keydown', (e) => this.handleKeydown(e));
+
+        this.wireKeyboardHandler();
 
         const closeBtn = this.modal.querySelector('.close-btn');
         if (closeBtn) {
@@ -224,6 +225,7 @@ class RunApplet {
         if (!results.length) {
             this.suggestionsEl.classList.add('hidden');
             if (this.resultsShell) this.resultsShell.classList.remove('has-results');
+            this._notifyRunKeyboardOverlayContextChanged();
             return;
         }
         this.suggestionsEl.classList.remove('hidden');
@@ -270,6 +272,7 @@ class RunApplet {
             this.suggestionsEl.appendChild(item);
         });
         this.updateSelectionHighlight();
+        this._notifyRunKeyboardOverlayContextChanged();
     }
 
     isActionItemSelectable(item) {
@@ -305,6 +308,65 @@ class RunApplet {
             .replace(/"/g, '&quot;');
     }
 
+    wireKeyboardHandler() {
+        if (this._keyboardHandlerWired) return;
+        this._keyboardHandlerWired = true;
+        this.wireKeyboardOverlayEntries();
+        // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+        registerKeyboardListener({
+            id: 'runModal.keydown',
+            handler: (e) => this.handleKeydown(e),
+            type: 'whenFocused',
+            modalId: 'runModal',
+            priority: 70,
+            showInOverlay: false
+        });
+    }
+
+    wireKeyboardOverlayEntries() {
+        if (this._keyboardOverlayWired) return;
+        this._keyboardOverlayWired = true;
+        // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+        const runOverlayEntries = [
+            { id: 'overlay.runModal.close', label: 'Close', keys: 'Esc', icon: 'fas fa-times' },
+            { id: 'overlay.runModal.down', label: 'Next result', keys: '↓', icon: 'fas fa-chevron-down', overlayValid: () => this._runOverlayResultsNavValid() },
+            { id: 'overlay.runModal.up', label: 'Previous result', keys: '↑', icon: 'fas fa-chevron-up', overlayValid: () => this._runOverlayResultsNavValid() },
+            { id: 'overlay.runModal.enter', label: 'Run command', keys: 'Enter', icon: 'fas fa-play', overlayValid: () => this._runOverlayResultsNavValid() },
+            { id: 'overlay.runModal.actions', label: 'Actions panel', keys: '→', icon: 'fas fa-bolt', overlayValid: () => this._runOverlayActionsEntryValid() },
+            { id: 'overlay.runModal.actionsBack', label: 'Back to results', keys: 'Esc / ←', icon: 'fas fa-arrow-left', overlayValid: () => this.actionPanelOpen }
+        ];
+        runOverlayEntries.forEach((entry) => {
+            registerKeyboardListener({
+                id: entry.id,
+                type: 'whenFocused',
+                modalId: 'runModal',
+                label: entry.label,
+                keys: entry.keys,
+                overlayIcon: entry.icon,
+                overlayGroup: 'Run',
+                overlayValid: typeof entry.overlayValid === 'function' ? entry.overlayValid : null,
+                overlayOnly: true,
+                priority: -10
+            });
+        });
+    }
+
+    _runOverlayResultsNavValid() {
+        return !this.actionPanelOpen && this.results.length > 0;
+    }
+
+    _runOverlayActionsEntryValid() {
+        if (this.actionPanelOpen || !this.results.length) return false;
+        const entry = this.results[this.selectedIndex >= 0 ? this.selectedIndex : 0];
+        if (!entry || entry.isDeferredNetwork) return false;
+        return typeof getRunEntryActionItems === 'function' && !!getRunEntryActionItems(entry);
+    }
+
+    _notifyRunKeyboardOverlayContextChanged() {
+        // notifyKeyboardOverlayContextChanged: public/scripts/comp/modalKeyboardRegistry.js
+        notifyKeyboardOverlayContextChanged();
+    }
+
     handleKeydown(e) {
         if (this.actionPanelOpen) {
             this.handleActionPanelKeydown(e);
@@ -314,7 +376,7 @@ class RunApplet {
         if (e.key === 'Escape') {
             e.preventDefault();
             this.close();
-            return;
+            return true;
         }
         if (e.key === 'ArrowRight') {
             const entry = this.results[this.selectedIndex];
@@ -323,7 +385,7 @@ class RunApplet {
                 if (actionData) {
                     e.preventDefault();
                     this.openActionPanel(entry, actionData);
-                    return;
+                    return true;
                 }
             }
         }
@@ -337,7 +399,7 @@ class RunApplet {
                 this.updateSelectionHighlight();
                 this.scrollSelectedIntoView();
             }
-            return;
+            return true;
         }
         if (e.key === 'ArrowUp') {
             e.preventDefault();
@@ -349,11 +411,12 @@ class RunApplet {
                 this.updateSelectionHighlight();
                 this.scrollSelectedIntoView();
             }
-            return;
+            return true;
         }
         if (e.key === 'Enter') {
             e.preventDefault();
             this.executeSelected();
+            return true;
         }
     }
 
@@ -361,7 +424,7 @@ class RunApplet {
         if (e.key === 'Escape' || e.key === 'ArrowLeft') {
             e.preventDefault();
             this.closeActionPanel();
-            return;
+            return true;
         }
         if (e.key === 'ArrowDown') {
             e.preventDefault();
@@ -370,7 +433,7 @@ class RunApplet {
                 this.actionSelectedIndex = next;
                 this.renderActionPanel();
             }
-            return;
+            return true;
         }
         if (e.key === 'ArrowUp') {
             e.preventDefault();
@@ -379,11 +442,12 @@ class RunApplet {
                 this.actionSelectedIndex = prev;
                 this.renderActionPanel();
             }
-            return;
+            return true;
         }
         if (e.key === 'Enter') {
             e.preventDefault();
             this.executeActionPanelSelection();
+            return true;
         }
     }
 
@@ -398,9 +462,11 @@ class RunApplet {
         this.resultsShell.classList.add('show-actions');
         this.actionPanelEl.classList.remove('hidden');
         this.renderActionPanel();
+        this._notifyRunKeyboardOverlayContextChanged();
     }
 
     closeActionPanel() {
+        const wasOpen = this.actionPanelOpen;
         this.actionPanelOpen = false;
         this.actionItems = [];
         this.actionEntry = null;
@@ -413,6 +479,7 @@ class RunApplet {
         if (this.resultsShell) {
             this.resultsShell.classList.remove('show-actions');
         }
+        if (wasOpen) this._notifyRunKeyboardOverlayContextChanged();
     }
 
     renderActionPanel() {

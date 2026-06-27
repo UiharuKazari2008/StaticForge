@@ -644,6 +644,12 @@ class WebSocketClient {
         this.tickerCycleTimer = null;
         this.tickerCycleIndex = 0;
 
+        /** Blocks tab/window close while image generation + step playback + finalize are active. */
+        this.generationCloseGuardDepth = 0;
+        this._generationCloseGuardIds = new Set();
+        this._generationCloseGuardRequestByModal = {};
+        this._generationCloseGuardBeforeUnloadWired = false;
+
         // Completed requests tracking (last 10, excluding ping)
         this.completedRequests = [];
         this.maxCompletedRequests = 10;
@@ -683,7 +689,10 @@ class WebSocketClient {
         this.flashWebSocketArrow = this.flashWebSocketArrow.bind(this);
         this.send = this.send.bind(this);
 
+        this.startupConnectionKeyboardWired = false;
+
         // Boot is triggered from serviceWorkerManager after SW registration — public/scripts/comp/serviceWorkerManager.js
+        this._wireStartupConnectionKeyboardListeners();
     }
 
     async beginApplicationBoot() {
@@ -1007,7 +1016,9 @@ class WebSocketClient {
             swStatus.isUpdating = Boolean(window.serviceWorkerManager.isUpdating);
             swStatus.updateProgress = Number.isFinite(window.serviceWorkerManager.updateProgress) ? window.serviceWorkerManager.updateProgress : 0;
             swStatus.updateAvailable = Boolean(
-                window.serviceWorkerManager.hasPendingUpdates() || window.serviceWorkerManager.updateAvailable
+                (typeof window.serviceWorkerManager.hasPendingUpdates === 'function'
+                    && window.serviceWorkerManager.hasPendingUpdates())
+                || window.serviceWorkerManager.updateAvailable
             );
         }
 
@@ -1148,6 +1159,131 @@ class WebSocketClient {
                 this.openConnectionDialStatus();
             });
         }
+    }
+
+    _wireStartupConnectionKeyboardListeners() {
+        if (this.startupConnectionKeyboardWired) return;
+        this.startupConnectionKeyboardWired = true;
+
+        const shouldSkipEnter = (e) => {
+            if (e.target.tagName === 'TEXTAREA') return true;
+            if (e.target.tagName === 'SELECT') return true;
+            if (e.target.isContentEditable) return true;
+            if (e.target.tagName === 'BUTTON') return true;
+            return false;
+        };
+
+        const clickIfEnabled = (btn) => {
+            if (!btn || btn.disabled) return false;
+            if (btn.classList.contains('hidden')) return false;
+            btn.click();
+            return true;
+        };
+
+        // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+        registerKeyboardListener({
+            id: 'desktopPreStartupModal.keydown',
+            handler: (e) => {
+                if (e.key !== 'Enter') return;
+                if (shouldSkipEnter(e)) return;
+                const authSection = document.getElementById('desktopPreStartupAuth');
+                if (!authSection || authSection.classList.contains('hidden')) return;
+                if (e.target.tagName === 'INPUT' && e.target.closest('#desktopPreStartupAuth')) return;
+                const loginBtn = document.getElementById('desktopPreStartupLoginBtn');
+                if (!clickIfEnabled(loginBtn)) return;
+                e.preventDefault();
+                return true;
+            },
+            type: 'whenFocused',
+            modalId: 'desktopPreStartupModal',
+            priority: 80,
+            critical: true,
+            label: 'Continue',
+            keys: 'Enter',
+            overlayIcon: 'fas fa-check',
+            overlayGroup: 'Startup'
+        });
+
+        registerKeyboardListener({
+            id: 'windowsUpdateModal.keydown',
+            handler: (e) => {
+                if (e.key !== 'Enter') return;
+                if (shouldSkipEnter(e)) return;
+                const restartActions = document.getElementById('windowsUpdateRestartActions');
+                const restartBtn = document.getElementById('windowsUpdateRestartBtn');
+                const skipBtn = document.getElementById('windowsUpdateSkipBtn');
+                let handled = false;
+                if (restartActions && !restartActions.classList.contains('hidden')) {
+                    handled = clickIfEnabled(restartBtn);
+                } else if (skipBtn && skipBtn.style.display !== 'none') {
+                    handled = clickIfEnabled(skipBtn);
+                }
+                if (!handled) return;
+                e.preventDefault();
+                return true;
+            },
+            type: 'whenFocused',
+            modalId: 'windowsUpdateModal',
+            priority: 80,
+            critical: true,
+            label: 'Primary action',
+            keys: 'Enter',
+            overlayIcon: 'fas fa-check',
+            overlayGroup: 'Startup'
+        });
+
+        registerKeyboardListener({
+            id: 'windowsStartupModal.advance',
+            handler: (e) => {
+                if (e.key !== 'Enter') return;
+                if (shouldSkipEnter(e)) return;
+                const advanceBtn = document.getElementById('windowsStartupAdvanceStepBtn');
+                if (!clickIfEnabled(advanceBtn)) return;
+                e.preventDefault();
+                return true;
+            },
+            type: 'whenFocused',
+            modalId: 'windowsStartupModal',
+            priority: 80,
+            showInOverlay: false
+        });
+
+        registerKeyboardListener({
+            id: 'overlay.windowsStartup.advance',
+            type: 'whenFocused',
+            modalId: 'windowsStartupModal',
+            label: 'Advance step',
+            keys: 'Enter',
+            overlayIcon: 'fas fa-forward',
+            overlayGroup: 'Startup',
+            overlayOnly: true,
+            priority: -10
+        });
+
+        registerKeyboardListener({
+            id: 'connectionDialModal.escape',
+            handler: (e) => {
+                if (e.key !== 'Escape') return;
+                const modal = document.getElementById('connectionDialModal');
+                if (!modal || modal.classList.contains('hidden')) return;
+                const closeBtn = modal.querySelector('.connection-dial-close-btn');
+                if (closeBtn && !closeBtn.disabled) {
+                    closeBtn.click();
+                } else {
+                    this.closeConnectionDialStatus();
+                }
+                e.preventDefault();
+                return true;
+            },
+            type: 'whenFocused',
+            modalId: 'connectionDialModal',
+            priority: 80,
+            critical: true,
+            label: 'Cancel',
+            keys: 'Esc',
+            overlayIcon: 'fas fa-times',
+            overlayGroup: 'Connection'
+        });
     }
 
     _shouldUsePreStartupDialog() {
@@ -1822,6 +1958,7 @@ class WebSocketClient {
         } else {
             warningIcon.classList.add('hidden');
             warningIcon.classList.remove('high-ping', 'variable-ping');
+            warningIcon.removeAttribute('title');
         }
 
         if (shouldShow && !this._wasPingWarning) {
@@ -2891,6 +3028,7 @@ class WebSocketClient {
                     }
 
                     // Clear and fail all pending requests when connection is lost
+                    this._teardownGenerationUiState();
                     this.clearPendingRequests();
 
                     let disconnectMessage = 'Connection lost';
@@ -3371,6 +3509,11 @@ class WebSocketClient {
             console.error('❌ WebSocket error:', message.message, message.details);
             // If this error has a requestId, resolve the pending request with the error
             if (message.requestId && this.pendingRequests && this.pendingRequests.has(message.requestId)) {
+                const pending = this.pendingRequests.get(message.requestId);
+                const generationTypes = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image']);
+                if (generationTypes.has(pending.type)) {
+                    this.clearStreamingStepQueues(null, true);
+                }
                 const error = new Error(message.message || 'Server error');
                 error.details = message.details;
                 error.requestId = message.requestId;
@@ -3468,6 +3611,9 @@ class WebSocketClient {
             if (this.progressStates && message.requestId) {
                 this.cleanupGenerationProgressState(message.requestId);
             }
+            if (message.requestId) {
+                this.releaseGenerationCloseGuard(message.requestId);
+            }
             if (typeof progressToastId !== 'undefined' && progressToastId && typeof clearGlassToastImagePreview === 'function') {
                 clearGlassToastImagePreview(progressToastId);
             }
@@ -3536,6 +3682,14 @@ class WebSocketClient {
         // Handle all error messages that should trigger resolveRequest with error
         if (message.type.endsWith('_error')) {
             if (message.requestId) {
+                if (this.pendingRequests && this.pendingRequests.has(message.requestId)) {
+                    const pending = this.pendingRequests.get(message.requestId);
+                    const generationTypes = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image']);
+                    if (generationTypes.has(pending.type)) {
+                        this.clearStreamingStepQueues(null, true);
+                        this.releaseGenerationCloseGuard(message.requestId);
+                    }
+                }
                 const error = new Error(message.error || 'Operation failed');
                 error.details = message.data;
                 this.resolveRequest(message.requestId, null, error);
@@ -4257,16 +4411,6 @@ class WebSocketClient {
         img.removeAttribute('src');
     }
 
-    discardStreamingStepImageData(queueData) {
-        if (!queueData || !Array.isArray(queueData.queue)) return;
-        for (const item of queueData.queue) {
-            if (item && item.imageData) {
-                delete item.imageData;
-            }
-        }
-        queueData.queue.length = 0;
-    }
-
     cleanupGenerationProgressState(requestId) {
         if (!this.progressStates || !requestId) return;
         const progressState = this.progressStates.get(requestId);
@@ -4283,138 +4427,463 @@ class WebSocketClient {
         delete window._lastToolState;
     }
 
+    _wireGenerationCloseGuardBeforeUnload() {
+        if (this._generationCloseGuardBeforeUnloadWired) return;
+        this._generationCloseGuardBeforeUnloadWired = true;
+        window.addEventListener('beforeunload', (event) => {
+            if (!this.isGenerationCloseBlocked()) return;
+            event.preventDefault();
+            event.returnValue = '';
+            return '';
+        });
+    }
+
+    isGenerationCloseBlocked() {
+        return this.generationCloseGuardDepth > 0;
+    }
+
+    acquireGenerationCloseGuard(requestId) {
+        if (!requestId || this._generationCloseGuardIds.has(requestId)) return;
+        this._generationCloseGuardIds.add(requestId);
+        this.generationCloseGuardDepth += 1;
+        this._wireGenerationCloseGuardBeforeUnload();
+    }
+
+    releaseGenerationCloseGuard(requestId) {
+        if (!requestId || !this._generationCloseGuardIds.has(requestId)) return;
+        this._generationCloseGuardIds.delete(requestId);
+        if (this.generationCloseGuardDepth > 0) {
+            this.generationCloseGuardDepth -= 1;
+        }
+        if (this._generationCloseGuardRequestByModal) {
+            for (const modalType of Object.keys(this._generationCloseGuardRequestByModal)) {
+                if (this._generationCloseGuardRequestByModal[modalType] === requestId) {
+                    delete this._generationCloseGuardRequestByModal[modalType];
+                }
+            }
+        }
+    }
+
+    _acquireGenerationCloseGuardForRequest(type, requestId) {
+        const generationTypes = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image']);
+        if (generationTypes.has(type) && requestId) {
+            this.acquireGenerationCloseGuard(requestId);
+            const modalType = type === 'generate_preset' ? 'spellbook' : 'manual';
+            this._generationCloseGuardRequestByModal[modalType] = requestId;
+        }
+    }
+
+    _resolveGenerationCloseGuardRequestId(modalType) {
+        const session = this.getStreamingStepSession(modalType);
+        if (session?.requestId) {
+            return session.requestId;
+        }
+        return this._generationCloseGuardRequestByModal[modalType] || null;
+    }
+
     releaseStreamingPreviewDataUrls(modalType = null) {
         if (!modalType || modalType === 'manual') {
             this.releaseDataImageSrc(document.getElementById('manualPreviewImage'));
         }
         if (!modalType || modalType === 'spellbook') {
-            const spellbookImg = window.spellbookModalManager?.previewImage;
+            const spellbookImg = spellbookModalManager?.previewImage;
             this.releaseDataImageSrc(spellbookImg);
         }
     }
 
-    // Queue a streaming step with 250ms minimum display time
-    queueStreamingStep(modalType, data) {
-        // Initialize queue for this modal type if it doesn't exist
-        if (!this.streamingStepQueues) {
-            this.streamingStepQueues = {};
-        }
-
-        if (!this.streamingStepQueues[modalType]) {
-            this.streamingStepQueues[modalType] = {
-                queue: [],
-                isProcessing: false,
-                lastDisplayTime: 0
-            };
-        }
-
-        const queueData = this.streamingStepQueues[modalType];
-
-        // Coalesce intermediate frames — only the latest step matters for preview.
-        if (data.imageData) {
-            this.discardStreamingStepImageData(queueData);
-        }
-
-        queueData.queue.push(data);
-
-        // Start processing if not already processing
-        this.processStreamingStepQueue(modalType);
+    getStepDisplayMs(stepIndex, totalSteps, rttMs, finalReady) {
+        const rtt = Number.isFinite(rttMs) ? rttMs : 100;
+        const base = Math.max(300, Math.min(1400, 220 + rtt * 0.75));
+        const t = totalSteps > 1 ? stepIndex / (totalSteps - 1) : 1;
+        const earlyBias = 1 + (1 - t) * 0.75;
+        let ms = base * earlyBias;
+        if (finalReady) ms *= 0.35;
+        return Math.max(90, Math.round(ms));
     }
 
-    // Process the streaming step queue with 250ms minimum display time
-    async processStreamingStepQueue(modalType) {
-        const queueData = this.streamingStepQueues[modalType];
+    waitStepDisplayDelay(ms, session) {
+        if (ms <= 0 || session?.aborted) return Promise.resolve();
 
-        if (!queueData || queueData.isProcessing || queueData.queue.length === 0) {
+        const prefetch = session?.finalPrefetch;
+        if (prefetch?.ready) {
+            return Promise.resolve();
+        }
+
+        let timeoutId;
+        let wakeResolve;
+        const wakePromise = new Promise((resolve) => {
+            wakeResolve = resolve;
+        });
+        session.displayDelayWake = wakeResolve;
+
+        const timeoutPromise = new Promise((resolve) => {
+            timeoutId = setTimeout(resolve, ms);
+        });
+
+        if (prefetch?.promise && !prefetch.ready) {
+            prefetch.promise.then(() => {
+                if (wakeResolve) wakeResolve();
+            }).catch(() => {
+                if (wakeResolve) wakeResolve();
+            });
+        }
+
+        return Promise.race([timeoutPromise, wakePromise]).finally(() => {
+            if (timeoutId) clearTimeout(timeoutId);
+            if (session && session.displayDelayWake === wakeResolve) {
+                session.displayDelayWake = null;
+            }
+        });
+    }
+
+    STREAMING_FIRST_STEP_CROSSFADE_MS = 250;
+
+    _createEmptyStreamingStepSession(requestId) {
+        return {
+            requestId,
+            steps: [],
+            playIndex: 0,
+            isPlaying: false,
+            aborted: false,
+            displayDelayWake: null,
+            lastDisplayTime: 0,
+            totalSteps: 0,
+            serverGenerationComplete: false,
+            awaitingUpscaleFinal: false,
+            finalPrefetch: null,
+            firstStepDisplayed: false,
+            crossfadeOverlay: null
+        };
+    }
+
+    _disposeStreamingStepSession(session) {
+        if (!session) return;
+        session.aborted = true;
+        if (session.displayDelayWake) {
+            session.displayDelayWake();
+            session.displayDelayWake = null;
+        }
+        if (session.crossfadeOverlay) {
+            this.releaseDataImageSrc(session.crossfadeOverlay);
+            session.crossfadeOverlay.remove();
+            session.crossfadeOverlay = null;
+        }
+        this.releaseStreamingStepPrefetch(session);
+        if (Array.isArray(session.steps)) {
+            for (const frame of session.steps) {
+                if (frame) frame.imageData = null;
+            }
+            session.steps.length = 0;
+        }
+        session.isPlaying = false;
+    }
+
+    beginStreamingStepSession(modalType, requestId) {
+        if (!modalType || !requestId) return null;
+        if (!this.streamingStepSessions) {
+            this.streamingStepSessions = {};
+        }
+        if (this.streamingStepSessions[modalType]) {
+            this.endStreamingStepSession(modalType, false);
+        }
+        const session = this._createEmptyStreamingStepSession(requestId);
+        this.streamingStepSessions[modalType] = session;
+        this.streamingRequestByModal = this.streamingRequestByModal || {};
+        this.streamingRequestByModal[modalType] = requestId;
+        return session;
+    }
+
+    getStreamingStepSession(modalType) {
+        return this.streamingStepSessions && modalType ? this.streamingStepSessions[modalType] : null;
+    }
+
+    findStreamingStepSessionByRequestId(requestId) {
+        if (!requestId || !this.streamingStepSessions) return null;
+        for (const key of Object.keys(this.streamingStepSessions)) {
+            const session = this.streamingStepSessions[key];
+            if (session && session.requestId === requestId) {
+                return { modalType: key, session };
+            }
+        }
+        return null;
+    }
+
+    _attachStepPreviewDimensions(params, modalType) {
+        if (!params || params.enableStreaming !== true) return params;
+        let dims = null;
+        if (modalType === 'spellbook') {
+            // getSpellbookStepPreviewDimensions: public/scripts/comp/spellbookModal.js
+            if (getSpellbookStepPreviewDimensions) {
+                dims = getSpellbookStepPreviewDimensions();
+            }
+        } else {
+            // getManualModalStepPreviewDimensions: public/scripts/comp/manualModalManager.js
+            if (getManualModalStepPreviewDimensions) {
+                dims = getManualModalStepPreviewDimensions();
+            }
+        }
+        if (dims && dims.width > 0 && dims.height > 0) {
+            params.stepPreviewWidth = Math.round(dims.width);
+            params.stepPreviewHeight = Math.round(dims.height);
+        }
+        return params;
+    }
+
+    _normalizeStreamingStepFrame(data) {
+        if (!data || !data.imageData) return null;
+        const currentStep = data.currentStep != null ? data.currentStep : data.step;
+        if (currentStep == null) return null;
+        return {
+            currentStep,
+            totalSteps: data.totalSteps || 0,
+            imageData: data.imageData,
+            imageFormat: data.imageFormat || 'jpeg'
+        };
+    }
+
+    appendStreamingSteps(modalType, frames, meta = {}) {
+        if (!frames || frames.length === 0) return;
+        let session = this.getStreamingStepSession(modalType);
+        if (session && meta.requestId && session.requestId !== meta.requestId) {
             return;
         }
-
-        queueData.isProcessing = true;
-
-        while (queueData.queue.length > 0) {
-            const data = queueData.queue.shift();
-            const now = Date.now();
-
-            // Calculate time since last step was displayed
-            const timeSinceLastStep = now - queueData.lastDisplayTime;
-
-            // If not enough time has passed, wait before showing next step
-            if (timeSinceLastStep < 250) {
-                const waitTime = 250 - timeSinceLastStep;
-                await new Promise(resolve => setTimeout(resolve, waitTime));
-            }
-
-            // Display the step
-            this.displayStreamingStep(modalType, data);
-            if (data && data.imageData) {
-                delete data.imageData;
-            }
-            queueData.lastDisplayTime = Date.now();
+        if (!session) {
+            session = this.beginStreamingStepSession(modalType, meta.requestId || `stream-${Date.now()}`);
         }
-
-        queueData.isProcessing = false;
+        for (const raw of frames) {
+            const frame = this._normalizeStreamingStepFrame({ ...meta, ...raw });
+            if (!frame) continue;
+            session.steps.push(frame);
+            if (frame.totalSteps > session.totalSteps) {
+                session.totalSteps = frame.totalSteps;
+            }
+        }
+        this.processStreamingStepSession(modalType);
     }
 
-    // Display a streaming step on the appropriate modal
-    displayStreamingStep(modalType, data) {
+    queueStreamingStep(modalType, data) {
+        const frame = this._normalizeStreamingStepFrame(data);
+        if (!frame) return;
+        this.appendStreamingSteps(modalType, [frame], {
+            requestId: data.requestId,
+            totalSteps: data.totalSteps
+        });
+    }
+
+    async processStreamingStepSession(modalType) {
+        const session = this.getStreamingStepSession(modalType);
+        if (!session || session.isPlaying) return;
+
+        session.isPlaying = true;
+        const rttMs = this.currentRtt;
+
+        while (!session.aborted && session.playIndex < session.steps.length) {
+            const frame = session.steps[session.playIndex];
+            const totalSteps = session.totalSteps || frame.totalSteps || session.steps.length;
+            const finalReady = !!(session.finalPrefetch && session.finalPrefetch.ready);
+            const displayMs = this.getStepDisplayMs(frame.currentStep, totalSteps, rttMs, finalReady);
+
+            const now = Date.now();
+            const elapsed = now - session.lastDisplayTime;
+            if (session.lastDisplayTime > 0 && elapsed < displayMs) {
+                await this.waitStepDisplayDelay(displayMs - elapsed, session);
+            }
+            if (session.aborted) break;
+
+            await this.displayStreamingStep(modalType, frame);
+            frame.imageData = null;
+            session.lastDisplayTime = Date.now();
+            session.playIndex += 1;
+
+            if (finalReady && session.playIndex >= session.steps.length) {
+                break;
+            }
+        }
+
+        session.isPlaying = false;
+        if (!session.aborted && session.playIndex < session.steps.length) {
+            this.processStreamingStepSession(modalType);
+        }
+    }
+
+    _crossfadeStreamingStepImage(modalType, targetImg, imageContainer, imageDataUrl) {
+        const session = this.getStreamingStepSession(modalType);
+        const fadeMs = this.STREAMING_FIRST_STEP_CROSSFADE_MS;
+
+        let overlay = session?.crossfadeOverlay;
+        if (!overlay || overlay.parentElement !== imageContainer) {
+            if (overlay) {
+                this.releaseDataImageSrc(overlay);
+                overlay.remove();
+            }
+            overlay = document.createElement('img');
+            if (targetImg.className) {
+                overlay.className = targetImg.className;
+            }
+            overlay.setAttribute('aria-hidden', 'true');
+            overlay.style.cssText = `position:absolute;inset:0;margin:auto;max-width:100%;max-height:100%;width:inherit;height:inherit;object-fit:contain;opacity:0;z-index:5;pointer-events:none;transition:opacity ${fadeMs}ms ease-in-out`;
+            imageContainer.appendChild(overlay);
+            if (session) {
+                session.crossfadeOverlay = overlay;
+            }
+        }
+
+        return new Promise((resolve) => {
+            let settled = false;
+            let fallbackTimer = null;
+
+            const settle = () => {
+                if (settled) return;
+                settled = true;
+                if (fallbackTimer) clearTimeout(fallbackTimer);
+                overlay.removeEventListener('transitionend', onTransitionEnd);
+                overlay.removeEventListener('load', onLoad);
+                this.releaseDataImageSrc(targetImg);
+                targetImg.src = imageDataUrl;
+                targetImg.classList.remove('hidden');
+                this.releaseDataImageSrc(overlay);
+                overlay.style.opacity = '0';
+                resolve();
+            };
+
+            const onTransitionEnd = (e) => {
+                if (e.propertyName === 'opacity') {
+                    settle();
+                }
+            };
+
+            const onLoad = () => {
+                requestAnimationFrame(() => {
+                    overlay.style.opacity = '1';
+                });
+            };
+
+            fallbackTimer = setTimeout(settle, fadeMs + 80);
+            overlay.addEventListener('transitionend', onTransitionEnd);
+            overlay.addEventListener('load', onLoad);
+            overlay.src = imageDataUrl;
+            if (overlay.complete) {
+                onLoad();
+            }
+        });
+    }
+
+    async displayStreamingStep(modalType, data) {
         if (!data?.imageData) return;
 
-        const imageDataUrl = `data:image/png;base64,${data.imageData}`;
-        delete data.imageData;
+        const mime = data.imageFormat === 'png' ? 'image/png' : 'image/jpeg';
+        const imageDataUrl = `data:${mime};base64,${data.imageData}`;
+        const stepNum = data.currentStep != null ? data.currentStep : data.step;
+        const session = this.getStreamingStepSession(modalType);
+        const isFirstStep = session && !session.firstStepDisplayed;
 
         if (modalType === 'manual') {
             const previewPlaceholder = document.getElementById('manualPreviewPlaceholder');
+            const imageContainer = previewPlaceholder?.closest('.manual-preview-image-container')
+                || document.querySelector('.manual-preview-image-container');
             if (manualPreviewImage) {
-                this.releaseDataImageSrc(manualPreviewImage);
-                manualPreviewImage.src = imageDataUrl;
-                manualPreviewImage.classList.remove('hidden');
-                previewPlaceholder.classList.add('hidden');
-
-                // Show that we're in streaming mode
-                manualForm.classList.add('streaming');
-
-                // lockGenerationQuips: public/scripts/comp/generationQuips.js
-                lockGenerationQuips();
-
-                // Show the manual preview section with resolution dimensions
-                if (typeof showManualPreview === 'function') {
-                    showManualPreview(true); // true = set resolution dimensions
+                if (isFirstStep) {
+                    session.firstStepDisplayed = true;
+                    manualForm.classList.add('streaming');
+                    // lockGenerationQuips: public/scripts/comp/generationQuips.js
+                    lockGenerationQuips();
+                    // showManualPreview: public/scripts/comp/manualModalManager.js
+                    if (showManualPreview) {
+                        showManualPreview(true);
+                    }
+                    if (imageContainer) {
+                        await this._crossfadeStreamingStepImage(
+                            modalType,
+                            manualPreviewImage,
+                            imageContainer,
+                            imageDataUrl
+                        );
+                    } else {
+                        this.releaseDataImageSrc(manualPreviewImage);
+                        manualPreviewImage.src = imageDataUrl;
+                        manualPreviewImage.classList.remove('hidden');
+                    }
+                    if (previewPlaceholder) {
+                        previewPlaceholder.classList.add('hidden');
+                    }
+                } else {
+                    this.releaseDataImageSrc(manualPreviewImage);
+                    manualPreviewImage.src = imageDataUrl;
+                    manualPreviewImage.classList.remove('hidden');
+                    if (previewPlaceholder) {
+                        previewPlaceholder.classList.add('hidden');
+                    }
+                    manualForm.classList.add('streaming');
+                    // lockGenerationQuips: public/scripts/comp/generationQuips.js
+                    lockGenerationQuips();
+                    // showManualPreview: public/scripts/comp/manualModalManager.js
+                    if (showManualPreview) {
+                        showManualPreview(true);
+                    }
                 }
 
-                // Optional: Add a visual indicator that this is an intermediate image
-                manualPreviewImage.title = `Generating... Step ${data.step}`;
+                manualPreviewImage.title = `Generating... Step ${stepNum}`;
             } else {
                 console.warn('⚠️ manualPreviewImage element not found');
             }
         } else if (modalType === 'spellbook') {
-            const spellbookPreviewImage = window.spellbookModalManager.previewImage;
+            const spellbookPreviewImage = spellbookModalManager?.previewImage;
+            const imageContainer = spellbookPreviewImage?.closest('.spellbook-preview-image-container');
             if (spellbookPreviewImage) {
-                this.releaseDataImageSrc(spellbookPreviewImage);
-                spellbookPreviewImage.src = imageDataUrl;
-                spellbookPreviewImage.classList.remove('hidden');
-
-                // Optional: Add a visual indicator that this is an intermediate image
-                spellbookPreviewImage.title = `Generating... Step ${data.step}`;
+                if (isFirstStep) {
+                    session.firstStepDisplayed = true;
+                    if (imageContainer) {
+                        await this._crossfadeStreamingStepImage(
+                            modalType,
+                            spellbookPreviewImage,
+                            imageContainer,
+                            imageDataUrl
+                        );
+                    } else {
+                        this.releaseDataImageSrc(spellbookPreviewImage);
+                        spellbookPreviewImage.src = imageDataUrl;
+                        spellbookPreviewImage.classList.remove('hidden');
+                    }
+                } else {
+                    this.releaseDataImageSrc(spellbookPreviewImage);
+                    spellbookPreviewImage.src = imageDataUrl;
+                    spellbookPreviewImage.classList.remove('hidden');
+                }
+                spellbookPreviewImage.title = `Generating... Step ${stepNum}`;
             } else {
                 console.warn('⚠️ spellbookPreviewImage element not found');
             }
         }
     }
 
-    // Clear streaming step queues (call when generation completes or is cancelled)
-    clearStreamingStepQueues(modalType = null, releasePreview = false) {
-        if (!this.streamingStepQueues) return;
+    releaseStreamingStepPrefetch(session) {
+        if (!session || !session.finalPrefetch) return;
+        const prefetch = session.finalPrefetch;
+        if (prefetch.blobUrl && prefetch.blobUrl.startsWith('blob:')) {
+            try {
+                URL.revokeObjectURL(prefetch.blobUrl);
+            } catch (_e) { /* ignore */ }
+        }
+        session.finalPrefetch = null;
+    }
+
+    endStreamingStepSession(modalType = null, releasePreview = false) {
+        if (!this.streamingStepSessions) return;
+
+        const endOne = (key) => {
+            const session = this.streamingStepSessions[key];
+            if (!session) return;
+            this._disposeStreamingStepSession(session);
+            delete this.streamingStepSessions[key];
+            if (this.streamingRequestByModal && this.streamingRequestByModal[key]) {
+                delete this.streamingRequestByModal[key];
+            }
+        };
 
         if (modalType) {
-            if (this.streamingStepQueues[modalType]) {
-                this.discardStreamingStepImageData(this.streamingStepQueues[modalType]);
-                delete this.streamingStepQueues[modalType];
-            }
+            endOne(modalType);
         } else {
-            Object.keys(this.streamingStepQueues).forEach(key => {
-                this.discardStreamingStepImageData(this.streamingStepQueues[key]);
-                delete this.streamingStepQueues[key];
-            });
+            Object.keys(this.streamingStepSessions).forEach(endOne);
         }
 
         if (releasePreview) {
@@ -4422,17 +4891,146 @@ class WebSocketClient {
         }
     }
 
-    // Wait for all streaming steps to be displayed
-    async waitForStreamingStepsComplete(modalType) {
-        if (!this.streamingStepQueues || !this.streamingStepQueues[modalType]) {
-            return; // No queue exists, nothing to wait for
+    clearStreamingStepQueues(modalType = null, releasePreview = false) {
+        this.endStreamingStepSession(modalType, releasePreview);
+    }
+
+    markStreamingSessionServerComplete(requestId, data = {}) {
+        const found = this.findStreamingStepSessionByRequestId(requestId);
+        if (!found) return;
+
+        const { session } = found;
+        if (data.phase === 'upscaling') {
+            session.awaitingUpscaleFinal = true;
+            return;
         }
 
-        const queueData = this.streamingStepQueues[modalType];
+        if (data.phase !== 'complete') return;
 
-        // Wait while there are steps in queue or queue is being processed
-        while (queueData.queue.length > 0 || queueData.isProcessing) {
-            await new Promise(resolve => setTimeout(resolve, 50));
+        session.serverGenerationComplete = true;
+
+        if (data.isUpscaling && session.awaitingUpscaleFinal !== true) {
+            session.awaitingUpscaleFinal = true;
+            return;
+        }
+
+        if (session.awaitingUpscaleFinal && !data.filename) {
+            return;
+        }
+
+        session.awaitingUpscaleFinal = false;
+    }
+
+    ensureGenerationFinalPrefetch(modalType, filename, contentLength) {
+        if (!filename) return null;
+        let session = this.getStreamingStepSession(modalType);
+        if (!session) {
+            session = this.beginStreamingStepSession(modalType, `prefetch-${Date.now()}`);
+        }
+
+        const imageUrl = `/images/${filename}`;
+        const knownBytes = Number(contentLength) > 0 ? Number(contentLength) : 0;
+
+        if (session.finalPrefetch
+            && session.finalPrefetch.filename === filename
+            && (session.finalPrefetch.ready || session.finalPrefetch.promise)) {
+            return session.finalPrefetch;
+        }
+
+        this.releaseStreamingStepPrefetch(session);
+
+        const prefetch = {
+            filename,
+            imageUrl,
+            contentLength: knownBytes,
+            ready: false,
+            blobUrl: null,
+            promise: null
+        };
+
+        session.finalPrefetch = prefetch;
+        // fetchTrackedImageBlob: public/scripts/comp/utilities.js
+        prefetch.promise = fetchTrackedImageBlob(
+            imageUrl,
+            knownBytes > 0 ? knownBytes : null,
+            null,
+            { headers: { 'X-Preview-Finalize': '1' } }
+        ).then((fetchResult) => {
+            if (session.aborted) {
+                if (fetchResult?.objectUrl && fetchResult.objectUrl.startsWith('blob:')) {
+                    try {
+                        URL.revokeObjectURL(fetchResult.objectUrl);
+                    } catch (_e) { /* ignore */ }
+                }
+                return null;
+            }
+            if (fetchResult.objectUrl) {
+                prefetch.blobUrl = fetchResult.objectUrl;
+                prefetch.ready = true;
+            }
+            return fetchResult;
+        }).catch((err) => {
+            console.warn('Final image prefetch failed:', err);
+            prefetch.ready = false;
+            return null;
+        });
+
+        return prefetch;
+    }
+
+    async waitForStreamingStepsComplete(modalType) {
+        const session = this.getStreamingStepSession(modalType);
+        if (!session) return;
+
+        while (session.isPlaying || session.playIndex < session.steps.length) {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+    }
+
+    async finalizeGenerationPreview(modalType, options = {}) {
+        const { filename, contentLength } = options;
+        let prefetchedBlobUrl = null;
+        const guardedRequestId = this._resolveGenerationCloseGuardRequestId(modalType);
+
+        try {
+            if (filename) {
+                this.ensureGenerationFinalPrefetch(modalType, filename, contentLength);
+            }
+
+            await this.waitForStreamingStepsComplete(modalType);
+
+            const activeSession = this.getStreamingStepSession(modalType);
+            const prefetch = activeSession?.finalPrefetch;
+
+            if (prefetch?.promise && !prefetch.ready) {
+                try {
+                    await prefetch.promise;
+                } catch (_e) { /* fall through to tracked fetch in preview manager */ }
+            }
+
+            if (prefetch?.ready && prefetch.blobUrl) {
+                prefetchedBlobUrl = prefetch.blobUrl;
+                prefetch.blobUrl = null;
+            }
+
+            return {
+                prefetchedBlobUrl,
+                filename: filename || prefetch?.filename || null,
+                contentLength: contentLength || prefetch?.contentLength || null,
+                skippedDownloadUi: !!prefetchedBlobUrl
+            };
+        } catch (err) {
+            if (prefetchedBlobUrl && prefetchedBlobUrl.startsWith('blob:')) {
+                try {
+                    URL.revokeObjectURL(prefetchedBlobUrl);
+                } catch (_e) { /* ignore */ }
+            }
+            throw err;
+        } finally {
+            if (guardedRequestId) {
+                this.releaseGenerationCloseGuard(guardedRequestId);
+            }
+            this.endStreamingStepSession(modalType, false);
         }
     }
 
@@ -4441,7 +5039,7 @@ class WebSocketClient {
      * spellbookModalManager: public/scripts/comp/spellbookModal.js
      */
     isSpellbookGenerationActive() {
-        return Boolean(window.spellbookModalManager?.isGenerating);
+        return Boolean(spellbookModalManager?.isGenerating);
     }
 
     /**
@@ -4672,7 +5270,12 @@ class WebSocketClient {
             }
 
             // Handle image preview updates
-            if (data.imageData && typeof updateGlassToastImagePreview === 'function') {
+            const toastPreviewData = data.imageData
+                || (Array.isArray(data.stepFrames) && data.stepFrames.length
+                    ? data.stepFrames[data.stepFrames.length - 1].imageData
+                    : null);
+
+            if (toastPreviewData && typeof updateGlassToastImagePreview === 'function') {
                 const manualModalEl = document.getElementById('manualModal');
                 const skipToastPreview = data.phase === 'generating'
                     && manualModalEl
@@ -4680,15 +5283,45 @@ class WebSocketClient {
                     && !this.isSpellbookGenerationActive();
 
                 if (!skipToastPreview) {
-                    updateGlassToastImagePreview(progressToastId, data.imageData);
+                    updateGlassToastImagePreview(progressToastId, toastPreviewData);
                 }
+            }
 
-                // Also handle modal streaming updates for intermediate images
-                if (data.phase === 'generating' && data.currentStep !== undefined) {
+            if (data.phase === 'generating') {
+                const stepFrames = Array.isArray(data.stepFrames) ? data.stepFrames : null;
+                const hasSingleStep = data.currentStep !== undefined && data.imageData;
+                if (stepFrames && stepFrames.length > 0) {
+                    const modalType = this.isSpellbookGenerationActive() ? 'spellbook' : 'manual';
+                    const manualModalEl = document.getElementById('manualModal');
+                    if (modalType === 'spellbook'
+                        || (manualModalEl && !manualModalEl.classList.contains('hidden'))) {
+                        this.appendStreamingSteps(modalType, stepFrames, {
+                            requestId,
+                            totalSteps: data.totalSteps
+                        });
+                    }
+                } else if (hasSingleStep) {
                     if (this.isSpellbookGenerationActive()) {
-                        this.queueStreamingStep('spellbook', data);
-                    } else if (manualModal && !manualModal.classList.contains('hidden')) {
-                        this.queueStreamingStep('manual', data);
+                        this.queueStreamingStep('spellbook', { ...data, requestId });
+                    } else {
+                        const manualModalEl = document.getElementById('manualModal');
+                        if (manualModalEl && !manualModalEl.classList.contains('hidden')) {
+                            this.queueStreamingStep('manual', { ...data, requestId });
+                        }
+                    }
+                }
+            }
+
+            if (data.phase === 'upscaling' || data.phase === 'complete') {
+                this.markStreamingSessionServerComplete(requestId, data);
+                if (data.phase === 'complete' && data.filename && !data.isUpscaling) {
+                    const found = this.findStreamingStepSessionByRequestId(requestId);
+                    if (found) {
+                        this.ensureGenerationFinalPrefetch(
+                            found.modalType,
+                            data.filename,
+                            data.contentLength
+                        );
                     }
                 }
             }
@@ -4699,27 +5332,6 @@ class WebSocketClient {
                     this.pendingGenerationDownloadBytes = Number(data.contentLength);
                     this.pendingGenerationDownloadFilename = data.filename || null;
                 }
-
-                const manualModalEl = document.getElementById('manualModal');
-                const manualFormEl = document.getElementById('manualForm');
-                const spellbookActive = this.isSpellbookGenerationActive();
-                const retainPreviewForFinalize = spellbookActive
-                    || (manualModalEl
-                        && !manualModalEl.classList.contains('hidden')
-                        && manualFormEl?.classList.contains('generating'));
-                if (retainPreviewForFinalize && typeof showManualPreviewNavigationLoading === 'function') {
-                    const dlBytes = data.contentLength && Number(data.contentLength) > 0
-                        ? Number(data.contentLength)
-                        : null;
-                    showManualPreviewNavigationLoading(
-                        true,
-                        dlBytes ? 'Downloading…' : 'Preparing download…',
-                        dlBytes ? 0 : 'indeterminate'
-                    );
-                }
-
-                // Final /images/ load swaps the preview — do not clear streaming frame early.
-                this.clearStreamingStepQueues(null, !retainPreviewForFinalize);
 
                 if (progressToastId && typeof clearGlassToastImagePreview === 'function') {
                     clearGlassToastImagePreview(progressToastId);
@@ -4922,7 +5534,8 @@ class WebSocketClient {
         }
 
         try {
-            const result = await this.sendMessage('expand_image', expansionParams);
+            const params = this._attachStepPreviewDimensions({ ...expansionParams }, 'manual');
+            const result = await this.sendMessage('expand_image', params);
             return result;
         } catch (error) {
             console.error('Expand image error:', error);
@@ -4950,7 +5563,8 @@ class WebSocketClient {
         }
 
         try {
-            const result = await this.sendMessage('reroll_expanded_image', params);
+            const payload = this._attachStepPreviewDimensions({ ...params }, 'manual');
+            const result = await this.sendMessage('reroll_expanded_image', payload);
             return result;
         } catch (error) {
             console.error('Reroll expanded image error:', error);
@@ -4965,7 +5579,11 @@ class WebSocketClient {
         }
 
         try {
-            const result = await this.sendMessage('generate_image', { ...generationParams, enableStreaming });
+            const params = this._attachStepPreviewDimensions(
+                { ...generationParams, enableStreaming },
+                'manual'
+            );
+            const result = await this.sendMessage('generate_image', params);
             return result;
         } catch (error) {
             console.error('Generate image error:', error);
@@ -5243,7 +5861,17 @@ class WebSocketClient {
     }
 
     async generatePreset(presetName, workspace = null, allowPaid = false, enableStreaming = false) {
-        return this.sendMessageWithRequestId('generate_preset', this.generateRequestId(), { presetName, allow_paid: allowPaid, workspace, enableStreaming });
+        const requestId = this.generateRequestId();
+        const params = this._attachStepPreviewDimensions({
+            presetName,
+            allow_paid: allowPaid,
+            workspace,
+            enableStreaming
+        }, 'spellbook');
+        if (enableStreaming) {
+            this.beginStreamingStepSession('spellbook', requestId);
+        }
+        return this.sendMessageWithRequestId('generate_preset', requestId, params);
     }
 
     async getPresets(page = 1, itemsPerPage = 15, searchTerm = '') {
@@ -5908,6 +6536,9 @@ class WebSocketClient {
         }
         if (cancelledIds.length > 0) {
             this.clearStreamingStepQueues(null, true);
+            for (const requestId of cancelledIds) {
+                this.releaseGenerationCloseGuard(requestId);
+            }
             try {
                 this.sendAcklessMessage('cancel_generation', { cancelledRequestIds: cancelledIds });
             } catch (e) {
@@ -5930,6 +6561,7 @@ class WebSocketClient {
 
         if (generationTypes.has(request.type)) {
             this.clearStreamingStepQueues(null, true);
+            this.releaseGenerationCloseGuard(requestId);
             try {
                 this.sendAcklessMessage('cancel_generation', { cancelledRequestIds: [requestId] });
             } catch (e) {
@@ -6059,6 +6691,14 @@ class WebSocketClient {
                 ...data
             };
 
+            if (data.enableStreaming === true) {
+                if (type === 'generate_image' || type === 'expand_image' || type === 'reroll_expanded_image') {
+                    this.beginStreamingStepSession('manual', requestId);
+                }
+            }
+
+            this._acquireGenerationCloseGuardForRequest(type, requestId);
+
             // Ensure pendingRequests map is properly initialized
             if (!this.pendingRequests) {
                 this.pendingRequests = new Map();
@@ -6131,6 +6771,14 @@ class WebSocketClient {
                     timeoutError.requestId = requestId;
                     timeoutError.requestType = message.type;
                     timeoutError.requestAge = requestAge;
+
+                    const generationTypes = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image']);
+                    if (generationTypes.has(request.type)) {
+                        this.clearStreamingStepQueues(null, true);
+                        this.cleanupGenerationProgressState(requestId);
+                        this.releaseGenerationCloseGuard(requestId);
+                    }
+
                     reject(timeoutError);
                 }
             }, timeoutMs);
@@ -6219,6 +6867,8 @@ class WebSocketClient {
             }
 
             this.pendingRequests.set(requestId, { resolve, reject, type, showBanner });
+
+            this._acquireGenerationCloseGuardForRequest(type, requestId);
 
             // Increment pending requests count
             this.incrementPendingRequests();

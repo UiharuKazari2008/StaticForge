@@ -256,11 +256,15 @@ class WebSocketServer {
                 if (clientInfo) {
                     console.log(`🔌 WebSocket disconnected: Session ${clientInfo.sessionId} - Code: ${code}, Reason: ${reason}`);
 
+                    const handlers = this.globalResources.getWebSocketMessageHandlers();
+                    if (handlers && handlers.cancelActiveGenerationsForClient) {
+                        handlers.cancelActiveGenerationsForClient(ws);
+                    }
+
                     // Clean up session workspace
                     this.globalResources.getWorkspaceManager().cleanupSessionWorkspace(clientInfo.sessionId);
                     
                     // Clean up metadata cache for this client
-                    const handlers = this.globalResources.getWebSocketMessageHandlers();
                     if (handlers && handlers.cleanupClientCache) {
                         handlers.cleanupClientCache(clientInfo.sessionId);
                     }
@@ -274,9 +278,13 @@ class WebSocketServer {
                 const clientInfo = this.clients.get(ws);
                 console.error(`❌ WebSocket error for session ${clientInfo?.sessionId || 'unknown'}:`, error);
 
+                const handlers = this.globalResources.getWebSocketMessageHandlers();
+                if (handlers && handlers.cancelActiveGenerationsForClient) {
+                    handlers.cancelActiveGenerationsForClient(ws);
+                }
+
                 // Clean up metadata cache for this client if we have session info
                 if (clientInfo && clientInfo.sessionId) {
-                    const handlers = this.globalResources.getWebSocketMessageHandlers();
                     if (handlers && handlers.cleanupClientCache) {
                         handlers.cleanupClientCache(clientInfo.sessionId);
                     }

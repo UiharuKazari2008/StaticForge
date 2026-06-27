@@ -36,19 +36,10 @@ async function handleLogout() {
                 localStorage.removeItem('loginTimestamp');
                 localStorage.removeItem('logViewerPathUuid');
 
-                // Remove master window/session data
-                localStorage.removeItem('staticforge_master_window');
-                localStorage.removeItem('staticforge_master_session');
-
                 // Disconnect WebSocket client
                 if (window.wsClient) {
                     console.log('🔌 Disconnecting WebSocket client');
                     window.wsClient.disconnect();
-                }
-
-                // Clear master window status
-                if (window.masterWindowClient) {
-                    window.masterWindowClient.clearMaster();
                 }
             } catch (error) {
                 console.warn('⚠️ Failed to clear some localStorage keys or disconnect services:', error);

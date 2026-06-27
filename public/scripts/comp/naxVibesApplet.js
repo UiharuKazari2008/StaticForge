@@ -343,6 +343,67 @@ class NaxVibesApplet {
                 this.closeEncodingPicker();
             });
         }
+
+        this.wireKeyboardShortcuts();
+    }
+
+    wireKeyboardShortcuts() {
+        if (this._keyboardShortcutsWired) return;
+        this._keyboardShortcutsWired = true;
+        if (!this._escapeKeyHandler) {
+            this._escapeKeyHandler = (e) => {
+                if (e.key !== 'Escape') return;
+                if (this.encodingPickerModal && !this.encodingPickerModal.classList.contains('hidden')) {
+                    this.closeEncodingPicker();
+                    return true;
+                }
+            };
+        }
+        // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+        registerKeyboardListener({
+            id: 'naxVibesModal.keydown',
+            handler: this._escapeKeyHandler,
+            type: 'whenFocused',
+            modalId: 'naxVibesModal',
+            priority: 80,
+            critical: true,
+            showInOverlay: false
+        });
+        registerKeyboardListener({
+            id: 'naxVibesEncodingPickerModal.keydown',
+            handler: (e) => {
+                if (e.key === 'Escape') {
+                    const modal = this.encodingPickerModal;
+                    if (!modal || modal.classList.contains('hidden')) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.closeEncodingPicker();
+                    return true;
+                }
+                if (e.key === 'Enter' && !modalKeyboardSkipPrimaryEnter(e.target)) {
+                    const modal = this.encodingPickerModal;
+                    if (!modal || modal.classList.contains('hidden')) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const selected = modal.querySelector('.nax-vibes-encoding-option.selected, .nax-vibes-encoding-option.keyboard-selected');
+                    if (selected) selected.click();
+                    return true;
+                }
+            },
+            type: 'whenFocused',
+            modalId: 'naxVibesEncodingPickerModal',
+            priority: 85,
+            critical: true,
+            showInOverlay: false
+        });
+        registerModalOverlayEntries('naxVibesModal', 'Nax Vibes', [
+            { id: 'overlay.naxVibes.search', label: 'Search', keys: 'Enter', icon: 'fas fa-search' },
+            { id: 'overlay.naxVibes.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
+        ]);
+        registerModalOverlayEntries('naxVibesEncodingPickerModal', 'Nax Vibes', [
+            { id: 'overlay.naxVibesEncoding.select', label: 'Select encoding', keys: 'Enter', icon: 'fas fa-check' },
+            { id: 'overlay.naxVibesEncoding.close', label: 'Close', keys: 'Esc', icon: 'fas fa-times' }
+        ]);
     }
 
     applyTitleLabel() {

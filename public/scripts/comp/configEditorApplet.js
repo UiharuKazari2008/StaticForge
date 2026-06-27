@@ -116,6 +116,82 @@ class ConfigEditorApplet {
         }
 
         this.setupContextMenus();
+        this.wireKeyboardOverlayEntries();
+    }
+
+    wireKeyboardOverlayEntries() {
+        if (this._keyboardOverlayWired) return;
+        this._keyboardOverlayWired = true;
+        if (!this._escapeKeyHandler) {
+            this._escapeKeyHandler = (e) => {
+                if (e.key !== 'Escape') return;
+                if (this.valueModal && !this.valueModal.classList.contains('hidden')) {
+                    this.closeValueEditor();
+                    return true;
+                }
+            };
+        }
+        // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+        registerKeyboardListener({
+            id: 'configEditorModal.escape',
+            handler: this._escapeKeyHandler,
+            type: 'whenFocused',
+            modalId: 'configEditorModal',
+            priority: 80,
+            critical: true,
+            showInOverlay: false
+        });
+        if (!this._saveKeyHandler) {
+            this._saveKeyHandler = (e) => {
+                if (!(e.ctrlKey || e.metaKey) || (e.key !== 's' && e.key !== 'S')) return;
+                if (this.valueModal && !this.valueModal.classList.contains('hidden')) return;
+                if (!this.modal || this.modal.classList.contains('hidden')) return;
+                e.preventDefault();
+                e.stopPropagation();
+                this.requestSave();
+                return true;
+            };
+        }
+        registerKeyboardListener({
+            id: 'configEditorModal.save',
+            handler: this._saveKeyHandler,
+            type: 'whenFocused',
+            modalId: 'configEditorModal',
+            priority: 79,
+            showInOverlay: false
+        });
+        registerModalOverlayEntries('configEditorModal', 'Config Editor', [
+            { id: 'overlay.configEditor.save', label: 'Save', keys: 'Ctrl+S', icon: 'fas fa-save' },
+            { id: 'overlay.configEditor.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
+        ]);
+        registerKeyboardListener({
+            id: 'configEditorValueModal.keydown',
+            handler: (e) => {
+                const modal = this.valueModal;
+                if (!modal || modal.classList.contains('hidden')) return;
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.closeValueEditor();
+                    return true;
+                }
+                if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.applyValueFromEditor();
+                    return true;
+                }
+            },
+            type: 'whenFocused',
+            modalId: 'configEditorValueModal',
+            priority: 85,
+            critical: true,
+            showInOverlay: false
+        });
+        registerModalOverlayEntries('configEditorValueModal', 'Config Editor', [
+            { id: 'overlay.configEditorValue.save', label: 'Save', keys: 'Ctrl+S', icon: 'fas fa-save' },
+            { id: 'overlay.configEditorValue.close', label: 'Close', keys: 'Esc', icon: 'fas fa-times' }
+        ]);
     }
 
     setupContextMenus() {

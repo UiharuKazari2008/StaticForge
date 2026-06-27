@@ -54,6 +54,7 @@ function initializePresetManager() {
 
     // Event listeners
     closePresetManagerBtn.addEventListener('click', hidePresetManager);
+    wirePresetManagerKeyboardOverlayEntries();
     togglePresetSearchBtn.addEventListener('click', togglePresetSearch);
     presetSearch.addEventListener('input', debounce(async () => {
         presetPaginationInfo.currentPage = 1; // Reset to first page when searching
@@ -99,6 +100,65 @@ function initializePresetManager() {
             }
         });
     }
+}
+
+let presetManagerEscapeHandler = null;
+
+function wirePresetManagerKeyboardOverlayEntries() {
+    if (document.body.dataset.presetManagerKeyboardOverlayWired === 'true') return;
+    document.body.dataset.presetManagerKeyboardOverlayWired = 'true';
+    if (!presetManagerEscapeHandler) {
+        presetManagerEscapeHandler = (e) => {
+            if (e.key !== 'Escape') return;
+            const updateModal = document.getElementById('updatePresetModal');
+            if (updateModal && !updateModal.classList.contains('hidden')) {
+                // closeModal: public/scripts/comp/modalUtils.js
+                closeModal(updateModal);
+                return true;
+            }
+        };
+    }
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'updatePresetModal.escape',
+        handler: presetManagerEscapeHandler,
+        type: 'whenFocused',
+        modalId: 'updatePresetModal',
+        priority: 80,
+        critical: true,
+        label: 'Cancel',
+        keys: 'Esc',
+        overlayIcon: 'fas fa-times',
+        overlayGroup: 'Preset Manager'
+    });
+    registerKeyboardListener({
+        id: 'overlay.presetManagerModal.close',
+        type: 'whenFocused',
+        modalId: 'presetManagerModal',
+        label: 'Close',
+        keys: 'Alt+Q',
+        overlayIcon: 'fas fa-times',
+        overlayGroup: 'Preset Manager',
+        overlayOnly: true,
+        priority: -10
+    });
+    [
+        { id: 'overlay.presetManagerModal.pageDown', label: 'Next page', keys: 'Page Down', icon: 'fas fa-chevron-down', overlayValid: () => presetPaginationInfo.currentPage < (presetPaginationInfo.totalPages || 1) },
+        { id: 'overlay.presetManagerModal.pageUp', label: 'Previous page', keys: 'Page Up', icon: 'fas fa-chevron-up', overlayValid: () => presetPaginationInfo.currentPage > 1 }
+    ].forEach((entry) => {
+        registerKeyboardListener({
+            id: entry.id,
+            type: 'whenFocused',
+            modalId: 'presetManagerModal',
+            label: entry.label,
+            keys: entry.keys,
+            overlayIcon: entry.icon,
+            overlayGroup: 'Preset Manager',
+            overlayOnly: true,
+            priority: -10,
+            overlayValid: typeof entry.overlayValid === 'function' ? entry.overlayValid : null
+        });
+    });
 }
 
 // No dropdown initialization needed - only simple updates allowed
@@ -255,6 +315,8 @@ function updatePresetPaginationControls() {
     if (nextBtn) {
         nextBtn.disabled = presetPaginationInfo.currentPage >= presetPaginationInfo.totalPages;
     }
+    // notifyKeyboardOverlayContextChanged: public/scripts/comp/modalKeyboardRegistry.js
+    notifyKeyboardOverlayContextChanged();
 }
 
 // Render the preset list
@@ -1627,7 +1689,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Set up WebSocket event handlers when WebSocket client is available
     if (wsClient) {
         setupWebSocketEventHandlers();
-        wsClient.registerInitStep(46, 'Initializing Preset Manager', async () => {
+        wsClient.registerInitStep(461, 'Initializing Preset Manager', async () => {
             wireInlinePresetListeners();
             wireSeedListeners();
             initializePresetManager();

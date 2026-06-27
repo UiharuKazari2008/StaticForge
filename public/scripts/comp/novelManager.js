@@ -675,11 +675,6 @@ function setupNovelUi() {
     }
 
     novelRefreshEnableState();
-
-    // setupNovelContextMenu: public/scripts/comp/novelContextMenu.js
-    if (typeof setupNovelContextMenu === 'function') {
-        setupNovelContextMenu();
-    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {

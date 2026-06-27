@@ -3,6 +3,11 @@
  * Manages popover display and positioning for UI elements
  */
 
+const HOVER_SHOW_DELAY_MS = 300;
+const HOVER_HIDE_DELAY_MS = 100;
+const HOVER_MAX_SHOW_MS = 10000;
+const TRAY_NOTIFICATION_DEFAULT_TIMEOUT_MS = 8000;
+
 const PopoverManager = {
     activePopovers: new Map(),
     
@@ -74,16 +79,22 @@ const PopoverManager = {
                 timeout: timeout === false ? null : timeout,
                 position: position,
                 arrowPosition: arrowPosition,
-                hoverOnly: hoverOnly
+                hoverOnly: hoverOnly,
+                onHide: options.onHide || null
             });
         } else {
             // Update existing popover
             this.updateContent(element, content);
-            // Update timeout if provided
-            if (timeout !== false) {
+            if (!hoverOnly) {
+                this._enterNotificationMode(element, popoverData);
+                popoverData.timeout = timeout === false ? TRAY_NOTIFICATION_DEFAULT_TIMEOUT_MS : timeout;
+            } else if (timeout !== false) {
                 popoverData.timeout = timeout;
             } else {
                 popoverData.timeout = null;
+            }
+            if (options.onHide) {
+                popoverData.onHide = options.onHide;
             }
         }
         
@@ -221,11 +232,18 @@ const PopoverManager = {
             popoverData.onShow(popoverData.popover, element);
         }
         
-        // Setup auto-close timeout if specified
-        if (popoverData.timeout && !popoverData.hoverOnly) {
+        // Auto-close timeout (notifications always honor timeout; hover tooltips cap max visible time)
+        if (popoverData.timeout) {
             popoverData.hideTimeout = setTimeout(() => {
                 this.hide(element);
             }, popoverData.timeout);
+        } else if (popoverData.hoverOnly) {
+            if (popoverData.maxShowTimeout) {
+                clearTimeout(popoverData.maxShowTimeout);
+            }
+            popoverData.maxShowTimeout = setTimeout(() => {
+                this.hide(element);
+            }, HOVER_MAX_SHOW_MS);
         }
     },
     
@@ -246,9 +264,15 @@ const PopoverManager = {
             clearTimeout(popoverData.hideTimeout);
             popoverData.hideTimeout = null;
         }
+        if (popoverData.maxShowTimeout) {
+            clearTimeout(popoverData.maxShowTimeout);
+            popoverData.maxShowTimeout = null;
+        }
         
         // Hide popover
         popoverData.popover.classList.remove('show');
+
+        this._exitNotificationMode(element, popoverData);
         
         // Call onHide callback
         if (popoverData.onHide) {
@@ -271,14 +295,12 @@ const PopoverManager = {
         if (popoverData.hideTimeout) {
             clearTimeout(popoverData.hideTimeout);
         }
-        
-        // Remove event listeners
-        if (popoverData.hoverListeners) {
-            element.removeEventListener('mouseenter', popoverData.hoverListeners.elementEnter);
-            element.removeEventListener('mouseleave', popoverData.hoverListeners.elementLeave);
-            popoverData.popover.removeEventListener('mouseenter', popoverData.hoverListeners.popoverEnter);
-            popoverData.popover.removeEventListener('mouseleave', popoverData.hoverListeners.popoverLeave);
+        if (popoverData.maxShowTimeout) {
+            clearTimeout(popoverData.maxShowTimeout);
         }
+        
+        this._teardownHoverListeners(popoverData);
+        this._teardownNotificationDismissListeners(popoverData);
         if (popoverData.clickListeners) {
             element.removeEventListener('click', popoverData.clickListeners.toggle);
             document.removeEventListener('click', popoverData.clickListeners.outside);
@@ -431,6 +453,100 @@ const PopoverManager = {
     },
     
     /**
+     * @private
+     */
+    _teardownHoverListeners(popoverData) {
+        if (!popoverData?.hoverListeners) return;
+        const { element, popover, hoverListeners } = popoverData;
+        element.removeEventListener('mouseenter', hoverListeners.elementEnter);
+        element.removeEventListener('mouseleave', hoverListeners.elementLeave);
+        popover.removeEventListener('mouseenter', hoverListeners.popoverEnter);
+        popover.removeEventListener('mouseleave', hoverListeners.popoverLeave);
+        popoverData.hoverListeners = null;
+    },
+
+    /**
+     * @private
+     */
+    _teardownNotificationDismissListeners(popoverData) {
+        if (!popoverData?.notificationDismissListeners) return;
+        const { element, popover, notificationDismissListeners } = popoverData;
+        element.removeEventListener('mouseleave', notificationDismissListeners.elementLeave);
+        popover.removeEventListener('mouseleave', notificationDismissListeners.popoverLeave);
+        popoverData.notificationDismissListeners = null;
+    },
+
+    /**
+     * Swap a tray hover tooltip into programmatic notification mode.
+     * @private
+     */
+    _enterNotificationMode(element, popoverData) {
+        if (!popoverData.hoverOnly || popoverData._hoverTooltipSnapshot) return;
+
+        popoverData._hoverTooltipSnapshot = {
+            content: element.title || ''
+        };
+        popoverData._savedOnHide = popoverData.onHide || null;
+        popoverData.hoverOnly = false;
+        this._teardownHoverListeners(popoverData);
+        this._setupNotificationDismissListeners(popoverData);
+    },
+
+    /**
+     * Restore tray hover tooltip after a notification closes.
+     * @private
+     */
+    _exitNotificationMode(element, popoverData) {
+        this._teardownNotificationDismissListeners(popoverData);
+        if (!popoverData._hoverTooltipSnapshot) return;
+
+        popoverData.hoverOnly = true;
+        popoverData.timeout = null;
+        this.updateContent(element, popoverData._hoverTooltipSnapshot.content);
+        this._setupHoverListeners(popoverData);
+        delete popoverData._hoverTooltipSnapshot;
+        if (popoverData._savedOnHide !== undefined) {
+            popoverData.onHide = popoverData._savedOnHide;
+            delete popoverData._savedOnHide;
+        }
+    },
+
+    /**
+     * Close tray notification popovers when pointer leaves icon and bubble.
+     * @private
+     */
+    _setupNotificationDismissListeners(popoverData) {
+        this._teardownNotificationDismissListeners(popoverData);
+
+        const { element, popover } = popoverData;
+        let hideTimeout = null;
+
+        const scheduleHide = () => {
+            if (hideTimeout) clearTimeout(hideTimeout);
+            hideTimeout = setTimeout(() => {
+                PopoverManager.hide(element);
+            }, HOVER_HIDE_DELAY_MS);
+        };
+
+        const cancelHide = () => {
+            if (hideTimeout) {
+                clearTimeout(hideTimeout);
+                hideTimeout = null;
+            }
+        };
+
+        element.addEventListener('mouseleave', scheduleHide);
+        popover.addEventListener('mouseenter', cancelHide);
+        popover.addEventListener('mouseleave', scheduleHide);
+
+        popoverData.notificationDismissListeners = {
+            elementLeave: scheduleHide,
+            popoverEnter: cancelHide,
+            popoverLeave: scheduleHide
+        };
+    },
+
+    /**
      * Setup hover listeners for hover-only popovers
      * @private
      */
@@ -451,7 +567,7 @@ const PopoverManager = {
             
             showTimeout = setTimeout(() => {
                 PopoverManager.show(element);
-            }, 300); // Small delay before showing
+            }, HOVER_SHOW_DELAY_MS);
         };
         
         const hidePopover = () => {
@@ -466,7 +582,7 @@ const PopoverManager = {
             
             hideTimeout = setTimeout(() => {
                 PopoverManager.hide(element);
-            }, 100); // Small delay before hiding
+            }, HOVER_HIDE_DELAY_MS);
         };
         
         const cancelHide = () => {

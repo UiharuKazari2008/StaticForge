@@ -2006,20 +2006,54 @@ class ExplorerApplet {
         if (e.viewDetailsBtn) e.viewDetailsBtn.addEventListener('click', () => this.setViewMode('details'));
         if (e.closeBtn) e.closeBtn.addEventListener('click', () => this.close());
 
-        if (this.modal) {
-            this.modal.addEventListener('keydown', (ev) => {
-                if (!this._shouldHandleExplorerShortcut(ev)) return;
-                if (ev.ctrlKey || ev.metaKey) {
-                    if (ev.key === 'c') { ev.preventDefault(); this.copySelection(); }
-                    if (ev.key === 'x') { ev.preventDefault(); this.cutSelection(); }
-                    if (ev.key === 'v') { ev.preventDefault(); this.pasteClipboard(); }
-                }
-                if (ev.key === 'F2') { ev.preventDefault(); this.renameSelection(); }
-                if (ev.key === 'Delete') {
-                    ev.preventDefault();
-                    this.deleteSelection({ fromKeyboard: true, permanent: ev.shiftKey });
-                }
-            });
+        this.wireExplorerKeyboard();
+    }
+
+    wireExplorerKeyboard() {
+        if (this._explorerKeyboardWired) return;
+        this._explorerKeyboardWired = true;
+        // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+        registerKeyboardListener({
+            id: 'explorerModal.keydown',
+            handler: (ev) => this.handleExplorerShortcutKeydown(ev),
+            type: 'whenFocused',
+            modalId: 'explorerModal',
+            priority: 72,
+            showInOverlay: false
+        });
+        registerModalOverlayEntries('explorerModal', 'Explorer', [
+            { id: 'overlay.explorer.copy', label: 'Copy', keys: 'Ctrl+C', icon: 'fas fa-copy', overlayValid: () => this._explorerOverlayHasSelection() },
+            { id: 'overlay.explorer.cut', label: 'Cut', keys: 'Ctrl+X', icon: 'fas fa-cut', overlayValid: () => this._explorerOverlayHasSelection() },
+            { id: 'overlay.explorer.paste', label: 'Paste', keys: 'Ctrl+V', icon: 'fas fa-paste', overlayValid: () => !!this.clipboard },
+            { id: 'overlay.explorer.rename', label: 'Rename', keys: 'F2', icon: 'fas fa-i-cursor', overlayValid: () => this._explorerOverlayCanRename() },
+            { id: 'overlay.explorer.delete', label: 'Delete', keys: 'Del', icon: 'fas fa-trash', overlayValid: () => this._explorerOverlayHasSelection() }
+        ]);
+    }
+
+    _explorerOverlaySelectionCount() {
+        return this.grid?.getSelectedItems()?.length || 0;
+    }
+
+    _explorerOverlayHasSelection() {
+        return this._explorerOverlaySelectionCount() >= 1;
+    }
+
+    _explorerOverlayCanRename() {
+        return this._explorerOverlaySelectionCount() === 1;
+    }
+
+    handleExplorerShortcutKeydown(ev) {
+        if (!this._shouldHandleExplorerShortcut(ev)) return;
+        if (ev.ctrlKey || ev.metaKey) {
+            if (ev.key === 'c' || ev.key === 'C') { ev.preventDefault(); this.copySelection(); return true; }
+            if (ev.key === 'x' || ev.key === 'X') { ev.preventDefault(); this.cutSelection(); return true; }
+            if (ev.key === 'v' || ev.key === 'V') { ev.preventDefault(); this.pasteClipboard(); return true; }
+        }
+        if (ev.key === 'F2') { ev.preventDefault(); this.renameSelection(); return true; }
+        if (ev.key === 'Delete') {
+            ev.preventDefault();
+            this.deleteSelection({ fromKeyboard: true, permanent: ev.shiftKey });
+            return true;
         }
     }
 
@@ -3160,6 +3194,8 @@ class ExplorerApplet {
         set(this.el.downloadBtn, canFile);
         set(this.el.replaceBtn, canFile);
         set(this.el.deleteBtn, hasSel);
+        // notifyKeyboardOverlayContextChanged: public/scripts/comp/modalKeyboardRegistry.js
+        notifyKeyboardOverlayContextChanged();
     }
 
     _itemRefs(items) {

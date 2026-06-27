@@ -18,6 +18,19 @@ function sanitizeDynamicGenerationForForge(dg) {
     return dgForForge;
 }
 
+async function encodeStepPreviewJpeg(imageBuffer, previewWidth, previewHeight) {
+    let pipeline = sharp(imageBuffer);
+    const w = Number(previewWidth);
+    const h = Number(previewHeight);
+    if (Number.isFinite(w) && w > 0 && Number.isFinite(h) && h > 0) {
+        pipeline = pipeline.resize(Math.round(w), Math.round(h), {
+            fit: 'inside',
+            withoutEnlargement: true
+        });
+    }
+    return pipeline.jpeg({ quality: 72 }).toBuffer();
+}
+
 function mergeNovelForgeFieldsFromOpts(forgeData, opts) {
     if (!forgeData || !opts) return;
     if (opts.novel_note_id !== undefined) forgeData.novel_note_id = opts.novel_note_id;
@@ -3267,6 +3280,15 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             auto_clean_uc: body.auto_clean_uc !== undefined ? body.auto_clean_uc : (preset && preset.auto_clean_uc !== undefined ? preset.auto_clean_uc : true),
         };
 
+        if (body.stepPreviewWidth && body.stepPreviewHeight) {
+            const spw = parseInt(body.stepPreviewWidth, 10);
+            const sph = parseInt(body.stepPreviewHeight, 10);
+            if (Number.isFinite(spw) && spw > 0 && Number.isFinite(sph) && sph > 0) {
+                baseOptions.stepPreviewWidth = spw;
+                baseOptions.stepPreviewHeight = sph;
+            }
+        }
+
         if (baseOptions.upscale && baseOptions.upscale > 1 && !allowPaid) {
             throw new Error(`Upscaling with scale ${baseOptions.upscale} requires Opus credits. Set "allow_paid": true to confirm you accept using Opus credits for upscaling.`);
         }
@@ -3819,6 +3841,9 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
     delete apiOpts.pipeline;
     delete apiOpts.text_replacements;
     delete apiOpts.auto_clean_uc;
+    delete apiOpts.stepPreviewWidth;
+    delete apiOpts.stepPreviewHeight;
+    delete apiOpts.requestId;
 
     // Process character prompts: only enabled characters go to API, all characters go to forge_data
     if (opts.allCharacterPrompts && Array.isArray(opts.allCharacterPrompts)) {
@@ -3861,40 +3886,90 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             // Check if response is an AsyncGenerator (streaming)
             if (streamingResponse && typeof streamingResponse[Symbol.asyncIterator] === "function") {
                 __runtimeGr.getLogger().detailed("🎬 Streaming generation started");
-                for await (const event of streamingResponse) {
+                let stepPreviewBatcher = null;
+                const stepProgressBase = {
+                    hasDynamicGen: !!opts.dynamic_generation,
+                    isUpscaling: !!opts.upscale
+                };
+                if (opts.stageIndex !== undefined) {
+                    stepProgressBase.totalStages = opts.totalStages;
+                    stepProgressBase.currentStage = opts.stageIndex + 1;
+                    stepProgressBase.stageType = opts.stageType;
+                }
+                if (ws && handler && typeof handler.createStepPreviewBatcher === 'function') {
+                    stepPreviewBatcher = handler.createStepPreviewBatcher(
+                        ws,
+                        opts.requestId || 'generation',
+                        stepProgressBase
+                    );
+                }
+                const streamIterator = streamingResponse[Symbol.asyncIterator]();
+                try {
+                while (true) {
+                    if (isStagedGenerationCancelled(handler, opts.requestId)) {
+                        break;
+                    }
+                    const iterResult = await streamIterator.next();
+                    if (iterResult.done) {
+                        break;
+                    }
+                    const event = iterResult.value;
+                    if (isStagedGenerationCancelled(handler, opts.requestId)) {
+                        break;
+                    }
                     if (event.event_type === __runtimeGr.getNekoAiService('EventType').INTERMEDIATE) {
-                        // Send unified progress update
-                        if (ws && handler) {
-                            const progressData = {
+                        const rawImageBuffer = Buffer.from(event.image.data);
+                        let jpegBuffer = rawImageBuffer;
+                        try {
+                            jpegBuffer = await encodeStepPreviewJpeg(
+                                rawImageBuffer,
+                                opts.stepPreviewWidth,
+                                opts.stepPreviewHeight
+                            );
+                        } catch (encodeErr) {
+                            console.warn('⚠️ Step preview JPEG encode failed, sending raw frame:', encodeErr.message);
+                        }
+                        const stepFrame = {
+                            currentStep: event.step_ix,
+                            totalSteps: opts.steps || 25,
+                            imageData: jpegBuffer.toString('base64'),
+                            imageFormat: 'jpeg'
+                        };
+                        if (stepPreviewBatcher) {
+                            stepPreviewBatcher.add(stepFrame);
+                        } else if (ws && handler) {
+                            handler.sendGenerationProgress(ws, opts.requestId || 'generation', {
                                 phase: 'generating',
-                                currentStep: event.step_ix,
-                                totalSteps: opts.steps || 25,
-                                hasDynamicGen: !!opts.dynamic_generation,
-                                isUpscaling: !!opts.upscale,
-                                imageData: Buffer.from(event.image.data).toString('base64')
-                            };
-                            
-                            // Add stage information if available (convert to 1-based indexing for UI)
-                            if (opts.stageIndex !== undefined) {
-                                progressData.totalStages = opts.totalStages;
-                                progressData.currentStage = opts.stageIndex + 1;
-                                progressData.stageType = opts.stageType;
-                            }
-                            
-                            handler.sendGenerationProgress(ws, opts.requestId || 'generation', progressData);
+                                ...stepProgressBase,
+                                ...stepFrame
+                            });
                         }
 
                         await streamingCallback({
                             type: 'intermediate',
                             step: event.step_ix,
-                            image: Buffer.from(event.image.data),
+                            image: rawImageBuffer,
                             timestamp: Date.now()
                         });
                         
                     } else if (event.event_type === __runtimeGr.getNekoAiService('EventType').FINAL) {
                         img = event.image;
-                        break
+                        break;
                     }
+                }
+                } finally {
+                if (stepPreviewBatcher) {
+                    if (isStagedGenerationCancelled(handler, opts.requestId)) {
+                        stepPreviewBatcher.dispose();
+                    } else {
+                        stepPreviewBatcher.flush();
+                    }
+                }
+                if (isStagedGenerationCancelled(handler, opts.requestId) && typeof streamIterator.return === 'function') {
+                    try {
+                        await streamIterator.return();
+                    } catch (_streamCloseErr) { /* ignore */ }
+                }
                 }
             } else {
                 // Fallback to regular generation if streaming not available
@@ -3913,6 +3988,12 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             }
             [img] = await client.generateImage(apiOpts, false, true, true);
             console.log('✅ Image generation completed');
+        }
+
+        if (isStagedGenerationCancelled(handler, opts.requestId) && !img) {
+            const cancelErr = new Error('Generation cancelled');
+            cancelErr.code = 'GENERATION_CANCELLED';
+            throw cancelErr;
         }
         
         // Get new balance and calculate credit usage
@@ -4300,9 +4381,9 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 generation_type: 'upscaled'
             };
             const updatedScaledBuffer = __runtimeGr.getPngMetadata().updateMetadata(scaledBuffer, upscaledForgeData);
-        
+            const upscaledName = name.replace('.png', '_upscaled.png');
+
             if (shouldSave) {
-                const upscaledName = name.replace('.png', '_upscaled.png');
                 fs.writeFileSync(path.join(__runtimeGr.getPath('images'), upscaledName), updatedScaledBuffer);
                 console.log(`💾 Saved: ${upscaledName}`);
                 
@@ -4330,9 +4411,9 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 const progressData = {
                     phase: 'complete',
                     hasDynamicGen: !!opts.dynamic_generation,
-                    isUpscaling: true,
+                    isUpscaling: false,
                     contentLength: updatedScaledBuffer.length,
-                    filename: name
+                    filename: upscaledName
                 };
                 
                 // Add stage information if available (convert to 1-based indexing for UI)
@@ -4348,7 +4429,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         // Return result with appropriate seed information
         const result = {
             buffer: updatedScaledBuffer,
-            filename: name,
+            filename: upscaledName,
             saved: shouldSave,
             seed: seed,
             compiled_prompt: opts.dynamic_generation?.compiled_prompt,
@@ -6758,7 +6839,7 @@ async function previewExpandImagePrompt(
 }
 
 // Image expansion function - expands image to new resolution using AI-powered inpainting
-async function expandImage(globalResources, filename, resolution, imageBias, upscaleAfterComplete = false, overrideParams = {}, sessionId, workspaceId = null, streamingCallback = null, ws = null, handler = null, requestId = null, sourceFilename = null, enableAI = false) {
+async function expandImage(globalResources, filename, resolution, imageBias, upscaleAfterComplete = false, overrideParams = {}, sessionId, workspaceId = null, streamingCallback = null, ws = null, handler = null, requestId = null, sourceFilename = null, enableAI = false, stepPreviewWidth = null, stepPreviewHeight = null) {
     bindRuntimeGlobalResources(globalResources);
     try {
         console.log(`🔍 Starting image expansion: ${filename} to ${resolution} with bias ${imageBias}`);
@@ -7009,6 +7090,11 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
             no_save: true, // Prevent handleGeneration from saving, we'll save with custom name
             image_preletterboxed: true
         };
+
+        if (stepPreviewWidth && stepPreviewHeight) {
+            requestBody.stepPreviewWidth = stepPreviewWidth;
+            requestBody.stepPreviewHeight = stepPreviewHeight;
+        }
         
         console.log(`🔍 Expansion upscale setting: upscaleAfterComplete=${upscaleAfterComplete}, type=${typeof upscaleAfterComplete}`);
         
@@ -7132,7 +7218,7 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
 }
 
 // Image expansion reroll function - regenerates expanded image without AI call
-async function rerollExpandedImage(globalResources, filename, overrideParams = {}, sessionId, workspaceId = null, streamingCallback = null, ws = null, handler = null, requestId = null) {
+async function rerollExpandedImage(globalResources, filename, overrideParams = {}, sessionId, workspaceId = null, streamingCallback = null, ws = null, handler = null, requestId = null, stepPreviewWidth = null, stepPreviewHeight = null) {
     bindRuntimeGlobalResources(globalResources);
     try {
         console.log(`🔄 Starting image expansion reroll: ${filename}`);
@@ -7340,6 +7426,11 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
             no_save: true,
             image_preletterboxed: true
         };
+
+        if (stepPreviewWidth && stepPreviewHeight) {
+            requestBody.stepPreviewWidth = stepPreviewWidth;
+            requestBody.stepPreviewHeight = stepPreviewHeight;
+        }
         
         // Add seed if provided in overrides
         if (genParams.seed !== undefined) {

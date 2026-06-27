@@ -8,15 +8,7 @@
 
     <title>Dreamscape - Login</title>
 
-    <!-- Development Bridge Client (only loads in development mode) -->
     <script>
-        // Check if development mode is enabled via localStorage
-        if (localStorage.getItem('staticforge_dev_mode') === 'true') {
-            const script = document.createElement('script');
-            script.src = '/scripts/devBridgeClient.js';
-            script.async = true;
-            document.head.appendChild(script);
-        }
         try {
             if (localStorage.getItem('staticforge_dev_mode') === 'true') {
                 document.cookie = 'staticforge_dev_mode=1; path=/; SameSite=Lax';

@@ -1,7 +1,7 @@
 /**
  * Random prompt toggle, refresh, and transfer.
  * savedRandomPromptState / lastPromptState: manualModalManager.js
- * Wired via registerInitStep 47.7.
+ * Wired via registerInitStep 477.
  */
 
 /**
@@ -212,41 +212,42 @@ async function toggleRandomPrompt() {
     }
 }
 
-function wireRandomPromptListeners() {
-    if (document.body.dataset.randomPromptWired === 'true') return;
-    document.body.dataset.randomPromptWired = 'true';
-
+function attachRandomPromptListeners(signal) {
     const toggleBtn = document.getElementById('randomPromptToggleBtn');
     const refreshBtn = document.getElementById('randomPromptRefreshBtn');
     const transferBtn = document.getElementById('randomPromptTransferBtn');
 
-    if (toggleBtn && toggleBtn.dataset.wired !== 'true') {
-        toggleBtn.dataset.wired = 'true';
+    if (toggleBtn) {
         toggleBtn.addEventListener('click', (e) => {
             e.preventDefault();
             toggleRandomPrompt();
-        });
+        }, { signal });
     }
 
-    if (refreshBtn && refreshBtn.dataset.wired !== 'true') {
-        refreshBtn.dataset.wired = 'true';
+    if (refreshBtn) {
         refreshBtn.addEventListener('click', (e) => {
             e.preventDefault();
             executeRandomPrompt();
-        });
+        }, { signal });
     }
 
-    if (transferBtn && transferBtn.dataset.wired !== 'true') {
-        transferBtn.dataset.wired = 'true';
+    if (transferBtn) {
         transferBtn.addEventListener('click', (e) => {
             e.preventDefault();
             transferRandomPrompt();
-        });
+        }, { signal });
     }
 }
 
+function initRandomPromptListenerScope() {
+    const manualModalEl = document.getElementById('manualModal');
+    if (!manualModalEl) return;
+    // attachModalListeners: public/scripts/comp/modalListenerScope.js
+    attachModalListeners(manualModalEl, attachRandomPromptListeners);
+}
+
 if (typeof wsClient !== 'undefined' && wsClient) {
-    wsClient.registerInitStep(47.7, 'Random prompt listeners', async () => {
-        wireRandomPromptListeners();
+    wsClient.registerInitStep(477, 'Random prompt listener scope', async () => {
+        initRandomPromptListenerScope();
     });
 }

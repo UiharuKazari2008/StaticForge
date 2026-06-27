@@ -20,6 +20,24 @@ let imageBiasAdjustmentData = {
     previewMode: 'css' // Default to CSS view
 };
 
+let _imageBiasDropdownScopeWired = false;
+
+function wireImageBiasDropdownModalScope() {
+    if (_imageBiasDropdownScopeWired) return;
+    const manualModal = document.getElementById('manualModal');
+    if (!manualModal) return;
+    _imageBiasDropdownScopeWired = true;
+    // attachModalListeners: public/scripts/comp/modalListenerScope.js
+    attachModalListeners(manualModal, (signal) => {
+        document.addEventListener('click', (e) => {
+            if (!imageBiasDropdownBtn || !imageBiasDropdownMenu) return;
+            if (!imageBiasDropdownBtn.contains(e.target) && !imageBiasDropdownMenu.contains(e.target)) {
+                closeImageBiasDropdown();
+            }
+        }, { signal });
+    });
+}
+
 // Render image bias dropdown
 async function renderImageBiasDropdown(selectedVal) {
     if (!window.uploadedImageData || window.uploadedImageData.isPlaceholder) {
@@ -40,12 +58,8 @@ async function renderImageBiasDropdown(selectedVal) {
             }
         });
 
-        // Close dropdown when clicking outside
-        document.addEventListener('click', (e) => {
-            if (!imageBiasDropdownBtn.contains(e.target) && !imageBiasDropdownMenu.contains(e.target)) {
-                closeImageBiasDropdown();
-            }
-        });
+        // Close dropdown when clicking outside — wireImageBiasDropdownModalScope
+        wireImageBiasDropdownModalScope();
 
         // Mark as set up
         imageBiasDropdownBtn.setAttribute('data-setup', 'true');
@@ -1607,6 +1621,92 @@ function cropImageWithDynamicBias(dataUrl, bias) {
     });
 }
 
+let _imageBiasAdjustmentModalScopeWired = false;
+let _imageBiasKeyboardWired = false;
+
+function isImageBiasAdjustmentKeyboardContext() {
+    const modal = document.getElementById('imageBiasAdjustmentModal');
+    if (!modal || modal.classList.contains('hidden')) return false;
+    // isModalActive: public/scripts/comp/modalUtils.js
+    if (window.isDesktop && typeof isModalActive === 'function') {
+        return isModalActive(modal);
+    }
+    return true;
+}
+
+function onImageBiasAdjustmentKeydown(e) {
+    if (!isImageBiasAdjustmentKeyboardContext()) return;
+
+    if (e.key === 'r' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const btn = document.getElementById('biasResetBtn');
+        if (btn && !btn.disabled) btn.click();
+        return true;
+    }
+
+    if (e.key === 'Enter') {
+        if (e.target.tagName === 'TEXTAREA') return;
+        if (e.target.isContentEditable) return;
+        const menu = document.getElementById('imageBiasPresetMenu');
+        if (menu && !menu.classList.contains('hidden')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const btn = document.getElementById('saveBiasAdjustmentBtn');
+        if (btn && !btn.disabled) btn.click();
+        return true;
+    }
+}
+
+function wireImageBiasKeyboardShortcuts() {
+    if (_imageBiasKeyboardWired) return;
+    _imageBiasKeyboardWired = true;
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'imageBiasAdjustmentModal.keydown',
+        handler: onImageBiasAdjustmentKeydown,
+        type: 'whenFocused',
+        modalId: 'imageBiasAdjustmentModal',
+        priority: 75,
+        critical: true,
+        showInOverlay: false
+    });
+    const imageBiasOverlayEntries = [
+        { id: 'overlay.imageBiasAdjustmentModal.apply', label: 'Apply', keys: 'Enter', icon: 'nai-save' },
+        { id: 'overlay.imageBiasAdjustmentModal.reset', label: 'Reset', keys: 'Ctrl+R', icon: 'nai-reload' },
+        { id: 'overlay.imageBiasAdjustmentModal.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
+    ];
+    imageBiasOverlayEntries.forEach((entry) => {
+        registerKeyboardListener({
+            id: entry.id,
+            type: 'whenFocused',
+            modalId: 'imageBiasAdjustmentModal',
+            label: entry.label,
+            keys: entry.keys,
+            overlayIcon: entry.icon,
+            overlayGroup: 'Image Bias',
+            overlayOnly: true,
+            priority: -10
+        });
+    });
+}
+
+function wireImageBiasAdjustmentModalScope() {
+    if (_imageBiasAdjustmentModalScopeWired) return;
+    const modal = document.getElementById('imageBiasAdjustmentModal');
+    if (!modal) return;
+    _imageBiasAdjustmentModalScopeWired = true;
+    // attachModalListeners: public/scripts/comp/modalListenerScope.js
+    attachModalListeners(modal, (signal) => {
+        document.addEventListener('click', (e) => {
+            const dropdown = document.getElementById('imageBiasPresetDropdown');
+            if (dropdown && !dropdown.contains(e.target)) {
+                closeImageBiasPresetDropdown();
+            }
+        }, { signal });
+    });
+}
+
 // Setup image bias adjustment event listeners
 let _imageBiasAdjustmentListenersWired = false;
 
@@ -1615,6 +1715,9 @@ function setupImageBiasAdjustmentListeners() {
         return;
     }
     _imageBiasAdjustmentListenersWired = true;
+
+    wireImageBiasAdjustmentModalScope();
+    wireImageBiasKeyboardShortcuts();
 
     // Modal controls
     const closeBtn = document.getElementById('closeImageBiasAdjustmentBtn');
@@ -1668,16 +1771,7 @@ function setupImageBiasAdjustmentListeners() {
         });
     }
 
-    // Close image bias preset dropdown when clicking outside
-    document.addEventListener('click', e => {
-        const dropdown = document.getElementById('imageBiasPresetDropdown');
-        if (dropdown && !dropdown.contains(e.target)) {
-            closeImageBiasPresetDropdown();
-        }
-    });
-
-
-
+    // Preset dropdown outside click — wireImageBiasAdjustmentModalScope
 
     // Confirmation dialog controls
     const closeConfirmBtn = document.getElementById('closeBiasConfirmBtn');

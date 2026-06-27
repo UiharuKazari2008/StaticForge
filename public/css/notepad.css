@@ -3,9 +3,13 @@
    Notepad Modal Styles
    ============================================================================ */
 
+#notepadModalTemplate,
+[id^="notepad_"],
 .notepad-modal {
-    width: 600px;
-    height: 500px;
+    width: 500px;
+    height: 400px;
+    min-width: 400px;
+    min-height: 300px;
 }
 
 .notepad-modal .modal-content {

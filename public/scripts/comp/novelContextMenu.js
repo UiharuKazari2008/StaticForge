@@ -6,6 +6,7 @@
 function setupNovelContextMenu() {
     const btn = document.getElementById('novelBtn');
     if (!btn || btn.dataset.novelCtxMenu) return;
+    if (!contextMenu) return;
     btn.dataset.novelCtxMenu = '1';
 
     const config = {
