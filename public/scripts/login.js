@@ -103,21 +103,31 @@ class LoginPage {
         });
     }
 
+    ensureExpanded() {
+        if (this.loginContainer.classList.contains('minimize')) {
+            this.loginContainer.classList.add('transition');
+            this.loginContainer.classList.remove('minimize');
+            this.updateAriaAttributes();
+        }
+    }
+
     updateAriaAttributes() {
         const isMinimized = this.loginContainer.classList.contains('minimize');
+        const digits = this.rollingBuffer.length;
+        const digitLabel = digits === 1 ? '1 digit entered' : `${digits} digits entered`;
+
         this.pinDisplay.setAttribute('aria-expanded', !isMinimized);
-        this.pinDisplay.setAttribute('aria-label', isMinimized ? 'Show PIN pad' : 'Hide PIN pad');
+        this.pinDisplay.setAttribute('aria-label', `${isMinimized ? 'Show PIN pad' : 'Hide PIN pad'}, ${digitLabel}`);
     }
 
     addDigit(digit) {
-        // Clear error when starting a new entry
-        if (this.rollingBuffer.length === 0) {
-            this.clearPinError();
-        }
+        this.ensureExpanded();
+        this.clearPinError();
 
         if (this.rollingBuffer.length < 6) {
             this.rollingBuffer += digit;
             this.updatePinDisplay();
+            this.updateAriaAttributes();
             
             // Auto-submit when 6 digits are entered
             if (this.rollingBuffer.length === 6) {
@@ -127,15 +137,19 @@ class LoginPage {
     }
 
     removeDigit() {
+        this.clearPinError();
         if (this.rollingBuffer.length > 0) {
             this.rollingBuffer = this.rollingBuffer.slice(0, -1);
             this.updatePinDisplay();
+            this.updateAriaAttributes();
         }
     }
 
     clearPin() {
+        this.clearPinError();
         this.rollingBuffer = '';
         this.updatePinDisplay();
+        this.updateAriaAttributes();
     }
 
     async clearCachesAndReload() {
