@@ -5,7 +5,7 @@
     --titlebar-area-width: env(titlebar-area-width, 100%);
     --titlebar-area-height: env(titlebar-area-height, 33px);
     --transition-pin-dot: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
-    --transition-pin-button: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, color 0.3s ease;
+    --transition-pin-button: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, color 0.3s ease, transform 0.1s ease;
     --transition-login-container: padding 0.75s ease;
     --transition-blur-layer: opacity 0.25s cubic-bezier(1, 0, 0.21, 0.86);
     --transition-asset-progress: max-height 0.25s ease-in-out, opacity 0.25s ease-in-out, margin-top 0.25s ease-in-out, border-width 0.25s ease-in-out, padding 0.25s ease-in-out, gap 0.25s ease-in-out;
@@ -348,8 +348,10 @@ body.login-booting .login-product-name {
         box-shadow: 0 0 20px rgb(255 255 255 / 66%);
     }
 
-    .pin-button:active {
+    .pin-button:active,
+    .pin-button.active {
         background-color: rgb(255 255 255 / 90%);
+        transform: scale(0.92);
     }
     .pin-button.backspace-btn:hover,
     .pin-button.danger:hover {

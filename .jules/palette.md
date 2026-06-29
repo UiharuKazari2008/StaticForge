@@ -1,3 +1,7 @@
 ## 2026-06-15 - [Accessibility & Keyboard Navigation on Login Page]
 **Learning:** Interactive non-form elements (like the PIN display div) lack standard keyboard triggers and ARIA states, making them inaccessible to screen readers and keyboard-only users. Using `:focus-visible` is essential for providing clear focus indicators for keyboard users without cluttering the UI for mouse users.
 **Action:** Always apply `role="button"`, `tabindex="0"`, and handle `Enter`/`Space` keys for interactive divs. Use `aria-expanded` and `aria-label` to communicate state changes to assistive technologies. Apply high-contrast `:focus-visible` styles to all interactive elements.
+
+## 2025-05-15 - [Interactive PIN Pad Feedback & Accessibility]
+**Learning:** For custom-built interactive components like a PIN pad, adding visual feedback (CSS active states) for keyboard triggers is crucial for making the interface feel responsive to power users. Additionally, providing the number of entered digits in the ARIA label of masked displays ensures accessibility for screen reader users who cannot visually see the dots filling up.
+**Action:** When mapping keyboard events to custom UI buttons, always trigger the visual ':active' or a custom '.active' state. For masked inputs, dynamically update ARIA labels with state information (e.g., "X digits entered"). Clear error states as soon as the user starts correcting their input to provide immediate positive feedback.
