@@ -76,6 +76,8 @@ Admin-only applet that tails server logs over HTTP (not WebSocket):
 
 When PM2 is detected, the Log Viewer toolbar also shows **CPU/RAM usage** (polled every 3s), **Flush logs** (`POST /{uuid}/pm2/flush`), and **Restart server** (`POST /{uuid}/pm2/restart`). Status: `GET /{uuid}/pm2/status`.
 
+The Event Viewer uptime popover also includes a **Runtime Assets** section for optimized CSS/JavaScript compile status, source-vs-optimized browser mode, and manual compile actions. See [Runtime Assets and Service Worker Updates](RUNTIME_ASSETS_AND_SERVICE_WORKER.md) for the compile, cache refresh, and client broadcast workflow.
+
 ### Generation Detailed Log
 **Location**: `logs/generation-detailed.log`
 
