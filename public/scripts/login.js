@@ -55,13 +55,18 @@ class LoginPage {
         document.addEventListener('keydown', (e) => {
             if (!this.pinReady || this.isLoading) return;
             if (e.key >= '0' && e.key <= '9') {
+                this.triggerButtonFeedback(e.key);
                 this.addDigit(e.key);
             } else if (e.key === 'Enter') {
                 if (this.rollingBuffer.length === 6) {
                     this.handleLogin();
                 }
             } else if (e.key === 'Backspace') {
+                this.triggerButtonFeedback('backspace');
                 this.removeDigit();
+            } else if (e.key === 'Escape') {
+                this.triggerButtonFeedback('clear');
+                this.clearPin();
             }
         });
     }
@@ -103,10 +108,23 @@ class LoginPage {
         });
     }
 
+    triggerButtonFeedback(keyOrAction) {
+        const button = Array.from(this.pinButtons).find(btn =>
+            btn.getAttribute('data-number') === keyOrAction ||
+            btn.getAttribute('data-action') === keyOrAction
+        );
+        if (button) {
+            button.classList.add('active');
+            setTimeout(() => button.classList.remove('active'), 100);
+        }
+    }
+
     updateAriaAttributes() {
         const isMinimized = this.loginContainer.classList.contains('minimize');
+        const digitCount = this.rollingBuffer.length;
+        const countText = digitCount > 0 ? `, ${digitCount} digit${digitCount === 1 ? '' : 's'} entered` : '';
         this.pinDisplay.setAttribute('aria-expanded', !isMinimized);
-        this.pinDisplay.setAttribute('aria-label', isMinimized ? 'Show PIN pad' : 'Hide PIN pad');
+        this.pinDisplay.setAttribute('aria-label', (isMinimized ? 'Show PIN pad' : 'Hide PIN pad') + countText);
     }
 
     addDigit(digit) {
@@ -118,6 +136,7 @@ class LoginPage {
         if (this.rollingBuffer.length < 6) {
             this.rollingBuffer += digit;
             this.updatePinDisplay();
+            this.updateAriaAttributes();
             
             // Auto-submit when 6 digits are entered
             if (this.rollingBuffer.length === 6) {
@@ -128,14 +147,18 @@ class LoginPage {
 
     removeDigit() {
         if (this.rollingBuffer.length > 0) {
+            this.clearPinError();
             this.rollingBuffer = this.rollingBuffer.slice(0, -1);
             this.updatePinDisplay();
+            this.updateAriaAttributes();
         }
     }
 
     clearPin() {
+        this.clearPinError();
         this.rollingBuffer = '';
         this.updatePinDisplay();
+        this.updateAriaAttributes();
     }
 
     async clearCachesAndReload() {
