@@ -319,6 +319,13 @@ body.login-booting .login-product-name {
     align-items: center;
     justify-content: center;
     border: 2px solid rgba(255, 255, 255, 0.25);
+    will-change: transform;
+}
+
+.pin-button.active {
+    transform: scale(0.95);
+    background-color: rgba(255, 255, 255, 0.8) !important;
+    border-color: rgba(255, 255, 255, 0.5) !important;
 }
 
 .pin-button:focus-visible {
