@@ -7,9 +7,54 @@
  */
 
 const MEMORIES_DSAP_URL = 'memories.dyna.dreamscape.jp';
+const LINKXI_DSAP_URL = 'xi.dyna.dreamscape.jp/persona';
 const MEMORIES_DSAP_TITLE = 'Knowledge Memories';
+const LINKXI_DSAP_TITLE = 'LinkXi';
+const MEMORIES_DSAP_TAB_LABELS = {
+    memories: 'Memories',
+    rules: 'Rules',
+    linkxi: 'LinkXi'
+};
 const MEMORIES_DEFAULT_PER_PAGE = 25;
 const MEMORIES_PER_PAGE_OPTIONS = [10, 25, 50, 100];
+const LINKXI_VERBOSITY_OPTIONS = [
+    { value: 'auto', name: 'Auto' },
+    { value: '1', name: 'Brief' },
+    { value: '2', name: 'Direct' },
+    { value: '3', name: 'Expressive' },
+    { value: '4', name: 'Elaborate' },
+    { value: '5', name: 'Poetic' }
+];
+
+function memoriesDsapLinkxiVerbosityLabel(value) {
+    const v = value != null && value !== '' ? String(value) : '3';
+    const hit = LINKXI_VERBOSITY_OPTIONS.find((o) => o.value === v);
+    return hit ? hit.name : 'Expressive';
+}
+
+function memoriesDsapResolveActiveTab(segments, normalizedPath) {
+    const norm = String(normalizedPath || '').split('?')[0];
+    if (norm.startsWith('xi.dyna.dreamscape.jp')) return 'linkxi';
+    const first = (segments && segments[0]) || '';
+    if (first === 'persona' || first === 'linkxi') return 'linkxi';
+    if (first === 'rules' || first === 'static_rules') return 'rules';
+    return 'memories';
+}
+
+function memoriesDsapBuildTabBar(activeTabId) {
+    // dsapSmfBuildTabBar: public/scripts/comp/dsapSmfMarkup.js
+    return dsapSmfBuildTabBar([
+        { id: 'memories', label: 'Memories', icon: 'fas fa-lightbulb-on' },
+        { id: 'rules', label: 'Rules', icon: 'fas fa-book-law' },
+        { id: 'linkxi', label: 'LinkXi', icon: 'fas fa-user-doctor-message' }
+    ], activeTabId, { tabBarId: 'memoriesDsapTabBar', dataAttr: 'data-memories-tab' });
+}
+
+function memoriesDsapBuildTabUrl(tabId) {
+    if (tabId === 'rules') return `dsap://${MEMORIES_DSAP_URL}/rules`;
+    if (tabId === 'linkxi') return `dsap://${LINKXI_DSAP_URL}`;
+    return `dsap://${MEMORIES_DSAP_URL}/`;
+}
 
 function memoriesDsapDecodeSegment(segment) {
     if (!segment) return segment;
@@ -71,20 +116,24 @@ function memoriesDsapFormatDate(timestamp) {
     return date.toLocaleDateString();
 }
 
-function memoriesDsapBuildMemoriesHtml() {
-    return `
-<div data-dsap="memories-dyna" class="dsap-root memories-dsap">
-<table class="memories-dsap-header" cellspacing="0" cellpadding="6" width="100%" border="0">
-  <tr>
-    <td class="memories-dsap-header-left">
-      <img src="/static_images/logo_icon.png" alt="Dreamscape" style="height:32px; vertical-align:middle; margin-right:8px;">
-      <span class="memories-dsap-header-title">Enshutsuka Configuration</span>
-    </td>
-    <td class="memories-dsap-header-right" align="right" id="memoriesHeaderRight">Data Management</td>
-  </tr>
-</table>
+function memoriesDsapBuildMemoriesHtml(activeTabId) {
+    const tab = activeTabId || 'memories';
+    const memoriesPanelHidden = tab !== 'memories' ? ' hidden' : '';
+    const rulesPanelHidden = tab !== 'rules' ? ' hidden' : '';
+    const linkxiPanelHidden = tab !== 'linkxi' ? ' hidden' : '';
+    const rulesViewHidden = tab !== 'rules' ? ' hidden' : '';
+    const toolTitle = MEMORIES_DSAP_TAB_LABELS[tab] || MEMORIES_DSAP_TAB_LABELS.memories;
 
-    <div class="memories-toolbar">
+    return `
+<div data-dsap="memories-dyna" class="dsap-root dsap-smf memories-dsap">
+${dsapSmfBuildHeader({
+    branchTitle: DSAP_SMF_BRANCH_ENSHUTSUKA,
+    toolTitle
+})}
+${memoriesDsapBuildTabBar(tab)}
+
+<div class="memories-tab-panel${memoriesPanelHidden}" id="memoriesMemoriesPanel">
+    <div class="memories-toolbar dsap-smf-toolbar">
         <div class="memories-search-wrap">
             <i class="fas fa-search memories-search-icon"></i>
             <input type="text" id="memoriesSearchInput" class="memories-search-input" placeholder="Search memories by name or description...">
@@ -95,14 +144,10 @@ function memoriesDsapBuildMemoriesHtml() {
                 <span id="memoriesCategoryLabel">All Categories</span>
                 <i class="fas fa-caret-down"></i>
             </button>
-            <div id="memoriesCategoryMenu" class="memories-dropdown-menu hidden"></div>
         </div>
-        <button type="button" id="memoriesStaticRulesBtn" class="memories-btn memories-btn-secondary" title="Open Static Director Rules (and Feedback)">
-            <i class="fas fa-book-law"></i> <span>Static Rules</span>
-        </button>
     </div>
 
-    <table class="memories-stats-bar" id="memoriesStatsBar" cellspacing="0" cellpadding="3" border="1" width="100%" style="border-collapse:collapse; background:#fff;">
+    <table class="memories-stats-bar dsap-smf-stats" id="memoriesStatsBar" cellspacing="0" cellpadding="3" border="1" width="100%">
   <tr>
     <td align="center"><i class="fas fa-lightbulb-on"></i> <span id="memoriesStatTotal">0</span> memories</td>
     <td align="center"><i class="fas fa-cubes"></i> <span id="memoriesStatEntities">0</span> entities</td>
@@ -135,12 +180,9 @@ function memoriesDsapBuildMemoriesHtml() {
             </button>
             <div class="memories-perpage">
                 <label for="memoriesPerPageBtn">per page</label>
-                <div id="memoriesPerPageDropdown" class="custom-dropdown memories-perpage-dropdown">
-                    <button type="button" id="memoriesPerPageBtn" class="custom-dropdown-btn hover-show colored memories-perpage-btn">
-                        <span id="memoriesPerPageSelected">25</span>
-                    </button>
-                    <div id="memoriesPerPageMenu" class="custom-dropdown-menu hidden"></div>
-                </div>
+                <button type="button" id="memoriesPerPageBtn" class="dsap-smf-btn dsap-smf-btn-small memories-perpage-btn">
+                    <span id="memoriesPerPageSelected">25</span> <i class="fas fa-caret-down"></i>
+                </button>
                 <input type="hidden" id="memoriesPerPageHidden" value="25">
             </div>
         </div>
@@ -289,8 +331,22 @@ function memoriesDsapBuildMemoriesHtml() {
         </div>
     </div>
 
-    <!-- Static Rules (Director Rules + Feedback) hosted inside Memories DSAP -->
-    <div class="memories-view memories-static-rules-view hidden" id="memoriesStaticRulesView">
+    <div class="memories-footer">
+        <div class="memories-bulk">
+            <div id="memoriesDeleteDropdown" class="memories-dropdown">
+                <button type="button" id="memoriesBulkDeleteBtn" class="memories-btn memories-btn-danger memories-btn-small">
+                    <i class="fas fa-trash"></i>
+                    <span>Delete Memories...</span>
+                </button>
+                <div id="memoriesBulkMenu" class="memories-dropdown-menu hidden"></div>
+            </div>
+        </div>
+        <div class="memories-hint">Enshutsuka • Data Management</div>
+    </div>
+</div>
+
+<div class="memories-tab-panel${rulesPanelHidden}" id="memoriesRulesPanel">
+    <div class="memories-view memories-static-rules-view${rulesViewHidden}" id="memoriesStaticRulesView">
         <div class="memories-static-rules-toolbar">
             <div class="memories-static-rules-title">
                 <i class="fas fa-book-law"></i> <span id="memoriesStaticRulesTitle">Director Rules</span>
@@ -314,79 +370,64 @@ function memoriesDsapBuildMemoriesHtml() {
             These are user-defined static rules (Director Rules) and AI feedback entries. Changes save automatically.
         </div>
     </div>
+</div>
 
-    <div class="memories-footer">
-        <div class="memories-bulk">
-            <div id="memoriesDeleteDropdown" class="memories-dropdown">
-                <button type="button" id="memoriesBulkDeleteBtn" class="memories-btn memories-btn-danger memories-btn-small">
-                    <i class="fas fa-trash"></i>
-                    <span>Delete Memories...</span>
-                </button>
-                <div id="memoriesBulkMenu" class="memories-dropdown-menu hidden"></div>
-            </div>
+<div class="memories-tab-panel${linkxiPanelHidden}" id="memoriesLinkxiPanel">
+    <div class="memories-view memories-linkxi-view" id="memoriesLinkxiView">
+        ${dsapSmfBuildSectionHdr('Chat Persona')}
+        <p class="memories-linkxi-intro">Configure your LinkXi chat persona for Director conversations. Settings are saved to your account.</p>
+        <table class="memories-linkxi-table" cellspacing="0" cellpadding="4" border="0" width="100%">
+            <tr>
+                <td class="memories-linkxi-label">My Name</td>
+                <td colspan="2">
+                    <input type="text" id="linkxiPersonaUserName" class="memories-input" placeholder="Enter your name">
+                </td>
+            </tr>
+            <tr>
+                <td class="memories-linkxi-label">Profile Photo</td>
+                <td colspan="2">
+                    <input type="file" id="linkxiPersonaProfilePhoto" accept="image/*" class="hidden">
+                    <div class="memories-linkxi-photo-preview" id="linkxiPersonaProfilePhotoPreview" title="Click to upload">
+                        <i class="fas fa-camera"></i>
+                        <span>Upload Photo</span>
+                    </div>
+                </td>
+            </tr>
+            <tr>
+                <td class="memories-linkxi-label">My Backstory</td>
+                <td colspan="2">
+                    <textarea id="linkxiPersonaBackstory" class="memories-input memories-linkxi-backstory" rows="4"
+                        placeholder="Describe your background, personality, and relationship with the character..."></textarea>
+                </td>
+            </tr>
+            <tr>
+                <td class="memories-linkxi-label">Default Verbosity</td>
+                <td colspan="2">
+                    <button type="button" id="linkxiPersonaVerbosityBtn" class="dsap-smf-btn dsap-smf-btn-small memories-linkxi-menu-btn">
+                        <span id="linkxiPersonaVerbositySelected">Expressive</span> <i class="fas fa-caret-down"></i>
+                    </button>
+                    <input type="hidden" id="linkxiPersonaVerbosityHidden" value="3">
+                </td>
+            </tr>
+        </table>
+        <div class="memories-linkxi-actions">
+            <button type="button" id="linkxiPersonaSaveBtn" class="memories-btn memories-btn-primary"><i class="fas fa-save"></i> Save persona</button>
+            <span id="linkxiPersonaStatus" class="memories-linkxi-status"></span>
         </div>
-        <div class="memories-hint">Enshutsuka • Data Management</div>
     </div>
+</div>
 </div>`;
 }
 
 const memoriesDsapScopedCss = `
-[data-dsap="memories-dyna"].memories-dsap,
-[data-dsap="memories-dyna"].memories-dsap *:not(i) {
-  font-family: Arial, Helvetica, sans-serif !important;
-}
-[data-dsap="memories-dyna"].memories-dsap {
-  background: #eeeeee;
-  color: #000000;
-  font-size: 12pt;
-  line-height: 1.3;
-  padding: 4px;
-  box-sizing: border-box;
-  border: 1px solid #666666;
-}
+/* Root chrome from public/css/dsap-smf.css */
 
-/* Larger top header (matching Quips DSAP retro web 1.5 style) */
-[data-dsap="memories-dyna"] .memories-dsap-header {
-  background: #003366;
-  color: #ffffff;
-  border: 1px solid #000033;
-  margin-bottom: 4px;
-  min-height: 40px;
-}
-[data-dsap="memories-dyna"] .memories-dsap-header-left {
-  padding: 5px 8px;
-  vertical-align: middle;
-}
-[data-dsap="memories-dyna"] .memories-dsap-header-title {
-  font-weight: bold;
-  font-size: 13pt;
-  vertical-align: middle;
-}
-[data-dsap="memories-dyna"] .memories-dsap-header-right {
-  font-size: 11pt;
-  color: #ffffff;
-  padding: 5px 10px;
-  text-align: right;
-  vertical-align: middle;
-  font-weight: bold;
-  letter-spacing: 0.5px;
-  background: #001a33;
-  border: 1px solid #336699;
-}
-
-/* Toolbar (retro Linksys style) */
+/* Toolbar (memories-specific controls; base toolbar from dsap-smf.css) */
 [data-dsap="memories-dyna"] .memories-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
-  padding: 4px;
-  background: #f0f0f0;
-  border: 1px solid #999;
-  margin-bottom: 4px;
-}
-[data-dsap="memories-dyna"] .memories-toolbar #memoriesStaticRulesBtn {
-  margin-left: auto !important;
 }
 [data-dsap="memories-dyna"] .memories-search-wrap {
   position: relative;
@@ -456,27 +497,21 @@ const memoriesDsapScopedCss = `
 [data-dsap="memories-dyna"] .memories-btn-small { padding: 3px 8px; font-size: 9pt; }
 [data-dsap="memories-dyna"] .memories-btn-tiny { padding: 2px 6px; font-size: 8pt; }
 
-/* Stats bar retro styles in override below (old dark flex/pill rules removed) */
-
-/* List */
+/* List — SMF light panel style */
 [data-dsap="memories-dyna"] .memories-list {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
 }
 [data-dsap="memories-dyna"] .memories-memory-item {
-    background: linear-gradient(180deg, #16233a, #101a2b);
-    border: 1px solid #2f4868;
-    border-radius: 6px;
-    padding: 9px 11px;
+    background: #f8f8f8;
+    border: 1px solid #999;
+    padding: 6px 8px;
     cursor: pointer;
-    box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 1px 3px rgba(0,0,0,0.4);
-    transition: border-color .1s, box-shadow .1s, transform .05s;
 }
 [data-dsap="memories-dyna"] .memories-memory-item:hover {
-    border-color: #4f7ab8;
-    box-shadow: 0 0 0 1px rgba(79,122,184,0.25), 0 2px 6px rgba(0,0,0,0.35);
-    transform: translateY(-1px);
+    border-color: #003366;
+    background: #fff;
 }
 [data-dsap="memories-dyna"] .memories-memory-item-header {
     display: flex;
@@ -486,8 +521,8 @@ const memoriesDsapScopedCss = `
     margin-bottom: 4px;
 }
 [data-dsap="memories-dyna"] .memories-memory-name {
-    font-weight: 700;
-    color: #b8d4ff;
+    font-weight: bold;
+    color: #000;
     font-size: 11pt;
     line-height: 1.2;
 }
@@ -497,26 +532,23 @@ const memoriesDsapScopedCss = `
     flex-wrap: wrap;
 }
 [data-dsap="memories-dyna"] .memories-badge {
-    font-size: 11pt;
-    padding: 1px 7px;
-    border-radius: 999px;
-    background: #253c57;
-    color: #a3b9d9;
-    border: 1px solid #3a5577;
-    font-weight: 600;
-    letter-spacing: .3px;
+    font-size: 9pt;
+    padding: 1px 6px;
+    background: #333;
+    color: #fff;
+    border: 1px solid #666;
+    font-weight: bold;
 }
 [data-dsap="memories-dyna"] .memories-badge.category {
-    background: linear-gradient(180deg, #e07a2a, #c25f18);
+    background: #003366;
     color: #fff;
-    border-color: #f08f3f;
-    text-shadow: 0 1px 1px rgba(0,0,0,0.3);
+    border-color: #000033;
 }
 [data-dsap="memories-dyna"] .memories-memory-desc {
-    color: #9fb3d1;
+    color: #222;
     font-size: 11pt;
     line-height: 1.35;
-    margin-bottom: 5px;
+    margin-bottom: 4px;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -525,14 +557,75 @@ const memoriesDsapScopedCss = `
 [data-dsap="memories-dyna"] .memories-memory-meta {
     display: flex;
     gap: 10px;
-    font-size: 11pt;
-    color: #6e8ab3;
+    font-size: 10pt;
+    color: #444;
 }
 [data-dsap="memories-dyna"] .memories-memory-meta span { display: inline-flex; align-items: center; gap: 3px; }
 
-/* Details view - fully handled by retro overrides below (old modern styles removed for Linksys consistency) */
+/* LinkXi persona tab */
+[data-dsap="memories-dyna"] .memories-linkxi-intro {
+  font-size: 11pt;
+  color: #222;
+  margin: 4px 0 8px;
+}
+[data-dsap="memories-dyna"] .memories-linkxi-table {
+  background: #fff;
+  border: 1px solid #999;
+  margin-bottom: 6px;
+}
+[data-dsap="memories-dyna"] .memories-linkxi-table td {
+  padding: 6px 8px;
+  vertical-align: top;
+  border-bottom: 1px solid #ddd;
+}
+[data-dsap="memories-dyna"] .memories-linkxi-label {
+  font-weight: bold;
+  white-space: nowrap;
+  width: 160px;
+  color: #000;
+}
+[data-dsap="memories-dyna"] .memories-linkxi-backstory {
+  min-height: 80px;
+  resize: vertical;
+}
+[data-dsap="memories-dyna"] .memories-linkxi-photo-preview {
+  width: 80px;
+  height: 80px;
+  border: 2px dashed #666;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  background: #f8f8f8;
+  font-size: 9pt;
+  color: #333;
+  text-align: center;
+}
+[data-dsap="memories-dyna"] .memories-linkxi-photo-preview img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+[data-dsap="memories-dyna"] .memories-linkxi-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+[data-dsap="memories-dyna"] .memories-linkxi-status {
+  font-size: 11pt;
+  color: #006600;
+  font-style: italic;
+}
+[data-dsap="memories-dyna"] .memories-linkxi-status.error {
+  color: #990000;
+}
 
-/* Old dark pager rules removed - retro version in overrides below */
+/* Details view - retro overrides below */
 
 /* Bulk delete - retro Linksys style */
 [data-dsap="memories-dyna"] .memories-delete-toolbar {
@@ -1230,6 +1323,7 @@ let _memoriesCategoryOutsideClick = null;
 
 const memoriesDsapDriver = {
     _state: null,
+    _clickMenuTargets: [],
 
     _memoriesWireClick(root, selector, handler) {
         const el = root.querySelector(selector);
@@ -1260,15 +1354,27 @@ const memoriesDsapDriver = {
 
         // Determine view mode from the *current* DSAP URL (this enables back/forward + direct links)
         const segments = (typeof host.getPathSegments === 'function' ? host.getPathSegments() : []).map(memoriesDsapDecodeSegment);
-        const isDetailView = segments[0] === 'view' && !!segments[1];
-        const isDeleteView = segments[0] === 'delete' || segments[0] === 'bulk-delete';
-        const isStaticRulesView = segments[0] === 'static_rules';
+        const normalizedPath = typeof host.displayPath === 'string' ? host.displayPath : '';
+        const activeTab = memoriesDsapResolveActiveTab(segments, normalizedPath);
+        const isDetailView = activeTab === 'memories' && segments[0] === 'view' && !!segments[1];
+        const isDeleteView = activeTab === 'memories' && (segments[0] === 'delete' || segments[0] === 'bulk-delete');
+        const isStaticRulesView = activeTab === 'rules';
+        const isLinkxiView = activeTab === 'linkxi';
+
+        this._wireMemoriesTabs(root, host);
+        this._setMemoriesTabPanels(root, activeTab);
+        dsapSmfSetActiveTab(root, 'data-memories-tab', activeTab);
+        // dsapSmfUpdateHeaderTool: public/scripts/comp/dsapSmfMarkup.js
+        dsapSmfUpdateHeaderTool(root, MEMORIES_DSAP_TAB_LABELS[activeTab] || 'Memories');
 
         // Wire common controls (they only make sense in their respective views)
         this._wireCommonControls(root);
 
-        // Category dropdown (list only)
-        this._wireCategoryDropdown(root);
+        // Category filter (list only)
+        setTimeout(() => {
+            this._wireCategoryClickMenu(root);
+            this._wirePerPageClickMenu(root);
+        }, 0);
 
         // Bulk "Delete Memories" button in list footer now opens the dedicated delete selector page
         this._wireBulkDeleteButton(root, host);
@@ -1276,10 +1382,10 @@ const memoriesDsapDriver = {
         const statsBar = root.querySelector('#memoriesStatsBar');
         if (statsBar) statsBar.style.display = 'none';
 
-        const rulesBtn = root.querySelector('#memoriesStaticRulesBtn');
-        if (rulesBtn) rulesBtn.style.display = 'none';
-
-        if (isDeleteView) {
+        if (isLinkxiView) {
+            if (bulkWrap) bulkWrap.style.display = 'none';
+            this._showLinkxiView(root);
+        } else if (isDeleteView) {
             if (bulkWrap) bulkWrap.style.display = 'none';
             this._showDeleteView();
         } else if (isDetailView) {
@@ -1293,7 +1399,6 @@ const memoriesDsapDriver = {
             const view = (sub === 'feedback') ? 'feedback' : 'rules';
             this._showStaticRulesView(view);
         } else {
-            // Parse list state from query params (page, perPage, search, category)
             const page = Math.max(1, parseInt(host.getQueryParam('page') || '1', 10) || 1);
             const perPage = Math.max(5, Math.min(200, parseInt(host.getQueryParam('perPage') || String(MEMORIES_DEFAULT_PER_PAGE), 10) || MEMORIES_DEFAULT_PER_PAGE));
             const search = host.getQueryParam('search') || '';
@@ -1301,18 +1406,28 @@ const memoriesDsapDriver = {
 
             this._state.listMeta = { total: 0, page, perPage, search, category };
 
-            // Prefill UI from URL state immediately (before data arrives)
             this._prefillListControlsFromMeta(root);
 
             if (statsBar) statsBar.style.display = '';
-            if (rulesBtn) rulesBtn.style.display = '';
 
-            // Load the page from server (server does search + category filter + paging)
             void this._loadPagedList({ page, perPage, search, category });
         }
 
-        // Listen for external changes if any
         this._bindWs(root, host);
+    },
+
+    _wireMemoriesTabs(root, host) {
+        // dsapSmfWireTabBar: public/scripts/comp/dsapSmfMarkup.js
+        dsapSmfWireTabBar(root, '#memoriesDsapTabBar', 'data-memories-tab', (tabId) => memoriesDsapBuildTabUrl(tabId), host);
+    },
+
+    _setMemoriesTabPanels(root, activeTab) {
+        const memoriesPanel = root.querySelector('#memoriesMemoriesPanel');
+        const rulesPanel = root.querySelector('#memoriesRulesPanel');
+        const linkxiPanel = root.querySelector('#memoriesLinkxiPanel');
+        if (memoriesPanel) memoriesPanel.classList.toggle('hidden', activeTab !== 'memories');
+        if (rulesPanel) rulesPanel.classList.toggle('hidden', activeTab !== 'rules');
+        if (linkxiPanel) linkxiPanel.classList.toggle('hidden', activeTab !== 'linkxi');
     },
 
     /** Wire buttons that exist in both (or either) views */
@@ -1340,7 +1455,7 @@ const memoriesDsapDriver = {
                 this._navigateToListPage(newPage);
             });
 
-            this._wirePerPageDropdown(root);
+            this._wirePerPageClickMenu(root);
         }
 
         // Live search → URL navigation (debounced so we don't spam history on every keystroke)
@@ -1386,12 +1501,6 @@ const memoriesDsapDriver = {
                 }
             });
         }
-
-        this._memoriesWireClick(root, '#memoriesStaticRulesBtn', () => {
-            if (typeof this._state.host.navigate === 'function') {
-                this._state.host.navigate(`dsap://${MEMORIES_DSAP_URL}/static_rules`);
-            }
-        });
     },
 
     refresh(host) {
@@ -1412,6 +1521,10 @@ const memoriesDsapDriver = {
             document.removeEventListener('click', _memoriesCategoryOutsideClick, true);
             _memoriesCategoryOutsideClick = null;
         }
+
+        this._teardownClickMenus();
+
+        const root = host?.getRoot?.();
 
         state.wsHandlers.forEach((fn) => {
             try { if (window.wsClient && typeof window.wsClient.off === 'function') window.wsClient.off('list_knowledge_memories_response', fn); } catch (_) {}
@@ -1441,38 +1554,58 @@ const memoriesDsapDriver = {
         if (selected) selected.textContent = perVal;
     },
 
-    _wirePerPageDropdown(root) {
-        const container = root.querySelector('#memoriesPerPageDropdown');
+    _teardownClickMenus() {
+        // contextMenu.detachClickMenuFromElement: public/scripts/comp/contextMenu.js
+        if (!contextMenu || !this._clickMenuTargets.length) {
+            this._clickMenuTargets = [];
+            return;
+        }
+        this._clickMenuTargets.forEach((el) => contextMenu.detachClickMenuFromElement(el));
+        this._clickMenuTargets = [];
+    },
+
+    _attachMemoriesClickMenu(btn, config) {
+        if (!btn || !contextMenu) return;
+        contextMenu.attachClickMenuToElement(btn, config);
+        this._clickMenuTargets.push(btn);
+    },
+
+    _wirePerPageClickMenu(root) {
         const btn = root.querySelector('#memoriesPerPageBtn');
-        const menu = root.querySelector('#memoriesPerPageMenu');
         const selectedEl = root.querySelector('#memoriesPerPageSelected');
         const hidden = root.querySelector('#memoriesPerPageHidden');
-        if (!container || !btn || !menu || !selectedEl || !hidden) return;
-        if (container.getAttribute('data-dropdown-initialized') === 'true') return;
-
-        const items = MEMORIES_PER_PAGE_OPTIONS.map((n) => ({ value: String(n), name: String(n) }));
-
-        const renderMenu = (selectedVal) => {
-            // renderSimpleDropdown: public/scripts/comp/manualDropdownManager.js
-            renderSimpleDropdown(
-                menu,
-                items,
-                'value',
-                'name',
-                (value) => {
-                    const newPer = parseInt(value, 10) || MEMORIES_DEFAULT_PER_PAGE;
-                    hidden.value = String(newPer);
-                    selectedEl.textContent = String(newPer);
-                    this._navigateToListPage(1, newPer);
-                },
-                () => closeDropdown(menu, btn), // closeDropdown: public/scripts/comp/dropdown.js
-                String(selectedVal || hidden.value),
-                { preventFocusTransfer: true }
-            );
+        if (!btn || !hidden || btn.dataset.memoriesClickMenuWired === '1') return;
+        btn.dataset.memoriesClickMenuWired = '1';
+        const driver = this;
+        const config = {
+            position: 'anchor',
+            anchorAlign: 'start',
+            maxHeight: 240,
+            beforeShow: () => {
+                const current = hidden.value || String(MEMORIES_DEFAULT_PER_PAGE);
+                config.sections[0].items = MEMORIES_PER_PAGE_OPTIONS.map((n) => ({
+                    text: String(n),
+                    action: 'select-memories-per-page',
+                    perPageValue: n,
+                    loadfn: (item) => {
+                        item.highlighted = String(item.perPageValue) === current;
+                    }
+                }));
+            },
+            sections: [{ type: 'list', items: [] }],
+            onAction: (action, target, item) => {
+                if (action !== 'select-memories-per-page') return;
+                const newPer = parseInt(item.perPageValue, 10) || MEMORIES_DEFAULT_PER_PAGE;
+                hidden.value = String(newPer);
+                if (selectedEl) selectedEl.textContent = String(newPer);
+                driver._navigateToListPage(1, newPer);
+            }
         };
+        this._attachMemoriesClickMenu(btn, config);
+    },
 
-        // setupDropdown: public/scripts/comp/dropdown.js
-        setupDropdown(container, btn, menu, renderMenu, () => hidden.value, { preventFocusTransfer: true });
+    _wirePerPageDropdown(root) {
+        this._wirePerPageClickMenu(root);
     },
 
     /** Load a page of memories (server does the search + category + ordering + paging) */
@@ -1976,10 +2109,6 @@ const memoriesDsapDriver = {
         root.querySelector('#memoriesDetailsView')?.classList.add('hidden');
         const statsBar = root.querySelector('#memoriesStatsBar');
         if (statsBar) statsBar.style.display = '';
-        const rulesBtn = root.querySelector('#memoriesStaticRulesBtn');
-        if (rulesBtn) rulesBtn.style.display = '';
-        const headerRight = root.querySelector('#memoriesHeaderRight');
-        if (headerRight) headerRight.textContent = 'Data Management';
         this._state.current = null;
         this._state.isEdit = false;
     },
@@ -1990,8 +2119,6 @@ const memoriesDsapDriver = {
         root.querySelector('#memoriesDetailsView')?.classList.remove('hidden');
         const statsBar = root.querySelector('#memoriesStatsBar');
         if (statsBar) statsBar.style.display = 'none';
-        const rulesBtn = root.querySelector('#memoriesStaticRulesBtn');
-        if (rulesBtn) rulesBtn.style.display = 'none';
     },
 
     // --- Edit builders (entities, relations, obs) ---
@@ -2154,68 +2281,56 @@ const memoriesDsapDriver = {
         this._renderObservations();
     },
 
-    // Category filter (simple custom dropdown) — now driven from stats.categories when we have a list load
-    _wireCategoryDropdown(root) {
+    _wireCategoryClickMenu(root) {
         const btn = root.querySelector('#memoriesCategoryBtn');
         const label = root.querySelector('#memoriesCategoryLabel');
-        const menu = root.querySelector('#memoriesCategoryMenu');
-        if (!btn || !menu) return;
-
-        const rebuildMenu = () => {
-            const statsCats = (this._state.lastStats && this._state.lastStats.categories) || [];
-            const catNames = statsCats.map(c => c.category).filter(Boolean);
-            const cats = ['All Categories', ...catNames.sort()];
-            const currentCat = (this._state.listMeta && this._state.listMeta.category) || null;
-
-            menu.innerHTML = '';
-            cats.forEach(cat => {
-                const val = (cat === 'All Categories') ? null : cat;
-                const div = document.createElement('div');
-                div.className = 'memories-dd-item' + (val === currentCat ? ' selected' : '');
-                div.textContent = cat;
-                div.addEventListener('click', (e) => {
-                    e.stopImmediatePropagation();
-                    menu.classList.add('hidden');
-
-                    // Navigate with new category (reset page to 1)
-                    const meta = this._state.listMeta || {};
-                    const url = memoriesDsapBuildListUrl({
-                        page: 1,
-                        perPage: meta.perPage || MEMORIES_DEFAULT_PER_PAGE,
-                        search: meta.search || '',
-                        category: val || ''
-                    });
-                    if (typeof this._state.host.navigate === 'function') {
-                        this._state.host.navigate(url);
-                    } else {
-                        void this._loadPagedList({ page: 1, perPage: meta.perPage, search: meta.search, category: val });
-                    }
-                });
-                menu.appendChild(div);
-            });
-        };
-
-        if (btn.dataset.memoriesCategoryWired === '1') return;
+        if (!btn || btn.dataset.memoriesCategoryWired === '1') return;
         btn.dataset.memoriesCategoryWired = '1';
-
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            rebuildMenu();
-            const isHidden = menu.classList.contains('hidden');
-            document.querySelectorAll('.memories-dropdown-menu').forEach(m => m.classList.add('hidden'));
-            menu.classList.toggle('hidden', !isHidden);
-        });
-
-        if (!_memoriesCategoryOutsideClick) {
-            _memoriesCategoryOutsideClick = (e) => {
-                const activeRoot = memoriesDsapDriver._state?.host?.getRoot?.();
-                const activeMenu = activeRoot?.querySelector('#memoriesCategoryMenu');
-                if (activeMenu && activeRoot && !activeRoot.contains(e.target)) {
-                    activeMenu.classList.add('hidden');
+        const driver = this;
+        const config = {
+            position: 'anchor',
+            anchorAlign: 'start',
+            maxHeight: 360,
+            beforeShow: () => {
+                const statsCats = (driver._state.lastStats && driver._state.lastStats.categories) || [];
+                const catNames = statsCats.map((c) => c.category).filter(Boolean);
+                const cats = ['All Categories', ...catNames.sort()];
+                const currentCat = (driver._state.listMeta && driver._state.listMeta.category) || null;
+                config.sections[0].items = cats.map((cat) => {
+                    const val = cat === 'All Categories' ? null : cat;
+                    return {
+                        text: cat,
+                        action: 'select-memories-category',
+                        categoryValue: val,
+                        loadfn: (item) => {
+                            item.highlighted = item.categoryValue === currentCat;
+                        }
+                    };
+                });
+            },
+            sections: [{ type: 'list', items: [] }],
+            onAction: (action, target, item) => {
+                if (action !== 'select-memories-category') return;
+                if (label) label.textContent = item.text;
+                const meta = driver._state.listMeta || {};
+                const url = memoriesDsapBuildListUrl({
+                    page: 1,
+                    perPage: meta.perPage || MEMORIES_DEFAULT_PER_PAGE,
+                    search: meta.search || '',
+                    category: item.categoryValue || ''
+                });
+                if (typeof driver._state.host.navigate === 'function') {
+                    driver._state.host.navigate(url);
+                } else {
+                    void driver._loadPagedList({ page: 1, perPage: meta.perPage, search: meta.search, category: item.categoryValue });
                 }
-            };
-            document.addEventListener('click', _memoriesCategoryOutsideClick, true);
-        }
+            }
+        };
+        this._attachMemoriesClickMenu(btn, config);
+    },
+
+    _wireCategoryDropdown(root) {
+        this._wireCategoryClickMenu(root);
     },
 
     // Simple wire for the list view's "Delete Memories..." button:
@@ -2257,8 +2372,6 @@ const memoriesDsapDriver = {
 
         const statsBar = root.querySelector('#memoriesStatsBar');
         if (statsBar) statsBar.style.display = 'none';
-        const rulesBtn = root.querySelector('#memoriesStaticRulesBtn');
-        if (rulesBtn) rulesBtn.style.display = 'none';
 
         // Reset UI state for the delete page
         this._state.deleteSelectedFilter = null;
@@ -2402,6 +2515,176 @@ const memoriesDsapDriver = {
         }
     },
 
+    // === LinkXi persona tab ===
+
+    _showLinkxiView(root) {
+        root.querySelector('#memoriesListView')?.classList.add('hidden');
+        root.querySelector('#memoriesDetailsView')?.classList.add('hidden');
+        root.querySelector('#memoriesDeleteView')?.classList.add('hidden');
+        root.querySelector('#memoriesStaticRulesView')?.classList.add('hidden');
+        root.querySelector('#memoriesLinkxiView')?.classList.remove('hidden');
+
+        const toolbar = root.querySelector('.memories-toolbar');
+        if (toolbar) toolbar.style.display = 'none';
+        const statsBar = root.querySelector('#memoriesStatsBar');
+        if (statsBar) statsBar.style.display = 'none';
+
+        this._wireLinkxiControls(root);
+        void this._loadLinkxiPersona(root);
+    },
+
+    _wireLinkxiControls(root) {
+        this._memoriesWireClick(root, '#linkxiPersonaSaveBtn', () => this._saveLinkxiPersona(root));
+        this._memoriesWireClick(root, '#linkxiPersonaProfilePhotoPreview', () => {
+            root.querySelector('#linkxiPersonaProfilePhoto')?.click();
+        });
+
+        const photoInput = root.querySelector('#linkxiPersonaProfilePhoto');
+        if (photoInput && photoInput.dataset.memoriesWired !== '1') {
+            photoInput.dataset.memoriesWired = '1';
+            photoInput.addEventListener('change', (e) => this._handleLinkxiPhotoUpload(root, e));
+        }
+
+        setTimeout(() => this._wireLinkxiClickMenus(root), 0);
+    },
+
+    async _loadLinkxiPersona(root) {
+        const statusEl = root.querySelector('#linkxiPersonaStatus');
+        if (statusEl) {
+            statusEl.textContent = 'Loading persona…';
+            statusEl.classList.remove('error');
+        }
+        try {
+            if (!window.wsClient || !window.wsClient.isConnected()) {
+                throw new Error('WebSocket not connected');
+            }
+            const response = await window.wsClient.getPersonaSettings();
+            const settings = (response && response.success && response.settings) ? response.settings : {};
+            this._state.linkxiPersona = settings;
+            this._populateLinkxiForm(root, settings);
+            if (statusEl) statusEl.textContent = '';
+        } catch (e) {
+            if (statusEl) {
+                statusEl.textContent = e.message || 'Failed to load persona settings';
+                statusEl.classList.add('error');
+            }
+        }
+    },
+
+    _populateLinkxiForm(root, settings) {
+        const nameInput = root.querySelector('#linkxiPersonaUserName');
+        const backstoryInput = root.querySelector('#linkxiPersonaBackstory');
+        const verbosityHidden = root.querySelector('#linkxiPersonaVerbosityHidden');
+        const verbositySelected = root.querySelector('#linkxiPersonaVerbositySelected');
+        const preview = root.querySelector('#linkxiPersonaProfilePhotoPreview');
+
+        if (nameInput) nameInput.value = settings.user_name || '';
+        if (backstoryInput) backstoryInput.value = settings.backstory || '';
+
+        const verbosity = settings.default_verbosity != null ? String(settings.default_verbosity) : '3';
+        if (verbosityHidden) verbosityHidden.value = verbosity;
+        if (verbositySelected) verbositySelected.textContent = memoriesDsapLinkxiVerbosityLabel(verbosity);
+
+        if (preview) {
+            if (settings.profile_photo_base64) {
+                preview.innerHTML = `<img src="data:image/jpeg;base64,${settings.profile_photo_base64}" alt="Profile Photo">`;
+            } else {
+                preview.innerHTML = '<i class="fas fa-camera"></i><span>Upload Photo</span>';
+            }
+        }
+    },
+
+    _handleLinkxiPhotoUpload(root, event) {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const base64 = e.target.result.split(',')[1];
+            this._state.linkxiPersona = this._state.linkxiPersona || {};
+            this._state.linkxiPersona.profile_photo_base64 = base64;
+            const preview = root.querySelector('#linkxiPersonaProfilePhotoPreview');
+            if (preview) {
+                preview.innerHTML = `<img src="${e.target.result}" alt="Profile Photo">`;
+            }
+        };
+        reader.readAsDataURL(file);
+    },
+
+    async _saveLinkxiPersona(root) {
+        const statusEl = root.querySelector('#linkxiPersonaStatus');
+        const settings = {
+            user_name: root.querySelector('#linkxiPersonaUserName')?.value || '',
+            backstory: root.querySelector('#linkxiPersonaBackstory')?.value || '',
+            default_verbosity: parseInt(root.querySelector('#linkxiPersonaVerbosityHidden')?.value || '3', 10) || 3,
+            profile_photo_base64: this._state.linkxiPersona?.profile_photo_base64 || ''
+        };
+
+        if (statusEl) {
+            statusEl.textContent = 'Saving…';
+            statusEl.classList.remove('error');
+        }
+
+        try {
+            if (!window.wsClient || !window.wsClient.isConnected()) {
+                throw new Error('WebSocket not connected');
+            }
+            const response = await window.wsClient.savePersonaSettings(settings);
+            if (!response || !response.success) {
+                throw new Error(response?.message || 'Failed to save persona settings');
+            }
+            this._state.linkxiPersona = settings;
+            if (window.chatSystem) {
+                window.chatSystem.personaSettings = settings;
+            }
+            if (statusEl) statusEl.textContent = 'Persona saved.';
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('success', null, 'Persona settings saved');
+            }
+        } catch (e) {
+            if (statusEl) {
+                statusEl.textContent = e.message || 'Save failed';
+                statusEl.classList.add('error');
+            }
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('error', null, e.message || 'Failed to save persona settings');
+            }
+        }
+    },
+
+    _wireLinkxiClickMenus(root) {
+        if (!contextMenu) return;
+
+        const verbosityBtn = root.querySelector('#linkxiPersonaVerbosityBtn');
+        const verbositySelected = root.querySelector('#linkxiPersonaVerbositySelected');
+        const verbosityHidden = root.querySelector('#linkxiPersonaVerbosityHidden');
+        if (verbosityBtn && verbosityHidden) {
+            const verbConfig = {
+                position: 'anchor',
+                anchorAlign: 'start',
+                maxHeight: 280,
+                beforeShow: () => {
+                    const current = verbosityHidden.value || '3';
+                    verbConfig.sections[0].items = LINKXI_VERBOSITY_OPTIONS.map((opt) => ({
+                        text: opt.name,
+                        action: 'select-linkxi-verbosity',
+                        verbosityValue: opt.value,
+                        loadfn: (item) => {
+                            item.highlighted = item.verbosityValue === current;
+                        }
+                    }));
+                },
+                sections: [{ type: 'list', items: [] }],
+                onAction: (action, target, item) => {
+                    if (action !== 'select-linkxi-verbosity') return;
+                    verbosityHidden.value = item.verbosityValue;
+                    if (verbositySelected) verbositySelected.textContent = item.text;
+                }
+            };
+            this._attachMemoriesClickMenu(verbosityBtn, verbConfig);
+        }
+    },
+
     // === Static Rules (Director Rules + Feedback) ===
 
     async _showStaticRulesView(view = 'rules') {
@@ -2422,15 +2705,10 @@ const memoriesDsapDriver = {
 
         const statsBar = root.querySelector('#memoriesStatsBar');
         if (statsBar) statsBar.style.display = 'none';
-        const rulesBtn = root.querySelector('#memoriesStaticRulesBtn');
-        if (rulesBtn) rulesBtn.style.display = 'none';
 
         this._state.staticRulesView = view;
         this._state.directorRules = this._state.directorRules || [];
         this._state.directorFeedback = this._state.directorFeedback || [];
-
-        const headerRight = root.querySelector('#memoriesHeaderRight');
-        if (headerRight) headerRight.textContent = 'Rules & Constraints';
 
         const subTitle = root.querySelector('#memoriesStaticRulesTitle');
         if (subTitle) subTitle.textContent = (view === 'feedback') ? 'Director Feedback' : 'Director Rules';
@@ -2467,8 +2745,8 @@ const memoriesDsapDriver = {
             btn.addEventListener('click', () => {
                 const v = btn.dataset.rulesView;
                 const target = v === 'feedback'
-                    ? `dsap://${MEMORIES_DSAP_URL}/static_rules/feedback`
-                    : `dsap://${MEMORIES_DSAP_URL}/static_rules`;
+                    ? `dsap://${MEMORIES_DSAP_URL}/rules/feedback`
+                    : `dsap://${MEMORIES_DSAP_URL}/rules`;
                 if (typeof this._state.host.navigate === 'function') {
                     this._state.host.navigate(target);
                 } else {
@@ -2736,8 +3014,8 @@ const memoriesDsapDriver = {
             el.addEventListener('click', () => {
                 const v = el.dataset.rulesToggle;
                 const targetUrl = v === 'feedback'
-                    ? `dsap://${MEMORIES_DSAP_URL}/static_rules/feedback`
-                    : `dsap://${MEMORIES_DSAP_URL}/static_rules`;
+                    ? `dsap://${MEMORIES_DSAP_URL}/rules/feedback`
+                    : `dsap://${MEMORIES_DSAP_URL}/rules`;
                 if (typeof this._state.host.navigate === 'function') {
                     this._state.host.navigate(targetUrl);
                 } else {
@@ -2753,9 +3031,28 @@ function registerMemoriesDsapApplet() {
 
     registerDsap({
         url: MEMORIES_DSAP_URL,
+        theme: 'dsap-smf',
+        aliases: [
+            LINKXI_DSAP_URL,
+            `dsap://${LINKXI_DSAP_URL}`,
+            'en.grimoire.jp/applets/linkxi',
+            'applet.grimoire.jp/linkxi'
+        ],
         getContent(match) {
+            let segments = [];
+            const pathSource = (match && (match.normalized || match.displayPath)) || '';
+            if (pathSource) {
+                const host = pathSource.split('/')[0];
+                const suffix = pathSource.startsWith(host)
+                    ? pathSource.slice(host.length).replace(/^\//, '')
+                    : '';
+                if (suffix) {
+                    segments = suffix.split('?')[0].split('/').map(memoriesDsapDecodeSegment);
+                }
+            }
+            const activeTab = memoriesDsapResolveActiveTab(segments, pathSource);
             return {
-                html: memoriesDsapBuildMemoriesHtml(),
+                html: memoriesDsapBuildMemoriesHtml(activeTab),
                 css: memoriesDsapScopedCss,
                 drivers: memoriesDsapDriver,
                 baseBackground: '#eeeeee'
@@ -2765,6 +3062,29 @@ function registerMemoriesDsapApplet() {
 }
 
 registerMemoriesDsapApplet();
+
+function openLinkXiPersonaDsap() {
+    const target = `dsap://${LINKXI_DSAP_URL}`;
+    if (typeof openDsapInGrimoire === 'function') {
+        openDsapInGrimoire(target);
+        return;
+    }
+    let tries = 0;
+    const t = setInterval(() => {
+        tries++;
+        if (typeof openDsapInGrimoire === 'function') {
+            clearInterval(t);
+            openDsapInGrimoire(target);
+        } else if (tries > 15) {
+            clearInterval(t);
+            console.warn('[memories-dsap] openDsapInGrimoire not available');
+        }
+    }, 80);
+}
+
+if (typeof window.openLinkXiPersonaDsap !== 'function') {
+    window.openLinkXiPersonaDsap = openLinkXiPersonaDsap;
+}
 
 // Compatibility shim so old toolbar / action buttons keep working even if old modal script is removed.
 if (typeof window.openKnowledgeMemoriesModal !== 'function') {

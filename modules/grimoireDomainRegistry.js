@@ -26,6 +26,8 @@
  * and (in future) for resolve_grimoire_url to return server-prebuilt page shells.
  */
 
+const wsPacketRegistry = require('./ws/wsPacketRegistry');
+
 const registeredDomains = [];
 let domainHostCache = null; // normalized hosts for fast prefix matching
 
@@ -180,20 +182,20 @@ function isGrimoirePseudoUrl(url) {
 /**
  * Register a direct packet handler for a message type.
  * Preferred for applets that want to own specific packets without touching the central switch.
- * The handler will be called as handler.call(websocketHandlersInstance, ws, message, clientInfo, wsServer)
+ * Legacy handlers are wrapped for wsPacketRegistry context dispatch.
  */
-const directPacketHandlers = new Map(); // type -> fn
-
 function registerPacketHandler(type, handler) {
   if (!type || typeof handler !== 'function') {
     console.warn('[grimoireDomainRegistry] registerPacketHandler: bad args', type);
     return;
   }
-  directPacketHandlers.set(String(type), handler);
+  wsPacketRegistry.registerWsPacket(String(type), async (ctx) => {
+    await handler.call(ctx.handlers, ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer);
+  }, { owner: 'grimoireDomainRegistry' });
 }
 
 function getPacketHandler(type) {
-  return directPacketHandlers.get(String(type)) || null;
+  return wsPacketRegistry.getWsPacketHandler(String(type));
 }
 
 /**
@@ -284,6 +286,44 @@ registerDomain({
     novel_undo: 'handleNovelUndo',
     novel_resolve_image: 'handleNovelResolveImage'
   }
+});
+
+registerDomain({
+  domain: 'security.dreamscape.jp',
+  aliases: [
+    'security.dyna.dreamscape.jp',
+    'dsap://security.dreamscape.jp',
+    'dsap://security.dyna.dreamscape.jp',
+    'en.grimoire.jp/applets/security',
+    'applet.grimoire.jp/security'
+  ],
+  title: 'Security Center'
+});
+
+registerDomain({
+  domain: 'dreamscape.jp',
+  aliases: [
+    'dreamscape.jp/',
+    'www.dreamscape.jp',
+    'dyna.dreamscape.jp',
+    'dsap://dreamscape.jp',
+    'dsap://dreamscape.jp/'
+  ],
+  title: 'Dreamscape'
+});
+
+registerDomain({
+  domain: 'memories.dyna.dreamscape.jp',
+  aliases: [
+    'dsap://memories.dyna.dreamscape.jp',
+    'en.grimoire.jp/applets/memories',
+    'applet.grimoire.jp/memories',
+    'xi.dyna.dreamscape.jp/persona',
+    'dsap://xi.dyna.dreamscape.jp/persona',
+    'en.grimoire.jp/applets/linkxi',
+    'applet.grimoire.jp/linkxi'
+  ],
+  title: 'Knowledge Memories'
 });
 
 module.exports = {

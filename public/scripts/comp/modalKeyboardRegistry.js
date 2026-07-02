@@ -671,7 +671,7 @@ function updateDevWarningsTrayIcon() {
     if (total > 0) {
         icon.classList.remove('hidden');
         icon.classList.add('has-warnings');
-        icon.title = `${total} developer warning${total === 1 ? '' : 's'} — click to open in Event Viewer`;
+        icon.title = `${total} developer warning${total === 1 ? '' : 's'} — click to open in Periscope`;
     } else {
         icon.classList.add('hidden');
         icon.classList.remove('has-warnings');

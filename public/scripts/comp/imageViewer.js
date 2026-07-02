@@ -198,6 +198,8 @@ class ImageViewer {
         this.dragStartY = 0;
         this.dragStartPanX = 0;
         this.dragStartPanY = 0;
+        this._loadGeneration = 0;
+        this._trackedBlobUrl = null;
 
         this.wireBoundHandlers();
         this.init();
@@ -294,25 +296,202 @@ class ImageViewer {
         }
     }
 
-    loadImage() {
+    // showManualPreviewNavigationLoading: public/scripts/comp/manualModalManager.js (same DOM/CSS pattern)
+    showNavigationLoading(show, statusText = '', progressPercent = null) {
+        const navigationLoadingOverlay = this.element.querySelector(`#imageViewerNavigationLoading_${this.id}`);
+        const progressWrap = this.element.querySelector(`#imageViewerNavigationProgress_${this.id}`);
+        const progressFill = this.element.querySelector(`#imageViewerNavigationProgressFill_${this.id}`);
+        const progressLabel = this.element.querySelector(`#imageViewerNavigationProgressLabel_${this.id}`);
+        const progressBar = progressWrap?.querySelector('.manual-preview-navigation-progress-bar');
+        const spinnerIcon = navigationLoadingOverlay?.querySelector('.manual-preview-navigation-loading-icon');
+
+        if (!navigationLoadingOverlay) return;
+
+        if (show) {
+            navigationLoadingOverlay.classList.remove('hidden');
+            const isIndeterminate = progressPercent === 'indeterminate';
+            const hasProgress = isIndeterminate
+                || (progressPercent != null && Number.isFinite(Number(progressPercent)));
+            if (hasProgress) {
+                navigationLoadingOverlay.classList.add('download-progress');
+                if (progressWrap) progressWrap.classList.remove('hidden');
+                if (spinnerIcon) spinnerIcon.classList.add('hidden');
+                if (progressBar) {
+                    progressBar.classList.toggle('indeterminate', isIndeterminate);
+                }
+                if (!isIndeterminate && progressFill) {
+                    const pct = Math.max(0, Math.min(100, Math.round(Number(progressPercent))));
+                    progressFill.style.width = `${pct}%`;
+                } else if (progressFill) {
+                    progressFill.style.width = '';
+                }
+                if (progressLabel) {
+                    progressLabel.textContent = statusText || (isIndeterminate ? 'Downloading…' : `Downloading ${Math.round(Number(progressPercent))}%`);
+                }
+                navigationLoadingOverlay.removeAttribute('title');
+            } else {
+                navigationLoadingOverlay.classList.remove('download-progress');
+                if (progressWrap) progressWrap.classList.add('hidden');
+                if (spinnerIcon) spinnerIcon.classList.remove('hidden');
+                if (progressBar) progressBar.classList.remove('indeterminate');
+                if (progressFill) progressFill.style.width = '0%';
+                if (statusText) {
+                    navigationLoadingOverlay.title = statusText;
+                } else {
+                    navigationLoadingOverlay.removeAttribute('title');
+                }
+            }
+        } else {
+            navigationLoadingOverlay.classList.add('hidden');
+            navigationLoadingOverlay.classList.remove('download-progress');
+            navigationLoadingOverlay.removeAttribute('title');
+            if (progressWrap) progressWrap.classList.add('hidden');
+            if (spinnerIcon) spinnerIcon.classList.remove('hidden');
+            if (progressBar) progressBar.classList.remove('indeterminate');
+            if (progressFill) progressFill.style.width = '0%';
+            if (progressLabel) progressLabel.textContent = 'Downloading…';
+        }
+    }
+
+    releaseTrackedBlobUrl() {
+        if (!this._trackedBlobUrl) return;
+        try {
+            URL.revokeObjectURL(this._trackedBlobUrl);
+        } catch (error) {
+            // Blob may already be revoked elsewhere; idempotent release.
+        }
+        this._trackedBlobUrl = null;
+    }
+
+    prepareImageSrcSwap(imgElement) {
+        if (!imgElement) return;
+        const src = imgElement.currentSrc || imgElement.src || '';
+        if (src.startsWith('blob:')) {
+            try {
+                URL.revokeObjectURL(src);
+            } catch (error) {
+                // Blob may already be revoked elsewhere; idempotent release.
+            }
+            imgElement.removeAttribute('src');
+        }
+    }
+
+    async loadImage() {
         const imgElement = this.element.querySelector(`#imageViewerImage_${this.id}`);
         const blurBackground = this.element.querySelector('.image-viewer-blur-background');
+        if (!imgElement) return;
 
-        if (imgElement) {
-            imgElement.src = this.imageSrc;
-            imgElement.onload = () => {
-                this.adjustModalSizeForImage(imgElement);
-                this.updateZoomDisplay();
-                this.fitToScreen();
-                this.updateCursor();
-            };
-        }
+        const imageUrl = this.imageSrc;
+        this._loadGeneration += 1;
+        const loadGeneration = this._loadGeneration;
 
-        // Set blur preview as background if available
         if (blurBackground && this.metadata) {
             const blurUrl = this.getBlurPreviewUrl();
             if (blurUrl) {
                 blurBackground.style.backgroundImage = `url("${blurUrl}")`;
+            }
+        }
+
+        imgElement.classList.add('hidden');
+        this.showNavigationLoading(true);
+
+        const isDirectSrc = !imageUrl || imageUrl.startsWith('data:') || imageUrl.startsWith('blob:');
+        let loadSrc = imageUrl;
+
+        const reportDownloadProgress = (progress) => {
+            if (loadGeneration !== this._loadGeneration) return;
+            if (progress.total > 0) {
+                const pct = Math.min(100, Math.round(progress.ratio * 100));
+                // formatImageTransferEta, formatImageTransferBytes: public/scripts/comp/utilities.js
+                const eta = progress.etaSeconds != null ? formatImageTransferEta(progress.etaSeconds) : '';
+                const sizeHint = progress.loaded > 0
+                    ? ` · ${formatImageTransferBytes(progress.loaded)} / ${formatImageTransferBytes(progress.total)}`
+                    : '';
+                const label = eta
+                    ? `Downloading ${pct}% · ${eta}${sizeHint}`
+                    : `Downloading ${pct}%${sizeHint}`;
+                this.showNavigationLoading(true, label, pct);
+            } else if (progress.loaded > 0) {
+                const label = `Downloading ${formatImageTransferBytes(progress.loaded)}…`;
+                this.showNavigationLoading(true, label, 'indeterminate');
+            } else {
+                this.showNavigationLoading(true, 'Downloading…', 'indeterminate');
+            }
+        };
+
+        if (!isDirectSrc) {
+            try {
+                this.showNavigationLoading(true, 'Downloading…', 'indeterminate');
+                // fetchTrackedImageBlob: public/scripts/comp/utilities.js
+                const fetchResult = await fetchTrackedImageBlob(imageUrl, 0, reportDownloadProgress);
+                if (loadGeneration !== this._loadGeneration) {
+                    if (fetchResult.objectUrl) {
+                        URL.revokeObjectURL(fetchResult.objectUrl);
+                    }
+                    return;
+                }
+                if (fetchResult.objectUrl) {
+                    this.releaseTrackedBlobUrl();
+                    this._trackedBlobUrl = fetchResult.objectUrl;
+                    loadSrc = fetchResult.objectUrl;
+                    if (fetchResult.total > 0) {
+                        this.showNavigationLoading(true, 'Processing image…', 100);
+                    }
+                }
+            } catch (fetchError) {
+                console.warn('Lumen tracked fetch failed, falling back to direct load:', fetchError);
+                if (loadGeneration === this._loadGeneration) {
+                    this.showNavigationLoading(true, 'Loading image…');
+                }
+            }
+        } else {
+            this.showNavigationLoading(true, 'Loading image…');
+        }
+
+        try {
+            await new Promise((resolve, reject) => {
+                let settled = false;
+                const cleanup = () => {
+                    imgElement.onload = null;
+                    imgElement.onerror = null;
+                };
+                const finish = () => {
+                    if (settled || loadGeneration !== this._loadGeneration) return;
+                    settled = true;
+                    cleanup();
+                    resolve();
+                };
+
+                this.prepareImageSrcSwap(imgElement);
+                imgElement.onload = finish;
+                imgElement.onerror = () => {
+                    if (settled || loadGeneration !== this._loadGeneration) return;
+                    settled = true;
+                    cleanup();
+                    reject(new Error('Failed to load image into DOM'));
+                };
+                imgElement.src = loadSrc;
+                if (imgElement.decode) {
+                    imgElement.decode().then(finish).catch(() => {
+                        if (imgElement.complete && imgElement.naturalWidth > 0) {
+                            finish();
+                        }
+                    });
+                }
+            });
+
+            if (loadGeneration !== this._loadGeneration) return;
+
+            imgElement.classList.remove('hidden');
+            this.adjustModalSizeForImage(imgElement);
+            this.updateZoomDisplay();
+            this.fitToScreen();
+            this.updateCursor();
+        } catch (error) {
+            console.warn('Lumen image load failed:', error);
+        } finally {
+            if (loadGeneration === this._loadGeneration) {
+                this.showNavigationLoading(false);
             }
         }
     }
@@ -1326,6 +1505,9 @@ class ImageViewer {
     }
 
     destroy() {
+        this._loadGeneration += 1;
+        this.showNavigationLoading(false);
+
         // Backup scope close — closeModal already calls onModalClosed (modalListenerScope.js)
         onModalClosed(this.element);
 
@@ -1336,10 +1518,15 @@ class ImageViewer {
             imgElement.onerror = null;
             const src = imgElement.currentSrc || imgElement.src || '';
             if (src.startsWith('blob:')) {
-                URL.revokeObjectURL(src);
+                try {
+                    URL.revokeObjectURL(src);
+                } catch (error) {
+                    // Blob may already be revoked elsewhere; idempotent release.
+                }
             }
             imgElement.removeAttribute('src');
         }
+        this.releaseTrackedBlobUrl();
         if (imgElement && this.boundTouchStart) {
             imgElement.removeEventListener('touchstart', this.boundTouchStart);
         }

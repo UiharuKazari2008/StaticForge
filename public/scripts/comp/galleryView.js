@@ -379,7 +379,7 @@ function shouldLogGalleryLoadForRequest() {
 
 function getGalleryLoadLogFormattedText() {
     if (!galleryLoadLogBuffer.length) {
-        return 'No gallery load events yet.\n\nOpen this source before or during a gallery load to keep capturing decisions.\nLogging is enabled for the first gallery request by default; after that, open Event Viewer to continue debugging.';
+        return 'No gallery load events yet.\n\nOpen this source before or during a gallery load to keep capturing decisions.\nLogging is enabled for the first gallery request by default; after that, open Periscope to continue debugging.';
     }
     return galleryLoadLogBuffer
         .map((entry) => formatGalleryLoadLogLine(entry.session, entry.decision, entry.reason, entry.details, entry.ts))

@@ -1,5 +1,5 @@
 /**
- * Event Viewer applet — admin-only server log tail via HTTP + SSE.
+ * Periscope applet — admin-only server log tail via HTTP + SSE.
  * public/scripts/comp/serverManagement.js (PM2 restart/flush, runtime compile, dev mode)
  * public/scripts/comp/modalUtils.js (openModal, closeModal)
  * public/scripts/comp/confirmationDialog.js (showConfirmationDialog)
@@ -1002,7 +1002,7 @@ class LogViewerApplet {
         if (!this.modalTitleLabel) return;
         const name = this.getSourceTitleLabel(this.currentSource);
         const pausedSuffix = this.paused ? ' [PAUSED]' : '';
-        this.modalTitleLabel.textContent = `Event Viewer - ${name}${pausedSuffix}`;
+        this.modalTitleLabel.textContent = `Periscope — ${name}${pausedSuffix}`;
     }
 
     updateLiveBadge() {
@@ -1605,12 +1605,12 @@ class LogViewerApplet {
         if (!this.modal) return;
 
         if (!serverManagement.isAdminSession()) {
-            showGlassToast('error', 'Access Denied', 'Admin access required for Event Viewer', false, 5000, '<i class="fas fa-lock"></i>');
+            showGlassToast('error', 'Access Denied', 'Admin access required for Periscope', false, 5000, '<i class="fas fa-lock"></i>');
             return;
         }
 
         if (!(await serverManagement.ensureAdminApiPath())) {
-            showGlassToast('error', 'Event Viewer', 'Log path unavailable — please log in again as admin', false, 5000, '<i class="fas fa-scroll"></i>');
+            showGlassToast('error', 'Periscope', 'Log path unavailable — please log in again as admin', false, 5000, '<i class="fas fa-scroll"></i>');
             return;
         }
 
@@ -1975,7 +1975,7 @@ class LogViewerApplet {
             priority: 75,
             showInOverlay: false
         });
-        registerModalOverlayEntries('logViewerModal', 'Event Viewer', [
+        registerModalOverlayEntries('logViewerModal', 'Periscope', [
             { id: 'overlay.logViewer.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' },
             { id: 'overlay.logViewer.pause', label: 'Pause / resume', keys: 'Space', icon: 'fas fa-pause' },
             { id: 'overlay.logViewer.filter', label: 'View settings', keys: 'Ctrl+F', icon: 'fas fa-filter' }

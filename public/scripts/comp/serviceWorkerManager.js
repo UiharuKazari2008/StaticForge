@@ -3596,10 +3596,12 @@ class ServiceWorkerManager {
         this._installWizardEtaState = null;
         const modal = document.getElementById('dreamscapeOsInstallWizardModal');
         if (modal) {
-            modal.classList.add('hidden');
-            modal.classList.remove('opening');
             if (typeof closeModal === 'function') {
                 closeModal(modal);
+            } else {
+                modal.classList.add('hidden');
+                modal.classList.remove('opening');
+                debouncedUpdateTaskbarWindows();
             }
         }
         if (this.installWizardToastId && typeof removeGlassToast === 'function') {

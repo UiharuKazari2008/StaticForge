@@ -2004,14 +2004,21 @@ function closeWorkspaceDropdown() {
     closeDropdown(document.getElementById('workspaceDropdownMenu'), document.getElementById('workspaceDropdownBtn'));
 }
 
-function renderWorkspaceManagementList() {
-    const list = document.getElementById('workspaceManageList');
-    if (!list) return;
-
-    list.innerHTML = '';
+function renderWorkspaceManagementList(targetList, options) {
+    const list = targetList || document.getElementById('workspaceManageList');
+    if (!list) {
+        // dataMgmtDsapRefreshWorkspacesIfPresent: public/scripts/comp/dataManagementDsapApplet.js
+        if (typeof dataMgmtDsapRefreshWorkspacesIfPresent === 'function') {
+            dataMgmtDsapRefreshWorkspacesIfPresent();
+        }
+        return;
+    }
 
     // Sort workspaces by their sort order - workspaces is an object, not an array
     const sortedWorkspaces = Object.values(workspaces).sort((a, b) => (a.sort || 0) - (b.sort || 0));
+
+    delete list.dataset.workspaceDragWired;
+    list.innerHTML = '';
 
     sortedWorkspaces.forEach(workspace => {
         const item = document.createElement('div');
@@ -2048,11 +2055,32 @@ function renderWorkspaceManagementList() {
     });
 
     // Initialize drag and drop functionality
-    initializeWorkspaceDragAndDrop();
+    initializeWorkspaceDragAndDrop(list);
+}
+
+function refreshWorkspaceManagementListsIfPresent() {
+    const modalList = document.getElementById('workspaceManageList');
+    if (modalList) {
+        renderWorkspaceManagementList(modalList);
+    }
+    // dataMgmtDsapRefreshWorkspacesIfPresent: public/scripts/comp/dataManagementDsapApplet.js
+    if (typeof dataMgmtDsapRefreshWorkspacesIfPresent === 'function') {
+        dataMgmtDsapRefreshWorkspacesIfPresent();
+    }
 }
 
 // Workspace modal functions
 function showWorkspaceManagementModal() {
+    // openDataManagementDsap: public/scripts/comp/dataManagementDsapApplet.js
+    if (typeof openDataManagementDsap === 'function') {
+        openDataManagementDsap('workspaces');
+        return;
+    }
+    if (typeof openDsapInGrimoire === 'function') {
+        openDsapInGrimoire('dsap://data.dreamscape.jp/workspaces');
+        return;
+    }
+
     renderWorkspaceManagementList();
     const modal = document.getElementById('workspaceManageModal');
     openModal(modal);
@@ -2081,6 +2109,27 @@ function showAddWorkspaceModal() {
     document.getElementById('workspaceBackgroundColorInput').value = '#0a1a2a';
     const modal = document.getElementById('workspaceEditModal');
     openModal(modal);
+}
+
+function showRenameWorkspaceModal(id) {
+    currentWorkspaceOperation = { type: 'rename', id };
+    const workspace = workspaces[id];
+    document.getElementById('workspaceNameInput').classList.remove('hidden');
+    document.getElementById('workspaceColorInput').classList.add('hidden');
+    document.getElementById('workspaceBackgroundColorInput').classList.add('hidden');
+    document.getElementById('workspaceNameInput').value = workspace?.name || '';
+    const modal = document.getElementById('workspaceEditModal');
+    openModal(modal);
+}
+
+function refreshExplorerWorkspacesListIfOpen() {
+    // public/scripts/comp/explorerApplet.js
+    if (typeof explorerApplet !== 'undefined'
+        && explorerApplet?.currentPath === '/Workspaces'
+        && explorerApplet.modal
+        && !explorerApplet.modal.classList.contains('hidden')) {
+        explorerApplet.softRefresh();
+    }
 }
 
 async function editWorkspaceSettings(id) {
@@ -2691,11 +2740,9 @@ function initializeWebSocketWorkspaceEvents() {
                 renderWorkspaceDropdown();
                 updateActiveWorkspaceDisplay();
                 
-                // If workspace management modal is open, refresh it
-                const workspaceManageModal = document.getElementById('workspaceManageModal');
-                if (workspaceManageModal && !workspaceManageModal.classList.contains('hidden')) {
-                    renderWorkspaceManagementList();
-                }
+                // If workspace management UI is open, refresh it
+                refreshWorkspaceManagementListsIfPresent();
+                refreshExplorerWorkspacesListIfOpen();
                 break;
                 
             case 'renamed':
@@ -2708,11 +2755,8 @@ function initializeWebSocketWorkspaceEvents() {
                 renderWorkspaceDropdown();
                 updateActiveWorkspaceDisplay();
                 
-                // If workspace management modal is open, refresh it
-                const workspaceManageModalRenamed = document.getElementById('workspaceManageModal');
-                if (workspaceManageModalRenamed && !workspaceManageModalRenamed.classList.contains('hidden')) {
-                    renderWorkspaceManagementList();
-                }
+                refreshWorkspaceManagementListsIfPresent();
+                refreshExplorerWorkspacesListIfOpen();
                 break;
                 
             case 'deleted':
@@ -2725,11 +2769,8 @@ function initializeWebSocketWorkspaceEvents() {
                 renderWorkspaceDropdown();
                 updateActiveWorkspaceDisplay();
                 
-                // If workspace management modal is open, refresh it
-                const workspaceManageModalDeleted = document.getElementById('workspaceManageModal');
-                if (workspaceManageModalDeleted && !workspaceManageModalDeleted.classList.contains('hidden')) {
-                    renderWorkspaceManagementList();
-                }
+                refreshWorkspaceManagementListsIfPresent();
+                refreshExplorerWorkspacesListIfOpen();
                 break;
                 
             case 'dumped':
@@ -2744,11 +2785,8 @@ function initializeWebSocketWorkspaceEvents() {
                 // Update UI components
                 renderWorkspaceDropdown();
                 
-                // If workspace management modal is open, refresh it
-                const workspaceManageModalDumped = document.getElementById('workspaceManageModal');
-                if (workspaceManageModalDumped && !workspaceManageModalDumped.classList.contains('hidden')) {
-                    renderWorkspaceManagementList();
-                }
+                refreshWorkspaceManagementListsIfPresent();
+                refreshExplorerWorkspacesListIfOpen();
                 break;
                 
             case 'reordered':
@@ -2762,8 +2800,7 @@ function initializeWebSocketWorkspaceEvents() {
                 }
 
                 // Remove loading state from all workspace items
-                const workspaceManageList = document.getElementById('workspaceManageList');
-                if (workspaceManageList) {
+                document.querySelectorAll('#workspaceManageList, #dataMgmtWorkspaceList').forEach((workspaceManageList) => {
                     const items = workspaceManageList.querySelectorAll('.workspace-manage-item');
                     items.forEach(item => {
                         item.style.opacity = '';
@@ -2773,17 +2810,14 @@ function initializeWebSocketWorkspaceEvents() {
                             loadingIndicator.remove();
                         }
                     });
-                }
+                });
 
                 // Update UI components that show the new order
                 renderWorkspaceDropdown();
                 updateActiveWorkspaceDisplay();
 
-                // If workspace management modal is open, refresh it
-                const workspaceManageModalAfterReorder = document.getElementById('workspaceManageModal');
-                if (workspaceManageModalAfterReorder && !workspaceManageModalAfterReorder.classList.contains('hidden')) {
-                    renderWorkspaceManagementList();
-                }
+                refreshWorkspaceManagementListsIfPresent();
+                refreshExplorerWorkspacesListIfOpen();
                 break;
                 
             case 'files_moved':
@@ -3010,11 +3044,13 @@ function completeWorkspaceSwitch() {
 }
 
 // Initialize drag and drop functionality for workspace reordering
-function initializeWorkspaceDragAndDrop() {
-    const list = document.getElementById('workspaceManageList');
+function initializeWorkspaceDragAndDrop(listEl) {
+    const list = listEl || document.getElementById('workspaceManageList');
     if (!list) {
         return;
     }
+    if (list.dataset.workspaceDragWired === '1') return;
+    list.dataset.workspaceDragWired = '1';
 
     let draggedItem = null;
     let draggedIndex = null;
@@ -3212,9 +3248,5 @@ function refreshWorkspaceManager() {
     // Only refresh the UI components, don't reload all workspaces
     renderWorkspaceDropdown();
     updateActiveWorkspaceDisplay();
-    
-    const workspaceManageModal = document.getElementById('workspaceManageModal');
-    if (workspaceManageModal && !workspaceManageModal.classList.contains('hidden')) {
-        renderWorkspaceManagementList();
-    }
+    refreshWorkspaceManagementListsIfPresent();
 }

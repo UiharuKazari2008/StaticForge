@@ -4801,6 +4801,13 @@ async function handleImageResult(imageSrc, clearContextFn, seed = null, response
         const genFilename = metadata?.filename
             || response?.headers?.get?.('X-Generated-Filename')
             || null;
+        const isExpansionResult = !!(metadata?.forge_data?.expansion_source);
+        const storedPreviewIndex = window.currentManualPreviewIndex;
+        const preservedPreviewIndex = isExpansionResult
+            && Number.isFinite(storedPreviewIndex)
+            && storedPreviewIndex >= 0
+            ? storedPreviewIndex
+            : null;
         if (metadata) {
             window.lastGeneration = metadata;
             if (genFilename) {
@@ -4810,7 +4817,8 @@ async function handleImageResult(imageSrc, clearContextFn, seed = null, response
                 filename: genFilename,
                 original: genFilename,
                 upscaled: null,
-                base: genFilename
+                base: genFilename,
+                metadata
             };
         }
 
@@ -4824,7 +4832,7 @@ async function handleImageResult(imageSrc, clearContextFn, seed = null, response
         document.querySelectorAll('.manual-preview-image-container, #manualPanelSection').forEach(element => {
             element.classList.remove('swapped');
         });
-        await updateManualPreview(0, response, metadata);
+        await updateManualPreview(preservedPreviewIndex ?? 0, response, metadata);
 
         manualPreviewOriginalImage.classList.remove('hidden');
         if (genFilename && typeof updateAndroidNotificationImageFromCurrentPreview === 'function') {

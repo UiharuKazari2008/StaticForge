@@ -750,6 +750,7 @@ body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window
 /* Animation for taskbar items being removed — shrink and fade together; icon/text fade slightly faster */
 .taskbar-window-item.leaving {
     animation: taskbar-item-shrink 0.22s ease-in forwards;
+    pointer-events: none;
 }
 
 .taskbar-window-item.leaving.active::before {
@@ -760,6 +761,19 @@ body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window
 .taskbar-window-item.leaving .taskbar-window-item-content {
     transition: none;
     animation: taskbar-item-content-fade-out 0.14s ease-in forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .taskbar-window-item.leaving,
+    .taskbar-window-group.leaving {
+        min-width: 0;
+        max-width: 0;
+        opacity: 0;
+        padding: 0;
+        border-width: 0;
+        animation: none;
+        pointer-events: none;
+    }
 }
 
 @keyframes taskbar-item-grow {

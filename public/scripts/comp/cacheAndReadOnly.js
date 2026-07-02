@@ -3,7 +3,13 @@ function disableReadOnlyFeatures() {
     // Disable destructive buttons
     const destructiveButtons = [
         'manualPreviewDeleteBtn',
-        'bulkSelectAllBtn'
+        'bulkSelectAllBtn',
+        'explorerCutBtn',
+        'explorerPasteBtn',
+        'explorerDeleteBtn',
+        'explorerNewFolderBtn',
+        'explorerReplaceBtn',
+        'explorerRenameBtn'
     ];
 
     destructiveButtons.forEach(btnId => {

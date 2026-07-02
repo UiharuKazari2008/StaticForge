@@ -1237,6 +1237,10 @@ class ChatSystem {
     }
 
     openPersonaSettingsModal() {
+        if (typeof openLinkXiPersonaDsap === 'function') {
+            openLinkXiPersonaDsap();
+            return;
+        }
         const modal = document.getElementById('personaSettingsModal');
         openModal(modal);
     }

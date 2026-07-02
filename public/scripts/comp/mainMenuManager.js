@@ -410,7 +410,7 @@ function setupMainMenuContextMenus() {
                         submenu: [
                             {
                                 icon: 'fa-regular fa-solar-system',
-                                text: 'Solar System',
+                                text: 'Data Management',
                                 action: 'workspace-manage',
                                 hideOnBreakpoint: "small-mobile"
                             },
@@ -447,11 +447,6 @@ function setupMainMenuContextMenus() {
                                 hideOnBreakpoint: "small-mobile"
                             },
                             {
-                                icon: 'fa-regular fa-user-doctor-message',
-                                text: 'Chat Persona',
-                                action: 'chat-manager'
-                            },
-                            {
                                 icon: 'fa-regular fa-key-skeleton-left-right',
                                 text: 'Service Keychain',
                                 action: 'api-key-manager',
@@ -465,11 +460,12 @@ function setupMainMenuContextMenus() {
                                 action: 'refresh-metadata-cache'
                             },*/
                             {
-                                icon: 'fa-regular fa-ban',
-                                text: 'Blocked Clients',
-                                action: 'ip-manager',
+                                icon: 'fa-regular fa-shield-halved',
+                                text: 'Security Center',
+                                action: 'security-center',
+                                imageIcon: 'secu.png',
                                 desktopOnly: true,
-                                hideOnBreakpoint: "mobile"
+                                hidden: localStorage.getItem('userType') !== 'admin',
                             },
                             {
                                 icon: 'fa-regular fa-laptop-arrow-down',
@@ -835,20 +831,39 @@ function setupMainMenuContextMenus() {
 
             case 'api-key-manager':
                 if (localStorage.getItem('userType') === 'admin') {
-                    openApiKeyModal();
+                    if (typeof openSecurityCenterDsap === 'function') {
+                        openSecurityCenterDsap('auth');
+                    } else {
+                        openDsapInGrimoire('dsap://security.dreamscape.jp/auth');
+                    }
                 } else {
                     showGlassToast('warning', null, 'Admin access required to manage API keys.', false, 5000, '<i class="fas fa-key-skeleton-left-right"></i>');
                 }
                 break;
 
-            case 'chat-manager':
-                // Open chat manager modal directly
-                window.chatSystem.openPersonaSettingsModal();
+            case 'linkxi-persona':
+                if (typeof openLinkXiPersonaDsap === 'function') {
+                    openLinkXiPersonaDsap();
+                } else if (typeof openDsapInGrimoire === 'function') {
+                    openDsapInGrimoire('dsap://xi.dyna.dreamscape.jp/persona');
+                }
                 break;
 
+            case 'chat-manager':
+                window.chatSystem.showAllChats();
+                break;
+
+            case 'security-center':
             case 'ip-manager':
-                // Open IP manager modal directly
-                window.ipManagement.openIPManagementModal();
+                if (localStorage.getItem('userType') !== 'admin') {
+                    showGlassToast('warning', null, 'Admin access required for Security Center.', false, 5000, '<i class="fas fa-lock"></i>');
+                    break;
+                }
+                if (typeof openSecurityCenterDsap === 'function') {
+                    openSecurityCenterDsap('blocked');
+                } else if (typeof openDsapInGrimoire === 'function') {
+                    openDsapInGrimoire('dsap://security.dreamscape.jp/');
+                }
                 break;
 
             case 'lockAllReplacements':

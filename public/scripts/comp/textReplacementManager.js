@@ -1354,6 +1354,16 @@ function initializeFavoritesManager() {
 
 // Show favorites manager modal
 async function showFavoritesManager() {
+    // openDataManagementDsap: public/scripts/comp/dataManagementDsapApplet.js
+    if (typeof openDataManagementDsap === 'function') {
+        openDataManagementDsap('favorites');
+        return;
+    }
+    if (typeof openDsapInGrimoire === 'function') {
+        openDsapInGrimoire('dsap://data.dreamscape.jp/favorites');
+        return;
+    }
+
     const modal = document.getElementById('favoritesManagerModal');
     if (!modal) return;
     
@@ -1462,10 +1472,16 @@ function updateFavoritesCounts() {
 }
 
 // Render favorites list for current tab
-function renderFavoritesList() {
-    const favoritesList = document.getElementById('favoritesList');
-    if (!favoritesList) return;
-    
+function renderFavoritesList(targetList, options) {
+    const favoritesList = targetList || document.getElementById('favoritesList');
+    if (!favoritesList) {
+        // dataMgmtDsapRefreshFavoritesIfPresent: public/scripts/comp/dataManagementDsapApplet.js
+        if (typeof dataMgmtDsapRefreshFavoritesIfPresent === 'function') {
+            dataMgmtDsapRefreshFavoritesIfPresent();
+        }
+        return;
+    }
+
     favoritesList.innerHTML = '';
     
     // Combine all favorites into a single list with type indicators
@@ -1497,9 +1513,13 @@ function renderFavoritesList() {
                 <small>Add tags and text replacements to your favorites from other parts of the app</small>
             </div>
         `;
+        // dataMgmtDsapRefreshFavoritesIfPresent: public/scripts/comp/dataManagementDsapApplet.js
+        if (typeof dataMgmtDsapRefreshFavoritesIfPresent === 'function') {
+            dataMgmtDsapRefreshFavoritesIfPresent();
+        }
         return;
     }
-    
+
     // Render all favorites
     allFavorites.forEach((favorite, globalIndex) => {
         if (favorite.type === 'tag') {
@@ -1510,6 +1530,11 @@ function renderFavoritesList() {
             favoritesList.appendChild(textReplacementElement);
         }
     });
+
+    // dataMgmtDsapRefreshFavoritesIfPresent: public/scripts/comp/dataManagementDsapApplet.js
+    if (typeof dataMgmtDsapRefreshFavoritesIfPresent === 'function') {
+        dataMgmtDsapRefreshFavoritesIfPresent();
+    }
 }
 
 

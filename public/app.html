@@ -193,7 +193,7 @@
     <link rel="stylesheet" id="workspace-styles" href="/css/workspaces.css?sha=5896a14303d662429ec0f03b115937e57ab84f858ce414e7efc1650133bb0c58">
     <link rel="stylesheet" href="/css/custom-dropdown.css?sha=936ed6a4d34f3c6fc91f1d7df15ccef69544b4748f6695a8fa45872fa467833f">
     <!-- Feature-scoped styles (split from app.css) -->
-    <link rel="stylesheet" href="/css/desktop-shell.css?sha=f6c34cf668b6d8968037801773968ade02929a435ed364e9a7cd5580d943d9a8">
+    <link rel="stylesheet" href="/css/desktop-shell.css?sha=5836a9b51474f38365b0130b329252301ff2701f19e0a92e84ce19f113708483">
     <link rel="stylesheet" href="/css/menu-chrome.css?sha=6c563dcfa260395c1cf136775a7255ee7e144d353322072937f278c0a43b9ddd">
     <link rel="stylesheet" href="/css/desktop-settings.css?sha=1966944010337e66f1a9076f221195fa29279ada3eabf51b113668d81112aab9">
     <link rel="stylesheet" href="/css/modal-dimensions.css?sha=577395eb8d34feb9f1d69bd0a1d5da26f7d21db796799635bdcae7c7da0a223d">
@@ -228,6 +228,7 @@
     <link rel="stylesheet" href="/css/spell-check.css?sha=d20703a0b2139224044c6f1770e393662f413da4f9518d3af344a7295d8ffba4">
     <link rel="stylesheet" href="/css/toasts.css?sha=b4ed65f1ded1c37868999f9f5a56a1dedf77fe365d75f5e8619cdfacd55f6758">
     <link rel="stylesheet" href="/css/memoriesDsap.css?sha=8da7ff5532fc30dd6ff962b43431d54d6978fa33098b13f4ba3cba12758421c4">
+    <link rel="stylesheet" href="/css/dsap-smf.css?sha=bb2780992866f5989d0760002436f462360f7ec9420b863d6f5d97e948de40c0">
     <link rel="stylesheet" href="/css/fatal-error.css?sha=4fa630c1764b6d2267c09a043af0dd99c57f5cae582e6cb197f194bc0d0936aa">
     <link rel="stylesheet" href="/css/run-applet.css?sha=345aed1750bc7e20514ed5a6b5ad56780af2789b7d173b089f7c5e7e6011c719">
     <link rel="stylesheet" href="/css/keyboard-shortcuts.css?sha=effe65906b1934d8a21594a125c5aa0ac2cf2243c709e8775746e5698f177a76">
@@ -236,7 +237,7 @@
     <link rel="stylesheet" href="/css/about-melaton.css?sha=5c86eb1d9585efd41a9feb8c17e81ee695257d3d7f9b5bebf3e9faeba1dfb631">
     <link rel="stylesheet" href="/css/desktop-boot.css?sha=844109c5d07db7b3d1cb73ada293e4a300b3219fa071ff9e387846cf70d87cf2">
     <link rel="stylesheet" href="/css/connection-dial.css?sha=62dbd9349626cee3a32c4f49e7ab5d27e083fb3bc51a4c9dfd29b0df5aa4ca00">
-    <link rel="stylesheet" href="/css/config-editor.css?sha=7a007227542932281e17aaf76d9b04accfbe8ccb2d0617e89bc7c53c6b34dfa3">
+    <link rel="stylesheet" href="/css/config-editor.css?sha=b4786bae2df1f7e113d40535141e65801ff3c35c9e0e53355c438085b005374b">
     <link rel="stylesheet" href="/css/naxt-shell.css?sha=7774e0f5748fd9041c5946df00eeb37c6c6cdc67980c5288cb0f54e76dc9dcb4">
     <link rel="stylesheet" href="/css/notepad.css?sha=2826ec2e9a541011c4ebc81210f52a6c583089f552737d850f8c1ae9c8835b27">
     <link rel="stylesheet" href="/css/websocket-requests.css?sha=f9a563da48eb4ba5564ad28533f686a848437d6bacaeb2a56ec7cec3f7c8700a">
@@ -576,7 +577,7 @@
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <img src="/static_images/logo_icon.png" alt="" class="icon-image" aria-hidden="true">
-                <span>Installing Dreamscape OS</span>
+                <span>Welcome to Dreamscape</span>
             </div>
         </div>
         <div class="modal-window-controls">
@@ -587,7 +588,7 @@
         <div class="modal-content connection-dial-content dark">
             <div class="connection-dial-layout">
                 <div class="connection-dial-art">
-                    <img src="/static_images/web-banner.png" alt="" class="connection-dial-art-image">
+                    <img src="/static_images/explorer-banner.png" alt="" class="connection-dial-art-image">
                 </div>
                 <div class="connection-dial-main">
                     <div class="modal-body dreamscape-os-install-wizard-body">
@@ -3193,77 +3194,6 @@
         </div>
     </div>
 
-    <!-- API Key Manager Modal -->
-    <div id="apiKeyModal" class="modal hidden">
-        <div class="modal-window-title">
-            <div class="modal-window-title-main">
-                <i class="fas fa-key-skeleton-left-right icon-fa"></i>
-                <img src="/static_images/app_icons/key.png" alt="" class="icon-image" />
-                <span>Service Keychain</span>
-            </div>
-        </div>
-        <div class="modal-window-controls">
-            <button type="button" id="refreshApiKeyModalBtn" class="btn-secondary" title="Refresh">
-                <i class="fas fa-rotate"></i>
-            </button>
-            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
-                <i class="fa-regular fa-window-minimize"></i>
-            </button>
-            <button type="button" id="closeApiKeyModalBtn" class="btn-danger close-btn btn-small" title="Close">
-                <i class="fa-regular fa-xmark-large"></i>
-            </button>
-        </div>
-        <div class="modal-content modal-padding dark">
-            <div class="modal-body">
-                <div id="apiKeyModalStatus" class="text-muted"></div>
-                <div class="form-section form-section-scroll">
-                    <div id="apiKeyServicesContainer"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div id="addApiKeyModal" class="modal hidden tool-window on-top" data-parent-modal-id="apiKeyModal">
-        <div class="modal-window-title">
-            <div class="modal-window-title-main">
-                <i class="fas fa-keyboard icon-fa"></i>
-                <img src="/static_images/app_icons/key.png" alt="" class="icon-image" />
-                <span>Add New Key</span>
-            </div>
-        </div>
-        <div class="modal-window-controls">
-            <button type="button" id="closeAddApiKeyModalBtn" class="btn-danger close-btn btn-small" title="Close">
-                <i class="fa-regular fa-xmark-large"></i>
-            </button>
-        </div>
-        <div class="modal-content modal-padding dark">
-            <div class="modal-body">
-                <div id="addApiKeyModalStatus" class="text-muted hidden"
-                    style="text-align: center; margin-bottom: 10px;"></div>
-                <div class="form-section">
-                    <label for="addApiKeyNameInput">
-                        <i class="fas fa-tag"></i> Key / Contract Name
-                    </label>
-                    <input type="text" id="addApiKeyNameInput" class="form-input"
-                        placeholder="e.g., Primary, Backup, OpenRouter" />
-                </div>
-                <div class="form-section">
-                    <label for="addApiKeyValueInput">
-                        <i class="fas fa-key-skeleton-left-right"></i> API / Service Key / Contract ID
-                    </label>
-                    <input type="text" id="addApiKeyValueInput" class="form-input" placeholder="Enter API key..." />
-                </div>
-            </div>
-            <div class="modal-footer">
-                <div class="modal-actions">
-                    <button type="button" id="saveNewApiKeyBtn" class="btn-primary">
-                        <i class="fas fa-save"></i> Save
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Mask Editor Dialog Modal -->
     <div id="maskEditorDialog" class="modal resizeable-window hidden">
         <div class="modal-window-title">
@@ -4269,91 +4199,7 @@ Examples:
             </div>
         </div>
     </div>
-
-    <!-- IP Management Modal -->
-    <div id="ipManagementModal" class="modal hidden">
-        <div class="modal-window-title">
-            <div class="modal-window-title-main">
-                <i class="fas fa-network-wired"></i>
-                <span>IP Management</span>
-            </div>
-        </div>
-        <div class="modal-window-controls">
-            <button type="button" id="refreshIPListBtn" class="btn-secondary" title="Refresh List">
-                <i class="fas fa-sync"></i>
-            </button>
-            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
-                <i class="fa-regular fa-window-minimize"></i>
-            </button>
-            <button type="button" id="closeIPManagementBtn" class="btn-danger close-btn btn-small" title="Close"><i
-                    class="fa-regular fa-xmark-large"></i></button>
-        </div>
-        <div class="modal-content modal-padding ip-management-content dark">
-            <div class="modal-body">
-                <div class="ip-management-stats">
-                    <div class="stat-item">
-                        <span class="stat-label">Total Blocked:</span>
-                        <span id="totalBlockedCount" class="stat-value">0</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Page:</span>
-                        <span id="currentPageInfo" class="stat-value">1 of 1</span>
-                    </div>
-                </div>
-
-                <div class="ip-management-list" id="ipManagementList">
-                    <!-- IPs will be populated here -->
-                </div>
-
-                <div class="ip-management-search">
-                    <input type="text" id="ipSearchInput" class="form-control" placeholder="Search IPs...">
-                </div>
-            </div>
-            <div class="modal-footer">
-                <div class="ip-management-pagination">
-                    <span id="ipPageInfo" class="page-info">Page 1 of 1</span>
-                    <button type="button" id="ipPrevBtn" class="btn-secondary pagination-btn btn-small"
-                        title="Previous Page">
-                        <i class="fas fa-chevron-left"></i>
-                    </button>
-                    <button type="button" id="ipNextBtn" class="btn-secondary pagination-btn btn-small"
-                        title="Next Page">
-                        <i class="fas fa-chevron-right"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- IP Details Modal -->
-    <div id="ipDetailsModal" class="modal hidden">
-        <div class="modal-window-title">
-            <div class="modal-window-title-main">
-                <i class="fas fa-network-wired"></i>
-                <span id="ipDetailsTitle">IP Details</span>
-            </div>
-        </div>
-        <div class="modal-window-controls">
-            <button type="button" id="exportIPBtn" class="btn-secondary">
-                <i class="fas fa-upload"></i>
-            </button>
-            <button type="button" id="unblockIPBtn" class="btn-primary">
-                <i class="fas fa-unlock"></i>
-            </button>
-            <button type="button" id="closeIPDetailsBtn" class="btn-danger close-btn btn-small" title="Close"><i
-                    class="fa-regular fa-xmark-large"></i></button>
-        </div>
-        <div class="modal-content modal-padding dark">
-            <div class="modal-body">
-                <div class="ip-details-content" id="ipDetailsContent">
-                    <!-- IP details will be populated here -->
-                </div>
-            </div>
-            <div class="modal-actions btn-group">
-            </div>
-        </div>
-    </div>
-
+    
     <!-- Add/Rename Workspace Modal -->
     <div id="workspaceEditModal" class="modal hidden tool-window on-top" data-parent-modal-id="workspaceManageModal">
         <div class="modal-window-title">
@@ -4890,7 +4736,7 @@ Examples:
             <div class="modal-window-title-main">
                 <i class="fas fa-folder-open icon-fa"></i>
                 <img src="/static_images/app_icons/explorer.png" alt="" class="icon-image" />
-                <span id="explorerTitleLabel">File Explorer</span>
+                <span id="explorerTitleLabel">Cartograph</span>
             </div>
             <div class="modal-window-title-toolbar">
                 <div class="button-group naxt-nav-group">
@@ -6081,7 +5927,18 @@ Examples:
             <div class="image-viewer-body">
                 <div class="image-container">
                     <div class="image-viewer-blur-background"></div>
-                    <img id="imageViewerImage" src="" alt="Image" class="viewer-image">
+                    <div id="imageViewerNavigationLoading" class="manual-preview-navigation-loading hidden">
+                        <div class="manual-preview-navigation-loading-content">
+                            <div class="manual-preview-navigation-loading-icon mdi mdi-1-5 mdi-image-sync"></div>
+                            <div id="imageViewerNavigationProgress" class="manual-preview-navigation-progress hidden">
+                                <p id="imageViewerNavigationProgressLabel" class="manual-preview-navigation-progress-label">Downloading…</p>
+                                <div class="manual-preview-navigation-progress-bar">
+                                    <div id="imageViewerNavigationProgressFill" class="manual-preview-navigation-progress-fill"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <img id="imageViewerImage" src="" alt="Image" class="viewer-image hidden">
                 </div>
             </div>
             <div class="image-viewer-toolbar">
@@ -6756,7 +6613,7 @@ Examples:
         </div>
     </div>
 
-    <!-- Event Viewer Applet -->
+    <!-- Periscope Applet (admin log tail + vitals) -->
     <div id="logViewerModal" class="modal toolbar-visible hidden resizeable-window"
         data-window-identifier="eventViewer"
         data-window-max-width="1800" data-window-max-height="1200"
@@ -6766,7 +6623,7 @@ Examples:
             <div class="modal-window-title-main">
                 <i class="fas fa-wave-square icon-fa"></i>
                 <img src="/static_images/app_icons/event_viewer.png" alt="" class="icon-image" />
-                <span id="logViewerModalTitleLabel">Event Viewer</span>
+                <span id="logViewerModalTitleLabel">Periscope</span>
             </div>
             <div class="modal-window-title-toolbar">
                 <button type="button" id="logViewerSourceDropdownBtn" class="btn-secondary log-viewer-source-btn" title="Log source">
@@ -6944,6 +6801,20 @@ Examples:
                                         <span id="desktopSettingsTextareaFontSelected">Default</span>
                                     </button>
                                     <div id="desktopSettingsTextareaFontMenu" class="custom-dropdown-menu hidden"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="desktop-settings-options-grid">
+                            <div class="desktop-settings-option">
+                                <button type="button" id="desktopSettingsTrashShortcutBtn"
+                                    class="btn-secondary toggle-btn icon-only indicator"
+                                    data-state="off"
+                                    title="Show a Trash shortcut on this workspace desktop">
+                                    <i class="fas fa-trash-can"></i>
+                                </button>
+                                <div class="desktop-settings-option-body">
+                                    <span class="desktop-settings-option-label">Trash desktop shortcut</span>
+                                    <p class="desktop-settings-hint">When on, places a shortcut on the desktop that opens this workspace&apos;s Trash folder.</p>
                                 </div>
                             </div>
                         </div>
@@ -7336,15 +7207,15 @@ Examples:
         </div>
     </div>
 
-    <!-- Config Editor Applet (registry-style) -->
+    <!-- Runes Applet (registry-style config editor) -->
     <div id="configEditorModal" class="modal hidden resizeable-window"
         data-window-max-width="1600" data-window-max-height="1000"
         data-window-min-width="800" data-window-min-height="500">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
-                <i class="fas fa-gears icon-fa"></i>
+                <i class="fas fa-binary icon-fa"></i>
                 <img src="/static_images/app_icons/slider.png" alt="" class="icon-image" />
-                <span>Config Editor</span>
+                <span>Runes</span>
             </div>
         </div>
         <div class="modal-focus-overlay"></div>
@@ -7361,34 +7232,53 @@ Examples:
         </div>
         <div class="modal-content config-editor-modal-content dark">
             <div class="config-editor-layout">
-                <div class="config-editor-tree-panel form-section-scroll">
-                    <div id="configEditorTree" class="config-editor-tree"></div>
+                <div class="config-editor-tree-panel">
+                    <div class="config-editor-search-row">
+                        <i class="fas fa-magnifying-glass config-editor-search-icon" aria-hidden="true"></i>
+                        <input type="text" id="configEditorSearchInput" class="form-control config-editor-search-input"
+                            placeholder="Search settings…" autocomplete="off" spellcheck="false" />
+                        <button type="button" id="configEditorSearchClearBtn" class="btn-secondary btn-small config-editor-search-clear hidden" title="Clear search" aria-label="Clear search">
+                            <i class="fas fa-xmark"></i>
+                        </button>
+                    </div>
+                    <div class="config-editor-tree-scroll-shell scrollbar-padding" data-custom-scrollbar
+                        data-scrollable-wrapper-class="config-editor-tree-scrollable">
+                        <div class="config-editor-tree-scroll-inner">
+                            <div id="configEditorSearchResults" class="config-editor-search-results hidden"></div>
+                            <div id="configEditorTree" class="config-editor-tree"></div>
+                        </div>
+                    </div>
                 </div>
-                <div class="config-editor-values-panel form-section-scroll">
-                    <table class="config-editor-values-table">
-                        <thead>
-                            <tr>
-                                <th class="config-editor-col-name">Name</th>
-                                <th class="config-editor-col-type">Type</th>
-                                <th class="config-editor-col-value">Value</th>
-                            </tr>
-                        </thead>
-                        <tbody id="configEditorValuesBody"></tbody>
-                    </table>
+                <div class="config-editor-values-panel">
+                    <div class="config-editor-values-scroll-shell scrollbar-padding" data-custom-scrollbar
+                        data-scrollable-wrapper-class="config-editor-values-scrollable">
+                        <table class="config-editor-values-table">
+                            <thead>
+                                <tr>
+                                    <th class="config-editor-col-edit" aria-label="Edit mode"></th>
+                                    <th class="config-editor-col-name">Name</th>
+                                    <th class="config-editor-col-type">Type</th>
+                                    <th class="config-editor-col-value">Value</th>
+                                </tr>
+                            </thead>
+                            <tbody id="configEditorValuesBody"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
             <div id="configEditorStatus" class="config-editor-status-bar"></div>
         </div>
     </div>
 
-    <!-- Config Editor: edit value (tool window) -->
+    <!-- Runes: edit value (tool window) -->
     <div id="configEditorValueModal" class="modal hidden resizeable-window tool-window on-top"
         data-parent-modal-id="configEditorModal"
         data-window-position-mode="cascade-parent"
         data-window-content-anchor="top"
         data-window-cascade-align="top"
-        data-window-max-width="560" data-window-max-height="720"
-        data-window-min-width="320" data-window-min-height="220">
+        data-window-default-width="640" data-window-default-height="240"
+        data-window-max-width="640" data-window-max-height="720"
+        data-window-min-width="400" data-window-min-height="200">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-pen-to-square icon-fa"></i>
@@ -7401,39 +7291,102 @@ Examples:
             </button>
         </div>
         <div class="modal-content modal-padding config-editor-value-modal-content dark">
-            <div class="modal-body config-editor-value-modal-body form-section-scroll">
-                <p id="configEditorValuePath" class="config-editor-value-path"></p>
-                <div class="form-group">
-                    <label for="configEditorValueType">Type</label>
-                    <input type="text" id="configEditorValueType" class="form-control" readonly tabindex="-1">
-                </div>
-                <div id="configEditorValueFieldWrap" class="form-group">
-                    <label for="configEditorValueInput" id="configEditorValueInputLabel">Value</label>
-                    <input type="text" id="configEditorValueInput" class="form-control hover-show colored hidden">
-                    <input type="number" id="configEditorValueNumber" class="form-control hover-show colored hidden">
-                    <input type="text" id="configEditorValueSecret" class="form-control colored config-editor-secret-input hidden"
-                        autocomplete="off" spellcheck="false" placeholder="Enter new value (unchanged if empty)">
-                    <textarea id="configEditorValueTextarea" class="form-control hover-show colored hidden" rows="6" spellcheck="false"></textarea>
-                    <button type="button" id="configEditorValueBoolToggle" class="btn-secondary toggle-btn hidden" data-state="off">false</button>
-                    <div id="configEditorValueEnumDropdown" class="custom-dropdown hidden">
-                        <button type="button" id="configEditorValueEnumBtn" class="custom-dropdown-btn hover-show colored">
-                            <span id="configEditorValueEnumSelected"></span>
-                        </button>
-                        <div id="configEditorValueEnumMenu" class="custom-dropdown-menu hidden"></div>
+            <div class="modal-body config-editor-value-modal-body">
+                <div class="config-editor-value-scroll-shell scrollbar-padding" data-custom-scrollbar
+                    data-scrollable-wrapper-class="config-editor-value-scrollable">
+                    <div class="config-editor-value-scroll-inner">
+                        <div id="configEditorValueFieldWrap" class="config-editor-value-field-wrap">
+                            <input type="text" id="configEditorValueInput" class="form-control hover-show colored hidden">
+                            <input type="number" id="configEditorValueNumber" class="form-control hover-show colored hidden">
+                            <input type="text" id="configEditorValueSecret" class="form-control colored config-editor-secret-input hidden"
+                                autocomplete="off" spellcheck="false" placeholder="Enter new value (unchanged if empty)">
+                            <textarea id="configEditorValueTextarea" class="form-control hover-show colored hidden" rows="4" spellcheck="false"></textarea>
+                            <div id="configEditorValuePromptWrap" class="config-editor-value-prompt-wrap hidden">
+                                <div class="character-prompt-textarea-container">
+                                    <div class="character-prompt-textarea-background"></div>
+                                    <textarea id="configEditorValuePromptTextarea"
+                                        class="form-control character-prompt-textarea prompt-textarea"
+                                        rows="6"
+                                        autocapitalize="false"
+                                        autocorrect="false"
+                                        spellcheck="false"
+                                        data-ms-editor="false"></textarea>
+                                    <div class="prompt-textarea-toolbar hidden">
+                                        <div class="toolbar-left">
+                                            <span class="token-count">0 tokens</span>
+                                        </div>
+                                        <div class="toolbar-right">
+                                            <button type="button" class="btn-secondary btn-small toolbar-btn indicator" data-action="autofill" data-state="off" title="Toggle Autofill">
+                                                <i class="fas fa-lightbulb-slash"></i>
+                                            </button>
+                                            <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
+                                                <i class="fas fa-scale-unbalanced-flip"></i>
+                                            </button>
+                                            <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
+                                                <i class="fas fa-book-font"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="button" id="configEditorValueBoolToggle" class="btn-secondary toggle-btn hidden" data-state="off">false</button>
+                            <button type="button" id="configEditorValueEnumBtn" class="btn-secondary hover-show colored hidden config-editor-value-enum-btn">
+                                <span id="configEditorValueEnumSelected"></span>
+                            </button>
+                            <input type="hidden" id="configEditorValueEnumHidden" value="">
+                        </div>
                     </div>
-                    <input type="hidden" id="configEditorValueEnumHidden" value="">
                 </div>
             </div>
             <div class="modal-footer">
-                <div class="modal-actions btn-group">
-                    <button type="button" id="configEditorValueApplyBtn" class="btn-primary">
-                        <i class="fas fa-check"></i> Apply
-                    </button>
-                    <button type="button" id="configEditorValueCancelBtn" class="btn-secondary">
-                        Cancel
-                    </button>
+                <div class="modal-footer-left">
+                    <button type="button" id="configEditorValueConvertBtn" class="btn-secondary btn-small hidden" title="Convert value type"></button>
+                </div>
+                <div class="modal-footer-right">
+                    <div class="modal-actions btn-group">
+                        <button type="button" id="configEditorValueApplyBtn" class="btn-primary">
+                            <i class="fas fa-check"></i> Apply
+                        </button>
+                        <button type="button" id="configEditorValueCancelBtn" class="btn-secondary">
+                            Cancel
+                        </button>
+                    </div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Runes: checkpoint management -->
+    <div id="configEditorCheckpointsModal" class="modal hidden resizeable-window tool-window on-top"
+        data-parent-modal-id="configEditorModal"
+        data-window-position-mode="cascade-parent"
+        data-window-content-anchor="top"
+        data-window-cascade-align="top"
+        data-window-default-width="560" data-window-default-height="480"
+        data-window-max-width="720" data-window-max-height="640"
+        data-window-min-width="480" data-window-min-height="320">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-clock-rotate-left icon-fa"></i>
+                <span>Config Checkpoints</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" id="configEditorCheckpointsCreateBtn" class="btn-secondary btn-small" title="Create checkpoint">
+                <i class="fas fa-camera"></i>
+            </button>
+            <button type="button" id="closeConfigEditorCheckpointsBtn" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content modal-padding config-editor-checkpoints-modal-content dark">
+            <div class="modal-body config-editor-checkpoints-modal-body">
+                <div class="config-editor-checkpoints-scroll-shell scrollbar-padding" data-custom-scrollbar
+                    data-scrollable-wrapper-class="config-editor-checkpoints-scrollable">
+                    <div id="configEditorCheckpointsList" class="config-editor-checkpoints-list"></div>
+                </div>
+            </div>
+            <div id="configEditorCheckpointsStatus" class="config-editor-status-bar"></div>
         </div>
     </div>
 
@@ -7572,6 +7525,8 @@ Examples:
     <script src="scripts/comp/modalUtils.js"></script>
     <script src="scripts/comp/modalListenerScope.js"></script>
     <script src="scripts/comp/modalKeyboardRegistry.js"></script>
+    <script src="scripts/ws/wsInboundRegistry.js"></script>
+    <script src="scripts/ws/inboundHandlerManifest.js"></script>
     <script src="scripts/websocket.js"></script>
     <script src="scripts/comp/serviceWorkerManager.js"></script>
     <script src="scripts/comp/dropdown.js"></script>
@@ -7600,9 +7555,11 @@ Examples:
     <script src="scripts/comp/emphasisManager.js"></script>
     <script src="scripts/comp/emphasisGroupsToolManager.js"></script>
     <script src="scripts/comp/dsapRegistry.js"></script>
+    <script src="scripts/comp/dsapSmfMarkup.js"></script>
     <script src="scripts/comp/dsapManifests.js"></script>
     <!-- Core Grimoire pseudo-domains (en.grimoire.jp, wiki.*, docs.*, etc.) registered via the same domain+alias system -->
     <script src="scripts/comp/grimoireCoreDomains.js"></script>
+    <script src="scripts/comp/dreamscapeHomeDsap.js"></script>
     <script src="scripts/comp/tagWikiSearchModal.js"></script>
     <script src="scripts/comp/naxtApplet.js"></script>
     <script src="scripts/comp/naxVibesApplet.js"></script>
@@ -7627,6 +7584,7 @@ Examples:
     <script src="scripts/comp/vfsClient.js"></script>
     <script src="scripts/comp/vfsVirtualGrid.js"></script>
     <script src="scripts/comp/vfsImportRouter.js"></script>
+    <script src="scripts/comp/vfsSystemOpenRouter.js"></script>
     <script src="scripts/comp/explorerApplet.js"></script>
     <script src="scripts/comp/desktopShortcuts.js"></script>
     <script src="scripts/comp/notepadManager.js"></script>
@@ -7647,7 +7605,6 @@ Examples:
     <script src="scripts/comp/manualModalManager.js"></script>
     <script src="scripts/comp/manualPreviewManager.js"></script>
     <script src="scripts/comp/manualGenerationParams.js"></script>
-    <script src="scripts/comp/apiKeyModal.js"></script>
     <script src="scripts/comp/metadataDialogManager.js"></script>
     <script src="scripts/comp/randomPromptManager.js"></script>
     <script src="scripts/comp/directorLearningAdmin.js"></script>
@@ -7685,6 +7642,7 @@ Examples:
     <script src="scripts/comp/generationProgress.js"></script>
     <script src="scripts/appWebSocketHandlers.js"></script>
     <script src="scripts/appInitSteps.js"></script>
+    <script src="scripts/comp/telemetryClient.js"></script>
     <script src="scripts/app.js"></script>
 </body>
 

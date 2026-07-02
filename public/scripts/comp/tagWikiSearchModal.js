@@ -951,6 +951,9 @@ class WikiDisplayBase {
             <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-action="open-search-home">
                 <i class="fas fa-search"></i> Search the Grim
             </button>
+            <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-action="open-dreamscape-settings">
+                <i class="fas fa-sliders"></i> Settings
+            </button>
             <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-dreamwiki-page="tag groups">
                 <i class="nai-sakura"></i> Danbooru Tags
             </button>
@@ -989,6 +992,13 @@ class WikiDisplayBase {
         if (searchHomeBtn) {
             searchHomeBtn.addEventListener('click', () => {
                 this.navigate('edtx://en.grimoire.jp/search');
+            });
+        }
+
+        const settingsBtn = this.displayArea.querySelector('[data-action="open-dreamscape-settings"]');
+        if (settingsBtn) {
+            settingsBtn.addEventListener('click', () => {
+                this.navigate('dsap://dreamscape.jp/');
             });
         }
 
@@ -3010,14 +3020,16 @@ class WikiWindowInstance extends WikiDisplayBase {
     }
     
     close() {
-        if (this.modal && window.closeModal) {
-            window.closeModal(this.modal);
-        }
-        // Remove from manager after animation
-        if (this.manager) {
-            setTimeout(() => {
+        const finish = () => {
+            if (this.manager) {
                 this.manager.removeWindow(this.id);
-            }, 300);
+            }
+        };
+
+        if (this.modal && closeModal) {
+            Promise.resolve(closeModal(this.modal)).then(finish);
+        } else {
+            finish();
         }
     }
     

@@ -610,6 +610,10 @@ class ConfigManager {
                     },
                     windowPositions: {} // Global window positions (not per-workspace)
                 };
+            case 'naxGeneration':
+                return {
+                    galleries: {}
+                };
             default:
                 return null;
         }
@@ -861,6 +865,12 @@ class ConfigManager {
                             });
                         }
                     }
+                }
+                break;
+
+            case 'naxGeneration':
+                if (typeof config.galleries !== 'object' || Array.isArray(config.galleries) || config.galleries === null) {
+                    errors.push('galleries must be an object');
                 }
                 break;
         }
@@ -2179,6 +2189,12 @@ class ConfigManager {
             this.initializeConfigWithMitigation('workspaces');
         } catch (error) {
             console.warn('⚠️ workspace.json initialization failed:', error.message);
+        }
+
+        try {
+            this.initializeConfigWithMitigation('naxGeneration');
+        } catch (error) {
+            console.warn('⚠️ nax_generation_config.json initialization failed:', error.message);
         }
     }
     

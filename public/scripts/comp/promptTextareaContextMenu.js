@@ -805,6 +805,60 @@ function prefetchThesaurusForTextarea(textarea) {
     });
 }
 
+function promptCtxGetSelectionRange(textarea) {
+    const rawStart = typeof textarea.selectionStart === 'number' ? textarea.selectionStart : 0;
+    const rawEnd = typeof textarea.selectionEnd === 'number' ? textarea.selectionEnd : 0;
+    return {
+        start: Math.min(rawStart, rawEnd),
+        end: Math.max(rawStart, rawEnd)
+    };
+}
+
+function promptCtxApplyPastedText(textarea, start, end, text) {
+    if (text == null || text === '') return;
+    // replaceTextareaRangePreservingUndo: public/scripts/comp/textareaUtils.js
+    replaceTextareaRangePreservingUndo(textarea, start, end, text);
+    const pos = start + text.length;
+    textarea.setSelectionRange(pos, pos);
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function promptCtxCopySelectedText(textarea) {
+    if (!promptCtxHasMeaningfulSelection(textarea)) return;
+    const { start, end } = promptCtxGetSelectionRange(textarea);
+    const text = textarea.value.substring(start, end);
+    // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
+    copyTextToClipboard(text).catch(() => {
+        textarea.focus();
+        document.execCommand('copy');
+    });
+}
+
+function promptCtxCutSelectedText(textarea) {
+    if (!promptCtxHasMeaningfulSelection(textarea)) return;
+    const { start, end } = promptCtxGetSelectionRange(textarea);
+    const text = textarea.value.substring(start, end);
+    // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
+    copyTextToClipboard(text).then(() => {
+        promptCtxApplyPastedText(textarea, start, end, '');
+    }).catch(() => {
+        textarea.focus();
+        document.execCommand('cut');
+    });
+}
+
+function promptCtxPasteIntoTextarea(textarea) {
+    const start = typeof textarea.selectionStart === 'number' ? textarea.selectionStart : 0;
+    const end = typeof textarea.selectionEnd === 'number' ? textarea.selectionEnd : 0;
+    // readClipboardTextFast: public/scripts/utils/dreamscapeClipboard.js
+    readClipboardTextFast().then((text) => {
+        promptCtxApplyPastedText(textarea, start, end, text);
+    }).catch(() => {
+        textarea.focus();
+        document.execCommand('paste');
+    });
+}
+
 function handlePromptTextareaContextMenuAction(action, textarea, item) {
     if (!textarea || !promptCtxIsPromptTextarea(textarea)) return;
 
@@ -815,31 +869,13 @@ function handlePromptTextareaContextMenuAction(action, textarea, item) {
 
     switch (action) {
         case 'prompt-ctx-cut':
-            if (!promptCtxHasMeaningfulSelection(textarea)) break;
-            textarea.focus();
-            document.execCommand('cut');
+            promptCtxCutSelectedText(textarea);
             break;
         case 'prompt-ctx-copy':
-            if (!promptCtxHasMeaningfulSelection(textarea)) break;
-            textarea.focus();
-            document.execCommand('copy');
+            promptCtxCopySelectedText(textarea);
             break;
         case 'prompt-ctx-paste':
-            textarea.focus();
-            // readClipboardText: public/scripts/utils/dreamscapeClipboard.js
-            // replaceTextareaRangePreservingUndo: public/scripts/comp/textareaUtils.js
-            readClipboardText().then((text) => {
-                if (text == null || text === '') return;
-                const start = textarea.selectionStart;
-                const end = textarea.selectionEnd;
-                replaceTextareaRangePreservingUndo(textarea, start, end, text);
-                const pos = start + text.length;
-                textarea.setSelectionRange(pos, pos);
-                textarea.dispatchEvent(new Event('input', { bubbles: true }));
-            }).catch(() => {
-                textarea.focus();
-                document.execCommand('paste');
-            });
+            promptCtxPasteIntoTextarea(textarea);
             break;
         case 'prompt-ctx-select-all':
             textarea.focus();

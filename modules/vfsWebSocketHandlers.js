@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const wsPacketRegistry = require('./ws/wsPacketRegistry');
 
 class VfsWebSocketHandlers {
     constructor(handlers) {
@@ -33,6 +34,22 @@ class VfsWebSocketHandlers {
             ...result,
             items: this.getVfs().enrichItemsWithPreviewUrls(result.items, uuid)
         };
+    }
+
+    async _gcContentBlobIfUnreferenced(contentHash) {
+        if (!contentHash) return;
+        const vfsDb = this.globalResources.getVfsDatabase();
+        const remaining = await vfsDb.countUserFilesByContentHash(contentHash);
+        if (remaining > 0) return;
+        const vfs = this.getVfs();
+        const blobPath = vfs.getFileBlobPath(contentHash);
+        if (fs.existsSync(blobPath)) {
+            try { fs.unlinkSync(blobPath); } catch (_) { /* ignore */ }
+        }
+        const previewPath = vfs.getFilePreviewPath(`${contentHash}.webp`);
+        if (previewPath && fs.existsSync(previewPath)) {
+            try { fs.unlinkSync(previewPath); } catch (_) { /* ignore */ }
+        }
     }
 
     async handleVfsListDirectory(ws, message, clientInfo) {
@@ -150,19 +167,36 @@ class VfsWebSocketHandlers {
                 timestamp: new Date().toISOString()
             });
         } catch (err) {
-            this.handlers.sendToClient(ws, {
-                type: 'error',
-                message: err.message || 'Failed to move items',
-                details: 'vfs_move_items',
-                requestId: message.requestId,
-                timestamp: new Date().toISOString()
-            });
+            this.handlers.sendError(ws, err.message || 'Failed to move items', 'vfs_move_items', message.requestId);
         }
+    }
+
+    async handleVfsFolderHasUserFiles(ws, message) {
+        const { folderIds } = this.getPayload(message);
+        const hasUserFiles = await this.getVfs().folderTreeHasUserFiles(folderIds);
+        this.handlers.sendToClient(ws, {
+            type: 'vfs_folder_has_user_files_response',
+            requestId: message.requestId,
+            data: { success: true, hasUserFiles },
+            timestamp: new Date().toISOString()
+        });
     }
 
     async handleVfsCopyItems(ws, message, clientInfo, wsServer) {
         const { items, targetPath, userFileCopyMode } = this.getPayload(message);
         const results = await this.getVfs().copyItems(items, targetPath, { userFileCopyMode });
+        const copiedDesktop = (items || []).some(i =>
+            i.isDesktopShortcut || i.shortcutType || i.shortcutId
+            || i.isVfsShortcutEntry || i.vfsEntryId
+            || i.targetKind === 'vfs-folder'
+        ) || (targetPath || '').includes('/Desktop');
+        if (copiedDesktop && wsServer?.broadcast) {
+            wsServer.broadcast({
+                type: 'desktop_shortcut_updated',
+                data: { batch: true },
+                timestamp: new Date().toISOString()
+            });
+        }
         this.broadcastVfsUpdated(wsServer, targetPath);
         this.handlers.sendToClient(ws, {
             type: 'vfs_copy_items_response',
@@ -173,9 +207,8 @@ class VfsWebSocketHandlers {
     }
 
     async handleVfsDeleteEntry(ws, message, clientInfo, wsServer) {
-        const vfsDb = this.globalResources.getVfsDatabase();
         const { entryId } = this.getPayload(message);
-        await vfsDb.deleteEntry(entryId);
+        await this.getVfs().deleteEntryById(entryId);
         this.broadcastVfsUpdated(wsServer, null);
         this.handlers.sendToClient(ws, {
             type: 'vfs_delete_entry_response',
@@ -264,14 +297,20 @@ class VfsWebSocketHandlers {
         }
 
         const hash = crypto.createHash('md5').update(buffer).digest('hex');
+        const oldHash = existing.content_hash;
         const blobPath = this.getVfs().getFileBlobPath(hash);
-        fs.writeFileSync(blobPath, buffer);
+        if (!fs.existsSync(blobPath)) {
+            fs.writeFileSync(blobPath, buffer);
+        }
 
         const updated = await vfsDb.updateUserFile(fileId, {
             content_hash: hash,
             mime_type: newMime,
             size: buffer.length
         });
+        if (oldHash && oldHash !== hash) {
+            await this._gcContentBlobIfUnreferenced(oldHash);
+        }
         this.broadcastVfsUpdated(wsServer, null);
         this.handlers.sendToClient(ws, {
             type: 'vfs_replace_file_response',
@@ -292,6 +331,43 @@ class VfsWebSocketHandlers {
                 downloadUrl: `/${uuid}/files/${fileId}`,
                 fileId
             },
+            timestamp: new Date().toISOString()
+        });
+    }
+
+    async handleVfsDownloadSystemFile(ws, message) {
+        const { systemFileKey } = this.getPayload(message);
+        if (!systemFileKey) {
+            throw new Error('systemFileKey is required');
+        }
+        const vfs = this.getVfs();
+        const info = vfs.resolveSystemFileDownload(systemFileKey);
+        const uuid = this.globalResources.getVfsPathUuid();
+        const encoded = vfs.encodeSystemFileKey(systemFileKey);
+        this.handlers.sendToClient(ws, {
+            type: 'vfs_download_system_file_response',
+            requestId: message.requestId,
+            data: {
+                success: true,
+                downloadUrl: `/${uuid}/system/${encoded}`,
+                filename: info.name,
+                mimeType: info.mimeType,
+                size: info.size
+            },
+            timestamp: new Date().toISOString()
+        });
+    }
+
+    async handleVfsReadSystemFile(ws, message, clientInfo) {
+        const { systemFileKey } = this.getPayload(message);
+        if (!systemFileKey) {
+            throw new Error('systemFileKey is required');
+        }
+        const payload = await this.getVfs().readSystemFile(systemFileKey, { clientInfo });
+        this.handlers.sendToClient(ws, {
+            type: 'vfs_read_system_file_response',
+            requestId: message.requestId,
+            data: { success: true, ...payload },
             timestamp: new Date().toISOString()
         });
     }
@@ -405,16 +481,64 @@ class VfsWebSocketHandlers {
         const { fileId } = this.getPayload(message);
         const file = await vfsDb.getUserFileById(fileId);
         if (!file) throw new Error('File not found');
-        await vfsDb.deleteUserFile(fileId);
-        const blobPath = this.getVfs().getFileBlobPath(file.content_hash);
-        if (fs.existsSync(blobPath)) {
-            try { fs.unlinkSync(blobPath); } catch (_) { /* ignore */ }
-        }
+        const contentHash = file.content_hash;
+        const { success } = await vfsDb.deleteUserFile(fileId);
+        if (!success) throw new Error('File not found');
+        await this._gcContentBlobIfUnreferenced(contentHash);
         this.broadcastVfsUpdated(wsServer, null);
         this.handlers.sendToClient(ws, {
             type: 'vfs_delete_file_response',
             requestId: message.requestId,
             data: { success: true },
+            timestamp: new Date().toISOString()
+        });
+    }
+
+    async handleVfsMoveToTrash(ws, message, clientInfo, wsServer) {
+        const { items, sourcePath } = this.getPayload(message);
+        const results = await this.getVfs().moveItemsToTrash(items, sourcePath);
+        this.broadcastVfsUpdated(wsServer, sourcePath);
+        this.handlers.sendToClient(ws, {
+            type: 'vfs_move_to_trash_response',
+            requestId: message.requestId,
+            data: { success: true, results },
+            timestamp: new Date().toISOString()
+        });
+    }
+
+    async handleVfsRestoreFromTrash(ws, message, clientInfo, wsServer) {
+        const { trashItemId } = this.getPayload(message);
+        const result = await this.getVfs().restoreFromTrash(trashItemId);
+        this.broadcastVfsUpdated(wsServer, result.originalPath || `/Workspaces/${result.workspaceId}/Trash`);
+        this.handlers.sendToClient(ws, {
+            type: 'vfs_restore_from_trash_response',
+            requestId: message.requestId,
+            data: { success: true, ...result },
+            timestamp: new Date().toISOString()
+        });
+    }
+
+    async handleVfsEmptyTrash(ws, message, clientInfo, wsServer) {
+        const { workspaceId } = this.getPayload(message);
+        if (!workspaceId) throw new Error('workspaceId is required');
+        const result = await this.getVfs().emptyTrash(workspaceId);
+        this.broadcastVfsUpdated(wsServer, `/Workspaces/${workspaceId}/Trash`);
+        this.handlers.sendToClient(ws, {
+            type: 'vfs_empty_trash_response',
+            requestId: message.requestId,
+            data: { success: true, ...result },
+            timestamp: new Date().toISOString()
+        });
+    }
+
+    async handleVfsPermanentlyDelete(ws, message, clientInfo, wsServer) {
+        const { items, sourcePath } = this.getPayload(message);
+        const results = await this.getVfs().permanentlyDeleteItems(items, sourcePath);
+        this.broadcastVfsUpdated(wsServer, sourcePath);
+        this.handlers.sendToClient(ws, {
+            type: 'vfs_permanently_delete_response',
+            requestId: message.requestId,
+            data: { success: true, results },
             timestamp: new Date().toISOString()
         });
     }
@@ -467,11 +591,9 @@ class VfsWebSocketHandlers {
         refDb.addReferenceToWorkspace(hash, workspaceId);
 
         if (mode === 'move') {
+            const contentHash = file.content_hash;
             await vfsDb.deleteUserFile(fileId);
-            const blobPath = this.getVfs().getFileBlobPath(file.content_hash);
-            if (fs.existsSync(blobPath)) {
-                try { fs.unlinkSync(blobPath); } catch (_) { /* ignore */ }
-            }
+            await this._gcContentBlobIfUnreferenced(contentHash);
         }
 
         this.handlers.sendToClient(ws, {
@@ -484,4 +606,66 @@ class VfsWebSocketHandlers {
     }
 }
 
+/** Destructive vfs/desktop types — keep in sync with isDestructiveOperation in websocketHandlers.js */
+const VFS_DESTRUCTIVE = {
+    destructive: true
+};
+
+/**
+ * Register all vfs_* and desktop_* WebSocket packet handlers on wsPacketRegistry.
+ * @param {import('./websocketHandlers').WebSocketMessageHandlers} handlersCtx
+ */
+function registerVfsPackets(handlersCtx) {
+    if (!handlersCtx || !handlersCtx.vfsHandlers) {
+        console.warn('[vfsWebSocketHandlers] registerVfsPackets: missing handlersCtx.vfsHandlers');
+        return;
+    }
+
+    const vfs = handlersCtx.vfsHandlers;
+
+    const reg = (type, fn, meta = {}) => {
+        wsPacketRegistry.registerWsPacket(type, async (ctx) => {
+            await fn(ctx);
+        }, { owner: 'vfs', ...meta });
+    };
+
+    reg('vfs_list_directory', (ctx) => vfs.handleVfsListDirectory(ctx.ws, ctx.message, ctx.clientInfo));
+    reg('vfs_get_path_stats', (ctx) => vfs.handleVfsGetPathStats(ctx.ws, ctx.message));
+    reg('vfs_resolve_path', (ctx) => vfs.handleVfsResolvePath(ctx.ws, ctx.message));
+    reg('vfs_folder_has_user_files', (ctx) => vfs.handleVfsFolderHasUserFiles(ctx.ws, ctx.message));
+    reg('vfs_create_folder', (ctx) => vfs.handleVfsCreateFolder(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+    reg('vfs_rename_folder', (ctx) => vfs.handleVfsRenameFolder(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+    reg('vfs_rename_file', (ctx) => vfs.handleVfsRenameFile(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+    reg('vfs_delete_folder', (ctx) => vfs.handleVfsDeleteFolder(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+    reg('vfs_move_items', (ctx) => vfs.handleVfsMoveItems(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+    reg('vfs_copy_items', (ctx) => vfs.handleVfsCopyItems(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+    reg('vfs_delete_entry', (ctx) => vfs.handleVfsDeleteEntry(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+    reg('vfs_rename_shortcut_entry', (ctx) => vfs.handleVfsRenameShortcutEntry(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+    reg('vfs_rename_entry', (ctx) => vfs.handleVfsRenameEntry(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+    reg('vfs_upload_file', (ctx) => vfs.handleVfsUploadFile(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+    reg('vfs_replace_file', (ctx) => vfs.handleVfsReplaceFile(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+    reg('vfs_download_file', (ctx) => vfs.handleVfsDownloadFile(ctx.ws, ctx.message));
+    reg('vfs_download_system_file', (ctx) => vfs.handleVfsDownloadSystemFile(ctx.ws, ctx.message));
+    reg('vfs_read_system_file', (ctx) => vfs.handleVfsReadSystemFile(ctx.ws, ctx.message, ctx.clientInfo));
+    reg('vfs_delete_file', (ctx) => vfs.handleVfsDeleteFile(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+    reg('vfs_move_to_trash', (ctx) => vfs.handleVfsMoveToTrash(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+    reg('vfs_restore_from_trash', (ctx) => vfs.handleVfsRestoreFromTrash(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+    reg('vfs_empty_trash', (ctx) => vfs.handleVfsEmptyTrash(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+    reg('vfs_permanently_delete', (ctx) => vfs.handleVfsPermanentlyDelete(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+    reg('vfs_convert_reference_to_file', (ctx) => vfs.handleVfsConvertReferenceToFile(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+    reg('vfs_convert_file_to_reference', (ctx) => vfs.handleVfsConvertFileToReference(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+
+    reg('desktop_create_empty_folder', (ctx) => vfs.handleDesktopCreateEmptyFolder(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+    reg('desktop_update_shortcut_folders', (ctx) => vfs.handleDesktopUpdateShortcutFolders(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+    reg('desktop_create_folder_from_selection', (ctx) => vfs.handleDesktopCreateFolderFromSelection(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+
+    reg('desktop_get_settings', (ctx) => handlersCtx.handleDesktopGetSettings(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer));
+    reg('desktop_get_shortcuts', (ctx) => handlersCtx.handleDesktopGetShortcuts(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer));
+    reg('desktop_add_shortcut', (ctx) => handlersCtx.handleDesktopAddShortcut(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+    reg('desktop_update_shortcut', (ctx) => handlersCtx.handleDesktopUpdateShortcut(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+    reg('desktop_remove_shortcut', (ctx) => handlersCtx.handleDesktopRemoveShortcut(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+    reg('desktop_update_positions', (ctx) => handlersCtx.handleDesktopUpdatePositions(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);
+}
+
 module.exports = VfsWebSocketHandlers;
+module.exports.registerVfsPackets = registerVfsPackets;

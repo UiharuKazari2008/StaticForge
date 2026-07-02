@@ -22,9 +22,153 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
 #configEditorModal .config-editor-tree-panel {
     flex: 0 0 260px;
     border-right: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
-    padding: var(--spacing-sm);
+    padding: 0;
     min-height: 0;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+#configEditorModal .config-editor-tree-scroll-shell {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+#configEditorModal .config-editor-tree-scrollable {
+    height: 100%;
+    overflow: auto;
+    padding: 0px 5px 0px 5px;
+}
+
+#configEditorModal .config-editor-tree-scroll-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-height: 0;
+}
+
+#configEditorModal .config-editor-search-row {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    position: relative;
+}
+
+#configEditorModal .config-editor-search-icon {
+    position: absolute;
+    left: 8px;
+    opacity: 0.55;
+    font-size: 0.85em;
+    pointer-events: none;
+    z-index: 1;
+}
+
+#configEditorModal .config-editor-search-input {
+    flex: 1;
+    min-width: 0;
+    padding-left: 28px;
+    font-size: 0.88em;
+}
+
+#configEditorModal .config-editor-search-clear {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+}
+
+#configEditorModal .config-editor-search-results {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+#configEditorModal .config-editor-search-results.hidden {
+    display: none;
+}
+
+#configEditorModal .config-editor-tree.search-hidden {
+    display: none;
+}
+
+#configEditorModal .config-editor-search-item {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    text-align: left;
+    border: none;
+    background: transparent;
+    color: inherit;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85em;
+}
+
+#configEditorModal .config-editor-search-item:hover,
+#configEditorModal .config-editor-search-item.keyboard-selected {
+    background: rgba(100, 160, 220, 0.2);
+}
+
+#configEditorModal .config-editor-search-item-main {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+#configEditorModal .config-editor-search-item-main i {
+    flex: 0 0 auto;
+    opacity: 0.75;
+    width: 14px;
+    text-align: center;
+}
+
+#configEditorModal .config-editor-search-item-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: var(--wght-semibold, 600);
+}
+
+#configEditorModal .config-editor-search-item-type {
+    flex: 0 0 auto;
+    opacity: 0.6;
+    font-size: 0.85em;
+}
+
+#configEditorModal .config-editor-search-item-crumb {
+    opacity: 0.65;
+    font-size: 0.78em;
+    font-family: var(--font-mono);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#configEditorModal .config-editor-search-item mark {
+    background: rgba(255, 220, 80, 0.35);
+    color: inherit;
+    padding: 0 1px;
+    border-radius: 2px;
+}
+
+#configEditorModal .config-editor-search-empty,
+#configEditorModal .config-editor-search-loading {
+    padding: var(--spacing-sm);
+    opacity: 0.65;
+    font-size: 0.85em;
 }
 
 #configEditorModal .config-editor-tree {
@@ -41,7 +185,21 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
 }
 
 #configEditorModal .config-editor-tree-item.selected .config-editor-tree-label {
-    background: rgba(100, 160, 220, 0.25);
+    background: var(--btn-hover-bg-primary);
+    border: 1px solid var(--btn-hover-bg-primary);
+}
+
+#configEditorModal .config-editor-tree-item.active-trail .config-editor-tree-label {
+    background: var(--btn-hover-bg-primary);
+    border: 1px solid var(--btn-hover-bg-primary);
+}
+
+#configEditorModal .config-editor-tree-item.dirty .config-editor-tree-label {
+    box-shadow: inset 3px 0 0 rgba(255, 200, 80, 0.85);
+}
+
+#configEditorModal .config-editor-tree-item.pending-new .config-editor-tree-label {
+    box-shadow: inset 3px 0 0 rgba(100, 210, 140, 0.9);
 }
 
 #configEditorModal .config-editor-tree-expand {
@@ -49,6 +207,14 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
     width: 24px;
     height: 24px;
     padding: 0;
+    min-height: 0;
+    min-width: 0;
+}
+
+#configEditorModal .config-editor-tree-spacer {
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
 }
 
 #configEditorModal .config-editor-tree-label {
@@ -74,14 +240,71 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
     display: flex;
     flex-direction: column;
     gap: 2px;
+    padding-left: 14px;
+}
+
+#configEditorModal .config-editor-tree-panel,
+#configEditorModal .config-editor-values-panel {
+    position: relative;
+}
+
+#configEditorModal .config-editor-tree-panel.config-editor-panel-busy,
+#configEditorModal .config-editor-values-panel.config-editor-panel-busy {
+    cursor: not-allowed;
+}
+
+#configEditorModal .config-editor-tree-panel.config-editor-panel-busy::after,
+#configEditorModal .config-editor-values-panel.config-editor-panel-busy::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.28);
+    pointer-events: auto;
+    z-index: 4;
+    cursor: not-allowed;
+}
+
+#configEditorModal .config-editor-values-state-row td {
+    padding: var(--spacing-md);
+    opacity: 0.7;
+    text-align: center;
+}
+
+#configEditorModal .config-editor-values-state-row td.config-editor-error {
+    color: #ff8c8c;
+}
+
+.config-editor-commit-parent-note {
+    margin: var(--spacing-sm) 0 var(--spacing-xs);
+    color: #ffcc80;
+    font-size: 0.9em;
+}
+
+.config-editor-commit-parent-list {
+    margin: 0 0 var(--spacing-sm);
+    padding-left: 1.25em;
+    font-size: 0.88em;
 }
 
 #configEditorModal .config-editor-values-panel {
     flex: 1;
     min-width: 0;
     min-height: 0;
-    padding: var(--spacing-sm);
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+#configEditorModal .config-editor-values-scroll-shell {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+#configEditorModal .config-editor-values-scrollable {
+    height: 100%;
+    overflow: auto;
+    padding: var(--spacing-sm);
 }
 
 #configEditorModal .config-editor-value-cell {
@@ -103,12 +326,57 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
     opacity: 0.9;
 }
 
-#configEditorValueModal .config-editor-value-path {
+#configEditorValueModal .config-editor-value-field-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+}
+
+#configEditorValueModal .config-editor-value-scroll-inner {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+#configEditorValueModal .config-editor-value-field-wrap .form-control {
+    width: 100%;
+    min-width: 0;
+}
+
+#configEditorValueModal #configEditorValueTextarea {
+    flex: 0 0 auto;
+    min-height: 120px;
+    resize: none;
     font-family: var(--font-mono);
-    font-size: 0.82em;
-    opacity: 0.75;
-    margin: 0 0 var(--spacing-sm);
-    word-break: break-all;
+}
+
+#configEditorValueModal .config-editor-value-prompt-wrap {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 120px;
+    min-width: 0;
+}
+
+#configEditorValueModal .config-editor-value-prompt-wrap .character-prompt-textarea-container {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 120px;
+}
+
+#configEditorValueModal .config-editor-value-prompt-wrap .character-prompt-textarea {
+    flex: 0 0 auto;
+    min-height: 120px;
+    resize: none;
+}
+
+#configEditorValueModal .config-editor-secret-input {
+    font-family: var(--font-mono);
+    width: 100%;
 }
 
 #configEditorValueModal .config-editor-value-modal-content {
@@ -117,19 +385,57 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
     min-height: 0;
 }
 
+#configEditorValueModal.value-modal-multiline .config-editor-value-modal-content {
+    flex: 1;
+}
+
+#configEditorValueModal.value-modal-input-mode .config-editor-value-modal-body,
+#configEditorValueModal.value-modal-input-mode .config-editor-value-scroll-shell {
+    flex: 0 0 auto;
+}
+
+#configEditorValueModal.value-modal-input-mode .resize-handle.n,
+#configEditorValueModal.value-modal-input-mode .resize-handle.s,
+#configEditorValueModal.value-modal-input-mode .resize-handle.nw,
+#configEditorValueModal.value-modal-input-mode .resize-handle.ne,
+#configEditorValueModal.value-modal-input-mode .resize-handle.sw,
+#configEditorValueModal.value-modal-input-mode .resize-handle.se {
+    display: none;
+}
+
+#configEditorModal .config-editor-col-type {
+    width: 12%;
+    opacity: 0.75;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 #configEditorValueModal .config-editor-value-modal-body {
     flex: 1;
     min-height: 0;
     overflow: hidden;
 }
 
-#configEditorValueModal .config-editor-secret-input {
-    font-family: var(--font-mono);
-    width: 100%;
+#configEditorValueModal .config-editor-value-scroll-shell {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+#configEditorValueModal .config-editor-value-scrollable {
+    height: 100%;
+    overflow: auto;
+    padding: 2px 4px 4px 0;
+}
+
+#configEditorValueModal .config-editor-value-scroll-inner {
+    min-height: 0;
 }
 
 #configEditorModal .config-editor-values-table {
     width: 100%;
+    table-layout: fixed;
     border-collapse: collapse;
     font-size: 0.88em;
 }
@@ -152,18 +458,148 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
     background: rgba(255, 200, 80, 0.08);
 }
 
-#configEditorModal .config-editor-col-name {
-    width: 28%;
-    font-family: var(--font-mono);
+#configEditorModal .config-editor-row.dirty.pending-new td {
+    background: rgba(100, 210, 140, 0.1);
 }
 
-#configEditorModal .config-editor-col-type {
-    width: 12%;
+#configEditorModal .config-editor-col-edit {
+    width: 28px;
+    text-align: center;
+    opacity: 0.7;
+    font-size: 0.85em;
+}
+
+#configEditorModal .config-editor-col-edit i {
+    font-size: 0.85em;
+    width: 14px;
+    text-align: center;
     opacity: 0.75;
 }
 
+#configEditorModal .config-editor-col-name {
+    width: 28%;
+    max-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+}
+
+#configEditorModal .config-editor-name-with-icon {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+#configEditorModal .config-editor-name-with-icon i {
+    flex: 0 0 auto;
+    font-size: 0.85em;
+    width: 14px;
+    text-align: center;
+    opacity: 0.85;
+}
+
+#configEditorModal .config-editor-unmapped-badge {
+    display: inline-block;
+    margin-left: 0.35em;
+    padding: 0 0.25em;
+    font-size: 0.72em;
+    line-height: 1.2;
+    border-radius: 3px;
+    opacity: 0.55;
+    background: rgba(255, 255, 255, 0.08);
+    vertical-align: middle;
+    cursor: help;
+    flex: 0 0 auto;
+}
+
+#configEditorModal .config-editor-inline-enum-btn .config-editor-inline-enum-selected {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#configEditorValueModal .config-editor-value-enum-btn,
+.config-editor-add-type-btn {
+    width: 100%;
+    min-width: 0;
+}
+
 #configEditorModal .config-editor-col-value {
-    min-width: 140px;
+    width: auto;
+    max-width: 0;
+    overflow: visible;
+}
+
+#configEditorModal .config-editor-value-cell .config-editor-edit-btn,
+#configEditorModal .config-editor-value-cell .config-editor-open-btn {
+    flex: 0 0 auto;
+}
+
+#configEditorModal .config-editor-row.config-editor-row-flash td {
+    background: rgba(100, 160, 220, 0.22);
+    transition: background 0.35s ease;
+}
+
+#configEditorModal .config-editor-value-cell .btn-small i,
+#configEditorModal .config-editor-open-btn i {
+    font-size: 0.8em;
+}
+
+#configEditorModal .config-editor-inline-input,
+#configEditorModal .config-editor-inline-enum-btn,
+#configEditorModal .config-editor-bool-toggle {
+    min-height: 26px;
+    box-sizing: border-box;
+}
+
+#configEditorModal .config-editor-inline-input {
+    width: 100%;
+    min-width: 0;
+    font-size: 0.88em;
+    font-family: var(--font-mono);
+    padding: 2px 6px;
+    line-height: 1.35;
+}
+
+#configEditorModal .config-editor-bool-toggle {
+    min-width: unset;
+    width: 100%;
+    padding: 2px 8px;
+    font-size: 0.88em;
+    font-family: var(--font-mono);
+}
+
+#configEditorModal .config-editor-inline-enum-btn {
+    width: 100%;
+    min-width: 0;
+    font-size: 0.88em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 2px 8px;
+    line-height: 1.35;
+}
+
+#configEditorModal .config-editor-tree-label i {
+    flex: 0 0 auto;
+    font-size: 0.85em;
+    width: 14px;
+    text-align: center;
+    opacity: 0.85;
+}
+
+#configEditorModal .config-editor-tree-label span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 #configEditorModal .config-editor-status-bar {
@@ -204,3 +640,90 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
     margin-top: var(--spacing-sm);
     color: #ff8c00;
 }
+
+.config-editor-save-checkpoint-toggles {
+    margin: var(--spacing-sm) 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.config-editor-save-checkpoint-heading {
+    font-size: 0.85em;
+    opacity: 0.85;
+    margin: 0;
+}
+
+.config-editor-save-checkpoint-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+}
+
+#configEditorCheckpointsModal .config-editor-checkpoints-modal-content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+#configEditorCheckpointsModal .config-editor-checkpoints-modal-body {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+#configEditorCheckpointsModal .config-editor-checkpoints-scroll-shell {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+#configEditorCheckpointsModal .config-editor-checkpoints-scrollable {
+    height: 100%;
+    overflow: auto;
+    padding: 2px 4px 4px 0;
+}
+
+#configEditorCheckpointsModal .config-editor-checkpoints-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+#configEditorCheckpointsModal .config-editor-checkpoint-row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--border-radius-sm);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+#configEditorCheckpointsModal .config-editor-checkpoint-main {
+    flex: 1;
+    min-width: 0;
+}
+
+#configEditorCheckpointsModal .config-editor-checkpoint-label {
+    font-weight: 600;
+}
+
+#configEditorCheckpointsModal .config-editor-checkpoint-meta {
+    font-size: 0.8em;
+    opacity: 0.75;
+}
+
+#configEditorCheckpointsModal .config-editor-checkpoint-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+#configEditorCheckpointsModal .config-editor-checkpoints-empty,
+#configEditorCheckpointsModal .config-editor-checkpoints-loading {
+    padding: var(--spacing-md);
+    text-align: center;
+    opacity: 0.7;
+}
+

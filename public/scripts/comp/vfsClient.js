@@ -38,6 +38,10 @@ const vfsClient = {
         return resp?.path || path;
     },
 
+    async folderTreeHasUserFiles(folderIds) {
+        return wsClient.sendMessage('vfs_folder_has_user_files', { folderIds });
+    },
+
     async createFolder(path, name) {
         return wsClient.sendMessage('vfs_create_folder', { path, name });
     },
@@ -66,6 +70,22 @@ const vfsClient = {
         return wsClient.sendMessage('vfs_delete_entry', { entryId });
     },
 
+    async moveToTrash(items, sourcePath) {
+        return wsClient.sendMessage('vfs_move_to_trash', { items, sourcePath });
+    },
+
+    async restoreFromTrash(trashItemId) {
+        return wsClient.sendMessage('vfs_restore_from_trash', { trashItemId });
+    },
+
+    async emptyTrash(workspaceId) {
+        return wsClient.sendMessage('vfs_empty_trash', { workspaceId });
+    },
+
+    async permanentlyDelete(items, sourcePath) {
+        return wsClient.sendMessage('vfs_permanently_delete', { items, sourcePath });
+    },
+
     async renameShortcutEntry(entryId, name) {
         return wsClient.sendMessage('vfs_rename_shortcut_entry', { entryId, name });
     },
@@ -84,6 +104,14 @@ const vfsClient = {
 
     async downloadFile(fileId) {
         return wsClient.sendMessage('vfs_download_file', { fileId });
+    },
+
+    async downloadSystemFile(systemFileKey) {
+        return wsClient.sendMessage('vfs_download_system_file', { systemFileKey });
+    },
+
+    async readSystemFile(systemFileKey) {
+        return wsClient.sendMessage('vfs_read_system_file', { systemFileKey });
     },
 
     async convertReferenceToFile(hash, workspaceId, mode) {

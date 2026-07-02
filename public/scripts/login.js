@@ -571,129 +571,20 @@ class LoginPage {
         this.currentImageIndex = imageIndex;
     }
 
-    // Collect device and browser telemetry data
-    collectTelemetryData() {
-        const telemetry = {
-            timestamp: Date.now(),
-            userAgent: navigator.userAgent,
-            language: navigator.language,
-            platform: navigator.platform,
-            cookieEnabled: navigator.cookieEnabled,
-            onLine: navigator.onLine,
-            screen: {
-                width: screen.width || window.innerWidth,
-                height: screen.height || window.innerHeight,
-                colorDepth: screen.colorDepth,
-                pixelDepth: screen.pixelDepth
-            },
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-            connection: null,
-            serviceWorker: {
-                supported: 'serviceWorker' in navigator,
-                registered: false,
-                scope: null
-            },
-            storage: {
-                localStorage: this.checkStorageSupport('localStorage'),
-                sessionStorage: this.checkStorageSupport('sessionStorage'),
-                indexedDB: 'indexedDB' in window
-            },
-            features: {
-                webGL: this.checkWebGLSupport(),
-                webp: this.checkWebPSupport(),
-                touch: 'ontouchstart' in window,
-                geolocation: 'geolocation' in navigator
-            }
-        };
-
-        // Check connection information if available
-        if ('connection' in navigator) {
-            const conn = navigator.connection;
-            telemetry.connection = {
-                effectiveType: conn.effectiveType,
-                downlink: conn.downlink,
-                rtt: conn.rtt,
-                saveData: conn.saveData
-            };
-        }
-
-        // Check service worker registration
-        if (telemetry.serviceWorker.supported) {
-            navigator.serviceWorker.getRegistrations().then(registrations => {
-                if (registrations.length > 0) {
-                    telemetry.serviceWorker.registered = true;
-                    telemetry.serviceWorker.scope = registrations[0].scope;
-                }
-            }).catch(() => {
-                // Service worker check failed
-            });
-        }
-
-        return telemetry;
-    }
-
-    // Check storage support
-    checkStorageSupport(type) {
-        try {
-            const storage = window[type];
-            const testKey = '__storage_test__';
-            storage.setItem(testKey, 'test');
-            storage.removeItem(testKey);
-            return true;
-        } catch (e) {
-            return false;
-        }
-    }
-
-    // Check WebGL support
-    checkWebGLSupport() {
-        try {
-            const canvas = document.createElement('canvas');
-            return !!(canvas.getContext('webgl') || canvas.getContext('experimental-webgl'));
-        } catch (e) {
-            return false;
-        }
-    }
-
-    // Check WebP support
-    checkWebPSupport() {
-        try {
-            const canvas = document.createElement('canvas');
-            canvas.width = 1;
-            canvas.height = 1;
-            return canvas.toDataURL('image/webp').indexOf('data:image/webp') === 0;
-        } catch (e) {
-            return false;
-        }
-    }
-
     // Send telemetry ping to server
     async sendTelemetryPing() {
         try {
-            const telemetryData = this.collectTelemetryData();
-            
-            const response = await fetch('/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    action: 'ping',
-                    data: telemetryData
-                })
-            });
-            
-            if (response.ok) {
-                const data = await response.json();
-                if (data.authenticated && data.redirect) {
-                    if (data.userType) {
-                        localStorage.setItem('userType', data.userType);
-                    }
-                    if (data.userType === 'admin' && data.logViewerPathUuid) {
-                        localStorage.setItem('logViewerPathUuid', data.logViewerPathUuid);
-                    }
-                    console.log('🔐 User already authenticated, redirecting...');
-                    window.location.href = data.redirect;
-                    return;
+            const response = await sendClientTelemetryPing({ eventType: 'login', page: '/' });
+
+            if (response?.authenticated && response.redirect) {
+                if (response.userType) {
+                    localStorage.setItem('userType', response.userType);
                 }
+                if (response.userType === 'admin' && response.logViewerPathUuid) {
+                    localStorage.setItem('logViewerPathUuid', response.logViewerPathUuid);
+                }
+                console.log('🔐 User already authenticated, redirecting...');
+                window.location.href = response.redirect;
             }
         } catch (error) {
             console.error('❌ Error sending telemetry ping:', error);

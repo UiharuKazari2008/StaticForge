@@ -3724,7 +3724,10 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
         // Remove the append marker from all prompt-bearing fields at the very end.
         // APPEND_MARKER is already defined at the top of this function
         const markerRegex = new RegExp(`\\s*,?\\s*${APPEND_MARKER}\\s*,?\\s*`, 'g');
-        const sanitizeMarkerFromText = (text) => typeof text === 'string' ? text.replace(markerRegex, '') : text;
+        const sanitizeMarkerFromText = (text) => {
+            if (typeof text !== 'string') return text;
+            return text.replace(markerRegex, ', ');
+        };
         const normalizePromptSeparators = (text) => {
             if (typeof text !== 'string') return text;
             return text

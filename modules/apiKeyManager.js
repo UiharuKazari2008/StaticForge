@@ -247,8 +247,8 @@ class ApiKeyManager {
         
         this.globalResources.modifyConfig('secureConfig').append([service, 'keys'], newKey);
 
-        // Return the index of the newly added key
-        const newIndex = serviceConfig.keys.length - 1;
+        const updatedKeys = this.getServiceKeys(service);
+        const newIndex = updatedKeys.length - 1;
         return {
             success: true,
             index: newIndex,
@@ -256,6 +256,57 @@ class ApiKeyManager {
                 index: newIndex,
                 name: newKey.name,
                 fingerprint: this.maskKey(newKey.apiKey)
+            }
+        };
+    }
+
+    updateApiKey(service, index, name, apiKey) {
+        if (!service) {
+            throw new Error('Service is required');
+        }
+
+        const meta = this.SERVICE_METADATA[service];
+        if (!meta) {
+            throw new Error(`Unknown service "${service}"`);
+        }
+
+        const keys = this.getServiceKeys(service);
+        if (!Array.isArray(keys) || keys.length === 0) {
+            throw new Error(`No API keys configured for ${meta.label}`);
+        }
+
+        const idx = Number(index);
+        if (!Number.isInteger(idx) || idx < 0 || idx >= keys.length) {
+            throw new Error(`Invalid key index for ${meta.label}`);
+        }
+
+        const existing = keys[idx];
+        const trimmedName = typeof name === 'string' ? name.trim() : '';
+        const trimmedKey = typeof apiKey === 'string' ? apiKey.trim() : '';
+
+        if (!trimmedName && !trimmedKey) {
+            throw new Error('Provide a new name and/or key value to update');
+        }
+
+        const nextName = trimmedName || existing.name || `Key ${idx + 1}`;
+        if (keys.some((k, i) => i !== idx && k.name === nextName)) {
+            throw new Error(`A Service Key / Contract with the name "${nextName}" already exists for ${meta.label}`);
+        }
+
+        const nextKey = {
+            name: nextName,
+            apiKey: trimmedKey || existing.apiKey
+        };
+
+        this.globalResources.modifyConfig('secureConfig').replace([service, 'keys'], idx, nextKey);
+
+        return {
+            success: true,
+            index: idx,
+            key: {
+                index: idx,
+                name: nextKey.name,
+                fingerprint: this.maskKey(nextKey.apiKey)
             }
         };
     }

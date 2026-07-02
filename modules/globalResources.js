@@ -21,6 +21,9 @@ const naxTagsDatabase = require('./naxTagsDatabase');
 const NaxTagGenerationService = require('./naxTagGeneration');
 const naxVibesGallery = require('./naxVibesGallery');
 const apiKeyManager = require('./apiKeyManager');
+const applicationAuthDatabase = require('./applicationAuthDatabase');
+const telemetryDatabase = require('./telemetryDatabase');
+const { ApplicationAuthManager } = require('./applicationAuthManager');
 const ReferenceMetadataDatabase = require('./referenceMetadataDatabase');
 const GenerationQuipsDatabase = require('./generationQuipsDatabase');
 const { GenerationQuipsManager } = require('./generationQuipsManager');
@@ -56,10 +59,11 @@ const PngMetadata = require('./pngMetadata');
 const TextReplacements = require('./textReplacements');
 const LocalPromptOptimizer = require('./localPromptOptimizer');
 const ConfigEditorService = require('./configEditorService');
+const CheckpointManagementService = require('./checkpointManagementService');
 const staticWiki = require('./staticWiki');
 const grimoireDomainRegistry = require('./grimoireDomainRegistry');
 const { TagSuggestionsCache } = require('./cache');
-const { createAuthMiddleware, createDevAuthMiddleware } = require('./auth');
+const { createAuthMiddleware, createApplicationAuthEarlyMiddleware, createDevAuthMiddleware } = require('./auth');
 const polymoduleManager = require('./polymoduleManager');
 const { NodeHtmlMarkdown } = require('node-html-markdown');
 
@@ -143,6 +147,8 @@ class GlobalResources {
         this.novelAiClient = null;
         this.grokClient = null;
         this.apiKeyManager = null; // Will be initialized after configs are loaded
+        this.applicationAuthManager = null;
+        this.applicationAuthEarlyMiddleware = null;
         this.restartHandlers = new Map();
 
         // Account data management - balance is stored at accountData.subscription.trainingStepsLeft
@@ -171,6 +177,9 @@ class GlobalResources {
         this.blockedIPs = new Map(); // IP -> { blockedAt, reason, attempts }
         this.suspiciousIPs = new Map(); // IP -> { attempts, lastSeen, patterns }
         this.invalidURLAttempts = new Map(); // IP -> { count, lastAttempt }
+        this.knownBadPaths = new Map(); // normalized path -> { firstSeen, lastSeen, hits }
+        this._knownBadPathsLoaded = false;
+        this._knownBadPathsSaveTimer = null;
 
         // Cache data management
         this.globalCacheData = [];
@@ -317,6 +326,7 @@ class GlobalResources {
 
             // IP exports (scripts/ip-export.js)
             ipExports: path.join(rootDir, '.cache', 'ip_exports'),
+            knownBadPathsFile: path.join(rootDir, '.cache', 'known_bad_paths.json'),
 
             // Dataset tags (scripts/create-tag-database.js)
             datasetTags: path.resolve(rootDir, 'dataset_tags.json'),
@@ -659,6 +669,10 @@ class GlobalResources {
                 workspaceDesktop: {
                     name: 'workspaceDesktop',
                     path: this.getPath('workspaceDesktopFile')
+                },
+                naxGeneration: {
+                    name: 'naxGeneration',
+                    path: this.getPath('naxGenerationConfig')
                 }
             };
 
@@ -676,6 +690,7 @@ class GlobalResources {
             this.staticWiki = staticWiki;
             this.grimoireDomainRegistry = grimoireDomainRegistry;
             this.configEditorService = new ConfigEditorService(this);
+            this.checkpointManagementService = new CheckpointManagementService(this);
             this.initializeAuthMiddleware();
 
             console.log('✓ Configs loaded and validated');
@@ -840,8 +855,7 @@ class GlobalResources {
             // Initialize system info cache
             this.initializeSystemInfoCache();
 
-            // Sync workspace files (migrates JSON to database) before marking initialized so
-            // anything that checks `initialized` does not race with migration.
+            // Reconcile workspace file lists on disk/config (no metadata DB access).
             if (this.workspace) {
                 try {
                     await this.workspace.syncWorkspaceFiles();
@@ -852,6 +866,7 @@ class GlobalResources {
             }
 
             this.initialized = true;
+
             this.initEndTime = Date.now();
 
             const initTime = ((this.initEndTime - this.initStartTime) / 1000).toFixed(2);
@@ -1476,6 +1491,26 @@ class GlobalResources {
             this.initializationProgress.notesDatabase = true;
             console.log('✓ Notes database ready');
 
+            if (applicationAuthDatabase.initializeApplicationAuthDatabase) {
+                const appAuthOk = await applicationAuthDatabase.initializeApplicationAuthDatabase(databasesPath);
+                if (!appAuthOk) {
+                    throw new Error('Failed to initialize application auth database - check logs above for details');
+                }
+            }
+            this.applicationAuthDatabase = applicationAuthDatabase;
+            this.initializationProgress.applicationAuthDatabase = true;
+            console.log('✓ Application auth database ready');
+
+            if (telemetryDatabase.initializeTelemetryDatabase) {
+                const telemetryOk = await telemetryDatabase.initializeTelemetryDatabase(databasesPath);
+                if (!telemetryOk) {
+                    throw new Error('Failed to initialize telemetry database - check logs above for details');
+                }
+            }
+            this.telemetryDatabase = telemetryDatabase;
+            this.initializationProgress.telemetryDatabase = true;
+            console.log('✓ Telemetry database ready');
+
             if (vfsDatabase.initializeVfsDatabase) {
                 const vfsOk = await vfsDatabase.initializeVfsDatabase(databasesPath);
                 if (!vfsOk) {
@@ -1498,6 +1533,8 @@ class GlobalResources {
             this.tagDatabase = tagLookup;
             this.initializationProgress.tagDatabase = true;
             console.log('✓ Tag Wiki database ready');
+
+            this.initializeApplicationAuthManager();
         } catch (error) {
             console.error('  ❌ Failed to initialize databases:', error);
             console.error('  Full error stack:', error.stack);
@@ -1512,6 +1549,9 @@ class GlobalResources {
      */
     initializeGlobalCheckpointManager() {
         try {
+            const { setGlobalResourcesRef } = require('./checkpointGrandfathering');
+            setGlobalResourcesRef(this);
+
             // sqlite databases only do not place JSON checkpoints unless they do not get saveed
             this.globalCheckpointManager = new GlobalCheckpointManager(this);
 
@@ -1547,6 +1587,29 @@ class GlobalResources {
                     this.globalCheckpointManager.registerCheckpointManager('director', directorCheckpointManager, 'database');
                 }
             }
+
+            const registerDb = (name, getManager) => {
+                const manager = getManager?.();
+                if (manager) {
+                    this.globalCheckpointManager.registerCheckpointManager(name, manager, 'database');
+                }
+            };
+
+            registerDb('application_auth', () => applicationAuthDatabase.getCheckpointManager?.());
+            registerDb('telemetry', () => telemetryDatabase.getCheckpointManager?.());
+            registerDb('generation_quips', () => this.generationQuipsDatabase?.getCheckpointManager?.());
+            registerDb('knowledge_memory', () => {
+                const knowledgeMemoryDatabase = require('./knowledgeMemoryDatabase');
+                return knowledgeMemoryDatabase.getCheckpointManager?.();
+            });
+            registerDb('reference_metadata', () => this.referenceMetadataDatabase?.getCheckpointManager?.());
+            registerDb('tag_wiki', () => this.tagDatabase?.getCheckpointManager?.());
+            registerDb('tag_search', () => {
+                const tagSearchDatabase = require('./tagSearchDatabase');
+                return tagSearchDatabase.getCheckpointManager?.();
+            });
+            registerDb('notes', () => notesDatabase.getCheckpointManager?.());
+            registerDb('vfs', () => vfsDatabase.getCheckpointManager?.());
 
             // Start staggered periodic checkpoints (only for databases)
             this.globalCheckpointManager.startPeriodicCheckpoints();
@@ -1827,12 +1890,14 @@ class GlobalResources {
                 totalWorkspaceImagesSize += diskUsageBytes;
 
                 workspaceList.push({
+                    workspaceId,
                     name: workspace.name || workspaceId,
                     color: workspace.color || '#000000',
                     images: imageCount,
                     references: referenceCount,
                     notes: notesCount,
-                    diskUsage: diskUsage
+                    diskUsage,
+                    diskUsageBytes
                 });
             }
 
@@ -1993,6 +2058,20 @@ class GlobalResources {
             console.log('✓ API key manager initialized');
         } catch (error) {
             console.error('  ❌ Failed to initialize API key manager:', error);
+            throw error;
+        }
+    }
+
+    initializeApplicationAuthManager() {
+        if (this.applicationAuthManager) {
+            return;
+        }
+        try {
+            this.applicationAuthManager = new ApplicationAuthManager(this);
+            this.applicationAuthEarlyMiddleware = createApplicationAuthEarlyMiddleware(this);
+            console.log('✓ Application auth manager initialized');
+        } catch (error) {
+            console.error('  ❌ Failed to initialize application auth manager:', error);
             throw error;
         }
     }
@@ -2459,6 +2538,16 @@ class GlobalResources {
     }
 
     /**
+     * Get CheckpointManagementService instance
+     */
+    getCheckpointManagementService() {
+        if (!this.checkpointManagementService) {
+            throw new Error('CheckpointManagementService not initialized - call initializeConfigs() first');
+        }
+        return this.checkpointManagementService;
+    }
+
+    /**
      * Get TagSuggestionsCache instance
      */
     getTagSuggestionsCache() {
@@ -2639,6 +2728,24 @@ class GlobalResources {
             throw new Error('API key manager not initialized - call initializeApiKeyManager() first');
         }
         return this.apiKeyManager;
+    }
+
+    getApplicationAuthManager() {
+        if (!this.applicationAuthManager) {
+            throw new Error('Application auth manager not initialized - call initializeApplicationAuthManager() first');
+        }
+        return this.applicationAuthManager;
+    }
+
+    getTelemetryDatabase() {
+        return this.telemetryDatabase || null;
+    }
+
+    getApplicationAuthEarlyMiddleware() {
+        if (!this.applicationAuthEarlyMiddleware) {
+            throw new Error('Application auth early middleware not initialized');
+        }
+        return this.applicationAuthEarlyMiddleware;
     }
 
     /**
@@ -3347,6 +3454,167 @@ class GlobalResources {
     }
 
     /**
+     * Get known bad paths map (probe URLs learned from blocked bots)
+     * @returns {Map} Map of normalized path -> { firstSeen, lastSeen, hits }
+     */
+    getKnownBadPaths() {
+        this.loadKnownBadPaths();
+        return this.knownBadPaths;
+    }
+
+    /**
+     * Load persisted known bad paths from disk (once)
+     */
+    loadKnownBadPaths() {
+        if (this._knownBadPathsLoaded) return;
+        this._knownBadPathsLoaded = true;
+
+        const fs = require('fs');
+        const filePath = this.getPath('knownBadPathsFile');
+
+        if (fs.existsSync(filePath)) {
+            try {
+                const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+                const entries = data.paths || data;
+                if (Array.isArray(entries)) {
+                    const now = Date.now();
+                    for (const pathKey of entries) {
+                        if (typeof pathKey === 'string' && pathKey && pathKey !== '/') {
+                            this.knownBadPaths.set(pathKey, { firstSeen: now, lastSeen: now, hits: 1 });
+                        }
+                    }
+                } else if (entries && typeof entries === 'object') {
+                    for (const [pathKey, meta] of Object.entries(entries)) {
+                        if (pathKey && pathKey !== '/') {
+                            this.knownBadPaths.set(pathKey, {
+                                firstSeen: meta.firstSeen || Date.now(),
+                                lastSeen: meta.lastSeen || Date.now(),
+                                hits: meta.hits || 1
+                            });
+                        }
+                    }
+                }
+                if (this.logger) {
+                    this.logger.info(`Loaded ${this.knownBadPaths.size} known bad path(s) from cache`);
+                }
+            } catch (err) {
+                console.error('Failed to load known bad paths:', err.message);
+            }
+        } else {
+            this._seedKnownBadPaths();
+        }
+    }
+
+    _seedKnownBadPaths() {
+        const seeds = [
+            '/.env', '/.env.local', '/.env.production', '/.env.staging', '/.env.development',
+            '/.git/config', '/.git/HEAD', '/wp-admin', '/wp-login.php', '/phpinfo.php',
+            '/.aws/credentials', '/server-status', '/.DS_Store'
+        ];
+        const now = Date.now();
+        for (const pathKey of seeds) {
+            this.knownBadPaths.set(pathKey, { firstSeen: now, lastSeen: now, hits: 0 });
+        }
+    }
+
+    /**
+     * Record a URL path observed during bot/scraper activity
+     * @param {string} urlPath - Normalized request path
+     */
+    recordKnownBadPath(urlPath) {
+        if (!urlPath || urlPath === '/') return;
+
+        this.loadKnownBadPaths();
+        const now = Date.now();
+        const existing = this.knownBadPaths.get(urlPath);
+
+        if (existing) {
+            existing.lastSeen = now;
+            existing.hits++;
+        } else {
+            this.knownBadPaths.set(urlPath, { firstSeen: now, lastSeen: now, hits: 1 });
+        }
+
+        this._scheduleKnownBadPathsSave();
+    }
+
+    /**
+     * Check if a path is a known bad probe URL
+     * @param {string} urlPath - Normalized request path
+     * @returns {boolean}
+     */
+    isKnownBadPath(urlPath) {
+        if (!urlPath || urlPath === '/') return false;
+        this.loadKnownBadPaths();
+        return this.knownBadPaths.has(urlPath);
+    }
+
+    _scheduleKnownBadPathsSave() {
+        if (this._knownBadPathsSaveTimer) {
+            clearTimeout(this._knownBadPathsSaveTimer);
+        }
+        this._knownBadPathsSaveTimer = setTimeout(() => {
+            this._knownBadPathsSaveTimer = null;
+            this.saveKnownBadPaths();
+        }, 5000);
+    }
+
+    /**
+     * Persist known bad paths to disk
+     * @param {number} maxPaths - Maximum paths to retain
+     */
+    saveKnownBadPaths(maxPaths = 50000) {
+        const fs = require('fs');
+        const filePath = this.getPath('knownBadPathsFile');
+
+        try {
+            let entries = Array.from(this.knownBadPaths.entries());
+
+            if (entries.length > maxPaths) {
+                entries.sort((a, b) => b[1].lastSeen - a[1].lastSeen);
+                entries = entries.slice(0, maxPaths);
+                this.knownBadPaths = new Map(entries);
+            }
+
+            const paths = Object.fromEntries(entries);
+            const dir = path.dirname(filePath);
+            if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true });
+            }
+            fs.writeFileSync(filePath, JSON.stringify({ paths, savedAt: Date.now() }), 'utf-8');
+        } catch (err) {
+            console.error('Failed to save known bad paths:', err.message);
+        }
+    }
+
+    /**
+     * Remove a single known bad path and persist
+     * @param {string} urlPath
+     * @returns {boolean} true if removed
+     */
+    deleteKnownBadPath(urlPath) {
+        if (!urlPath || urlPath === '/') return false;
+        this.loadKnownBadPaths();
+        const removed = this.knownBadPaths.delete(urlPath);
+        if (removed) {
+            this.saveKnownBadPaths();
+        }
+        return removed;
+    }
+
+    /**
+     * Clear all known bad paths and persist
+     * @returns {number} count removed
+     */
+    clearKnownBadPaths() {
+        this.loadKnownBadPaths();
+        const count = this.knownBadPaths.size;
+        this.knownBadPaths.clear();
+        this.saveKnownBadPaths();
+        return count;
+    }
+
+    /**
      * Check if IP address is in a private range
      * @param {string} ip - IP address to check
      * @returns {boolean} True if IP is in a private range
@@ -3488,6 +3756,22 @@ class GlobalResources {
                 .slice(0, Math.floor(MAX_SUSPICIOUS_IPS * 0.1));
 
             entries.forEach(([ip]) => this.suspiciousIPs.delete(ip));
+        }
+
+        // Prune stale known bad paths (90 days without a hit)
+        const MAX_KNOWN_BAD_PATHS = config.MAX_KNOWN_BAD_PATHS || 50000;
+        const badPathMaxAgeMs = 90 * 24 * 60 * 60 * 1000;
+        for (const [urlPath, data] of this.knownBadPaths.entries()) {
+            if (now - data.lastSeen > badPathMaxAgeMs) {
+                this.knownBadPaths.delete(urlPath);
+            }
+        }
+        if (this.knownBadPaths.size > MAX_KNOWN_BAD_PATHS) {
+            const entries = Array.from(this.knownBadPaths.entries())
+                .sort((a, b) => b[1].lastSeen - a[1].lastSeen)
+                .slice(0, MAX_KNOWN_BAD_PATHS);
+            this.knownBadPaths = new Map(entries);
+            this.saveKnownBadPaths(MAX_KNOWN_BAD_PATHS);
         }
     }
 
@@ -4309,6 +4593,15 @@ class GlobalResources {
         const flushedCount = this.flushAllPendingConfigSaves();
         if (flushedCount > 0) {
             log(`Flushed ${flushedCount} pending config save(s) before restart`);
+        }
+
+        if (this._knownBadPathsSaveTimer) {
+            clearTimeout(this._knownBadPathsSaveTimer);
+            this._knownBadPathsSaveTimer = null;
+        }
+        if (this.knownBadPaths.size > 0) {
+            this.saveKnownBadPaths();
+            log(`Saved ${this.knownBadPaths.size} known bad path(s) before restart`);
         }
 
         if (this.asyncSQLiteManager) {

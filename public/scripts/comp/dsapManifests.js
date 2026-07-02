@@ -11,6 +11,24 @@
 
 const QUIPS_DSAP_MANIFEST_URL = 'quips.dyna.dreamscape.jp';
 const MEMORIES_DSAP_MANIFEST_URL = 'memories.dyna.dreamscape.jp';
+const SECURITY_DSAP_MANIFEST_URL = 'security.dreamscape.jp';
+const SECURITY_DSAP_MANIFEST_URL_LEGACY = 'security.dyna.dreamscape.jp';
+const ISPY_DSAP_MANIFEST_URL = 'ispy.dreamscape.jp';
+const OMEGASEARCH_DSAP_MANIFEST_URL = 'omegasearch.dyna.dreamscape.jp';
+const DATA_DSAP_MANIFEST_URL = 'data.dreamscape.jp';
+
+function openDataManagementDsap(tabId) {
+    let target;
+    if (!tabId || tabId === 'status') {
+        target = `dsap://${DATA_DSAP_MANIFEST_URL}/`;
+    } else if (tabId === 'search') {
+        target = `dsap://${ISPY_DSAP_MANIFEST_URL}/`;
+    } else {
+        target = `dsap://${DATA_DSAP_MANIFEST_URL}/${tabId}`;
+    }
+    // openDsapInGrimoire: public/scripts/comp/dsapRegistry.js
+    openDsapInGrimoire(target);
+}
 
 function openDynamicQuipsDsap(workspaceId) {
     const wsPart = workspaceId ? `${encodeURIComponent(workspaceId)}` : '';
@@ -43,6 +61,7 @@ function registerDsapManifests() {
             imageIcon: 'quips.png',
             text: 'Dynamic Quips',
             appMenu: false,
+            startMenu: false,
             startMenuIndex: 6,
             launch() {
                 // getActiveWorkspaceIdForQuips: public/scripts/comp/generationQuipsTray.js
@@ -56,12 +75,17 @@ function registerDsapManifests() {
 
     // Memories DSAP (converted from the old modal viewer, now a first-class grimoire applet)
     // Note: memories menu entry is provided statically in modalUtils.js to preserve original start menu ordering (after Favorites, before Rules).
+    const LINKXI_DSAP_MANIFEST_URL = 'xi.dyna.dreamscape.jp/persona';
     registerDsap({
         url: MEMORIES_DSAP_MANIFEST_URL,
         aliases: [
             `dsap://${MEMORIES_DSAP_MANIFEST_URL}`,
             'en.grimoire.jp/applets/memories',
-            'applet.grimoire.jp/memories'
+            'applet.grimoire.jp/memories',
+            LINKXI_DSAP_MANIFEST_URL,
+            `dsap://${LINKXI_DSAP_MANIFEST_URL}`,
+            'en.grimoire.jp/applets/linkxi',
+            'applet.grimoire.jp/linkxi'
         ],
         type: 'dsap',
         title: 'Knowledge Memories',
@@ -86,6 +110,7 @@ function registerDsapManifests() {
         menuEntry: {
             launchId: 'novels',
             icon: 'fas fa-book-open',
+            imageIcon: 'novel.png',
             text: 'Novels',
             appMenu: false,
             launch() {
@@ -94,28 +119,135 @@ function registerDsapManifests() {
             }
         }
     });
+
+    registerDsap({
+        url: SECURITY_DSAP_MANIFEST_URL,
+        aliases: [
+            SECURITY_DSAP_MANIFEST_URL_LEGACY,
+            `dsap://${SECURITY_DSAP_MANIFEST_URL}`,
+            `dsap://${SECURITY_DSAP_MANIFEST_URL_LEGACY}`,
+            'en.grimoire.jp/applets/security',
+            'applet.grimoire.jp/security'
+        ],
+        type: 'dsap',
+        title: 'Security Center',
+        assets: {
+            scripts: ['scripts/comp/securityCenterDsapApplet.js']
+        },
+        menuEntry: {
+            launchId: 'security-center',
+            icon: 'fas fa-shield-halved',
+            imageIcon: 'secu.png',
+            text: 'Security Center',
+            appMenu: false,
+            desktopOnly: true,
+            adminOnly: true,
+            launch() {
+                // openSecurityCenterDsap: public/scripts/comp/securityCenterDsapApplet.js
+                if (typeof openSecurityCenterDsap === 'function') {
+                    openSecurityCenterDsap('home');
+                } else {
+                    openDsapInGrimoire(`dsap://${SECURITY_DSAP_MANIFEST_URL}/`);
+                }
+            }
+        }
+    });
+
+    registerDsap({
+        url: DATA_DSAP_MANIFEST_URL,
+        aliases: [
+            `dsap://${DATA_DSAP_MANIFEST_URL}`,
+            'en.grimoire.jp/applets/data',
+            'applet.grimoire.jp/data'
+        ],
+        type: 'dsap',
+        title: 'Data Management',
+        assets: {
+            scripts: ['scripts/comp/dataManagementDsapApplet.js']
+        },
+        menuEntry: {
+            launchId: 'data-management',
+            icon: 'fas fa-database',
+            imageIcon: 'planet.png',
+            text: 'Data Management',
+            startMenuIndex: 0,
+            appMenuLocation: 'tools',
+            launch() {
+                const path = `dsap://${DATA_DSAP_MANIFEST_URL}/`;
+                openDsapInGrimoire(path);
+            }
+        }
+    });
+
+    registerDsap({
+        url: ISPY_DSAP_MANIFEST_URL,
+        aliases: [
+            `dsap://${ISPY_DSAP_MANIFEST_URL}`,
+            `dsap://${OMEGASEARCH_DSAP_MANIFEST_URL}`,
+            'en.grimoire.jp/applets/ispy',
+            'en.grimoire.jp/applets/omegasearch',
+            'applet.grimoire.jp/ispy',
+            'applet.grimoire.jp/omegasearch'
+        ],
+        type: 'dsap',
+        title: 'Image Search',
+        assets: {
+            scripts: ['scripts/comp/omegasearchDsapApplet.js']
+        },
+        menuEntry: {
+            launchId: 'ispy',
+            icon: 'fas fa-search',
+            imageIcon: 'search.png',
+            text: 'Image Search',
+            appMenu: false,
+            startMenuIndex: 1,
+            launch() {
+                openDsapInGrimoire(`dsap://${ISPY_DSAP_MANIFEST_URL}/`);
+            }
+        }
+    });
 }
 
 registerDsapManifests();
 
-// Global compatibility shim (runs at startup). The applet script also installs one when loaded.
-(function installMemoriesDsapShim() {
-    if (typeof window.openKnowledgeMemoriesModal === 'function') return; // already provided by old script or applet
-    window.openKnowledgeMemoriesModal = function () {
-        const target = `dsap://${MEMORIES_DSAP_MANIFEST_URL}`;
-        if (typeof openDsapInGrimoire === 'function') {
-            openDsapInGrimoire(target);
-            return;
-        }
-        let tries = 0;
-        const t = setInterval(() => {
-            tries += 1;
+// Global compatibility shims (runs at startup). The applet script also installs one when loaded.
+(function installMemoriesDsapShims() {
+    if (typeof window.openKnowledgeMemoriesModal !== 'function') {
+        window.openKnowledgeMemoriesModal = function () {
+            const target = `dsap://${MEMORIES_DSAP_MANIFEST_URL}`;
             if (typeof openDsapInGrimoire === 'function') {
-                clearInterval(t);
                 openDsapInGrimoire(target);
-            } else if (tries > 20) {
-                clearInterval(t);
+                return;
             }
-        }, 60);
-    };
+            let tries = 0;
+            const t = setInterval(() => {
+                tries += 1;
+                if (typeof openDsapInGrimoire === 'function') {
+                    clearInterval(t);
+                    openDsapInGrimoire(target);
+                } else if (tries > 20) {
+                    clearInterval(t);
+                }
+            }, 60);
+        };
+    }
+    if (typeof window.openLinkXiPersonaDsap !== 'function') {
+        window.openLinkXiPersonaDsap = function () {
+            const target = 'dsap://xi.dyna.dreamscape.jp/persona';
+            if (typeof openDsapInGrimoire === 'function') {
+                openDsapInGrimoire(target);
+                return;
+            }
+            let tries = 0;
+            const t = setInterval(() => {
+                tries += 1;
+                if (typeof openDsapInGrimoire === 'function') {
+                    clearInterval(t);
+                    openDsapInGrimoire(target);
+                } else if (tries > 20) {
+                    clearInterval(t);
+                }
+            }, 60);
+        };
+    }
 })();

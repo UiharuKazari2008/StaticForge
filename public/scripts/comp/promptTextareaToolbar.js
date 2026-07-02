@@ -738,7 +738,7 @@ class PromptTextareaToolbar {
             case 'manage-director-rules':
                 // Rules now live inside the Memories DSAP (static rules)
                 if (typeof openDsapInGrimoire === 'function') {
-                    openDsapInGrimoire('dsap://memories.dyna.dreamscape.jp/static_rules');
+                    openDsapInGrimoire('dsap://memories.dyna.dreamscape.jp/rules');
                 } else if (typeof showDirectorRulesManager === 'function') {
                     showDirectorRulesManager(); // legacy fallback
                 }

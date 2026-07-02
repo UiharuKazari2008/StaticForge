@@ -2,6 +2,7 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 const logger = require('./logger');
+const { attachLegacyDatabaseCheckpoint } = require('./legacyDatabaseCheckpoint');
 
 const SHARED_QUIPS_WORKSPACE_ID = '_shared';
 
@@ -58,6 +59,7 @@ class GenerationQuipsDatabase {
             this.db = new Database(this.dbPath);
             this.db.pragma('journal_mode = WAL');
             this.db.pragma('foreign_keys = ON');
+            attachLegacyDatabaseCheckpoint(this, this.dbPath, () => this.db, this.globalResources);
             this.createTables();
             logger.bootSubStep('Generation quips database initialized');
         } catch (error) {
@@ -199,6 +201,10 @@ class GenerationQuipsDatabase {
         return this.getWorkspaceQuipSettingsRaw(workspaceId);
     }
 
+    getCheckpointManager() {
+        return this.checkpointManager || null;
+    }
+
     getAllAutoUpdateStates() {
         return this.db.prepare('SELECT * FROM quip_auto_update_state').all();
     }
@@ -260,6 +266,7 @@ class GenerationQuipsDatabase {
             }
         });
         run(quipEntries);
+        this._scheduleLegacyDbCheckpoint?.();
     }
 
     replaceGlobalQuips(quipEntries) {
@@ -272,6 +279,7 @@ class GenerationQuipsDatabase {
             this.db.prepare('DELETE FROM extracted_terms WHERE workspace_id = ?').run(workspaceId);
         });
         run();
+        this._scheduleLegacyDbCheckpoint?.();
         return this.bumpVersionHash();
     }
 
@@ -295,6 +303,7 @@ class GenerationQuipsDatabase {
             }
         });
         run(terms);
+        this._scheduleLegacyDbCheckpoint?.();
     }
 
     getAllQuipsForClient() {

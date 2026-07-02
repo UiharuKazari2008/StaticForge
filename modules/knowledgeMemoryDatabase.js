@@ -8,9 +8,11 @@ const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
 const logger = require('./logger');
+const { attachLegacyDatabaseCheckpoint } = require('./legacyDatabaseCheckpoint');
 
 let dbPath = null;
 let db = null;
+let checkpointHost = null;
 
 /**
  * Initialize the SQLite database for knowledge memory
@@ -32,6 +34,9 @@ function initializeKnowledgeMemoryDatabase(databasesPath) {
         db.pragma('synchronous = NORMAL');
         db.pragma('cache_size = 10000');
         db.pragma('temp_store = MEMORY');
+
+        checkpointHost = { checkpointManager: null };
+        attachLegacyDatabaseCheckpoint(checkpointHost, dbPath, () => db, null);
         
         // Create tables if they don't exist
         createKnowledgeMemoryTables();
@@ -1089,6 +1094,7 @@ function getKnowledgeMemoryStats() {
 module.exports = {
     initializeKnowledgeMemoryDatabase,
     closeKnowledgeMemoryDatabase,
+    getCheckpointManager: () => checkpointHost?.checkpointManager || null,
     listKnowledgeMemories,
     listKnowledgeMemoriesPaged,
     getKnowledgeMemory,

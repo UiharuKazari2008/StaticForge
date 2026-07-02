@@ -13,8 +13,25 @@ const TASKBAR_SYSTEM_MODAL_IDS = new Set([
     'windowsUpdateModal',
     'connectionDialModal',
     'desktopPreStartupModal',
-    'dreamscapeOsInstallWizardModal'
+    'dreamscapeOsInstallWizardModal',
+    'confirmationDialog',
+    'creditCostDialog'
 ]);
+
+function shouldShowInTaskbar(modal) {
+    if (!modal || !modal.id) return false;
+    if (TASKBAR_SYSTEM_MODAL_IDS.has(modal.id)) return false;
+    if (modal.classList.contains('hidden') || modal.classList.contains('hidden-alt')) return false;
+    if (modal.classList.contains('closing')) return false;
+    if (!modal.querySelector('.modal-window-title')) return false;
+    // Small alert overlays — not taskbar windows
+    if (modal.classList.contains('alert-theme')) return false;
+    return true;
+}
+
+function getOpenTaskbarModals() {
+    return Array.from(document.querySelectorAll('.modal:not(.hidden)')).filter(shouldShowInTaskbar);
+}
 
 // Window position caching
 let windowPositionSaveTimer = null;
@@ -954,11 +971,11 @@ const ESCAPE_CLOSE_MODAL_IDS = new Set([
     'createTextReplacementModal',
     'createRequestBodyReplacementModal',
     'updatePresetModal',
-    'addApiKeyModal',
     'workspaceEditModal',
     'workspaceDumpModal',
     'cacheMetadataModal',
     'configEditorValueModal',
+    'configEditorCheckpointsModal',
     'timeDateModal',
     'weatherLocationModal',
     'connectionDialModal',
@@ -1224,6 +1241,10 @@ function isModalTopAnchored(modal) {
     return modal && modal.dataset.windowContentAnchor === 'top';
 }
 
+function isModalResizeTopAnchored(modal) {
+    return modal && (modal.dataset.windowResizeAnchor === 'top' || isModalTopAnchored(modal));
+}
+
 function clampModalOffsetsForTopAnchor(offsetX, offsetY, width, height, options = {}) {
     const allowOffscreen = options.allowOffscreen === true;
     const minVisible = options.minVisible != null ? options.minVisible : MODAL_MIN_VISIBLE_PX;
@@ -1301,6 +1322,11 @@ function setModalPositionFromViewportRect(modal, rect, options = {}) {
 
     modal.style.width = `${width}px`;
     modal.style.height = `${height}px`;
+
+    if (isModalTopAnchored(modal)) {
+        setModalOffsetsFromViewportTopLeft(modal, left, top, options);
+        return;
+    }
 
     const centerX = left + width / 2;
     const centerY = top + height / 2;
@@ -1938,7 +1964,9 @@ function handleModalDrag(e, draggedModal) {
         const height = modalRect.height;
         const trueInsetTop = getModalTrueInsetTop();
         const left = (window.innerWidth / 2) + newOffsetX - (width / 2);
-        const top = (window.innerHeight / 2) + newOffsetY + (0.5 * trueInsetTop) - getDesktopModalTopBias() - (height / 2);
+        const top = isModalTopAnchored(draggedModal)
+            ? trueInsetTop + newOffsetY
+            : (window.innerHeight / 2) + newOffsetY + (0.5 * trueInsetTop) - getDesktopModalTopBias() - (height / 2);
         updateWindowFrameRect({ left, top, width, height });
         return;
     }
@@ -2149,11 +2177,11 @@ function handleModalResize(e, resizedModal) {
     newWidth = Math.max(minWidth, roundCssPixel(newWidth));
     newHeight = Math.max(minHeight, roundCssPixel(newHeight));
 
-    const resizeAnchor = resizedModal.dataset.windowResizeAnchor;
+    const topAnchoredResize = isModalResizeTopAnchored(resizedModal);
     if (isLiveWindowRepositioningEnabled()) {
         let previewLeft = newLeft;
         let previewTop = newTop;
-        if (resizeAnchor === 'top') {
+        if (topAnchoredResize) {
             previewTop = resizeStartTop;
             previewLeft = resizeDirection.includes('w')
                 ? resizeStartLeft + resizeStartWidth - newWidth
@@ -2175,7 +2203,7 @@ function handleModalResize(e, resizedModal) {
     resizedModal.style.width = `${newWidth}px`;
     resizedModal.style.height = `${newHeight}px`;
 
-    if (resizeAnchor === 'top') {
+    if (topAnchoredResize) {
         let anchorLeft = resizeStartLeft;
         if (resizeDirection.includes('w')) {
             anchorLeft = resizeStartLeft + resizeStartWidth - newWidth;
@@ -2207,12 +2235,12 @@ function handleModalResizeEnd(e, resizedModal) {
         const previewHeight = parseFloat(resizedModal.getAttribute('data-preview-height'));
         const previewLeft = parseFloat(resizedModal.getAttribute('data-preview-left'));
         const previewTop = parseFloat(resizedModal.getAttribute('data-preview-top'));
-        const resizeAnchor = resizedModal.dataset.windowResizeAnchor;
+        const topAnchoredResize = isModalResizeTopAnchored(resizedModal);
 
         if (Number.isFinite(previewWidth) && Number.isFinite(previewHeight) && Number.isFinite(previewLeft) && Number.isFinite(previewTop)) {
             resizedModal.style.width = `${previewWidth}px`;
             resizedModal.style.height = `${previewHeight}px`;
-            if (resizeAnchor === 'top') {
+            if (topAnchoredResize) {
                 setModalPositionFromViewportRect(resizedModal, {
                     left: previewLeft,
                     top: previewTop,
@@ -2784,7 +2812,7 @@ function addResizeHandles(modal) {
     if (modal.querySelector('.resize-handle')) return;
 
     // Create resize handles (top-anchored windows omit north handles)
-    const handles = modal.dataset.windowResizeAnchor === 'top'
+    const handles = isModalResizeTopAnchored(modal)
         ? ['w', 'e', 'sw', 's', 'se']
         : ['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se'];
     handles.forEach(direction => {
@@ -3484,13 +3512,102 @@ function syncTaskbarItemStateClasses(item, isActive, isMinimised) {
     item.classList.toggle('minimised', !!isMinimised);
 }
 
+const TASKBAR_ITEM_SHRINK_MS = 280;
+const taskbarItemRemovalTimers = new WeakMap();
+
+function clearTaskbarItemRemovalTimer(item) {
+    const timer = taskbarItemRemovalTimers.get(item);
+    if (timer) {
+        clearTimeout(timer);
+        taskbarItemRemovalTimers.delete(item);
+    }
+}
+
+function removeTaskbarItemNow(item) {
+    if (!item) return;
+    clearTaskbarItemRemovalTimer(item);
+    if (item.isConnected) item.remove();
+}
+
+function scheduleTaskbarItemRemoval(item) {
+    if (!item || item.classList.contains('leaving')) return;
+
+    syncTaskbarItemStateClasses(item, false, false);
+    item.classList.add('leaving');
+
+    const finishRemoval = () => removeTaskbarItemNow(item);
+
+    item.addEventListener('animationend', (e) => {
+        if (e.target !== item || e.animationName !== 'taskbar-item-shrink') return;
+        finishRemoval();
+    }, { once: true });
+
+    taskbarItemRemovalTimers.set(item, setTimeout(finishRemoval, TASKBAR_ITEM_SHRINK_MS));
+}
+
+function cancelTaskbarItemRemoval(item) {
+    if (!item) return;
+    clearTaskbarItemRemovalTimer(item);
+    item.classList.remove('leaving');
+}
+
+function taskbarItemShouldExist(item, itemsThatShouldExist) {
+    const modalId = item.dataset.modalId;
+    const groupType = item.dataset.groupType;
+
+    if (modalId) {
+        return itemsThatShouldExist.has(modalId) &&
+            itemsThatShouldExist.get(modalId).type === 'individual';
+    }
+    if (groupType) {
+        return itemsThatShouldExist.has(`group:${groupType}`) &&
+            itemsThatShouldExist.get(`group:${groupType}`).type === 'group';
+    }
+    return false;
+}
+
+function dedupeTaskbarWindowItems() {
+    if (!taskbarWindows) return;
+
+    const byModalId = new Map();
+    taskbarWindows.querySelectorAll('.taskbar-window-item[data-modal-id]:not(.taskbar-window-group)').forEach(item => {
+        const id = item.dataset.modalId;
+        if (!id) return;
+        if (!byModalId.has(id)) byModalId.set(id, []);
+        byModalId.get(id).push(item);
+    });
+
+    byModalId.forEach(items => {
+        if (items.length < 2) return;
+        const keeper = items.find(i => !i.classList.contains('leaving')) || items[items.length - 1];
+        items.forEach(item => {
+            if (item !== keeper) removeTaskbarItemNow(item);
+        });
+    });
+
+    const byGroupType = new Map();
+    taskbarWindows.querySelectorAll('.taskbar-window-group[data-group-type]').forEach(item => {
+        const type = item.dataset.groupType;
+        if (!type) return;
+        if (!byGroupType.has(type)) byGroupType.set(type, []);
+        byGroupType.get(type).push(item);
+    });
+
+    byGroupType.forEach(items => {
+        if (items.length < 2) return;
+        const keeper = items.find(i => !i.classList.contains('leaving')) || items[items.length - 1];
+        items.forEach(item => {
+            if (item !== keeper) removeTaskbarItemNow(item);
+        });
+    });
+}
+
 // Lightweight function to update active states and content without recreating DOM elements or triggering animations
 function updateTaskbarActiveStates() {
     if (!taskbarWindows) return;
 
     // Get all open modals (not hidden and not closing) - includes minimised windows
-    const openModals = Array.from(document.querySelectorAll('.modal:not(.hidden)'))
-        .filter(modal => !modal.classList.contains('closing') && !TASKBAR_SYSTEM_MODAL_IDS.has(modal.id));
+    const openModals = getOpenTaskbarModals();
 
     // Group modals by type to check grouping state
     const modalGroups = new Map();
@@ -3581,10 +3698,7 @@ function updateTaskbarWindows() {
     closeTaskbarGroupMenu();
 
     // STEP 1: EVALUATE - Determine what SHOULD exist
-    // Get all open modals (not hidden and not closing) - includes minimised windows
-    // Exclude modals that are closing (they'll be hidden soon)
-    const openModals = Array.from(document.querySelectorAll('.modal:not(.hidden)'))
-        .filter(modal => !modal.classList.contains('closing') && !TASKBAR_SYSTEM_MODAL_IDS.has(modal.id));
+    const openModals = getOpenTaskbarModals();
 
     // Group modals by type
     const modalGroups = new Map();
@@ -3632,33 +3746,22 @@ function updateTaskbarWindows() {
         }
     });
 
+    dedupeTaskbarWindowItems();
+
     // STEP 2: REMOVE - Remove items that shouldn't exist
     const existingItems = Array.from(taskbarWindows.querySelectorAll('.taskbar-window-item, .taskbar-window-group'));
 
     existingItems.forEach(item => {
-        if (item.classList.contains('leaving')) return; // Already being removed
+        const shouldExist = taskbarItemShouldExist(item, itemsThatShouldExist);
 
-        const modalId = item.dataset.modalId;
-        const groupType = item.dataset.groupType;
-
-        let shouldExist = false;
-
-        if (modalId) {
-            // Individual item - check if it should exist
-            shouldExist = itemsThatShouldExist.has(modalId) &&
-                itemsThatShouldExist.get(modalId).type === 'individual';
-        } else if (groupType) {
-            // Group item - check if it should exist
-            shouldExist = itemsThatShouldExist.has(`group:${groupType}`) &&
-                itemsThatShouldExist.get(`group:${groupType}`).type === 'group';
+        if (item.classList.contains('leaving')) {
+            // Stale ghost from a missed animationend — purge on the next sync pass
+            if (!shouldExist) removeTaskbarItemNow(item);
+            return;
         }
 
         if (!shouldExist) {
-            item.classList.add('leaving');
-            item.addEventListener('animationend', (e) => {
-                if (e.target !== item || e.animationName !== 'taskbar-item-shrink') return;
-                item.remove();
-            }, { once: true });
+            scheduleTaskbarItemRemoval(item);
         }
     });
 
@@ -3673,6 +3776,21 @@ function updateTaskbarWindows() {
             let groupItem = allGroupItems.find(item =>
                 item.dataset.groupType === groupType && !item.classList.contains('leaving')
             );
+
+            if (!groupItem) {
+                const leavingGroup = allGroupItems.find(item =>
+                    item.dataset.groupType === groupType && item.classList.contains('leaving')
+                );
+                if (leavingGroup) {
+                    cancelTaskbarItemRemoval(leavingGroup);
+                    leavingGroup.classList.add('entering');
+                    leavingGroup.addEventListener('animationend', (e) => {
+                        if (e.target !== leavingGroup || e.animationName !== 'taskbar-item-grow') return;
+                        leavingGroup.classList.remove('entering');
+                    }, { once: true });
+                    groupItem = leavingGroup;
+                }
+            }
 
             if (groupItem) {
                 // Update existing group item - FORCE update everything
@@ -3747,10 +3865,25 @@ function updateTaskbarWindows() {
             const { modal, isActive, isMinimised } = itemData;
             const modalId = modal.id;
 
-            // Check if individual item exists
+            // Check if individual item exists (revive a leaving item if the window reopened)
             let existingItem = taskbarWindows.querySelector(
                 `.taskbar-window-item[data-modal-id="${modalId}"]:not(.taskbar-window-group):not(.leaving)`
             );
+
+            if (!existingItem) {
+                const leavingItem = taskbarWindows.querySelector(
+                    `.taskbar-window-item[data-modal-id="${modalId}"]:not(.taskbar-window-group).leaving`
+                );
+                if (leavingItem) {
+                    cancelTaskbarItemRemoval(leavingItem);
+                    leavingItem.classList.add('entering');
+                    leavingItem.addEventListener('animationend', (e) => {
+                        if (e.target !== leavingItem || e.animationName !== 'taskbar-item-grow') return;
+                        leavingItem.classList.remove('entering');
+                    }, { once: true });
+                    existingItem = leavingItem;
+                }
+            }
 
             if (existingItem) {
                 // Update existing item
@@ -4125,8 +4258,8 @@ function isModalActiveForTaskbar(modal) {
 
 function getNonRootTaskbarWindowEntries() {
     const rootWindowIds = new Set(['galleryWindow', 'manualModal', 'windowsStartupModal', 'windowsUpdateModal', 'connectionDialModal']);
-    const openModals = Array.from(document.querySelectorAll('.modal:not(.hidden)'))
-        .filter((modal) => !modal.classList.contains('closing') && !rootWindowIds.has(modal.id));
+    const openModals = getOpenTaskbarModals()
+        .filter((modal) => !rootWindowIds.has(modal.id));
 
     return openModals.map((modal) => {
         const title = getModalTitle(modal);
@@ -4161,8 +4294,10 @@ function activateTaskbarWindowEntry(modalId) {
 function getOrCreateTaskbarItem(modal) {
     if (!taskbarWindows) return null;
 
-    // Try to find existing taskbar item
-    let taskbarItem = taskbarWindows.querySelector(`.taskbar-window-item[data-modal-id="${modal.id}"]`);
+    // Prefer a live item; a leaving ghost may still be animating out
+    let taskbarItem = taskbarWindows.querySelector(
+        `.taskbar-window-item[data-modal-id="${modal.id}"]:not(.leaving)`
+    ) || taskbarWindows.querySelector(`.taskbar-window-item[data-modal-id="${modal.id}"]`);
 
     // If it doesn't exist yet (minimize before taskbar updates), create a temporary one
     if (!taskbarItem) {
@@ -4719,11 +4854,15 @@ document.addEventListener('contextMenuAction', (e) => {
     }
 
     if (action === 'desktop-paste') {
-        if (typeof explorerApplet !== 'undefined' && explorerApplet?.clipboard) {
-            const wsId = (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null)
-                || (typeof getActiveWorkspace === 'function' ? getActiveWorkspace() : null)
-                || 'default';
-            explorerApplet.pasteToPath(`/Workspaces/${wsId}/Desktop`);
+        if (localStorage.getItem('userType') === 'readonly') {
+            showGlassToast('warning', 'Desktop', 'Paste is not available in read-only mode', false, 4000);
+            return;
+        }
+        const explorer = typeof initializeExplorerApplet === 'function'
+            ? initializeExplorerApplet()
+            : explorerApplet;
+        if (explorer?.clipboard) {
+            void explorer.pasteToDesktopSurface();
         }
         return;
     }
@@ -4907,7 +5046,7 @@ const startMenuLaunchables = [
     { launchId: 'naxt', icon: 'fas fa-flask', imageIcon: 'test_tube.png', text: 'Atelier', appMenu: true, action: () => { if (window.naxtApplet) { window.naxtApplet.open(); } else { const modal = document.getElementById('naxtModal'); if (modal) openModal(modal); } } },
     { launchId: 'notebook', icon: 'fas fa-notebook', imageIcon: 'notebook.png', text: 'Notion', appMenu: true, action: () => { window.notepadManager.openNotebook(); }, rightAction: { icon: 'fas fa-sticky-note', tooltip: 'New Note', action: () => { window.notepadManager.handleNewNote(); } } },
     { launchId: 'chat', icon: 'fas fa-messages', imageIcon: 'chat.png', text: 'Chat', appMenu: true, action: () => { if (window.chatSystem) window.chatSystem.showAllChats(); } },
-    { launchId: 'explorer', icon: 'fas fa-folder-open', imageIcon: 'explorer.png', text: 'File Explorer', appMenu: true, action: () => { openExplorerApplet(); } },
+    { launchId: 'explorer', icon: 'fas fa-folder-open', imageIcon: 'explorer.png', text: 'Cartograph', appMenu: true, action: () => { openExplorerApplet(); } },
 ];
 
 /** Root start menu shell rows (folders + run). */
@@ -4966,16 +5105,12 @@ function isAppMenuToolsEntryEnabled(item) {
 
 function buildToolsSubmenuItems() {
     const staticItems = [
-        { launchId: 'solar-system', icon: 'fas fa-solar-system', imageIcon: 'planet.png', text: 'Solar System', appMenuLocation: 'tools', action: () => { showWorkspaceManagementModal(); } },
         { launchId: 'import', icon: 'nai-import', imageIcon: 'export.png', text: 'Import', appMenuLocation: 'tools', action: () => { unifiedUploadModalManager.show(); } },
         { launchId: 'presets', icon: 'fas fa-book-spells', imageIcon: 'presetbook.png', text: 'Spellbook', appMenuLocation: 'tools', action: () => { showPresetManager(); } },
         { launchId: 'expanders', icon: 'fas fa-book-font', imageIcon: 'expanders.png', text: 'Expanders', appMenuLocation: 'tools', action: () => { showTextReplacementManager(); } },
-        { launchId: 'favorites', icon: 'fas fa-star', imageIcon: 'heart.png', text: 'Favorites', appMenuLocation: 'tools', action: () => { showFavoritesManager(); } },
-        { launchId: 'memories', icon: 'fas fa-box-open-full', imageIcon: 'dna.png', text: 'Memories', appMenuLocation: 'tools', action: () => { openKnowledgeMemoriesModal(); } },
-        { launchId: 'chat-persona', icon: 'fas fa-user-doctor-message', imageIcon: 'me.png', text: 'Chat Persona', appMenuLocation: 'tools', action: () => { window.chatSystem.openPersonaSettingsModal() } },
-        { launchId: 'config-editor', icon: 'fas fa-gears', imageIcon: 'slider.png', text: 'Config Editor', desktopOnly: true, appMenuLocation: 'tools', action: () => { if (window.configEditorApplet) { window.configEditorApplet.open(); } else { const modal = document.getElementById('configEditorModal'); if (modal) openModal(modal); } } },
-        { launchId: 'event-viewer', icon: 'fas fa-wave-square', imageIcon: 'event_viewer.png', text: 'Event Viewer', desktopOnly: true, appMenuLocation: 'tools', action: () => { if (logViewerApplet) { logViewerApplet.open(); } else { const modal = document.getElementById('logViewerModal'); if (modal) openModal(modal); } } },
-        { launchId: 'keychain', icon: 'fas fa-key-skeleton-left-right', imageIcon: 'key.png', text: 'Keychain', appMenuLocation: 'tools', action: () => { openApiKeyModal(); } },
+        { launchId: 'memories', icon: 'fas fa-box-open-full', imageIcon: 'dna.png', text: 'Enshutsuka', appMenuLocation: 'tools', action: () => { openKnowledgeMemoriesModal(); } },
+        { launchId: 'config-editor', icon: 'fas fa-binary', imageIcon: 'slider.png', text: 'Runes', desktopOnly: true, appMenuLocation: 'tools', action: () => { if (window.configEditorApplet) { window.configEditorApplet.open(); } else { const modal = document.getElementById('configEditorModal'); if (modal) openModal(modal); } } },
+        { launchId: 'event-viewer', icon: 'fas fa-wave-square', imageIcon: 'event_viewer.png', text: 'Periscope', desktopOnly: true, appMenuLocation: 'tools', action: () => { if (logViewerApplet) { logViewerApplet.open(); } else { const modal = document.getElementById('logViewerModal'); if (modal) openModal(modal); } } },
     ].filter(isStartMenuEntryEnabled);
     // getDsapStartMenuEntriesAtLocation: public/scripts/comp/dsapRegistry.js
     const dsapAtTools = typeof getDsapStartMenuEntriesAtLocation === 'function'
@@ -6322,6 +6457,7 @@ let desktopSettingsState = {
     backgroundColor: '#0a1a2a',
     primaryFont: null,
     textareaFont: null,
+    trashDesktopShortcut: false,
     // Wallpaper settings
     wallpaperUrl: null,
     horizontalAlign: 'center',
@@ -6763,7 +6899,13 @@ function setupDesktopContextMenu() {
                         icon: 'fas fa-paste',
                         text: 'Paste',
                         action: 'desktop-paste',
-                        hidden: () => !(explorerApplet && explorerApplet.clipboard)
+                        hidden: () => {
+                            if (localStorage.getItem('userType') === 'readonly') return true;
+                            const explorer = typeof initializeExplorerApplet === 'function'
+                                ? initializeExplorerApplet()
+                                : explorerApplet;
+                            return !(explorer && explorer.clipboard);
+                        }
                     },
                     {
                         icon: 'fa-light fa-paint-roller',
@@ -6875,6 +7017,12 @@ function updateDesktopSettingsAutoLaunchToggleUI(autoLaunch) {
     const btn = document.getElementById('desktopSettingsAutoLaunchWorkspaceBtn');
     if (!btn) return;
     updateDesktopSettingsGlobalToggleUI(btn, autoLaunch !== false);
+}
+
+function updateDesktopSettingsTrashShortcutToggleUI(enabled) {
+    const btn = document.getElementById('desktopSettingsTrashShortcutBtn');
+    if (!btn) return;
+    updateDesktopSettingsGlobalToggleUI(btn, enabled === true);
 }
 
 function readDesktopSettingsLiveWindowRepositioningPreference() {
@@ -7048,6 +7196,16 @@ function setupDesktopSettingsScopeToggle() {
         });
     }
 
+    const trashShortcutBtn = document.getElementById('desktopSettingsTrashShortcutBtn');
+    if (trashShortcutBtn) {
+        trashShortcutBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const nextOn = trashShortcutBtn.dataset.state !== 'on';
+            desktopSettingsState.trashDesktopShortcut = nextOn;
+            updateDesktopSettingsTrashShortcutToggleUI(nextOn);
+        });
+    }
+
     const liveWindowRepositioningBtn = document.getElementById('desktopSettingsLiveWindowRepositioningBtn');
     if (liveWindowRepositioningBtn) {
         liveWindowRepositioningBtn.addEventListener('click', (e) => {
@@ -7128,6 +7286,7 @@ async function openDesktopSettingsModal(wallpaperPath = null) {
         desktopSettingsState.backgroundColor = workspace.backgroundColor || '#0a1a2a';
         desktopSettingsState.primaryFont = workspace.primaryFont || null;
         desktopSettingsState.textareaFont = workspace.textareaFont || null;
+        desktopSettingsState.trashDesktopShortcut = workspace.trashDesktopShortcut === true;
     }
 
     // Populate form from temp state
@@ -7138,6 +7297,7 @@ async function openDesktopSettingsModal(wallpaperPath = null) {
     if (nameInput) nameInput.value = desktopSettingsState.name;
     if (colorInput) colorInput.value = desktopSettingsState.color;
     if (bgColorInput) bgColorInput.value = desktopSettingsState.backgroundColor;
+    updateDesktopSettingsTrashShortcutToggleUI(desktopSettingsState.trashDesktopShortcut);
 
     // Set font dropdown labels from temp state
     const primaryFontSelected = document.getElementById('desktopSettingsPrimaryFontSelected');
@@ -8000,6 +8160,7 @@ async function saveDesktopWorkspaceSettings() {
     const newBgColor = bgColorInput ? bgColorInput.value : desktopSettingsState.backgroundColor;
     const newPrimaryFont = desktopSettingsState.primaryFont; // From temp state
     const newTextareaFont = desktopSettingsState.textareaFont; // From temp state
+    const newTrashDesktopShortcut = desktopSettingsState.trashDesktopShortcut === true;
 
     // Get the current wallpaper path from workspace
     const currentWallpaperPath = workspace.wallpaper || null;
@@ -8039,11 +8200,12 @@ async function saveDesktopWorkspaceSettings() {
     const bgColorChanged = newBgColor !== workspace.backgroundColor;
     const primaryFontChanged = newPrimaryFont !== (workspace.primaryFont || null);
     const textareaFontChanged = newTextareaFont !== (workspace.textareaFont || null);
+    const trashDesktopShortcutChanged = newTrashDesktopShortcut !== (workspace.trashDesktopShortcut === true);
     const wallpaperChanged = currentWallpaperPath !== newWallpaperPath;
     const positionChanged = currentPosition !== newPosition;
 
     // Only update if something changed
-    if (!nameChanged && !colorChanged && !bgColorChanged && !primaryFontChanged && !textareaFontChanged && !wallpaperChanged && !positionChanged) {
+    if (!nameChanged && !colorChanged && !bgColorChanged && !primaryFontChanged && !textareaFontChanged && !trashDesktopShortcutChanged && !wallpaperChanged && !positionChanged) {
         const modal = document.getElementById('desktopSettingsModal');
         closeModal(modal);
         showGlassToast('info', null, 'No changes to save', false, 2000, '<i class="fa-light fa-info-circle"></i>');
@@ -8067,6 +8229,9 @@ async function saveDesktopWorkspaceSettings() {
     }
     if (textareaFontChanged) {
         settings.textareaFont = newTextareaFont;
+    }
+    if (trashDesktopShortcutChanged) {
+        settings.trashDesktopShortcut = newTrashDesktopShortcut;
     }
 
     if (wallpaperChanged) {
@@ -8095,6 +8260,7 @@ async function saveDesktopWorkspaceSettings() {
         if (nameChanged) changes.push('name');
         if (colorChanged || bgColorChanged) changes.push('colors');
         if (primaryFontChanged || textareaFontChanged) changes.push('fonts');
+        if (trashDesktopShortcutChanged) changes.push('desktop');
         if (wallpaperChanged) changes.push('wallpaper');
         if (positionChanged) changes.push('position');
 
@@ -8558,61 +8724,6 @@ function renderAboutMelatoninSystemInfo(data) {
         html += `Used: ${formatSizeString(data.disk.used || 'Unknown')}, `;
         html += `Free: ${formatSizeString(data.disk.free || 'Unknown')}`;
         html += '</span></div>';
-    }
-
-    // Workspaces Table
-    if (data.workspaces && Array.isArray(data.workspaces) && data.workspaces.length > 0) {
-        html += '<div class="form-group">';
-        html += '<table class="about-workspaces-table">';
-        html += '<thead>';
-        html += '<tr>';
-        html += '<th class="about-workspace-name-header">';
-        html += 'Name';
-        html += '</th>';
-        html += '<th class="about-workspace-col"><i class="fa-light fa-film-canister"></i></th>';
-        html += '<th class="about-workspace-col"><i class="fa-light fa-swatchbook"></i></th>';
-        html += '<th class="about-workspace-col"><i class="fa-light fa-notebook"></i></th>';
-        html += '<th class="about-workspace-col"><i class="fa-light fa-hard-drive"></i></th>';
-        html += '</tr>';
-        html += '</thead>';
-        html += '<tbody>';
-        data.workspaces.forEach(workspace => {
-            html += '<tr>';
-            html += '<td class="about-workspace-name-cell">';
-            html += `<span class="workspace-color-indicator" style="background-color: ${workspace.color || '#000'}; margin-right: 0.5rem;"></span>`;
-            html += `<span class="workspace-name">${workspace.name || 'Unknown'}</span>`;
-            html += '</td>';
-            html += `<td class="about-workspace-col">${formatNumber(workspace.images || 0)}</td>`;
-            html += `<td class="about-workspace-col">${formatNumber(workspace.references || 0)}</td>`;
-            html += `<td class="about-workspace-col">${formatNumber(workspace.notes || 0)}</td>`;
-            html += `<td class="about-workspace-col">${formatSizeString(workspace.diskUsage || '0 MB')}</td>`;
-            html += '</tr>';
-        });
-        html += '</tbody>';
-        html += '</table>';
-        html += '</div>';
-    }
-
-    // Usage Statistics
-    if (data.usage) {
-        html += '<div class="form-group">';
-        html += '<div class="about-info-label">Usage:</div>';
-        if (data.usage.workspaceImages) {
-            html += `<div class="form-row"><span class="about-info-label">Workspaces:</span> <span class="text-secondary">${formatSizeString(data.usage.workspaceImages)}</span></div>`;
-        }
-        if (data.usage.previewImages) {
-            html += `<div class="form-row"><span class="about-info-label">Previews:</span> <span class="text-secondary">${formatSizeString(data.usage.previewImages)}</span></div>`;
-        }
-        if (data.usage.referenceItems) {
-            html += `<div class="form-row"><span class="about-info-label">References:</span> <span class="text-secondary">${formatSizeString(data.usage.referenceItems)}</span></div>`;
-        }
-        if (data.usage.databases) {
-            html += `<div class="form-row"><span class="about-info-label">Databases:</span> <span class="text-secondary">${formatSizeString(data.usage.databases)}</span></div>`;
-        }
-        if (data.usage.wikiFiles) {
-            html += `<div class="form-row"><span class="about-info-label">Wiki Files:</span> <span class="text-secondary">${formatSizeString(data.usage.wikiFiles)}</span></div>`;
-        }
-        html += '</div>';
     }
 
     systemInfoElement.innerHTML = html || '<p class="text-danger">No system information available</p>';

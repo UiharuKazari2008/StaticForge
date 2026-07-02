@@ -241,6 +241,21 @@ async function readClipboardText() {
     return getPrimaryTextFromClipboardResult(result);
 }
 
+/** Text-only clipboard read — skips navigator.clipboard.read() image scan for faster paste. */
+async function readClipboardTextFast() {
+    if (isAndroidClipboardBridgeActive()) {
+        return readClipboardText();
+    }
+    if (navigator.clipboard && navigator.clipboard.readText) {
+        try {
+            return await navigator.clipboard.readText();
+        } catch (error) {
+            console.warn('Clipboard.readText() failed, falling back to full read:', error);
+        }
+    }
+    return readClipboardText();
+}
+
 async function _prepareAndroidWritePayload(payload) {
     if (payload == null) {
         return { items: [] };

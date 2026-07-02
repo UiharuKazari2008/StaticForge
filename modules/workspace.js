@@ -311,6 +311,7 @@ class WorkspaceManager {
             backgroundColor: backgroundColor, // Can be null for auto-generation
             primaryFont: null,
             textareaFont: null,
+            trashDesktopShortcut: false,
             sort: maxSort + 1, // Add to the end of the list
             presets: [],
             files: [],
@@ -395,6 +396,9 @@ class WorkspaceManager {
         }
         if (typeof settings.wallpaperPosition !== 'undefined') {
             updates.wallpaperPosition = settings.wallpaperPosition || null;
+        }
+        if (typeof settings.trashDesktopShortcut !== 'undefined') {
+            updates.trashDesktopShortcut = settings.trashDesktopShortcut === true;
         }
 
         // Merge all updates at once (fluent API - use array notation for workspace ID)
@@ -1120,6 +1124,24 @@ class WorkspaceManager {
         return totalRemoved;
     }
 
+    _galleryBucketForType(type) {
+        if (type === 'files' || type === 'scraps' || type === 'pinned') return type;
+        return null;
+    }
+
+    _queueGalleryOwnershipSync(changes) {
+        if (!changes || changes.length === 0) return;
+        if (!this.globalResources.isInitialized()) return;
+        const metadataDb = this.globalResources.getMetadataDatabase();
+        Promise.all(changes.map(({ op, filename, workspaceId, bucket }) => (
+            op === 'upsert'
+                ? metadataDb.upsertGalleryOwnership(filename, workspaceId, bucket)
+                : metadataDb.removeGalleryOwnership(filename, workspaceId, bucket)
+        ))).catch(err => {
+            console.error('Gallery ownership sync failed:', err.message || err);
+        });
+    }
+
     // Common function to add items to workspace array
     addToWorkspaceArray(type, items, workspaceId = null, workspacesOverride = null) {
         const workspaces = workspacesOverride || this.globalResources.getWorkspacesConfig({ clone: true });
@@ -1142,6 +1164,7 @@ class WorkspaceManager {
         }
 
         let addedCount = 0;
+        const actuallyAdded = [];
 
         switch (type) {
             case 'files': {
@@ -1150,6 +1173,7 @@ class WorkspaceManager {
                     if (!existingFilesSet.has(item)) {
                         workspaces[targetId].files.push(item);
                         existingFilesSet.add(item);
+                        actuallyAdded.push(item);
                         addedCount++;
                     }
                 });
@@ -1166,6 +1190,7 @@ class WorkspaceManager {
                     if (!existingScrapsSet.has(item)) {
                         workspaces[targetId].scraps.push(item);
                         existingScrapsSet.add(item);
+                        actuallyAdded.push(item);
                         // Remove from main files list when adding to scraps
                         workspaces[targetId].files = workspaces[targetId].files.filter(file => file !== item);
                         addedCount++;
@@ -1199,6 +1224,7 @@ class WorkspaceManager {
                     if (!existingPinnedSet.has(item)) {
                         workspaces[targetId].pinned.push(item);
                         existingPinnedSet.add(item);
+                        actuallyAdded.push(item);
                         addedCount++;
                     }
                 });
@@ -1210,6 +1236,23 @@ class WorkspaceManager {
         }
 
         if (addedCount > 0) {
+            const bucket = this._galleryBucketForType(type);
+            if (bucket && actuallyAdded.length > 0) {
+                const ownershipChanges = actuallyAdded.map(filename => ({
+                    op: 'upsert', filename, workspaceId: targetId, bucket
+                }));
+                if (type === 'scraps') {
+                    Object.keys(workspaces).forEach(workspaceId => {
+                        actuallyAdded.forEach(filename => {
+                            ownershipChanges.push({
+                                op: 'remove', filename, workspaceId, bucket: 'files'
+                            });
+                        });
+                    });
+                }
+                this._queueGalleryOwnershipSync(ownershipChanges);
+            }
+
             this.globalResources.saveConfig('workspaces', workspaces);
             if (type === 'scraps') {
                 this.bumpAllGalleryDestructiveTimestamps();
@@ -1252,13 +1295,16 @@ class WorkspaceManager {
         }
 
         let removedCount = 0;
+        const actuallyRemoved = [];
 
         switch (type) {
-            case 'files':
+            case 'files': {
                 const originalFilesLength = workspaces[targetId].files.length;
+                actuallyRemoved.push(...workspaces[targetId].files.filter(item => validItems.includes(item)));
                 workspaces[targetId].files = workspaces[targetId].files.filter(item => !validItems.includes(item));
                 removedCount = originalFilesLength - workspaces[targetId].files.length;
                 break;
+            }
 
             case 'scraps':
                 // Initialize scraps array if it doesn't exist
@@ -1266,6 +1312,7 @@ class WorkspaceManager {
                     workspaces[targetId].scraps = [];
                 }
                 const scrapsBefore = workspaces[targetId].scraps;
+                actuallyRemoved.push(...scrapsBefore.filter(item => validItems.includes(item)));
                 workspaces[targetId].scraps = scrapsBefore.filter(item => !validItems.includes(item));
                 removedCount = scrapsBefore.length - workspaces[targetId].scraps.length;
 
@@ -1291,21 +1338,40 @@ class WorkspaceManager {
                 removedCount = originalPresetsLength - workspaces[targetId].presets.length;
                 break;
 
-            case 'pinned':
+            case 'pinned': {
                 const originalPinnedLength = workspaces[targetId].pinned.length;
+                actuallyRemoved.push(...workspaces[targetId].pinned.filter(item => validItems.includes(item)));
                 workspaces[targetId].pinned = workspaces[targetId].pinned.filter(item => !validItems.includes(item));
                 removedCount = originalPinnedLength - workspaces[targetId].pinned.length;
                 break;
+            }
 
             default:
                 throw new Error(`Invalid type: ${type}. Must be one of: files, scraps, presets, pinned`);
         }
 
-        if (removedCount > 0 && !workspacesOverride) {
-            // If workspaces wasn't passed in, we need to save the clone we created
-            this.globalResources.saveConfig('workspaces', workspaces);
-            if (type === 'files') {
-                this.bumpGalleryDestructiveTimestamp([targetId]);
+        if (removedCount > 0) {
+            const bucket = this._galleryBucketForType(type);
+            if (bucket && actuallyRemoved.length > 0) {
+                const ownershipChanges = actuallyRemoved.map(filename => ({
+                    op: 'remove', filename, workspaceId: targetId, bucket
+                }));
+                if (type === 'scraps') {
+                    actuallyRemoved.forEach(filename => {
+                        ownershipChanges.push({
+                            op: 'upsert', filename, workspaceId: targetId, bucket: 'files'
+                        });
+                    });
+                }
+                this._queueGalleryOwnershipSync(ownershipChanges);
+            }
+
+            if (!workspacesOverride) {
+                // If workspaces wasn't passed in, we need to save the clone we created
+                this.globalResources.saveConfig('workspaces', workspaces);
+                if (type === 'files') {
+                    this.bumpGalleryDestructiveTimestamp([targetId]);
+                }
             }
         }
 
@@ -1503,6 +1569,7 @@ class WorkspaceManager {
 
         let pinnedMoved = 0;
         let scrapsMoved = 0;
+        const ownershipChanges = [];
 
         // Check each file to see if it's pinned or scrapped in any workspace
         filenames.forEach(filename => {
@@ -1528,6 +1595,9 @@ class WorkspaceManager {
                     if (workspaces[workspaceId].pinned) {
                         workspaces[workspaceId].pinned = workspaces[workspaceId].pinned.filter(f => f !== filename);
                     }
+                    ownershipChanges.push({
+                        op: 'remove', filename, workspaceId, bucket: 'pinned'
+                    });
                     pinnedMoved++;
                 });
 
@@ -1537,6 +1607,9 @@ class WorkspaceManager {
                 }
                 if (!workspaces[targetWorkspaceId].pinned.includes(filename)) {
                     workspaces[targetWorkspaceId].pinned.push(filename);
+                    ownershipChanges.push({
+                        op: 'upsert', filename, workspaceId: targetWorkspaceId, bucket: 'pinned'
+                    });
                 }
             }
 
@@ -1546,6 +1619,9 @@ class WorkspaceManager {
                     if (workspaces[workspaceId].scraps) {
                         workspaces[workspaceId].scraps = workspaces[workspaceId].scraps.filter(f => f !== filename);
                     }
+                    ownershipChanges.push({
+                        op: 'remove', filename, workspaceId, bucket: 'scraps'
+                    });
                     scrapsMoved++;
                 });
 
@@ -1554,11 +1630,15 @@ class WorkspaceManager {
                 }
                 if (!workspaces[targetWorkspaceId].scraps.includes(filename)) {
                     workspaces[targetWorkspaceId].scraps.push(filename);
+                    ownershipChanges.push({
+                        op: 'upsert', filename, workspaceId: targetWorkspaceId, bucket: 'scraps'
+                    });
                 }
             }
         });
 
         if (pinnedMoved > 0 || scrapsMoved > 0) {
+            this._queueGalleryOwnershipSync(ownershipChanges);
             this.globalResources.saveConfig('workspaces', workspaces);
             console.log(`📌 Moved ${pinnedMoved} pinned files and ${scrapsMoved} scrapped files to workspace: ${workspaces[targetWorkspaceId].name}`);
         }
@@ -1923,6 +2003,73 @@ class WorkspaceManager {
     // Desktop Shortcuts Management
     // ============================================================================
 
+    static get TRASH_DESKTOP_SHORTCUT_KEY() {
+        return 'trash';
+    }
+
+    getTrashDesktopNavPath(workspaceId) {
+        return `/Workspaces/${workspaceId}/Trash`;
+    }
+
+    findTrashDesktopShortcut(workspaceId) {
+        const { shortcuts } = this.getDesktopShortcuts(workspaceId);
+        return (shortcuts || []).find((shortcut) =>
+            shortcut?.type === 'system-folder'
+            && shortcut?.data?.systemKey === WorkspaceManager.TRASH_DESKTOP_SHORTCUT_KEY
+        ) || null;
+    }
+
+    syncTrashDesktopShortcut(workspaceId) {
+        const workspace = this.getWorkspace(workspaceId);
+        if (!workspace) {
+            return { changed: false };
+        }
+
+        const enabled = workspace.trashDesktopShortcut === true;
+        const existing = this.findTrashDesktopShortcut(workspaceId);
+        const expectedNavPath = this.getTrashDesktopNavPath(workspaceId);
+
+        if (enabled && !existing) {
+            const result = this.addDesktopShortcut(workspaceId, {
+                name: 'Trash',
+                type: 'system-folder',
+                folderId: null,
+                system: true,
+                protected: true,
+                data: {
+                    navPath: expectedNavPath,
+                    systemKey: WorkspaceManager.TRASH_DESKTOP_SHORTCUT_KEY
+                },
+                position: { index: 0, pos: 0 }
+            });
+            return { changed: true, action: 'added', shortcut: result.shortcut };
+        }
+
+        if (!enabled && existing) {
+            this.removeDesktopShortcut(workspaceId, existing.id, { allowProtectedSystem: true });
+            return { changed: true, action: 'removed', shortcutId: existing.id };
+        }
+
+        if (enabled && existing && existing.data?.navPath !== expectedNavPath) {
+            const result = this.updateDesktopShortcut(workspaceId, existing.id, {
+                data: {
+                    ...(existing.data || {}),
+                    navPath: expectedNavPath,
+                    systemKey: WorkspaceManager.TRASH_DESKTOP_SHORTCUT_KEY
+                }
+            });
+            return {
+                changed: true,
+                action: 'updated',
+                shortcutId: existing.id,
+                updates: { data: result.shortcut.data },
+                shortcut: result.shortcut
+            };
+        }
+
+        return { changed: false };
+    }
+
     // Get desktop shortcuts for a workspace (also returns global window positions from same file)
     getDesktopShortcuts(workspaceId) {
         try {
@@ -1988,8 +2135,19 @@ class WorkspaceManager {
     }
 
     // Remove a desktop shortcut
-    removeDesktopShortcut(workspaceId, shortcutId) {
+    removeDesktopShortcut(workspaceId, shortcutId, options = {}) {
         try {
+            const workspace = this.globalResources.getWorkspaceDesktopConfig({ path: workspaceId });
+            const shortcut = (workspace?.shortcuts || []).find((entry) => entry.id === shortcutId);
+            if (
+                !options.allowProtectedSystem
+                && shortcut?.protected
+                && shortcut?.type === 'system-folder'
+                && shortcut?.data?.systemKey === WorkspaceManager.TRASH_DESKTOP_SHORTCUT_KEY
+            ) {
+                throw new Error('Trash desktop shortcut is managed in Desktop Settings');
+            }
+
             // Use fluent API to delete from array with predicate
             this.globalResources.modifyConfig('workspaceDesktop').delete([workspaceId, 'shortcuts'], (s) => s.id === shortcutId);
 

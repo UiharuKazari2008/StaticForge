@@ -22,6 +22,7 @@ let lastScheduledCompletion = 0; // Timestamp of last scheduled request completi
 
 // Import modules
 const globalResources = require('./modules/globalResources');
+const { createApplicationAuthEarlyMiddleware } = require('./modules/auth');
 globalResources.prepare();
 const authMiddleware = globalResources.getAuthMiddleware();
 const { processDynamicImage } = require('./modules/imageTools');
@@ -280,8 +281,70 @@ const SECURITY_CONFIG = {
     // Cleanup intervals
     CLEANUP_INTERVAL_MS: 60 * 60 * 1000, // 1 hour
     MAX_BLOCKED_IPS: 10000, // Maximum number of blocked IPs to store
-    MAX_SUSPICIOUS_IPS: 5000 // Maximum number of suspicious IPs to track
+    MAX_SUSPICIOUS_IPS: 5000, // Maximum number of suspicious IPs to track
+    MAX_KNOWN_BAD_PATHS: 50000, // Maximum probe URLs to remember across restarts
+    BLOCKED_LOG_QUIET_MS: 10000 // Silence before emitting flood summary
 };
+
+// Per-IP flood suppression for blocked-request logging
+const blockedRequestLogFlood = new Map(); // ip -> { suppressed, lastUrl, timer }
+
+function scheduleBlockedLogFloodFlush(ip) {
+    const state = blockedRequestLogFlood.get(ip);
+    if (!state) return;
+
+    if (state.timer) {
+        clearTimeout(state.timer);
+    }
+
+    state.timer = setTimeout(() => {
+        flushBlockedLogFlood(ip);
+    }, SECURITY_CONFIG.BLOCKED_LOG_QUIET_MS);
+}
+
+function flushBlockedLogFlood(ip) {
+    const state = blockedRequestLogFlood.get(ip);
+    if (!state) return;
+
+    if (state.timer) {
+        clearTimeout(state.timer);
+        state.timer = null;
+    }
+
+    if (state.suppressed > 0) {
+        const lastPath = state.lastUrl ? ` (last: ${state.lastUrl})` : '';
+        console.log(`🚫 ${ip}: ${state.suppressed} log(s) suppressed due to flood${lastPath}`);
+    }
+
+    blockedRequestLogFlood.delete(ip);
+}
+
+function flushAllBlockedLogFloods() {
+    for (const ip of blockedRequestLogFlood.keys()) {
+        flushBlockedLogFlood(ip);
+    }
+}
+
+function logBlockedRequest(ip, url, options = {}) {
+    const { instantBlock = false, knownPath = null } = options;
+    let state = blockedRequestLogFlood.get(ip);
+
+    if (!state) {
+        state = { suppressed: 0, lastUrl: url, timer: null };
+        blockedRequestLogFlood.set(ip, state);
+
+        if (instantBlock && knownPath) {
+            console.log(`⚡ Instant block ${ip} — known bad path: ${knownPath}`);
+        }
+        console.log(`🚫 Blocked request from ${ip} to ${url}`);
+        scheduleBlockedLogFloodFlush(ip);
+        return;
+    }
+
+    state.suppressed++;
+    state.lastUrl = url;
+    scheduleBlockedLogFloodFlush(ip);
+}
 
 // Get real IP address from request
 function getRealIP(req) {
@@ -338,12 +401,59 @@ function isPrivateIP(ip) {
     return false;
 }
 
+// Normalize request path for bad-path tracking (lowercase, decoded, no query)
+function normalizeBadPath(url) {
+    if (!url) return '';
+    const pathOnly = url.split('?')[0];
+    try {
+        return decodeURIComponent(pathOnly).toLowerCase();
+    } catch {
+        return pathOnly.toLowerCase();
+    }
+}
+
+// Paths that are almost always scanner probes, not user typos
+function isSuspiciousProbePath(url) {
+    const path = normalizeBadPath(url);
+    if (!path || path === '/') return false;
+    return (
+        /^\/\./.test(path) ||
+        /\.env/i.test(path) ||
+        /\.git/i.test(path) ||
+        /phpinfo/i.test(path) ||
+        isScrapingPattern(path)
+    );
+}
+
+function recordBadPath(url) {
+    const normalized = normalizeBadPath(url);
+    if (normalized) {
+        globalResources.recordKnownBadPath(normalized);
+    }
+}
+
+function denyBlockedRequest(res) {
+    return res.status(403).json({
+        success: false,
+        error: 'Access denied',
+        code: 'IP_BLOCKED'
+    });
+}
+
 // Block an IP address
 function blockIP(ip, reason, attempts = 0) {
     // Skip blocking for private IP addresses
     if (isPrivateIP(ip)) {
         console.log(`🔓 Skipping block for private IP: ${ip} - Reason: ${reason}`);
         return;
+    }
+
+    // Persist probe URLs from this IP before clearing tracking data
+    const suspicious = globalResources.getSuspiciousIPs().get(ip);
+    if (suspicious?.patterns) {
+        for (const entry of suspicious.patterns) {
+            recordBadPath(entry.url);
+        }
     }
     
     globalResources.blockIP(ip, reason, attempts);
@@ -374,6 +484,8 @@ function trackSuspiciousActivity(ip, url, userAgent) {
         timestamp: now
     });
     
+    recordBadPath(url);
+    
     // Keep only last 10 patterns
     if (suspicious.patterns.length > 10) {
         suspicious.patterns = suspicious.patterns.slice(-10);
@@ -391,7 +503,7 @@ function trackSuspiciousActivity(ip, url, userAgent) {
 }
 
 // Track invalid URL attempts
-function trackInvalidURL(ip) {
+function trackInvalidURL(ip, url) {
     // Skip tracking for private IP addresses
     if (isPrivateIP(ip)) {
         return false;
@@ -399,15 +511,30 @@ function trackInvalidURL(ip) {
     
     const now = Date.now();
     const invalidURLAttempts = globalResources.getInvalidURLAttempts();
-    const attempts = invalidURLAttempts.get(ip) || { count: 0, lastAttempt: now };
+    const attempts = invalidURLAttempts.get(ip) || { count: 0, lastAttempt: now, paths: [] };
     
     attempts.count++;
     attempts.lastAttempt = now;
+    if (url && !attempts.paths.includes(url)) {
+        attempts.paths.push(url);
+        if (attempts.paths.length > 20) {
+            attempts.paths = attempts.paths.slice(-20);
+        }
+    }
     
     invalidURLAttempts.set(ip, attempts);
+
+    if (isSuspiciousProbePath(url) || attempts.count >= 2) {
+        recordBadPath(url);
+    }
     
     // Check if we should block this IP
     if (attempts.count >= SECURITY_CONFIG.INVALID_URL_THRESHOLD) {
+        if (attempts.paths) {
+            for (const pathEntry of attempts.paths) {
+                recordBadPath(pathEntry);
+            }
+        }
         blockIP(ip, `Invalid URL attempts (${attempts.count})`, attempts.count);
         return true;
     }
@@ -446,8 +573,10 @@ function isProtectedResource(url) {
 
 // Security middleware
 function securityMiddleware(req, res, next) {
-    // Skip security checks for authenticated users
-    if (req.session && req.session.authenticated) {
+    // Skip security checks for authenticated users (session or application credentials)
+    if ((req.session && req.session.authenticated) ||
+        req.authMethod === 'application_key' ||
+        req.authMethod === 'temp_token') {
         return next();
     }
 
@@ -457,14 +586,30 @@ function securityMiddleware(req, res, next) {
     
     // Skip IP blocking checks for private IP addresses
     if (!isPrivateIP(ip)) {
-        // Check if IP is blocked
-        if (globalResources.isIPBlocked(ip, SECURITY_CONFIG.BLOCK_DURATION_MS)) {
-            console.log(`🚫 Blocked request from ${ip} to ${url}`);
-            return res.status(403).json({
-                success: false,
-                error: 'Access denied',
-                code: 'IP_BLOCKED'
+        const normalizedPath = normalizeBadPath(url);
+
+        // Known probe URL — instant block for new scrapers
+        if (globalResources.isKnownBadPath(normalizedPath)) {
+            const wasBlocked = globalResources.isIPBlocked(ip, SECURITY_CONFIG.BLOCK_DURATION_MS);
+            if (!wasBlocked) {
+                blockIP(ip, `Known bad path (${normalizedPath})`, 1);
+            } else {
+                recordBadPath(url);
+            }
+            logBlockedRequest(ip, url, {
+                instantBlock: !wasBlocked,
+                knownPath: !wasBlocked ? normalizedPath : null
             });
+            return denyBlockedRequest(res);
+        }
+
+        // Check if IP is blocked — keep learning probe URLs from active bots
+        if (globalResources.isIPBlocked(ip, SECURITY_CONFIG.BLOCK_DURATION_MS)) {
+            if (isSuspiciousProbePath(url)) {
+                recordBadPath(url);
+            }
+            logBlockedRequest(ip, url);
+            return denyBlockedRequest(res);
         }
     }
 
@@ -512,7 +657,7 @@ function invalidURLHandler(req, res, next) {
     const ip = getRealIP(req);
 
     // Skip invalid URL tracking for private IPs
-    if (!isPrivateIP(ip) && trackInvalidURL(ip)) {
+    if (!isPrivateIP(ip) && trackInvalidURL(ip, req.path)) {
         console.log(`🚫 Blocked IP ${ip} for excessive invalid URL attempts`);
         return res.status(403).json({
             success: false,
@@ -745,6 +890,9 @@ const limiter = rateLimit({
         if (req.session && req.session.authenticated) {
             return true;
         }
+        if (req.authMethod === 'application_key' || req.authMethod === 'temp_token') {
+            return true;
+        }
         
         // Skip rate limiting for OPTIONS requests to specific routes only
         if (req.method === 'OPTIONS') {
@@ -778,6 +926,9 @@ const speedLimiter = slowDown({
     skip: (req) => {
         // Skip speed limiting for authenticated users
         if (req.session && req.session.authenticated) {
+            return true;
+        }
+        if (req.authMethod === 'application_key' || req.authMethod === 'temp_token') {
             return true;
         }
         
@@ -838,7 +989,9 @@ const sessionMiddleware = session({
     }
 });
 
+globalResources.loadKnownBadPaths();
 app.use(sessionMiddleware);
+app.use(createApplicationAuthEarlyMiddleware(globalResources));
 app.use(securityMiddleware);
 app.use(limiter);
 app.use(speedLimiter);
@@ -1578,6 +1731,14 @@ app.post('/', serverReadinessMiddleware, express.json(), (req, res) => {
                     vfsPathUuid: globalResources.getVfsPathUuid()
                 });
             } else if (pin === config.readOnlyPin) {
+                if (config.userPinLoginEnabled === false) {
+                    return res.status(403).json({
+                        success: false,
+                        error: 'User PIN login is disabled. Admin PIN required.',
+                        code: 'USER_PIN_DISABLED'
+                    });
+                }
+
                 // Clear any failed login attempts on successful login
                 globalResources.unblockIP(realIP);
                 
@@ -1629,24 +1790,57 @@ app.post('/', serverReadinessMiddleware, express.json(), (req, res) => {
             // Process telemetry data if provided
             if (data && typeof data === 'object') {
                 const realIP = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || req.ip || req.connection.remoteAddress;
-                
+                const eventType = data.eventType === 'app' ? 'app' : 'login';
+                const screen = data.screen || {};
+
                 const telemetryInfo = {
                     timestamp: new Date().toISOString(),
+                    eventType,
                     ip: realIP,
                     userAgent: data.userAgent || 'Unknown',
                     platform: data.platform || 'Unknown',
                     language: data.language || 'Unknown',
-                    screen: data.screen || {},
+                    screen,
                     timezone: data.timezone || 'Unknown',
                     connection: data.connection || null,
                     serviceWorker: data.serviceWorker || {},
                     storage: data.storage || {},
                     features: data.features || {},
                     cookieEnabled: data.cookieEnabled || false,
-                    onLine: data.onLine || false
+                    onLine: data.onLine || false,
+                    route: data.page || null
                 };
-                
+
                 console.log('📊 Telemetry ping received:', JSON.stringify(telemetryInfo, null, 2));
+
+                const telemetryDb = globalResources.getTelemetryDatabase?.();
+                if (telemetryDb?.recordTelemetryEvent) {
+                    telemetryDb.recordTelemetryEvent({
+                        eventType,
+                        clientTimestamp: data.timestamp || null,
+                        ip: realIP,
+                        userAgent: data.userAgent || null,
+                        platform: data.platform || null,
+                        language: data.language || null,
+                        timezone: data.timezone || null,
+                        screenWidth: screen.width || null,
+                        screenHeight: screen.height || null,
+                        cookieEnabled: !!data.cookieEnabled,
+                        onLine: !!data.onLine,
+                        userType: req.session?.userType || null,
+                        sessionId: req.sessionID || null,
+                        route: data.page || null,
+                        payload: {
+                            connection: data.connection || null,
+                            serviceWorker: data.serviceWorker || {},
+                            storage: data.storage || {},
+                            features: data.features || {},
+                            screen
+                        }
+                    }).catch((err) => {
+                        console.error('❌ Failed to store telemetry event:', err.message);
+                    });
+                }
             }
             
             // Check if user is already authenticated
@@ -1869,11 +2063,30 @@ app.get('/traces/:id', authMiddleware, (req, res) => {
 // VFS file serving (UUID-prefixed paths — not guessable)
 (function registerVfsRoutes() {
     const vfsPath = `/${globalResources.getVfsPathUuid()}`;
+    const vfsDb = () => globalResources.getVfsDatabase();
+    const workspaceExists = (id) => !!globalResources.getWorkspaceManager().getWorkspaces()[id];
+
+    function buildVfsSession(req) {
+        return {
+            userType: req.userType || req.session?.userType || 'admin',
+            applicationScopes: req.applicationAuth?.applicationScopes
+        };
+    }
+
+    function denyVfsFileAccess(res, asJson) {
+        if (asJson) {
+            return res.status(403).json({ success: false, error: 'Access denied' });
+        }
+        return res.status(403).send('Access denied');
+    }
 
     app.get(`${vfsPath}/files/:fileId`, authMiddleware, async (req, res) => {
         try {
-            const file = await globalResources.getVfsDatabase().getUserFileById(req.params.fileId);
+            const file = await vfsDb().getUserFileById(req.params.fileId);
             if (!file) return res.status(404).json({ success: false, error: 'File not found' });
+            if (!vfsDb().canSessionAccessVfsFile(buildVfsSession(req), file, { workspaceExists })) {
+                return denyVfsFileAccess(res, true);
+            }
             const blobPath = globalResources.getVfsManager().getFileBlobPath(file.content_hash);
             if (!fs.existsSync(blobPath)) return res.status(404).json({ success: false, error: 'File blob missing' });
             res.setHeader('Content-Type', file.mime_type || 'application/octet-stream');
@@ -1884,10 +2097,39 @@ app.get('/traces/:id', authMiddleware, (req, res) => {
         }
     });
 
+    app.get(`${vfsPath}/system/:encodedKey`, authMiddleware, async (req, res) => {
+        try {
+            const vfs = globalResources.getVfsManager();
+            const systemFileKey = vfs.decodeSystemFileKey(req.params.encodedKey);
+            if (!systemFileKey) {
+                return res.status(400).json({ success: false, error: 'Invalid system file key' });
+            }
+            const info = vfs.resolveSystemFileDownload(systemFileKey);
+            if (!fs.existsSync(info.absPath)) {
+                return res.status(404).json({ success: false, error: 'File not found' });
+            }
+            res.setHeader('Content-Type', info.mimeType || 'application/octet-stream');
+            res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(info.name)}"`);
+            res.setHeader('Content-Length', String(info.size));
+            fs.createReadStream(info.absPath).pipe(res);
+        } catch (e) {
+            const status = /not found|invalid|denied|Only cache/i.test(e.message) ? 404
+                : /too large/i.test(e.message) ? 413
+                    : 400;
+            if (status === 413 || status === 400) {
+                return res.status(status).json({ success: false, error: e.message });
+            }
+            return res.status(status).json({ success: false, error: e.message });
+        }
+    });
+
     app.get(`${vfsPath}/previews/:fileId`, authMiddleware, async (req, res) => {
         try {
-            const file = await globalResources.getVfsDatabase().getUserFileById(req.params.fileId);
+            const file = await vfsDb().getUserFileById(req.params.fileId);
             if (!file) return res.status(404).send('Not found');
+            if (!vfsDb().canSessionAccessVfsFile(buildVfsSession(req), file, { workspaceExists })) {
+                return denyVfsFileAccess(res, false);
+            }
             if (file.preview_path) {
                 const previewPath = globalResources.getVfsManager().getFilePreviewPath(file.preview_path);
                 if (previewPath && fs.existsSync(previewPath)) {
@@ -3036,6 +3278,7 @@ async function performAdminDssRestart(broom = true) {
 async function gracefulShutdown() {
     globalResources.logger.info('Graceful shutdown initiated');
 
+    flushAllBlockedLogFloods();
     cleanupAllScheduledTimeouts();
 
     if (globalResources.shutdown) {

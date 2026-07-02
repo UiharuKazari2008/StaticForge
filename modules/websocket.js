@@ -16,6 +16,8 @@ class WebSocketServer {
         this.indexingSyncInterval = null;
         this.isIndexing = false;
         this.indexingPaused = false; // Track if indexing is paused
+        this.runtimeCompileProgressByClient = new Map();
+        this.runtimeCompileLogsByClient = new Map();
         this.setupWebSocket();
         this.setupPlumbingSubscriptions();
         this.startIndexingSync();
@@ -101,19 +103,7 @@ class WebSocketServer {
             });
 
             plumbing.subscribe('ws:broadcast:runtimeCompileProgress', (data) => {
-                this.broadcast({
-                    type: 'runtime_compile_progress',
-                    data: {
-                        current: data.current || 0,
-                        total: data.total || 0,
-                        file: data.file || null,
-                        percent: data.percent || 0,
-                        stats: data.stats || null,
-                        inProgress: data.inProgress === true,
-                        timestamp: data.timestamp || Date.now()
-                    },
-                    timestamp: new Date().toISOString()
-                });
+                this.broadcastRuntimeCompileProgressThrottled(data);
             });
 
             plumbing.subscribe('ws:broadcast:runtimeCompileComplete', (data) => {
@@ -132,15 +122,7 @@ class WebSocketServer {
             });
 
             plumbing.subscribe('ws:broadcast:runtimeCompileLogs', (data) => {
-                this.broadcast({
-                    type: 'runtime_compile_logs',
-                    data: {
-                        entries: data.entries || [],
-                        runId: data.runId || null,
-                        timestamp: data.timestamp || Date.now()
-                    },
-                    timestamp: new Date().toISOString()
-                });
+                this.broadcastRuntimeCompileLogsThrottled(data);
             });
 
             plumbing.subscribe('ws:broadcast:workspaceCssUpdated', (data) => {
@@ -257,8 +239,8 @@ class WebSocketServer {
                     console.log(`🔌 WebSocket disconnected: Session ${clientInfo.sessionId} - Code: ${code}, Reason: ${reason}`);
 
                     const handlers = this.globalResources.getWebSocketMessageHandlers();
-                    if (handlers && handlers.cancelActiveGenerationsForClient) {
-                        handlers.cancelActiveGenerationsForClient(ws);
+                    if (handlers && handlers.detachClientActiveGenerations) {
+                        handlers.detachClientActiveGenerations(ws);
                     }
 
                     // Clean up session workspace
@@ -269,6 +251,8 @@ class WebSocketServer {
                         handlers.cleanupClientCache(clientInfo.sessionId);
                     }
                     
+                    this.clearRuntimeCompileProgressThrottleForClient(ws);
+                    this.clearRuntimeCompileLogsThrottleForClient(ws);
                     this.clients.delete(ws);
                 }
             });
@@ -279,8 +263,8 @@ class WebSocketServer {
                 console.error(`❌ WebSocket error for session ${clientInfo?.sessionId || 'unknown'}:`, error);
 
                 const handlers = this.globalResources.getWebSocketMessageHandlers();
-                if (handlers && handlers.cancelActiveGenerationsForClient) {
-                    handlers.cancelActiveGenerationsForClient(ws);
+                if (handlers && handlers.detachClientActiveGenerations) {
+                    handlers.detachClientActiveGenerations(ws);
                 }
 
                 // Clean up metadata cache for this client if we have session info
@@ -290,6 +274,8 @@ class WebSocketServer {
                     }
                 }
                 
+                this.clearRuntimeCompileProgressThrottleForClient(ws);
+                this.clearRuntimeCompileLogsThrottleForClient(ws);
                 this.clients.delete(ws);
             });
         });
@@ -422,7 +408,13 @@ class WebSocketServer {
         'server_status',
         'check_updates',
         'refresh_server_cache',
-        'version_check'
+        'version_check',
+        'authenticate_application',
+        'refresh_application_key',
+        'request_application_authorization',
+        'check_application_authorization',
+        'claim_application_authorization',
+        'request_temp_access_token'
     ];
 
     handleMessage(ws, message) {
@@ -469,6 +461,219 @@ class WebSocketServer {
         if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify(message));
         }
+    }
+
+    getRuntimeCompileProgressIntervalMs(clientInfo) {
+        // Matches public/scripts/websocket.js pingWarningThreshold (500ms)
+        const highRttThresholdMs = 500;
+        const rtt = clientInfo && typeof clientInfo.lastClientRttMs === 'number'
+            ? clientInfo.lastClientRttMs
+            : null;
+        if (rtt !== null && rtt > highRttThresholdMs) {
+            return 1000;
+        }
+        return 500;
+    }
+
+    isRuntimeCompileProgressFinal(data) {
+        if (data.inProgress === false) {
+            return true;
+        }
+        const current = data.current || 0;
+        const total = data.total || 0;
+        if (total > 0 && current >= total) {
+            return true;
+        }
+        return (data.percent || 0) >= 100;
+    }
+
+    buildRuntimeCompileProgressMessage(data) {
+        return {
+            type: 'runtime_compile_progress',
+            data: {
+                current: data.current || 0,
+                total: data.total || 0,
+                file: data.file || null,
+                percent: data.percent || 0,
+                stats: data.stats || null,
+                inProgress: data.inProgress === true,
+                timestamp: data.timestamp || Date.now()
+            },
+            timestamp: new Date().toISOString()
+        };
+    }
+
+    clearRuntimeCompileProgressThrottleForClient(ws) {
+        const state = this.runtimeCompileProgressByClient.get(ws);
+        if (!state) {
+            return;
+        }
+        if (state.flushTimer) {
+            clearTimeout(state.flushTimer);
+        }
+        this.runtimeCompileProgressByClient.delete(ws);
+    }
+
+    sendRuntimeCompileProgressToClient(ws, data) {
+        const state = this.runtimeCompileProgressByClient.get(ws) || {
+            lastSentAt: 0,
+            pendingData: null,
+            flushTimer: null
+        };
+        this.sendToClient(ws, this.buildRuntimeCompileProgressMessage(data));
+        state.lastSentAt = Date.now();
+        state.pendingData = null;
+        if (state.flushTimer) {
+            clearTimeout(state.flushTimer);
+            state.flushTimer = null;
+        }
+        this.runtimeCompileProgressByClient.set(ws, state);
+    }
+
+    broadcastRuntimeCompileProgressThrottled(data) {
+        const now = Date.now();
+        const isFinal = this.isRuntimeCompileProgressFinal(data);
+
+        this.wss.clients.forEach((client) => {
+            if (client.readyState !== WebSocket.OPEN) {
+                return;
+            }
+
+            const clientInfo = this.clients.get(client);
+            let state = this.runtimeCompileProgressByClient.get(client);
+            if (!state) {
+                state = { lastSentAt: 0, pendingData: null, flushTimer: null };
+                this.runtimeCompileProgressByClient.set(client, state);
+            }
+
+            if (isFinal) {
+                this.sendRuntimeCompileProgressToClient(client, data);
+                return;
+            }
+
+            const intervalMs = this.getRuntimeCompileProgressIntervalMs(clientInfo);
+            const elapsed = state.lastSentAt === 0 ? intervalMs : now - state.lastSentAt;
+
+            if (elapsed >= intervalMs) {
+                this.sendRuntimeCompileProgressToClient(client, data);
+                return;
+            }
+
+            state.pendingData = data;
+            if (state.flushTimer) {
+                return;
+            }
+
+            const delay = intervalMs - elapsed;
+            state.flushTimer = setTimeout(() => {
+                state.flushTimer = null;
+                if (client.readyState !== WebSocket.OPEN) {
+                    return;
+                }
+                if (state.pendingData) {
+                    const pending = state.pendingData;
+                    state.pendingData = null;
+                    this.sendRuntimeCompileProgressToClient(client, pending);
+                }
+            }, delay);
+        });
+    }
+
+    mergeRuntimeCompileLogPayload(existing, incoming) {
+        if (!existing) {
+            return {
+                entries: [...(incoming.entries || [])],
+                runId: incoming.runId || null,
+                timestamp: incoming.timestamp || Date.now()
+            };
+        }
+        return {
+            entries: [...(existing.entries || []), ...(incoming.entries || [])],
+            runId: incoming.runId || existing.runId || null,
+            timestamp: incoming.timestamp || Date.now()
+        };
+    }
+
+    buildRuntimeCompileLogsMessage(data) {
+        return {
+            type: 'runtime_compile_logs',
+            data: {
+                entries: data.entries || [],
+                runId: data.runId || null,
+                timestamp: data.timestamp || Date.now()
+            },
+            timestamp: new Date().toISOString()
+        };
+    }
+
+    clearRuntimeCompileLogsThrottleForClient(ws) {
+        const state = this.runtimeCompileLogsByClient.get(ws);
+        if (!state) {
+            return;
+        }
+        if (state.flushTimer) {
+            clearTimeout(state.flushTimer);
+        }
+        this.runtimeCompileLogsByClient.delete(ws);
+    }
+
+    sendRuntimeCompileLogsToClient(ws, data) {
+        const state = this.runtimeCompileLogsByClient.get(ws) || {
+            lastSentAt: 0,
+            pendingData: null,
+            flushTimer: null
+        };
+        this.sendToClient(ws, this.buildRuntimeCompileLogsMessage(data));
+        state.lastSentAt = Date.now();
+        state.pendingData = null;
+        if (state.flushTimer) {
+            clearTimeout(state.flushTimer);
+            state.flushTimer = null;
+        }
+        this.runtimeCompileLogsByClient.set(ws, state);
+    }
+
+    broadcastRuntimeCompileLogsThrottled(data) {
+        const now = Date.now();
+
+        this.wss.clients.forEach((client) => {
+            if (client.readyState !== WebSocket.OPEN) {
+                return;
+            }
+
+            const clientInfo = this.clients.get(client);
+            let state = this.runtimeCompileLogsByClient.get(client);
+            if (!state) {
+                state = { lastSentAt: 0, pendingData: null, flushTimer: null };
+                this.runtimeCompileLogsByClient.set(client, state);
+            }
+
+            const intervalMs = this.getRuntimeCompileProgressIntervalMs(clientInfo);
+            const elapsed = state.lastSentAt === 0 ? intervalMs : now - state.lastSentAt;
+
+            if (elapsed >= intervalMs) {
+                this.sendRuntimeCompileLogsToClient(client, data);
+                return;
+            }
+
+            state.pendingData = this.mergeRuntimeCompileLogPayload(state.pendingData, data);
+            if (state.flushTimer) {
+                return;
+            }
+
+            const delay = intervalMs - elapsed;
+            state.flushTimer = setTimeout(() => {
+                state.flushTimer = null;
+                if (client.readyState !== WebSocket.OPEN) {
+                    return;
+                }
+                if (state.pendingData) {
+                    const pending = state.pendingData;
+                    state.pendingData = null;
+                    this.sendRuntimeCompileLogsToClient(client, pending);
+                }
+            }, delay);
+        });
     }
 
     broadcast(message, filter = null) {

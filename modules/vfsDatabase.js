@@ -71,9 +71,31 @@ async function createVfsTables() {
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_vfs_entries_folder ON vfs_entries (folder_id)`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_user_files_scope ON user_files (scope, workspace_id)`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_user_files_folder ON user_files (folder_id)`);
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS vfs_trash_items (
+            id TEXT PRIMARY KEY,
+            workspace_id TEXT NOT NULL,
+            item_kind TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            display_name TEXT,
+            original_path TEXT,
+            payload_json TEXT,
+            deleted_at INTEGER DEFAULT (strftime('%s', 'now'))
+        )
+    `);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_vfs_trash_workspace ON vfs_trash_items (workspace_id, deleted_at)`);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_vfs_trash_target ON vfs_trash_items (workspace_id, item_kind, target_id)`);
     const entryCols = await db.all(`PRAGMA table_info(vfs_entries)`);
     if (!entryCols.some(c => c.name === 'entry_meta')) {
         await db.exec(`ALTER TABLE vfs_entries ADD COLUMN entry_meta TEXT`);
+    }
+    const folderCols = await db.all(`PRAGMA table_info(vfs_folders)`);
+    if (!folderCols.some(c => c.name === 'trashed_at')) {
+        await db.exec(`ALTER TABLE vfs_folders ADD COLUMN trashed_at INTEGER`);
+    }
+    const fileCols = await db.all(`PRAGMA table_info(user_files)`);
+    if (!fileCols.some(c => c.name === 'trashed_at')) {
+        await db.exec(`ALTER TABLE user_files ADD COLUMN trashed_at INTEGER`);
     }
 }
 
@@ -105,12 +127,12 @@ async function getFolderById(id) {
 async function getFoldersByParent(scope, workspaceId, parentId) {
     if (scope === 'root') {
         return db.all(
-            `SELECT * FROM vfs_folders WHERE scope = 'root' AND parent_id ${parentId ? '= ?' : 'IS NULL'}`,
+            `SELECT * FROM vfs_folders WHERE scope = 'root' AND trashed_at IS NULL AND parent_id ${parentId ? '= ?' : 'IS NULL'}`,
             parentId ? [parentId] : []
         );
     }
     return db.all(
-        `SELECT * FROM vfs_folders WHERE scope = 'workspace' AND workspace_id = ? AND parent_id ${parentId ? '= ?' : 'IS NULL'}`,
+        `SELECT * FROM vfs_folders WHERE scope = 'workspace' AND workspace_id = ? AND trashed_at IS NULL AND parent_id ${parentId ? '= ?' : 'IS NULL'}`,
         parentId ? [workspaceId, parentId] : [workspaceId]
     );
 }
@@ -134,8 +156,65 @@ async function deleteFolder(id) {
     if (files.length > 0) {
         throw new Error('Folder is not empty');
     }
+    return deleteFolderRow(id);
+}
+
+async function deleteFolderRow(id) {
     await db.run('DELETE FROM vfs_folders WHERE id = ?', [id]);
     return { success: true };
+}
+
+async function getChildFolderIds(parentId) {
+    const rows = await db.all('SELECT id FROM vfs_folders WHERE parent_id = ?', [parentId]);
+    return rows.map(r => r.id);
+}
+
+async function collectDescendantFolderIds(rootId) {
+    const result = [];
+    const queue = await getChildFolderIds(rootId);
+    while (queue.length) {
+        const id = queue.shift();
+        result.push(id);
+        queue.push(...await getChildFolderIds(id));
+    }
+    return result;
+}
+
+async function updateFolder(id, updates) {
+    const fields = [];
+    const values = [];
+    if (updates.parent_id !== undefined) {
+        fields.push('parent_id = ?');
+        values.push(updates.parent_id);
+    }
+    if (updates.scope !== undefined) {
+        fields.push('scope = ?');
+        values.push(updates.scope);
+    }
+    if (updates.workspace_id !== undefined) {
+        fields.push('workspace_id = ?');
+        values.push(updates.workspace_id);
+    }
+    if (updates.name !== undefined) {
+        fields.push('name = ?');
+        values.push(updates.name);
+    }
+    if (fields.length === 0) return getFolderById(id);
+    fields.push('updated_at = ?');
+    values.push(Math.floor(Date.now() / 1000));
+    values.push(id);
+    await db.run(`UPDATE vfs_folders SET ${fields.join(', ')} WHERE id = ?`, values);
+    return getFolderById(id);
+}
+
+async function updateUserFilesInFolders(folderIds, scope, workspaceId) {
+    if (!folderIds.length) return;
+    const placeholders = folderIds.map(() => '?').join(',');
+    const now = Math.floor(Date.now() / 1000);
+    await db.run(
+        `UPDATE user_files SET scope = ?, workspace_id = ?, updated_at = ? WHERE folder_id IN (${placeholders})`,
+        [scope, workspaceId, now, ...folderIds]
+    );
 }
 
 async function createEntry({ folderId, targetKind, targetId, displayName = null, entryMeta = null }) {
@@ -204,12 +283,12 @@ async function getUserFileById(id) {
 async function getUserFilesByLocation(scope, workspaceId, folderId) {
     if (scope === 'root') {
         return db.all(
-            `SELECT * FROM user_files WHERE scope = 'root' AND folder_id ${folderId ? '= ?' : 'IS NULL'}`,
+            `SELECT * FROM user_files WHERE scope = 'root' AND trashed_at IS NULL AND folder_id ${folderId ? '= ?' : 'IS NULL'}`,
             folderId ? [folderId] : []
         );
     }
     return db.all(
-        `SELECT * FROM user_files WHERE scope = 'workspace' AND workspace_id = ? AND folder_id ${folderId ? '= ?' : 'IS NULL'}`,
+        `SELECT * FROM user_files WHERE scope = 'workspace' AND workspace_id = ? AND trashed_at IS NULL AND folder_id ${folderId ? '= ?' : 'IS NULL'}`,
         folderId ? [workspaceId, folderId] : [workspaceId]
     );
 }
@@ -257,25 +336,262 @@ async function updateUserFile(id, updates) {
     return getUserFileById(id);
 }
 
+async function countUserFilesByContentHash(contentHash, excludeFileId = null) {
+    if (!contentHash) return 0;
+    if (excludeFileId) {
+        const row = await db.get(
+            'SELECT COUNT(*) AS count FROM user_files WHERE content_hash = ? AND id != ?',
+            [contentHash, excludeFileId]
+        );
+        return row?.count || 0;
+    }
+    const row = await db.get(
+        'SELECT COUNT(*) AS count FROM user_files WHERE content_hash = ?',
+        [contentHash]
+    );
+    return row?.count || 0;
+}
+
+/** Count vfs_entries (shortcuts/aliases) pointing at a user_files row. */
+async function countVfsEntriesForUserFile(fileId) {
+    if (!fileId) return 0;
+    const row = await db.get(
+        `SELECT COUNT(*) AS count FROM vfs_entries WHERE target_kind = 'user-file' AND target_id = ?`,
+        [fileId]
+    );
+    return row?.count || 0;
+}
+
+/** Count vfs_entries pointing at a virtual-surface target (e.g. note). */
+async function countEntriesByTarget(targetKind, targetId, excludeEntryId = null) {
+    if (!targetKind || !targetId) return 0;
+    const row = excludeEntryId
+        ? await db.get(
+            `SELECT COUNT(*) AS count FROM vfs_entries WHERE target_kind = ? AND target_id = ? AND id != ?`,
+            [targetKind, targetId, excludeEntryId]
+        )
+        : await db.get(
+            `SELECT COUNT(*) AS count FROM vfs_entries WHERE target_kind = ? AND target_id = ?`,
+            [targetKind, targetId]
+        );
+    return row?.count || 0;
+}
+
+/**
+ * Whether an authenticated session may download/serve a user_files row.
+ * @param {{ userType?: string, applicationScopes?: string[] }} session
+ * @param {object|null} fileRow user_files row
+ * @param {{ workspaceExists?: (id: string) => boolean }} [ctx]
+ */
+function canSessionAccessVfsFile(session, fileRow, ctx = {}) {
+    if (!session || !fileRow) return false;
+
+    const scopes = session.applicationScopes;
+    if (Array.isArray(scopes) && scopes.length > 0) {
+        if (!scopes.includes('universal') && !scopes.includes('vfs')) {
+            return false;
+        }
+    }
+
+    if (fileRow.scope === 'root') {
+        return true;
+    }
+
+    if (fileRow.scope === 'workspace') {
+        const workspaceId = fileRow.workspace_id;
+        if (!workspaceId) return false;
+        if (typeof ctx.workspaceExists === 'function') {
+            return ctx.workspaceExists(workspaceId);
+        }
+        return true;
+    }
+
+    return false;
+}
+
 async function deleteUserFile(id) {
+    const file = await getUserFileById(id);
+    if (!file) return { success: false, deleted: null };
     await db.run('DELETE FROM user_files WHERE id = ?', [id]);
-    return { success: true };
+    return { success: true, deleted: file };
 }
 
 async function getUserFileStats(scope, workspaceId, folderId) {
     let row;
     if (scope === 'root') {
         row = await db.get(
-            `SELECT COUNT(*) as count, COALESCE(SUM(size), 0) as totalSize FROM user_files WHERE scope = 'root' AND folder_id ${folderId ? '= ?' : 'IS NULL'}`,
+            `SELECT COUNT(*) as count, COALESCE(SUM(size), 0) as totalSize FROM user_files WHERE scope = 'root' AND trashed_at IS NULL AND folder_id ${folderId ? '= ?' : 'IS NULL'}`,
             folderId ? [folderId] : []
         );
     } else {
         row = await db.get(
-            `SELECT COUNT(*) as count, COALESCE(SUM(size), 0) as totalSize FROM user_files WHERE scope = 'workspace' AND workspace_id = ? AND folder_id ${folderId ? '= ?' : 'IS NULL'}`,
+            `SELECT COUNT(*) as count, COALESCE(SUM(size), 0) as totalSize FROM user_files WHERE scope = 'workspace' AND workspace_id = ? AND trashed_at IS NULL AND folder_id ${folderId ? '= ?' : 'IS NULL'}`,
             folderId ? [workspaceId, folderId] : [workspaceId]
         );
     }
     return { count: row?.count || 0, totalSize: row?.totalSize || 0 };
+}
+
+async function getFolderCountByParent(scope, workspaceId, parentId, options = {}) {
+    const { excludeIds = [], excludeHiddenSurface = false } = options;
+    const conditions = [];
+    const params = [];
+
+    if (scope === 'root') {
+        conditions.push("scope = 'root'");
+        conditions.push(`parent_id ${parentId ? '= ?' : 'IS NULL'}`);
+        if (parentId) params.push(parentId);
+    } else {
+        conditions.push("scope = 'workspace'");
+        conditions.push('workspace_id = ?');
+        params.push(workspaceId);
+        conditions.push(`parent_id ${parentId ? '= ?' : 'IS NULL'}`);
+        if (parentId) params.push(parentId);
+    }
+
+    if (excludeHiddenSurface) {
+        conditions.push("name != 'Shortcuts'");
+    }
+    conditions.push('trashed_at IS NULL');
+    if (excludeIds.length > 0) {
+        conditions.push(`id NOT IN (${excludeIds.map(() => '?').join(',')})`);
+        params.push(...excludeIds);
+    }
+
+    const row = await db.get(
+        `SELECT COUNT(*) as count FROM vfs_folders WHERE ${conditions.join(' AND ')}`,
+        params
+    );
+    return row?.count || 0;
+}
+
+async function getEntryCountByFolder(folderId) {
+    const row = await db.get(
+        'SELECT COUNT(*) as count FROM vfs_entries WHERE folder_id = ?',
+        [folderId]
+    );
+    return row?.count || 0;
+}
+
+async function getLinkedUserFileStatsByFolder(folderId) {
+    const row = await db.get(
+        `SELECT COUNT(*) as count, COALESCE(SUM(uf.size), 0) as totalSize
+         FROM vfs_entries e
+         INNER JOIN user_files uf ON uf.id = e.target_id
+         WHERE e.folder_id = ? AND e.target_kind = 'user-file' AND uf.trashed_at IS NULL`,
+        [folderId]
+    );
+    return { count: row?.count || 0, totalSize: row?.totalSize || 0 };
+}
+
+async function createTrashItem({ workspaceId, itemKind, targetId, displayName = null, originalPath = null, payloadJson = null }) {
+    const id = generateId();
+    const now = Math.floor(Date.now() / 1000);
+    await db.run(
+        `INSERT INTO vfs_trash_items (id, workspace_id, item_kind, target_id, display_name, original_path, payload_json, deleted_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, workspaceId, itemKind, targetId, displayName, originalPath, payloadJson, now]
+    );
+    return getTrashItemById(id);
+}
+
+async function getTrashItemById(id) {
+    return db.get('SELECT * FROM vfs_trash_items WHERE id = ?', [id]);
+}
+
+async function getTrashItemsByWorkspace(workspaceId) {
+    return db.all(
+        'SELECT * FROM vfs_trash_items WHERE workspace_id = ? ORDER BY deleted_at DESC',
+        [workspaceId]
+    );
+}
+
+async function deleteTrashItem(id) {
+    await db.run('DELETE FROM vfs_trash_items WHERE id = ?', [id]);
+    return { success: true };
+}
+
+async function deleteTrashItemsByWorkspace(workspaceId) {
+    await db.run('DELETE FROM vfs_trash_items WHERE workspace_id = ?', [workspaceId]);
+    return { success: true };
+}
+
+async function getTrashedTargetIdSet(workspaceId, itemKinds = null) {
+    let sql = 'SELECT item_kind, target_id FROM vfs_trash_items WHERE workspace_id = ?';
+    const params = [workspaceId];
+    if (itemKinds?.length) {
+        sql += ` AND item_kind IN (${itemKinds.map(() => '?').join(',')})`;
+        params.push(...itemKinds);
+    }
+    const rows = await db.all(sql, params);
+    const set = new Set();
+    for (const row of rows) set.add(`${row.item_kind}:${row.target_id}`);
+    return set;
+}
+
+async function isTargetInTrash(workspaceId, itemKind, targetId) {
+    const row = await db.get(
+        'SELECT id FROM vfs_trash_items WHERE workspace_id = ? AND item_kind = ? AND target_id = ?',
+        [workspaceId, itemKind, targetId]
+    );
+    return !!row;
+}
+
+async function markFolderTrashed(folderId, trashedAt) {
+    await db.run('UPDATE vfs_folders SET trashed_at = ?, updated_at = ? WHERE id = ?', [trashedAt, trashedAt, folderId]);
+}
+
+async function markFoldersTrashed(folderIds, trashedAt) {
+    if (!folderIds.length) return;
+    const placeholders = folderIds.map(() => '?').join(',');
+    await db.run(
+        `UPDATE vfs_folders SET trashed_at = ?, updated_at = ? WHERE id IN (${placeholders})`,
+        [trashedAt, trashedAt, ...folderIds]
+    );
+}
+
+async function clearFolderTrashed(folderIds) {
+    if (!folderIds.length) return;
+    const now = Math.floor(Date.now() / 1000);
+    const placeholders = folderIds.map(() => '?').join(',');
+    await db.run(
+        `UPDATE vfs_folders SET trashed_at = NULL, updated_at = ? WHERE id IN (${placeholders})`,
+        [now, ...folderIds]
+    );
+}
+
+async function markUserFileTrashed(fileId, trashedAt) {
+    await db.run('UPDATE user_files SET trashed_at = ?, updated_at = ? WHERE id = ?', [trashedAt, trashedAt, fileId]);
+}
+
+async function markUserFilesTrashedInFolders(folderIds, trashedAt) {
+    if (!folderIds.length) return;
+    const placeholders = folderIds.map(() => '?').join(',');
+    await db.run(
+        `UPDATE user_files SET trashed_at = ?, updated_at = ? WHERE folder_id IN (${placeholders})`,
+        [trashedAt, trashedAt, ...folderIds]
+    );
+}
+
+async function clearUserFilesTrashedInFolders(folderIds) {
+    if (!folderIds.length) return;
+    const now = Math.floor(Date.now() / 1000);
+    const placeholders = folderIds.map(() => '?').join(',');
+    await db.run(
+        `UPDATE user_files SET trashed_at = NULL, updated_at = ? WHERE folder_id IN (${placeholders})`,
+        [now, ...folderIds]
+    );
+}
+
+async function clearUserFileTrashed(fileId) {
+    const now = Math.floor(Date.now() / 1000);
+    await db.run('UPDATE user_files SET trashed_at = NULL, updated_at = ? WHERE id = ?', [now, fileId]);
+}
+
+async function getUserFilesInFoldersIncludingTrashed(folderIds) {
+    if (!folderIds.length) return [];
+    const placeholders = folderIds.map(() => '?').join(',');
+    return db.all(`SELECT * FROM user_files WHERE folder_id IN (${placeholders})`, folderIds);
 }
 
 module.exports = {
@@ -288,6 +604,11 @@ module.exports = {
     getFoldersByParent,
     renameFolder,
     deleteFolder,
+    deleteFolderRow,
+    getChildFolderIds,
+    collectDescendantFolderIds,
+    updateFolder,
+    updateUserFilesInFolders,
     createEntry,
     getEntryById,
     getEntriesByFolder,
@@ -299,5 +620,27 @@ module.exports = {
     getUserFilesByLocation,
     updateUserFile,
     deleteUserFile,
-    getUserFileStats
+    getUserFileStats,
+    getFolderCountByParent,
+    getEntryCountByFolder,
+    getLinkedUserFileStatsByFolder,
+    countUserFilesByContentHash,
+    countVfsEntriesForUserFile,
+    countEntriesByTarget,
+    canSessionAccessVfsFile,
+    createTrashItem,
+    getTrashItemById,
+    getTrashItemsByWorkspace,
+    deleteTrashItem,
+    deleteTrashItemsByWorkspace,
+    getTrashedTargetIdSet,
+    isTargetInTrash,
+    markFolderTrashed,
+    markFoldersTrashed,
+    clearFolderTrashed,
+    markUserFileTrashed,
+    markUserFilesTrashedInFolders,
+    clearUserFilesTrashedInFolders,
+    clearUserFileTrashed,
+    getUserFilesInFoldersIncludingTrashed
 };

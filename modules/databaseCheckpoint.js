@@ -6,6 +6,17 @@ const {
     migrateLegacyDatabaseCheckpoints,
     removeOrphanCheckpointSidecars
 } = require('./checkpointPaths');
+const {
+    listAllCheckpointFiles,
+    listTierCheckpointFiles,
+    applyGrandfathering,
+    isGrandfatheringEnabled,
+    newCheckpointRelativePath,
+    resolveCheckpointFilePath,
+    ensureTierDirs,
+    migrateLegacyFlatCheckpoints,
+    deleteCheckpointSidecars
+} = require('./checkpointGrandfathering');
 
 /**
  * Database Checkpoint Manager
@@ -14,9 +25,10 @@ const {
  * Creates full database backups and provides restore capabilities.
  */
 class DatabaseCheckpointManager {
-    constructor(dbPath, maxCheckpoints = 5) {
+    constructor(dbPath, maxCheckpoints = 5, globalResources = null) {
         this.dbPath = dbPath;
         this.maxCheckpoints = maxCheckpoints;
+        this.globalResources = globalResources;
         this.dbName = path.basename(dbPath, path.extname(dbPath));
         this.dbExt = path.extname(dbPath);
         this.checkpointDir = getDatabaseCheckpointDir(dbPath);
@@ -142,7 +154,7 @@ class DatabaseCheckpointManager {
             }
 
             const latestCheckpoint = checkpointFiles[0];
-            const checkpointPath = path.join(this.checkpointDir, latestCheckpoint.filename);
+            const checkpointPath = latestCheckpoint.filePath || this._resolveCheckpointPath(latestCheckpoint.filename);
 
             const dbStats = fs.statSync(this.dbPath);
             const checkpointStats = fs.statSync(checkpointPath);
@@ -162,14 +174,69 @@ class DatabaseCheckpointManager {
         if (!fs.existsSync(this.checkpointDir)) {
             fs.mkdirSync(this.checkpointDir, { recursive: true });
         }
+        ensureTierDirs(this.checkpointDir);
     }
 
-    /**
-     * Generate a checkpoint filename with timestamp
-     */
+    _resolveCheckpointPath(checkpointFilename) {
+        return resolveCheckpointFilePath(this.checkpointDir, checkpointFilename);
+    }
+
+    _newCheckpointWritePath(basename) {
+        ensureTierDirs(this.checkpointDir);
+        const relative = newCheckpointRelativePath(basename);
+        return {
+            relative,
+            filePath: path.join(this.checkpointDir, ...relative.split('/'))
+        };
+    }
+
     generateCheckpointFilename() {
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        return `${this.dbName}_checkpoint_${timestamp}${this.dbExt}`;
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+        const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
+        const timestamp = `${year}-${month}-${day}_${hours}-${minutes}-${seconds}.${milliseconds}`;
+        return `${timestamp}${this.dbExt}`;
+    }
+
+    _dbCheckpointPatterns() {
+        const isoStyle = /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.\d{3}\./;
+        const legacyStyle = new RegExp(`^${this.dbName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}_checkpoint_.+\\${this.dbExt.replace('.', '\\.')}$`);
+        return { isoStyle, legacyStyle };
+    }
+
+    _listDbCheckpointFiles() {
+        const { isoStyle, legacyStyle } = this._dbCheckpointPatterns();
+        migrateLegacyFlatCheckpoints(this.checkpointDir, this.dbExt, isoStyle);
+
+        const tierFiles = listAllCheckpointFiles(this.checkpointDir, this.dbExt, isoStyle);
+        if (tierFiles.length) return tierFiles;
+
+        if (!fs.existsSync(this.checkpointDir)) return [];
+        const legacy = [];
+        for (const name of fs.readdirSync(this.checkpointDir)) {
+            if (!legacyStyle.test(name)) continue;
+            const filePath = path.join(this.checkpointDir, name);
+            try {
+                const stats = fs.statSync(filePath);
+                legacy.push({
+                    filename: name,
+                    basename: name,
+                    tier: null,
+                    filePath,
+                    mtime: stats.mtime,
+                    size: stats.size
+                });
+            } catch {
+                // skip
+            }
+        }
+        legacy.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+        return legacy;
     }
 
     /**
@@ -177,25 +244,7 @@ class DatabaseCheckpointManager {
      */
     getCheckpointFiles() {
         try {
-            if (!fs.existsSync(this.checkpointDir)) {
-                return [];
-            }
-
-            const files = fs.readdirSync(this.checkpointDir)
-                .filter(file => file.startsWith(`${this.dbName}_checkpoint_`) && file.endsWith(this.dbExt))
-                .map(file => {
-                    const filePath = path.join(this.checkpointDir, file);
-                    const stats = fs.statSync(filePath);
-                    return {
-                        filename: file,
-                        filePath: filePath,
-                        mtime: stats.mtime,
-                        size: stats.size
-                    };
-                })
-                .sort((a, b) => b.mtime - a.mtime); // Sort by modification time, newest first
-
-            return files;
+            return this._listDbCheckpointFiles();
         } catch (error) {
             console.error('❌ Error getting checkpoint files:', error);
             return [];
@@ -203,26 +252,26 @@ class DatabaseCheckpointManager {
     }
 
     /**
-     * Clean up old checkpoints, keeping only the most recent ones
+     * Clean up old checkpoints via tiered grandfathering or fixed cap fallback
      */
     cleanupOldCheckpoints() {
         try {
+            const { isoStyle } = this._dbCheckpointPatterns();
+            if (isGrandfatheringEnabled(this.globalResources)) {
+                applyGrandfathering(this.checkpointDir, this.dbExt, this.globalResources, isoStyle);
+                removeOrphanCheckpointSidecars(this.checkpointDir);
+                return;
+            }
+
             const checkpointFiles = this.getCheckpointFiles();
-            
+
             if (checkpointFiles.length > this.maxCheckpoints) {
                 const filesToDelete = checkpointFiles.slice(this.maxCheckpoints);
-                
+
                 filesToDelete.forEach(file => {
                     try {
                         fs.unlinkSync(file.filePath);
-                        const walPath = file.filePath + '-wal';
-                        const shmPath = file.filePath + '-shm';
-                        if (fs.existsSync(walPath)) {
-                            fs.unlinkSync(walPath);
-                        }
-                        if (fs.existsSync(shmPath)) {
-                            fs.unlinkSync(shmPath);
-                        }
+                        deleteCheckpointSidecars(file.filePath);
                         console.log(`🗑️ Deleted old database checkpoint: ${file.filename}`);
                     } catch (error) {
                         console.error(`❌ Error deleting checkpoint ${file.filename}:`, error);
@@ -256,7 +305,7 @@ class DatabaseCheckpointManager {
             }
 
             const checkpointFilename = this.generateCheckpointFilename();
-            const checkpointPath = path.join(this.checkpointDir, checkpointFilename);
+            const { relative, filePath: checkpointPath } = this._newCheckpointWritePath(checkpointFilename);
 
             // For SQLite databases, we need to ensure the database is not locked
             // We'll use a simple file copy approach
@@ -274,7 +323,7 @@ class DatabaseCheckpointManager {
                 fs.copyFileSync(shmPath, checkpointPath + '-shm');
             }
 
-            console.log(`✅ Created database checkpoint: ${checkpointFilename}`);
+            console.log(`✅ Created database checkpoint: ${relative}`);
             
             // Clean up old checkpoints
             this.cleanupOldCheckpoints();
@@ -312,7 +361,7 @@ class DatabaseCheckpointManager {
             }
 
             const checkpointFilename = this.generateCheckpointFilename();
-            const checkpointPath = path.join(this.checkpointDir, checkpointFilename);
+            const { relative, filePath: checkpointPath } = this._newCheckpointWritePath(checkpointFilename);
 
             // Open source database (better-sqlite3 for synchronous backup)
             const sourceDb = new Database(this.dbPath, { readonly: true });
@@ -321,7 +370,7 @@ class DatabaseCheckpointManager {
                 // Perform backup - backup() returns a promise and must be awaited
                 await sourceDb.backup(checkpointPath);
                 
-                console.log(`✅ Created database checkpoint with backup API: ${checkpointFilename}`);
+                console.log(`✅ Created database checkpoint with backup API: ${relative}`);
             } finally {
                 // Always close source database, even if backup fails
                 sourceDb.close();
@@ -347,18 +396,18 @@ class DatabaseCheckpointManager {
      */
     restoreFromCheckpoint(checkpointFilename) {
         try {
-            const checkpointPath = path.join(this.checkpointDir, checkpointFilename);
-            
-            if (!fs.existsSync(checkpointPath)) {
+            const checkpointPath = this._resolveCheckpointPath(checkpointFilename);
+
+            if (!checkpointPath || !fs.existsSync(checkpointPath)) {
                 throw new Error(`Checkpoint not found: ${checkpointFilename}`);
             }
 
             // Create a backup of current database before restoring
             if (fs.existsSync(this.dbPath)) {
                 const backupFilename = this.generateCheckpointFilename();
-                const backupPath = path.join(this.checkpointDir, backupFilename);
+                const { filePath: backupPath, relative: backupRelative } = this._newCheckpointWritePath(backupFilename);
                 fs.copyFileSync(this.dbPath, backupPath);
-                console.log(`📋 Created backup before restore: ${backupFilename}`);
+                console.log(`📋 Created backup before restore: ${backupRelative}`);
             }
 
             // Restore from checkpoint
@@ -436,9 +485,9 @@ class DatabaseCheckpointManager {
      */
     deleteCheckpoint(checkpointFilename) {
         try {
-            const checkpointPath = path.join(this.checkpointDir, checkpointFilename);
-            
-            if (!fs.existsSync(checkpointPath)) {
+            const checkpointPath = this._resolveCheckpointPath(checkpointFilename);
+
+            if (!checkpointPath || !fs.existsSync(checkpointPath)) {
                 throw new Error(`Checkpoint not found: ${checkpointFilename}`);
             }
 
@@ -446,16 +495,7 @@ class DatabaseCheckpointManager {
             fs.unlinkSync(checkpointPath);
             
             // Delete associated WAL and SHM files if they exist
-            const walPath = checkpointPath + '-wal';
-            const shmPath = checkpointPath + '-shm';
-            
-            if (fs.existsSync(walPath)) {
-                fs.unlinkSync(walPath);
-            }
-            
-            if (fs.existsSync(shmPath)) {
-                fs.unlinkSync(shmPath);
-            }
+            deleteCheckpointSidecars(checkpointPath);
 
             console.log(`🗑️ Deleted database checkpoint: ${checkpointFilename}`);
             return true;
@@ -569,8 +609,8 @@ class DatabaseCheckpointManager {
 /**
  * Factory function to create a checkpoint manager for a specific database
  */
-function createDatabaseCheckpointManager(dbPath, maxCheckpoints = 5) {
-    return new DatabaseCheckpointManager(dbPath, maxCheckpoints);
+function createDatabaseCheckpointManager(dbPath, maxCheckpoints = 5, globalResources = null) {
+    return new DatabaseCheckpointManager(dbPath, maxCheckpoints, globalResources);
 }
 
 module.exports = {

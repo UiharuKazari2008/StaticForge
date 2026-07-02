@@ -1406,11 +1406,11 @@ class ContextMenuController {
                 itemElement.addEventListener('click', () => {
                     const isItemDisabled = typeof item.disabled === 'function' ? item.disabled() : item.disabled;
                     if (!isItemDisabled) {
-                        this.executeAction(item.action, target, item);
-                        // Only hide menu if keepMenuOpen is not set to true
                         if (!item.keepMenuOpen) {
-                            this.hideMenu();
-                        } else {
+                            this.hideMenu({ instant: true });
+                        }
+                        this.executeAction(item.action, target, item);
+                        if (item.keepMenuOpen) {
                             // If menu stays open, refresh the item display
                             this.refreshListItemDisplay(itemElement, item, target);
                         }
@@ -1565,11 +1565,11 @@ class ContextMenuController {
                 iconElement.addEventListener('click', () => {
                     const isIconItemDisabled = typeof icon.disabled === 'function' ? icon.disabled() : icon.disabled;
                     if (!isIconItemDisabled) {
-                        this.executeAction(icon.action, target, icon);
-                        // Only hide menu if keepMenuOpen is not set to true
                         if (!icon.keepMenuOpen) {
-                            this.hideMenu();
-                        } else {
+                            this.hideMenu({ instant: true });
+                        }
+                        this.executeAction(icon.action, target, icon);
+                        if (icon.keepMenuOpen) {
                             // If menu stays open, refresh the icon display
                             this.refreshIconDisplay(iconElement, icon, target);
                         }
@@ -1725,14 +1725,18 @@ class ContextMenuController {
             if (isCellDisabled) return;
 
             if (submenuContext && options.customHandler && typeof options.customHandler === 'function') {
+                if (!cell.keepMenuOpen) {
+                    this.hideMenu({ instant: true });
+                }
                 options.customHandler(cell, target);
             } else if (cell.action && typeof cell.action === 'string') {
+                if (!cell.keepMenuOpen) {
+                    this.hideMenu({ instant: true });
+                }
                 this.executeAction(cell.action, target, cell);
             }
 
-            if (!cell.keepMenuOpen) {
-                this.hideMenu();
-            } else {
+            if (cell.keepMenuOpen) {
                 if (submenuContext && this.currentSubmenuState) {
                     if (this.currentSubmenuState.optionsfn) {
                         this.refreshSubmenu();
@@ -2510,8 +2514,10 @@ class ContextMenuController {
         requestAnimationFrame(() => requestAnimationFrame(openMove));
     }
 
-    hideMenu() {
+    hideMenu(options) {
         if (!this.isOpen) return;
+
+        const instant = !!(options && options.instant);
 
         if (this.menuStack.length > 0) {
             this._cancelPendingHide();
@@ -2526,7 +2532,7 @@ class ContextMenuController {
             return;
         }
 
-        const hideSession = this._cancelPendingHide();
+        this._cancelPendingHide();
 
         const hideConfig = this.activeRootMenuConfig;
         const hideTarget = this.currentTarget;
@@ -2546,32 +2552,16 @@ class ContextMenuController {
 
         this.clearHoverTimers();
 
+        if (instant) {
+            this._finalizeMenuHide(hideConfig, hideTarget, menu, overlay);
+            return;
+        }
+
+        const hideSession = this._hideSessionId;
+
         const finishHide = () => {
             if (hideSession !== this._hideSessionId) return;
-
-            menu.classList.remove('context-menu-closing', 'context-menu-opening');
-            menu.style.opacity = '';
-            menu.classList.add('hidden');
-            overlay.classList.add('hidden');
-            this.currentTarget = null;
-            this.activeRootMenuConfig = null;
-            this.activeMenuTrigger = null;
-            this.menuStack = [];
-            if (this.menu) {
-                this.menu.classList.remove('context-menu-click-triggered');
-            }
-
-            if (typeof explorerApplet !== 'undefined' && explorerApplet) {
-                explorerApplet._contextMenuTarget = null;
-            }
-
-            if (hideConfig && typeof hideConfig.onHide === 'function') {
-                try {
-                    hideConfig.onHide(hideTarget);
-                } catch (error) {
-                    console.error('Error executing context menu onHide:', error);
-                }
-            }
+            this._finalizeMenuHide(hideConfig, hideTarget, menu, overlay);
         };
 
         if (menu.classList.contains('hidden')) {
@@ -2606,6 +2596,34 @@ class ContextMenuController {
 
         menu.addEventListener('animationend', this._hideAnimationEndHandler);
         this._hideCompleteTimer = setTimeout(completeHide, 300);
+    }
+
+    _finalizeMenuHide(hideConfig, hideTarget, menu, overlay) {
+        if (menu) {
+            menu.classList.remove('context-menu-closing', 'context-menu-opening');
+            menu.style.opacity = '';
+            menu.classList.add('hidden');
+            menu.classList.remove('context-menu-click-triggered');
+        }
+        if (overlay) {
+            overlay.classList.add('hidden');
+        }
+        this.currentTarget = null;
+        this.activeRootMenuConfig = null;
+        this.activeMenuTrigger = null;
+        this.menuStack = [];
+
+        if (typeof explorerApplet !== 'undefined' && explorerApplet) {
+            explorerApplet._contextMenuTarget = null;
+        }
+
+        if (hideConfig && typeof hideConfig.onHide === 'function') {
+            try {
+                hideConfig.onHide(hideTarget);
+            } catch (error) {
+                console.error('Error executing context menu onHide:', error);
+            }
+        }
     }
 
     addSubmenuHoverSupport(itemElement, item, target) {
@@ -2931,6 +2949,9 @@ class ContextMenuController {
                     e.stopPropagation(); // Prevent click from bubbling to click-outside handler
                     const isSubItemClickDisabled = typeof subItem.disabled === 'function' ? subItem.disabled() : subItem.disabled;
                     if (!isSubItemClickDisabled) {
+                        if (!subItem.keepMenuOpen) {
+                            this.hideMenu({ instant: true });
+                        }
                         const runHandler = () => {
                             try {
                                 const result = customHandler(subItem, target, e);
@@ -2942,10 +2963,7 @@ class ContextMenuController {
                             }
                         };
                         runHandler();
-                        // Only hide menu if keepMenuOpen is not set to true
-                        if (!subItem.keepMenuOpen) {
-                            this.hideMenu();
-                        } else {
+                        if (subItem.keepMenuOpen) {
                             // If menu stays open, check if this is a dynamic submenu (optionsfn) or static submenu
                             // For static submenus, just refresh items (call loadfn again)
                             // For dynamic submenus (optionsfn), regenerate the entire submenu
@@ -2971,11 +2989,11 @@ class ContextMenuController {
                     e.stopPropagation(); // Prevent click from bubbling to click-outside handler
                     const isSubItemActionDisabled = typeof subItem.disabled === 'function' ? subItem.disabled() : subItem.disabled;
                     if (!isSubItemActionDisabled) {
-                        this.executeAction(subItem.action, target, subItem);
-                        // Only hide menu if keepMenuOpen is not set to true
                         if (!subItem.keepMenuOpen) {
-                            this.hideMenu();
-                        } else {
+                            this.hideMenu({ instant: true });
+                        }
+                        this.executeAction(subItem.action, target, subItem);
+                        if (subItem.keepMenuOpen) {
                             // If menu stays open, check if this is a dynamic submenu (optionsfn) or static submenu
                             // For static submenus, just refresh items (call loadfn again)
                             // For dynamic submenus (optionsfn), regenerate the entire submenu

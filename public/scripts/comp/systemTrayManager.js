@@ -397,8 +397,8 @@ function attachWorkspaceTrayContextMenu(icon) {
                 },
                 items: [
                     {
-                        icon: 'fas fa-solar-system',
-                        text: 'Solar System',
+                        icon: 'fas fa-database',
+                        text: 'Data Management',
                         action: 'workspace-manage'
                     },
                     {

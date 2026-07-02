@@ -85,6 +85,7 @@ class CharacterSearchModal extends WikiDisplayBase {
                     window.closeModal(this.modal);
                 } else {
                     this.modal.classList.add('hidden');
+                    debouncedUpdateTaskbarWindows();
                 }
             });
         }

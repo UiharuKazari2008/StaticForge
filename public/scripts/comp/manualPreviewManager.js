@@ -1438,6 +1438,42 @@ function resetManualPreview() {
     }
 }
 
+function resolveManualPreviewGalleryIndex() {
+    if (!window.currentManualPreviewImage || !allImages || allImages.length === 0) {
+        return -1;
+    }
+
+    const currentFilename = window.currentManualPreviewImage.original
+        || window.currentManualPreviewImage.filename
+        || window.currentManualPreviewImage.upscaled;
+    const storedIndex = window.currentManualPreviewIndex;
+
+    if (typeof storedIndex === 'number' && storedIndex >= 0 && storedIndex < allImages.length) {
+        const storedImg = allImages[storedIndex];
+        const storedFilename = storedImg?.filename || storedImg?.original || storedImg?.upscaled;
+        if (storedFilename === currentFilename) {
+            return storedIndex;
+        }
+        const meta = window.currentManualPreviewImage.metadata || window.lastGeneration;
+        const expansionSource = meta?.forge_data?.expansion_source;
+        if (expansionSource && storedFilename === expansionSource) {
+            return storedIndex;
+        }
+    }
+
+    const galleryIndex = findTrueImageIndexInGallery(currentFilename);
+    if (galleryIndex !== -1) {
+        return galleryIndex;
+    }
+
+    const lastGenFilename = window.lastGeneration?.filename || window.lastGeneration?.original;
+    if (lastGenFilename && lastGenFilename === currentFilename) {
+        return 0;
+    }
+
+    return -1;
+}
+
 // Function to update manual preview navigation buttons
 function updateManualPreviewNavigation() {
     const prevBtn = document.getElementById('manualPreviewPrevBtn');
@@ -1452,15 +1488,17 @@ function updateManualPreviewNavigation() {
         return;
     }
 
-    // Find current image index in gallery using filename comparison
-    const currentFilename = window.currentManualPreviewImage.original || window.currentManualPreviewImage.filename;
-    const currentIndex = findTrueImageIndexInGallery(currentFilename);
+    const currentIndex = resolveManualPreviewGalleryIndex();
 
     if (currentIndex === -1) {
         // Current image not found in gallery, disable both buttons
         prevBtn.disabled = true;
         nextBtn.disabled = true;
         return;
+    }
+
+    if (window.currentManualPreviewIndex !== currentIndex) {
+        window.currentManualPreviewIndex = currentIndex;
     }
 
     // Enable/disable buttons based on position
@@ -1539,7 +1577,12 @@ async function navigateManualPreview(event) {
 
         } else {
             // Normal mode - use WebSocket API with global indices
-            const currentIndex = window.currentManualPreviewIndex ?? 0;
+            const currentIndex = resolveManualPreviewGalleryIndex();
+            if (currentIndex === -1) {
+                console.warn('Current image not found in gallery');
+                showManualPreviewNavigationLoading(false);
+                return;
+            }
             newIndex = currentIndex + direction;
 
             // Check for negative index

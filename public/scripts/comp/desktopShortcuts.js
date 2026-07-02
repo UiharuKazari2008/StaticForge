@@ -101,6 +101,11 @@ class DesktopShortcutsManager {
                 icon: this.createFolderIcon,
                 contextMenu: this.getFolderContextMenu,
                 onClick: this.handleFolderClick
+            },
+            'system-folder': {
+                icon: this.createSystemFolderIcon,
+                contextMenu: this.getSystemFolderContextMenu,
+                onClick: this.handleSystemFolderClick
             }
         };
     }
@@ -472,6 +477,15 @@ class DesktopShortcutsManager {
         return this._isDesktopKeyboardFocused(e);
     }
 
+    isDesktopPasteKeyboardContext(e) {
+        if (!document.body.classList.contains('desktop-mode')) return false;
+        if (currentActiveWindowId) return false;
+        if (this._isEditableShortcutTarget(e.target) || this._isEditableShortcutTarget(document.activeElement)) return false;
+        if (this._isDesktopKeyboardFocused(e)) return true;
+        // isDesktopSurfaceContextTarget: public/scripts/comp/explorerApplet.js
+        return isDesktopSurfaceContextTarget(e.target);
+    }
+
     wireKeyboardListeners() {
         if (document.body.dataset.desktopShortcutKeyboardWired === 'true') return;
         document.body.dataset.desktopShortcutKeyboardWired = 'true';
@@ -493,6 +507,20 @@ class DesktopShortcutsManager {
             e.preventDefault();
             e.stopPropagation();
             void this.removeSelectedShortcuts();
+            return true;
+        };
+
+        const handlePaste = (e) => {
+            if (!(e.ctrlKey || e.metaKey) || (e.key !== 'v' && e.key !== 'V')) return false;
+            if (!this.isDesktopPasteKeyboardContext(e)) return false;
+            if (localStorage.getItem('userType') === 'readonly') return false;
+            const explorer = typeof initializeExplorerApplet === 'function'
+                ? initializeExplorerApplet()
+                : explorerApplet;
+            if (!explorer?.clipboard) return false;
+            e.preventDefault();
+            e.stopPropagation();
+            void explorer.pasteToDesktopSurface();
             return true;
         };
 
@@ -519,6 +547,24 @@ class DesktopShortcutsManager {
             label: 'Remove shortcut',
             keys: 'Delete',
             overlayIcon: 'fas fa-trash',
+            overlayGroup: 'Desktop'
+        });
+        registerKeyboardListener({
+            id: 'desktopShortcuts.paste',
+            handler: handlePaste,
+            type: 'global',
+            priority: 55,
+            desktopContextOnly: true,
+            overlayValid: () => {
+                if (localStorage.getItem('userType') === 'readonly') return false;
+                const explorer = typeof initializeExplorerApplet === 'function'
+                    ? initializeExplorerApplet()
+                    : explorerApplet;
+                return !!(explorer && explorer.clipboard);
+            },
+            label: 'Paste',
+            keys: 'Ctrl+V',
+            overlayIcon: 'fas fa-paste',
             overlayGroup: 'Desktop'
         });
     }
@@ -809,6 +855,50 @@ class DesktopShortcutsManager {
         return `Delete folder "${name}"? Any files or items stored inside will be permanently deleted.`;
     }
 
+    async _permanentlyDeleteVfsVirtualItem(item) {
+        const wsId = item.workspaceId || this.currentWorkspace;
+        if (!wsId) throw new Error('Workspace required');
+
+        switch (item.targetKind) {
+            case 'image':
+            case 'scrap': {
+                const filename = item.previewImageFilename || item.targetId;
+                if (!filename) throw new Error('No filename for image');
+                const result = await wsClient.deleteImagesBulk([filename]);
+                if (!result?.successful) throw new Error('Failed to delete image');
+                if (typeof loadGallery === 'function') loadGallery(true);
+                break;
+            }
+            case 'reference':
+                await wsClient.deleteReference(item.targetId, wsId);
+                break;
+            case 'vibe':
+                await wsClient.deleteVibeImage(item.targetId, wsId);
+                break;
+            case 'note': {
+                const noteId = item.targetId;
+                if (!noteId) throw new Error('No note id');
+                if (notepadManager?.notebookDeleteNote) {
+                    await notepadManager.notebookDeleteNote(noteId);
+                } else {
+                    const response = await wsClient.deleteNote(noteId);
+                    if (!response?.success) throw new Error('Failed to delete note');
+                }
+                break;
+            }
+            default:
+                return;
+        }
+
+        if (item.id && item.isShortcut) {
+            try {
+                await vfsClient.deleteEntry(item.id);
+            } catch (err) {
+                console.warn('VFS entry already removed:', item.id, err?.message || err);
+            }
+        }
+    }
+
     async _purgeVfsFolderContents(folderListPath) {
         if (!folderListPath || !wsClient?.isConnected()) return;
 
@@ -823,23 +913,18 @@ class DesktopShortcutsManager {
         const items = listing?.items || [];
         for (const item of items) {
             const targetKind = item.targetKind || item.kind;
-            if (targetKind === 'vfs-folder' || item.kind === 'folder') {
+            if (item.isDesktopShortcut && item.id) {
+                const exists = this.shortcuts.find(s => s.id === item.id && !s._isDeleted);
+                if (exists) await this.removeShortcut(item.id);
+            } else if (['image', 'scrap', 'reference', 'vibe', 'note'].includes(targetKind)
+                && item.isShortcut && !item.isDesktopShortcut) {
+                await this._permanentlyDeleteVfsVirtualItem(item);
+            } else if (targetKind === 'user-file' && !item.isShortcut) {
+                await wsClient.sendMessage('vfs_delete_file', { fileId: item.targetId || item.id });
+            } else if (targetKind === 'vfs-folder' || item.kind === 'folder') {
                 const subId = item.targetId || item.id;
                 const subPath = item.navPath || `${folderListPath.replace(/\/+$/, '')}/${subId}`;
                 await this._purgeVfsFolderContents(subPath);
-                try {
-                    await vfsClient.deleteFolder(subId);
-                } catch (err) {
-                    console.error('Failed to delete subfolder:', subId, err);
-                    throw err;
-                }
-            } else if (targetKind === 'user-file') {
-                await wsClient.sendMessage('vfs_delete_file', { fileId: item.targetId || item.id });
-            } else if (item.isDesktopShortcut && item.id) {
-                const exists = this.shortcuts.find(s => s.id === item.id && !s._isDeleted);
-                if (exists) await this.removeShortcut(item.id);
-            } else if (item.isShortcut && item.id) {
-                await vfsClient.deleteEntry(item.id);
             }
         }
     }
@@ -1657,11 +1742,43 @@ class DesktopShortcutsManager {
         return icon;
     }
 
+    createSystemFolderIcon(shortcut) {
+        const icon = document.createElement('div');
+        icon.className = 'desktop-shortcut-icon';
+        const iconClass = shortcut?.data?.icon
+            || (shortcut?.data?.systemKey === 'trash' ? 'fas fa-trash-can' : 'fas fa-folder');
+        icon.innerHTML = `<i class="${iconClass}"></i>`;
+        return icon;
+    }
+
     handleFolderClick(shortcut) {
         const wsId = this.currentWorkspace;
         const vfsFolderId = shortcut.data?.vfsFolderId;
         if (!wsId || !vfsFolderId) return;
         openExplorerApplet(`/Workspaces/${wsId}/Desktop/${vfsFolderId}`);
+    }
+
+    handleSystemFolderClick(shortcut) {
+        const navPath = shortcut?.data?.navPath;
+        if (!navPath) return;
+        openExplorerApplet(navPath);
+    }
+
+    getSystemFolderContextMenu() {
+        return {
+            sections: [
+                {
+                    type: 'list',
+                    items: [
+                        {
+                            icon: 'fas fa-folder-open',
+                            text: 'Open',
+                            action: 'open-system-folder-shortcut'
+                        }
+                    ]
+                }
+            ]
+        };
     }
 
     getFolderContextMenu() {
@@ -1801,6 +1918,18 @@ class DesktopShortcutsManager {
         });
         this.clearSelection();
         this.renderShortcuts();
+    }
+
+    async promoteShortcutsToDesktopRoot(shortcutIds) {
+        const workspaceId = this.currentWorkspace;
+        if (!workspaceId || !shortcutIds.length) return;
+
+        const updates = shortcutIds.map(shortcutId => ({ shortcutId, folderId: null }));
+        await vfsClient.updateShortcutFolders(workspaceId, updates);
+        updates.forEach(({ shortcutId }) => {
+            const s = this.shortcuts.find(sc => sc.id === shortcutId);
+            if (s) s.folderId = null;
+        });
     }
 
     // Find applet by launch ID
@@ -2729,6 +2858,13 @@ class DesktopShortcutsManager {
                         shortcut: this.draggedShortcut.shortcut
                     }];
 
+                const nestedIds = itemsToMove
+                    .filter(item => item.shortcut.folderId != null && item.shortcut.folderId !== undefined)
+                    .map(item => item.shortcut.id);
+                if (nestedIds.length) {
+                    await this.promoteShortcutsToDesktopRoot(nestedIds);
+                }
+
                 itemsToMove.forEach((item) => {
                     const finalX = parseInt(item.element.style.left, 10) || 0;
                     const finalY = parseInt(item.element.style.top, 10) || 0;
@@ -3303,6 +3439,18 @@ class DesktopShortcutsManager {
                 throw new Error('Shortcut not found');
             }
 
+            if (shortcut.protected && shortcut.type === 'system-folder') {
+                showGlassToast(
+                    'info',
+                    'Desktop',
+                    'This shortcut is managed in Desktop Settings',
+                    false,
+                    4000,
+                    '<i class="fas fa-cog"></i>'
+                );
+                return;
+            }
+
             const isNew = !!shortcut._isNew;
             const isDeleted = !!shortcut._isDeleted;
 
@@ -3511,6 +3659,12 @@ document.addEventListener('contextMenuAction', async (event) => {
         case 'open-folder-shortcut':
             if (shortcut.type === 'folder') {
                 desktopShortcuts.handleFolderClick(shortcut);
+            }
+            break;
+
+        case 'open-system-folder-shortcut':
+            if (shortcut.type === 'system-folder') {
+                desktopShortcuts.handleSystemFolderClick(shortcut);
             }
             break;
 

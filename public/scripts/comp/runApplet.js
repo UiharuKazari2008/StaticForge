@@ -131,6 +131,7 @@ class RunApplet {
             closeModal(this.modal);
         } else {
             this.modal.classList.add('hidden');
+            debouncedUpdateTaskbarWindows();
         }
         this.isOpen = false;
         clearTimeout(this.searchTimeout);

@@ -5,6 +5,11 @@
 
 const QUIPS_DSAP_URL = 'quips.dyna.dreamscape.jp';
 const QUIPS_DSAP_TITLE = 'Dynamic Quips';
+const QUIPS_DSAP_TAB_LABELS = {
+    status: 'Status',
+    phrasebook: 'Phrase Book',
+    configuration: 'Configuration'
+};
 const QUIPS_DSAP_RESERVED_SEGMENTS = new Set(['phrasebook', 'settings']);
 
 function quipsDsapDecodeSegment(segment) {
@@ -189,25 +194,38 @@ function quipsDsapFormatStatValue(value, fallback) {
     return String(value);
 }
 
+function quipsDsapResolveActiveTab(host) {
+    if (quipsDsapIsPhrasebookView(host)) return 'phrasebook';
+    if (quipsDsapIsSettingsView(host)) return 'configuration';
+    return 'status';
+}
+
+function quipsDsapBuildTabBar(activeTabId) {
+    // dsapSmfBuildTabBar: public/scripts/comp/dsapSmfMarkup.js
+    return dsapSmfBuildTabBar([
+        { id: 'status', label: 'Status', icon: 'fas fa-gauge-high' },
+        { id: 'phrasebook', label: 'Phrase Book', icon: 'fas fa-book' },
+        { id: 'configuration', label: 'Configuration', icon: 'fas fa-sliders' }
+    ], activeTabId, { tabBarId: 'quipsDsapTabBar', dataAttr: 'data-quips-tab' });
+}
+
+function quipsDsapBuildSmfChrome(activeTabId) {
+    // dsapSmfBuildHeader: public/scripts/comp/dsapSmfMarkup.js
+    return dsapSmfBuildHeader({
+        branchTitle: DSAP_SMF_BRANCH_IMAGE_GEN,
+        toolTitle: 'Quips'
+    }) + quipsDsapBuildTabBar(activeTabId);
+}
+
 function quipsDsapBuildDashboardHtml(workspaceId, wsLabel) {
     const safeLabel = quipsDsapEscapeHtml(wsLabel);
     const safeWs = quipsDsapEscapeAttr(workspaceId);
     return `
-<div data-dsap="quips-dyna" class="dsap-root quips-dsap">
-<table class="quips-dsap-header" cellspacing="0" cellpadding="6" width="100%" border="0">
-  <tr>
-    <td class="quips-dsap-header-left">
-      <img src="/static_images/logo_icon.png" alt="Dreamscape" style="height:32px; vertical-align:middle; margin-right:8px;">
-      <span class="quips-dsap-header-title">Dynamic Quips</span>
-    </td>
-    <td class="quips-dsap-header-right" align="right">Configuration</td>
-  </tr>
-</table>
-<div class="quips-dsap-wsbar">
-  Workspace: <b>${safeLabel}</b>
-</div>
+<div data-dsap="quips-dyna" class="dsap-root dsap-smf quips-dsap">
+${quipsDsapBuildSmfChrome('status')}
+${dsapSmfBuildContextBar(`Workspace: <b>${safeLabel}</b>`)}
 
-<table class="quips-dsap-stats" id="quipsDsapStatsGrid" cellspacing="0" cellpadding="3" width="100%" border="1" style="border-collapse:collapse; background:#fff;">
+<table class="quips-dsap-stats dsap-smf-stats" id="quipsDsapStatsGrid" cellspacing="0" cellpadding="3" width="100%" border="1">
   <tr>
     <td align="center" width="20%">
       <span class="quips-dsap-stat-label">Quip terms</span><br>
@@ -252,20 +270,15 @@ function quipsDsapBuildDashboardHtml(workspaceId, wsLabel) {
   <div id="quipsDsapProgressBar"></div>
 </div>
 
-<div class="quips-dsap-actions">
-  <button type="button" class="quips-dsap-action-btn quips-btn-primary" data-quips-dsap-action="generate"><i class="fas fa-wand-magic-sparkles"></i> Generate</button>
-  <button type="button" class="quips-dsap-action-btn" data-quips-dsap-action="view"><i class="fas fa-book"></i> View Phrase Book</button>
-  <button type="button" class="quips-dsap-action-btn" data-quips-dsap-action="settings"><i class="fas fa-sliders"></i> Settings</button>
+<div class="quips-dsap-actions dsap-smf-toolbar">
   <div class="quips-dsap-workspace-picker">
-    <label class="quips-dsap-workspace-label">Workspace:</label>
-    <div id="quipsDsapWorkspaceDropdown" class="custom-dropdown">
-      <button type="button" id="quipsDsapWorkspaceBtn" class="custom-dropdown-btn">
-        <span id="quipsDsapWorkspaceSelected">${safeLabel}</span>
-      </button>
-      <div id="quipsDsapWorkspaceMenu" class="custom-dropdown-menu hidden"></div>
-    </div>
+    <label class="quips-dsap-workspace-label" for="quipsDsapWorkspaceBtn">Workspace:</label>
+    <button type="button" id="quipsDsapWorkspaceBtn" class="dsap-smf-btn dsap-smf-btn-small quips-dsap-workspace-btn">
+      <span id="quipsDsapWorkspaceSelected">${safeLabel}</span> <i class="fas fa-caret-down"></i>
+    </button>
     <input type="hidden" id="quipsDsapWorkspaceHidden" value="${safeWs}">
   </div>
+  <button type="button" class="quips-dsap-action-btn dsap-smf-btn dsap-smf-btn-primary quips-btn-primary" data-quips-dsap-action="generate"><i class="fas fa-wand-magic-sparkles"></i> Generate</button>
 </div>
 
 <div class="quips-dsap-previews hidden" id="quipsDsapPreviews"></div>
@@ -275,17 +288,9 @@ function quipsDsapBuildDashboardHtml(workspaceId, wsLabel) {
 function quipsDsapBuildPhrasebookHtml(title) {
     const safeTitle = quipsDsapEscapeHtml(title || 'Phrase book');
     return `
-<div data-dsap="quips-dyna" class="dsap-root quips-dsap quips-dsap-phrasebook">
-<table class="quips-dsap-header" cellspacing="0" cellpadding="6" width="100%" border="0">
-  <tr>
-    <td class="quips-dsap-header-left">
-      <img src="/static_images/logo_icon.png" alt="Dreamscape" style="height:32px; vertical-align:middle; margin-right:8px;">
-      <span class="quips-dsap-header-title">Dynamic Quips — Phrase Book</span>
-    </td>
-    <td class="quips-dsap-header-right" align="right">Configuration</td>
-  </tr>
-</table>
-<div class="quips-dsap-phrasebook-toolbar">
+<div data-dsap="quips-dyna" class="dsap-root dsap-smf quips-dsap quips-dsap-phrasebook">
+${quipsDsapBuildSmfChrome('phrasebook')}
+<div class="quips-dsap-phrasebook-toolbar dsap-smf-toolbar">
   <span class="quips-dsap-phrasebook-title">${safeTitle}</span>
 </div>
 <div class="quips-dsap-phrasebook-body tag-wiki-page" id="quipsDsapPhrasebookBody">
@@ -298,17 +303,9 @@ function quipsDsapBuildSettingsHtml(workspaceId, wsLabel) {
     const safeLabel = quipsDsapEscapeHtml(wsLabel);
     const safeWs = quipsDsapEscapeAttr(workspaceId);
     return `
-<div data-dsap="quips-dyna" class="dsap-root quips-dsap quips-dsap-settings">
-<table class="quips-dsap-header" cellspacing="0" cellpadding="6" width="100%" border="0">
-  <tr>
-    <td class="quips-dsap-header-left">
-      <img src="/static_images/logo_icon.png" alt="Dreamscape" style="height:32px; vertical-align:middle; margin-right:8px;">
-      <span class="quips-dsap-header-title">Dynamic Quips — Settings</span>
-    </td>
-    <td class="quips-dsap-header-right" align="right">Configuration</td>
-  </tr>
-</table>
-<div class="quips-dsap-phrasebook-toolbar">
+<div data-dsap="quips-dyna" class="dsap-root dsap-smf quips-dsap quips-dsap-settings">
+${quipsDsapBuildSmfChrome('configuration')}
+<div class="quips-dsap-phrasebook-toolbar dsap-smf-toolbar">
   <span class="quips-dsap-phrasebook-title">Settings — ${safeLabel}</span>
 </div>
 
@@ -318,12 +315,9 @@ function quipsDsapBuildSettingsHtml(workspaceId, wsLabel) {
   <tr>
     <td class="quips-dsap-setting-label">Automatic updates</td>
     <td>
-      <div id="quipsDsapScheduleDropdown" class="custom-dropdown">
-        <button type="button" id="quipsDsapScheduleBtn" class="custom-dropdown-btn">
-          <span id="quipsDsapScheduleSelected">Loading…</span>
-        </button>
-        <div id="quipsDsapScheduleMenu" class="custom-dropdown-menu hidden"></div>
-      </div>
+      <button type="button" id="quipsDsapScheduleBtn" class="dsap-smf-btn dsap-smf-btn-small quips-dsap-setting-menu-btn">
+        <span id="quipsDsapScheduleSelected">Loading…</span> <i class="fas fa-caret-down"></i>
+      </button>
       <input type="hidden" id="quipsDsapScheduleHidden" value="disabled">
     </td>
     <td class="quips-dsap-setting-hint-cell"><span id="quipsDsapLastRunHint"></span></td>
@@ -331,12 +325,9 @@ function quipsDsapBuildSettingsHtml(workspaceId, wsLabel) {
   <tr>
     <td class="quips-dsap-setting-label">Terms to rank</td>
     <td>
-      <div id="quipsDsapTermLimitDropdown" class="custom-dropdown">
-        <button type="button" id="quipsDsapTermLimitBtn" class="custom-dropdown-btn">
-          <span id="quipsDsapTermLimitSelected">50</span>
-        </button>
-        <div id="quipsDsapTermLimitMenu" class="custom-dropdown-menu hidden"></div>
-      </div>
+      <button type="button" id="quipsDsapTermLimitBtn" class="dsap-smf-btn dsap-smf-btn-small quips-dsap-setting-menu-btn">
+        <span id="quipsDsapTermLimitSelected">50</span> <i class="fas fa-caret-down"></i>
+      </button>
       <input type="hidden" id="quipsDsapTermLimitHidden" value="50">
     </td>
     <td class="quips-dsap-setting-hint-cell">How many prompt terms to extract and rank per scan</td>
@@ -344,12 +335,9 @@ function quipsDsapBuildSettingsHtml(workspaceId, wsLabel) {
   <tr>
     <td class="quips-dsap-setting-label">Terms per Grok batch</td>
     <td>
-      <div id="quipsDsapGrokBatchDropdown" class="custom-dropdown">
-        <button type="button" id="quipsDsapGrokBatchBtn" class="custom-dropdown-btn">
-          <span id="quipsDsapGrokBatchSelected">3</span>
-        </button>
-        <div id="quipsDsapGrokBatchMenu" class="custom-dropdown-menu hidden"></div>
-      </div>
+      <button type="button" id="quipsDsapGrokBatchBtn" class="dsap-smf-btn dsap-smf-btn-small quips-dsap-setting-menu-btn">
+        <span id="quipsDsapGrokBatchSelected">3</span> <i class="fas fa-caret-down"></i>
+      </button>
       <input type="hidden" id="quipsDsapGrokBatchHidden" value="3">
     </td>
     <td class="quips-dsap-setting-hint-cell">How many ranked terms to send per Grok request</td>
@@ -357,12 +345,9 @@ function quipsDsapBuildSettingsHtml(workspaceId, wsLabel) {
   <tr>
     <td class="quips-dsap-setting-label">Quips per term</td>
     <td>
-      <div id="quipsDsapPhrasesPerTermDropdown" class="custom-dropdown">
-        <button type="button" id="quipsDsapPhrasesPerTermBtn" class="custom-dropdown-btn">
-          <span id="quipsDsapPhrasesPerTermSelected">15</span>
-        </button>
-        <div id="quipsDsapPhrasesPerTermMenu" class="custom-dropdown-menu hidden"></div>
-      </div>
+      <button type="button" id="quipsDsapPhrasesPerTermBtn" class="dsap-smf-btn dsap-smf-btn-small quips-dsap-setting-menu-btn">
+        <span id="quipsDsapPhrasesPerTermSelected">15</span> <i class="fas fa-caret-down"></i>
+      </button>
       <input type="hidden" id="quipsDsapPhrasesPerTermHidden" value="15">
     </td>
     <td class="quips-dsap-setting-hint-cell">How many phrases Grok generates for each ranked term</td>
@@ -397,100 +382,12 @@ const quipsDsapScopedCss = `
   padding: 3px 4px;
 }
 
-/* Larger top header bar (web 1.5 / Dreamscape backend config style) */
-[data-dsap="quips-dyna"] .quips-dsap-header {
-  background: #003366;
-  color: #ffffff;
-  border: 1px solid #000033;
-  margin-bottom: 4px;
-  min-height: 40px;
-}
-[data-dsap="quips-dyna"].quips-dsap.quips-dsap-phrasebook .quips-dsap-header {
-  margin-bottom: 2px;
-}
-[data-dsap="quips-dyna"] .quips-dsap-header-left {
-  padding: 5px 8px;
-  vertical-align: middle;
-}
-[data-dsap="quips-dyna"] .quips-dsap-header-title {
-  font-weight: bold;
-  font-size: 13pt;
-  vertical-align: middle;
-}
-[data-dsap="quips-dyna"] .quips-dsap-header-right {
-  font-size: 11pt;
-  color: #ffffff;
-  padding: 5px 10px;
-  text-align: right;
-  vertical-align: middle;
-  font-weight: bold;
-  letter-spacing: 0.5px;
-  background: #001a33;
-  border: 1px solid #336699;
-}
+/* Shared chrome (header, tabs, stats, buttons) lives in public/css/dsap-smf.css */
 
-[data-dsap="quips-dyna"] .quips-dsap-wsbar {
-  background: #336699;
-  color: #ffffff;
-  padding: 3px 8px;
-  font-size: 11pt;
-  margin: 2px 0 5px;
-  border: 1px solid #000033;
-}
-
-[data-dsap="quips-dyna"] .quips-dsap-section-hdr {
-  background: #000066;
-  color: #ffffff;
-  font-weight: bold;
-  font-size: 11pt;
-  padding: 2px 5px;
-  margin: 5px 0 3px;
-  border: 1px solid #000033;
-}
-
-/* Old-school stats table (cell borders like 2005 admin pages) */
-[data-dsap="quips-dyna"] .quips-dsap-stats {
-  background: #ffffff;
-  border: 1px solid #666666;
-  border-collapse: collapse;
-  margin-bottom: 5px;
-  font-size: 11pt;
-}
-[data-dsap="quips-dyna"] .quips-dsap-stats td {
-  background: #ffffff;
-  border: 1px solid #999999;
-  padding: 4px 6px;
-  text-align: center;
-  vertical-align: middle;
-}
-[data-dsap="quips-dyna"] .quips-dsap-stat-label {
-  display: block;
-  font-size: 11pt;
-  color: #111111;
-  font-weight: bold;
-  margin-bottom: 1px;
-}
 [data-dsap="quips-dyna"] .quips-dsap-stat-value {
-  font-size: 11pt;
-  font-weight: bold;
-  color: #000000;
   word-break: break-word;
 }
 
-/* Status box */
-[data-dsap="quips-dyna"] .quips-dsap-statusbox {
-  border: 1px solid #666666;
-  background: #ffffee;
-  padding: 5px 7px;
-  margin-bottom: 5px;
-  min-height: 36px;
-  font-size: 11pt;
-}
-[data-dsap="quips-dyna"] .quips-dsap-status-message {
-  font-size: 11pt;
-  color: #000000;
-  font-weight: bold;
-}
 [data-dsap="quips-dyna"] .quips-dsap-status-detail {
   font-size: 11pt;
   color: #222222;
@@ -526,64 +423,29 @@ const quipsDsapScopedCss = `
   background: #003399;
 }
 
-/* Action buttons row + picker — more Windows 98 style: rounded + orange border + classic bevel */
-[data-dsap="quips-dyna"] .quips-dsap-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 4px;
-  margin: 5px 0;
-}
-[data-dsap="quips-dyna"] .quips-dsap-action-btn {
-  font-size: 9pt;
-  font-weight: bold;
-  background: #c0c0c0;
-  color: #000000;
-  border: 1px solid #ff8c00;
-  border-radius: 3px;
-  padding: 5px 12px;
-  margin: 0;
-  cursor: pointer;
-  line-height: 1.15;
-  box-shadow:
-    1px 1px 0 #ffffff inset,
-    -1px -1px 0 #808080 inset;
-}
-[data-dsap="quips-dyna"] .quips-dsap-action-btn:active {
-  box-shadow:
-    -1px -1px 0 #ffffff inset,
-    1px 1px 0 #808080 inset;
-  background: #b0b0b0;
-}
-[data-dsap="quips-dyna"] .quips-btn-primary {
-  background: #d4d8e0;
-  border: 2px solid #ff8c00;
-  box-shadow:
-    1px 1px 0 #ffffff inset,
-    -1px -1px 0 #606060 inset;
-}
-[data-dsap="quips-dyna"] .quips-btn-primary:active {
-  background: #c0c4cc;
-  box-shadow:
-    -1px -1px 0 #ffffff inset,
-    1px 1px 0 #606060 inset;
-}
-[data-dsap="quips-dyna"] .quips-btn-danger {
-  background: #e8a8a8;
-  color: #330000;
-  border: 1px solid #cc4400;
-}
 [data-dsap="quips-dyna"] .quips-dsap-workspace-picker {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 1px;
-  margin-left: 8px;
-  min-width: 150px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 auto;
 }
 [data-dsap="quips-dyna"] .quips-dsap-workspace-label {
   font-size: 11pt;
   color: #111111;
   font-weight: bold;
+  white-space: nowrap;
+}
+[data-dsap="quips-dyna"] .quips-dsap-workspace-picker .custom-dropdown {
+  min-width: 140px;
+  max-width: 240px;
+}
+[data-dsap="quips-dyna"] .quips-dsap-actions [data-quips-dsap-action="generate"] {
+  margin-left: auto;
+  flex: 0 0 auto;
+  min-width: 9em;
+  padding-left: 18px;
+  padding-right: 18px;
 }
 
 /* Previews (generation in progress samples) */
@@ -823,6 +685,7 @@ const quipsDsapScopedCss = `
 const quipsDsapDriver = {
     _state: null,
     _settingsDropdownScopeRegistered: false,
+    _clickMenuTargets: [],
 
     init(host) {
         this._state = {
@@ -840,6 +703,7 @@ const quipsDsapDriver = {
         root.addEventListener('click', this._state._onClick);
 
         this._wireSettingsDropdownModalScope(host);
+        this._wireQuipsTabs(root, host);
 
         if (quipsDsapIsPhrasebookView(host)) {
             void this._loadPhrasebook();
@@ -869,12 +733,24 @@ const quipsDsapDriver = {
         if (root && typeof teardownDropdown === 'function') {
             root.querySelectorAll('.custom-dropdown').forEach((el) => teardownDropdown(el));
         }
+        this._teardownClickMenus();
 
         if (window.wsClient && typeof window.wsClient.off === 'function') {
             state.wsHandlers.forEach(({ event, fn }) => window.wsClient.off(event, fn));
         }
         this._state = null;
         this._settingsDropdownScopeRegistered = false;
+    },
+
+    _wireQuipsTabs(root, host) {
+        // dsapSmfWireTabBar: public/scripts/comp/dsapSmfMarkup.js
+        dsapSmfWireTabBar(root, '#quipsDsapTabBar', 'data-quips-tab', (tabId) => {
+            const workspaceId = this._state?.workspaceId || quipsDsapResolveWorkspaceId(host);
+            const ws = encodeURIComponent(workspaceId);
+            if (tabId === 'phrasebook') return `dsap://${QUIPS_DSAP_URL}/${ws}/phrasebook`;
+            if (tabId === 'configuration') return `dsap://${QUIPS_DSAP_URL}/${ws}/settings`;
+            return `dsap://${QUIPS_DSAP_URL}/${ws}`;
+        }, host);
     },
 
     _getHostModal(host) {
@@ -1060,145 +936,128 @@ const quipsDsapDriver = {
                 : 'Last automatic run: Never';
         }
 
-        this._wireSimpleSettingDropdown({
-            containerId: 'quipsDsapScheduleDropdown',
-            btnId: 'quipsDsapScheduleBtn',
-            menuId: 'quipsDsapScheduleMenu',
-            selectedId: 'quipsDsapScheduleSelected',
-            hiddenId: 'quipsDsapScheduleHidden',
-            initialValue: draft.schedule || 'disabled',
-            renderMenu: (menu, btn, selectedEl, hidden, currentVal, onSelect) => {
-                if (typeof buildQuipsAutoScheduleDropdownGroups !== 'function' || typeof renderGroupedDropdown !== 'function') return;
-                renderGroupedDropdown(
-                    menu,
-                    buildQuipsAutoScheduleDropdownGroups(),
-                    (value) => {
-                        draft.schedule = value;
-                        draft.enabled = value !== 'disabled';
-                        selectedEl.textContent = typeof getQuipsAutoScheduleLabel === 'function'
-                            ? getQuipsAutoScheduleLabel(value)
-                            : value;
-                        hidden.value = value;
-                        onSelect(value);
-                    },
-                    () => closeDropdown(menu, btn),
-                    currentVal,
-                    (opt) => quipsDsapEscapeHtml(opt.label)
-                );
-            },
-            labelForValue: (value) => (typeof getQuipsAutoScheduleLabel === 'function'
-                ? getQuipsAutoScheduleLabel(value)
-                : value),
-            onSelect: () => this._persistSettingsDraft()
-        });
+        this._wireSettingsClickMenus();
+    },
 
-        this._wireNumericSettingDropdown({
-            containerId: 'quipsDsapTermLimitDropdown',
-            btnId: 'quipsDsapTermLimitBtn',
-            menuId: 'quipsDsapTermLimitMenu',
-            selectedId: 'quipsDsapTermLimitSelected',
-            hiddenId: 'quipsDsapTermLimitHidden',
-            options: QUIPS_TERM_LIMIT_OPTIONS,
-            initialValue: draft.termLimit,
-            onSelect: (value) => {
-                draft.termLimit = value;
-                this._persistSettingsDraft();
-            }
-        });
+    _teardownClickMenus() {
+        // contextMenu.detachClickMenuFromElement: public/scripts/comp/contextMenu.js
+        if (!contextMenu || !this._clickMenuTargets.length) {
+            this._clickMenuTargets = [];
+            return;
+        }
+        this._clickMenuTargets.forEach((el) => contextMenu.detachClickMenuFromElement(el));
+        this._clickMenuTargets = [];
+    },
 
-        this._wireNumericSettingDropdown({
-            containerId: 'quipsDsapGrokBatchDropdown',
-            btnId: 'quipsDsapGrokBatchBtn',
-            menuId: 'quipsDsapGrokBatchMenu',
-            selectedId: 'quipsDsapGrokBatchSelected',
-            hiddenId: 'quipsDsapGrokBatchHidden',
-            options: QUIPS_GROK_BATCH_OPTIONS,
-            initialValue: draft.grokBatchSize,
-            onSelect: (value) => {
-                draft.grokBatchSize = value;
-                this._persistSettingsDraft();
-            }
-        });
-
-        this._wireNumericSettingDropdown({
-            containerId: 'quipsDsapPhrasesPerTermDropdown',
-            btnId: 'quipsDsapPhrasesPerTermBtn',
-            menuId: 'quipsDsapPhrasesPerTermMenu',
-            selectedId: 'quipsDsapPhrasesPerTermSelected',
-            hiddenId: 'quipsDsapPhrasesPerTermHidden',
-            options: QUIPS_PHRASES_PER_TERM_OPTIONS,
-            initialValue: draft.phrasesPerTerm,
-            onSelect: (value) => {
-                draft.phrasesPerTerm = value;
-                this._persistSettingsDraft();
-            }
-        });
+    _attachQuipsClickMenu(btn, config) {
+        if (!btn || !contextMenu) return;
+        contextMenu.attachClickMenuToElement(btn, config);
+        this._clickMenuTargets.push(btn);
     },
 
     _wireSimpleSettingDropdown(config) {
-        const root = this._state.host.getRoot();
-        const container = root.querySelector(`#${config.containerId}`);
-        const btn = root.querySelector(`#${config.btnId}`);
-        const menu = root.querySelector(`#${config.menuId}`);
-        const selectedEl = root.querySelector(`#${config.selectedId}`);
-        const hidden = root.querySelector(`#${config.hiddenId}`);
-        if (!container || !btn || !menu || !selectedEl || !hidden) return;
-        if (container.getAttribute('data-dropdown-initialized') === 'true') return;
-
-        let currentValue = config.initialValue;
-        hidden.value = String(currentValue);
-        selectedEl.textContent = config.labelForValue(currentValue);
-
-        const renderMenu = () => {
-            config.renderMenu(menu, btn, selectedEl, hidden, currentValue, (value) => {
-                currentValue = value;
-                config.onSelect(value);
-            });
-        };
-
-        // setupDropdown: public/scripts/comp/dropdown.js
-        if (typeof setupDropdown === 'function') {
-            setupDropdown(container, btn, menu, renderMenu, () => currentValue, { preventFocusTransfer: true });
-        }
+        /* replaced by _wireSettingsClickMenus */
     },
 
     _wireNumericSettingDropdown(config) {
-        const root = this._state.host.getRoot();
-        const container = root.querySelector(`#${config.containerId}`);
-        const btn = root.querySelector(`#${config.btnId}`);
-        const menu = root.querySelector(`#${config.menuId}`);
-        const selectedEl = root.querySelector(`#${config.selectedId}`);
-        const hidden = root.querySelector(`#${config.hiddenId}`);
-        if (!container || !btn || !menu || !selectedEl || !hidden) return;
-        if (container.getAttribute('data-dropdown-initialized') === 'true') return;
+        /* replaced by _wireSettingsClickMenus */
+    },
 
-        let currentValue = config.initialValue;
-        hidden.value = String(currentValue);
-        selectedEl.textContent = String(currentValue);
+    _wireSettingsClickMenus() {
+        const root = this._state?.host?.getRoot();
+        const draft = this._state?.settingsDraft;
+        if (!root || !draft || !contextMenu) return;
+        this._teardownClickMenus();
 
-        const renderMenu = (selectedVal) => {
-            // renderSimpleDropdown, closeDropdown: public/scripts/comp/dropdown.js
-            if (typeof renderSimpleDropdown !== 'function') return;
-            renderSimpleDropdown(
-                menu,
-                config.options.map((n) => ({ value: n, name: String(n) })),
-                'value',
-                'name',
-                (value) => {
-                    currentValue = value;
-                    hidden.value = String(value);
-                    selectedEl.textContent = String(value);
-                    config.onSelect(value);
+        const scheduleBtn = root.querySelector('#quipsDsapScheduleBtn');
+        const scheduleSelected = root.querySelector('#quipsDsapScheduleSelected');
+        const scheduleHidden = root.querySelector('#quipsDsapScheduleHidden');
+        if (scheduleBtn && scheduleHidden) {
+            scheduleHidden.value = draft.schedule || 'disabled';
+            if (scheduleSelected) {
+                scheduleSelected.textContent = typeof getQuipsAutoScheduleLabel === 'function'
+                    ? getQuipsAutoScheduleLabel(draft.schedule || 'disabled')
+                    : (draft.schedule || 'disabled');
+            }
+            const scheduleConfig = {
+                position: 'anchor',
+                anchorAlign: 'start',
+                maxHeight: 360,
+                beforeShow: () => {
+                    const current = scheduleHidden.value || 'disabled';
+                    const items = [];
+                    if (typeof buildQuipsAutoScheduleDropdownGroups === 'function') {
+                        buildQuipsAutoScheduleDropdownGroups().forEach((group) => {
+                            (group.options || []).forEach((opt) => {
+                                items.push({
+                                    text: opt.label || opt.value,
+                                    action: 'select-schedule',
+                                    scheduleValue: opt.value,
+                                    loadfn: (item) => {
+                                        item.highlighted = item.scheduleValue === current;
+                                    }
+                                });
+                            });
+                        });
+                    }
+                    scheduleConfig.sections[0].items = items;
                 },
-                () => closeDropdown(menu, btn),
-                selectedVal,
-                { preventFocusTransfer: true }
-            );
-        };
-
-        if (typeof setupDropdown === 'function') {
-            setupDropdown(container, btn, menu, renderMenu, () => currentValue, { preventFocusTransfer: true });
+                sections: [{ type: 'list', items: [] }],
+                onAction: (action, target, item) => {
+                    if (action !== 'select-schedule') return;
+                    draft.schedule = item.scheduleValue;
+                    draft.enabled = item.scheduleValue !== 'disabled';
+                    scheduleHidden.value = item.scheduleValue;
+                    if (scheduleSelected) {
+                        scheduleSelected.textContent = typeof getQuipsAutoScheduleLabel === 'function'
+                            ? getQuipsAutoScheduleLabel(item.scheduleValue)
+                            : item.text;
+                    }
+                    this._persistSettingsDraft();
+                }
+            };
+            this._attachQuipsClickMenu(scheduleBtn, scheduleConfig);
         }
+
+        const numericMenus = [
+            { btnId: 'quipsDsapTermLimitBtn', hiddenId: 'quipsDsapTermLimitHidden', selectedId: 'quipsDsapTermLimitSelected', options: QUIPS_TERM_LIMIT_OPTIONS, field: 'termLimit' },
+            { btnId: 'quipsDsapGrokBatchBtn', hiddenId: 'quipsDsapGrokBatchHidden', selectedId: 'quipsDsapGrokBatchSelected', options: QUIPS_GROK_BATCH_OPTIONS, field: 'grokBatchSize' },
+            { btnId: 'quipsDsapPhrasesPerTermBtn', hiddenId: 'quipsDsapPhrasesPerTermHidden', selectedId: 'quipsDsapPhrasesPerTermSelected', options: QUIPS_PHRASES_PER_TERM_OPTIONS, field: 'phrasesPerTerm' }
+        ];
+        numericMenus.forEach((spec) => {
+            const btn = root.querySelector(`#${spec.btnId}`);
+            const hidden = root.querySelector(`#${spec.hiddenId}`);
+            const selected = root.querySelector(`#${spec.selectedId}`);
+            if (!btn || !hidden) return;
+            hidden.value = String(draft[spec.field]);
+            if (selected) selected.textContent = String(draft[spec.field]);
+            const config = {
+                position: 'anchor',
+                anchorAlign: 'start',
+                maxHeight: 260,
+                beforeShow: () => {
+                    const current = hidden.value;
+                    config.sections[0].items = spec.options.map((n) => ({
+                        text: String(n),
+                        action: 'select-numeric-setting',
+                        numericValue: n,
+                        field: spec.field,
+                        loadfn: (item) => {
+                            item.highlighted = String(item.numericValue) === current;
+                        }
+                    }));
+                },
+                sections: [{ type: 'list', items: [] }],
+                onAction: (action, target, item) => {
+                    if (action !== 'select-numeric-setting') return;
+                    draft[item.field] = item.numericValue;
+                    hidden.value = String(item.numericValue);
+                    if (selected) selected.textContent = String(item.numericValue);
+                    this._persistSettingsDraft();
+                }
+            };
+            this._attachQuipsClickMenu(btn, config);
+        });
     },
 
     async _refreshStatus() {
@@ -1220,13 +1079,10 @@ const quipsDsapDriver = {
     _wireWorkspaceDropdown() {
         const { host, workspaceId, status } = this._state;
         const root = host.getRoot();
-        const container = root.querySelector('#quipsDsapWorkspaceDropdown');
         const btn = root.querySelector('#quipsDsapWorkspaceBtn');
-        const menu = root.querySelector('#quipsDsapWorkspaceMenu');
         const selectedEl = root.querySelector('#quipsDsapWorkspaceSelected');
         const hidden = root.querySelector('#quipsDsapWorkspaceHidden');
-        if (!container || !btn || !menu || !selectedEl || !hidden) return;
-        if (container.getAttribute('data-dropdown-initialized') === 'true') return;
+        if (!btn || !selectedEl || !hidden || !contextMenu) return;
 
         const wsList = (status?.workspaces || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
         if (!wsList.length && typeof workspaces !== 'undefined') {
@@ -1235,33 +1091,30 @@ const quipsDsapDriver = {
             });
         }
 
-        let currentId = workspaceId;
-
-        const renderMenu = (selectedVal) => {
-            // renderSimpleDropdown, closeDropdown: public/scripts/comp/dropdown.js
-            if (typeof renderSimpleDropdown !== 'function') return;
-            renderSimpleDropdown(
-                menu,
-                wsList.map((w) => ({ value: w.id, name: w.name || w.id })),
-                'value',
-                'name',
-                (value) => {
-                    currentId = value;
-                    hidden.value = value;
-                    const label = quipsDsapWorkspaceLabel(value, status);
-                    selectedEl.textContent = label;
-                    host.navigate(`dsap://${QUIPS_DSAP_URL}/${encodeURIComponent(value)}`);
-                },
-                () => closeDropdown(menu, btn),
-                selectedVal,
-                { preventFocusTransfer: true }
-            );
+        const config = {
+            position: 'anchor',
+            anchorAlign: 'start',
+            maxHeight: 360,
+            beforeShow: () => {
+                const current = hidden.value || workspaceId;
+                config.sections[0].items = wsList.map((w) => ({
+                    text: w.name || w.id,
+                    action: 'select-quips-workspace',
+                    workspaceValue: w.id,
+                    loadfn: (item) => {
+                        item.highlighted = item.workspaceValue === current;
+                    }
+                }));
+            },
+            sections: [{ type: 'list', items: [] }],
+            onAction: (action, target, item) => {
+                if (action !== 'select-quips-workspace') return;
+                hidden.value = item.workspaceValue;
+                selectedEl.textContent = quipsDsapWorkspaceLabel(item.workspaceValue, status);
+                host.navigate(`dsap://${QUIPS_DSAP_URL}/${encodeURIComponent(item.workspaceValue)}`);
+            }
         };
-
-        // setupDropdown: public/scripts/comp/dropdown.js
-        if (typeof setupDropdown === 'function') {
-            setupDropdown(container, btn, menu, renderMenu, () => currentId, { preventFocusTransfer: true });
-        }
+        this._attachQuipsClickMenu(btn, config);
     },
 
     _renderStats() {
@@ -1505,6 +1358,7 @@ function registerQuipsDsapApplet() {
 
     registerDsap({
         url: QUIPS_DSAP_URL,
+        theme: 'dsap-smf',
         getContent(match) {
             const hostStub = {
                 getPathSegments() {

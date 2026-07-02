@@ -6,9 +6,11 @@ const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
 const logger = require('./logger');
+const { attachLegacyDatabaseCheckpoint } = require('./legacyDatabaseCheckpoint');
 
 let dbPath = null;
 let db = null;
+let checkpointHost = null;
 
 function normalizeTagSearchQuery(query) {
     return (query || '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -70,6 +72,9 @@ function initializeTagSearchDatabase(databasesPath) {
         db.pragma('cache_size = 1000'); // Smaller cache
         db.pragma('temp_store = MEMORY');
         db.pragma('foreign_keys = ON');
+
+        checkpointHost = { checkpointManager: null };
+        attachLegacyDatabaseCheckpoint(checkpointHost, dbPath, () => db, null);
 
         // Create tables
         createTables();
@@ -469,6 +474,7 @@ process.on('SIGTERM', () => {
 module.exports = {
     initializeTagSearchDatabase,
     ensureTagSearchDatabase,
+    getCheckpointManager: () => checkpointHost?.checkpointManager || null,
     normalizeTagSearchQuery,
     closeTagSearchDatabase,
     getCachedTags,

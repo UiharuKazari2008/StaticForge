@@ -200,6 +200,7 @@ class BannerManager {
             'fetch_autofill_wiki_previews': 'Fetch Wiki',
             'resolve_grimoire_url': 'Fetch GrURL',
             'search_files': 'Find Images',
+            'omegasearch_query': 'Omegasearch Query',
             'search_characters': 'Find Characters',
             'lookup_city': 'Lookup Location',
             'search_index_prepare_cache': 'Prepare Search Cache',
@@ -274,6 +275,7 @@ class BannerManager {
             'vfs_upload_file': 'Upload File',
             'vfs_replace_file': 'Replace File',
             'vfs_download_file': 'Download File',
+            'vfs_download_system_file': 'Download System File',
             'vfs_delete_file': 'Delete File',
             'vfs_convert_reference_to_file': 'Convert Reference',
             'vfs_convert_file_to_reference': 'Convert to Reference',
@@ -367,7 +369,14 @@ class BannerManager {
             // Config editor operations
             'config_editor_list': 'List Config Keys',
             'config_editor_get_node': 'Get Config Node',
+            'config_editor_reveal_secret': 'Reveal Secret Value',
+            'config_editor_search': 'Search Config',
             'config_editor_save': 'Save Config',
+            'config_editor_checkpoints_list': 'List Checkpoints',
+            'config_editor_checkpoints_get': 'Get Checkpoint',
+            'config_editor_checkpoints_create': 'Create Checkpoint',
+            'config_editor_checkpoints_restore': 'Restore Checkpoint',
+            'config_editor_checkpoints_delete': 'Delete Checkpoint',
 
             // Novel operations
             'novel_list': 'List Novels',
@@ -435,13 +444,25 @@ class BannerManager {
 
             // Security operations
             'get_blocked_ips': 'Get Blocked IPs',
+            'get_telemetry': 'Get Telemetry',
             'unblock_ip': 'Unblock IP',
             'export_ip_to_gateway': 'Export IP',
             'get_ip_blocking_reasons': 'Get Block Reasons',
+            'get_known_bad_paths': 'Get Bad Paths',
+            'delete_known_bad_path': 'Delete Bad Path',
+            'clear_known_bad_paths': 'Clear Bad Paths',
+            'get_pin_settings': 'Get PIN Settings',
+            'set_admin_pin': 'Set Admin PIN',
+            'set_user_pin': 'Set User PIN',
+            'set_user_pin_login_enabled': 'Toggle User PIN',
+            'list_application_keys': 'List App Keys',
+            'create_application_key': 'Create App Key',
+            'revoke_application_key': 'Revoke App Key',
+            'approve_application_auth_request': 'Approve App Auth',
             'get_api_key_services': 'Get Keychain',
             'update_api_key_selections': 'Update Keychain',
             'add_api_key': 'Add to Keychain',
-            'delete_api_key': 'Delete from Keychain',
+            'update_api_key': 'Update Keychain',
 
             // Utility operations
             'spellcheck_add_word': 'Add Word'
@@ -3519,48 +3540,22 @@ class WebSocketClient {
                 error.requestId = message.requestId;
                 this.resolveRequest(message.requestId, null, error);
             }
+            // infrastructure.error: public/scripts/ws/handlers/120-infrastructureInbound.js (phase only)
+            dispatchWsInbound(message, this, 'only');
             return;
         }
 
-        // Handle search responses (ack-less)
-        if (message.type.startsWith('search_status_update') ||
-            message.type.startsWith('search_results_update') ||
-            message.type.startsWith('search_results_complete') ||
-            message.type.startsWith('search_characters_response') ||
+        // Handle search character responses (ack-less)
+        if (message.type.startsWith('search_characters_response') ||
             message.type.startsWith('search_characters_complete')) {
-            // Search responses are ack-less, handle them directly
-            if (typeof window.handleSearchResponse === 'function') {
-                window.handleSearchResponse(message);
-            }
+            // handleSearchResponse: public/scripts/comp/autocompleteUtils.js
+            handleSearchResponse(message);
             return;
         }
 
-        // Handle all chat-related messages
+        // chat_*: public/scripts/ws/handlers/110-chatInbound.js (phase only)
         if (message.type.startsWith('chat_')) {
-            if (window.chatSystem) {
-                switch (message.type) {
-                    case 'chat_message_response':
-                        window.chatSystem.handleChatMessageResponse(message);
-                        // Resolve the pending request for non-streaming responses
-                        if (message.requestId) {
-                            this.resolveRequest(message.requestId, message.data, message.error);
-                        }
-                        break;
-                    case 'chat_streaming_start':
-                        window.chatSystem.handleStreamingStart(message);
-                        break;
-                    case 'chat_streaming_update':
-                        window.chatSystem.handleStreamingUpdate(message);
-                        break;
-                    case 'chat_streaming_complete':
-                        window.chatSystem.handleStreamingComplete(message);
-                        if (message.requestId) {
-                            this.resolveRequest(message.requestId, { success: true }, null);
-                        }
-                        break;
-                    default:
-                }
-            }
+            dispatchWsInbound(message, this, 'only');
             return;
         }
 
@@ -3573,80 +3568,6 @@ class WebSocketClient {
 
             // Trigger custom events for Director messages
             this.triggerEvent(message.type, message);
-            return;
-        }
-
-        // Handle Rentan progress updates
-        if (message.type === 'dynamic_generation_progress_update') {
-            this.handleDynamicGenerationProgressUpdate(message);
-            return;
-        }
-
-        // Handle unified image generation progress updates
-        if (message.type === 'image_generation_progress') {
-            this.handleImageGenerationProgress(message);
-            return;
-        }
-
-        // image_generation_intermediate messages are now deprecated - intermediate images come through image_generation_progress
-
-        // Handle workspace image additions
-        if (message.type === 'workspace_image_added') {
-            this.handleWorkspaceImageAdded(message);
-            return;
-        }
-
-        // Handle search indexing status updates
-        if (message.type === 'search_indexing_status') {
-            this.handleSearchIndexingStatus(message);
-            return;
-        }
-
-        // Handle image generation errors
-        if (message.type === 'image_generation_error') {
-            console.error('❌ Image generation error:', message.error);
-            console.error('❌ Full error details:', message);
-
-            this.clearStreamingStepQueues(null, true);
-            if (this.progressStates && message.requestId) {
-                this.cleanupGenerationProgressState(message.requestId);
-            }
-            if (message.requestId) {
-                this.releaseGenerationCloseGuard(message.requestId);
-            }
-            if (typeof progressToastId !== 'undefined' && progressToastId && typeof clearGlassToastImagePreview === 'function') {
-                clearGlassToastImagePreview(progressToastId);
-            }
-
-            if (message.requestId) {
-                // Build detailed error message
-                let errorMsg = message.error || 'Image generation failed';
-
-                // Include additional details if available
-                if (message.details) {
-                    errorMsg += `\nDetails: ${message.details}`;
-                }
-                if (message.stack) {
-                    console.error('❌ Error stack:', message.stack);
-                }
-
-                this.resolveRequest(message.requestId, null, new Error(errorMsg));
-            }
-
-            // Reset global generation state when error occurs
-            if (typeof isGenerating !== 'undefined') {
-                isGenerating = false;
-            }
-
-            // Reset generation button state when error occurs
-            if (typeof updateManualGenerateBtnState === 'function') {
-                updateManualGenerateBtnState();
-            }
-
-            if (typeof setGenerationPreviewForegroundLinesActive === 'function') {
-                setGenerationPreviewForegroundLinesActive(false);
-            }
-
             return;
         }
 
@@ -3680,7 +3601,8 @@ class WebSocketClient {
         }
 
         // Handle all error messages that should trigger resolveRequest with error
-        if (message.type.endsWith('_error')) {
+        // image_generation_error: public/scripts/ws/handlers/50-generationInbound.js (phase only)
+        if (message.type.endsWith('_error') && message.type !== 'image_generation_error') {
             if (message.requestId) {
                 if (this.pendingRequests && this.pendingRequests.has(message.requestId)) {
                     const pending = this.pendingRequests.get(message.requestId);
@@ -3734,87 +3656,12 @@ class WebSocketClient {
             return;
         }
 
-        // Handle metadata cache rebuild response
+        // Handle metadata cache rebuild responsey
         if (message.type === 'rebuild_metadata_cache_response') {
             this.triggerEvent('message', message);
             this.triggerEvent(message.type, message);
             if (message.requestId) {
                 this.resolveRequest(message.requestId, message.data, message.error);
-            }
-            return;
-        }
-
-        // Handle service worker cache manifest push (same data as OPTIONS / update check)
-        if (message.type === 'service_worker_cache_update') {
-            const files = message.data && Array.isArray(message.data.files) ? message.data.files : [];
-            const silent = message.data && message.data.silent === true;
-            const cacheOptions = {
-                runtimeAssetsRecompiled: message.data && message.data.runtimeAssetsRecompiled === true
-            };
-
-            // Queue until boot gate completes — public/scripts/comp/serviceWorkerManager.js
-            if (window.serviceWorkerManager && !window.serviceWorkerManager.isBootComplete()) {
-                window.serviceWorkerManager.queueCacheUpdateUntilBoot(files, silent, cacheOptions);
-                return;
-            }
-
-            if (files.length > 0 && window.serviceWorkerManager && typeof window.serviceWorkerManager.updateStaticCache === 'function') {
-                window.serviceWorkerManager.updateStaticCache(files, silent, cacheOptions);
-            } else if (!silent && window.serviceWorkerManager && typeof window.serviceWorkerManager.checkStaticFileUpdates === 'function') {
-                window.serviceWorkerManager.checkStaticFileUpdates(silent);
-            }
-            return;
-        }
-
-        if (message.type === 'workspace_css_updated') {
-            const data = message.data || {};
-            const webPath = data.webPath || '/css/workspaces.css';
-            const hash = data.hash || data.sourceHash;
-            if (!hash) {
-                return;
-            }
-            if (window.serviceWorkerManager) {
-                window.serviceWorkerManager.cacheStaticFilesSilent([{ url: webPath, hash }]).then(() => {
-                    // applyWorkspaceCssFromServer: public/scripts/comp/workspaceUtils.js
-                    applyWorkspaceCssFromServer(hash, webPath);
-                }).catch(() => {
-                    applyWorkspaceCssFromServer(hash, webPath);
-                });
-            }
-            return;
-        }
-
-        if (message.type === 'runtime_compile_error') {
-            const errors = message.data && Array.isArray(message.data.errors) ? message.data.errors : [];
-            if (errors.length > 0 && typeof showRuntimeCompileErrors === 'function') {
-                showRuntimeCompileErrors(errors);
-            }
-            return;
-        }
-
-        if (message.type === 'runtime_compile_progress') {
-            if (typeof handleRuntimeCompileProgressBroadcast === 'function') {
-                handleRuntimeCompileProgressBroadcast(message.data);
-            }
-            return;
-        }
-
-        if (message.type === 'runtime_compile_complete') {
-            if (typeof handleRuntimeCompileCompleteBroadcast === 'function') {
-                handleRuntimeCompileCompleteBroadcast(message.data);
-            }
-            return;
-        }
-
-        if (message.type === 'runtime_compile_logs') {
-            this.triggerEvent('runtime_compile_logs', message);
-            return;
-        }
-
-        if (message.type === 'workspace_css_updated') {
-            const data = message.data || {};
-            if (typeof applyWorkspaceCssFromServer === 'function') {
-                applyWorkspaceCssFromServer(data.hash || data.sourceHash, data.webPath);
             }
             return;
         }
@@ -3885,235 +3732,21 @@ class WebSocketClient {
             return;
         }
 
-        // Handle realtime search updates
-        if (message.type === 'search_results_update' || message.type === 'search_status_update' || message.type === 'search_results_complete') {
-            this.triggerEvent(message.type, message);
-            return;
-        }
+        // generation_quips_*: public/scripts/ws/handlers/50-generationInbound.js (phase only)
 
-        // Handle search indexing status updates
-        if (message.type === 'search_indexing_status') {
-            this.handleSearchIndexingStatus(message);
-            return;
-        }
-
-        if (message.type === 'generation_quips_updated') {
-            this.handleGenerationQuipsUpdated(message);
-            return;
-        }
-
-        if (message.type === 'generation_quips_progress') {
-            this.handleGenerationQuipsProgress(message);
-            return;
-        }
-
-        if (message.type === 'generation_quips_status') {
-            this.handleGenerationQuipsStatus(message);
-            return;
-        }
-
-        if (message.type === 'novel_progress') {
-            this.handleNovelProgress(message);
-            return;
-        }
-
-        if (message.type === 'novel_updated') {
-            this.handleNovelUpdated(message);
-            return;
-        }
-
-        if (message.type === 'novel_generate_complete') {
-            this.handleNovelGenerateComplete(message);
+        // dispatchWsInbound: public/scripts/ws/wsInboundRegistry.js
+        dispatchWsInbound(message, this, 'pre');
+        if (dispatchWsInbound(message, this, 'only')) {
             return;
         }
 
         // Trigger message event
         this.triggerEvent('message', message);
 
-        // Handle specific message types
-        switch (message.type) {
-            case 'error':
-                this.bannerManager.showWebSocketBanner('error', 'WebSocket server error: ' + message.message, '<i class="fas fa-exclamation-triangle"></i>');
-                break;
+        // Handle custom message types
+        this.triggerEvent(message.type, message);
 
-            case 'image_generation_response':
-                this.handleGeneratedImage(message.data);
-                break;
-
-            case 'image_upscaling_response':
-                this.handleUpscalingResponse(message.data);
-                break;
-
-            case 'image_upscaling_error':
-                this.handleUpscalingError(message.data);
-                break;
-
-            case 'image_expansion_response':
-                this.handleExpansionResponse(message.data);
-                break;
-
-            case 'image_expansion_error':
-                this.handleExpansionError(message.data);
-                break;
-
-            case 'image_expansion_reroll_response':
-                this.handleExpansionRerollResponse(message.data);
-                break;
-
-            case 'image_expansion_reroll_error':
-                this.handleExpansionRerollError(message.data);
-                break;
-
-            case 'gallery_updated':
-                this.handleGalleryUpdate(message.data);
-                break;
-
-            case 'gallery_scroll_state': {
-                const incoming = message.data && typeof message.data === 'object' ? message.data : {};
-                window.galleryScrollStateFromSession = { ...(window.galleryScrollStateFromSession || {}), ...incoming };
-                if (typeof window.applyGallerySessionRestoreIfReady === 'function') {
-                    window.applyGallerySessionRestoreIfReady();
-                }
-                break;
-            }
-
-            case 'workspace_updated':
-                this.handleWorkspaceUpdate(message.data);
-                break;
-
-            case 'workspace_desktop_persisted':
-                if (typeof desktopShortcuts !== 'undefined' && desktopShortcuts &&
-                    typeof desktopShortcuts.handleWorkspaceDesktopPersisted === 'function') {
-                    desktopShortcuts.handleWorkspaceDesktopPersisted();
-                }
-                break;
-
-            case 'vfs_updated':
-            case 'desktop_shortcut_added':
-            case 'desktop_shortcut_removed':
-            case 'desktop_shortcut_updated':
-                if (typeof explorerApplet !== 'undefined' && explorerApplet &&
-                    explorerApplet.modal && !explorerApplet.modal.classList.contains('hidden')) {
-                    explorerApplet.softRefresh();
-                }
-                break;
-
-            case 'workspace_activated':
-                this.handleWorkspaceActivation(message.data);
-                break;
-
-            case 'preset_updated':
-                this.handlePresetUpdate(message.data);
-                break;
-
-            case 'queue_update':
-                this.handleQueueUpdate(message.data);
-                break;
-
-            case 'request_keep_alive':
-                this.handleKeepAlive(message);
-                break;
-
-            case 'note_created':
-                // Add new note to cache
-                if (notepadManager && message.data && message.data.note) {
-                    notepadManager.addNoteToCache(message.data.note);
-                }
-
-                // Refresh notebook list if open
-                if (notepadManager && notepadManager.notebookModal &&
-                    !notepadManager.notebookModal.classList.contains('hidden')) {
-                    notepadManager.notebookRefreshNotesList();
-                }
-                break;
-
-            case 'note_updated':
-                // Update the notes cache with the new data
-                if (notepadManager && message.data && message.data.noteId && message.data.note) {
-                    notepadManager.updateNoteInCache(message.data.note);
-                }
-
-                // Route to specific notepad instance if open
-                if (notepadManager && message.data && message.data.noteId) {
-                    const notepad = notepadManager.getNotepadByNoteId(message.data.noteId);
-                    if (notepad) {
-                        notepad.handleNoteUpdated(message.data);
-                    }
-
-                    // Also update notebook if showing this note
-                    if (notepadManager.notebookCurrentNote &&
-                        notepadManager.notebookCurrentNote.id === message.data.noteId) {
-                        notepadManager.notebookLoadNote(message.data.noteId, false);
-                    }
-
-                    // Refresh notebook list if open
-                    if (notepadManager.notebookModal &&
-                        !notepadManager.notebookModal.classList.contains('hidden')) {
-                        notepadManager.notebookRefreshNotesList();
-                    }
-                }
-                // Invalidate cache for the affected workspace
-                if (notepadManager && message.data && message.data.workspaceId) {
-                    notepadManager.invalidateWorkspaceNotesCache(message.data.workspaceId);
-                }
-                break;
-
-            case 'note_deleted':
-                // Remove note from cache
-                if (notepadManager && message.data && message.data.noteId) {
-                    notepadManager.removeNoteFromCache(message.data.noteId);
-                }
-
-                // Close notepad if it's open
-                if (notepadManager && message.data && message.data.noteId) {
-                    const notepad = notepadManager.getNotepadByNoteId(message.data.noteId);
-                    if (notepad) {
-                        notepad.handleNoteDeleted();
-                    }
-
-                    // Clear notebook if showing this note
-                    if (notepadManager.notebookCurrentNote &&
-                        notepadManager.notebookCurrentNote.id === message.data.noteId) {
-                        notepadManager.notebookCurrentNote = null;
-                        if (notepadManager.notebookTextarea) {
-                            notepadManager.notebookTextarea.value = '';
-                        }
-                        notepadManager.notebookUpdateTitle();
-                    }
-
-                    // Refresh notebook list if open
-                    if (notepadManager.notebookModal &&
-                        !notepadManager.notebookModal.classList.contains('hidden')) {
-                        notepadManager.notebookRefreshNotesList();
-                    }
-                }
-                break;
-
-            case 'note_content_updated':
-                // Update notepad content if open
-                if (notepadManager && message.data && message.data.noteId) {
-                    const notepad = notepadManager.getNotepadByNoteId(message.data.noteId);
-                    if (notepad) {
-                        notepad.handleNoteContentUpdated(message.data);
-                    }
-                }
-                // Invalidate cache for the affected workspace
-                if (notepadManager && message.data && message.data.workspaceId) {
-                    notepadManager.invalidateWorkspaceNotesCache(message.data.workspaceId);
-                }
-                break;
-
-            case 'workspace_deleted':
-                // Clear cache for deleted workspace
-                if (notepadManager && message.data && message.data.workspaceId) {
-                    notepadManager.clearWorkspaceNotesCache(message.data.workspaceId);
-                }
-                break;
-
-            default:
-                // Handle custom message types
-                this.triggerEvent(message.type, message);
-        }
+        dispatchWsInbound(message, this, 'post');
     }
 
     /**
@@ -4340,65 +3973,11 @@ class WebSocketClient {
         this.triggerEvent('imageExpansionRerollError', data);
     }
 
-    handleGalleryUpdate(data) {
-        this.triggerEvent('galleryUpdated', data);
-    }
-
-    handleWorkspaceUpdate(data) {
-        // Update local workspace object if settings were updated
-        if (data.action === 'settings_updated' && data.settings && typeof workspaces !== 'undefined') {
-            const workspaceId = data.workspaceId;
-            if (workspaces && workspaces[workspaceId]) {
-                // Update local workspace settings
-                Object.assign(workspaces[workspaceId], data.settings);
-            }
-        }
-
-        // Update global window positions if window positions were updated
-        // Window positions are stored in the same file as shortcuts (workspaceDesktop config) as global object
-        if (data.action === 'window_positions_updated' && data.windowPositions) {
-            // Update global window positions directly
-            Object.assign(globalWindowPositions, data.windowPositions);
-            if (typeof desktopShortcuts !== 'undefined'
-                && desktopShortcuts
-                && !desktopShortcuts.pendingWindowPositionSave
-                && typeof commitWindowPositionsSnapshot === 'function') {
-                commitWindowPositionsSnapshot();
-            }
-        }
-
-        // Dispatch custom event for workspace updates
-        const event = new CustomEvent('workspaceUpdated', {
-            detail: data
-        });
-        document.dispatchEvent(event);
-    }
-
-    handleWorkspaceActivation(data) {
-        // Dispatch custom event for workspace activation
-        const event = new CustomEvent('workspaceActivated', {
-            detail: data
-        });
-        document.dispatchEvent(event);
-    }
-
     handleWorkspaceActivationResponse(data) {
         // Handle workspace activation response from server
         // Dispatch the same event as broadcast activation for consistency
         const event = new CustomEvent('workspaceActivated', {
             detail: { workspaceId: data.activeWorkspace }
-        });
-        document.dispatchEvent(event);
-    }
-
-    handleWorkspaceImageAdded(message) {
-        // Dispatch custom event for workspace image addition
-        const event = new CustomEvent('workspaceImageAdded', {
-            detail: {
-                workspaceId: message.data.workspaceId,
-                imageFilenames: message.data.imageFilenames,
-                timestamp: message.timestamp
-            }
         });
         document.dispatchEvent(event);
     }
@@ -5369,147 +4948,6 @@ class WebSocketClient {
                 progressToastId = null; // Clear the toast ID
             }
         }
-    }
-
-    handlePresetUpdate(data) {
-        // Dispatch custom event for preset updates
-        const event = new CustomEvent('presetUpdated', {
-            detail: data
-        });
-        document.dispatchEvent(event);
-    }
-
-    handleQueueUpdate(data) {
-        // Trigger queue update event
-        this.triggerEvent('queue_update', data);
-
-        // Update global queue status for the app
-        if (window.optionsData) {
-            window.optionsData.queue_status = data.value;
-        }
-
-        // Update generation button state if the function exists
-        if (typeof updateManualGenerateBtnState === 'function') {
-            updateManualGenerateBtnState();
-        }
-    }
-
-    handleSearchIndexingStatus(message) {
-        const indicator = document.getElementById('searchIndexingIndicator');
-        if (!indicator) return;
-
-        const icon = indicator.querySelector('i');
-        if (!icon) return;
-
-        const status = message.status || 'idle';
-        const statusMessage = message.message || 'Search index up to date';
-
-        // Update tooltip
-        indicator.title = statusMessage;
-
-        // Remove all status classes
-        indicator.classList.remove('indexing', 'up_to_date', 'error', 'paused', 'cache_init', 'cache_ready', 'idle');
-
-        // Update icon and add appropriate class based on status
-        switch (status) {
-            case 'starting':
-            case 'indexing':
-            case 'cache_init':
-                indicator.classList.add('indexing');
-                icon.className = 'fas fa-magnifying-glass-arrows-rotate';
-                break;
-            case 'complete':
-            case 'up_to_date':
-            case 'cache_ready':
-                indicator.classList.add('up_to_date');
-                icon.className = 'fas fa-file-magnifying-glass';
-                break;
-            case 'paused':
-                indicator.classList.add('paused');
-                icon.className = 'fas fa-magnifying-glass-minus';
-                break;
-            case 'resumed':
-            case 'idle':
-                indicator.classList.add('up_to_date');
-                icon.className = 'fas fa-magnifying-glass';
-                break;
-            case 'error':
-                indicator.classList.add('error');
-                icon.className = 'fas fa-rotate-exclamation';
-                break;
-            default:
-                icon.className = 'fas fa-magnifying-glass';
-                break;
-        }
-
-        // Update paused state in indicator data attribute for context menu
-        if (status === 'paused') {
-            indicator.dataset.indexingPaused = 'true';
-        } else if (status === 'resumed' || status === 'idle' || status === 'up_to_date' || status === 'complete') {
-            indicator.dataset.indexingPaused = 'false';
-        }
-
-        // Re-attach context menu if it exists to update dynamic items
-        if (indicator._menuConfigFn && contextMenu) {
-            contextMenu.attachToElement(indicator, indicator._menuConfigFn());
-        }
-
-        // Trigger event for other parts of the app that might want to listen
-        this.triggerEvent('search_indexing_status', message);
-    }
-
-    handleGenerationQuipsUpdated(message) {
-        const data = message.data || {};
-        // handleGenerationQuipsClientUpdate: public/scripts/comp/generationQuipsTray.js
-        if (typeof handleGenerationQuipsClientUpdate === 'function') {
-            handleGenerationQuipsClientUpdate(data);
-        }
-        this.triggerEvent('generation_quips_updated', message);
-    }
-
-    handleGenerationQuipsProgress(message) {
-        const data = message.data || {};
-        // handleGenerationQuipsProgress: public/scripts/comp/generationQuipsTray.js
-        if (typeof handleGenerationQuipsProgress === 'function') {
-            handleGenerationQuipsProgress(data);
-        }
-        this.triggerEvent('generation_quips_progress', message);
-    }
-
-    handleGenerationQuipsStatus(message) {
-        const data = message.data || {};
-        // handleGenerationQuipsStatusBroadcast: public/scripts/comp/generationQuipsTray.js
-        if (typeof handleGenerationQuipsStatusBroadcast === 'function') {
-            handleGenerationQuipsStatusBroadcast(data);
-        }
-        this.triggerEvent('generation_quips_status', message);
-    }
-
-    handleNovelProgress(message) {
-        const data = message.data || {};
-        // handleNovelProgressUpdate: public/scripts/comp/novelManager.js
-        if (typeof handleNovelProgressUpdate === 'function') {
-            handleNovelProgressUpdate(data);
-        }
-        this.triggerEvent('novel_progress', message);
-    }
-
-    handleNovelUpdated(message) {
-        const data = message.data || {};
-        // handleNovelClientUpdate: public/scripts/comp/novelManager.js
-        if (typeof handleNovelClientUpdate === 'function') {
-            handleNovelClientUpdate(data);
-        }
-        this.triggerEvent('novel_updated', message);
-    }
-
-    handleNovelGenerateComplete(message) {
-        const data = message.data || {};
-        // handleNovelGenerateComplete: public/scripts/comp/novelManager.js
-        if (typeof handleNovelGenerateComplete === 'function') {
-            handleNovelGenerateComplete(data, message.requestId);
-        }
-        this.triggerEvent('novel_generate_complete', message);
     }
 
     // Method to request image upscaling via WebSocket
@@ -6582,6 +6020,10 @@ class WebSocketClient {
         return this.sendMessage('get_blocked_ips', { page, limit });
     }
 
+    async getTelemetry(page = 1, limit = 15, search = '', eventType = '') {
+        return this.sendMessage('get_telemetry', { page, limit, search, eventType });
+    }
+
     async unblockIP(ip) {
         return this.sendMessage('unblock_ip', { ip });
     }
@@ -6592,6 +6034,62 @@ class WebSocketClient {
 
     async getIPBlockingReasons(ip) {
         return this.sendMessage('get_ip_blocking_reasons', { ip }, false); // Background operation
+    }
+
+    async getKnownBadPaths(page = 1, limit = 25, search = '') {
+        return this.sendMessage('get_known_bad_paths', { page, limit, search });
+    }
+
+    async deleteKnownBadPath(path) {
+        return this.sendMessage('delete_known_bad_path', { path });
+    }
+
+    async clearKnownBadPaths() {
+        return this.sendMessage('clear_known_bad_paths', {});
+    }
+
+    async getPinSettings() {
+        return this.sendMessage('get_pin_settings', {});
+    }
+
+    async setAdminPin(pin) {
+        return this.sendMessage('set_admin_pin', { pin });
+    }
+
+    async setUserPin(pin) {
+        return this.sendMessage('set_user_pin', { pin });
+    }
+
+    async setUserPinLoginEnabled(enabled) {
+        return this.sendMessage('set_user_pin_login_enabled', { enabled });
+    }
+
+    async listApplicationKeys() {
+        return this.sendMessage('list_application_keys', {});
+    }
+
+    async getApplicationAuthScopes() {
+        return this.sendMessage('get_application_auth_scopes', {});
+    }
+
+    async createApplicationKey(payload) {
+        return this.sendMessage('create_application_key', payload);
+    }
+
+    async revokeApplicationKey(keyId) {
+        return this.sendMessage('revoke_application_key', { keyId });
+    }
+
+    async listApplicationAuthRequests(status = 'pending') {
+        return this.sendMessage('list_application_auth_requests', { status });
+    }
+
+    async approveApplicationAuthRequest(requestId) {
+        return this.sendMessage('approve_application_auth_request', { requestId });
+    }
+
+    async denyApplicationAuthRequest(requestId) {
+        return this.sendMessage('deny_application_auth_request', { requestId });
     }
 
     // Wait for connection to be established with better validation
@@ -7272,13 +6770,13 @@ class WebSocketClient {
         });
     }
 
-    // Open Event Viewer tasks sidebar (replaces legacy Task Manager modal)
+    // Open Periscope tasks sidebar (replaces legacy Task Manager modal)
     openRequestsModal() {
         if (typeof logViewerApplet !== 'undefined' && logViewerApplet) {
             logViewerApplet.open({ showTasksSidebar: true });
             return;
         }
-        console.warn('Event Viewer not initialized');
+        console.warn('Periscope not initialized');
     }
 
     // Refresh websocket indicators (useful if new indicators are added to DOM dynamically)

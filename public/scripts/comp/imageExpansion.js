@@ -21,6 +21,7 @@ let expansionModalData = {
 
 let expansionCompiledPromptLoadToken = 0;
 let expansionCompiledPromptReloadTimer = null;
+let expansionModalBootstrapping = false;
 
 /** Tear down manual preview + Rentan overlay after expand/reroll (success, error, or cancel). */
 function finishExpansionGenerationUi() {
@@ -609,6 +610,9 @@ async function fetchExpansionCompiledPrompt(options = {}) {
 }
 
 function scheduleExpansionCompiledPromptReload() {
+    if (expansionModalBootstrapping) {
+        return;
+    }
     const modal = document.getElementById('imageExpansionDialog');
     if (!modal || !modal.classList.contains('visible')) {
         return;
@@ -642,6 +646,9 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
         return;
     }
     
+    expansionModalBootstrapping = true;
+    try {
+
     // Reset modal data
     expansionModalData = {
         filename: imageFilename, // The current file clicked (never changes, used for resolution)
@@ -893,6 +900,10 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
     }
 
     updateExpansionInsetToggleVisibility();
+
+    } finally {
+        expansionModalBootstrapping = false;
+    }
 
     if (!expansionModalData.selectedResolution) {
         showGlassToast('error', 'Expand Canvas', 'No valid target resolution for this image', false, 5000, '<i class="nai-cross"></i>');

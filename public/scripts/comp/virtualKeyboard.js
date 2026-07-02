@@ -701,6 +701,7 @@ function hideVirtualKeyboard() {
         modal.classList.add('hidden');
         modal.classList.remove('virtual-keyboard--docked');
         clearVirtualKeyboardDockPadding();
+        debouncedUpdateTaskbarWindows();
     }
 }
 

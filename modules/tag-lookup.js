@@ -121,6 +121,10 @@ class TagLookup {
     }
 }
 
+    getCheckpointManager() {
+        return this.db ? this.db.getCheckpointManager() : null;
+    }
+
     getStatements() {
     if (!this.sqlStatements) {
         this.sqlStatements = {

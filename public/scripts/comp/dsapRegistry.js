@@ -274,16 +274,25 @@ function resolveDsap(url) {
 
     for (const entry of dsapRegistryEntries) {
         if (dsapUrlMatches(entry, normalized)) {
-            const canonicalHost = normalizeDsapUrlInput(entry.url).split('/')[0];
-            const suffix = normalized.startsWith(canonicalHost)
-                ? normalized.slice(canonicalHost.length).replace(/^\//, '')
-                : '';
-            const displayPath = suffix ? `${canonicalHost}/${suffix}` : canonicalHost;
+            const canonicalBase = normalizeDsapUrlInput(entry.url);
+            const canonicalHost = canonicalBase.split('/')[0];
+            let displayPath;
+            if (normalized === canonicalBase || normalized.startsWith(`${canonicalHost}/`)) {
+                const suffix = normalized.startsWith(canonicalHost)
+                    ? normalized.slice(canonicalHost.length).replace(/^\//, '')
+                    : '';
+                displayPath = suffix ? `${canonicalHost}/${suffix}` : canonicalHost;
+            } else {
+                // Cross-domain alias (e.g. xi.dyna.dreamscape.jp/persona → memories DSAP)
+                displayPath = normalized.split('?')[0];
+            }
+            const qIdx = normalized.indexOf('?');
+            const query = qIdx >= 0 ? normalized.slice(qIdx) : '';
             return {
                 entry,
                 normalized,
                 displayPath,
-                canonicalUrl: `dsap://${displayPath}`
+                canonicalUrl: `dsap://${displayPath}${query}`
             };
         }
     }
@@ -310,6 +319,7 @@ function registerDsap(config) {
         else if (config.toolbox) target.menuEntry = config.toolbox;
         if (config.title) target.title = config.title;
         if (config.type) target.type = config.type;
+        if (config.theme) target.theme = config.theme;
         if (typeof config.getContent === 'function') target.getContent = config.getContent;
         if (typeof config.shimActivate === 'function') target.shimActivate = config.shimActivate;
         if (typeof config.onScopeExit === 'function') target.onScopeExit = config.onScopeExit;
@@ -353,6 +363,13 @@ function loadDsapScriptOnce(src) {
     });
 }
 
+const DSAP_SMF_THEME_STYLESHEET = 'css/dsap-smf.css';
+
+function ensureDsapSmfThemeStylesheet(entry) {
+    const hostEntry = entry || { url: '__dsap-smf-theme__' };
+    injectDsapStylesheet(hostEntry, DSAP_SMF_THEME_STYLESHEET);
+}
+
 function injectDsapStylesheet(entry, href) {
     const url = dsapResolveAssetUrl(href);
     const marker = `${entry.url}::${href}`;
@@ -385,6 +402,11 @@ async function loadDsapEntryAssets(entry) {
             const scripts = Array.isArray(live.assets.scripts) ? live.assets.scripts : [];
             for (const src of scripts) {
                 await loadDsapScriptOnce(src);
+            }
+
+            const theme = live.theme || (live.assets && live.assets.theme);
+            if (theme === 'dsap-smf') {
+                ensureDsapSmfThemeStylesheet(live);
             }
 
             const styles = Array.isArray(live.assets.styles) ? live.assets.styles : [];
@@ -640,6 +662,38 @@ function createDsapHost(shell, registration, url, rootEl) {
             }
         },
 
+        /** Update DSAP URL + address bar without destroy/reinit (same registration only). */
+        setUrl(pseudoUrl, options = {}) {
+            const newMatch = resolveDsap(pseudoUrl);
+            if (!newMatch || newMatch.entry.url !== registration.url) {
+                return false;
+            }
+            const nextUrl = newMatch.canonicalUrl;
+            const currentUrl = getCurrentUrl();
+            if (currentUrl === nextUrl) {
+                return true;
+            }
+            if (shell._dsapState) {
+                shell._dsapState.url = nextUrl;
+            }
+            host.url = nextUrl;
+            host.displayPath = newMatch.displayPath;
+            if (typeof shell.setAddress === 'function') {
+                shell.setAddress({ displayUrl: nextUrl, mode: 'dsap' });
+            }
+            if (!options.skipHistory && typeof shell.addToHistory === 'function') {
+                shell.addToHistory({
+                    type: 'dsap',
+                    url: nextUrl,
+                    title: registration.title || newMatch.displayPath
+                });
+            }
+            if (typeof shell.updateNavigationButtons === 'function') {
+                shell.updateNavigationButtons();
+            }
+            return true;
+        },
+
         refresh() {
             prepareAndActivateDsapOnShell(shell, getCurrentUrl(), { force: true });
         },
@@ -652,13 +706,13 @@ function createDsapHost(shell, registration, url, rootEl) {
         },
 
         getPathSegments() {
-            const norm = normalizeDsapUrlInput(getCurrentUrl());
+            const norm = normalizeDsapUrlInput(getCurrentUrl()).split('?')[0];
             const base = normalizeDsapUrlInput(registration.url);
             const hostPart = base.split('/')[0];
-            if (!norm.startsWith(hostPart)) return [];
-            const rest = norm.slice(hostPart.length).replace(/^\//, '');
-            const pathOnly = rest.split('?')[0];
-            return pathOnly ? pathOnly.split('/').filter(Boolean) : [];
+            const pathHost = norm.startsWith(hostPart) ? hostPart : norm.split('/')[0];
+            if (!norm.startsWith(pathHost)) return [];
+            const rest = norm.slice(pathHost.length).replace(/^\//, '');
+            return rest ? rest.split('/').filter(Boolean) : [];
         },
 
         getQueryParam(name) {

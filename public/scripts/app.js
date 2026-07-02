@@ -24,6 +24,9 @@ if (typeof u1 !== 'undefined') {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+    // sendAppTelemetryPing: public/scripts/comp/telemetryClient.js
+    sendAppTelemetryPing();
+
     // initVirtualKeyboard: public/scripts/comp/virtualKeyboard.js
     initVirtualKeyboard();
 

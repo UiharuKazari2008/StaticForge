@@ -106,6 +106,11 @@ const EXPLORER_SORT_OPTIONS = [
     { value: 'size:asc', field: 'size', direction: 'asc', label: 'Size (Smallest)' }
 ];
 
+const EXPLORER_WORKSPACE_LIST_SORT_OPTIONS = [
+    { value: 'workspaceOrder:asc', field: 'workspaceOrder', direction: 'asc', label: 'Workspace Order' },
+    { value: 'workspaceOrder:desc', field: 'workspaceOrder', direction: 'desc', label: 'Workspace Order (Reverse)' }
+];
+
 class ExplorerApplet {
     constructor() {
         this.modal = null;
@@ -138,6 +143,9 @@ class ExplorerApplet {
         this._statusHint = null;
         this._uploadSeq = 0;
         this._emptyMessage = null;
+        this._explorerDesktopChangeGen = 0;
+        this._explorerDesktopChangeClearTimer = null;
+        this._desktopBroadcastRefreshTimer = null;
     }
 
     init() {
@@ -284,7 +292,33 @@ class ExplorerApplet {
         this._contextMenuConfig.sections = sections || [];
     }
 
+    _isWorkspacesListPath(vfsPath) {
+        const normalized = (vfsPath ?? this.currentPath ?? '/').replace(/\/+$/, '') || '/';
+        return normalized === '/Workspaces';
+    }
+
     buildEmptyContextMenuSections() {
+        if (this._isTrashPath(this.currentPath)) {
+            return [{
+                type: 'list',
+                items: [{
+                    icon: 'fas fa-trash',
+                    text: 'Empty Trash',
+                    action: 'explorer-empty-trash',
+                    className: 'context-menu-item-danger'
+                }]
+            }];
+        }
+        if (this._isWorkspacesListPath()) {
+            return [{
+                type: 'list',
+                items: [{
+                    icon: 'fas fa-planet-ringed',
+                    text: 'New Workspace',
+                    action: 'explorer-new-workspace'
+                }]
+            }];
+        }
         const items = [
             { icon: 'fas fa-folder-plus', text: 'New Folder', action: 'explorer-new-folder' },
             { icon: 'fas fa-upload', text: 'Upload', action: 'explorer-upload' }
@@ -367,6 +401,12 @@ class ExplorerApplet {
             item.previewImageFilename = data.filename;
             item.targetId = data.filename;
         }
+        if (item.shortcutType === 'system-folder') {
+            item.targetKind = 'system-folder';
+            item.navPath = data.navPath || null;
+            item.protected = true;
+            item.system = true;
+        }
         return item;
     }
 
@@ -415,10 +455,27 @@ class ExplorerApplet {
         return false;
     }
 
+    _isTrashPath(vfsPath) {
+        return /\/Trash(\/|$)/.test(vfsPath || '');
+    }
+
+    _canMoveToTrash(item) {
+        if (!item || item.protected || item.system || item.isTrashItem) return false;
+        if (this._shouldRemoveShortcutOnly(item)) return false;
+        if (item.targetKind === 'vfs-folder' || item.targetKind === 'user-file') return true;
+        if (this._isVirtualSurfaceItem(item) && !this._isVfsVirtualEntry(item)) return true;
+        return false;
+    }
+
+    _trashToastIcon() {
+        return '<i class="fas fa-trash-can"></i>';
+    }
+
     async _removeShortcutItem(item) {
         if (!item) return;
         if (this._isLiveDesktopShortcutItem(item)) {
             if (typeof desktopShortcuts !== 'undefined') {
+                this._markExplorerDesktopChange();
                 await desktopShortcuts.removeShortcut(item.id);
                 this._refreshDesktop();
             }
@@ -787,7 +844,25 @@ class ExplorerApplet {
 
     _canCutCopyItem(item) {
         if (!item || item.protected || this._isSystemItem(item)) return false;
+        // Native gallery/reference/vibe/note entries cannot relocate between VFS folders — vfsManager.js
+        if (this._isVirtualSurfaceItem(item) && !this._isVfsVirtualEntry(item)) return false;
         return true;
+    }
+
+    _isWritableFolderPath(vfsPath) {
+        const WORKSPACE_SYSTEM = ['Desktop', 'Pictures', 'References', 'Notes', 'Scraps', 'Trash'];
+        const normalized = (vfsPath || '/').replace(/\/+$/, '') || '/';
+        if (this._isTrashPath(normalized)) return false;
+        if (normalized === '/') return true;
+        const parts = normalized.split('/').filter(Boolean);
+        if (parts[0] === 'System') return false;
+        if (parts[0] === 'Workspaces') {
+            if (parts.length === 1) return false;
+            if (parts.length === 2) return true;
+            if (parts.length === 3 && WORKSPACE_SYSTEM.includes(parts[2])) return false;
+            return true;
+        }
+        return parts.length >= 1;
     }
 
     _canRenameItem(item) {
@@ -803,7 +878,8 @@ class ExplorerApplet {
         const stripActions = new Set([
             'explorer-cut', 'explorer-copy', 'explorer-rename', 'explorer-paste',
             'remove-shortcut', 'rename-shortcut', 'delete-folder-shortcut',
-            'explorer-remove-shortcut', 'explorer-delete'
+            'explorer-remove-shortcut', 'explorer-delete', 'explorer-permanent-delete',
+            'explorer-restore-trash', 'explorer-empty-trash'
         ]);
         return (sections || []).map((section) => {
             if (section.type !== 'list' || !section.items) return section;
@@ -819,6 +895,20 @@ class ExplorerApplet {
     }
 
     _getFileManagementRemoveIcon(item, { multi, selCount }) {
+        if (this._isTrashPath(this.currentPath)) {
+            return {
+                icon: 'fas fa-trash',
+                tooltip: multi && selCount > 1 ? `Delete ${selCount} items permanently` : 'Delete Permanently',
+                action: 'explorer-permanent-delete'
+            };
+        }
+        if (item?.isTrashItem) {
+            return {
+                icon: 'fas fa-trash',
+                tooltip: 'Delete Permanently',
+                action: 'explorer-permanent-delete'
+            };
+        }
         if (item.shortcutType) {
             return {
                 icon: 'fas fa-trash',
@@ -835,8 +925,15 @@ class ExplorerApplet {
         }
         if (item.targetKind === 'vfs-folder' || item.targetKind === 'user-file' || multi) {
             return {
-                icon: 'fas fa-trash',
-                tooltip: multi && selCount > 1 ? `Delete ${selCount} items` : 'Delete',
+                icon: 'fas fa-trash-can',
+                tooltip: multi && selCount > 1 ? `Move ${selCount} items to Trash` : 'Move to Trash',
+                action: 'explorer-delete'
+            };
+        }
+        if (this._canMoveToTrash(item)) {
+            return {
+                icon: 'fas fa-trash-can',
+                tooltip: 'Move to Trash',
                 action: 'explorer-delete'
             };
         }
@@ -1384,8 +1481,50 @@ class ExplorerApplet {
         return false;
     }
 
+    _buildWorkspaceListContextMenuSections(item) {
+        const wsId = item.targetId;
+        const ws = typeof workspaces !== 'undefined' ? workspaces[wsId] : null;
+        const isActive = wsId === (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null);
+        const isDefault = !!(ws?.isDefault || wsId === 'default');
+        const items = [
+            { icon: 'fas fa-folder-open', text: 'Open', action: 'explorer-open' }
+        ];
+        if (!isActive) {
+            items.push({ icon: 'fas fa-planet-ringed', text: 'Switch to', action: 'explorer-workspace-switch' });
+        }
+        items.push({ icon: 'fas fa-cog', text: 'Edit', action: 'explorer-workspace-edit' });
+        items.push({ icon: 'fas fa-i-cursor', text: 'Rename', action: 'explorer-workspace-rename' });
+        if (!isDefault) {
+            items.push({ icon: 'mdi mdi-1-5 mdi-folder-move', text: 'Dump to...', action: 'explorer-workspace-dump' });
+            items.push({ separator: true });
+            items.push({
+                icon: 'fas fa-trash',
+                text: 'Delete',
+                action: 'explorer-workspace-delete',
+                className: 'context-menu-item-danger'
+            });
+        }
+        return [{ type: 'list', items }];
+    }
+
     buildContextMenuSections(item) {
         if (!item) return this.buildEmptyContextMenuSections();
+
+        if (item.isTrashItem) {
+            return [{
+                type: 'list',
+                items: [
+                    { icon: 'fas fa-rotate-left', text: 'Restore', action: 'explorer-restore-trash' },
+                    { separator: true },
+                    {
+                        icon: 'fas fa-trash',
+                        text: 'Delete Permanently',
+                        action: 'explorer-permanent-delete',
+                        className: 'context-menu-item-danger'
+                    }
+                ]
+            }];
+        }
 
         const isFolder = item.kind === 'folder' || item.targetKind === 'vfs-folder'
             || item.targetKind === 'system-folder' || item.targetKind === 'workspace';
@@ -1415,6 +1554,10 @@ class ExplorerApplet {
             const appItem = this._getSystemFolderAppMenuItem(item);
             if (appItem) items.push(appItem);
             return this._finalizeContextMenuSections([{ type: 'list', items }], item, vfsOpts);
+        }
+
+        if (item.targetKind === 'workspace') {
+            return this._buildWorkspaceListContextMenuSections(item);
         }
 
         const sections = [];
@@ -1626,6 +1769,24 @@ class ExplorerApplet {
                 case 'explorer-new-folder':
                     await this.createFolder();
                     break;
+                case 'explorer-new-workspace':
+                    showAddWorkspaceModal();
+                    break;
+                case 'explorer-workspace-switch':
+                    if (item?.targetId) await setActiveWorkspace(item.targetId);
+                    break;
+                case 'explorer-workspace-edit':
+                    if (item?.targetId) editWorkspaceSettings(item.targetId);
+                    break;
+                case 'explorer-workspace-rename':
+                    if (item?.targetId) showRenameWorkspaceModal(item.targetId);
+                    break;
+                case 'explorer-workspace-dump':
+                    if (item?.targetId) showDumpWorkspaceModal(item.targetId, item.name);
+                    break;
+                case 'explorer-workspace-delete':
+                    if (item?.targetId) confirmDeleteWorkspace(item.targetId, item.name);
+                    break;
                 case 'explorer-upload':
                     this.el?.fileInput?.click();
                     break;
@@ -1646,6 +1807,15 @@ class ExplorerApplet {
                     break;
                 case 'explorer-delete':
                     await this.deleteSelection();
+                    break;
+                case 'explorer-permanent-delete':
+                    await this.deleteSelection({ permanent: true });
+                    break;
+                case 'explorer-restore-trash':
+                    await this.restoreTrashSelection(item);
+                    break;
+                case 'explorer-empty-trash':
+                    await this.emptyTrashFolder();
                     break;
                 case 'explorer-convert-ref-copy':
                 case 'explorer-convert-ref-move':
@@ -1687,6 +1857,9 @@ class ExplorerApplet {
         switch (action) {
             case 'open-folder-shortcut':
                 desktopShortcuts.handleFolderClick(shortcut);
+                return true;
+            case 'open-system-folder-shortcut':
+                desktopShortcuts.handleSystemFolderClick(shortcut);
                 return true;
             case 'open-note':
                 await desktopShortcuts.handleNoteClick(shortcut);
@@ -1989,7 +2162,7 @@ class ExplorerApplet {
             clearTimeout(this._searchDebounce);
             this._searchDebounce = setTimeout(() => {
                 this.searchQuery = e.searchBar.value.trim();
-                this.navigateTo(this.currentPath);
+                this.softRefresh();
             }, 300);
         });
         if (e.cutBtn) e.cutBtn.addEventListener('click', () => this.cutSelection());
@@ -2022,11 +2195,12 @@ class ExplorerApplet {
             showInOverlay: false
         });
         registerModalOverlayEntries('explorerModal', 'Explorer', [
-            { id: 'overlay.explorer.copy', label: 'Copy', keys: 'Ctrl+C', icon: 'fas fa-copy', overlayValid: () => this._explorerOverlayHasSelection() },
-            { id: 'overlay.explorer.cut', label: 'Cut', keys: 'Ctrl+X', icon: 'fas fa-cut', overlayValid: () => this._explorerOverlayHasSelection() },
+            { id: 'overlay.explorer.copy', label: 'Copy', keys: 'Ctrl+C', icon: 'fas fa-copy', overlayValid: () => this._explorerOverlayCanCutCopy() },
+            { id: 'overlay.explorer.cut', label: 'Cut', keys: 'Ctrl+X', icon: 'fas fa-cut', overlayValid: () => this._explorerOverlayCanCutCopy() },
             { id: 'overlay.explorer.paste', label: 'Paste', keys: 'Ctrl+V', icon: 'fas fa-paste', overlayValid: () => !!this.clipboard },
             { id: 'overlay.explorer.rename', label: 'Rename', keys: 'F2', icon: 'fas fa-i-cursor', overlayValid: () => this._explorerOverlayCanRename() },
-            { id: 'overlay.explorer.delete', label: 'Delete', keys: 'Del', icon: 'fas fa-trash', overlayValid: () => this._explorerOverlayHasSelection() }
+            { id: 'overlay.explorer.delete', label: 'Move to Trash', keys: 'Del', icon: 'fas fa-trash-can', overlayValid: () => this._explorerOverlayHasSelection() && !this._isTrashPath(this.currentPath) },
+            { id: 'overlay.explorer.deletePermanent', label: 'Delete permanently', keys: 'Shift+Del', icon: 'fas fa-trash', overlayValid: () => this._explorerOverlayHasSelection() }
         ]);
     }
 
@@ -2038,8 +2212,14 @@ class ExplorerApplet {
         return this._explorerOverlaySelectionCount() >= 1;
     }
 
+    _explorerOverlayCanCutCopy() {
+        const sel = this.grid?.getSelectedItems() || [];
+        return sel.length > 0 && sel.every(i => this._canCutCopyItem(i));
+    }
+
     _explorerOverlayCanRename() {
-        return this._explorerOverlaySelectionCount() === 1;
+        const sel = this.grid?.getSelectedItems() || [];
+        return sel.length === 1 && this._canRenameItem(sel[0]);
     }
 
     handleExplorerShortcutKeydown(ev) {
@@ -2126,6 +2306,7 @@ class ExplorerApplet {
             const tid = item.targetId || item.id;
             if (tid === '@workspaces' || item.name === 'Workspaces') return '/Workspaces';
             if (tid === '@system' || item.name === 'System') return '/System';
+            if (item.navPath && item.navPath.startsWith('/System/')) return item.navPath;
             if (item.workspaceId && item.name) {
                 return `/Workspaces/${item.workspaceId}/${item.name}`;
             }
@@ -2187,6 +2368,32 @@ class ExplorerApplet {
 
     _refsIncludeUserFiles(refs) {
         return (refs || []).some(r => r.targetKind === 'user-file' && !r.isShortcut && !r.isUserFileLink);
+    }
+
+    _collectFolderIdsForCopyMode(items) {
+        const folderIds = [];
+        for (const item of items || []) {
+            if (item.targetKind === 'vfs-folder' && !this._isLiveDesktopShortcutItem(item)) {
+                folderIds.push(item.targetId || item.id);
+            } else if (this._isFolderShortcutItem(item)) {
+                const fid = item.targetId || item.data?.vfsFolderId || item.shortcutData?.vfsFolderId;
+                if (fid) folderIds.push(fid);
+            }
+        }
+        return folderIds;
+    }
+
+    async _resolveUserFileCopyMode(refs, dragItems) {
+        if (this._refsIncludeUserFiles(refs)) {
+            return this._promptUserFileCopyMode();
+        }
+        const folderIds = this._collectFolderIdsForCopyMode(dragItems);
+        if (!folderIds.length) return 'duplicate';
+        try {
+            const resp = await vfsClient.folderTreeHasUserFiles(folderIds);
+            if (!resp?.hasUserFiles) return 'duplicate';
+        } catch (_) { /* fall through to prompt */ }
+        return this._promptUserFileCopyMode();
     }
 
     _promptUserFileCopyMode() {
@@ -2302,6 +2509,78 @@ class ExplorerApplet {
         if (typeof desktopShortcuts !== 'undefined') {
             desktopShortcuts.renderShortcuts();
         }
+    }
+
+    _normalizeVfsPath(path) {
+        return (path || '/').replace(/\/+$/, '') || '/';
+    }
+
+    _isReadOnlyUser() {
+        return localStorage.getItem('userType') === 'readonly';
+    }
+
+    _markExplorerDesktopChange() {
+        this._explorerDesktopChangeGen += 1;
+        const gen = this._explorerDesktopChangeGen;
+        if (this._explorerDesktopChangeClearTimer) {
+            clearTimeout(this._explorerDesktopChangeClearTimer);
+        }
+        this._explorerDesktopChangeClearTimer = setTimeout(() => {
+            if (this._explorerDesktopChangeGen === gen) {
+                this._explorerDesktopChangeGen = 0;
+            }
+            this._explorerDesktopChangeClearTimer = null;
+        }, 2000);
+    }
+
+    _isExplorerDesktopChangeAttributed() {
+        return this._explorerDesktopChangeGen > 0;
+    }
+
+    _isViewingWorkspaceDesktop(workspaceId) {
+        if (!this.modal || this.modal.classList.contains('hidden')) return false;
+        const parts = (this.currentPath || '').split('/').filter(Boolean);
+        if (parts[0] !== 'Workspaces' || parts.length < 3 || parts[2] !== 'Desktop') return false;
+        if (workspaceId && parts[1] !== workspaceId) return false;
+        return true;
+    }
+
+    _isSamePasteDestination(sourcePath, targetPath) {
+        if (!sourcePath || !targetPath) return false;
+        return this._normalizeVfsPath(sourcePath) === this._normalizeVfsPath(targetPath);
+    }
+
+    _scheduleDesktopBroadcastRefresh() {
+        if (this._desktopBroadcastRefreshTimer) {
+            clearTimeout(this._desktopBroadcastRefreshTimer);
+        }
+        this._desktopBroadcastRefreshTimer = setTimeout(() => {
+            this._desktopBroadcastRefreshTimer = null;
+            if (this._isExplorerDesktopChangeAttributed()) return;
+            if (this._loading || !wsClient?.isConnected()) return;
+            void this.softRefresh();
+        }, 150);
+    }
+
+    handleDesktopBroadcast(message) {
+        if (!message?.type) return;
+        if (this._isExplorerDesktopChangeAttributed()) return;
+        const workspaceId = message.data?.workspaceId;
+        if (!this._isViewingWorkspaceDesktop(workspaceId)) return;
+        this._scheduleDesktopBroadcastRefresh();
+    }
+
+    getDesktopPastePath() {
+        const wsId = this.getWorkspaceIdFromPath()
+            || (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null)
+            || (typeof getActiveWorkspace === 'function' ? getActiveWorkspace() : null)
+            || 'default';
+        return `/Workspaces/${wsId}/Desktop`;
+    }
+
+    async pasteToDesktopSurface() {
+        if (!this.clipboard) return;
+        await this.pasteToPath(this.getDesktopPastePath());
     }
 
     _touchesDesktop(navPath, items) {
@@ -2429,11 +2708,26 @@ class ExplorerApplet {
             } else {
                 const stored = storedOrLiveShortcuts.filter(i => this._isStoredShortcutItem(i));
                 const live = storedOrLiveShortcuts.filter(i => this._isLiveDesktopShortcutItem(i));
+                const liveFolders = live.filter(i => this._isFolderShortcutItem(i));
+                const liveOther = live.filter(i => !this._isFolderShortcutItem(i));
                 if (stored.length) {
-                    await vfsClient.copyItems(this._itemRefs(stored), navPath);
+                    let copyOptions = {};
+                    if (stored.some(i => this._isFolderShortcutItem(i))) {
+                        const mode = await this._resolveUserFileCopyMode(this._itemRefs(stored), stored);
+                        if (!mode) return;
+                        copyOptions.userFileCopyMode = mode;
+                    }
+                    await vfsClient.copyItems(this._itemRefs(stored), navPath, copyOptions);
+                }
+                if (liveFolders.length) {
+                    let copyOptions = {};
+                    const mode = await this._resolveUserFileCopyMode(this._itemRefs(liveFolders), liveFolders);
+                    if (!mode) return;
+                    copyOptions.userFileCopyMode = mode;
+                    await vfsClient.copyItems(this._itemRefs(liveFolders), navPath, copyOptions);
                 }
                 const newIds = [];
-                for (const item of live) {
+                for (const item of liveOther) {
                     const sc = this._shortcutFromItem(item);
                     const created = await desktopShortcuts.addShortcut({
                         name: sc.name,
@@ -2458,6 +2752,22 @@ class ExplorerApplet {
                 showGlassToast('info', 'Explorer',
                     'Files were placed in the workspace home folder. The desktop surface shows shortcuts only.',
                     false, 5000);
+            }
+        }
+
+        const vfsFolders = resolved.filter(i =>
+            i.targetKind === 'vfs-folder' && !this._isLiveDesktopShortcutItem(i)
+        );
+        if (vfsFolders.length) {
+            const refs = this._itemRefs(vfsFolders);
+            if (operation === 'cut') {
+                await vfsClient.moveItems(refs, navPath);
+            } else {
+                let copyOptions = {};
+                const mode = await this._resolveUserFileCopyMode(refs, vfsFolders);
+                if (!mode) return;
+                copyOptions.userFileCopyMode = mode;
+                await vfsClient.copyItems(refs, navPath, copyOptions);
             }
         }
     }
@@ -2636,9 +2946,19 @@ class ExplorerApplet {
             return;
         }
 
+        const prevPath = this.currentPath;
         const token = this._beginNavigation();
         this.currentPath = normalized;
+        if (normalized === '/Workspaces' && prevPath !== '/Workspaces') {
+            this.sortField = 'workspaceOrder';
+            this.sortDirection = 'asc';
+            localStorage.setItem('explorerSortField', this.sortField);
+            localStorage.setItem('explorerSortDirection', this.sortDirection);
+            this.updateSortLabel();
+            this.updateDetailsHeaderSort();
+        }
         this._applyViewModeForPath(normalized);
+        this.updateWorkspacesListToolbar();
         this.updateLocationLabels(null);
         if (this.historyIndex < this.history.length - 1) {
             this.history = this.history.slice(0, this.historyIndex + 1);
@@ -2782,6 +3102,59 @@ class ExplorerApplet {
         }
     }
 
+    _itemSizeBytes(item) {
+        return item?.sizeBytes ?? item?.size ?? 0;
+    }
+
+    _formatStatusSize(bytes) {
+        if (!bytes) return '0 B';
+        // formatFileSize: public/scripts/comp/referenceManager.js
+        const formatted = formatFileSize(bytes);
+        return formatted === 'No Data' ? '0 B' : formatted;
+    }
+
+    _formatSelectionStatusText(sel) {
+        const totalSize = sel.reduce((s, i) => s + this._itemSizeBytes(i), 0);
+        const sizePart = totalSize ? ` - ${this._formatStatusSize(totalSize)}` : '';
+
+        if (sel.length === 1) {
+            const item = sel[0];
+            const typePart = item.typeLabel || this._fallbackTypeLabel(item);
+            const locPart = item.originalLocation ? `, Located in "${item.originalLocation}"` : '';
+            return `1 item selected (${typePart}${locPart})${sizePart}`;
+        }
+
+        const countLabel = `${sel.length} items selected`;
+        return sizePart ? `${countLabel}${sizePart}` : countLabel;
+    }
+
+    _fallbackTypeLabel(item) {
+        if (item.isUploadPlaceholder) return 'Upload';
+        if (item.targetKind === 'workspace') return 'Workspace';
+        if (item.shortcutType === 'wiki-page' || item.shortcutType === 'static-wiki-page') {
+            const data = item.shortcutData || {};
+            const candidates = [data.url, data.address, data.dsapUrl, data.pseudoUrl, data.pageId, item.name];
+            for (const raw of candidates) {
+                const s = String(raw || '').trim();
+                if (!s) continue;
+                if (/^edtx:\/\//i.test(s)) return 'DTEXT Document';
+                if (/^rdf:\/\//i.test(s)) return 'Rich Text Document';
+                if (/^dsap:\/\//i.test(s)) return 'DreamScape Portable Executable';
+                const ext = s.match(/\.([a-z0-9]+)(?:[?#].*)?$/i)?.[1]?.toLowerCase();
+                if (ext === 'edtx' || ext === 'dtxt') return 'DTEXT Document';
+                if (ext === 'rdf') return 'Rich Text Document';
+                if (ext === 'dsap') return 'DreamScape Portable Executable';
+            }
+            return 'Grimoire Document';
+        }
+        if (item.shortcutType || item.isShortcut || item.isDesktopShortcut) return 'Shortcut';
+        if (item.targetKind === 'image') return 'Workspace Image';
+        if (item.targetKind === 'reference' || item.targetKind === 'vibe') return 'Reference Image';
+        if (item.targetKind === 'user-file') return 'VFS File';
+        if (item.kind === 'folder') return 'Folder';
+        return 'File';
+    }
+
     renderStatusText(selected) {
         const el = this.el.statusText;
         const spinner = this.el.statusSpinner;
@@ -2805,11 +3178,7 @@ class ExplorerApplet {
 
         const sel = selected || (this.grid ? this.grid.getSelectedItems() : []);
         if (sel.length > 0) {
-            const totalSize = sel.reduce((s, i) => s + (i.size || 0), 0);
-            const sizePart = totalSize ? ` · ${this.formatSize(totalSize)}` : '';
-            el.textContent = sel.length === 1
-                ? `${sel.length} item selected${sizePart}`
-                : `${sel.length} items selected${sizePart}`;
+            el.textContent = this._formatSelectionStatusText(sel);
             return;
         }
 
@@ -2823,7 +3192,7 @@ class ExplorerApplet {
             return;
         }
 
-        const sizeStr = this.formatSize(stats.totalSizeBytes || 0);
+        const sizeStr = this._formatStatusSize(stats.totalSizeBytes || 0);
         let text = `${stats.itemCount || 0} items · ${sizeStr}`;
         if (stats.disk && this.currentPath === '/') {
             text += ` · Free: ${stats.disk.free || '?'} / ${stats.disk.total || '?'}`;
@@ -2835,7 +3204,7 @@ class ExplorerApplet {
         const displayName = stats?.displayName || this._fallbackDisplayName(this.currentPath);
         const displayPath = stats?.displayPath || this._fallbackDisplayPath(this.currentPath);
         if (this.el.titleLabel) {
-            this.el.titleLabel.textContent = `${displayName} - File Explorer`;
+            this.el.titleLabel.textContent = `${displayName} — Cartograph`;
         }
         if (this.el.addressBar && document.activeElement !== this.el.addressBar) {
             this.el.addressBar.value = displayPath;
@@ -2853,14 +3222,27 @@ class ExplorerApplet {
             const ws = workspaces[parts[1]];
             if (ws?.name) return ws.name;
         }
-        if (parts[0] === 'System') return 'System';
+        if (parts[0] === 'System') {
+            if (parts.length === 1) return 'System';
+            const systemRootLabels = { Cache: 'Library', Config: 'AppData' };
+            if (parts.length === 2) return systemRootLabels[parts[1]] || parts[1];
+            return parts[parts.length - 1];
+        }
         if (parts[0] === 'Workspaces' && parts.length === 1) return 'Workspaces';
-        return parts[parts.length - 1] || 'File Explorer';
+        return parts[parts.length - 1] || 'Cartograph';
     }
 
     _fallbackDisplayPath(path) {
         if (!path || path === '/') return '/';
         const parts = path.split('/').filter(Boolean);
+        if (parts[0] === 'System') {
+            const systemRootLabels = { Cache: 'Library', Config: 'AppData' };
+            const labels = ['System'];
+            for (let i = 1; i < parts.length; i++) {
+                labels.push(i === 1 ? (systemRootLabels[parts[i]] || parts[i]) : parts[i]);
+            }
+            return '/' + labels.join('/');
+        }
         if (parts[0] !== 'Workspaces') return path;
         const labels = ['Workspaces'];
         if (parts.length >= 2 && typeof workspaces !== 'undefined' && workspaces[parts[1]]?.name) {
@@ -3131,6 +3513,11 @@ class ExplorerApplet {
         this._setBusyState('open', openLabel);
         if (this.grid) this.grid.setOpeningItemId(item.id);
         try {
+            if (item.targetKind === 'system-file' && vfsSystemOpenRouter) {
+                await vfsSystemOpenRouter.openItem(item);
+                return;
+            }
+
             if (item.targetKind === 'reference' || item.targetKind === 'vibe') {
                 this.openReferenceItem(item);
                 return;
@@ -3170,30 +3557,48 @@ class ExplorerApplet {
         this.renderStatusText(selected);
     }
 
+    updateWorkspacesListToolbar() {
+        const isWsList = this._isWorkspacesListPath();
+        const btn = this.el?.newFolderBtn;
+        const uploadBtn = this.el?.uploadBtn;
+        if (btn) {
+            if (isWsList) {
+                btn.title = 'New Workspace';
+                btn.innerHTML = '<i class="fas fa-planet-ringed"></i>';
+            } else {
+                btn.title = 'New Folder';
+                btn.innerHTML = '<i class="fas fa-folder-plus"></i>';
+            }
+        }
+        if (uploadBtn) {
+            uploadBtn.classList.toggle('hidden', isWsList);
+        }
+    }
+
     updateToolbarState(selected) {
         const sel = selected || (this.grid ? this.grid.getSelectedItems() : []);
         const hasSel = sel.length > 0;
         const single = sel.length === 1;
-        const canModify = single && !sel[0].protected && sel[0].targetKind === 'vfs-folder';
+        const canCutCopy = hasSel && sel.every(i => this._canCutCopyItem(i));
+        const canRename = single && this._canRenameItem(sel[0]);
         const canFile = single && sel[0].targetKind === 'user-file' && !this._isUserFileLinkItem(sel[0]);
-        const canRenameShortcut = single && (
-            this._isLiveDesktopShortcutItem(sel[0]) || this._isStoredShortcutItem(sel[0])
-                || this._isUserFileLinkItem(sel[0])
-                || (sel[0].isShortcut && this._isVirtualSurfaceItem(sel[0]))
-        ) && !sel[0].protected;
+        const canWrite = this._isWritableFolderPath(this.currentPath);
+        const isWsList = this._isWorkspacesListPath();
 
         const set = (btn, on) => {
             if (!btn) return;
             btn.disabled = !on;
             btn.classList.toggle('disabled', !on);
         };
-        set(this.el.cutBtn, hasSel);
-        set(this.el.copyBtn, hasSel);
-        set(this.el.pasteBtn, !!this.clipboard);
-        set(this.el.renameBtn, canModify || canFile || canRenameShortcut);
+        set(this.el.cutBtn, canCutCopy);
+        set(this.el.copyBtn, canCutCopy);
+        set(this.el.pasteBtn, !!this.clipboard && canWrite);
+        set(this.el.renameBtn, canRename);
         set(this.el.downloadBtn, canFile);
         set(this.el.replaceBtn, canFile);
         set(this.el.deleteBtn, hasSel);
+        set(this.el.newFolderBtn, isWsList || canWrite);
+        this.updateWorkspacesListToolbar();
         // notifyKeyboardOverlayContextChanged: public/scripts/comp/modalKeyboardRegistry.js
         notifyKeyboardOverlayContextChanged();
     }
@@ -3219,14 +3624,14 @@ class ExplorerApplet {
 
     cutSelection() {
         const sel = this.grid?.getSelectedItems() || [];
-        if (!sel.length) return;
+        if (!sel.length || !sel.every(i => this._canCutCopyItem(i))) return;
         this.clipboard = { operation: 'cut', items: this._itemRefs(sel), sourcePath: this.currentPath };
         this.updateToolbarState(sel);
     }
 
     copySelection() {
         const sel = this.grid?.getSelectedItems() || [];
-        if (!sel.length) return;
+        if (!sel.length || !sel.every(i => this._canCutCopyItem(i))) return;
         this.clipboard = { operation: 'copy', items: this._itemRefs(sel), sourcePath: this.currentPath };
         this.updateToolbarState(sel);
     }
@@ -3238,10 +3643,14 @@ class ExplorerApplet {
 
     async pasteToPath(navPath) {
         if (!this.clipboard || !navPath) return;
-        const { operation, items } = this.clipboard;
+        if (this._isReadOnlyUser()) {
+            showGlassToast('warning', 'Explorer', 'Paste is not available in read-only mode', false, 4000);
+            return;
+        }
+        const { operation, items, sourcePath } = this.clipboard;
         this._setBusyState('paste');
         try {
-            const done = await this.deliverItemsToPath(items, navPath, operation);
+            const done = await this.deliverItemsToPath(items, navPath, operation, { sourcePath });
             if (done === false) return;
             if (operation === 'cut') this.clipboard = null;
             if (navPath === this.currentPath) {
@@ -3255,13 +3664,25 @@ class ExplorerApplet {
     }
 
     async createFolder() {
+        if (!this._isWritableFolderPath(this.currentPath)) {
+            showGlassToast('warning', 'Explorer', 'Cannot create a folder here', false, 4000);
+            return;
+        }
         const name = 'New Folder';
-        await vfsClient.createFolder(this.currentPath, name);
-        await this.softRefresh();
+        try {
+            await vfsClient.createFolder(this.currentPath, name);
+            await this.softRefresh();
+        } catch (err) {
+            showGlassToast('error', 'Explorer', err.message || 'Failed to create folder', false, 5000);
+        }
     }
 
     async uploadFilesToPath(vfsPath, fileList) {
         if (!fileList?.length) return;
+        if (!this._isWritableFolderPath(vfsPath)) {
+            showGlassToast('warning', 'Explorer', 'Cannot upload here', false, 4000);
+            return;
+        }
         const files = [...fileList];
         const showPlaceholders = vfsPath === this.currentPath;
         let placeholderIds = [];
@@ -3302,17 +3723,28 @@ class ExplorerApplet {
             return;
         }
         if (target.type === 'desktop') {
-            const wsId = dragItems[0]?.workspaceId
-                || this.getWorkspaceIdFromPath()
-                || (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null);
-            if (!wsId) return;
-            await this.deliverItemsToPath(dragItems, `/Workspaces/${wsId}/Desktop`, 'cut');
+            const navPath = this.getDesktopPastePath();
+            if (this._isReadOnlyUser()) {
+                showGlassToast('warning', 'Explorer', 'Not available in read-only mode', false, 4000);
+                return;
+            }
+            await this.deliverItemsToPath(dragItems, navPath, 'cut', { sourcePath: this.currentPath });
         }
     }
 
-    async deliverItemsToPath(dragItems, navPath, operation = 'cut') {
+    async deliverItemsToPath(dragItems, navPath, operation = 'cut', options = {}) {
         if (!dragItems?.length || !navPath) return true;
+        if (this._isReadOnlyUser()) {
+            showGlassToast('warning', 'Explorer', 'Not available in read-only mode', false, 4000);
+            return false;
+        }
+        const sourcePath = options.sourcePath ?? this.clipboard?.sourcePath ?? this.currentPath;
+        if (this._isSamePasteDestination(sourcePath, navPath)) {
+            showGlassToast('info', 'Explorer', 'Items are already in this location', false, 3000);
+            return true;
+        }
         const touchDesktop = this._touchesDesktop(navPath, dragItems);
+        if (touchDesktop) this._markExplorerDesktopChange();
         this._setBusyState('paste');
         try {
             if (this._isDesktopDestination(navPath)) {
@@ -3322,8 +3754,10 @@ class ExplorerApplet {
             } else {
                 const refs = this._itemRefs(dragItems);
                 let copyOptions = {};
-                if (this._refsIncludeUserFiles(refs)) {
-                    const mode = await this._promptUserFileCopyMode();
+                if (this._refsIncludeUserFiles(refs)
+                    || dragItems.some(i => i.targetKind === 'vfs-folder' && !this._isLiveDesktopShortcutItem(i))
+                    || dragItems.some(i => this._isFolderShortcutItem(i))) {
+                    const mode = await this._resolveUserFileCopyMode(refs, dragItems);
                     if (!mode) return false;
                     copyOptions.userFileCopyMode = mode;
                 }
@@ -3487,7 +3921,7 @@ class ExplorerApplet {
             const folderId = item.targetId || item.id;
             const listPath = item.navPath
                 || (wsId ? `/Workspaces/${wsId}/Desktop/${folderId}` : null);
-            if (listPath && typeof desktopShortcuts !== 'undefined') {
+            if (listPath && typeof desktopShortcuts !== 'undefined' && this._isDesktopDestination(listPath)) {
                 await desktopShortcuts.purgeVfsFolderByPath(listPath, folderId);
             } else {
                 await vfsClient.deleteFolder(folderId);
@@ -3506,15 +3940,127 @@ class ExplorerApplet {
         return null;
     }
 
+    async restoreTrashSelection(item) {
+        const sel = this.grid?.getSelectedItems()?.length
+            ? this.grid.getSelectedItems()
+            : (item ? [item] : []);
+        const trashItems = sel.filter(i => i.isTrashItem);
+        if (!trashItems.length) return;
+
+        let restored = 0;
+        for (const trashItem of trashItems) {
+            try {
+                const trashId = trashItem.trashItemId || trashItem.id;
+                await vfsClient.restoreFromTrash(trashId);
+                restored += 1;
+            } catch (err) {
+                showGlassToast('error', 'Explorer', err.message || 'Restore failed', false, 5000);
+            }
+        }
+        if (restored) {
+            showGlassToast(
+                'success',
+                'Explorer',
+                restored === 1 ? `"${trashItems[0].name}" restored` : `${restored} item(s) restored`,
+                false,
+                4000,
+                '<i class="fas fa-rotate-left"></i>'
+            );
+            if (typeof loadGallery === 'function') loadGallery(true);
+            await this.softRefresh();
+        }
+    }
+
+    async emptyTrashFolder() {
+        const wsId = this.getWorkspaceIdFromPath();
+        if (!wsId) {
+            showGlassToast('warning', 'Explorer', 'Open a workspace Trash folder first', false, 4000);
+            return;
+        }
+        const confirmed = typeof showConfirmationDialog === 'function'
+            ? await showConfirmationDialog(
+                'Empty Trash? All items will be permanently deleted and cannot be recovered.',
+                [
+                    { text: 'Empty Trash', value: true, className: 'btn-danger' },
+                    { text: 'Cancel', value: false, className: 'btn-secondary' }
+                ]
+            )
+            : true;
+        if (!confirmed) return;
+        try {
+            const resp = await vfsClient.emptyTrash(wsId);
+            const count = resp?.count || 0;
+            showGlassToast(
+                'success',
+                'Explorer',
+                count ? `Emptied Trash (${count} item(s) deleted)` : 'Trash is already empty',
+                false,
+                4000,
+                this._trashToastIcon()
+            );
+            if (typeof loadGallery === 'function') loadGallery(true);
+            await this.softRefresh();
+        } catch (err) {
+            showGlassToast('error', 'Explorer', err.message || 'Empty Trash failed', false, 5000);
+        }
+    }
+
     async deleteSelection(options = {}) {
         const fromKeyboard = options.fromKeyboard === true;
         const permanent = options.permanent === true;
         const sel = this.grid?.getSelectedItems() || [];
         if (!sel.length) return;
 
+        if (this._isTrashPath(this.currentPath)) {
+            const confirmed = typeof showConfirmationDialog === 'function'
+                ? await showConfirmationDialog(
+                    sel.length === 1
+                        ? `Permanently delete "${sel[0].name}"? This cannot be undone.`
+                        : `Permanently delete ${sel.length} item(s)? This cannot be undone.`,
+                    [
+                        { text: 'Delete Permanently', value: true, className: 'btn-danger' },
+                        { text: 'Cancel', value: false, className: 'btn-secondary' }
+                    ]
+                )
+                : true;
+            if (!confirmed) return;
+
+            let deleted = 0;
+            for (const item of sel) {
+                if (!item.isTrashItem) continue;
+                try {
+                    await vfsClient.permanentlyDelete([{
+                        id: item.id,
+                        trashItemId: item.trashItemId || item.id,
+                        isTrashItem: true,
+                        targetKind: item.targetKind,
+                        targetId: item.targetId,
+                        name: item.name,
+                        workspaceId: item.workspaceId
+                    }], this.currentPath);
+                    deleted += 1;
+                } catch (err) {
+                    showGlassToast('error', 'Explorer', err.message || 'Delete failed', false, 5000);
+                }
+            }
+            if (deleted) {
+                showGlassToast(
+                    'success',
+                    'Explorer',
+                    deleted === 1 ? `"${sel[0].name}" permanently deleted` : `${deleted} item(s) permanently deleted`,
+                    false,
+                    4000,
+                    '<i class="fas fa-trash"></i>'
+                );
+                if (typeof loadGallery === 'function') loadGallery(true);
+                await this.softRefresh();
+            }
+            return;
+        }
+
         const folderItems = sel.filter(i => this._isFolderShortcutItem(i) && !i.protected && !i.system);
         const shortcutItems = sel.filter(i => this._shouldRemoveShortcutOnly(i) && !i.protected && !i.system);
-        const nativeVirtual = sel.filter(i => this._isVirtualSurfaceItem(i) && !this._shouldRemoveShortcutOnly(i));
+        const trashableItems = sel.filter(i => this._canMoveToTrash(i));
 
         if (folderItems.length && typeof showConfirmationDialog === 'function') {
             const folderMsg = folderItems.length === 1 && sel.length === 1
@@ -3533,8 +4079,8 @@ class ExplorerApplet {
             if (!folderConfirmed) return;
         }
 
-        // Delete key (no Shift): remove shortcut links only — never permanently delete underlying files
-        if (fromKeyboard && !permanent && shortcutItems.length && !folderItems.length) {
+        // Delete key (no Shift): remove shortcut links only — never trash underlying files
+        if (fromKeyboard && !permanent && shortcutItems.length && !folderItems.length && !trashableItems.length) {
             let desktopTouched = false;
             for (const item of shortcutItems) {
                 try {
@@ -3545,49 +4091,95 @@ class ExplorerApplet {
                 }
             }
             if (desktopTouched) this._refreshDesktop();
+            showGlassToast(
+                'success',
+                'Explorer',
+                shortcutItems.length === 1
+                    ? `Shortcut "${shortcutItems[0].name}" removed`
+                    : `${shortcutItems.length} shortcut(s) removed`,
+                false,
+                4000,
+                '<i class="fas fa-unlink"></i>'
+            );
             await this.softRefresh();
             return;
         }
 
-        if (nativeVirtual.length) {
-            const labels = { image: 'image(s)', scrap: 'scrap(s)', reference: 'reference(s)', vibe: 'vibe(s)', note: 'note(s)' };
-            const kinds = [...new Set(nativeVirtual.map(i => labels[i.targetKind] || 'item(s)'))].join(', ');
-            const confirmed = typeof showConfirmationDialog === 'function'
-                ? await showConfirmationDialog(
-                    `Permanently delete ${nativeVirtual.length} ${kinds}? This uses the same action as deleting from the gallery or reference manager.`,
-                    [
-                        { text: 'Delete', value: true, className: 'btn-danger' },
-                        { text: 'Cancel', value: false, className: 'btn-secondary' }
-                    ]
-                )
-                : true;
-            if (!confirmed) return;
-        } else if (shortcutItems.length && !fromKeyboard) {
-            const confirmed = typeof showConfirmationDialog === 'function'
-                ? await showConfirmationDialog(
-                    `Remove ${shortcutItems.length} shortcut(s)? The original files will not be deleted.`,
-                    [
-                        { text: 'Remove', value: true, className: 'btn-danger' },
-                        { text: 'Cancel', value: false, className: 'btn-secondary' }
-                    ]
-                )
-                : true;
-            if (!confirmed) return;
-        } else if (shortcutItems.length && fromKeyboard && permanent) {
-            const confirmed = typeof showConfirmationDialog === 'function'
-                ? await showConfirmationDialog(
-                    `Permanently delete ${shortcutItems.length} shortcut item(s) and their underlying files?`,
-                    [
-                        { text: 'Delete', value: true, className: 'btn-danger' },
-                        { text: 'Cancel', value: false, className: 'btn-secondary' }
-                    ]
-                )
-                : true;
-            if (!confirmed) return;
+        if (permanent) {
+            const nativePermanent = sel.filter(i =>
+                this._isVirtualSurfaceItem(i) && !this._shouldRemoveShortcutOnly(i)
+            );
+            if (nativePermanent.length) {
+                const labels = { image: 'image(s)', scrap: 'scrap(s)', reference: 'reference(s)', vibe: 'vibe(s)', note: 'note(s)' };
+                const kinds = [...new Set(nativePermanent.map(i => labels[i.targetKind] || 'item(s)'))].join(', ');
+                const confirmed = typeof showConfirmationDialog === 'function'
+                    ? await showConfirmationDialog(
+                        `Permanently delete ${nativePermanent.length} ${kinds}? This cannot be undone.`,
+                        [
+                            { text: 'Delete Permanently', value: true, className: 'btn-danger' },
+                            { text: 'Cancel', value: false, className: 'btn-secondary' }
+                        ]
+                    )
+                    : true;
+                if (!confirmed) return;
+            } else if (shortcutItems.length) {
+                const confirmed = typeof showConfirmationDialog === 'function'
+                    ? await showConfirmationDialog(
+                        `Permanently delete ${shortcutItems.length} shortcut item(s) and their underlying files?`,
+                        [
+                            { text: 'Delete Permanently', value: true, className: 'btn-danger' },
+                            { text: 'Cancel', value: false, className: 'btn-secondary' }
+                        ]
+                    )
+                    : true;
+                if (!confirmed) return;
+            } else if (trashableItems.length) {
+                const confirmed = typeof showConfirmationDialog === 'function'
+                    ? await showConfirmationDialog(
+                        trashableItems.length === 1
+                            ? `Permanently delete "${trashableItems[0].name}"? This cannot be undone.`
+                            : `Permanently delete ${trashableItems.length} item(s)? This cannot be undone.`,
+                        [
+                            { text: 'Delete Permanently', value: true, className: 'btn-danger' },
+                            { text: 'Cancel', value: false, className: 'btn-secondary' }
+                        ]
+                    )
+                    : true;
+                if (!confirmed) return;
+            }
+        } else {
+            if (trashableItems.length) {
+                const confirmed = typeof showConfirmationDialog === 'function'
+                    ? await showConfirmationDialog(
+                        trashableItems.length === 1
+                            ? `Move "${trashableItems[0].name}" to Trash?`
+                            : `Move ${trashableItems.length} item(s) to Trash?`,
+                        [
+                            { text: 'Move to Trash', value: true, className: 'btn-danger' },
+                            { text: 'Cancel', value: false, className: 'btn-secondary' }
+                        ]
+                    )
+                    : true;
+                if (!confirmed) return;
+            }
+            if (shortcutItems.length) {
+                const confirmed = typeof showConfirmationDialog === 'function'
+                    ? await showConfirmationDialog(
+                        `Remove ${shortcutItems.length} shortcut(s)? The original files will not be deleted.`,
+                        [
+                            { text: 'Remove', value: true, className: 'btn-danger' },
+                            { text: 'Cancel', value: false, className: 'btn-secondary' }
+                        ]
+                    )
+                    : true;
+                if (!confirmed) return;
+            }
         }
 
         let desktopTouched = false;
         let deleted = 0;
+        let trashed = 0;
+        let shortcutsRemoved = 0;
         let skipped = 0;
         let galleryTouched = false;
 
@@ -3615,9 +4207,20 @@ class ExplorerApplet {
                 try {
                     await this._removeShortcutItem(item);
                     if (this._isLiveDesktopShortcutItem(item)) desktopTouched = true;
-                    deleted += 1;
+                    shortcutsRemoved += 1;
                 } catch (err) {
                     showGlassToast('error', 'Explorer', err.message || 'Remove shortcut failed', false, 5000);
+                    skipped += 1;
+                }
+                continue;
+            }
+            if (!permanent && this._canMoveToTrash(item)) {
+                try {
+                    await vfsClient.moveToTrash(this._itemRefs([item]), this.currentPath);
+                    trashed += 1;
+                    if (['image', 'scrap'].includes(item.targetKind)) galleryTouched = true;
+                } catch (err) {
+                    showGlassToast('error', 'Explorer', err.message || 'Move to Trash failed', false, 5000);
                     skipped += 1;
                 }
                 continue;
@@ -3632,16 +4235,50 @@ class ExplorerApplet {
                 skipped += 1;
             }
         }
-        if (skipped && !deleted) {
+
+        const acted = deleted + trashed + shortcutsRemoved;
+        if (skipped && !acted) {
             showGlassToast('warning', 'Explorer', 'The selected items cannot be deleted from here.', false, 4000);
             return;
         }
-        if (skipped && deleted) {
+        if (skipped && acted) {
             showGlassToast('warning', 'Explorer', `${skipped} item(s) could not be deleted.`, false, 4000);
+        }
+        if (trashed) {
+            showGlassToast(
+                'success',
+                'Explorer',
+                trashed === 1 ? 'Moved 1 item to Trash' : `Moved ${trashed} item(s) to Trash`,
+                false,
+                4000,
+                this._trashToastIcon()
+            );
+        }
+        if (shortcutsRemoved) {
+            showGlassToast(
+                'success',
+                'Explorer',
+                shortcutsRemoved === 1
+                    ? `Shortcut "${shortcutItems[0]?.name || 'item'}" removed`
+                    : `${shortcutsRemoved} shortcut(s) removed`,
+                false,
+                4000,
+                '<i class="fas fa-unlink"></i>'
+            );
+        }
+        if (deleted && permanent) {
+            showGlassToast(
+                'success',
+                'Explorer',
+                deleted === 1 ? 'Item permanently deleted' : `${deleted} item(s) permanently deleted`,
+                false,
+                4000,
+                '<i class="fas fa-trash"></i>'
+            );
         }
         if (desktopTouched) this._refreshDesktop();
         if (galleryTouched && typeof loadGallery === 'function') loadGallery(true);
-        if (deleted) await this.softRefresh();
+        if (acted) await this.softRefresh();
     }
 }
 

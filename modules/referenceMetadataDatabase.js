@@ -2,6 +2,7 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 const logger = require('./logger');
+const { attachLegacyDatabaseCheckpoint } = require('./legacyDatabaseCheckpoint');
 
 class ReferenceMetadataDatabase {
     constructor(globalResources = null) {
@@ -26,6 +27,8 @@ class ReferenceMetadataDatabase {
             this.db = new Database(this.dbPath);
             this.db.pragma('journal_mode = WAL');
             this.db.pragma('foreign_keys = ON');
+
+            attachLegacyDatabaseCheckpoint(this, this.dbPath, () => this.db, this.globalResources);
 
             // Create tables
             this.createTables();
@@ -1940,6 +1943,10 @@ class ReferenceMetadataDatabase {
     /**
      * Close the database connection
      */
+    getCheckpointManager() {
+        return this.checkpointManager || null;
+    }
+
     close() {
         if (this.db) {
             this.db.close();

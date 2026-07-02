@@ -1,6 +1,15 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const {
+    listAllCheckpointFiles,
+    applyGrandfathering,
+    isGrandfatheringEnabled,
+    newCheckpointRelativePath,
+    resolveCheckpointFilePath,
+    tierDir,
+    ensureTierDirs
+} = require('./checkpointGrandfathering');
 
 /**
  * JSON Checkpoint Manager
@@ -97,31 +106,8 @@ class JSONCheckpointManager {
                 return [];
             }
 
-            // Filter files that match the timestamp format and have the correct extension
-            // Format: YYYY-MM-DD_HH-mm-ss.SSS.ext
-            // IMPORTANT: Must NOT start with 'branch_' to exclude branch files
             const timestampPattern = /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.\d{3}\./;
-            
-            const files = fs.readdirSync(this.checkpointDir)
-                .filter(file => {
-                    // Must match timestamp pattern, have correct extension, and NOT be a branch file
-                    return timestampPattern.test(file) && 
-                           file.endsWith(this.fileExt) &&
-                           !file.startsWith('branch_');
-                })
-                .map(file => {
-                    const filePath = path.join(this.checkpointDir, file);
-                    const stats = fs.statSync(filePath);
-                    return {
-                        filename: file,
-                        filePath: filePath,
-                        mtime: stats.mtime,
-                        size: stats.size
-                    };
-                })
-                .sort((a, b) => b.mtime - a.mtime); // Sort by modification time, newest first
-
-            return files;
+            return listAllCheckpointFiles(this.checkpointDir, this.fileExt, timestampPattern);
         } catch (error) {
             console.error('❌ Error getting checkpoint files:', error);
             return [];
@@ -129,24 +115,27 @@ class JSONCheckpointManager {
     }
 
     /**
-     * Clean up old checkpoints, keeping only the most recent ones
-     * IMPORTANT: This method only deletes checkpoint files, never branch files
-     * Branches are preserved regardless of the max checkpoint count
+     * Clean up old checkpoints via tiered grandfathering or fixed cap fallback
      */
     cleanupOldCheckpoints() {
         try {
+            const timestampPattern = /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.\d{3}\./;
+            if (isGrandfatheringEnabled(this.globalResources)) {
+                applyGrandfathering(this.checkpointDir, this.fileExt, this.globalResources, timestampPattern);
+                return;
+            }
+
             const checkpointFiles = this.getCheckpointFiles();
-            
+
             if (checkpointFiles.length > this.maxCheckpoints) {
                 const filesToDelete = checkpointFiles.slice(this.maxCheckpoints);
-                
+
                 filesToDelete.forEach(file => {
                     try {
-                        // Safety check: ensure we're not accidentally deleting a branch file
                         if (file.filename.startsWith('branch_')) {
                             return;
                         }
-                        
+
                         fs.unlinkSync(file.filePath);
                         console.log(`🗑️ Deleted old checkpoint: ${file.filename}`);
                     } catch (error) {
@@ -372,7 +361,9 @@ class JSONCheckpointManager {
 
             // Files are different or no checkpoint exists, create a new checkpoint
             const checkpointFilename = this.generateCheckpointFilename();
-            const checkpointPath = path.join(this.checkpointDir, checkpointFilename);
+            ensureTierDirs(this.checkpointDir);
+            const relativeName = newCheckpointRelativePath(checkpointFilename);
+            const checkpointPath = path.join(this.checkpointDir, relativeName.replace(/\//g, path.sep));
 
             // Copy the current file to create a checkpoint
             fs.copyFileSync(this.filePath, checkpointPath);
@@ -386,7 +377,7 @@ class JSONCheckpointManager {
 
             this.lastCheckpointTime = checkpointStats.mtime.getTime();
             this.markClean();
-            console.log(`✅ Created checkpoint: ${checkpointFilename}`);
+            console.log(`✅ Created checkpoint: ${relativeName}`);
             
             // Clean up old checkpoints
             this.cleanupOldCheckpoints();
@@ -585,9 +576,9 @@ class JSONCheckpointManager {
                 skipSavingCurrent = false
             } = options;
 
-            const checkpointPath = path.join(this.checkpointDir, checkpointFilename);
-            
-            if (!fs.existsSync(checkpointPath)) {
+            const checkpointPath = resolveCheckpointFilePath(this.checkpointDir, checkpointFilename);
+
+            if (!checkpointPath || !fs.existsSync(checkpointPath)) {
                 throw new Error(`Checkpoint not found: ${checkpointFilename}`);
             }
 
@@ -711,9 +702,9 @@ class JSONCheckpointManager {
      */
     deleteCheckpoint(checkpointFilename) {
         try {
-            const checkpointPath = path.join(this.checkpointDir, checkpointFilename);
-            
-            if (!fs.existsSync(checkpointPath)) {
+            const checkpointPath = resolveCheckpointFilePath(this.checkpointDir, checkpointFilename);
+
+            if (!checkpointPath || !fs.existsSync(checkpointPath)) {
                 throw new Error(`Checkpoint not found: ${checkpointFilename}`);
             }
 

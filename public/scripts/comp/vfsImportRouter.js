@@ -113,7 +113,13 @@ const vfsImportRouter = {
 
     async _importVibeFile(workspaceId, file) {
         const text = await file.text();
-        const jsonData = JSON.parse(text);
+        let jsonData;
+        try {
+            jsonData = JSON.parse(text);
+        } catch (_err) {
+            showGlassToast('error', 'Import Failed', 'Invalid vibe JSON file', false, 5000);
+            return;
+        }
         await wsClient.sendMessage('import_vibe_bundle', { workspaceId, jsonData, filename: file.name });
         showGlassToast('success', null, 'Vibe imported', false, 3000);
     },
@@ -134,6 +140,18 @@ const vfsImportRouter = {
                 resolve(options[0]?.id);
                 return;
             }
+            let settled = false;
+            const finish = (value) => {
+                if (settled) return;
+                settled = true;
+                modal._vfsImportResolve = null;
+                resolve(value);
+            };
+            modal._vfsImportResolve = finish;
+            // attachModalListeners: public/scripts/comp/modalListenerScope.js
+            attachModalListeners(modal, (signal) => {
+                signal.addEventListener('abort', () => finish(null), { once: true });
+            });
             const titleEl = document.getElementById('vfsImportChoiceTitle');
             const listEl = document.getElementById('vfsImportChoiceList');
             if (titleEl) titleEl.textContent = title;
@@ -145,14 +163,20 @@ const vfsImportRouter = {
                     btn.className = 'btn-secondary vfs-import-choice-btn';
                     btn.textContent = opt.label;
                     btn.addEventListener('click', () => {
+                        finish(opt.id);
                         closeModal(modal);
-                        resolve(opt.id);
                     });
                     listEl.appendChild(btn);
                 });
             }
+            const closeBtn = modal.querySelector('.close-btn');
+            if (closeBtn) {
+                closeBtn.onclick = () => {
+                    finish(null);
+                    closeModal(modal);
+                };
+            }
             openModal(modal);
-            modal._vfsImportResolve = resolve;
         });
     }
 };
