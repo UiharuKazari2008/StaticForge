@@ -2,17 +2,19 @@
   "configId": "naxGeneration",
   "label": "NAX Generation",
   "rules": [
-    { "path": ["galleries"], "type": "object", "label": "Galleries" },
-    { "path": ["galleries", "*"], "type": "object", "label": "Gallery" },
-    { "path": ["galleries", "*", "promptTemplate"], "type": "string", "label": "Prompt Template" },
-    { "path": ["galleries", "*", "characterPrompt"], "type": "string", "label": "Character Prompt" },
-    { "path": ["galleries", "*", "model"], "type": "string", "label": "Model" },
-    { "path": ["galleries", "*", "resPreset"], "type": "string", "label": "Resolution Preset" },
-    { "path": ["galleries", "*", "steps"], "type": "number", "label": "Steps" },
-    { "path": ["galleries", "*", "scale"], "type": "number", "label": "Scale" },
-    { "path": ["galleries", "*", "sampler"], "type": "string", "label": "Sampler" },
-    { "path": ["galleries", "*", "qualityToggle"], "type": "boolean", "label": "Quality Toggle" },
-    { "path": ["galleries", "*", "ucPreset"], "type": "number", "label": "UC Preset" },
-    { "path": ["galleries", "*", "seed"], "type": "number", "label": "Seed" }
+    { "path": [], "type": "object", "label": "NAX Generation", "closed": true, "required": true },
+    { "path": ["galleries"], "type": "object", "label": "Galleries", "allowAdd": true, "required": true },
+    { "path": ["galleries", "*"], "type": "object", "label": "Gallery", "closed": true },
+    { "path": ["galleries", "*", "promptTemplate"], "type": "string", "label": "Prompt Template", "editMode": "modal", "editorType": "prompt", "required": true },
+    { "path": ["galleries", "*", "characterPrompt"], "type": "string", "label": "Character Prompt", "editMode": "modal", "editorType": "prompt" },
+    { "path": ["galleries", "*", "characterUc"], "type": "string", "label": "Character UC", "editMode": "modal", "editorType": "prompt", "description": "Per-character negative prompt override for tag galleries" },
+    { "path": ["galleries", "*", "model"], "type": "string", "label": "Model", "editorType": "input", "required": true },
+    { "path": ["galleries", "*", "resPreset"], "type": "string", "label": "Resolution Preset", "editorType": "input", "required": true },
+    { "path": ["galleries", "*", "steps"], "type": "number", "label": "Steps", "required": true },
+    { "path": ["galleries", "*", "scale"], "type": "number", "label": "Scale", "required": true },
+    { "path": ["galleries", "*", "sampler"], "type": "string", "label": "Sampler", "editorType": "input", "required": true },
+    { "path": ["galleries", "*", "qualityToggle"], "type": "boolean", "label": "Quality Toggle", "editMode": "inline", "required": true },
+    { "path": ["galleries", "*", "ucPreset"], "type": "number", "label": "UC Preset", "required": true },
+    { "path": ["galleries", "*", "seed"], "type": "number", "label": "Seed", "required": true }
   ]
 }

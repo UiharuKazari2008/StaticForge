@@ -2,10 +2,30 @@
   "configId": "workspaceDesktop",
   "label": "Desktop Layout",
   "rules": [
-    { "path": ["*"], "type": "object", "label": "Workspace Desktop" },
-    { "path": ["*", "shortcuts"], "type": "array", "label": "Shortcuts" },
-    { "path": ["*", "shortcuts", "*"], "type": "object" },
-    { "path": ["windowPositions"], "type": "object", "label": "Window Positions" },
-    { "path": ["windowPositions", "*"], "type": "object" }
+    { "path": ["windowPositions"], "type": "object", "label": "Window Positions", "required": true },
+    { "path": ["windowPositions", "*"], "type": "object" },
+    { "path": ["*"], "type": "object", "label": "Workspace Desktop", "closed": true },
+    { "path": ["*", "shortcuts"], "type": "array", "itemsType": "object", "label": "Shortcuts", "required": true },
+    {
+      "path": ["*", "shortcuts", "*"],
+      "type": "object",
+      "displayTemplate": "{index} - {name}",
+      "displayFields": ["name"],
+      "defaultSkeleton": {
+        "id": "",
+        "type": "folder",
+        "name": "New Shortcut",
+        "data": {},
+        "position": { "index": 0, "x": 0, "y": 0 }
+      }
+    },
+    { "path": ["*", "shortcuts", "*", "id"], "type": "string", "label": "Shortcut ID", "editorType": "input", "required": true },
+    { "path": ["*", "shortcuts", "*", "type"], "type": "string", "label": "Type", "editorType": "input", "required": true },
+    { "path": ["*", "shortcuts", "*", "name"], "type": "string", "label": "Name", "editorType": "input", "required": true },
+    { "path": ["*", "shortcuts", "*", "data"], "type": "object", "label": "Data", "required": true },
+    { "path": ["*", "shortcuts", "*", "position"], "type": "object", "label": "Position", "closed": true, "required": true },
+    { "path": ["*", "shortcuts", "*", "position", "index"], "type": "number", "label": "Grid Index", "required": true },
+    { "path": ["*", "shortcuts", "*", "position", "x"], "type": "number", "label": "X", "required": true },
+    { "path": ["*", "shortcuts", "*", "position", "y"], "type": "number", "label": "Y", "required": true }
   ]
 }

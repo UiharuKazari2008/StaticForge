@@ -377,9 +377,16 @@ curl "http://localhost:9220/pending/retrieval/abc123-def456"
 - **WebSocket Communication**: Real-time updates and notifications
 - **Rate Limiting**: Protection against abuse with detailed statistics
 
+## 🔌 Custom clients (Android, desktop)
+
+Build third-party clients with feature parity against the web app using the canonical API reference:
+
+- **[Client API documentation](docs/client-api/README.md)** — authentication, REST routes, WebSocket protocol (235 request types, server push events), feature map, and client-only behavior
+- [Legacy Android WebSocket guide](docs/websocket_android_guide.md) — Kotlin examples; superseded by `docs/client-api/` for completeness
+
 ## 📞 Support
 
-- **Documentation**: Comprehensive guides and tutorials
+- **Documentation**: Comprehensive guides and tutorials (see [Client API](docs/client-api/README.md))
 - **Community**: Active user community and forums
 - **Issues**: Bug reports and feature requests
 - **Contact**: Direct support channels

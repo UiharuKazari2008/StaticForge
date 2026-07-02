@@ -2,10 +2,53 @@
   "configId": "favorites",
   "label": "Favorites",
   "rules": [
-    { "path": ["tags"], "type": "array", "label": "Tags" },
-    { "path": ["tags", "*"], "type": "object" },
-    { "path": ["tags", "*", "name"], "type": "string", "label": "Tag Name" },
-    { "path": ["textReplacements"], "type": "array", "label": "Text Replacements" },
-    { "path": ["textReplacements", "*"], "type": "object" }
+    { "path": [], "type": "object", "label": "Favorites", "closed": true, "required": true },
+    { "path": ["tags"], "type": "array", "itemsType": "object", "label": "Tags", "allowAdd": true, "required": true },
+    {
+      "path": ["tags", "*"],
+      "type": "object",
+      "displayTemplate": "{index} - {name}",
+      "displayFields": ["name"],
+      "defaultSkeleton": {
+        "id": "",
+        "name": "",
+        "type": "tag",
+        "dateAdded": ""
+      }
+    },
+    { "path": ["tags", "*", "name"], "type": "string", "label": "Tag Name", "editorType": "input", "required": true },
+    { "path": ["tags", "*", "type"], "type": "string", "label": "Type", "editorType": "input", "required": true },
+    { "path": ["tags", "*", "id"], "type": "string", "label": "Favorite ID", "editorType": "input", "required": true },
+    { "path": ["tags", "*", "dateAdded"], "type": "string", "label": "Date Added", "editorType": "input" },
+    { "path": ["tags", "*", "count"], "type": "number", "label": "Tag Count" },
+    { "path": ["tags", "*", "model"], "type": "string", "label": "Model", "editorType": "input" },
+    { "path": ["tags", "*", "confidence"], "type": "number", "label": "Confidence" },
+    { "path": ["textReplacements"], "type": "array", "itemsType": "object", "label": "Text Replacements", "allowAdd": true, "required": true },
+    {
+      "path": ["textReplacements", "*"],
+      "type": "object",
+      "displayTemplate": "{index} - {name}",
+      "displayFields": ["name", "placeholder"],
+      "defaultSkeleton": {
+        "id": "",
+        "name": "",
+        "originalName": "",
+        "type": "textReplacement",
+        "placeholder": "",
+        "replacementValue": "",
+        "description": "",
+        "displayName": "",
+        "dateAdded": ""
+      }
+    },
+    { "path": ["textReplacements", "*", "name"], "type": "string", "label": "Name", "editorType": "input", "required": true },
+    { "path": ["textReplacements", "*", "originalName"], "type": "string", "label": "Original Name", "editorType": "input" },
+    { "path": ["textReplacements", "*", "type"], "type": "string", "label": "Type", "editorType": "input", "required": true },
+    { "path": ["textReplacements", "*", "placeholder"], "type": "string", "label": "Placeholder Key", "editorType": "input", "required": true, "description": "Key in prompt.config.json text_replacements" },
+    { "path": ["textReplacements", "*", "replacementValue"], "type": "string", "label": "Replacement Value", "editMode": "modal", "editorType": "prompt" },
+    { "path": ["textReplacements", "*", "description"], "type": "string", "label": "Description", "editMode": "modal", "editorType": "textarea" },
+    { "path": ["textReplacements", "*", "displayName"], "type": "string", "label": "Display Name", "editorType": "input" },
+    { "path": ["textReplacements", "*", "id"], "type": "string", "label": "Favorite ID", "editorType": "input", "required": true },
+    { "path": ["textReplacements", "*", "dateAdded"], "type": "string", "label": "Date Added", "editorType": "input" }
   ]
 }

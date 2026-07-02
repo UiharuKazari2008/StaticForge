@@ -1,1 +1,1 @@
-pm2 flush 12 && pm2 restart 12 && pm2 reset 12 && pm2 logs 12
+pm2 flush Dreamscape && pm2 restart ecosystem.config.js --update-env && pm2 reset Dreamscape && pm2 logs Dreamscape

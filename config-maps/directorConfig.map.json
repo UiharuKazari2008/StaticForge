@@ -2,12 +2,58 @@
   "configId": "directorConfig",
   "label": "Director Config",
   "rules": [
-    { "path": ["version"], "type": "string", "label": "Version" },
-    { "path": ["feedback"], "type": "object", "label": "Feedback" },
-    { "path": ["feedback", "entries"], "type": "array", "label": "Feedback Entries" },
-    { "path": ["feedback", "entries", "*"], "type": "object" },
-    { "path": ["rules"], "type": "object", "label": "Rules" },
-    { "path": ["rules", "entries"], "type": "array", "label": "Rule Entries" },
-    { "path": ["rules", "entries", "*"], "type": "object" }
+    { "path": [], "type": "object", "label": "Director Config", "closed": true, "required": true },
+    { "path": ["version"], "type": "string", "label": "Version", "editorType": "input", "required": true },
+    { "path": ["description"], "type": "string", "label": "Description", "editMode": "modal", "editorType": "textarea", "required": true },
+    { "path": ["feedback"], "type": "object", "label": "Feedback", "closed": true, "required": true },
+    { "path": ["feedback", "description"], "type": "string", "label": "Feedback Section Description", "editMode": "modal", "editorType": "textarea", "required": true },
+    { "path": ["feedback", "entries"], "type": "array", "itemsType": "object", "label": "Feedback Entries", "allowAdd": true, "required": true },
+    {
+      "path": ["feedback", "entries", "*"],
+      "type": "object",
+      "displayTemplate": "{index} - {name}",
+      "displayFields": ["select_text", "id"],
+      "defaultSkeleton": {
+        "id": "",
+        "select_text": "",
+        "replace_text": "",
+        "action": "replace",
+        "ai_reason": "",
+        "user_feedback": "",
+        "timestamp": "",
+        "resolved": false
+      }
+    },
+    { "path": ["feedback", "entries", "*", "id"], "type": "string", "label": "Entry ID", "editorType": "input", "required": true },
+    { "path": ["feedback", "entries", "*", "select_text"], "type": "string", "label": "Select Text", "editMode": "modal", "editorType": "prompt", "required": true },
+    { "path": ["feedback", "entries", "*", "replace_text"], "type": "string", "label": "Replace Text", "editMode": "modal", "editorType": "prompt" },
+    {
+      "path": ["feedback", "entries", "*", "action"],
+      "type": "string",
+      "label": "Action",
+      "required": true,
+      "enum": ["replace", "append"]
+    },
+    { "path": ["feedback", "entries", "*", "ai_reason"], "type": "string", "label": "AI Reason", "editMode": "modal", "editorType": "textarea" },
+    { "path": ["feedback", "entries", "*", "user_feedback"], "type": "string", "label": "User Feedback", "editMode": "modal", "editorType": "textarea" },
+    { "path": ["feedback", "entries", "*", "timestamp"], "type": "string", "label": "Timestamp", "editorType": "input" },
+    { "path": ["feedback", "entries", "*", "resolved"], "type": "boolean", "label": "Resolved", "editMode": "inline" },
+    { "path": ["rules"], "type": "object", "label": "Rules", "closed": true, "required": true },
+    { "path": ["rules", "description"], "type": "string", "label": "Rules Section Description", "editMode": "modal", "editorType": "textarea", "required": true },
+    { "path": ["rules", "entries"], "type": "array", "itemsType": "object", "label": "Rule Entries", "allowAdd": true, "required": true },
+    {
+      "path": ["rules", "entries", "*"],
+      "type": "object",
+      "displayTemplate": "{index} - {name}",
+      "displayFields": ["text", "id"],
+      "defaultSkeleton": {
+        "id": "",
+        "text": "",
+        "created": ""
+      }
+    },
+    { "path": ["rules", "entries", "*", "id"], "type": "string", "label": "Rule ID", "editorType": "input", "required": true },
+    { "path": ["rules", "entries", "*", "text"], "type": "string", "label": "Rule Text", "editMode": "modal", "editorType": "textarea", "required": true },
+    { "path": ["rules", "entries", "*", "created"], "type": "string", "label": "Created At", "editorType": "input" }
   ]
 }

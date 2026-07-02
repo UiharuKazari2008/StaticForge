@@ -1,0 +1,135 @@
+---
+description: >-
+  When adding or changing client-facing REST routes, WebSocket packet types, auth flows,
+  or server push events, you MUST update docs/client-api/ so custom clients (Android, desktop)
+  stay accurate. Includes checklist, file map, and section guidance.
+globs:
+  - web_server.js
+  - modules/auth.js
+  - modules/websocket.js
+  - modules/websocketHandlers.js
+  - modules/ws/**
+  - modules/vfsWebSocketHandlers.js
+  - modules/referencesWebSocketHandlers.js
+  - public/scripts/websocket.js
+  - public/scripts/ws/**
+  - docs/client-api/**
+alwaysApply: false
+---
+# Client API Documentation Maintenance
+
+<rule>
+name: client_api_documentation
+description: Require docs/client-api updates whenever client-facing server or protocol surfaces change.
+
+## Documentation root
+
+All client API docs live under **`docs/client-api/`**:
+
+| File | Update when |
+|------|-------------|
+| `README.md` | Architecture, quick start, index, counts |
+| `authentication.md` | Login/logout, sessions, cookies, Bearer token, user types, rate limits |
+| `websocket.md` | Protocol envelope, connection lifecycle, push events, ping, errors |
+| `rest-api.md` | Any Express route in `web_server.js` (method, path, auth, body, responses) |
+| `client-only-features.md` | New web-only UX that wraps server APIs (localStorage keys, SW, bridges) |
+| `feature-map.md` | New user-facing feature → map to REST/WS/push |
+| `ws/<domain>.md` | New/changed WS packet in that domain's handler module |
+
+Domain WS files match handler ownership (e.g. `ws/generation.md` ↔ `modules/ws/handlers/60-generationHandler.js`).
+
+## Checklist (run on every client-facing API change)
+
+1. **Identify surface type:** REST route, WS request packet, WS server push, or auth-only?
+2. **Update the primary doc:**
+   - REST → `rest-api.md` (full endpoint section: method, path, auth, inputs, success shape, errors, client state, follow-up)
+   - WS request → correct `docs/client-api/ws/*.md` row in packet index + detailed section if non-trivial
+   - WS push → `websocket.md` server-initiated table + inbound handler note (`public/scripts/ws/handlers/*Inbound.js`)
+   - Auth → `authentication.md`
+3. **Update `feature-map.md`** — add or adjust one row for the user-visible feature.
+4. **Update `README.md` index** if new domain file or packet count changed materially.
+5. **Mark uncertainty** as `**Needs verification:**` — never guess response shapes.
+6. **Cross-check client:** grep `public/scripts/` for `fetch(`, `sendMessage`, `type:` usage.
+7. **Cross-check server:** grep `registerWsPacket`, `app.get/post`, `sendToClient` for the change.
+8. **Regenerate WS domain docs** after handler changes: `node scripts/tools/generate-ws-api-docs.js --write` (or `pnpm docs:ws-api`). Then review/edit auto-generated sections for complex handlers.
+9. **Destructive / readonly:** if new WS mutates data, add to `isDestructiveOperation()` in `modules/websocketHandlers.js` and note in WS doc.
+10. **Critical unauthenticated WS:** if allowed without session, add to `CRITICAL_MESSAGE_TYPES` in `modules/websocket.js` and document in `websocket.md`.
+
+## Per-endpoint documentation template
+
+### REST
+
+```markdown
+### METHOD /path
+
+**Auth:** required | optional | admin | none
+
+**Inputs:** query / body / headers table
+
+**Success:** status + JSON or binary + field descriptions
+
+**Errors:** status codes + body shapes
+
+**Client state after:** what to cache/update
+
+**Follow-up:** reconnect WS, poll, refresh gallery, etc.
+```
+
+### WebSocket request
+
+```markdown
+#### `packet_type`
+
+**Auth:** session required | critical (no auth) | admin only
+
+**Request fields:** table (required/optional)
+
+**Success response:** `type` + `data` shape
+
+**Errors:** `error`, `auth_error`, `READONLY_RESTRICTED`
+
+**Push side effects:** e.g. `gallery_updated`
+
+**Handler:** `path/to/module.js`
+```
+
+## When NOT to skip docs
+
+- Renaming packet types (document old → new or breaking change note)
+- Adding optional fields (document as optional)
+- Changing auth requirements (always document)
+- UUID-prefixed paths (`logViewerPathUuid`, `vfsPathUuid`)
+
+## Related rules
+
+- Service worker / runtime assets: `.cursor/rules/service-worker-notify-after-client-edits.mdc`
+- Grimoire DSAP domains may register WS packets via `modules/grimoireDomainRegistry.js` — document in appropriate `ws/*.md` or add new domain file.
+
+## WS doc generator
+
+After adding or changing handlers under `modules/ws/handlers/` (or grimoire WS registrations):
+
+```bash
+node scripts/tools/generate-ws-api-docs.js --write
+```
+
+Source: `scripts/tools/generate-ws-api-docs.js` — scans `registerWsPacket` and handler destructuring. Manual edits in `ws/generation.md` and `ws/gallery.md` may need re-merge after regen; review diff before commit.
+
+## Legacy docs
+
+Do not duplicate `docs/websocket_android_guide.md` — prefer `docs/client-api/`. Link legacy docs from README only.
+
+actions:
+  - type: suggest
+    message: |
+      Client-facing API changed — update docs/client-api/:
+      1. rest-api.md and/or ws/<domain>.md
+      2. feature-map.md row
+      3. websocket.md if new push type
+      4. authentication.md if auth changed
+      5. README counts/index if new domain
+
+metadata:
+  priority: high
+  version: 1.0
+</rule>

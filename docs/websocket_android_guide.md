@@ -1,5 +1,7 @@
 # StaticForge WebSocket API Guide for Android Apps
 
+> **Superseded for API completeness:** Use **[docs/client-api/README.md](./client-api/README.md)** as the canonical reference (REST + WebSocket + auth, all domains). This guide remains useful for Kotlin-specific examples only.
+
 This guide provides a comprehensive breakdown of how to connect to, authenticate with, and interact with the StaticForge web application via WebSocket for building Android applications.
 
 ## Table of Contents

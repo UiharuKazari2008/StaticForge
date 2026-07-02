@@ -2,13 +2,19 @@
   "configId": "secureConfig",
   "label": "Secure Config",
   "rules": [
-    { "path": ["location"], "type": "object", "label": "Location" },
-    { "path": ["location", "latitude"], "type": "number", "label": "Latitude" },
-    { "path": ["location", "longitude"], "type": "number", "label": "Longitude" },
-    { "path": ["*", "keys"], "type": "array", "label": "API Keys" },
-    { "path": ["*", "keys", "*"], "type": "object" },
-    { "path": ["*", "keys", "*", "name"], "type": "string", "label": "Key Name" },
-    { "path": ["*", "keys", "*", "apiKey"], "type": "string", "secret": true, "label": "API Key" },
-    { "path": ["grok", "useWebSearch"], "type": "boolean", "label": "Grok Web Search" }
+    { "path": [], "type": "object", "label": "Secure Config", "closed": true, "required": true },
+    { "path": ["location"], "type": "object", "label": "Location", "closed": true, "required": true },
+    { "path": ["location", "latitude"], "type": "number", "label": "Latitude", "required": true },
+    { "path": ["location", "longitude"], "type": "number", "label": "Longitude", "required": true },
+    { "path": ["logViewerPathUuid"], "type": "string", "label": "Log Viewer Path UUID", "editorType": "input", "description": "UUID segment for the log viewer VFS route" },
+    { "path": ["vfsPathUuid"], "type": "string", "label": "VFS Path UUID", "editorType": "input", "description": "UUID segment for the virtual filesystem route" },
+    { "path": ["*"], "type": "object", "label": "Provider", "closed": true },
+    { "path": ["*", "keys"], "type": "array", "label": "API Keys", "allowAdd": true, "required": true },
+    { "path": ["*", "keys", "*"], "type": "object", "closed": true },
+    { "path": ["*", "keys", "*", "name"], "type": "string", "label": "Key Name", "editorType": "input", "required": true },
+    { "path": ["*", "keys", "*", "apiKey"], "type": "string", "secret": true, "label": "API Key", "required": true },
+    { "path": ["grok", "useWebSearch"], "type": "boolean", "label": "Grok Web Search", "editMode": "inline" },
+    { "path": ["grok", "_tagWikiCollectionId"], "type": "string", "label": "Tag Wiki Collection ID", "editorType": "input", "description": "Grok collection ID for tag wiki RAG" },
+    { "path": ["runpod", "esrganWorkerId"], "type": "string", "label": "ESRGAN Worker ID", "editorType": "input", "description": "RunPod serverless worker ID for upscaling" }
   ]
 }

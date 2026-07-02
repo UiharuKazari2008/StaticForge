@@ -2,15 +2,43 @@
   "configId": "workspaces",
   "label": "Workspaces",
   "rules": [
-    { "path": ["*"], "type": "object", "label": "Workspace" },
-    { "path": ["*", "name"], "type": "string", "label": "Name" },
-    { "path": ["*", "color"], "type": "string", "label": "Color" },
-    { "path": ["*", "backgroundColor"], "type": "string", "label": "Background Color" },
-    { "path": ["*", "sort"], "type": "number", "label": "Sort Order" },
-    { "path": ["*", "files"], "type": "array", "label": "Files" },
-    { "path": ["*", "scraps"], "type": "array", "label": "Scraps" },
-    { "path": ["*", "pinned"], "type": "array", "label": "Pinned" },
-    { "path": ["*", "presets"], "type": "array", "label": "Presets" },
-    { "path": ["*", "groups"], "type": "object", "label": "Groups" }
+    { "path": ["default"], "type": "object", "label": "Default Workspace", "closed": true, "required": true, "requiredReason": "Default workspace cannot be deleted" },
+    { "path": ["*"], "type": "object", "label": "Workspace", "closed": true },
+    { "path": ["*", "name"], "type": "string", "label": "Name", "editorType": "input", "required": true },
+    { "path": ["*", "color"], "type": "string", "label": "Color", "editorType": "input", "required": true },
+    { "path": ["*", "backgroundColor"], "type": "string", "label": "Background Color", "editorType": "input" },
+    { "path": ["*", "primaryFont"], "type": "string", "label": "Primary Font", "editorType": "input", "description": "UI font family name or null for default" },
+    { "path": ["*", "textareaFont"], "type": "string", "label": "Textarea Font", "editorType": "input", "description": "Monospace font for prompt fields or null for default" },
+    { "path": ["*", "wallpaper"], "type": "string", "label": "Wallpaper", "editorType": "input", "description": "Desktop wallpaper path (type:id or url:… format)" },
+    { "path": ["*", "wallpaperPosition"], "type": "string", "label": "Wallpaper Position", "editorType": "input", "description": "CSS background-position for desktop wallpaper" },
+    { "path": ["*", "trashDesktopShortcut"], "type": "boolean", "label": "Trash Desktop Shortcut", "description": "When true, show a Trash folder shortcut on the workspace desktop" },
+    { "path": ["*", "backgroundImage"], "type": "string", "label": "Background Image", "editorType": "input", "description": "Legacy gallery background image path" },
+    { "path": ["*", "backgroundOpacity"], "type": "number", "label": "Background Opacity", "description": "Gallery background overlay opacity (0–1)" },
+    {
+      "path": ["*", "vibeImages"],
+      "type": "array",
+      "itemsType": "string",
+      "label": "Vibe Images (Legacy)",
+      "description": "Legacy JSON list — reference vibes are stored in SQLite; may be stripped on save"
+    },
+    {
+      "path": ["*", "cacheFiles"],
+      "type": "array",
+      "itemsType": "string",
+      "label": "Cache Files (Legacy)",
+      "description": "Legacy JSON list — reference cache ownership is in SQLite; may be stripped on save"
+    },
+    { "path": ["*", "sort"], "type": "number", "label": "Sort Order", "required": true },
+    { "path": ["*", "files"], "type": "array", "itemsType": "string", "label": "Gallery Files", "required": true },
+    { "path": ["*", "scraps"], "type": "array", "itemsType": "string", "label": "Scraps", "required": true },
+    { "path": ["*", "pinned"], "type": "array", "itemsType": "string", "label": "Pinned", "required": true },
+    { "path": ["*", "presets"], "type": "array", "itemsType": "string", "label": "Presets", "required": true },
+    { "path": ["*", "groups"], "type": "object", "label": "Groups", "closed": true, "required": true },
+    {
+      "path": ["*", "lastGalleryDestructiveAt"],
+      "type": "number",
+      "label": "Last Gallery Destructive At",
+      "description": "Unix ms timestamp bumped when gallery data is invalidated for this workspace"
+    }
   ]
 }
