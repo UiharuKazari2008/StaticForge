@@ -324,6 +324,15 @@ body.login-booting .login-product-name {
 .pin-button:focus-visible {
     outline: 3px solid #6366f1;
     outline-offset: 2px;
+    box-shadow: 0 0 0 5px rgba(99, 102, 241, 0.2);
+}
+
+.pin-button.active {
+    background-color: #fff !important;
+    border-color: #fff !important;
+    color: #000 !important;
+    transform: scale(0.95);
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.8);
 }
 
 .pin-button.danger {
