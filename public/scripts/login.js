@@ -44,6 +44,7 @@ class LoginPage {
         this.setupPinPadListener();
         this.updatePinDisplay();
         this.updateAriaAttributes();
+        this.updateTabOrder();
         this.sendTelemetryPing();
     }
 
@@ -55,13 +56,19 @@ class LoginPage {
         document.addEventListener('keydown', (e) => {
             if (!this.pinReady || this.isLoading) return;
             if (e.key >= '0' && e.key <= '9') {
+                this.togglePinPad(false);
+                this.triggerButtonFeedback(e.key);
                 this.addDigit(e.key);
             } else if (e.key === 'Enter') {
                 if (this.rollingBuffer.length === 6) {
                     this.handleLogin();
                 }
             } else if (e.key === 'Backspace') {
+                this.triggerButtonFeedback('backspace');
                 this.removeDigit();
+            } else if (e.key === 'Escape') {
+                this.triggerButtonFeedback('clear');
+                this.clearPin();
             }
         });
     }
@@ -88,36 +95,66 @@ class LoginPage {
             });
         });
 
-        const togglePinPad = () => {
-            this.loginContainer.classList.add('transition');
-            this.loginContainer.classList.toggle('minimize');
-            this.updateAriaAttributes();
-        };
-
-        this.pinDisplay.addEventListener('click', togglePinPad);
+        this.pinDisplay.addEventListener('click', () => this.togglePinPad());
         this.pinDisplay.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                togglePinPad();
+                this.togglePinPad();
             }
         });
+    }
+
+    togglePinPad(forceState) {
+        this.loginContainer.classList.add('transition');
+        if (typeof forceState === 'boolean') {
+            if (forceState) {
+                this.loginContainer.classList.add('minimize');
+            } else {
+                this.loginContainer.classList.remove('minimize');
+            }
+        } else {
+            this.loginContainer.classList.toggle('minimize');
+        }
+        this.updateAriaAttributes();
+        this.updateTabOrder();
     }
 
     updateAriaAttributes() {
         const isMinimized = this.loginContainer.classList.contains('minimize');
         this.pinDisplay.setAttribute('aria-expanded', !isMinimized);
-        this.pinDisplay.setAttribute('aria-label', isMinimized ? 'Show PIN pad' : 'Hide PIN pad');
+        const pinCount = this.rollingBuffer.length;
+        const countText = pinCount > 0 ? `, ${pinCount} digit${pinCount === 1 ? '' : 's'} entered` : '';
+        this.pinDisplay.setAttribute('aria-label', (isMinimized ? 'Show PIN pad' : 'Hide PIN pad') + countText);
+    }
+
+    updateTabOrder() {
+        const isMinimized = this.loginContainer.classList.contains('minimize');
+        this.pinButtons.forEach(button => {
+            button.setAttribute('tabindex', isMinimized ? '-1' : '0');
+        });
+    }
+
+    triggerButtonFeedback(keyOrAction) {
+        let button;
+        if (/^[0-9]$/.test(keyOrAction)) {
+            button = Array.from(this.pinButtons).find(b => b.getAttribute('data-number') === keyOrAction);
+        } else {
+            button = Array.from(this.pinButtons).find(b => b.getAttribute('data-action') === keyOrAction);
+        }
+
+        if (button) {
+            button.classList.add('active');
+            setTimeout(() => button.classList.remove('active'), 150);
+        }
     }
 
     addDigit(digit) {
-        // Clear error when starting a new entry
-        if (this.rollingBuffer.length === 0) {
-            this.clearPinError();
-        }
+        this.clearPinError();
 
         if (this.rollingBuffer.length < 6) {
             this.rollingBuffer += digit;
             this.updatePinDisplay();
+            this.updateAriaAttributes();
             
             // Auto-submit when 6 digits are entered
             if (this.rollingBuffer.length === 6) {
@@ -127,15 +164,19 @@ class LoginPage {
     }
 
     removeDigit() {
+        this.clearPinError();
         if (this.rollingBuffer.length > 0) {
             this.rollingBuffer = this.rollingBuffer.slice(0, -1);
             this.updatePinDisplay();
+            this.updateAriaAttributes();
         }
     }
 
     clearPin() {
+        this.clearPinError();
         this.rollingBuffer = '';
         this.updatePinDisplay();
+        this.updateAriaAttributes();
     }
 
     async clearCachesAndReload() {
