@@ -7,6 +7,7 @@ const logger = require('./logger');
 // It will be accessed lazily when needed
 const { isImageLarge, getResolutionFromDimensions } = require('./imageTools');
 const SQLiteAsyncWrapper = require('./sqliteAsyncWrapper');
+const metadataWriteQueue = require('./metadataWriteQueue');
 const { parsePromptSegments } = require('./promptSegments');
 const omegasearchFilters = require('./omegasearchFilters');
 
@@ -468,6 +469,7 @@ async function createTables() {
  * Close database connection
  */
 async function closeDatabase() {
+    await metadataWriteQueue.drainAll();
     if (db) {
         await db.close();
         db = null;
@@ -512,29 +514,187 @@ async function extractImageMetadata(filePath) {
 }
 
 /**
- * Determine if an image is upscaled and find its parent
+ * Determine if an image is upscaled and find its parent (stat only — no directory scan).
  */
-function determineImageRelationships(filename, allFiles) {
+function determineImageRelationships(filename, imagesDir) {
     const isUpscaled = filename.includes('_upscaled');
     let parent = null;
-    
+
     if (isUpscaled) {
-        // Find the original image
         const originalName = filename.replace('_upscaled.png', '.png');
-        if (allFiles.includes(originalName)) {
+        if (fs.existsSync(path.join(imagesDir, originalName))) {
             parent = originalName;
         }
-    } else {
-        // Check if this image has an upscaled version
-        const upscaledName = filename.replace('.png', '_upscaled.png');
-        if (allFiles.includes(upscaledName)) {
-            // This image has an upscaled version
-        }
     }
-    
+
     return {
         isUpscaled,
         parent
+    };
+}
+
+/**
+ * Format a database row into the standard metadata object shape.
+ */
+function formatDbImageRow(image, receipts = []) {
+    return {
+        ...image,
+        receipt: receipts.map(r => JSON.parse(r.receipt_data)),
+        metadata: image.metadata ? JSON.parse(image.metadata) : {},
+        upscaled: Boolean(image.upscaled)
+    };
+}
+
+/**
+ * Merge forge data into an in-memory metadata object (no I/O).
+ */
+function applyForgeDataToMetadata(metadata, forgeData) {
+    if (!metadata || !forgeData) return metadata;
+    if (!metadata.metadata) metadata.metadata = {};
+    if (!metadata.metadata.forge_data) metadata.metadata.forge_data = {};
+    for (const [key, value] of Object.entries(forgeData)) {
+        if (value !== null) {
+            metadata.metadata.forge_data[key] = value;
+        }
+    }
+    return metadata;
+}
+
+/**
+ * Build image metadata from disk without touching SQL.
+ */
+async function buildImageMetadataFromFile(filename, imagesDir, existingReceipts = []) {
+    const filePath = path.join(imagesDir, filename);
+    if (!fs.existsSync(filePath)) {
+        return null;
+    }
+
+    const stats = fs.statSync(filePath);
+    const md5 = generateMD5(filePath);
+    const imageMetadata = await extractImageMetadata(filePath);
+    if (!imageMetadata) {
+        return null;
+    }
+
+    let extractedMetadata = {};
+    try {
+        extractedMetadata = await _pngMetadata.extractNovelAIMetadata(filePath) || {};
+    } catch (error) {
+        console.error(`❌ Error extracting PNG metadata for ${filename}:`, error.message);
+    }
+
+    const relationships = determineImageRelationships(filename, imagesDir);
+
+    return {
+        filename,
+        md5,
+        width: imageMetadata.width,
+        height: imageMetadata.height,
+        parent: relationships.parent,
+        upscaled: relationships.isUpscaled,
+        receipt: Array.isArray(existingReceipts) ? [...existingReceipts] : [],
+        size: stats.size,
+        mtime: stats.mtime.valueOf(),
+        metadata: extractedMetadata || {}
+    };
+}
+
+/**
+ * Persist one image row and refresh search indexes (SQL only — run via write queue).
+ */
+async function persistImageRowToDb(filename, metadata) {
+    const pngMeta = metadata.metadata || {};
+    const insertResult = await db.run(`
+        INSERT OR REPLACE INTO images (filename, md5, width, height, parent, upscaled, size, mtime, metadata, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
+            COALESCE((SELECT created_at FROM images WHERE filename = ?), strftime('%s', 'now')),
+            strftime('%s', 'now'))
+    `, [
+        filename,
+        metadata.md5,
+        metadata.width,
+        metadata.height,
+        metadata.parent,
+        metadata.upscaled ? 1 : 0,
+        metadata.size,
+        metadata.mtime,
+        JSON.stringify(pngMeta),
+        filename
+    ]);
+
+    const metadataWithParsed = {
+        id: insertResult.lastID || metadata.id || null,
+        filename,
+        md5: metadata.md5,
+        width: metadata.width,
+        height: metadata.height,
+        parent: metadata.parent,
+        upscaled: Boolean(metadata.upscaled),
+        size: metadata.size,
+        mtime: metadata.mtime,
+        metadata: pngMeta
+    };
+    scheduleSearchIndexUpdate(filename, metadataWithParsed, 'persist-image');
+    return metadataWithParsed.id;
+}
+
+/**
+ * Persist one receipt row (SQL only — run via write queue).
+ */
+async function persistReceiptToDb(filename, receiptData, imageId = null) {
+    let resolvedId = imageId;
+    if (!resolvedId) {
+        const image = await db.get('SELECT id FROM images WHERE filename = ?', [filename]);
+        resolvedId = image?.id;
+    }
+    if (!resolvedId) {
+        console.warn(`⚠️ No metadata found for ${filename}, cannot add receipt`);
+        return false;
+    }
+
+    await db.run(`
+        INSERT INTO receipts (image_id, timestamp, receipt_data)
+        VALUES (?, ?, ?)
+    `, [resolvedId, receiptData.date || Date.now(), JSON.stringify(receiptData)]);
+
+    return true;
+}
+
+/**
+ * Queue image metadata persistence without blocking the caller on SQL.
+ */
+function queueImageMetadataPersist(filename, metadata, label = 'image') {
+    metadataWriteQueue.stageImage(filename, metadata);
+    metadataWriteQueue.enqueue(
+        () => persistImageRowToDb(filename, metadata),
+        `${label}:${filename}`,
+        { onSuccess: () => metadataWriteQueue.markImagePersisted(filename) }
+    );
+}
+
+/**
+ * Defer heavy search index rebuilds so primary metadata SQL stays fast.
+ */
+function scheduleSearchIndexUpdate(filename, metadata, label = 'search-index') {
+    if (!filename || !metadata) return;
+    metadataWriteQueue.enqueueBackground(
+        () => updateSearchIndexes(filename, metadata),
+        `${label}:${filename}`
+    );
+}
+
+/**
+ * Project a hot-cache record to lightweight sort fields.
+ */
+function projectLightweightMetadata(hot) {
+    return {
+        filename: hot.filename,
+        mtime: hot.mtime || Date.now(),
+        width: hot.width || null,
+        height: hot.height || null,
+        size: hot.size || 0,
+        upscaled: Boolean(hot.upscaled),
+        parent: hot.parent || null
     };
 }
 
@@ -546,91 +706,49 @@ async function getImageMetadata(filename, imagesDir) {
         if (!dbInitialized || !db) {
             throw new Error('Database not initialized');
         }
+
+        const hot = metadataWriteQueue.getHotImage(filename);
+        if (hot) {
+            const filePath = path.join(imagesDir, filename);
+            if (fs.existsSync(filePath)) {
+                const currentMD5 = generateMD5(filePath);
+                if (currentMD5 === hot.md5) {
+                    return hot;
+                }
+            }
+        }
+
         const filePath = path.join(imagesDir, filename);
-        
+
         // Check if file exists
         if (!fs.existsSync(filePath)) {
             console.warn(`⚠️ File not found: ${filePath}`);
             return null;
         }
-        
+
         // Check if we already have cached metadata
         const existing = await db.get('SELECT * FROM images WHERE filename = ?', [filename]);
-        
+
         if (existing) {
             // Verify the cached MD5 matches the current file
             const currentMD5 = generateMD5(filePath);
             if (currentMD5 === existing.md5) {
-                // Get receipts for this image
                 const receipts = await db.all('SELECT receipt_data FROM receipts WHERE image_id = ? ORDER BY timestamp', [existing.id]);
-                
-                const result = {
-                    ...existing,
-                    receipt: receipts.map(r => JSON.parse(r.receipt_data)),
-                    metadata: existing.metadata ? JSON.parse(existing.metadata) : {}
-                };
-                
-                return result;
+                return formatDbImageRow(existing, receipts);
             }
-            
-            // MD5 changed, need to update metadata
+
             console.log(`🔄 MD5 changed for ${filename}, updating metadata`);
         }
-        
-        // Extract new metadata
-        const stats = fs.statSync(filePath);
-        const md5 = generateMD5(filePath);
-        const imageMetadata = await extractImageMetadata(filePath);
-        
-        if (!imageMetadata) {
+
+        const existingReceipts = hot?.receipt || [];
+        const metadata = await buildImageMetadataFromFile(filename, imagesDir, existingReceipts);
+        if (!metadata) {
             console.error(`❌ Failed to extract metadata for ${filename}`);
             return null;
         }
-        
-        // Extract PNG embedded metadata
-        let extractedMetadata = null;
-        try {
-            extractedMetadata = _pngMetadata.extractNovelAIMetadata(filePath);
-        } catch (error) {
-            console.error(`❌ Error extracting PNG metadata for ${filename}:`, error.message);
-            extractedMetadata = {};
-        }
-        
-        // Get all files to determine relationships
-        const allFiles = fs.readdirSync(imagesDir).filter(f => f.match(/\.(png|jpg|jpeg)$/i));
-        const relationships = determineImageRelationships(filename, allFiles);
-        
-        // Create metadata entry
-        const metadata = {
-            filename,
-            md5,
-            width: imageMetadata.width,
-            height: imageMetadata.height,
-            parent: relationships.parent,
-            upscaled: relationships.isUpscaled,
-            receipt: [],
-            size: stats.size,
-            mtime: stats.mtime.valueOf(),
-            metadata: extractedMetadata || {}
-        };
-        
-        // Insert or update in database using INSERT OR REPLACE to handle race conditions
-        await db.run(`
-            INSERT OR REPLACE INTO images (filename, md5, width, height, parent, upscaled, size, mtime, metadata, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 
-                COALESCE((SELECT created_at FROM images WHERE filename = ?), strftime('%s', 'now')),
-                strftime('%s', 'now'))
-        `, [
-            filename, md5, imageMetadata.width, imageMetadata.height,
-            relationships.parent, relationships.isUpscaled ? 1 : 0,
-            stats.size, stats.mtime.valueOf(), JSON.stringify(extractedMetadata || {}),
-            filename // For the COALESCE subquery
-        ]);
-        
-        // Update search indexes for this file
-        await updateSearchIndexes(filename, metadata);
-        
-        return metadata;
+
+        queueImageMetadataPersist(filename, metadata, 'image');
+        return metadataWriteQueue.getHotImage(filename) || metadata;
     } catch (error) {
         console.error(`❌ Error in getImageMetadata for ${filename}:`, error.message);
         console.error('Stack trace:', error.stack);
@@ -723,14 +841,14 @@ async function rebuildMetadataCache(imagesDir, progressCallback = null) {
                 // Extract PNG embedded metadata
                 let extractedMetadata = null;
                 try {
-                    extractedMetadata = _pngMetadata.extractNovelAIMetadata(filePath);
+                    extractedMetadata = await _pngMetadata.extractNovelAIMetadata(filePath);
                 } catch (error) {
                     console.error(`❌ Error extracting PNG metadata for ${filename}:`, error.message);
                     extractedMetadata = {};
                 }
                 
                 // Get all files to determine relationships
-                const relationships = determineImageRelationships(filename, allFiles);
+                const relationships = determineImageRelationships(filename, imagesDir);
                 
                 // Update in database using INSERT OR REPLACE
                 await db.run(`
@@ -809,6 +927,8 @@ async function removeImageMetadata(filenames) {
     let removedCount = 0;
     
     for (const filename of filenames) {
+        metadataWriteQueue.removeHotImage(filename);
+
         const image = await db.get('SELECT id FROM images WHERE filename = ?', [filename]);
         
         if (image) {
@@ -862,6 +982,9 @@ async function removeImageMetadataBatch(filenames, batchSize = 500) {
         // Process in batches to avoid overwhelming the database
         for (let i = 0; i < filenames.length; i += batchSize) {
             const batch = filenames.slice(i, i + batchSize);
+            for (const filename of batch) {
+                metadataWriteQueue.removeHotImage(filename);
+            }
             
             try {
                 // Use a transaction for each batch
@@ -981,6 +1104,15 @@ async function getCachedMetadata(filename, includeReceipts = false) {
     if (!dbInitialized || !db) {
         throw new Error('Database not initialized');
     }
+
+    const hot = metadataWriteQueue.getHotImage(filename);
+    if (hot) {
+        if (!includeReceipts) {
+            return { ...hot, receipt: [] };
+        }
+        return hot;
+    }
+
     const image = await db.get('SELECT * FROM images WHERE filename = ?', [filename]);
     
     if (!image) return null;
@@ -1014,28 +1146,35 @@ async function getLightweightMetadata(filenames) {
     if (!dbInitialized || !db) {
         throw new Error('Database not initialized');
     }
-    
+
+    const hotBatch = metadataWriteQueue.getHotImagesBatch(filenames);
     const result = {};
-    
-    // Batch query: Get only essential fields for sorting
-    const placeholders = filenames.map(() => '?').join(',');
-    const images = await db.all(
-        `SELECT filename, mtime, width, height, size, upscaled, parent FROM images WHERE filename IN (${placeholders})`,
-        filenames
-    );
-    
-    for (const image of images) {
-        result[image.filename] = {
-            filename: image.filename,
-            mtime: image.mtime || Date.now(),
-            width: image.width || null,
-            height: image.height || null,
-            size: image.size || 0,
-            upscaled: Boolean(image.upscaled),
-            parent: image.parent || null
-        };
+    for (const [filename, hot] of Object.entries(hotBatch)) {
+        result[filename] = projectLightweightMetadata(hot);
     }
-    
+
+    const dbLookup = filenames.filter(filename => !hotBatch[filename]);
+
+    if (dbLookup.length > 0) {
+        const placeholders = dbLookup.map(() => '?').join(',');
+        const images = await db.all(
+            `SELECT filename, mtime, width, height, size, upscaled, parent FROM images WHERE filename IN (${placeholders})`,
+            dbLookup
+        );
+
+        for (const image of images) {
+            result[image.filename] = {
+                filename: image.filename,
+                mtime: image.mtime || Date.now(),
+                width: image.width || null,
+                height: image.height || null,
+                size: image.size || 0,
+                upscaled: Boolean(image.upscaled),
+                parent: image.parent || null
+            };
+        }
+    }
+
     return result;
 }
 
@@ -1053,15 +1192,15 @@ async function getMultipleMetadata(filenames) {
         throw new Error('Database not initialized');
     }
     
-    const BATCH_SIZE = 500; // Process 500 at a time
-    const MAX_JSON_SIZE = 5 * 1024 * 1024; // 5MB limit per JSON string
-    const result = {};
+    const BATCH_SIZE = 500;
+    const MAX_JSON_SIZE = 5 * 1024 * 1024;
+    const result = metadataWriteQueue.getHotImagesBatch(filenames);
+    const dbLookup = filenames.filter(filename => !result[filename]);
     
-    // Process in batches to prevent OOM with large filename lists
-    for (let i = 0; i < filenames.length; i += BATCH_SIZE) {
-        const batch = filenames.slice(i, i + BATCH_SIZE);
-        
-        // Batch query: Get images to save memory
+    for (let i = 0; i < dbLookup.length; i += BATCH_SIZE) {
+        const batch = dbLookup.slice(i, i + BATCH_SIZE);
+        if (batch.length === 0) continue;
+
         const placeholders = batch.map(() => '?').join(',');
         const images = await db.all(
             `SELECT id, filename, md5, width, height, parent, upscaled, size, mtime, metadata, created_at, updated_at 
@@ -1070,11 +1209,6 @@ async function getMultipleMetadata(filenames) {
             batch
         );
         
-        if (images.length === 0) {
-            continue;
-        }
-        
-        // Parse metadata for this batch
         for (const image of images) {
             try {
                 let parsedMetadata = {};
@@ -1102,31 +1236,75 @@ async function getMultipleMetadata(filenames) {
             }
         }
         
-        // Allow GC between batches
-        if (i + BATCH_SIZE < filenames.length) {
+        if (i + BATCH_SIZE < dbLookup.length) {
             await new Promise(resolve => setImmediate(resolve));
         }
     }
-    
+
     return result;
 }
 
 /**
- * Update metadata for an image (e.g., after generation)
+ * Update metadata for an image (e.g., after generation).
+ * Stages data in the hot cache immediately; SQL writes go through the FIFO queue.
  */
 async function addReceiptMetadata(filename, imagesDir, receiptData = null, forgeData = null) {
-    const metadata = await getImageMetadata(filename, imagesDir);
-    
-    if (metadata && receiptData) {
-        await addReceipt(filename, receiptData);
+    if (!dbInitialized || !db) {
+        throw new Error('Database not initialized');
     }
-    
-    // If forge data is provided, also update the file and database metadata
-    if (metadata && forgeData) {
-        await updateFileMetadata(filename, imagesDir, forgeData);
+
+    let metadata = metadataWriteQueue.getHotImage(filename);
+
+    if (!metadata) {
+        const filePath = path.join(imagesDir, filename);
+        const existing = await db.get('SELECT * FROM images WHERE filename = ?', [filename]);
+        if (existing && fs.existsSync(filePath) && generateMD5(filePath) === existing.md5) {
+            const receipts = await db.all(
+                'SELECT receipt_data FROM receipts WHERE image_id = ? ORDER BY timestamp',
+                [existing.id]
+            );
+            metadata = formatDbImageRow(existing, receipts);
+        }
     }
-    
-    return metadata;
+
+    if (!metadata) {
+        metadata = await buildImageMetadataFromFile(filename, imagesDir, []);
+    }
+
+    if (!metadata) {
+        return null;
+    }
+
+    if (forgeData) {
+        const filePath = path.join(imagesDir, filename);
+        if (fs.existsSync(filePath)) {
+            const imageBuffer = fs.readFileSync(filePath);
+            const updatedBuffer = _pngMetadata.updateMetadata(imageBuffer, forgeData);
+            fs.writeFileSync(filePath, updatedBuffer);
+            metadata.md5 = generateMD5(filePath);
+            const stats = fs.statSync(filePath);
+            metadata.mtime = stats.mtime.valueOf();
+            metadata.size = stats.size;
+        }
+        applyForgeDataToMetadata(metadata, forgeData);
+    }
+
+    if (receiptData) {
+        if (!metadata.receipt) metadata.receipt = [];
+        metadata.receipt.push(receiptData);
+    }
+
+    metadataWriteQueue.stageImage(filename, metadata);
+    metadataWriteQueue.enqueue(async () => {
+        const imageId = await persistImageRowToDb(filename, metadata);
+        if (receiptData) {
+            await persistReceiptToDb(filename, receiptData, imageId);
+        }
+    }, `receipt:${filename}`, {
+        onSuccess: () => metadataWriteQueue.markImagePersisted(filename)
+    });
+
+    return metadataWriteQueue.getHotImage(filename) || metadata;
 }
 
 
@@ -1141,7 +1319,11 @@ async function getAllFilenames() {
         }
         
         const rows = await db.all('SELECT filename FROM images');
-        return rows.map(row => row.filename);
+        const filenames = new Set(rows.map(row => row.filename));
+        for (const filename of metadataWriteQueue.getActiveHotFilenames()) {
+            filenames.add(filename);
+        }
+        return Array.from(filenames);
     } catch (error) {
         logger.error('Error getting all filenames from database:', error);
         return [];
@@ -1219,7 +1401,7 @@ async function updateFileMetadata(filename, imagesDir, forgeData) {
                     metadata: currentMetadata,
                     upscaled: Boolean(imageRecord.upscaled)
                 };
-                await updateSearchIndexes(filename, metadataWithParsed);
+                scheduleSearchIndexUpdate(filename, metadataWithParsed, 'update-file-metadata');
             }
             
             console.log(`✅ Updated file and database metadata for ${filename}`);
@@ -2930,13 +3112,19 @@ async function upsertGalleryOwnership(filename, workspaceId, bucket = 'files') {
         return false;
     }
 
-    await db.run(`
-        INSERT OR REPLACE INTO gallery_workspace_ownership (filename, workspace_id, bucket, created_at)
-        VALUES (?, ?, ?, COALESCE(
-            (SELECT created_at FROM gallery_workspace_ownership WHERE filename = ? AND workspace_id = ? AND bucket = ?),
-            strftime('%s', 'now')
-        ))
-    `, [filename, workspaceId, bucket, filename, workspaceId, bucket]);
+    metadataWriteQueue.stageGalleryOwnership(filename, workspaceId, bucket);
+    metadataWriteQueue.enqueue(async () => {
+        await db.run(`
+            INSERT OR REPLACE INTO gallery_workspace_ownership (filename, workspace_id, bucket, created_at)
+            VALUES (?, ?, ?, COALESCE(
+                (SELECT created_at FROM gallery_workspace_ownership WHERE filename = ? AND workspace_id = ? AND bucket = ?),
+                strftime('%s', 'now')
+            ))
+        `, [filename, workspaceId, bucket, filename, workspaceId, bucket]);
+    }, `ownership:upsert:${filename}`, {
+        onSuccess: () => metadataWriteQueue.markGalleryOwnershipPersisted(filename, workspaceId, bucket)
+    });
+
     return true;
 }
 
@@ -2949,11 +3137,15 @@ async function removeGalleryOwnership(filename, workspaceId, bucket = 'files') {
         return false;
     }
 
-    const result = await db.run(
-        `DELETE FROM gallery_workspace_ownership WHERE filename = ? AND workspace_id = ? AND bucket = ?`,
-        [filename, workspaceId, bucket]
-    );
-    return result.changes > 0;
+    metadataWriteQueue.removeHotGalleryOwnership(filename, workspaceId, bucket);
+    metadataWriteQueue.enqueue(async () => {
+        await db.run(
+            `DELETE FROM gallery_workspace_ownership WHERE filename = ? AND workspace_id = ? AND bucket = ?`,
+            [filename, workspaceId, bucket]
+        );
+    }, `ownership:remove:${filename}`);
+
+    return true;
 }
 
 /**
@@ -2974,14 +3166,30 @@ async function getGalleryOwnershipForFilename(filename) {
         `SELECT workspace_id, bucket FROM ${table} WHERE filename = ? ${orderBy}`,
         [filename]
     );
-    if (!rows?.length) {
+
+    const merged = new Map();
+    for (const row of rows || []) {
+        const key = metadataWriteQueue.galleryKey(filename, row.workspace_id, row.bucket);
+        if (metadataWriteQueue.isGalleryOwnershipRemoved(key)) continue;
+        merged.set(key, {
+            workspaceId: row.workspace_id,
+            bucket: row.bucket || 'files'
+        });
+    }
+
+    for (const hotRow of metadataWriteQueue.getHotGalleryOwnershipRowsForFile(filename)) {
+        const key = metadataWriteQueue.galleryKey(hotRow.filename, hotRow.workspaceId, hotRow.bucket);
+        merged.set(key, {
+            workspaceId: hotRow.workspaceId,
+            bucket: hotRow.bucket || 'files'
+        });
+    }
+
+    if (merged.size === 0) {
         return null;
     }
 
-    const workspaces = rows.map((row) => ({
-        workspaceId: row.workspace_id,
-        bucket: row.bucket || 'files'
-    }));
+    const workspaces = Array.from(merged.values());
     return {
         workspaceId: workspaces[0].workspaceId,
         bucket: workspaces[0].bucket,

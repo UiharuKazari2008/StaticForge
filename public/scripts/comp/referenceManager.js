@@ -6572,8 +6572,15 @@ async function extractPNGMetadata(file) {
         reader.onload = async (e) => {
             try {
                 const buffer = e.target.result;
-                const metadata = readPNGMetadata(buffer);
-                
+                let metadata = readPNGMetadata(buffer);
+
+                // External images may carry the blueprint in zTXt (compressed) or as
+                // stealth LSB steganography (alpha/RGB) rather than tEXt/iTXt chunks.
+                if (!metadata || !metadata.source || !metadata.source.includes('NovelAI')) {
+                    const fallback = await extractFallbackPNGMetadata(new Uint8Array(buffer), file);
+                    if (fallback) metadata = fallback;
+                }
+
                 const enhancedMetadata = await extractMetadataWithDimensions(metadata, buffer, file);
                 resolve(enhancedMetadata);
             } catch (error) {
@@ -6585,6 +6592,156 @@ async function extractPNGMetadata(file) {
     });
 }
 
+// Fallback metadata extraction for external images: zTXt chunks then stealth LSB.
+async function extractFallbackPNGMetadata(data, file) {
+    try {
+        const ztxt = await readCompressedTextChunks(data);
+        if (ztxt && ztxt.Comment) {
+            return flattenNaiComment(ztxt, 'JzTXt');
+        }
+    } catch (e) {
+        console.warn('zTXt metadata decode failed:', e.message);
+    }
+    try {
+        const stealth = await readStealthLSBMetadata(file);
+        if (stealth) return stealth;
+    } catch (e) {
+        console.warn('Stealth LSB metadata decode failed:', e.message);
+    }
+    return null;
+}
+
+// Flatten a NovelAI keyword set ({ Comment, Source, Software }) into the shape
+// readPNGMetadata returns for tEXt images, tagging the source encoding.
+function flattenNaiComment(tEXtLike, encoding) {
+    try {
+        const commentData = JSON.parse(tEXtLike.Comment);
+        return { ...commentData, source: tEXtLike.Source, software: tEXtLike.Software, _encoding: encoding };
+    } catch (e) {
+        return { source: tEXtLike.Source, software: tEXtLike.Software, _encoding: encoding };
+    }
+}
+
+// Decode zTXt (zlib/deflate) Comment/Source/Software chunks using the native
+// DecompressionStream (no external dependency).
+async function readCompressedTextChunks(data) {
+    if (!isValidPNGHeader(data)) return null;
+    const out = {};
+    let idx = 8;
+    while (idx + 8 <= data.length) {
+        const length = readUint32(data, idx);
+        const name = String.fromCharCode(...data.slice(idx + 4, idx + 8));
+        idx += 8;
+        if (name === 'IEND') break;
+        if (name === 'zTXt') {
+            const chunk = data.slice(idx, idx + length);
+            let i = 0;
+            let keyword = '';
+            while (i < chunk.length && chunk[i] !== 0) { keyword += String.fromCharCode(chunk[i]); i++; }
+            i++; // null separator
+            i++; // compression method
+            if (keyword === 'Comment' || keyword === 'Source' || keyword === 'Software') {
+                try {
+                    out[keyword] = new TextDecoder('utf-8').decode(await decompressBytes(chunk.slice(i), 'deflate'));
+                } catch (e) {
+                    // ignore individual chunk failures
+                }
+            }
+        }
+        idx += length + 4;
+    }
+    return Object.keys(out).length ? out : null;
+}
+
+// Decompress bytes with the browser's native DecompressionStream.
+async function decompressBytes(bytes, format) {
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream(format));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+// Decode stealth LSB steganography (alpha or RGB, plain or gzip) from image pixels.
+async function readStealthLSBMetadata(file) {
+    const bitmap = await createImageBitmap(file, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+    const width = bitmap.width;
+    const height = bitmap.height;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(bitmap, 0, 0);
+    if (bitmap.close) bitmap.close();
+    const data = ctx.getImageData(0, 0, width, height).data; // RGBA (4 channels)
+
+    let res = extractStealthPayloadBits(data, width, height, 4, 'alpha');
+    if (!res) res = extractStealthPayloadBits(data, width, height, 4, 'rgb');
+    if (!res) return null;
+
+    let jsonStr;
+    if (res.compressed) {
+        jsonStr = new TextDecoder('utf-8').decode(await decompressBytes(res.payload, 'gzip'));
+    } else {
+        jsonStr = new TextDecoder('utf-8').decode(res.payload);
+    }
+    let parsed;
+    try { parsed = JSON.parse(jsonStr); } catch (e) { return null; }
+    const tEXtLike = {
+        Comment: typeof parsed.Comment === 'string' ? parsed.Comment : JSON.stringify(parsed.Comment),
+        Source: parsed.Source,
+        Software: parsed.Software
+    };
+    if (!tEXtLike.Comment || tEXtLike.Comment === 'undefined') return null;
+    return flattenNaiComment(tEXtLike, res.encoding);
+}
+
+// Extract the stealth payload from RGBA pixel data. Bits are read column-major
+// (x outer, y inner); alpha mode uses 1 bit/pixel, rgb mode uses 3 bits/pixel.
+function extractStealthPayloadBits(data, width, height, channels, mode) {
+    const bitAt = (index) => {
+        if (mode === 'alpha') {
+            const x = Math.floor(index / height);
+            const y = index % height;
+            return data[(y * width + x) * channels + 3] & 1;
+        }
+        const pixel = Math.floor(index / 3);
+        const sub = index % 3;
+        const x = Math.floor(pixel / height);
+        const y = pixel % height;
+        return data[(y * width + x) * channels + sub] & 1;
+    };
+    const maxBits = mode === 'alpha' ? width * height : width * height * 3;
+    if (maxBits < 120 + 32) return null;
+
+    let p = 0;
+    let sig = '';
+    for (let i = 0; i < 15; i++) {
+        let b = 0;
+        for (let j = 0; j < 8; j++) b = (b << 1) | bitAt(p++);
+        sig += String.fromCharCode(b);
+    }
+    const signatures = {
+        stealth_pnginfo: { mode: 'alpha', compressed: false },
+        stealth_pngcomp: { mode: 'alpha', compressed: true },
+        stealth_rgbinfo: { mode: 'rgb', compressed: false },
+        stealth_rgbcomp: { mode: 'rgb', compressed: true }
+    };
+    const info = signatures[sig];
+    if (!info || info.mode !== mode) return null;
+
+    let lenBits = 0;
+    for (let i = 0; i < 32; i++) lenBits = (lenBits << 1) | bitAt(p++);
+    lenBits = lenBits >>> 0;
+    if (lenBits <= 0 || lenBits % 8 !== 0 || p + lenBits > maxBits) return null;
+
+    const byteLen = lenBits / 8;
+    const payload = new Uint8Array(byteLen);
+    for (let i = 0; i < byteLen; i++) {
+        let b = 0;
+        for (let j = 0; j < 8; j++) b = (b << 1) | bitAt(p++);
+        payload[i] = b;
+    }
+    return { payload, compressed: info.compressed, encoding: mode === 'alpha' ? 'LSB Alpha' : 'LSB RGB' };
+}
+
 // Read PNG metadata from ArrayBuffer
 function readPNGMetadata(buffer) {
     const data = new Uint8Array(buffer);
@@ -6593,6 +6750,8 @@ function readPNGMetadata(buffer) {
     }
     
     const result = {};
+    // Records which chunk type carried the "Comment" payload (JtEXt/JiTXt)
+    let commentEncoding = null;
     let idx = 8;
     
     while (idx < data.length) {
@@ -6609,6 +6768,14 @@ function readPNGMetadata(buffer) {
             const textChunk = textDecode(chunkData);
             if (!result.tEXt) result.tEXt = {};
             result.tEXt[textChunk.keyword] = textChunk.text;
+            if (textChunk.keyword === 'Comment') commentEncoding = 'JtEXt';
+        } else if (name === 'iTXt') {
+            const itxtChunk = iTXtDecode(data.slice(idx, idx + length));
+            if (itxtChunk && !itxtChunk.compressed && (itxtChunk.keyword === 'Comment' || itxtChunk.keyword === 'Source' || itxtChunk.keyword === 'Software')) {
+                if (!result.tEXt) result.tEXt = {};
+                result.tEXt[itxtChunk.keyword] = itxtChunk.text.replaceAll('\x00', '');
+                if (itxtChunk.keyword === 'Comment') commentEncoding = 'JiTXt';
+            }
         }
         
         idx += length + 4; // Skip data and CRC
@@ -6617,14 +6784,32 @@ function readPNGMetadata(buffer) {
     if (result.tEXt && result.tEXt.Comment) {
         try {
             const commentData = JSON.parse(result.tEXt.Comment);
-            return { ...commentData, source: result.tEXt.Source, software: result.tEXt.Software };
+            return { ...commentData, source: result.tEXt.Source, software: result.tEXt.Software, _encoding: commentEncoding };
         } catch (e) {
             // Comment is not JSON, return basic metadata
-            return { source: result.tEXt.Source, software: result.tEXt.Software };
+            return { source: result.tEXt.Source, software: result.tEXt.Software, _encoding: commentEncoding };
         }
     }
     
     return result;
+}
+
+// Decode an iTXt chunk header + text (uncompressed only). Compressed iTXt is
+// reported via the `compressed` flag and handled by the zTXt/stealth fallback.
+function iTXtDecode(data) {
+    let i = 0;
+    let keyword = '';
+    while (i < data.length && data[i] !== 0) { keyword += String.fromCharCode(data[i]); i++; }
+    i++; // null separator after keyword
+    const compressionFlag = data[i]; i++;
+    i++; // compression method
+    while (i < data.length && data[i] !== 0) i++; i++; // language tag
+    while (i < data.length && data[i] !== 0) i++; i++; // translated keyword
+    if (compressionFlag === 1) {
+        return { keyword, text: null, compressed: true };
+    }
+    const text = new TextDecoder('utf-8').decode(data.slice(i));
+    return { keyword, text, compressed: false };
 }
 
 // Enhance metadata with actual image dimensions and scale ratio detection
@@ -6974,6 +7159,12 @@ function showBlueprintPreview(metadata) {
         
         // Build metadata display using the latest system
         let infoRows = [[],[],[],[],[]];
+
+        // Source encoding badge (JtEXt / JiTXt / JzTXt / LSB Alpha / LSB RGB)
+        if (metadata._encoding) {
+            const encIcon = metadata._encoding.startsWith('LSB') ? 'fa-eye-slash' : 'fa-file-code';
+            infoRows[0].push(`<div class="form-group auto-width"><label class="justify-end" for="modelName">Encoding</label><div class="meta-value justify-end"><span class="badge forgedata-badge"><i class="fa-light ${encIcon}"></i><span>${metadata._encoding}</span></span></div></div>`);
+        }
 
         // Model information - use prettified model name
         if (metadata.source) {

@@ -171,6 +171,9 @@ function handleAutocompleteOverlayWheel(e) {
     if (!characterAutocompleteList) return;
     if (!isAutocompleteOverlayHovered) return;
 
+    // Character detail (enhancer) page has no result items to drive; let the panel scroll natively instead of swallowing the wheel.
+    if (characterAutocompleteList.querySelector('.character-detail-content')) return;
+
     // Per UX request: wheel navigates only the main results list.
     // If spell-check or dictionary navigation is active, switch back to the main list.
     if (spellCheckNavigationMode || wordLookupNavigationMode) {
@@ -2508,6 +2511,43 @@ function mergeTagEnhancementFields(result1, result2, merged) {
     };
 }
 
+// Resolve which autofill ranking "type" key a result belongs to, for typeOrder/typeWeights
+// (public/scripts/comp/autofillRankingConfig.js getAutofillRanking()).
+// Per-source tag rule: when a tag has multiple sources (d/e/n counts), the source with the
+// highest configured typeWeight wins.
+function getAutofillTagSourceType(result) {
+    const candidates = [];
+    if ((result.d_count || 0) > 0) candidates.push('tagDanbooru');
+    if ((result.e_count || 0) > 0) candidates.push('tagE621');
+    if (getTagNCount(result) > 0) candidates.push('tagNovelai');
+    if (Array.isArray(result.datasets)) {
+        if (result.datasets.includes('danbooru') && !candidates.includes('tagDanbooru')) candidates.push('tagDanbooru');
+        if (result.datasets.includes('e621') && !candidates.includes('tagE621')) candidates.push('tagE621');
+        if (result.datasets.includes('novelai') && !candidates.includes('tagNovelai')) candidates.push('tagNovelai');
+    }
+    if (candidates.length === 0) return 'tagDanbooru';
+    if (candidates.length === 1) return candidates[0];
+
+    const weights = getAutofillRanking().typeWeights;
+    return candidates.reduce((best, cur) => ((weights[cur] || 0) > (weights[best] || 0) ? cur : best));
+}
+
+function getAutofillTypeKey(result) {
+    if (isTagResult(result)) return getAutofillTagSourceType(result);
+    if (isCharacterResult(result)) return 'character';
+    if (result.type === 'textReplacement') return 'textReplacement';
+    if (result.type === 'dynamicPlaceholder') return 'dynamicPlaceholder';
+    if (result.type === 'spellcheck' || result.type === 'wordLookup') return 'spellcheck';
+    return result.type || '';
+}
+
+// getAutofillRanking: public/scripts/comp/autofillRankingConfig.js
+function getAutofillTypeOrderPriority(typeKey) {
+    const order = getAutofillRanking().typeOrder;
+    const idx = order.indexOf(typeKey);
+    return idx === -1 ? -1 : (order.length - idx);
+}
+
 function getTagNCount(result) {
     if (result.n_count !== undefined && result.n_count !== null) {
         return result.n_count;
@@ -3215,8 +3255,48 @@ async function rebuildAndDisplayResults() {
     // Get Rentan placeholder results
     const dynamicGenerationPlaceholders = getDynamicGenerationPlaceholderResults(lastSearchQuery);
 
-    // Get the best text replacement match for the current query
-    const bestTextReplacement = getBestTextReplacementMatch(enhancedTextReplacements, lastSearchQuery);
+    // Merge + rank the mixed result set (shared with the DSAP-SMF Autofill Ranking Test tab).
+    allSearchResults = assembleRankedAutofillResults({
+        query: lastSearchQuery,
+        bestSpellCheckResult,
+        characterResults: allCharacterResults,
+        tagResults: allTagResults,
+        textReplacements: enhancedTextReplacements,
+        dynamicPlaceholders: dynamicGenerationPlaceholders
+    });
+
+    // Update the display with the sorted results
+    if (currentCharacterAutocompleteTarget) {
+        updateAutocompleteDisplay(allSearchResults, currentCharacterAutocompleteTarget);
+    }
+
+    updateSearchStatusDisplay();
+}
+
+/**
+ * Merge + rank the mixed autocomplete result set (spellcheck, characters, text replacements,
+ * dynamic placeholders, tags) exactly as live typing does — including top/bottom tiering,
+ * dedup, calculateComprehensiveRanking scores, and typeOrder/typeWeights tie-breaking.
+ *
+ * Shared by rebuildAndDisplayResults (live) and the DSAP-SMF Autofill Ranking Test tab
+ * (public/scripts/comp/autofillConfigDsapApplet.js) so the test list matches what users see.
+ * Inputs are already-prepared per-type collections (prepare*ForDisplay applied by the caller).
+ * When attachBreakdown is true, each returned result gets _testScore + _testBreakdown from
+ * calculateComprehensiveRanking(..., true) for per-result inspection.
+ */
+function assembleRankedAutofillResults(inputs) {
+    const {
+        query = '',
+        bestSpellCheckResult = null,
+        characterResults = [],
+        tagResults = [],
+        textReplacements = [],
+        dynamicPlaceholders = [],
+        attachBreakdown = false
+    } = inputs || {};
+
+    // Best text replacement match feeds textReplacement scoring in calculateComprehensiveRanking.
+    const bestTextReplacement = getBestTextReplacementMatch(textReplacements, query);
 
     // Separate top results from each category and combine them with specific ordering
     const topResults = [];
@@ -3228,44 +3308,42 @@ async function rebuildAndDisplayResults() {
     }
 
     // Sort character results and limit to top 3
-    if (allCharacterResults.length > 0) {
-        allCharacterResults.sort((a, b) => {
-            const aRanking = getCachedComprehensiveRanking(a, lastSearchQuery, bestTextReplacement);
-            const bRanking = getCachedComprehensiveRanking(b, lastSearchQuery, bestTextReplacement);
+    if (characterResults.length > 0) {
+        const sortedCharacters = [...characterResults].sort((a, b) => {
+            const aRanking = getCachedComprehensiveRanking(a, query, bestTextReplacement);
+            const bRanking = getCachedComprehensiveRanking(b, query, bestTextReplacement);
             return bRanking.score - aRanking.score;
         });
 
-        // Take top 3 characters for top results, rest go to bottom
-        const topCharacters = allCharacterResults.slice(0, 3);
-        const bottomCharacters = allCharacterResults.slice(3);
+        const topCharacters = sortedCharacters.slice(0, 3);
+        const bottomCharacters = sortedCharacters.slice(3);
 
         topResults.push(...topCharacters.map(result => ({ ...result, _isTopTier: true })));
         bottomResults.push(...bottomCharacters.map(result => ({ ...result, _isTopTier: false })));
     }
 
     // Sort text replacement results and limit to top 3
-    if (enhancedTextReplacements.length > 0) {
-        enhancedTextReplacements.sort((a, b) => {
-            const aRanking = getCachedComprehensiveRanking(a, lastSearchQuery, bestTextReplacement);
-            const bRanking = getCachedComprehensiveRanking(b, lastSearchQuery, bestTextReplacement);
+    if (textReplacements.length > 0) {
+        const sortedTextReplacements = [...textReplacements].sort((a, b) => {
+            const aRanking = getCachedComprehensiveRanking(a, query, bestTextReplacement);
+            const bRanking = getCachedComprehensiveRanking(b, query, bestTextReplacement);
             return bRanking.score - aRanking.score;
         });
 
-        // Take top 3 text replacements for top results, rest go to bottom
-        const topTextReplacements = enhancedTextReplacements.slice(0, 3);
-        const bottomTextReplacements = enhancedTextReplacements.slice(3);
+        const topTextReplacements = sortedTextReplacements.slice(0, 3);
+        const bottomTextReplacements = sortedTextReplacements.slice(3);
 
         topResults.push(...topTextReplacements.map(result => ({ ...result, _isTopTier: true })));
         bottomResults.push(...bottomTextReplacements.map(result => ({ ...result, _isTopTier: false })));
     }
 
     // Prefix hints (TIME, WEATHER, etc.) — independent of text replacement matches
-    if (dynamicGenerationPlaceholders.length > 0) {
-        topResults.push(...dynamicGenerationPlaceholders.map(result => ({ ...result, _isTopTier: true })));
+    if (dynamicPlaceholders.length > 0) {
+        topResults.push(...dynamicPlaceholders.map(result => ({ ...result, _isTopTier: true })));
     }
 
     // Add all tag results (no limit) - these are always in bottom tier
-    bottomResults.push(...allTagResults.map(result => ({ ...result, _isTopTier: false })));
+    bottomResults.push(...tagResults.map(result => ({ ...result, _isTopTier: false })));
 
     // Apply deduplication to remove duplicate results from different services
     const allResultsBeforeDedup = [...topResults, ...bottomResults];
@@ -3284,21 +3362,15 @@ async function rebuildAndDisplayResults() {
     }
 
     // Combine top results with bottom results
-    allSearchResults = [...finalTopResults, ...finalBottomResults];
+    let rankedResults = [...finalTopResults, ...finalBottomResults];
 
     // Filter results for text replacement searches (queries starting with '!')
-    if (lastSearchQuery && lastSearchQuery.startsWith('!')) {
-        allSearchResults = allSearchResults.filter(result => result.type === 'textReplacement');
+    if (query && query.startsWith('!')) {
+        rankedResults = rankedResults.filter(result => result.type === 'textReplacement');
     }
 
-    // Debug logging for ranking (disabled — was recomputing scores on every rebuild for no output)
-    // logRankingDebug(allSearchResults, lastSearchQuery);
-
     // Apply final sorting within top and bottom sections
-    allSearchResults.sort((a, b) => {
-        const aType = a.type || '';
-        const bType = b.type || '';
-
+    rankedResults.sort((a, b) => {
         // Determine if items are in top or bottom tier using the marker
         const aIsTopTier = a._isTopTier === true;
         const bIsTopTier = b._isTopTier === true;
@@ -3308,8 +3380,8 @@ async function rebuildAndDisplayResults() {
         if (!aIsTopTier && bIsTopTier) return 1;
 
         // Within the same tier, apply ranking
-        const aRanking = getCachedComprehensiveRanking(a, lastSearchQuery, bestTextReplacement);
-        const bRanking = getCachedComprehensiveRanking(b, lastSearchQuery, bestTextReplacement);
+        const aRanking = getCachedComprehensiveRanking(a, query, bestTextReplacement);
+        const bRanking = getCachedComprehensiveRanking(b, query, bestTextReplacement);
 
         // Compare ranking scores (higher score = better ranking)
         if (aRanking.score !== bRanking.score) {
@@ -3346,14 +3418,13 @@ async function rebuildAndDisplayResults() {
             return aRanking.isPrefixMatch ? -1 : 1;
         }
 
-        // 3. Type hierarchy within same tier
+        // 3. Type hierarchy within same tier — driven by the DSAP-SMF Autofill Ranking
+        // "Type Ranking" drag order (public/scripts/comp/autofillRankingConfig.js typeOrder).
+        const aTypePriority = getAutofillTypeOrderPriority(getAutofillTypeKey(a));
+        const bTypePriority = getAutofillTypeOrderPriority(getAutofillTypeKey(b));
         if (aIsTopTier && bIsTopTier) {
-            // Within top tier: spellcheck > characters > textReplacements
-            const topTypeOrder = { spellcheck: 4, character: 3, characterTag: 3, textReplacement: 2, dynamicPlaceholder: 1 };
-            const aTopPriority = topTypeOrder[aType] || (isCharacterResult(a) ? 3 : 0);
-            const bTopPriority = topTypeOrder[bType] || (isCharacterResult(b) ? 3 : 0);
-            if (aTopPriority !== bTopPriority) {
-                return bTopPriority - aTopPriority;
+            if (aTypePriority !== bTypePriority) {
+                return bTypePriority - aTypePriority;
             }
         } else if (!aIsTopTier && !bIsTopTier) {
             // Within bottom tier: tags have priority over any other types
@@ -3361,6 +3432,9 @@ async function rebuildAndDisplayResults() {
             const bIsTag = isTagResult(b);
             if (aIsTag && !bIsTag) return -1;
             if (!aIsTag && bIsTag) return 1;
+            if (aTypePriority !== bTypePriority) {
+                return bTypePriority - aTypePriority;
+            }
         }
 
         // 4. Frequency/popularity as final tiebreaker
@@ -3376,12 +3450,16 @@ async function rebuildAndDisplayResults() {
         return aName.localeCompare(bName);
     });
 
-    // Update the display with the sorted results
-    if (currentCharacterAutocompleteTarget) {
-        updateAutocompleteDisplay(allSearchResults, currentCharacterAutocompleteTarget);
+    // Per-result score breakdown for the Autofill Ranking Test tab (all result types).
+    if (attachBreakdown) {
+        for (const result of rankedResults) {
+            const ranking = calculateComprehensiveRanking(result, query, bestTextReplacement, true);
+            result._testScore = ranking.score;
+            result._testBreakdown = ranking.breakdown;
+        }
     }
 
-    updateSearchStatusDisplay();
+    return rankedResults;
 }
 
 // Batched via rAF — search_status_update can arrive many times per keystroke.
@@ -4198,14 +4276,40 @@ function getTextReplacementExpandTextFromItem(item) {
     if (raw !== undefined && raw !== null && String(raw).trim() !== '') {
         return String(raw);
     }
-    const ph = String(item.dataset.placeholder || '').trim();
+    const ph = String(item.dataset.placeholder || '').trim().replace(/^!+/, '');
     if (/^NAX_(FAV|TRY)_/i.test(ph)) return '';
     if (!ph) return '';
     const map = window.optionsData && window.optionsData.textReplacements;
-    if (map && Object.prototype.hasOwnProperty.call(map, ph) && map[ph] !== undefined && map[ph] !== null) {
-        return String(map[ph]);
+    if (!map) return '';
+    const val = map[ph];
+    if (val === undefined || val === null) return '';
+    return Array.isArray(val) ? val.join(', ') : String(val);
+}
+
+/** Selected autofill row for right-arrow insert — requires entered nav with a highlighted main-list row. */
+function resolveAutofillRightArrowTargetItem(resultItems) {
+    if (!resultItems || !resultItems.length) return null;
+    if (selectedCharacterAutocompleteIndex >= 0 && resultItems[selectedCharacterAutocompleteIndex]) {
+        return resultItems[selectedCharacterAutocompleteIndex];
     }
-    return '';
+    return null;
+}
+
+/** Right-arrow: insert at cursor (tags/characters) or paste unpacked expander value. */
+function applyAutofillRightArrowInsert(target, selectedItem) {
+    if (!target || !selectedItem || !selectedItem.dataset) return false;
+
+    if (selectedItem.dataset.type === 'textReplacement') {
+        const expanderContents = getTextReplacementExpandTextFromItem(selectedItem);
+        if (!expanderContents) return false;
+        insertTextReplacement(expanderContents);
+        return true;
+    }
+
+    const insertText = getAutocompleteRightArrowInsertText(selectedItem);
+    if (!insertText) return false;
+    injectAutocompleteSuggestionAtCursor(target, insertText);
+    return true;
 }
 
 /**
@@ -4589,7 +4693,12 @@ function applyTabAutofillPreview(target) {
 
     autofillOverlayAcceptInFlight = true;
     try {
-        if (spellCheckNavigationMode || wordLookupNavigationMode ||
+        // Thesaurus (word lookup) results are never Tab-completable — they must be explicitly chosen (arrow + Enter/click) by the user.
+        if (wordLookupNavigationMode) {
+            return false;
+        }
+
+        if (spellCheckNavigationMode ||
             (autocompleteNavigationMode && selectedCharacterAutocompleteIndex >= 0)) {
             return applyActiveAutofillEnterSelection(target);
         }
@@ -4602,19 +4711,16 @@ function applyTabAutofillPreview(target) {
             }
         }
 
-        const wordLookupSection = getWordLookupSection();
-        if (wordLookupSection && getWordLookupWordCount(wordLookupSection) > 0) {
-            const firstBtn = getFirstWordLookupSuggestionButton(wordLookupSection);
-            if (firstBtn) {
-                const row = firstBtn.closest('.word-lookup-word-row');
-                const wordRowIndex = row ? parseInt(row.dataset.wordIndex, 10) : 0;
-                return applyWordLookupInsert(target, firstBtn.dataset.original, firstBtn.dataset.suggestion, wordRowIndex);
-            }
-        }
+        // Text expanders are only Tab-completable when the current term was started with '!'; otherwise skip them and complete the next eligible result.
+        const bounds = getAutocompleteSearchBounds(target);
+        const isTextExpanderQuery = !!(bounds && typeof bounds.query === 'string' && bounds.query.startsWith('!'));
 
         const items = getAutocompleteResultItems();
-        if (items.length > 0) {
-            return applyAutocompleteItemElement(items[0]);
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (!item) continue;
+            if (item.dataset.type === 'textReplacement' && !isTextExpanderQuery) continue;
+            return applyAutocompleteItemElement(item);
         }
 
         return false;
@@ -4807,6 +4913,19 @@ function handleCharacterAutocompleteKeydown(e) {
             return;
         }
 
+        // Overlay open, textarea still owns focus — only ArrowDown and Tab enter navigation; ArrowUp closes overlay.
+        if (!isAutofillOverlayEnteredForNavigation()) {
+            if (e.key === 'ArrowUp') {
+                dismissAutocompleteForTextareaNavigation();
+                return;
+            }
+            const allowWhileTyping = e.key === 'ArrowDown'
+                || (e.key === 'Tab' && isAutofillPromptTabKey(e));
+            if (!allowWhileTyping) {
+                return;
+            }
+        }
+
         if (isAutocompleteEnterKey(e)) {
             e.preventDefault();
             e.stopPropagation();
@@ -4820,12 +4939,20 @@ function handleCharacterAutocompleteKeydown(e) {
 
         if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
             if (!isAutofillHorizontalSubNavigation()) {
+                if (e.key === 'ArrowRight') {
+                    const promptTarget = (e.target && e.target.type === 'textarea')
+                        ? e.target
+                        : currentCharacterAutocompleteTarget;
+                    const selectedItem = resolveAutofillRightArrowTargetItem(resultItems);
+                    if (selectedItem && promptTarget && applyAutofillRightArrowInsert(promptTarget, selectedItem)) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return;
+                    }
+                }
                 dismissAutocompleteForTextareaNavigation();
                 return;
             }
-        } else if (e.key === 'ArrowUp' && !isAutofillOverlayEnteredForNavigation()) {
-            dismissAutocompleteForTextareaNavigation();
-            return;
         }
 
         switch (e.key) {
@@ -6719,8 +6846,8 @@ async function addWordToDictionary(word) {
 function scrollToAutocompleteOption(optionElement) {
     if (!optionElement) return;
 
-    // Find the scrollable container - the overlay is the scrollable container
-    const menu = optionElement.closest('.character-autocomplete-overlay');
+    // The list scrolls internally now (the overlay reserves a fixed key-guide footer — see #characterAutocompleteOverlay in autocomplete.css); fall back to the overlay for any layout that still scrolls there.
+    const menu = optionElement.closest('.character-autocomplete-list') || optionElement.closest('.character-autocomplete-overlay');
     if (!menu) return;
 
     // Get the menu dimensions
@@ -8353,21 +8480,28 @@ function clearDynamicResults() {
     persistentWordLookupData = null;
 }
 
-// Calculate comprehensive ranking for search results
-function calculateComprehensiveRanking(result, query, bestTextReplacement = null) {
+// Calculate comprehensive ranking for search results.
+// getAutofillRanking: public/scripts/comp/autofillRankingConfig.js
+// Pass withBreakdown=true (DSAP-SMF Autofill Ranking Test tab) to get a score component breakdown.
+function calculateComprehensiveRanking(result, query, bestTextReplacement = null, withBreakdown = false) {
+    const rankingCfg = getAutofillRanking();
     const resultType = result.type || '';
     const resultName = isTagResult(result)
         ? getTagDisplayLabel(result)
         : (result.name || result.placeholder || '');
     const queryLower = query.toLowerCase();
     const nameLower = resultName.toLowerCase();
+    const typeKey = getAutofillTypeKey(result);
+    const typeWeight = rankingCfg.typeWeights[typeKey] || 0;
 
     let score = 0;
     let isExactMatch = false;
     let isPrefixMatch = false;
     let textMatchTier = 0;
+    const breakdown = withBreakdown ? { typeKey, typeWeight } : null;
 
     if (isTagResult(result)) {
+        const cfg = rankingCfg.clientTierBonus;
         const matchInfo = resolveTagTextMatchInfo(result, query);
         textMatchTier = matchInfo.tier;
         isExactMatch = matchInfo.isExactMatch;
@@ -8379,45 +8513,63 @@ function calculateComprehensiveRanking(result, query, bestTextReplacement = null
         const queryNormLen = normalizeTagSearchText(query).length;
         const nameNormLen = normalizeTagSearchText(resultName).length;
 
+        let tierScore = 0;
         if (matchInfo.tier === 4) {
-            score += 1200;
+            tierScore = cfg.tier4;
         } else if (matchInfo.tier === 3) {
-            score += 700;
-            score -= Math.max(0, nameNormLen - queryNormLen - 1) * 4;
+            tierScore = cfg.tier3 - Math.max(0, nameNormLen - queryNormLen - 1) * cfg.tier3OvershootPenalty;
         } else if (matchInfo.tier === 2) {
-            score += 550;
-            score -= Math.max(0, nameNormLen - queryNormLen - 1) * 3;
+            tierScore = cfg.tier2 - Math.max(0, nameNormLen - queryNormLen - 1) * cfg.tier2OvershootPenalty;
         } else if (matchInfo.tier === 1) {
-            score += 120;
-            score -= Math.max(0, nameNormLen - queryNormLen) * 2;
+            tierScore = cfg.tier1 - Math.max(0, nameNormLen - queryNormLen) * cfg.tier1OvershootPenalty;
         }
+        score += tierScore;
 
-        if (matchInfo.matchCoverage) {
-            score += matchInfo.matchCoverage * 2.5;
-        }
+        const coverageScore = matchInfo.matchCoverage ? matchInfo.matchCoverage * cfg.coverageMult : 0;
+        score += coverageScore;
 
-        score += textRelevance * 2;
+        const textRelevanceScore = textRelevance * cfg.textRelevanceMult;
+        score += textRelevanceScore;
 
         const apiConfidence = getRawApiTagConfidence(result);
+        let apiConfidenceScore = 0;
+        let tagScoreScore = 0;
         if (matchInfo.tier === 0 && apiConfidence > 0) {
-            score += apiConfidence * 3.5;
+            apiConfidenceScore = apiConfidence * cfg.apiConfidenceNoMatchMult;
+            score += apiConfidenceScore;
         } else {
-            score += getTagScore(result) * 1.2;
+            tagScoreScore = getTagScore(result) * cfg.tagScoreMult;
+            score += tagScoreScore;
             if (apiConfidence > 0) {
-                score += apiConfidence * 0.5;
+                apiConfidenceScore = apiConfidence * cfg.apiConfidenceMatchMult;
+                score += apiConfidenceScore;
             }
         }
 
         const frequency = getTagNCount(result) || result.frequency || result.n || 0;
-        score += Math.min(frequency * 0.05, 8);
+        const frequencyScore = Math.min(frequency * cfg.frequencyMult, cfg.frequencyCap);
+        score += frequencyScore;
+
+        score += typeWeight;
+
+        if (breakdown) {
+            Object.assign(breakdown, {
+                matchTier: matchInfo.tier,
+                matchCoverage: matchInfo.matchCoverage,
+                tierScore, coverageScore, textRelevanceScore, apiConfidenceScore, tagScoreScore, frequencyScore
+            });
+        }
 
         return {
             score: Math.round(score * 100) / 100,
             isExactMatch,
             isPrefixMatch,
-            textMatchTier
+            textMatchTier,
+            breakdown
         };
     }
+
+    const cfg = rankingCfg.clientNonTag;
 
     // Base score from similarity calculation (non-tag results)
     const similarityScore = result.predictionaryScore ||
@@ -8427,31 +8579,33 @@ function calculateComprehensiveRanking(result, query, bestTextReplacement = null
 
     // Exact match bonus (highest priority)
     if (nameLower === queryLower) {
-        score += 1000;
+        score += cfg.exactMatchBonus;
         isExactMatch = true;
     }
 
     // Prefix match bonus (second highest priority)
     if (!isExactMatch && nameLower.startsWith(queryLower)) {
-        score += 500;
+        score += cfg.prefixMatchBonus;
         isPrefixMatch = true;
     }
 
     // Contains query bonus
     if (!isExactMatch && !isPrefixMatch && nameLower.includes(queryLower)) {
-        score += 200;
+        score += cfg.containsBonus;
     }
 
     // Add similarity score (weighted)
-    score += similarityScore * 2;
+    const similarityBonus = similarityScore * cfg.similarityMult;
+    score += similarityBonus;
 
     // Type-specific adjustments
+    let typeBonus = 0;
     switch (resultType) {
         case 'character':
         case 'characterTag':
-            score += 50;
+            typeBonus += cfg.characterBonus;
             if (result.similarity) {
-                score += result.similarity * 0.5;
+                typeBonus += result.similarity * cfg.characterSimilarityMult;
             }
             break;
 
@@ -8459,26 +8613,35 @@ function calculateComprehensiveRanking(result, query, bestTextReplacement = null
             if (bestTextReplacement &&
                 resultName === bestTextReplacement.name &&
                 result.placeholder === bestTextReplacement.placeholder) {
-                score += 300;
+                typeBonus += cfg.textReplacementBestBonus;
             }
             if (result.placeholder && result.placeholder.toLowerCase() === queryLower) {
-                score += 400;
+                typeBonus += cfg.textReplacementExactPlaceholderBonus;
             }
             break;
 
         case 'dynamicPlaceholder':
-            score += 40;
+            typeBonus += cfg.dynamicPlaceholderBonus;
             break;
     }
+    score += typeBonus;
 
     const frequency = getTagNCount(result) || result.frequency || result.n || 0;
-    score += Math.min(frequency * 0.1, 10);
+    const frequencyScore = Math.min(frequency * cfg.frequencyMult, cfg.frequencyCap);
+    score += frequencyScore;
+
+    score += typeWeight;
+
+    if (breakdown) {
+        Object.assign(breakdown, { similarityScore: similarityBonus, typeBonus, frequencyScore });
+    }
 
     return {
         score: Math.round(score * 100) / 100,
         isExactMatch,
         isPrefixMatch,
-        textMatchTier
+        textMatchTier,
+        breakdown
     };
 }
 
@@ -8486,7 +8649,9 @@ function getCachedComprehensiveRanking(result, query, bestTextReplacement = null
     if (!result) {
         return { score: 0, isExactMatch: false, isPrefixMatch: false, textMatchTier: 0 };
     }
-    const cacheKey = (query || '') + '|' + (bestTextReplacement?.name || '');
+    // getAutofillRanking: public/scripts/comp/autofillRankingConfig.js — version keeps cache
+    // entries fresh across live ranking config saves without a separate invalidation pass.
+    const cacheKey = (query || '') + '|' + (bestTextReplacement?.name || '') + '|' + getAutofillRanking().rankingVersion;
     if (result._rankCacheKey === cacheKey && result._rankCache) {
         return result._rankCache;
     }
@@ -8494,6 +8659,13 @@ function getCachedComprehensiveRanking(result, query, bestTextReplacement = null
     result._rankCacheKey = cacheKey;
     result._rankCache = ranking;
     return ranking;
+}
+
+// Called by public/scripts/comp/autofillRankingConfig.js after a live ranking config update.
+// Per-result caches already key on rankingVersion (see getCachedComprehensiveRanking above),
+// so this is a light hook kept for future cache strategies / explicit invalidation needs.
+function clearAutofillRankingScoreCache() {
+    /* no-op: rankingVersion is embedded in the cache key */
 }
 
 // Calculate string similarity score for better ranking
@@ -9419,7 +9591,7 @@ function wireMainPromptAutocompleteListeners() {
         addSafeEventListener(manualPrompt, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
         addSafeEventListener(manualPrompt, 'focus', () => startEmphasisHighlighting(manualPrompt), 'focus');
         addSafeEventListener(manualPrompt, 'blur', () => {
-            applyFormattedText(manualPrompt, true);
+            if (window.autoFormatOnBlur !== false) applyFormattedText(manualPrompt, true);
             updateEmphasisHighlighting(manualPrompt);
             autoResizeTextarea(manualPrompt);
             stopEmphasisHighlighting();
@@ -9433,7 +9605,7 @@ function wireMainPromptAutocompleteListeners() {
         addSafeEventListener(manualUc, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
         addSafeEventListener(manualUc, 'focus', () => startEmphasisHighlighting(manualUc), 'focus');
         addSafeEventListener(manualUc, 'blur', () => {
-            applyFormattedText(manualUc, true);
+            if (window.autoFormatOnBlur !== false) applyFormattedText(manualUc, true);
             updateEmphasisHighlighting(manualUc);
             autoResizeTextarea(manualUc);
             stopEmphasisHighlighting();
@@ -9447,7 +9619,7 @@ function wireMainPromptAutocompleteListeners() {
         addSafeEventListener(manualPromptNegative, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
         addSafeEventListener(manualPromptNegative, 'focus', () => startEmphasisHighlighting(manualPromptNegative), 'focus');
         addSafeEventListener(manualPromptNegative, 'blur', () => {
-            applyFormattedText(manualPromptNegative, true);
+            if (window.autoFormatOnBlur !== false) applyFormattedText(manualPromptNegative, true);
             updateEmphasisHighlighting(manualPromptNegative);
             autoResizeTextarea(manualPromptNegative);
             stopEmphasisHighlighting();

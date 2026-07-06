@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { JSONCheckpointManager } = require('./jsonCheckpoint');
+const { DEFAULT_AUTOFILL_RANKING } = require('./autofillRankingSettings');
 
 /**
  * Fluent API for config modifications
@@ -565,6 +566,7 @@ class ConfigManager {
                         autoUpdateCheckMinute: 0,
                         countBasedCheckIntervalHours: 4
                     },
+                    autofillRanking: JSON.parse(JSON.stringify(DEFAULT_AUTOFILL_RANKING)),
                     selectedApiKeys: {
                         novelai: 0,
                         grok: 0,
@@ -1554,6 +1556,16 @@ class ConfigManager {
         } catch (error) {
             console.warn('⚠️ Failed to schedule workspace CSS recompile:', error.message);
         }
+    }
+
+    /**
+     * Public trigger for workspace theme CSS recompile.
+     * Used by user-initiated visual changes (color/wallpaper/fonts) so the theme
+     * refreshes immediately instead of waiting for the debounced workspaces disk write.
+     * modules/workspaceCssService.js
+     */
+    scheduleWorkspaceCssRecompile() {
+        this._scheduleWorkspaceCssRecompile();
     }
     
     /**

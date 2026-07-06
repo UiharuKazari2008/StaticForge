@@ -75,7 +75,8 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | NAX | [ws/nax.md](./ws/nax.md) | 11 |
 | Text replacements | [ws/textReplacements.md](./ws/textReplacements.md) | 6 |
 | Favorites | [ws/favorites.md](./ws/favorites.md) | 3 |
-| Generation quips | [ws/quips.md](./ws/quips.md) | 6 |
+| Account & app bootstrap | [ws/account.md](./ws/account.md) | 2 |
+| Generation quips | [ws/quips.md](./ws/quips.md) | 4 |
 | Knowledge / memories | [ws/knowledge.md](./ws/knowledge.md) | 7 |
 | Persona | [ws/persona.md](./ws/persona.md) | 2 |
 | User settings | [ws/userSettings.md](./ws/userSettings.md) | 2 |

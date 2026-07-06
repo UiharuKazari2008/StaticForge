@@ -1803,6 +1803,10 @@ function clearManualForm() {
     renderUcPresetsDropdown();
 
     window.keepPromptNewlines = false;
+    window.autoCharNumerize = true;
+    window.autoFormatOnBlur = true;
+    window.promptNormalize = true;
+    window.deduplicateTags = true;
     if (window.promptTextareaToolbar) {
         window.promptTextareaToolbar.syncKeepNewlinesButtons();
     }
@@ -2301,6 +2305,9 @@ function addSharedFieldsToRequestBody(requestBody, values) {
     }
 
     requestBody.keep_newlines = !!window.keepPromptNewlines;
+    requestBody.auto_char_numerize = window.autoCharNumerize !== false;
+    requestBody.prompt_normalize = window.promptNormalize !== false;
+    requestBody.deduplicate_tags = window.deduplicateTags !== false;
 
     // Collect dynamic generation data from current button states
     const todBtn = document.getElementById('todBtn');
@@ -4209,6 +4216,16 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
             }
         }
 
+        if (data.forge_data && data.forge_data.auto_char_numerize !== undefined) {
+            window.autoCharNumerize = !!data.forge_data.auto_char_numerize;
+        }
+        if (data.forge_data && data.forge_data.prompt_normalize !== undefined) {
+            window.promptNormalize = !!data.forge_data.prompt_normalize;
+        }
+        if (data.forge_data && data.forge_data.deduplicate_tags !== undefined) {
+            window.deduplicateTags = !!data.forge_data.deduplicate_tags;
+        }
+
         updateSplashScreenStatus('Loading Pipelines...');
         // Handle staged generation data from forge_data
         if (data.forge_data && data.forge_data.pipeline && Array.isArray(data.forge_data.pipeline)) {
@@ -4364,6 +4381,13 @@ async function handleManualGeneration(e, options = {}) {
     e.preventDefault();
 
     const { targetStageIndex = null } = options;
+
+    // assertClientImageGenerationAllowed: public/scripts/comp/novelAiAccountStatus.js
+    try {
+        assertClientImageGenerationAllowed();
+    } catch (_error) {
+        return;
+    }
 
     // Set generating state
     isGenerating = true;
@@ -5008,10 +5032,20 @@ function applyManualPreviewDynamicGenPhase(phase) {
     refreshManualPreviewImageLoupe();
 }
 
+// Cancel button only appears once dynamic generation is actively processing (mirrors spellbook setProgressCancelVisible)
+function setManualDynamicGenerationProgressCancelVisible(visible) {
+    if (!dynamicGenerationProgressCancelBtn) return;
+    dynamicGenerationProgressCancelBtn.classList.toggle('hidden', !visible);
+    dynamicGenerationProgressCancelBtn.disabled = !visible;
+}
+
 // Reset progress overlay for new dynamic generation session
 function resetProgressOverlay() {
     // Reset state flags
     progressOverlayCompleting = false;
+
+    // Cancel stays hidden until we confirm active processing (set per-phase in updateDynamicGenerationProgressOverlay)
+    setManualDynamicGenerationProgressCancelVisible(false);
 
     // Ensure overlay is visible for new session
     const overlay = document.getElementById('dynamicGenerationProgressOverlay');
@@ -5054,6 +5088,11 @@ function updateDynamicGenerationProgressOverlay(phase, data) {
     }
 
     applyManualPreviewDynamicGenPhase(phase);
+
+    // Only offer Cancel once an actual generation is processing dynamic-gen phases (not context-only previews or completion/error)
+    const dynGenProcessingPhases = ['starting', 'context', 'thinking', 'streaming', 'tool_execution', 'optimizing'];
+    const manualIsGenerating = Boolean(manualForm?.classList.contains('generating'));
+    setManualDynamicGenerationProgressCancelVisible(manualIsGenerating && dynGenProcessingPhases.includes(phase));
 
     // Update content based on phase
     switch (phase) {
@@ -5487,6 +5526,7 @@ function hideDynamicGenerationProgressOverlayImmediate() {
     const overlay = document.getElementById('dynamicGenerationProgressOverlay');
     if (!overlay) return;
     overlay.classList.add('hidden');
+    setManualDynamicGenerationProgressCancelVisible(false);
     const reasoningContainer = document.getElementById('progressReasoningContainer');
     if (reasoningContainer) {
         reasoningContainer.innerHTML = '';
@@ -5509,6 +5549,8 @@ function cancelManualDynamicGenerationFromUser() {
 function hideDynamicGenerationProgressOverlay() {
     const overlay = document.getElementById('dynamicGenerationProgressOverlay');
     if (!overlay) return;
+
+    setManualDynamicGenerationProgressCancelVisible(false);
 
     // Get all reasoning items
     const reasoningItems = document.querySelectorAll('.progress-reasoning-item');
@@ -6088,13 +6130,6 @@ async function saveRequestAsDesktopShortcut() {
 }
 
 function attachManualModalChromeListeners(signal) {
-    const generateButtons = document.querySelectorAll('#manualGenerateBtn, #manualGenerateBtnAlt');
-    generateButtons.forEach(button => {
-        // showGenerateButtonPopoverFor, hideGenerateButtonPopoverFor: public/scripts/app.js
-        button.addEventListener('mouseenter', (e) => showGenerateButtonPopoverFor(e.target), { signal });
-        button.addEventListener('mouseleave', (e) => hideGenerateButtonPopoverFor(e.target), { signal });
-    });
-
     if (closeManualBtn) {
         closeManualBtn.addEventListener('click', (e) => {
             e.preventDefault();

@@ -981,6 +981,11 @@ class SearchService {
                 abortSignal = abortController.signal;
             }
 
+            // Tripwire: block the outbound call while the service is locked.
+            if (this.globalResources.getApiKeyManager().isServiceLocked('novelai')) {
+                throw new Error('NovelAI is temporarily locked after repeated API errors. An admin must review the Service Key in the Security Center to unlock it.');
+            }
+
             const url = `https://image.novelai.net/ai/generate-image/suggest-tags?model=${apiModel}&prompt=${encodeURIComponent(normalizedQuery)}`;
             const options = {
                 method: 'GET',
@@ -1061,6 +1066,7 @@ class SearchService {
                                 const response = JSON.parse(buffer.toString());
                                 // Clean up pending request
                                 this.markRequestCompleted(sessionId, apiModel, requestId);
+                                this.globalResources.getApiKeyManager().recordApiSuccess('novelai');
                                 resolve(this.normalizeNovelAiSuggestTagsResponse(response));
                             } catch (e) {
                                 // Clean up pending request
@@ -1071,6 +1077,7 @@ class SearchService {
                         } else {
                             // Clean up pending request
                             this.markRequestCompleted(sessionId, apiModel, requestId);
+                            this.globalResources.getApiKeyManager().recordApiFailure('novelai', res.statusCode, `HTTP ${res.statusCode}`);
                             console.log(`❌ Request for ${apiModel} failed: HTTP ${res.statusCode}`);
                             reject(new Error(`Tag suggestion API error: HTTP ${res.statusCode}`));
                         }

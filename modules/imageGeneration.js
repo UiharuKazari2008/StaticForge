@@ -3278,6 +3278,10 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             dynamic_generation: dynamic_generation || (preset?.dynamic_generation ? { ...preset.dynamic_generation, compiled_prompt: undefined } : undefined),
             text_overlays: body.text_overlays || preset?.text_overlays || undefined,
             auto_clean_uc: body.auto_clean_uc !== undefined ? body.auto_clean_uc : (preset && preset.auto_clean_uc !== undefined ? preset.auto_clean_uc : true),
+            keep_newlines: body.keep_newlines !== undefined ? !!body.keep_newlines : (preset && preset.keep_newlines !== undefined ? !!preset.keep_newlines : false),
+            auto_char_numerize: body.auto_char_numerize !== undefined ? !!body.auto_char_numerize : (preset && preset.auto_char_numerize !== undefined ? !!preset.auto_char_numerize : true),
+            prompt_normalize: body.prompt_normalize !== undefined ? !!body.prompt_normalize : (preset && preset.prompt_normalize !== undefined ? !!preset.prompt_normalize : true),
+            deduplicate_tags: body.deduplicate_tags !== undefined ? !!body.deduplicate_tags : (preset && preset.deduplicate_tags !== undefined ? !!preset.deduplicate_tags : true),
         };
 
         if (body.stepPreviewWidth && body.stepPreviewHeight) {
@@ -3728,8 +3732,22 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             if (typeof text !== 'string') return text;
             return text.replace(markerRegex, ', ');
         };
+        // When the client's "keep newlines" toggle is on, preserve intentional line breaks
+        // and only collapse horizontal whitespace runs; otherwise flatten to a single line.
+        // When "prompt normalize" is off, skip separator normalization entirely.
+        const keepNewlines = !!baseOptions.keep_newlines;
+        const promptNormalize = baseOptions.prompt_normalize !== false;
         const normalizePromptSeparators = (text) => {
             if (typeof text !== 'string') return text;
+            if (!promptNormalize) return text;
+            if (keepNewlines) {
+                return text
+                    .replace(/\r\n?/g, '\n')
+                    .replace(/,[^\S\n]*,+/g, ', ')
+                    .replace(/^,[^\S\n]*|[^\S\n]*,$/g, '')
+                    .replace(/[^\S\n]{2,}/g, ' ')
+                    .trim();
+            }
             return text
                 .replace(/,\s*,+/g, ', ')
                 .replace(/^,\s*|\s*,$/g, '')
@@ -3844,16 +3862,20 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
     delete apiOpts.pipeline;
     delete apiOpts.text_replacements;
     delete apiOpts.auto_clean_uc;
+    delete apiOpts.keep_newlines;
+    delete apiOpts.auto_char_numerize;
+    delete apiOpts.prompt_normalize;
+    // Note: deduplicate_tags intentionally NOT deleted — nekoai-js reads it, then strips it before the API request.
     delete apiOpts.stepPreviewWidth;
     delete apiOpts.stepPreviewHeight;
     delete apiOpts.requestId;
 
     // Process character prompts: only enabled characters go to API, all characters go to forge_data
     if (opts.allCharacterPrompts && Array.isArray(opts.allCharacterPrompts)) {
-        // Post-process character prompts: replace 1girl/1boy with girl/boy
+        // Post-process character prompts: replace 1girl/1boy with girl/boy (skipped when auto char numerize is off)
         const processedCharacterPrompts = opts.allCharacterPrompts.map(char => ({
             ...char,
-            prompt: char.prompt.replace(/1girl/g, "girl").replace(/1boy/g, "boy")
+            prompt: opts.auto_char_numerize === false ? char.prompt : char.prompt.replace(/1girl/g, "girl").replace(/1boy/g, "boy")
         }));
         
         // Filter enabled characters for API request
@@ -3876,6 +3898,18 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
     let creditUsage;
     
     try {
+        // Tripwire: block generation while NovelAI is locked after repeated API errors.
+        if (__runtimeGr.isServiceLocked('novelai')) {
+            throw new Error('NovelAI is temporarily locked after repeated API errors. An admin must review the Service Key in the Security Center to unlock it.');
+        }
+        const statusMonitor = __runtimeGr.getNovelAiStatusMonitor?.();
+        if (statusMonitor) {
+            statusMonitor.assertImageGenerationAllowed();
+        }
+        const accountHealth = __runtimeGr.getAccountDataHealth?.();
+        if (accountHealth?.accountStanding === 'banned') {
+            throw new Error(accountHealth.banMessage || 'NovelAI account is banned');
+        }
         __runtimeGr.getImageCounter().logGeneration();
 
         if (streamingCallback !== undefined && typeof streamingCallback === 'function' && opts.action !== __runtimeGr.getNekoAiService('Action').IMG2IMG) {
@@ -3998,6 +4032,11 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             cancelErr.code = 'GENERATION_CANCELLED';
             throw cancelErr;
         }
+
+        // Successful round-trip to NovelAI — reset the tripwire failure counter.
+        if (img) {
+            __runtimeGr.getApiKeyManager().recordApiSuccess('novelai');
+        }
         
         // Get new balance and calculate credit usage
         creditUsage = await __runtimeGr.calculateCreditUsage();
@@ -4007,6 +4046,14 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         }
         
     } catch (error) {
+        // Tripwire: record admin-fixable NovelAI API failures (skip client-side cancels).
+        if (error && error.code !== 'GENERATION_CANCELLED') {
+            const apiKeyManager = __runtimeGr.getApiKeyManager();
+            const status = apiKeyManager.deriveStatusCode(error);
+            if (status !== null) {
+                apiKeyManager.recordApiFailure('novelai', status, error.message);
+            }
+        }
         // Provide more context for the error before re-throwing
         const enhancedError = new Error(`Image generation failed: ${error.message || error}`);
         enhancedError.originalError = error;
@@ -4052,10 +4099,10 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             forgeData.allCharacters = opts.input_character_prompts;
             forgeData.use_coords = opts.use_coords;
         } else if (opts.allCharacterPrompts && Array.isArray(opts.allCharacterPrompts) && opts.allCharacterPrompts.length > 0) {
-            // Post-process character prompts for forge metadata: replace 1girl/1boy with girl/boy
+            // Post-process character prompts for forge metadata: replace 1girl/1boy with girl/boy (skipped when auto char numerize is off)
             const processedCharacterPrompts = opts.allCharacterPrompts.map(char => ({
                 ...char,
-                prompt: char.prompt.replace(/1girl/g, "girl").replace(/1boy/g, "boy")
+                prompt: opts.auto_char_numerize === false ? char.prompt : char.prompt.replace(/1girl/g, "girl").replace(/1boy/g, "boy")
             }));
             
             const disabledCharacters = [];
@@ -4204,6 +4251,22 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         // Save auto-clean UC setting
         if (opts.auto_clean_uc !== undefined) {
             forgeData.auto_clean_uc = opts.auto_clean_uc;
+        }
+        // Save keep-newlines setting so reload can restore the toggle state
+        if (opts.keep_newlines !== undefined) {
+            forgeData.keep_newlines = opts.keep_newlines;
+        }
+        // Save auto-char-numerize setting so reload can restore the toggle state
+        if (opts.auto_char_numerize !== undefined) {
+            forgeData.auto_char_numerize = opts.auto_char_numerize;
+        }
+        // Save prompt-normalize setting so reload can restore the toggle state
+        if (opts.prompt_normalize !== undefined) {
+            forgeData.prompt_normalize = opts.prompt_normalize;
+        }
+        // Save deduplicate-tags setting so reload can restore the toggle state
+        if (opts.deduplicate_tags !== undefined) {
+            forgeData.deduplicate_tags = opts.deduplicate_tags;
         }
         if (opts.chain_source && typeof opts.chain_source === 'string' && opts.chain_source.length > 0) {
             forgeData.chain_source = opts.chain_source;
@@ -5904,13 +5967,41 @@ async function convertMetadataToRequestFormat(globalResources, metadata, allowPa
         requestBody.auto_clean_uc = forgeData.auto_clean_uc;
     }
 
+    // Add keep_newlines if available
+    if (extractedMetadata.keep_newlines !== undefined) {
+        requestBody.keep_newlines = extractedMetadata.keep_newlines;
+    } else if (forgeData.keep_newlines !== undefined) {
+        requestBody.keep_newlines = forgeData.keep_newlines;
+    }
+
+    // Add auto_char_numerize if available
+    if (extractedMetadata.auto_char_numerize !== undefined) {
+        requestBody.auto_char_numerize = extractedMetadata.auto_char_numerize;
+    } else if (forgeData.auto_char_numerize !== undefined) {
+        requestBody.auto_char_numerize = forgeData.auto_char_numerize;
+    }
+
+    // Add prompt_normalize if available
+    if (extractedMetadata.prompt_normalize !== undefined) {
+        requestBody.prompt_normalize = extractedMetadata.prompt_normalize;
+    } else if (forgeData.prompt_normalize !== undefined) {
+        requestBody.prompt_normalize = forgeData.prompt_normalize;
+    }
+
+    // Add deduplicate_tags if available
+    if (extractedMetadata.deduplicate_tags !== undefined) {
+        requestBody.deduplicate_tags = extractedMetadata.deduplicate_tags;
+    } else if (forgeData.deduplicate_tags !== undefined) {
+        requestBody.deduplicate_tags = forgeData.deduplicate_tags;
+    }
+
     // Remove seed to ensure new random seed is generated
     delete requestBody.seed;
     return requestBody;
 }
 
 // Function to handle reroll generation from metadata
-async function handleRerollGeneration(globalResources, metadata, sessionId, workspaceId, allowPaid = false) {
+async function handleRerollGeneration(globalResources, metadata, sessionId, workspaceId, allowPaid = false, ws = null, handler = null, wsServer = null, streamingCallback = null, requestId = null) {
     bindRuntimeGlobalResources(globalResources);
 
     try {
@@ -5922,23 +6013,32 @@ async function handleRerollGeneration(globalResources, metadata, sessionId, work
             requestBody.workspace = workspaceId;
         }
 
+        // Carry the client's requestId so streamed progress (image_generation_progress / dynamic_generation_progress_update) routes to the correct toast/session
+        if (requestId) {
+            requestBody.requestId = requestId;
+        }
+
         // Check if this is a staged generation (pipeline)
         if (requestBody.pipeline && Array.isArray(requestBody.pipeline) && requestBody.pipeline.length > 0 && requestBody.skip_pipeline_stages !== true) {
             console.log(`🎬 Reroll: Starting staged generation with ${requestBody.pipeline.length} stages`);
-            // Call handleStagedGeneration directly for pipeline stages
-            // Pass null for ws, handler, wsServer since this is HTTP reroll (no WebSocket streaming)
-            return await handleStagedGeneration(globalResources, requestBody, sessionId, null, null, null, null);
+            // Call handleStagedGeneration directly for pipeline stages, threading the WebSocket streaming context
+            return await handleStagedGeneration(globalResources, requestBody, sessionId, streamingCallback, ws, handler, wsServer);
         }
 
         // Regular single generation
-        // Build options for generation
-        const opts = await buildOptions(globalResources, requestBody, null, {}, null, null);
+        // Build options for generation (ws/handler/wsServer enable dynamic-generation progress + step streaming)
+        const opts = await buildOptions(globalResources, requestBody, null, {}, ws, handler, wsServer);
+
+        // buildOptions does not copy requestId onto opts; generateImageWebSocket sets it explicitly (imageGeneration.js ~4574)
+        if (requestBody.requestId) {
+            opts.requestId = requestBody.requestId;
+        }
 
         // Create a mock req object for context functions that need it
         const mockReq = { session: { id: sessionId } };
 
-        // Call handleGeneration and return the result
-        const result = await handleGeneration(globalResources, opts, true, metadata.preset_name || null, workspaceId, mockReq);
+        // Call handleGeneration and return the result (streamingCallback/ws/handler enable step + phase progress)
+        const result = await handleGeneration(globalResources, opts, true, metadata.preset_name || null, workspaceId, mockReq, streamingCallback, ws, handler);
 
         return result;
     } catch (error) {

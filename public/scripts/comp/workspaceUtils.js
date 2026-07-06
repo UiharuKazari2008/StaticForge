@@ -2067,6 +2067,10 @@ function refreshWorkspaceManagementListsIfPresent() {
     if (typeof dataMgmtDsapRefreshWorkspacesIfPresent === 'function') {
         dataMgmtDsapRefreshWorkspacesIfPresent();
     }
+    // dataMgmtDsapRefreshStatusIfPresent: public/scripts/comp/dataManagementDsapApplet.js (lazy applet)
+    if (typeof dataMgmtDsapRefreshStatusIfPresent === 'function') {
+        dataMgmtDsapRefreshStatusIfPresent();
+    }
 }
 
 // Workspace modal functions
@@ -2985,9 +2989,13 @@ function initializeWebSocketWorkspaceEvents() {
                 // Update UI components
                 renderWorkspaceDropdown();
                 updateActiveWorkspaceDisplay();
-                
-                // Only refresh gallery if it's currently visible
-                if (!document.getElementById('gallery')?.classList.contains('hidden')) {
+
+                // Keep workspace management lists (incl. data management DSAP) and explorer in sync
+                refreshWorkspaceManagementListsIfPresent();
+                refreshExplorerWorkspacesListIfOpen();
+
+                // Only refresh gallery when the modified workspace is the active one and gallery is visible
+                if (data.workspaceId === activeWorkspace && !document.getElementById('gallery')?.classList.contains('hidden')) {
                     switchGalleryView(currentGalleryView, true);
                 }
                 break;

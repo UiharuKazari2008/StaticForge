@@ -17,6 +17,7 @@ const { promisify } = require('util');
 const execAsync = promisify(exec);
 const Database = require('better-sqlite3');
 const { buildTitleSearchIndexData } = require('./tagTitleIndex');
+const { normalizeAutofillRanking } = require('./autofillRankingSettings');
 
 const AUTOFILL_SEARCH_CACHE_MAX = 500;
 const AUTOFILL_SEARCH_CACHE_TTL_MS = 120000;
@@ -46,8 +47,31 @@ class TagLookup {
         this._autofillSearchCache = new Map();
         this.MAX_USAGE_CAP = 100000;
         this.htmlMarkdownConverter = null;
+        this._rankingConfig = null;
     }
-    
+
+    /**
+     * Global/shared tunable autofill ranking config (config.autofillRanking).
+     * Set at startup (globalResources) and whenever an admin saves changes via
+     * the update_autofill_ranking WS packet (modules/ws/handlers/230-autofillRankingHandler.js).
+     * @returns {object} normalized ranking config (never null)
+     */
+    getRankingConfig() {
+        if (!this._rankingConfig) {
+            this._rankingConfig = normalizeAutofillRanking(null);
+        }
+        return this._rankingConfig;
+    }
+
+    setRankingConfig(rawConfig) {
+        this._rankingConfig = normalizeAutofillRanking(rawConfig);
+        this.clearAutofillSearchCache();
+    }
+
+    clearAutofillSearchCache() {
+        this._autofillSearchCache.clear();
+    }
+
 /**
  * Get or initialize the HTML to Markdown converter
  * @returns {NodeHtmlMarkdown} The converter instance
@@ -655,43 +679,44 @@ class TagLookup {
 }
 
     getTokenMatchScore(queryToken = '', titleToken = '') {
+    const cfg = this.getRankingConfig().tiers.tokenScores;
     const qt = queryToken.toLowerCase();
     const tt = titleToken.toLowerCase();
     if (!qt || !tt) return 0;
-    if (qt === tt) return 100;
+    if (qt === tt) return cfg.exactScore;
 
     let best = 0;
     const lenDiff = Math.abs(qt.length - tt.length);
 
     if (qt.length >= 3 && tt.length >= 3 && (qt.startsWith(tt) || tt.startsWith(qt))) {
-        best = Math.max(best, 90);
+        best = Math.max(best, cfg.prefixScore);
     }
 
     const stemLen = this.commonPrefixLength(qt, tt);
     const minLen = Math.min(qt.length, tt.length);
     const stemThreshold = Math.max(3, Math.min(4, Math.floor(minLen * 0.72)));
     if (stemLen >= 5) {
-        best = Math.max(best, 88);
+        best = Math.max(best, cfg.stemStrongScore);
     } else if (stemLen >= stemThreshold) {
-        const stemScore = lenDiff <= 1 ? 75 : (lenDiff <= 2 ? 65 : 55);
+        const stemScore = lenDiff <= 1 ? cfg.stemMediumScore : (lenDiff <= 2 ? cfg.stemWeakScore : cfg.stemMinScore);
         best = Math.max(best, stemScore);
     }
 
     if (qt.includes(tt) || tt.includes(qt)) {
         if (Math.min(qt.length, tt.length) >= 3) {
-            best = Math.max(best, 55);
+            best = Math.max(best, cfg.containsScore);
         }
     }
 
     const distance = this.levenshteinDistance(qt, tt);
     const maxLen = Math.max(qt.length, tt.length);
     const similarity = 1 - (distance / maxLen);
-    if (similarity >= 0.72) {
-        let levScore = Math.round(similarity * 65);
+    if (similarity >= cfg.levenshteinThreshold) {
+        let levScore = Math.round(similarity * cfg.levenshteinBaseMult);
         if (lenDiff <= 1 && similarity >= 0.75) {
-            levScore = Math.round(similarity * 90);
+            levScore = Math.round(similarity * cfg.levenshteinCloseMult);
         } else if (lenDiff <= 2 && similarity >= 0.78) {
-            levScore = Math.round(similarity * 80);
+            levScore = Math.round(similarity * cfg.levenshteinNearMult);
         }
         best = Math.max(best, levScore);
     }
@@ -700,6 +725,7 @@ class TagLookup {
 }
 
     getQueryTokenCoverageScore(query, title) {
+    const cfg = this.getRankingConfig().tiers.coverageWeights;
     const queryTokens = this.tokenizeSearchWords(query);
     const titleTokens = this.tokenizeSearchWords(title);
     if (queryTokens.length === 0) return 0;
@@ -715,7 +741,7 @@ class TagLookup {
         }
         sum += best;
         const weight = queryTokens.length >= 2
-            ? (i === 0 ? 1.4 : (i === queryTokens.length - 1 ? 1.0 : 1.1))
+            ? (i === 0 ? cfg.firstTokenWeight : (i === queryTokens.length - 1 ? cfg.lastTokenWeight : cfg.middleTokenWeight))
             : 1;
         weightedSum += best * weight;
         weightTotal += weight;
@@ -723,20 +749,21 @@ class TagLookup {
 
     let coverage = Math.max(sum / queryTokens.length, weightedSum / weightTotal);
     if (titleTokens.length === queryTokens.length && queryTokens.length >= 2) {
-        coverage += 8;
+        coverage += cfg.sameLengthBonus;
     } else if (titleTokens.length < queryTokens.length) {
-        coverage -= 12;
+        coverage -= cfg.fewerTitleTokensPenalty;
     }
     return Math.min(100, coverage);
 }
 
     getQueryMatchTier(query, title) {
+    const cfg = this.getRankingConfig().tiers;
     const queryNorm = this.normalizeTagName(query);
     const titleNorm = this.normalizeTagName(title);
     if (!queryNorm || !titleNorm) return 0;
 
-    if (titleNorm === queryNorm) return 4;
-    if (titleNorm.startsWith(queryNorm)) return 3;
+    if (titleNorm === queryNorm) return cfg.exactMatchTier;
+    if (titleNorm.startsWith(queryNorm)) return cfg.prefixMatchTier;
 
     const queryTokens = this.tokenizeSearchWords(query);
     const titleTokens = this.tokenizeSearchWords(title);
@@ -744,19 +771,19 @@ class TagLookup {
 
     const coverage = this.getQueryTokenCoverageScore(query, title);
     const allTokensPartial = queryTokens.every(qt =>
-        titleTokens.some(tt => this.getTokenMatchScore(qt, tt) >= 40)
+        titleTokens.some(tt => this.getTokenMatchScore(qt, tt) >= cfg.allTokensPartialThreshold)
     );
 
-    if (coverage >= 90 || (coverage >= 55 && allTokensPartial)) {
-        return 2;
+    if (coverage >= cfg.strongCoverageThreshold || (coverage >= cfg.strongCoveragePartialThreshold && allTokensPartial)) {
+        return cfg.strongCoverageTier;
     }
-    if (coverage >= 35) {
+    if (coverage >= cfg.partialCoverageThreshold) {
         if (queryTokens.length >= 2 && titleTokens.length === 1) {
             const singleToken = titleTokens[0];
             const matchedQueryWord = queryTokens.some(qt => qt === singleToken);
-            return matchedQueryWord && coverage >= 45 ? 1 : 0;
+            return matchedQueryWord && coverage >= cfg.singleTokenMatchThreshold ? cfg.partialCoverageTier : 0;
         }
-        return 1;
+        return cfg.partialCoverageTier;
     }
     return 0;
 }
@@ -866,15 +893,17 @@ class TagLookup {
 
     getUsageCount(row) {
     if (!row) return 0;
+    const cfg = this.getRankingConfig().serverBonus;
     const dCount = Math.min(this.MAX_USAGE_CAP, row.d_count || 0);
-    const eCount = Math.min(this.MAX_USAGE_CAP, row.e_count || 0) * 4;
-    const nCount = this.getNovelTrainingCount(row) * 12;
+    const eCount = Math.min(this.MAX_USAGE_CAP, row.e_count || 0) * cfg.usageCountEWeight;
+    const nCount = this.getNovelTrainingCount(row) * cfg.usageCountNWeight;
     return Math.max(dCount, eCount, nCount);
 }
 
     getNovelTrainingCount(row) {
     if (!row) return 0;
-    return Math.min(10000, row.n_count || 0);
+    const cfg = this.getRankingConfig().serverBonus;
+    return Math.min(cfg.novelCap, row.n_count || 0);
 }
 
     mapRowToTag(row) {
@@ -1592,6 +1621,7 @@ class TagLookup {
 }
 
     collectScoredFuzzyWordRows(word, rows, seenTagIds) {
+    const cfg = this.getRankingConfig().serverBase;
     const accepted = [];
     for (const row of rows) {
         if (!row || seenTagIds.has(row.id)) continue;
@@ -1599,7 +1629,7 @@ class TagLookup {
         const tokenScore = this.getTokenMatchScore(word, matchedWord);
         if (tokenScore < 40) continue;
         seenTagIds.add(row.id);
-        const fuzzyScore = Math.max(55, Math.min(95, tokenScore));
+        const fuzzyScore = Math.max(cfg.fuzzyMin, Math.min(cfg.fuzzyMax, tokenScore));
         accepted.push({ row, fuzzyScore });
     }
     return accepted;
@@ -1786,15 +1816,19 @@ class TagLookup {
     const {
         category,
         minUseCount,
-        limit = 35
+        limit = 35,
+        // DSAP-SMF Autofill Ranking Test tab only (public/scripts/comp/autofillConfigDsapApplet.js) —
+        // attaches tag.rankingBreakdown with per-stage server score components.
+        includeBreakdown = false
     } = options;
 
     const query = searchTerm.trim();
     if (!query) return [];
 
+    const rankingCfg = this.getRankingConfig();
     const normalized = this.normalizeTagName(query);
     const sanitizedLimit = Math.max(limit, 1);
-    const cacheKey = `${normalized}\x00${sanitizedLimit}\x00${category ?? ''}\x00${minUseCount ?? ''}`;
+    const cacheKey = `${normalized}\x00${sanitizedLimit}\x00${category ?? ''}\x00${minUseCount ?? ''}\x00${rankingCfg.rankingVersion}\x00${includeBreakdown ? 1 : 0}`;
     const cached = this.getAutofillSearchCacheEntry(cacheKey);
     if (cached) {
         return cached;
@@ -1817,15 +1851,16 @@ class TagLookup {
     };
 
     const stmts = this._searchDbStmts;
+    const baseCfg = rankingCfg.serverBase;
     const titleRow = stmts.getByNormalizedTitle.get(normalized);
     if (titleRow) {
-        addCandidate(titleRow.id, 600);
+        addCandidate(titleRow.id, baseCfg.exactTitle);
     } else {
         for (const variant of this.getTagNameLookupVariants(normalized)) {
             if (variant === normalized) continue;
             const variantRow = stmts.getByNormalizedTitle.get(variant);
             if (variantRow) {
-                addCandidate(variantRow.id, 580);
+                addCandidate(variantRow.id, baseCfg.variantTitle);
                 break;
             }
         }
@@ -1836,7 +1871,7 @@ class TagLookup {
         if (!word) continue;
 
         for (const row of stmts.wordExactIds.all(word, perWordLimit)) {
-            addCandidate(row.id, 95);
+            addCandidate(row.id, baseCfg.wordExact);
         }
 
         const fuzzyPrefixes = this.getFuzzyWordPrefixes(word);
@@ -1861,18 +1896,18 @@ class TagLookup {
         }
 
         for (const row of stmts.seqExactIds.all(word, perWordLimit)) {
-            addCandidate(row.id, 100);
+            addCandidate(row.id, baseCfg.wordSeqExact);
         }
     }
 
     if (wordTokens.length >= 2) {
         const phrase = wordTokens.join(' ');
         for (const row of stmts.seqExactIds.all(phrase, perWordLimit)) {
-            addCandidate(row.id, 120 + wordTokens.length * 20);
+            addCandidate(row.id, baseCfg.phraseExactBase + wordTokens.length * baseCfg.phraseExactPerToken);
         }
         const prefixPattern = this.escapeLikePattern(phrase) + '%';
         for (const row of stmts.seqPrefixIds.all(prefixPattern, perWordLimit)) {
-            addCandidate(row.id, 150);
+            addCandidate(row.id, baseCfg.phrasePrefix);
         }
     }
 
@@ -1889,6 +1924,7 @@ class TagLookup {
     const rowById = new Map(rows.map(row => [row.id, row]));
     const groupSet = this.batchTagHasGroupsSync(rankedIds);
 
+    const bonusCfg = rankingCfg.serverBonus;
     let results = rankedIds
         .map(id => {
             const row = rowById.get(id);
@@ -1897,12 +1933,15 @@ class TagLookup {
             const usage = this.getUsageCount(row);
             const novelStrength = this.getNovelTrainingCount(row);
             const usageOnly = Math.max(usage - novelStrength, 0);
-            const usageBonus = Math.min(usageOnly / 1500, 60);
-            const trainingBonus = Math.min(novelStrength / 400, 220);
+            const usageBonus = Math.min(usageOnly / bonusCfg.usageDivisor, bonusCfg.usageCap);
+            const trainingBonus = Math.min(novelStrength / bonusCfg.trainingDivisor, bonusCfg.trainingCap);
             const hasGroups = groupSet.has(id);
             const categoryAdjustment = this.getCategoryAdjustment(row, { hasGroups, usage, novelStrength });
             const score = base + usageBonus + trainingBonus + categoryAdjustment;
-            return { row, score };
+            const breakdown = includeBreakdown
+                ? { base, usageBonus, trainingBonus, categoryAdjustment, usage, novelStrength, hasGroups }
+                : null;
+            return { row, score, breakdown };
         })
         .filter(Boolean);
 
@@ -1931,11 +1970,19 @@ class TagLookup {
             tag.searchScore = entry.score;
             tag.matchTier = matchInfo.tier;
             tag.matchCoverage = matchInfo.matchCoverage;
+            if (includeBreakdown && entry.breakdown) {
+                tag.rankingBreakdown = {
+                    ...entry.breakdown,
+                    matchTier: matchInfo.tier,
+                    matchCoverage: matchInfo.matchCoverage,
+                    totalScore: entry.score
+                };
+            }
         }
         return tag;
     }).filter(tag => {
         if (!tag) return false;
-        return (tag.matchTier || 0) >= 1 || (tag.matchCoverage || 0) >= 35;
+        return (tag.matchTier || 0) >= rankingCfg.tiers.minTier || (tag.matchCoverage || 0) >= rankingCfg.tiers.minCoverage;
     });
 
     this.setAutofillSearchCacheEntry(cacheKey, tags);
@@ -1969,6 +2016,7 @@ class TagLookup {
 }
 
     getCategoryAdjustment(row, options = {}) {
+    const cfg = this.getRankingConfig().serverCategory;
     const title = (row.title || '').trim();
     const multiWordTitle = /\s+/.test(title);
     const categoryName = this.getCategoryName(row.category);
@@ -1978,16 +2026,16 @@ class TagLookup {
     let adjustment = 0;
 
     if (categoryName === 'Uncategorized') {
-        adjustment -= multiWordTitle ? 80 : 320;
-        if (!multiWordTitle && usage < 5000 && novelStrength < 1500) {
-            adjustment -= 200;
+        adjustment -= multiWordTitle ? cfg.uncategorizedMultiWordPenalty : cfg.uncategorizedSingleWordPenalty;
+        if (!multiWordTitle && usage < cfg.uncategorizedLowUsageThreshold && novelStrength < cfg.uncategorizedLowTrainingThreshold) {
+            adjustment -= cfg.uncategorizedLowUsagePenalty;
         }
     }
 
     if ((categoryName === 'General' || categoryName === 'Meta') && !hasGroups) {
-        adjustment -= 90;
-        if (usage < 10000 && novelStrength < 2000) {
-            adjustment -= 60;
+        adjustment -= cfg.generalMetaNoGroupPenalty;
+        if (usage < cfg.generalMetaLowUsageThreshold && novelStrength < cfg.generalMetaLowTrainingThreshold) {
+            adjustment -= cfg.generalMetaLowUsagePenalty;
         }
     }
 

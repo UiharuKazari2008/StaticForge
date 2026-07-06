@@ -168,6 +168,13 @@ async function generateImage(event = null) {
         return;
     }
 
+    // assertClientImageGenerationAllowed: public/scripts/comp/novelAiAccountStatus.js
+    try {
+        assertClientImageGenerationAllowed();
+    } catch (_error) {
+        return;
+    }
+
     // Set generating state
     isGenerating = true;
     updateManualGenerateBtnState();
@@ -315,39 +322,10 @@ async function deleteManualPreviewImage() {
         const result = await window.wsClient.deleteImagesBulk([filenameToDelete]);
 
         if (result.successful > 0) {
-            // Get the current index and view type
-            const currentIndex = window.currentManualPreviewIndex ?? 0;
-            const viewType = currentGalleryView || 'images';
-
-            // Request the same image at the current index (which will now be a different image)
-            try {
-                const newImage = await window.wsClient.requestImageByIndex(currentIndex, viewType);
-
-                if (newImage) {
-                    // Update the preview with the new image at the same index
-                    await updateManualPreview(currentIndex, null, newImage.metadata);
-                    showGlassToast('success', null, 'Image deleted');
-                } else {
-                    // No image at this index anymore, try the previous index
-                    if (currentIndex > 0) {
-                        const prevImage = await window.wsClient.requestImageByIndex(currentIndex - 1, viewType);
-                        if (prevImage) {
-                            await updateManualPreview(currentIndex - 1, null, prevImage.metadata);
-                            showGlassToast('success', null, 'Image deleted');
-                        } else {
-                            resetManualPreview();
-                            showGlassToast('success', null, 'Image deleted');
-                        }
-                    } else {
-                        resetManualPreview();
-                        showGlassToast('success', null, 'Image deleted');
-                    }
-                }
-            } catch (error) {
-                console.warn('Failed to load new image after delete:', error);
-                resetManualPreview();
-                showGlassToast('success', null, 'Image deleted');
-            }
+            // Resume the preview at the boundary-correct next available image
+            // resumeManualPreviewAfterRemoval: public/scripts/comp/manualPreviewManager.js
+            await resumeManualPreviewAfterRemoval(window.currentManualPreviewIndex ?? 0);
+            showGlassToast('success', null, 'Image deleted');
         } else {
             throw new Error('Delete failed');
         }

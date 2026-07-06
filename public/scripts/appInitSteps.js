@@ -220,6 +220,9 @@ if (window.wsClient) {
         try {
             await loadOptions();
         } catch (error) {
+            if (error && error.code === 'ACCOUNT_DATA_CANCELLED') {
+                return;
+            }
             console.error('❌ Critical: Failed to load application data:', error);
 
             const confirmed = await showConfirmationDialog(

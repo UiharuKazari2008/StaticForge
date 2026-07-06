@@ -330,6 +330,7 @@ class BannerManager {
 
             // App and settings operations
             'get_app_options': 'Get Settings',
+            'retry_account_data': 'Refresh Account Data',
             'get_generation_quips': 'Load Generation Quips',
             'get_generation_quips_status': 'Quips Status',
             'get_generation_quips_wiki': 'Quips Phrase Book',
@@ -684,9 +685,28 @@ class WebSocketClient {
         this._wsFlashTargets = [];
         this._wsFlashPendingUp = null;
         this._wsFlashPendingDown = null;
+        this._httpFlashPendingUp = null;
+        this._httpFlashPendingDown = null;
         this._wsFlashRafId = null;
         this._wsFlashLastApply = 0;
         this._wsFlashMinInterval = 80;
+        this._wsFlashDuration = 500;
+        this._httpFlashDuration = 400;
+        this._flashMinPlayRatio = 0.75;
+        this._httpStreamStallMs = 500;
+        this._httpStreamIdleMs = 2800;
+        this._httpStreamUpActive = false;
+        this._httpStreamDownActive = false;
+        this._httpStreamUpStalled = false;
+        this._httpStreamDownStalled = false;
+        this._httpStreamLastUpAt = 0;
+        this._httpStreamLastDownAt = 0;
+        this._httpStreamUpStallTimer = null;
+        this._httpStreamDownStallTimer = null;
+        this._httpStreamUpIdleTimer = null;
+        this._httpStreamDownIdleTimer = null;
+        this._wsBurstUntilUp = 0;
+        this._wsBurstUntilDown = 0;
         this._wsFlashVisibilityInterval = null;
         this._wsFlashVisibilityObserver = null;
         this._wsFlashVisibilityRefreshRaf = null;
@@ -708,6 +728,7 @@ class WebSocketClient {
         this.refreshWebSocketIndicators = this.refreshWebSocketIndicators.bind(this);
         this.updateWebSocketStatus = this.updateWebSocketStatus.bind(this);
         this.flashWebSocketArrow = this.flashWebSocketArrow.bind(this);
+        this.flashHttpTrafficArrow = this.flashHttpTrafficArrow.bind(this);
         this.send = this.send.bind(this);
 
         this.startupConnectionKeyboardWired = false;
@@ -2828,6 +2849,9 @@ class WebSocketClient {
             } else {
                 this._wsFlashPendingUp = null;
                 this._wsFlashPendingDown = null;
+                this._httpFlashPendingUp = null;
+                this._httpFlashPendingDown = null;
+                this._clearHttpStreamState();
                 if (this._wsFlashRafId) {
                     cancelAnimationFrame(this._wsFlashRafId);
                     this._wsFlashRafId = null;
@@ -3606,7 +3630,7 @@ class WebSocketClient {
             if (message.requestId) {
                 if (this.pendingRequests && this.pendingRequests.has(message.requestId)) {
                     const pending = this.pendingRequests.get(message.requestId);
-                    const generationTypes = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image']);
+                    const generationTypes = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image', 'reroll_image']);
                     if (generationTypes.has(pending.type)) {
                         this.clearStreamingStepQueues(null, true);
                         this.releaseGenerationCloseGuard(message.requestId);
@@ -4083,11 +4107,6 @@ class WebSocketClient {
     waitStepDisplayDelay(ms, session) {
         if (ms <= 0 || session?.aborted) return Promise.resolve();
 
-        const prefetch = session?.finalPrefetch;
-        if (prefetch?.ready) {
-            return Promise.resolve();
-        }
-
         let timeoutId;
         let wakeResolve;
         const wakePromise = new Promise((resolve) => {
@@ -4099,6 +4118,7 @@ class WebSocketClient {
             timeoutId = setTimeout(resolve, ms);
         });
 
+        const prefetch = session?.finalPrefetch;
         if (prefetch?.promise && !prefetch.ready) {
             prefetch.promise.then(() => {
                 if (wakeResolve) wakeResolve();
@@ -4113,6 +4133,36 @@ class WebSocketClient {
                 session.displayDelayWake = null;
             }
         });
+    }
+
+    _isStreamingStepPlaybackComplete(session) {
+        if (!session) return true;
+        const expectedTotal = session.totalSteps > 0 ? session.totalSteps : 0;
+        const bufferedCount = session.steps.length;
+        const displayedCount = session.playIndex;
+
+        if (displayedCount < bufferedCount) {
+            return false;
+        }
+
+        if (expectedTotal <= 0) {
+            return true;
+        }
+
+        if (displayedCount >= expectedTotal) {
+            return true;
+        }
+
+        let highestStep = -1;
+        for (let i = 0; i < displayedCount && i < bufferedCount; i++) {
+            const stepNum = session.steps[i]?.currentStep;
+            if (stepNum != null && stepNum > highestStep) {
+                highestStep = stepNum;
+            }
+        }
+
+        // NovelAI step_ix is 0-based; totalSteps is the configured step count.
+        return highestStep >= expectedTotal - 1;
     }
 
     STREAMING_FIRST_STEP_CROSSFADE_MS = 250;
@@ -4275,7 +4325,9 @@ class WebSocketClient {
             session.playIndex += 1;
 
             if (finalReady && session.playIndex >= session.steps.length) {
-                break;
+                if (this._isStreamingStepPlaybackComplete(session) || session.serverGenerationComplete) {
+                    break;
+                }
             }
         }
 
@@ -4478,9 +4530,12 @@ class WebSocketClient {
         const found = this.findStreamingStepSessionByRequestId(requestId);
         if (!found) return;
 
-        const { session } = found;
+        const { modalType, session } = found;
+        const resumePlayback = () => this.processStreamingStepSession(modalType);
+
         if (data.phase === 'upscaling') {
             session.awaitingUpscaleFinal = true;
+            resumePlayback();
             return;
         }
 
@@ -4490,14 +4545,17 @@ class WebSocketClient {
 
         if (data.isUpscaling && session.awaitingUpscaleFinal !== true) {
             session.awaitingUpscaleFinal = true;
+            resumePlayback();
             return;
         }
 
         if (session.awaitingUpscaleFinal && !data.filename) {
+            resumePlayback();
             return;
         }
 
         session.awaitingUpscaleFinal = false;
+        resumePlayback();
     }
 
     ensureGenerationFinalPrefetch(modalType, filename, contentLength) {
@@ -4546,6 +4604,10 @@ class WebSocketClient {
             if (fetchResult.objectUrl) {
                 prefetch.blobUrl = fetchResult.objectUrl;
                 prefetch.ready = true;
+                if (session.displayDelayWake) {
+                    session.displayDelayWake();
+                }
+                this.processStreamingStepSession(modalType);
             }
             return fetchResult;
         }).catch((err) => {
@@ -4561,7 +4623,28 @@ class WebSocketClient {
         const session = this.getStreamingStepSession(modalType);
         if (!session) return;
 
-        while (session.isPlaying || session.playIndex < session.steps.length) {
+        let idleSince = 0;
+
+        while (!session.aborted) {
+            if (session.isPlaying) {
+                idleSince = 0;
+            } else if (session.playIndex < session.steps.length) {
+                idleSince = 0;
+                this.processStreamingStepSession(modalType);
+            } else {
+                if (this._isStreamingStepPlaybackComplete(session)) {
+                    break;
+                }
+
+                if (session.serverGenerationComplete) {
+                    if (!idleSince) {
+                        idleSince = Date.now();
+                    } else if (Date.now() - idleSince >= 500) {
+                        break;
+                    }
+                }
+            }
+
             await new Promise((resolve) => setTimeout(resolve, 50));
         }
     }
@@ -4971,6 +5054,9 @@ class WebSocketClient {
             throw new Error('WebSocket not connected');
         }
 
+        // assertClientImageGenerationAllowed: public/scripts/comp/novelAiAccountStatus.js
+        assertClientImageGenerationAllowed();
+
         try {
             const params = this._attachStepPreviewDimensions({ ...expansionParams }, 'manual');
             const result = await this.sendMessage('expand_image', params);
@@ -5000,6 +5086,9 @@ class WebSocketClient {
             throw new Error('WebSocket not connected');
         }
 
+        // assertClientImageGenerationAllowed: public/scripts/comp/novelAiAccountStatus.js
+        assertClientImageGenerationAllowed();
+
         try {
             const payload = this._attachStepPreviewDimensions({ ...params }, 'manual');
             const result = await this.sendMessage('reroll_expanded_image', payload);
@@ -5015,6 +5104,9 @@ class WebSocketClient {
         if (!this.isConnected()) {
             throw new Error('WebSocket not connected');
         }
+
+        // assertClientImageGenerationAllowed: public/scripts/comp/novelAiAccountStatus.js
+        assertClientImageGenerationAllowed();
 
         try {
             const params = this._attachStepPreviewDimensions(
@@ -5035,8 +5127,18 @@ class WebSocketClient {
             throw new Error('WebSocket not connected');
         }
 
+        // assertClientImageGenerationAllowed: public/scripts/comp/novelAiAccountStatus.js
+        assertClientImageGenerationAllowed();
+
         try {
-            const result = await this.sendMessage('reroll_image', { filename, workspace, allow_paid: allowPaid });
+            // Stream progress like a normal generation (toast 3rd line + step previews); dims added when a preview surface is available
+            const params = this._attachStepPreviewDimensions({
+                filename,
+                workspace,
+                allow_paid: allowPaid,
+                enableStreaming: true
+            }, 'manual');
+            const result = await this.sendMessage('reroll_image', params);
             return result;
         } catch (error) {
             console.error('Reroll image error:', error);
@@ -5299,6 +5401,8 @@ class WebSocketClient {
     }
 
     async generatePreset(presetName, workspace = null, allowPaid = false, enableStreaming = false) {
+        // assertClientImageGenerationAllowed: public/scripts/comp/novelAiAccountStatus.js
+        assertClientImageGenerationAllowed();
         const requestId = this.generateRequestId();
         const params = this._attachStepPreviewDimensions({
             presetName,
@@ -5734,6 +5838,10 @@ class WebSocketClient {
         return this.sendMessage('get_app_options');
     }
 
+    async retryAccountData() {
+        return this.sendMessage('retry_account_data');
+    }
+
     async getGenerationQuips() {
         return this.sendMessage('get_generation_quips', {}, false);
     }
@@ -5916,6 +6024,23 @@ class WebSocketClient {
 
     async updateUserGlobalSettings(settings) {
         return this.sendMessage('update_user_global_settings', { settings });
+    }
+
+    async getAutofillRanking() {
+        return this.sendMessage('get_autofill_ranking', {}, false);
+    }
+
+    async updateAutofillRanking(ranking) {
+        return this.sendMessage('update_autofill_ranking', { ranking });
+    }
+
+    async testAutofillRanking(query, limit, options = {}) {
+        return this.sendMessage('test_autofill_ranking', {
+            query,
+            limit,
+            model: options.model,
+            autofillSettings: options.autofillSettings
+        }, false);
     }
 
     async createChatSession(sessionData) {
@@ -6190,7 +6315,7 @@ class WebSocketClient {
             };
 
             if (data.enableStreaming === true) {
-                if (type === 'generate_image' || type === 'expand_image' || type === 'reroll_expanded_image') {
+                if (type === 'generate_image' || type === 'expand_image' || type === 'reroll_expanded_image' || type === 'reroll_image') {
                     this.beginStreamingStepSession('manual', requestId);
                 }
             }
@@ -6270,7 +6395,7 @@ class WebSocketClient {
                     timeoutError.requestType = message.type;
                     timeoutError.requestAge = requestAge;
 
-                    const generationTypes = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image']);
+                    const generationTypes = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image', 'reroll_image']);
                     if (generationTypes.has(request.type)) {
                         this.clearStreamingStepQueues(null, true);
                         this.cleanupGenerationProgressState(requestId);
@@ -6735,7 +6860,9 @@ class WebSocketClient {
                 upArrow: container.querySelector('.websocket-arrow-up'),
                 downArrow: container.querySelector('.websocket-arrow-down'),
                 upTimeout: null,
-                downTimeout: null
+                downTimeout: null,
+                upHttpTimeout: null,
+                downHttpTimeout: null
             });
         });
 
@@ -6805,7 +6932,9 @@ class WebSocketClient {
                 upArrow: container.querySelector('.websocket-arrow-up'),
                 downArrow: container.querySelector('.websocket-arrow-down'),
                 upTimeout: null,
-                downTimeout: null
+                downTimeout: null,
+                upHttpTimeout: null,
+                downHttpTimeout: null
             });
         });
 
@@ -6921,9 +7050,11 @@ class WebSocketClient {
         this.websocketIndicators.forEach(indicator => {
             if (indicator.upArrow && this._isWsFlashElementVisible(indicator.upArrow)) {
                 targets.push({ arrow: indicator.upArrow, timeoutKey: 'upTimeout', timeoutStore: indicator });
+                targets.push({ arrow: indicator.upArrow, timeoutKey: 'upHttpTimeout', timeoutStore: indicator });
             }
             if (indicator.downArrow && this._isWsFlashElementVisible(indicator.downArrow)) {
                 targets.push({ arrow: indicator.downArrow, timeoutKey: 'downTimeout', timeoutStore: indicator });
+                targets.push({ arrow: indicator.downArrow, timeoutKey: 'downHttpTimeout', timeoutStore: indicator });
             }
         });
 
@@ -6934,13 +7065,20 @@ class WebSocketClient {
             this._melatonTrafficDown = document.getElementById('connectionTrafficDown');
         }
         if (!this._melatonTrafficTimeouts) {
-            this._melatonTrafficTimeouts = { upTimeout: null, downTimeout: null };
+            this._melatonTrafficTimeouts = {
+                upTimeout: null,
+                downTimeout: null,
+                upHttpTimeout: null,
+                downHttpTimeout: null
+            };
         }
         if (this._melatonTrafficUp && this._isWsFlashElementVisible(this._melatonTrafficUp)) {
             targets.push({ arrow: this._melatonTrafficUp, timeoutKey: 'upTimeout', timeoutStore: this._melatonTrafficTimeouts });
+            targets.push({ arrow: this._melatonTrafficUp, timeoutKey: 'upHttpTimeout', timeoutStore: this._melatonTrafficTimeouts });
         }
         if (this._melatonTrafficDown && this._isWsFlashElementVisible(this._melatonTrafficDown)) {
             targets.push({ arrow: this._melatonTrafficDown, timeoutKey: 'downTimeout', timeoutStore: this._melatonTrafficTimeouts });
+            targets.push({ arrow: this._melatonTrafficDown, timeoutKey: 'downHttpTimeout', timeoutStore: this._melatonTrafficTimeouts });
         }
 
         this._wsFlashTargets = targets;
@@ -6997,6 +7135,220 @@ class WebSocketClient {
         }
         this._wsFlashPendingUp = null;
         this._wsFlashPendingDown = null;
+        this._httpFlashPendingUp = null;
+        this._httpFlashPendingDown = null;
+        this._clearHttpStreamState();
+    }
+
+    _clearHttpStreamState() {
+        ['Up', 'Down'].forEach(dir => {
+            const stallTimer = this[`_httpStream${dir}StallTimer`];
+            const idleTimer = this[`_httpStream${dir}IdleTimer`];
+            if (stallTimer) {
+                clearTimeout(stallTimer);
+                this[`_httpStream${dir}StallTimer`] = null;
+            }
+            if (idleTimer) {
+                clearTimeout(idleTimer);
+                this[`_httpStream${dir}IdleTimer`] = null;
+            }
+            this[`_httpStream${dir}Active`] = false;
+            this[`_httpStream${dir}Stalled`] = false;
+            this[`_httpStreamLast${dir}At`] = 0;
+        });
+        this._syncHttpStreamClasses();
+    }
+
+    _scheduleHttpStreamTimers(direction) {
+        const isUp = direction === 'up';
+        const dirKey = isUp ? 'Up' : 'Down';
+        const stallTimerKey = `_httpStream${dirKey}StallTimer`;
+        const idleTimerKey = `_httpStream${dirKey}IdleTimer`;
+        const lastAtKey = `_httpStreamLast${dirKey}At`;
+        const touchAt = this[lastAtKey];
+
+        if (this[stallTimerKey]) {
+            clearTimeout(this[stallTimerKey]);
+        }
+        if (this[idleTimerKey]) {
+            clearTimeout(this[idleTimerKey]);
+        }
+
+        this[stallTimerKey] = setTimeout(() => {
+            this[stallTimerKey] = null;
+            if (this[lastAtKey] !== touchAt) {
+                return;
+            }
+            if (isUp) {
+                this._httpStreamUpStalled = true;
+            } else {
+                this._httpStreamDownStalled = true;
+            }
+            this._syncHttpStreamClasses();
+        }, this._httpStreamStallMs);
+
+        this[idleTimerKey] = setTimeout(() => {
+            this[idleTimerKey] = null;
+            if (this[lastAtKey] !== touchAt) {
+                return;
+            }
+            if (isUp) {
+                this._httpStreamUpActive = false;
+                this._httpStreamUpStalled = false;
+            } else {
+                this._httpStreamDownActive = false;
+                this._httpStreamDownStalled = false;
+            }
+            this._syncHttpStreamClasses();
+        }, this._httpStreamIdleMs);
+    }
+
+    _metaKeyForTimeout(timeoutKey) {
+        return `${timeoutKey}Meta`;
+    }
+
+    _clearArrowFlashMeta(timeoutStore, timeoutKey) {
+        const metaKey = this._metaKeyForTimeout(timeoutKey);
+        const meta = timeoutStore[metaKey];
+        if (meta?.deferExtendId) {
+            clearTimeout(meta.deferExtendId);
+        }
+        timeoutStore[metaKey] = null;
+    }
+
+    _endArrowFlash(arrow, timeoutStore, timeoutKey, activeClass) {
+        if (arrow) {
+            arrow.classList.remove(activeClass);
+        }
+        timeoutStore[timeoutKey] = null;
+        this._clearArrowFlashMeta(timeoutStore, timeoutKey);
+    }
+
+    _startArrowFlashTimer(arrow, timeoutStore, timeoutKey, activeClass, duration) {
+        const metaKey = this._metaKeyForTimeout(timeoutKey);
+        const startedAt = performance.now();
+        timeoutStore[metaKey] = { startedAt, duration, deferExtendId: null, pendingDuration: null };
+        timeoutStore[timeoutKey] = setTimeout(() => {
+            this._endArrowFlash(arrow, timeoutStore, timeoutKey, activeClass);
+        }, duration);
+    }
+
+    _extendArrowFlashAfterMinPlay(arrow, timeoutStore, timeoutKey, activeClass, duration) {
+        const metaKey = this._metaKeyForTimeout(timeoutKey);
+        const meta = timeoutStore[metaKey];
+        if (!meta) return;
+
+        if (timeoutStore[timeoutKey]) {
+            clearTimeout(timeoutStore[timeoutKey]);
+            timeoutStore[timeoutKey] = null;
+        }
+
+        const extendDuration = meta.pendingDuration || duration;
+        meta.pendingDuration = null;
+        meta.startedAt = performance.now();
+        meta.duration = extendDuration;
+        timeoutStore[timeoutKey] = setTimeout(() => {
+            this._endArrowFlash(arrow, timeoutStore, timeoutKey, activeClass);
+        }, extendDuration);
+    }
+
+    _pulseArrowFlash(arrow, timeoutStore, timeoutKey, activeClass, duration) {
+        if (!arrow) return;
+
+        const metaKey = this._metaKeyForTimeout(timeoutKey);
+        const now = performance.now();
+        const existingMeta = timeoutStore[metaKey];
+
+        if (existingMeta && timeoutStore[timeoutKey]) {
+            const elapsed = now - existingMeta.startedAt;
+            const minPlayMs = existingMeta.duration * this._flashMinPlayRatio;
+            if (elapsed < minPlayMs) {
+                existingMeta.pendingDuration = Math.max(existingMeta.pendingDuration || 0, duration);
+                if (!existingMeta.deferExtendId) {
+                    const waitMs = minPlayMs - elapsed;
+                    existingMeta.deferExtendId = setTimeout(() => {
+                        existingMeta.deferExtendId = null;
+                        const nextDuration = existingMeta.pendingDuration || duration;
+                        this._extendArrowFlashAfterMinPlay(arrow, timeoutStore, timeoutKey, activeClass, nextDuration);
+                    }, waitMs);
+                }
+                return;
+            }
+            this._endArrowFlash(arrow, timeoutStore, timeoutKey, activeClass);
+        }
+
+        arrow.classList.add(activeClass);
+        this._startArrowFlashTimer(arrow, timeoutStore, timeoutKey, activeClass, duration);
+    }
+
+    _touchHttpStream(direction) {
+        const now = performance.now();
+        if (direction === 'up') {
+            this._httpStreamLastUpAt = now;
+            this._httpStreamUpActive = true;
+            this._httpStreamUpStalled = false;
+            this._scheduleHttpStreamTimers('up');
+        } else {
+            this._httpStreamLastDownAt = now;
+            this._httpStreamDownActive = true;
+            this._httpStreamDownStalled = false;
+            this._scheduleHttpStreamTimers('down');
+        }
+        this._syncHttpStreamClasses();
+    }
+
+    _syncHttpStreamClasses() {
+        const applyStream = (arrow, streamClass, stalledClass, active, stalled) => {
+            if (!arrow) return;
+            if (active) {
+                arrow.classList.add(streamClass);
+                if (stalled) {
+                    arrow.classList.add(stalledClass);
+                } else {
+                    arrow.classList.remove(stalledClass);
+                }
+            } else {
+                arrow.classList.remove(streamClass, stalledClass);
+            }
+        };
+
+        this.websocketIndicators.forEach(indicator => {
+            applyStream(
+                indicator.upArrow,
+                'streaming-up',
+                'streaming-stalled-up',
+                this._httpStreamUpActive,
+                this._httpStreamUpStalled
+            );
+            applyStream(
+                indicator.downArrow,
+                'streaming-down',
+                'streaming-stalled-down',
+                this._httpStreamDownActive,
+                this._httpStreamDownStalled
+            );
+        });
+
+        if (!this._melatonTrafficUp) {
+            this._melatonTrafficUp = document.getElementById('connectionTrafficUp');
+        }
+        if (!this._melatonTrafficDown) {
+            this._melatonTrafficDown = document.getElementById('connectionTrafficDown');
+        }
+        applyStream(
+            this._melatonTrafficUp,
+            'streaming-up',
+            'streaming-stalled-up',
+            this._httpStreamUpActive,
+            this._httpStreamUpStalled
+        );
+        applyStream(
+            this._melatonTrafficDown,
+            'streaming-down',
+            'streaming-stalled-down',
+            this._httpStreamDownActive,
+            this._httpStreamDownStalled
+        );
     }
 
     _teardownGenerationUiState() {
@@ -7016,6 +7368,8 @@ class WebSocketClient {
             if (document.hidden) {
                 this._wsFlashPendingUp = null;
                 this._wsFlashPendingDown = null;
+                this._httpFlashPendingUp = null;
+                this._httpFlashPendingDown = null;
                 return;
             }
 
@@ -7025,94 +7379,123 @@ class WebSocketClient {
                 return;
             }
 
-            const upDuration = this._wsFlashPendingUp;
-            const downDuration = this._wsFlashPendingDown;
-            if (upDuration == null && downDuration == null) return;
+            const upWsDuration = this._wsFlashPendingUp;
+            const downWsDuration = this._wsFlashPendingDown;
+            const upHttpDuration = this._httpFlashPendingUp;
+            const downHttpDuration = this._httpFlashPendingDown;
+            if (upWsDuration == null && downWsDuration == null
+                && upHttpDuration == null && downHttpDuration == null) {
+                return;
+            }
 
             this._wsFlashPendingUp = null;
             this._wsFlashPendingDown = null;
+            this._httpFlashPendingUp = null;
+            this._httpFlashPendingDown = null;
             this._wsFlashLastApply = now;
             this._refreshWsFlashTargets();
 
-            if (upDuration != null) {
-                this._applyWebSocketArrowFlash('up', upDuration);
+            if (upWsDuration != null) {
+                this._applyTrafficArrowFlash('up', upWsDuration, 'ws');
             }
-            if (downDuration != null) {
-                this._applyWebSocketArrowFlash('down', downDuration);
+            if (downWsDuration != null) {
+                this._applyTrafficArrowFlash('down', downWsDuration, 'ws');
+            }
+            if (upHttpDuration != null) {
+                this._applyTrafficArrowFlash('up', upHttpDuration, 'http');
+            }
+            if (downHttpDuration != null) {
+                this._applyTrafficArrowFlash('down', downHttpDuration, 'http');
             }
         });
     }
 
-    _applyWebSocketArrowFlash(direction, duration = 500) {
+    _applyTrafficArrowFlash(direction, duration = 500, trafficKind = 'ws') {
         if (document.hidden || !this._wsFlashTargets.length) return;
 
-        const timeoutType = direction === 'up' ? 'upTimeout' : 'downTimeout';
-
-        const flashArrow = (arrow, timeoutKey, timeoutStore) => {
-            if (!arrow) return;
-            if (timeoutStore[timeoutKey]) {
-                clearTimeout(timeoutStore[timeoutKey]);
-            } else {
-                arrow.classList.add('active');
-            }
-            timeoutStore[timeoutKey] = setTimeout(() => {
-                arrow.classList.remove('active');
-                timeoutStore[timeoutKey] = null;
-            }, duration);
-        };
+        const isHttp = trafficKind === 'http';
+        const activeClass = isHttp ? 'active-http' : 'active';
+        const timeoutType = direction === 'up'
+            ? (isHttp ? 'upHttpTimeout' : 'upTimeout')
+            : (isHttp ? 'downHttpTimeout' : 'downTimeout');
 
         this._wsFlashTargets.forEach(target => {
             if (target.timeoutKey !== timeoutType) return;
-            flashArrow(target.arrow, target.timeoutKey, target.timeoutStore);
+            this._pulseArrowFlash(target.arrow, target.timeoutStore, target.timeoutKey, activeClass, duration);
         });
     }
 
-    // Record traffic for a deferred flash — no DOM work on the WebSocket message path.
-    flashWebSocketArrow(direction, duration = 500) {
+    // Record WebSocket traffic for a deferred flash — no DOM work on the message path.
+    flashWebSocketArrow(direction, duration = this._wsFlashDuration) {
         if (document.hidden) return;
+        const burstUntil = performance.now() + duration;
         if (direction === 'up') {
             this._wsFlashPendingUp = duration;
+            this._wsBurstUntilUp = burstUntil;
         } else {
             this._wsFlashPendingDown = duration;
+            this._wsBurstUntilDown = burstUntil;
+        }
+        this._queueWsFlashApply();
+    }
+
+    // Record non-WebSocket HTTP throughput — white pulse + sustained stream tint.
+    flashHttpTrafficArrow(direction, duration = this._httpFlashDuration) {
+        if (document.hidden) return;
+        this._touchHttpStream(direction);
+
+        const burstUntil = direction === 'up' ? this._wsBurstUntilUp : this._wsBurstUntilDown;
+        if (performance.now() < burstUntil) {
+            return;
+        }
+
+        if (direction === 'up') {
+            this._httpFlashPendingUp = duration;
+        } else {
+            this._httpFlashPendingDown = duration;
         }
         this._queueWsFlashApply();
     }
 
     // Clear all WebSocket indicator timeouts (for cleanup)
     clearWebSocketIndicatorTimeouts() {
+        this._clearHttpStreamState();
+
         // Clear all indicator timeouts and active classes
         this.websocketIndicators.forEach(indicator => {
-            // Clear timeouts
-            ['upTimeout', 'downTimeout'].forEach(timeoutType => {
+            ['upTimeout', 'downTimeout', 'upHttpTimeout', 'downHttpTimeout'].forEach(timeoutType => {
                 if (indicator[timeoutType]) {
                     clearTimeout(indicator[timeoutType]);
                     indicator[timeoutType] = null;
                 }
+                this._clearArrowFlashMeta(indicator, timeoutType);
             });
 
-            // Remove active classes
             if (indicator.upArrow) {
-                indicator.upArrow.classList.remove('active');
+                indicator.upArrow.classList.remove('active', 'active-http', 'streaming-up', 'streaming-stalled-up');
             }
             if (indicator.downArrow) {
-                indicator.downArrow.classList.remove('active');
+                indicator.downArrow.classList.remove('active', 'active-http', 'streaming-down', 'streaming-stalled-down');
             }
         });
 
         if (this._melatonTrafficTimeouts) {
-            ['upTimeout', 'downTimeout'].forEach(timeoutType => {
+            ['upTimeout', 'downTimeout', 'upHttpTimeout', 'downHttpTimeout'].forEach(timeoutType => {
                 if (this._melatonTrafficTimeouts[timeoutType]) {
                     clearTimeout(this._melatonTrafficTimeouts[timeoutType]);
                     this._melatonTrafficTimeouts[timeoutType] = null;
                 }
+                this._clearArrowFlashMeta(this._melatonTrafficTimeouts, timeoutType);
             });
         }
         if (this._melatonTrafficUp) {
-            this._melatonTrafficUp.classList.remove('active');
+            this._melatonTrafficUp.classList.remove('active', 'active-http', 'streaming-up', 'streaming-stalled-up');
         }
         if (this._melatonTrafficDown) {
-            this._melatonTrafficDown.classList.remove('active');
+            this._melatonTrafficDown.classList.remove('active', 'active-http', 'streaming-down', 'streaming-stalled-down');
         }
+        this._wsBurstUntilUp = 0;
+        this._wsBurstUntilDown = 0;
     }
 
     // Handle service worker messages
@@ -7120,11 +7503,10 @@ class WebSocketClient {
         if (event.data && event.data.type === 'NETWORK_ACTIVITY') {
             const { activityType, requestData } = event.data;
 
-            // Flash the appropriate arrow based on activity type
             if (activityType === 'transmit') {
-                this.flashWebSocketArrow('up', 300); // Shorter duration for service worker activity
+                this.flashHttpTrafficArrow('up');
             } else if (activityType === 'receive') {
-                this.flashWebSocketArrow('down', 300); // Shorter duration for service worker activity
+                this.flashHttpTrafficArrow('down');
             }
         }
     }

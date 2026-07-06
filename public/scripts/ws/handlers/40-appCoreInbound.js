@@ -131,3 +131,19 @@ registerWsInboundHandler({
         handleReceiptNotificationMessage(message, wsClient);
     }
 });
+
+registerWsInboundHandler({
+    id: 'app.account_data_health_updated',
+    type: 'account_data_health_updated',
+    phase: 'only',
+    handler(message) {
+        const payload = message.data || message;
+        // applyAccountHealthFieldsToOptions / handleAccountHealthUpdate: public/scripts/comp/accountDataBootstrap.js
+        if (typeof applyAccountHealthFieldsToOptions === 'function') {
+            applyAccountHealthFieldsToOptions(payload, payload.balance);
+        }
+        if (typeof handleAccountHealthUpdate === 'function') {
+            handleAccountHealthUpdate(payload, payload.balance);
+        }
+    }
+});

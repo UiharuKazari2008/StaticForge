@@ -262,40 +262,8 @@ function initializeTextReplacementManager() {
 
     // Initialize create text replacement modal
     initializeCreateTextReplacementModal();
-    wireTextReplacementLockContextMenuHandler();
     wireTextReplacementLockModalListeners();
     wireTextReplacementKeyboardShortcuts();
-}
-
-function wireTextReplacementLockContextMenuHandler() {
-    if (document.body.dataset.textReplacementLockContextMenuWired === 'true') return;
-    document.body.dataset.textReplacementLockContextMenuWired = 'true';
-
-    const manualModal = document.getElementById('manualModal');
-    if (!manualModal) return;
-
-    // attachModalListeners: public/scripts/comp/modalListenerScope.js
-    attachModalListeners(manualModal, (signal) => {
-        document.addEventListener('contextMenuAction', function (event) {
-            const { action } = event.detail;
-            if (!action || !action.startsWith('toggleTextReplacementLock_')) return;
-
-            const index = parseInt(action.replace('toggleTextReplacementLock_', ''), 10);
-            const allReplacements = window.lastGenerationTextReplacements || [];
-
-            if (!isNaN(index) && allReplacements[index]) {
-                const seed = allReplacements[index];
-                const canLock = seed.can_lock !== undefined ? seed.can_lock !== false : true;
-
-                if (canLock) {
-                    seed.locked = !seed.locked;
-                    const lockedSeeds = allReplacements.filter(s => s.locked === true);
-                    window.lockedTextReplacements = lockedSeeds;
-                    updateMainLockButtonState();
-                }
-            }
-        }, { signal });
-    });
 }
 
 // Show text replacement manager modal

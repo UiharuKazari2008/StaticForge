@@ -2429,9 +2429,14 @@ class ReferencesWebSocketHandlers {
             throw new Error('Invalid model');
         }
 
-        const novelAiKey = this.globalResources.getApiKeyManager().getActiveApiKey('novelai');
+        const apiKeyManager = this.globalResources.getApiKeyManager();
+        const novelAiKey = apiKeyManager.getActiveApiKey('novelai');
         if (!novelAiKey) {
             throw new Error('NovelAI API key is not configured.');
+        }
+        // Tripwire: block the outbound call while the service is locked.
+        if (apiKeyManager.isServiceLocked('novelai')) {
+            throw new Error('NovelAI is temporarily locked after repeated API errors. An admin must review the Service Key in the Security Center to unlock it.');
         }
 
         return new Promise((resolve, reject) => {
@@ -2486,12 +2491,15 @@ class ReferencesWebSocketHandlers {
 
                     const buffer = Buffer.concat(data);
                     if (res.statusCode === 200) {
+                        apiKeyManager.recordApiSuccess('novelai');
                         resolve(buffer.toString('base64'));
                     } else {
                         try {
                             const errorResponse = JSON.parse(buffer.toString());
+                            apiKeyManager.recordApiFailure('novelai', res.statusCode, errorResponse.message);
                             reject(new Error(`Error encoding vibe: ${errorResponse.statusCode || res.statusCode} ${errorResponse.message || 'Unknown error'}`));
                         } catch (e) {
+                            apiKeyManager.recordApiFailure('novelai', res.statusCode, `HTTP ${res.statusCode}`);
                             reject(new Error(`Error encoding vibe: HTTP ${res.statusCode}`));
                         }
                     }

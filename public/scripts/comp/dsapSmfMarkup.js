@@ -10,6 +10,7 @@ const DSAP_SMF_BRANCH_SECURITY = 'Security Center';
 const DSAP_SMF_BRANCH_DATA_MGMT = 'Data Management';
 const DSAP_SMF_BRANCH_IMAGE_GEN = 'Image Generation';
 const DSAP_SMF_BRANCH_DREAMSCAPE = 'Dreamscape';
+const DSAP_SMF_BRANCH_AUTOFILL = 'Autofill Ranking';
 
 const DSAP_SMF_DEFAULT_LOGO = '/static_images/logo_icon.png';
 
@@ -163,6 +164,7 @@ function dsapSmfBuildDreamscapeHomeHtml() {
         { url: 'dsap://data.dreamscape.jp/', label: 'Data Management', icon: 'fas fa-database', desc: 'Manage workspaces, data, and files' },
         { url: 'dsap://ispy.dreamscape.jp/', label: 'Global Search', icon: 'fas fa-search', desc: 'Search prompts and metadata across workspace corpora' },
         { url: 'dsap://security.dreamscape.jp/', label: 'Security Center', icon: 'fas fa-shield-halved', desc: 'Blocked clients, honeypot URLs, authentication, and telemetry', admin: true },
+        { url: 'dsap://autofill.dreamscape.jp/', label: 'Autofill Ranking', icon: 'fas fa-arrow-down-wide-short', desc: 'Tune SmartText/autofill scoring weights, match tiers, and type priority', admin: true },
         { url: 'dsap://memories.dyna.dreamscape.jp/', label: 'Enshutsuka', icon: 'fas fa-lightbulb-on', desc: 'Director knowledge memories, static rules, and LinkXi persona' },
         { url: 'dsap://quips.dyna.dreamscape.jp/', label: 'Generation Quips', icon: 'fas fa-comment-heart', desc: 'Generation quips dashboard, phrase book, and workspace settings' },
     ];

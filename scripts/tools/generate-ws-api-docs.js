@@ -34,7 +34,7 @@ const OWNER_TO_DOC = {
     system: 'cache.md',
     infrastructure: 'infrastructure.md',
     admin: 'admin.md',
-    app: 'quips.md',
+    app: 'account.md',
     references: 'references.md',
     vfs: 'vfs.md',
     applicationAuth: 'admin.md',

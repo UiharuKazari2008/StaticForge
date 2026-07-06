@@ -132,7 +132,8 @@ class AsyncSQLiteDatabase {
             journal_mode: 'WAL',
             synchronous: 'NORMAL',
             cache_size: 10000,
-            temp_store: 'MEMORY'
+            temp_store: 'MEMORY',
+            busy_timeout: 60000
         };
         
         const pragma = { ...defaultPragma, ...this.pragma };

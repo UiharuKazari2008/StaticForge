@@ -114,11 +114,71 @@
     color: var(--error-color, #f44336);
 }
 
-.request-name span {
+.request-name > span:not(.request-dispatch-badge) {
+    flex: 1;
+    min-width: 0;
     color: var(--text-accent-tinted);
     font-size: 0.85em;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.request-dispatch-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    flex-shrink: 0;
+    margin-left: auto;
+    padding: 0.05rem 0.35rem;
+    border-radius: var(--border-radius-sm);
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    line-height: 1.2;
+    border: 1px solid transparent;
+}
+
+.request-dispatch-badge i {
+    font-size: 0.85em;
+    padding: 0;
+    color: inherit;
+}
+
+.request-dispatch-fifo {
+    color: #ffd89a;
+    background: rgba(255, 193, 94, 0.12);
+    border-color: rgba(255, 193, 94, 0.35);
+}
+
+.request-fifo-position {
+    min-width: 0.85em;
+    text-align: center;
+}
+
+.request-dispatch-legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    margin-left: auto;
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: #ffd89a;
+    opacity: 0.75;
+}
+
+.request-dispatch-legend i {
+    font-size: 0.85em;
+}
+
+.request-dispatch-legend span {
+    color: inherit;
+    font-size: inherit;
+    overflow: visible;
+    text-overflow: clip;
     white-space: nowrap;
 }
 

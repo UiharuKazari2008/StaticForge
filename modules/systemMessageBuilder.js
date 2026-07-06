@@ -1128,6 +1128,22 @@ function buildPhase5_Expression(optimize, fastModeEnabled = false) {
         '[⨉] "girl standing park wearing dress" (run-on)',
         '[✓] "girl standing in park, wearing dress" (comma-separated)',
         '',
+        '## 📦 Physical Object Tags (REQUIRED)',
+        '',
+        'When adding physical objects, props, or held items to the scene, disambiguate with the ` (object)` suffix so NovelAI renders them as distinct image elements—not body parts, actions, or abstract concepts.',
+        '',
+        '**Rule:** Any new physical object you add MUST include ` (object)` in the tag.',
+        '',
+        '**Examples:**',
+        '* American flag → `american flag (object)` or `flag (object)`',
+        '* Baseball → `baseball (object)`',
+        '* Umbrella (as prop) → `umbrella (object)`',
+        '* Smartphone → `smartphone (object)`',
+        '',
+        '**Does NOT apply to:** body parts, worn clothing, hair, weather, lighting, atmosphere, or existing tags left unchanged.',
+        '',
+        '**Test:** Is this a distinct physical thing in the scene? → append ` (object)`',
+        '',
 
         ''
     ];
@@ -1516,8 +1532,8 @@ function buildCategoryRequirementNotes(weather, time, season, holiday, directive
     if (season) {
         requirements.push('* Season (user message → Season/Guidelines block) → Include at least one Tsubo (text replacement) with category "Seasonal" in your Tanei package');
     }
-    // Holiday category only required on day of (daysUntil === 0) or day before (daysUntil === 1)
-    if (holiday && holiday.primaryHoliday && holiday.primaryHoliday.daysUntil <= 1) {
+    // Holiday category required during active holiday period (holiday is only in context when user has it enabled)
+    if (holiday && holiday.isHolidayPeriod && holiday.primaryHoliday) {
         requirements.push('* Holiday (user message → Holiday/Decorations block) → Include at least one Tsubo (text replacement) with category "Holiday" in your Tanei package');
     }
     if (directive) {
@@ -2543,6 +2559,7 @@ function buildPhase9_Validation(weather, time, season, holiday, directive) {
         '[✓] No duplicate/overlapping/chain Tsubo (text replacements) | [✓] Original text only',
         '[✓] No verbatim copying | [✓] Visual only (no concepts/measurements)',
         '[✓] Comma separation | [✓] Required fields present (REPLACE: segment_index+replace_text, APPEND: segment_index(-1)+replace_text, DELETE: segment_index)',
+        '[✓] **Object disambiguation** - Physical objects/props added to the scene use ` (object)` suffix (e.g. `flag (object)`, `umbrella (object)`)',
         '[✓] **replacement_category REQUIRED** - Every Tsubo (text replacement) MUST have replacement_category field (Tanei → Tendai hydration validation fails if missing)',
         '[✓] **UC placement** - UC opposites go in uc array ONLY, never in prompt array',
         '[✓] Valid categories | [✓] Order independent (randomize test)',
@@ -2550,7 +2567,7 @@ function buildPhase9_Validation(weather, time, season, holiday, directive) {
         ...(weather ? ['[✓] **Required category present** - At least one "Weather" category Tsubo in Tanei (Tanei → Tendai hydration validation will fail if missing)'] : []),
         ...(time ? ['[✓] **Required category present** - At least one "Time of Day" category Tsubo in Tanei (Tanei → Tendai hydration validation will fail if missing)'] : []),
         ...(season ? ['[✓] **Required category present** - At least one "Seasonal" category Tsubo in Tanei (Tanei → Tendai hydration validation will fail if missing)'] : []),
-        ...(holiday ? (holiday.primaryHoliday && holiday.primaryHoliday.daysUntil <= 1 ? ['[✓] **Required category present** - At least one "Holiday" category Tsubo in Tanei (Tanei → Tendai hydration validation will fail if missing)'] :  ['[✓] Considered adding a "Holiday" category Tsubo']) : []),
+        ...(holiday && holiday.isHolidayPeriod && holiday.primaryHoliday ? ['[✓] **Required category present** - At least one "Holiday" category Tsubo in Tanei (Tanei → Tendai hydration validation will fail if missing)'] : []),
         ...(directive ? ['[✓] **Required category present** - At least one "Directive" category Tsubo in Tanei (Tanei → Tendai hydration validation will fail if missing)'] : []),
         '[✓] No protected content (artist tags, !%blocks%, presets)',
         '[✓] **character_prompts structure correct** - Each entry has `prompt: []` and `uc: []` arrays (even if empty)',
@@ -2659,7 +2676,7 @@ function buildIntegrationVerificationSection(weather, time, season, holiday, dir
             '  - ⚠️ **REQUIRED:** At least one Tsubo MUST have category "Seasonal" in your Tanei package or Tanei → Tendai hydration validation will fail',
             '  - **Assign seasonal-related changes to "Seasonal" category**'
         ] : []),
-        ...(holiday && holiday.primaryHoliday && holiday.primaryHoliday.daysUntil <= 1 ? [
+        ...(holiday && holiday.isHolidayPeriod && holiday.primaryHoliday ? [
             '- **Holiday data provided** -> Did I add holiday-related Tsubo (text replacements)?',
             '  - ⚠️ **REQUIRED:** At least one Tsubo MUST have category "Holiday" in your Tanei package or Tanei → Tendai hydration validation will fail',
             '  - **Assign holiday-related changes to "Holiday" category**'
@@ -2903,7 +2920,7 @@ function buildFinalQualityReminders(weather, time, season, holiday, directive) {
         '',
         '[✓] Tools used | [✓] Validated | [✓] 3-10 dialogs | [✓] Image name',
         ...(integratedText ? [`[✓] ${integratedText} integrated with proper category assignments`] : []),
-        '[✓] No verbatim | [✓] Visual only | [✓] Comma syntax | [✓] No protected edits | [✓] Correct field usage (REPLACE needs segment_index+replace_text, APPEND needs segment_index(-1)+replace_text, DELETE needs segment_index only - no replace_text)',
+        '[✓] No verbatim | [✓] Visual only | [✓] Comma syntax | [✓] Physical objects use ` (object)` suffix | [✓] No protected edits | [✓] Correct field usage (REPLACE needs segment_index+replace_text, APPEND needs segment_index(-1)+replace_text, DELETE needs segment_index only - no replace_text)',
         '[✓] **UC placement** - All UC opposites in uc array, none in prompt array',
         '[✓] **Category assignment** - Each requested change assigned to appropriate category (Weather→"Weather", Time→"Time of Day", Season→"Seasonal", Holiday→"Holiday", Directive→"Directive")',
         '[✓] **Memories saved** - Did you save useful discoveries to insight_memory?',

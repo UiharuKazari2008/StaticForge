@@ -950,6 +950,37 @@ function correctDimensions(rawW, rawH, {
  * });
  * // { list: 45, opus: 45 } - Paid request
  */
+// modules/novelAiSubscription.js — tier defaults when image API omits unlimitedImageGenerationLimits
+function resolveSubscriptionForPricing(subscription) {
+    if (!subscription || typeof subscription !== 'object') {
+        return { perks: { unlimitedImageGenerationLimits: [] } };
+    }
+    const limits = subscription.perks?.unlimitedImageGenerationLimits;
+    if (Array.isArray(limits) && limits.length > 0) {
+        return subscription;
+    }
+    const tier = subscription.tier;
+    if (tier === 3 && subscription.active !== false) {
+        return {
+            ...subscription,
+            perks: {
+                ...(subscription.perks || {}),
+                unlimitedImageGenerationLimits: [{ resolution: 1048576, maxPrompts: 999999 }]
+            }
+        };
+    }
+    if (tier === 0 && subscription.active !== false) {
+        return {
+            ...subscription,
+            perks: {
+                ...(subscription.perks || {}),
+                unlimitedImageGenerationLimits: [{ resolution: 1048576, maxPrompts: 30 }]
+            }
+        };
+    }
+    return subscription;
+}
+
 function calculatePriceUnified({
     height,
     width,
@@ -1377,7 +1408,7 @@ function calculateCreditCost(requestBody) {
         steps: requestBody.steps || 25,
         model: requestBody.model || 'V4_5',
         sampler: { meta: requestBody.sampler || 'k_euler_ancestral' },
-        subscription: window.optionsData?.user?.subscription || { perks: { unlimitedImageGenerationLimits: [] } },
+        subscription: resolveSubscriptionForPricing(window.optionsData?.user?.subscription),
         nSamples: 1,
         image: requestBody.image ? true : false,
         strength: requestBody.strength || 1,

@@ -55,7 +55,136 @@ class ApiKeyManager {
             }
         };
         this.restartHandlers = new Map();
+
+        // Tripwire / circuit-breaker: block outbound calls after repeated admin-fixable
+        // API errors (bad request / auth) until an admin unlocks or swaps the key.
+        this.TRIPWIRE_SERVICES = new Set(['novelai', 'grok']);
+        this.TRIPWIRE_STATUSES = new Set([400, 401, 402, 403]);
+        this.TRIPWIRE_THRESHOLD = 3; // consecutive qualifying failures before locking
+        this.serviceLocks = new Map(); // service -> lock record
+        this.lockChangeHandler = null; // set by globalResources for logging + admin broadcast
     }
+
+    // --- Tripwire / circuit-breaker -------------------------------------------------
+
+    setLockChangeHandler(handler) {
+        this.lockChangeHandler = typeof handler === 'function' ? handler : null;
+    }
+
+    isTripwireService(service) {
+        return this.TRIPWIRE_SERVICES.has(service);
+    }
+
+    _getLockRecord(service) {
+        if (!this.serviceLocks.has(service)) {
+            this.serviceLocks.set(service, {
+                service,
+                locked: false,
+                failureCount: 0,
+                threshold: this.TRIPWIRE_THRESHOLD,
+                lastStatus: null,
+                lastMessage: null,
+                lockedAt: null,
+                updatedAt: null
+            });
+        }
+        return this.serviceLocks.get(service);
+    }
+
+    isServiceLocked(service) {
+        if (!this.isTripwireService(service)) {
+            return false;
+        }
+        return this._getLockRecord(service).locked === true;
+    }
+
+    getServiceLock(service) {
+        if (!this.isTripwireService(service)) {
+            return null;
+        }
+        return { ...this._getLockRecord(service) };
+    }
+
+    _emitLockChange(service, prevLocked) {
+        const rec = this._getLockRecord(service);
+        if (this.lockChangeHandler && prevLocked !== rec.locked) {
+            try {
+                this.lockChangeHandler(service, { ...rec });
+            } catch (error) {
+                console.error('❌ Tripwire lock-change handler error:', error.message);
+            }
+        }
+    }
+
+    // Derive an HTTP status code from an error object, response object, or string.
+    deriveStatusCode(source) {
+        if (source == null) {
+            return null;
+        }
+        const direct = source.status ?? source.statusCode ?? (typeof source.code === 'number' ? source.code : undefined);
+        if (Number.isFinite(Number(direct))) {
+            return Number(direct);
+        }
+        const message = typeof source === 'string' ? source : (source.message || '');
+        const match = message.match(/\b(400|401|402|403)\b/);
+        return match ? Number(match[1]) : null;
+    }
+
+    recordApiSuccess(service) {
+        if (!this.isTripwireService(service)) {
+            return;
+        }
+        const rec = this._getLockRecord(service);
+        if (rec.failureCount !== 0 || rec.lastStatus !== null) {
+            rec.failureCount = 0;
+            rec.lastStatus = null;
+            rec.lastMessage = null;
+            rec.updatedAt = Date.now();
+        }
+    }
+
+    // Record a failure keyed by HTTP status. Only admin-fixable statuses (400/401/402/403)
+    // count toward the tripwire; transient errors (429/5xx/network) are ignored so we do
+    // not lock the service for issues an admin cannot fix.
+    recordApiFailure(service, statusCode, message) {
+        if (!this.isTripwireService(service)) {
+            return this.getServiceLock(service);
+        }
+        const status = this.deriveStatusCode({ statusCode, message });
+        if (status === null || !this.TRIPWIRE_STATUSES.has(status)) {
+            return this.getServiceLock(service);
+        }
+        const rec = this._getLockRecord(service);
+        const prevLocked = rec.locked;
+        rec.failureCount += 1;
+        rec.lastStatus = status;
+        rec.lastMessage = message || null;
+        rec.updatedAt = Date.now();
+        if (!rec.locked && rec.failureCount >= this.TRIPWIRE_THRESHOLD) {
+            rec.locked = true;
+            rec.lockedAt = Date.now();
+        }
+        this._emitLockChange(service, prevLocked);
+        return { ...rec };
+    }
+
+    unlockService(service) {
+        if (!this.isTripwireService(service)) {
+            return false;
+        }
+        const rec = this._getLockRecord(service);
+        const prevLocked = rec.locked;
+        rec.locked = false;
+        rec.failureCount = 0;
+        rec.lastStatus = null;
+        rec.lastMessage = null;
+        rec.lockedAt = null;
+        rec.updatedAt = Date.now();
+        this._emitLockChange(service, prevLocked);
+        return true;
+    }
+
+    // ------------------------------------------------------------------------------
 
     maskKey(key) {
         if (!key || typeof key !== 'string') {
@@ -132,6 +261,7 @@ class ApiKeyManager {
                 selectedName: selectedKey?.name || (keys.length ? `Key ${selectedIndex + 1}` : null),
                 selectedFingerprint: selectedKey ? this.maskKey(selectedKey.apiKey) : null,
                 missingKeys: keys.length === 0,
+                lock: this.getServiceLock(service),
                 keys: keys.map((key, index) => ({
                     index,
                     name: key.name || `Key ${index + 1}`,
@@ -214,6 +344,8 @@ class ApiKeyManager {
 
         const restartedServices = [];
         for (const change of changed) {
+            // Swapping the active key is an admin correction — clear any tripwire lock.
+            this.unlockService(change.service);
             const handler = this.restartHandlers.get(change.service);
             if (handler) {
                 await handler(change.service, change.index);
@@ -299,6 +431,11 @@ class ApiKeyManager {
         };
 
         this.globalResources.modifyConfig('secureConfig').replace([service, 'keys'], idx, nextKey);
+
+        // Editing the active key is an admin correction — clear any tripwire lock.
+        if (this.getSelectedIndex(service) === idx) {
+            this.unlockService(service);
+        }
 
         return {
             success: true,

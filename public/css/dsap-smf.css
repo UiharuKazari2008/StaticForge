@@ -274,6 +274,23 @@
     background: var(--dsap-smf-status-ok-bg);
 }
 
+/* --- Tripwire lock indicator (Security Center keychain) --- */
+[data-dsap] .sec-keychain-lock-badge {
+    display: inline-block;
+    margin-top: 3px;
+    padding: 1px 6px;
+    font-size: var(--dsap-smf-font-size-sm);
+    font-weight: bold;
+    color: #7a1f1f;
+    background: var(--dsap-smf-btn-danger-bg);
+    border: 1px solid #7a1f1f;
+    border-radius: 3px;
+}
+
+[data-dsap] tr.sec-keychain-row-locked {
+    background: var(--dsap-smf-status-error-bg);
+}
+
 /* --- Stats table --- */
 .dsap-smf .dsap-smf-stats,
 [data-dsap] .dsap-smf-stats,

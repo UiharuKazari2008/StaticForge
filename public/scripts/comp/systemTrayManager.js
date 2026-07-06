@@ -131,8 +131,10 @@ async function startBackgroundTrayServices() {
 
         setTimeout(async () => {
             await flushDeferredAccountTrayNotifications();
-            flushDeferredNetworkTrayNotifications();
+            // Mark boot complete before flushing network notifications so deferred
+            // popups (high-latency) no longer treat themselves as boot-pending.
             window._systemTrayBootComplete = true;
+            flushDeferredNetworkTrayNotifications();
             // updateWorkspaceTrayIcon: public/scripts/comp/trayIndicators.js
             updateWorkspaceTrayIcon();
             resolve();
@@ -175,6 +177,11 @@ function setupTrayIconPopovers() {
             position: 'top',
             arrowPosition: 'bottom-right',
             onShow: (popover, element) => {
+                // While a programmatic tray notification (receipt / balance / generation) owns this
+                // popover it enters notification mode and stores _hoverTooltipSnapshot; refreshing
+                // from the hover title here would clobber the notification content, so skip it.
+                const popoverData = window.PopoverManager.activePopovers.get(element);
+                if (popoverData && popoverData._hoverTooltipSnapshot) return;
                 const liveTitle = (element.getAttribute('title') || '').trim();
                 if (liveTitle) {
                     window.PopoverManager.updateContent(element, liveTitle);
@@ -194,6 +201,13 @@ function setupTrayIconPopovers() {
             if (!trayIconElements.has(icon)) continue;
             const liveTitle = (icon.getAttribute('title') || '').trim();
             if (!liveTitle) continue;
+            // If a tray notification is currently showing, only refresh the saved hover tooltip
+            // (restored after the notification closes) instead of overwriting the live notification.
+            const popoverData = window.PopoverManager.activePopovers.get(icon);
+            if (popoverData && popoverData._hoverTooltipSnapshot) {
+                popoverData._hoverTooltipSnapshot.content = liveTitle;
+                continue;
+            }
             window.PopoverManager.updateContent(icon, liveTitle);
         }
     });
@@ -278,6 +292,14 @@ function attachFixedCreditsTrayContextMenu(indicator) {
 
     contextMenu.attachToElement(indicator, {
         sections: [
+            {
+                type: 'list',
+                initfn: (section) => {
+                    // buildCreditsTrayStatusMenuItems: public/scripts/comp/novelAiAccountStatus.js
+                    section.items = buildCreditsTrayStatusMenuItems();
+                },
+                items: [],
+            },
             {
                 type: 'custom',
                 content: `
@@ -608,8 +630,8 @@ function setupServiceWorkerTrayContextMenu() {
                 title: 'Updates',
                 items: [
                     {
-                        icon: 'fas fa-arrows-rotate',
-                        text: 'Restart to Apply Updates',
+                        icon: 'fas fa-cloud-arrow-down',
+                        text: 'Apply Updates',
                         action: 'sw-restart-apply-updates',
                         className: 'text-warning',
                         hidden: () => !(window.serviceWorkerManager

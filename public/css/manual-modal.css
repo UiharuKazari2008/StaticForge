@@ -431,7 +431,7 @@ div#manualModal:not(.windowed) {
     right: unset;
 }
 
-@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+@media (hover: hover) {
     .manual-preview-content .manual-preview-image-container img.manual-preview-original-image:hover:not(:disabled) {
         opacity: 1;
         transform: translateY(-50%) translateX(calc(100% - 72px));
@@ -723,7 +723,7 @@ div#manualModal:not(.windowed) {
     transition: var(--transition-preview-control);
 }
 
-@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+@media (hover: hover) {
 
     .manual-preview-content:not(:hover) .btn-secondary:not(:hover):not(#manualPreviewCloseBtn),
     .manual-preview-content:not(:hover) .btn-danger:not(:hover) {
@@ -753,7 +753,7 @@ div#manualModal:not(.windowed) {
     }
 }
 
-@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+@media (hover: hover) {
     .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner {
         max-width: 85%;
         max-height: 85%;
@@ -784,6 +784,71 @@ div#manualModal:not(.windowed) {
     .generating .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner #manualPreviewImage,
     .streaming .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner #manualPreviewImage {
         box-shadow: 0 0px 0px 0px hsl(0deg 0% 0% / 0%);
+    }
+}
+
+/* Touch / no-hover devices: preview controls stay in their resting (as-if-preview-hovered) visible state and get no hover styling, preventing focus/hover locking after a tap. Resting values mirror the base button rules in app.css. */
+@media (hover: none) {
+    .manual-preview-container .btn-primary:hover:not(:disabled) {
+        background: var(--primary-glass-color);
+        border-color: var(--primary-glass-border);
+        box-shadow: var(--glass-shadow-3), inset 0 0 15px #ffffff2b;
+        color: var(--text-accent-tinted);
+    }
+
+    .manual-preview-container .btn-secondary:hover:not(:disabled),
+    .manual-preview-container .pswp__button--custom:hover:not(:disabled) {
+        background: var(--glass-layer-3);
+        border-color: var(--glass-border-3);
+        box-shadow: var(--glass-shadow-3), inset 0 0 15px #ffffff2b;
+        color: var(--text-accent-tinted);
+    }
+
+    .manual-preview-container .btn-danger:hover:not(:disabled) {
+        background: var(--danger-glass-color);
+        border-color: var(--danger-glass-border);
+        box-shadow: var(--glass-shadow-3);
+        color: hsl(0 100% 85%);
+    }
+
+    .manual-preview-content .manual-preview-controls-top-left {
+        opacity: 1;
+    }
+
+    .manual-preview-content .dynamic-generation-overlay {
+        opacity: 1;
+    }
+
+    .manual-preview-content .dynamic-generation-overlay-body {
+        gap: 12px;
+    }
+
+    .manual-preview-content .overlay-time {
+        font-size: 2.75em;
+    }
+
+    .manual-preview-content .overlay-weather-info {
+        opacity: 1;
+    }
+
+    .manual-preview-content .overlay-weather-icon .wi {
+        font-size: 2.5em;
+        padding-top: 0;
+    }
+
+    .manual-preview-content .manual-preview-image-container-inner,
+    .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner {
+        max-width: 100%;
+        max-height: 100%;
+    }
+
+    .manual-preview-content .manual-preview-image-container-inner #manualPreviewImage,
+    .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner #manualPreviewImage {
+        box-shadow: 0 15px 20px 0px hsl(0deg 0% 0% / 20%);
+    }
+
+    .manual-preview-content:hover:not(:disabled) .manual-preview-image-container img.manual-preview-original-image {
+        opacity: 0;
     }
 }
 
@@ -868,7 +933,7 @@ div#manualModal:not(.windowed) {
     animation: workspaceFadeIn 0.5s ease-out forwards;
 }
 
-@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+@media (hover: hover) {
     .workspace-image-item:hover:not(:disabled) {
         transform: scale(1.05);
         box-shadow: var(--glass-shadow-3);
@@ -883,7 +948,7 @@ div#manualModal:not(.windowed) {
     transition: opacity 0.2s ease;
 }
 
-@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+@media (hover: hover) {
     .workspace-image-item:hover:not(:disabled) img {
         opacity: 0.8;
     }
@@ -950,8 +1015,10 @@ div#manualModal:not(.windowed) {
     opacity: 1;
 }
 
-.manual-preview-content:not(:hover) .dynamic-generation-overlay {
-    opacity: 0.5;
+@media (hover: hover) {
+    .manual-preview-content:not(:hover) .dynamic-generation-overlay {
+        opacity: 0.5;
+    }
 }
 
 /* Rentan overlay hover affordances disabled while generating */
@@ -960,7 +1027,7 @@ div#manualModal:not(.windowed) {
     opacity: 1;
 }
 
-@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+@media (hover: hover) {
     .generating .manual-preview-content .dynamic-generation-overlay-body,
     .generating .manual-preview-content:hover .dynamic-generation-overlay-body {
         gap: 6px;
@@ -1012,7 +1079,7 @@ div#manualModal:not(.windowed) {
     transition: gap var(--transition-slow);
 }
 
-@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+@media (hover: hover) {
     .manual-preview-content:hover:not(:disabled) .dynamic-generation-overlay-body {
         gap: 12px;
     }
@@ -1038,7 +1105,7 @@ div#manualModal:not(.windowed) {
     transition: font-size var(--transition-slow);
 }
 
-@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+@media (hover: hover) {
     .manual-preview-content:hover:not(:disabled) .overlay-time {
         font-size: 2.75em;
     }
@@ -1064,7 +1131,7 @@ div#manualModal:not(.windowed) {
     transition: opacity var(--transition-slow);
 }
 
-@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+@media (hover: hover) {
     .manual-preview-content:hover:not(:disabled) .overlay-weather-info {
         opacity: 1;
     }
@@ -1124,7 +1191,7 @@ div#manualModal:not(.windowed) {
     padding-top: 0.25em;
 }
 
-@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+@media (hover: hover) {
     .manual-preview-content:hover:not(:disabled) .overlay-weather-icon .wi {
         font-size: 2.5em;
         padding-top: 0em;
@@ -2230,7 +2297,7 @@ div#dynamicGenerationGroup {
     gap: 15px;
     width: 100%;
     padding: var(--spacing-sm);
-    border-top: 1px solid var(--glass-windows-bg);
+    border-top: 1px solid var(--glass-windows-semi-bg);
     background: var(--glass-layer-alt-4, var(--glass-layer-2));
     transition: var(--transition-glass-surface);
     border-radius: 0 0 var(--border-radius-md) var(--border-radius-md);
@@ -3438,3 +3505,4 @@ html.disable-blur .manual-loading-overlay {
 body:not(.desktop-mode) div#manualModal {
     z-index: 1001;
 }
+

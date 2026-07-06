@@ -280,6 +280,15 @@ class WebSocketRequestsModal {
         return window.wsClient.bannerManager.formatRequestType(type) || type || 'Unknown';
     }
 
+    getDispatchBadgeHtml(req, fifoQueueIndex) {
+        // formatWsDispatchBadge: public/scripts/ws/wsDispatchPolicy.js
+        if (typeof formatWsDispatchBadge !== 'function') {
+            return '';
+        }
+        const queueInfo = fifoQueueIndex && fifoQueueIndex.get ? fifoQueueIndex.get(req.id) : null;
+        return formatWsDispatchBadge(req.type, queueInfo);
+    }
+
     formatDuration(ms) {
         if (ms < 1000) {
             return `${ms}ms`;
@@ -313,7 +322,15 @@ class WebSocketRequestsModal {
         const activeRequestsList = lists.activeList;
         if (!activeRequestsList) return;
 
-        const currentHash = requests.map(r => `${r.id}:${r.age}:${r.isPending ? 'p' : 'c'}`).join('|');
+        const fifoQueueIndex = typeof buildFifoQueueIndex === 'function'
+            ? buildFifoQueueIndex(requests)
+            : new Map();
+
+        const currentHash = requests.map(r => {
+            const fifo = typeof isWsFifoDispatch === 'function' && isWsFifoDispatch(r.type) ? 'f' : 'p';
+            const fifoPos = fifoQueueIndex.get(r.id)?.position || 0;
+            return `${r.id}:${r.age}:${r.isPending ? 'p' : 'c'}:${fifo}:${fifoPos}`;
+        }).join('|');
         const hashKey = this.renderTarget ? 'sidebar-active' : 'modal-active';
         if (this.lastActiveHash === `${hashKey}:${currentHash}` && activeRequestsList.querySelectorAll('.request-item').length > 0) {
             this.updateActiveRequestAges(requests, activeRequestsList);
@@ -346,6 +363,7 @@ class WebSocketRequestsModal {
         const html = requests.map(req => {
             const displayName = this.formatRequestType(req.type);
             const age = this.formatDuration(req.age);
+            const dispatchBadge = this.getDispatchBadgeHtml(req, fifoQueueIndex);
             
             // Use spinner for pending, check/cross for recently completed
             let iconClass = 'fas fa-spinner fa-spin';
@@ -362,6 +380,7 @@ class WebSocketRequestsModal {
                         <div class="request-name tag-wiki-result-name">
                             <i class="${iconClass}"></i>
                             <span>${this.escapeHtml(displayName)}</span>
+                            ${dispatchBadge}
                         </div>
                         <div class="request-meta">
                             <span class="request-type">${this.escapeHtml(req.type)}</span>
@@ -464,6 +483,7 @@ class WebSocketRequestsModal {
             const displayName = this.formatRequestType(req.type);
             const timestamp = this.formatTimestamp(req.completedAt || req.timestamp);
             const errorText = req.error ? this.escapeHtml(req.error.message || 'Unknown error') : '';
+            const dispatchBadge = this.getDispatchBadgeHtml(req, null);
             
             // Only show duration if it was longer than 1 second
             const durationDisplay = req.duration && req.duration >= 1000 
@@ -476,6 +496,7 @@ class WebSocketRequestsModal {
                         <div class="request-name tag-wiki-result-name">
                             <i class="fas fa-${req.error ? 'times-circle' : 'check-circle'}"></i>
                             <span>${this.escapeHtml(displayName)}</span>
+                            ${dispatchBadge}
                         </div>
                         <div class="request-meta">
                             <span class="request-type">${this.escapeHtml(req.type)}</span>

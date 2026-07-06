@@ -16,6 +16,7 @@ const SECURITY_DSAP_MANIFEST_URL_LEGACY = 'security.dyna.dreamscape.jp';
 const ISPY_DSAP_MANIFEST_URL = 'ispy.dreamscape.jp';
 const OMEGASEARCH_DSAP_MANIFEST_URL = 'omegasearch.dyna.dreamscape.jp';
 const DATA_DSAP_MANIFEST_URL = 'data.dreamscape.jp';
+const AUTOFILL_DSAP_MANIFEST_URL = 'autofill.dreamscape.jp';
 
 function openDataManagementDsap(tabId) {
     let target;
@@ -175,6 +176,38 @@ function registerDsapManifests() {
             launch() {
                 const path = `dsap://${DATA_DSAP_MANIFEST_URL}/`;
                 openDsapInGrimoire(path);
+            }
+        }
+    });
+
+    registerDsap({
+        url: AUTOFILL_DSAP_MANIFEST_URL,
+        aliases: [
+            `dsap://${AUTOFILL_DSAP_MANIFEST_URL}`,
+            'en.grimoire.jp/applets/autofill',
+            'applet.grimoire.jp/autofill'
+        ],
+        type: 'dsap',
+        title: 'Autofill Ranking',
+        assets: {
+            scripts: ['scripts/comp/autofillConfigDsapApplet.js']
+        },
+        menuEntry: {
+            launchId: 'autofill-ranking',
+            icon: 'fas fa-arrow-down-wide-short',
+            imageIcon: 'slider.png',
+            text: 'Autofill Ranking',
+            appMenu: false,
+            startMenu: false,
+            desktopOnly: true,
+            adminOnly: true,
+            launch() {
+                // openAutofillRankingDsap: public/scripts/comp/autofillConfigDsapApplet.js
+                if (typeof openAutofillRankingDsap === 'function') {
+                    openAutofillRankingDsap();
+                } else {
+                    openDsapInGrimoire(`dsap://${AUTOFILL_DSAP_MANIFEST_URL}/`);
+                }
             }
         }
     });

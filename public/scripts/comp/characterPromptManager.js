@@ -460,7 +460,7 @@ function wireCharacterPromptTextarea(textarea, blurExtra) {
     addSafeEventListener(textarea, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
     addSafeEventListener(textarea, 'focus', () => startEmphasisHighlighting(textarea), 'focus');
     addSafeEventListener(textarea, 'blur', () => {
-        applyFormattedText(textarea, true);
+        if (window.autoFormatOnBlur !== false) applyFormattedText(textarea, true);
         updateEmphasisHighlighting(textarea);
         autoResizeTextarea(textarea);
         stopEmphasisHighlighting();
@@ -1099,6 +1099,7 @@ function scheduleMaybeSyncMainPromptSubjectTagsFromCharacterPrompts() {
 function maybeSyncMainPromptSubjectTagsFromCharacterPrompts() {
     const manualModal = document.getElementById('manualModal');
     if (!manualModal || manualModal.classList.contains('hidden')) return;
+    if (window.autoCharNumerize === false) return;
     if (isAnyManualScenePromptTextareaFocused()) return;
     if (!characterPromptsContainer || !manualPrompt) return;
 

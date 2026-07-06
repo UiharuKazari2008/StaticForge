@@ -677,6 +677,82 @@ textarea {
     flex-direction: column;
 }
 
+/* #characterAutocompleteOverlay owns a fixed key-guide footer: scroll the list, keep the guide always visible.
+   Scoped to the id so the shared file-search overlay (#fileSearchAutofill) keeps its own layout. */
+#characterAutocompleteOverlay {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#characterAutocompleteOverlay .character-autocomplete-list {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+/* Key guide pinned to the bottom of the autofill window (sibling of the list so it survives detail-view innerHTML swaps) */
+.character-autocomplete-keyguide {
+    flex: 0 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-xs) var(--spacing-md);
+    padding: 5px 8px;
+    background: var(--glass-layer-dark-5);
+    border-top: 1px solid var(--glass-border-2);
+    -webkit-backdrop-filter: var(--glass-blur-2, none);
+    backdrop-filter: var(--glass-blur-2, none);
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    user-select: none;
+}
+
+.character-autocomplete-keyguide .keyguide-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+}
+
+.character-autocomplete-keyguide kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.4em;
+    padding: 1px 4px;
+    background: var(--glass-layer-2);
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-sm);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    line-height: 1.2;
+    color: var(--primary-color-light);
+}
+
+/* Show the main-list hints by default; swap to the detail hints only when the character detail page is open */
+.character-autocomplete-keyguide .keyguide-detail {
+    display: none;
+}
+
+#characterAutocompleteOverlay:has(.character-detail-content) .keyguide-main {
+    display: none;
+}
+
+#characterAutocompleteOverlay:has(.character-detail-content) .keyguide-detail {
+    display: flex;
+}
+
+.keyguide-set {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-xs) var(--spacing-md);
+}
+
 .character-autocomplete-item {
     padding: 0.2em 0.5em;
     border-bottom: 1px solid var(--glass-border-2);

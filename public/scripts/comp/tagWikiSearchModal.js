@@ -3220,7 +3220,6 @@ class TagWikiSearchModal extends WikiDisplayBase {
         const isMaximized = this.modal.classList.contains('modal-maximized');
         const wideEnough = (this.modal.offsetWidth || 0) >= GRIMOIRE_SPLIT_MIN_WIDTH;
         const isCurrentlySplit = this.modal.classList.contains('tag-wiki-split-active');
-        this.updateSplitToggleButton(wideEnough, isCurrentlySplit, isMaximized);
 
         const userWantsSplit = this.loadSplitPanelPreference();
         const shouldBeSplit = isMaximized || (wideEnough && userWantsSplit);
@@ -3232,6 +3231,14 @@ class TagWikiSearchModal extends WikiDisplayBase {
             this.exitSplitMode();
             this._activePane = 'left';
         }
+
+        // Reflect the resulting split state (after enter/exit) so the toggle button
+        // never shows a stale label/active state.
+        this.updateSplitToggleButton(
+            wideEnough,
+            this.modal.classList.contains('tag-wiki-split-active'),
+            isMaximized
+        );
     }
 
     loadSplitPanelPreference() {

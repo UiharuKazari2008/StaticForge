@@ -546,7 +546,6 @@ class PromptTextareaToolbar {
             { value: 'emphasis-groups-tool', display: 'Emphasis Groups', icon: 'fas fa-sliders' },
             { value: 'clear-emphasis', display: 'Reset Emphasis', icon: 'fas fa-eraser' },
             { value: 'split-emphasis', display: 'Split Emphasis', icon: 'fas fa-scissors', toolbarWide: true },
-            { value: 'keep-newlines', display: 'Keep Newlines', icon: 'fas fa-paragraph', toggle: true },
             { value: 'request-body-replacements', display: 'Text Expanders', icon: 'fas fa-book-font' }
         ];
         return menuOptions;
@@ -806,6 +805,10 @@ class PromptTextareaToolbar {
     openSearch(textarea) {
         const toolbar = this.getToolbarFromTextarea(textarea);
         if (!toolbar) return;
+
+        // Close the autofill window if open so it doesn't overlap the search bar
+        // dismissAutocompleteForTextareaNavigation: public/scripts/comp/autocompleteUtils.js
+        dismissAutocompleteForTextareaNavigation();
 
         // Add search mode class to show search elements
         toolbar.classList.add('search-mode');
@@ -1860,31 +1863,41 @@ class PromptTextareaToolbar {
         }
 
         toolbar.directEmphasisApplyTimeout = setTimeout(() => {
-            const activePending = toolbar.directEmphasisPending;
-            toolbar.directEmphasisPending = null;
-            toolbar.directEmphasisApplyTimeout = null;
-            this.hideDirectEmphasisPreview(toolbar);
-            if (!activePending) return;
-
-            let numericValue = this.buildDirectEmphasisWeightFromDigits(activePending.digits);
-            if (numericValue === null) return;
-            if (activePending.isAlt) {
-                numericValue = -numericValue;
-            }
-
-            const ta = activePending.textarea;
-            const currentMode = this.detectEmphasisMode(ta, ta.selectionStart, ta.selectionEnd);
-            if (currentMode === 'brace') {
-                numericValue = snapWeightForBraceMode(numericValue);
-            }
-
-            const result = applyEmphasisDirectly(ta, numericValue, currentMode);
-            if (result && result.success) {
-                window.emphasisEditingValue = numericValue;
-                this.updateEmphasisDisplay(toolbar);
-                ta.setSelectionRange(result.start, result.end);
-            }
+            this.flushDirectEmphasisPending(toolbar);
         }, 500);
+    }
+
+    // Commit the pending direct-emphasis digits immediately (shared by the apply timeout and arrow-key commit)
+    flushDirectEmphasisPending(toolbar) {
+        if (toolbar.directEmphasisApplyTimeout) {
+            clearTimeout(toolbar.directEmphasisApplyTimeout);
+            toolbar.directEmphasisApplyTimeout = null;
+        }
+        const activePending = toolbar.directEmphasisPending;
+        toolbar.directEmphasisPending = null;
+        this.hideDirectEmphasisPreview(toolbar);
+        if (!activePending) return null;
+
+        let numericValue = this.buildDirectEmphasisWeightFromDigits(activePending.digits);
+        if (numericValue === null) return null;
+        if (activePending.isAlt) {
+            numericValue = -numericValue;
+        }
+
+        const ta = activePending.textarea;
+        const currentMode = this.detectEmphasisMode(ta, ta.selectionStart, ta.selectionEnd);
+        if (currentMode === 'brace') {
+            numericValue = snapWeightForBraceMode(numericValue);
+        }
+
+        const result = applyEmphasisDirectly(ta, numericValue, currentMode);
+        if (result && result.success) {
+            window.emphasisEditingValue = numericValue;
+            this.updateEmphasisDisplay(toolbar);
+            ta.setSelectionRange(result.start, result.end);
+            return result;
+        }
+        return null;
     }
 
     updateEmphasisDisplay(toolbar) {
@@ -2056,6 +2069,12 @@ class PromptTextareaToolbar {
         const directEmphasisHandler = (e) => {
             const textarea = resolveTargetTextarea(e.target);
             if (!textarea) return;
+
+            // While digits are pending, an arrow key commits the emphasis immediately, then the cursor moves as pressed
+            if (toolbar.directEmphasisPending && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+                this.flushDirectEmphasisPending(toolbar);
+                return;
+            }
 
             // Handle ALT + S for splitting emphasis blocks
             if (e.altKey && e.key === 's') {
@@ -2310,6 +2329,10 @@ class PromptTextareaToolbar {
 // Initialize the toolbar manager when the DOM is ready
 window.wsClient.registerInitStep(37, 'Initializing Prompt Toolbar', async () => {
     window.keepPromptNewlines = false;
+    window.autoCharNumerize = true;
+    window.autoFormatOnBlur = true;
+    window.promptNormalize = true;
+    window.deduplicateTags = true;
     window.promptTextareaToolbar = new PromptTextareaToolbar();
     window.promptTextareaToolbar.syncKeepNewlinesButtons();
     

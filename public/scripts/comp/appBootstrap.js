@@ -45,6 +45,17 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
 
             window.optionsData = options;
 
+            // resolveAccountDataStartupGate: public/scripts/comp/accountDataBootstrap.js
+            const accountGate = await resolveAccountDataStartupGate(options);
+            if (accountGate === 'cancelled') {
+                const err = new Error('Account data startup cancelled by user');
+                err.code = 'ACCOUNT_DATA_CANCELLED';
+                throw err;
+            }
+
+            // applyNovelAiStatusFromOptions: public/scripts/comp/novelAiAccountStatus.js
+            applyNovelAiStatusFromOptions(options);
+
             // loadDynamicGenerationQuips: public/scripts/comp/generationQuips.js
             if (typeof loadDynamicGenerationQuips === 'function') {
                 loadDynamicGenerationQuips().catch(() => {});
@@ -62,19 +73,23 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
                 });
             }
 
-            if (window.optionsData?.user?.ok !== true) {
-                showGlassToast('warning', 'User Data Error', window.optionsData.user.error || 'Failed to load user data', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+            if (!isAccountDataDeferred() && window.optionsData?.user?.ok !== true && window.optionsData?.userDataValid !== true) {
+                showGlassToast('warning', 'User Data Error', window.optionsData.user?.error || window.optionsData.userDataError || 'Failed to load user data', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+            }
+
+            // Update subscription notifications (skip when account data deferred)
+            if (!isAccountDataDeferred()) {
+                updateSubscriptionNotifications().catch(error => { });
+                updateSubscriptionRenewalIndicator();
+                updateFixedCreditsIndicator();
+                // maybeShowSubscriptionRenewalFailedNotice: public/scripts/comp/accountDataBootstrap.js
+                maybeShowSubscriptionRenewalFailedNotice(window.optionsData);
             }
 
             // Handle active workspace data if provided
             if (window.optionsData?.activeWorkspace) {
                 await handleWorkspaceDataFromOptions(window.optionsData.activeWorkspace);
             }
-
-            // Update subscription notifications
-            updateSubscriptionNotifications().catch(error => { });
-            updateSubscriptionRenewalIndicator();
-            updateFixedCreditsIndicator();
 
             // Check user type and show appropriate message
             const userType = localStorage.getItem('userType');

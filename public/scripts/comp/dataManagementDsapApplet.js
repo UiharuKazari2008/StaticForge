@@ -145,6 +145,219 @@ function dataMgmtDsapBuildWorkspacesTableHtml(workspaces) {
 </table>`;
 }
 
+function dataMgmtDsapFormatTierLabel(tier) {
+    if (tier === 3) return 'Opus';
+    if (tier === 2) return 'Scroll';
+    if (tier === 1) return 'Tablet';
+    if (tier === 0) return 'Free';
+    if (tier == null || tier === 'Unknown') return '—';
+    return 'Enterprise';
+}
+
+function dataMgmtDsapIsUserDataValid(user) {
+    if (!user) return false;
+    if (user.valid === false || user.userValid === false) return false;
+    if (user.error && user.ok !== true) return false;
+    return user.ok === true;
+}
+
+function dataMgmtDsapIsBalanceDataValid(balance, user) {
+    if (!balance) return false;
+    if (balance.valid === false || balance.balanceValid === false) return false;
+    if (balance.ok === false) return false;
+    if (balance.totalCredits === -1) return false;
+    if (user && (user.valid === false || user.userValid === false)) return false;
+    if (balance.valid === true || balance.balanceValid === true) return true;
+    if (user && user.ok !== true) return false;
+    return true;
+}
+
+function dataMgmtDsapResolveAccountIdentity(user) {
+    if (!user || !dataMgmtDsapIsUserDataValid(user)) return '—';
+    const identity = user.email || user.username || user.accessIdentifier || user.name;
+    return identity ? String(identity) : '—';
+}
+
+function dataMgmtDsapResolveBanMessage(user, optionsData) {
+    const msg = user?.banMessage || optionsData?.banMessage || user?.ban?.message || user?.subscription?.banMessage;
+    return msg ? String(msg).trim() : '';
+}
+
+function dataMgmtDsapResolveAccountStanding(user, balance, optionsData) {
+    if (optionsData?.accountDataDeferred) {
+        return { label: 'Account data deferred', tone: 'warn' };
+    }
+    if (optionsData?.userDataValid === false) {
+        const label = optionsData.userDataError || optionsData.accountStanding || 'Account data unavailable';
+        return { label: String(label), tone: 'error' };
+    }
+
+    const explicit = user?.accountStanding || optionsData?.accountStanding;
+    if (explicit) {
+        const normalized = String(explicit).toLowerCase();
+        let tone = '';
+        if (/ban|suspend|lock|denied|fail|unavail|error|invalid/.test(normalized)) tone = 'error';
+        else if (/grace|warn|expir|inactive|defer/.test(normalized)) tone = 'warn';
+        else if (/active|ok|good|valid/.test(normalized)) tone = 'ok';
+        return { label: String(explicit), tone };
+    }
+
+    const banMessage = dataMgmtDsapResolveBanMessage(user, optionsData);
+    if (banMessage || user?.banned || user?.isBanned || user?.subscription?.banned) {
+        return { label: 'Banned', tone: 'error' };
+    }
+
+    if (!user) {
+        return { label: 'Account data unavailable', tone: 'error' };
+    }
+
+    if (user.valid === false || user.userValid === false) {
+        return { label: 'Account data deferred', tone: 'warn' };
+    }
+
+    if (user.ok === false) {
+        if (user.reason === 'missing_api_key') {
+            return { label: 'NovelAI API key not configured', tone: 'error' };
+        }
+        if (user.reason === 'service_locked') {
+            return { label: 'Upstream unavailable (service locked)', tone: 'error' };
+        }
+        if (user.statusCode === 401 || user.statusCode === 403) {
+            return { label: 'Authentication failed', tone: 'error' };
+        }
+        return {
+            label: 'Upstream unavailable',
+            tone: 'error',
+            detail: user.error || null
+        };
+    }
+
+    const sub = user.subscription;
+    if (sub?.gracePeriod || optionsData?.gracePeriod || sub?.inGracePeriod) {
+        return { label: 'Grace period', tone: 'warn' };
+    }
+    if (sub && sub.active === false) {
+        return { label: 'Subscription inactive', tone: 'warn' };
+    }
+
+    if (dataMgmtDsapIsUserDataValid(user)) {
+        return { label: 'Active', tone: 'ok' };
+    }
+
+    return { label: 'Unknown', tone: 'warn' };
+}
+
+function dataMgmtDsapFormatBalanceCell(balance, field, valid) {
+    if (!valid) return '—';
+    const raw = balance?.[field];
+    if (raw == null || Number.isNaN(Number(raw))) return '—';
+    return dataMgmtDsapFormatNumber(raw);
+}
+
+function dataMgmtDsapBuildAccountSectionHtml() {
+    return `${dsapSmfBuildSectionHdr('Account Information')}
+<div id="dataMgmtAccountHost" class="data-mgmt-account-host">
+  ${dsapSmfBuildStatusBox('<span id="dataMgmtAccountStanding">Loading…</span>', 'dataMgmtAccountStandingBox', 'dataMgmtAccountStanding')}
+  ${dsapSmfBuildStatsTable([
+        { label: 'Fixed Anlas', valueHtml: '<span id="dataMgmtBalanceFixed">—</span>', width: '33%' },
+        { label: 'Paid Anlas', valueHtml: '<span id="dataMgmtBalancePaid">—</span>', width: '33%' },
+        { label: 'Total Anlas', valueHtml: '<span id="dataMgmtBalanceTotal">—</span>', width: '34%' }
+    ], 'dataMgmtBalanceStats')}
+  <table class="data-mgmt-account-info-table" cellspacing="0" cellpadding="4" width="100%" border="1">
+    <tbody>
+      <tr><td class="data-mgmt-account-info-label">Subscription</td><td id="dataMgmtAccountTier" class="data-mgmt-account-info-value">—</td></tr>
+      <tr><td class="data-mgmt-account-info-label">Account</td><td id="dataMgmtAccountIdentity" class="data-mgmt-account-info-value">—</td></tr>
+      <tr><td class="data-mgmt-account-info-label">Renews</td><td id="dataMgmtAccountExpiry" class="data-mgmt-account-info-value">—</td></tr>
+    </tbody>
+  </table>
+  <div id="dataMgmtBanMessageHost" class="data-mgmt-ban-host hidden"></div>
+</div>`;
+}
+
+function dataMgmtDsapRenderAccountSection(root) {
+    const standingEl = root.querySelector('#dataMgmtAccountStanding');
+    const standingBox = root.querySelector('#dataMgmtAccountStandingBox');
+    const fixedEl = root.querySelector('#dataMgmtBalanceFixed');
+    const paidEl = root.querySelector('#dataMgmtBalancePaid');
+    const totalEl = root.querySelector('#dataMgmtBalanceTotal');
+    const tierEl = root.querySelector('#dataMgmtAccountTier');
+    const identityEl = root.querySelector('#dataMgmtAccountIdentity');
+    const expiryEl = root.querySelector('#dataMgmtAccountExpiry');
+    const banHost = root.querySelector('#dataMgmtBanMessageHost');
+    if (!standingEl || !fixedEl || !paidEl || !totalEl) return;
+
+    const optionsData = window.optionsData || null;
+    const user = optionsData?.user || null;
+    const balance = optionsData?.balance || null;
+    const accountUsable = !optionsData?.accountDataDeferred && optionsData?.userDataValid !== false;
+    const userValid = accountUsable && dataMgmtDsapIsUserDataValid(user);
+    const balanceValid = accountUsable && dataMgmtDsapIsBalanceDataValid(balance, user);
+    const standing = dataMgmtDsapResolveAccountStanding(user, balance, optionsData);
+
+    standingEl.textContent = standing.label;
+    if (standing.detail) standingEl.title = standing.detail;
+    else standingEl.title = '';
+    if (standingBox) {
+        standingBox.classList.remove('dsap-smf-status-ok', 'dsap-smf-status-error');
+        if (standing.tone === 'ok') standingBox.classList.add('dsap-smf-status-ok');
+        else if (standing.tone === 'error') standingBox.classList.add('dsap-smf-status-error');
+    }
+
+    fixedEl.textContent = dataMgmtDsapFormatBalanceCell(balance, 'fixedTrainingStepsLeft', balanceValid);
+    paidEl.textContent = dataMgmtDsapFormatBalanceCell(balance, 'purchasedTrainingSteps', balanceValid);
+    totalEl.textContent = dataMgmtDsapFormatBalanceCell(balance, 'totalCredits', balanceValid);
+
+    if (tierEl) {
+        if (userValid && user?.subscription?.tier !== undefined) {
+            tierEl.textContent = dataMgmtDsapFormatTierLabel(user.subscription.tier);
+        } else {
+            tierEl.textContent = '—';
+        }
+    }
+
+    if (identityEl) {
+        const identity = dataMgmtDsapResolveAccountIdentity(user);
+        identityEl.textContent = identity;
+        identityEl.title = identity !== '—' ? identity : '';
+    }
+
+    if (expiryEl) {
+        if (userValid && user?.subscription?.expiresAt) {
+            // getSubscriptionRenewalDisplayData: public/scripts/comp/trayIndicators.js
+            const renewalData = getSubscriptionRenewalDisplayData(user.subscription.expiresAt);
+            expiryEl.textContent = renewalData.renewalDateTimeStr;
+            expiryEl.title = renewalData.timeRemaining;
+        } else {
+            expiryEl.textContent = '—';
+            expiryEl.title = '';
+        }
+    }
+
+    if (banHost) {
+        const banMessage = dataMgmtDsapResolveBanMessage(user, optionsData);
+        if (banMessage) {
+            banHost.classList.remove('hidden');
+            banHost.innerHTML = dsapSmfBuildStatusBox(
+                `<span class="data-mgmt-ban-label">Ban notice</span><div class="data-mgmt-ban-text">${dataMgmtDsapEscapeHtml(banMessage)}</div>`,
+                'dataMgmtBanMessageBox',
+                'dataMgmtBanMessageText'
+            );
+            const banBox = banHost.querySelector('#dataMgmtBanMessageBox');
+            if (banBox) banBox.classList.add('dsap-smf-status-error');
+        } else {
+            banHost.classList.add('hidden');
+            banHost.innerHTML = '';
+        }
+    }
+}
+
+function dataMgmtDsapRefreshAccountIfPresent() {
+    const host = document.getElementById('dataMgmtAccountHost');
+    if (!host) return;
+    const root = host.closest('[data-dsap="data-mgmt"]');
+    if (root) dataMgmtDsapRenderAccountSection(root);
+}
+
 function dataMgmtDsapBuildStorageTableHtml(usage) {
     if (!usage) return '<p class="data-mgmt-muted">Storage breakdown unavailable</p>';
 
@@ -167,7 +380,8 @@ function dataMgmtDsapBuildStorageTableHtml(usage) {
 }
 
 function dataMgmtDsapBuildStatusHtml() {
-    return `${dsapSmfBuildSectionHdr('System Status')}
+    return `${dataMgmtDsapBuildAccountSectionHtml()}
+${dsapSmfBuildSectionHdr('System Status')}
 <div class="data-mgmt-status-layout">
   <div class="data-mgmt-status-left">
     <div class="data-mgmt-panel-hdr">Generations by Workspace</div>
@@ -510,8 +724,23 @@ function dataMgmtDsapRefreshFavoritesIfPresent() {
     if (root) dataMgmtDsapRenderFavoritesList(root);
 }
 
+function dataMgmtDsapRefreshStatusIfPresent() {
+    const pieHost = document.getElementById('dataMgmtPieHost');
+    if (!pieHost) return;
+    const root = pieHost.closest('[data-dsap="data-mgmt"]');
+    if (root) void dataMgmtDsapDriver._loadStatus(root);
+}
+
 const dataMgmtDsapScopedCss = `
 [data-dsap="data-mgmt"] .data-mgmt-view { padding: 4px 0 0; }
+[data-dsap="data-mgmt"] .data-mgmt-account-host { margin-bottom: 12px; }
+[data-dsap="data-mgmt"] .data-mgmt-account-info-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 5px; background: #fff; }
+[data-dsap="data-mgmt"] .data-mgmt-account-info-table td { padding: 4px 6px; border: 1px solid #e2e8ee; vertical-align: top; }
+[data-dsap="data-mgmt"] .data-mgmt-account-info-label { width: 34%; font-weight: 600; background: #f4f6f8; color: var(--dsap-smf-context-bg, #336699); white-space: nowrap; }
+[data-dsap="data-mgmt"] .data-mgmt-account-info-value { word-break: break-word; }
+[data-dsap="data-mgmt"] .data-mgmt-ban-host { margin-top: 5px; }
+[data-dsap="data-mgmt"] .data-mgmt-ban-label { display: block; font-weight: 600; margin-bottom: 4px; }
+[data-dsap="data-mgmt"] .data-mgmt-ban-text { font-weight: normal; white-space: pre-wrap; word-break: break-word; line-height: 1.4; }
 [data-dsap="data-mgmt"] .data-mgmt-view.data-mgmt-view-fill { min-height: calc(100vh - 180px); }
 [data-dsap="data-mgmt"] .data-mgmt-status-layout { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
 [data-dsap="data-mgmt"] .data-mgmt-status-left { flex: 0 0 280px; min-width: 240px; max-width: 100%; }
@@ -537,14 +766,14 @@ const dataMgmtDsapScopedCss = `
 [data-dsap="data-mgmt"] .data-mgmt-workspaces-table tbody td,
 [data-dsap="data-mgmt"] .data-mgmt-storage-table tbody td { padding: 4px 6px; border-bottom: 1px solid #e2e8ee; }
 [data-dsap="data-mgmt"] .data-mgmt-ws-name-header,
-[data-dsap="data-mgmt"] .data-mgmt-storage-label { text-align: left; width: 100%; }
+[data-dsap="data-mgmt"] .data-mgmt-storage-label { text-align: left!important; width: 100%; }
 [data-dsap="data-mgmt"] .data-mgmt-ws-col,
 [data-dsap="data-mgmt"] .data-mgmt-storage-value { text-align: right; white-space: nowrap; }
 [data-dsap="data-mgmt"] .data-mgmt-ws-table,
 [data-dsap="data-mgmt"] .data-mgmt-favorites-table { margin-top: 2px; }
-[data-dsap="data-mgmt"] .data-mgmt-ws-name-cell { text-align: left; vertical-align: middle; display: inline-flex; align-items: center; }
-[data-dsap="data-mgmt"] .data-mgmt-ws-name-cell span.workspace-color-indicator { display: inline-block;}
-[data-dsap="data-mgmt"] .data-mgmt-ws-color { display: inline-block; width: 10px; height: 10px; border: 1px solid rgba(0,0,0,0.2); margin-right: 6px; vertical-align: middle; }
+[data-dsap="data-mgmt"] .data-mgmt-ws-name-cell { text-align: left; vertical-align: middle; }
+[data-dsap="data-mgmt"] .data-mgmt-ws-name-cell span.workspace-color-indicator { display: inline-block; vertical-align: middle; }
+[data-dsap="data-mgmt"] .data-mgmt-ws-color { display: inline-block; width: 10px; height: 20px; border: 1px solid rgba(0,0,0,0.2); margin-right: 6px; vertical-align: middle; }
 [data-dsap="data-mgmt"] .data-mgmt-ws-name { font-weight: 600; vertical-align: middle; }
 [data-dsap="data-mgmt"] .data-mgmt-ws-active { color: #228822; margin-left: 4px; vertical-align: middle; }
 [data-dsap="data-mgmt"] .data-mgmt-ws-drag-cell { color: #666; }
@@ -553,7 +782,16 @@ const dataMgmtDsapScopedCss = `
 [data-dsap="data-mgmt"] .data-mgmt-ws-actions-cell,
 [data-dsap="data-mgmt"] .data-mgmt-fav-actions { white-space: nowrap; text-align: center; }
 [data-dsap="data-mgmt"] .data-mgmt-ws-actions-cell .dsap-smf-btn,
-[data-dsap="data-mgmt"] .data-mgmt-fav-actions .dsap-smf-btn { padding: 3px 8px; margin: 0 1px; min-width: 26px; }
+[data-dsap="data-mgmt"] .data-mgmt-fav-actions .dsap-smf-btn { padding: 3px 8px;
+    margin: 0 1px;
+    min-width: 26px;
+    min-height: 28px;
+    max-width: 30px;
+    max-height: 28px;
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    vertical-align: middle; }
 [data-dsap="data-mgmt"] .data-mgmt-ws-row.dragging { opacity: 0.55; background: #ffffee; }
 [data-dsap="data-mgmt"] .data-mgmt-ws-row.drag-over { outline: 1px dashed var(--dsap-smf-tab-accent, #ff8c00); }
 [data-dsap="data-mgmt"] .data-mgmt-fav-name { font-weight: 600; }
@@ -568,6 +806,7 @@ const dataMgmtDsapScopedCss = `
 const dataMgmtDsapDriver = {
     _host: null,
     _statusData: null,
+    _accountListenersWired: false,
 
     init(host) {
         this._host = host;
@@ -588,6 +827,8 @@ const dataMgmtDsapDriver = {
 
         if (activeTab === 'status') {
             viewHost.innerHTML = dataMgmtDsapBuildStatusHtml();
+            dataMgmtDsapRenderAccountSection(root);
+            this._wireAccountListeners(host, root);
             void this._loadStatus(root);
         } else if (activeTab === 'workspaces') {
             viewHost.innerHTML = dataMgmtDsapBuildWorkspacesHtml();
@@ -603,6 +844,8 @@ const dataMgmtDsapDriver = {
             setTimeout(() => this._wireStubs(root), 0);
         } else {
             viewHost.innerHTML = dataMgmtDsapBuildStatusHtml();
+            dataMgmtDsapRenderAccountSection(root);
+            this._wireAccountListeners(host, root);
             void this._loadStatus(root);
         }
 
@@ -614,6 +857,7 @@ const dataMgmtDsapDriver = {
     destroy(host) {
         this._host = null;
         this._statusData = null;
+        this._accountListenersWired = false;
         const root = host?.getRoot?.();
         if (!root) return;
         const addBtn = root.querySelector('#dataMgmtWorkspaceAddBtn');
@@ -622,6 +866,15 @@ const dataMgmtDsapDriver = {
 
     refresh(host) {
         this.init(host);
+    },
+
+    _wireAccountListeners(host, root) {
+        if (this._accountListenersWired) return;
+        this._accountListenersWired = true;
+        host.on('ping', () => {
+            const accountHost = root.querySelector('#dataMgmtAccountHost');
+            if (accountHost) dataMgmtDsapRenderAccountSection(root);
+        });
     },
 
     async _loadStatus(root) {

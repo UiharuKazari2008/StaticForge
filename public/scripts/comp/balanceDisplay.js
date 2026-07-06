@@ -45,6 +45,30 @@ function updateBalanceDisplay(balance) {
 
     const balanceIcon = balanceDisplay[0].querySelector('i');
 
+    // isAccountDataDeferred: public/scripts/comp/accountDataBootstrap.js
+    if (balance?.deferred === true || (typeof isAccountDataDeferred === 'function' && isAccountDataDeferred())) {
+        balanceAmount.forEach((amount) => {
+            amount.textContent = '---';
+        });
+        if (balanceFixed) {
+            balanceFixed.forEach((fixed) => {
+                fixed.textContent = '---';
+            });
+        }
+        if (balancePaid) {
+            balancePaid.forEach((paid) => {
+                paid.textContent = '---';
+            });
+        }
+        balanceDisplay.forEach((display) => {
+            display.title = 'Account data unavailable';
+            display.classList.remove('low-credits');
+        });
+        if (balanceIcon) {
+            balanceIcon.className = 'fas fa-user-slash';
+        }
+        return;
+    }
 
     const totalCredits = balance?.totalCredits || 0;
     const fixedCredits = balance?.fixedTrainingStepsLeft || 0;
@@ -73,13 +97,15 @@ function updateBalanceDisplay(balance) {
                 ? `<i class="nai-anla"></i> ${changes.join(', ')}`
                 : '';
 
-            if (message) {
+            // On desktop the server receipt notifications drive the credits tray popover; skip the
+            // generic client-side balance toast so it can't override the receipt popup.
+            if (message && !window.isDesktop) {
                 showGlassToast(
                     'info',
                     'Balance Updated',
                     message,
                     false,
-                    window.isDesktop ? false : 10000,
+                    10000,
                     '<i class="fas fa-sync-alt"></i>'
                 );
             }

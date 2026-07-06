@@ -38,6 +38,18 @@ const XaiNativeService = require('./aiServices/xaiNativeService');
 const PromptLogitAnalyzer = require('./promptLogitAnalyzer');
 const WorkspaceManager = require('./workspace');
 const Queue = require('./queue');
+const { normalizeNovelAiSubscription } = require('./novelAiSubscription');
+const { NovelAiStatusMonitor } = require('./novelAiStatusMonitor');
+const {
+    evaluateAccountDataHealth,
+    getAccountHealthPublicFields,
+    evaluateAccountHealthAfterBalanceSync,
+} = require('./accountDataHealth');
+const {
+    initializeAccountSubscriptionSnapshot,
+    recordSubscriptionRefresh,
+    getAccountSubscriptionNoticeFields,
+} = require('./accountSubscriptionSnapshot');
 const metadataDatabase = require('./metadataDatabase');
 const chatDatabase = require('./chatDatabase');
 const directorDatabase = require('./directorDatabase');
@@ -102,6 +114,8 @@ class GlobalResources {
         this.referenceMetadataDatabase = null;
         this.generationQuipsDatabase = null;
         this.generationQuipsManager = null;
+        this.novelAiStatusMonitor = null;
+        this.bootCycleId = crypto.randomUUID();
         this.datasetTagService = null;
 
         // Singleton managers (already instantiated as singletons)
@@ -163,6 +177,8 @@ class GlobalResources {
         };
         this.lastBalanceCheck = 0;
         this.lastAccountDataCheck = 0;
+        // Task 1 account health — see modules/accountDataHealth.js (Tasks 2/3 consume via get_app_options / ping)
+        this.accountDataHealth = evaluateAccountDataHealth({ ok: false, reason: 'not_initialized' });
         this.refreshBalanceCallback = null; // Callback function to refresh balance (set from web_server.js)
         this.getBalanceCallback = null; // Callback function to get balance (set from web_server.js)
         this.getUserDataCallback = null; // Callback function to get user data (set from web_server.js)
@@ -353,7 +369,8 @@ class GlobalResources {
             furrySuffixIndex: path.join(rootDir, '.cache', 'furry_suffix_index.json'),
 
             // Image counter (scripts/image-counter.js)
-            imageCounterFile: path.join(rootDir, '.cache', 'image_counter.json')
+            imageCounterFile: path.join(rootDir, '.cache', 'image_counter.json'),
+            accountSubscriptionSnapshot: path.join(rootDir, '.cache', 'account_subscription_snapshot.json'),
         };
     }
 
@@ -613,6 +630,19 @@ class GlobalResources {
     }
 
     /**
+     * Immediately schedule a workspace theme CSS recompile + client broadcast.
+     * The workspaces config cache is updated synchronously on save, so this reads the
+     * latest theme values without waiting for the debounced disk write.
+     * modules/configManager.js scheduleWorkspaceCssRecompile
+     */
+    scheduleWorkspaceCssRecompile() {
+        if (!this.configManager) {
+            return;
+        }
+        this.configManager.scheduleWorkspaceCssRecompile();
+    }
+
+    /**
      * Queue a debounced workspaceDesktop save merging window position updates into any pending write
      * @param {Object} partialPositions
      */
@@ -854,6 +884,9 @@ class GlobalResources {
             // STEP 19: Initialize system info cache
             // Initialize system info cache
             this.initializeSystemInfoCache();
+
+            this.initializeNovelAiStatusMonitor();
+            initializeAccountSubscriptionSnapshot(this);
 
             // Reconcile workspace file lists on disk/config (no metadata DB access).
             if (this.workspace) {
@@ -1530,6 +1563,8 @@ class GlobalResources {
             // Initialize tag database (tag-lookup)
             const tagLookup = new TagLookup(this);
             await tagLookup.initializeDatabase(databasesPath);
+            // modules/autofillRankingSettings.js — global autofill ranking config (config.autofillRanking)
+            tagLookup.setRankingConfig(this.getConfig()?.autofillRanking);
             this.tagDatabase = tagLookup;
             this.initializationProgress.tagDatabase = true;
             console.log('✓ Tag Wiki database ready');
@@ -1681,6 +1716,20 @@ class GlobalResources {
     /**
      * Initialize system information cache and start hourly refresh
      */
+    initializeNovelAiStatusMonitor() {
+        try {
+            this.novelAiStatusMonitor = new NovelAiStatusMonitor(this);
+            this.novelAiStatusMonitor.initializePolling();
+            this.initializationProgress.novelAiStatusMonitor = true;
+        } catch (error) {
+            console.error('  ❌ Failed to initialize NovelAI status monitor:', error);
+        }
+    }
+
+    getNovelAiStatusMonitor() {
+        return this.novelAiStatusMonitor || null;
+    }
+
     initializeSystemInfoCache() {
         // Initial cache load (async, don't wait)
         this.refreshSystemInfoCache().catch(error => {
@@ -2055,6 +2104,8 @@ class GlobalResources {
 
         try {
             this.apiKeyManager = new apiKeyManager(this);
+            // Broadcast + log tripwire lock changes so admins are notified in real time.
+            this.apiKeyManager.setLockChangeHandler((service, lock) => this._onApiServiceLockChange(service, lock));
             console.log('✓ API key manager initialized');
         } catch (error) {
             console.error('  ❌ Failed to initialize API key manager:', error);
@@ -2730,6 +2781,72 @@ class GlobalResources {
         return this.apiKeyManager;
     }
 
+    /**
+     * Whether an external service is currently tripwire-locked.
+     * @param {string} service - e.g. 'novelai', 'grok'
+     */
+    isServiceLocked(service) {
+        return !!(this.apiKeyManager && this.apiKeyManager.isServiceLocked(service));
+    }
+
+    /**
+     * Run an external API call behind the tripwire. Fast-fails when the service is
+     * locked, records success/failure outcomes, and re-throws the original error.
+     * @param {string} service - e.g. 'novelai', 'grok'
+     * @param {Function} fn - async function that performs the API call
+     */
+    async guardServiceCall(service, fn) {
+        const akm = this.getApiKeyManager();
+        if (akm.isServiceLocked(service)) {
+            const lock = akm.getServiceLock(service);
+            const label = this.apiKeyManager.SERVICE_METADATA[service]?.label || service;
+            const err = new Error(`${label} is temporarily locked after ${lock?.failureCount || 0} API error(s) (last HTTP ${lock?.lastStatus || '??'}). An admin must review the Service Key in the Security Center to unlock it.`);
+            err.code = 'SERVICE_LOCKED';
+            err.service = service;
+            throw err;
+        }
+        try {
+            const result = await fn();
+            akm.recordApiSuccess(service);
+            return result;
+        } catch (error) {
+            const status = akm.deriveStatusCode(error);
+            if (status !== null) {
+                akm.recordApiFailure(service, status, error.message);
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * React to tripwire lock changes: log and broadcast to connected admin clients.
+     * @private
+     */
+    _onApiServiceLockChange(service, lock) {
+        const label = this.apiKeyManager?.SERVICE_METADATA?.[service]?.label || service;
+        try {
+            if (lock.locked) {
+                this.logger.error(`🔒 API service locked: ${label} after ${lock.failureCount} error(s) (last HTTP ${lock.lastStatus}). Admin action required.`);
+            } else {
+                this.logger.normal(`🔓 API service unlocked: ${label}`);
+            }
+        } catch (error) {
+            console.error(`API service lock log error: ${error.message}`);
+        }
+        try {
+            const wsServer = this.webSocketServer;
+            if (wsServer && typeof wsServer.broadcastToAll === 'function') {
+                wsServer.broadcastToAll({
+                    type: 'api_service_lock_changed',
+                    data: { service, label, lock },
+                    timestamp: new Date().toISOString()
+                }, (clientInfo) => clientInfo && clientInfo.userType === 'admin');
+            }
+        } catch (error) {
+            console.error(`API service lock broadcast error: ${error.message}`);
+        }
+    }
+
     getApplicationAuthManager() {
         if (!this.applicationAuthManager) {
             throw new Error('Application auth manager not initialized - call initializeApplicationAuthManager() first');
@@ -3182,6 +3299,7 @@ class GlobalResources {
                 purchasedTrainingSteps: 0
             };
         }
+        this.accountData.subscription = normalizeNovelAiSubscription(this.accountData.subscription);
     }
 
     /**
@@ -3190,6 +3308,90 @@ class GlobalResources {
      */
     getAccountData() {
         return { ...this.accountData };
+    }
+
+    /**
+     * Account entitlement health for clients (Task 1 — Tasks 2/3 read same fields).
+     * @returns {{ userDataValid: boolean, userDataError: string|null, accountStanding: string, banMessage: string|null, upstreamUnavailable: boolean }}
+     */
+    getAccountDataHealth() {
+        return getAccountHealthPublicFields(this.accountDataHealth || evaluateAccountDataHealth({ ok: false }));
+    }
+
+    /**
+     * Account health + persisted subscription renewal notice for clients.
+     * @returns {ReturnType<typeof getAccountDataHealth> & ReturnType<typeof getAccountSubscriptionNoticeFields>}
+     */
+    getAccountClientFields() {
+        return {
+            ...this.getAccountDataHealth(),
+            ...getAccountSubscriptionNoticeFields(),
+        };
+    }
+
+    /**
+     * @returns {{ subscriptionRenewalFailed: boolean, accountSubscriptionLastRefreshAt: string|null }}
+     */
+    getAccountSubscriptionNoticeFields() {
+        return getAccountSubscriptionNoticeFields();
+    }
+
+    /**
+     * Persist subscription snapshot; detect renewal failure; broadcast when notice becomes pending.
+     * @param {object|null|undefined} subscription
+     * @private
+     */
+    _recordAccountSubscriptionRefresh(subscription) {
+        if (!subscription || typeof subscription !== 'object') {
+            return null;
+        }
+        const result = recordSubscriptionRefresh(subscription);
+        if (result.noticeChanged && result.renewalFailedPendingNotice) {
+            this._broadcastAccountHealthUpdated(this.accountDataHealth?.userDataValid === true);
+        }
+        return result;
+    }
+
+    /**
+     * Broadcast account health + balance to connected clients when health changes.
+     * @param {boolean} wasValid - userDataValid before the update
+     * @private
+     */
+    _broadcastAccountHealthUpdated(wasValid) {
+        try {
+            const wsServer = this.getWebSocketServer();
+            if (wsServer && typeof wsServer.broadcast === 'function') {
+                wsServer.broadcast({
+                    type: 'account_data_health_updated',
+                    data: {
+                        ...this.getAccountClientFields(),
+                        balance: this.getAccountBalance(),
+                    },
+                    timestamp: new Date().toISOString(),
+                });
+            }
+        } catch (_) {
+            // WebSocket server may not be ready during early boot
+        }
+    }
+
+    /**
+     * Apply health evaluation after balance/subscription sync; broadcast when fields change.
+     * @param {{ ok?: boolean, reason?: string, error?: string|null, subscription?: object|null }} balanceResult
+     * @private
+     */
+    _applyAccountHealthAfterBalanceSync(balanceResult) {
+        const wasValid = this.accountDataHealth?.userDataValid === true;
+        const prevSnapshot = JSON.stringify(this.getAccountDataHealth());
+        this.accountDataHealth = evaluateAccountHealthAfterBalanceSync(this.accountData, balanceResult);
+        if (this.accountDataHealth.userDataValid && this.accountData) {
+            this.accountData.ok = true;
+        } else if (this.accountData) {
+            this.accountData.ok = false;
+        }
+        if (JSON.stringify(this.getAccountDataHealth()) !== prevSnapshot) {
+            this._broadcastAccountHealthUpdated(wasValid);
+        }
     }
 
     /**
@@ -3290,23 +3492,56 @@ class GlobalResources {
         const ACCOUNT_DATA_REFRESH_INTERVAL = 4 * 60 * 60 * 1000; // 4 hours
         const now = Date.now();
 
-        if (now - this.lastAccountDataCheck >= ACCOUNT_DATA_REFRESH_INTERVAL || force) {
-            // Try plumbing first, fall back to direct callback for backward compatibility
-            let getUserDataFn = this.dataPlumbing.callbacks.has('getUserData')
-                ? this.dataPlumbing.callbacks.get('getUserData').callback
-                : (this.getUserDataCallback && typeof this.getUserDataCallback === 'function' ? this.getUserDataCallback : null);
-
-            if (getUserDataFn) {
-                const userData = await getUserDataFn();
-                if (userData.ok) {
-                    // Set full account data (includes subscription.trainingStepsLeft)
-                    this.setAccountData(userData);
-                    // Publish update via plumbing for subscribers
-                    this.dataPlumbing.publish('accountData:updated', userData);
-                }
-            }
-            this.lastAccountDataCheck = now;
+        if (now - this.lastAccountDataCheck < ACCOUNT_DATA_REFRESH_INTERVAL && !force) {
+            return this.getAccountDataHealth();
         }
+
+        const wasValid = this.accountDataHealth?.userDataValid === true;
+        const prevSnapshot = JSON.stringify(this.getAccountDataHealth());
+
+        let getUserDataFn = this.dataPlumbing.callbacks.has('getUserData')
+            ? this.dataPlumbing.callbacks.get('getUserData').callback
+            : (this.getUserDataCallback && typeof this.getUserDataCallback === 'function' ? this.getUserDataCallback : null);
+
+        if (!getUserDataFn) {
+            this.accountDataHealth = evaluateAccountDataHealth({ ok: false, reason: 'no_callback' });
+            this.lastAccountDataCheck = now;
+            if (JSON.stringify(this.getAccountDataHealth()) !== prevSnapshot) {
+                this._broadcastAccountHealthUpdated(wasValid);
+            }
+            return this.getAccountDataHealth();
+        }
+
+        const userData = await getUserDataFn();
+        const health = evaluateAccountDataHealth(userData);
+        this.accountDataHealth = health;
+
+        if (health.userDataValid) {
+            this.setAccountData({ ...userData, ok: true });
+            this.dataPlumbing.publish('accountData:updated', { ...userData, ...getAccountHealthPublicFields(health) });
+        } else {
+            const partial = userData && typeof userData === 'object' ? userData : {};
+            this.setAccountData({
+                ...partial,
+                ok: false,
+                error: health.userDataError || partial.error,
+                reason: partial.reason || health.userDataError,
+            });
+            const logPrefix = health.upstreamUnavailable ? 'Account data unavailable (upstream)' : 'Account data invalid';
+            console.warn(`⚠️ ${logPrefix}: ${health.userDataError || 'unknown error'}`);
+        }
+
+        if (this.accountData?.subscription) {
+            this._recordAccountSubscriptionRefresh(this.accountData.subscription);
+        }
+
+        this.lastAccountDataCheck = now;
+
+        if (JSON.stringify(this.getAccountDataHealth()) !== prevSnapshot) {
+            this._broadcastAccountHealthUpdated(wasValid);
+        }
+
+        return this.getAccountDataHealth();
     }
 
     /**
@@ -3320,14 +3555,16 @@ class GlobalResources {
         const now = Date.now();
 
         if (now - this.lastBalanceCheck >= (BALANCE_REFRESH_INTERVAL / 2) || force) {
-            // Check if there are active WebSocket clients connected
-            try {
-                const wsServer = this.getWebSocketServer();
-                if (wsServer && wsServer.getConnectionCount() === 0) {
-                    return;
+            if (!force) {
+                // Check if there are active WebSocket clients connected
+                try {
+                    const wsServer = this.getWebSocketServer();
+                    if (wsServer && wsServer.getConnectionCount() === 0) {
+                        return;
+                    }
+                } catch (error) {
+                    // WebSocket server not initialized yet, skip check
                 }
-            } catch (error) {
-                // WebSocket server not initialized yet, skip check
             }
 
             // Try plumbing first, fall back to direct callback for backward compatibility
@@ -3397,9 +3634,14 @@ class GlobalResources {
                             ...newBalanceData.subscription,
                             trainingStepsLeft: this.accountData.subscription.trainingStepsLeft
                         };
+                        this.accountData.subscription = normalizeNovelAiSubscription(this.accountData.subscription);
+                        this._recordAccountSubscriptionRefresh(this.accountData.subscription);
                     }
 
+                    this._applyAccountHealthAfterBalanceSync(newBalanceData);
                     this.lastBalanceCheck = now;
+                } else if (newBalanceData) {
+                    this._applyAccountHealthAfterBalanceSync(newBalanceData);
                 }
             }
         }

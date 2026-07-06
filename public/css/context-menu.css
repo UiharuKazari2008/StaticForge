@@ -290,6 +290,7 @@ span.context-menu-item-state {
 
 .menu-item-row.balance-list {
     color: var(--text-accent-tinted);
+    gap: var(--spacing-lg);
 }
 
 .anlas-subscription-section {

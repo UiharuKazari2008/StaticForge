@@ -1,6 +1,7 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
+const { WS_DISPATCH_FIFO_CONNECTION } = require('../wsMessageDispatcher');
 
-const WORKSPACE_DESTRUCTIVE = { destructive: true };
+const WORKSPACE_DESTRUCTIVE = { destructive: true, ...WS_DISPATCH_FIFO_CONNECTION };
 
 class WorkspaceWebSocketHandlers {
     constructor(handlersCtx) {

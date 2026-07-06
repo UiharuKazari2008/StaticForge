@@ -282,6 +282,7 @@ const MANUAL_CLASSIC_LEFT = [
     shortcutListItem('ALT + P', 'Allow Paid', 'fa fa-dollar-sign'),
     shortcutListItem('Alt + F', 'Favorite Tag', 'fa fa-star'),
     shortcutListItem('Alt + D', 'Disable Syntax', 'fa fa-ban'),
+    shortcutListItem('Alt + C', 'Clear Preview', 'fas fa-image-slash'),
     shortcutListItem('Alt + Esc', 'Close Editor', 'fa fa-times'),
     shortcutListDivider(),
     shortcutListItem('Alt + ,', 'Previous Image', 'nai-directional-arrow-left'),
@@ -782,6 +783,9 @@ function handleEscapeAndCharacterDetailKeys(e) {
         if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
             const autocompleteList = document.querySelector('.character-autocomplete-list');
             if (autocompleteList && autocompleteList.querySelector('.character-detail-content')) {
+                // Capture-phase listener runs before the focused textarea's own keydown (handleCharacterAutocompleteKeydown: public/scripts/comp/autocompleteUtils.js); stop propagation so the detail nav isn't applied twice.
+                e.preventDefault();
+                e.stopPropagation();
                 // handleCharacterDetailArrowKeys: public/scripts/comp/autocompleteUtils.js
                 handleCharacterDetailArrowKeys(e.key);
                 return true;
@@ -794,6 +798,9 @@ function handleEscapeAndCharacterDetailKeys(e) {
         if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
             const autocompleteList = document.querySelector('.character-autocomplete-list');
             if (autocompleteList && autocompleteList.querySelector('.character-detail-content')) {
+                // Stop propagation so the focused textarea's keydown (handleCharacterAutocompleteKeydown: public/scripts/comp/autocompleteUtils.js) doesn't apply the enhancer a second time.
+                e.preventDefault();
+                e.stopPropagation();
                 // handleCharacterDetailEnter: public/scripts/comp/autocompleteUtils.js
                 handleCharacterDetailEnter();
                 return true;
@@ -1316,6 +1323,14 @@ function handleKeyDown(event) {
                     showShortcutActionToast('Disable Selection');
                 }
             }
+            break;
+        case 'ALT+C':
+            if (!shouldHandleManualModalActions) break;
+            event.preventDefault();
+            event.stopPropagation();
+            // resetManualPreview: public/scripts/comp/manualPreviewManager.js
+            resetManualPreview();
+            showShortcutActionToast('Cleared Preview');
             break;
         case 'ALT+ESCAPE':
             if (!shouldHandleManualModalActions) break;

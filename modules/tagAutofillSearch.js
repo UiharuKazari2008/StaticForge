@@ -42,7 +42,7 @@ class TagAutofillSearch {
         }
 
         const tagLookup = this.getTagLookup();
-        const rows = await tagLookup.searchTagsAutofill(trimmed, { limit });
+        const rows = await tagLookup.searchTagsAutofill(trimmed, { limit, includeBreakdown: !!options.includeBreakdown });
 
         return rows.map((tag, index) => this.buildAutofillTag(tag, index));
     }
@@ -113,7 +113,10 @@ class TagAutofillSearch {
                 matchCoverage,
                 isExactMatch: matchTier === 4,
                 isPrefixMatch: matchTier >= 3
-            }
+            },
+            // Only present when searchTags({ includeBreakdown: true }) was requested
+            // (DSAP-SMF Autofill Ranking Test tab — public/scripts/comp/autofillConfigDsapApplet.js)
+            ...(tag.rankingBreakdown ? { rankingBreakdown: tag.rankingBreakdown } : {})
         };
     }
 

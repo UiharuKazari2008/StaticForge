@@ -1,7 +1,18 @@
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 const sharp = require('sharp');
 const { getImageDimensions, getResolutionFromDimensions } = require('./imageTools');
+
+// Stealth LSB steganography signatures (NovelAI / AUTOMATIC1111 stealth_pnginfo)
+// All signatures are exactly 15 characters (used as a fixed 120-bit prefix).
+const STEALTH_SIGNATURES = {
+    stealth_pnginfo: { mode: 'alpha', compressed: false },
+    stealth_pngcomp: { mode: 'alpha', compressed: true },
+    stealth_rgbinfo: { mode: 'rgb', compressed: false },
+    stealth_rgbcomp: { mode: 'rgb', compressed: true }
+};
+const STEALTH_SIGNATURE_BITS = 15 * 8;
 
 class PngMetadata {
     constructor(globalResources) {
@@ -11,6 +22,8 @@ class PngMetadata {
     // Helper: Read PNG metadata
     readMetadata(buffer) {
         const result = {};
+        // Records which chunk type carried the "Comment" payload (JtEXt/JiTXt/JzTXt)
+        let commentEncoding = null;
         const chunks = this.extractChunks(buffer);
         chunks.forEach(chunk => {
             switch (chunk.name) {
@@ -20,6 +33,9 @@ class PngMetadata {
                     }
                     const textChunk = this.textDecode(chunk.data);
                     result.tEXt[textChunk.keyword] = textChunk.text;
+                    if (textChunk.keyword === 'Comment') {
+                        commentEncoding = 'JtEXt';
+                    }
                     break;
                 case 'pHYs':
                     result.pHYs = {
@@ -36,6 +52,25 @@ class PngMetadata {
                                 result.tEXt = {};
                             }
                             result.tEXt[textDecodeResult.keyword] = textDecodeResult.text.replaceAll("\x00", "");
+                            if (textDecodeResult.keyword === 'Comment') {
+                                commentEncoding = 'JiTXt';
+                            }
+                        } catch (e) {
+                            console.error(e.message);
+                        }
+                    }
+                    break;
+                case 'zTXt':
+                    const ztxtResult = this.ztxtDecode(chunk.data);
+                    if (ztxtResult && (ztxtResult.keyword === "Comment" || ztxtResult.keyword === "Source" || ztxtResult.keyword === "Software")) {
+                        try {
+                            if (!result.tEXt) {
+                                result.tEXt = {};
+                            }
+                            result.tEXt[ztxtResult.keyword] = ztxtResult.text;
+                            if (ztxtResult.keyword === 'Comment') {
+                                commentEncoding = 'JzTXt';
+                            }
                         } catch (e) {
                             console.error(e.message);
                         }
@@ -45,7 +80,139 @@ class PngMetadata {
                     result[chunk.name] = true;
             }
         });
+        if (result.tEXt && result.tEXt.Comment && commentEncoding) {
+            result._encoding = commentEncoding;
+        }
         return result;
+    }
+
+    // Helper: Decode a zTXt (zlib-compressed text) chunk => { keyword, text }
+    ztxtDecode(data) {
+        try {
+            let i = 0;
+            let keyword = '';
+            while (i < data.length && data[i] !== 0) {
+                keyword += String.fromCharCode(data[i]);
+                i++;
+            }
+            i++; // skip null separator
+            // Next byte is the compression method (0 = zlib/deflate); skip it
+            i++;
+            const compressed = Buffer.from(data.slice(i));
+            let text = '';
+            try {
+                text = zlib.inflateSync(compressed).toString('utf8');
+            } catch (e) {
+                // Some encoders use raw deflate without zlib header
+                text = zlib.inflateRawSync(compressed).toString('utf8');
+            }
+            return { keyword, text };
+        } catch (e) {
+            console.error('Error decoding zTXt chunk:', e.message);
+            return null;
+        }
+    }
+
+    // Extract the stealth LSB payload bit-stream from raw pixel data for a given mode.
+    // mode: 'alpha' reads 1 bit/pixel from the alpha channel; 'rgb' reads 3 bits/pixel (R,G,B).
+    // Bits are read column-major (x outer, y inner) per the stealth_pnginfo spec.
+    _extractStealthPayload(data, width, height, channels, mode) {
+        const bitAt = (index) => {
+            if (mode === 'alpha') {
+                const x = Math.floor(index / height);
+                const y = index % height;
+                return data[(y * width + x) * channels + 3] & 1;
+            }
+            const pixel = Math.floor(index / 3);
+            const sub = index % 3;
+            const x = Math.floor(pixel / height);
+            const y = pixel % height;
+            return data[(y * width + x) * channels + sub] & 1;
+        };
+        const maxBits = mode === 'alpha' ? width * height : width * height * 3;
+        if (maxBits < STEALTH_SIGNATURE_BITS + 32) return null;
+
+        let p = 0;
+        let sig = '';
+        for (let i = 0; i < 15; i++) {
+            let b = 0;
+            for (let j = 0; j < 8; j++) b = (b << 1) | bitAt(p++);
+            sig += String.fromCharCode(b);
+        }
+        const sigInfo = STEALTH_SIGNATURES[sig];
+        if (!sigInfo || sigInfo.mode !== mode) return null;
+
+        let lenBits = 0;
+        for (let i = 0; i < 32; i++) lenBits = (lenBits << 1) | bitAt(p++);
+        lenBits = lenBits >>> 0;
+        if (lenBits <= 0 || lenBits % 8 !== 0 || p + lenBits > maxBits) return null;
+
+        const byteLen = lenBits / 8;
+        const payload = Buffer.alloc(byteLen);
+        for (let i = 0; i < byteLen; i++) {
+            let b = 0;
+            for (let j = 0; j < 8; j++) b = (b << 1) | bitAt(p++);
+            payload[i] = b;
+        }
+
+        let jsonStr;
+        try {
+            jsonStr = sigInfo.compressed ? zlib.gunzipSync(payload).toString('utf8') : payload.toString('utf8');
+        } catch (e) {
+            return null;
+        }
+        return { jsonStr, encoding: mode === 'alpha' ? 'LSB Alpha' : 'LSB RGB' };
+    }
+
+    // Decode stealth LSB metadata embedded in the alpha or RGB channels.
+    // Returns a readMetadata-shaped object ({ tEXt, _encoding }) or null.
+    async readStealthMetadata(buffer) {
+        try {
+            const { data, info } = await sharp(buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+            const { width, height, channels } = info;
+            let res = null;
+            if (channels >= 4) {
+                res = this._extractStealthPayload(data, width, height, channels, 'alpha');
+            }
+            if (!res) {
+                res = this._extractStealthPayload(data, width, height, channels, 'rgb');
+            }
+            if (!res) return null;
+
+            let parsed;
+            try {
+                parsed = JSON.parse(res.jsonStr);
+            } catch (e) {
+                return null;
+            }
+
+            // Stealth JSON mirrors the NovelAI tEXt keyword set
+            const tEXt = {};
+            if (parsed.Comment !== undefined) {
+                tEXt.Comment = typeof parsed.Comment === 'string' ? parsed.Comment : JSON.stringify(parsed.Comment);
+            }
+            if (parsed.Source !== undefined) tEXt.Source = parsed.Source;
+            if (parsed.Software !== undefined) tEXt.Software = parsed.Software;
+            if (parsed.Description !== undefined) tEXt.Description = parsed.Description;
+            if (!tEXt.Comment) return null;
+            return { tEXt, _encoding: res.encoding };
+        } catch (e) {
+            return null;
+        }
+    }
+
+    // Unified async reader: prefer PNG text chunks, fall back to stealth LSB steganography.
+    async readAnyMetadata(buffer) {
+        const meta = this.readMetadata(buffer);
+        if (meta && meta.tEXt && meta.tEXt.Comment) {
+            return meta;
+        }
+        const stealth = await this.readStealthMetadata(buffer);
+        if (stealth) {
+            meta.tEXt = { ...(meta.tEXt || {}), ...stealth.tEXt };
+            meta._encoding = stealth._encoding;
+        }
+        return meta;
     }
 
     // Helper: Update PNG metadata with forge_data
@@ -282,10 +449,11 @@ class PngMetadata {
     }
 
     // Helper: Extract NovelAI metadata from PNG
-    extractNovelAIMetadata(filePath) {
+    async extractNovelAIMetadata(filePath) {
         try {
             const buffer = fs.readFileSync(filePath);
-            const metadata = this.readMetadata(buffer);
+            const metadata = await this.readAnyMetadata(buffer);
+            const sourceEncoding = metadata._encoding || null;
         
         if (metadata.tEXt && metadata.tEXt.Comment) {
             let _metadata = JSON.parse(metadata.tEXt.Comment);
@@ -317,7 +485,7 @@ class PngMetadata {
                 if (fs.existsSync(originalPath)) {
                     try {
                         const originalBuffer = fs.readFileSync(originalPath);
-                        const originalMetadata = this.readMetadata(originalBuffer);
+                        const originalMetadata = await this.readAnyMetadata(originalBuffer);
                         if (originalMetadata.tEXt && originalMetadata.tEXt.Comment) {
                             _metadata = JSON.parse(originalMetadata.tEXt.Comment);
                             console.log(`✅ Loaded original metadata from: ${originalFilename}`);
@@ -331,7 +499,8 @@ class PngMetadata {
             const result = {
                 ..._metadata,
                 source: metadata.tEXt.Source,
-                software: metadata.tEXt.Software ? `${metadata.tEXt.Software} (${metadata.tEXt.Source})` : metadata.tEXt.Source
+                software: metadata.tEXt.Software ? `${metadata.tEXt.Software} (${metadata.tEXt.Source})` : metadata.tEXt.Source,
+                _encoding: sourceEncoding
             };
             
             // Extract forge_data if it exists, filtering to known fields
@@ -395,6 +564,10 @@ class PngMetadata {
                     'save_base_output',
                     'skip_pipeline_stages',
                     'auto_clean_uc',
+                    'keep_newlines',
+                    'auto_char_numerize',
+                    'prompt_normalize',
+                    'deduplicate_tags',
                     'novel_note_id',
                     'novel_story_cursor_line'
                 ];
@@ -860,6 +1033,26 @@ class PngMetadata {
         if (forgeData.auto_clean_uc !== undefined) {
             result.auto_clean_uc = forgeData.auto_clean_uc;
         }
+
+        // Add keep_newlines if available
+        if (forgeData.keep_newlines !== undefined) {
+            result.keep_newlines = forgeData.keep_newlines;
+        }
+
+        // Add auto_char_numerize if available
+        if (forgeData.auto_char_numerize !== undefined) {
+            result.auto_char_numerize = forgeData.auto_char_numerize;
+        }
+
+        // Add prompt_normalize if available
+        if (forgeData.prompt_normalize !== undefined) {
+            result.prompt_normalize = forgeData.prompt_normalize;
+        }
+
+        // Add deduplicate_tags if available
+        if (forgeData.deduplicate_tags !== undefined) {
+            result.deduplicate_tags = forgeData.deduplicate_tags;
+        }
         
         // Include forge_data in result
         result.forge_data = forgeData;
@@ -945,7 +1138,7 @@ class PngMetadata {
     // New comprehensive metadata extraction function for download URL functionality
     async extractMetadataSummary(buffer, filename = null) {
         try {
-            const metadata = this.readMetadata(buffer);
+            const metadata = await this.readAnyMetadata(buffer);
         
         if (!metadata.tEXt || !metadata.tEXt.Comment) {
             return {
@@ -1058,6 +1251,7 @@ class PngMetadata {
             ...condensedMetadata,
             source: metadata.tEXt.Source,
             software: metadata.tEXt.Software ? `${metadata.tEXt.Software} (${metadata.tEXt.Source})` : metadata.tEXt.Source,
+            _encoding: metadata._encoding || 'JtEXt',
             filename: filename,
             file_size: buffer.length,
             content_type: 'image/png'

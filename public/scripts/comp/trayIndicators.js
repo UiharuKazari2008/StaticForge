@@ -128,8 +128,14 @@ function getSubscriptionRenewalDisplayData(expiresAtUnix) {
 }
 
 function isUserSubscriptionDataReady() {
+    if (typeof isAccountDataDeferred === 'function' && isAccountDataDeferred()) {
+        return false;
+    }
     const user = window.optionsData?.user;
     if (!user || user.error) {
+        return false;
+    }
+    if (window.optionsData?.userDataValid === false) {
         return false;
     }
     const subscription = user.subscription;
@@ -187,6 +193,9 @@ function testCreditsIndicatorPopover() {
 }
 
 function updateSubscriptionRenewalIndicator(options = {}) {
+    if (typeof isAccountDataDeferred === 'function' && isAccountDataDeferred()) {
+        return;
+    }
     const indicator = document.getElementById('subscriptionRenewalIndicator');
     if (!indicator) return;
 
@@ -218,6 +227,11 @@ function updateSubscriptionRenewalIndicator(options = {}) {
 }
 
 function updateFixedCreditsIndicator(options = {}) {
+    if (typeof isAccountDataDeferred === 'function' && isAccountDataDeferred()) {
+        const indicator = document.getElementById('fixedCreditsIndicator');
+        if (indicator) indicator.classList.add('hidden');
+        return;
+    }
     const indicator = document.getElementById('fixedCreditsIndicator');
     if (!indicator) return;
 
@@ -271,123 +285,8 @@ function updateFixedCreditsIndicator(options = {}) {
         indicator.title = `Free credits: ${fixedCredits} (Total: ${totalCredits})`;
     }
 
-    // Attach context menu if not already attached
-    if (contextMenu && !indicator.dataset.contextMenu) {
-        const contextMenuId = 'fixedCreditsContextMenu';
-        indicator.dataset.contextMenu = contextMenuId;
-
-        contextMenu.attachToElement(indicator, {
-            sections: [
-                {
-                    type: 'custom',
-                    content: `
-                        <div class="anlas-subscription-section" style="padding: 0 10px; gap: var(--spacing-xs);">
-                            <div class="menu-item-row balance-list">
-                                <i class="nai-anla"></i>
-                                <div class="price-list-container">
-                                    <div class="price-list-fixed">
-                                        <span class="price-list-label hidden">Fixed</span> 
-                                        <span id="contextAnlasBalanceFixedTray" class="price-list balanceFixed">-</span>
-                                    </div>
-                                    <i class="fas fa-circle" style="font-size: 0.35rem; padding-top: 0.15rem;"></i>
-                                    <div class="price-list-paid">
-                                        <span class="price-list-label hidden">Paid</span>
-                                        <span id="contextAnlasBalancePaidTray" class="price-list balancePaid">-</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="menu-item-row balance-list">
-                                <i class="nai-opus" style="font-size: 1.15rem; margin: calc(-1.15rem / 2) 0;"></i>
-                                <div class="price-list-container">
-                                    <span class="anlas-subscription-value" id="contextAnlasSubscriptionTierTray">Free</span>
-                                    <i class="fas fa-circle hidden" id="contextAnlasSubscriptionDividerTray" style="font-size: 0.35rem; padding-top: 0.15rem;"></i>
-                                    <span class="anlas-subscription-value" id="contextAnlasDaysTillExpireTray">
-                                        <i class="fas fa-exclamation-triangle anlas-warning-icon hidden"></i>
-                                        <span class="anlas-days-text">Loading...</span>
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    `,
-                    loadfn: (section, target) => {
-                        // Update balance values
-                        if (window.optionsData?.balance) {
-                            const balance = window.optionsData.balance;
-                            const fixedCredits = balance?.fixedTrainingStepsLeft || 0;
-                            const purchasedCredits = balance?.purchasedTrainingSteps || 0;
-
-                            // Update context menu balance elements
-                            const contextBalanceFixed = document.getElementById('contextAnlasBalanceFixedTray');
-                            const contextBalancePaid = document.getElementById('contextAnlasBalancePaidTray');
-
-                            if (contextBalanceFixed) {
-                                contextBalanceFixed.textContent = fixedCredits;
-                            }
-                            if (contextBalancePaid) {
-                                contextBalancePaid.textContent = purchasedCredits;
-                            }
-                        }
-
-                        // Update subscription values
-                        try {
-                            const subscriptionTierElement = document.getElementById('contextAnlasSubscriptionTierTray');
-                            const daysTillExpireElement = document.getElementById('contextAnlasDaysTillExpireTray');
-                            const subscriptionDivider = document.getElementById('contextAnlasSubscriptionDividerTray');
-                            const warningIcon = document.querySelector('#contextAnlasDaysTillExpireTray .anlas-warning-icon');
-                            const daysText = document.querySelector('#contextAnlasDaysTillExpireTray .anlas-days-text');
-
-                            if (subscriptionTierElement && daysTillExpireElement && warningIcon && daysText) {
-                                const accountData = window.optionsData;
-
-                                if (accountData?.user?.subscription?.tier !== undefined) {
-                                    // Update subscription tier
-                                    const subscriptionTier = accountData.user.subscription.tier || 'Unknown';
-                                    subscriptionTierElement.textContent = subscriptionTier === 3 ? 'Opus' :
-                                        subscriptionTier === 2 ? 'Scroll' :
-                                            subscriptionTier === 1 ? 'Tablet' :
-                                                subscriptionTier === 0 ? 'Free' : 'Unknown';
-
-                                    if (subscriptionDivider) {
-                                        subscriptionDivider.classList.toggle('hidden', subscriptionTier < 0 || subscriptionTier === 'Unknown');
-                                    }
-                                    daysTillExpireElement.classList.toggle('hidden', subscriptionTier < 0 || subscriptionTier === 'Unknown');
-
-                                    // Calculate time till expire
-                                    let renewalData = null;
-                                    if (accountData.user.subscription.expiresAt) {
-                                        renewalData = getSubscriptionRenewalDisplayData(accountData.user.subscription.expiresAt);
-                                    }
-
-                                    daysText.textContent = renewalData ? renewalData.timeRemaining : '0 days';
-
-                                    // Show warning icon if expiring in a week or less
-                                    if (renewalData && renewalData.msUntilRenewal <= (7 * 24 * 60 * 60 * 1000) && renewalData.msUntilRenewal > 0) {
-                                        warningIcon.classList.remove('hidden');
-                                    } else {
-                                        warningIcon.classList.add('hidden');
-                                    }
-
-                                    // Add color coding for urgency
-                                    if (renewalData && renewalData.msUntilRenewal > 0 && renewalData.msUntilRenewal <= (3 * 24 * 60 * 60 * 1000)) {
-                                        daysTillExpireElement.style.color = 'var(--danger-color, #ff6b6b)';
-                                    } else if (renewalData && renewalData.msUntilRenewal > 0 && renewalData.msUntilRenewal <= (7 * 24 * 60 * 60 * 1000)) {
-                                        daysTillExpireElement.style.color = 'var(--warning-color, #ffc107)';
-                                    } else {
-                                        daysTillExpireElement.style.color = '';
-                                    }
-                                } else {
-                                    subscriptionTierElement.textContent = 'No data';
-                                    daysText.textContent = 'No data';
-                                }
-                            }
-                        } catch (error) {
-                            console.error('Error updating subscription info in context menu:', error);
-                        }
-                    }
-                }
-            ]
-        });
-    }
+    // syncFixedCreditsIndicatorStanding: public/scripts/comp/novelAiAccountStatus.js
+    syncFixedCreditsIndicatorStanding();
 
     if (reveal) {
         indicator.classList.remove('hidden');

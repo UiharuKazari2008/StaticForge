@@ -6,6 +6,7 @@ const {
 } = require('./autofillSearchSettings');
 const grimoireDomainRegistry = require('./grimoireDomainRegistry');
 const wsPacketRegistry = require('./ws/wsPacketRegistry');
+const wsMessageDispatcher = require('./ws/wsMessageDispatcher');
 const registerAllWsHandlers = require('./ws/registerAllWsHandlers');
 const fs = require('fs');
 const path = require('path');
@@ -232,6 +233,7 @@ class WebSocketMessageHandlers {
         if (this.metadataCache) {
             this.metadataCache.removeClient(sessionId);
         }
+        wsMessageDispatcher.clearFifoChainForSession(sessionId);
     }
 
     // Generate UUID for presets
@@ -453,6 +455,7 @@ class WebSocketMessageHandlers {
             'update_user_global_settings',
             'generation_quips_run',
             'generation_quips_clear',
+            'update_autofill_ranking',
         ];
         return destructiveOperations.includes(messageType);
     }
@@ -586,23 +589,23 @@ class WebSocketMessageHandlers {
         // Registered via grimoireDomainRegistry.registerPacketHandler or via domain.packets in registration.
         const direct = grimoireDomainRegistry.getPacketHandler && grimoireDomainRegistry.getPacketHandler(message.type);
         if (direct) {
-            try {
+            wsMessageDispatcher.dispatch(ws, clientInfo, async () => {
                 await direct({ ws, message, clientInfo, wsServer, handlers: this });
-            } catch (err) {
+            }, { dispatch: 'parallel' }, (err) => {
                 console.error('[WS] Domain packet handler error for', message.type, err);
                 this.sendError(ws, 'Packet handler failed', err.message, message.requestId);
-            }
+            });
             return;
         }
 
-        const registeredPacket = wsPacketRegistry.getWsPacketHandler(message.type);
-        if (registeredPacket) {
-            try {
-                await registeredPacket({ ws, message, clientInfo, wsServer, handlers: this });
-            } catch (err) {
+        const registeredEntry = wsPacketRegistry.getWsPacketEntry(message.type);
+        if (registeredEntry) {
+            wsMessageDispatcher.dispatch(ws, clientInfo, async () => {
+                await registeredEntry.handler({ ws, message, clientInfo, wsServer, handlers: this });
+            }, registeredEntry.meta, (err) => {
                 console.error('[WS] Registered packet handler error for', message.type, err);
                 this.sendError(ws, 'Packet handler failed', err.message, message.requestId);
-            }
+            });
             return;
         }
 

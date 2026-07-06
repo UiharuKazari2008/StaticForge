@@ -354,6 +354,8 @@ class WorkspaceManager {
 
         // Update color (fluent API)
         this.globalResources.modifyConfig('workspaces').assign([id, 'color'], color);
+        // Recompile theme CSS now (cache is already updated) instead of waiting for debounced disk write
+        this.globalResources.scheduleWorkspaceCssRecompile();
     }
 
     // Update workspace background color
@@ -365,6 +367,8 @@ class WorkspaceManager {
         }
 
         this.globalResources.modifyConfig('workspaces').assign([id, 'backgroundColor'], backgroundColor);
+        // Recompile theme CSS now (cache is already updated) instead of waiting for debounced disk write
+        this.globalResources.scheduleWorkspaceCssRecompile();
     }
 
     // Update multiple workspace settings at once and save once
@@ -403,6 +407,8 @@ class WorkspaceManager {
 
         // Merge all updates at once (fluent API - use array notation for workspace ID)
         this.globalResources.modifyConfig('workspaces').merge([id], updates);
+        // Recompile theme CSS now (cache is already updated) instead of waiting for debounced disk write
+        this.globalResources.scheduleWorkspaceCssRecompile();
     }
 
     // Update workspace primary (UI) font
@@ -414,6 +420,8 @@ class WorkspaceManager {
 
         const oldFont = workspace.primaryFont;
         this.globalResources.modifyConfig('workspaces').assign([id, 'primaryFont'], primaryFont || null);
+        // Recompile theme CSS now (cache is already updated) instead of waiting for debounced disk write
+        this.globalResources.scheduleWorkspaceCssRecompile();
         console.log(`🔤 Updated workspace primary font: ${workspace.name} ${oldFont} -> ${primaryFont}`);
     }
 
@@ -426,6 +434,8 @@ class WorkspaceManager {
 
         const oldFont = workspace.textareaFont;
         this.globalResources.modifyConfig('workspaces').assign([id, 'textareaFont'], textareaFont || null);
+        // Recompile theme CSS now (cache is already updated) instead of waiting for debounced disk write
+        this.globalResources.scheduleWorkspaceCssRecompile();
         console.log(`🔤 Updated workspace textarea font: ${workspace.name} ${oldFont} -> ${textareaFont}`);
     }
 

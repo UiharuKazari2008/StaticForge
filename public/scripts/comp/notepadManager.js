@@ -962,10 +962,6 @@ class NotepadManager {
         if (this.notebookTextarea) {
             this.notebookTextarea.addEventListener('input', () => {
                 this.notebookMarkAsUnsaved();
-                // Only debounce save if note already exists (has an ID)
-                if (this.notebookCurrentNote && this.notebookCurrentNote.id) {
-                    this.notebookDebounceSave();
-                }
             });
         }
 
@@ -1652,10 +1648,6 @@ class Notepad {
         if (textarea) {
             textarea.addEventListener('input', () => {
                 this.markAsUnsaved();
-                // Only debounce save if note already exists
-                if (this.note && this.note.id) {
-                    this.debounceSave(textarea.value);
-                }
             });
         }
 

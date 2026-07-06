@@ -408,7 +408,7 @@ class GrokService {
         const requestSizeMB = (requestPayload.length / (1024 * 1024)).toFixed(2);
         console.log(`📏 [establishPersona] Total request size: ${requestSizeMB} MB`);
 
-        const completion = await this.globalResources.getGrokClient().responses.create(apiConfig);
+        const completion = await this.globalResources.guardServiceCall('grok', () => this.globalResources.getGrokClient().responses.create(apiConfig));
 
         // DEBUG: Log full completion object
         console.log('🔍 [Responses API] Full completion object:', JSON.stringify(completion, null, 2));
@@ -579,7 +579,7 @@ class GrokService {
             console.log(`🔄 Using Responses API with previous_response_id: ${previousResponseId}`);
         }
 
-        const completion = await this.globalResources.getGrokClient().responses.create(apiConfig);
+        const completion = await this.globalResources.guardServiceCall('grok', () => this.globalResources.getGrokClient().responses.create(apiConfig));
 
         // DEBUG: Log full completion object to see Responses API structure
         console.log('🔍 [Responses API] Full completion object (continue):', JSON.stringify(completion, null, 2));
@@ -767,7 +767,7 @@ class GrokService {
             console.log(`🔄 Using Responses API with previous_response_id (context): ${previousResponseId}`);
         }
 
-        const completion = await this.globalResources.getGrokClient().responses.create(apiConfig);
+        const completion = await this.globalResources.guardServiceCall('grok', () => this.globalResources.getGrokClient().responses.create(apiConfig));
 
         // DEBUG: Log full completion object to see Responses API structure
         console.log('🔍 [Responses API] Full completion object (context):', JSON.stringify(completion, null, 2));
@@ -955,7 +955,7 @@ class GrokService {
         const requestSizeMB = (requestPayload.length / (1024 * 1024)).toFixed(2);
         console.log(`📏 [establishPersonaStreaming] Total request size: ${requestSizeMB} MB`);
 
-        const completion = await this.globalResources.getGrokClient().responses.create(apiConfig);
+        const completion = await this.globalResources.guardServiceCall('grok', () => this.globalResources.getGrokClient().responses.create(apiConfig));
 
         let fullResponse = '';
         let responseId = null;
@@ -1323,7 +1323,7 @@ class GrokService {
             console.log(`🔄 Using Responses API with previous_response_id (streaming): ${previousResponseId}`);
         }
 
-        const completion = await this.globalResources.getGrokClient().responses.create(apiConfig);
+        const completion = await this.globalResources.guardServiceCall('grok', () => this.globalResources.getGrokClient().responses.create(apiConfig));
 
         let fullResponse = '';
         let responseId = null;
@@ -1671,7 +1671,7 @@ class GrokService {
             console.log(`🔄 Using Responses API with previous_response_id (context streaming): ${previousResponseId}`);
         }
 
-        const completion = await this.globalResources.getGrokClient().responses.create(apiConfig);
+        const completion = await this.globalResources.guardServiceCall('grok', () => this.globalResources.getGrokClient().responses.create(apiConfig));
 
         let fullResponse = '';
         let responseId = null;
@@ -2102,9 +2102,9 @@ class GrokService {
             const hasSeason = dynamicConfig.season && dynamicConfig.season !== '--' && dynamicConfig.season !== null && dynamicConfig.season !== false;
             const hasDirective = dynamicConfig.directive && dynamicConfig.directive !== null && dynamicConfig.directive !== false;
             
-            // Check holiday requirement (only required on day of or day before, same as system message builder)
+            // Check holiday requirement (active holiday period with user holiday observation enabled)
             const holiday = context.season?.holiday;
-            const hasHoliday = dynamicConfig.disable_holiday !== true && holiday && holiday.primaryHoliday && holiday.primaryHoliday.daysUntil <= 1;
+            const hasHoliday = dynamicConfig.disable_holiday !== true && holiday && holiday.isHolidayPeriod && holiday.primaryHoliday;
             
             // Build required categories based on what's found AND enabled
             // Weather category
@@ -6069,9 +6069,9 @@ class GrokService {
             const hasSeason = dynamicConfig.season && dynamicConfig.season !== '--' && dynamicConfig.season !== null && dynamicConfig.season !== false;
             const hasDirective = dynamicConfig.directive && dynamicConfig.directive !== null && dynamicConfig.directive !== false;
             
-            // Check holiday requirement (only required on day of or day before, same as system message builder)
+            // Check holiday requirement (active holiday period with user holiday observation enabled)
             const holiday = context.season?.holiday;
-            const hasHoliday = dynamicConfig.disable_holiday !== true && holiday && holiday.primaryHoliday && holiday.primaryHoliday.daysUntil <= 1;
+            const hasHoliday = dynamicConfig.disable_holiday !== true && holiday && holiday.isHolidayPeriod && holiday.primaryHoliday;
             
             // Helper function to check if a category exists in the PROMPT (case-insensitive with variations)
             // Required categories MUST have at least 1 item in the base prompt
@@ -6131,7 +6131,7 @@ class GrokService {
             const holidayFound = (ctx.holiday && ctx.holiday.found) || (holiday && holiday.found) || (holiday);
             if (hasHoliday && holidayFound) {
                 if (!hasCategoryInPrompt('Holiday')) {
-                    categoryVerificationIssues.push('Holiday is enabled and holiday data is found (day of or day before) but no "Holiday" category replacement found in the base prompt. You MUST add `replacement_category: "Holiday"` to at least one replacement in the prompt (can be an append action). You can also add it to UC, but at least one must be in the prompt. Example: { "action": "append", "replace_text": "...", "replacement_category": "Holiday" }');
+                    categoryVerificationIssues.push('Holiday is enabled and an active holiday period is in effect but no "Holiday" category replacement found in the base prompt. You MUST add `replacement_category: "Holiday"` to at least one replacement in the prompt (can be an append action). You can also add it to UC, but at least one must be in the prompt. Example: { "action": "append", "replace_text": "...", "replacement_category": "Holiday" }');
                 }
             }
             
@@ -8817,7 +8817,7 @@ class GrokService {
                 this.globalResources.getLogger().detailed(`🎯 API call (attempt ${retryCount + 1}/${maxRetries})...`);
                 const streamStartTime = Date.now();
                 const callStartTime = streamStartTime; // Track when this API call started
-                const stream = await this.globalResources.getGrokClient().responses.create(apiConfig);
+                const stream = await this.globalResources.guardServiceCall('grok', () => this.globalResources.getGrokClient().responses.create(apiConfig));
                 let fullResponse = '';
                 let lastChunk = null;
                 let responseId = null;
@@ -10349,7 +10349,7 @@ class GrokService {
                 try {
                     this.globalResources.getLogger().detailed(`🎯 API call (attempt ${retryCount + 1}/${maxRetries})...`);
                     const streamStartTime = Date.now();
-                    const stream = await this.globalResources.getGrokClient().chat.completions.create(apiConfig);
+                    const stream = await this.globalResources.guardServiceCall('grok', () => this.globalResources.getGrokClient().chat.completions.create(apiConfig));
                     let fullResponse = '';
                     let toolCalls = [];
                     let toolCallsMap = {}; // Track partial tool calls during streaming

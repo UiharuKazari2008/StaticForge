@@ -146,7 +146,8 @@ class NaxTagGenerationService {
             }];
         }
 
-        const images = await client.generateImage(opts, false, false);
+        // Tripwire: fast-fail when locked, and record success/failure outcomes.
+        const images = await this.globalResources.guardServiceCall('novelai', () => client.generateImage(opts, false, false));
         if (!images || !images.length) {
             throw new Error('NovelAI returned no images');
         }

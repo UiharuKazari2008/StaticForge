@@ -36,6 +36,34 @@ const LOG_VIEWER_API_RE = /\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9
 function isLogViewerApiRequest(url) {
   return LOG_VIEWER_API_RE.test(url.pathname);
 }
+
+function shouldReportNetworkActivity(requestData) {
+  if (!requestData || requestData.fromNetwork !== true) {
+    return false;
+  }
+  const rawUrl = requestData.url;
+  if (!rawUrl) {
+    return false;
+  }
+  try {
+    const parsed = new URL(rawUrl, self.location.origin);
+    if (isLogViewerApiRequest(parsed)) {
+      return false;
+    }
+  } catch (error) {
+    return false;
+  }
+  return true;
+}
+
+async function matchStrategyCache(cacheName, request) {
+  const cache = await caches.open(cacheName);
+  if (cacheName === DYNAMIC_CACHE) {
+    const cacheKey = request.url.split('?')[0];
+    return (await cache.match(cacheKey)) || (await cache.match(request));
+  }
+  return cache.match(request);
+}
 let imagePolicyEnforceTimer = null;
 let imagePolicyLastEnforcedAt = 0;
 
@@ -377,6 +405,13 @@ async function handleImageRequest(event) {
       'Expires': '0'
     }
   });
+  notifyClientsOfNetworkActivity('receive', {
+    url: request.url,
+    method: request.method,
+    status: networkResponse.status,
+    fromNetwork: true,
+    timestamp: Date.now()
+  });
   // Cache.put() can throw NetworkError (quota, body stream errors). Must not reject the fetch
   // handler or the browser shows a broken image and logs an uncaught promise rejection.
   if (networkResponse && networkResponse.ok && networkResponse.status >= 200 && networkResponse.status < 300 && shouldCacheResponse(networkResponse)) {
@@ -414,15 +449,6 @@ const internalStrategy = {
       if (cachedResponse) {
         // Add cache-busting headers to prevent browser caching
         const response = addCacheBustingHeaders(cachedResponse);
-        
-        // Emit receive event for cached internal data
-        notifyClientsOfNetworkActivity('receive', {
-          url: request.url,
-          method: request.method,
-          status: response.status,
-          timestamp: Date.now()
-        });
-        
         return response;
       }
       
@@ -439,60 +465,46 @@ const internalStrategy = {
         }
       });
       
-      // Emit receive event for 404 response
-      notifyClientsOfNetworkActivity('receive', {
-        url: request.url,
-        method: request.method,
-        status: 404,
-        timestamp: Date.now()
-      });
-      
       return response;
     } catch (error) {
-      // Emit receive event for failed requests
-      notifyClientsOfNetworkActivity('receive', {
-        url: request.url,
-        method: request.method,
-        status: 0,
-        error: error.message,
-        timestamp: Date.now()
-      });
-      
       throw error;
     }
   }
 };
 
 // Custom strategy wrapper to add cache-busting headers and emit network events
-function createCacheBustingStrategy(strategy) {
+function createCacheBustingStrategy(strategy, cacheName) {
   return {
     async handle({ request, event }) {
+      const wasCached = !!(await matchStrategyCache(cacheName, request));
       try {
         const response = await strategy.handle({ request, event });
-        if (response) {
+        if (response && !wasCached) {
           const finalResponse = addCacheBustingHeaders(response);
-          
-          // Emit receive event for successful responses
           notifyClientsOfNetworkActivity('receive', {
             url: request.url,
             method: request.method,
             status: response.status,
+            fromNetwork: true,
             timestamp: Date.now()
           });
-          
           return finalResponse;
+        }
+        if (response) {
+          return addCacheBustingHeaders(response);
         }
         return response;
       } catch (error) {
-        // Emit receive event for failed requests
-        notifyClientsOfNetworkActivity('receive', {
-          url: request.url,
-          method: request.method,
-          status: 0,
-          error: error.message,
-          timestamp: Date.now()
-        });
-        
+        if (!wasCached) {
+          notifyClientsOfNetworkActivity('receive', {
+            url: request.url,
+            method: request.method,
+            status: 0,
+            error: error.message,
+            fromNetwork: true,
+            timestamp: Date.now()
+          });
+        }
         throw error;
       }
     }
@@ -503,31 +515,7 @@ function createCacheBustingStrategy(strategy) {
 function createImageStrategy() {
   return {
     async handle({ request, event }) {
-      try {
-        const response = await handleImageRequest(event);
-        if (response) {
-          // Emit receive event for successful responses
-          notifyClientsOfNetworkActivity('receive', {
-            url: request.url,
-            method: request.method,
-            status: response.status,
-            timestamp: Date.now()
-          });
-          return response;
-        }
-        return response;
-      } catch (error) {
-        // Emit receive event for failed requests
-        notifyClientsOfNetworkActivity('receive', {
-          url: request.url,
-          method: request.method,
-          status: 0,
-          error: error.message,
-          timestamp: Date.now()
-        });
-        
-        throw error;
-      }
+      return handleImageRequest(event);
     }
   };
 }
@@ -563,6 +551,8 @@ workbox.routing.registerRoute(
   },
   async (event) => {
     const { request, url } = event;
+
+    maybeNotifyHttpTransmit(request);
     
     try {
       let response;
@@ -610,6 +600,13 @@ workbox.routing.registerRoute(
             } else {
               response = fetchResponse;
             }
+            notifyClientsOfNetworkActivity('receive', {
+              url: request.url,
+              method: request.method,
+              status: response.status,
+              fromNetwork: true,
+              timestamp: Date.now()
+            });
           } catch (error) {
             console.error(`Failed to fetch from ${endpoint} endpoint:`, error);
             throw error;
@@ -624,7 +621,7 @@ workbox.routing.registerRoute(
       }
       // Handle cache with dynamic strategy
       else if (url.pathname.startsWith('/cache/')) {
-        response = await createCacheBustingStrategy(dynamicStrategy).handle(event);
+        response = await createCacheBustingStrategy(dynamicStrategy, DYNAMIC_CACHE).handle(event);
       }
       // Handle images with image strategy
       else if (url.pathname.startsWith('/images/')) {
@@ -636,17 +633,17 @@ workbox.routing.registerRoute(
       }
       // Handle all other static files with static strategy
       else {
-        response = await createCacheBustingStrategy(staticStrategy).handle(event);
+        response = await createCacheBustingStrategy(staticStrategy, STATIC_CACHE).handle(event);
       }
       
       return response;
     } catch (error) {
-      // Emit receive event for failed requests
       notifyClientsOfNetworkActivity('receive', {
         url: request.url,
         method: request.method,
         status: 0,
         error: error.message,
+        fromNetwork: true,
         timestamp: Date.now()
       });
       
@@ -688,15 +685,6 @@ workbox.routing.registerRoute(
       // If we have a cached version, return it with cache-busting headers
       if (cachedResponse) {
         const response = addCacheBustingHeaders(cachedResponse);
-        
-        // Emit receive event for cached response
-        notifyClientsOfNetworkActivity('receive', {
-          url: request.url,
-          method: request.method,
-          status: response.status,
-          timestamp: Date.now()
-        });
-        
         return response;
       }
       
@@ -729,25 +717,8 @@ workbox.routing.registerRoute(
         }
       });
       
-      // Emit receive event for SPA redirect response
-      notifyClientsOfNetworkActivity('receive', {
-        url: request.url,
-        method: request.method,
-        status: response.status,
-        timestamp: Date.now()
-      });
-      
       return response;
     } catch (error) {
-      // Emit receive event for failed requests
-      notifyClientsOfNetworkActivity('receive', {
-        url: request.url,
-        method: request.method,
-        status: 0,
-        error: error.message,
-        timestamp: Date.now()
-      });
-      
       throw error;
     }
   }
@@ -1551,18 +1522,78 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Send network activity event to all clients
+// Send network activity event to all clients (debounced to batch rapid fetch/cache traffic).
+const _networkActivityPending = { transmit: false, receive: false };
+let _networkActivityFlushTimer = null;
+const NETWORK_ACTIVITY_DEBOUNCE_MS = 80;
+
+function maybeNotifyHttpTransmit(request) {
+  const method = request.method;
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
+    return;
+  }
+  try {
+    const parsed = new URL(request.url, self.location.origin);
+    if (isLogViewerApiRequest(parsed)) {
+      return;
+    }
+  } catch (error) {
+    return;
+  }
+  notifyClientsOfNetworkActivity('transmit', {
+    url: request.url,
+    method,
+    fromNetwork: true,
+    timestamp: Date.now()
+  });
+}
+
 function notifyClientsOfNetworkActivity(type, requestData) {
-  self.clients.matchAll().then(clients => {
-    clients.forEach(client => {
-      client.postMessage({
-        type: 'NETWORK_ACTIVITY',
-        activityType: type, // 'transmit' or 'receive'
-        requestData: requestData,
-        timestamp: Date.now()
+  if (!shouldReportNetworkActivity(requestData)) {
+    return;
+  }
+  if (type === 'transmit') {
+    _networkActivityPending.transmit = true;
+  } else if (type === 'receive') {
+    _networkActivityPending.receive = true;
+  } else {
+    return;
+  }
+
+  if (_networkActivityFlushTimer) {
+    return;
+  }
+
+  _networkActivityFlushTimer = setTimeout(() => {
+    _networkActivityFlushTimer = null;
+    const pendingTransmit = _networkActivityPending.transmit;
+    const pendingReceive = _networkActivityPending.receive;
+    _networkActivityPending.transmit = false;
+    _networkActivityPending.receive = false;
+
+    if (!pendingTransmit && !pendingReceive) {
+      return;
+    }
+
+    self.clients.matchAll().then(clients => {
+      clients.forEach(client => {
+        if (pendingTransmit) {
+          client.postMessage({
+            type: 'NETWORK_ACTIVITY',
+            activityType: 'transmit',
+            timestamp: Date.now()
+          });
+        }
+        if (pendingReceive) {
+          client.postMessage({
+            type: 'NETWORK_ACTIVITY',
+            activityType: 'receive',
+            timestamp: Date.now()
+          });
+        }
       });
     });
-  });
+  }, NETWORK_ACTIVITY_DEBOUNCE_MS);
 }
 
 // Check if URL is a local server request

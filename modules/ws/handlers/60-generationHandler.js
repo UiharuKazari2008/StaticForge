@@ -1,4 +1,5 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
+const { WS_DISPATCH_FIFO_CONNECTION } = require('../wsMessageDispatcher');
 const {
     handleImageGeneration,
     handleImageReroll,
@@ -14,7 +15,7 @@ const {
     handleResolveTextReplacements
 } = require('./generationImpl');
 
-const GENERATION_DESTRUCTIVE = { destructive: true };
+const GENERATION_DESTRUCTIVE = { destructive: true, ...WS_DISPATCH_FIFO_CONNECTION };
 
 /**
  * Register generation / image / dynamic-gen WebSocket packet handlers on wsPacketRegistry.
@@ -38,7 +39,7 @@ function registerPackets(handlersCtx) {
     regFn('expand_image', handleImageExpansion, GENERATION_DESTRUCTIVE);
     regFn('preview_expand_image_prompt', handlePreviewExpandImagePrompt, GENERATION_DESTRUCTIVE);
     regFn('reroll_expanded_image', handleImageExpansionReroll, GENERATION_DESTRUCTIVE);
-    regFn('cancel_generation', handleCancelGeneration);
+    regFn('cancel_generation', handleCancelGeneration, WS_DISPATCH_FIFO_CONNECTION);
     regFn('dynamic_generation_progress', handleDynamicGenerationProgress);
     regFn('resolve_dynamic_context', handleResolveDynamicContext);
     regFn('compile_dynamic_generation', handleCompileDynamicGeneration, GENERATION_DESTRUCTIVE);

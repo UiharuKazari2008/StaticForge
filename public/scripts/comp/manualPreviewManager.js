@@ -1646,6 +1646,38 @@ async function navigateManualPreview(event) {
     }
 }
 
+// Boundary-aware resume for the manual preview after the current image leaves the view
+// (deleted, scrapped, or moved to another workspace). Removing the item shifts the list
+// down, so the same index now points at the next available item; if none remains at that
+// index we fall back to the previous one, and clear the preview when the view is empty.
+async function resumeManualPreviewAfterRemoval(removedIndex) {
+    const currentIndex = removedIndex ?? window.currentManualPreviewIndex ?? 0;
+    const viewType = currentGalleryView || 'images';
+
+    if (window.wsClient && window.wsClient.isConnected()) {
+        try {
+            const nextImage = await window.wsClient.requestImageByIndex(currentIndex, viewType);
+            if (nextImage) {
+                await updateManualPreview(currentIndex, null, nextImage.metadata);
+                return true;
+            }
+            if (currentIndex > 0) {
+                const prevImage = await window.wsClient.requestImageByIndex(currentIndex - 1, viewType);
+                if (prevImage) {
+                    await updateManualPreview(currentIndex - 1, null, prevImage.metadata);
+                    return true;
+                }
+            }
+        } catch (error) {
+            console.warn('Failed to resume manual preview after removal:', error);
+        }
+    }
+
+    // resetManualPreview: public/scripts/comp/manualPreviewManager.js
+    resetManualPreview();
+    return false;
+}
+
 // Function to restore the original image when navigating back
 async function restoreOriginalImage() {
     if (window.navigationOriginalImage) {

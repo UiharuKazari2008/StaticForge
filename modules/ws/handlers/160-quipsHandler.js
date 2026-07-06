@@ -49,6 +49,9 @@ async function handleGetAppOptions(handlersCtx, ws, message, clientInfo, wsServe
 
         const accountData = handlersCtx.globalResources.getAccountData();
         const accountBalance = handlersCtx.globalResources.getAccountBalance();
+        const accountHealth = handlersCtx.globalResources.getAccountClientFields();
+        const statusMonitor = handlersCtx.globalResources.getNovelAiStatusMonitor();
+        const novelaiStatus = statusMonitor ? statusMonitor.getClientPayload() : null;
 
         const activeWorkspaceId = handlersCtx.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
         const activeWorkspaceData = handlersCtx.globalResources.getWorkspaceManager().getActiveWorkspaceData(clientInfo.sessionId);
@@ -57,6 +60,9 @@ async function handleGetAppOptions(handlersCtx, ws, message, clientInfo, wsServe
             ok: true,
             user: accountData,
             balance: accountBalance,
+            bootCycleId: handlersCtx.globalResources.bootCycleId || null,
+            novelaiStatus,
+            ...accountHealth,
             presets: detailedPresets,
             queue_status: handlersCtx.globalResources.getQueue().getStatus(),
             image_count: imageCount,
@@ -91,6 +97,31 @@ async function handleGetAppOptions(handlersCtx, ws, message, clientInfo, wsServe
         const totalTime = Date.now() - startTime;
         console.error(`❌ App options request error after ${totalTime}ms:`, error);
         handlersCtx.sendError(ws, 'Failed to load app options', error.message, message.requestId);
+    }
+}
+
+async function handleRetryAccountData(handlersCtx, ws, message, clientInfo, wsServer) {
+    try {
+        await handlersCtx.globalResources.initializeAccountData(true);
+        await handlersCtx.globalResources.refreshBalance(true);
+        const accountHealth = handlersCtx.globalResources.getAccountClientFields();
+        const accountData = handlersCtx.globalResources.getAccountData();
+        const accountBalance = handlersCtx.globalResources.getAccountBalance();
+
+        handlersCtx.sendToClient(ws, {
+            type: 'retry_account_data_response',
+            requestId: message.requestId,
+            data: {
+                ok: true,
+                ...accountHealth,
+                user: accountData,
+                balance: accountBalance,
+            },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ Retry account data error:', error);
+        handlersCtx.sendError(ws, 'Failed to refresh account data', error.message, message.requestId);
     }
 }
 
@@ -218,6 +249,7 @@ function registerPackets(handlersCtx) {
     };
 
     reg('get_app_options', 'app', handleGetAppOptions);
+    reg('retry_account_data', 'app', handleRetryAccountData);
 
     reg('get_generation_quips', 'quips', handleGetGenerationQuips);
     reg('get_generation_quips_status', 'quips', handleGetGenerationQuipsStatus);

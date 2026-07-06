@@ -1268,7 +1268,7 @@ async function handleUrlUploadMetadataRequest(handlers, ws, message, clientInfo,
         }
 
         // Extract PNG embedded metadata
-        const pngMetadata = handlers.globalResources.getPngMetadata().extractNovelAIMetadata(filePath);
+        const pngMetadata = await handlers.globalResources.getPngMetadata().extractNovelAIMetadata(filePath);
         if (!pngMetadata) {
             handlers.sendError(ws, 'No NovelAI metadata found', 'request_url_upload_metadata', message.requestId);
             return;

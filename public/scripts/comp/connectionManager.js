@@ -79,10 +79,11 @@ function handleServerPing(data) {
         }
     }
     if (data.balance !== undefined) {
-        updateBalanceDisplay(data.balance);
-        // Update optionsData balance and increment version to keep things in sync
-        if (window.optionsData) {
-            window.optionsData.balance = data.balance;
+        if (!(typeof isAccountDataDeferred === 'function' && isAccountDataDeferred())) {
+            updateBalanceDisplay(data.balance);
+            if (window.optionsData) {
+                window.optionsData.balance = data.balance;
+            }
         }
 
         // Subscription toasts need loaded user subscription data; skip until get_app_options has loaded
@@ -90,6 +91,12 @@ function handleServerPing(data) {
             updateSubscriptionNotifications().catch(error => {
             });
         }
+    }
+
+    if (data.accountHealth) {
+        // applyAccountHealthFieldsToOptions / handleAccountHealthUpdate: public/scripts/comp/accountDataBootstrap.js
+        applyAccountHealthFieldsToOptions(data.accountHealth, data.balance);
+        handleAccountHealthUpdate(data.accountHealth, data.balance);
     }
 
     // Handle queue status

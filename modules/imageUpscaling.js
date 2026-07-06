@@ -38,9 +38,14 @@ const upscaleImageCore = async (globalResources, imageBuffer, scale = 4, width, 
 };
 
 const upscaleWithNovelAI = async (imageBuffer, scale, width, height) => {
-    const apiKey = __runtimeGr.getApiKeyManager().getActiveApiKey('novelai');
+    const apiKeyManager = __runtimeGr.getApiKeyManager();
+    const apiKey = apiKeyManager.getActiveApiKey('novelai');
     if (!apiKey) {
         throw new Error('NovelAI API key is not configured. Add one to secure.config.json or set NOVELAI_API_KEY.');
+    }
+    // Tripwire: block the outbound call while the service is locked.
+    if (apiKeyManager.isServiceLocked('novelai')) {
+        throw new Error('NovelAI is temporarily locked after repeated API errors. An admin must review the Service Key in the Security Center to unlock it.');
     }
 
     const payload = {
@@ -86,12 +91,15 @@ const upscaleWithNovelAI = async (imageBuffer, scale, width, height) => {
             res.on('end', () => {
                 const buffer = Buffer.concat(data);
                 if (res.statusCode === 200) {
+                    apiKeyManager.recordApiSuccess('novelai');
                     resolve(buffer);
                 } else {
                     try {
                         const errorResponse = JSON.parse(buffer.toString());
+                        apiKeyManager.recordApiFailure('novelai', res.statusCode, errorResponse.message || errorResponse.error);
                         reject(new Error(`NovelAI Upscale API error: ${errorResponse.error || 'Unknown error'}`));
                     } catch (e) {
+                        apiKeyManager.recordApiFailure('novelai', res.statusCode, `HTTP ${res.statusCode}`);
                         reject(new Error(`NovelAI Upscale API error: HTTP ${res.statusCode}`));
                     }
                 }

@@ -2089,6 +2089,62 @@ function setupDatasetDropdownContextMenu() {
                         text: 'Reset',
                         action: 'resetDatasets',
                         disabled: false
+                    },
+                    { separator: true },
+                    {
+                        icon: 'fas fa-paragraph',
+                        text: 'Newlines',
+                        action: 'toggleNewlines',
+                        keepMenuOpen: true,
+                        showIndicator: true,
+                        disabled: false,
+                        loadfn: (item) => {
+                            item.checked = !!window.keepPromptNewlines;
+                        }
+                    },
+                    {
+                        icon: 'fas fa-hashtag',
+                        text: 'Auto Char Numerisize',
+                        action: 'toggleAutoCharNumerize',
+                        keepMenuOpen: true,
+                        showIndicator: true,
+                        disabled: false,
+                        loadfn: (item) => {
+                            item.checked = window.autoCharNumerize !== false;
+                        }
+                    },
+                    {
+                        icon: 'fas fa-wand-magic-sparkles',
+                        text: 'Auto Format (blur)',
+                        action: 'toggleAutoFormat',
+                        keepMenuOpen: true,
+                        showIndicator: true,
+                        disabled: false,
+                        loadfn: (item) => {
+                            item.checked = window.autoFormatOnBlur !== false;
+                        }
+                    },
+                    {
+                        icon: 'fas fa-align-left',
+                        text: 'Prompt Normalize',
+                        action: 'togglePromptNormalize',
+                        keepMenuOpen: true,
+                        showIndicator: true,
+                        disabled: false,
+                        loadfn: (item) => {
+                            item.checked = window.promptNormalize !== false;
+                        }
+                    },
+                    {
+                        icon: 'fas fa-clone',
+                        text: 'Deduplicate',
+                        action: 'toggleDeduplicate',
+                        keepMenuOpen: true,
+                        showIndicator: true,
+                        disabled: false,
+                        loadfn: (item) => {
+                            item.checked = window.deduplicateTags !== false;
+                        }
                     }
                 ]
             }
@@ -2116,6 +2172,25 @@ function handleDatasetContextMenuAction(event) {
             break;
         case 'resetDatasets':
             resetDatasets();
+            break;
+        case 'toggleNewlines':
+            window.keepPromptNewlines = !window.keepPromptNewlines;
+            // syncKeepNewlinesButtons: public/scripts/comp/promptTextareaToolbar.js
+            if (window.promptTextareaToolbar) {
+                window.promptTextareaToolbar.syncKeepNewlinesButtons();
+            }
+            break;
+        case 'toggleAutoCharNumerize':
+            window.autoCharNumerize = window.autoCharNumerize === false;
+            break;
+        case 'toggleAutoFormat':
+            window.autoFormatOnBlur = window.autoFormatOnBlur === false;
+            break;
+        case 'togglePromptNormalize':
+            window.promptNormalize = window.promptNormalize === false;
+            break;
+        case 'toggleDeduplicate':
+            window.deduplicateTags = window.deduplicateTags === false;
             break;
     }
 }

@@ -73,6 +73,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Feature | REST | WS | Push | Client-only |
 |---------|------|-----|------|-------------|
 | Tag search | — | `search_tags`, `search_dataset_tags` | — | Autocomplete UI |
+| Autofill ranking config | — | `get_autofill_ranking`, `update_autofill_ranking`, `test_autofill_ranking` | `autofill_ranking_updated` | autofillConfigDsapApplet (admin) |
 | File search | — | `search_files` | `search_results_*` | File search modal |
 | Tag wiki / Grimoire | `GET /private/wiki/*` (cached pages) | `search_tag_wiki`, `get_tag_wiki_page`, `refresh_tag_wiki_page`, `resolve_grimoire_url` | — | DSAP router, panes |
 | Static NovelAI docs | — | `get_static_wiki_site_index`, `get_static_wiki_page` | — | — |
@@ -137,7 +138,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Pending queue admin | `GET /pending` | `cancel_pending_requests` | — | serverManagement |
 | Runtime recompile | — | `recompile_runtime_assets`, `refresh_server_cache` | `runtime_compile_*`, `service_worker_cache_update` | — |
 | Generation quips | — | `get_generation_quips`, `generation_quips_run`, … | `generation_quips_*` | quipsDsapApplet |
-| App options | — | `get_app_options` | — | — |
+| App options / account bootstrap | — | `get_app_options`, `retry_account_data` | `account_data_health_updated` | accountDataBootstrap.js |
 | Traces | `GET /traces/*` | — | — | traces.js UI |
 
 ---

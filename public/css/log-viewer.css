@@ -442,7 +442,34 @@
     font-size: 0.65rem;
     opacity: 0.45;
     transition: opacity var(--transition-slow), color 0.25s ease;
+    will-change: color, opacity;
     color: var(--text-color, #ffffff);
+}
+
+#logViewerModal .log-viewer-conn-stat .websocket-arrow-up.streaming-up {
+    color: #6ecc8a;
+    opacity: 0.72;
+}
+
+#logViewerModal .log-viewer-conn-stat .websocket-arrow-down.streaming-down {
+    color: #e09a9a;
+    opacity: 0.72;
+}
+
+#logViewerModal .log-viewer-conn-stat .websocket-arrow-up.streaming-up.streaming-stalled-up {
+    color: #5a9e72;
+    opacity: 0.5;
+}
+
+#logViewerModal .log-viewer-conn-stat .websocket-arrow-down.streaming-down.streaming-stalled-down {
+    color: #b87a7a;
+    opacity: 0.5;
+}
+
+#logViewerModal .log-viewer-conn-stat .websocket-arrow-up.active-http,
+#logViewerModal .log-viewer-conn-stat .websocket-arrow-down.active-http {
+    color: var(--text-color, #ffffff);
+    opacity: 1;
 }
 
 #logViewerModal .log-viewer-conn-stat .websocket-arrow-up.active {

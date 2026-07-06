@@ -1013,9 +1013,6 @@ ${omegasearchDsapBuildContextBarHtml()}
 
 <div class="omega-dsap-view" id="omegaSearchView">
 <div class="omega-dsap-search-panel" id="omegaSearchPanel">
-  <div class="omega-dsap-landing-hint" id="omegaLandingHint">
-    <p><strong>I spy with my little eye…</strong> Search prompt blocks across <strong>Global</strong> (all workspaces) or a single workspace. Type a tag or phrase and press <strong>Enter</strong> to add AND blocks (<code>|</code> or <code> OR </code> for alternates within a block). Press <strong>Enter</strong> on an empty field or click <strong>Search</strong> to run the query.</p>
-  </div>
   <div class="omega-dsap-active-search-restore hidden" id="omegaActiveSearchRestore">
     <button type="button" id="omegaReturnToSearchBtn" class="dsap-smf-btn dsap-smf-btn-primary"><i class="fas fa-arrow-right"></i> Return to active search</button>
     <span class="omega-dsap-active-search-label" id="omegaActiveSearchLabel"></span>
@@ -1413,23 +1410,6 @@ const omegasearchDsapScopedCss = `
 [data-dsap="ispy-dyna"].omega-dsap-landing .omega-dsap-search-panel {
   padding: 12px 10px;
   margin-bottom: 0;
-}
-[data-dsap="ispy-dyna"] .omega-dsap-landing-hint {
-  display: none;
-  margin: 0 0 10px;
-  padding: 8px 10px;
-  background: #f5f8fc;
-  border: 1px solid #c5d4e8;
-  font-size: 10.5pt;
-  line-height: 1.45;
-}
-[data-dsap="ispy-dyna"].omega-dsap-landing .omega-dsap-landing-hint {
-  display: block;
-}
-[data-dsap="ispy-dyna"] .omega-dsap-landing-hint code {
-  background: #e8eef5;
-  padding: 0 3px;
-  font-size: 10pt;
 }
 [data-dsap="ispy-dyna"] .omega-dsap-search-label {
   font-weight: bold;

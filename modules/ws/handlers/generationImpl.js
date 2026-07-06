@@ -177,8 +177,9 @@ async function handleImageGeneration(handlers, ws, message, clientInfo, wsServer
 }
 
 async function handleImageReroll(handlers, ws, message, clientInfo, wsServer) {
+    const requestId = message.requestId;
     try {
-        const { requestId, filename, workspace, allow_paid } = message;
+        const { filename, workspace, allow_paid } = message;
         console.log(`🎲 Processing image reroll request: ${requestId} for filename: ${filename}, allow_paid: ${allow_paid}`);
 
         const metadata = await handlers.globalResources.getMetadataDatabase().getImageMetadata(filename, handlers.globalResources.getPath('images'));
@@ -188,12 +189,26 @@ async function handleImageReroll(handlers, ws, message, clientInfo, wsServer) {
 
         console.log('🎲 Retrieved metadata for reroll:', metadata);
 
+        // Parity with handleImageGeneration: keep the socket alive and track the active generation
+        handlers.startKeepAliveInterval(ws, requestId, 15000);
+        handlers.registerActiveGeneration(ws, requestId);
+
+        // Non-null streamingCallback enables the streaming API path (imageGeneration.js ~3881); step frames ship via image_generation_progress
+        const streamingCallback = async () => {};
+
         const result = await handleRerollGeneration(handlers.globalResources,
             metadata,
             clientInfo.sessionId,
             workspace || null,
-            allow_paid || false
+            allow_paid || false,
+            ws,
+            handlers,
+            wsServer,
+            streamingCallback,
+            requestId
         );
+
+        handlers.stopKeepAliveInterval(requestId);
 
         handlers.sendToClient(ws, {
             type: 'image_reroll_response',
@@ -206,15 +221,22 @@ async function handleImageReroll(handlers, ws, message, clientInfo, wsServer) {
             },
             timestamp: new Date().toISOString()
         });
+
+        const galleryData = await handlers.buildGalleryData('images', clientInfo);
+        wsServer.broadcastGalleryUpdate(galleryData, 'images');
     } catch (error) {
+        handlers.stopKeepAliveInterval(requestId);
         console.error('❌ Image reroll error:', error);
         handlers.sendToClient(ws, {
             type: 'image_reroll_error',
-            requestId: message.requestId,
+            requestId: requestId,
             data: null,
             error: error.message || 'Image reroll failed',
             timestamp: new Date().toISOString()
         });
+    } finally {
+        handlers.unregisterActiveGeneration(ws, requestId);
+        handlers.clearGenerationCancelled(requestId);
     }
 }
 

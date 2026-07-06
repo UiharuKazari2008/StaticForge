@@ -671,6 +671,44 @@ async function handleAddApiKey(handlersCtx, ws, message, clientInfo, wsServer) {
     }
 }
 
+async function handleUnlockApiService(handlersCtx, ws, message, clientInfo, wsServer) {
+    try {
+        if (clientInfo.userType !== 'admin') {
+            handlersCtx.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+            return;
+        }
+
+        const { service } = message;
+        if (!service || typeof service !== 'string') {
+            handlersCtx.sendError(ws, 'Service ID is required', 'MISSING_SERVICE', message.requestId);
+            return;
+        }
+
+        const apiKeyManager = handlersCtx.globalResources.getApiKeyManager();
+        if (!apiKeyManager.isTripwireService(service)) {
+            handlersCtx.sendError(ws, `Service "${service}" does not support tripwire locking`, 'UNSUPPORTED_SERVICE', message.requestId);
+            return;
+        }
+
+        apiKeyManager.unlockService(service);
+        console.log(`🔓 Admin unlocked API service tripwire: ${service} (session ${clientInfo.sessionId})`);
+
+        handlersCtx.sendToClient(ws, {
+            type: 'unlock_api_service_response',
+            requestId: message.requestId,
+            data: {
+                success: true,
+                service,
+                lock: apiKeyManager.getServiceLock(service)
+            },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ Error unlocking API service:', error);
+        handlersCtx.sendError(ws, 'Failed to unlock API service', error.message, message.requestId);
+    }
+}
+
 async function handleUpdateApiKey(handlersCtx, ws, message, clientInfo, wsServer) {
     try {
         if (clientInfo.userType !== 'admin') {
@@ -744,6 +782,7 @@ function registerPackets(handlersCtx) {
     reg('update_api_key_selections', handleUpdateApiKeySelections, ADMIN_DESTRUCTIVE);
     reg('add_api_key', handleAddApiKey, ADMIN_DESTRUCTIVE);
     reg('update_api_key', handleUpdateApiKey, ADMIN_DESTRUCTIVE);
+    reg('unlock_api_service', handleUnlockApiService, ADMIN_DESTRUCTIVE);
 }
 
 module.exports = {

@@ -1121,6 +1121,11 @@ const securityDsapDriver = {
             if (row) this._openKeychainAddPanel(root, row.dataset.secKeychainService);
             return;
         }
+        if (action === 'keychain-unlock') {
+            const row = btn.closest('[data-sec-keychain-service]');
+            if (row) void this._unlockKeychainService(root, row.dataset.secKeychainService);
+            return;
+        }
         if (action === 'revoke-appkey') {
             const keyId = btn.closest('[data-sec-appkey-id]')?.dataset.secAppkeyId;
             if (keyId) void this._revokeAppkey(root, keyId);
@@ -2254,6 +2259,22 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
         }
     },
 
+    async _unlockKeychainService(root, serviceId) {
+        if (!serviceId) return;
+        if (!(await this._ensureWs())) {
+            this._setKeychainStatus(root, 'Connection unavailable — check WebSocket', 'error');
+            return;
+        }
+        try {
+            await wsClient.sendMessage('unlock_api_service', { service: serviceId });
+            this._setKeychainStatus(root, `Unlocked ${serviceId}`, 'ok');
+            await this._loadKeychain(root);
+        } catch (err) {
+            console.error('[security-dsap] unlock service error:', err);
+            this._setKeychainStatus(root, err.message || 'Failed to unlock service', 'error');
+        }
+    },
+
     async _loadKeychain(root) {
         root.querySelector('#secKeychainLoading')?.classList.remove('hidden');
         root.querySelector('#secKeychainTableWrap')?.classList.add('hidden');
@@ -2319,8 +2340,15 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
             const label = service.missingKeys ? 'No keys configured' : this._keychainKeyLabel(service, sel);
             const fp = service.missingKeys ? '—' : this._keychainFingerprint(service, sel);
             const disabled = service.missingKeys ? ' disabled' : '';
-            return `<tr data-sec-keychain-service="${securityDsapEscapeAttr(service.id)}">
-  <td>${securityDsapEscapeHtml(service.label || service.id)}<br><span class="sec-dsap-setting-hint">${securityDsapEscapeHtml(service.description || '')}</span></td>
+            const isLocked = !!(service.lock && service.lock.locked);
+            const lockBadge = isLocked
+                ? `<br><span class="sec-keychain-lock-badge" title="Locked after repeated API errors (last HTTP ${securityDsapEscapeAttr(String(service.lock.lastStatus || '??'))})"><i class="fas fa-lock"></i> Locked — HTTP ${securityDsapEscapeHtml(String(service.lock.lastStatus || '??'))}</span>`
+                : '';
+            const unlockBtn = isLocked
+                ? `<button type="button" class="sec-dsap-action-btn sec-btn-primary sec-btn-small" data-sec-action="keychain-unlock" title="Unlock service"><i class="fas fa-unlock"></i></button>`
+                : '';
+            return `<tr data-sec-keychain-service="${securityDsapEscapeAttr(service.id)}"${isLocked ? ' class="sec-keychain-row-locked"' : ''}>
+  <td>${securityDsapEscapeHtml(service.label || service.id)}<br><span class="sec-dsap-setting-hint">${securityDsapEscapeHtml(service.description || '')}</span>${lockBadge}</td>
   <td>
     <button type="button" class="dsap-smf-btn dsap-smf-btn-small sec-keychain-select-btn"${disabled}>
       <span>${securityDsapEscapeHtml(label)}</span> <i class="fas fa-caret-down"></i>
@@ -2328,6 +2356,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
   </td>
   <td class="sec-keychain-fp">${securityDsapEscapeHtml(fp)}</td>
   <td class="sec-actions-cell">
+    ${unlockBtn}
     <button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="keychain-edit" title="Edit active key"><i class="fas fa-pen"></i></button>
     <button type="button" class="sec-dsap-action-btn sec-btn-primary sec-btn-small" data-sec-action="keychain-add" title="Add key"><i class="fas fa-plus"></i></button>
   </td>

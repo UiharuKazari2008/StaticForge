@@ -672,12 +672,13 @@ function invalidURLHandler(req, res, next) {
 // Initialize account data on startup
 async function initializeAccountData(force = false) {
     try {
-        await globalResources.initializeAccountData(force);
+        const health = await globalResources.initializeAccountData(force);
         const accountBalance = globalResources.getAccountBalance();
-        if (accountBalance.totalCredits) {
+        if (health.userDataValid) {
             globalResources.logger.bootSubStep(`Account loaded: ${accountBalance.totalCredits} total credits`);
         } else {
-            globalResources.logger.error('Failed to load account data');
+            const detail = health.userDataError || health.accountStanding || 'unknown';
+            globalResources.logger.warn(`Account data not available: ${detail}`);
         }
     } catch (error) {
         globalResources.logger.error('Error initializing account data:', error.message);
@@ -1029,9 +1030,20 @@ async function getBalance() {
                 reason: 'missing_api_key'
             };
         }
+        // Tripwire: skip the outbound call while the service is locked.
+        if (apiKeyManager.isServiceLocked('novelai')) {
+            return {
+                ok: false,
+                fixedTrainingStepsLeft: 0,
+                purchasedTrainingSteps: 0,
+                totalCredits: 0,
+                subscription: null,
+                reason: 'service_locked'
+            };
+        }
 
         const options = {
-            hostname: 'api.novelai.net',
+            hostname: 'image.novelai.net',
             port: 443,
             path: '/user/subscription',
             method: 'GET',
@@ -1065,6 +1077,7 @@ async function getBalance() {
                     if (res.statusCode === 200) {
                         try {
                             const response = JSON.parse(buffer.toString());
+                            apiKeyManager.recordApiSuccess('novelai');
                             resolve(response);
                         } catch (e) {
                             reject(new Error('Invalid JSON response from NovelAI API'));
@@ -1072,8 +1085,10 @@ async function getBalance() {
                     } else {
                         try {
                             const errorResponse = JSON.parse(buffer.toString());
-                            reject(new Error(`Balance API error: ${errorResponse.error || 'Unknown error'}`));
+                            apiKeyManager.recordApiFailure('novelai', res.statusCode, errorResponse.message || errorResponse.error);
+                            reject(new Error(`Balance API error: ${errorResponse.message || errorResponse.error || 'Unknown error'}`));
                         } catch (e) {
+                            apiKeyManager.recordApiFailure('novelai', res.statusCode, `HTTP ${res.statusCode}`);
                             reject(new Error(`Balance API error: HTTP ${res.statusCode}`));
                         }
                     }
@@ -1127,9 +1142,16 @@ async function getUserData() {
                 reason: 'missing_api_key'
             };
         }
+        // Tripwire: skip the outbound call while the service is locked.
+        if (apiKeyManager.isServiceLocked('novelai')) {
+            return {
+                ok: false,
+                reason: 'service_locked'
+            };
+        }
 
         const options = {
-            hostname: 'api.novelai.net',
+            hostname: 'image.novelai.net',
             port: 443,
             path: '/user/data',
             method: 'GET',
@@ -1147,8 +1169,10 @@ async function getUserData() {
                 "sec-fetch-site": "same-site",
                 "x-correlation-id": crypto.randomBytes(3).toString('hex').toUpperCase(),
                 "x-initiated-at": new Date().toISOString(),
-                "Referer": "https://novelai.net/",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) Gecko/20100101 Firefox/138.0"
+                "referer": "https://novelai.net/",
+                "origin": "https://novelai.net",
+                "sec-gpc": "1",
+                "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0"
               }
         };
 
@@ -1170,6 +1194,7 @@ async function getUserData() {
                         if (res.statusCode === 200) {
                             try {
                                 const response = JSON.parse(buffer.toString());
+                                apiKeyManager.recordApiSuccess('novelai');
                                 resolve({
                                     ok: true,
                                     ...response,
@@ -1181,12 +1206,14 @@ async function getUserData() {
                             try {
                                 const errorResponse = JSON.parse(buffer.toString());
                                 console.error('❌ User data API error:', errorResponse);
+                                apiKeyManager.recordApiFailure('novelai', res.statusCode, errorResponse.message);
                                 resolve({
                                     ok: false,
                                     statusCode: res.statusCode,
                                     error: errorResponse.message || 'Unknown error'
                                 })
                             } catch (e) {
+                                apiKeyManager.recordApiFailure('novelai', res.statusCode, `HTTP ${res.statusCode}`);
                                 reject(new Error(`User data API error: HTTP ${res.statusCode}`));
                             }
                         }
@@ -1420,7 +1447,15 @@ app.get('/naxCache/:gallerySlug/:filename', authMiddleware, (req, res) => {
     handleNaxImageRequest(globalResources, req, res, cacheDir);
 });
 app.use('/cache', authMiddleware, (req, res, next) => {
-    res.setHeader('Cache-Control', 'public, max-age=259200');
+    // Wallpapers reuse a stable per-workspace path (/cache/wallpapers/<id>.png) but the
+    // content is overwritten on every upload, so they must revalidate (ETag/Last-Modified)
+    // instead of being served stale from the browser cache. Other /cache entries are
+    // content-addressed by hash (immutable) and safe to cache long-term.
+    if (req.path.startsWith('/wallpapers/')) {
+        res.setHeader('Cache-Control', 'private, no-cache, must-revalidate');
+    } else {
+        res.setHeader('Cache-Control', 'public, max-age=259200');
+    }
     next();
 }, express.static(cacheDir));
 app.use('/private/wiki', authMiddleware, express.static(path.join(cacheDir, 'wiki'), {
@@ -3109,7 +3144,8 @@ async function handleAdminUnixSocketMessage(message, socket) {
     await globalResources.logger.bootStep('Account & Cache', async () => {
         updateServerStage('account_init');
         await initializeAccountData();
-        
+        await refreshBalance(true);
+
         updateServerStage('cache_init');
         await initializeCacheData(true);
     });
@@ -3140,6 +3176,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
         wsServer.startPingInterval(() => {
             return {
                 balance: globalResources.getAccountBalance(),
+                accountHealth: globalResources.getAccountClientFields(),
                 queue_status: globalResources.getQueue().getStatus(),
                 image_count: globalResources.getImageCounter().getCount(),
                 server_time: Date.now().valueOf()

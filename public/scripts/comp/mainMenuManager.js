@@ -1062,6 +1062,18 @@ function setupMainMenuContextMenus() {
                 }
                 break;
 
+            case 'novelai-show-ban-message':
+                // showBanMessageDialog: public/scripts/comp/novelAiAccountStatus.js
+                await showBanMessageDialog();
+                break;
+
+            case 'novelai-inhibit-status-incident':
+                if (inhibitActiveUpstreamIncident()) {
+                    syncFixedCreditsIndicatorStanding();
+                    showGlassToast('info', null, 'Status alert dismissed for this server session.', false, 4000, '<i class="fas fa-eye-slash"></i>');
+                }
+                break;
+
             case 'search-index-toggle-pause':
                 // Toggle indexing pause state
                 if (window.wsClient && window.wsClient.isConnected()) {

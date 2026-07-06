@@ -49,7 +49,7 @@ async function rerollImage(image, event = null) {
                     clearInterval(progressInterval);
                     removeGlassToast(toastId);
                 } else {
-                    hideManualLoading();
+                    showManualLoading(false);
                 }
                 return;
             }
@@ -70,7 +70,7 @@ async function rerollImage(image, event = null) {
                     clearInterval(progressInterval);
                     removeGlassToast(toastId);
                 } else {
-                    hideManualLoading();
+                    showManualLoading(false);
                 }
                 return;
             }
@@ -110,46 +110,39 @@ async function rerollImage(image, event = null) {
                         updateSproutSeedButtonFromPreviewSeed();
                     }
 
-                    // Show success message
+                    // Show success message. When streaming, the server's phase:'complete' progress may already have
+                    // completed (and nulled) the global progressToastId via handleImageGenerationProgress — guard for that.
                     if (!isInModal) {
                         clearInterval(progressInterval);
-                        updateGlassToastProgress(progressToastId, 100);
-                        updateGlassToastComplete(progressToastId, {
-                            type: 'success',
-                            title: 'Reroll Complete',
-                            message: 'Image generated successfully!',
-                            customIcon: '<i class="nai-check"></i>',
-                            showProgress: false
-                        });
+                        if (progressToastId) {
+                            updateGlassToastProgress(progressToastId, 100);
+                            updateGlassToastComplete(progressToastId, {
+                                type: 'success',
+                                title: 'Reroll Complete',
+                                message: 'Image generated successfully!',
+                                customIcon: '<i class="nai-check"></i>',
+                                showProgress: false
+                            });
 
-                        // Clear the global progress toast ID after completion
-                        progressToastId = null;
+                            // Clear the global progress toast ID after completion
+                            progressToastId = null;
+                        }
                     } else {
                         showGlassToast('success', 'Reroll Complete', 'Image generated successfully!');
-                        hideManualLoading();
+                        showManualLoading(false);
                     }
 
-                    // Refresh gallery and show new image
+                    const rerolledFilename = result.filename;
+
+                    // Refresh gallery (server also broadcasts gallery_updated) and open the new image in a Lumen window
                     setTimeout(async () => {
                         await loadGallery(true);
 
-                        if (!isInModal) {
-                            // Find the newly generated image and show in lightbox
-                            if (allImages.length > 0) {
-                                const newImage = allImages[0]; // Newest image is first
-                                let filenameToShow = newImage.original;
-                                if (newImage.upscaled) {
-                                    filenameToShow = newImage.upscaled;
-                                }
-
-                                const imageToShow = {
-                                    filename: filenameToShow,
-                                    base: newImage.base,
-                                    upscaled: newImage.upscaled
-                                };
-                                showLightbox(imageToShow);
-                            }
-                        }
+                        // Locate the freshly generated image to open with full gallery metadata
+                        const found = allImages.find(img => img.original === rerolledFilename || img.upscaled === rerolledFilename);
+                        const imageToShow = found || { original: rerolledFilename, upscaled: rerolledFilename };
+                        // openGalleryImageInViewer: public/scripts/comp/imageViewer.js
+                        openGalleryImageInViewer(imageToShow);
 
                         // Clean up modal state
                         document.querySelectorAll('.manual-preview-image-container, #manualPanelSection').forEach(element => {
@@ -160,27 +153,29 @@ async function rerollImage(image, event = null) {
                     return;
                 }
             } catch (wsError) {
-                console.warn('WebSocket reroll failed, falling back to HTTP:', wsError);
-                // Fall back to HTTP method if WebSocket fails
+                // Propagate to the outer handler so the toast/loading state is cleaned up (no HTTP fallback exists)
+                throw wsError;
             }
         }
     } catch (error) {
         console.error('Direct reroll error:', error);
         if (!isInModal) {
             clearInterval(progressInterval);
-            updateGlassToastComplete(progressToastId, {
-                type: 'error',
-                title: 'Reroll Failed',
-                message: 'Image reroll failed: ' + error.message,
-                customIcon: '<i class="nai-cross"></i>',
-                showProgress: false
-            });
+            if (progressToastId) {
+                updateGlassToastComplete(progressToastId, {
+                    type: 'error',
+                    title: 'Reroll Failed',
+                    message: 'Image reroll failed: ' + error.message,
+                    customIcon: '<i class="nai-cross"></i>',
+                    showProgress: false
+                });
 
-            // Clear the global progress toast ID after error
-            progressToastId = null;
+                // Clear the global progress toast ID after error
+                progressToastId = null;
+            }
         } else {
             showError('Image reroll failed: ' + error.message);
-            hideManualLoading();
+            showManualLoading(false);
         }
     } finally {
         if (isInModal) {

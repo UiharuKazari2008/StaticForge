@@ -3120,6 +3120,7 @@ class ServiceWorkerManager {
             if (this._isDesktopTrayMode()) {
                 const filesTotal = this.trayPopup.filesTotal || this.lastUpdateFilesTotal || 0;
                 this._showServiceWorkerTrayPopup('complete', {
+                    kind: 'sw-update',
                     filesTotal,
                     progress: 100,
                     message: 'Updates ready — apply without restart'
@@ -3156,7 +3157,7 @@ class ServiceWorkerManager {
         // Desktop mode: tray popup completion prompt
         if (this._isDesktopTrayMode()) {
             const filesTotal = this.trayPopup.filesTotal || this.lastUpdateFilesTotal || 0;
-            this._showServiceWorkerTrayPopup('complete', { filesTotal, progress: 100 });
+            this._showServiceWorkerTrayPopup('complete', { kind: 'sw-update', filesTotal, progress: 100 });
             this.updateToastId = 'service-worker-tray-popup';
         } else {
             // Non-desktop mode: use toast
@@ -3801,7 +3802,7 @@ class ServiceWorkerManager {
             return;
         }
         this.trayPopup.dismissedUntilComplete = false;
-        this._showServiceWorkerTrayPopup('available', { message: message || 'Resource updates are available.' });
+        this._showServiceWorkerTrayPopup('available', { kind: 'sw-update', message: message || 'Resource updates are available.' });
     }
 }
 

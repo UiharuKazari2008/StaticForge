@@ -13,7 +13,9 @@ function normalizeMeta(meta) {
     return {
         destructive: m.destructive === true,
         critical: m.critical === true,
-        owner: m.owner != null ? String(m.owner) : ''
+        owner: m.owner != null ? String(m.owner) : '',
+        dispatch: m.dispatch === 'fifo' ? 'fifo' : 'parallel',
+        fifoScope: m.fifoScope === 'global' ? 'global' : 'connection'
     };
 }
 
