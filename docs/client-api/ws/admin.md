@@ -1,6 +1,6 @@
 # WebSocket: Admin / Security Center
 
-Server handler: `modules/ws/handlers/190-adminHandler.js`
+Server handlers: `modules/ws/handlers/190-adminHandler.js` (Security Center, IP, rate-limit, Service Key packets) and `modules/ws/handlers/195-applicationAuthHandler.js` (application-key authorization packets)
 
 See [WebSocket protocol](../websocket.md) for envelope format, auth, and error handling.
 
@@ -28,6 +28,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `get_pin_settings` | `get_pin_settings_response` | session | Handler: handleGetPinSettings |
 | `get_rate_limiting_stats` | `rate_limiting_stats_response` | session | Handler: handleGetRateLimitingStats |
 | `get_session_rate_limiting_stats` | `session_rate_limiting_stats_response` | session | Handler: handleGetSessionRateLimitingStats |
+| `get_telemetry` | `get_telemetry_response` | session | Handler: handleGetTelemetry |
 | `list_application_auth_requests` | `list_application_auth_requests_response` | session | Handler: handleListApplicationAuthRequests |
 | `list_application_keys` | `list_application_keys_response` | session | Handler: handleListApplicationKeys |
 | `refresh_application_key` | `refresh_application_key_response` | critical | Handler: handleRefreshApplicationKey |
@@ -38,6 +39,8 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `set_user_pin` | `set_user_pin_response` | admin/destructive | Handler: handleSetUserPin |
 | `set_user_pin_login_enabled` | `set_user_pin_login_enabled_response` | admin/destructive | Handler: handleSetUserPinLoginEnabled |
 | `unblock_ip` | `unblock_ip_response` | admin/destructive | Handler: handleUnblockIP |
+| `unlock_api_service` | `unlock_api_service_response` | admin/destructive | Handler: handleUnlockApiService |
+| `update_api_key` | `update_api_key_response` | admin/destructive | Handler: handleUpdateApiKey |
 | `update_api_key_selections` | `update_api_key_selections_response` | admin/destructive | Handler: handleUpdateApiKeySelections |
 
 ## Response envelope
@@ -329,6 +332,38 @@ Additional response/push types from handler:
 
 **Success response:** `get_api_key_services_response`
 
+`data.services[]` comes from `modules/apiKeyManager.js` → `listServiceSummaries()`:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `id` | string | Service id, e.g. `novelai` or `grok` |
+| `label` / `description` / `icon` | string | Security Center display metadata |
+| `requiresRestart` | boolean | `true` when changing the selected key restarts/reconnects service clients |
+| `selectedIndex` | number | Active key index in the service key list |
+| `selectedName` / `selectedFingerprint` | string\|null | Active key display label and masked secret |
+| `missingKeys` | boolean | `true` when no key exists for the service |
+| `keys[]` | array | `{ index, name, fingerprint }` for each configured key |
+| `lock` | object\|null | Tripwire state for services that support locking |
+
+`lock` is `null` for services without a tripwire. For `novelai` and `grok`:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `service` | string | Service id |
+| `locked` | boolean | Outbound guarded calls fast-fail while true |
+| `failureCount` | number | Consecutive qualifying API failures |
+| `threshold` | number | Lock threshold (`3`) |
+| `lastStatus` | number\|null | Last counted HTTP status |
+| `lastMessage` | string\|null | Last counted error text |
+| `lockedAt` / `updatedAt` | number\|null | Millisecond timestamps |
+
+Tripwire behavior:
+
+- Only `novelai` and `grok` are tripwire services.
+- Consecutive HTTP `400`, `401`, `402`, and `403` failures count. Network errors, `429`, and `5xx` do not lock the service.
+- A successful guarded call resets `failureCount`.
+- Updating the active key or changing the selected key clears that service lock.
+
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
 ### `get_application_auth_scopes`
@@ -452,6 +487,30 @@ Additional response/push types from handler:
 **Success response:** `session_rate_limiting_stats_response`
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `get_telemetry`
+
+**Auth:** Session required. Admin only
+
+**Handler:** modules/ws/handlers/190-adminHandler.js → `handleGetTelemetry`
+
+Lists captured telemetry events for Security Center diagnostics.
+
+**Request fields:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `requestId` | No | Correlation id |
+| `page` | No | Page number, default `1` |
+| `limit` | No | Page size, default `15` |
+| `search` | No | Text filter |
+| `eventType` | No | Event type filter |
+
+**Success response:** `get_telemetry_response`
+
+Returns `data: { success: true, events, pagination }`.
+
+**Errors:** `type: "error"` via `sendError()`; `get_telemetry` detail when the telemetry database is unavailable.
 
 ### `list_application_auth_requests`
 
@@ -663,6 +722,76 @@ Additional response/push types from handler:
 **Success response:** `unblock_ip_response`
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `unlock_api_service`
+
+**Auth:** Session required. Admin only (destructive — blocked for readonly)
+
+**Handler:** modules/ws/handlers/190-adminHandler.js → `handleUnlockApiService`
+
+Clears a Service Key tripwire lock without changing the key. Use after verifying the configured key/contract is valid.
+
+**Request fields:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `requestId` | No | Correlation id |
+| `service` | Yes | Tripwire service id (`novelai` or `grok`) |
+
+**Validation errors:**
+- `MISSING_SERVICE`
+- `UNSUPPORTED_SERVICE`
+
+**Success response:** `unlock_api_service_response`
+
+```json
+{
+  "type": "unlock_api_service_response",
+  "requestId": "req_1",
+  "data": {
+    "success": true,
+    "service": "novelai",
+    "lock": {
+      "service": "novelai",
+      "locked": false,
+      "failureCount": 0,
+      "threshold": 3,
+      "lastStatus": null,
+      "lastMessage": null,
+      "lockedAt": null,
+      "updatedAt": 1719491234567
+    }
+  },
+  "timestamp": "..."
+}
+```
+
+**Push side effects:** `api_service_lock_changed` is broadcast to admin clients when the locked state changes.
+
+### `update_api_key`
+
+**Auth:** Session required. Admin only (destructive — blocked for readonly)
+
+**Handler:** modules/ws/handlers/190-adminHandler.js → `handleUpdateApiKey`
+
+Updates a Service Key label and/or secret at an existing index. If the edited key is selected, the service tripwire is cleared.
+
+**Request fields:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `requestId` | No | Correlation id |
+| `service` | Yes | Service id |
+| `index` | Yes | Existing key index |
+| `name` | No | Replacement display name |
+| `apiKey` | No | Replacement API key / contract id |
+
+**Validation errors:**
+- `MISSING_SERVICE`
+
+**Success response:** `update_api_key_response`
+
+Returns `data: { success: true, service, key }`, where `key` is the updated masked key summary.
 
 ### `update_api_key_selections`
 

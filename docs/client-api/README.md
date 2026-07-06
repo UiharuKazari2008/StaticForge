@@ -11,6 +11,7 @@ StaticForge is a monolithic Node/Express server (default port **9220**) with:
 | **REST (HTTP)** | Authentication, static assets, image bytes, preset webhooks, admin log viewer, VFS file download, service-worker manifest |
 | **WebSocket** | Primary API for generation, gallery, workspaces, presets, search, chat, admin, VFS, references |
 | **Session cookies** | `connect.sid` (express-session) — required for authenticated REST and WS after login |
+| **Application credentials** | `X-StaticForge-App-Key` + User-Agent or `X-StaticForge-App-Token` for third-party REST/WS clients |
 | **Optional Bearer token** | `config.loginKey` — bypasses PIN when sent as `Authorization: Bearer …` or `?auth=` |
 
 The web client (`public/scripts/websocket.js` → `WebSocketClient`) speaks the same protocol documented here.
@@ -30,8 +31,9 @@ The web client (`public/scripts/websocket.js` → `WebSocketClient`) speaks the 
 
 1. **Check server readiness:** `OPTIONS /status` → `{ isReady, stage, … }`
 2. **Authenticate:** `POST /` with `{ "action": "login", "data": { "pin": "……" } }` — store session cookie
-3. **Validate session:** `OPTIONS /app` → `{ success, userType, vfsPathUuid, serverVersion }`
-4. **Connect WebSocket:** `ws://<host>:9220/` (or `wss://`) — include session cookie on handshake
+   - Third-party clients with an application key may instead open WS and send `authenticate_application`, then use the same key headers for REST.
+3. **Validate session / credentials:** `OPTIONS /app` → `{ success, userType, vfsPathUuid, serverVersion }`
+4. **Connect WebSocket:** `ws://<host>:9220/` (or `wss://`) — include session cookie on handshake, or authenticate with `authenticate_application`
 5. **Receive `connection` message** with `{ authenticated, userType, vfsPathUuid, … }`
 6. **Send requests** with `{ type, requestId, …fields }` — correlate `{type}_response` by `requestId`
 
@@ -59,7 +61,7 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | [client-only-features.md](./client-only-features.md) | Web-only UI, localStorage, service worker, Android bridges |
 | [feature-map.md](./feature-map.md) | UI feature → REST/WS matrix |
 
-### WebSocket domains (253 request types)
+### WebSocket domains (275 request types)
 
 | Domain | File | Packets |
 |--------|------|---------|
@@ -67,7 +69,8 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | Gallery | [ws/gallery.md](./ws/gallery.md) | 9 |
 | Presets | [ws/presets.md](./ws/presets.md) | 11 |
 | Workspaces | [ws/workspace.md](./ws/workspace.md) | 34 |
-| Search & tags | [ws/search.md](./ws/search.md) | 13 |
+| Search & tags | [ws/search.md](./ws/search.md) | 14 |
+| Autofill ranking | [ws/autofillRanking.md](./ws/autofillRanking.md) | 3 |
 | Grimoire / Wiki | [ws/wiki.md](./ws/wiki.md) | 7 |
 | Chat | [ws/chat.md](./ws/chat.md) | 9 |
 | Director | [ws/director.md](./ws/director.md) | 12 |
@@ -76,15 +79,15 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | Text replacements | [ws/textReplacements.md](./ws/textReplacements.md) | 6 |
 | Favorites | [ws/favorites.md](./ws/favorites.md) | 3 |
 | Account & app bootstrap | [ws/account.md](./ws/account.md) | 2 |
-| Generation quips | [ws/quips.md](./ws/quips.md) | 4 |
+| Generation quips | [ws/quips.md](./ws/quips.md) | 5 |
 | Knowledge / memories | [ws/knowledge.md](./ws/knowledge.md) | 7 |
 | Persona | [ws/persona.md](./ws/persona.md) | 2 |
 | User settings | [ws/userSettings.md](./ws/userSettings.md) | 2 |
-| Config editor | [ws/configEditor.md](./ws/configEditor.md) | 3 |
+| Config editor | [ws/configEditor.md](./ws/configEditor.md) | 10 |
 | Cache & runtime | [ws/cache.md](./ws/cache.md) | 7 |
 | Infrastructure | [ws/infrastructure.md](./ws/infrastructure.md) | 5 |
-| Admin / security (+ application auth) | [ws/admin.md](./ws/admin.md) | 31 |
-| VFS & desktop | [ws/vfs.md](./ws/vfs.md) | 27 |
+| Admin / security (+ application auth) | [ws/admin.md](./ws/admin.md) | 34 |
+| VFS & desktop | [ws/vfs.md](./ws/vfs.md) | 34 |
 | References & vibes | [ws/references.md](./ws/references.md) | 22 |
 
 ## Related legacy docs

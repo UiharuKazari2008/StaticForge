@@ -142,6 +142,29 @@ node web_server.js
 
 Access at `http://localhost:9220`
 
+#### 4. Production with PM2
+```bash
+pnpm add -g pm2   # if pm2 is not already installed globally
+pm2 start ecosystem.config.js
+```
+
+The PM2 app name defaults to `Dreamscape` in [`ecosystem.config.js`](ecosystem.config.js). If you change it, also set the matching config value:
+
+```json
+{
+  "pm2_process_name": "Dreamscape"
+}
+```
+
+Helper scripts:
+
+| Command | Use |
+|---------|-----|
+| `./restart` | Flush PM2 logs, restart with updated env, reset counters, then follow logs |
+| `./reload` | Restart with updated env, reset counters, then follow logs |
+
+When running under PM2, the admin Log Viewer exposes PM2 status, log flush, and async restart actions at `/{logViewerPathUuid}/pm2/*`.
+
 ### Configuration Options
 
 - **apiKey**: Your NovelAI API key (required)
@@ -150,6 +173,7 @@ Access at `http://localhost:9220`
 - **loginPin**: Admin PIN for full access
 - **readOnlyPin**: Read-only user PIN
 - **sequenziaFolder**: Path for external integrations
+- **pm2_process_name**: PM2 process name used by the in-app Log Viewer (default: `Dreamscape`)
 
 ### Basic Usage
 1. **Create Images**: Use the Creator button to open the generation interface
@@ -381,7 +405,7 @@ curl "http://localhost:9220/pending/retrieval/abc123-def456"
 
 Build third-party clients with feature parity against the web app using the canonical API reference:
 
-- **[Client API documentation](docs/client-api/README.md)** — authentication, REST routes, WebSocket protocol (235 request types, server push events), feature map, and client-only behavior
+- **[Client API documentation](docs/client-api/README.md)** — authentication, REST routes, WebSocket protocol (275 request types, server push events), feature map, and client-only behavior
 - [Legacy Android WebSocket guide](docs/websocket_android_guide.md) — Kotlin examples; superseded by `docs/client-api/` for completeness
 
 ## 📞 Support

@@ -149,8 +149,13 @@ Server broadcasts **ping** every ~10 seconds (`modules/websocket.js` → `startP
 {
   "type": "ping",
   "timestamp": "...",
-  "image_count": 123,
-  "queue_status": { }
+  "data": {
+    "balance": { "fixedTrainingStepsLeft": 10000, "purchasedTrainingSteps": 500, "totalCredits": 10500 },
+    "accountHealth": { "userDataValid": true, "upstreamUnavailable": false },
+    "queue_status": { },
+    "image_count": 123,
+    "server_time": 1719491234567
+  }
 }
 ```
 
@@ -196,13 +201,15 @@ When `enableStreaming: true` on `generate_image`, `generate_preset`, `expand_ima
 
 ## Server-initiated messages (no requestId)
 
-These are **pushes** — handle asynchronously. Registered in `public/scripts/ws/handlers/*Inbound.js`.
+These are **pushes** — handle asynchronously. Browser handlers live in `public/scripts/ws/handlers/*Inbound.js` when the web client consumes the push directly.
 
 | Type | When sent | Payload (top-level / `data`) |
 |------|-----------|------------------------------|
 | `connection` | Immediately on WS connect | `status`, `message`, `authenticated`, `userType?`, `vfsPathUuid?`, `logViewerPathUuid?` (admin) |
-| `ping` | ~10s interval broadcast | `timestamp`, `image_count`, `queue_status` |
+| `ping` | ~10s interval broadcast | `data.balance`, `data.accountHealth`, `data.queue_status`, `data.image_count`, `data.server_time` |
 | `request_keep_alive` | During long WS requests | `requestId`, `status: "processing"`, optional `progress`, `message` |
+| `account_data_health_updated` | Account health or balance changed after boot, retry, or periodic refresh | `data` contains account health fields plus optional `balance`; see [ws/account.md](./ws/account.md) |
+| `api_service_lock_changed` | Service Key tripwire lock/unlock changed | Admin-only broadcast: `data.service`, `data.label`, `data.lock`; see [ws/admin.md](./ws/admin.md#get_api_key_services) |
 | `gallery_updated` | Image add/delete/move/scrap/pin | `data.action` (`add`, `bulk_delete`, `remove`, …), `filename?`, `filenames?`, `viewType?`, `deletedCount?`, `lastGalleryDestructiveAt?` |
 | `gallery_scroll_state` | On reconnect (session restore) | Scroll hints per view: `index`, `viewType`, `workspaceId`, `anchorFilename?` |
 | `workspace_updated` | Workspace mutation | `data.action` (e.g. `bulk_add_pinned`, `settings_updated`, `files_moved`), `workspaceId`, action-specific counts/fields |
@@ -286,7 +293,7 @@ Custom callbacks: `setRequestCallback(requestId, fn)` for multi-phase responses.
 
 ## Domain documentation
 
-Full packet lists: [ws/](./ws/) directory (253 request types).
+Full packet lists: [ws/](./ws/) directory (275 request types).
 
 ## Implementation references
 

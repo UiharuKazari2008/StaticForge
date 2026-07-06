@@ -140,6 +140,8 @@ Implementation: `modules/ws/handlers/generationImpl.js`
 
 **Errors:** `type: "error"`; may also receive `image_generation_error` push.
 
+When the NovelAI Service Key tripwire is locked, generation fails before calling NovelAI with an error similar to `NovelAI is temporarily locked after repeated API errors...`. Admin recovery is in [admin.md](./admin.md#get_api_key_services): fix/select the key or send `unlock_api_service`, then retry generation.
+
 ### `compile_dynamic_generation`
 
 **Auth:** Session required. Admin only (destructive — blocked for readonly)

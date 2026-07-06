@@ -58,6 +58,24 @@ Health is re-evaluated when:
 
 ---
 
+## Tripwire-locked NovelAI refresh
+
+NovelAI account data is protected by the Service Key tripwire documented in [admin.md](./admin.md#get_api_key_services). When repeated admin-fixable API failures lock `novelai`:
+
+- `getUserData()` skips `GET /user/data` and returns `user.reason: "service_locked"`.
+- `getBalance()` skips `GET /user/subscription` and returns `reason: "service_locked"` with zeroed balance fields.
+- Account health reports `upstreamUnavailable: true`, `accountStanding: "unavailable"`, and `userDataError: "NovelAI API access is temporarily locked"`.
+- `retry_account_data` will keep returning locked health until an admin unlocks the service or updates/selects a valid key in Security Center.
+
+Operational recovery:
+
+1. Open **Security Center -> Service Keys**.
+2. Verify or replace the active NovelAI key/contract.
+3. Use `unlock_api_service` or save/select the corrected key.
+4. Send `retry_account_data` (or wait for the next periodic refresh).
+
+---
+
 ## `get_app_options_response.data` schema
 
 Top-level `ok` is always `true` when the WS handler succeeds (app config loaded). Account validity is expressed via health fields above, not by failing the packet.

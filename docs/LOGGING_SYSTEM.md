@@ -48,6 +48,8 @@ When the server runs under PM2, stdout/stderr are captured by PM2 into these fil
 
 Internal `logs/console.log` capture is **disabled** under PM2 to avoid duplicate streams.
 
+For first-time PM2 setup and the `./restart` / `./reload` helpers, see [README.md](../README.md#4-production-with-pm2).
+
 ### Console Capture Log (non-PM2)
 **Location**: `logs/console.log`
 

@@ -401,6 +401,8 @@ Application keys with `userType: readonly` follow the same rules.
 | `limiter` | All routes | Skipped for authenticated sessions and application credentials |
 | `speedLimiter` | All routes | Skipped for authenticated sessions and application credentials |
 
+`createApplicationAuthEarlyMiddleware()` runs after session setup and before `securityMiddleware`, `limiter`, and `speedLimiter`. Valid application keys or temp tokens also bypass the honeypot / known-bad-path checks in `securityMiddleware`, same as authenticated browser sessions.
+
 Unauthenticated clients hitting rate limit receive **429**:
 
 ```json

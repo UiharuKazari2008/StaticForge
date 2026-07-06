@@ -133,7 +133,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Favorites | — | `favorites_*` | — | — |
 | Config editor | — | `config_editor_*` | — | Config editor applet |
 | Security center | — | `get_blocked_ips`, `set_admin_pin`, `list_application_keys`, … | — | securityCenterDsapApplet |
-| API keys | — | `get_api_key_services`, `add_api_key`, … | — | apiKeyModal |
+| API keys / Service Keys | — | `get_api_key_services`, `add_api_key`, `update_api_key`, `update_api_key_selections`, `unlock_api_service` | `api_service_lock_changed` (admin) | Security Center Service Keys tab |
 | Log viewer | `GET /{logViewerPathUuid}/*` | — | — | logViewerApplet |
 | Pending queue admin | `GET /pending` | `cancel_pending_requests` | — | serverManagement |
 | Runtime recompile | — | `recompile_runtime_assets`, `refresh_server_cache` | `runtime_compile_*`, `service_worker_cache_update` | — |
@@ -157,9 +157,9 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Category | Count |
 |----------|-------|
 | Documented REST route groups | ~25 explicit + static |
-| WS request types (client → server) | **253** |
+| WS request types (client → server) | **275** |
 | WS server push types (common) | **~50** |
-| Auth flows | **3** (PIN session, Bearer loginKey, dev key — dev middleware exists but is **not mounted** on any route; see [authentication.md](./authentication.md#development-auth)) |
+| Auth flows | **4** (PIN session, Bearer loginKey, application key / temp token, dev key — dev middleware exists but is **not mounted** on any route; see [authentication.md](./authentication.md#development-auth)) |
 
 ---
 

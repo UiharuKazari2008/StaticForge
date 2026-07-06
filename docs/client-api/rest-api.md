@@ -2,7 +2,7 @@
 
 HTTP routes defined in `web_server.js` and static middleware. Default base: `http://<host>:9220`.
 
-**Authentication:** Unless noted, routes use `authMiddleware` — session cookie or `Authorization: Bearer <loginKey>` / `?auth=`. See [authentication.md](./authentication.md).
+**Authentication:** Unless noted, routes use `authMiddleware` — session cookie, application credentials (`X-StaticForge-App-Key` + matching `User-Agent`, or `X-StaticForge-App-Token`), or legacy `Authorization: Bearer <loginKey>` / `?auth=`. See [authentication.md](./authentication.md).
 
 **Cache headers:** Auth middleware forces no-store on protected JSON routes. Image routes use longer cache (see each route).
 
@@ -410,7 +410,7 @@ All routes: **authMiddleware + adminOnlyMiddleware**
 | GET | `/{uuid}/sources` | List log sources and PM2 availability |
 | GET | `/{uuid}/pm2/status` | PM2 process status |
 | POST | `/{uuid}/pm2/flush` | Flush PM2 logs |
-| POST | `/{uuid}/pm2/restart` | Body `{ broom?: boolean }` — async DSS restart |
+| POST | `/{uuid}/pm2/restart` | Body `{ broom?: boolean }` — returns before async DSS restart runs; `broom` defaults to `true` |
 | GET | `/{uuid}/backlog?source=&lines=500` | Tail log file |
 | GET | `/{uuid}/stream?source=&offset=` | SSE log stream |
 
@@ -426,6 +426,14 @@ All routes: **authMiddleware + adminOnlyMiddleware**
 ```
 
 **SSE `/stream`:** `Content-Type: text/event-stream` — not compressed.
+
+**PM2 restart response:**
+
+```json
+{ "success": true, "broom": true, "preparing": true }
+```
+
+`404 { "success": false, "error": "PM2 not available" }` means no PM2 log paths/process could be resolved for the current deployment.
 
 ---
 
