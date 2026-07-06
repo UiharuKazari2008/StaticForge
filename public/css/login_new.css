@@ -5,7 +5,7 @@
     --titlebar-area-width: env(titlebar-area-width, 100%);
     --titlebar-area-height: env(titlebar-area-height, 33px);
     --transition-pin-dot: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
-    --transition-pin-button: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, color 0.3s ease;
+    --transition-pin-button: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, color 0.3s ease, transform 0.1s ease;
     --transition-login-container: padding 0.75s ease;
     --transition-blur-layer: opacity 0.25s cubic-bezier(1, 0, 0.21, 0.86);
     --transition-asset-progress: max-height 0.25s ease-in-out, opacity 0.25s ease-in-out, margin-top 0.25s ease-in-out, border-width 0.25s ease-in-out, padding 0.25s ease-in-out, gap 0.25s ease-in-out;
@@ -319,6 +319,17 @@ body.login-booting .login-product-name {
     align-items: center;
     justify-content: center;
     border: 2px solid rgba(255, 255, 255, 0.25);
+    will-change: transform, background-color;
+}
+
+.pin-button.active {
+    transform: scale(0.92);
+    background-color: rgb(255 255 255 / 90%) !important;
+    border-color: #6366f1 !important;
+}
+
+.pin-button.active.danger {
+    background-color: rgba(255, 0, 25, 0.9) !important;
 }
 
 .pin-button:focus-visible {

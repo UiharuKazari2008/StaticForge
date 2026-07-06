@@ -55,13 +55,21 @@ class LoginPage {
         document.addEventListener('keydown', (e) => {
             if (!this.pinReady || this.isLoading) return;
             if (e.key >= '0' && e.key <= '9') {
+                if (this.loginContainer.classList.contains('minimize')) {
+                    this.togglePinPad(false);
+                }
+                this.triggerButtonFeedback(e.key);
                 this.addDigit(e.key);
             } else if (e.key === 'Enter') {
                 if (this.rollingBuffer.length === 6) {
                     this.handleLogin();
                 }
             } else if (e.key === 'Backspace') {
+                this.triggerButtonFeedback('backspace');
                 this.removeDigit();
+            } else if (e.key === 'Escape') {
+                this.triggerButtonFeedback('clear');
+                this.clearPin();
             }
         });
     }
@@ -88,40 +96,75 @@ class LoginPage {
             });
         });
 
-        const togglePinPad = () => {
-            this.loginContainer.classList.add('transition');
-            this.loginContainer.classList.toggle('minimize');
-            this.updateAriaAttributes();
-        };
-
-        this.pinDisplay.addEventListener('click', togglePinPad);
+        this.pinDisplay.addEventListener('click', () => this.togglePinPad());
         this.pinDisplay.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                togglePinPad();
+                this.togglePinPad();
             }
         });
     }
 
+    togglePinPad(forceState) {
+        this.loginContainer.classList.add('transition');
+        if (forceState !== undefined) {
+            this.loginContainer.classList.toggle('minimize', forceState);
+        } else {
+            this.loginContainer.classList.toggle('minimize');
+        }
+        this.updateAriaAttributes();
+    }
+
+    triggerButtonFeedback(keyOrAction) {
+        if (!this.loginContainer) return;
+        const selector = isNaN(keyOrAction)
+            ? `.pin-button[data-action="${keyOrAction}"]`
+            : `.pin-button[data-number="${keyOrAction}"]`;
+        const button = this.loginContainer.querySelector(selector);
+        if (button) {
+            button.classList.add('active');
+            setTimeout(() => button.classList.remove('active'), 150);
+        }
+    }
+
+    setErrorMessage(message) {
+        if (!this.errorMessage) return;
+        if (message) {
+            this.errorMessage.textContent = message;
+            this.errorMessage.classList.remove('hidden');
+        } else {
+            this.errorMessage.classList.add('hidden');
+            this.errorMessage.textContent = '';
+        }
+    }
+
     updateAriaAttributes() {
         const isMinimized = this.loginContainer.classList.contains('minimize');
+        const digitsEntered = this.rollingBuffer.length;
+        const ariaLabel = isMinimized
+            ? `Show PIN pad${digitsEntered > 0 ? `, ${digitsEntered} digits entered` : ''}`
+            : `Hide PIN pad${digitsEntered > 0 ? `, ${digitsEntered} digits entered` : ''}`;
+
         this.pinDisplay.setAttribute('aria-expanded', !isMinimized);
-        this.pinDisplay.setAttribute('aria-label', isMinimized ? 'Show PIN pad' : 'Hide PIN pad');
+        this.pinDisplay.setAttribute('aria-label', ariaLabel);
     }
 
     addDigit(digit) {
-        // Clear error when starting a new entry
-        if (this.rollingBuffer.length === 0) {
-            this.clearPinError();
-        }
+        this.clearPinError();
+        this.setErrorMessage('');
 
         if (this.rollingBuffer.length < 6) {
             this.rollingBuffer += digit;
             this.updatePinDisplay();
+            this.updateAriaAttributes();
             
             // Auto-submit when 6 digits are entered
             if (this.rollingBuffer.length === 6) {
-                setTimeout(() => this.handleLogin(), 300);
+                setTimeout(() => {
+                    if (this.rollingBuffer.length === 6) {
+                        this.handleLogin();
+                    }
+                }, 300);
             }
         }
     }
@@ -130,12 +173,18 @@ class LoginPage {
         if (this.rollingBuffer.length > 0) {
             this.rollingBuffer = this.rollingBuffer.slice(0, -1);
             this.updatePinDisplay();
+            this.updateAriaAttributes();
+            this.clearPinError();
+            this.setErrorMessage('');
         }
     }
 
     clearPin() {
         this.rollingBuffer = '';
         this.updatePinDisplay();
+        this.updateAriaAttributes();
+        this.clearPinError();
+        this.setErrorMessage('');
     }
 
     async clearCachesAndReload() {
@@ -480,11 +529,13 @@ class LoginPage {
                 }, 800);
                 
             } else {
+                this.setErrorMessage(data.message || 'Invalid PIN');
                 this.showPinError();
                 this.clearPin();
             }
         } catch (error) {
             console.error('Login error:', error);
+            this.setErrorMessage('Login failed. Please try again.');
             this.showPinError();
             this.clearPin();
         } finally {
