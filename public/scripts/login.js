@@ -55,13 +55,18 @@ class LoginPage {
         document.addEventListener('keydown', (e) => {
             if (!this.pinReady || this.isLoading) return;
             if (e.key >= '0' && e.key <= '9') {
+                this.triggerButtonFeedback(e.key);
                 this.addDigit(e.key);
             } else if (e.key === 'Enter') {
                 if (this.rollingBuffer.length === 6) {
                     this.handleLogin();
                 }
             } else if (e.key === 'Backspace') {
+                this.triggerButtonFeedback('backspace');
                 this.removeDigit();
+            } else if (e.key === 'Escape') {
+                this.triggerButtonFeedback('clear');
+                this.clearPin();
             }
         });
     }
@@ -75,41 +80,70 @@ class LoginPage {
                 const action = button.getAttribute('data-action');
                 
                 if (number) {
+                    this.triggerButtonFeedback(number);
                     this.addDigit(number);
                 } else if (action === 'clear') {
+                    this.triggerButtonFeedback('clear');
                     this.clearPin();
                 } else if (action === 'backspace') {
+                    this.triggerButtonFeedback('backspace');
                     this.removeDigit();
                 } else if (action === 'cache-clear') {
+                    this.triggerButtonFeedback('cache-clear');
                     this.clearCachesAndReload();
                 } else if (action === 'update-static') {
+                    this.triggerButtonFeedback('update-static');
                     this.updateStaticData();
                 }
             });
         });
 
-        const togglePinPad = () => {
-            this.loginContainer.classList.add('transition');
-            this.loginContainer.classList.toggle('minimize');
-            this.updateAriaAttributes();
-        };
-
-        this.pinDisplay.addEventListener('click', togglePinPad);
+        this.pinDisplay.addEventListener('click', () => this.togglePinPad());
         this.pinDisplay.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                togglePinPad();
+                this.togglePinPad();
             }
         });
     }
 
+    togglePinPad(forceState) {
+        this.loginContainer.classList.add('transition');
+        if (typeof forceState === 'boolean') {
+            this.loginContainer.classList.toggle('minimize', !forceState);
+        } else {
+            this.loginContainer.classList.toggle('minimize');
+        }
+        this.updateAriaAttributes();
+    }
+
+    triggerButtonFeedback(keyOrAction) {
+        const selector = keyOrAction.length === 1
+            ? `.pin-button[data-number="${keyOrAction}"]`
+            : `.pin-button[data-action="${keyOrAction}"]`;
+
+        const button = this.loginContainer.querySelector(selector);
+        if (button) {
+            button.classList.add('active');
+            setTimeout(() => button.classList.remove('active'), 150);
+        }
+    }
+
     updateAriaAttributes() {
         const isMinimized = this.loginContainer.classList.contains('minimize');
+        const digitsEntered = this.rollingBuffer.length;
+        const digitText = digitsEntered === 0 ? 'no digits entered' : `${digitsEntered} digit${digitsEntered === 1 ? '' : 's'} entered`;
+
         this.pinDisplay.setAttribute('aria-expanded', !isMinimized);
-        this.pinDisplay.setAttribute('aria-label', isMinimized ? 'Show PIN pad' : 'Hide PIN pad');
+        this.pinDisplay.setAttribute('aria-label', `${isMinimized ? 'Show' : 'Hide'} PIN pad, ${digitText}`);
     }
 
     addDigit(digit) {
+        // Auto-expand PIN pad if minimized
+        if (this.loginContainer.classList.contains('minimize')) {
+            this.togglePinPad(true);
+        }
+
         // Clear error when starting a new entry
         if (this.rollingBuffer.length === 0) {
             this.clearPinError();
@@ -428,6 +462,7 @@ class LoginPage {
                 dot.classList.remove('filled');
             }
         });
+        this.updateAriaAttributes();
     }
 
     async handleLogin() {
