@@ -25,17 +25,22 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `vfs_delete_file` | `vfs_delete_file_response` | admin/destructive | Handler: (inline) |
 | `vfs_delete_folder` | `vfs_delete_folder_response` | admin/destructive | Handler: (inline) |
 | `vfs_download_file` | `vfs_download_file_response` | session | Handler: (inline) |
-| `vfs_download_system_file` | `vfs_download_system_file_response` | session | Binary cache file download URL |
+| `vfs_download_system_file` | `vfs_download_system_file_response` | session | Handler: (inline) |
+| `vfs_empty_trash` | `vfs_empty_trash_response` | admin/destructive | Handler: (inline) |
+| `vfs_folder_has_user_files` | `vfs_folder_has_user_files_response` | session | Handler: (inline) |
 | `vfs_get_path_stats` | `vfs_get_path_stats_response` | session | Handler: (inline) |
 | `vfs_list_directory` | `vfs_list_directory_response` | session | Handler: (inline) |
-| `vfs_read_system_file` | `vfs_read_system_file_response` | session | Read-only System folder file preview |
 | `vfs_move_items` | `vfs_move_items_response` | admin/destructive | Handler: (inline) |
+| `vfs_move_to_trash` | `vfs_move_to_trash_response` | admin/destructive | Handler: (inline) |
+| `vfs_permanently_delete` | `vfs_permanently_delete_response` | admin/destructive | Handler: (inline) |
+| `vfs_read_system_file` | `vfs_read_system_file_response` | session | Handler: (inline) |
 | `vfs_rename_entry` | `vfs_rename_entry_response` | admin/destructive | Handler: (inline) |
 | `vfs_rename_file` | `vfs_rename_file_response` | admin/destructive | Handler: (inline) |
 | `vfs_rename_folder` | `vfs_rename_folder_response` | admin/destructive | Handler: (inline) |
 | `vfs_rename_shortcut_entry` | `vfs_rename_shortcut_entry_response` | admin/destructive | Handler: (inline) |
 | `vfs_replace_file` | `vfs_replace_file_response` | admin/destructive | Handler: (inline) |
 | `vfs_resolve_path` | `vfs_resolve_path_response` | session | Handler: (inline) |
+| `vfs_restore_from_trash` | `vfs_restore_from_trash_response` | admin/destructive | Handler: (inline) |
 | `vfs_upload_file` | `vfs_upload_file_response` | admin/destructive | Handler: (inline) |
 
 ## Response envelope
@@ -56,6 +61,8 @@ Errors use `type: "error"` via `sendError()` — see [websocket.md](../websocket
 ## Read-only restrictions
 
 Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveOperation()` return `READONLY_RESTRICTED` for `userType: "readonly"` sessions.
+
+---
 
 ---
 
@@ -335,32 +342,51 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 
 ### `vfs_download_system_file`
 
-**Auth:** Session required (allowed for readonly — read-only download)
+**Auth:** Session required
 
 **Handler:** modules/vfsWebSocketHandlers.js
 
 **Request fields:**
 
-| Field | Required | Notes |
-|-------|----------|-------|
-| `systemFileKey` | Yes | e.g. `cache:relative/path/file.bin` |
-| `requestId` | No | Correlation id |
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
 
 **Success response:** `vfs_download_system_file_response`
 
-```json
-{
-  "success": true,
-  "downloadUrl": "/{vfsPathUuid}/system/{base64urlKey}",
-  "filename": "file.bin",
-  "mimeType": "application/octet-stream",
-  "size": 12345
-}
-```
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
-**Errors:** Invalid key, non-cache path, text/image file (use preview), file too large (>256 MB), blocked path (e.g. `sessions/`).
+### `vfs_empty_trash`
 
-**Follow-up:** Browser navigates to `downloadUrl` (session cookie auth). See REST `GET /{vfsPathUuid}/system/:encodedKey`.
+**Auth:** Session required. Admin only (destructive — blocked for readonly)
+
+**Handler:** modules/vfsWebSocketHandlers.js
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+
+**Success response:** `vfs_empty_trash_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `vfs_folder_has_user_files`
+
+**Auth:** Session required
+
+**Handler:** modules/vfsWebSocketHandlers.js
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+
+**Success response:** `vfs_folder_has_user_files_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
 ### `vfs_get_path_stats`
 
@@ -407,6 +433,54 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 | `requestId` | Optional |
 
 **Success response:** `vfs_move_items_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `vfs_move_to_trash`
+
+**Auth:** Session required. Admin only (destructive — blocked for readonly)
+
+**Handler:** modules/vfsWebSocketHandlers.js
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+
+**Success response:** `vfs_move_to_trash_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `vfs_permanently_delete`
+
+**Auth:** Session required. Admin only (destructive — blocked for readonly)
+
+**Handler:** modules/vfsWebSocketHandlers.js
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+
+**Success response:** `vfs_permanently_delete_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `vfs_read_system_file`
+
+**Auth:** Session required
+
+**Handler:** modules/vfsWebSocketHandlers.js
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+
+**Success response:** `vfs_read_system_file_response`
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
@@ -503,6 +577,22 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 | `requestId` | Optional |
 
 **Success response:** `vfs_resolve_path_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `vfs_restore_from_trash`
+
+**Auth:** Session required. Admin only (destructive — blocked for readonly)
+
+**Handler:** modules/vfsWebSocketHandlers.js
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+
+**Success response:** `vfs_restore_from_trash_response`
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 

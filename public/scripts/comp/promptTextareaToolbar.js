@@ -865,7 +865,11 @@ class PromptTextareaToolbar {
             query: '',
             results: [],
             selectedIndex: -1,
-            highlightOverlay: null
+            highlightOverlay: null,
+            highlightedTextareas: new Set(),
+            searchRevision: 0,
+            performSearchTimer: null,
+            highlightRaf: null
         };
         
         this.searchStates.set(toolbar, searchState);
@@ -909,7 +913,7 @@ class PromptTextareaToolbar {
                 const searchState = this.searchStates.get(toolbar);
                 if (searchState) {
                     searchState.query = e.target.value;
-                    this.performSearch(toolbar);
+                    this.schedulePerformSearch(toolbar);
                 }
             });
 
@@ -963,6 +967,147 @@ class PromptTextareaToolbar {
         }
     }
 
+    cancelPendingSearchWork(searchState) {
+        if (!searchState) return;
+        if (searchState.performSearchTimer) {
+            clearTimeout(searchState.performSearchTimer);
+            searchState.performSearchTimer = null;
+        }
+        if (searchState.highlightRaf) {
+            cancelAnimationFrame(searchState.highlightRaf);
+            searchState.highlightRaf = null;
+        }
+    }
+
+    /** Defer scan/highlight so search input can paint before heavy work. */
+    schedulePerformSearch(toolbar) {
+        const searchState = this.searchStates.get(toolbar);
+        if (!searchState) return;
+
+        searchState.searchRevision = (searchState.searchRevision || 0) + 1;
+        const revision = searchState.searchRevision;
+
+        if (searchState.performSearchTimer) {
+            clearTimeout(searchState.performSearchTimer);
+        }
+
+        searchState.performSearchTimer = setTimeout(() => {
+            searchState.performSearchTimer = null;
+            requestAnimationFrame(() => {
+                if (!this.searchStates.has(toolbar)) return;
+                const state = this.searchStates.get(toolbar);
+                if (!state || state.searchRevision !== revision) return;
+                this.performSearch(toolbar);
+            });
+        }, 32);
+    }
+
+    scheduleSearchHighlightRefresh(toolbar, scrollToMatch = true) {
+        const searchState = this.searchStates.get(toolbar);
+        if (!searchState) return;
+
+        if (searchState.highlightRaf) return;
+
+        searchState.highlightRaf = requestAnimationFrame(() => {
+            searchState.highlightRaf = null;
+            if (!this.searchStates.has(toolbar)) return;
+            this.updateSearchResults(toolbar);
+            this.highlightAllSearchResults();
+            if (scrollToMatch) {
+                this.scrollToHighlightedResult(toolbar);
+            }
+        });
+    }
+
+    findSearchMatchesInText(text, searchQuery) {
+        const matches = [];
+        if (!searchQuery) return matches;
+
+        const lowerText = text.toLowerCase();
+        let index = 0;
+        while ((index = lowerText.indexOf(searchQuery, index)) !== -1) {
+            matches.push({
+                start: index,
+                end: index + searchQuery.length,
+                text: text.substring(index, index + searchQuery.length)
+            });
+            index += 1;
+        }
+        return matches;
+    }
+
+    getSearchTargetTextareas(activeTextarea, isSingleFieldPromptSearch) {
+        if (isSingleFieldPromptSearch) {
+            return activeTextarea ? [activeTextarea] : [];
+        }
+
+        const textareas = [];
+        document.querySelectorAll('.prompt-textarea, .character-prompt-textarea').forEach((textarea) => {
+            if (this.shouldIncludeTextareaInSearch(textarea)) {
+                textareas.push(textarea);
+            }
+        });
+        return textareas;
+    }
+
+    clearSearchHighlightsForTextarea(textarea) {
+        if (!textarea) return;
+        // getPromptTextareaOverlayHost: public/scripts/comp/emphasisManager.js
+        const host = getPromptTextareaOverlayHost(textarea);
+        const highlightOverlay = host && host.querySelector(':scope > .search-highlight-overlay');
+        if (highlightOverlay) {
+            highlightOverlay.textContent = '';
+        }
+    }
+
+    clearTrackedSearchHighlights(searchState) {
+        if (!searchState || !searchState.highlightedTextareas || searchState.highlightedTextareas.size === 0) {
+            this.clearAllSearchHighlights();
+            if (searchState) {
+                searchState.highlightedTextareas = new Set();
+            }
+            return;
+        }
+        searchState.highlightedTextareas.forEach((textarea) => {
+            this.clearSearchHighlightsForTextarea(textarea);
+        });
+        searchState.highlightedTextareas = new Set();
+    }
+
+    buildSearchHighlightHtml(text, textareaResults, selectedIndex, allResults) {
+        let highlightedText = '';
+        let currentPos = 0;
+        const sortedResults = [...textareaResults].sort((a, b) => a.start - b.start);
+
+        for (const textareaResult of sortedResults) {
+            highlightedText += escapeHtml(text.substring(currentPos, textareaResult.start));
+            const originalIndex = allResults.indexOf(textareaResult);
+            const isResultSelected = originalIndex === selectedIndex;
+            const highlightClass = isResultSelected ? 'search-highlight-selected' : 'search-highlight';
+            const matchText = escapeHtml(text.substring(textareaResult.start, textareaResult.end));
+            highlightedText += `<span class="${highlightClass}">${matchText}</span>`;
+            currentPos = textareaResult.end;
+        }
+        highlightedText += escapeHtml(text.substring(currentPos));
+        return highlightedText;
+    }
+
+    applySearchHighlightsToTextarea(textarea, textareaResults, selectedIndex, allResults) {
+        if (!textareaResults.length) {
+            this.clearSearchHighlightsForTextarea(textarea);
+            return;
+        }
+
+        // ensurePromptSearchHighlightOverlay: public/scripts/comp/emphasisManager.js
+        const highlightOverlay = ensurePromptSearchHighlightOverlay(textarea);
+        if (!highlightOverlay) return;
+
+        const text = textarea.value;
+        highlightOverlay.innerHTML = this.buildSearchHighlightHtml(text, textareaResults, selectedIndex, allResults);
+        highlightOverlay.scrollTop = textarea.scrollTop;
+        highlightOverlay.scrollLeft = textarea.scrollLeft;
+    }
+
     performSearch(toolbar = null) {
         // Get the current active search state
         const activeToolbar = toolbar || this.getActiveSearchToolbar();
@@ -978,7 +1123,7 @@ class PromptTextareaToolbar {
             searchState.results = [];
             searchState.selectedIndex = -1;
             matchCount.textContent = '0';
-            this.clearAllSearchHighlights();
+            this.clearTrackedSearchHighlights(searchState);
             return;
         }
 
@@ -992,49 +1137,21 @@ class PromptTextareaToolbar {
         const isSingleFieldPromptSearch = activeTextarea && activeTextarea.closest(
             '.prompt-textarea-container.director-prompt, .prompt-textarea-container.text-overlay-prompt, #expansionCompiledPromptDialog .prompt-textarea-container'
         );
-        
-        // If searching in a director/overlay prompt, only search that specific textarea
-        if (isSingleFieldPromptSearch) {
-            const text = activeTextarea.value;
-            let index = 0;
-            
-            // Find all occurrences of the search term in this textarea only (case insensitive)
-            while ((index = text.toLowerCase().indexOf(searchQuery, index)) !== -1) {
+
+        const targetTextareas = this.getSearchTargetTextareas(activeTextarea, isSingleFieldPromptSearch);
+        targetTextareas.forEach((textarea, textareaIndex) => {
+            const text = textarea.value;
+            const matches = this.findSearchMatchesInText(text, searchQuery);
+            matches.forEach((match) => {
                 allResults.push({
-                    textarea: activeTextarea,
-                    textareaIndex: 0,
-                    start: index,
-                    end: index + searchQuery.length,
-                    text: text.substring(index, index + searchQuery.length)
+                    textarea: textarea,
+                    textareaIndex: textareaIndex,
+                    start: match.start,
+                    end: match.end,
+                    text: match.text
                 });
-                index += 1; // Move to next character to avoid infinite loop
-            }
-        } else {
-            // Search across textareas based on current view mode
-            const allTextareas = document.querySelectorAll('.prompt-textarea, .character-prompt-textarea');
-            
-            allTextareas.forEach((textarea, textareaIndex) => {
-                // Only include textareas that should be searched based on current view mode
-                if (!this.shouldIncludeTextareaInSearch(textarea)) {
-                    return;
-                }
-                
-                const text = textarea.value;
-                let index = 0;
-                
-                // Find all occurrences of the search term in this textarea (case insensitive)
-                while ((index = text.toLowerCase().indexOf(searchQuery, index)) !== -1) {
-                    allResults.push({
-                        textarea: textarea,
-                        textareaIndex: textareaIndex,
-                        start: index,
-                        end: index + searchQuery.length,
-                        text: text.substring(index, index + searchQuery.length)
-                    });
-                    index += 1; // Move to next character to avoid infinite loop
-                }
             });
-        }
+        });
 
         searchState.results = allResults;
         
@@ -1054,8 +1171,7 @@ class PromptTextareaToolbar {
             searchState.selectedIndex = -1;
         }
         
-        this.updateSearchResults(activeToolbar);
-        this.highlightAllSearchResults();
+        this.scheduleSearchHighlightRefresh(activeToolbar, false);
     }
 
     updateSearchResults(toolbar = null) {
@@ -1097,62 +1213,7 @@ class PromptTextareaToolbar {
             searchState.selectedIndex = selectedIndex < results.length - 1 ? selectedIndex + 1 : 0;
         }
 
-        this.updateSearchResults(activeToolbar);
-        this.highlightAllSearchResults();
-        this.scrollToHighlightedResult(activeToolbar);
-    }
-
-    highlightSearchResults(toolbar = null) {
-        const activeToolbar = toolbar || this.getActiveSearchToolbar();
-        if (!activeToolbar) return;
-        
-        const searchState = this.searchStates.get(activeToolbar);
-        if (!searchState) return;
-        
-        const { textarea, results, selectedIndex } = searchState;
-        
-        if (results.length === 0) {
-            this.clearSearchHighlights(activeToolbar);
-            return;
-        }
-
-        // Create or update highlight overlay
-        if (!searchState.highlightOverlay) {
-            searchState.highlightOverlay = ensurePromptSearchHighlightOverlay(textarea);
-        }
-        if (!searchState.highlightOverlay) return;
-
-        const text = textarea.value;
-        
-        // Build highlighted text by processing each character and inserting spans at the right positions
-        let highlightedText = '';
-        let currentPos = 0;
-        
-        // Sort results by start position to process them in order
-        const sortedResults = [...results].sort((a, b) => a.start - b.start);
-        
-        for (const result of sortedResults) {
-            // Add text before this match
-            highlightedText += text.substring(currentPos, result.start);
-            
-            // Add the highlighted match
-            const originalIndex = results.indexOf(result);
-            const isSelected = originalIndex === selectedIndex;
-            const highlightClass = isSelected ? 'search-highlight-selected' : 'search-highlight';
-            const matchText = text.substring(result.start, result.end);
-            
-            highlightedText += `<span class="${highlightClass}">${matchText}</span>`;
-            
-            // Update position
-            currentPos = result.end;
-        }
-        
-        // Add remaining text after the last match
-        highlightedText += text.substring(currentPos);
-
-        searchState.highlightOverlay.innerHTML = highlightedText;
-        searchState.highlightOverlay.scrollTop = textarea.scrollTop;
-        searchState.highlightOverlay.scrollLeft = textarea.scrollLeft;
+        this.scheduleSearchHighlightRefresh(activeToolbar);
     }
 
     highlightAllSearchResults() {
@@ -1165,73 +1226,41 @@ class PromptTextareaToolbar {
         const { results, selectedIndex } = searchState;
         
         if (results.length === 0) {
-            this.clearAllSearchHighlights();
+            this.clearTrackedSearchHighlights(searchState);
             return;
         }
 
-        // Clear all existing highlights first
-        this.clearAllSearchHighlights();
-
-        // Highlight results in all textareas
-        results.forEach((result, index) => {
-            const isSelected = index === selectedIndex;
-            this.highlightSearchResultInTextarea(result, isSelected);
+        const byTextarea = new Map();
+        results.forEach((result) => {
+            if (!byTextarea.has(result.textarea)) {
+                byTextarea.set(result.textarea, []);
+            }
+            byTextarea.get(result.textarea).push(result);
         });
-    }
 
-    highlightSearchResultInTextarea(result, isSelected) {
-        const { textarea, start, end } = result;
-        
-        // Create or update highlight overlay for this textarea
-        let highlightOverlay = ensurePromptSearchHighlightOverlay(textarea);
-        if (!highlightOverlay) return;
+        const prevHighlighted = searchState.highlightedTextareas || new Set();
+        const nextHighlighted = new Set(byTextarea.keys());
 
-        const text = textarea.value;
-        
-        // Build highlighted text by processing each character and inserting spans at the right positions
-        let highlightedText = '';
-        let currentPos = 0;
-        
-        // Find all results for this specific textarea
-        const activeToolbar = this.getActiveSearchToolbar();
-        const searchState = this.searchStates.get(activeToolbar);
-        const textareaResults = searchState ? searchState.results.filter(r => r.textarea === textarea) : [];
-        
-        // Sort results by start position to process them in order
-        const sortedResults = [...textareaResults].sort((a, b) => a.start - b.start);
-        
-        for (const textareaResult of sortedResults) {
-            // Add text before this match
-            highlightedText += text.substring(currentPos, textareaResult.start);
-            
-            // Add the highlighted match
-            const originalIndex = searchState.results.indexOf(textareaResult);
-            const isResultSelected = originalIndex === searchState.selectedIndex;
-            const highlightClass = isResultSelected ? 'search-highlight-selected' : 'search-highlight';
-            const matchText = text.substring(textareaResult.start, textareaResult.end);
-            
-            highlightedText += `<span class="${highlightClass}">${matchText}</span>`;
-            
-            // Update position
-            currentPos = textareaResult.end;
-        }
-        
-        // Add remaining text after the last match
-        highlightedText += text.substring(currentPos);
+        prevHighlighted.forEach((textarea) => {
+            if (!nextHighlighted.has(textarea)) {
+                this.clearSearchHighlightsForTextarea(textarea);
+            }
+        });
 
-        highlightOverlay.innerHTML = highlightedText;
-        highlightOverlay.scrollTop = textarea.scrollTop;
-        highlightOverlay.scrollLeft = textarea.scrollLeft;
+        byTextarea.forEach((textareaResults, textarea) => {
+            this.applySearchHighlightsToTextarea(textarea, textareaResults, selectedIndex, results);
+        });
+
+        searchState.highlightedTextareas = nextHighlighted;
     }
 
     clearAllSearchHighlights() {
-        // Clear highlights from all textareas
-        const allTextareas = document.querySelectorAll('.prompt-textarea, .character-prompt-textarea');
-        allTextareas.forEach(textarea => {
-            const host = getPromptTextareaOverlayHost(textarea);
-            const highlightOverlay = host && host.querySelector(':scope > .search-highlight-overlay');
-            if (highlightOverlay) {
-                highlightOverlay.remove();
+        document.querySelectorAll('.prompt-textarea, .character-prompt-textarea').forEach((textarea) => {
+            this.clearSearchHighlightsForTextarea(textarea);
+        });
+        this.searchStates.forEach((searchState) => {
+            if (searchState.highlightedTextareas) {
+                searchState.highlightedTextareas = new Set();
             }
         });
     }
@@ -1239,6 +1268,7 @@ class PromptTextareaToolbar {
     resetAllSearchStates() {
         // Clear all search states and close any active search modes
         this.searchStates.forEach((searchState, toolbar) => {
+            this.cancelPendingSearchWork(searchState);
             // Remove search mode class
             toolbar.classList.remove('search-mode');
             
@@ -1554,6 +1584,8 @@ class PromptTextareaToolbar {
         
         const searchState = this.searchStates.get(activeToolbar);
         if (!searchState) return;
+
+        this.cancelPendingSearchWork(searchState);
         
         // Store reference to original textarea before clearing state
         const originalTextarea = searchState.textarea;

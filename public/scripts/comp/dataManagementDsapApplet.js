@@ -12,9 +12,47 @@ const DATA_DSAP_TAB_LABELS = {
     spellbook: 'Spellbook',
     expanders: 'Expanders',
     favorites: 'Favorites',
+    replication: 'Replication',
     search: 'Search'
 };
-const DATA_DSAP_RESERVED_SEGMENTS = new Set(['status', 'workspaces', 'spellbook', 'expanders', 'favorites', 'search']);
+const DATA_DSAP_RESERVED_SEGMENTS = new Set(['status', 'workspaces', 'spellbook', 'expanders', 'favorites', 'replication', 'search']);
+
+const REPLICATION_DSAP_TRANSFER_MODES = [
+    { id: 'tape-stream-compressed', label: 'Tape Stream (Compressed)' },
+    { id: 'tape-stream', label: 'Tape Stream' },
+    { id: 'blocks', label: 'Blocks (slow)' }
+];
+const REPLICATION_DSAP_BLOCKS_WARNING = 'Transforming cargo as Blocks (file-by-file) may be extremely slow for large galleries. Prefer Tape Stream (Compressed) unless you need a single file.';
+const REPLICATION_DSAP_GALLERY_SHARED_OPTIONS = [
+    { id: 'manual', label: 'Manual (per-session toggle)' },
+    { id: 'always', label: 'Always show shared gallery' },
+    { id: 'never', label: 'Never show shared gallery' }
+];
+const REPLICATION_DSAP_CONNECTIVITY_OPTIONS = [
+    { id: 'normal', label: 'Normal' },
+    { id: 'airgapped', label: 'Airgapped' },
+    { id: 'delegated-only', label: 'Delegated only' }
+];
+const REPLICATION_DSAP_CLONE_OPTIONS = [
+    { key: 'workspaceImages', label: 'Workspace Images' },
+    { key: 'previewCache', label: 'Preview Cache' },
+    { key: 'imageMetadata', label: 'Image Metadata', hint: 'Auto-included with Preview Cache' },
+    { key: 'referenceBlobs', label: 'Reference blobs' },
+    { key: 'vfsUserFiles', label: 'VFS user files' },
+    { key: 'wikiData', label: 'Wiki Data' },
+    { key: 'wikiMedia', label: 'Wiki Media' },
+    { key: 'autoComplete', label: 'AutoComplete Service' }
+];
+const REPLICATION_DSAP_DEFAULT_CLONE_PROFILE = {
+    wikiData: true,
+    wikiMedia: false,
+    autoComplete: true,
+    workspaceImages: false,
+    previewCache: true,
+    imageMetadata: true,
+    referenceBlobs: false,
+    vfsUserFiles: false
+};
 
 function dataMgmtDsapEscapeHtml(text) {
     if (typeof dsapSmfEscapeHtml === 'function') return dsapSmfEscapeHtml(text);
@@ -39,7 +77,82 @@ function dataMgmtDsapResolveActiveTab(host) {
 function dataMgmtDsapBuildTabUrl(tabId) {
     if (tabId === 'search') return `dsap://${DATA_ISPY_URL}/`;
     if (!tabId || tabId === 'status') return `dsap://${DATA_DSAP_URL}/`;
+    if (tabId === 'replication') return `dsap://${DATA_DSAP_URL}/replication`;
     return `dsap://${DATA_DSAP_URL}/${tabId}`;
+}
+
+const REPLICATION_DSAP_SUB_ROUTES = new Set(['configuration', 'upsert', 'sync', 'setup', 'bundle', 'progress']);
+const REPLICATION_DSAP_SUB_LABELS = {
+    home: 'Replication',
+    configuration: 'Configuration',
+    upsert: 'Upsert Cargo',
+    sync: 'Sync from Master',
+    setup: 'Separation Setup',
+    bundle: 'Separation Bundle',
+    progress: 'Operation Progress'
+};
+
+const replicationDsapLiveProgress = {
+    active: false,
+    operation: '',
+    phase: '',
+    current: 0,
+    total: 0,
+    path: ''
+};
+
+function replicationDsapGetLiveProgress() {
+    return { ...replicationDsapLiveProgress };
+}
+
+function replicationDsapApplyProgressPush(data) {
+    if (!data) return;
+    replicationDsapLiveProgress.active = true;
+    if (data.phase) replicationDsapLiveProgress.phase = data.phase;
+    if (typeof data.current === 'number') replicationDsapLiveProgress.current = data.current;
+    if (typeof data.total === 'number') replicationDsapLiveProgress.total = data.total;
+    if (data.path) replicationDsapLiveProgress.path = data.path;
+    // updateReplicationTrayIndicator: public/scripts/comp/trayIndicators.js
+    if (typeof updateReplicationTrayIndicator === 'function') {
+        updateReplicationTrayIndicator(replicationDsapGetLiveProgress());
+    }
+}
+
+function replicationDsapApplyMaintenancePush(data) {
+    if (!data) return;
+    if (data.active) {
+        replicationDsapLiveProgress.active = true;
+        replicationDsapLiveProgress.operation = data.operation || data.reason || 'active';
+        if (typeof updateReplicationTrayIndicator === 'function') {
+            updateReplicationTrayIndicator(replicationDsapGetLiveProgress());
+        }
+        return;
+    }
+    replicationDsapLiveProgress.active = false;
+    replicationDsapLiveProgress.operation = '';
+    replicationDsapLiveProgress.phase = '';
+    replicationDsapLiveProgress.current = 0;
+    replicationDsapLiveProgress.total = 0;
+    replicationDsapLiveProgress.path = '';
+    if (typeof updateReplicationTrayIndicator === 'function') {
+        updateReplicationTrayIndicator(null);
+    }
+}
+
+function dataMgmtDsapResolveReplicationSubRoute(host) {
+    const segments = host.getPathSegments();
+    if (segments[0] !== 'replication') return 'home';
+    const sub = segments[1] || '';
+    if (sub === 'bundle') return 'setup';
+    if (!sub) return 'home';
+    if (REPLICATION_DSAP_SUB_ROUTES.has(sub)) return sub;
+    return 'home';
+}
+
+function dataMgmtDsapBuildReplicationUrl(subRoute) {
+    const base = `dsap://${DATA_DSAP_URL}/replication`;
+    if (!subRoute || subRoute === 'home') return base;
+    return `${base}/${subRoute}`;
 }
 
 function dataMgmtDsapBuildTabBar(activeTabId) {
@@ -49,6 +162,7 @@ function dataMgmtDsapBuildTabBar(activeTabId) {
         { id: 'spellbook', label: 'Spellbook', icon: 'fas fa-book-spells' },
         { id: 'expanders', label: 'Expanders', icon: 'fas fa-book-font' },
         { id: 'favorites', label: 'Favorites', icon: 'fas fa-star' },
+        { id: 'replication', label: 'Replication', icon: 'fas fa-clone' },
         { id: 'search', label: 'Search', icon: 'fas fa-search' }
     ], activeTabId, { tabBarId: 'dataMgmtTabBar', dataAttr: 'data-data-tab' });
 }
@@ -381,6 +495,10 @@ function dataMgmtDsapBuildStorageTableHtml(usage) {
 
 function dataMgmtDsapBuildStatusHtml() {
     return `${dataMgmtDsapBuildAccountSectionHtml()}
+${dsapSmfBuildSectionHdr('Replication')}
+<div id="dataMgmtStatusReplicationHost" class="data-mgmt-status-repl-host">
+  <div class="data-mgmt-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading replication…</div>
+</div>
 ${dsapSmfBuildSectionHdr('System Status')}
 <div class="data-mgmt-status-layout">
   <div class="data-mgmt-status-left">
@@ -731,6 +849,924 @@ function dataMgmtDsapRefreshStatusIfPresent() {
     if (root) void dataMgmtDsapDriver._loadStatus(root);
 }
 
+function dataMgmtDsapReplicationEscapeHtml(text) {
+    if (typeof dsapSmfEscapeHtml === 'function') return dsapSmfEscapeHtml(text);
+    if (text == null) return '';
+    const div = document.createElement('div');
+    div.textContent = String(text);
+    return div.innerHTML;
+}
+
+function dataMgmtDsapReplicationFormatService(val) {
+    if (val === 'local') return { label: 'Local', tone: 'ok' };
+    if (val === 'delegated') return { label: 'Delegated', tone: 'warn' };
+    if (val === 'disconnected') return { label: 'Disconnected', tone: 'error' };
+    if (val === 'unavailable') return { label: 'Unavailable', tone: 'error' };
+    return { label: 'Unavailable', tone: 'error' };
+}
+
+function dataMgmtDsapReplicationTransferLabel(modeId) {
+    const found = REPLICATION_DSAP_TRANSFER_MODES.find((m) => m.id === modeId);
+    return found ? found.label : modeId;
+}
+
+function dataMgmtDsapReplicationGalleryLabel(modeId) {
+    const found = REPLICATION_DSAP_GALLERY_SHARED_OPTIONS.find((m) => m.id === modeId);
+    return found ? found.label : modeId;
+}
+
+function dataMgmtDsapReplicationConnectivityLabel(modeId) {
+    const found = REPLICATION_DSAP_CONNECTIVITY_OPTIONS.find((m) => m.id === modeId);
+    return found ? found.label : modeId;
+}
+
+function dataMgmtDsapReplicationBulkTransferBlocked(status) {
+    const conn = status?.connectivity || 'normal';
+    return conn === 'airgapped' || conn === 'delegated-only';
+}
+
+async function dataMgmtDsapReplicationFetchStatus() {
+    const res = await fetch('/replication/status', { credentials: 'same-origin' });
+    if (!res.ok) {
+        const err = new Error(`Status HTTP ${res.status}`);
+        console.error('[replication] fetch /replication/status failed:', err.message);
+        throw err;
+    }
+    const json = await res.json();
+    return json.data || json;
+}
+
+async function dataMgmtDsapReplicationSavePatches(patches) {
+    if (!wsClient?.isConnected()) throw new Error('WebSocket not connected');
+    const data = await wsClient.sendMessage('config_editor_save', { patches: { secureConfig: patches } }, false);
+    if (!data?.success) {
+        const errMsg = data?.errors?.map((e) => e.message || e).join('; ') || 'Save failed';
+        throw new Error(errMsg);
+    }
+    return data;
+}
+
+function dataMgmtDsapReplicationBuildServicesHtml(delegation) {
+    const d = delegation || {};
+    const rows = [
+        { key: 'wikiData', label: 'Wiki Data' },
+        { key: 'autoComplete', label: 'AutoComplete' },
+        { key: 'wikiMedia', label: 'Wiki Media' },
+        { key: 'masterWsConnected', label: 'Master WS', bool: true }
+    ];
+    return rows.map((row) => {
+        let label;
+        let tone = '';
+        if (row.bool) {
+            label = d[row.key] ? 'Connected' : 'Disconnected';
+            tone = d[row.key] ? 'ok' : 'error';
+        } else {
+            const fmt = dataMgmtDsapReplicationFormatService(d[row.key]);
+            label = fmt.label;
+            tone = fmt.tone;
+        }
+        return `<div class="data-mgmt-repl-service"><span class="data-mgmt-repl-service-label">${dataMgmtDsapReplicationEscapeHtml(row.label)}</span><span class="data-mgmt-repl-service-val ${tone}">${dataMgmtDsapReplicationEscapeHtml(label)}</span></div>`;
+    }).join('');
+}
+
+function dataMgmtDsapReplicationFormatRelativeTime(isoOrMs) {
+    if (!isoOrMs) return '—';
+    const d = typeof isoOrMs === 'number' ? new Date(isoOrMs) : new Date(isoOrMs);
+    if (!Number.isFinite(d.getTime())) return '—';
+    const diffMs = Date.now() - d.getTime();
+    if (diffMs < 0) return 'just now';
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 48) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    if (days < 14) return `${days}d ago`;
+    return d.toLocaleString();
+}
+
+function dataMgmtDsapReplicationResolveChildAvailability(child, status) {
+    if (child?.availability) return String(child.availability);
+    const maint = status?.maintenance;
+    if (maint?.active && maint.partnerInstanceId && child?.instanceId === maint.partnerInstanceId) {
+        return 'docked';
+    }
+    if (child?.lastUpsertAt) {
+        const age = Date.now() - new Date(child.lastUpsertAt).getTime();
+        if (Number.isFinite(age) && age < 7 * 24 * 60 * 60 * 1000) return 'reachable';
+    }
+    if ((Number(child?.lastSyncLsn) || 0) > 0) return 'reachable';
+    return 'unreachable';
+}
+
+function dataMgmtDsapReplicationAvailabilityLabel(code) {
+    if (code === 'reachable') return 'Reachable';
+    if (code === 'docked') return 'Docked';
+    if (code === 'unreachable') return 'Unreachable';
+    return code || '—';
+}
+
+function dataMgmtDsapReplicationAvailabilityClass(code) {
+    if (code === 'reachable') return 'ok';
+    if (code === 'docked') return 'warn';
+    if (code === 'unreachable') return 'error';
+    return '';
+}
+
+function dataMgmtDsapReplicationBuildChildrenTableHtml(children, status) {
+    const rows = (children || []).filter((c) => c && (c.instanceId || c.displayName));
+    if (!rows.length) {
+        return '<p class="data-mgmt-repl-children-empty">No registered children yet.</p>';
+    }
+    const body = rows.map((child) => {
+        const name = dataMgmtDsapReplicationEscapeHtml(child.displayName || '—');
+        const id = dataMgmtDsapReplicationEscapeHtml(child.instanceId || '—');
+        const avail = dataMgmtDsapReplicationResolveChildAvailability(child, status);
+        const availClass = dataMgmtDsapReplicationAvailabilityClass(avail);
+        const availLabel = dataMgmtDsapReplicationAvailabilityLabel(avail);
+        const upsert = dataMgmtDsapReplicationEscapeHtml(dataMgmtDsapReplicationFormatRelativeTime(child.lastUpsertAt));
+        return `<tr><td>${name}</td><td><code>${id}</code></td><td class="data-mgmt-repl-avail ${availClass}">${dataMgmtDsapReplicationEscapeHtml(availLabel)}</td><td>${upsert}</td></tr>`;
+    }).join('');
+    return `<table class="data-mgmt-repl-children-table" cellspacing="0" cellpadding="4" width="100%" border="1">
+  <thead><tr><th>Display name</th><th>Instance ID</th><th>Availability</th><th>Last upsert</th></tr></thead>
+  <tbody>${body}</tbody>
+</table>`;
+}
+
+function dataMgmtDsapReplicationBuildChildSummaryHtml(status) {
+    const bridge = typeof getMasterWsBridgeState === 'function' ? getMasterWsBridgeState() : null;
+    const galleryCtx = typeof getGalleryReplicationContext === 'function' ? getGalleryReplicationContext() : null;
+    const masterLabel = status.masterAccessUrl || status.displayName || '—';
+    const masterName = dataMgmtDsapReplicationEscapeHtml(masterLabel);
+    const masterUrl = status.masterAccessUrl
+        ? `<a href="${dataMgmtDsapReplicationEscapeHtml(status.masterAccessUrl)}" target="_blank" rel="noopener">${masterName}</a>`
+        : masterName;
+    let serverProbe = '—';
+    if (status.connectivity === 'airgapped') {
+        serverProbe = 'airgapped';
+    } else if (status.connectivity === 'delegated-only') {
+        serverProbe = 'delegated-only';
+    } else if (galleryCtx?.masterReachable === true) {
+        serverProbe = 'reachable';
+    } else if (galleryCtx?.masterReachable === false && status.masterAccessUrl) {
+        serverProbe = 'unreachable';
+    } else if (status.masterAccessUrl) {
+        serverProbe = 'unknown';
+    }
+    const wsState = bridge?.masterConnected || status.delegation?.masterWsConnected ? 'connected' : 'disconnected';
+    const lastSyncLsn = dataMgmtDsapReplicationResolveLastSyncSummary(status);
+    return `<table class="data-mgmt-repl-children-table" cellspacing="0" cellpadding="4" width="100%" border="1">
+  <thead><tr><th>Master</th><th>Server probe</th><th>Master WS</th><th>Last sync LSN</th></tr></thead>
+  <tbody><tr>
+    <td>${masterUrl}</td>
+    <td class="data-mgmt-repl-avail ${serverProbe === 'reachable' ? 'ok' : serverProbe === 'unreachable' ? 'error' : ''}">${dataMgmtDsapReplicationEscapeHtml(serverProbe)}</td>
+    <td class="data-mgmt-repl-avail ${wsState === 'connected' ? 'ok' : 'error'}">${dataMgmtDsapReplicationEscapeHtml(wsState)}</td>
+    <td>${dataMgmtDsapReplicationEscapeHtml(lastSyncLsn)}</td>
+  </tr></tbody>
+</table>`;
+}
+
+function dataMgmtDsapReplicationResolveLastSyncSummary(status) {
+    if (!status?.lastAppliedRemoteLsn) return '0';
+    const values = Object.values(status.lastAppliedRemoteLsn);
+    if (!values.length) return '0';
+    return String(Math.max(...values.map((v) => Number(v) || 0)));
+}
+
+function replicationDsapBuildProgressHtml(snap) {
+    if (!snap || !snap.active) {
+        return '<p class="data-mgmt-muted">No replication operation in progress.</p>';
+    }
+    const phase = dataMgmtDsapReplicationEscapeHtml(snap.phase || snap.operation || 'active');
+    const current = Number(snap.current) || 0;
+    const total = Number(snap.total) || 0;
+    const pct = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : null;
+    const path = snap.path ? `<div class="data-mgmt-repl-progress-path">${dataMgmtDsapReplicationEscapeHtml(snap.path)}</div>` : '';
+    const bar = pct != null
+        ? `<div class="data-mgmt-repl-progress-bar"><div class="data-mgmt-repl-progress-fill" style="width:${pct}%"></div></div><div class="data-mgmt-repl-progress-count">${current} / ${total}</div>`
+        : '';
+    return `<div class="data-mgmt-repl-progress">
+  <div class="data-mgmt-repl-progress-phase"><i class="fas fa-arrows-rotate fa-spin"></i> ${phase}</div>
+  ${bar}
+  ${path}
+</div>`;
+}
+
+function dataMgmtDsapReplicationBuildBreadcrumb(subRoute) {
+    const label = REPLICATION_DSAP_SUB_LABELS[subRoute] || subRoute;
+    if (!subRoute || subRoute === 'home') return '';
+    return `<div class="data-mgmt-repl-breadcrumb">
+  <button type="button" class="data-mgmt-repl-crumb-link" data-repl-nav="home">Replication</button>
+  <span class="data-mgmt-repl-crumb-sep">&raquo;</span>
+  <span>${dataMgmtDsapReplicationEscapeHtml(label)}</span>
+</div>`;
+}
+
+function dataMgmtDsapReplicationBuildNavGrid(status) {
+    const role = status?.role || 'standalone';
+    const isMasterPure = role === 'master';
+    const isChild = role === 'child';
+    const isChildish = isChild || role === 'ephemeral';
+    const bulkBlocked = dataMgmtDsapReplicationBulkTransferBlocked(status);
+    const upsertDisabled = isMasterPure || (isChildish && bulkBlocked);
+    let upsertNote = '';
+    if (isMasterPure) {
+        upsertNote = '<span class="data-mgmt-repl-nav-note">Master nodes receive upserts from children</span>';
+    } else if (isChildish && bulkBlocked) {
+        upsertNote = `<span class="data-mgmt-repl-nav-note">${status.connectivity === 'delegated-only' ? 'Delegated-only — bulk cargo disabled' : 'Airgapped — use manual cargo export'}</span>`;
+    }
+    const syncHidden = !isChild || bulkBlocked ? ' hidden' : '';
+    return `<div class="data-mgmt-repl-nav-grid">
+  <button type="button" class="dsap-smf-btn data-mgmt-repl-nav-btn" data-repl-nav="configuration"><i class="fas fa-sliders"></i> Configuration</button>
+  <button type="button" class="dsap-smf-btn data-mgmt-repl-nav-btn${upsertDisabled ? ' data-mgmt-repl-nav-disabled' : ''}" data-repl-nav="upsert"${upsertDisabled ? ' disabled' : ''}><i class="fas fa-cloud-upload-alt"></i> Upsert Cargo</button>
+  <button type="button" class="dsap-smf-btn data-mgmt-repl-nav-btn${syncHidden}" data-repl-nav="sync"><i class="fas fa-arrows-rotate"></i> Sync from Master</button>
+  <button type="button" class="dsap-smf-btn data-mgmt-repl-nav-btn${role !== 'master' && role !== 'standalone' ? ' hidden' : ''}" data-repl-nav="setup"><i class="fas fa-box-open"></i> Separation Setup</button>
+</div>${upsertNote}`;
+}
+
+function dataMgmtDsapReplicationBuildHomeHtml() {
+    return `${dsapSmfBuildSectionHdr('System State')}
+<div class="data-mgmt-repl-layout">
+  ${dsapSmfBuildStatsTable([
+        { label: 'Role', valueHtml: '<span id="dataMgmtReplRole">—</span>', width: '25%' },
+        { label: 'Connectivity', valueHtml: '<span id="dataMgmtReplConnectivity">—</span>', width: '25%' },
+        { label: 'Instance', valueHtml: '<span id="dataMgmtReplInstance">—</span>', width: '25%' },
+        { label: 'Maintenance', valueHtml: '<span id="dataMgmtReplMaintenance">—</span>', width: '25%' }
+    ], 'dataMgmtReplStatusStats')}
+  <div id="dataMgmtReplServicesHost" class="data-mgmt-repl-services"></div>
+</div>
+<div id="dataMgmtReplCtaHost" class="data-mgmt-repl-cta-host hidden"></div>
+<div id="dataMgmtReplChildrenHdrHost"></div>
+<div id="dataMgmtReplChildrenHost"></div>
+<div id="dataMgmtReplChildSummaryHost" class="hidden"></div>
+${dsapSmfBuildSectionHdr('Actions')}
+<div id="dataMgmtReplNavHost"></div>`;
+}
+
+function dataMgmtDsapReplicationBuildConfigurationHtml(status) {
+    const connectivity = status?.connectivity || 'normal';
+    const transferMode = status?.transferMode || 'tape-stream-compressed';
+    const gallery = status?.gallerySharedDefault || 'manual';
+    return `${dataMgmtDsapReplicationBuildBreadcrumb('configuration')}
+${dsapSmfBuildSectionHdr('Replication defaults')}
+<p class="data-mgmt-repl-lead">These settings apply as defaults for future cargo and sync operations. Save persists to secure config.</p>
+<div class="data-mgmt-repl-settings-row">
+  <button type="button" class="dsap-smf-btn" id="dataMgmtReplConnectivityBtn" title="Replication connectivity mode"><i class="fas fa-tower-broadcast"></i> <span id="dataMgmtReplConnectivityLabel">Connectivity: ${dataMgmtDsapReplicationEscapeHtml(dataMgmtDsapReplicationConnectivityLabel(connectivity))}</span> <i class="fas fa-caret-down"></i></button>
+  <button type="button" class="dsap-smf-btn" id="dataMgmtReplGallerySharedBtn"><span id="dataMgmtReplGallerySharedLabel">Shared gallery: ${dataMgmtDsapReplicationEscapeHtml(dataMgmtDsapReplicationGalleryLabel(gallery))}</span> <i class="fas fa-caret-down"></i></button>
+  <button type="button" class="dsap-smf-btn" id="dataMgmtReplConfigTransferBtn"><span id="dataMgmtReplConfigTransferLabel">Default cargo mode: ${dataMgmtDsapReplicationEscapeHtml(dataMgmtDsapReplicationTransferLabel(transferMode))}</span> <i class="fas fa-caret-down"></i></button>
+</div>
+<div class="dsap-smf-toolbar">
+  <button type="button" class="dsap-smf-btn dsap-smf-btn-primary" id="dataMgmtReplConfigSaveBtn"><i class="fas fa-save"></i> Save defaults</button>
+</div>
+<input type="hidden" id="dataMgmtReplConfigTransferHidden" value="${dataMgmtDsapReplicationEscapeHtml(transferMode)}" />
+<input type="hidden" id="dataMgmtReplConfigGalleryHidden" value="${dataMgmtDsapReplicationEscapeHtml(gallery)}" />`;
+}
+
+function dataMgmtDsapReplicationBuildSetupHtml(status) {
+    const role = status?.role || 'standalone';
+    const canBundle = role === 'master' || role === 'standalone';
+    const canBootstrap = role === 'standalone' || role === 'child';
+    let body = dataMgmtDsapReplicationBuildBreadcrumb('setup');
+    if (canBundle) {
+        body += typeof replicationSepBuildBundleWizardHtml === 'function'
+            ? replicationSepBuildBundleWizardHtml()
+            : '<p class="data-mgmt-muted">Bundle wizard unavailable</p>';
+    }
+    if (canBootstrap) {
+        body += `${dsapSmfBuildSectionHdr('Bootstrap from bundle')}
+<div id="dataMgmtReplicationSepHost" class="data-mgmt-repl-panel-host"></div>`;
+    }
+    if (role === 'standalone') {
+        body += `${dsapSmfBuildSectionHdr('Alternate pairing')}
+${dsapSmfBuildToolbar(`<button type="button" class="dsap-smf-btn" id="dataMgmtReplRegisterBtn"><i class="fas fa-link"></i> Register manually</button>
+<button type="button" class="dsap-smf-btn" id="dataMgmtReplEphemeralBtn"><i class="fas fa-mobile-screen"></i> Ephemeral setup</button>`, 'dataMgmtReplSetupToolbar')}`;
+    }
+    if (!canBundle && !canBootstrap && role !== 'standalone') {
+        body += '<p class="data-mgmt-muted">Separation setup is not available for this role.</p>';
+    }
+    return body;
+}
+
+function dataMgmtDsapReplicationBuildPageHtml(subRoute, status) {
+    if (subRoute === 'configuration') return dataMgmtDsapReplicationBuildConfigurationHtml(status);
+    if (subRoute === 'upsert') {
+        return `${dataMgmtDsapReplicationBuildBreadcrumb('upsert')}
+<div id="dataMgmtReplicationCargoHost" class="data-mgmt-repl-panel-host"></div>`;
+    }
+    if (subRoute === 'sync') {
+        return `${dataMgmtDsapReplicationBuildBreadcrumb('sync')}
+<div id="dataMgmtReplicationSyncHost" class="data-mgmt-repl-panel-host"></div>`;
+    }
+    if (subRoute === 'setup') return dataMgmtDsapReplicationBuildSetupHtml(status);
+    if (subRoute === 'progress') {
+        return `${dataMgmtDsapReplicationBuildBreadcrumb('progress')}
+<div id="dataMgmtReplProgressPageHost">${replicationDsapBuildProgressHtml(replicationDsapGetLiveProgress())}</div>
+<p class="data-mgmt-muted"><button type="button" class="dsap-smf-btn data-mgmt-repl-crumb-link" data-repl-nav="home">Back to Replication home</button></p>`;
+    }
+    return dataMgmtDsapReplicationBuildHomeHtml();
+}
+
+function dataMgmtDsapReplicationResolveMasterReachableSummary(status) {
+    if (!status?.masterAccessUrl) return null;
+    if (status.connectivity === 'airgapped') return 'airgapped';
+    const galleryCtx = typeof getGalleryReplicationContext === 'function' ? getGalleryReplicationContext() : null;
+    if (galleryCtx?.masterReachable === true) return 'reachable';
+    if (galleryCtx?.masterReachable === false) return 'unreachable';
+    return 'unknown';
+}
+
+function dataMgmtDsapReplicationBuildStatusSummaryHtml(status) {
+    if (!status) return '<p class="data-mgmt-muted">Replication status unavailable</p>';
+    const maint = status.maintenance?.active
+        ? dataMgmtDsapReplicationEscapeHtml(status.maintenance.operation || 'active')
+        : 'off';
+    const role = dataMgmtDsapReplicationEscapeHtml(status.role || 'standalone');
+    const conn = dataMgmtDsapReplicationEscapeHtml(status.connectivity || 'normal');
+    const inst = dataMgmtDsapReplicationEscapeHtml(status.displayName ? `${status.displayName} · ${status.instanceId || '—'}` : (status.instanceId || '—'));
+    const extraRows = [];
+    const masterReach = dataMgmtDsapReplicationResolveMasterReachableSummary(status);
+    if (masterReach != null) {
+        const reachClass = masterReach === 'reachable' ? 'ok' : masterReach === 'unreachable' ? 'error' : '';
+        extraRows.push(`<tr><td class="data-mgmt-account-info-label">Master reachable</td><td class="data-mgmt-repl-avail ${reachClass}">${dataMgmtDsapReplicationEscapeHtml(masterReach)}</td></tr>`);
+    }
+    if (status.role === 'child') {
+        const lastSyncLsn = dataMgmtDsapReplicationResolveLastSyncSummary(status);
+        extraRows.push(`<tr><td class="data-mgmt-account-info-label">Last sync LSN</td><td>${dataMgmtDsapReplicationEscapeHtml(lastSyncLsn)}</td></tr>`);
+    }
+    if (status.role === 'master') {
+        const childCount = Array.isArray(status.children) ? status.children.filter((c) => c && (c.instanceId || c.displayName)).length : 0;
+        extraRows.push(`<tr><td class="data-mgmt-account-info-label">Children</td><td>${childCount} registered</td></tr>`);
+    }
+    const extraTable = extraRows.length
+        ? `<table class="data-mgmt-account-info-table" cellspacing="0" cellpadding="4" width="100%" border="1"><tbody>${extraRows.join('')}</tbody></table>`
+        : '';
+    const link = `<p class="data-mgmt-repl-status-link"><button type="button" class="dsap-smf-btn dsap-smf-btn-small" data-open-replication-tab="1"><i class="fas fa-clone"></i> Open Replication</button></p>`;
+    return `${dsapSmfBuildStatsTable([
+        { label: 'Role', valueHtml: role, width: '25%' },
+        { label: 'Connectivity', valueHtml: conn, width: '25%' },
+        { label: 'Instance', valueHtml: inst, width: '25%' },
+        { label: 'Maintenance', valueHtml: maint, width: '25%' }
+    ], 'dataMgmtStatusReplStats')}
+${extraTable}
+${link}`;
+}
+
+async function dataMgmtDsapReplicationLoadStatusSummary(root) {
+    const host = root.querySelector('#dataMgmtStatusReplicationHost');
+    if (!host) return;
+    try {
+        const status = await dataMgmtDsapReplicationFetchStatus();
+        host.innerHTML = dataMgmtDsapReplicationBuildStatusSummaryHtml(status);
+        const openBtn = host.querySelector('[data-open-replication-tab]');
+        if (openBtn) {
+            openBtn.addEventListener('click', () => {
+                // openDsapInGrimoire: public/scripts/comp/dsapRegistry.js
+                if (typeof openDsapInGrimoire === 'function') {
+                    openDsapInGrimoire(dataMgmtDsapBuildReplicationUrl('home'));
+                }
+            });
+        }
+    } catch (err) {
+        host.innerHTML = `<p class="data-mgmt-muted">${dataMgmtDsapReplicationEscapeHtml(err.message || 'Replication status unavailable')}</p>`;
+    }
+}
+
+function dataMgmtDsapReplicationRenderHome(root, status) {
+    if (!status) return;
+    const roleEl = root.querySelector('#dataMgmtReplRole');
+    const connEl = root.querySelector('#dataMgmtReplConnectivity');
+    const instEl = root.querySelector('#dataMgmtReplInstance');
+    const maintEl = root.querySelector('#dataMgmtReplMaintenance');
+    const servicesHost = root.querySelector('#dataMgmtReplServicesHost');
+    const childrenHost = root.querySelector('#dataMgmtReplChildrenHost');
+    const childrenHdrHost = root.querySelector('#dataMgmtReplChildrenHdrHost');
+    const childSummaryHost = root.querySelector('#dataMgmtReplChildSummaryHost');
+    const ctaHost = root.querySelector('#dataMgmtReplCtaHost');
+    const navHost = root.querySelector('#dataMgmtReplNavHost');
+
+    const role = status.role || 'standalone';
+    const children = (status.children || []).filter((c) => c && (c.instanceId || c.displayName));
+
+    if (roleEl) roleEl.textContent = role;
+    if (connEl) connEl.textContent = status.connectivity || 'normal';
+    if (instEl) {
+        const name = status.displayName ? `${status.displayName} · ` : '';
+        instEl.textContent = `${name}${status.instanceId || '—'}`;
+        instEl.title = status.instanceId || '';
+    }
+    if (maintEl) {
+        if (status.maintenance?.active) {
+            maintEl.innerHTML = `<span class="data-mgmt-repl-maint-active">${dataMgmtDsapReplicationEscapeHtml(status.maintenance.operation || 'active')}</span>`;
+        } else {
+            maintEl.textContent = 'off';
+        }
+    }
+    if (servicesHost) servicesHost.innerHTML = dataMgmtDsapReplicationBuildServicesHtml(status.delegation);
+
+    if (ctaHost) {
+        const showCta = (role === 'master' || role === 'standalone') && !children.length;
+        ctaHost.classList.toggle('hidden', !showCta);
+        if (showCta) {
+            ctaHost.innerHTML = `<div class="data-mgmt-repl-cta">
+  <p>No child nodes paired yet. Create a separation bundle to provision the first child.</p>
+  <button type="button" class="dsap-smf-btn dsap-smf-btn-primary" data-repl-nav="setup"><i class="fas fa-box-open"></i> Create separation bundle</button>
+</div>`;
+        } else {
+            ctaHost.innerHTML = '';
+        }
+    }
+
+    if (childrenHdrHost && childrenHost) {
+        const showChildren = role === 'master' && children.length > 0;
+        childrenHdrHost.innerHTML = showChildren ? dsapSmfBuildSectionHdr('Registered children') : '';
+        childrenHost.innerHTML = showChildren
+            ? dataMgmtDsapReplicationBuildChildrenTableHtml(children, status)
+            : '';
+        childrenHost.classList.toggle('hidden', !showChildren);
+    }
+
+    if (childSummaryHost) {
+        const showChild = role === 'child' || role === 'ephemeral';
+        childSummaryHost.classList.toggle('hidden', !showChild);
+        if (showChild) {
+            childSummaryHost.innerHTML = `${dsapSmfBuildSectionHdr('Master link')}${dataMgmtDsapReplicationBuildChildSummaryHtml(status)}`;
+        } else {
+            childSummaryHost.innerHTML = '';
+        }
+    }
+
+    if (navHost) navHost.innerHTML = dataMgmtDsapReplicationBuildNavGrid(status);
+}
+
+function dataMgmtDsapReplicationRenderStatus(root, status, subRoute) {
+    if (!status) return;
+    if (!subRoute || subRoute === 'home') {
+        dataMgmtDsapReplicationRenderHome(root, status);
+        return;
+    }
+    if (subRoute === 'configuration') {
+        const connectivity = status.connectivity || 'normal';
+        const connectivityLabel = root.querySelector('#dataMgmtReplConnectivityLabel');
+        const connectivityBtn = root.querySelector('#dataMgmtReplConnectivityBtn');
+        const galleryLabel = root.querySelector('#dataMgmtReplGallerySharedLabel');
+        const transferLabel = root.querySelector('#dataMgmtReplConfigTransferLabel');
+        const transferHidden = root.querySelector('#dataMgmtReplConfigTransferHidden');
+        const galleryHidden = root.querySelector('#dataMgmtReplConfigGalleryHidden');
+        if (connectivityLabel) {
+            connectivityLabel.textContent = `Connectivity: ${dataMgmtDsapReplicationConnectivityLabel(connectivity)}`;
+        }
+        if (connectivityBtn) {
+            connectivityBtn.classList.toggle('data-mgmt-repl-airgapped-on', connectivity === 'airgapped');
+            connectivityBtn.classList.toggle('data-mgmt-repl-delegated-on', connectivity === 'delegated-only');
+        }
+        if (galleryLabel) {
+            galleryLabel.textContent = `Shared gallery: ${dataMgmtDsapReplicationGalleryLabel(status.gallerySharedDefault || 'manual')}`;
+        }
+        if (galleryHidden) galleryHidden.value = status.gallerySharedDefault || 'manual';
+        if (transferHidden) transferHidden.value = status.transferMode || 'tape-stream-compressed';
+        if (transferLabel) {
+            transferLabel.textContent = `Default cargo mode: ${dataMgmtDsapReplicationTransferLabel(status.transferMode || 'tape-stream-compressed')}`;
+        }
+        return;
+    }
+    if (subRoute === 'progress') {
+        const progHost = root.querySelector('#dataMgmtReplProgressPageHost');
+        if (progHost) progHost.innerHTML = replicationDsapBuildProgressHtml(replicationDsapGetLiveProgress());
+    }
+}
+
+function dataMgmtDsapReplicationWireTransferMenu(btn, labelEl, getMode, setMode, hiddenEl) {
+    if (!btn || !contextMenu) return;
+    const items = REPLICATION_DSAP_TRANSFER_MODES.map((mode) => ({
+        text: mode.label,
+        action: () => {
+            if (mode.id === 'blocks') {
+                // showConfirmationDialog: public/scripts/comp/confirmationDialog.js
+                showConfirmationDialog(
+                    REPLICATION_DSAP_BLOCKS_WARNING,
+                    [
+                        { text: 'Use Blocks', value: true, className: 'btn-standard primary' },
+                        { text: 'Cancel', value: false, className: 'btn-standard' }
+                    ],
+                    null,
+                    {
+                        title: 'Blocks transfer mode',
+                        resolveValue: (value) => {
+                            if (!value) return false;
+                            setMode(mode.id);
+                            if (labelEl) {
+                                labelEl.textContent = hiddenEl
+                                    ? `Default cargo mode: ${dataMgmtDsapReplicationTransferLabel(mode.id)}`
+                                    : mode.label;
+                            }
+                            if (hiddenEl) hiddenEl.value = mode.id;
+                            return true;
+                        }
+                    }
+                );
+                return;
+            }
+            setMode(mode.id);
+            if (labelEl) {
+                labelEl.textContent = hiddenEl
+                    ? `Default cargo mode: ${dataMgmtDsapReplicationTransferLabel(mode.id)}`
+                    : mode.label;
+            }
+            if (hiddenEl) hiddenEl.value = mode.id;
+        }
+    }));
+    contextMenu.attachClickMenuToElement(btn, items);
+}
+
+function dataMgmtDsapReplicationBuildCloneGridHtml(profile, prefix) {
+    const pfx = prefix || 'replClone';
+    const prof = { ...REPLICATION_DSAP_DEFAULT_CLONE_PROFILE, ...(profile || {}) };
+    return REPLICATION_DSAP_CLONE_OPTIONS.map((opt) => {
+        const checked = prof[opt.key] ? ' checked' : '';
+        const hint = opt.hint ? `<span class="data-mgmt-repl-clone-hint"> (${dataMgmtDsapReplicationEscapeHtml(opt.hint)})</span>` : '';
+        return `<label><input type="checkbox" data-${pfx}-key="${dataMgmtDsapReplicationEscapeHtml(opt.key)}"${checked} /> ${dataMgmtDsapReplicationEscapeHtml(opt.label)}${hint}</label>`;
+    }).join('');
+}
+
+function dataMgmtDsapReplicationReadCloneGrid(dialogRoot, prefix) {
+    const pfx = prefix || 'replClone';
+    const profile = { ...REPLICATION_DSAP_DEFAULT_CLONE_PROFILE };
+    dialogRoot.querySelectorAll(`input[data-${pfx}-key]`).forEach((input) => {
+        const key = input.getAttribute(`data-${pfx}-key`);
+        if (key) profile[key] = input.checked;
+    });
+    if (profile.previewCache && !profile.workspaceImages) {
+        profile.imageMetadata = true;
+    }
+    return profile;
+}
+
+async function dataMgmtDsapReplicationShowRegisterDialog(host, root) {
+    const html = `<div class="data-mgmt-repl-dialog-form" id="dataMgmtReplRegisterForm">
+  <p>Pair this node as a <strong>child</strong> using master URLs and the replication token from the separation manifest.</p>
+  <div class="data-mgmt-repl-dialog-field"><label for="dataMgmtReplRegDisplayName">Display name</label><input type="text" id="dataMgmtReplRegDisplayName" /></div>
+  <div class="data-mgmt-repl-dialog-field"><label for="dataMgmtReplRegInstanceId">Instance ID (from manifest)</label><input type="text" id="dataMgmtReplRegInstanceId" /></div>
+  <div class="data-mgmt-repl-dialog-field"><label for="dataMgmtReplRegAccessUrl">Master access URL</label><input type="text" id="dataMgmtReplRegAccessUrl" placeholder="https://master.example.com:9220" /></div>
+  <div class="data-mgmt-repl-dialog-field"><label for="dataMgmtReplRegWsUrl">Master WebSocket URL</label><input type="text" id="dataMgmtReplRegWsUrl" placeholder="wss://master.example.com:9220" /></div>
+  <div class="data-mgmt-repl-dialog-field"><label for="dataMgmtReplRegPeerHost">Peer host (optional)</label><input type="text" id="dataMgmtReplRegPeerHost" /></div>
+  <div class="data-mgmt-repl-dialog-field"><label for="dataMgmtReplRegPeerPort">Peer port (optional)</label><input type="number" id="dataMgmtReplRegPeerPort" placeholder="9221" /></div>
+  <div class="data-mgmt-repl-dialog-field"><label for="dataMgmtReplRegToken">Replication token</label><input type="password" id="dataMgmtReplRegToken" autocomplete="off" /></div>
+</div>`;
+
+    await showConfirmationDialog(html, [
+        { text: 'Save pairing', value: true, className: 'btn-standard primary' },
+        { text: 'Cancel', value: false, className: 'btn-standard' }
+    ], null, {
+        title: 'Register child manually',
+        width: 520,
+        resolveValue: async (value) => {
+            if (!value) return false;
+            const dialog = document.getElementById('confirmationDialog');
+            const val = (id) => {
+                const el = dialog?.querySelector(id);
+                return el ? el.value.trim() : '';
+            };
+            const displayName = val('#dataMgmtReplRegDisplayName');
+            const instanceId = val('#dataMgmtReplRegInstanceId');
+            const masterAccessUrl = val('#dataMgmtReplRegAccessUrl');
+            const replicationToken = val('#dataMgmtReplRegToken');
+            if (!masterAccessUrl || !replicationToken) {
+                if (host?.showToast) host.showToast('error', 'Access URL and token required');
+                return false;
+            }
+            const patches = [
+                { path: ['replication', 'role'], value: 'child' },
+                { path: ['replication', 'connectivity'], value: 'normal' },
+                { path: ['replication', 'displayName'], value: displayName || 'child' },
+                { path: ['replication', 'masterAccessUrl'], value: masterAccessUrl },
+                { path: ['replication', 'masterWsUrl'], value: val('#dataMgmtReplRegWsUrl') || null },
+                { path: ['replication', 'masterPeerHost'], value: val('#dataMgmtReplRegPeerHost') || null },
+                { path: ['replication', 'masterPeerPort'], value: val('#dataMgmtReplRegPeerPort') ? Number(val('#dataMgmtReplRegPeerPort')) : null },
+                { path: ['replication', 'replicationToken'], value: replicationToken },
+                { path: ['replication', 'pairedAt'], value: new Date().toISOString() }
+            ];
+            if (instanceId) patches.push({ path: ['replication', 'instanceId'], value: instanceId });
+            try {
+                await dataMgmtDsapReplicationSavePatches(patches);
+                if (host?.showToast) host.showToast('success', 'Child pairing saved');
+                await dataMgmtDsapDriver._refreshReplication(root, host);
+                return true;
+            } catch (err) {
+                if (host?.showToast) host.showToast('error', err.message);
+                return false;
+            }
+        }
+    });
+}
+
+async function dataMgmtDsapReplicationShowEphemeralDialog(host, root) {
+    const state = { airgapped: false };
+    const html = `<div class="data-mgmt-repl-dialog-form" id="dataMgmtReplEphemeralForm">
+  <p>Configure a short-lived <strong>ephemeral</strong> node (e.g. phone). Use Export cargo to hand work back to the master.</p>
+  <div class="data-mgmt-repl-dialog-field"><label for="dataMgmtReplEphName">Display name</label><input type="text" id="dataMgmtReplEphName" placeholder="phone-session" /></div>
+  <div class="data-mgmt-repl-dialog-field"><label for="dataMgmtReplEphAccessUrl">Master access URL (optional)</label><input type="text" id="dataMgmtReplEphAccessUrl" /></div>
+  <div class="data-mgmt-repl-dialog-field"><label for="dataMgmtReplEphWsUrl">Master WS URL (optional)</label><input type="text" id="dataMgmtReplEphWsUrl" /></div>
+  <div class="data-mgmt-repl-dialog-field">
+    <button type="button" class="dsap-smf-btn" id="dataMgmtReplEphAirgappedBtn"><span id="dataMgmtReplEphAirgappedLabel">Airgapped: off</span></button>
+  </div>
+  <div class="data-mgmt-repl-dialog-field">
+    <label>Clone profile (optional local copies)</label>
+    <div class="data-mgmt-repl-clone-grid">${dataMgmtDsapReplicationBuildCloneGridHtml({ wikiData: false, autoComplete: false, previewCache: false, workspaceImages: false }, 'ephClone')}</div>
+  </div>
+</div>`;
+
+    await showConfirmationDialog(html, [
+        { text: 'Apply', value: true, className: 'btn-standard primary' },
+        { text: 'Cancel', value: false, className: 'btn-standard' }
+    ], null, {
+        title: 'Ephemeral setup',
+        width: 520,
+        onDialogReady: () => {
+            setTimeout(() => {
+                const dialog = document.getElementById('confirmationDialog');
+                const btn = dialog?.querySelector('#dataMgmtReplEphAirgappedBtn');
+                const label = dialog?.querySelector('#dataMgmtReplEphAirgappedLabel');
+                if (btn && label) {
+                    btn.addEventListener('click', () => {
+                        state.airgapped = !state.airgapped;
+                        label.textContent = state.airgapped ? 'Airgapped: on' : 'Airgapped: off';
+                        btn.classList.toggle('data-mgmt-repl-airgapped-on', state.airgapped);
+                    });
+                }
+            }, 0);
+        },
+        resolveValue: async (value) => {
+            if (!value) return false;
+            const dialog = document.getElementById('confirmationDialog');
+            const nameEl = dialog?.querySelector('#dataMgmtReplEphName');
+            const displayName = nameEl ? nameEl.value.trim() : '';
+            if (!displayName) {
+                if (host?.showToast) host.showToast('error', 'Display name required');
+                return false;
+            }
+            const accessUrl = dialog?.querySelector('#dataMgmtReplEphAccessUrl')?.value.trim() || null;
+            const wsUrl = dialog?.querySelector('#dataMgmtReplEphWsUrl')?.value.trim() || null;
+            const cloneProfile = dataMgmtDsapReplicationReadCloneGrid(dialog, 'ephClone');
+            const patches = [
+                { path: ['replication', 'role'], value: 'ephemeral' },
+                { path: ['replication', 'connectivity'], value: state.airgapped ? 'airgapped' : 'normal' },
+                { path: ['replication', 'displayName'], value: displayName },
+                { path: ['replication', 'cloneProfile'], value: cloneProfile },
+                { path: ['replication', 'masterAccessUrl'], value: accessUrl },
+                { path: ['replication', 'masterWsUrl'], value: wsUrl }
+            ];
+            try {
+                await dataMgmtDsapReplicationSavePatches(patches);
+                if (host?.showToast) host.showToast('success', 'Ephemeral node configured');
+                await dataMgmtDsapDriver._refreshReplication(root, host);
+                return true;
+            } catch (err) {
+                if (host?.showToast) host.showToast('error', err.message);
+                return false;
+            }
+        }
+    });
+}
+
+async function dataMgmtDsapReplicationSetConnectivity(host, root, nextConnectivity) {
+    const current = dataMgmtDsapDriver._replicationStatus?.connectivity || 'normal';
+    if (nextConnectivity === current) return;
+    const label = dataMgmtDsapReplicationConnectivityLabel(nextConnectivity);
+    let msg = `Set connectivity to <strong>${dataMgmtDsapReplicationEscapeHtml(label)}</strong>?`;
+    if (nextConnectivity === 'airgapped') {
+        msg = 'Enable <strong>airgapped</strong> mode? This node will not contact the master — use manual cargo transfer for sync.';
+    } else if (nextConnectivity === 'delegated-only') {
+        msg = 'Enable <strong>delegated-only</strong> mode? Delegation and asset reads stay available; bulk cargo and sync to master are disabled.';
+    } else if (current === 'airgapped' || current === 'delegated-only') {
+        msg = 'Restore <strong>normal</strong> connectivity and re-enable bulk cargo/sync probing?';
+    }
+    await showConfirmationDialog(msg, [
+        { text: 'Confirm', value: true, className: 'btn-standard primary' },
+        { text: 'Cancel', value: false, className: 'btn-standard' }
+    ], null, {
+        title: 'Connectivity mode',
+        resolveValue: async (value) => {
+            if (!value) return false;
+            try {
+                await dataMgmtDsapReplicationSavePatches([
+                    { path: ['replication', 'connectivity'], value: nextConnectivity }
+                ]);
+                if (host?.showToast) host.showToast('success', `Connectivity: ${label}`);
+                await dataMgmtDsapDriver._refreshReplication(root, host);
+                return true;
+            } catch (err) {
+                if (host?.showToast) host.showToast('error', err.message);
+                return false;
+            }
+        }
+    });
+}
+
+function dataMgmtDsapReplicationWireConnectivityMenu(btn, labelEl, status, host, root) {
+    if (!btn || !contextMenu) return;
+    const current = status?.connectivity || 'normal';
+    const items = REPLICATION_DSAP_CONNECTIVITY_OPTIONS.map((opt) => ({
+        text: opt.label,
+        icon: opt.id === current ? 'fas fa-check' : '',
+        action: () => {
+            void dataMgmtDsapReplicationSetConnectivity(host, root, opt.id);
+        }
+    }));
+    contextMenu.attachClickMenuToElement(btn, items);
+}
+
+function dataMgmtDsapReplicationMountPanels(root, host, subRoute) {
+    const sepHost = root.querySelector('#dataMgmtReplicationSepHost');
+    const cargoHost = root.querySelector('#dataMgmtReplicationCargoHost');
+    const syncHost = root.querySelector('#dataMgmtReplicationSyncHost');
+    const bundleWizard = root.querySelector('[data-replication-bundle-wizard]');
+
+    if (bundleWizard && typeof replicationSepInitBundleWizard === 'function') {
+        replicationSepInitBundleWizard(root, host);
+    }
+
+    if (sepHost && typeof replicationSepGetPanelContent === 'function') {
+        const content = replicationSepGetPanelContent();
+        sepHost.innerHTML = content.html;
+        const sepRoot = sepHost.querySelector('[data-dsap="replication-separation-panel"]');
+        if (sepRoot) replicationSepInitBootstrapPanel({ getRoot: () => sepRoot });
+    }
+
+    if (cargoHost && subRoute === 'upsert' && typeof replicationDsapCargoBuildPanel === 'function') {
+        cargoHost.innerHTML = replicationDsapCargoBuildPanel();
+        replicationDsapCargoInitPanel(cargoHost, host);
+    }
+
+    if (syncHost && subRoute === 'sync' && typeof replicationDsapSyncBuildPanel === 'function') {
+        syncHost.innerHTML = replicationDsapSyncBuildPanel();
+        replicationDsapSyncInitPanel(syncHost, host);
+    }
+}
+
+function dataMgmtDsapReplicationTeardownPanels(root) {
+    const sepHost = root.querySelector('#dataMgmtReplicationSepHost');
+    const cargoHost = root.querySelector('#dataMgmtReplicationCargoHost');
+    const syncHost = root.querySelector('#dataMgmtReplicationSyncHost');
+    if (typeof replicationSepDestroyPanel === 'function') replicationSepDestroyPanel();
+    if (cargoHost && typeof replicationDsapCargoDestroyPanel === 'function') replicationDsapCargoDestroyPanel(cargoHost);
+    if (syncHost && typeof replicationDsapSyncDestroyPanel === 'function') replicationDsapSyncDestroyPanel(syncHost);
+}
+
+function dataMgmtDsapReplicationDetachMenus(root) {
+    if (!contextMenu || !dataMgmtDsapDriver._replMenuTargets) return;
+    dataMgmtDsapDriver._replMenuTargets.forEach((btn) => {
+        contextMenu.detachClickMenuFromElement(btn);
+    });
+    dataMgmtDsapDriver._replMenuTargets = [];
+}
+
+function dataMgmtDsapReplicationUnwireNav(root) {
+    if (!root || !dataMgmtDsapDriver._replNavClickHandler) return;
+    root.removeEventListener('click', dataMgmtDsapDriver._replNavClickHandler);
+    dataMgmtDsapDriver._replNavClickHandler = null;
+    dataMgmtDsapDriver._replNavDelegated = false;
+}
+
+function dataMgmtDsapReplicationWireNav(root, host) {
+    if (!root || dataMgmtDsapDriver._replNavDelegated) return;
+    dataMgmtDsapDriver._replNavDelegated = true;
+    dataMgmtDsapDriver._replNavClickHandler = (e) => {
+        const el = e.target.closest('[data-repl-nav]');
+        if (!el || !root.contains(el)) return;
+        if (el.disabled || el.classList.contains('data-mgmt-repl-nav-disabled') || el.classList.contains('hidden')) {
+            return;
+        }
+        e.preventDefault();
+        const target = el.getAttribute('data-repl-nav') || 'home';
+        const navHost = dataMgmtDsapDriver._host || host;
+        if (navHost?.navigate) {
+            navHost.navigate(dataMgmtDsapBuildReplicationUrl(target));
+        }
+    };
+    root.addEventListener('click', dataMgmtDsapDriver._replNavClickHandler);
+}
+
+async function dataMgmtDsapReplicationSaveConfiguration(root, host) {
+    const transferHidden = root.querySelector('#dataMgmtReplConfigTransferHidden');
+    const galleryHidden = root.querySelector('#dataMgmtReplConfigGalleryHidden');
+    const status = dataMgmtDsapDriver._replicationStatus || {};
+    const patches = [];
+    if (transferHidden?.value) {
+        patches.push({ path: ['replication', 'transferMode'], value: transferHidden.value });
+    }
+    if (galleryHidden?.value) {
+        patches.push({ path: ['replication', 'gallerySharedDefault'], value: galleryHidden.value });
+    }
+    if (!patches.length) return;
+    try {
+        await dataMgmtDsapReplicationSavePatches(patches);
+        if (host?.showToast) host.showToast('success', 'Replication defaults saved');
+        await dataMgmtDsapDriver._refreshReplication(root, host);
+    } catch (err) {
+        if (host?.showToast) host.showToast('error', err.message);
+    }
+}
+
+function dataMgmtDsapReplicationWirePage(root, host, subRoute) {
+    dataMgmtDsapReplicationDetachMenus(root);
+    dataMgmtDsapDriver._replMenuTargets = [];
+
+    dataMgmtDsapReplicationMountPanels(root, host, subRoute);
+    dataMgmtDsapReplicationWireNav(root, host);
+
+    const galleryBtn = root.querySelector('#dataMgmtReplGallerySharedBtn');
+    if (galleryBtn && contextMenu) {
+        const galleryHidden = root.querySelector('#dataMgmtReplConfigGalleryHidden');
+        const items = REPLICATION_DSAP_GALLERY_SHARED_OPTIONS.map((opt) => ({
+            text: opt.label,
+            action: () => {
+                if (galleryHidden) galleryHidden.value = opt.id;
+                const label = root.querySelector('#dataMgmtReplGallerySharedLabel');
+                if (label) label.textContent = `Shared gallery: ${opt.label}`;
+                if (subRoute !== 'configuration') {
+                    void dataMgmtDsapReplicationSavePatches([
+                        { path: ['replication', 'gallerySharedDefault'], value: opt.id }
+                    ]).then(() => {
+                        if (host?.showToast) host.showToast('success', 'Gallery preference saved');
+                    }).catch((err) => {
+                        if (host?.showToast) host.showToast('error', err.message);
+                    });
+                }
+            }
+        }));
+        contextMenu.attachClickMenuToElement(galleryBtn, items);
+        dataMgmtDsapDriver._replMenuTargets.push(galleryBtn);
+    }
+
+    const transferBtn = root.querySelector('#dataMgmtReplConfigTransferBtn');
+    const transferLabel = root.querySelector('#dataMgmtReplConfigTransferLabel');
+    const transferHidden = root.querySelector('#dataMgmtReplConfigTransferHidden');
+    if (transferBtn) {
+        const state = { mode: transferHidden?.value || 'tape-stream-compressed' };
+        dataMgmtDsapReplicationWireTransferMenu(
+            transferBtn,
+            transferLabel,
+            () => state.mode,
+            (id) => { state.mode = id; },
+            transferHidden
+        );
+        dataMgmtDsapDriver._replMenuTargets.push(transferBtn);
+    }
+
+    const saveBtn = root.querySelector('#dataMgmtReplConfigSaveBtn');
+    if (saveBtn) {
+        saveBtn.addEventListener('click', () => {
+            void dataMgmtDsapReplicationSaveConfiguration(root, host);
+        });
+    }
+
+    const connectivityBtn = root.querySelector('#dataMgmtReplConnectivityBtn');
+    const connectivityLabel = root.querySelector('#dataMgmtReplConnectivityLabel');
+    if (connectivityBtn) {
+        dataMgmtDsapReplicationWireConnectivityMenu(
+            connectivityBtn,
+            connectivityLabel,
+            dataMgmtDsapDriver._replicationStatus,
+            host,
+            root
+        );
+        dataMgmtDsapDriver._replMenuTargets.push(connectivityBtn);
+    }
+
+    const registerBtn = root.querySelector('#dataMgmtReplRegisterBtn');
+    if (registerBtn) {
+        registerBtn.addEventListener('click', () => {
+            void dataMgmtDsapReplicationShowRegisterDialog(host, root);
+        });
+    }
+
+    const ephemeralBtn = root.querySelector('#dataMgmtReplEphemeralBtn');
+    if (ephemeralBtn) {
+        ephemeralBtn.addEventListener('click', () => {
+            void dataMgmtDsapReplicationShowEphemeralDialog(host, root);
+        });
+    }
+
+    if (host && typeof host.on === 'function' && !dataMgmtDsapDriver._replWired) {
+        dataMgmtDsapDriver._replWired = true;
+        host.on('replication_maintenance', (msg) => {
+            replicationDsapApplyMaintenancePush(msg?.data || msg);
+            void dataMgmtDsapDriver._refreshReplication(root, host);
+        });
+        host.on('replication_progress', (msg) => {
+            replicationDsapApplyProgressPush(msg?.data || msg);
+            const sub = dataMgmtDsapResolveReplicationSubRoute(host);
+            if (sub === 'progress') {
+                const progHost = root.querySelector('#dataMgmtReplProgressPageHost');
+                if (progHost) progHost.innerHTML = replicationDsapBuildProgressHtml(replicationDsapGetLiveProgress());
+            }
+            void dataMgmtDsapDriver._refreshReplication(root, host);
+        });
+    }
+
+    void dataMgmtDsapDriver._refreshReplication(root, host, subRoute);
+}
+
 const dataMgmtDsapScopedCss = `
 [data-dsap="data-mgmt"] .data-mgmt-view { padding: 4px 0 0; }
 [data-dsap="data-mgmt"] .data-mgmt-account-host { margin-bottom: 12px; }
@@ -807,6 +1843,9 @@ const dataMgmtDsapDriver = {
     _host: null,
     _statusData: null,
     _accountListenersWired: false,
+    _replicationStatus: null,
+    _replMenuTargets: [],
+    _replWired: false,
 
     init(host) {
         this._host = host;
@@ -818,7 +1857,7 @@ const dataMgmtDsapDriver = {
         const viewHost = root.querySelector('#dataMgmtViewHost');
         if (!viewHost) return;
 
-        viewHost.classList.toggle('data-mgmt-view-fill', activeTab === 'workspaces' || activeTab === 'favorites');
+        viewHost.classList.toggle('data-mgmt-view-fill', activeTab === 'workspaces' || activeTab === 'favorites' || activeTab === 'replication');
 
         if (activeTab === 'search') {
             host.navigate(`dsap://${DATA_ISPY_URL}/`);
@@ -842,6 +1881,11 @@ const dataMgmtDsapDriver = {
         } else if (activeTab === 'expanders') {
             viewHost.innerHTML = dataMgmtDsapBuildExpandersHtml();
             setTimeout(() => this._wireStubs(root), 0);
+        } else if (activeTab === 'replication') {
+            const subRoute = dataMgmtDsapResolveReplicationSubRoute(host);
+            viewHost.innerHTML = dataMgmtDsapReplicationBuildPageHtml(subRoute, this._replicationStatus);
+            dsapSmfUpdateHeaderTool(root, REPLICATION_DSAP_SUB_LABELS[subRoute] || 'Replication');
+            setTimeout(() => dataMgmtDsapReplicationWirePage(root, host, subRoute), 0);
         } else {
             viewHost.innerHTML = dataMgmtDsapBuildStatusHtml();
             dataMgmtDsapRenderAccountSection(root);
@@ -858,7 +1902,15 @@ const dataMgmtDsapDriver = {
         this._host = null;
         this._statusData = null;
         this._accountListenersWired = false;
+        this._replicationStatus = null;
+        this._replWired = false;
         const root = host?.getRoot?.();
+        if (root) {
+            dataMgmtDsapReplicationUnwireNav(root);
+            dataMgmtDsapReplicationDetachMenus(root);
+            dataMgmtDsapReplicationTeardownPanels(root);
+        }
+        this._replMenuTargets = [];
         if (!root) return;
         const addBtn = root.querySelector('#dataMgmtWorkspaceAddBtn');
         if (addBtn) addBtn.replaceWith(addBtn.cloneNode(true));
@@ -881,6 +1933,7 @@ const dataMgmtDsapDriver = {
         const pieHost = root.querySelector('#dataMgmtPieHost');
         const wsHost = root.querySelector('#dataMgmtWorkspacesTableHost');
         const storageHost = root.querySelector('#dataMgmtStorageTableHost');
+        void dataMgmtDsapReplicationLoadStatusSummary(root);
         if (!pieHost || !wsHost || !storageHost) return;
 
         if (!window.wsClient?.isConnected()) {
@@ -940,6 +1993,50 @@ const dataMgmtDsapDriver = {
                 // showTextReplacementManager: public/scripts/comp/textReplacementManager.js
                 showTextReplacementManager();
             });
+        }
+    },
+
+    async _refreshReplication(root, host, subRoute) {
+        const route = subRoute || (host ? dataMgmtDsapResolveReplicationSubRoute(host) : 'home');
+        try {
+            const status = await dataMgmtDsapReplicationFetchStatus();
+            this._replicationStatus = status;
+            dataMgmtDsapReplicationRenderStatus(root, status, route);
+            const cargoHost = root.querySelector('#dataMgmtReplicationCargoHost');
+            const syncHost = root.querySelector('#dataMgmtReplicationSyncHost');
+            if (cargoHost && typeof replicationDsapCargoRefreshPanel === 'function') {
+                await replicationDsapCargoRefreshPanel(cargoHost, host);
+            }
+            if (syncHost && typeof replicationDsapSyncRefreshPanel === 'function') {
+                await replicationDsapSyncRefreshPanel(syncHost, host);
+            }
+            if (status.maintenance?.active && route === 'home' && host?.navigate) {
+                host.navigate(dataMgmtDsapBuildReplicationUrl('progress'));
+            }
+            // refreshReplicationClientState: public/scripts/comp/masterWsBridge.js
+            if (typeof refreshReplicationClientState === 'function') {
+                void refreshReplicationClientState().then(() => {
+                    if (route === 'home') dataMgmtDsapReplicationRenderHome(root, status);
+                });
+            }
+            const statusReplHost = document.getElementById('dataMgmtStatusReplicationHost');
+            if (statusReplHost) {
+                statusReplHost.innerHTML = dataMgmtDsapReplicationBuildStatusSummaryHtml(status);
+                const openBtn = statusReplHost.querySelector('[data-open-replication-tab]');
+                if (openBtn) {
+                    openBtn.addEventListener('click', () => {
+                        // openDsapInGrimoire: public/scripts/comp/dsapRegistry.js
+                        if (typeof openDsapInGrimoire === 'function') {
+                            openDsapInGrimoire(dataMgmtDsapBuildReplicationUrl('home'));
+                        }
+                    });
+                }
+            }
+        } catch (err) {
+            console.error('[replication] status refresh failed:', err);
+            const roleEl = root.querySelector('#dataMgmtReplRole');
+            if (roleEl) roleEl.textContent = 'unavailable';
+            if (host?.showToast) host.showToast('error', err.message || 'Replication status unavailable');
         }
     }
 };

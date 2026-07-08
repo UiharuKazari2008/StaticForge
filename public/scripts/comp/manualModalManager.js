@@ -4355,16 +4355,14 @@ function autoResizeTextareasAfterModalShow() {
     requestAnimationFrame(() => {
         textareas.forEach((field) => {
             // scheduleEmphasisHighlightUpdate: public/scripts/comp/emphasisManager.js
-            scheduleEmphasisHighlightUpdate(field);
+            scheduleEmphasisHighlightUpdate(field, true);
         });
         stopEmphasisHighlighting();
 
         if (creativeDirectiveInput && !creativeDirectiveInput.dataset.autoResizeWired) {
             creativeDirectiveInput.dataset.autoResizeWired = 'true';
-            // addTextareaInputSideEffect, autoResizeTextarea: public/scripts/comp/textareaUtils.js, utilities.js
-            addTextareaInputSideEffect(creativeDirectiveInput, () => {
-                autoResizeTextarea(creativeDirectiveInput, 23);
-            }, 'autoResize');
+            // wirePromptTextareaVisualUpdates: public/scripts/comp/textareaUtils.js
+            wirePromptTextareaVisualUpdates(creativeDirectiveInput, { minHeight: 23 });
         }
         // setupPromptTextareaControls: public/scripts/comp/textareaUtils.js
         if (creativeDirectiveInput && creativeDirectiveInput.dataset.manualStylePromptWired !== '1') {

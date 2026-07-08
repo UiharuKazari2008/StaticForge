@@ -193,11 +193,11 @@ const PopoverManager = {
         
         this.activePopovers.set(element, popoverData);
         
-        // Setup event listeners
+        // Setup event listeners — tray popovers are notification-only (no hover tooltips, no click toggle)
         if (hoverOnly) {
             this._setupHoverListeners(popoverData);
         } else {
-            this._setupClickListeners(popoverData);
+            this._setupNotificationDismissListeners(popoverData);
         }
         
         return popover;
@@ -497,9 +497,9 @@ const PopoverManager = {
      * @private
      */
     _exitNotificationMode(element, popoverData) {
-        this._teardownNotificationDismissListeners(popoverData);
         if (!popoverData._hoverTooltipSnapshot) return;
 
+        this._teardownNotificationDismissListeners(popoverData);
         popoverData.hoverOnly = true;
         popoverData.timeout = null;
         this.updateContent(element, popoverData._hoverTooltipSnapshot.content);

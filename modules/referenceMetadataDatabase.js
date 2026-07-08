@@ -40,6 +40,27 @@ class ReferenceMetadataDatabase {
         }
     }
 
+    // modules/replicationChangelog.js — reference_metadata.db uses better-sqlite3, not sqliteAsyncWrapper
+    _recordReferenceChangelog(tableName, rowKey, operation, payload = null) {
+        let replicationChangelog;
+        try {
+            replicationChangelog = require('./replicationChangelog');
+        } catch (_err) {
+            return;
+        }
+        if (!replicationChangelog.isInitialized()) return;
+
+        replicationChangelog.recordChange({
+            databaseName: 'reference_metadata.db',
+            tableName,
+            rowKey: String(rowKey),
+            operation,
+            payload
+        }).catch((error) => {
+            console.warn('⚠️ Reference metadata changelog hook failed:', error.message);
+        });
+    }
+
     createTables() {
         // Reference metadata table
         const createReferenceMetadataTable = `
@@ -256,6 +277,7 @@ class ReferenceMetadataDatabase {
             );
 
             // Return the created/updated metadata
+            this._recordReferenceChangelog('reference_metadata', hash, 'INSERT', metadata);
             return this.getMetadata(hash);
         } catch (error) {
             console.error('Error setting reference metadata:', error);
@@ -279,6 +301,7 @@ class ReferenceMetadataDatabase {
             const fileCacheResult = fileCacheStmt.run(hash);
             const workspaceOwnershipResult = workspaceOwnershipStmt.run(hash);
             
+            this._recordReferenceChangelog('reference_metadata', hash, 'DELETE', { hash });
             return metadataResult.changes > 0 || fileCacheResult.changes > 0 || workspaceOwnershipResult.changes > 0;
         } catch (error) {
             console.error('Error deleting reference metadata:', error);
@@ -542,6 +565,8 @@ class ReferenceMetadataDatabase {
                 now,
                 now
             );
+
+            this._recordReferenceChangelog('reference_file_cache', hash, 'INSERT', fileData);
             
             return this.getFileCache(hash);
         } catch (error) {
@@ -682,6 +707,7 @@ class ReferenceMetadataDatabase {
                 VALUES (?, ?, COALESCE((SELECT created_at FROM reference_workspace_ownership WHERE hash = ? AND workspace_id = ?), strftime('%s', 'now')))
             `);
             const result = stmt.run(hash, workspaceId, hash, workspaceId);
+            this._recordReferenceChangelog('reference_workspace_ownership', `${hash}:${workspaceId}`, 'INSERT', { hash, workspaceId });
             return result.changes > 0;
         } catch (error) {
             console.error('Error adding reference to workspace:', error);
@@ -699,6 +725,9 @@ class ReferenceMetadataDatabase {
         try {
             const stmt = this.db.prepare(`DELETE FROM reference_workspace_ownership WHERE hash = ? AND workspace_id = ?`);
             const result = stmt.run(hash, workspaceId);
+            if (result.changes > 0) {
+                this._recordReferenceChangelog('reference_workspace_ownership', `${hash}:${workspaceId}`, 'DELETE', { hash, workspaceId });
+            }
             return result.changes > 0;
         } catch (error) {
             console.error('Error removing reference from workspace:', error);
@@ -1029,6 +1058,11 @@ class ReferenceMetadataDatabase {
             if (vibeData.encodings && typeof vibeData.encodings === 'object') {
                 this.setVibeEncodings(vibeId, vibeData.encodings);
             }
+
+            this._recordReferenceChangelog('reference_vibe_metadata', vibeId, 'INSERT', {
+                type: vibeData.type,
+                imageSource: vibeData.imageSource
+            });
             
             return this.getVibeMetadata(vibeId);
         } catch (error) {
@@ -1046,6 +1080,9 @@ class ReferenceMetadataDatabase {
         try {
             const stmt = this.db.prepare(`DELETE FROM reference_vibe_metadata WHERE id = ?`);
             const result = stmt.run(vibeId);
+            if (result.changes > 0) {
+                this._recordReferenceChangelog('reference_vibe_metadata', vibeId, 'DELETE', { vibeId });
+            }
             return result.changes > 0;
         } catch (error) {
             console.error('Error deleting vibe metadata:', error);

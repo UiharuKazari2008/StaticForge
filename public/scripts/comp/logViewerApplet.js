@@ -3,7 +3,8 @@
  * public/scripts/comp/serverManagement.js (PM2 restart/flush, runtime compile, dev mode)
  * public/scripts/comp/modalUtils.js (openModal, closeModal)
  * public/scripts/comp/confirmationDialog.js (showConfirmationDialog)
- * public/scripts/comp/dropdown.js (setupDropdown, renderGroupedDropdown)
+ * public/scripts/comp/contextMenu.js (attachClickMenuToElement)
+ * public/scripts/comp/dropdown.js (setupDropdown — settings popover interval only)
  * public/scripts/comp/websocketRequestsModal.js (websocketRequestsModal)
  */
 
@@ -75,6 +76,7 @@ class LogViewerApplet {
         this.tasksToggleBtn = null;
         this.tasksSidebar = null;
         this.abortController = null;
+        this.sourcesFetchAbort = null;
         this.byteOffset = 0;
         this.fileSize = 0;
         this.lineCount = 0;
@@ -431,7 +433,8 @@ class LogViewerApplet {
     _teardownSettingsPopoverDropdowns() {
         const container = document.getElementById('logViewerStatusIntervalDropdown');
         // teardownDropdown: public/scripts/comp/dropdown.js
-        if (container && typeof teardownDropdown === 'function') {
+        if (typeof teardownDropdown !== 'function') return;
+        if (container) {
             teardownDropdown(container);
         }
     }
@@ -671,17 +674,37 @@ class LogViewerApplet {
 
     refreshSourceClickMenuItems() {
         if (!this.sourceClickMenuConfig) return;
+
+        const items = [
+            { separator: true, text: 'Client' },
+            {
+                text: 'Gallery Load',
+                action: 'select-log-source',
+                sourceId: LOG_VIEWER_CLIENT_GALLERY_SOURCE,
+                loadfn: (item) => {
+                    item.highlighted = this.currentSource === LOG_VIEWER_CLIENT_GALLERY_SOURCE;
+                }
+            },
+            {
+                text: 'Developer Warnings',
+                action: 'select-log-source',
+                sourceId: LOG_VIEWER_DEV_WARNINGS_SOURCE,
+                loadfn: (item) => {
+                    item.highlighted = this.currentSource === LOG_VIEWER_DEV_WARNINGS_SOURCE;
+                }
+            }
+        ];
+
         const groups = this.sourceGroups.length
             ? this.sourceGroups.map((g) => ({
                 header: g.header,
                 options: g.sources.map((s) => ({ value: s.id, label: s.label }))
             }))
-            : [{
+            : (this.sources.length ? [{
                 header: 'Logs',
                 options: this.sources.map((s) => ({ value: s.id, label: s.label }))
-            }];
+            }] : []);
 
-        const items = [];
         groups.forEach((group) => {
             if (group.header) {
                 items.push({ separator: true, text: group.header });
@@ -697,27 +720,7 @@ class LogViewerApplet {
                 });
             });
         });
-        if (!items.length) {
-            items.push({ text: 'No sources', disabled: true });
-        }
 
-        items.push({ separator: true, text: 'Client' });
-        items.push({
-            text: 'Gallery Load',
-            action: 'select-log-source',
-            sourceId: LOG_VIEWER_CLIENT_GALLERY_SOURCE,
-            loadfn: (item) => {
-                item.highlighted = this.currentSource === LOG_VIEWER_CLIENT_GALLERY_SOURCE;
-            }
-        });
-        items.push({
-            text: 'Developer Warnings',
-            action: 'select-log-source',
-            sourceId: LOG_VIEWER_DEV_WARNINGS_SOURCE,
-            loadfn: (item) => {
-                item.highlighted = this.currentSource === LOG_VIEWER_DEV_WARNINGS_SOURCE;
-            }
-        });
         this.sourceClickMenuConfig.sections[0].items = items;
     }
 
@@ -1706,10 +1709,13 @@ class LogViewerApplet {
         if (!base) return;
 
         try {
-            this.abortController = new AbortController();
+            if (this.sourcesFetchAbort) {
+                this.sourcesFetchAbort.abort();
+            }
+            this.sourcesFetchAbort = new AbortController();
             const response = await fetch(`${base}/sources`, {
                 credentials: 'same-origin',
-                signal: this.abortController.signal
+                signal: this.sourcesFetchAbort.signal
             });
             const data = await response.json();
             if (!response.ok || !data.success) {

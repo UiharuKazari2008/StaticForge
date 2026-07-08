@@ -14,6 +14,48 @@ const path = require('path');
 const fs = require('fs');
 const { createDatabaseCheckpointManager } = require('./databaseCheckpoint');
 
+/** @type {Map<string, { databaseName: string, onWrite: Function }>} */
+const changelogHooksByPath = new Map();
+let changelogApplyingRemote = false;
+
+function isMutatingSqlStatement(sql) {
+    if (!sql || typeof sql !== 'string') return false;
+    const trimmed = sql.trim().toUpperCase();
+    return trimmed.startsWith('INSERT')
+        || trimmed.startsWith('UPDATE')
+        || trimmed.startsWith('DELETE')
+        || trimmed.startsWith('REPLACE');
+}
+
+function registerChangelogHook(dbPath, hookConfig) {
+    if (!dbPath || !hookConfig || typeof hookConfig.onWrite !== 'function') return;
+    changelogHooksByPath.set(path.resolve(dbPath), hookConfig);
+}
+
+function unregisterChangelogHook(dbPath) {
+    if (!dbPath) return;
+    changelogHooksByPath.delete(path.resolve(dbPath));
+}
+
+function setChangelogApplyingRemote(applying) {
+    changelogApplyingRemote = applying === true;
+}
+
+function getChangelogHook(dbPath) {
+    return changelogHooksByPath.get(path.resolve(dbPath)) || null;
+}
+
+async function invokeChangelogHook(dbPath, context) {
+    if (changelogApplyingRemote) return;
+    const hook = getChangelogHook(dbPath);
+    if (!hook) return;
+    try {
+        await hook.onWrite(context);
+    } catch (error) {
+        console.warn(`⚠️ Replication changelog hook failed for ${path.basename(dbPath)}:`, error.message);
+    }
+}
+
 /**
  * Async SQLite Database Wrapper
  */
@@ -305,6 +347,14 @@ class AsyncSQLiteDatabase {
             const result = await this.db.run(sql, params);
             if (result.changes > 0) {
                 this.markDirty();
+                if (isMutatingSqlStatement(sql)) {
+                    await invokeChangelogHook(this.dbPath, {
+                        sql,
+                        params,
+                        changes: result.changes,
+                        lastID: result.lastID
+                    });
+                }
             }
             return {
                 lastID: result.lastID,
@@ -323,6 +373,14 @@ class AsyncSQLiteDatabase {
                 const result = await this.db.run(sql, params);
                 if (result.changes > 0) {
                     this.markDirty();
+                    if (isMutatingSqlStatement(sql)) {
+                        await invokeChangelogHook(this.dbPath, {
+                            sql,
+                            params,
+                            changes: result.changes,
+                            lastID: result.lastID
+                        });
+                    }
                 }
                 return {
                     lastID: result.lastID,
@@ -881,4 +939,8 @@ module.exports.AsyncSQLiteDatabase = AsyncSQLiteDatabase;
 module.exports.AsyncSQLiteManager = AsyncSQLiteManager;
 module.exports.asyncSQLiteManager = asyncSQLiteManager;
 module.exports.SQLiteAsyncWrapper = SQLiteAsyncWrapper;
+module.exports.registerChangelogHook = registerChangelogHook;
+module.exports.unregisterChangelogHook = unregisterChangelogHook;
+module.exports.setChangelogApplyingRemote = setChangelogApplyingRemote;
+module.exports.isMutatingSqlStatement = isMutatingSqlStatement;
 

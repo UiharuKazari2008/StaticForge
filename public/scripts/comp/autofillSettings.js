@@ -201,6 +201,11 @@ function buildAutofillSettingsMenuSections() {
         type: 'list',
         items: [
             buildAutofillSettingsToggleItem('enabled', 'Enable SmartText', 'fas fa-lightbulb'),
+            {
+                icon: 'fas fa-wand-magic-sparkles',
+                text: 'Show Detached Window',
+                action: 'autofill-open-tool-window'
+            },
             { separator: true },
             buildAutofillSettingsToggleItem('spellcheck', 'Spellcheck', 'fas fa-spell-check'),
             buildAutofillSettingsToggleItem('thesaurus', 'Thesaurus', 'fas fa-book'),
@@ -247,6 +252,13 @@ function buildAutofillSettingsMenuSections() {
 }
 
 function handleAutofillSettingsMenuAction(action, item) {
+    if (action === 'autofill-open-tool-window') {
+        // openAutofillToolWindow: public/scripts/comp/autocompleteUtils.js
+        if (typeof openAutofillToolWindow === 'function') {
+            openAutofillToolWindow(null, { focusSearch: true });
+        }
+        return true;
+    }
     if (action === 'autofill-set-search-delay') {
         setAutofillSettingsDraftValue('searchDelayMs', Number(item.value));
         return true;

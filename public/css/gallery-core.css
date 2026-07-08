@@ -539,6 +539,29 @@
     margin: -2px 0;
 }
 
+.replication-gallery-banner {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin: 0 0 var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--border-radius-md);
+    background: color-mix(in srgb, var(--warning-color, #ffc107) 18%, var(--glass-layer-2));
+    border: 1px solid color-mix(in srgb, var(--warning-color, #ffc107) 45%, transparent);
+    color: var(--text-color, inherit);
+    font-size: 0.9rem;
+    line-height: 1.35;
+}
+
+.replication-gallery-banner.hidden {
+    display: none;
+}
+
+.replication-gallery-banner-icon {
+    color: var(--warning-color, #ffc107);
+    flex: 0 0 auto;
+}
+
 .gallery-toggle-btn {
     position: relative;
     background: transparent;

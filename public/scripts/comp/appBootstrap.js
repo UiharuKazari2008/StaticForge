@@ -101,6 +101,11 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
             // Mark app data as loaded
             appDataLoaded = true;
 
+            // initMasterWsBridge: public/scripts/comp/masterWsBridge.js
+            if (window.wsClient) {
+                initMasterWsBridge(window.wsClient);
+            }
+
             return; // Success, exit the retry loop
 
         } catch (error) {

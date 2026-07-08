@@ -15,43 +15,6 @@ class WorkspaceWebSocketHandlers {
         }
     }
 
-    broadcastTrashDesktopShortcutSync(wsServer, workspaceId, syncResult) {
-        if (!wsServer || !syncResult?.changed) {
-            return;
-        }
-
-        const timestamp = new Date().toISOString();
-        switch (syncResult.action) {
-            case 'added':
-                this.broadcast(wsServer, {
-                    type: 'desktop_shortcut_added',
-                    data: { workspaceId, shortcut: syncResult.shortcut },
-                    timestamp
-                });
-                break;
-            case 'removed':
-                this.broadcast(wsServer, {
-                    type: 'desktop_shortcut_removed',
-                    data: { workspaceId, shortcutId: syncResult.shortcutId },
-                    timestamp
-                });
-                break;
-            case 'updated':
-                this.broadcast(wsServer, {
-                    type: 'desktop_shortcut_updated',
-                    data: {
-                        workspaceId,
-                        shortcutId: syncResult.shortcutId,
-                        updates: syncResult.updates || {}
-                    },
-                    timestamp
-                });
-                break;
-            default:
-                break;
-        }
-    }
-
     async handleWorkspaceList(ws, message, clientInfo, wsServer) {
         try {
             const workspaces = this.globalResources.getWorkspaceManager().getWorkspaces();
@@ -1154,17 +1117,7 @@ class WorkspaceWebSocketHandlers {
                 }
             }
 
-            if (settings.trashDesktopShortcut !== undefined && typeof settings.trashDesktopShortcut !== 'boolean') {
-                this.handlers.sendError(ws, 'trashDesktopShortcut must be a boolean', 'workspace_update_settings', message.requestId);
-                return;
-            }
-
             this.globalResources.getWorkspaceManager().updateWorkspaceSettings(id, settings);
-
-            if (settings.trashDesktopShortcut !== undefined) {
-                const syncResult = this.globalResources.getWorkspaceManager().syncTrashDesktopShortcut(id);
-                this.broadcastTrashDesktopShortcutSync(wsServer, id, syncResult);
-            }
 
             this.handlers.sendToClient(ws, {
                 type: 'workspace_update_settings_response',

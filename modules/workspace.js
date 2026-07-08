@@ -3,6 +3,15 @@ const path = require('path');
 const crypto = require('crypto');
 const sharp = require('sharp');
 
+// modules/replicationJournal.js
+async function recordReplicationWorkspaceFilenameJournal(filename, workspaceId, { operation = 'INSERT' } = {}) {
+    if (!filename || !workspaceId) return;
+    try {
+        const replicationJournal = require('./replicationJournal');
+        await replicationJournal.recordWorkspaceFilename(filename, workspaceId, { operation });
+    } catch (_err) {}
+}
+
 class WorkspaceManager {
     constructor(globalResources) {
         if (!globalResources) {
@@ -311,7 +320,6 @@ class WorkspaceManager {
             backgroundColor: backgroundColor, // Can be null for auto-generation
             primaryFont: null,
             textareaFont: null,
-            trashDesktopShortcut: false,
             sort: maxSort + 1, // Add to the end of the list
             presets: [],
             files: [],
@@ -400,9 +408,6 @@ class WorkspaceManager {
         }
         if (typeof settings.wallpaperPosition !== 'undefined') {
             updates.wallpaperPosition = settings.wallpaperPosition || null;
-        }
-        if (typeof settings.trashDesktopShortcut !== 'undefined') {
-            updates.trashDesktopShortcut = settings.trashDesktopShortcut === true;
         }
 
         // Merge all updates at once (fluent API - use array notation for workspace ID)
@@ -1277,6 +1282,9 @@ class WorkspaceManager {
                     workspaceId: targetId,
                     imageFilenames: validItems
                 });
+                for (const filename of actuallyAdded) {
+                    recordReplicationWorkspaceFilenameJournal(filename, targetId, { operation: 'INSERT' });
+                }
             }
         }
 
@@ -1381,6 +1389,9 @@ class WorkspaceManager {
                 this.globalResources.saveConfig('workspaces', workspaces);
                 if (type === 'files') {
                     this.bumpGalleryDestructiveTimestamp([targetId]);
+                    for (const filename of actuallyRemoved) {
+                        recordReplicationWorkspaceFilenameJournal(filename, targetId, { operation: 'DELETE' });
+                    }
                 }
             }
         }
@@ -2013,73 +2024,6 @@ class WorkspaceManager {
     // Desktop Shortcuts Management
     // ============================================================================
 
-    static get TRASH_DESKTOP_SHORTCUT_KEY() {
-        return 'trash';
-    }
-
-    getTrashDesktopNavPath(workspaceId) {
-        return `/Workspaces/${workspaceId}/Trash`;
-    }
-
-    findTrashDesktopShortcut(workspaceId) {
-        const { shortcuts } = this.getDesktopShortcuts(workspaceId);
-        return (shortcuts || []).find((shortcut) =>
-            shortcut?.type === 'system-folder'
-            && shortcut?.data?.systemKey === WorkspaceManager.TRASH_DESKTOP_SHORTCUT_KEY
-        ) || null;
-    }
-
-    syncTrashDesktopShortcut(workspaceId) {
-        const workspace = this.getWorkspace(workspaceId);
-        if (!workspace) {
-            return { changed: false };
-        }
-
-        const enabled = workspace.trashDesktopShortcut === true;
-        const existing = this.findTrashDesktopShortcut(workspaceId);
-        const expectedNavPath = this.getTrashDesktopNavPath(workspaceId);
-
-        if (enabled && !existing) {
-            const result = this.addDesktopShortcut(workspaceId, {
-                name: 'Trash',
-                type: 'system-folder',
-                folderId: null,
-                system: true,
-                protected: true,
-                data: {
-                    navPath: expectedNavPath,
-                    systemKey: WorkspaceManager.TRASH_DESKTOP_SHORTCUT_KEY
-                },
-                position: { index: 0, pos: 0 }
-            });
-            return { changed: true, action: 'added', shortcut: result.shortcut };
-        }
-
-        if (!enabled && existing) {
-            this.removeDesktopShortcut(workspaceId, existing.id, { allowProtectedSystem: true });
-            return { changed: true, action: 'removed', shortcutId: existing.id };
-        }
-
-        if (enabled && existing && existing.data?.navPath !== expectedNavPath) {
-            const result = this.updateDesktopShortcut(workspaceId, existing.id, {
-                data: {
-                    ...(existing.data || {}),
-                    navPath: expectedNavPath,
-                    systemKey: WorkspaceManager.TRASH_DESKTOP_SHORTCUT_KEY
-                }
-            });
-            return {
-                changed: true,
-                action: 'updated',
-                shortcutId: existing.id,
-                updates: { data: result.shortcut.data },
-                shortcut: result.shortcut
-            };
-        }
-
-        return { changed: false };
-    }
-
     // Get desktop shortcuts for a workspace (also returns global window positions from same file)
     getDesktopShortcuts(workspaceId) {
         try {
@@ -2147,17 +2091,6 @@ class WorkspaceManager {
     // Remove a desktop shortcut
     removeDesktopShortcut(workspaceId, shortcutId, options = {}) {
         try {
-            const workspace = this.globalResources.getWorkspaceDesktopConfig({ path: workspaceId });
-            const shortcut = (workspace?.shortcuts || []).find((entry) => entry.id === shortcutId);
-            if (
-                !options.allowProtectedSystem
-                && shortcut?.protected
-                && shortcut?.type === 'system-folder'
-                && shortcut?.data?.systemKey === WorkspaceManager.TRASH_DESKTOP_SHORTCUT_KEY
-            ) {
-                throw new Error('Trash desktop shortcut is managed in Desktop Settings');
-            }
-
             // Use fluent API to delete from array with predicate
             this.globalResources.modifyConfig('workspaceDesktop').delete([workspaceId, 'shortcuts'], (s) => s.id === shortcutId);
 

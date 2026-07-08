@@ -8,6 +8,20 @@ const { z } = require('zod');
 let __runtimeGr = null;
 function bindRuntimeGlobalResources(globalResources) { __runtimeGr = globalResources; }
 
+// modules/replicationJournal.js
+async function recordReplicationGalleryJournal(filename, workspaceId) {
+    if (!filename) return;
+    try {
+        const replicationJournal = require('./replicationJournal');
+        await replicationJournal.recordGallerySave(filename, {
+            workspaceId: workspaceId || null,
+            imagesDir: __runtimeGr ? __runtimeGr.getPath('images') : null
+        });
+    } catch (_err) {
+        // Journal not initialized yet
+    }
+}
+
 function sanitizeDynamicGenerationForForge(dg) {
     if (dg === undefined || dg === null) return dg;
     const dgForForge = { ...dg };
@@ -4360,6 +4374,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 date: Date.now().valueOf()
             } : null;
             await __runtimeGr.getMetadataDatabase().addReceiptMetadata(name, __runtimeGr.getPath('images'), generationReceiptData, forgeData);
+            await recordReplicationGalleryJournal(name, targetWorkspaceId);
 
             // Send progress update indicating preview generation is starting
             if (ws && handler) {
@@ -4465,6 +4480,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 };
                 // Attach receipt to parent image instead of upscaled image
                 await __runtimeGr.getMetadataDatabase().addReceiptMetadata(name, __runtimeGr.getPath('images'), upscaledReceiptData, upscaledForgeData);
+                await recordReplicationGalleryJournal(upscaledName, targetWorkspaceId);
                 
                 await generateMobilePreviews(path.join(__runtimeGr.getPath('images'), upscaledName), upscaledBaseName);
                 
@@ -7285,6 +7301,7 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         if (targetWorkspaceId) {
             __runtimeGr.getWorkspaceManager().addToWorkspaceArray('files', expandedFilename, targetWorkspaceId);
             console.log(`✅ Added to workspace: ${expandedFilename} -> ${targetWorkspaceId}`);
+            await recordReplicationGalleryJournal(expandedFilename, targetWorkspaceId);
         } else {
             console.warn(`⚠️ No workspace ID available, file not added to workspace`);
         }
@@ -7599,6 +7616,7 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
         if (targetWorkspaceId) {
             __runtimeGr.getWorkspaceManager().addToWorkspaceArray('files', expandedFilename, targetWorkspaceId);
             console.log(`✅ Added to workspace: ${expandedFilename}`);
+            await recordReplicationGalleryJournal(expandedFilename, targetWorkspaceId);
         }
         
         // Generate preview

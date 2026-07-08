@@ -68,6 +68,11 @@
     height: 640px;
 }
 
+#characterAutofillTool {
+    width: 440px;
+    height: 520px;
+}
+
 #directorRulesModal {
     width: 500px;
     height: 650px;

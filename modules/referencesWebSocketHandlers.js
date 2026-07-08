@@ -4,8 +4,29 @@ const crypto = require('crypto');
 const https = require('https');
 const sharp = require('sharp');
 const { generateMobilePreviews } = require('./previewUtils');
+const replicationRemoteFetch = require('./replicationRemoteFetch');
 
 const REFERENCES_DESTRUCTIVE = { destructive: true };
+
+// modules/replicationJournal.js
+async function recordReplicationReferenceJournal(hash, workspaceId) {
+    if (!hash) return;
+    try {
+        const replicationJournal = require('./replicationJournal');
+        await replicationJournal.recordReferenceUpload(hash, { workspaceId: workspaceId || null });
+    } catch (_err) {}
+}
+
+async function recordReplicationVibeJournal(vibeId, { workspaceId = null, previewHash = null, imageHash = null } = {}) {
+    if (!vibeId) return;
+    try {
+        const replicationJournal = require('./replicationJournal');
+        await replicationJournal.recordVibeEntry(vibeId, {
+            operation: 'INSERT',
+            payload: { vibeId, workspaceId, previewHash, imageHash }
+        });
+    } catch (_err) {}
+}
 
 class ReferencesWebSocketHandlers {
     constructor(handlers) {
@@ -13,6 +34,24 @@ class ReferencesWebSocketHandlers {
         this.globalResources = handlers.globalResources;
         this.vibeMetadataCache = new Map();
         this.cacheExpiryTime = 5 * 60 * 1000;
+    }
+
+    async readReferenceUploadBuffer(hash, options = {}) {
+        const localPath = path.join(this.globalResources.getPath('uploadCache'), hash);
+        if (fs.existsSync(localPath)) {
+            return fs.readFileSync(localPath);
+        }
+        const result = await replicationRemoteFetch.readAssetBuffer(
+            'reference-upload',
+            hash,
+            this.globalResources,
+            options
+        );
+        return result.buffer;
+    }
+
+    sendReplicationAssetError(ws, error, requestId, fallbackType) {
+        replicationRemoteFetch.sendReplicationAssetError(this.handlers, ws, error, requestId, fallbackType);
     }
 
     // References WebSocket Handlers
@@ -641,26 +680,26 @@ class ReferencesWebSocketHandlers {
                     console.log(`🔄 Converting vibe ${vibeId} from cache reference to base64`);
 
                     // Read the cache image and convert to base64
-                    const cachePath = path.join(this.globalResources.getPath("uploadCache"), cacheHash);
-                    if (fs.existsSync(cachePath)) {
-                        const imageBuffer = fs.readFileSync(cachePath);
-                        const imageBase64 = imageBuffer.toString('base64');
-
-                        // Update in database
-                        refDb.setVibeMetadata(vibeId, {
-                            type: 'base64',
-                            imageSource: imageBase64,
-                            previewHash: vibe.previewHash,
-                            comment: vibe.comment,
-                            importedFrom: vibe.importedFrom,
-                            encodings: vibe.encodings
-                        });
-
-                        convertedVibes.push(vibeId);
-                        console.log(`✅ Converted vibe ${vibeId} to base64 format`);
-                    } else {
+                    let imageBuffer;
+                    try {
+                        imageBuffer = await this.readReferenceUploadBuffer(cacheHash, { cacheToLocal: true });
+                    } catch (fetchError) {
                         console.warn(`Cache file ${cacheHash} not found for vibe conversion`);
+                        continue;
                     }
+                    const imageBase64 = imageBuffer.toString('base64');
+
+                    refDb.setVibeMetadata(vibeId, {
+                        type: 'base64',
+                        imageSource: imageBase64,
+                        previewHash: vibe.previewHash,
+                        comment: vibe.comment,
+                        importedFrom: vibe.importedFrom,
+                        encodings: vibe.encodings
+                    });
+
+                    convertedVibes.push(vibeId);
+                    console.log(`✅ Converted vibe ${vibeId} to base64 format`);
                 }
             }
 
@@ -772,6 +811,9 @@ class ReferencesWebSocketHandlers {
 
             // Clear cache since new reference was added
             this.clearVibeCache();
+
+            // modules/replicationJournal.js — recordReplicationReferenceJournal
+            await recordReplicationReferenceJournal(hash, workspaceId);
 
             this.handlers.sendToClient(ws, {
                 type: 'upload_reference_response',
@@ -911,14 +953,23 @@ class ReferencesWebSocketHandlers {
             let imageBuffer;
 
             if (filename) {
-                // Handle filename - read from images directory
                 const imageFilePath = path.join(this.globalResources.getPath("images"), filename);
-                if (!fs.existsSync(imageFilePath)) {
-                    this.handlers.sendError(ws, 'Image file not found', `Image file '${filename}' not found in images directory`, message.requestId);
-                    return;
+                if (fs.existsSync(imageFilePath)) {
+                    imageBuffer = fs.readFileSync(imageFilePath);
+                } else {
+                    try {
+                        const fetched = await replicationRemoteFetch.readAssetBuffer(
+                            'gallery-image',
+                            filename,
+                            this.globalResources,
+                            { cacheToLocal: true }
+                        );
+                        imageBuffer = fetched.buffer;
+                    } catch (fetchError) {
+                        this.sendReplicationAssetError(ws, fetchError, message.requestId, 'replace_reference');
+                        return;
+                    }
                 }
-
-                imageBuffer = fs.readFileSync(imageFilePath);
             } else if (tempFile) {
                 // Handle downloaded temp file
                 const tempFilePath = path.join(this.globalResources.getPath("cache"), 'tempDownload', tempFile);
@@ -2074,8 +2125,13 @@ class ReferencesWebSocketHandlers {
 
             } else if (cacheFile) {
                 // Create vibe from cache file
-                const cachePath = path.join(this.globalResources.getPath("uploadCache"), cacheFile);
-                const imageBuffer = fs.readFileSync(cachePath);
+                let imageBuffer;
+                try {
+                    imageBuffer = await this.readReferenceUploadBuffer(cacheFile, { cacheToLocal: true });
+                } catch (fetchError) {
+                    this.sendReplicationAssetError(ws, fetchError, message.requestId, 'create_vibe');
+                    return;
+                }
                 const imageHash = crypto.createHash('md5').update(imageBuffer).digest('hex');
                 const sha256Hash = crypto.createHash('sha256').update(imageBuffer).digest('hex');
 
@@ -2228,13 +2284,13 @@ class ReferencesWebSocketHandlers {
                 if (existingVibe.type === 'base64') {
                     imageBase64 = existingVibe.imageSource;
                 } else if (existingVibe.type === 'cache') {
-                    const cachePath = path.join(this.globalResources.getPath("uploadCache"), existingVibe.imageSource);
-                    if (!fs.existsSync(cachePath)) {
-                        this.handlers.sendError(ws, 'Cache file not found', `Cache file ${existingVibe.imageSource} not found`, message.requestId);
+                    try {
+                        const imageBuffer = await this.readReferenceUploadBuffer(existingVibe.imageSource, { cacheToLocal: true });
+                        imageBase64 = imageBuffer.toString('base64');
+                    } catch (fetchError) {
+                        this.sendReplicationAssetError(ws, fetchError, message.requestId, 'encode_vibe');
                         return;
                     }
-                    const imageBuffer = fs.readFileSync(cachePath);
-                    imageBase64 = imageBuffer.toString('base64');
                 } else {
                     this.handlers.sendError(ws, 'Invalid vibe type', 'Vibe type must be base64 or cache', message.requestId);
                     return;
@@ -2248,6 +2304,18 @@ class ReferencesWebSocketHandlers {
 
                 // Clear vibe cache to ensure updated metadata is loaded
                 this.clearVibeCache();
+            }
+
+            const journalVibeId = vibeData ? vibeData.id : id;
+            if (journalVibeId) {
+                const journalPreview = vibeData ? vibeData.preview : null;
+                const journalImage = vibeData && vibeData.type === 'cache' ? vibeData.image : null;
+                // modules/replicationJournal.js — recordReplicationVibeJournal
+                await recordReplicationVibeJournal(journalVibeId, {
+                    workspaceId: targetWorkspace,
+                    previewHash: journalPreview,
+                    imageHash: journalImage
+                });
             }
 
             // Clean up temp download file if it was used
@@ -2398,9 +2466,9 @@ class ReferencesWebSocketHandlers {
         }
 
         if (vibe.type === 'cache') {
-            const cachePath = path.join(this.globalResources.getPath("uploadCache"), vibe.image);
-            if (!fs.existsSync(cachePath)) {
-                throw new Error(`Cannot encode vibe with missing cache file: ${vibeId}`);
+            const localPath = path.join(this.globalResources.getPath("uploadCache"), vibe.image);
+            if (!fs.existsSync(localPath)) {
+                return true;
             }
         }
 

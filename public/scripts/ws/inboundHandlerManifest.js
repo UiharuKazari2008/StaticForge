@@ -14,7 +14,8 @@ var WS_INBOUND_HANDLER_PATHS = [
     '/scripts/ws/handlers/90-vfsInbound.js',
     '/scripts/ws/handlers/100-imageResponseInbound.js',
     '/scripts/ws/handlers/110-chatInbound.js',
-    '/scripts/ws/handlers/120-infrastructureInbound.js'
+    '/scripts/ws/handlers/120-infrastructureInbound.js',
+    '/scripts/ws/handlers/130-replicationInbound.js'
 ];
 
 function loadWsInboundHandlersSync() {

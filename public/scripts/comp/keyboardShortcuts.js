@@ -267,6 +267,7 @@ const MANUAL_FN_ROW = [
 
 const MANUAL_FN_ALT_ROW = [
     { key: 'F1', label: 'Merged', icon: 'nai-detatch-up' },
+    { key: 'F2', label: 'Autofill Window', icon: 'fas fa-wand-magic-sparkles' },
     { key: 'F3', label: 'Reset Emp.', icon: 'fas fa-eraser' },
     { key: 'F5', label: 'Staged Gen.', icon: 'fas fa-arrow-down-square-triangle' },
     { key: 'F7', label: 'Maximum', icon: 'fas fa-bolt' },
@@ -292,6 +293,7 @@ const MANUAL_CLASSIC_LEFT = [
 const MANUAL_CLASSIC_RIGHT = [
     shortcutListItem('F1', 'Prompts', 'ri-code-block'),
     shortcutListItem('F2', 'UC', 'ri-eraser-fill'),
+    shortcutListItem('ALT + F2', 'Autofill Window', 'fas fa-wand-magic-sparkles', true),
     shortcutListItem('ALT + F1', 'Prompts/UC', 'nai-detatch-up', true),
     shortcutListItem('F3', 'Emphasis', 'fas fa-scale-unbalanced-flip'),
     shortcutListItem('ALT + F3', 'Reset Emphasis', 'fas fa-eraser', true),
@@ -1021,6 +1023,15 @@ function handleKeyDown(event) {
             event.preventDefault();
             event.stopPropagation();
             toggleManualShowBoth();
+            break;
+        case 'ALT+F2':
+            if (!shouldHandleManualModalActions) break;
+            event.preventDefault();
+            event.stopPropagation();
+            // openAutofillToolWindow: public/scripts/comp/autocompleteUtils.js
+            if (typeof openAutofillToolWindow === 'function') {
+                openAutofillToolWindow(document.activeElement);
+            }
             break;
         case 'F3':
             // Trigger emphasis mode in the active prompt toolbar

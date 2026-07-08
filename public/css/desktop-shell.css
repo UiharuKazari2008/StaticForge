@@ -1218,6 +1218,14 @@ body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window
     }
 }
 
+.replication-tray-indicator {
+    color: #64b5f6;
+}
+
+.replication-tray-indicator.active i {
+    animation: pulse-generation 1.5s ease-in-out infinite;
+}
+
 /* Search Indexing Indicator */
 .search-indexing-indicator {
     color: var(--text-secondary);

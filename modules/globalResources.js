@@ -115,6 +115,9 @@ class GlobalResources {
         this.generationQuipsDatabase = null;
         this.generationQuipsManager = null;
         this.novelAiStatusMonitor = null;
+        this.replicationService = null;
+        this.replicationMaintenance = null;
+        this.replicationChangelog = null;
         this.bootCycleId = crypto.randomUUID();
         this.datasetTagService = null;
 
@@ -815,6 +818,9 @@ class GlobalResources {
             // STEP 5: Initialize SQLite databases (need logger, needed by managers)
             await this.initializeDatabases();
 
+            // STEP 5a: Replication changelog, maintenance, and service facade
+            await this.initializeReplicationStack();
+
             // STEP 6: Initialize knowledge memory database (no dependencies beyond logger)
             this.initializeKnowledgeMemoryDb();
 
@@ -1472,6 +1478,28 @@ class GlobalResources {
             console.log('✓ SQLite Manager ready');
         } catch (error) {
             console.error('  ❌ Failed to initialize async SQLite manager:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Initialize replication foundation (changelog, maintenance gate, service facade).
+     */
+    async initializeReplicationStack() {
+        try {
+            const replicationChangelog = require('./replicationChangelog');
+            const replicationMaintenance = require('./replicationMaintenance');
+            const replicationService = require('./replicationService');
+
+            await replicationService.initialize(this);
+
+            this.replicationChangelog = replicationChangelog;
+            this.replicationMaintenance = replicationMaintenance;
+            this.replicationService = replicationService;
+            this.initializationProgress.replication = true;
+            console.log('✓ Replication foundation ready');
+        } catch (error) {
+            console.error('  ❌ Failed to initialize replication stack:', error);
             throw error;
         }
     }
@@ -2696,6 +2724,27 @@ class GlobalResources {
             throw new Error('WebSocket server not set - call setWebSocketServer() first');
         }
         return this.webSocketServer;
+    }
+
+    getReplicationService() {
+        if (!this.replicationService) {
+            throw new Error('Replication service not initialized - call initializeReplicationStack() first');
+        }
+        return this.replicationService;
+    }
+
+    getReplicationMaintenance() {
+        if (!this.replicationMaintenance) {
+            throw new Error('Replication maintenance not initialized - call initializeReplicationStack() first');
+        }
+        return this.replicationMaintenance;
+    }
+
+    getReplicationChangelog() {
+        if (!this.replicationChangelog) {
+            throw new Error('Replication changelog not initialized - call initializeReplicationStack() first');
+        }
+        return this.replicationChangelog;
     }
 
     /**

@@ -182,8 +182,11 @@ class WikiDisplayBase {
     showLeaveDSAPDialog(href, linkEl) {
         const dialog = document.createElement('div');
         dialog.style.cssText = 'position:fixed;z-index:999999;top:50%;left:50%;transform:translate(-50%,-50%);background:#f0f0f0;border:2px solid #003366;padding:14px;min-width:300px;box-shadow:0 6px 20px rgba(0,0,0,0.35);font-family:Arial,Helvetica,sans-serif;font-size:10pt;';
-        const wide = this.isWideEnoughForSplit && this.isWideEnoughForSplit();
-        const rightVisible = this.rightPaneEl && !this.rightPaneEl.classList.contains('hidden');
+        const grimoireHost = window.tagWikiSearchModal;
+        const wide = (grimoireHost && typeof grimoireHost.isWideEnoughForSplit === 'function' && grimoireHost.isWideEnoughForSplit())
+            || (this.isWideEnoughForSplit && this.isWideEnoughForSplit());
+        const rightVisible = (grimoireHost && grimoireHost.modal && grimoireHost.modal.classList.contains('tag-wiki-split-active'))
+            || (this.rightPaneEl && !this.rightPaneEl.classList.contains('hidden'));
         dialog.innerHTML = `
             <div style="margin-bottom:10px;font-weight:bold;color:#003366;">Leave DSAP?</div>
             <div style="margin-bottom:14px;line-height:1.3;">This link will leave the currently open DSAP.</div>
@@ -203,9 +206,14 @@ class WikiDisplayBase {
                 if (act === 'new') {
                     window.open(href, '_blank', 'noopener,noreferrer');
                 } else if (act === 'right') {
-                    if (this.rightPane && typeof this.rightPane.navigate === 'function') {
-                        this.showRightPane();
-                        this.rightPane.navigate(href);
+                    const host = grimoireHost || this;
+                    if (host && typeof host.showRightPane === 'function') {
+                        host.showRightPane();
+                    }
+                    const rightPane = host.rightPane || this.rightPane;
+                    if (rightPane && typeof rightPane.navigate === 'function') {
+                        rightPane.navigate(href);
+                        if (host.setActivePane) host.setActivePane('right');
                     } else {
                         window.open(href, '_blank', 'noopener,noreferrer');
                     }
@@ -294,7 +302,7 @@ class WikiDisplayBase {
                             action: 'wiki-link-open-on-right',
                             hidden: () => {
                                 const host = window.tagWikiSearchModal;
-                                return !host || typeof host.isSplitMode !== 'function' || !host.isSplitMode()
+                                return !host || typeof host.isWideEnoughForSplit !== 'function' || !host.isWideEnoughForSplit()
                                     || host.isRightPaneDisplay(this.displayArea);
                             }
                         },
@@ -3224,10 +3232,12 @@ class TagWikiSearchModal extends WikiDisplayBase {
         const userWantsSplit = this.loadSplitPanelPreference();
         const shouldBeSplit = isMaximized || (wideEnough && userWantsSplit);
 
-        if (shouldBeSplit && !isCurrentlySplit) {
-            this.enterSplitMode();
-            this.setActivePane('left');
-        } else if (!shouldBeSplit && isCurrentlySplit && !isMaximized) {
+        if (shouldBeSplit) {
+            if (!isCurrentlySplit || !this.rightPane) {
+                this.enterSplitMode();
+                this.setActivePane('left');
+            }
+        } else if (isCurrentlySplit && !isMaximized) {
             this.exitSplitMode();
             this._activePane = 'left';
         }
@@ -3265,7 +3275,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         if (!this.rightToggleBtn) {
             return;
         }
-        const showToggle = wideEnough || isCurrentlySplit || isMaximized;
+        const showToggle = wideEnough || isMaximized;
         this.rightToggleBtn.style.display = showToggle ? '' : 'none';
         this.rightToggleBtn.classList.toggle('active', isCurrentlySplit);
         this.rightToggleBtn.dataset.state = isCurrentlySplit ? 'on' : 'off';
@@ -3276,20 +3286,23 @@ class TagWikiSearchModal extends WikiDisplayBase {
 
     toggleRightPane() {
         if (!this.modal || !this.rightPaneEl) return;
+        const wideEnough = (this.modal.offsetWidth || 0) >= GRIMOIRE_SPLIT_MIN_WIDTH;
+        const isMaximized = this.modal.classList.contains('modal-maximized');
         const isActive = this.modal.classList.contains('tag-wiki-split-active');
         if (isActive) {
             this.exitSplitMode();
             this.saveSplitPanelPreference(false);
         } else {
+            if (!wideEnough && !isMaximized) return;
             this.enterSplitMode();
             this.saveSplitPanelPreference(true);
         }
-        const wideEnough = (this.modal.offsetWidth || 0) >= GRIMOIRE_SPLIT_MIN_WIDTH;
         this.updateSplitToggleButton(
             wideEnough,
             this.modal.classList.contains('tag-wiki-split-active'),
-            this.modal.classList.contains('modal-maximized')
+            isMaximized
         );
+        this._notifyGrimoireKeyboardOverlayContextChanged();
     }
 
     needsResultsOverlay() {
@@ -3387,9 +3400,12 @@ class TagWikiSearchModal extends WikiDisplayBase {
 
     isSplitMode() {
         if (!this.modal) return false;
+        return this.modal.classList.contains('tag-wiki-split-active');
+    }
+
+    isWideEnoughForSplit() {
+        if (!this.modal) return false;
         if (this.modal.classList.contains('modal-maximized')) return true;
-        // Split (dual wiki panes) is practical when window is wide enough, not only on maximize.
-        // The checkAndUpdateSplitMode + enter/exit will keep the UI in sync (right pane visible, divider, etc.).
         const w = this.modal.offsetWidth || (this.modal.getBoundingClientRect ? this.modal.getBoundingClientRect().width : 0);
         return w >= GRIMOIRE_SPLIT_MIN_WIDTH;
     }
@@ -3446,6 +3462,28 @@ class TagWikiSearchModal extends WikiDisplayBase {
         if (this.rightPaneEl) this.rightPaneEl.classList.add('hidden');
         if (this.splitDividerEl) this.splitDividerEl.classList.add('hidden');
         this.updateResultsSidebar();
+    }
+
+    showRightPane() {
+        if (!this.modal || !this.rightPaneEl) return;
+        this.enterSplitMode();
+        const wideEnough = (this.modal.offsetWidth || 0) >= GRIMOIRE_SPLIT_MIN_WIDTH;
+        this.updateSplitToggleButton(
+            wideEnough,
+            true,
+            this.modal.classList.contains('modal-maximized')
+        );
+    }
+
+    hideRightPane() {
+        if (!this.modal || !this.rightPaneEl) return;
+        this.exitSplitMode();
+        const wideEnough = (this.modal.offsetWidth || 0) >= GRIMOIRE_SPLIT_MIN_WIDTH;
+        this.updateSplitToggleButton(
+            wideEnough,
+            false,
+            this.modal.classList.contains('modal-maximized')
+        );
     }
 
     captureLeftWikiState() {
@@ -3593,8 +3631,18 @@ class TagWikiSearchModal extends WikiDisplayBase {
         const t = String(tagName || '').trim();
         if (!t) return;
         if (side === 'right') {
-            if (!this.isSplitMode()) return;
-            if (!this.rightPane) this.enterSplitMode();
+            if (!this.isWideEnoughForSplit()) return;
+            if (!this.isSplitMode()) {
+                this.enterSplitMode();
+                this.saveSplitPanelPreference(true);
+                const wideEnough = (this.modal.offsetWidth || 0) >= GRIMOIRE_SPLIT_MIN_WIDTH;
+                this.updateSplitToggleButton(
+                    wideEnough,
+                    true,
+                    this.modal.classList.contains('modal-maximized')
+                );
+            }
+            if (!this.rightPane) return;
             await this.rightPane.openTagByName(t);
             this.setActivePane('right'); // after sending content to right, make the controls target it
             return;
@@ -4154,17 +4202,6 @@ class TagWikiSearchModal extends WikiDisplayBase {
         notifyKeyboardOverlayContextChanged();
     }
 
-    toggleRightPane() {
-        if (!this.modal || !this.rightPaneEl) return;
-        const isActive = this.modal.classList.contains('tag-wiki-split-active');
-        if (isActive) {
-            this.hideRightPane();
-        } else {
-            this.showRightPane();
-        }
-        this._notifyGrimoireKeyboardOverlayContextChanged();
-    }
-
     // --- Layered pseudo-browser address bar controller ---
     wireAddressBar() {
         if (!this.addressBar || !this.addressDisplay || !this.addressEdit) return;
@@ -4605,7 +4642,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
                 const u = new URL(url.startsWith('http') ? url : 'https://dummy/' + url.replace(/^[^?]+/, ''));
                 q = u.searchParams.get('q') || '';
             } catch (e) {
-                const mm = url.match(/[?&]q=([^&#]+)/);
+                const mm = url.match(/[?&]q=([^?&#]+)/);
                 if (mm) q = decodeURIComponent(mm[1]);
             }
             if (this.searchInput) this.searchInput.value = q;
@@ -4891,6 +4928,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
             }
         }
 
+        this.exitSplitMode();
         this.teardownSplitModeListeners();
         closeModal(this.modal).then(() => {
             this.currentSearchResults = [];

@@ -433,7 +433,7 @@ function buildCharacterUcTabContainerHtml(characterId, ucValue, promptNegativeVa
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="search" title="Search">
                                             <i class="fas fa-search"></i>
                                         </button>
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle Autofill">
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle SmartText Autofill">
                                             <i class="fas fa-lightbulb"></i>
                                         </button>
                                         <div id="characterUCActionsDropdown_${characterId}" class="custom-dropdown dark dropright">
@@ -464,10 +464,11 @@ function wireCharacterPromptTextarea(textarea, blurExtra) {
         updateEmphasisHighlighting(textarea);
         autoResizeTextarea(textarea);
         stopEmphasisHighlighting();
+        handlePromptTextareaAutofillBlur(textarea);
         if (blurExtra) blurExtra();
     }, 'blur');
-    const debouncedResize = debounce(() => autoResizeTextarea(textarea), 50);
-    addTextareaInputSideEffect(textarea, debouncedResize, 'resize');
+    // wirePromptTextareaVisualUpdates: public/scripts/comp/textareaUtils.js
+    wirePromptTextareaVisualUpdates(textarea);
     initializeEmphasisOverlay(textarea);
     // attachPromptTextareaContextMenu: public/scripts/comp/promptTextareaContextMenu.js
     if (attachPromptTextareaContextMenu) {
@@ -555,7 +556,7 @@ function addCharacterPrompt() {
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="search" title="Search">
                                             <i class="fas fa-search"></i>
                                         </button>
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle Autofill">
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle SmartText Autofill">
                                             <i class="fas fa-lightbulb"></i>
                                         </button>
                                         <div id="characterActionsDropdown_${characterId}" class="custom-dropdown dark dropright">
@@ -1275,7 +1276,7 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="search" title="Search">
                                             <i class="fas fa-search"></i>
                                         </button>
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle Autofill">
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle SmartText Autofill">
                                             <i class="fas fa-lightbulb"></i>
                                         </button>
                                         <div id="characterActionsDropdown_${characterId}" class="custom-dropdown dark dropright">

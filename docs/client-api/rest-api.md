@@ -22,7 +22,8 @@ HTTP routes defined in `web_server.js` and static middleware. Default base: `htt
 10. [VFS (UUID path)](#vfs-uuid-path)
 11. [Android background notification](#android-background-notification)
 12. [Miscellaneous](#miscellaneous)
-13. [Static files (public/)](#static-files-public)
+13. [Replication](#replication)
+14. [Static files (public/)](#static-files-public)
 
 ---
 
@@ -507,6 +508,106 @@ Static character name list for the character search modal.
 Served from `public/protected/t5_tokenizer.json` via static middleware once authenticated.
 
 **Client:** `public/scripts/appInitSteps.js` fetches during app init (after login cookie is present).
+
+---
+
+## Replication
+
+Routes registered by `modules/replication/registerRoutes.js` from `modules/replication/routes/*.js`. Operational guide: [README-CHILD.md](../../README-CHILD.md). WS mirror: [ws/replication.md](./ws/replication.md).
+
+Config domain: `secure.config.json` → `replication` (see `modules/replication/replicationContracts.js`).
+
+### `GET /replication/status`
+
+**Auth:** session (admin or readonly)
+
+**Success:** `{ success: true, data: { enabled, role, connectivity, instanceId, displayName, maintenance, delegation, cloneProfile, … }, timestamp }`
+
+Same payload as WS `replication_status` → `data` field.
+
+---
+
+### Separation (`20-separationRoutes.js`)
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| `POST` | `/replication/separation/prepare` | admin session | Body: `cloneProfile`, `transferMode`, `childDisplayName`, `childInstanceId`, `masterAccessUrl`, `masterWsUrl`, `masterPeerHost`, `masterPeerPort`, `connectivity`, `outputDir` → **202** `{ jobId }` |
+| `GET` | `/replication/separation/status/:jobId` | session | Job progress object |
+| `GET` | `/replication/separation/manifest/:manifestId` | session | Manifest JSON |
+| `GET` | `/replication/separation/download/:manifestId` | admin session | Tar/tar.zst attachment stream |
+| `POST` | `/replication/separation/bootstrap/preview` | admin session | Body: `{ manifestPath, archivePath }` → preview |
+| `POST` | `/replication/separation/bootstrap/apply` | admin session | Body: `{ manifestPath, archivePath, confirmToken }` — destructive |
+
+**Errors:** `409` + `REPLICATION_MAINTENANCE` when maintenance already active.
+
+---
+
+### Assets (`30-assetRoutes.js`)
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| `OPTIONS` | `/replication/assets/:kind/:key(*)` | none | CORS preflight |
+| `HEAD` | `/replication/assets/:kind/:key(*)` | session **or** `X-Replication-Token` | Asset metadata |
+| `GET` | `/replication/assets/:kind/:key(*)` | session **or** token / `?token=` | Binary asset |
+
+**Kinds:** `gallery-image`, `gallery-preview`, `reference-preview`, `reference-upload`
+
+**404:** `{ success: false, code: "REPLICATION_ASSET_UNAVAILABLE", error, kind, key }`
+
+CORS echoes `Origin` on asset routes only.
+
+---
+
+### Cargo (`40-cargoRoutes.js`)
+
+**Auth:** admin session for all routes below.
+
+| Method | Path | Body / query | Purpose |
+|--------|------|--------------|---------|
+| `GET` | `/replication/cargo/transfers` | — | Active transfers + peer sessions |
+| `POST` | `/replication/cargo/export` | `operation`, `transferMode`, `blocksAck` | Start export → `manifestId`, `streamUrl` |
+| `GET` | `/replication/cargo/stream/:manifestId` | `Range`, `X-Cargo-Offset` | Download cargo bytes (**206** partial) |
+| `PUT` | `/replication/cargo/stream/:manifestId` | raw bytes, `X-Cargo-Offset` | Upload cargo chunk |
+| `POST` | `/replication/cargo/import/begin` | `transferMode`, `blocksAck`, `operation` | Start import |
+| `POST` | `/replication/cargo/import/complete` | `manifestId`, `streamSha256?` | Finalize import |
+| `POST` | `/replication/cargo/upsert/begin` | `partnerInstanceId?`, `transferMode`, `blocksAck` | Start upsert |
+| `POST` | `/replication/cargo/upsert/send` | `transferMode`, `blocksAck` | Send to master (peer/HTTP) |
+| `POST` | `/replication/cargo/upsert/complete` | — | Exit upsert maintenance |
+| `DELETE` | `/replication/cargo/transfer/:manifestId` | — | Cancel transfer |
+| `GET` | `/replication/cargo/blocks-warning` | — | `{ confirmation: "<blocks string>" }` |
+
+**Maintenance:** `PUT` stream returns **423** + `REPLICATION_MAINTENANCE` when write-blocked (except import owning lock).
+
+---
+
+### Sync (`50-syncRoutes.js`)
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| `GET` | `/replication/sync/status` | session | Sync phase + maintenance snapshot |
+| `POST` | `/replication/sync/begin` | admin session | Begin full sync (`transferMode`, `blocksAck`) — **child role** |
+| `POST` | `/replication/sync/export` | `X-Replication-Token` | Master: export changelog for `childInstanceId`, `sinceLsn` |
+| `POST` | `/replication/sync/ack` | token | Master: apply ack from child `changes[]` |
+| `POST` | `/replication/sync/partner/begin` | token | Master enters partner maintenance |
+| `POST` | `/replication/sync/partner/complete` | token | Master completes partner sync (`maxLsn`) |
+| `GET` | `/replication/sync/blocks-warning` | session | Blocks confirmation string |
+
+Token header: `X-Replication-Token` (or body/query `replicationToken`).
+
+---
+
+### Delegation (`60-delegationRoutes.js`)
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| `GET` | `/replication/delegation/bridge-config` | session | `masterWsUrl`, `replicationToken`, `cloneProfile`, `gallerySharedDefault` for client bridge |
+| `GET` | `/replication/delegation/status` | session | Bridge snapshot + `delegation` status |
+
+---
+
+### Peer TCP (not HTTP)
+
+Default port **9221** — `modules/replicationPeerServer.js`. Token auth; `REPL_TAR_BEGIN` / stream / `REPL_TAR_END`. Used by upsert send when peer reachable.
 
 ---
 

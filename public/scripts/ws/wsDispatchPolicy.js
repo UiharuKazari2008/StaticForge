@@ -1,6 +1,8 @@
 /**
  * Client-side mirror of server WS dispatch policy (modules/ws/wsMessageDispatcher.js).
- * Keep in sync with FIFO registrations in modules/ws/handlers/*Handler.js.
+ * Server tracks every inbound packet on a per-client request array; parallel packets
+ * are scheduled independently, FIFO packets wait on earlier entries in that array.
+ * Keep FIFO type list in sync with modules/ws/handlers/*Handler.js registrations.
  */
 
 const WS_FIFO_PACKET_TYPES = new Set([

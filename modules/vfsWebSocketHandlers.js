@@ -3,6 +3,18 @@ const path = require('path');
 const crypto = require('crypto');
 const wsPacketRegistry = require('./ws/wsPacketRegistry');
 
+// modules/replicationJournal.js
+async function recordReplicationVfsJournal(contentHash, payload = null) {
+    if (!contentHash) return;
+    try {
+        const replicationJournal = require('./replicationJournal');
+        await replicationJournal.recordVfsFile(contentHash, {
+            operation: 'INSERT',
+            payload
+        });
+    } catch (_err) {}
+}
+
 class VfsWebSocketHandlers {
     constructor(handlers) {
         this.handlers = handlers;
@@ -263,6 +275,13 @@ class VfsWebSocketHandlers {
             folderId: location.folderId
         });
         this.broadcastVfsUpdated(wsServer, vfsPath);
+        // modules/replicationJournal.js — recordReplicationVfsJournal
+        await recordReplicationVfsJournal(file.content_hash, {
+            fileId: file.id,
+            originalName: file.original_name,
+            scope: location.scope,
+            workspaceId: location.workspaceId
+        });
         const uuid = this.globalResources.getVfsPathUuid();
         this.handlers.sendToClient(ws, {
             type: 'vfs_upload_file_response',

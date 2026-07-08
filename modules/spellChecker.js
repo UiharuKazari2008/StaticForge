@@ -51,6 +51,22 @@ class SpellChecker {
         return spellchecker.getCorrectionsForMisspelling(word);
     }
 
+    /** Drop suggestions identical to the typed word (case-insensitive) — not actionable corrections. */
+    filterActionableSuggestions(word, suggestions) {
+        if (!Array.isArray(suggestions)) return [];
+        const wordLower = String(word).toLowerCase();
+        const seen = new Set();
+        const out = [];
+        for (const suggestion of suggestions) {
+            if (suggestion == null) continue;
+            const key = String(suggestion).toLowerCase();
+            if (key === wordLower || seen.has(key)) continue;
+            seen.add(key);
+            out.push(suggestion);
+        }
+        return out;
+    }
+
     checkText(text) {
         if (!text || typeof text !== 'string') {
             return { misspelled: [], suggestions: {}, originalText: text };
@@ -78,8 +94,12 @@ class SpellChecker {
 
         for (const word of words) {
             if (!this.isCorrect(word)) {
+                const actionable = this.filterActionableSuggestions(word, this.getSuggestions(word));
+                if (actionable.length === 0) {
+                    continue;
+                }
                 misspelled.push(word);
-                suggestions[word] = this.getSuggestions(word);
+                suggestions[word] = actionable;
             }
         }
 

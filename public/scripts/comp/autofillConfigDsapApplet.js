@@ -1,5 +1,5 @@
 /**
- * Autofill Ranking DSAP — autofill.dreamscape.jp
+ * SmartText Ranking DSAP — autofill.dreamscape.jp
  * DSAP-SMF admin applet for the global (shared) autofill/SmartText ranking config
  * (config.autofillRanking, modules/autofillRankingSettings.js). Tunes the numbers used by:
  *   - modules/tag-lookup.js searchTagsAutofill (server ranking)

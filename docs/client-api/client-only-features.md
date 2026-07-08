@@ -32,6 +32,7 @@ Custom Android/Linux clients may omit these or reimplement selectively.
 | `userData` | Login (optional) | Extra user payload if server sends |
 | `loginTimestamp` | Login | Client-side session age display |
 | Various applet prefs | DSAP applets, settings modals | Client-only UI prefs in `localStorage` (not synced to server unless a WS packet exists). Examples: `explorerSortField`, `explorerViewMode`, `chat-show-metadata`, `galleryWindowMode`, `focusCoverEnabled`, `virtualKeyboardEnabled`, `generationCelebrationEffect`, `weather_units_metric`, `useFahrenheit`. Auth keys synced via `syncAuthLocalStorageFromServer()` — see table above. |
+| `galleryShowSharedRemote` | Gallery context menu (`#galleryToggleGroup`), `assetUrlResolver.js` | `'1'` / `'0'` — session override for shared remote gallery when `replication.gallerySharedDefault` is `manual` |
 
 Web app does **not** store PIN in localStorage.
 
@@ -103,6 +104,19 @@ Server-backed pieces use WS (`search_tag_wiki`, `resolve_grimoire_url`, etc.) bu
 | Toolbar download | `galleryToolbar.js` — `fetch(/images/...)` |
 
 Server sends data via `request_gallery`; client decides render strategy.
+
+### Replication gallery & delegation (client-only orchestration)
+
+| Component | File | Server interaction |
+|-----------|------|-------------------|
+| Asset URL resolver | `public/scripts/comp/assetUrlResolver.js` | Builds local `/images/` or remote `{masterAccessUrl}/replication/assets/...` URLs; sends `galleryShowSharedRemote` on `request_gallery` |
+| Master WS bridge | `public/scripts/comp/masterWsBridge.js` | `GET /replication/delegation/bridge-config`; secondary WS to master via `authenticate_replication`; wraps delegated wiki/autocomplete packets |
+| Gallery connectivity banner | `public/scripts/comp/replicationGalleryBanner.js` | Renders `replicationWarning` from gallery response when master unreachable |
+| Shared gallery toggle | `mainMenuManager.js` → `#galleryToggleGroup` context menu | Cloud icon; calls `setGalleryShowSharedRemote()`; hidden when `connectivity === 'airgapped'` or no `masterAccessUrl` |
+| Replication DSAP panels | `dataManagementDsapApplet.js`, `replicationDsapSeparation.js`, `replicationDsapCargo.js`, `replicationDsapSync.js` | REST `/replication/*` + WS replication packets |
+| Maintenance/progress ticker | `public/scripts/ws/handlers/130-replicationInbound.js` | Handles `replication_maintenance`, `replication_progress` pushes |
+
+Operational guide: [README-CHILD.md](../../README-CHILD.md).
 
 ---
 

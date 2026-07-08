@@ -694,26 +694,27 @@ textarea {
 
 /* Key guide pinned to the bottom of the autofill window (sibling of the list so it survives detail-view innerHTML swaps) */
 .character-autocomplete-keyguide {
-    flex: 0 0 auto;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
     justify-content: center;
-    gap: var(--spacing-xs) var(--spacing-md);
-    padding: 5px 8px;
-    background: var(--glass-layer-dark-5);
+    align-items: center;
+    gap: var(--spacing-xs) var(--spacing-sm);
+    background: var(--glass-layer-dark-bg);
     border-top: 1px solid var(--glass-border-2);
-    -webkit-backdrop-filter: var(--glass-blur-2, none);
+    -webkit-backdrop-filter: var(--glass-blur-2,none);
     backdrop-filter: var(--glass-blur-2, none);
-    font-size: 0.7rem;
     color: var(--text-muted);
+    -webkit-user-select: none;
     user-select: none;
+    flex-wrap: wrap;
+    flex: none;
+    padding: 4px;
+    font-size: .6rem;
+    display: flex;
 }
 
 .character-autocomplete-keyguide .keyguide-hint {
     display: inline-flex;
     align-items: center;
-    gap: 3px;
+    gap: 2px;
     white-space: nowrap;
 }
 
@@ -721,36 +722,15 @@ textarea {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 1.4em;
-    padding: 1px 4px;
+    min-width: 2em;
+    padding: 2px 4px;
     background: var(--glass-layer-2);
     border: 1px solid var(--glass-border-3);
     border-radius: var(--border-radius-sm);
     font-family: var(--font-mono);
-    font-size: 0.72rem;
+    font-size: 0.6rem;
     line-height: 1.2;
     color: var(--primary-color-light);
-}
-
-/* Show the main-list hints by default; swap to the detail hints only when the character detail page is open */
-.character-autocomplete-keyguide .keyguide-detail {
-    display: none;
-}
-
-#characterAutocompleteOverlay:has(.character-detail-content) .keyguide-main {
-    display: none;
-}
-
-#characterAutocompleteOverlay:has(.character-detail-content) .keyguide-detail {
-    display: flex;
-}
-
-.keyguide-set {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    gap: var(--spacing-xs) var(--spacing-md);
 }
 
 .character-autocomplete-item {
@@ -770,6 +750,10 @@ textarea {
 .character-autocomplete-item.selected {
     background: var(--primary-color);
     color: var(--text-primary);
+}
+
+.character-autocomplete-item.tab-accept-target {
+    box-shadow: inset 3px 0 0 var(--primary-color-light);
 }
 
 .character-autocomplete-item:last-child {
@@ -1711,3 +1695,145 @@ textarea {
     pointer-events: none;
     z-index: var(--z-layer-1);
 }
+
+/* Detached autofill tool window — characterAutofillToolManager.js */
+#characterAutofillTool,
+.character-autofill-tool {
+    width: 440px;
+    height: 520px;
+}
+
+.character-autofill-tool > .modal-content {
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+}
+
+.character-autofill-tool-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100%;
+    padding: 0;
+    overflow: hidden;
+}
+
+.character-autofill-tool-shell.detached-tool-shell {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    min-width: 0;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    background: transparent;
+}
+
+.character-autofill-tool-list-shell {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.character-autofill-tool-scrollable {
+    height: 100%;
+    min-height: 0;
+}
+
+.character-autofill-tool-shell.detached-tool-active .character-autocomplete-list {
+    position: relative;
+    min-height: 0;
+}
+
+.character-autofill-tool-shell.detached-tool-active .character-autocomplete-keyguide {
+    flex: 0 0 auto;
+}
+
+.character-autocomplete-keyguide:empty {
+    display: none;
+    border-top: none;
+    padding: 0;
+}
+
+.character-autofill-tool-shell.detached-tool-active > .search-status-display,
+.character-autofill-tool-shell.detached-tool-active > .autofill-tool-status-bar {
+    flex: 0 0 auto;
+    position: static;
+    order: unset;
+    border-top: 1px solid var(--glass-border-2);
+    animation: none !important;
+    display: flex !important;
+}
+
+.character-autofill-tool-shell.detached-tool-active > .search-status-display.hidden,
+.character-autofill-tool-shell.detached-tool-active > .autofill-tool-status-bar.hidden {
+    display: flex !important;
+}
+
+.character-autofill-tool-search-group {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.character-autofill-tool-search-input {
+    min-width: 10rem;
+    flex: 1 1 auto;
+}
+
+#characterAutofillTool .modal-window-title-toolbar {
+    flex: 1 1 auto;
+    min-width: 0;
+    justify-content: flex-end;
+}
+
+.character-autofill-tool-shell.detached-tool-active > .search-status-display.search-done,
+.character-autofill-tool-shell.detached-tool-active > .autofill-tool-status-bar.search-done {
+    animation: none !important;
+}
+
+.character-autocomplete-item.mouse-hover-selected:not(.selected) {
+    background: rgb(255 68 0 / 18%);
+}
+
+.spell-check-word.mouse-hover-selected:not(.selected),
+.word-lookup-word-row.mouse-hover-selected:not(.selected) {
+    background: rgb(255 68 0 / 12%);
+}
+
+.suggestion-btn.mouse-hover-selected:not(.selected) {
+    background: rgb(255 68 0 / 28%);
+}
+
+.prompt-textarea-container .search-highlight-overlay .autofill-search-highlight,
+.character-prompt-textarea-container .search-highlight-overlay .autofill-search-highlight {
+    border: none;
+    border-radius: 2px;
+    margin: 0;
+    padding: 0;
+    color: transparent;
+    transition: none;
+}
+
+.prompt-textarea-container .search-highlight-overlay .autofill-search-highlight-await,
+.character-prompt-textarea-container .search-highlight-overlay .autofill-search-highlight-await {
+    background-color: rgb(255 170 0 / 32%);
+    box-shadow: inset 0 0 0 1px rgb(255 170 0 / 55%);
+}
+
+.prompt-textarea-container .search-highlight-overlay .autofill-search-highlight-passive,
+.character-prompt-textarea-container .search-highlight-overlay .autofill-search-highlight-passive {
+    background-color: transparent;
+    box-shadow: inset 0 0 0 1px rgb(255 170 0 / 45%);
+}
+

@@ -1,4 +1,4 @@
-// System tray icons: background boot, popovers, and tray indicator context menus.
+// System tray icons: background boot, tray notifications, and tray indicator context menus.
 // Extracted from public/scripts/app.js (L17082–18031, context menus L17568–18011).
 
 const SYSTEM_TRAY_BOOT_STAGGER_MS = 70;
@@ -9,6 +9,7 @@ function prepareSystemTrayBackground() {
 
     const trayIconIds = [
         'imageGenerationIndicator',
+        'replicationTrayIndicator',
         'subscriptionRenewalIndicator',
         'fixedCreditsIndicator',
         'searchIndexingIndicator',
@@ -139,83 +140,6 @@ async function startBackgroundTrayServices() {
             updateWorkspaceTrayIcon();
             resolve();
         }, delay + SYSTEM_TRAY_BOOT_STAGGER_MS);
-    });
-}
-
-function setupTrayIconPopovers() {
-    if (!window.PopoverManager) return;
-
-    const trayIcons = [
-        'subscriptionRenewalIndicator',
-        'fixedCreditsIndicator',
-        'imageGenerationIndicator',
-        'searchIndexingIndicator',
-        'workspaceTrayIcon',
-        'serviceWorkerTrayIcon',
-        'modemTrayIcon',
-        'pingWarningIndicator',
-        'devWarningsTrayIcon'
-    ];
-
-    const trayIconElements = new Set();
-
-    trayIcons.forEach(iconId => {
-        const icon = document.getElementById(iconId);
-        if (!icon) return;
-
-        const title = (icon.getAttribute('title') || '').trim();
-        if (!title) {
-            icon.removeAttribute('title');
-            return;
-        }
-
-        trayIconElements.add(icon);
-
-        window.PopoverManager.attach(icon, {
-            content: title,
-            hoverOnly: true,
-            position: 'top',
-            arrowPosition: 'bottom-right',
-            onShow: (popover, element) => {
-                // While a programmatic tray notification (receipt / balance / generation) owns this
-                // popover it enters notification mode and stores _hoverTooltipSnapshot; refreshing
-                // from the hover title here would clobber the notification content, so skip it.
-                const popoverData = window.PopoverManager.activePopovers.get(element);
-                if (popoverData && popoverData._hoverTooltipSnapshot) return;
-                const liveTitle = (element.getAttribute('title') || '').trim();
-                if (liveTitle) {
-                    window.PopoverManager.updateContent(element, liveTitle);
-                }
-            }
-        });
-    });
-
-    const trayParent = document.querySelector('.taskbar-tray-icons');
-    if (!trayParent || window._trayIconTitleObserver) return;
-
-    window._trayIconTitleObserver = new MutationObserver((mutations) => {
-        for (let i = 0; i < mutations.length; i++) {
-            const mutation = mutations[i];
-            if (mutation.type !== 'attributes' || mutation.attributeName !== 'title') continue;
-            const icon = mutation.target;
-            if (!trayIconElements.has(icon)) continue;
-            const liveTitle = (icon.getAttribute('title') || '').trim();
-            if (!liveTitle) continue;
-            // If a tray notification is currently showing, only refresh the saved hover tooltip
-            // (restored after the notification closes) instead of overwriting the live notification.
-            const popoverData = window.PopoverManager.activePopovers.get(icon);
-            if (popoverData && popoverData._hoverTooltipSnapshot) {
-                popoverData._hoverTooltipSnapshot.content = liveTitle;
-                continue;
-            }
-            window.PopoverManager.updateContent(icon, liveTitle);
-        }
-    });
-
-    window._trayIconTitleObserver.observe(trayParent, {
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['title']
     });
 }
 
@@ -697,7 +621,6 @@ async function wireSystemTrayListeners() {
     window._systemTrayListenersWired = true;
 
     await startBackgroundTrayServices();
-    setupTrayIconPopovers();
     wireTrayIndicatorContextMenus();
     // updateDevWarningsTrayIcon: public/scripts/comp/modalKeyboardRegistry.js
     updateDevWarningsTrayIcon();
@@ -705,7 +628,6 @@ async function wireSystemTrayListeners() {
 
 window.prepareSystemTrayBackground = prepareSystemTrayBackground;
 window.startBackgroundTrayServices = startBackgroundTrayServices;
-window.setupTrayIconPopovers = setupTrayIconPopovers;
 window.startPopoverAutoHideTimer = startPopoverAutoHideTimer;
 window.setupServiceWorkerTrayContextMenu = setupServiceWorkerTrayContextMenu;
 window.attachFixedCreditsTrayContextMenu = attachFixedCreditsTrayContextMenu;

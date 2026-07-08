@@ -172,3 +172,15 @@ registerWsInboundHandler({
         handleGalleryUpdatedData(message.data);
     }
 });
+
+registerWsInboundHandler({
+    id: 'gallery.replicationResponse',
+    type: 'request_gallery_response',
+    phase: 'post',
+    handler(message) {
+        const data = message.data || {};
+        if (typeof applyGalleryReplicationResponse === 'function') {
+            applyGalleryReplicationResponse(data);
+        }
+    }
+});

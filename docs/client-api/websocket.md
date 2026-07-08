@@ -20,6 +20,19 @@ WebSocket shares the HTTP server port (9220). No separate path.
 
 On disconnect, server cancels active generations for that client and cleans session workspace cache.
 
+## Server inbound dispatch
+
+Every inbound packet is recorded on a **per-client request array** (`modules/ws/wsMessageDispatcher.js`). The WebSocket `message` handler returns immediately; work is scheduled on a later macrotask so unrelated packets are not blocked on the receive path.
+
+| Policy | Packet examples | Behavior |
+|--------|-----------------|----------|
+| **parallel** (default) | `vfs_*`, `search_tags`, wiki reads, gallery reads | Scheduled independently; each entry tracked as `queued` → `running` → `completed` |
+| **fifo** (per session) | `generate_image`, workspace mutations, `compile_dynamic_generation` | Waits until earlier FIFO entries on the same session chain finish (checked via the client array) |
+
+Handlers that must wait on a specific prior `requestId` can call `waitForClientRequest(ws, clientInfo, requestId)` from the dispatcher module. Cooperative yield: `yieldToEventLoop()`.
+
+Client-side FIFO badge list: `public/scripts/ws/wsDispatchPolicy.js` (must stay in sync with server FIFO registrations).
+
 ## Message envelope
 
 ### Client → server (request)
@@ -241,6 +254,10 @@ These are **pushes** — handle asynchronously. Registered in `public/scripts/ws
 | `refresh_server_cache_response` | Cache refresh done | Success/failure summary |
 | `desktop_positions_updated` | Desktop icon positions saved | `workspaceId`, `positions` |
 | `error` | Generic server error push | `message`, optional `code`, `details` |
+| `replication_maintenance` | `enterMaintenance` / `exitMaintenance` | `data.active`, `operation`, `partnerInstanceId`, `reason`, `transferMode`, `startedAt` — client ticker via `130-replicationInbound.js` |
+| `replication_progress` | Separation tar build, cargo pack/transfer/apply | `data.phase`, `current`, `total`, optional `path` |
+| `replication_sync_status` | Sync phase change (push, no `requestId`) | Same fields as `replication_sync_status_response` — DSAP sync panel |
+| `replication_sync_complete` | Full changelog sync finished | `data.success`, applied counts, `maxLsn` |
 
 Director messages use prefix `director_` (handled in client before inbound registry).
 
@@ -286,7 +303,7 @@ Custom callbacks: `setRequestCallback(requestId, fn)` for multi-phase responses.
 
 ## Domain documentation
 
-Full packet lists: [ws/](./ws/) directory (253 request types).
+Full packet lists: [ws/](./ws/) directory (275 request types). Replication: [ws/replication.md](./ws/replication.md).
 
 ## Implementation references
 

@@ -3,6 +3,15 @@ const path = require('path');
 const crypto = require('crypto');
 const { JSONCheckpointManager } = require('./jsonCheckpoint');
 const { DEFAULT_AUTOFILL_RANKING } = require('./autofillRankingSettings');
+const {
+    DEFAULT_REPLICATION_CONFIG,
+    normalizeReplicationConfig,
+    isReplicationRole,
+    isReplicationConnectivity,
+    isReplicationTransferMode,
+    REPLICATION_GALLERY_SHARED_DEFAULTS,
+    REPLICATION_TRACKED_CONFIG_TYPES
+} = require('./replication/replicationContracts');
 
 /**
  * Fluent API for config modifications
@@ -539,7 +548,8 @@ class ConfigManager {
                     location: {
                         latitude: 0,
                         longitude: 0
-                    }
+                    },
+                    replication: JSON.parse(JSON.stringify(DEFAULT_REPLICATION_CONFIG))
                 };
             case 'config':
                 return {
@@ -727,6 +737,28 @@ class ConfigManager {
                     }
                     if (typeof config.location.longitude !== 'number') {
                         errors.push('location.longitude must be a number');
+                    }
+                }
+                if (config.replication != null) {
+                    if (typeof config.replication !== 'object' || Array.isArray(config.replication)) {
+                        errors.push('replication must be an object');
+                    } else {
+                        if (config.replication.role != null && !isReplicationRole(config.replication.role)) {
+                            errors.push('replication.role must be master, child, ephemeral, or standalone');
+                        }
+                        if (config.replication.connectivity != null && !isReplicationConnectivity(config.replication.connectivity)) {
+                            errors.push('replication.connectivity must be normal, airgapped, or delegated-only');
+                        }
+                        if (config.replication.transferMode != null && !isReplicationTransferMode(config.replication.transferMode)) {
+                            errors.push('replication.transferMode must be tape-stream, tape-stream-compressed, or blocks');
+                        }
+                        if (config.replication.gallerySharedDefault != null
+                            && !REPLICATION_GALLERY_SHARED_DEFAULTS.includes(config.replication.gallerySharedDefault)) {
+                            errors.push('replication.gallerySharedDefault must be always, never, or manual');
+                        }
+                        if (config.replication.children != null && !Array.isArray(config.replication.children)) {
+                            errors.push('replication.children must be an array');
+                        }
                     }
                 }
                 break;
@@ -1008,6 +1040,19 @@ class ConfigManager {
                     }
                     if (typeof fixedConfig.location.longitude !== 'number') {
                         fixedConfig.location.longitude = 0;
+                        modified = true;
+                    }
+                }
+                if (!fixedConfig.replication || typeof fixedConfig.replication !== 'object') {
+                    fixedConfig.replication = normalizeReplicationConfig(null);
+                    modified = true;
+                } else {
+                    const normalizedReplication = normalizeReplicationConfig(fixedConfig.replication);
+                    if (!fixedConfig.replication.instanceId) {
+                        normalizedReplication.instanceId = crypto.randomUUID();
+                    }
+                    if (JSON.stringify(normalizedReplication) !== JSON.stringify(fixedConfig.replication)) {
+                        fixedConfig.replication = normalizedReplication;
                         modified = true;
                     }
                 }
@@ -1456,6 +1501,24 @@ class ConfigManager {
     }
 
     /**
+     * Record replication changelog entry for tracked JSON config saves.
+     * @private
+     */
+    _recordReplicationConfigChangelog(configType, configData) {
+        if (!REPLICATION_TRACKED_CONFIG_TYPES.includes(configType)) return;
+        try {
+            // modules/replicationChangelog.js
+            const replicationChangelog = require('./replicationChangelog');
+            if (!replicationChangelog.isInitialized()) return;
+            replicationChangelog.recordConfigChange(configType, configData).catch((error) => {
+                console.warn(`⚠️ Replication config changelog failed for ${configType}:`, error.message);
+            });
+        } catch (error) {
+            console.warn(`⚠️ Replication config changelog unavailable for ${configType}:`, error.message);
+        }
+    }
+
+    /**
      * Persist config to disk immediately
      * @private
      */
@@ -1463,6 +1526,12 @@ class ConfigManager {
         const configInfo = this._configs[configType];
         if (!configInfo) {
             throw new Error(`Unknown config type: ${configType}`);
+        }
+
+        // modules/replicationMaintenance.js
+        const replicationMaintenance = require('./replicationMaintenance');
+        if (replicationMaintenance.isWriteBlocked()) {
+            throw new Error('Replication maintenance in progress — writes disabled');
         }
 
         const { skipCheckpoint = false } = options;
@@ -1497,6 +1566,8 @@ class ConfigManager {
             if (configType === 'workspaces') {
                 this._scheduleWorkspaceCssRecompile();
             }
+
+            this._recordReplicationConfigChangelog(configType, configData);
 
             return true;
         } catch (error) {

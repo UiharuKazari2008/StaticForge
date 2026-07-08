@@ -58,7 +58,7 @@
         try {
           // Prefer the original url if it had query, otherwise parse from canonical
           const src = urlForQuery || match.canonicalUrl || '';
-          const qMatch = src.match(/[?&]q=([^&#]+)/i);
+          const qMatch = src.match(/[?&]q=([^?&#]+)/i);
           q = qMatch ? decodeURIComponent(qMatch[1]) : '';
         } catch (e) {}
 

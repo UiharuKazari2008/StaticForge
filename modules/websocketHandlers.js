@@ -8,6 +8,8 @@ const grimoireDomainRegistry = require('./grimoireDomainRegistry');
 const wsPacketRegistry = require('./ws/wsPacketRegistry');
 const wsMessageDispatcher = require('./ws/wsMessageDispatcher');
 const registerAllWsHandlers = require('./ws/registerAllWsHandlers');
+const replicationMaintenance = require('./replicationMaintenance');
+const { REPLICATION_WS_REQUESTS, isReplicationDestructivePacket } = require('./replication/replicationContracts');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -288,6 +290,16 @@ class WebSocketMessageHandlers {
                 }
             }
 
+            // Replication maintenance gate — block destructive writes while allowing reads + replication packets
+            if (replicationMaintenance.isActive()) {
+                const maintenanceAllowed = replicationMaintenance.isPacketAllowedDuringMaintenance(message.type)
+                    || message.type === REPLICATION_WS_REQUESTS.STATUS;
+                if (!maintenanceAllowed && this.isDestructiveOperation(message.type)) {
+                    wsServer.sendToClient(ws, replicationMaintenance.buildMaintenanceErrorResponse(message.requestId));
+                    return;
+                }
+            }
+
             // Continue with normal message handling
             await this.routeMessage(ws, message, clientInfo, wsServer);
 
@@ -457,7 +469,7 @@ class WebSocketMessageHandlers {
             'generation_quips_clear',
             'update_autofill_ranking',
         ];
-        return destructiveOperations.includes(messageType);
+        return destructiveOperations.includes(messageType) || isReplicationDestructivePacket(messageType);
     }
 
     normalizeStartMenuPinnedSetting(desktop) {
@@ -588,13 +600,18 @@ class WebSocketMessageHandlers {
         // First, allow Grimoire domains / applets to own specific packets.
         // Registered via grimoireDomainRegistry.registerPacketHandler or via domain.packets in registration.
         const direct = grimoireDomainRegistry.getPacketHandler && grimoireDomainRegistry.getPacketHandler(message.type);
+        const dispatchTracking = {
+            type: message.type,
+            requestId: message.requestId || null
+        };
+
         if (direct) {
             wsMessageDispatcher.dispatch(ws, clientInfo, async () => {
                 await direct({ ws, message, clientInfo, wsServer, handlers: this });
             }, { dispatch: 'parallel' }, (err) => {
                 console.error('[WS] Domain packet handler error for', message.type, err);
                 this.sendError(ws, 'Packet handler failed', err.message, message.requestId);
-            });
+            }, dispatchTracking);
             return;
         }
 
@@ -605,7 +622,7 @@ class WebSocketMessageHandlers {
             }, registeredEntry.meta, (err) => {
                 console.error('[WS] Registered packet handler error for', message.type, err);
                 this.sendError(ws, 'Packet handler failed', err.message, message.requestId);
-            });
+            }, dispatchTracking);
             return;
         }
 
@@ -700,34 +717,6 @@ class WebSocketMessageHandlers {
             }
 
             const workspaceManager = this.globalResources.getWorkspaceManager();
-            const syncResult = workspaceManager.syncTrashDesktopShortcut(workspaceId);
-            if (syncResult.changed) {
-                const timestamp = new Date().toISOString();
-                if (syncResult.action === 'added') {
-                    wsServer.broadcast({
-                        type: 'desktop_shortcut_added',
-                        data: { workspaceId, shortcut: syncResult.shortcut },
-                        timestamp
-                    });
-                } else if (syncResult.action === 'removed') {
-                    wsServer.broadcast({
-                        type: 'desktop_shortcut_removed',
-                        data: { workspaceId, shortcutId: syncResult.shortcutId },
-                        timestamp
-                    });
-                } else if (syncResult.action === 'updated') {
-                    wsServer.broadcast({
-                        type: 'desktop_shortcut_updated',
-                        data: {
-                            workspaceId,
-                            shortcutId: syncResult.shortcutId,
-                            updates: syncResult.updates || {}
-                        },
-                        timestamp
-                    });
-                }
-            }
-
             const desktopData = workspaceManager.getDesktopShortcuts(workspaceId);
 
             this.sendToClient(ws, {

@@ -625,7 +625,7 @@ function convertTextReplacementToEditMode(key) {
                         <span class="token-count">0 tokens</span>
                     </div>
                     <div class="toolbar-right">
-                        <button type="button" class="btn-secondary btn-small toolbar-btn indicator" data-action="autofill" data-state="on" title="Toggle Autofill">
+                        <button type="button" class="btn-secondary btn-small toolbar-btn indicator" data-action="autofill" data-state="on" title="Toggle SmartText Autofill">
                             <i class="fas fa-lightbulb"></i>
                         </button>
                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
@@ -1115,7 +1115,7 @@ function addCreateArrayItem() {
                 <div class="toolbar-right">
                     <!-- Regular Toolbar Buttons -->
                     <div class="toolbar-regular-buttons">
-                        <button type="button" class="btn-secondary btn-small toolbar-btn indicator" data-action="autofill" data-state="off" title="Toggle Autofill">
+                        <button type="button" class="btn-secondary btn-small toolbar-btn indicator" data-action="autofill" data-state="off" title="Toggle SmartText Autofill">
                             <i class="fas fa-lightbulb-slash"></i>
                         </button>
                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">

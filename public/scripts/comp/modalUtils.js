@@ -1024,6 +1024,31 @@ function getLinkedToolWindows(parentModal) {
     );
 }
 
+/** Bring a linked tool window to the foreground for keyboard/mouse interaction (does not move DOM focus). */
+function activateToolWindowInteraction(toolWindow) {
+    const toolEl = typeof toolWindow === 'string' ? document.getElementById(toolWindow) : toolWindow;
+    if (!toolEl || !isToolWindow(toolEl) || toolEl.classList.contains('hidden') || toolEl.classList.contains('closing')) {
+        return false;
+    }
+    if (isModalActive(toolEl)) {
+        return true;
+    }
+    bringModalToFront(toolEl);
+    return true;
+}
+
+/** Return active-window state to the tool window's linked parent (does not move DOM focus). */
+function restoreLinkedToolWindowParent(toolWindow) {
+    const toolEl = typeof toolWindow === 'string' ? document.getElementById(toolWindow) : toolWindow;
+    if (!toolEl || !isToolWindow(toolEl)) return false;
+    const parentId = toolEl.getAttribute('data-parent-modal-id');
+    if (!parentId) return false;
+    const parentEl = document.getElementById(parentId);
+    if (!parentEl || parentEl.classList.contains('hidden')) return false;
+    setActiveWindow(parentId);
+    return true;
+}
+
 function getModalTrueInsetTop() {
     const tempEl = document.createElement('div');
     tempEl.style.position = 'absolute';
@@ -2465,6 +2490,14 @@ function openModal(modal) {
     } else if (isMoveable && modal.dataset.windowPositionMode !== 'manual-only' && !modal.hasAttribute('data-window-position-restored')) {
         ensureModalWithinViewport(modal);
     }
+
+    // prepareGalleryWindowContent: public/scripts/comp/galleryView.js
+    if (modal.id === 'galleryWindow' && modal.classList.contains('windowed')
+        && typeof prepareGalleryWindowContent === 'function') {
+        prepareGalleryWindowContent().catch((err) => {
+            console.error('Gallery prepare failed:', err);
+        });
+    }
 }
 
 async function closeModal(modal) {
@@ -3251,23 +3284,9 @@ function showGalleryWindow() {
         return;
     }
 
-    // Mark gallery as visible (openModal restores saved size/position)
+    // Mark gallery as visible (openModal restores saved size/position and prepares content)
     openModal(galleryWindow);
     ensureModalEdgesWithinWorkArea(galleryWindow);
-
-    // prepareGalleryWindowContent: public/scripts/comp/galleryView.js
-    if (typeof prepareGalleryWindowContent === 'function') {
-        prepareGalleryWindowContent().catch((err) => {
-            console.error('Gallery show failed:', err);
-        });
-    } else {
-        const savedPosition = window.savedGalleryPosition || 0;
-        if (savedPosition) {
-            displayGalleryFromStartIndex(savedPosition);
-        } else {
-            loadGallery();
-        }
-    }
 
     console.log('Gallery shown in desktop mode');
 }
@@ -6457,7 +6476,6 @@ let desktopSettingsState = {
     backgroundColor: '#0a1a2a',
     primaryFont: null,
     textareaFont: null,
-    trashDesktopShortcut: false,
     // Wallpaper settings
     wallpaperUrl: null,
     horizontalAlign: 'center',
@@ -7019,12 +7037,6 @@ function updateDesktopSettingsAutoLaunchToggleUI(autoLaunch) {
     updateDesktopSettingsGlobalToggleUI(btn, autoLaunch !== false);
 }
 
-function updateDesktopSettingsTrashShortcutToggleUI(enabled) {
-    const btn = document.getElementById('desktopSettingsTrashShortcutBtn');
-    if (!btn) return;
-    updateDesktopSettingsGlobalToggleUI(btn, enabled === true);
-}
-
 function readDesktopSettingsLiveWindowRepositioningPreference() {
     try {
         return localStorage.getItem('liveWindowRepositioning') === 'true';
@@ -7196,16 +7208,6 @@ function setupDesktopSettingsScopeToggle() {
         });
     }
 
-    const trashShortcutBtn = document.getElementById('desktopSettingsTrashShortcutBtn');
-    if (trashShortcutBtn) {
-        trashShortcutBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            const nextOn = trashShortcutBtn.dataset.state !== 'on';
-            desktopSettingsState.trashDesktopShortcut = nextOn;
-            updateDesktopSettingsTrashShortcutToggleUI(nextOn);
-        });
-    }
-
     const liveWindowRepositioningBtn = document.getElementById('desktopSettingsLiveWindowRepositioningBtn');
     if (liveWindowRepositioningBtn) {
         liveWindowRepositioningBtn.addEventListener('click', (e) => {
@@ -7286,7 +7288,6 @@ async function openDesktopSettingsModal(wallpaperPath = null) {
         desktopSettingsState.backgroundColor = workspace.backgroundColor || '#0a1a2a';
         desktopSettingsState.primaryFont = workspace.primaryFont || null;
         desktopSettingsState.textareaFont = workspace.textareaFont || null;
-        desktopSettingsState.trashDesktopShortcut = workspace.trashDesktopShortcut === true;
     }
 
     // Populate form from temp state
@@ -7297,7 +7298,6 @@ async function openDesktopSettingsModal(wallpaperPath = null) {
     if (nameInput) nameInput.value = desktopSettingsState.name;
     if (colorInput) colorInput.value = desktopSettingsState.color;
     if (bgColorInput) bgColorInput.value = desktopSettingsState.backgroundColor;
-    updateDesktopSettingsTrashShortcutToggleUI(desktopSettingsState.trashDesktopShortcut);
 
     // Set font dropdown labels from temp state
     const primaryFontSelected = document.getElementById('desktopSettingsPrimaryFontSelected');
@@ -8160,7 +8160,6 @@ async function saveDesktopWorkspaceSettings() {
     const newBgColor = bgColorInput ? bgColorInput.value : desktopSettingsState.backgroundColor;
     const newPrimaryFont = desktopSettingsState.primaryFont; // From temp state
     const newTextareaFont = desktopSettingsState.textareaFont; // From temp state
-    const newTrashDesktopShortcut = desktopSettingsState.trashDesktopShortcut === true;
 
     // Get the current wallpaper path from workspace
     const currentWallpaperPath = workspace.wallpaper || null;
@@ -8200,12 +8199,11 @@ async function saveDesktopWorkspaceSettings() {
     const bgColorChanged = newBgColor !== workspace.backgroundColor;
     const primaryFontChanged = newPrimaryFont !== (workspace.primaryFont || null);
     const textareaFontChanged = newTextareaFont !== (workspace.textareaFont || null);
-    const trashDesktopShortcutChanged = newTrashDesktopShortcut !== (workspace.trashDesktopShortcut === true);
     const wallpaperChanged = currentWallpaperPath !== newWallpaperPath;
     const positionChanged = currentPosition !== newPosition;
 
     // Only update if something changed
-    if (!nameChanged && !colorChanged && !bgColorChanged && !primaryFontChanged && !textareaFontChanged && !trashDesktopShortcutChanged && !wallpaperChanged && !positionChanged) {
+    if (!nameChanged && !colorChanged && !bgColorChanged && !primaryFontChanged && !textareaFontChanged && !wallpaperChanged && !positionChanged) {
         const modal = document.getElementById('desktopSettingsModal');
         closeModal(modal);
         showGlassToast('info', null, 'No changes to save', false, 2000, '<i class="fa-light fa-info-circle"></i>');
@@ -8229,9 +8227,6 @@ async function saveDesktopWorkspaceSettings() {
     }
     if (textareaFontChanged) {
         settings.textareaFont = newTextareaFont;
-    }
-    if (trashDesktopShortcutChanged) {
-        settings.trashDesktopShortcut = newTrashDesktopShortcut;
     }
 
     if (wallpaperChanged) {
@@ -8260,7 +8255,6 @@ async function saveDesktopWorkspaceSettings() {
         if (nameChanged) changes.push('name');
         if (colorChanged || bgColorChanged) changes.push('colors');
         if (primaryFontChanged || textareaFontChanged) changes.push('fonts');
-        if (trashDesktopShortcutChanged) changes.push('desktop');
         if (wallpaperChanged) changes.push('wallpaper');
         if (positionChanged) changes.push('position');
 

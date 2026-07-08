@@ -483,3 +483,49 @@ function updateImageGenerationIndicator(options = {}) {
     }
 }
 
+let replicationTraySnapshot = null;
+
+function updateReplicationTrayIndicator(snapshot) {
+    const indicator = document.getElementById('replicationTrayIndicator');
+    if (!indicator) return;
+
+    if (!snapshot || !snapshot.active) {
+        replicationTraySnapshot = null;
+        indicator.classList.remove('active');
+        indicator.classList.add('hidden');
+        indicator.title = 'Replication';
+        return;
+    }
+
+    replicationTraySnapshot = { ...snapshot };
+    const phase = snapshot.phase || snapshot.operation || 'active';
+    const current = Number(snapshot.current) || 0;
+    const total = Number(snapshot.total) || 0;
+    const path = snapshot.path ? ` — ${snapshot.path}` : '';
+    const progress = total > 0 ? ` (${current}/${total})` : '';
+    indicator.title = `Replication: ${phase}${progress}${path}`;
+    indicator.classList.remove('hidden');
+    indicator.classList.add('active');
+}
+
+function wireReplicationTrayIndicator() {
+    const indicator = document.getElementById('replicationTrayIndicator');
+    if (!indicator || indicator.dataset.replicationTrayWired === '1') return;
+    indicator.dataset.replicationTrayWired = '1';
+    indicator.addEventListener('click', () => {
+        const url = replicationTraySnapshot?.active
+            ? 'dsap://data.dreamscape.jp/replication/progress'
+            : 'dsap://data.dreamscape.jp/replication';
+        // openDsapInGrimoire: public/scripts/comp/dsapRegistry.js
+        if (typeof openDsapInGrimoire === 'function') {
+            openDsapInGrimoire(url);
+        }
+    });
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', wireReplicationTrayIndicator);
+} else {
+    setTimeout(wireReplicationTrayIndicator, 0);
+}
+

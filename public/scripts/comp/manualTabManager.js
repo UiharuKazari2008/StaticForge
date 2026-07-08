@@ -88,7 +88,7 @@ function switchManualTab(targetTab, previouslyFocused = undefined) {
             if (focusTarget && focusTarget.focus) {
                 focusTarget.focus();
                 // scheduleEmphasisHighlightUpdate: public/scripts/comp/emphasisManager.js
-                scheduleEmphasisHighlightUpdate(focusTarget);
+                scheduleEmphasisHighlightUpdate(focusTarget, true);
             }
         }, 10);
     }

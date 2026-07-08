@@ -28,6 +28,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `get_pin_settings` | `get_pin_settings_response` | session | Handler: handleGetPinSettings |
 | `get_rate_limiting_stats` | `rate_limiting_stats_response` | session | Handler: handleGetRateLimitingStats |
 | `get_session_rate_limiting_stats` | `session_rate_limiting_stats_response` | session | Handler: handleGetSessionRateLimitingStats |
+| `get_telemetry` | `get_telemetry_response` | session | Handler: handleGetTelemetry |
 | `list_application_auth_requests` | `list_application_auth_requests_response` | session | Handler: handleListApplicationAuthRequests |
 | `list_application_keys` | `list_application_keys_response` | session | Handler: handleListApplicationKeys |
 | `refresh_application_key` | `refresh_application_key_response` | critical | Handler: handleRefreshApplicationKey |
@@ -38,6 +39,8 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `set_user_pin` | `set_user_pin_response` | admin/destructive | Handler: handleSetUserPin |
 | `set_user_pin_login_enabled` | `set_user_pin_login_enabled_response` | admin/destructive | Handler: handleSetUserPinLoginEnabled |
 | `unblock_ip` | `unblock_ip_response` | admin/destructive | Handler: handleUnblockIP |
+| `unlock_api_service` | `unlock_api_service_response` | session | Handler: handleUnlockApiService |
+| `update_api_key` | `update_api_key_response` | admin/destructive | Handler: handleUpdateApiKey |
 | `update_api_key_selections` | `update_api_key_selections_response` | admin/destructive | Handler: handleUpdateApiKeySelections |
 
 ## Response envelope
@@ -58,6 +61,8 @@ Errors use `type: "error"` via `sendError()` — see [websocket.md](../websocket
 ## Read-only restrictions
 
 Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveOperation()` return `READONLY_RESTRICTED` for `userType: "readonly"` sessions.
+
+---
 
 ---
 
@@ -453,6 +458,26 @@ Additional response/push types from handler:
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
+### `get_telemetry`
+
+**Auth:** Session required
+
+**Handler:** modules/ws/handlers/190-adminHandler.js → `handleGetTelemetry`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `page` | Optional |
+| `limit` | Optional |
+| `search` | Optional |
+| `eventType` | Optional |
+
+**Success response:** `get_telemetry_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
 ### `list_application_auth_requests`
 
 **Auth:** Session required
@@ -661,6 +686,49 @@ Additional response/push types from handler:
 - IP address is required
 
 **Success response:** `unblock_ip_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `unlock_api_service`
+
+**Auth:** Session required
+
+**Handler:** modules/ws/handlers/190-adminHandler.js → `handleUnlockApiService`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `service` | Required |
+
+**Validation errors:**
+- Service ID is required
+
+**Success response:** `unlock_api_service_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `update_api_key`
+
+**Auth:** Session required. Admin only (destructive — blocked for readonly)
+
+**Handler:** modules/ws/handlers/190-adminHandler.js → `handleUpdateApiKey`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `service` | Required |
+| `index` | Optional |
+| `name` | Optional |
+| `apiKey` | Optional |
+
+**Validation errors:**
+- Service ID is required
+
+**Success response:** `update_api_key_response`
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 

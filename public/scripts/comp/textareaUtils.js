@@ -72,6 +72,52 @@ function cancelTextInputSideEffect(textarea) {
     textInputSideEffectQueues.delete(textarea);
 }
 
+/** Keydown events that will change textarea content (input may fire after keydown in the same turn). */
+function isPromptTextareaContentKeydown(e) {
+    if (!e || e.ctrlKey || e.metaKey || e.altKey) return false;
+    const key = e.key;
+    if (key.length === 1) return true;
+    return key === 'Backspace' || key === 'Delete' || key === 'Enter';
+}
+
+/**
+ * Defer resize + emphasis highlight on input and content-changing keydown.
+ * Resize runs once per frame; highlight is debounced in emphasisManager.js.
+ * options.minHeight — passed to autoResizeTextarea; options.onResize — called after resize.
+ */
+function wirePromptTextareaVisualUpdates(textarea, options = {}) {
+    if (!textarea || textarea.dataset.promptVisualUpdatesWired === '1') return;
+    textarea.dataset.promptVisualUpdatesWired = '1';
+
+    const minHeight = options.minHeight;
+    const onResize = options.onResize;
+
+    const runVisualUpdates = () => {
+        if (!textarea.isConnected || isTextInputComposing(textarea)) return;
+        // autoResizeTextarea: public/scripts/comp/utilities.js
+        if (typeof autoResizeTextarea === 'function') {
+            autoResizeTextarea(textarea, minHeight != null ? minHeight : 70);
+            if (onResize) onResize();
+        }
+        // scheduleEmphasisHighlightUpdate: public/scripts/comp/emphasisManager.js
+        if (typeof scheduleEmphasisHighlightUpdate === 'function') {
+            scheduleEmphasisHighlightUpdate(textarea);
+        }
+    };
+
+    const scheduleVisualUpdates = (e) => {
+        if (isTextInputComposing(textarea, e)) return;
+        scheduleTextInputSideEffect(textarea, runVisualUpdates);
+    };
+
+    // addSafeEventListener: public/scripts/comp/utilities.js
+    addSafeEventListener(textarea, 'input', scheduleVisualUpdates, 'promptVisualInput');
+    addSafeEventListener(textarea, 'keydown', (e) => {
+        if (!isPromptTextareaContentKeydown(e)) return;
+        scheduleVisualUpdates(e);
+    }, 'promptVisualKeydown');
+}
+
 /**
  * Input listener that defers fn until after native input/IME commit (bubble phase).
  * addSafeEventListener: public/scripts/comp/utilities.js
@@ -216,11 +262,11 @@ function wireManualStylePromptTextarea(textarea) {
                 autoResizeTextarea(textarea);
             }
             stopEmphasisHighlighting();
+            // handlePromptTextareaAutofillBlur: public/scripts/comp/autocompleteUtils.js
+            handlePromptTextareaAutofillBlur(textarea);
         }, 'emphasisBlur');
     }
-    if (typeof autoResizeTextarea === 'function') {
-        addTextareaInputSideEffect(textarea, () => autoResizeTextarea(textarea), 'resize');
-    }
+    wirePromptTextareaVisualUpdates(textarea);
     // attachPromptTextareaContextMenu: public/scripts/comp/promptTextareaContextMenu.js
     if (attachPromptTextareaContextMenu) {
         attachPromptTextareaContextMenu(textarea);
@@ -276,10 +322,8 @@ function setupEditableTextarea(textarea, customToolbarHandler = null) {
             container.classList.remove('textarea-focused');
         }
 
-        // Handle autocomplete blur - abort search and hide popup
-        if (window.handleTextareaBlur) {
-            window.handleTextareaBlur();
-        }
+        // Handle autocomplete blur — handlePromptTextareaAutofillBlur: public/scripts/comp/autocompleteUtils.js
+        handlePromptTextareaAutofillBlur(textarea);
     }, 'toolbar');
     
     // Add input event listener for token count updates with debouncing

@@ -276,23 +276,24 @@ function resolveDsap(url) {
         if (dsapUrlMatches(entry, normalized)) {
             const canonicalBase = normalizeDsapUrlInput(entry.url);
             const canonicalHost = canonicalBase.split('/')[0];
-            let displayPath;
-            if (normalized === canonicalBase || normalized.startsWith(`${canonicalHost}/`)) {
-                const suffix = normalized.startsWith(canonicalHost)
-                    ? normalized.slice(canonicalHost.length).replace(/^\//, '')
+            const qIdx = normalized.indexOf('?');
+            const normalizedPath = qIdx >= 0 ? normalized.slice(0, qIdx) : normalized;
+            const query = qIdx >= 0 ? normalized.slice(qIdx) : '';
+            let pathBase;
+            if (normalizedPath === canonicalBase || normalizedPath.startsWith(`${canonicalHost}/`)) {
+                const suffix = normalizedPath.startsWith(canonicalHost)
+                    ? normalizedPath.slice(canonicalHost.length).replace(/^\//, '')
                     : '';
-                displayPath = suffix ? `${canonicalHost}/${suffix}` : canonicalHost;
+                pathBase = suffix ? `${canonicalHost}/${suffix}` : canonicalHost;
             } else {
                 // Cross-domain alias (e.g. xi.dyna.dreamscape.jp/persona → memories DSAP)
-                displayPath = normalized.split('?')[0];
+                pathBase = normalizedPath;
             }
-            const qIdx = normalized.indexOf('?');
-            const query = qIdx >= 0 ? normalized.slice(qIdx) : '';
             return {
                 entry,
                 normalized,
-                displayPath,
-                canonicalUrl: `dsap://${displayPath}${query}`
+                displayPath: `${pathBase}${query}`,
+                canonicalUrl: `dsap://${pathBase}${query}`
             };
         }
     }

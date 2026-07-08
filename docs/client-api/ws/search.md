@@ -11,6 +11,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `fetch_autofill_wiki_previews` | `fetch_autofill_wiki_previews_response` | session | Handler: handleFetchAutofillWikiPreviews |
 | `get_dataset_tags_for_path` | `get_dataset_tags_for_path_response` | session | Handler: handleGetDatasetTagsForPath |
 | `lookup_city` | `lookup_city_response` | session | Handler: handleCityLookup |
+| `omegasearch_query` | `omegasearch_query_response` | session | Handler: handleOmegasearchQuery |
 | `search_characters` | `search_characters_response` | session | Handler: handleCharacterSearch |
 | `search_dataset_tags` | `search_dataset_tags_response` | session | Handler: handleDatasetTagSearch |
 | `search_files` | `search_files_response` | session | Handler: handleFileSearch |
@@ -40,6 +41,8 @@ Errors use `type: "error"` via `sendError()` — see [websocket.md](../websocket
 ## Read-only restrictions
 
 Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveOperation()` return `READONLY_RESTRICTED` for `userType: "readonly"` sessions.
+
+---
 
 ---
 
@@ -95,6 +98,33 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 | `cityName` | Optional |
 
 **Success response:** `lookup_city_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `omegasearch_query`
+
+**Auth:** Session required
+
+**Handler:** modules/ws/handlers/70-searchHandler.js → `handleOmegasearchQuery`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `blocks` | Optional |
+| `workspaceId` | Optional |
+| `viewType` | Optional |
+| `offset` | Optional |
+| `limit` | Optional |
+| `usageLimit` | Optional |
+| `filters` | Optional |
+| `promptSource` | Optional |
+| `blockOptions` | Optional |
+| `searchSessionId` | Optional |
+| `forceRefresh` | Optional |
+
+**Success response:** `omegasearch_query_response`
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 

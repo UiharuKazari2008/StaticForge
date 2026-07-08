@@ -39,43 +39,39 @@ Errors use `type: "error"` via `sendError()` — see [websocket.md](../websocket
 
 ---
 
-## Detailed packets
-
-### `request_gallery`
-
-**Auth:** Session required.
-
-**Request fields:**
-
-| Field | Required | Default | Description |
-|-------|----------|---------|-------------|
-| `requestId` | Yes | — | Correlation id |
-| `viewType` | No | `"images"` | `images`, `scraps`, `pinned`, `upscaled` |
-| `includePinnedStatus` | No | `true` | Include pin flags / indexes |
-| `light` | No | `false` | Lightweight rows without full metadata blobs |
-| `offset` | No | `0` | Pagination offset |
-| `limit` | No | `100` | Page size (client may use 750) |
-| `workspaceId` | No | session active | Override workspace after reconnect |
-
-**Success:** `request_gallery_response` with `gallery[]`, `pagination`, `galleryHash`, `lastGalleryDestructiveAt`, optional `pinnedIndexes`.
-
-**Keep-alive:** Every 10s during long gallery builds.
-
-**Follow-up:** Paginate while `pagination.hasMore`; load images via `/images/{filename}`.
-
 ---
+
+## Detailed packets
 
 ### `delete_images_bulk`
 
-**Auth:** Admin (destructive).
+**Auth:** Session required. Admin only (destructive — blocked for readonly)
 
-**Request:** `{ filenames: string[] }` — required non-empty array at message top level.
+**Handler:** modules/ws/handlers/120-galleryHandler.js → `handleDeleteImagesBulk`
 
-**Success:** `delete_images_bulk_response` with `results[]`, `errors[]`, `totalProcessed`, `successful`, `failed`.
+**Request fields:**
 
-**Side effects:** `gallery_updated` `{ action: "bulk_delete", deletedCount, viewType: "images" }`.
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `filenames` | Required |
 
----
+**Validation errors:**
+- Filenames array is required
+
+**Success response:** `delete_images_bulk_response`
+
+Additional response/push types from handler:
+- `original`
+- `dynGenPreview`
+- `upscaled`
+- `preview`
+- `gallery_updated`
+
+**Push side effects:**
+- `gallery_updated`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
 ### `find_image_index`
 
@@ -112,6 +108,29 @@ Errors use `type: "error"` via `sendError()` — see [websocket.md](../websocket
 | `anchorFilename` | Optional |
 
 **Success response:** `gallery_position_hint_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `request_gallery`
+
+**Auth:** Session required
+
+**Handler:** modules/ws/handlers/120-galleryHandler.js → `handleGalleryRequest`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `viewType` | Optional |
+| `includePinnedStatus` | Optional |
+| `light` | Optional |
+| `offset` | Optional |
+| `limit` | Optional |
+| `workspaceId` | Optional |
+| `galleryShowSharedRemote` | Optional |
+
+**Success response:** `request_gallery_response`
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 

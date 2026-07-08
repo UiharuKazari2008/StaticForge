@@ -35,6 +35,8 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 
 ---
 
+---
+
 ## Detailed packets
 
 ### `check_updates`
@@ -83,18 +85,6 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 | `clientRttMs` | Optional |
 
 **Success response:** `ping_response`
-
-**Server push fields** (also sent on server-initiated ping interval when authenticated):
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `balance` | object | `{ fixedTrainingStepsLeft, purchasedTrainingSteps, totalCredits }` |
-| `accountHealth` | object | Account health fields — see [account.md](./account.md#account-health-fields) |
-| `queue_status` | number | Queue state |
-| `image_count` | number | Total image count |
-| `server_time` | number | Server timestamp (ms) |
-
-Client handler: `handleServerPing()` in `public/scripts/comp/connectionManager.js` — updates balance display and merges `accountHealth` into `optionsData`.
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 

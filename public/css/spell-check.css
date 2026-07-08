@@ -179,6 +179,13 @@
     border-color: #fe500f !important;
 }
 
+.suggestion-btn.tab-accept-target {
+    background: rgb(163 27 0 / 45%);
+    border-color: var(--primary-color-light);
+    box-shadow: 0 0 0 1px var(--primary-color-light);
+    color: #ffdfd3;
+}
+
 /* Dictionary / Thesaurus Styles */
 .word-lookup-section {
     background: var(--glass-layer-2);

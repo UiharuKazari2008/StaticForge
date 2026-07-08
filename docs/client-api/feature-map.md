@@ -143,6 +143,29 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 
 ---
 
+## Replication (master / child / ephemeral)
+
+| Feature | REST | WS | Push | Client-only |
+|---------|------|-----|------|-------------|
+| Replication status | `GET /replication/status` | `replication_status` | — | DSAP Replication tab |
+| Master separation bundle | `POST /replication/separation/prepare`, `GET …/status/:jobId`, `GET …/download/:manifestId` | `replication_separation_prepare`, `replication_separation_status` | `replication_progress`, `replication_maintenance` | dataManagementDsapApplet |
+| Child bootstrap | `POST /replication/separation/bootstrap/preview`, `…/apply` | `replication_separation_bootstrap_preview`, `replication_separation_bootstrap_apply` | `replication_maintenance`, `replication_progress` | replicationDsapSeparation.js |
+| Full sync (child) | `POST /replication/sync/begin`, `GET /replication/sync/status` | `replication_sync_begin`, `replication_sync_status`, `replication_sync_apply` | `replication_sync_status`, `replication_sync_complete`, `replication_maintenance` | replicationDsapSync.js |
+| Partner sync (token) | `POST /replication/sync/export`, `/ack`, `/partner/begin`, `/partner/complete` | — | — | — |
+| Cargo export/import | `POST /replication/cargo/export`, `/import/begin`, `/import/complete`, `GET/PUT /replication/cargo/stream/:id` | — | `replication_progress` | replicationDsapCargo.js |
+| Upsert to master | `POST /replication/cargo/upsert/begin`, `/send`, `/complete` | — | `replication_maintenance`, `replication_progress` | DSAP Cargo panel |
+| Remote gallery assets | `GET /replication/assets/:kind/:key` | — | — | assetUrlResolver.js |
+| Shared gallery merge | — | `request_gallery` + `galleryShowSharedRemote` | — | `#galleryToggleGroup` context menu, `galleryShowSharedRemote` localStorage |
+| Master unreachable banner | — | `request_gallery` → `replicationWarning` | — | replicationGalleryBanner.js |
+| Wiki/autocomplete delegation | `GET /replication/delegation/bridge-config` | `authenticate_replication`, `replication_delegate`, `replication_delegation_status` | — | masterWsBridge.js |
+| Blocks mode warning | `GET /replication/cargo/blocks-warning`, `GET /replication/sync/blocks-warning` | — | — | Confirmation dialog in DSAP |
+
+CLI scripts (no UI): `scripts/replication-separate.js`, `replication-bootstrap.js`, `replication-export-cargo.js`, `replication-import-cargo.js`.
+
+Operational guide: [README-CHILD.md](../../README-CHILD.md).
+
+---
+
 ## Android / notifications
 
 | Feature | REST | WS | Push | Client-only |
@@ -157,7 +180,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Category | Count |
 |----------|-------|
 | Documented REST route groups | ~25 explicit + static |
-| WS request types (client → server) | **253** |
+| WS request types (client → server) | **275** |
 | WS server push types (common) | **~50** |
 | Auth flows | **3** (PIN session, Bearer loginKey, dev key — dev middleware exists but is **not mounted** on any route; see [authentication.md](./authentication.md#development-auth)) |
 
@@ -173,3 +196,4 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | References | `modules/referencesWebSocketHandlers.js` |
 | VFS | `modules/vfsWebSocketHandlers.js` |
 | All packets | `modules/ws/handlers/*.js` + registry |
+| Replication | `modules/replication/routes/*.js`, `200-replicationHandler.js` |

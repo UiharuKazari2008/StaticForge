@@ -105,6 +105,15 @@ A powerful, feature-rich NovelAI API proxy and workspace built with modern web t
 
 ## 🚀 Getting Started
 
+### Deployment
+
+| Scenario | Guide |
+|----------|-------|
+| Single server (default) | Steps below |
+| **Child / ephemeral replica** paired to a master | **[Child Node Guide (README-CHILD.md)](./README-CHILD.md)** — separation bundle, bootstrap, sync, upsert, shared gallery |
+
+Process management: `ecosystem.config.js` (PM2 app `Dreamscape`, port **9220** default).
+
 ### Prerequisites
 - NovelAI Account with active **Opus** paid subscription
 - Server hosting environment for the proxy
@@ -381,7 +390,7 @@ curl "http://localhost:9220/pending/retrieval/abc123-def456"
 
 Build third-party clients with feature parity against the web app using the canonical API reference:
 
-- **[Client API documentation](docs/client-api/README.md)** — authentication, REST routes, WebSocket protocol (235 request types, server push events), feature map, and client-only behavior
+- **[Client API documentation](docs/client-api/README.md)** — authentication, REST routes, WebSocket protocol (275 request types, server push events), feature map, and client-only behavior
 - [Legacy Android WebSocket guide](docs/websocket_android_guide.md) — Kotlin examples; superseded by `docs/client-api/` for completeness
 
 ## 📞 Support

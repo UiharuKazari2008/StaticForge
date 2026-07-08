@@ -628,12 +628,13 @@ class ContextMenuController {
     }
 
     bindEvents() {
-        // Prevent focus transfer when activating context or click menu triggers
+        // Click/tap menus open on mousedown (capture) so title-toolbar buttons still work when
+        // preventDefault blocks the follow-up click; ghost clicks are suppressed via _suppressClickMenuClickUntil.
         document.addEventListener('mousedown', (e) => {
             if (e.button === 0) {
                 const clickTarget = e.target.closest('[data-click-menu]');
                 if (clickTarget) {
-                    e.preventDefault();
+                    this._openClickMenuFromPointer(e, clickTarget, false);
                     return;
                 }
             }
@@ -643,16 +644,13 @@ class ContextMenuController {
                     e.preventDefault();
                 }
             }
-        });
+        }, true);
 
-        // Click/tap menus (left click)
+        // Fallback for environments that skip mousedown (synthetic click after touch uses suppress window)
         document.addEventListener('click', (e) => {
             const target = e.target.closest('[data-click-menu]');
             if (!target) return;
-            if (Date.now() < this._suppressClickMenuClickUntil) return;
-            e.preventDefault();
-            e.stopPropagation();
-            this.showClickMenu(e, target, false);
+            this._openClickMenuFromPointer(e, target, false);
         }, true);
 
         // Desktop right-click
@@ -833,17 +831,29 @@ class ContextMenuController {
 
     getActiveMenuConfig(target) {
         if (!target) return null;
-        if (this.activeMenuTrigger === 'click') {
-            const menuConfigId = target.dataset.clickMenu;
-            return menuConfigId && this.clickMenuConfigs ? this.clickMenuConfigs[menuConfigId] : null;
+        const clickConfigId = target.dataset.clickMenu;
+        if (clickConfigId && this.clickMenuConfigs && this.clickMenuConfigs[clickConfigId]) {
+            return this.clickMenuConfigs[clickConfigId];
         }
-        const menuConfigId = target.dataset.contextMenu;
-        return menuConfigId && this.configs ? this.configs[menuConfigId] : null;
+        const contextConfigId = target.dataset.contextMenu;
+        if (contextConfigId && this.configs && this.configs[contextConfigId]) {
+            return this.configs[contextConfigId];
+        }
+        return null;
     }
 
     showClickMenu(event, target, isTouch = false) {
         if (!target?.dataset?.clickMenu) return;
         this._openMenu(event, target, 'click', isTouch, false);
+    }
+
+    _openClickMenuFromPointer(event, target, isTouch = false) {
+        if (!target?.dataset?.clickMenu) return;
+        if (Date.now() < this._suppressClickMenuClickUntil) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this._suppressClickMenuClickUntil = Date.now() + 400;
+        this.showClickMenu(event, target, isTouch);
     }
 
     showMenu(event, target, isTouch = false, isProxyEvent = false) {
@@ -1406,11 +1416,10 @@ class ContextMenuController {
                 itemElement.addEventListener('click', () => {
                     const isItemDisabled = typeof item.disabled === 'function' ? item.disabled() : item.disabled;
                     if (!isItemDisabled) {
+                        this.executeAction(item.action, target, item);
                         if (!item.keepMenuOpen) {
                             this.hideMenu({ instant: true });
-                        }
-                        this.executeAction(item.action, target, item);
-                        if (item.keepMenuOpen) {
+                        } else {
                             // If menu stays open, refresh the item display
                             this.refreshListItemDisplay(itemElement, item, target);
                         }
@@ -1565,11 +1574,10 @@ class ContextMenuController {
                 iconElement.addEventListener('click', () => {
                     const isIconItemDisabled = typeof icon.disabled === 'function' ? icon.disabled() : icon.disabled;
                     if (!isIconItemDisabled) {
+                        this.executeAction(icon.action, target, icon);
                         if (!icon.keepMenuOpen) {
                             this.hideMenu({ instant: true });
-                        }
-                        this.executeAction(icon.action, target, icon);
-                        if (icon.keepMenuOpen) {
+                        } else {
                             // If menu stays open, refresh the icon display
                             this.refreshIconDisplay(iconElement, icon, target);
                         }
@@ -1725,15 +1733,15 @@ class ContextMenuController {
             if (isCellDisabled) return;
 
             if (submenuContext && options.customHandler && typeof options.customHandler === 'function') {
-                if (!cell.keepMenuOpen) {
-                    this.hideMenu({ instant: true });
-                }
                 options.customHandler(cell, target);
-            } else if (cell.action && typeof cell.action === 'string') {
                 if (!cell.keepMenuOpen) {
                     this.hideMenu({ instant: true });
                 }
+            } else if (cell.action && typeof cell.action === 'string') {
                 this.executeAction(cell.action, target, cell);
+                if (!cell.keepMenuOpen) {
+                    this.hideMenu({ instant: true });
+                }
             }
 
             if (cell.keepMenuOpen) {
@@ -2989,11 +2997,10 @@ class ContextMenuController {
                     e.stopPropagation(); // Prevent click from bubbling to click-outside handler
                     const isSubItemActionDisabled = typeof subItem.disabled === 'function' ? subItem.disabled() : subItem.disabled;
                     if (!isSubItemActionDisabled) {
+                        this.executeAction(subItem.action, target, subItem);
                         if (!subItem.keepMenuOpen) {
                             this.hideMenu({ instant: true });
-                        }
-                        this.executeAction(subItem.action, target, subItem);
-                        if (subItem.keepMenuOpen) {
+                        } else {
                             // If menu stays open, check if this is a dynamic submenu (optionsfn) or static submenu
                             // For static submenus, just refresh items (call loadfn again)
                             // For dynamic submenus (optionsfn), regenerate the entire submenu

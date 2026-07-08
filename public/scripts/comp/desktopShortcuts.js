@@ -3439,18 +3439,6 @@ class DesktopShortcutsManager {
                 throw new Error('Shortcut not found');
             }
 
-            if (shortcut.protected && shortcut.type === 'system-folder') {
-                showGlassToast(
-                    'info',
-                    'Desktop',
-                    'This shortcut is managed in Desktop Settings',
-                    false,
-                    4000,
-                    '<i class="fas fa-cog"></i>'
-                );
-                return;
-            }
-
             const isNew = !!shortcut._isNew;
             const isDeleted = !!shortcut._isDeleted;
 

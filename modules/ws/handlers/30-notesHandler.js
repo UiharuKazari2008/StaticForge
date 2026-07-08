@@ -2,6 +2,15 @@ const wsPacketRegistry = require('../wsPacketRegistry');
 
 const NOTES_DESTRUCTIVE = { destructive: true };
 
+// modules/replicationJournal.js
+async function recordReplicationNoteJournal(noteId, { operation = 'INSERT', payload = null } = {}) {
+    if (!noteId) return;
+    try {
+        const replicationJournal = require('../replicationJournal');
+        await replicationJournal.recordNote(noteId, { operation, payload });
+    } catch (_err) {}
+}
+
 async function handleNotesCreate(handlersCtx, ws, message, clientInfo, wsServer) {
     try {
         let { id, name, workspaceId, content, icon, color, note_kind, metadata } = message;
@@ -43,6 +52,12 @@ async function handleNotesCreate(handlersCtx, ws, message, clientInfo, wsServer)
             color,
             note_kind: note_kind || 'note',
             metadata: metadata || {}
+        });
+
+        // modules/replicationJournal.js — recordReplicationNoteJournal
+        await recordReplicationNoteJournal(note.id, {
+            operation: 'INSERT',
+            payload: { workspaceId: note.workspaceId, name: note.name, note_kind: note.note_kind }
         });
 
         handlersCtx.sendToClient(ws, {
@@ -152,6 +167,12 @@ async function handleNotesUpdate(handlersCtx, ws, message, clientInfo, wsServer)
 
         const note = await handlersCtx.globalResources.notesDatabase.updateNote(noteId, updates);
 
+        // modules/replicationJournal.js — recordReplicationNoteJournal
+        await recordReplicationNoteJournal(noteId, {
+            operation: 'UPDATE',
+            payload: { updates }
+        });
+
         handlersCtx.sendToClient(ws, {
             type: 'notes_update_response',
             requestId: message.requestId,
@@ -181,6 +202,12 @@ async function handleNotesDelete(handlersCtx, ws, message, clientInfo, wsServer)
 
         const result = await handlersCtx.globalResources.notesDatabase.deleteNote(noteId);
 
+        // modules/replicationJournal.js — recordReplicationNoteJournal
+        await recordReplicationNoteJournal(noteId, {
+            operation: 'DELETE',
+            payload: { noteId }
+        });
+
         handlersCtx.sendToClient(ws, {
             type: 'notes_delete_response',
             requestId: message.requestId,
@@ -209,6 +236,12 @@ async function handleNotesSaveContent(handlersCtx, ws, message, clientInfo, wsSe
         }
 
         await handlersCtx.globalResources.notesDatabase.saveNoteContent(noteId, content);
+
+        // modules/replicationJournal.js — recordReplicationNoteJournal
+        await recordReplicationNoteJournal(noteId, {
+            operation: 'UPDATE',
+            payload: { contentSaved: true }
+        });
 
         handlersCtx.sendToClient(ws, {
             type: 'notes_save_content_response',

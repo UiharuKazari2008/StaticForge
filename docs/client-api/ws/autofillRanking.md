@@ -17,8 +17,8 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | Request type | Typical response | Auth | Notes |
 |---|---|---|---|
 | `get_autofill_ranking` | `get_autofill_ranking_response` | session | Handler: handleGetAutofillRanking |
-| `update_autofill_ranking` | `update_autofill_ranking_response` | admin/destructive | Handler: handleUpdateAutofillRanking. Broadcasts `autofill_ranking_updated` to all clients. |
-| `test_autofill_ranking` | `test_autofill_ranking_response` | session | Handler: handleTestAutofillRanking. Runs the live `searchTagsAutofill` pipeline with `includeBreakdown: true`. |
+| `test_autofill_ranking` | `test_autofill_ranking_response` | session | Handler: handleTestAutofillRanking |
+| `update_autofill_ranking` | `update_autofill_ranking_response` | admin/destructive | Handler: handleUpdateAutofillRanking |
 
 ## Response envelope
 
@@ -41,6 +41,8 @@ Errors use `type: "error"` via `sendError()` — see [websocket.md](../websocket
 
 ---
 
+---
+
 ## Detailed packets
 
 ### `get_autofill_ranking`
@@ -55,24 +57,9 @@ Errors use `type: "error"` via `sendError()` — see [websocket.md](../websocket
 |-------|-------|
 | `requestId` | Optional |
 
-**Success response:** `get_autofill_ranking_response` — `data.ranking` is the fully normalized ranking config (see `modules/autofillRankingSettings.js` `DEFAULT_AUTOFILL_RANKING` for shape: `serverBase`, `serverBonus`, `serverCategory`, `tiers`, `clientTierBonus`, `clientNonTag`, `typeOrder`, `typeWeights`, `rankingVersion`).
+**Success response:** `get_autofill_ranking_response`
 
-### `update_autofill_ranking`
-
-**Auth:** Session required. Admin only (destructive — blocked for readonly and non-admin)
-
-**Handler:** modules/ws/handlers/230-autofillRankingHandler.js → `handleUpdateAutofillRanking`
-
-**Request fields:**
-
-| Field | Notes |
-|-------|-------|
-| `requestId` | Optional |
-| `ranking` | Required. Partial patch — any subset of `DEFAULT_AUTOFILL_RANKING` groups/keys. Merged via `mergeAutofillRankingPatch`, `rankingVersion` is bumped server-side. |
-
-**Success response:** `update_autofill_ranking_response` — `data.ranking` is the merged/normalized config. Also broadcasts `autofill_ranking_updated` (`data.ranking`) to all connected clients so `public/scripts/comp/autofillRankingConfig.js` can live-update.
-
-**Errors:** `type: "error"` via `sendError()`. `INSUFFICIENT_PERMISSIONS` if not admin.
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
 ### `test_autofill_ranking`
 
@@ -85,7 +72,31 @@ Errors use `type: "error"` via `sendError()` — see [websocket.md](../websocket
 | Field | Notes |
 |-------|-------|
 | `requestId` | Optional |
-| `query` | Required (empty query returns `data.results: []`) |
-| `limit` | Optional, default 35, clamped 1–100 |
+| `query` | Optional |
+| `autofillSettings` | Optional |
+| `model` | Optional |
 
-**Success response:** `test_autofill_ranking_response` — `data.results` is the live `tagAutofillSearch.searchTags()` output; each tag includes `rankingBreakdown` (`base`, `usageBonus`, `trainingBonus`, `categoryAdjustment`, `usage`, `novelStrength`, `hasGroups`, `matchTier`, `matchCoverage`, `totalScore`).
+**Success response:** `test_autofill_ranking_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `update_autofill_ranking`
+
+**Auth:** Session required. Admin only (destructive — blocked for readonly)
+
+**Handler:** modules/ws/handlers/230-autofillRankingHandler.js → `handleUpdateAutofillRanking`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `ranking` | Optional |
+
+**Success response:** `update_autofill_ranking_response`
+
+Additional response/push types from handler:
+- `autofill_ranking_updated`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+

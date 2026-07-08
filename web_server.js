@@ -997,6 +997,9 @@ app.use(securityMiddleware);
 app.use(limiter);
 app.use(speedLimiter);
 
+const registerReplicationRoutes = require('./modules/replication/registerRoutes');
+registerReplicationRoutes(app, globalResources);
+
 // Create cache directories
 const cacheDir = path.resolve(__dirname, '.cache');
 const uploadCacheDir = path.join(cacheDir, 'upload');

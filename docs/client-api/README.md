@@ -58,8 +58,9 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | [rest-api.md](./rest-api.md) | Every HTTP route: methods, auth, inputs, responses, errors |
 | [client-only-features.md](./client-only-features.md) | Web-only UI, localStorage, service worker, Android bridges |
 | [feature-map.md](./feature-map.md) | UI feature → REST/WS matrix |
+| [README-CHILD.md](../README-CHILD.md) | Child/ephemeral replication deployment (master pairing, bootstrap, daily ops) |
 
-### WebSocket domains (253 request types)
+### WebSocket domains (275 request types)
 
 | Domain | File | Packets |
 |--------|------|---------|
@@ -86,6 +87,7 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | Admin / security (+ application auth) | [ws/admin.md](./ws/admin.md) | 31 |
 | VFS & desktop | [ws/vfs.md](./ws/vfs.md) | 27 |
 | References & vibes | [ws/references.md](./ws/references.md) | 22 |
+| **Replication** | [ws/replication.md](./ws/replication.md) | **12** |
 
 ## Related legacy docs
 
@@ -102,7 +104,7 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | WS packet handlers | `modules/ws/handlers/*.js`, `modules/vfsWebSocketHandlers.js`, `modules/referencesWebSocketHandlers.js` |
 | WS registry | `modules/ws/wsPacketRegistry.js` |
 | Client WS client | `public/scripts/websocket.js` |
-| Destructive op list | `modules/websocketHandlers.js` → `isDestructiveOperation()` |
+| Replication routes | `modules/replication/routes/*.js`, `registerRoutes.js` |
 | Critical (unauthenticated) WS | `modules/websocket.js` → `CRITICAL_MESSAGE_TYPES` |
 
 ## Maintenance

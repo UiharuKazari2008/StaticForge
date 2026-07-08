@@ -46,25 +46,23 @@
 }
 
 #aboutMelatoninModal .about-product-name {
-    margin: 0 0 0.25rem 0;
+    margin: 0;
     font-weight: 600;
     font-size: 0.85rem;
+    line-height: 1;
 }
 
-#aboutMelatoninModal .about-version {
-    margin: 0.25rem 0;
-    font-size: 0.8rem;
-}
-
+#aboutMelatoninModal .about-version ,
 #aboutMelatoninModal .about-copyright {
-    margin: 0.25rem 0 0 0;
+    margin: 0;
     font-size: 0.85rem;
+    line-height: 1;
 }
 
 #aboutMelatoninModal .about-description {
     margin: 0;
     font-size: 0.8rem;
-    line-height: 1.5;
+    line-height: 1;
 }
 
 #aboutMelatoninModal .about-system-info {

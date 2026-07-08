@@ -1807,20 +1807,50 @@ const EMPHASIS_PATTERNS = {
 // Store previous textarea values for NSFW tag detection
 const previousTextareaValues = new WeakMap();
 
-// Emphasis highlighting — one overlay pass per frame; plain text skips the regex pipeline
+// Emphasis highlighting — debounced overlay pass; plain text skips the regex pipeline
 const emphasisHighlightValueCache = new WeakMap();
+const emphasisHighlightDebounceTimers = new WeakMap();
+const EMPHASIS_HIGHLIGHT_DEBOUNCE_MS = 50;
 
 function promptNeedsFullSyntaxHighlight(text) {
     if (!text) return false;
     return /::|[{}[\]|]|<|>|!/.test(text);
 }
 
-function scheduleEmphasisHighlightUpdate(textarea) {
+function cancelEmphasisHighlightUpdate(textarea) {
     if (!textarea) return;
-    // scheduleTextInputSideEffect: public/scripts/comp/textareaUtils.js
-    scheduleTextInputSideEffect(textarea, () => {
-        updateEmphasisHighlighting(textarea);
-    });
+    const timer = emphasisHighlightDebounceTimers.get(textarea);
+    if (timer) {
+        clearTimeout(timer);
+        emphasisHighlightDebounceTimers.delete(textarea);
+    }
+}
+
+function scheduleEmphasisHighlightUpdate(textarea, immediate = false) {
+    if (!textarea) return;
+    if (textarea.closest('.creative-directive-container, .prompt-textarea-container.director-prompt')) return;
+
+    if (immediate) {
+        cancelEmphasisHighlightUpdate(textarea);
+        // scheduleTextInputSideEffect: public/scripts/comp/textareaUtils.js
+        scheduleTextInputSideEffect(textarea, () => {
+            updateEmphasisHighlighting(textarea);
+        });
+        return;
+    }
+
+    let timer = emphasisHighlightDebounceTimers.get(textarea);
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+        emphasisHighlightDebounceTimers.delete(textarea);
+        if (!textarea.isConnected) return;
+        // isTextInputComposing: public/scripts/comp/textareaUtils.js
+        if (typeof isTextInputComposing === 'function' && isTextInputComposing(textarea)) return;
+        scheduleTextInputSideEffect(textarea, () => {
+            updateEmphasisHighlighting(textarea);
+        });
+    }, EMPHASIS_HIGHLIGHT_DEBOUNCE_MS);
+    emphasisHighlightDebounceTimers.set(textarea, timer);
 }
 
 function throttledUpdateEmphasisHighlighting(textarea) {
@@ -1836,24 +1866,20 @@ function startEmphasisHighlighting(textarea) {
     emphasisHighlightingActive = true;
     emphasisHighlightingTarget = textarea;
 
-    // Add event listeners for real-time highlighting using safe event listeners
-    addTextareaInputSideEffect(textarea, () => {
-        autoResizeTextarea(textarea);
-        updateEmphasisHighlighting(textarea);
-    }, 'emphasisHighlighting');
+    // wirePromptTextareaVisualUpdates: public/scripts/comp/textareaUtils.js
+    wirePromptTextareaVisualUpdates(textarea);
 
-    // Initial highlighting
+    // autoResizeTextarea: public/scripts/comp/utilities.js
     autoResizeTextarea(textarea);
     updateEmphasisHighlighting(textarea);
 }
 
 function stopEmphasisHighlighting() {
     if (emphasisHighlightingTarget) {
+        cancelEmphasisHighlightUpdate(emphasisHighlightingTarget);
         // cancelTextInputSideEffect: public/scripts/comp/textareaUtils.js
         cancelTextInputSideEffect(emphasisHighlightingTarget);
         emphasisHighlightValueCache.delete(emphasisHighlightingTarget);
-        // Clean up the emphasis highlighting event listener
-        removeSafeEventListener(emphasisHighlightingTarget, 'input', 'emphasisHighlighting');
     }
     
     emphasisHighlightingActive = false;

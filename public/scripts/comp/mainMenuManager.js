@@ -674,6 +674,17 @@ function setupMainMenuContextMenus() {
                         }
                     },
                     {
+                        icon: 'fa-regular fa-cloud',
+                        tooltip: 'Show shared gallery',
+                        action: 'toggle-gallery-shared-remote',
+                        keepMenuOpen: true,
+                        showIndicator: true,
+                        hidden: () => !isReplicationSharedGalleryMenuAvailable(),
+                        loadfn: (icon) => {
+                            icon.dataState = getGalleryShowSharedRemote() ? 'on' : 'off';
+                        }
+                    },
+                    {
                         icon: 'fa-regular fa-blinds',
                         tooltip: 'Focus Cover',
                         action: 'toggle-privacy-mode',
@@ -691,7 +702,7 @@ function setupMainMenuContextMenus() {
                     },
                     {
                         icon: 'fa-regular fa-window-alt',
-                        tooltop: 'Melaton Desktop',
+                        tooltip: 'Melaton Desktop',
                         action: 'toggle-gallery-window',
                         hidden: () => document.body.classList.contains('desktop-mode'),
                         hideOnBreakpoint: "mobile"
@@ -934,6 +945,28 @@ function setupMainMenuContextMenus() {
             case 'toggle-glass':
                 await switchTheme();
                 break;
+
+            case 'toggle-gallery-shared-remote': {
+                const ctx = getGalleryReplicationContext();
+                const next = !getGalleryShowSharedRemote();
+                if (next && ctx && ctx.masterReachable === false) {
+                    const masterName = ctx.masterDisplayName || 'Master';
+                    showGlassToast(
+                        'warning',
+                        null,
+                        `${masterName} is currently inaccessible`,
+                        false,
+                        4000,
+                        '<i class="fas fa-cloud-slash"></i>'
+                    );
+                    break;
+                }
+                setGalleryShowSharedRemote(next, true);
+                if (typeof refreshGalleryForReplicationToggle === 'function') {
+                    refreshGalleryForReplicationToggle();
+                }
+                break;
+            }
 
             case 'lock-app':
                 // Lock app directly

@@ -164,7 +164,13 @@ function registerDsapManifests() {
         type: 'dsap',
         title: 'Data Management',
         assets: {
-            scripts: ['scripts/comp/dataManagementDsapApplet.js']
+            scripts: [
+                'scripts/comp/dataManagementDsapApplet.js',
+                'scripts/comp/replicationDsapSeparation.js',
+                'scripts/comp/replicationDsapCargo.js',
+                'scripts/comp/replicationDsapSync.js'
+            ],
+            styles: ['css/replication-dsap.css']
         },
         menuEntry: {
             launchId: 'data-management',
@@ -188,7 +194,7 @@ function registerDsapManifests() {
             'applet.grimoire.jp/autofill'
         ],
         type: 'dsap',
-        title: 'Autofill Ranking',
+        title: 'SmartText Ranking',
         assets: {
             scripts: ['scripts/comp/autofillConfigDsapApplet.js']
         },
@@ -196,7 +202,7 @@ function registerDsapManifests() {
             launchId: 'autofill-ranking',
             icon: 'fas fa-arrow-down-wide-short',
             imageIcon: 'slider.png',
-            text: 'Autofill Ranking',
+            text: 'SmartText Ranking',
             appMenu: false,
             startMenu: false,
             desktopOnly: true,

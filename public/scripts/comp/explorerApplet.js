@@ -1553,6 +1553,20 @@ class ExplorerApplet {
             }];
             const appItem = this._getSystemFolderAppMenuItem(item);
             if (appItem) items.push(appItem);
+            if (item.name !== 'Desktop') {
+                items.push({
+                    icon: 'fas fa-arrow-down-left',
+                    text: 'Add to Desktop',
+                    action: 'explorer-add-system-folder-to-desktop',
+                    hidden: () => !this._isDesktopMode(),
+                    loadfn: (menuItem) => {
+                        if (this._hasSystemFolderDesktopShortcut(item)) {
+                            menuItem.disabled = true;
+                            menuItem.text = 'Already on Desktop';
+                        }
+                    }
+                });
+            }
             return this._finalizeContextMenuSections([{ type: 'list', items }], item, vfsOpts);
         }
 
@@ -1753,6 +1767,9 @@ class ExplorerApplet {
                 case 'explorer-app-notebook':
                 case 'explorer-app-scraps':
                     this._runSystemFolderAppAction(item);
+                    break;
+                case 'explorer-add-system-folder-to-desktop':
+                    await this._addSystemFolderToDesktop(item);
                     break;
                 case 'explorer-open':
                     if (item) this.openItem(item);
@@ -2261,6 +2278,41 @@ class ExplorerApplet {
         if (item.targetKind === 'workspace') return 'Open Workspace';
         if (item.targetKind === 'system-folder') return 'Open';
         return isFolder ? 'Open' : 'Open';
+    }
+
+    _getSystemFolderShortcutKey(item) {
+        if (!item?.name) return null;
+        if (item.name === 'Trash') return 'trash';
+        return item.name.toLowerCase();
+    }
+
+    _hasSystemFolderDesktopShortcut(item) {
+        if (typeof desktopShortcuts === 'undefined' || !item) return false;
+        const navPath = item.navPath || this.resolveNavigationPath(item);
+        if (!navPath) return false;
+        return (desktopShortcuts.shortcuts || []).some((shortcut) =>
+            shortcut.type === 'system-folder' && shortcut.data?.navPath === navPath
+        );
+    }
+
+    async _addSystemFolderToDesktop(item) {
+        if (typeof desktopShortcuts === 'undefined' || !item) return;
+        const navPath = item.navPath || this.resolveNavigationPath(item);
+        if (!navPath) return;
+        if (this._hasSystemFolderDesktopShortcut(item)) {
+            showGlassToast('info', 'Desktop', 'Already on Desktop', false, 3000);
+            return;
+        }
+        await desktopShortcuts.addShortcut({
+            name: item.name,
+            type: 'system-folder',
+            data: {
+                navPath,
+                systemKey: this._getSystemFolderShortcutKey(item),
+                icon: item.icon || undefined
+            }
+        });
+        showGlassToast('success', 'Desktop', `Added ${item.name} to desktop`, false, 3000);
     }
 
     _getSystemFolderAppMenuItem(item) {

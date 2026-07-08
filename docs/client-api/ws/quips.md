@@ -10,9 +10,11 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 |---|---|---|---|
 | `generation_quips_clear` | `generation_quips_clear_response` | admin/destructive | Handler: quips |
 | `generation_quips_run` | `generation_quips_run_response` | admin/destructive | Handler: quips |
+| `get_app_options` | `get_app_options_response` | session | Handler: app |
 | `get_generation_quips` | `get_generation_quips_response` | session | Handler: quips |
 | `get_generation_quips_status` | `get_generation_quips_status_response` | session | Handler: quips |
 | `get_generation_quips_wiki` | `get_generation_quips_wiki_response` | session | Handler: quips |
+| `retry_account_data` | `retry_account_data_response` | session | Handler: app |
 
 ## Response envelope
 
@@ -32,6 +34,8 @@ Errors use `type: "error"` via `sendError()` — see [websocket.md](../websocket
 ## Read-only restrictions
 
 Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveOperation()` return `READONLY_RESTRICTED` for `userType: "readonly"` sessions.
+
+---
 
 ---
 
@@ -66,6 +70,22 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 | `requestId` | Optional |
 
 **Success response:** `generation_quips_run_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `get_app_options`
+
+**Auth:** Session required
+
+**Handler:** modules/ws/handlers/160-quipsHandler.js → `app`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+
+**Success response:** `get_app_options_response`
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
@@ -114,6 +134,22 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 | `requestId` | Optional |
 
 **Success response:** `get_generation_quips_wiki_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `retry_account_data`
+
+**Auth:** Session required
+
+**Handler:** modules/ws/handlers/160-quipsHandler.js → `app`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+
+**Success response:** `retry_account_data_response`
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 

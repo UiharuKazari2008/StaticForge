@@ -11,7 +11,6 @@
     { "path": ["*", "textareaFont"], "type": "string", "label": "Textarea Font", "editorType": "input", "description": "Monospace font for prompt fields or null for default" },
     { "path": ["*", "wallpaper"], "type": "string", "label": "Wallpaper", "editorType": "input", "description": "Desktop wallpaper path (type:id or url:… format)" },
     { "path": ["*", "wallpaperPosition"], "type": "string", "label": "Wallpaper Position", "editorType": "input", "description": "CSS background-position for desktop wallpaper" },
-    { "path": ["*", "trashDesktopShortcut"], "type": "boolean", "label": "Trash Desktop Shortcut", "description": "When true, show a Trash folder shortcut on the workspace desktop" },
     { "path": ["*", "backgroundImage"], "type": "string", "label": "Background Image", "editorType": "input", "description": "Legacy gallery background image path" },
     { "path": ["*", "backgroundOpacity"], "type": "number", "label": "Background Opacity", "description": "Gallery background overlay opacity (0–1)" },
     {

@@ -1,0 +1,151 @@
+/* Replication DSAP — scoped under Data Management */
+[data-dsap="data-mgmt"] .data-mgmt-repl-layout { display: flex; flex-direction: column; gap: 12px; }
+[data-dsap="data-mgmt"] .data-mgmt-status-repl-host { margin-bottom: 12px; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-status-link { margin: 8px 0 0; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-lead { margin: 0 0 10px; font-size: 0.85rem; line-height: 1.45; color: #444; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-services { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-service {
+    flex: 1 1 140px;
+    min-width: 120px;
+    padding: 6px 8px;
+    border: 1px solid #b8c4d0;
+    background: #fff;
+    font-size: 0.8rem;
+}
+[data-dsap="data-mgmt"] .data-mgmt-repl-service-label { display: block; font-weight: 600; color: var(--dsap-smf-context-bg, #336699); margin-bottom: 2px; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-service-val { display: block; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-service-val.ok { color: #228822; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-service-val.warn { color: #996600; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-service-val.error { color: #aa2222; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-children-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 4px; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-children-table th,
+[data-dsap="data-mgmt"] .data-mgmt-repl-children-table td { padding: 4px 6px; border: 1px solid #e2e8ee; text-align: left; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-children-table thead th { background: #f4f6f8; font-weight: 600; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-avail.ok { color: #228822; font-weight: 600; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-avail.warn { color: #996600; font-weight: 600; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-avail.error { color: #aa2222; font-weight: 600; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-children-empty { color: #666; font-size: 0.85rem; margin: 4px 0; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-panel-host { margin-top: 4px; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-panel-host .replication-cargo-panel,
+[data-dsap="data-mgmt"] .data-mgmt-repl-panel-host .replication-sync-panel { margin-top: 0; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-settings-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 6px; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-settings-row .dsap-smf-btn { white-space: nowrap; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-airgapped-on { background: #fff3cd; border-color: #e0c060; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-breadcrumb {
+    font-size: 0.82rem;
+    margin: 0 0 10px;
+    color: #555;
+}
+[data-dsap="data-mgmt"] .data-mgmt-repl-crumb-link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--dsap-smf-context-bg, #336699);
+    cursor: pointer;
+    font: inherit;
+    text-decoration: underline;
+}
+[data-dsap="data-mgmt"] .data-mgmt-repl-crumb-sep { margin: 0 6px; color: #888; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-nav-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 8px;
+    margin-top: 4px;
+}
+[data-dsap="data-mgmt"] .data-mgmt-repl-nav-btn {
+    min-height: 42px;
+    justify-content: center;
+    text-align: center;
+}
+[data-dsap="data-mgmt"] .data-mgmt-repl-nav-note {
+    display: block;
+    margin-top: 6px;
+    font-size: 0.8rem;
+    color: #666;
+}
+[data-dsap="data-mgmt"] .data-mgmt-repl-cta {
+    padding: 12px 14px;
+    border: 1px solid #b8c4d0;
+    background: #fff;
+    margin: 8px 0;
+}
+[data-dsap="data-mgmt"] .data-mgmt-repl-cta p { margin: 0 0 10px; font-size: 0.85rem; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-progress {
+    padding: 12px 14px;
+    border: 1px solid #b8c4d0;
+    background: #fff;
+    margin: 8px 0;
+}
+[data-dsap="data-mgmt"] .data-mgmt-repl-progress-phase { font-weight: 600; margin-bottom: 8px; color: var(--dsap-smf-context-bg, #336699); }
+[data-dsap="data-mgmt"] .data-mgmt-repl-progress-bar {
+    height: 10px;
+    background: #e2e8ee;
+    border: 1px solid #c5ced8;
+    margin-bottom: 4px;
+}
+[data-dsap="data-mgmt"] .data-mgmt-repl-progress-fill {
+    height: 100%;
+    background: var(--dsap-smf-tab-accent, #ff8c00);
+    transition: width 0.2s ease;
+}
+[data-dsap="data-mgmt"] .data-mgmt-repl-progress-count { font-size: 0.8rem; color: #555; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-progress-path {
+    margin-top: 6px;
+    font-size: 0.78rem;
+    color: #666;
+    word-break: break-all;
+}
+[data-dsap="data-mgmt"] .data-mgmt-repl-dialog-form { font-size: 0.85rem; line-height: 1.45; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-dialog-form p { margin: 0 0 8px; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-dialog-field { margin-bottom: 10px; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-dialog-field label { display: block; font-weight: 600; margin-bottom: 3px; color: var(--dsap-smf-context-bg, #336699); }
+[data-dsap="data-mgmt"] .data-mgmt-repl-dialog-field input[type="text"],
+[data-dsap="data-mgmt"] .data-mgmt-repl-dialog-field input[type="password"],
+[data-dsap="data-mgmt"] .data-mgmt-repl-dialog-field input[type="number"] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 4px 6px;
+    border: 1px solid #b8c4d0;
+    font-size: 0.85rem;
+}
+[data-dsap="data-mgmt"] .data-mgmt-repl-clone-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 4px 10px;
+    margin: 6px 0;
+}
+[data-dsap="data-mgmt"] .data-mgmt-repl-clone-grid label {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    font-weight: normal;
+    cursor: pointer;
+}
+[data-dsap="data-mgmt"] .data-mgmt-repl-clone-grid input[type="checkbox"] { margin-top: 2px; flex-shrink: 0; width: auto; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-clone-hint { font-size: 0.78rem; color: #666; margin: 0 0 6px; }
+
+.modal-content .data-mgmt-repl-clone-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 4px 10px;
+    margin: 6px 0;
+}
+.modal-content .data-mgmt-repl-clone-grid label {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    font-weight: normal;
+    cursor: pointer;
+}
+.modal-content .data-mgmt-repl-clone-grid input[type="checkbox"] {
+    margin-top: 2px;
+    flex-shrink: 0;
+    width: auto;
+}
+[data-dsap="data-mgmt"] .data-mgmt-repl-download-links { margin-top: 8px; font-size: 0.85rem; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-download-links a { margin-right: 12px; }
+[data-dsap="data-mgmt"] .data-mgmt-repl-maint-active { color: #996600; font-weight: 600; }
+[data-dsap="data-mgmt"] #dataMgmtReplicationSepHost .replication-sep-token-row { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+[data-dsap="data-mgmt"] #dataMgmtReplicationSepHost .dsap-smf-input { flex: 1; min-width: 0; }
+[data-dsap="data-mgmt"] #dataMgmtReplicationSepHost pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 11px; }
+[data-dsap="data-mgmt"] .replication-sync-hint { font-size: 0.82rem; color: #666; margin: 6px 0 0; }
