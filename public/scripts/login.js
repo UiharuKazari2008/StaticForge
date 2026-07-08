@@ -2,6 +2,7 @@
 class LoginPage {
     constructor() {
         this.errorMessage = document.getElementById('errorMessage');
+        this.pinStatus = document.getElementById('pinStatus');
         this.currentPin = '';
         this.isLoading = false;
         this.pinReady = false;
@@ -55,15 +56,32 @@ class LoginPage {
         document.addEventListener('keydown', (e) => {
             if (!this.pinReady || this.isLoading) return;
             if (e.key >= '0' && e.key <= '9') {
+                this.triggerButtonFeedback(e.key);
                 this.addDigit(e.key);
             } else if (e.key === 'Enter') {
                 if (this.rollingBuffer.length === 6) {
                     this.handleLogin();
                 }
             } else if (e.key === 'Backspace') {
+                this.triggerButtonFeedback('backspace');
                 this.removeDigit();
+            } else if (e.key === 'Escape') {
+                this.triggerButtonFeedback('clear');
+                this.clearPin();
             }
         });
+    }
+
+    triggerButtonFeedback(keyOrAction) {
+        const selector = /^\d$/.test(keyOrAction)
+            ? `.pin-button[data-number="${keyOrAction}"]`
+            : `.pin-button[data-action="${keyOrAction}"]`;
+
+        const button = this.loginContainer.querySelector(selector);
+        if (button) {
+            button.classList.add('active');
+            setTimeout(() => button.classList.remove('active'), 150);
+        }
     }
 
     setupPinPadListener() {
@@ -105,8 +123,15 @@ class LoginPage {
 
     updateAriaAttributes() {
         const isMinimized = this.loginContainer.classList.contains('minimize');
+        const count = this.rollingBuffer.length;
+        const countLabel = count > 0 ? `, ${count} digit${count === 1 ? '' : 's'} entered` : '';
+
         this.pinDisplay.setAttribute('aria-expanded', !isMinimized);
-        this.pinDisplay.setAttribute('aria-label', isMinimized ? 'Show PIN pad' : 'Hide PIN pad');
+        this.pinDisplay.setAttribute('aria-label', (isMinimized ? 'Show PIN pad' : 'Hide PIN pad') + countLabel);
+
+        if (this.pinStatus) {
+            this.pinStatus.textContent = count > 0 ? `${count} digit${count === 1 ? '' : 's'} entered` : 'PIN cleared';
+        }
     }
 
     addDigit(digit) {
@@ -428,6 +453,7 @@ class LoginPage {
                 dot.classList.remove('filled');
             }
         });
+        this.updateAriaAttributes();
     }
 
     async handleLogin() {

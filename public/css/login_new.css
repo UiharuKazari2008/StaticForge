@@ -319,6 +319,17 @@ body.login-booting .login-product-name {
     align-items: center;
     justify-content: center;
     border: 2px solid rgba(255, 255, 255, 0.25);
+    will-change: transform, background-color;
+}
+
+.pin-button:active,
+.pin-button.active {
+    transform: scale(0.92);
+}
+
+.pin-button.active {
+    background-color: rgb(255 255 255 / 90%) !important;
+    border-color: rgba(255, 255, 255, 0.5) !important;
 }
 
 .pin-button:focus-visible {
@@ -374,6 +385,18 @@ body.login-booting .login-product-name {
 
 .hidden {
     display: none;
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
 }
 
 /* Mobile responsiveness */
