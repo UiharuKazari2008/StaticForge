@@ -10,10 +10,12 @@ const TIERS = ['hour', 'day', 'month'];
 const TIMESTAMP_PATTERN = /^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})\.(\d{3})/;
 
 const DEFAULT_GRANDFATHERING = {
-    hour: { max: 24, rollover: 'day' },
-    day: { max: 7, rollover: 'month' },
-    month: { max: 12, rollover: null }
+    hour: { max: 4, rollover: null, perBucketMax: 1 },
+    day: { max: 0, rollover: null, perBucketMax: 1 },
+    month: { max: 0, rollover: null, perBucketMax: 1 }
 };
+
+const CHECKPOINT_FILE_EXT_PATTERN = /^(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.\d{3})(\..+)$/;
 
 let _globalResourcesRef = null;
 
@@ -21,7 +23,18 @@ function setGlobalResourcesRef(globalResources) {
     _globalResourcesRef = globalResources || null;
 }
 
-function getCheckpointSettings(globalResources) {
+function mergeGrandfatheringConfig(base, patch) {
+    const result = { ...base };
+    if (!patch) return result;
+    for (const tier of TIERS) {
+        if (patch[tier]) {
+            result[tier] = { ...(result[tier] || DEFAULT_GRANDFATHERING[tier]), ...patch[tier] };
+        }
+    }
+    return result;
+}
+
+function getCheckpointSettings(globalResources, resourceKey = null) {
     let cfg = {};
     const gr = globalResources || _globalResourcesRef;
     try {
@@ -31,10 +44,14 @@ function getCheckpointSettings(globalResources) {
     } catch {
         cfg = {};
     }
-    const grandfathering = { ...DEFAULT_GRANDFATHERING, ...(cfg.grandfathering || {}) };
+    let grandfathering = mergeGrandfatheringConfig(DEFAULT_GRANDFATHERING, cfg.grandfathering);
+    if (resourceKey && cfg.overrides?.[resourceKey]) {
+        grandfathering = mergeGrandfatheringConfig(grandfathering, cfg.overrides[resourceKey]);
+    }
     return {
         enabled: cfg.enabled !== false,
-        grandfathering
+        grandfathering,
+        resourceKey: resourceKey || null
     };
 }
 
@@ -224,38 +241,72 @@ function deleteCheckpointFile(fileEntry) {
     }
 }
 
+function getFileBucketDate(file) {
+    const fromName = parseFilenameTimestamp(file.basename);
+    if (fromName && !Number.isNaN(fromName.getTime())) return fromName;
+    if (file.mtime && !Number.isNaN(file.mtime.getTime())) return file.mtime;
+    return null;
+}
+
+function rollOrDeleteCheckpoint(file, tierConfig, checkpointDir) {
+    const rollover = tierConfig.rollover;
+    if (rollover && TIERS.includes(rollover)) {
+        moveCheckpointToTier(file, checkpointDir, rollover);
+    } else {
+        deleteCheckpointFile(file);
+    }
+}
+
+/**
+ * Apply retention for one tier.
+ * max = number of time buckets to keep at this tier (e.g. 4 recent hours).
+ * perBucketMax = newest snapshots kept within the same bucket (default 1).
+ */
 function applyTierRetention(files, tier, tierConfig, checkpointDir) {
     if (!tierConfig || tierConfig.max == null || tierConfig.max <= 0) return;
 
+    const perBucketMax = Math.max(1, tierConfig.perBucketMax ?? 1);
     const buckets = new Map();
     for (const file of files) {
-        const date = parseFilenameTimestamp(file.basename);
+        const date = getFileBucketDate(file);
         const key = bucketKeyForTier(date, tier);
         if (!key) continue;
         if (!buckets.has(key)) buckets.set(key, []);
         buckets.get(key).push(file);
     }
 
+    const bucketReps = [];
     for (const bucketFiles of buckets.values()) {
         bucketFiles.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
-        if (bucketFiles.length <= tierConfig.max) continue;
-
-        const toRoll = bucketFiles.slice(tierConfig.max);
-        toRoll.sort((a, b) => a.mtime.getTime() - b.mtime.getTime());
-
-        for (const file of toRoll) {
-            const rollover = tierConfig.rollover;
-            if (rollover && TIERS.includes(rollover)) {
-                moveCheckpointToTier(file, checkpointDir, rollover);
-            } else {
-                deleteCheckpointFile(file);
-            }
+        const kept = bucketFiles.slice(0, perBucketMax);
+        const excess = bucketFiles.slice(perBucketMax);
+        for (const file of excess) {
+            rollOrDeleteCheckpoint(file, tierConfig, checkpointDir);
         }
+        if (kept.length > 0) {
+            bucketReps.push(kept[0]);
+        }
+    }
+
+    if (bucketReps.length <= tierConfig.max) return;
+
+    bucketReps.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+    const toRoll = bucketReps.slice(tierConfig.max);
+    toRoll.sort((a, b) => a.mtime.getTime() - b.mtime.getTime());
+    for (const file of toRoll) {
+        rollOrDeleteCheckpoint(file, tierConfig, checkpointDir);
     }
 }
 
-function applyGrandfathering(checkpointDir, ext, globalResources, timestampPattern) {
-    const settings = getCheckpointSettings(globalResources);
+function purgeTierCheckpoints(checkpointDir, tier, ext, timestampPattern) {
+    const files = listTierCheckpointFiles(checkpointDir, tier, ext, timestampPattern);
+    for (const file of files) {
+        deleteCheckpointFile(file);
+    }
+}
+
+function applyGrandfathering(checkpointDir, ext, globalResources, timestampPattern, resourceKey = null) {
+    const settings = getCheckpointSettings(globalResources, resourceKey);
     if (!settings.enabled) return;
 
     const pattern = timestampPattern || TIMESTAMP_PATTERN;
@@ -264,8 +315,13 @@ function applyGrandfathering(checkpointDir, ext, globalResources, timestampPatte
 
     const gf = settings.grandfathering;
     for (const tier of TIERS) {
+        const tierConfig = gf[tier] || DEFAULT_GRANDFATHERING[tier];
+        if (!tierConfig || tierConfig.max == null || tierConfig.max <= 0) {
+            purgeTierCheckpoints(checkpointDir, tier, ext, pattern);
+            continue;
+        }
         const tierFiles = listTierCheckpointFiles(checkpointDir, tier, ext, pattern);
-        applyTierRetention(tierFiles, tier, gf[tier] || DEFAULT_GRANDFATHERING[tier], checkpointDir);
+        applyTierRetention(tierFiles, tier, tierConfig, checkpointDir);
     }
 }
 
@@ -275,7 +331,7 @@ function newCheckpointRelativePath(filename) {
 }
 
 function applyBundleGrandfathering(bundlesDir, globalResources) {
-    const settings = getCheckpointSettings(globalResources);
+    const settings = getCheckpointSettings(globalResources, 'bundles');
     if (!settings.enabled || !fs.existsSync(bundlesDir)) return;
 
     ensureTierDirs(bundlesDir);
@@ -297,63 +353,172 @@ function applyBundleGrandfathering(bundlesDir, globalResources) {
     }
 
     const gf = settings.grandfathering;
-    const manifests = [];
 
-    for (const tier of TIERS) {
-        const dir = tierDir(bundlesDir, tier);
-        if (!fs.existsSync(dir)) continue;
-        for (const name of fs.readdirSync(dir)) {
-            if (!/^[a-f0-9-]{36}\.json$/i.test(name)) continue;
-            const filePath = path.join(dir, name);
-            let createdAt = null;
-            try {
-                const raw = fs.readFileSync(filePath, 'utf8');
-                const data = JSON.parse(raw);
-                createdAt = data.createdAt ? new Date(data.createdAt) : fs.statSync(filePath).mtime;
-            } catch {
-                createdAt = fs.statSync(filePath).mtime;
+    const loadBundleManifests = () => {
+        const manifests = [];
+        for (const tier of TIERS) {
+            const dir = tierDir(bundlesDir, tier);
+            if (!fs.existsSync(dir)) continue;
+            for (const name of fs.readdirSync(dir)) {
+                if (!/^[a-f0-9-]{36}\.json$/i.test(name)) continue;
+                const filePath = path.join(dir, name);
+                let createdAt = null;
+                try {
+                    const raw = fs.readFileSync(filePath, 'utf8');
+                    const data = JSON.parse(raw);
+                    createdAt = data.createdAt ? new Date(data.createdAt) : fs.statSync(filePath).mtime;
+                } catch {
+                    createdAt = fs.statSync(filePath).mtime;
+                }
+                manifests.push({
+                    filename: `${tier}/${name}`,
+                    basename: name,
+                    tier,
+                    filePath,
+                    mtime: createdAt,
+                    size: fs.statSync(filePath).size
+                });
             }
-            manifests.push({
-                filename: `${tier}/${name}`,
-                basename: name,
-                tier,
-                filePath,
-                mtime: createdAt,
-                size: fs.statSync(filePath).size
-            });
         }
-    }
-
-    const bucketManifests = (tier) => {
-        const map = new Map();
-        for (const m of manifests.filter((x) => x.tier === tier)) {
-            const key = bucketKeyForTier(m.mtime, tier);
-            if (!key) continue;
-            if (!map.has(key)) map.set(key, []);
-            map.get(key).push(m);
-        }
-        return map;
+        return manifests;
     };
 
     for (const tier of TIERS) {
-        const tierConfig = gf[tier] || DEFAULT_GRANDFATHERING[tier];
-        if (!tierConfig?.max || tierConfig.max <= 0) continue;
-        const buckets = bucketManifests(tier);
-        for (const bucketFiles of buckets.values()) {
-            bucketFiles.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
-            if (bucketFiles.length <= tierConfig.max) continue;
-            const toRoll = bucketFiles.slice(tierConfig.max);
-            toRoll.sort((a, b) => a.mtime.getTime() - b.mtime.getTime());
-            for (const file of toRoll) {
-                if (tierConfig.rollover && TIERS.includes(tierConfig.rollover)) {
-                    moveCheckpointToTier(file, bundlesDir, tierConfig.rollover);
-                    file.tier = tierConfig.rollover;
-                } else {
-                    deleteCheckpointFile(file);
-                }
-            }
+        const tierFiles = loadBundleManifests().filter((m) => m.tier === tier);
+        applyTierRetention(tierFiles, tier, gf[tier] || DEFAULT_GRANDFATHERING[tier], bundlesDir);
+    }
+}
+
+function detectCheckpointExt(checkpointDir) {
+    const tryDir = (dir) => {
+        if (!fs.existsSync(dir)) return null;
+        for (const name of fs.readdirSync(dir)) {
+            if (name.startsWith('branch_')) continue;
+            const match = name.match(CHECKPOINT_FILE_EXT_PATTERN);
+            if (match) return match[2];
+        }
+        return null;
+    };
+
+    for (const tier of TIERS) {
+        const ext = tryDir(tierDir(checkpointDir, tier));
+        if (ext) return ext;
+    }
+    return tryDir(checkpointDir);
+}
+
+function cleanupLegacyFlatDatabaseCheckpoints(checkpointDir, dbName, dbExt, globalResources = null, resourceKey = null) {
+    if (!fs.existsSync(checkpointDir) || !dbName || !dbExt) return;
+
+    let hasTiered = false;
+    for (const tier of TIERS) {
+        const dir = tierDir(checkpointDir, tier);
+        if (!fs.existsSync(dir)) continue;
+        if (fs.readdirSync(dir).some((n) => TIMESTAMP_PATTERN.test(n))) {
+            hasTiered = true;
+            break;
         }
     }
+
+    const escapedName = dbName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedExt = dbExt.replace('.', '\\.');
+    const legacyPattern = new RegExp(`^${escapedName}_checkpoint_.+${escapedExt}$`);
+    const legacyFiles = [];
+
+    for (const name of fs.readdirSync(checkpointDir)) {
+        if (!legacyPattern.test(name)) continue;
+        const filePath = path.join(checkpointDir, name);
+        try {
+            const stats = fs.statSync(filePath);
+            legacyFiles.push({ name, filePath, mtime: stats.mtime });
+        } catch {
+            // skip unreadable
+        }
+    }
+    if (legacyFiles.length === 0) return;
+
+    if (hasTiered) {
+        for (const file of legacyFiles) {
+            try {
+                fs.unlinkSync(file.filePath);
+                deleteCheckpointSidecars(file.filePath);
+                console.log(`🗑️ Removed legacy flat checkpoint: ${file.name}`);
+            } catch (err) {
+                console.warn(`⚠️ Could not remove legacy checkpoint ${file.name}:`, err.message);
+            }
+        }
+        return;
+    }
+
+    const settings = getCheckpointSettings(globalResources, resourceKey || dbName);
+    const maxKeep = settings.grandfathering?.hour?.max ?? DEFAULT_GRANDFATHERING.hour.max;
+    if (legacyFiles.length <= maxKeep) return;
+
+    legacyFiles.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+    for (const file of legacyFiles.slice(maxKeep)) {
+        try {
+            fs.unlinkSync(file.filePath);
+            deleteCheckpointSidecars(file.filePath);
+            console.log(`🗑️ Removed legacy flat checkpoint: ${file.name}`);
+        } catch (err) {
+            console.warn(`⚠️ Could not remove legacy checkpoint ${file.name}:`, err.message);
+        }
+    }
+}
+
+/**
+ * Run tiered retention across every resource under .cache/checkpoints/ (boot + repair).
+ */
+function reconcileAllCheckpointRetention(globalResources) {
+    const settings = getCheckpointSettings(globalResources);
+    if (!settings.enabled) return { dirs: 0 };
+
+    const gr = globalResources || _globalResourcesRef;
+    let cacheRoot;
+    try {
+        cacheRoot = gr?.getPath?.('cache') || path.join(__dirname, '..', '.cache');
+    } catch {
+        cacheRoot = path.join(__dirname, '..', '.cache');
+    }
+
+    const checkpointsRoot = path.join(cacheRoot, 'checkpoints');
+    if (!fs.existsSync(checkpointsRoot)) return { dirs: 0 };
+
+    const { removeOrphanCheckpointSidecars } = require('./checkpointPaths');
+    const isoStyle = /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.\d{3}\./;
+    let dirs = 0;
+
+    for (const name of fs.readdirSync(checkpointsRoot)) {
+        const dir = path.join(checkpointsRoot, name);
+        let stat;
+        try {
+            stat = fs.statSync(dir);
+        } catch {
+            continue;
+        }
+        if (!stat.isDirectory()) continue;
+
+        if (name === 'bundles') {
+            applyBundleGrandfathering(dir, globalResources);
+            dirs++;
+            continue;
+        }
+
+        const ext = detectCheckpointExt(dir);
+        if (!ext) continue;
+
+        applyGrandfathering(dir, ext, globalResources, isoStyle, name);
+        if (ext === '.db') {
+            cleanupLegacyFlatDatabaseCheckpoints(dir, name, ext, globalResources, name);
+        }
+        removeOrphanCheckpointSidecars(dir);
+        for (const tier of TIERS) {
+            removeOrphanCheckpointSidecars(tierDir(dir, tier));
+        }
+        dirs++;
+    }
+
+    return { dirs };
 }
 
 function resolveBundleManifestPath(bundlesDir, id) {
@@ -373,6 +538,7 @@ module.exports = {
     DEFAULT_GRANDFATHERING,
     setGlobalResourcesRef,
     getCheckpointSettings,
+    mergeGrandfatheringConfig,
     isGrandfatheringEnabled,
     tierDir,
     parseFilenameTimestamp,
@@ -383,8 +549,14 @@ module.exports = {
     listAllCheckpointFiles,
     listTierCheckpointFiles,
     applyGrandfathering,
+    purgeTierCheckpoints,
+    applyTierRetention,
+    rollOrDeleteCheckpoint,
     newCheckpointRelativePath,
     applyBundleGrandfathering,
+    reconcileAllCheckpointRetention,
+    detectCheckpointExt,
+    cleanupLegacyFlatDatabaseCheckpoints,
     resolveBundleManifestPath,
     deleteCheckpointSidecars,
     ensureTierDirs

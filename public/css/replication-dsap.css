@@ -95,6 +95,19 @@
     color: #666;
     word-break: break-all;
 }
+[data-dsap="data-mgmt"] .data-mgmt-indexing-host {
+    margin: 8px 0 16px;
+}
+[data-dsap="data-mgmt"] .data-mgmt-indexing-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+[data-dsap="data-mgmt"] .data-mgmt-indexing-status.ok { color: #2e7d32; font-weight: 600; }
+[data-dsap="data-mgmt"] .data-mgmt-indexing-status.pending { color: #ef6c00; font-weight: 600; }
+[data-dsap="data-mgmt"] .data-mgmt-indexing-status.indexing { color: #1565c0; font-weight: 600; }
+[data-dsap="data-mgmt"] .data-mgmt-indexing-status.paused { color: #f57c00; font-weight: 600; }
 [data-dsap="data-mgmt"] .data-mgmt-repl-dialog-form { font-size: 0.85rem; line-height: 1.45; }
 [data-dsap="data-mgmt"] .data-mgmt-repl-dialog-form p { margin: 0 0 8px; }
 [data-dsap="data-mgmt"] .data-mgmt-repl-dialog-field { margin-bottom: 10px; }

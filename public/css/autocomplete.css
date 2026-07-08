@@ -690,6 +690,7 @@ textarea {
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+    scroll-behavior: auto;
 }
 
 /* Key guide pinned to the bottom of the autofill window (sibling of the list so it survives detail-view innerHTML swaps) */
@@ -1748,6 +1749,7 @@ textarea {
 .character-autofill-tool-scrollable {
     height: 100%;
     min-height: 0;
+    scroll-behavior: auto;
 }
 
 .character-autofill-tool-shell.detached-tool-active .character-autocomplete-list {
@@ -1800,19 +1802,6 @@ textarea {
 .character-autofill-tool-shell.detached-tool-active > .search-status-display.search-done,
 .character-autofill-tool-shell.detached-tool-active > .autofill-tool-status-bar.search-done {
     animation: none !important;
-}
-
-.character-autocomplete-item.mouse-hover-selected:not(.selected) {
-    background: rgb(255 68 0 / 18%);
-}
-
-.spell-check-word.mouse-hover-selected:not(.selected),
-.word-lookup-word-row.mouse-hover-selected:not(.selected) {
-    background: rgb(255 68 0 / 12%);
-}
-
-.suggestion-btn.mouse-hover-selected:not(.selected) {
-    background: rgb(255 68 0 / 28%);
 }
 
 .prompt-textarea-container .search-highlight-overlay .autofill-search-highlight,

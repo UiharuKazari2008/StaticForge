@@ -121,7 +121,7 @@ class JSONCheckpointManager {
         try {
             const timestampPattern = /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.\d{3}\./;
             if (isGrandfatheringEnabled(this.globalResources)) {
-                applyGrandfathering(this.checkpointDir, this.fileExt, this.globalResources, timestampPattern);
+                applyGrandfathering(this.checkpointDir, this.fileExt, this.globalResources, timestampPattern, this.fileName);
                 return;
             }
 

@@ -542,8 +542,8 @@ class PromptTextareaToolbar {
             { value: 'search', display: 'Search', icon: 'fas fa-search', toolbarWide: true },
             { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-atlas', toolbarWide: true },
             { value: 'lowercase', display: 'Lowercase', icon: 'fas fa-font' },
-            { value: 'emphasis', display: 'Edit Emphasis', icon: 'fas fa-scale-unbalanced-flip' },
-            { value: 'emphasis-groups-tool', display: 'Emphasis Groups', icon: 'fas fa-sliders' },
+            { value: 'emphasis', display: 'Edit Emphasis', icon: 'fas fa-dial' },
+            { value: 'emphasis-groups-tool', display: 'Weight Rack', icon: 'fas fa-weight-scale' },
             { value: 'clear-emphasis', display: 'Reset Emphasis', icon: 'fas fa-eraser' },
             { value: 'split-emphasis', display: 'Split Emphasis', icon: 'fas fa-scissors', toolbarWide: true },
             { value: 'request-body-replacements', display: 'Text Expanders', icon: 'fas fa-book-font' }
@@ -1052,7 +1052,7 @@ class PromptTextareaToolbar {
 
     clearSearchHighlightsForTextarea(textarea) {
         if (!textarea) return;
-        // getPromptTextareaOverlayHost: public/scripts/comp/emphasisManager.js
+        // getPromptTextareaOverlayHost: public/scripts/comp/emphasisParse.js
         const host = getPromptTextareaOverlayHost(textarea);
         const highlightOverlay = host && host.querySelector(':scope > .search-highlight-overlay');
         if (highlightOverlay) {
@@ -1098,7 +1098,7 @@ class PromptTextareaToolbar {
             return;
         }
 
-        // ensurePromptSearchHighlightOverlay: public/scripts/comp/emphasisManager.js
+        // ensurePromptSearchHighlightOverlay: public/scripts/comp/emphasisParse.js
         const highlightOverlay = ensurePromptSearchHighlightOverlay(textarea);
         if (!highlightOverlay) return;
 
@@ -1836,7 +1836,8 @@ class PromptTextareaToolbar {
         const valueEl = preview.querySelector('.direct-emphasis-preview-value');
         const typeEl = preview.querySelector('.emphasis-type');
         if (valueEl) {
-            // formatEmphasisWeightDisplay, getEmphasisToolbarColor: public/scripts/comp/emphasisManager.js
+            // formatEmphasisWeightDisplay: public/scripts/comp/emphasisWeightMath.js
+            // getEmphasisToolbarColor: public/scripts/comp/emphasisHighlight.js
             valueEl.textContent = formatEmphasisWeightDisplay(numericValue);
             valueEl.style.color = getEmphasisToolbarColor(numericValue);
         }
@@ -1948,9 +1949,9 @@ class PromptTextareaToolbar {
                     valueElement.style.color = getEmphasisToolbarColor('---');
                 } else {
                     const displayValue = typeof emphasisValue === 'string' ? parseFloat(emphasisValue) : emphasisValue;
-                    // formatEmphasisWeightDisplay: public/scripts/comp/emphasisManager.js
+                    // formatEmphasisWeightDisplay: public/scripts/comp/emphasisWeightMath.js
                     valueElement.textContent = formatEmphasisWeightDisplay(displayValue);
-                    // getEmphasisToolbarColor: public/scripts/comp/emphasisManager.js
+                    // getEmphasisToolbarColor: public/scripts/comp/emphasisHighlight.js
                     valueElement.style.color = getEmphasisToolbarColor(displayValue);
                 }
             }
@@ -2108,13 +2109,14 @@ class PromptTextareaToolbar {
                 return;
             }
 
-            // Handle ALT + S for splitting emphasis blocks
-            if (e.altKey && e.key === 's') {
+            // Handle ALT + S for splitting emphasis blocks; ALT + , adds comma between split
+            if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 's' || e.key === 'S' || e.key === ',')) {
                 e.preventDefault();
 
                 const emphasisInfo = isCursorInsideEmphasisBlock(textarea);
                 if (emphasisInfo) {
-                    const success = splitEmphasisBlock(textarea);
+                    const addComma = e.key === ',';
+                    const success = splitEmphasisBlock(textarea, { addComma });
                     if (success) {
                         if (window.updateEmphasisHighlighting) {
                             window.updateEmphasisHighlighting(textarea);

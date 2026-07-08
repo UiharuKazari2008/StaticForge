@@ -36,10 +36,111 @@ const AUTOCOMPLETE_WHEEL_MAX_STEPS_PER_EVENT = 4;
 // Coalesce selection scrolling while navigating quickly (prevents scroll jitter)
 let pendingSelectionScrollRaf = 0;
 let pendingSelectionScrollItem = null;
-const AUTOCOMPLETE_SCROLL_MARGIN_PX = 12;
+let pendingKeyguideRaf = 0;
+let autofillNavActivityTimer = null;
+let lastRenderedAutocompleteIndex = -2;
+let autofillResultsListVersion = 0;
+let autofillResultsListCache = null;
+const AUTOFILL_NAV_ACTIVITY_SETTLE_MS = 120;
 const AUTOFILL_WIKI_PREVIEW_REVEAL_MS = 700;
 let autofillWikiPreviewRevealTimer = null;
 let autofillWikiPreviewRevealIndex = -1;
+
+function invalidateAutofillResultsCache() {
+    autofillResultsListVersion++;
+    autofillResultsListCache = null;
+    lastRenderedAutocompleteIndex = -2;
+}
+
+function markAutofillListNavigationActivity() {
+    userActivelyNavigating = true;
+    if (autofillNavActivityTimer) {
+        clearTimeout(autofillNavActivityTimer);
+    }
+    autofillNavActivityTimer = setTimeout(() => {
+        autofillNavActivityTimer = null;
+        userActivelyNavigating = false;
+        flushAutofillNavigationDeferredUpdates();
+    }, AUTOFILL_NAV_ACTIVITY_SETTLE_MS);
+}
+
+function flushAutofillNavigationDeferredUpdates() {
+    flushAutofillKeyguideUpdate();
+    // updateEmphasisTooltipVisibility: public/scripts/comp/emphasisHighlight.js
+    updateEmphasisTooltipVisibility();
+    if (selectedCharacterAutocompleteIndex >= 0) {
+        const items = getAutocompleteResultItems();
+        const item = items[selectedCharacterAutocompleteIndex];
+        if (item) {
+            scrollToAutocompleteOption(item);
+            scheduleAutofillWikiPreviewReveal(item, selectedCharacterAutocompleteIndex);
+        }
+    }
+}
+
+function scheduleAutofillKeyguideUpdate() {
+    if (pendingKeyguideRaf) return;
+    pendingKeyguideRaf = requestAnimationFrame(() => {
+        pendingKeyguideRaf = 0;
+        if (!userActivelyNavigating) {
+            updateAutofillKeyguide();
+        }
+    });
+}
+
+function flushAutofillKeyguideUpdate() {
+    if (pendingKeyguideRaf) {
+        cancelAnimationFrame(pendingKeyguideRaf);
+        pendingKeyguideRaf = 0;
+    }
+    updateAutofillKeyguide();
+}
+
+function afterAutofillListNavigationStep(e) {
+    updateCharacterAutocompleteSelection();
+    markAutofillListNavigationActivity();
+    if (!e || !e.repeat) {
+        // updateEmphasisTooltipVisibility: public/scripts/comp/emphasisHighlight.js
+        updateEmphasisTooltipVisibility();
+    }
+}
+
+function getAutofillListScrollHost() {
+    if (isAutofillDetachedMode()) {
+        return characterAutofillToolManager?.listShellEl
+            || document.querySelector('.character-autofill-tool-list-shell');
+    }
+    return characterAutocompleteList;
+}
+
+function resetAutofillListScrollPosition() {
+    const host = getAutofillListScrollHost();
+    if (!host) return;
+
+    let scrollEl = host;
+    // customScrollbar: public/scripts/comp/customScrollbar.js
+    const customData = customScrollbar?.scrollbars?.get(host);
+    if (customData?.scrollableContent) {
+        scrollEl = customData.scrollableContent;
+    } else if (host.classList?.contains('character-autocomplete-list')) {
+        scrollEl = host;
+    } else {
+        const nested = host.querySelector?.(':scope > .scrollable-content');
+        if (nested) scrollEl = nested;
+    }
+
+    if (scrollEl.scrollTop !== 0) {
+        scrollEl.scrollTop = 0;
+    }
+    if (host !== scrollEl && customScrollbar?.updateScrollbar) {
+        customScrollbar.updateScrollbar(host);
+    }
+}
+
+function indicateAutofillListScrollbar(scrollbarHost) {
+    if (!scrollbarHost) return;
+    scrollbarHost.dispatchEvent(new CustomEvent('custom-scrollbar-indicate', { bubbles: false }));
+}
 
 function isCharacterAutocompleteOverlayOpen() {
     if (isAutofillDetachedMode()) {
@@ -54,10 +155,17 @@ function isCharacterAutocompleteOverlayOpen() {
         if (isAutofillOverlayEnteredForNavigation()) {
             return true;
         }
-        if (!isAutocompleteVisible) {
+        if (autofillDetachedKeyboardDismissed) {
             return false;
         }
-        return isCaretInActiveAutofillSearchArea(sessionTarget);
+        if (active === sessionTarget && isCaretInActiveAutofillSearchArea(sessionTarget)) {
+            return true;
+        }
+        // Route tool-window keys only when the prompt is not focused (capture handler in characterAutofillToolManager.js).
+        if (active !== sessionTarget && isAutofillToolWindowInteractionActive()) {
+            return true;
+        }
+        return false;
     }
     return characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden');
 }
@@ -71,6 +179,37 @@ function isAutofillDetachedMode() {
 
 function isAutofillToolLookupMode() {
     return isAutofillDetachedMode() && !!characterAutofillToolManager?.isLookupMode();
+}
+
+/** Detached window: replace search token only during active autofill; otherwise insert at cursor. */
+function shouldAutofillAcceptReplace(target) {
+    if (isAutofillToolLookupMode()) return false;
+    if (!isAutofillDetachedMode()) return true;
+    const textarea = target || getAutofillAcceptTextarea();
+    if (!textarea) return false;
+    if (autofillDetachedKeyboardDismissed) return false;
+    if (!isCaretInActiveAutofillSearchArea(textarea)) return false;
+    if (isAutofillOverlayEnteredForNavigation()) return true;
+    return resolveAutofillSearchHighlightMode(textarea) === 'await';
+}
+
+function syncAutofillToolWindowActiveState() {
+    if (!isAutofillDetachedMode() || !characterAutofillToolManager?.element) return;
+    const toolEl = characterAutofillToolManager.element;
+    const searchInput = characterAutofillToolManager.getSearchInputEl();
+    const searchFocused = searchInput && document.activeElement === searchInput;
+    const inNav = isAutofillOverlayEnteredForNavigation();
+    if (inNav || searchFocused) {
+        // activateToolWindowInteraction: public/scripts/comp/modalUtils.js
+        if (typeof activateToolWindowInteraction === 'function') {
+            activateToolWindowInteraction(toolEl);
+        }
+    } else {
+        // restoreLinkedToolWindowParent: public/scripts/comp/modalUtils.js
+        if (typeof restoreLinkedToolWindowParent === 'function') {
+            restoreLinkedToolWindowParent(toolEl);
+        }
+    }
 }
 
 function getAutofillToolInsertTarget() {
@@ -146,15 +285,22 @@ function enterAutofillToolLookupMode() {
     exitAutofillToolNavigation();
 }
 
-function exitAutofillToolNavigation() {
+function exitAutofillToolNavigation(options = {}) {
+    const wasInNav = isAutofillOverlayEnteredForNavigation();
+    autofillNavSelectionAnchor = null;
     autocompleteNavigationMode = false;
     userActivelyNavigating = false;
+    if (autofillNavActivityTimer) {
+        clearTimeout(autofillNavActivityTimer);
+        autofillNavActivityTimer = null;
+    }
     clearSpellCheckNavigationState();
     clearWordLookupNavigationState();
-    selectedCharacterAutocompleteIndex = -1;
-    markAutofillOverlayClosedFromInput();
+    clearMainAutocompleteSelection();
+    resetAutofillListScrollPosition();
     syncAutofillFocusNavBanner();
     if (isAutofillDetachedMode()) {
+        ensureDetachedAutofillListComplete();
         restoreAutofillEditorAfterToolNavigation();
     }
     const highlightTarget = currentCharacterAutocompleteTarget || autofillSessionTarget;
@@ -162,24 +308,29 @@ function exitAutofillToolNavigation() {
         syncAutofillSearchHighlight(highlightTarget);
     }
     updateAutofillKeyguide();
+    if (isAutofillDetachedMode()) {
+        autofillDetachedKeyboardDismissed = true;
+    }
+    if (isAutofillDetachedMode() && (wasInNav || options.preserveFocus)) {
+        const focusTarget = options.focusTarget || highlightTarget;
+        if (focusTarget) {
+            setTimeout(() => {
+                focusTarget.focus({ preventScroll: true });
+            }, 0);
+        }
+    }
 }
 
 function ensureAutofillToolWindowActiveForNavigation() {
-    if (!isAutofillDetachedMode() || !characterAutofillToolManager?.element) return;
-    // activateToolWindowInteraction: public/scripts/comp/modalUtils.js
-    if (typeof activateToolWindowInteraction === 'function') {
-        activateToolWindowInteraction(characterAutofillToolManager.element);
-    }
-    characterAutofillToolManager.markInteracted();
+    if (!isAutofillDetachedMode()) return;
+    characterAutofillToolManager?.markInteracted();
+    syncAutofillToolWindowActiveState();
 }
 
 function restoreAutofillEditorAfterToolNavigation() {
     if (!isAutofillDetachedMode() || !characterAutofillToolManager?.element) return;
     characterAutofillToolManager.clearMouseInteractionState();
-    // restoreLinkedToolWindowParent: public/scripts/comp/modalUtils.js
-    if (typeof restoreLinkedToolWindowParent === 'function') {
-        restoreLinkedToolWindowParent(characterAutofillToolManager.element);
-    }
+    syncAutofillToolWindowActiveState();
 }
 
 function dismissAutofillDetachedToTypingState() {
@@ -187,11 +338,21 @@ function dismissAutofillDetachedToTypingState() {
         characterAutocompleteOverlay.classList.add('hidden');
     }
     exitAutofillToolNavigation();
-    isAutocompleteVisible = false;
+    ensureDetachedAutofillListComplete();
     characterAutofillToolManager?.clearMouseInteractionState();
-    clearAutofillMouseHoverSelection();
     syncAutofillFocusNavBanner();
     clearTabAutofillAcceptIndicators();
+}
+
+function abortAutofillFromCaretLeave(target) {
+    if (isAutofillDetachedMode()) {
+        dismissAutofillDetachedToTypingState();
+    } else {
+        hideCharacterAutocomplete();
+    }
+    if (target) {
+        syncAutofillSearchHighlight(target);
+    }
 }
 
 function engageAutofillNavigation() {
@@ -200,6 +361,14 @@ function engageAutofillNavigation() {
         ensureAutofillToolWindowActiveForNavigation();
     }
     const target = currentCharacterAutocompleteTarget || autofillSessionTarget;
+    if (target && typeof target.selectionStart === 'number') {
+        autofillNavSelectionAnchor = {
+            start: target.selectionStart,
+            end: target.selectionEnd
+        };
+    } else {
+        autofillNavSelectionAnchor = null;
+    }
     if (target) {
         syncAutofillSearchHighlight(target);
     }
@@ -406,6 +575,7 @@ function detachCharacterAutofillToToolWindow(textarea) {
     trackAutofillInsertTarget(textarea);
     if (isAutofillDetachedMode()) {
         syncAutofillToolSearchInput(true);
+        ensureDetachedAutofillListComplete();
         return true;
     }
     const detached = characterAutofillToolManager.detach(textarea);
@@ -503,12 +673,51 @@ function shouldAutofillShowAllResults() {
     return autocompleteExpanded || isAutofillDetachedMode();
 }
 
+function getDetachedAutofillRenderedResultCount() {
+    if (!characterAutocompleteList) return 0;
+    return characterAutocompleteList.querySelectorAll(
+        '.character-autocomplete-item:not(.more-indicator):not(.no-results)'
+    ).length;
+}
+
+function ensureDetachedAutofillListComplete() {
+    if (!isAutofillDetachedMode()) return;
+    if (!window.allAutocompleteResults || !currentCharacterAutocompleteTarget) return;
+    if (!shouldApplyAutocompleteUI(currentCharacterAutocompleteTarget)) return;
+
+    const displayResults = filterAutofillDisplayResults(
+        window.allAutocompleteResults,
+        getAutofillConfig(currentCharacterAutocompleteTarget)
+    );
+    if (displayResults.length <= getDetachedAutofillRenderedResultCount()) return;
+
+    autocompleteExpanded = true;
+    const panelRoot = getAutofillPanelRoot();
+    if (panelRoot) {
+        panelRoot.classList.add('expanded');
+    }
+    lastAutocompleteDisplayHash = null;
+    showCharacterAutocompleteSuggestions(
+        window.allAutocompleteResults,
+        currentCharacterAutocompleteTarget
+    );
+}
+
 function appendAutofillResultsFooterBanner(displayResults) {
     if (!characterAutocompleteList || !displayResults.length) return;
 
-    const showBanner = isAutofillDetachedMode()
-        ? !isAutofillOverlayEnteredForNavigation()
-        : (displayResults.length > 5 && !autocompleteExpanded);
+    let showBanner;
+    if (isAutofillDetachedMode()) {
+        if (isAutofillOverlayEnteredForNavigation()) return;
+        const renderedCount = getDetachedAutofillRenderedResultCount();
+        if (renderedCount < displayResults.length) {
+            ensureDetachedAutofillListComplete();
+            return;
+        }
+        showBanner = true;
+    } else {
+        showBanner = displayResults.length > 5 && !autocompleteExpanded;
+    }
 
     if (!showBanner) return;
 
@@ -533,6 +742,7 @@ function syncAutofillFocusNavBanner() {
         || !window.allAutocompleteResults || !currentCharacterAutocompleteTarget) {
         return;
     }
+    ensureDetachedAutofillListComplete();
     const displayResults = filterAutofillDisplayResults(
         window.allAutocompleteResults,
         getAutofillConfig(currentCharacterAutocompleteTarget)
@@ -812,6 +1022,13 @@ function handleAutocompleteOverlayWheel(e) {
     if (!characterAutocompleteList) return;
     if (!isAutofillToolWindowInteractionActive()) return;
 
+    const sessionTarget = currentCharacterAutocompleteTarget || autofillSessionTarget;
+    if (sessionTarget && document.activeElement === sessionTarget
+        && !isAutofillOverlayEnteredForNavigation()
+        && !shouldAutocompleteConsumeVerticalArrow()) {
+        return;
+    }
+
     // Character detail (enhancer) page has no result items to drive; let the panel scroll natively instead of swallowing the wheel.
     if (characterAutocompleteList.querySelector('.character-detail-content')) return;
 
@@ -847,10 +1064,12 @@ function handleAutocompleteOverlayWheel(e) {
 
         steps++;
 
-        // Mirror ArrowDown/ArrowUp behavior for main list navigation.
-        markAutofillOverlayInteractive();
-        autocompleteNavigationMode = true;
-        userActivelyNavigating = true;
+        if (!isAutofillOverlayEnteredForNavigation()) {
+            markAutofillOverlayInteractive();
+            autocompleteNavigationMode = true;
+            userActivelyNavigating = true;
+            engageAutofillNavigation();
+        }
 
         const items = getAutocompleteResultItems();
         if (!items || items.length === 0) continue;
@@ -865,19 +1084,12 @@ function handleAutocompleteOverlayWheel(e) {
                 selectedCharacterAutocompleteIndex = Math.min(selectedCharacterAutocompleteIndex + 1, items.length - 1);
             }
 
-            updateCharacterAutocompleteSelection();
-            updateEmphasisTooltipVisibility();
+            afterAutofillListNavigationStep({ repeat: true });
         } else {
             if (selectedCharacterAutocompleteIndex === -1) continue;
             selectedCharacterAutocompleteIndex = Math.max(selectedCharacterAutocompleteIndex - 1, -1);
-            updateCharacterAutocompleteSelection();
-            updateEmphasisTooltipVisibility();
+            afterAutofillListNavigationStep({ repeat: true });
         }
-
-        clearTimeout(window.navigationTimeout);
-        window.navigationTimeout = setTimeout(() => {
-            userActivelyNavigating = false;
-        }, 500);
     }
 }
 
@@ -1077,85 +1289,11 @@ function handleAutofillItemContextMenuAction(action, itemEl) {
     }
 }
 
-function clearAutofillMouseHoverSelection() {
-    characterAutocompleteList?.querySelectorAll('.mouse-hover-selected').forEach((el) => {
-        el.classList.remove('mouse-hover-selected');
-    });
-}
-
 function wireAutofillItemContextMenu(itemEl) {
     if (!itemEl || !contextMenu || !isAutofillDetachedMode()) return;
     if (itemEl.dataset.autofillContextMenuAttached) return;
     itemEl.dataset.autofillContextMenuAttached = '1';
     contextMenu.attachToElement(itemEl, getAutofillItemContextMenuConfig());
-}
-
-function wireAutofillResultItemHover(item, index) {
-    if (!item) return;
-    item.addEventListener('mouseenter', () => {
-        if (!isAutofillDetachedMode()) return;
-        if (!isAutofillToolMouseInteractionAllowed()) return;
-        markAutofillOverlayInteractive();
-        characterAutofillToolManager?.markInteracted();
-        if (typeof index !== 'number' || index < 0) return;
-        spellCheckNavigationMode = false;
-        wordLookupNavigationMode = false;
-        selectedSpellCheckWordIndex = -1;
-        selectedSpellCheckSuggestionIndex = -1;
-        selectedWordLookupWordIndex = -1;
-        selectedWordLookupSuggestionIndex = -1;
-        autocompleteNavigationMode = true;
-        selectedCharacterAutocompleteIndex = index;
-        updateCharacterAutocompleteSelection();
-        updateEmphasisTooltipVisibility();
-    });
-}
-
-function wireSpellCheckRowHover(row, wordIndex) {
-    if (!row) return;
-    row.addEventListener('mouseenter', () => {
-        if (!isAutofillDetachedMode()) return;
-        if (!isAutofillToolMouseInteractionAllowed()) return;
-        markAutofillOverlayInteractive();
-        characterAutofillToolManager?.markInteracted();
-        selectSpellCheckRow(wordIndex);
-        row.classList.add('mouse-hover-selected');
-    });
-    row.addEventListener('mouseleave', () => {
-        row.classList.remove('mouse-hover-selected');
-    });
-    wireAutofillItemContextMenu(row);
-}
-
-function wireWordLookupRowHover(row, wordIndex) {
-    if (!row) return;
-    row.addEventListener('mouseenter', () => {
-        if (!isAutofillDetachedMode()) return;
-        if (!isAutofillToolMouseInteractionAllowed()) return;
-        markAutofillOverlayInteractive();
-        characterAutofillToolManager?.markInteracted();
-        selectWordLookupRow(wordIndex);
-        row.classList.add('mouse-hover-selected');
-    });
-    row.addEventListener('mouseleave', () => {
-        row.classList.remove('mouse-hover-selected');
-    });
-    wireAutofillItemContextMenu(row);
-}
-
-function wireSuggestionButtonHover(btn, onHover) {
-    if (!btn) return;
-    btn.addEventListener('mouseenter', () => {
-        if (!isAutofillDetachedMode()) return;
-        if (!isAutofillToolMouseInteractionAllowed()) return;
-        markAutofillOverlayInteractive();
-        characterAutofillToolManager?.markInteracted();
-        onHover();
-        btn.classList.add('mouse-hover-selected');
-    });
-    btn.addEventListener('mouseleave', () => {
-        btn.classList.remove('mouse-hover-selected');
-    });
 }
 
 // Realtime search state
@@ -1436,6 +1574,10 @@ let currentSearchSessionBounds = null;
 let persistentSpellCheckData = null; // Current spell check data
 let persistentWordLookupData = null; // Current dictionary / thesaurus data
 let isAutocompleteVisible = false; // Track if autocomplete is currently visible
+/** Detached window: keyboard browse dismissed (Left/Esc) until user typing starts a new search — mirrors overlay hide. */
+let autofillDetachedKeyboardDismissed = false;
+/** Textarea selection when list keyboard nav starts — used to detect mouse caret moves during nav. */
+let autofillNavSelectionAnchor = null;
 
 // Track last search query to prevent unnecessary clearing
 let lastSearchQuery = '';
@@ -1532,7 +1674,8 @@ function trackAutofillCaretMotion(target) {
 function isAutofillSessionForTarget(target) {
     if (!autofillSessionId || !target || autofillSessionTarget !== target) return false;
     if (!currentCharacterAutocompleteTarget || currentCharacterAutocompleteTarget !== target) return false;
-    if (document.activeElement !== target) return false;
+    // Detached tool window keeps the session while focus is in the tool UI, not only the prompt.
+    if (!isAutofillDetachedMode() && document.activeElement !== target) return false;
     return true;
 }
 
@@ -1914,17 +2057,36 @@ function processAutofillSelectionChange() {
         return;
     }
 
-    // Don't abort overlay while keyboard-navigating spell-check, dictionary, or autocomplete results.
-    if (spellCheckNavigationMode || wordLookupNavigationMode || autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0) {
+    const inNav = isAutofillOverlayEnteredForNavigation();
+    const highlightMode = resolveAutofillSearchHighlightMode(target);
+    const autofillUiActive = isCharacterAutocompleteOverlayOpen()
+        || (isAutofillDetachedMode() && hasActiveAutofillSessionForTarget(target));
+    const caretLeftSearch = shouldAbortAutocompleteSearchSession()
+        || !isCaretInActiveAutofillSearchArea(target);
+
+    // Mouse caret moves during keyboard navigation — end session so ↓ is not accepted.
+    if (autofillUiActive && inNav) {
+        const anchor = autofillNavSelectionAnchor;
+        const caretMoved = anchor && (
+            target.selectionStart !== anchor.start
+            || target.selectionEnd !== anchor.end
+        );
+        if (caretMoved) {
+            abortAutofillFromCaretLeave(target);
+        }
+        return;
+    }
+
+    // Pre-nav (highlight visible, not yet browsing) — dismiss when caret leaves the search token.
+    if (autofillUiActive && highlightMode && caretLeftSearch) {
+        abortAutofillFromCaretLeave(target);
         return;
     }
 
     syncAutofillSearchHighlight(target);
 
-    if (autofillSessionId && autofillSessionTarget === target) {
-        if (shouldAbortAutocompleteSearchSession()) {
-            hideCharacterAutocomplete();
-        }
+    if (caretLeftSearch) {
+        abortAutofillFromCaretLeave(target);
     }
 }
 
@@ -2648,7 +2810,7 @@ function cursorAfterTextReplace(cursorPos, replaceStart, replaceEnd, insertLengt
 }
 
 function applySpellCorrectionReplace(target, replaceStart, replaceEnd, suggestion, cursorPos) {
-    if (isAutofillToolLookupMode()) {
+    if (!shouldAutofillAcceptReplace(target)) {
         insertTextAtPromptCursor(target, suggestion);
         hideCharacterAutocompleteAfterAccept();
         return true;
@@ -2802,6 +2964,7 @@ function resetStaleAutofillSessionForNewInput() {
     selectedWordLookupSuggestionIndex = -1;
     activeWordLookupWordIndex = 0;
     autocompleteExpanded = false;
+    autofillDetachedKeyboardDismissed = false;
 }
 
 function abortAutocompleteSearchSession() {
@@ -2821,6 +2984,7 @@ let autofillOverlayClosedForInput = true;
 
 function markAutofillOverlayClosedFromInput() {
     autofillOverlayClosedForInput = true;
+    autofillNavSelectionAnchor = null;
     lastSelectedListIndex = -1;
     selectedCharacterAutocompleteIndex = -1;
     autocompleteNavigationMode = false;
@@ -5343,11 +5507,11 @@ function updateAutofillKeyguide() {
     }
 
     if (spellCheckNavigationMode) {
-        const acceptLabel = isAutofillToolLookupMode() ? 'Insert' : 'Replace';
+        const acceptLabel = shouldAutofillAcceptReplace(currentCharacterAutocompleteTarget) ? 'Replace' : 'Insert';
         hints.push(renderAutofillKeyguideHint(['↑', '↓'], 'Words'));
         hints.push(renderAutofillKeyguideHint(['←', '→'], 'Suggestions'));
         hints.push(renderAutofillKeyguideHint(['↵'], acceptLabel));
-        if (!isAutofillToolLookupMode()) {
+        if (shouldAutofillAcceptReplace(currentCharacterAutocompleteTarget)) {
             hints.push(renderAutofillKeyguideHint(['Alt+↵'], 'Insert'));
         }
         hints.push(renderAutofillKeyguideHint(['Esc'], isAutofillDetachedMode() ? 'Exit Nav' : 'Close'));
@@ -5357,11 +5521,11 @@ function updateAutofillKeyguide() {
     }
 
     if (wordLookupNavigationMode) {
-        const acceptLabel = isAutofillToolLookupMode() ? 'Insert' : 'Replace';
+        const acceptLabel = shouldAutofillAcceptReplace(currentCharacterAutocompleteTarget) ? 'Replace' : 'Insert';
         hints.push(renderAutofillKeyguideHint(['↑', '↓'], 'Words'));
         hints.push(renderAutofillKeyguideHint(['←', '→'], 'Suggestions'));
         hints.push(renderAutofillKeyguideHint(['↵'], acceptLabel));
-        if (!isAutofillToolLookupMode()) {
+        if (shouldAutofillAcceptReplace(currentCharacterAutocompleteTarget)) {
             hints.push(renderAutofillKeyguideHint(['Alt+↵'], 'Insert'));
         }
         hints.push(renderAutofillKeyguideHint(['Esc'], isAutofillDetachedMode() ? 'Exit Nav' : 'Close'));
@@ -5389,10 +5553,10 @@ function updateAutofillKeyguide() {
             hints.push(renderAutofillKeyguideHint(['Alt+↵'], 'Insert'));
         }
     } else if (inListNav) {
-        const acceptLabel = isAutofillToolLookupMode() ? 'Insert' : 'Replace';
+        const acceptLabel = shouldAutofillAcceptReplace(currentCharacterAutocompleteTarget) ? 'Replace' : 'Insert';
         hints.push(renderAutofillKeyguideHint(['↑', '↓'], 'Navigate'));
         hints.push(renderAutofillKeyguideHint(['↵'], acceptLabel));
-        if (!isAutofillToolLookupMode() && selectedItem && getAutocompleteRightArrowInsertText(selectedItem)) {
+        if (shouldAutofillAcceptReplace(currentCharacterAutocompleteTarget) && selectedItem && getAutocompleteRightArrowInsertText(selectedItem)) {
             hints.push(renderAutofillKeyguideHint(['→'], 'Insert'));
         }
     } else {
@@ -5755,9 +5919,14 @@ function clearMainAutocompleteSelection() {
 
 function getAutocompleteResultItems() {
     if (!characterAutocompleteList) return [];
-    return Array.from(characterAutocompleteList.querySelectorAll(
+    if (autofillResultsListCache && autofillResultsListCache.version === autofillResultsListVersion) {
+        return autofillResultsListCache.items;
+    }
+    const items = Array.from(characterAutocompleteList.querySelectorAll(
         '.character-autocomplete-item:not(.no-results):not(.more-indicator)'
     ));
+    autofillResultsListCache = { version: autofillResultsListVersion, items };
+    return items;
 }
 
 function hasAutocompleteResultItemsForNavigation() {
@@ -5775,6 +5944,9 @@ function canWordLookupNavigationEnter() {
 }
 
 function shouldAutocompleteConsumeVerticalArrow() {
+    if (isAutofillDetachedMode() && autofillDetachedKeyboardDismissed) {
+        return false;
+    }
     if (spellCheckNavigationMode || wordLookupNavigationMode) return true;
     if (autocompleteNavigationMode && selectedCharacterAutocompleteIndex >= 0 && hasAutocompleteResultItemsForNavigation()) {
         return true;
@@ -5796,7 +5968,17 @@ function isAutofillHorizontalSubNavigation() {
     return spellCheckNavigationMode || wordLookupNavigationMode;
 }
 
-function dismissAutocompleteForTextareaNavigation() {
+function isPromptInlineSearchActive(textarea) {
+    if (!textarea) return false;
+    const container = textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container');
+    return !!(container && container.querySelector('.prompt-textarea-toolbar.search-mode'));
+}
+
+function dismissAutocompleteForTextareaNavigation(e) {
+    if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
     if (characterAutocompleteTimeout) {
         clearTimeout(characterAutocompleteTimeout);
         characterAutocompleteTimeout = null;
@@ -5805,15 +5987,27 @@ function dismissAutocompleteForTextareaNavigation() {
         clearTimeout(currentSearchTimeout);
         currentSearchTimeout = null;
     }
+    const focusFromTextareaKey = !!(e && e.target && e.target.type === 'textarea');
+    const focusTarget = focusFromTextareaKey
+        ? e.target
+        : (currentCharacterAutocompleteTarget || autofillSessionTarget);
     if (isAutofillDetachedMode()) {
-        exitAutofillToolNavigation();
+        exitAutofillToolNavigation({
+            preserveFocus: focusFromTextareaKey,
+            focusTarget: focusFromTextareaKey ? focusTarget : undefined
+        });
         return;
     }
     autocompleteNavigationMode = false;
     autocompleteExpanded = false;
     userActivelyNavigating = false;
+    if (autofillNavActivityTimer) {
+        clearTimeout(autofillNavActivityTimer);
+        autofillNavActivityTimer = null;
+    }
     clearSpellCheckNavigationState();
     clearWordLookupNavigationState();
+    resetAutofillListScrollPosition();
     hideCharacterAutocomplete();
 }
 
@@ -6102,6 +6296,16 @@ function handleCharacterAutocompleteKeydown(e) {
         }
     }
 
+    const activeEl = document.activeElement;
+    if (activeEl && activeEl.classList && activeEl.classList.contains('text-search-input')) {
+        return;
+    }
+
+    const keydownTextarea = e.target;
+    if (keydownTextarea && keydownTextarea.type === 'textarea' && isPromptInlineSearchActive(keydownTextarea)) {
+        return;
+    }
+
     const characterAutocompleteOverlayOpen = isCharacterAutocompleteOverlayOpen();
 
     // Plain typing on prompt fields — do not run overlay/shortcut logic on keydown (input/beforeinput handle autofill).
@@ -6209,13 +6413,16 @@ function handleCharacterAutocompleteKeydown(e) {
                 return;
             }
             if (e.key === 'ArrowUp') {
-                dismissAutocompleteForTextareaNavigation();
+                dismissAutocompleteForTextareaNavigation(e);
                 return;
             }
             if (isAutofillAltEnterInsertKey(e)) {
                 e.preventDefault();
                 e.stopPropagation();
                 applyAltEnterSideSectionInsert(e.target);
+                return;
+            }
+            if (e.key === 'ArrowDown' && !shouldAutocompleteConsumeVerticalArrow()) {
                 return;
             }
             const allowWhileTyping = e.key === 'ArrowDown'
@@ -6256,7 +6463,9 @@ function handleCharacterAutocompleteKeydown(e) {
                         return;
                     }
                 }
-                dismissAutocompleteForTextareaNavigation();
+                e.preventDefault();
+                e.stopPropagation();
+                dismissAutocompleteForTextareaNavigation(e);
                 return;
             }
         }
@@ -6264,7 +6473,7 @@ function handleCharacterAutocompleteKeydown(e) {
         switch (e.key) {
             case 'ArrowDown':
                 if (!shouldAutocompleteConsumeVerticalArrow()) {
-                    dismissAutocompleteForTextareaNavigation();
+                    dismissAutocompleteForTextareaNavigation(e);
                     break;
                 }
 
@@ -6314,7 +6523,7 @@ function handleCharacterAutocompleteKeydown(e) {
 
                 const itemsDown = getAutocompleteResultItems();
                 if (!itemsDown.length) {
-                    dismissAutocompleteForTextareaNavigation();
+                    dismissAutocompleteForTextareaNavigation(e);
                     break;
                 }
 
@@ -6325,14 +6534,7 @@ function handleCharacterAutocompleteKeydown(e) {
                 } else {
                     selectedCharacterAutocompleteIndex = Math.min(selectedCharacterAutocompleteIndex + 1, itemsDown.length - 1);
                 }
-                updateCharacterAutocompleteSelection();
-                updateEmphasisTooltipVisibility();
-
-                // Reset the actively navigating flag after a short delay
-                clearTimeout(window.navigationTimeout);
-                window.navigationTimeout = setTimeout(() => {
-                    userActivelyNavigating = false;
-                }, 500);
+                afterAutofillListNavigationStep(e);
                 break;
 
             case 'ArrowUp': {
@@ -6340,7 +6542,7 @@ function handleCharacterAutocompleteKeydown(e) {
 
                 if (!inAutocompleteNav) {
                     if (characterAutocompleteOverlayOpen) {
-                        dismissAutocompleteForTextareaNavigation();
+                        dismissAutocompleteForTextareaNavigation(e);
                     }
                     break;
                 }
@@ -6351,12 +6553,12 @@ function handleCharacterAutocompleteKeydown(e) {
                         e.stopPropagation();
                         break;
                     }
-                    dismissAutocompleteForTextareaNavigation();
+                    dismissAutocompleteForTextareaNavigation(e);
                     break;
                 }
 
                 if (spellCheckNavigationMode && selectedSpellCheckWordIndex <= 0) {
-                    dismissAutocompleteForTextareaNavigation();
+                    dismissAutocompleteForTextareaNavigation(e);
                     break;
                 }
 
@@ -6371,14 +6573,14 @@ function handleCharacterAutocompleteKeydown(e) {
                         e.stopPropagation();
                         break;
                     }
-                    dismissAutocompleteForTextareaNavigation();
+                    dismissAutocompleteForTextareaNavigation(e);
                     break;
                 }
 
                 if (!spellCheckNavigationMode && !wordLookupNavigationMode &&
                     !hasAutocompleteResultItemsForNavigation() &&
                     !canSpellCheckNavigationEnter() && !canWordLookupNavigationEnter()) {
-                    dismissAutocompleteForTextareaNavigation();
+                    dismissAutocompleteForTextareaNavigation(e);
                     break;
                 }
 
@@ -6401,14 +6603,13 @@ function handleCharacterAutocompleteKeydown(e) {
                 markAutofillOverlayInteractive();
                 autocompleteNavigationMode = true;
                 selectedCharacterAutocompleteIndex = Math.max(selectedCharacterAutocompleteIndex - 1, -1);
-                updateCharacterAutocompleteSelection();
-                updateEmphasisTooltipVisibility();
+                afterAutofillListNavigationStep(e);
                 break;
             }
 
             case 'PageDown':
                 if (!shouldAutocompleteConsumeVerticalArrow()) {
-                    dismissAutocompleteForTextareaNavigation();
+                    dismissAutocompleteForTextareaNavigation(e);
                     break;
                 }
 
@@ -6429,7 +6630,7 @@ function handleCharacterAutocompleteKeydown(e) {
 
                 const itemsPageDown = getAutocompleteResultItems();
                 if (!itemsPageDown.length) {
-                    dismissAutocompleteForTextareaNavigation();
+                    dismissAutocompleteForTextareaNavigation(e);
                     break;
                 }
 
@@ -6440,13 +6641,12 @@ function handleCharacterAutocompleteKeydown(e) {
                 } else {
                     selectedCharacterAutocompleteIndex = Math.min(selectedCharacterAutocompleteIndex + 10, itemsPageDown.length - 1);
                 }
-                updateCharacterAutocompleteSelection();
-                updateEmphasisTooltipVisibility();
+                afterAutofillListNavigationStep(e);
                 break;
 
             case 'PageUp':
                 if (!shouldAutocompleteConsumeVerticalArrow()) {
-                    dismissAutocompleteForTextareaNavigation();
+                    dismissAutocompleteForTextareaNavigation(e);
                     break;
                 }
 
@@ -6468,7 +6668,7 @@ function handleCharacterAutocompleteKeydown(e) {
 
                 const itemsPageUp = getAutocompleteResultItems();
                 if (!itemsPageUp.length) {
-                    dismissAutocompleteForTextareaNavigation();
+                    dismissAutocompleteForTextareaNavigation(e);
                     break;
                 }
 
@@ -6479,13 +6679,12 @@ function handleCharacterAutocompleteKeydown(e) {
                 } else {
                     selectedCharacterAutocompleteIndex = Math.max(selectedCharacterAutocompleteIndex - 10, 0);
                 }
-                updateCharacterAutocompleteSelection();
-                updateEmphasisTooltipVisibility();
+                afterAutofillListNavigationStep(e);
                 break;
 
             case 'Home':
                 if (!shouldAutocompleteConsumeVerticalArrow()) {
-                    dismissAutocompleteForTextareaNavigation();
+                    dismissAutocompleteForTextareaNavigation(e);
                     break;
                 }
 
@@ -6507,7 +6706,7 @@ function handleCharacterAutocompleteKeydown(e) {
 
                 const itemsHome = getAutocompleteResultItems();
                 if (!itemsHome.length) {
-                    dismissAutocompleteForTextareaNavigation();
+                    dismissAutocompleteForTextareaNavigation(e);
                     break;
                 }
 
@@ -6515,13 +6714,12 @@ function handleCharacterAutocompleteKeydown(e) {
                     expandAutocompleteInstantly();
                 }
                 selectedCharacterAutocompleteIndex = 0;
-                updateCharacterAutocompleteSelection();
-                updateEmphasisTooltipVisibility();
+                afterAutofillListNavigationStep(e);
                 break;
 
             case 'End':
                 if (!shouldAutocompleteConsumeVerticalArrow()) {
-                    dismissAutocompleteForTextareaNavigation();
+                    dismissAutocompleteForTextareaNavigation(e);
                     break;
                 }
 
@@ -6543,7 +6741,7 @@ function handleCharacterAutocompleteKeydown(e) {
 
                 const itemsEnd = getAutocompleteResultItems();
                 if (!itemsEnd.length) {
-                    dismissAutocompleteForTextareaNavigation();
+                    dismissAutocompleteForTextareaNavigation(e);
                     break;
                 }
 
@@ -6554,8 +6752,7 @@ function handleCharacterAutocompleteKeydown(e) {
                 } else {
                     selectedCharacterAutocompleteIndex = itemsEnd.length - 1;
                 }
-                updateCharacterAutocompleteSelection();
-                updateEmphasisTooltipVisibility();
+                afterAutofillListNavigationStep(e);
                 break;
 
             case 'ArrowLeft':
@@ -6710,31 +6907,45 @@ function handleCharacterAutocompleteKeydown(e) {
                 }
                 break;
 
-            case 'Escape':
+            case 'Escape': {
                 e.preventDefault();
+                const escPromptTarget = (e.target && e.target.type === 'textarea')
+                    ? e.target
+                    : (currentCharacterAutocompleteTarget || autofillSessionTarget);
                 if (spellCheckNavigationMode) {
                     clearSpellCheckNavigationState();
-                    if (isAutofillDetachedMode()) {
-                        exitAutofillToolNavigation();
+                    if (isAutofillDetachedMode() && escPromptTarget) {
+                        syncAutofillSearchHighlight(escPromptTarget);
+                        updateAutofillKeyguide();
+                        setTimeout(() => {
+                            escPromptTarget.focus({ preventScroll: true });
+                        }, 0);
                     }
-                } else if (wordLookupNavigationMode) {
+                    break;
+                }
+                if (wordLookupNavigationMode) {
                     clearWordLookupNavigationState();
-                    if (isAutofillDetachedMode()) {
-                        exitAutofillToolNavigation();
+                    if (isAutofillDetachedMode() && escPromptTarget) {
+                        syncAutofillSearchHighlight(escPromptTarget);
+                        updateAutofillKeyguide();
+                        setTimeout(() => {
+                            escPromptTarget.focus({ preventScroll: true });
+                        }, 0);
                     }
-                } else if (isAutofillDetachedMode()) {
-                    exitAutofillToolNavigation();
-                } else if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
-                    // Autocomplete popup is visible, close it
+                    break;
+                }
+                if (isAutofillDetachedMode()) {
+                    dismissAutocompleteForTextareaNavigation(e);
+                    break;
+                }
+                if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
                     hideCharacterAutocomplete();
                     autocompleteNavigationMode = false;
-                } else {
-                    // Autocomplete popup is not visible, unfocus the textarea
-                    if (e.target && e.target.blur) {
-                        e.target.blur();
-                    }
+                } else if (e.target && e.target.blur) {
+                    e.target.blur();
                 }
                 break;
+            }
             case 'Backspace':
                 if (e.shiftKey && document.activeElement.type === 'textarea' && (document.activeElement.classList.contains('prompt-textarea') || document.activeElement.classList.contains('character-prompt-textarea'))) {
                     e.preventDefault();
@@ -6826,6 +7037,10 @@ async function searchCharacters(query, target, forceRefresh, options) {
         }
         if (!ensureAutofillSession(target, explicitSession)) {
             return;
+        }
+
+        if (isAutofillDetachedMode()) {
+            autofillDetachedKeyboardDismissed = false;
         }
 
         // Prevent duplicate searches for the same query while the current request is active
@@ -7285,6 +7500,7 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
     // Clear only the results section, not the entire list
     // This preserves the search status display
     const existingResults = characterAutocompleteList.querySelectorAll('.character-autocomplete-item, .spell-check-section, .word-lookup-section, .no-results, .more-indicator, .character-detail-content');
+    invalidateAutofillResultsCache();
     existingResults.forEach(item => item.remove());
 
     // Note: Search status will be added at the bottom after results
@@ -7344,7 +7560,6 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
     } else if (displayResults.length > 0) {
         limitedResults.forEach((result, index) => {
             const item = createAutocompleteItem(result);
-            wireAutofillResultItemHover(item, index);
             characterAutocompleteList.appendChild(item);
         });
 
@@ -7465,9 +7680,7 @@ function updateAutocompleteDisplayImmediate(results, target) {
     let hasIncompleteDetachedResults = false;
     if (isAutofillDetachedMode() && hasResultRows) {
         const expectedCount = filterAutofillDisplayResults(results, getAutofillConfig(target)).length;
-        const renderedCount = characterAutocompleteList.querySelectorAll(
-            '.character-autocomplete-item:not(.more-indicator):not(.no-results)'
-        ).length;
+        const renderedCount = getDetachedAutofillRenderedResultCount();
         hasIncompleteDetachedResults = expectedCount > renderedCount;
     }
     if (lastAutocompleteDisplayHash === currentResultsHash && hasResultRows && !hasStaleLimitedBanner
@@ -7605,6 +7818,7 @@ function rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckRe
     // Clear only the results section, not the entire list
     // This preserves the search status display
     const existingResults = characterAutocompleteList.querySelectorAll('.character-autocomplete-item, .spell-check-section, .word-lookup-section, .no-results, .more-indicator, .character-detail-content');
+    invalidateAutofillResultsCache();
     existingResults.forEach(item => item.remove());
 
     // Note: Search status will be added at the bottom after results
@@ -7663,7 +7877,6 @@ function rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckRe
     } else if (displayResults.length > 0) {
         limitedResults.forEach((result, index) => {
             const item = createAutocompleteItem(result);
-            wireAutofillResultItemHover(item, index);
             characterAutocompleteList.appendChild(item);
         });
 
@@ -7730,14 +7943,6 @@ function wireSpellCheckSuggestionButtons(container, target) {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
             applySpellCorrection(target, btn.dataset.original, btn.dataset.suggestion, getSpellCheckRowIndexFromButton(btn));
-        });
-        wireSuggestionButtonHover(btn, () => {
-            const rowIndex = getSpellCheckRowIndexFromButton(btn);
-            if (rowIndex >= 0) {
-                selectSpellCheckRow(rowIndex);
-                selectedSpellCheckSuggestionIndex = suggestionIndex;
-                updateSpellCheckSelection();
-            }
         });
         touchSlopUtils.registerTouchSlopTracking(btn);
         btn.addEventListener('touchend', (e) => {
@@ -7835,7 +8040,7 @@ function createSpellCheckWordRow(word, suggestions, target, wordIndex) {
     row.appendChild(expanded);
     wireSpellCheckSuggestionButtons(expanded, target);
     wireSpellCheckAddWordButton(expanded, word);
-    wireSpellCheckRowHover(row, wordIndex);
+    wireAutofillItemContextMenu(row);
 
     return row;
 }
@@ -7959,13 +8164,6 @@ function wireWordLookupSuggestionButtons(container, target) {
             e.preventDefault();
             applyWordLookupInsert(target, btn.dataset.original, btn.dataset.suggestion, rowIndex);
         });
-        wireSuggestionButtonHover(btn, () => {
-            if (rowIndex >= 0) {
-                selectWordLookupRow(rowIndex);
-                selectedWordLookupSuggestionIndex = suggestionIndex;
-                updateWordLookupSelection();
-            }
-        });
         touchSlopUtils.registerTouchSlopTracking(btn);
         btn.addEventListener('touchend', (e) => {
             const maxDelta = touchSlopUtils.finalizeTouchSlop(btn, e);
@@ -8055,7 +8253,7 @@ function createWordLookupWordRow(entry, target, wordIndex) {
     `;
     row.appendChild(expanded);
     wireWordLookupSuggestionButtons(expanded, target);
-    wireWordLookupRowHover(row, wordIndex);
+    wireAutofillItemContextMenu(row);
 
     return row;
 }
@@ -8266,40 +8464,80 @@ async function addWordToDictionary(word) {
     }
 }
 
-// Helper function to scroll to an option and center it in the view
+// Helper: resolve the element that actually scrolls (overlay list vs detached custom-scrollbar host).
+function resolveAutofillListScrollContainer(optionElement) {
+    if (!optionElement) return null;
+
+    const listShell = optionElement.closest('.character-autofill-tool-list-shell');
+    if (listShell) {
+        // customScrollbar: public/scripts/comp/customScrollbar.js
+        const customData = typeof customScrollbar !== 'undefined' && customScrollbar.scrollbars
+            ? customScrollbar.scrollbars.get(listShell)
+            : null;
+        const scrollEl = customData?.scrollableContent
+            || listShell.querySelector(':scope > .scrollable-content');
+        if (scrollEl) {
+            return { scrollEl, scrollbarHost: listShell };
+        }
+    }
+
+    const overlayList = optionElement.closest('#characterAutocompleteOverlay .character-autocomplete-list')
+        || optionElement.closest('.character-autocomplete-list');
+    if (overlayList) {
+        return { scrollEl: overlayList, scrollbarHost: overlayList };
+    }
+
+    const overlay = optionElement.closest('.character-autocomplete-overlay');
+    if (overlay) {
+        return { scrollEl: overlay, scrollbarHost: overlay };
+    }
+
+    return null;
+}
+
+function computeCenteredAutofillScrollTop(scrollEl, optionElement) {
+    if (!scrollEl || !optionElement) return null;
+
+    const clientHeight = scrollEl.clientHeight;
+    const scrollHeight = scrollEl.scrollHeight;
+    if (scrollHeight <= clientHeight) return null;
+
+    let optionTop = 0;
+    let node = optionElement;
+    while (node && node !== scrollEl) {
+        optionTop += node.offsetTop;
+        node = node.parentElement;
+    }
+
+    const centered = optionTop - (clientHeight / 2) + (optionElement.offsetHeight / 2);
+    const maxScroll = Math.max(0, scrollHeight - clientHeight);
+    return Math.max(0, Math.min(centered, maxScroll));
+}
+
+// Scroll to keep the selected row centered until the list hits top/bottom.
 function scrollToAutocompleteOption(optionElement) {
     if (!optionElement) return;
 
-    // The list scrolls internally now (the overlay reserves a fixed key-guide footer — see #characterAutocompleteOverlay in autocomplete.css); fall back to the overlay for any layout that still scrolls there.
-    const menu = optionElement.closest('.character-autocomplete-list') || optionElement.closest('.character-autocomplete-overlay');
-    if (!menu) return;
+    const resolved = resolveAutofillListScrollContainer(optionElement);
+    if (!resolved) return;
 
-    // Get the menu dimensions
-    const menuRect = menu.getBoundingClientRect();
-    const optionRect = optionElement.getBoundingClientRect();
+    const { scrollEl, scrollbarHost } = resolved;
+    const finalScrollTop = computeCenteredAutofillScrollTop(scrollEl, optionElement);
+    if (finalScrollTop == null) return;
+    if (Math.abs(scrollEl.scrollTop - finalScrollTop) < 1) return;
 
-    // Calculate the scroll position to center the option
-    const menuHeight = menuRect.height;
-    const optionTop = optionElement.offsetTop;
-    const optionHeight = optionElement.offsetHeight;
+    if (typeof scrollEl.scrollTo === 'function') {
+        scrollEl.scrollTo({ top: finalScrollTop, behavior: 'auto' });
+    } else {
+        scrollEl.scrollTop = finalScrollTop;
+    }
 
-    // Center the option in the menu
-    const scrollTop = optionTop - (menuHeight / 2) + (optionHeight / 2);
-
-    // Ensure scroll position is within bounds
-    const maxScroll = menu.scrollHeight - menuHeight;
-    const finalScrollTop = Math.max(0, Math.min(scrollTop, maxScroll));
-
-    // Only scroll if the menu has a scrollable height
-    if (menu.scrollHeight > menuHeight) {
-        // Avoid visible "jumping" when selection stays within the visible viewport.
-        const isInView = optionRect.top >= menuRect.top + AUTOCOMPLETE_SCROLL_MARGIN_PX &&
-            optionRect.bottom <= menuRect.bottom - AUTOCOMPLETE_SCROLL_MARGIN_PX;
-        if (isInView) return;
-
-        // Avoid tiny scroll adjustments when already effectively at target.
-        if (Math.abs(menu.scrollTop - finalScrollTop) < 1) return;
-        menu.scrollTop = finalScrollTop;
+    if (scrollbarHost !== scrollEl) {
+        // customScrollbar: public/scripts/comp/customScrollbar.js
+        if (customScrollbar?.updateScrollbar) {
+            customScrollbar.updateScrollbar(scrollbarHost);
+        }
+        indicateAutofillListScrollbar(scrollbarHost);
     }
 }
 
@@ -8310,30 +8548,37 @@ function updateCharacterAutocompleteSelection() {
 
     if (spellCheckNavigationMode || wordLookupNavigationMode) {
         clearAutofillWikiPreviewReveal();
-        items.forEach((item) => {
-            item.classList.remove('selected');
-            updateTagWikiPreviewScroll(item);
-        });
-        const highlightTarget = currentCharacterAutocompleteTarget || autofillSessionTarget;
-        if (highlightTarget) {
-            syncAutofillSearchHighlight(highlightTarget);
+        if (lastRenderedAutocompleteIndex >= 0 && items[lastRenderedAutocompleteIndex]) {
+            const prev = items[lastRenderedAutocompleteIndex];
+            prev.classList.remove('selected', 'wiki-preview-revealed');
+            updateTagWikiPreviewScroll(prev);
+        } else {
+            items.forEach((item) => {
+                item.classList.remove('selected');
+                updateTagWikiPreviewScroll(item);
+            });
         }
-        updateAutofillKeyguide();
+        lastRenderedAutocompleteIndex = -1;
+        scheduleAutofillKeyguideUpdate();
         return;
     }
-    items.forEach((item, index) => {
-        const isSelected = index === selectedCharacterAutocompleteIndex;
-        item.classList.toggle('selected', isSelected);
-        if (!isSelected) {
-            item.classList.remove('wiki-preview-revealed');
-            updateTagWikiPreviewScroll(item);
-        }
-    });
 
-    // Scroll the selected item into view and center it
-    if (selectedCharacterAutocompleteIndex >= 0 && items[selectedCharacterAutocompleteIndex]) {
-        const selectedItem = items[selectedCharacterAutocompleteIndex];
-        // Coalesce scrolling to 1/frame during rapid keyboard navigation.
+    const newIndex = selectedCharacterAutocompleteIndex;
+    if (newIndex === lastRenderedAutocompleteIndex) {
+        return;
+    }
+
+    if (lastRenderedAutocompleteIndex >= 0 && items[lastRenderedAutocompleteIndex]) {
+        const prev = items[lastRenderedAutocompleteIndex];
+        prev.classList.remove('selected', 'wiki-preview-revealed');
+        updateTagWikiPreviewScroll(prev);
+    }
+
+    lastRenderedAutocompleteIndex = newIndex;
+
+    if (newIndex >= 0 && items[newIndex]) {
+        const selectedItem = items[newIndex];
+        selectedItem.classList.add('selected');
         pendingSelectionScrollItem = selectedItem;
         if (!pendingSelectionScrollRaf) {
             pendingSelectionScrollRaf = requestAnimationFrame(() => {
@@ -8344,15 +8589,16 @@ function updateCharacterAutocompleteSelection() {
                 pendingSelectionScrollItem = null;
             });
         }
-        scheduleAutofillWikiPreviewReveal(selectedItem, selectedCharacterAutocompleteIndex);
+        if (!userActivelyNavigating) {
+            scheduleAutofillWikiPreviewReveal(selectedItem, newIndex);
+        } else {
+            clearAutofillWikiPreviewReveal();
+        }
     } else {
         clearAutofillWikiPreviewReveal();
     }
-    const highlightTarget = currentCharacterAutocompleteTarget || autofillSessionTarget;
-    if (highlightTarget) {
-        syncAutofillSearchHighlight(highlightTarget);
-    }
-    updateAutofillKeyguide();
+
+    scheduleAutofillKeyguideUpdate();
 }
 
 function selectCharacterItem(character, detailOptions = {}) {
@@ -8373,7 +8619,7 @@ function selectDynamicPlaceholder(placeholder) {
     const target = getAutofillAcceptTextarea();
     if (!target) return;
 
-    if (isAutofillToolLookupMode()) {
+    if (!shouldAutofillAcceptReplace(target)) {
         insertTextAtPromptCursor(target, placeholder);
         hideCharacterAutocompleteAfterAccept();
         return;
@@ -8452,7 +8698,7 @@ function selectTextReplacement(placeholder) {
     if (!target) return;
     if (!isAutofillFeatureEnabled(target, 'expanders')) return;
 
-    if (isAutofillToolLookupMode()) {
+    if (!shouldAutofillAcceptReplace(target)) {
         insertTextAtPromptCursor(target, `!${placeholder}`);
         hideCharacterAutocompleteAfterAccept();
         return;
@@ -8607,7 +8853,7 @@ function selectTag(tagName, category) {
         }
     }
 
-    if (isAutofillToolLookupMode()) {
+    if (!shouldAutofillAcceptReplace(target)) {
         insertTextAtPromptCursor(target, tagToInsert);
         hideCharacterAutocompleteAfterAccept();
         return;
@@ -9488,6 +9734,15 @@ function hideCharacterAutocomplete(options) {
         pendingSelectionScrollRaf = 0;
         pendingSelectionScrollItem = null;
     }
+    if (pendingKeyguideRaf) {
+        cancelAnimationFrame(pendingKeyguideRaf);
+        pendingKeyguideRaf = 0;
+    }
+    if (autofillNavActivityTimer) {
+        clearTimeout(autofillNavActivityTimer);
+        autofillNavActivityTimer = null;
+    }
+    invalidateAutofillResultsCache();
     clearAutofillWikiPreviewReveal();
     rebuildDisplayAfterCallback = null;
     if (updateDisplayRaf) {
@@ -9527,6 +9782,7 @@ function hideCharacterAutocomplete(options) {
     persistentSpellCheckData = null;
     persistentWordLookupData = null;
     isAutocompleteVisible = false;
+    autofillDetachedKeyboardDismissed = false;
 
     // Clear search state
     lastSearchQuery = '';
@@ -9712,6 +9968,12 @@ function expandAutocompleteInstantly() {
         panelRoot.classList.add('expanded');
     }
 
+    // Detached tool window should already list every row — rebuild only when the DOM is stale.
+    if (isAutofillDetachedMode()) {
+        ensureDetachedAutofillListComplete();
+        return;
+    }
+
     // Use the original showCharacterAutocompleteSuggestions function to rebuild with all results
     if (currentCharacterAutocompleteTarget) {
         showCharacterAutocompleteSuggestions(window.allAutocompleteResults, currentCharacterAutocompleteTarget);
@@ -9757,6 +10019,7 @@ function updateSpellCheckSelection() {
             const selectedWordSection = wordSections[selectedSpellCheckWordIndex];
             selectedWordSection.classList.add('selected');
             scrollToAutocompleteOption(selectedWordSection);
+            markAutofillListNavigationActivity();
 
             if (selectedSpellCheckSuggestionIndex >= 0) {
                 const suggestionBtns = selectedWordSection.querySelectorAll('.spell-check-row-expanded .suggestion-btn');
@@ -9770,7 +10033,7 @@ function updateSpellCheckSelection() {
             row.classList.remove('expanded');
         });
     }
-    updateAutofillKeyguide();
+    scheduleAutofillKeyguideUpdate();
 }
 
 function updateWordLookupSelection() {
@@ -9795,6 +10058,7 @@ function updateWordLookupSelection() {
             const selectedWordSection = wordSections[selectedWordLookupWordIndex];
             selectedWordSection.classList.add('selected');
             scrollToAutocompleteOption(selectedWordSection);
+            markAutofillListNavigationActivity();
 
             if (selectedWordLookupSuggestionIndex >= 0) {
                 const suggestionBtns = selectedWordSection.querySelectorAll('.word-lookup-row-expanded .suggestion-btn');
@@ -9808,7 +10072,7 @@ function updateWordLookupSelection() {
             row.classList.remove('expanded');
         });
     }
-    updateAutofillKeyguide();
+    scheduleAutofillKeyguideUpdate();
 }
 
 // Helper function to determine if a model is an anime model

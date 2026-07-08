@@ -15,7 +15,8 @@ const {
     resolveCheckpointFilePath,
     ensureTierDirs,
     migrateLegacyFlatCheckpoints,
-    deleteCheckpointSidecars
+    deleteCheckpointSidecars,
+    cleanupLegacyFlatDatabaseCheckpoints
 } = require('./checkpointGrandfathering');
 
 /**
@@ -258,7 +259,14 @@ class DatabaseCheckpointManager {
         try {
             const { isoStyle } = this._dbCheckpointPatterns();
             if (isGrandfatheringEnabled(this.globalResources)) {
-                applyGrandfathering(this.checkpointDir, this.dbExt, this.globalResources, isoStyle);
+                applyGrandfathering(this.checkpointDir, this.dbExt, this.globalResources, isoStyle, this.dbName);
+                cleanupLegacyFlatDatabaseCheckpoints(
+                    this.checkpointDir,
+                    this.dbName,
+                    this.dbExt,
+                    this.globalResources,
+                    this.dbName
+                );
                 removeOrphanCheckpointSidecars(this.checkpointDir);
                 return;
             }

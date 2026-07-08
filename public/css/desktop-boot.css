@@ -100,13 +100,37 @@
     min-width: 0;
     display: flex;
     align-items: flex-start;
+    gap: 10px;
 }
 
 #desktopPreStartupModal .desktop-prestartup-status {
+    flex: 1;
+    min-width: 0;
     font-size: 11px;
     line-height: 1.35;
     color: var(--WindowText, #000000);
     text-align: left;
+}
+
+#desktopPreStartupModal .desktop-prestartup-stage-progress {
+    flex: 0 0 88px;
+    width: 88px;
+    height: 10px;
+    margin-top: 1px;
+    background: rgba(0, 0, 0, 0.12);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+#desktopPreStartupModal .desktop-prestartup-stage-progress > div {
+    height: 100%;
+    width: 0%;
+    background: #0a4f9e;
+    transition: width 0.35s ease;
+}
+
+#desktopPreStartupModal.auth-active .desktop-prestartup-stage-progress {
+    display: none !important;
 }
 
 #desktopPreStartupModal .desktop-prestartup-auth {

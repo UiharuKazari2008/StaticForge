@@ -358,10 +358,12 @@ async function createTables() {
     }
 
     // Migration: blob_extract_attempted — skip re-queue when all prompt lanes are empty
+    let blobExtractColumnJustAdded = false;
     try {
         const imageCols = await db.all(`PRAGMA table_info(images)`);
         if (!imageCols.some((col) => col.name === 'blob_extract_attempted')) {
             await db.exec(`ALTER TABLE images ADD COLUMN blob_extract_attempted INTEGER NOT NULL DEFAULT 0`);
+            blobExtractColumnJustAdded = true;
             logger.info('✅ Added blob_extract_attempted column to images');
         }
     } catch (error) {
@@ -372,11 +374,13 @@ async function createTables() {
 
     try {
         await db.exec(`CREATE INDEX IF NOT EXISTS idx_images_blob_extract ON images (blob_extract_attempted)`);
-        await db.exec(`
-            UPDATE images SET blob_extract_attempted = 1
-            WHERE blob_extract_attempted = 0
-              AND EXISTS (SELECT 1 FROM image_prompt_text p WHERE p.filename = images.filename)
-        `);
+        if (blobExtractColumnJustAdded) {
+            await db.exec(`
+                UPDATE images SET blob_extract_attempted = 1
+                WHERE blob_extract_attempted = 0
+                  AND EXISTS (SELECT 1 FROM image_prompt_text p WHERE p.filename = images.filename)
+            `);
+        }
     } catch (error) {
         if (!error.message.includes('no such column')) {
             logger.warn('Could not create idx_images_blob_extract or backfill attempted flag:', error.message);
@@ -384,10 +388,12 @@ async function createTables() {
     }
 
     // Migration: fts_extract_attempted — skip FTS re-queue after single-pass backfill
+    let ftsExtractColumnJustAdded = false;
     try {
         const imageColsFts = await db.all(`PRAGMA table_info(images)`);
         if (!imageColsFts.some((col) => col.name === 'fts_extract_attempted')) {
             await db.exec(`ALTER TABLE images ADD COLUMN fts_extract_attempted INTEGER NOT NULL DEFAULT 0`);
+            ftsExtractColumnJustAdded = true;
             logger.info('✅ Added fts_extract_attempted column to images');
         }
     } catch (error) {
@@ -398,14 +404,16 @@ async function createTables() {
 
     try {
         await db.exec(`CREATE INDEX IF NOT EXISTS idx_images_fts_extract ON images (fts_extract_attempted)`);
-        await db.exec(`
-            UPDATE images SET fts_extract_attempted = 1
-            WHERE fts_extract_attempted = 0
-              AND (
-                  EXISTS (SELECT 1 FROM prompt_fts_compiled c WHERE c.filename = images.filename)
-                  OR EXISTS (SELECT 1 FROM prompt_fts_input inp WHERE inp.filename = images.filename)
-              )
-        `);
+        if (ftsExtractColumnJustAdded) {
+            await db.exec(`
+                UPDATE images SET fts_extract_attempted = 1
+                WHERE fts_extract_attempted = 0
+                  AND (
+                      EXISTS (SELECT 1 FROM prompt_fts_compiled c WHERE c.filename = images.filename)
+                      OR EXISTS (SELECT 1 FROM prompt_fts_input inp WHERE inp.filename = images.filename)
+                  )
+            `);
+        }
     } catch (error) {
         if (!error.message.includes('no such column') && !error.message.includes('no such table')) {
             logger.warn('Could not create idx_images_fts_extract or backfill attempted flag:', error.message);
@@ -2922,6 +2930,56 @@ async function backfillPromptBlobs(options = {}) {
  * Incremental backfill for prompt_fts_* from image_prompt_text rows (CLI only — not boot).
  * @param {Object} [options]
  */
+async function getPromptIndexStats() {
+    if (!dbInitialized || !db) {
+        throw new Error('Database not initialized');
+    }
+
+    const summary = await db.get(`
+        SELECT
+            COUNT(*) AS totalImages,
+            SUM(CASE WHEN COALESCE(fts_extract_attempted, 0) = 1 THEN 1 ELSE 0 END) AS ftsDone,
+            SUM(CASE WHEN COALESCE(blob_extract_attempted, 0) = 0 THEN 1 ELSE 0 END) AS blobPending,
+            SUM(CASE WHEN COALESCE(fts_extract_attempted, 0) = 0 AND COALESCE(blob_extract_attempted, 0) = 1 THEN 1 ELSE 0 END) AS ftsPending
+        FROM images
+    `);
+
+    const driftRow = await db.get(`
+        SELECT COUNT(*) AS ftsDrift
+        FROM images i
+        WHERE COALESCE(i.fts_extract_attempted, 0) = 0
+          AND (
+              EXISTS (SELECT 1 FROM prompt_fts_compiled c WHERE c.filename = i.filename)
+              OR EXISTS (SELECT 1 FROM prompt_fts_input inp WHERE inp.filename = i.filename)
+          )
+    `);
+
+    return {
+        totalImages: summary?.totalImages || 0,
+        ftsDone: summary?.ftsDone || 0,
+        blobPending: summary?.blobPending || 0,
+        ftsPending: summary?.ftsPending || 0,
+        ftsDrift: driftRow?.ftsDrift || 0
+    };
+}
+
+async function reconcilePromptFtsFlags() {
+    if (!dbInitialized || !db) {
+        throw new Error('Database not initialized');
+    }
+
+    const result = await db.run(`
+        UPDATE images SET fts_extract_attempted = 1, updated_at = strftime('%s', 'now')
+        WHERE fts_extract_attempted = 0
+          AND (
+              EXISTS (SELECT 1 FROM prompt_fts_compiled c WHERE c.filename = images.filename)
+              OR EXISTS (SELECT 1 FROM prompt_fts_input inp WHERE inp.filename = images.filename)
+          )
+    `);
+
+    return { updated: result?.changes || 0 };
+}
+
 async function backfillPromptFts(options = {}) {
     if (!WRITE_PROMPT_FTS) {
         return { updatedCount: 0, errorCount: 0, skippedCount: 0, batches: 0 };
@@ -2934,6 +2992,7 @@ async function backfillPromptFts(options = {}) {
     const batchSize = Math.max(50, parseInt(options.batchSize || PROMPT_FTS_BACKFILL_BATCH, 10) || PROMPT_FTS_BACKFILL_BATCH);
     const maxBatches = options.maxBatches != null ? Math.max(1, parseInt(options.maxBatches, 10) || 1) : null;
     const progressCallback = options.progressCallback || null;
+    const shouldAbort = options.shouldAbort || null;
 
     let updatedCount = 0;
     let errorCount = 0;
@@ -2941,6 +3000,10 @@ async function backfillPromptFts(options = {}) {
     let batchNum = 0;
 
     while (maxBatches == null || batchNum < maxBatches) {
+        if (shouldAbort && shouldAbort()) {
+            return { updatedCount, errorCount, skippedCount, batches: batchNum, aborted: true, mode: 'prompt_fts_fast' };
+        }
+
         const batch = await db.all(`
             SELECT i.filename
             FROM images i
@@ -2963,6 +3026,15 @@ async function backfillPromptFts(options = {}) {
         }
 
         for (let i = 0; i < batch.length; i++) {
+            if (shouldAbort && shouldAbort()) {
+                try {
+                    await db.run('ROLLBACK');
+                } catch (rollbackError) {
+                    logger.error('Error rolling back prompt FTS backfill batch on abort:', rollbackError);
+                }
+                return { updatedCount, errorCount, skippedCount, batches: batchNum, aborted: true, mode: 'prompt_fts_fast' };
+            }
+
             const { filename } = batch[i];
             try {
                 const blobRows = await db.all(`
@@ -5126,6 +5198,8 @@ module.exports = {
     syncSearchFacetsFromStoredMetadata,
     backfillSearchExtraction,
     backfillPromptBlobs,
+    getPromptIndexStats,
+    reconcilePromptFtsFlags,
     backfillPromptFts,
     backfillSeedChains,
     syncWorkspaceMembership,

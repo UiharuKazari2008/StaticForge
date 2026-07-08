@@ -253,7 +253,7 @@ const MANUAL_FN_ROW = [
     { key: 'Esc', label: 'Close', icon: 'fa fa-times' },
     { key: 'F1', label: 'Prompts', icon: 'ri-code-block' },
     { key: 'F2', label: 'UC', icon: 'ri-eraser-fill' },
-    { key: 'F3', label: 'Emphasis', icon: 'fas fa-scale-unbalanced-flip' },
+    { key: 'F3', label: 'Weight Rack', icon: 'fas fa-weight-scale' },
     { key: 'F4', label: 'Quick Access', icon: 'fas fa-book-atlas' },
     { key: 'F5', label: 'Generate', icon: 'nai-sparkles' },
     { key: 'F6', label: 'References', icon: 'nai-img2img' },
@@ -295,7 +295,7 @@ const MANUAL_CLASSIC_RIGHT = [
     shortcutListItem('F2', 'UC', 'ri-eraser-fill'),
     shortcutListItem('ALT + F2', 'Autofill Window', 'fas fa-wand-magic-sparkles', true),
     shortcutListItem('ALT + F1', 'Prompts/UC', 'nai-detatch-up', true),
-    shortcutListItem('F3', 'Emphasis', 'fas fa-scale-unbalanced-flip'),
+    shortcutListItem('F3', 'Weight Rack', 'fas fa-weight-scale'),
     shortcutListItem('ALT + F3', 'Reset Emphasis', 'fas fa-eraser', true),
     shortcutListItem('ALT + S', 'Split Emphasis', 'fas fa-scissors', true),
     shortcutListItem('F4', 'Quick Access', 'fas fa-book-atlas'),
@@ -898,6 +898,9 @@ function createWindowSwitcherOverlay() {
 function handleKeyDown(event) {
     // Plain typing in prompt fields — autofill uses input/beforeinput; skip global shortcut work.
     const shortcutTarget = event.target;
+    if (shortcutTarget && shortcutTarget.matches && shortcutTarget.matches('.text-search-input')) {
+        return true;
+    }
     if (shortcutTarget && shortcutTarget.matches && shortcutTarget.matches('.prompt-textarea, .character-prompt-textarea')) {
         if (!event.ctrlKey && !event.metaKey && !event.altKey) {
             const k = event.key;
@@ -1034,14 +1037,16 @@ function handleKeyDown(event) {
             }
             break;
         case 'F3':
-            // Trigger emphasis mode in the active prompt toolbar
-            const activeTextarea = document.activeElement;
-            if (activeTextarea && (activeTextarea.matches('.prompt-textarea, .character-prompt-textarea'))) {
-                const toolbar = activeTextarea.closest('.prompt-textarea-container, .character-prompt-textarea-container')?.querySelector('.prompt-textarea-toolbar');
-                if (toolbar && window.promptTextareaToolbar) {
+            {
+                const activeTextarea = document.activeElement;
+                if (activeTextarea && activeTextarea.matches('.prompt-textarea, .character-prompt-textarea')) {
                     event.preventDefault();
                     event.stopPropagation();
-                    window.promptTextareaToolbar.openEmphasisMode(activeTextarea, toolbar);
+                    // emphasisGroupsToolManager: public/scripts/comp/emphasisGroupsToolManager.js
+                    if (emphasisGroupsToolManager) {
+                        emphasisGroupsToolManager.openForTextarea(activeTextarea);
+                        showShortcutActionToast('Weight Rack');
+                    }
                 }
             }
             break;
@@ -1052,7 +1057,7 @@ function handleKeyDown(event) {
                 event.preventDefault();
                 event.stopPropagation();
                 removeAllEmphasisFromSelection(activeElement);
-                // updateEmphasisHighlighting: public/scripts/comp/emphasisManager.js
+                // updateEmphasisHighlighting: public/scripts/comp/emphasisHighlight.js
                 updateEmphasisHighlighting(activeElement);
                 showShortcutActionToast('Reset Emphasis');
             }

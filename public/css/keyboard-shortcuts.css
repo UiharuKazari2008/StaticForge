@@ -520,12 +520,12 @@
 }
 
 .gallery-jump-index-card:hover {
-    border-color: var(--color-primary, #7aa2ff);
+    border-color: var(--primary-color, #7aa2ff);
 }
 
 .gallery-jump-index-card.active-boundary {
-    border-color: var(--color-primary, #7aa2ff);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, #7aa2ff) 65%, transparent);
+    border-color: var(--primary-color, #7aa2ff);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary-color, #7aa2ff) 65%, transparent);
 }
 
 .gallery-jump-index-card img {

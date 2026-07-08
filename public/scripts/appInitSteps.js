@@ -102,16 +102,15 @@ if (window.wsClient) {
                 lastServerReadinessCheck = Date.now();
 
                 if (!data.isReady) {
-                    // Server is initializing, show status
-                    console.log(`📊 Server status: ${data.stageMessage}`);
+                    console.log(`[startup] ${data.stageMessage} (${data.progressPercent != null ? data.progressPercent + '%' : '…'})`);
 
-                    // Show banner notification if WebSocket is disconnected
                     if (window.wsClient && !window.wsClient.isConnected()) {
+                        window.wsClient._applyServerStartupStatus(data);
                         window.wsClient.bannerManager.showWebSocketTicker(
                             'warning',
-                            `Server Booting: ${data.stageMessage}`,
+                            `Server Booting: ${data.stageMessage}${data.progressPercent != null ? ` (${data.progressPercent}%)` : ''}`,
                             'fa-spinner-third fa-spin',
-                            false // Don't auto-hide
+                            false
                         );
                     }
                 } else {

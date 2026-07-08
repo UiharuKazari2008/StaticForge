@@ -2309,6 +2309,13 @@ function addSharedFieldsToRequestBody(requestBody, values) {
     requestBody.prompt_normalize = window.promptNormalize !== false;
     requestBody.deduplicate_tags = window.deduplicateTags !== false;
 
+    const emphasisNormStore = typeof getEmphasisNormalizationFieldStore === 'function'
+        ? getEmphasisNormalizationFieldStore()
+        : (window.emphasisNormalizationByField || null);
+    if (emphasisNormStore && Object.keys(emphasisNormStore).length > 0) {
+        requestBody.emphasis_normalization = { ...emphasisNormStore };
+    }
+
     // Collect dynamic generation data from current button states
     const todBtn = document.getElementById('todBtn');
     const weatherBtn = document.getElementById('weatherBtn');
@@ -4225,6 +4232,9 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
         if (data.forge_data && data.forge_data.deduplicate_tags !== undefined) {
             window.deduplicateTags = !!data.forge_data.deduplicate_tags;
         }
+        if (typeof loadEmphasisNormalizationFromForgeData === 'function') {
+            loadEmphasisNormalizationFromForgeData(data.forge_data || null);
+        }
 
         updateSplashScreenStatus('Loading Pipelines...');
         // Handle staged generation data from forge_data
@@ -4354,7 +4364,7 @@ function autoResizeTextareasAfterModalShow() {
     // Defer emphasis highlighting only — layout is settled before openModal.
     requestAnimationFrame(() => {
         textareas.forEach((field) => {
-            // scheduleEmphasisHighlightUpdate: public/scripts/comp/emphasisManager.js
+            // scheduleEmphasisHighlightUpdate: public/scripts/comp/emphasisHighlight.js
             scheduleEmphasisHighlightUpdate(field, true);
         });
         stopEmphasisHighlighting();
@@ -4396,6 +4406,15 @@ async function handleManualGeneration(e, options = {}) {
 
     // utilities.js — enforce prompt formatting (emphasis "::" spacing) even when fields are focused
     applyPromptFormattingBeforeGeneration();
+
+    // applyPendingEmphasisNormalizationBeforeGeneration: public/scripts/comp/emphasisGroupsToolManager.js
+    if (typeof applyPendingEmphasisNormalizationBeforeGeneration === 'function') {
+        applyPendingEmphasisNormalizationBeforeGeneration();
+    }
+    // flushPendingEmphasisDirectModeBeforeGeneration: public/scripts/comp/emphasisGroupsToolManager.js
+    if (typeof flushPendingEmphasisDirectModeBeforeGeneration === 'function') {
+        flushPendingEmphasisDirectModeBeforeGeneration();
+    }
 
     const isImg2Img = window.uploadedImageData || (window.currentEditMetadata && window.currentEditMetadata.isVariationEdit);
     const values = collectManualFormValues();

@@ -1249,6 +1249,10 @@ body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window
     color: #e57373;
 }
 
+.search-indexing-indicator.pending i {
+    color: #ffb74d;
+}
+
 .naxt-bag-tray-icon.naxt-bag-tray-atelier-open {
     opacity: 0.45;
 }
@@ -1398,6 +1402,21 @@ body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window
 
 .dev-warnings-tray-icon.has-warnings {
     animation: pulse-ping-warning 2s ease-in-out infinite;
+}
+
+/* Generic taskbar tray notification popovers (PopoverManager.showPopover) */
+.popover.is-top.arrow-bottom-right:not(.service-worker-tray-popup):not(.dev-warnings-tray-popup):not(.generation-quips-tray-popup) {
+    width: min(360px, calc(100vw - 24px));
+    min-width: 260px;
+    white-space: normal;
+}
+
+.popover.is-top.arrow-bottom-right:not(.service-worker-tray-popup):not(.dev-warnings-tray-popup):not(.generation-quips-tray-popup) .popover-content .popover-header {
+    justify-content: flex-start;
+}
+
+.popover.is-top.arrow-bottom-right:not(.service-worker-tray-popup):not(.dev-warnings-tray-popup):not(.generation-quips-tray-popup) .popover-body {
+    white-space: normal;
 }
 
 .dev-warnings-tray-popup {

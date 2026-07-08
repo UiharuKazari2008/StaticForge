@@ -1,9 +1,7 @@
 /**
  * Client asset URL resolver — local paths or master replication asset URLs.
- * replicationGalleryBanner.js, galleryView.js
+ * replicationGalleryBanner.js
  */
-
-const GALLERY_SHOW_SHARED_KEY = 'galleryShowSharedRemote';
 
 let galleryShowSharedRemote = null;
 let galleryReplicationContext = null;
@@ -14,46 +12,31 @@ function getGalleryReplicationContext() {
 
 function applyGalleryReplicationContext(context) {
     galleryReplicationContext = context && typeof context === 'object' ? context : null;
+    if (context && context.showSharedRemote !== undefined) {
+        galleryShowSharedRemote = context.showSharedRemote === true;
+    }
 }
 
-function resolveShowSharedFromDefaults(context) {
-    const ctx = context || galleryReplicationContext;
-    if (!ctx || !ctx.masterAccessUrl) return false;
-    if (ctx.gallerySharedDefault === 'always') return true;
-    if (ctx.gallerySharedDefault === 'never') return false;
-    try {
-        const stored = localStorage.getItem(GALLERY_SHOW_SHARED_KEY);
-        if (stored === '1' || stored === 'true') return true;
-        if (stored === '0' || stored === 'false') return false;
-    } catch (_e) {}
-    return false;
-}
-
-function getGalleryShowSharedRemote(context) {
+function getGalleryShowSharedRemote() {
     if (galleryShowSharedRemote !== null) {
         return galleryShowSharedRemote === true;
     }
-    return resolveShowSharedFromDefaults(context);
+    const ctx = galleryReplicationContext;
+    if (!ctx || !ctx.masterAccessUrl) return false;
+    if (ctx.gallerySharedDefault === 'always') return true;
+    if (ctx.gallerySharedDefault === 'never') return false;
+    return ctx.showSharedRemote === true;
 }
 
-function setGalleryShowSharedRemote(value, persist) {
+function setGalleryShowSharedRemote(value) {
     galleryShowSharedRemote = !!value;
-    if (persist) {
-        try {
-            localStorage.setItem(GALLERY_SHOW_SHARED_KEY, value ? '1' : '0');
-        } catch (_e) {}
-    }
-}
-
-function resetGalleryShowSharedRemoteSession() {
-    galleryShowSharedRemote = null;
 }
 
 function isReplicationSharedGalleryMenuAvailable() {
     const ctx = galleryReplicationContext;
     if (!ctx || !ctx.masterAccessUrl) return false;
     if (ctx.connectivity === 'airgapped') return false;
-    return true;
+    return ctx.gallerySharedDefault === 'manual';
 }
 
 function buildLocalAssetPath(kind, key, item) {
@@ -137,10 +120,4 @@ function resolveGalleryFullImageUrl(image) {
         if (remote) return remote;
     }
     return `/images/${encodeURIComponent(filename)}`;
-}
-
-function getGalleryReplicationRequestOptions() {
-    return {
-        galleryShowSharedRemote: getGalleryShowSharedRemote()
-    };
 }

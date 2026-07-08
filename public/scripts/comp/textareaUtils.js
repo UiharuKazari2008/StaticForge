@@ -82,7 +82,7 @@ function isPromptTextareaContentKeydown(e) {
 
 /**
  * Defer resize + emphasis highlight on input and content-changing keydown.
- * Resize runs once per frame; highlight is debounced in emphasisManager.js.
+ * Resize runs once per frame; highlight is debounced in emphasisHighlight.js.
  * options.minHeight — passed to autoResizeTextarea; options.onResize — called after resize.
  */
 function wirePromptTextareaVisualUpdates(textarea, options = {}) {
@@ -99,7 +99,7 @@ function wirePromptTextareaVisualUpdates(textarea, options = {}) {
             autoResizeTextarea(textarea, minHeight != null ? minHeight : 70);
             if (onResize) onResize();
         }
-        // scheduleEmphasisHighlightUpdate: public/scripts/comp/emphasisManager.js
+        // scheduleEmphasisHighlightUpdate: public/scripts/comp/emphasisHighlight.js
         if (typeof scheduleEmphasisHighlightUpdate === 'function') {
             scheduleEmphasisHighlightUpdate(textarea);
         }
@@ -213,7 +213,7 @@ function createEditableTextareaContainer(options = {}) {
                     <i class="fas fa-lightbulb-slash"></i>
                 </button>
                 <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
-                    <i class="fas fa-scale-unbalanced-flip"></i>
+                    <i class="fas fa-weight-scale"></i>
                 </button>
                 <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
                     <i class="fas fa-book-font"></i>

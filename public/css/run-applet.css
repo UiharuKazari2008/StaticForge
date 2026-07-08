@@ -81,7 +81,7 @@
     align-items: center;
     gap: 8px;
     padding: 2px 6px;
-    border: 1px solid color-mix(in srgb, var(--color-primary, #5eb8b8) 55%, transparent);
+    border: 1px solid color-mix(in srgb, var(--primary-color, #5eb8b8) 55%, transparent);
     border-radius: var(--border-radius-md, 6px);
     background: color-mix(in srgb, var(--glass-layer-dark-3, rgba(0, 0, 0, 0.45)) 90%, transparent);
 }
@@ -139,15 +139,15 @@
 }
 
 #runModal .run-applet-item.keyboard-selected {
-    background: color-mix(in srgb, var(--color-primary, #5eb8b8) 18%, transparent);
+    background: color-mix(in srgb, var(--primary-color, #5eb8b8) 18%, transparent);
 }
 
 #runModal .run-applet-results-shell.mouse-nav .character-autocomplete-item.run-applet-item:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--color-primary, #5eb8b8) 18%, transparent);
+    background: color-mix(in srgb, var(--primary-color, #5eb8b8) 18%, transparent);
 }
 
 #runModal .run-applet-results-shell.mouse-nav .run-applet-item.keyboard-selected:hover {
-    background: color-mix(in srgb, var(--color-primary, #5eb8b8) 24%, transparent);
+    background: color-mix(in srgb, var(--primary-color, #5eb8b8) 24%, transparent);
 }
 
 #runModal .run-applet-row {

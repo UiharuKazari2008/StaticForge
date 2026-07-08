@@ -239,13 +239,13 @@ function sendReplicationAssetError(handlers, ws, error, requestId, fallbackType)
     handlers.sendError(ws, error.message || 'Asset unavailable', error.message, requestId);
 }
 
-function shouldShowSharedGallery(config, clientFlag) {
+function shouldShowSharedGallery(config, sessionEnabled) {
     if (!config || !config.masterAccessUrl) return false;
     if (config.connectivity === 'airgapped') return false;
     const mode = config.gallerySharedDefault || 'manual';
     if (mode === 'always') return true;
     if (mode === 'never') return false;
-    return clientFlag === true;
+    return sessionEnabled === true;
 }
 
 function shouldShowReplicationBanner(config, masterReachable) {
@@ -257,13 +257,14 @@ function shouldShowReplicationBanner(config, masterReachable) {
     return masterReachable !== true;
 }
 
-function buildReplicationContext(config, masterReachable) {
+function buildReplicationContext(config, masterReachable, showSharedRemote) {
     if (!config || !config.masterAccessUrl) return null;
     return {
         masterAccessUrl: config.masterAccessUrl,
         masterDisplayName: getMasterDisplayName(config),
         masterReachable: masterReachable === true,
         gallerySharedDefault: config.gallerySharedDefault || 'manual',
+        showSharedRemote: showSharedRemote === true,
         role: config.role,
         connectivity: config.connectivity,
         assetReadToken: config.replicationReadToken || config.replicationToken || null

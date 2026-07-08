@@ -80,7 +80,8 @@ const PopoverManager = {
                 position: position,
                 arrowPosition: arrowPosition,
                 hoverOnly: hoverOnly,
-                onHide: options.onHide || null
+                onHide: options.onHide || null,
+                className: options.className || null
             });
         } else {
             // Update existing popover
@@ -141,7 +142,8 @@ const PopoverManager = {
             arrowPosition = null,
             onShow = null,
             onHide = null,
-            hoverOnly = false
+            hoverOnly = false,
+            className = null
         } = options;
         
         // Remove existing popover if any
@@ -150,6 +152,9 @@ const PopoverManager = {
         // Create popover element
         const popover = document.createElement('div');
         popover.className = 'popover';
+        if (className) {
+            className.split(/\s+/).filter(Boolean).forEach((cls) => popover.classList.add(cls));
+        }
         
         // Set content - support HTML strings (for backward compatibility) or HTMLElement
         if (typeof content === 'string') {

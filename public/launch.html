@@ -755,6 +755,7 @@
                         isReady: data.isReady,
                         stage: data.stage,
                         stageMessage: data.stageMessage,
+                        progressPercent: data.progressPercent,
                         uptime: data.uptime
                     };
                 } else {
@@ -800,7 +801,7 @@
 
             // Server is initializing, show current stage
             const uptimeSeconds = Math.floor(readiness.uptime / 1000);
-            showError(`${readiness.stageMessage} (${uptimeSeconds}s)`, true);
+            showError(`${readiness.stageMessage}${readiness.progressPercent != null ? ` (${readiness.progressPercent}%)` : ''} (${uptimeSeconds}s)`, true);
         }
 
         function startServerReadinessPolling() {

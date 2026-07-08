@@ -961,7 +961,12 @@ function setupMainMenuContextMenus() {
                     );
                     break;
                 }
-                setGalleryShowSharedRemote(next, true);
+                setGalleryShowSharedRemote(next);
+                if (window.wsClient) {
+                    window.wsClient.setGalleryShowSharedRemote(next).catch((error) => {
+                        console.error('Failed to update shared gallery preference:', error);
+                    });
+                }
                 if (typeof refreshGalleryForReplicationToggle === 'function') {
                     refreshGalleryForReplicationToggle();
                 }
@@ -1159,6 +1164,77 @@ function setupMainMenuContextMenus() {
                     } catch (error) {
                         console.error('Error rebuilding indexes:', error);
                         showGlassToast('error', null, 'Failed to rebuild indexes: ' + error.message, false, 5000, '<i class="fas fa-exclamation-circle"></i>');
+                    }
+                } else {
+                    showGlassToast('error', null, 'WebSocket not connected', false, 3000, '<i class="fas fa-exclamation-circle"></i>');
+                }
+                break;
+
+            case 'prompt-index-start':
+                if (window.wsClient && window.wsClient.isConnected()) {
+                    try {
+                        await window.wsClient.sendMessage('prompt_index_start', {});
+                        showGlassToast('info', null, 'Prompt FTS indexing started', false, 3000, '<i class="fas fa-database"></i>');
+                    } catch (error) {
+                        console.error('Error starting prompt FTS index:', error);
+                        showGlassToast('error', null, 'Failed to start prompt FTS indexing: ' + error.message, false, 5000, '<i class="fas fa-exclamation-circle"></i>');
+                    }
+                } else {
+                    showGlassToast('error', null, 'WebSocket not connected', false, 3000, '<i class="fas fa-exclamation-circle"></i>');
+                }
+                break;
+
+            case 'prompt-index-pause':
+                if (window.wsClient && window.wsClient.isConnected()) {
+                    try {
+                        await window.wsClient.sendMessage('prompt_index_pause', {});
+                        showGlassToast('info', null, 'Prompt FTS indexing paused', false, 3000, '<i class="fas fa-pause"></i>');
+                    } catch (error) {
+                        console.error('Error pausing prompt FTS index:', error);
+                        showGlassToast('error', null, 'Failed to pause prompt FTS indexing: ' + error.message, false, 5000, '<i class="fas fa-exclamation-circle"></i>');
+                    }
+                } else {
+                    showGlassToast('error', null, 'WebSocket not connected', false, 3000, '<i class="fas fa-exclamation-circle"></i>');
+                }
+                break;
+
+            case 'prompt-index-resume':
+                if (window.wsClient && window.wsClient.isConnected()) {
+                    try {
+                        await window.wsClient.sendMessage('prompt_index_resume', {});
+                        showGlassToast('info', null, 'Prompt FTS indexing resumed', false, 3000, '<i class="fas fa-play"></i>');
+                    } catch (error) {
+                        console.error('Error resuming prompt FTS index:', error);
+                        showGlassToast('error', null, 'Failed to resume prompt FTS indexing: ' + error.message, false, 5000, '<i class="fas fa-exclamation-circle"></i>');
+                    }
+                } else {
+                    showGlassToast('error', null, 'WebSocket not connected', false, 3000, '<i class="fas fa-exclamation-circle"></i>');
+                }
+                break;
+
+            case 'prompt-index-cancel':
+                if (window.wsClient && window.wsClient.isConnected()) {
+                    try {
+                        await window.wsClient.sendMessage('prompt_index_cancel', {});
+                        showGlassToast('info', null, 'Prompt FTS indexing cancelled', false, 3000, '<i class="fas fa-stop"></i>');
+                    } catch (error) {
+                        console.error('Error cancelling prompt FTS index:', error);
+                        showGlassToast('error', null, 'Failed to cancel prompt FTS indexing: ' + error.message, false, 5000, '<i class="fas fa-exclamation-circle"></i>');
+                    }
+                } else {
+                    showGlassToast('error', null, 'WebSocket not connected', false, 3000, '<i class="fas fa-exclamation-circle"></i>');
+                }
+                break;
+
+            case 'prompt-index-reconcile':
+                if (window.wsClient && window.wsClient.isConnected()) {
+                    try {
+                        const result = await window.wsClient.sendMessage('prompt_index_reconcile', {});
+                        const updated = result?.data?.updated ?? result?.updated ?? 0;
+                        showGlassToast('success', null, `Reconciled ${updated} prompt FTS flags`, false, 4000, '<i class="fas fa-wrench"></i>');
+                    } catch (error) {
+                        console.error('Error reconciling prompt FTS index:', error);
+                        showGlassToast('error', null, 'Failed to reconcile prompt FTS flags: ' + error.message, false, 5000, '<i class="fas fa-exclamation-circle"></i>');
                     }
                 } else {
                     showGlassToast('error', null, 'WebSocket not connected', false, 3000, '<i class="fas fa-exclamation-circle"></i>');

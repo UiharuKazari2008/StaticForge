@@ -60,7 +60,7 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | [feature-map.md](./feature-map.md) | UI feature → REST/WS matrix |
 | [README-CHILD.md](../README-CHILD.md) | Child/ephemeral replication deployment (master pairing, bootstrap, daily ops) |
 
-### WebSocket domains (275 request types)
+### WebSocket domains (277 request types)
 
 | Domain | File | Packets |
 |--------|------|---------|
@@ -68,7 +68,7 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | Gallery | [ws/gallery.md](./ws/gallery.md) | 9 |
 | Presets | [ws/presets.md](./ws/presets.md) | 11 |
 | Workspaces | [ws/workspace.md](./ws/workspace.md) | 34 |
-| Search & tags | [ws/search.md](./ws/search.md) | 13 |
+| Search & tags | [ws/search.md](./ws/search.md) | 12 |
 | Grimoire / Wiki | [ws/wiki.md](./ws/wiki.md) | 7 |
 | Chat | [ws/chat.md](./ws/chat.md) | 9 |
 | Director | [ws/director.md](./ws/director.md) | 12 |

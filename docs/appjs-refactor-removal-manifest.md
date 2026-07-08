@@ -291,7 +291,7 @@ All scripted removal batches (1–13) are **COMPLETE**. `public/scripts/app.js` 
 | Global / block | Consumer |
 |----------------|----------|
 | `bypassConfirmation` | `exitConfirmation.js`, `mainMenuManager.js`, `serviceWorkerManager.js`, … |
-| `t5Tokenizer` | `appInitSteps.js` init step 5; `emphasisManager.js`, `presetTokenCount.js`, … |
+| `t5Tokenizer` | `appInitSteps.js` init step 5; `emphasisSubgroup.js`, `presetTokenCount.js`, … |
 | `pinModalPromise` | `connectionManager.js` |
 | `resizeTimeout` | Declared for legacy contract; `uiResize.js` uses local `mainResizeTimeout` |
 | `window.u1` bridge | Protected tag-highlight dataset |

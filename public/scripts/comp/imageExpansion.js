@@ -63,7 +63,7 @@ function clearExpansionCompiledCharacterFields() {
         if (!container) return;
 
         container.querySelectorAll('textarea').forEach((textarea) => {
-            // stopEmphasisHighlighting, emphasisHighlightingTarget: public/scripts/comp/emphasisManager.js
+            // stopEmphasisHighlighting: public/scripts/comp/emphasisHighlight.js
             if (emphasisHighlightingTarget === textarea) {
                 stopEmphasisHighlighting();
             }

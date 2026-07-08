@@ -35,23 +35,7 @@ const { streamLogFile } = require('./modules/logStreamService');
 const pm2Service = require('./modules/pm2Service');
 const runtimeAssetService = require('./modules/runtimeAssetService');
 const workspaceCssService = require('./modules/workspaceCssService');
-
-// Server readiness tracking
-const serverReadiness = {
-    isReady: false,
-    stage: 'initializing',
-    stages: {
-        'initializing': 'Server starting up...',
-        'syncing_previews': 'Syncing previews...',
-        'runtime_compile': 'Compiling runtime CSS and JavaScript...',
-        'account_init': 'Loading account data...',
-        'database_init': 'Setting up databases...',
-        'websocket_init': 'Starting WebSocket server...',
-        'ready': 'Server ready'
-    },
-    startTime: Date.now(),
-    lastUpdate: Date.now()
-};
+const serverStartupStatus = require('./modules/serverStartupStatus');
 
 let runtimeCompileComplete = false;
 
@@ -178,31 +162,27 @@ workspaceCssService.init({
     }
 });
 
-// Update server readiness stage
-function updateServerStage(stage, isReady = false) {
-    serverReadiness.stage = stage;
-    serverReadiness.isReady = isReady;
-    serverReadiness.lastUpdate = Date.now();
-    // Logging now handled by boot tree system
+// Update server readiness stage (modules/serverStartupStatus.js)
+function updateServerStage(stage, isReady = false, options = {}) {
+    serverStartupStatus.updateStage(stage, { isReady, ...options });
 }
 
 // Server readiness middleware - blocks access to endpoints when server is not ready
 function serverReadinessMiddleware(req, res, next) {
-    // Block all other endpoints if server is not ready
-    if (!serverReadiness.isReady) {
-        const uptime = Date.now() - serverReadiness.startTime;
-        const stageMessage = serverReadiness.stages[serverReadiness.stage] || 'Unknown stage';
-        
+    const status = serverStartupStatus.getPublicStatus();
+    if (!status.isReady) {
         return res.status(503).json({
             success: false,
             error: 'Server is initializing',
-            stage: serverReadiness.stage,
-            stageMessage: stageMessage,
-            uptime: uptime,
-            retryAfter: 30 // Suggest retry after 30 seconds
+            stage: status.stage,
+            subStage: status.subStage,
+            stageMessage: status.stageMessage,
+            progressPercent: status.progressPercent,
+            uptime: status.uptime,
+            retryAfter: 30
         });
     }
-    
+
     next();
 }
 
@@ -897,7 +877,7 @@ const limiter = rateLimit({
         
         // Skip rate limiting for OPTIONS requests to specific routes only
         if (req.method === 'OPTIONS') {
-            const allowedPaths = ['/', '/app'];
+            const allowedPaths = ['/', '/app', '/status'];
             return allowedPaths.includes(req.path);
         }
         
@@ -935,7 +915,7 @@ const speedLimiter = slowDown({
         
         // Skip speed limiting for OPTIONS requests to specific routes only
         if (req.method === 'OPTIONS') {
-            const allowedPaths = ['/', '/app'];
+            const allowedPaths = ['/', '/app', '/status'];
             return allowedPaths.includes(req.path);
         }
         
@@ -1698,14 +1678,14 @@ app.use('/image/opti/:filename', authMiddleware, async (req, res) => {
 
 app.options('/', (req, res) => {
     if (!runtimeCompileComplete) {
-        const uptime = Date.now() - serverReadiness.startTime;
-        const stageMessage = serverReadiness.stages.runtime_compile || 'Compiling runtime assets...';
+        const bootStatus = serverStartupStatus.getPublicStatus();
         return res.status(503).json({
             success: false,
             error: 'Runtime assets are compiling',
             stage: 'runtime_compile',
-            stageMessage,
-            uptime,
+            stageMessage: bootStatus.stageMessage,
+            progressPercent: bootStatus.progressPercent,
+            uptime: bootStatus.uptime,
             retryAfter: 5
         });
     }
@@ -1715,24 +1695,26 @@ app.options('/', (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-// Server status endpoint - available even when server is not fully ready
+// Server status endpoint - available once HTTP server is listening
 app.options('/status', (req, res) => {
-    const uptime = Date.now() - serverReadiness.startTime;
-    const stageMessage = serverReadiness.stages[serverReadiness.stage] || 'Unknown stage';
-    const runtimeCompile = runtimeAssetService.getStatus();
-    
-    res.json({
-        isReady: serverReadiness.isReady,
-        stage: serverReadiness.stage,
-        stageMessage: stageMessage,
-        uptime: uptime,
-        lastUpdate: serverReadiness.lastUpdate,
-        timestamp: Date.now(),
+    res.json(serverStartupStatus.getPublicStatus({
         runtimeCompileComplete,
         runtimeCompile: runtimeAssetService.getPublicStatus(),
         runtimeAutoRecompile: getRuntimeAutoRecompileConfig()
-    });
+    }));
 });
+
+// Boot-critical static assets — available as soon as HTTP listens (before full static middleware)
+for (const bootPath of ['/sw.js', '/manifest.json']) {
+    app.get(bootPath, (req, res, next) => {
+        const filePath = path.join(__dirname, 'public', bootPath.slice(1));
+        if (!fs.existsSync(filePath)) {
+            return next();
+        }
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
+        res.sendFile(filePath);
+    });
+}
 
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -3108,19 +3090,27 @@ async function handleAdminUnixSocketMessage(message, socket) {
 (async () => {
     // Initialize boot tree logging
     globalResources.logger.startBoot();
-    
+
+    // Listen immediately so /status is reachable during global resource init
+    await globalResources.logger.bootStep('HTTP Server', async () => {
+        updateServerStage('binding');
+        await globalResources.startWebServer();
+        serverStartupStatus.setCapability('http', true);
+        serverStartupStatus.setCapability('status', true);
+        globalResources.logger.bootSubStep(`Listening on port ${globalResources.getConfig().port}`);
+    });
+
     await globalResources.logger.bootStep('Global Resources Initialization', async () => {
         updateServerStage('loading_global_resources');
-        await globalResources.initialize();
+        await globalResources.initialize({
+            reportStartup: serverStartupStatus.reportGlobalResourcesStep
+        });
     });
-    
+
     // Rotate generation log on startup
     globalResources.logger.rotateGenerationLog();
-    
-    // Start server early to accept connections and provide status updates
+
     updateServerStage('initializing');
-    
-    await globalResources.startWebServer();
     
     // Preview Synchronization
     await globalResources.logger.bootStep('Preview Synchronization', async () => {
@@ -3174,6 +3164,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
     await globalResources.logger.bootStep('WebSocket Server', async () => {
         updateServerStage('websocket_init');
         const { wsServer } = globalResources.initializeWebSocketServer();
+        serverStartupStatus.setCapability('websocket', true);
 
         // Start ping interval with server data callback
         wsServer.startPingInterval(() => {
@@ -3199,6 +3190,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
 
     // Unix socket CLI (service worker cache refresh / client broadcast)
     await globalResources.logger.bootStep('Unix Socket CLI', async () => {
+        updateServerStage('unix_socket_init');
         const socketPath = process.env.STATICFORGE_SOCKET_PATH || '/tmp/staticforge_mcp.sock';
         unixSocketCommunication = new UnixSocketCommunication({ socketPath });
         unixSocketCommunication.on('message', handleAdminUnixSocketMessage);
@@ -3208,6 +3200,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
     
     // Finalize Setup
     await globalResources.logger.bootStep('Finalizing', async () => {
+        updateServerStage('finalizing');
         globalResources.logger.bootSubStep('Security system initialized');
 
         // Serve optimised css/scripts from .cache unless debug mode (before public static)
@@ -3245,6 +3238,8 @@ async function handleAdminUnixSocketMessage(message, socket) {
                 next(err);
             }
         });
+
+        serverStartupStatus.setCapability('staticAssets', true);
 
         // Serve static files from public directory (after routes to avoid conflicts)
         app.use(express.static('public', {

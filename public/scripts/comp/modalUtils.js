@@ -4235,7 +4235,7 @@ function getModalType(modal) {
     }
 
     if (modal.id && modal.id.startsWith('emphasisGroupsTool_')) {
-        return 'emphasisGroupsTool';
+        return modal.id;
     }
 
     // Check for specific modal classes
@@ -4269,8 +4269,11 @@ function isModalActive(modal) {
 /** Taskbar highlight only: parent-linked tool windows never get their own "active" taskbar button (parent shows active instead). */
 function isModalActiveForTaskbar(modal) {
     if (!modal) return false;
-    if (isToolWindow(modal) && modal.getAttribute('data-parent-modal-id')) {
-        return false;
+    if (isToolWindow(modal)) {
+        if (modal.getAttribute('data-parent-modal-id')) return false;
+        if (modal.classList.contains('novel-editor-tool') || modal.classList.contains('novel-progress-tool')) {
+            return false;
+        }
     }
     return isModalActive(modal);
 }

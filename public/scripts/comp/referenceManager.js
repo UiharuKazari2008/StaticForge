@@ -8222,7 +8222,7 @@ function initializeCacheMetadataToolbarDropdowns() {
             () => renderCachePromptActionsDropdown('cachePromptActionsDropdownMenu', [
                 { value: 'search', display: 'Search', icon: 'fas fa-search', toolbarWide: true },
                 { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-font', toolbarWide: true },
-                { value: 'emphasis', display: 'Emphasis', icon: 'fas fa-scale-unbalanced-flip' },
+                { value: 'emphasis', display: 'Emphasis', icon: 'fas fa-weight-scale' },
                 { value: 'text-replacement-manager', display: 'Text Expanders', icon: 'fas fa-book-font' }
             ]),
             () => null,
@@ -8246,7 +8246,7 @@ function initializeCacheMetadataToolbarDropdowns() {
             () => renderCacheUcActionsDropdown('cacheUcActionsDropdownMenu', [
                 { value: 'search', display: 'Search', icon: 'fas fa-search', toolbarWide: true },
                 { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-font', toolbarWide: true },
-                { value: 'emphasis', display: 'Emphasis', icon: 'fas fa-scale-unbalanced-flip' }
+                { value: 'emphasis', display: 'Emphasis', icon: 'fas fa-weight-scale' }
             ]),
             () => null,
             {

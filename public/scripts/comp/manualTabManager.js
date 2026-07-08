@@ -4,7 +4,7 @@
  * Prompt/UC/creative tab switching in the manual generation modal.
  * Extracted from public/scripts/app.js; originals remain until manifest removal.
  *
- * Dependencies: manualModalManager.js, utilities.js (prepareManualTabLayout), emphasisManager.js
+ * Dependencies: manualModalManager.js, utilities.js (prepareManualTabLayout), emphasisHighlight.js
  */
 
 function switchManualTab(targetTab, previouslyFocused = undefined) {
@@ -87,7 +87,7 @@ function switchManualTab(targetTab, previouslyFocused = undefined) {
         setTimeout(() => {
             if (focusTarget && focusTarget.focus) {
                 focusTarget.focus();
-                // scheduleEmphasisHighlightUpdate: public/scripts/comp/emphasisManager.js
+                // scheduleEmphasisHighlightUpdate: public/scripts/comp/emphasisHighlight.js
                 scheduleEmphasisHighlightUpdate(focusTarget, true);
             }
         }, 10);

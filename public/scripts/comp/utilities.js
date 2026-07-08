@@ -2144,36 +2144,10 @@ function isValidEmphasisWeightBeforeDelimiter(weight) {
  * @returns {string}
  */
 function fixInvalidEmphasisDelimiters(text) {
-    if (!text || !text.includes('::')) return text;
-
-    const delimiterPositions = [];
-    for (let i = 0; i < text.length - 1; i++) {
-        if (text[i] === ':' && text[i + 1] === ':') {
-            delimiterPositions.push(i);
-            i++;
-        }
+    // normalizeEmphasisPromptSyntax: public/scripts/comp/emphasisParse.js
+    if (typeof normalizeEmphasisPromptSyntax === 'function') {
+        return normalizeEmphasisPromptSyntax(text, { fixCommas: false });
     }
-
-    for (let p = delimiterPositions.length - 1; p >= 0; p--) {
-        const i = delimiterPositions[p];
-        let j = skipPromptWhitespaceBackward(text, i - 1);
-        let weightChars = '';
-        while (j >= 0 && /[\d.\-]/.test(text[j])) {
-            weightChars = text[j] + weightChars;
-            j--;
-        }
-        const hadWhitespaceBeforeWeight = j >= 0 && skipPromptWhitespaceBackward(text, j) < j;
-        j = skipPromptWhitespaceBackward(text, j);
-        const boundaryOk = j < 0 || !/[a-zA-Z0-9_]/.test(text[j]) || hadWhitespaceBeforeWeight;
-        const isValidWeight = weightChars.length > 0
-            && boundaryOk
-            && isValidEmphasisWeightBeforeDelimiter(weightChars);
-
-        if (!isValidWeight && !hasWhitespaceBeforeIndex(text, i)) {
-            text = text.slice(0, i) + ' ' + text.slice(i);
-        }
-    }
-
     return text;
 }
 
@@ -2191,7 +2165,7 @@ function applyPromptFormattingBeforeGeneration() {
 
     textareas.forEach((textarea) => {
         applyFormattedText(textarea, true);
-        // emphasisManager.js
+        // updateEmphasisHighlighting: public/scripts/comp/emphasisHighlight.js
         if (typeof updateEmphasisHighlighting === 'function') {
             updateEmphasisHighlighting(textarea);
         }
@@ -2330,7 +2304,9 @@ function applyFormattedText(textarea, lostFocus) {
         });
     }
 
-    text = fixInvalidEmphasisDelimiters(text);
+    if (lostFocus && typeof normalizeEmphasisPromptSyntax === 'function') {
+        text = normalizeEmphasisPromptSyntax(text, { fixCommas: true });
+    }
     text = fixNewlinesMissingLeadingSpace(text);
 
     text = text.replace(new RegExp(PROMPT_NEWLINE_PLACEHOLDER, 'g'), '\n');

@@ -4,7 +4,6 @@ const crypto = require('crypto');
 const sharp = require('sharp');
 const { createCanvas, loadImage } = require('canvas');
 const { z } = require('zod');
-
 let __runtimeGr = null;
 function bindRuntimeGlobalResources(globalResources) { __runtimeGr = globalResources; }
 
@@ -3296,6 +3295,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             auto_char_numerize: body.auto_char_numerize !== undefined ? !!body.auto_char_numerize : (preset && preset.auto_char_numerize !== undefined ? !!preset.auto_char_numerize : true),
             prompt_normalize: body.prompt_normalize !== undefined ? !!body.prompt_normalize : (preset && preset.prompt_normalize !== undefined ? !!preset.prompt_normalize : true),
             deduplicate_tags: body.deduplicate_tags !== undefined ? !!body.deduplicate_tags : (preset && preset.deduplicate_tags !== undefined ? !!preset.deduplicate_tags : true),
+            emphasis_normalization: body.emphasis_normalization !== undefined ? body.emphasis_normalization : (preset && preset.emphasis_normalization ? preset.emphasis_normalization : undefined),
         };
 
         if (body.stepPreviewWidth && body.stepPreviewHeight) {
@@ -3768,7 +3768,12 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 .replace(/\s{2,}/g, ' ')
                 .trim();
         };
-        const sanitizeAndNormalizeText = (text) => normalizePromptSeparators(sanitizeMarkerFromText(text));
+        const { normalizeEmphasisPromptSyntax } = require('./emphasisPromptSyntax');
+        const sanitizeAndNormalizeText = (text) => normalizeEmphasisPromptSyntax(
+            normalizePromptSeparators(sanitizeMarkerFromText(text)),
+            { fixCommas: true }
+        );
+
         const sanitizeMarkerFromCharacterPrompts = (characterPrompts) => {
             if (!Array.isArray(characterPrompts)) return characterPrompts;
             return characterPrompts.map(char => {
@@ -3879,6 +3884,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
     delete apiOpts.keep_newlines;
     delete apiOpts.auto_char_numerize;
     delete apiOpts.prompt_normalize;
+    delete apiOpts.emphasis_normalization;
     // Note: deduplicate_tags intentionally NOT deleted — nekoai-js reads it, then strips it before the API request.
     delete apiOpts.stepPreviewWidth;
     delete apiOpts.stepPreviewHeight;
@@ -4281,6 +4287,9 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         // Save deduplicate-tags setting so reload can restore the toggle state
         if (opts.deduplicate_tags !== undefined) {
             forgeData.deduplicate_tags = opts.deduplicate_tags;
+        }
+        if (opts.emphasis_normalization && typeof opts.emphasis_normalization === 'object') {
+            forgeData.emphasis_normalization = opts.emphasis_normalization;
         }
         if (opts.chain_source && typeof opts.chain_source === 'string' && opts.chain_source.length > 0) {
             forgeData.chain_source = opts.chain_source;
@@ -6009,6 +6018,12 @@ async function convertMetadataToRequestFormat(globalResources, metadata, allowPa
         requestBody.deduplicate_tags = extractedMetadata.deduplicate_tags;
     } else if (forgeData.deduplicate_tags !== undefined) {
         requestBody.deduplicate_tags = forgeData.deduplicate_tags;
+    }
+
+    if (extractedMetadata.emphasis_normalization && typeof extractedMetadata.emphasis_normalization === 'object') {
+        requestBody.emphasis_normalization = extractedMetadata.emphasis_normalization;
+    } else if (forgeData.emphasis_normalization && typeof forgeData.emphasis_normalization === 'object') {
+        requestBody.emphasis_normalization = forgeData.emphasis_normalization;
     }
 
     // Remove seed to ensure new random seed is generated

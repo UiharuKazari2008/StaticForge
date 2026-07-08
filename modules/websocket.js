@@ -1,4 +1,5 @@
 const WebSocket = require('ws');
+const { PromptIndexService } = require('./promptIndexService');
 
 class WebSocketServer {
     constructor(globalResources = null) {
@@ -16,6 +17,8 @@ class WebSocketServer {
         this.indexingSyncInterval = null;
         this.isIndexing = false;
         this.indexingPaused = false; // Track if indexing is paused
+        this.promptIndexService = new PromptIndexService(globalResources);
+        this.promptIndexService.setWsServer(this);
         this.runtimeCompileProgressByClient = new Map();
         this.runtimeCompileLogsByClient = new Map();
         this.setupWebSocket();
@@ -218,19 +221,8 @@ class WebSocketServer {
                 this.sendGalleryScrollStateFromSession(clientInfo.sessionId, ws);
             }
 
-            // Send current indexing state to newly connected client
-            this.sendToClient(ws, {
-                type: 'search_indexing_status',
-                status: this.indexingPaused ? 'paused' : (this.isIndexing ? 'indexing' : 'idle'),
-                message: this.indexingPaused 
-                    ? 'Search indexing is paused' 
-                    : (this.isIndexing 
-                        ? 'Search indexing in progress' 
-                        : 'Search index up to date'),
-                paused: this.indexingPaused,
-                indexing: this.isIndexing,
-                timestamp: new Date().toISOString()
-            });
+            // Send combined search + prompt FTS indexing snapshot on connect
+            void this.sendSearchIndexingSnapshotToClient(ws);
 
             // Handle client disconnect
             ws.on('close', (code, reason) => {
@@ -872,6 +864,7 @@ class WebSocketServer {
             // Broadcast that indexing is starting
             this.broadcast({
                 type: 'search_indexing_status',
+                job: 'search_sync',
                 status: 'starting',
                 message: 'Starting search index sync...',
                 timestamp: new Date().toISOString()
@@ -922,6 +915,7 @@ class WebSocketServer {
                         
                         this.broadcast({
                             type: 'search_indexing_status',
+                            job: 'search_sync',
                             status: 'indexing',
                             message: `Indexing: ${progress.current}/${progress.total} files (${percentage}%)`,
                             current: progress.current,
@@ -937,6 +931,7 @@ class WebSocketServer {
                     // Always send completion
                     this.broadcast({
                         type: 'search_indexing_status',
+                        job: 'search_sync',
                         status: 'complete',
                         message: `Search index sync complete: ${progress.updatedCount} files indexed`,
                         updatedCount: progress.updatedCount,
@@ -953,6 +948,7 @@ class WebSocketServer {
                     // Always send errors
                     this.broadcast({
                         type: 'search_indexing_status',
+                        job: 'search_sync',
                         status: 'error',
                         message: `Search index sync error: ${progress.error || 'Unknown error'}`,
                         error: progress.error,
@@ -967,6 +963,7 @@ class WebSocketServer {
                     // Always send up_to_date status
                     this.broadcast({
                         type: 'search_indexing_status',
+                        job: 'search_sync',
                         status: 'up_to_date',
                         message: 'Search index up to date',
                         timestamp: new Date().toISOString()
@@ -984,6 +981,7 @@ class WebSocketServer {
             console.error('❌ Error running indexing sync:', error);
             this.broadcast({
                 type: 'search_indexing_status',
+                job: 'search_sync',
                 status: 'error',
                 message: `Search index sync failed: ${error.message}`,
                 error: error.message,
@@ -1008,6 +1006,7 @@ class WebSocketServer {
         // Broadcast pause state change
         this.broadcast({
             type: 'search_indexing_status',
+            job: 'search_sync',
             status: paused ? 'paused' : 'resumed',
             message: paused ? 'Search indexing paused' : 'Search indexing resumed',
             timestamp: new Date().toISOString()
@@ -1038,6 +1037,36 @@ class WebSocketServer {
             return;
         }
         await this.runIndexingSync();
+    }
+
+    getPromptIndexService() {
+        return this.promptIndexService;
+    }
+
+    async sendSearchIndexingSnapshotToClient(ws) {
+        const status = this.indexingPaused ? 'paused' : (this.isIndexing ? 'indexing' : 'idle');
+        const message = this.indexingPaused
+            ? 'Search indexing is paused'
+            : (this.isIndexing
+                ? 'Search indexing in progress'
+                : 'Search index up to date');
+
+        let promptFts = null;
+        try {
+            promptFts = await this.promptIndexService.getStatusForConnect();
+        } catch (error) {
+            console.warn('⚠️ Failed to load prompt FTS index status for connect snapshot:', error.message);
+        }
+
+        this.sendToClient(ws, {
+            type: 'search_indexing_status',
+            status,
+            message,
+            paused: this.indexingPaused,
+            indexing: this.isIndexing,
+            promptFts,
+            timestamp: new Date().toISOString()
+        });
     }
 }
 

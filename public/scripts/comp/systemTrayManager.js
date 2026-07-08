@@ -419,12 +419,13 @@ function attachSearchIndexingTrayContextMenu(indicator) {
                         icon: 'fas fa-pause',
                         text: 'Pause Indexing',
                         action: 'search-index-toggle-pause',
-                        tooltip: 'Pause automatic indexing',
+                        tooltip: 'Pause automatic search tag indexing',
                         loadfn: (item, target) => {
-                            const isPaused = target?.dataset?.indexingPaused === 'true';
+                            const isPaused = target?.dataset?.indexingPaused === 'true'
+                                && target?.dataset?.searchSyncStatus === 'paused';
                             item.icon = isPaused ? 'fas fa-play' : 'fas fa-pause';
-                            item.text = isPaused ? 'Resume Indexing' : 'Pause Indexing';
-                            item.tooltip = isPaused ? 'Resume automatic indexing' : 'Pause automatic indexing';
+                            item.text = isPaused ? 'Resume Search Indexing' : 'Pause Search Indexing';
+                            item.tooltip = isPaused ? 'Resume automatic search tag indexing' : 'Pause automatic search tag indexing';
                         }
                     },
                     { separator: true },
@@ -443,16 +444,71 @@ function attachSearchIndexingTrayContextMenu(indicator) {
                     { separator: true },
                     {
                         icon: 'fas fa-sync',
-                        text: 'Start Indexing',
+                        text: 'Start Search Sync',
                         action: 'search-index-trigger',
-                        tooltip: 'Trigger search index sync now'
+                        tooltip: 'Trigger search tag index sync now'
                     },
                     {
                         icon: 'fas fa-broom',
-                        text: 'Erase Index',
+                        text: 'Erase Search Index',
                         action: 'search-index-rebuild-all',
                         tooltip: 'Clear all search indexes and rebuild from scratch (takes a long time)',
                         className: 'text-warning'
+                    }
+                ]
+            },
+            {
+                type: 'list',
+                title: 'Prompt FTS Index',
+                items: [
+                    {
+                        icon: 'fas fa-play',
+                        text: 'Start Prompt FTS',
+                        action: 'prompt-index-start',
+                        tooltip: 'Start background prompt FTS backfill',
+                        loadfn: (item, target) => {
+                            const running = target?.dataset?.promptFtsRunning === 'true';
+                            const paused = target?.dataset?.promptFtsPaused === 'true';
+                            const pending = parseInt(target?.dataset?.promptFtsPending || '0', 10) || 0;
+                            item.disabled = running || (pending === 0 && !paused);
+                        }
+                    },
+                    {
+                        icon: 'fas fa-pause',
+                        text: 'Pause Prompt FTS',
+                        action: 'prompt-index-pause',
+                        tooltip: 'Pause prompt FTS backfill',
+                        loadfn: (item, target) => {
+                            item.disabled = target?.dataset?.promptFtsRunning !== 'true';
+                        }
+                    },
+                    {
+                        icon: 'fas fa-play',
+                        text: 'Resume Prompt FTS',
+                        action: 'prompt-index-resume',
+                        tooltip: 'Resume prompt FTS backfill',
+                        loadfn: (item, target) => {
+                            item.disabled = target?.dataset?.promptFtsPaused !== 'true';
+                        }
+                    },
+                    {
+                        icon: 'fas fa-stop',
+                        text: 'Cancel Prompt FTS',
+                        action: 'prompt-index-cancel',
+                        tooltip: 'Cancel prompt FTS backfill',
+                        className: 'text-warning',
+                        loadfn: (item, target) => {
+                            const active = target?.dataset?.promptFtsRunning === 'true'
+                                || target?.dataset?.promptFtsPaused === 'true';
+                            item.disabled = !active;
+                        }
+                    },
+                    { separator: true },
+                    {
+                        icon: 'fas fa-wrench',
+                        text: 'Reconcile FTS Flags',
+                        action: 'prompt-index-reconcile',
+                        tooltip: 'Fix prompt FTS flag drift without full reindex'
                     }
                 ]
             }

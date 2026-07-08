@@ -208,6 +208,12 @@ class BannerManager {
             'search_index_toggle_pause': 'Set Indexing State',
             'search_index_trigger': 'Request Indexing',
             'search_index_rebuild_all': 'Rebuild Search Indexes',
+            'get_prompt_index_status': 'Prompt FTS Status',
+            'prompt_index_start': 'Start Prompt FTS',
+            'prompt_index_pause': 'Pause Prompt FTS',
+            'prompt_index_resume': 'Resume Prompt FTS',
+            'prompt_index_cancel': 'Cancel Prompt FTS',
+            'prompt_index_reconcile': 'Reconcile Prompt FTS',
 
             // Workspace operations
             'workspace_list': 'Get Workspaces',
@@ -514,7 +520,7 @@ class WebSocketClient {
         'get_generation_quips_status',
         'get_generation_quips_wiki',
         'workspace_update_settings',
-        'workspace_update_window_positions'
+        'workspace_update_window_positions',
     ]);
 
     static GENERATION_QUIPS_MESSAGE_TYPES = new Set([
@@ -631,6 +637,10 @@ class WebSocketClient {
         this.preStartupAuthBusy = false;
         this.preStartupAuthHandlersSetup = false;
         this.preStartupMarqueeManualPause = false;
+        this.serverStartupStatusOk = false;
+        this.serverStartupReady = false;
+        this.lastServerStartupStatus = null;
+        this._startupStatusPollTimer = null;
         this.connectionUi = {
             beat: 'initializing',
             message: '',
@@ -738,10 +748,6 @@ class WebSocketClient {
     }
 
     async beginApplicationBoot() {
-        // ensureBootComplete: public/scripts/comp/serviceWorkerManager.js
-        if (window.serviceWorkerManager && typeof window.serviceWorkerManager.ensureBootComplete === 'function') {
-            await window.serviceWorkerManager.ensureBootComplete();
-        }
         return this.init();
     }
 
@@ -1117,7 +1123,12 @@ class WebSocketClient {
             if (this.connectionPhase === 'failed') {
                 title = 'Melaton Network: NO CARRIER';
             } else if (this.connectionPhase === 'dialing' || this.isConnecting) {
-                title = `Melaton Network: ${this.connectionUi.message || 'Dialing…'}`;
+                const bootStatus = this.lastServerStartupStatus;
+                if (bootStatus && !this.serverStartupReady && bootStatus.stageMessage) {
+                    title = `Melaton Network: ${bootStatus.stageMessage}`;
+                } else {
+                    title = `Melaton Network: ${this.connectionUi.message || 'Dialing…'}`;
+                }
             } else {
                 title = 'Melaton Network: Not connected';
             }
@@ -1440,7 +1451,21 @@ class WebSocketClient {
         const phase = this.connectionPhase;
         const beat = this.connectionUi.beat || 'initializing';
         const beatDef = WebSocketClient.CONNECTION_BEATS[beat] || {};
-        const statusMessage = this.connectionUi.message || beatDef.message || 'Connecting...';
+        const bootStatus = this.lastServerStartupStatus;
+        const serverBooting = bootStatus && !this.serverStartupReady;
+
+        let statusMessage = this.connectionUi.message || beatDef.message || 'Connecting...';
+        if (serverBooting) {
+            const pct = bootStatus.progressPercent != null ? ` (${bootStatus.progressPercent}%)` : '';
+            statusMessage = `${bootStatus.stageMessage || 'Server starting…'}${pct}`;
+        } else if (
+            this._shouldUsePreStartupDialog()
+            && !this.serverStartupReady
+            && /NO CARRIER/i.test(statusMessage)
+        ) {
+            statusMessage = bootStatus?.stageMessage || 'Waiting for server…';
+        }
+
         const authVisible = phase === 'auth';
         const isTasking = phase !== 'failed'
             && phase !== 'auth'
@@ -1451,6 +1476,13 @@ class WebSocketClient {
 
         statusEl.textContent = statusMessage;
         progressWrap.classList.toggle('paused', shouldPauseMarquee);
+
+        if (serverBooting) {
+            this._updatePreStartupStageProgress(bootStatus.progressPercent, statusMessage);
+        } else {
+            this._updatePreStartupStageProgress(null, statusMessage);
+        }
+
         modal.classList.toggle('auth-active', authVisible);
 
         if (authSection) {
@@ -2121,100 +2153,152 @@ class WebSocketClient {
     }
 
     // Ping host over HTTP before attempting WebSocket connection
+    _applyServerStartupStatus(data) {
+        if (!data || typeof data !== 'object') {
+            return;
+        }
+
+        this.lastServerStartupStatus = data;
+        this.serverStartupStatusOk = true;
+        this.serverStartupReady = data.isReady === true;
+
+        const message = data.stageMessage || 'Server starting…';
+        const progress = typeof data.progressPercent === 'number' ? data.progressPercent : null;
+
+        this._setConnectionBeat('dialing', { message });
+
+        if (this._shouldUsePreStartupDialog()) {
+            this._updatePreStartupStageProgress(progress, message);
+            this._renderPreStartupDialog();
+        }
+    }
+
+    _updatePreStartupStageProgress(progressPercent, message) {
+        const stageWrap = document.getElementById('desktopPreStartupStageProgress');
+        const stageFill = document.getElementById('desktopPreStartupStageProgressFill');
+        if (!stageWrap || !stageFill) {
+            return;
+        }
+
+        if (typeof progressPercent === 'number' && Number.isFinite(progressPercent)) {
+            const pct = Math.max(0, Math.min(100, Math.round(progressPercent)));
+            stageWrap.classList.remove('hidden');
+            stageWrap.setAttribute('aria-hidden', 'false');
+            stageFill.style.width = `${pct}%`;
+            if (message) {
+                stageWrap.title = `${message} (${pct}%)`;
+            }
+        } else {
+            stageWrap.classList.add('hidden');
+            stageWrap.setAttribute('aria-hidden', 'true');
+            stageFill.style.width = '0%';
+            stageWrap.removeAttribute('title');
+        }
+    }
+
+    async _fetchServerStartupStatus() {
+        const response = await fetch('/status', {
+            method: 'OPTIONS',
+            cache: 'no-cache',
+            signal: AbortSignal.timeout(WebSocketClient.TIMEOUT_VERSION_CHECK)
+        });
+        if (!response.ok) {
+            return null;
+        }
+        return response.json();
+    }
+
     async pingHost() {
-        const maxPingAttempts = WebSocketClient.ATTEMPTS_MAX_PING;
-        const pingInterval = WebSocketClient.DELAY_PING_HOST;
+        const unreachableMax = WebSocketClient.ATTEMPTS_MAX_PING;
+        const bootPollInterval = WebSocketClient.DELAY_PING_HOST;
+        const bootWaitMax = 300;
+        let unreachableAttempts = 0;
+        let bootPollAttempts = 0;
 
-        for (let attempt = 1; attempt <= maxPingAttempts; attempt++) {
+        while (true) {
+            bootPollAttempts += 1;
+            const allowExtendedBootWait = this._shouldUsePreStartupDialog() || !this.serverStartupReady;
+            const attemptLimit = allowExtendedBootWait ? bootWaitMax : unreachableMax;
+
             try {
-                this._setConnectionBeat('dialing', {
-                    message: `Dialing… (${attempt}/${maxPingAttempts})`
-                });
+                const data = await this._fetchServerStartupStatus();
 
-                // Try to fetch a simple endpoint to ping the host
-                const response = await fetch('/', {
-                    method: 'HEAD',
-                    cache: 'no-cache',
-                    signal: AbortSignal.timeout(WebSocketClient.TIMEOUT_HOST_AVAILABILITY)
-                });
+                if (!data) {
+                    unreachableAttempts += 1;
+                    this._setConnectionBeat('dialing', {
+                        message: `Waiting for server status… (${unreachableAttempts})`
+                    });
+                    if (unreachableAttempts >= attemptLimit) {
+                        throw new Error(`Server status unavailable after ${attemptLimit} attempts`);
+                    }
+                    await new Promise((resolve) => setTimeout(resolve, bootPollInterval));
+                    continue;
+                }
 
-                if (response.ok) {
-                    // Server is responding, now check if it's ready
+                unreachableAttempts = 0;
+                this._applyServerStartupStatus(data);
+
+                if (data.isReady) {
                     try {
-                        const statusResponse = await fetch('/status', {
+                        const appOptionsResponse = await fetch('/app', {
                             method: 'OPTIONS',
                             cache: 'no-cache',
                             signal: AbortSignal.timeout(WebSocketClient.TIMEOUT_VERSION_CHECK)
                         });
 
-                        if (statusResponse.ok) {
-                            const data = await statusResponse.json();
+                        if (appOptionsResponse.ok) {
+                            const appData = await appOptionsResponse.json();
 
-                            if (data.isReady) {
-                                // Server is ready, now check version compatibility
-                                try {
-                                    const appOptionsResponse = await fetch('/app', {
-                                        method: 'OPTIONS',
-                                        cache: 'no-cache',
-                                        signal: AbortSignal.timeout(WebSocketClient.TIMEOUT_VERSION_CHECK)
-                                    });
+                            if (appData.serverVersion && appData.serverVersion !== this.clientVersion) {
+                                console.warn(`Version mismatch detected! Client: ${this.clientVersion}, Server: ${appData.serverVersion}`);
 
-                                    if (appOptionsResponse.ok) {
-                                        const appData = await appOptionsResponse.json();
-
-                                        // Check version compatibility
-                                        if (appData.serverVersion && appData.serverVersion !== this.clientVersion) {
-                                            console.warn(`⚠️ Version mismatch detected! Client: ${this.clientVersion}, Server: ${appData.serverVersion}`);
-
-                                            // Show version mismatch warning (boot gate owns update checks)
-                                            if (typeof showGlassToast === 'function') {
-                                                showGlassToast('warning', 'Version Mismatch',
-                                                    appData.versionMessage || 'A new version is available. Some features may not work correctly.',
-                                                    false, 10000, '<i class="fas fa-exclamation-triangle"></i>');
-                                            }
-
-                                            // Continue connection but warn user
-                                            return true;
-                                        }
-                                    }
-                                } catch (versionError) {
-                                    console.warn('⚠️ Could not check server version:', versionError.message);
-                                    // Continue anyway - don't fail the connection for version check issues
-                                }
-
-                                return true;
-                            } else {
-                                // Server is initializing, show current stage
-                                this._setConnectionBeat('dialing', {
-                                    message: `${data.stageMessage}…`
-                                });
-
-                                if (attempt < maxPingAttempts) {
-                                    // Wait before next attempt
-                                    await new Promise(resolve => setTimeout(resolve, pingInterval));
+                                if (typeof showGlassToast === 'function') {
+                                    showGlassToast('warning', 'Version Mismatch',
+                                        appData.versionMessage || 'A new version is available. Some features may not work correctly.',
+                                        false, 10000, '<i class="fas fa-exclamation-triangle"></i>');
                                 }
                             }
-                        } else {
-                            // Status endpoint not available, but server is responding
-                            return true;
                         }
-                    } catch (statusError) {
-                        // Status endpoint failed, but server is responding to HEAD
-                        return true;
+                    } catch (versionError) {
+                        console.warn('Could not check server version:', versionError.message);
                     }
-                }
-            } catch (error) {
-                console.warn(`⚠️ Ping attempt ${attempt} failed:`, error.message);
 
-                if (attempt < maxPingAttempts) {
-                    // Wait before next attempt
-                    await new Promise(resolve => setTimeout(resolve, pingInterval));
+                    return true;
                 }
+
+                if (bootPollAttempts % 5 === 0) {
+                    console.log(`[startup] ${data.stageMessage} (${data.progressPercent != null ? data.progressPercent + '%' : '…'})`);
+                }
+
+                await new Promise((resolve) => setTimeout(resolve, bootPollInterval));
+            } catch (error) {
+                if (error && error.name === 'TimeoutError') {
+                    unreachableAttempts += 1;
+                } else if (this.serverStartupStatusOk) {
+                    throw error;
+                } else {
+                    unreachableAttempts += 1;
+                }
+
+                const bootStatus = this.lastServerStartupStatus;
+                const waitingMessage = bootStatus?.stageMessage
+                    || `Waiting for server… (${unreachableAttempts})`;
+                this._setConnectionBeat('dialing', { message: waitingMessage });
+
+                const allowExtendedBootWait = this._shouldUsePreStartupDialog() || !this.serverStartupReady;
+                const attemptLimit = allowExtendedBootWait ? bootWaitMax : unreachableMax;
+
+                if (unreachableAttempts >= attemptLimit) {
+                    throw new Error(error?.message || `Server not responding after ${attemptLimit} attempts`);
+                }
+
+                await new Promise((resolve) => setTimeout(resolve, bootPollInterval));
             }
         }
+    }
 
-        // If all ping attempts failed, throw an error
-        throw new Error(`Server not responding after ${maxPingAttempts} attempts. Server may be down or unreachable.`);
+    _shouldShowStartupReconnectMessage() {
+        return Boolean(this.serverStartupReady && this.preStartupHandoffCompleted);
     }
 
     // Progress notification methods
@@ -2901,11 +2985,6 @@ class WebSocketClient {
             return;
         }
 
-        // ensureBootComplete: public/scripts/comp/serviceWorkerManager.js
-        if (window.serviceWorkerManager && typeof window.serviceWorkerManager.ensureBootComplete === 'function') {
-            await window.serviceWorkerManager.ensureBootComplete();
-        }
-
         this.initWebSocketIndicators();
         this.setupRequestsModalHandlers();
 
@@ -2946,7 +3025,16 @@ class WebSocketClient {
             } catch (pingError) {
                 console.error('❌ Host availability check failed:', pingError.message);
                 this.isConnecting = false;
-                this.connectionLock = false; // Release connection lock on ping failure
+                this.connectionLock = false;
+
+                if (this._shouldUsePreStartupDialog() && !this.serverStartupReady) {
+                    const bootMessage = this.lastServerStartupStatus?.stageMessage || 'Waiting for server…';
+                    this._setConnectionBeat('dialing', { message: bootMessage });
+                    setTimeout(() => {
+                        this.connect();
+                    }, WebSocketClient.DELAY_PING_HOST);
+                    return;
+                }
 
                 const failureMessage = this.circuitBreaker
                     ? (pingError.message || 'NO CARRIER — Server may be unavailable.')
@@ -3106,8 +3194,14 @@ class WebSocketClient {
                     }
 
                     if (!this.circuitBreaker) {
+                        const startupMessage = this.lastServerStartupStatus?.stageMessage;
+                        const reconnectSuffix = this._shouldShowStartupReconnectMessage()
+                            ? ' Reconnecting…'
+                            : '';
                         this._setConnectionBeat('dialing', {
-                            message: `${disconnectMessage}. Reconnecting…`,
+                            message: this._shouldShowStartupReconnectMessage()
+                                ? `${disconnectMessage}.${reconnectSuffix}`
+                                : (startupMessage || disconnectMessage),
                             attempt: this.reconnectAttempts,
                             maxAttempts: this.maxReconnectAttempts
                         });
@@ -3300,10 +3394,15 @@ class WebSocketClient {
         }
 
         const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1), this.maxReconnectDelay);
-        console.log(`🔌 Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+        console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+
+        const startupMessage = this.lastServerStartupStatus?.stageMessage;
+        const redialMessage = this._shouldShowStartupReconnectMessage()
+            ? `Redialing in ${Math.ceil(delay / 1000)}s…`
+            : (startupMessage || `Waiting for server… (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
 
         this._setConnectionBeat('dialing', {
-            message: `Redialing in ${Math.ceil(delay / 1000)}s…`,
+            message: redialMessage,
             attempt: this.reconnectAttempts,
             maxAttempts: this.maxReconnectAttempts
         });
@@ -5228,6 +5327,10 @@ class WebSocketClient {
         return this.requestGallery(viewType, true);
     }
 
+    async setGalleryShowSharedRemote(enabled) {
+        return this.sendMessageWithCallback('set_gallery_show_shared', { enabled: enabled === true });
+    }
+
     // Method to request all images with pinned status
     async requestAllImages() {
         return this.requestGallery('images', true);
@@ -5245,7 +5348,7 @@ class WebSocketClient {
                 workspaceId,
                 offset,
                 limit,
-                light: false
+                light: true
             }, (response, error) => {
                 if (error) {
                     console.error('Gallery data request callback error:', error);
@@ -5392,8 +5495,14 @@ class WebSocketClient {
         return this.sendMessageWithRequestId('set_runtime_assets_auto_recompile', this.generateRequestId(), { enabled: !!enabled });
     }
 
-    async resolveTextReplacements(text, presetName = null, model = null, periodKey = null) {
-        return this.sendMessageWithRequestId('resolve_text_replacements', this.generateRequestId(), { text, presetName, model, periodKey });
+    async resolveTextReplacements(text, presetName = null, model = null, periodKey = null, textReplacementsSeed = null) {
+        return this.sendMessageWithRequestId('resolve_text_replacements', this.generateRequestId(), {
+            text,
+            presetName,
+            model,
+            periodKey,
+            text_replacements_seed: Array.isArray(textReplacementsSeed) ? textReplacementsSeed : null
+        });
     }
 
     async deletePreset(presetName) {

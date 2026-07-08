@@ -114,6 +114,14 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 
 ---
 
+## Prompt editor
+
+| Feature | REST | WS | Push | Client-only |
+|---------|------|-----|------|-------------|
+| Weight Rack (emphasis groups) | — | — | — | `emphasisGroupsToolManager.js`, forge `emphasis_normalization` |
+
+---
+
 ## Notes & knowledge
 
 | Feature | REST | WS | Push | Client-only |
@@ -180,7 +188,7 @@ Operational guide: [README-CHILD.md](../../README-CHILD.md).
 | Category | Count |
 |----------|-------|
 | Documented REST route groups | ~25 explicit + static |
-| WS request types (client → server) | **275** |
+| WS request types (client → server) | **277** |
 | WS server push types (common) | **~50** |
 | Auth flows | **3** (PIN session, Bearer loginKey, dev key — dev middleware exists but is **not mounted** on any route; see [authentication.md](./authentication.md#development-auth)) |
 

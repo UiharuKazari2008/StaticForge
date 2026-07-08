@@ -188,6 +188,14 @@ async function persistGallerySnapshotFromMemory() {
         return false;
     }
     const workspaceId = getGalleryLoadWorkspaceId();
+    const sync = galleryImagesSyncState;
+    if (sync
+        && sync.workspaceId === workspaceId
+        && sync.viewType === 'images'
+        && sync.hash
+        && sync.total === allImages.length) {
+        return false;
+    }
     try {
         await galleryMetadataCache.initPromise;
         const probe = await loadGalleryChunk('images', 0, 0);
@@ -618,8 +626,10 @@ function galleryLoadSnapshotSummary(snapshot) {
     return {
         hasSnapshot: true,
         cachedCount: Array.isArray(snapshot.gallery) ? snapshot.gallery.length : 0,
-        cachedHash: snapshot.galleryHash || null,
-        cachedHashShort: snapshot.galleryHash ? `${snapshot.galleryHash.slice(0, 12)}…` : null,
+        cachedHash: snapshot.galleryHash || snapshot.hash || null,
+        cachedHashShort: (snapshot.galleryHash || snapshot.hash)
+            ? `${(snapshot.galleryHash || snapshot.hash).slice(0, 12)}…`
+            : null,
         cachedPinCount: Array.isArray(snapshot.pinnedIndexes) ? snapshot.pinnedIndexes.length : 0,
         cachedAt: snapshot.cachedAt || null
     };
@@ -658,18 +668,23 @@ async function finalizeGalleryImagesLoad(dataItems, probe, workspaceId, viewType
     setActiveGalleryList(slimItems, { preserveSyncState: true });
 
     if (galleryHash && workspaceId) {
-        await galleryMetadataCache.initPromise;
-        await galleryMetadataCache.setGallerySnapshot(workspaceId, viewType, galleryHash, slimItems, {
-            lastGalleryDestructiveAt: serverDestructiveAt,
-            pinnedIndexes
-        });
-        loadLog.step('snapshot-save', 'Saved IndexedDB gallery snapshot', {
+        markGalleryImagesSyncState(workspaceId, viewType, galleryHash, slimItems.length, pinnedIndexes, serverDestructiveAt);
+        void galleryMetadataCache.initPromise.then(() => galleryMetadataCache.setGallerySnapshot(
+            workspaceId,
+            viewType,
+            galleryHash,
+            slimItems,
+            {
+                lastGalleryDestructiveAt: serverDestructiveAt,
+                pinnedIndexes
+            }
+        ));
+        loadLog.step('snapshot-save', 'Queued IndexedDB gallery snapshot save', {
             workspaceId,
             viewType,
             itemCount: dataItems.length,
             pinCount: pinnedIndexes.length
         });
-        markGalleryImagesSyncState(workspaceId, viewType, galleryHash, slimItems.length, pinnedIndexes, serverDestructiveAt);
     }
 }
 
@@ -718,10 +733,6 @@ async function fetchGalleryBlocksInto(viewType, totalItems, dataItems, progressC
                 expectedTotal: totalItems
             });
             break;
-        }
-
-        if (dataItems.length < totalItems) {
-            await new Promise((resolve) => setTimeout(resolve, 10));
         }
     }
 
@@ -903,24 +914,45 @@ async function syncGalleryImagesFromBlocks(probe, storedSnapshot, viewType, work
         ? storedSnapshot.gallery
         : null;
 
+    const snapshotHash = storedSnapshot
+        ? (storedSnapshot.galleryHash || storedSnapshot.hash || null)
+        : null;
+
     if (storedSnapshot
-        && storedSnapshot.galleryHash === targetHash
+        && snapshotHash === targetHash
         && cachedGallery
         && cachedGallery.length === totalItems) {
         loadLog.step('cache-hit', 'Using IndexedDB snapshot: hash and item count match server', {
             itemCount: totalItems,
             hash: `${targetHash.slice(0, 12)}…`,
-            pinCount: Array.isArray(probe.pinnedIndexes) ? probe.pinnedIndexes.length : 0
+            pinCount: Array.isArray(storedSnapshot.pinnedIndexes) ? storedSnapshot.pinnedIndexes.length : 0
         });
-        await finalizeGalleryImagesLoad(cachedGallery, probe, workspaceId, viewType, serverDestructiveAt, loadLog, loadToken);
+        if (!isGalleryLoadTokenCurrent(loadToken)) {
+            loadLog.step('stale-discard', 'Discarded stale gallery load before cache apply', { viewType });
+            return false;
+        }
+        const probeForLoad = Array.isArray(storedSnapshot.pinnedIndexes) && storedSnapshot.pinnedIndexes.length > 0
+            ? { ...probe, pinnedIndexes: storedSnapshot.pinnedIndexes }
+            : probe;
+        applyPinnedIndexesOverlay(cachedGallery, probeForLoad.pinnedIndexes);
+        const slimItems = slimGalleryList(cachedGallery);
+        setActiveGalleryList(slimItems, { preserveSyncState: true });
+        markGalleryImagesSyncState(
+            workspaceId,
+            viewType,
+            targetHash,
+            slimItems.length,
+            probeForLoad.pinnedIndexes,
+            serverDestructiveAt
+        );
         loadLog.done('loaded from IndexedDB cache');
         return true;
     }
 
     if (storedSnapshot && cachedGallery) {
-        if (storedSnapshot.galleryHash !== targetHash) {
+        if (snapshotHash !== targetHash) {
             loadLog.step('cache-miss', 'IndexedDB snapshot hash differs from server', {
-                cachedHash: storedSnapshot.galleryHash ? `${storedSnapshot.galleryHash.slice(0, 12)}…` : null,
+                cachedHash: snapshotHash ? `${snapshotHash.slice(0, 12)}…` : null,
                 serverHash: `${targetHash.slice(0, 12)}…`
             });
         } else if (cachedGallery.length !== totalItems) {
@@ -3517,15 +3549,9 @@ async function loadGallery(addLatest, progressCallback = null, loadOptions = nul
                 offset: 0,
                 limit: 1,
                 light: true,
-                skipGalleryPagination: true,
-                ...(typeof getGalleryReplicationRequestOptions === 'function'
-                    ? getGalleryReplicationRequestOptions()
-                    : {})
+                skipGalleryPagination: true
             });
             const payload = result.data || result;
-            if (typeof applyGalleryReplicationResponse === 'function') {
-                applyGalleryReplicationResponse(payload);
-            }
             const { gallery: latestItems } = payload;
             const serverTotal = Number(payload.pagination?.totalItems || payload.total || 0);
             const serverHash = payload.galleryHash || null;
@@ -3623,11 +3649,6 @@ async function loadGallery(addLatest, progressCallback = null, loadOptions = nul
                 // Apply current sort order to the loaded data
                 sortGalleryData();
 
-                // Only build cache if not in search mode (search mode will build cache after Enter is pressed)
-                if (!window.filteredImageIndices || window.filteredImageIndices.length === allImages.length) {
-                    buildGalleryNavigationCache(allImages);
-                }
-
                 // Dispatch galleryUpdated event so background system can set initial image
                 // This ensures the background is set only after gallery is actually loaded
                 document.dispatchEvent(new CustomEvent('galleryUpdated'));
@@ -3647,6 +3668,11 @@ async function loadGallery(addLatest, progressCallback = null, loadOptions = nul
                     } else {
                         displayGalleryContentIfNeeded();
                     }
+                }
+
+                // Jump scrubber / date groups — not needed for first paint
+                if (!window.filteredImageIndices || window.filteredImageIndices.length === allImages.length) {
+                    buildGalleryNavigationCache(allImages);
                 }
 
                 // Set first gallery image in Android persistent notification when bridge is present
@@ -3709,10 +3735,7 @@ async function loadGalleryChunk(viewType = 'images', offset = 0, limit = 100) {
     const requestOptions = {
         offset: offset,
         limit: limit,
-        light: true,
-        ...(typeof getGalleryReplicationRequestOptions === 'function'
-            ? getGalleryReplicationRequestOptions()
-            : {})
+        light: true
     };
     if (limit === 0) {
         requestOptions.skipGalleryPagination = true;
@@ -3720,9 +3743,6 @@ async function loadGalleryChunk(viewType = 'images', offset = 0, limit = 100) {
     const result = await window.wsClient.requestGallery(viewType, true, requestOptions);
 
     const payload = (result && result.data) ? result.data : result;
-    if (typeof applyGalleryReplicationResponse === 'function') {
-        applyGalleryReplicationResponse(payload);
-    }
     const { gallery: chunk, pagination } = payload || {};
     return {
         chunk: chunk || [],
@@ -3777,17 +3797,17 @@ async function loadCompleteGallery(viewType = 'images', progressCallback = null,
                 });
             }
             await galleryMetadataCache.initPromise;
-            probe = await probeGalleryState(viewType, workspaceId, loadLog);
+            const [probeResult, storedSnapshot] = await Promise.all([
+                probeGalleryState(viewType, workspaceId, loadLog),
+                galleryMetadataCache.getStoredGallerySnapshot(workspaceId, viewType)
+            ]);
+            probe = probeResult;
             galleryResponseWorkspaceId = probe.workspaceId || workspaceId;
             galleryHash = probe.galleryHash || null;
             totalItems = probe.total || 0;
             serverDestructiveAt = probe.lastGalleryDestructiveAt || 0;
 
             if (galleryHash && galleryResponseWorkspaceId === workspaceId && totalItems > 0) {
-                const storedSnapshot = await galleryMetadataCache.getStoredGallerySnapshot(
-                    workspaceId,
-                    viewType
-                );
                 const synced = await syncGalleryImagesFromBlocks(
                     probe,
                     storedSnapshot,
@@ -3881,8 +3901,6 @@ async function loadCompleteGallery(viewType = 'images', progressCallback = null,
             if (!hasMore) {
                 break;
             }
-
-            await new Promise((resolve) => setTimeout(resolve, 10));
         }
 
         const finalizeProbe = {
@@ -10355,6 +10373,15 @@ async function getImageMetadata(filename) {
         }
 
         const metadata = await window.wsClient.requestImageMetadata(filename);
+
+        // Persist to IndexedDB for cross-session reuse — galleryMetadataCache.setMetadata
+        if (galleryMetadataCache && metadata) {
+            const cacheBase = String(filename || '').replace(/\.(png|jpg|jpeg|webp)$/i, '');
+            if (cacheBase) {
+                galleryMetadataCache.setMetadata(cacheBase, metadata);
+            }
+        }
+
         return metadata;
     } catch (error) {
         console.error('Error getting image metadata:', error);

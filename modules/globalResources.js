@@ -726,9 +726,9 @@ class GlobalResources {
             this.checkpointManagementService = new CheckpointManagementService(this);
             this.initializeAuthMiddleware();
 
-            console.log('✓ Configs loaded and validated');
+            console.log('[init] Configs loaded and validated');
         } catch (error) {
-            console.error('❌ Error initializing configs:', error.message);
+            console.error('[init] Error initializing configs:', error.message);
         }
     }
 
@@ -748,8 +748,58 @@ class GlobalResources {
             this.ensureLogViewerPathUuid();
             this.ensureVfsPathUuid();
         } catch (error) {
-            console.error('❌ Error preparing global resources:', error.message);
+            console.error('[init] Error preparing global resources:', error.message);
             return false;
+        }
+    }
+
+    async _runInitStep(stepId, label, fn) {
+        const reporter = this._startupReporter;
+        const start = Date.now();
+        if (reporter) {
+            reporter({ stepId, label, phase: 'start' });
+        }
+        try {
+            const result = await fn();
+            const elapsedMs = Date.now() - start;
+            if (this.logger?.bootSubStep) {
+                this.logger.bootSubStep(`${label} (${elapsedMs}ms)`);
+            }
+            if (reporter) {
+                reporter({ stepId, label, phase: 'done', elapsedMs });
+            }
+            return result;
+        } catch (error) {
+            const elapsedMs = Date.now() - start;
+            if (reporter) {
+                reporter({ stepId, label, phase: 'done', elapsedMs, error: error.message });
+            }
+            throw error;
+        }
+    }
+
+    _runInitStepSync(stepId, label, fn) {
+        const reporter = this._startupReporter;
+        const start = Date.now();
+        if (reporter) {
+            reporter({ stepId, label, phase: 'start' });
+        }
+        try {
+            const result = fn();
+            const elapsedMs = Date.now() - start;
+            if (this.logger?.bootSubStep) {
+                this.logger.bootSubStep(`${label} (${elapsedMs}ms)`);
+            }
+            if (reporter) {
+                reporter({ stepId, label, phase: 'done', elapsedMs });
+            }
+            return result;
+        } catch (error) {
+            const elapsedMs = Date.now() - start;
+            if (reporter) {
+                reporter({ stepId, label, phase: 'done', elapsedMs, error: error.message });
+            }
+            throw error;
         }
     }
 
@@ -772,148 +822,182 @@ class GlobalResources {
      */
     async initialize(options = {}) {
         if (this.initialized) {
-            console.log('⚠️ Global resources already initialized');
+            console.log('[init] Global resources already initialized');
             return true;
         }
 
         this.initStartTime = Date.now();
+        this._startupReporter = typeof options.reportStartup === 'function' ? options.reportStartup : null;
 
         try {
-            // STEP 0: Initialize configs FIRST (needed by many other initializations)
-            // Only initialize if not already initialized (prepare() may have done it)
-            if (!this.configManager) {
-                this.initializeConfigs();
-            }
+            await this._runInitStepSync('gr_configs', 'Loading configuration', () => {
+                if (!this.configManager) {
+                    this.initializeConfigs();
+                }
+            });
 
-            // STEP 0: Initialize logger FIRST (no dependencies, needed by everything else)
-            // Only initialize if not already initialized (prepare() may have done it)
-            if (!this.logger) {
-                this.initializeLogger();
-            }
+            await this._runInitStepSync('gr_logger', 'Starting logger', () => {
+                if (!this.logger) {
+                    this.initializeLogger();
+                }
+            });
 
-            // STEP 1: Initialize LRU caches (needs configs to be loaded)
-            this.initializeLRUCaches();
+            await this._runInitStepSync('gr_lru_cache', 'Initializing LRU caches', () => {
+                this.initializeLRUCaches();
+            });
 
-            // STEP 2: Initialize API key manager (needs configs to be loaded)
-            this.initializeApiKeyManager();
+            await this._runInitStepSync('gr_api_keys', 'Initializing API key manager', () => {
+                this.initializeApiKeyManager();
+            });
 
-            // STEP 3: Initialize polymorphic modules (dtext parser, etc.)
-            this.initializePolymodules();
+            await this._runInitStepSync('gr_polymodules', 'Registering polymorphic modules', () => {
+                this.initializePolymodules();
+            });
 
-            // STEP 4: Initialize HTML to Markdown converter
-            await this.initializeHtmlMarkdown();
+            await this._runInitStep('gr_html_markdown', 'Initializing HTML to Markdown converter', async () => {
+                await this.initializeHtmlMarkdown();
+            });
 
-            // STEP 4: Initialize T5 tokenizer (shared by many services, no other deps)
-            await this.initializeT5Tokenizer();
+            await this._runInitStep('gr_t5_tokenizer', 'Loading T5 tokenizer', async () => {
+                await this.initializeT5Tokenizer();
+            });
 
-            // STEP 5: Initialize spell checker
-            await this.initializeSpellChecker();
+            await this._runInitStep('gr_spell_checker', 'Loading spell checker', async () => {
+                await this.initializeSpellChecker();
+            });
 
-            // STEP 5a: Dictionary / thesaurus lookup (needs spell checker)
-            await this.initializeWordLookupService();
+            await this._runInitStep('gr_word_lookup', 'Loading dictionary service', async () => {
+                await this.initializeWordLookupService();
+            });
 
-            // STEP 5b: Auxiliary services (T5 vocabulary, tag cache)
-            await this.initializeAuxiliaryServices();
+            await this._runInitStep('gr_auxiliary', 'Loading auxiliary services', async () => {
+                await this.initializeAuxiliaryServices();
+            });
 
-            // STEP 5: Initialize SQLite databases (need logger, needed by managers)
-            await this.initializeDatabases();
+            await this._runInitStep('gr_databases', 'Setting up databases', async () => {
+                await this.initializeDatabases();
+            });
 
-            // STEP 5a: Replication changelog, maintenance, and service facade
-            await this.initializeReplicationStack();
+            await this._runInitStep('gr_replication', 'Initializing replication stack', async () => {
+                await this.initializeReplicationStack();
+            });
 
-            // STEP 6: Initialize knowledge memory database (no dependencies beyond logger)
-            this.initializeKnowledgeMemoryDb();
+            await this._runInitStepSync('gr_knowledge_memory', 'Initializing knowledge memory database', () => {
+                this.initializeKnowledgeMemoryDb();
+            });
 
-            // STEP 7: Initialize tag search database (no dependencies beyond logger)
-            this.initializeTagSearchDatabase();
+            await this._runInitStepSync('gr_tag_search_db', 'Initializing tag search database', () => {
+                this.initializeTagSearchDatabase();
+            });
 
-            // STEP 7b: NAX tags SQLite (optional file; WebSocket + image proxy)
-            this.initializeNaxTagsDatabase();
+            await this._runInitStepSync('gr_nax_tags', 'Initializing NAX tags database', () => {
+                this.initializeNaxTagsDatabase();
+            });
 
-            // STEP 7b2: NAX.moe vibes gallery proxy cache (always available)
-            this.initializeNaxVibesGallery();
+            await this._runInitStepSync('gr_nax_vibes', 'Initializing NAX vibes gallery', () => {
+                this.initializeNaxVibesGallery();
+            });
 
-            // STEP 7c: NAX custom tag generation config (optional)
-            this.initializeNaxTagGeneration();
+            await this._runInitStepSync('gr_nax_generation', 'Loading NAX tag generation config', () => {
+                this.initializeNaxTagGeneration();
+            });
 
-            // STEP 8: Initialize reference metadata database (no dependencies beyond logger)
-            this.initializeReferenceMetadataDatabase();
+            await this._runInitStepSync('gr_reference_metadata', 'Initializing reference metadata database', () => {
+                this.initializeReferenceMetadataDatabase();
+            });
 
-            // STEP 8b: Generation quips database (SQLite, no Grok dependency)
-            this.initializeGenerationQuipsDatabase();
+            await this._runInitStepSync('gr_generation_quips_db', 'Initializing generation quips database', () => {
+                this.initializeGenerationQuipsDatabase();
+            });
 
-            // STEP 9: Initialize singleton managers in dependency order:
-            //   - memoryManager (needs logger + chatDatabase)
-            //   - promptManager (needs logger + metadataDatabase + chatDatabase + memoryManager)
-            //   - aiServiceManager (needs logger + chatDatabase + promptManager + memoryManager)
-            this.initializeSingletonManagers();
+            await this._runInitStepSync('gr_singleton_managers', 'Initializing AI and memory managers', () => {
+                this.initializeSingletonManagers();
+            });
 
-            // STEP 10: Initialize workspace module (needs logger)
-            this.initializeWorkspace();
+            await this._runInitStepSync('gr_workspace', 'Loading workspace system', () => {
+                this.initializeWorkspace();
+            });
 
-            // STEP 10b: Generation quips manager (needs metadata, workspaces, Grok)
-            this.initializeGenerationQuipsManager();
+            await this._runInitStepSync('gr_generation_quips_mgr', 'Initializing generation quips manager', () => {
+                this.initializeGenerationQuipsManager();
+            });
 
-            // STEP 10c: Novel handlers (needs notes DB, Grok)
-            this.initializeNovelHandlers();
+            await this._runInitStepSync('gr_novel_handlers', 'Initializing novel handlers', () => {
+                this.initializeNovelHandlers();
+            });
 
-            // STEP 11: Initialize queue module (no dependencies)
-            this.initializeQueue();
+            await this._runInitStepSync('gr_queue', 'Initializing queue', () => {
+                this.initializeQueue();
+            });
 
-            // STEP 12: Initialize favorites manager (singleton, no dependencies)
-            this.initializeFavoritesManager();
+            await this._runInitStepSync('gr_favorites', 'Initializing favorites manager', () => {
+                this.initializeFavoritesManager();
+            });
 
-            // STEP 13: Initialize global checkpoint manager (needs all databases and managers initialized)
-            this.initializeGlobalCheckpointManager();
+            await this._runInitStepSync('gr_checkpoint', 'Initializing checkpoint manager', () => {
+                this.initializeGlobalCheckpointManager();
+            });
 
-            // STEP 14: Initialize dataset tag service (needs logger)
-            await this.initializeDatasetTagService();
+            await this._runInitStep('gr_dataset_tags', 'Loading dataset tag service', async () => {
+                await this.initializeDatasetTagService();
+            });
 
-            // STEP 15: Initialize custom resolutions (xlarge resolutions)
-            this.initializeCustomResolutions();
+            await this._runInitStepSync('gr_custom_resolutions', 'Loading custom resolutions', () => {
+                this.initializeCustomResolutions();
+            });
 
-            // STEP 16: Initialize master API clients (if keys are available)
-            await this.initializeMasterClients();
+            await this._runInitStep('gr_master_clients', 'Initializing API clients', async () => {
+                await this.initializeMasterClients();
+            });
 
-            // STEP 17: Load character data for auto-complete
-            await this.loadCharacterData();
+            await this._runInitStep('gr_character_data', 'Loading character data', async () => {
+                await this.loadCharacterData();
+            });
 
-            // STEP 18: Initialize tag search services (very large - 380MB+)
             const { loadTagSearchServices = !!this.getConfig()?.preloadTags || false } = options;
             if (loadTagSearchServices) {
-                await this.initializeTagSearchServices();
-            } else {
-                console.log('   - Skipping tag search services (saves ~380MB memory)');
-                console.log('     They will lazy-load if needed');
+                await this._runInitStep('gr_tag_search_services', 'Loading tag search services', async () => {
+                    await this.initializeTagSearchServices();
+                });
+            } else if (this.logger?.bootSubStep) {
+                this.logger.bootSubStep('Skipping tag search services (lazy-load)');
             }
 
-            // STEP 19: Initialize system info cache
-            // Initialize system info cache
-            this.initializeSystemInfoCache();
+            await this._runInitStepSync('gr_system_info', 'Initializing system info cache', () => {
+                this.initializeSystemInfoCache();
+            });
 
-            this.initializeNovelAiStatusMonitor();
-            initializeAccountSubscriptionSnapshot(this);
+            await this._runInitStepSync('gr_novelai_status', 'Starting NovelAI status monitor', () => {
+                this.initializeNovelAiStatusMonitor();
+            });
 
-            // Reconcile workspace file lists on disk/config (no metadata DB access).
-            if (this.workspace) {
-                try {
-                    await this.workspace.syncWorkspaceFiles();
-                } catch (error) {
-                    console.error('  ⚠️ Failed to sync workspace files after initialization:', error.message);
-                    // Don't throw - this is non-critical, can retry later
+            await this._runInitStepSync('gr_account_snapshot', 'Initializing account subscription snapshot', () => {
+                initializeAccountSubscriptionSnapshot(this);
+            });
+
+            await this._runInitStep('gr_workspace_sync', 'Syncing workspace files', async () => {
+                if (this.workspace) {
+                    try {
+                        await this.workspace.syncWorkspaceFiles();
+                    } catch (error) {
+                        console.error('[init] Failed to sync workspace files after initialization:', error.message);
+                    }
                 }
-            }
+            });
 
             this.initialized = true;
-
             this.initEndTime = Date.now();
+            this._startupReporter = null;
 
             const initTime = ((this.initEndTime - this.initStartTime) / 1000).toFixed(2);
-            console.log(`✓ Global Resources ready in ${initTime}s`);
+            if (this.logger?.bootSubStep) {
+                this.logger.bootSubStep(`Global resources ready in ${initTime}s`);
+            }
 
             return true;
         } catch (error) {
-            console.error('❌ Failed to initialize global resources:', error);
+            this._startupReporter = null;
+            console.error('[init] Failed to initialize global resources:', error);
             return false;
         }
     }
@@ -980,9 +1064,11 @@ class GlobalResources {
                 startAsleep: true // Start in sleep state (will wake on first request)
             });
 
-            console.log('✓ DText to HTML Parser (Ruby Module) registered via Polymorphic module manager');
+            if (this.logger?.bootSubStep) {
+                this.logger.bootSubStep('DText to HTML Parser (Ruby Module) registered');
+            }
         } catch (error) {
-            console.error('  ❌ Failed to initialize polymorphic modules:', error);
+            console.error('[init] Failed to initialize polymorphic modules:', error);
             // Don't throw - allow server to continue without polymorphic modules
         }
     }
@@ -1677,6 +1763,12 @@ class GlobalResources {
             // Start staggered periodic checkpoints (only for databases)
             this.globalCheckpointManager.startPeriodicCheckpoints();
 
+            const { reconcileAllCheckpointRetention } = require('./checkpointGrandfathering');
+            const retentionResult = reconcileAllCheckpointRetention(this);
+            if (retentionResult.dirs > 0) {
+                console.log(`✓ Checkpoint retention reconciled (${retentionResult.dirs} resource${retentionResult.dirs === 1 ? '' : 's'})`);
+            }
+
             console.log('✓ Checkpoint manager ready');
         } catch (error) {
             console.error('  ❌ Failed to initialize global checkpoint manager:', error);
@@ -1712,9 +1804,11 @@ class GlobalResources {
                 }
             }, 30 * 60 * 1000); // Run every 30 minutes
 
-            console.log('✓ LRU caches initialized');
+            if (this.logger?.bootSubStep) {
+                this.logger.bootSubStep('LRU caches initialized');
+            }
         } catch (error) {
-            console.error('  ❌ Failed to initialize LRU caches:', error);
+            console.error('[init] Failed to initialize LRU caches:', error);
             throw error;
         }
     }

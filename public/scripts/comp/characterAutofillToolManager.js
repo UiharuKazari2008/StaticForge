@@ -28,7 +28,8 @@ class CharacterAutofillToolManager {
         this._interactTimer = null;
         this._wired = false;
         this._outsideMouseClearWired = false;
-        this._captureKeydownWired = false;
+        this._keydownListenerRegistered = false;
+        this._boundDetachedToolKeydown = null;
         this._searchInputTimer = null;
     }
 
@@ -40,7 +41,57 @@ class CharacterAutofillToolManager {
         this.searchInputEl = document.getElementById('characterAutofillToolSearch');
         this._wireShell();
         this._wireSearchInput();
-        this._wireCaptureKeydown();
+    }
+
+    _handleDetachedToolKeydown(e) {
+        if (!this.isDetachedActive()) return false;
+        if (!this.isInteractionActive()) return false;
+        if (this._isSearchInputTarget(document.activeElement)) return false;
+        const routeTarget = currentCharacterAutocompleteTarget || this.getInsertTarget() || this.linkedTextarea;
+        if (!routeTarget) return false;
+        if (document.activeElement === routeTarget) return false;
+        // isCharacterAutocompleteOverlayOpen: public/scripts/comp/autocompleteUtils.js
+        if (!isCharacterAutocompleteOverlayOpen()) return false;
+        // isAutofillRoutedKeydown: public/scripts/comp/autocompleteUtils.js
+        if (!isAutofillRoutedKeydown(e)) return false;
+        e.preventDefault();
+        e.stopPropagation();
+        const proxied = new Proxy(e, {
+            get(target, prop) {
+                if (prop === 'target') return routeTarget;
+                const val = target[prop];
+                return typeof val === 'function' ? val.bind(target) : val;
+            }
+        });
+        routeTarget.focus({ preventScroll: true });
+        // handleCharacterAutocompleteKeydown: public/scripts/comp/autocompleteUtils.js
+        handleCharacterAutocompleteKeydown(proxied);
+        return true;
+    }
+
+    _registerDetachedKeydownListener() {
+        if (!this._boundDetachedToolKeydown) {
+            this._boundDetachedToolKeydown = (e) => this._handleDetachedToolKeydown(e);
+        }
+        if (this._keydownListenerRegistered) return;
+        // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+        registerKeyboardListener({
+            id: 'characterAutofillTool.keydown',
+            handler: this._boundDetachedToolKeydown,
+            type: 'whenOpen',
+            modalId: 'characterAutofillTool',
+            priority: 76,
+            critical: true,
+            showInOverlay: false
+        });
+        this._keydownListenerRegistered = true;
+    }
+
+    _unregisterDetachedKeydownListener() {
+        if (!this._keydownListenerRegistered) return;
+        // deregisterKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+        deregisterKeyboardListener('characterAutofillTool.keydown');
+        this._keydownListenerRegistered = false;
     }
 
     _isSearchInputTarget(target) {
@@ -73,10 +124,6 @@ class CharacterAutofillToolManager {
                 return;
             }
             this.isHovered = true;
-            // markAutofillOverlayInteractive: public/scripts/comp/autocompleteUtils.js
-            if (typeof markAutofillOverlayInteractive === 'function') {
-                markAutofillOverlayInteractive();
-            }
         });
         this.shellEl.addEventListener('mouseleave', () => {
             this.isHovered = false;
@@ -84,10 +131,6 @@ class CharacterAutofillToolManager {
         this.shellEl.addEventListener('mousemove', () => {
             if (typeof isAutofillToolMouseInteractionAllowed === 'function' && !isAutofillToolMouseInteractionAllowed()) {
                 this.clearMouseInteractionState();
-                // clearAutofillMouseHoverSelection: public/scripts/comp/autocompleteUtils.js
-                if (typeof clearAutofillMouseHoverSelection === 'function') {
-                    clearAutofillMouseHoverSelection();
-                }
             }
         });
         this.shellEl.addEventListener('wheel', (e) => {
@@ -105,10 +148,6 @@ class CharacterAutofillToolManager {
                 if (!this.isDetachedActive() || !this.element) return;
                 if (this.element.contains(e.target)) return;
                 this.clearMouseInteractionState();
-                // clearAutofillMouseHoverSelection: public/scripts/comp/autocompleteUtils.js
-                if (typeof clearAutofillMouseHoverSelection === 'function') {
-                    clearAutofillMouseHoverSelection();
-                }
             }, true);
         }
     }
@@ -121,6 +160,21 @@ class CharacterAutofillToolManager {
             if (typeof enterAutofillToolLookupMode === 'function') {
                 enterAutofillToolLookupMode();
             }
+            setTimeout(() => {
+                // syncAutofillToolWindowActiveState: public/scripts/comp/autocompleteUtils.js
+                if (typeof syncAutofillToolWindowActiveState === 'function') {
+                    syncAutofillToolWindowActiveState();
+                }
+            }, 0);
+        });
+
+        this.searchInputEl.addEventListener('blur', () => {
+            setTimeout(() => {
+                // syncAutofillToolWindowActiveState: public/scripts/comp/autocompleteUtils.js
+                if (typeof syncAutofillToolWindowActiveState === 'function') {
+                    syncAutofillToolWindowActiveState();
+                }
+            }, 0);
         });
 
         this.searchInputEl.addEventListener('input', () => {
@@ -154,26 +208,6 @@ class CharacterAutofillToolManager {
                 }
             });
         }
-    }
-
-    _wireCaptureKeydown() {
-        if (this._captureKeydownWired) return;
-        document.addEventListener('keydown', (e) => {
-            if (!this.isInteractionActive()) return;
-            if (this._isSearchInputTarget(document.activeElement)) return;
-            const routeTarget = currentCharacterAutocompleteTarget || this.getInsertTarget() || this.linkedTextarea;
-            if (!routeTarget) return;
-            if (document.activeElement === routeTarget) return;
-            if (typeof isAutofillRoutedKeydown !== 'function' || !isAutofillRoutedKeydown(e)) return;
-            e.preventDefault();
-            e.stopPropagation();
-            routeTarget.focus({ preventScroll: true });
-            // handleCharacterAutocompleteKeydown: public/scripts/comp/autocompleteUtils.js
-            if (typeof handleCharacterAutocompleteKeydown === 'function') {
-                handleCharacterAutocompleteKeydown(e);
-            }
-        }, true);
-        this._captureKeydownWired = true;
     }
 
     isDetachedActive() {
@@ -291,6 +325,7 @@ class CharacterAutofillToolManager {
         if (!this._mountPanelDom()) return false;
 
         this.detached = true;
+        this._registerDetachedKeydownListener();
         if (textarea) {
             this.linkedTextarea = textarea;
             this.setInsertTarget(textarea);
@@ -351,6 +386,10 @@ class CharacterAutofillToolManager {
                     syncAutofillToolSearchInput(true);
                 }
             }
+            // ensureDetachedAutofillListComplete: public/scripts/comp/autocompleteUtils.js
+            if (typeof ensureDetachedAutofillListComplete === 'function') {
+                ensureDetachedAutofillListComplete();
+            }
             return true;
         }
         return this._openWindow(textarea, options);
@@ -378,6 +417,7 @@ class CharacterAutofillToolManager {
 
         this.shellEl?.classList.remove('detached-tool-active');
         this.detached = false;
+        this._unregisterDetachedKeydownListener();
         this.linkedTextarea = null;
         this.insertTarget = null;
         this.lookupMode = false;

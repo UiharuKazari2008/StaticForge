@@ -636,18 +636,22 @@ async function handleApplyTendaiPreview(handlers, ws, message, clientInfo, wsSer
 
 async function handleResolveTextReplacements(handlers, ws, message, clientInfo, wsServer) {
     try {
-        const { text, presetName, model, periodKey, requestId } = message;
+        const { text, presetName, model, periodKey, text_replacements_seed, requestId } = message;
         if (!text || typeof text !== 'string') {
             handlers.sendError(ws, 'Invalid text', 'Text is required', requestId);
             return;
         }
+
+        const lockedReplacements = Array.isArray(text_replacements_seed) && text_replacements_seed.length
+            ? text_replacements_seed
+            : null;
 
         const result = handlers.globalResources.getTextReplacements().applyTextReplacements(
             text,
             presetName || null,
             model || null,
             periodKey || null,
-            null,
+            lockedReplacements,
             { stageIndex: 0, stageType: 'base', text_replacements: [], pipelineStageGeneration: false }
         );
 

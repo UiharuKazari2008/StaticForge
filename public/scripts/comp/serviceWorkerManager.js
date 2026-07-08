@@ -74,6 +74,8 @@ class ServiceWorkerManager {
         this.updateAvailable = false;
         // Blown when updates are downloaded but not yet applied via restart.
         this.pendingUpdateFuse = false;
+        // Files actually downloaded for the current pending apply/restart (not manifest size).
+        this.pendingUpdateFilesTotal = 0;
         this.updateProgress = 0;
         this.isUpdating = false;
         this.lastUpdateCounts = { completed: 0, total: 0 };
@@ -129,6 +131,7 @@ class ServiceWorkerManager {
         this._installWizardEtaState = null;
         this._activeDownloadAttach = null;
         this._installWizardKeyboardWired = false;
+        this._updateCompleteToastTimeout = null;
 
         this._wireInstallWizardKeyboardListeners();
         this.init();
@@ -172,16 +175,47 @@ class ServiceWorkerManager {
         return this.pendingUpdateFuse;
     }
 
-    tripPendingUpdateFuse() {
+    tripPendingUpdateFuse(filesCount = null) {
         this.pendingUpdateFuse = true;
         this.updateAvailable = true;
+        if (filesCount != null && filesCount > 0) {
+            this.pendingUpdateFilesTotal = filesCount;
+            this.trayPopup.filesTotal = filesCount;
+            this.lastUpdateFilesTotal = filesCount;
+        }
         this._notifyTrayIconUpdate();
     }
 
     resetPendingUpdateFuse() {
         this.pendingUpdateFuse = false;
         this.updateAvailable = false;
+        this.pendingUpdateFilesTotal = 0;
+        this._clearScheduledUpdateCompleteToast();
         this._notifyTrayIconUpdate();
+    }
+
+    _clearScheduledUpdateCompleteToast() {
+        if (this._updateCompleteToastTimeout) {
+            clearTimeout(this._updateCompleteToastTimeout);
+            this._updateCompleteToastTimeout = null;
+        }
+    }
+
+    _scheduleUpdateCompleteToast(mode = 'restart', delayMs = 1000) {
+        this._clearScheduledUpdateCompleteToast();
+        this._updateCompleteToastTimeout = setTimeout(() => {
+            this._updateCompleteToastTimeout = null;
+            this.showUpdateCompleteToast(mode);
+        }, delayMs);
+    }
+
+    _formatDownloadCompleteMessage() {
+        const count = this.pendingUpdateFilesTotal || this.trayPopup.filesTotal || 0;
+        if (count > 0) {
+            const fileLabel = count === 1 ? 'file' : 'files';
+            return `Completed updating ${count} ${fileLabel}. Restart to apply changes.`;
+        }
+        return '';
     }
 
     _notifyTrayIconUpdate() {
@@ -255,6 +289,20 @@ class ServiceWorkerManager {
         document.body.classList.remove('login-booting');
         const resolvers = this._loginBootCompleteResolvers.splice(0);
         resolvers.forEach((fn) => fn());
+    }
+
+    _kickApplicationBootEarly() {
+        // beginApplicationBoot: public/scripts/websocket.js — UI + WS connect must not wait on SW cache sync
+        const start = () => {
+            if (window.wsClient && !window.wsClient.initializationStarted) {
+                window.wsClient.beginApplicationBoot();
+            }
+        };
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', start, { once: true });
+        } else {
+            start();
+        }
     }
 
     _kickApplicationBootAfterBootGate() {
@@ -356,6 +404,73 @@ class ServiceWorkerManager {
             return [];
         }
         return files.filter((file) => file && this._isLoginCriticalPath(file.url));
+    }
+
+    _showBootUiEarly(message = 'Checking server status…') {
+        this.bootPhase = 'waiting_server';
+        document.body.classList.add('initializing');
+        if (!window.wsClient) {
+            return;
+        }
+        if (window.isDesktop && typeof window.wsClient._renderPreStartupDialog === 'function') {
+            window.wsClient._setConnectionBeat('initializing', { message });
+            window.wsClient._renderPreStartupDialog();
+        } else if (typeof window.wsClient.showWindowsStartupModal === 'function') {
+            window.wsClient.showWindowsStartupModal(message, 0);
+        }
+    }
+
+    _applyServerStartupStatusToUi(data) {
+        if (!data || !window.wsClient) {
+            return;
+        }
+        if (typeof window.wsClient._applyServerStartupStatus === 'function') {
+            window.wsClient._applyServerStartupStatus(data);
+        } else {
+            const message = data.stageMessage || 'Server starting…';
+            window.wsClient._setConnectionBeat('dialing', { message });
+        }
+    }
+
+    async _waitForServerReady() {
+        const pollMs = 2000;
+        const maxAttempts = 300;
+        let attempts = 0;
+
+        this._showBootUiEarly('Checking server status…');
+
+        while (attempts < maxAttempts) {
+            attempts += 1;
+            try {
+                const response = await fetch('/status', {
+                    method: 'OPTIONS',
+                    cache: 'no-cache',
+                    signal: AbortSignal.timeout(8000)
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    this._applyServerStartupStatusToUi(data);
+
+                    if (data.isReady) {
+                        return data;
+                    }
+
+                    const pct = data.progressPercent != null ? ` (${data.progressPercent}%)` : '';
+                    this._showBootUiEarly(`${data.stageMessage || 'Server starting…'}${pct}`);
+                } else if (attempts === 1) {
+                    this._showBootUiEarly('Waiting for server…');
+                }
+            } catch (_) {
+                if (attempts === 1) {
+                    this._showBootUiEarly('Waiting for server…');
+                }
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, pollMs));
+        }
+
+        throw new Error('Server did not become ready in time');
     }
 
     async _fetchManifest() {
@@ -599,8 +714,13 @@ class ServiceWorkerManager {
         } else if (state === 'checking') {
             body.innerHTML = message || 'Scanning for available updates…';
         } else if (state === 'complete') {
-            const count = Number.isFinite(this.trayPopup.filesTotal) ? this.trayPopup.filesTotal : 0;
-            body.innerHTML = `Completed updating ${count} files. Restart to apply changes.`;
+            if (message) {
+                body.innerHTML = message;
+            } else {
+                const count = Number.isFinite(this.trayPopup.filesTotal) ? this.trayPopup.filesTotal : 0;
+                const fileLabel = count === 1 ? 'file' : 'files';
+                body.innerHTML = `Completed updating ${count} ${fileLabel}. Restart to apply changes.`;
+            }
         } else {
             body.innerHTML = message;
         }
@@ -720,35 +840,41 @@ class ServiceWorkerManager {
     async init() {
         if ('serviceWorker' in navigator) {
             try {
-                // Register service worker
+                this._kickApplicationBootEarly();
+                this._showBootUiEarly('Checking server status…');
+                await this._waitForServerReady();
+
+                this.bootPhase = 'waiting_sw';
+                this._showBootUiEarly('Loading offline cache…');
+
+                // Register service worker (sw.js is served early on the server)
                 this.swRegistration = await navigator.serviceWorker.register('/sw.js');
                 console.log('Service Worker registered:', this.swRegistration);
 
-                // Listen for updates
+                // Post-boot only — runBootSequence owns manifest/update checks during startup
                 this.swRegistration.addEventListener('updatefound', () => {
-                    console.log('Service Worker update found');
-                    this.checkForUpdates();
+                    if (this._bootOrchestrating || !this.bootComplete) {
+                        return;
+                    }
+                    if (this.swRegistration.waiting) {
+                        this.checkForWaiting();
+                    }
                 });
 
-                // Listen for state changes on the installing worker
                 if (this.swRegistration.installing) {
                     this.swRegistration.installing.addEventListener('statechange', (event) => {
-                        console.log('Service Worker installing state changed:', event.target.state);
                         if (event.target.state === 'installed') {
                             console.log('Service Worker installed successfully');
                         }
                     });
                 }
 
-                // Listen for messages from service worker
                 navigator.serviceWorker.addEventListener('message', (event) => {
                     this.handleServiceWorkerMessage(event);
                 });
 
-                // Start health check for service worker
                 this.startHealthCheck();
 
-                // Check current state immediately after registration
                 console.log('Service Worker registration state:', {
                     active: !!this.swRegistration.active,
                     waiting: !!this.swRegistration.waiting,
@@ -757,13 +883,11 @@ class ServiceWorkerManager {
                     activeState: this.swRegistration.active?.state || 'none'
                 });
 
-                // Check if there's an update waiting
                 if (this.swRegistration.waiting) {
                     console.log('Service Worker is waiting for activation');
                     this.checkForWaiting();
                 }
 
-                // Wait for service worker to be ready, with iOS-specific handling
                 await this.waitForServiceWorkerReady();
                 await this.fetchSwConfig();
 
@@ -776,13 +900,12 @@ class ServiceWorkerManager {
                     this.loginBootPromise = this.runLoginBootSequence();
                 } else {
                     this.bootPromise = this.runBootSequence().then(() => {
-                        this._kickApplicationBootAfterBootGate();
+                        this._resolveBootComplete();
                     }).catch((err) => {
                         console.error('Boot sequence failed:', err);
                         if (!this.bootComplete) {
                             this._resolveBootComplete();
                         }
-                        this._kickApplicationBootAfterBootGate();
                     });
                 }
 
@@ -797,9 +920,10 @@ class ServiceWorkerManager {
                 if (window.isLoginPage) {
                     this._resolveLoginBootComplete();
                 } else {
-                    this._showBootFatalError(error);
+                    if (error.message !== 'Server did not become ready in time') {
+                        this._showBootFatalError(error);
+                    }
                     this._resolveBootComplete();
-                    this._kickApplicationBootAfterBootGate();
                 }
             }
         } else {
@@ -810,7 +934,6 @@ class ServiceWorkerManager {
             } else {
                 this._showBootFatalError(new Error('Service Worker not supported in this browser'));
                 this._resolveBootComplete();
-                this._kickApplicationBootAfterBootGate();
             }
         }
     }
@@ -1142,16 +1265,19 @@ class ServiceWorkerManager {
 
             console.log('Checking for static file updates...');
 
-            // Show initial toast immediately to indicate checking is happening
-            this.showCheckingForUpdatesToast();
-
-            // Check which files need updating
+            // Check which files need updating before showing UI — avoids flashing
+            // "checking" when we already know the outcome is pending-only or up to date.
             const filesToUpdate = await this.getFilesNeedingUpdate(files);
 
             console.log(`Found ${filesToUpdate.length} files that need updating:`, filesToUpdate);
 
             if (filesToUpdate.length > 0) {
                 console.log(`Found ${filesToUpdate.length} files that need updating`);
+
+                if (!noToast) {
+                    this._clearScheduledUpdateCompleteToast();
+                    this.showCheckingForUpdatesToast();
+                }
                 
                 // Update existing checking toast to show download progress
                 this.showUpdateToastFromChecking(filesToUpdate);
@@ -1162,6 +1288,7 @@ class ServiceWorkerManager {
                     files: filesToUpdate
                 });
             } else if (!noToast) {
+                this._clearScheduledUpdateCompleteToast();
                 if (this.hasPendingUpdates()) {
                     this.showPendingUpdatesFromChecking();
                 } else {
@@ -1337,6 +1464,26 @@ class ServiceWorkerManager {
         return [];
     }
 
+    _resolvePendingUpdateFilesCount(data) {
+        const updatedFiles = this._resolveUpdatedFilesFromCacheComplete(data);
+        if (updatedFiles.length > 0) {
+            return updatedFiles.length;
+        }
+        if (data && data.total > 0) {
+            return data.total;
+        }
+        return 0;
+    }
+
+    _formatPendingUpdatesRecheckMessage() {
+        const count = this.pendingUpdateFilesTotal || 0;
+        if (count > 0) {
+            const fileLabel = count === 1 ? 'file' : 'files';
+            return `No new updates found. Restart to apply ${count} pending ${fileLabel}.`;
+        }
+        return 'No new updates found. Restart to apply pending updates.';
+    }
+
     refreshStaticStylesheet(pathname, hash) {
         const nextUrl = buildShaBustUrl(pathname, hash);
         document.querySelectorAll('link[rel="stylesheet"]').forEach((link) => {
@@ -1424,10 +1571,7 @@ class ServiceWorkerManager {
     }
 
     _processStaticCacheComplete(data) {
-        const updatedFiles = this._resolveUpdatedFilesFromCacheComplete(data);
-        const filesCount = updatedFiles.length > 0
-            ? updatedFiles.length
-            : (data.total > 0 ? data.total : 0);
+        const filesCount = this._resolvePendingUpdateFilesCount(data);
 
         if (filesCount === 0) {
             console.log('Download completed but no files were updated');
@@ -1436,6 +1580,7 @@ class ServiceWorkerManager {
         }
 
         const silent = data.silent === true;
+        const updatedFiles = this._resolveUpdatedFilesFromCacheComplete(data);
         const updateKind = this.classifyStaticCacheUpdate(updatedFiles);
         this.pendingUpdateKind = updateKind;
         const canApplyWithoutRestart = updateKind === 'css-only' || updateKind === 'apply-safe';
@@ -1452,27 +1597,21 @@ class ServiceWorkerManager {
                 this.applyStaticCacheUpdate(updatedFiles, { silent: true });
                 return;
             }
-            this.tripPendingUpdateFuse();
+            this.tripPendingUpdateFuse(filesCount);
             this.trayPopup.dismissedUntilComplete = false;
-            this.trayPopup.filesTotal = filesCount;
             if (this.initUpdateModalActive) {
                 return;
             }
-            setTimeout(() => {
-                this.showUpdateCompleteToast('apply');
-            }, 1000);
+            this._scheduleUpdateCompleteToast('apply');
             return;
         }
 
-        this.tripPendingUpdateFuse();
+        this.tripPendingUpdateFuse(filesCount);
         this.trayPopup.dismissedUntilComplete = false;
-        this.trayPopup.filesTotal = filesCount;
         if (this.initUpdateModalActive) {
             return;
         }
-        setTimeout(() => {
-            this.showUpdateCompleteToast('restart');
-        }, 1000);
+        this._scheduleUpdateCompleteToast('restart');
     }
 
     /**
@@ -1662,11 +1801,14 @@ class ServiceWorkerManager {
     }
 
     showPendingUpdatesFromChecking() {
+        this._clearScheduledUpdateCompleteToast();
+        const message = this._formatPendingUpdatesRecheckMessage();
         if (this._isDesktopTrayMode()) {
             this._showServiceWorkerTrayPopup('complete', {
-                message: 'No new updates found. Restart to apply pending updates.',
+                kind: 'sw-update',
+                message,
                 progress: 100,
-                filesTotal: this.trayPopup.filesTotal || this.lastUpdateFilesTotal || 0
+                filesTotal: this.pendingUpdateFilesTotal || 0
             });
             this.updateToastId = 'service-worker-tray-popup';
             this.checkingToastId = null;
@@ -1674,7 +1816,7 @@ class ServiceWorkerManager {
             updateGlassToastComplete(this.checkingToastId, {
                 type: 'warning',
                 title: 'Restart Required',
-                message: 'No new updates found. Restart to apply pending updates.',
+                message,
                 showProgress: false,
                 customIcon: '<i class="fas fa-arrows-rotate"></i>',
                 timeout: false
@@ -2177,6 +2319,7 @@ class ServiceWorkerManager {
                 }
                 if (filesCount > 0) {
                     if (this.initUpdateModalActive) {
+                        this.tripPendingUpdateFuse(this._resolvePendingUpdateFilesCount(event.data));
                         break;
                     }
                     this._processStaticCacheComplete(event.data);
@@ -2272,6 +2415,7 @@ class ServiceWorkerManager {
                 break;
 
             case 'SW_SCRIPT_UPDATED':
+                // Boot manifest loop handles asset updates; only react during install wizard / login boot
                 if (this.bootPhase === 'wizard' || this._readInstallWizardSession()?.active) {
                     this._writeInstallWizardSession({ phase: this.bootPhase || 'verify' });
                     if (this.swRegistration && this.swRegistration.waiting) {
@@ -2331,7 +2475,8 @@ class ServiceWorkerManager {
                         this.isUpdating = false;
                         this.stopPeriodicStateCheck();
                         // Try to check if it actually completed
-                        if (this.updateProgress >= 100) {
+                        if (this.updateProgress >= 100 && !this._updateCompleteToastTimeout
+                            && this.updateToastId !== 'service-worker-tray-popup') {
                             this.showUpdateCompleteToast();
                         }
                     }
@@ -3116,9 +3261,16 @@ class ServiceWorkerManager {
             return;
         }
 
+        // Manual re-check already showed the pending-restart prompt — don't overwrite it.
+        if (this.trayPopup.state === 'complete' && this.trayPopup.kind === 'sw-update'
+            && typeof this.trayPopup.message === 'string'
+            && this.trayPopup.message.startsWith('No new updates found')) {
+            return;
+        }
+
         if (mode === 'apply') {
             if (this._isDesktopTrayMode()) {
-                const filesTotal = this.trayPopup.filesTotal || this.lastUpdateFilesTotal || 0;
+                const filesTotal = this.pendingUpdateFilesTotal || this.trayPopup.filesTotal || 0;
                 this._showServiceWorkerTrayPopup('complete', {
                     kind: 'sw-update',
                     filesTotal,
@@ -3156,8 +3308,14 @@ class ServiceWorkerManager {
 
         // Desktop mode: tray popup completion prompt
         if (this._isDesktopTrayMode()) {
-            const filesTotal = this.trayPopup.filesTotal || this.lastUpdateFilesTotal || 0;
-            this._showServiceWorkerTrayPopup('complete', { kind: 'sw-update', filesTotal, progress: 100 });
+            const filesTotal = this.pendingUpdateFilesTotal || this.trayPopup.filesTotal || 0;
+            const message = this._formatDownloadCompleteMessage();
+            this._showServiceWorkerTrayPopup('complete', {
+                kind: 'sw-update',
+                filesTotal,
+                progress: 100,
+                message
+            });
             this.updateToastId = 'service-worker-tray-popup';
         } else {
             // Non-desktop mode: use toast
@@ -3199,7 +3357,8 @@ class ServiceWorkerManager {
     // Force restart with bypass confirmation
     forceRestart() {
         console.log('🔄 Force restarting application...');
-        
+        this.resetPendingUpdateFuse();
+
         try {
             // Set bypass confirmation to true to avoid confirmation dialogs
             bypassConfirmation = true;
@@ -3664,7 +3823,7 @@ class ServiceWorkerManager {
 
             await this.waitForServiceWorkerReady();
             this.bootPhase = 'checking';
-            await this.checkForUpdates();
+            this._setPreStartupUpdateStageMessage('Checking for updates…');
 
             let verifyPass = 0;
             const MAX_VERIFY_PASSES = 5;
@@ -3734,7 +3893,6 @@ class ServiceWorkerManager {
             }
 
             await this.waitForServiceWorkerReady();
-            await this.checkForUpdates();
 
             while (true) {
                 const manifest = await this._fetchManifest();

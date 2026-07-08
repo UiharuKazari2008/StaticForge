@@ -629,7 +629,7 @@ function convertTextReplacementToEditMode(key) {
                             <i class="fas fa-lightbulb"></i>
                         </button>
                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
-                            <i class="fas fa-scale-unbalanced-flip"></i>
+                            <i class="fas fa-dial"></i>
                         </button>
                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
                             <i class="fas fa-book-font"></i>
@@ -1119,7 +1119,7 @@ function addCreateArrayItem() {
                             <i class="fas fa-lightbulb-slash"></i>
                         </button>
                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
-                            <i class="fas fa-scale-unbalanced-flip"></i>
+                            <i class="fas fa-weight-scale"></i>
                         </button>
                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
                             <i class="fas fa-book-font"></i>
@@ -2278,7 +2278,7 @@ function createTendaiReplacementRow(replacement, globalIndex, options = {}) {
             }, {
                 type: 'list',
                 items: [
-                    { text: 'Set Emphasis', icon: 'fas fa-sliders-h', action: 'set-emphasis' },
+                    { text: 'Set Emphasis', icon: 'fas fa-dial', action: 'set-emphasis' },
                     { text: 'Report Issue', icon: 'fas fa-flag', action: 'report-issue', className: 'text-danger' },
                     { text: 'Delete', icon: 'fas fa-trash', action: 'delete-replacement', className: 'text-danger' }
                 ]
@@ -2725,7 +2725,7 @@ async function setDynamicReplacementEmphasis(globalIndex, itemElement) {
         renderTextReplacementLockList();
     }
     
-    showGlassToast('success', null, `Emphasis set to ${emphasisValue.toFixed(1)}`, false, 2000, '<i class="fas fa-sliders-h"></i>');
+    showGlassToast('success', null, `Emphasis set to ${emphasisValue.toFixed(1)}`, false, 2000, '<i class="fas fa-dial"></i>');
 }
 
 

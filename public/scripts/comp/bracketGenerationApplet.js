@@ -376,7 +376,7 @@ function bracketGenAppendPlaceholderIfMissing(textarea, token) {
     return true;
 }
 
-// public/scripts/comp/emphasisManager.js (applyFormattedText, updateEmphasisHighlighting)
+// emphasisEditing.js, emphasisHighlight.js (applyFormattedText, updateEmphasisHighlighting)
 // public/scripts/comp/utilities.js (autoResizeTextarea)
 // public/scripts/comp/promptTextareaToolbar.js (updateTokenCount)
 function bracketGenRefreshPromptTextarea(textarea) {

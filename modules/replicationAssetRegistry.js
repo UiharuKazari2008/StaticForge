@@ -118,6 +118,53 @@ async function getOwnership(kind, key) {
     };
 }
 
+function mapOwnershipRow(row) {
+    return {
+        key: row.entry_key,
+        kind: row.kind,
+        storage: row.storage,
+        originInstanceId: row.origin_instance_id,
+        checksum: row.checksum,
+        updatedAt: row.updated_at
+    };
+}
+
+async function getOwnershipBatch(entries) {
+    const result = new Map();
+    if (!Array.isArray(entries) || entries.length === 0 || !(await ensureReady())) {
+        return result;
+    }
+
+    const keysByKind = new Map();
+    for (const entry of entries) {
+        if (!entry || !REGISTRY_KINDS.includes(entry.kind) || !entry.key) {
+            continue;
+        }
+        if (!keysByKind.has(entry.kind)) {
+            keysByKind.set(entry.kind, new Set());
+        }
+        keysByKind.get(entry.kind).add(String(entry.key));
+    }
+
+    const chunkSize = 500;
+    for (const [kind, keySet] of keysByKind.entries()) {
+        const keys = [...keySet];
+        for (let offset = 0; offset < keys.length; offset += chunkSize) {
+            const chunk = keys.slice(offset, offset + chunkSize);
+            const placeholders = chunk.map(() => '?').join(', ');
+            const rows = await db.all(
+                `SELECT * FROM asset_registry WHERE kind = ? AND entry_key IN (${placeholders})`,
+                [kind, ...chunk]
+            );
+            for (const row of rows) {
+                result.set(`${row.kind}::${row.entry_key}`, mapOwnershipRow(row));
+            }
+        }
+    }
+
+    return result;
+}
+
 async function markPendingFetch(kind, key) {
     return setOwnership({ kind, key, storage: 'pending-fetch' });
 }
@@ -217,6 +264,7 @@ module.exports = {
     ensureReady,
     setOwnership,
     getOwnership,
+    getOwnershipBatch,
     markPendingFetch,
     promoteToLocal,
     seedFromManifest,

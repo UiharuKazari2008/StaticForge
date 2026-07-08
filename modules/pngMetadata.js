@@ -568,6 +568,7 @@ class PngMetadata {
                     'auto_char_numerize',
                     'prompt_normalize',
                     'deduplicate_tags',
+                    'emphasis_normalization',
                     'novel_note_id',
                     'novel_story_cursor_line'
                 ];

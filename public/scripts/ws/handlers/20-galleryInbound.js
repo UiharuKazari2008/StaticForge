@@ -100,18 +100,80 @@ function shiftGalleryIndexes(shiftAmount) {
     displayCurrentPageOptimized();
 }
 
+function applyGalleryRemovalByFilenames(filenames) {
+    if (!Array.isArray(filenames) || filenames.length === 0) {
+        return;
+    }
+
+    const imagesToRemove = filenames
+        .map(fn => findImageByFilename(fn))
+        .filter(Boolean);
+
+    if (imagesToRemove.length === 0) {
+        return;
+    }
+
+    removeMultipleImagesFromGallery(imagesToRemove);
+    driftGalleryImagesSyncState(allImages.length);
+    queueGallerySnapshotPersist();
+    syncServiceWorkerImageCacheRules();
+}
+
+function handleGalleryActionUpdate(data) {
+    const currentView = currentGalleryView || 'images';
+    if (data.viewType && data.viewType !== currentView) {
+        return;
+    }
+
+    if (data.action === 'bulk_delete' || data.action === 'bulk_sequenzia') {
+        const filenames = Array.isArray(data.deletedFilenames) ? data.deletedFilenames : [];
+        if (filenames.length === 0) {
+            return;
+        }
+
+        if (isGalleryWindowHidden()) {
+            const removeSet = new Set(filenames);
+            const filtered = allImages.filter(img => {
+                const candidates = [img.filename, img.original, img.upscaled].filter(Boolean);
+                return !candidates.some(fn => removeSet.has(fn));
+            });
+            setActiveGalleryList(filtered);
+            syncServiceWorkerImageCacheRules();
+            return;
+        }
+
+        applyGalleryRemovalByFilenames(filenames);
+        console.log(`Gallery: Applied ${data.action} for ${filenames.length} item(s)`);
+        return;
+    }
+
+    if (data.action === 'bulk_preset_update') {
+        galleryImagesSyncState = null;
+        return;
+    }
+
+    console.warn('Gallery action update not handled:', data.action);
+}
+
 async function handleGalleryUpdatedData(data) {
     // isGalleryWindowHidden, setActiveGalleryList: public/scripts/comp/galleryView.js
     if (isGalleryWindowHidden()) {
         if (data.gallery) {
             setActiveGalleryList(data.gallery);
             syncServiceWorkerImageCacheRules();
+        } else if (data.action) {
+            handleGalleryActionUpdate(data);
         }
         return;
     }
 
     if (window.skipNextGalleryRefresh && window.skipNextGalleryRefresh > 0) {
         window.skipNextGalleryRefresh--;
+        return;
+    }
+
+    if (data.action && !data.gallery) {
+        handleGalleryActionUpdate(data);
         return;
     }
 

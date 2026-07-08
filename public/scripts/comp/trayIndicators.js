@@ -405,63 +405,9 @@ function updateSearchIndexingIndicator() {
     const indicator = document.getElementById('searchIndexingIndicator');
     if (!indicator) return;
 
-    // Attach context menu - use a function to get dynamic state
-    if (contextMenu) {
-        const getMenuConfig = () => ({
-            sections: [
-                {
-                    type: 'list',
-                    title: 'Search Index',
-                    items: [
-                        {
-                            icon: 'fas fa-pause',
-                            text: 'Pause Indexing',
-                            action: 'search-index-toggle-pause',
-                            tooltip: 'Pause automatic indexing',
-                            loadfn: (item, target) => {
-                                const isPaused = target?.dataset?.indexingPaused === 'true';
-                                item.icon = isPaused ? 'fas fa-play' : 'fas fa-pause';
-                                item.text = isPaused ? 'Resume Indexing' : 'Pause Indexing';
-                                item.tooltip = isPaused ? 'Resume automatic indexing' : 'Pause automatic indexing';
-                            }
-                        },
-                        { separator: true },
-                        {
-                            icon: 'fas fa-memory',
-                            text: 'Prepare Search Cache',
-                            action: 'search-index-prepare-cache',
-                            tooltip: 'Initialize search cache for current session'
-                        },
-                        {
-                            icon: 'fas fa-eraser',
-                            text: 'Clear Search Cache',
-                            action: 'search-index-clear-cache',
-                            tooltip: 'Clear search cache for current session'
-                        },
-                        { separator: true },
-                        {
-                            icon: 'fas fa-sync',
-                            text: 'Start Indexing',
-                            action: 'search-index-trigger',
-                            tooltip: 'Trigger search index sync now'
-                        },
-                        {
-                            icon: 'fas fa-broom',
-                            text: 'Erase Index',
-                            action: 'search-index-rebuild-all',
-                            tooltip: 'Clear all search indexes and rebuild from scratch (takes a long time)',
-                            className: 'text-warning'
-                        }
-                    ]
-                }
-            ]
-        });
-
-        // Attach the menu
-        contextMenu.attachToElement(indicator, getMenuConfig());
-
-        // Store the config function so we can update it when pause state changes
-        indicator._menuConfigFn = getMenuConfig;
+    // attachSearchIndexingTrayContextMenu: public/scripts/comp/systemTrayManager.js
+    if (typeof attachSearchIndexingTrayContextMenu === 'function') {
+        attachSearchIndexingTrayContextMenu(indicator);
     }
 }
 

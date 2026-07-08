@@ -1309,20 +1309,21 @@ async function cacheInternalData(url, data) {
           });
           return;
         } else {
-          console.warn(`Failed to cache internal data: response status ${fetchedResponse.status}`);
+          // Non-fatal — store metadata fallback when image is not yet available (e.g. server boot)
         }
       } catch (error) {
         console.error('Failed to fetch content for internal cache:', error);
       }
     }
-    
-    // Fallback: store the data as-is if no imageUrl or fetch failed
-    const response = new Response(data, {
+
+    const body = typeof data === 'string' ? data : JSON.stringify(data);
+    const response = new Response(body, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
         'Pragma': 'no-cache',
         'Expires': '0',
         'Surrogate-Control': 'no-store',
+        'Content-Type': typeof data === 'string' ? 'text/plain' : 'application/json',
         'x-internal-data': 'true'
       }
     });

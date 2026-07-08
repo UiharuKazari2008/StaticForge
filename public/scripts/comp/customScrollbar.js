@@ -251,6 +251,11 @@ class CustomScrollbar {
         };
         trackListener(scrollableContent, 'scroll', onScroll);
 
+        const onIndicate = () => {
+            this.indicateScrollbar(element);
+        };
+        trackListener(element, 'custom-scrollbar-indicate', onIndicate);
+
         const onWheel = (e) => {
             // Only prevent default on non-touch devices to allow touch scrolling
             if (!('ontouchstart' in window)) {
@@ -462,6 +467,20 @@ class CustomScrollbar {
     }
 
     updateScrollbar(element) {
+        this._scheduleUpdateScrollbar(element);
+    }
+
+    indicateScrollbar(element) {
+        const data = this.scrollbars.get(element);
+        if (!data) return;
+        element.classList.add('scrollbar-indicating');
+        if (data._indicateTimer) {
+            clearTimeout(data._indicateTimer);
+        }
+        data._indicateTimer = setTimeout(() => {
+            element.classList.remove('scrollbar-indicating');
+            data._indicateTimer = null;
+        }, 1200);
         this._scheduleUpdateScrollbar(element);
     }
 

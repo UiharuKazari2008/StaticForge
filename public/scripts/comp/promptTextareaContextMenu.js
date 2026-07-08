@@ -3,7 +3,7 @@
  * public/scripts/comp/contextMenu.js
  * public/scripts/comp/promptTextareaToolbar.js
  * public/scripts/comp/autocompleteUtils.js
- * public/scripts/comp/emphasisManager.js
+ * Emphasis: emphasisParse.js, emphasisEditing.js, emphasisHighlight.js, emphasisSyntaxToggles.js
  */
 
 const PROMPT_CTX_DYNAMIC_PLACEHOLDERS = [
@@ -108,7 +108,7 @@ function promptCtxDeleteAllDisabledBlocks(textarea) {
 }
 
 function promptCtxWillEnableDisableBlock(textarea) {
-    // isCursorInsideDisableBlock: public/scripts/comp/emphasisManager.js
+    // isCursorInsideDisableBlock: public/scripts/comp/emphasisSyntaxToggles.js
     return isCursorInsideDisableBlock && isCursorInsideDisableBlock(textarea);
 }
 
@@ -154,7 +154,7 @@ function promptCtxHasProtectedBlocks(textarea) {
 }
 
 function promptCtxWillEnableProtectBlock(textarea) {
-    // isCursorInsideProtectBlock: public/scripts/comp/emphasisManager.js
+    // isCursorInsideProtectBlock: public/scripts/comp/emphasisSyntaxToggles.js
     return isCursorInsideProtectBlock && isCursorInsideProtectBlock(textarea);
 }
 
@@ -922,7 +922,7 @@ function handlePromptTextareaContextMenuAction(action, textarea, item) {
             }
             break;
         case 'prompt-ctx-split-emphasis':
-            // splitEmphasisBlock: public/scripts/comp/emphasisManager.js
+            // splitEmphasisBlock: public/scripts/comp/emphasisParse.js
             if (splitEmphasisBlock) splitEmphasisBlock(textarea);
             if (updateEmphasisHighlighting) updateEmphasisHighlighting(textarea);
             break;
@@ -937,12 +937,12 @@ function handlePromptTextareaContextMenuAction(action, textarea, item) {
             break;
         case 'prompt-ctx-toggle-disable':
             if (!promptCtxCanToggleDisableSyntax(textarea)) break;
-            // toggleDisableSyntax: public/scripts/comp/emphasisManager.js
+            // toggleDisableSyntax: public/scripts/comp/emphasisSyntaxToggles.js
             if (toggleDisableSyntax) toggleDisableSyntax(textarea);
             break;
         case 'prompt-ctx-toggle-protect':
             if (!promptCtxCanToggleProtectSyntax(textarea)) break;
-            // toggleProtectSyntax: public/scripts/comp/emphasisManager.js
+            // toggleProtectSyntax: public/scripts/comp/emphasisSyntaxToggles.js
             if (toggleProtectSyntax) toggleProtectSyntax(textarea);
             break;
         case 'prompt-ctx-delete-disabled-blocks':
@@ -1174,8 +1174,8 @@ function getPromptTextareaContextMenuConfig() {
                         }
                     },
                     {
-                        icon: 'fas fa-sliders',
-                        tooltip: 'Emphasis Groups',
+                        icon: 'fas fa-weight-scale',
+                        tooltip: 'Weight Rack',
                         action: 'prompt-ctx-emphasis-groups',
                         loadfn: (icon, target) => {
                             icon.disabled = promptCtxIsCreativeDirectiveTextarea(target);

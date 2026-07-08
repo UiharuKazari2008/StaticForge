@@ -43,6 +43,11 @@
     }
 }
 
+.has-custom-scrollbar.scrollbar-indicating .custom-scrollbar,
+.form-section-scroll.scrollbar-indicating .custom-scrollbar {
+    opacity: 1;
+}
+
 /* Shared scrollable-content styles */
 .scrollable-content {
     display: flex;

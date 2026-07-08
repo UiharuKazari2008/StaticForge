@@ -266,6 +266,7 @@ async function handleGetDatasetTagsForPath(handlers, ws, message, clientInfo, ws
         }
     }
 
+
 async function handleSearchTags(handlers, ws, message, clientInfo, wsServer) {
         const { query, single_match = false } = message;
 
@@ -319,6 +320,7 @@ async function handleFileSearch(handlers, ws, message, clientInfo, wsServer) {
                 // Broadcast that cache initialization is starting
                 wsServer.broadcast({
                     type: 'search_indexing_status',
+                    job: 'search_sync',
                     status: 'cache_init',
                     message: `Preparing search cache for ${viewType} view...`,
                     viewType: viewType,
@@ -331,6 +333,7 @@ async function handleFileSearch(handlers, ws, message, clientInfo, wsServer) {
                 // Broadcast that cache initialization is complete
                 wsServer.broadcast({
                     type: 'search_indexing_status',
+                    job: 'search_sync',
                     status: 'cache_ready',
                     message: 'Search cache ready',
                     viewType: viewType,
@@ -489,6 +492,7 @@ async function handlePrepareSearchCache(handlers, ws, message, clientInfo, wsSer
             // Broadcast that cache initialization is starting
             wsServer.broadcast({
                 type: 'search_indexing_status',
+                job: 'search_sync',
                 status: 'cache_init',
                 message: `Preparing search cache for ${viewType} view...`,
                 viewType: viewType,
@@ -501,6 +505,7 @@ async function handlePrepareSearchCache(handlers, ws, message, clientInfo, wsSer
             // Broadcast that cache initialization is complete
             wsServer.broadcast({
                 type: 'search_indexing_status',
+                job: 'search_sync',
                 status: 'cache_ready',
                 message: 'Search cache ready',
                 viewType: viewType,
@@ -660,6 +665,7 @@ async function handleRebuildAllIndexes(handlers, ws, message, clientInfo, wsServ
             // Broadcast that rebuild is starting
             wsServer.broadcast({
                 type: 'search_indexing_status',
+                job: 'search_sync',
                 status: 'starting',
                 message: 'Starting full search index rebuild...',
                 timestamp: new Date().toISOString()
@@ -703,6 +709,7 @@ async function handleRebuildAllIndexes(handlers, ws, message, clientInfo, wsServ
                     
                     wsServer.broadcast({
                         type: 'search_indexing_status',
+                        job: 'search_sync',
                         status: 'indexing',
                         message: `Rebuilding: ${progress.current}/${progress.total} files (${percentage}%)`,
                         current: progress.current,
@@ -719,6 +726,7 @@ async function handleRebuildAllIndexes(handlers, ws, message, clientInfo, wsServ
             // Broadcast completion
             wsServer.broadcast({
                 type: 'search_indexing_status',
+                job: 'search_sync',
                 status: 'complete',
                 message: `Search index rebuild complete: ${result.updatedCount} files indexed`,
                 updatedCount: result.updatedCount,
@@ -744,6 +752,7 @@ async function handleRebuildAllIndexes(handlers, ws, message, clientInfo, wsServ
             console.error('Error rebuilding all indexes:', error);
             wsServer.broadcast({
                 type: 'search_indexing_status',
+                job: 'search_sync',
                 status: 'error',
                 message: `Search index rebuild error: ${error.message}`,
                 error: error.message,
@@ -1151,6 +1160,132 @@ async function searchFilesByTags(handlers, query, viewType, sessionId) {
         }
     }
 
+async function handleGetPromptIndexStatus(handlers, ws, message, clientInfo, wsServer) {
+        try {
+            const svc = wsServer.getPromptIndexService();
+            await svc.refreshStats();
+            wsServer.sendToClient(ws, {
+                type: 'get_prompt_index_status_response',
+                data: svc.buildStatusPayload(),
+                requestId: message.requestId,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Error getting prompt index status:', error);
+            wsServer.sendToClient(ws, {
+                type: 'get_prompt_index_status_response',
+                data: { status: 'error', error: error.message },
+                requestId: message.requestId,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+async function handlePromptIndexStart(handlers, ws, message, clientInfo, wsServer) {
+        try {
+            const svc = wsServer.getPromptIndexService();
+            const result = await svc.start();
+            wsServer.sendToClient(ws, {
+                type: 'prompt_index_start_response',
+                data: { ...result, status: svc.buildStatusPayload() },
+                requestId: message.requestId,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Error starting prompt index:', error);
+            wsServer.sendToClient(ws, {
+                type: 'prompt_index_start_response',
+                data: { ok: false, error: error.message },
+                requestId: message.requestId,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+async function handlePromptIndexPause(handlers, ws, message, clientInfo, wsServer) {
+        try {
+            const svc = wsServer.getPromptIndexService();
+            const result = svc.pause();
+            wsServer.sendToClient(ws, {
+                type: 'prompt_index_pause_response',
+                data: { ...result, status: svc.buildStatusPayload() },
+                requestId: message.requestId,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Error pausing prompt index:', error);
+            wsServer.sendToClient(ws, {
+                type: 'prompt_index_pause_response',
+                data: { ok: false, error: error.message },
+                requestId: message.requestId,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+async function handlePromptIndexResume(handlers, ws, message, clientInfo, wsServer) {
+        try {
+            const svc = wsServer.getPromptIndexService();
+            const result = svc.resume();
+            wsServer.sendToClient(ws, {
+                type: 'prompt_index_resume_response',
+                data: { ...result, status: svc.buildStatusPayload() },
+                requestId: message.requestId,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Error resuming prompt index:', error);
+            wsServer.sendToClient(ws, {
+                type: 'prompt_index_resume_response',
+                data: { ok: false, error: error.message },
+                requestId: message.requestId,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+async function handlePromptIndexCancel(handlers, ws, message, clientInfo, wsServer) {
+        try {
+            const svc = wsServer.getPromptIndexService();
+            const result = svc.cancel();
+            wsServer.sendToClient(ws, {
+                type: 'prompt_index_cancel_response',
+                data: { ...result, status: svc.buildStatusPayload() },
+                requestId: message.requestId,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Error cancelling prompt index:', error);
+            wsServer.sendToClient(ws, {
+                type: 'prompt_index_cancel_response',
+                data: { ok: false, error: error.message },
+                requestId: message.requestId,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+async function handlePromptIndexReconcile(handlers, ws, message, clientInfo, wsServer) {
+        try {
+            const svc = wsServer.getPromptIndexService();
+            const result = await svc.reconcile();
+            wsServer.sendToClient(ws, {
+                type: 'prompt_index_reconcile_response',
+                data: { ...result, status: svc.buildStatusPayload() },
+                requestId: message.requestId,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Error reconciling prompt index:', error);
+            wsServer.sendToClient(ws, {
+                type: 'prompt_index_reconcile_response',
+                data: { ok: false, error: error.message },
+                requestId: message.requestId,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
 function registerPackets(handlersCtx) {
     if (!handlersCtx) {
         console.warn('[70-searchHandler] registerPackets: missing handlersCtx');
@@ -1174,6 +1309,12 @@ function registerPackets(handlersCtx) {
     regFn('search_index_toggle_pause', handleToggleIndexingPause);
     regFn('search_index_trigger', handleTriggerIndexing);
     regFn('search_index_rebuild_all', handleRebuildAllIndexes);
+    regFn('get_prompt_index_status', handleGetPromptIndexStatus);
+    regFn('prompt_index_start', handlePromptIndexStart);
+    regFn('prompt_index_pause', handlePromptIndexPause);
+    regFn('prompt_index_resume', handlePromptIndexResume);
+    regFn('prompt_index_cancel', handlePromptIndexCancel);
+    regFn('prompt_index_reconcile', handlePromptIndexReconcile);
     regFn('spellcheck_add_word', handleAddWordToDictionary, SEARCH_DESTRUCTIVE);
     regFn('search_dataset_tags', handleDatasetTagSearch);
     regFn('get_dataset_tags_for_path', handleGetDatasetTagsForPath);

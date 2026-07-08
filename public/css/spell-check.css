@@ -50,6 +50,11 @@
     padding-bottom: 0;
 }
 
+.spell-check-word:hover:not(.selected),
+.word-lookup-word-row:hover:not(.selected) {
+    background: rgb(255 68 0 / 10%);
+}
+
 .spell-check-row-compact {
     display: flex;
     flex-wrap: nowrap;

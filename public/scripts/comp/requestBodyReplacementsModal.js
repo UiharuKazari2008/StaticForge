@@ -346,7 +346,7 @@ function addCreateRequestBodyArrayItem() {
                         <i class="fas fa-lightbulb-slash"></i>
                     </button>
                     <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
-                        <i class="fas fa-scale-unbalanced-flip"></i>
+                        <i class="fas fa-weight-scale"></i>
                     </button>
                     <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
                         <i class="fas fa-book-font"></i>
@@ -1168,7 +1168,7 @@ function enterEditMode(item, index) {
                             <i class="fas fa-lightbulb-slash"></i>
                         </button>
                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
-                            <i class="fas fa-scale-unbalanced-flip"></i>
+                            <i class="fas fa-weight-scale"></i>
                         </button>
                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
                             <i class="fas fa-book-font"></i>
@@ -1423,7 +1423,7 @@ function addRequestBodyArrayItem(index) {
                         <i class="fas fa-lightbulb-slash"></i>
                     </button>
                     <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
-                        <i class="fas fa-scale-unbalanced-flip"></i>
+                        <i class="fas fa-weight-scale"></i>
                     </button>
                     <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
                         <i class="fas fa-book-font"></i>
