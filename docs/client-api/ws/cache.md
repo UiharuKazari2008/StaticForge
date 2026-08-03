@@ -123,10 +123,26 @@ Additional response/push types from handler:
 | Field | Notes |
 |-------|-------|
 | `requestId` | Optional |
+| `data.force` | Optional boolean. Force recompilation instead of relying on source-hash skip detection. |
+| `data.silent` | Optional boolean. Suppress client update UI where supported. |
+
+**Success response data:**
+
+| Field | Notes |
+|-------|-------|
+| `success` | `true` when no compile errors were reported. |
+| `compiled` | Number of source files recompiled in this run. |
+| `failedCount` | Number of compile errors. |
+| `errors` | Array of `{ file, error }` entries. |
+| `stats` | Compile totals and byte-savings data. |
+
+**Push side effects:** refreshes server service-worker hash data and broadcasts `service_worker_cache_update`, plus runtime compile progress/complete/error pushes documented in [websocket.md](../websocket.md#server-initiated-messages-no-requestid).
 
 **Success response:** `recompile_runtime_assets_response`
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+Operational runbook: [Runtime Assets and Service Worker](../../RUNTIME_ASSETS_AND_SERVICE_WORKER.md).
 
 ### `refresh_server_cache`
 
@@ -142,6 +158,8 @@ Additional response/push types from handler:
 
 **Success response:** `refresh_server_cache_response`
 
+**Behavior:** despite the legacy name, this packet recompiles runtime assets, refreshes the service-worker manifest hash cache, and broadcasts updated cache data to clients. Use `recompile_runtime_assets` for the clearer admin-facing operation name when possible.
+
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
 ### `set_runtime_assets_auto_recompile`
@@ -155,8 +173,13 @@ Additional response/push types from handler:
 | Field | Notes |
 |-------|-------|
 | `requestId` | Optional |
+| `data.enabled` | Required boolean value saved to `config.runtimeAssets.autoRecompile`. |
 
 **Success response:** `set_runtime_assets_auto_recompile_response`
+
+**Success response data:** `{ success: true, autoRecompile }`
+
+When enabled, the server checks source hashes on runtime-managed `/css/` and `/scripts/` requests and recompiles stale files before serving them. Keep disabled for normal production use unless live source edits need immediate serving.
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 

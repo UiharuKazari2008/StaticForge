@@ -51,6 +51,8 @@ Custom native clients typically **skip** service worker entirely; use direct HTT
 
 After server-side client edits, web deploy runs `scripts/notify-service-worker-update.sh`.
 
+Engineering details and deploy/troubleshooting steps: [Runtime Assets and Service Worker Runbook](../RUNTIME_ASSETS_AND_SERVICE_WORKER.md).
+
 ---
 
 ## Android WebView bridges (not server API)

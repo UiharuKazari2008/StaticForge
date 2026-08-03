@@ -516,6 +516,8 @@ Served from `public/protected/t5_tokenizer.json` via static middleware once auth
 
 Runtime assets may be transparently served from `.cache/runtime-assets/` at normal `/css/` and `/scripts/` URLs when not in dev mode.
 
+See [Runtime Assets and Service Worker Runbook](../RUNTIME_ASSETS_AND_SERVICE_WORKER.md) for compile triggers, debug bypasses, and service-worker cache refresh workflow.
+
 **Auth:** Static files generally **unauthenticated** except routes registered before static middleware with auth.
 
 ---
