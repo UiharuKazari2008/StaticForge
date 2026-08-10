@@ -59,9 +59,54 @@ Errors use `type: "error"` via `sendError()` — see [websocket.md](../websocket
 
 **Success:** `request_gallery_response` with `gallery[]`, `pagination`, `galleryHash`, `lastGalleryDestructiveAt`, optional `pinnedIndexes`.
 
+Example response data:
+
+```json
+{
+  "gallery": [
+    {
+      "base": "2026-08-10-example",
+      "original": "2026-08-10-example.png",
+      "upscaled": null,
+      "filename": "2026-08-10-example.png",
+      "preview": "2026-08-10-example.webp",
+      "mtime": 1786387200000,
+      "width": 1024,
+      "height": 1024,
+      "size": 123456,
+      "isLarge": false,
+      "isPinned": false
+    }
+  ],
+  "viewType": "images",
+  "workspaceId": "default",
+  "galleryHash": "<sha256>",
+  "pinnedIndexes": [0],
+  "lastGalleryDestructiveAt": 1786387200000,
+  "pagination": {
+    "offset": 0,
+    "limit": 750,
+    "hasMore": true,
+    "totalItems": 1240
+  }
+}
+```
+
+**Hash probe:** `limit: 0` returns an empty `gallery[]` but still includes `pagination.totalItems`, `galleryHash`, `pinnedIndexes`, `workspaceId`, and `lastGalleryDestructiveAt`. The web client uses this as a cheap probe before deciding whether to reuse an IndexedDB snapshot.
+
+**`galleryHash`:** Stable SHA-256 over workspace id, view type, item count, and file membership (`base`, `original`, `upscaled`) after sorting. It does **not** include pin state or metadata mtimes, so clients should apply `pinnedIndexes` from the latest response instead of trusting stale cached `isPinned` values.
+
+**`lastGalleryDestructiveAt`:** Workspace timestamp bumped by destructive gallery maintenance such as file removals/moves. Treat a server value newer than the local snapshot as cache-invalidating even if a saved snapshot exists.
+
+**Light rows:** `light: true` skips full metadata blobs and returns list/navigation fields only (`base`, filenames, preview, mtime, dimensions, size, `isLarge`, `isPinned`). Use `request_image_metadata` when a detail view needs full metadata for one file.
+
 **Keep-alive:** Every 10s during long gallery builds.
 
-**Follow-up:** Paginate while `pagination.hasMore`; load images via `/images/{filename}`.
+**Follow-up:** Paginate while `pagination.hasMore`; load image bytes via `/images/{filename}` and previews via `/previews/{preview}`.
+
+**Web client sync strategy:** `public/scripts/comp/galleryView.js` probes `images` with `limit: 0`, then loads 750-row light chunks. If `StaticForgeGallery.gallerySnapshots` already has a matching `workspaceId::viewType` snapshot with the same `galleryHash` and item count, it reuses that snapshot and overlays the current `pinnedIndexes`. If the snapshot is shorter than the server total, the client tries to fetch only the new head rows, verifies overlap and hash, then saves the merged snapshot. Otherwise it falls back to a full block sync and verifies the hash before applying.
+
+**Custom client pitfall:** Always pass `workspaceId` after reconnect or workspace switches when the client knows the active workspace. The handler updates the session workspace if the id exists; without it, a stale server-side session map can return the default workspace.
 
 ---
 

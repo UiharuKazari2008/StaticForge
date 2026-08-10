@@ -203,7 +203,7 @@ These are **pushes** — handle asynchronously. Registered in `public/scripts/ws
 | `connection` | Immediately on WS connect | `status`, `message`, `authenticated`, `userType?`, `vfsPathUuid?`, `logViewerPathUuid?` (admin) |
 | `ping` | ~10s interval broadcast | `timestamp`, `image_count`, `queue_status` |
 | `request_keep_alive` | During long WS requests | `requestId`, `status: "processing"`, optional `progress`, `message` |
-| `gallery_updated` | Image add/delete/move/scrap/pin | `data.action` (`add`, `bulk_delete`, `remove`, …), `filename?`, `filenames?`, `viewType?`, `deletedCount?`, `lastGalleryDestructiveAt?` |
+| `gallery_updated` | Image add/delete/move/scrap/pin | Either `data.gallery` + `data.viewType` for full list pushes, or action fields such as `action` (`add`, `bulk_delete`, `remove`, …), `filename?`, `filenames?`, `viewType?`, `deletedCount?`. Re-query `request_gallery` for the latest `galleryHash` / `lastGalleryDestructiveAt`. |
 | `gallery_scroll_state` | On reconnect (session restore) | Scroll hints per view: `index`, `viewType`, `workspaceId`, `anchorFilename?` |
 | `workspace_updated` | Workspace mutation | `data.action` (e.g. `bulk_add_pinned`, `settings_updated`, `files_moved`), `workspaceId`, action-specific counts/fields |
 | `workspace_image_added` | New image(s) in workspace | `workspaceId`, `imageFilenames[]` |
@@ -274,7 +274,7 @@ Custom callbacks: `setRequestCallback(requestId, fn)` for multi-phase responses.
 
 ## Pagination (gallery)
 
-`sendGalleryPaginationRequest` groups requests by `paginationGroupId`. Uses `offset` + `limit` (default chunk 750). Only first request in group increments pending-request UI counter.
+`sendGalleryPaginationRequest` groups requests by `paginationGroupId`. Uses `offset` + `limit` (default chunk 750). Only first request in group increments pending-request UI counter. A `request_gallery` probe with `limit: 0` is valid and returns `pagination.totalItems`, `galleryHash`, `pinnedIndexes`, `workspaceId`, and `lastGalleryDestructiveAt` without row data.
 
 ## Unauthenticated access summary
 

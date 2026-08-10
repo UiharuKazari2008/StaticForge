@@ -45,7 +45,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 
 | Feature | REST | WS | Push | Client-only |
 |---------|------|-----|------|-------------|
-| List gallery | — | `request_gallery` | `gallery_updated` | Virtual scroll |
+| List gallery | — | `request_gallery` (`limit: 0` probe, light chunks) | `gallery_updated` | Virtual scroll; IndexedDB snapshot cache |
 | Image metadata | — | `request_image_metadata` | — | — |
 | Bulk delete | — | `delete_images_bulk` | `gallery_updated` | Selection UI |
 | Pin / scrap | — | `workspace_add_pinned`, `workspace_remove_pinned`, `workspace_*_scrap` | `workspace_updated` | — |

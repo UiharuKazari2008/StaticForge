@@ -98,11 +98,24 @@ Server-backed pieces use WS (`search_tag_wiki`, `resolve_grimoire_url`, etc.) bu
 | Behavior | Implementation |
 |----------|----------------|
 | Virtual scrolling / PhotoSwipe | `galleryView.js` |
+| IndexedDB gallery snapshots | `galleryView.js` -> `GalleryMetadataCache` (`StaticForgeGallery`, `gallerySnapshots`) |
+| Hash probe and 750-row light block sync | `galleryView.js` -> `loadCompleteGallery()`, `loadGalleryChunk()` |
 | Incremental `gallery_updated` handling | `ws/handlers/20-galleryInbound.js` |
 | Bulk selection UI | `bulkOperationsManager.js`, `galleryActions.js` |
 | Toolbar download | `galleryToolbar.js` — `fetch(/images/...)` |
 
 Server sends data via `request_gallery`; client decides render strategy.
+
+**Gallery load flow (web app):**
+
+1. The `images` view sends a `request_gallery` probe with `light: true`, `limit: 0`, and the active `workspaceId`.
+2. The server returns `pagination.totalItems`, `galleryHash`, `pinnedIndexes`, and `lastGalleryDestructiveAt` without row data.
+3. The client checks `StaticForgeGallery.gallerySnapshots` by `workspaceId::viewType`.
+4. Matching hash + count reuses the cached slim row list and overlays the latest `pinnedIndexes`.
+5. A shorter snapshot can be incrementally repaired by fetching only new head rows, checking a small overlap, and re-probing the hash.
+6. Any hash mismatch, destructive timestamp bump, overlap failure, or missing cache falls back to full 750-row light chunks.
+
+`galleryHash` tracks membership (`base`, `original`, `upscaled`) rather than pin state. Pin changes should refresh from `pinnedIndexes`; full metadata for a selected image still comes from `request_image_metadata`.
 
 ---
 
