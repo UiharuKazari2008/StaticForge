@@ -88,6 +88,8 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | VFS & desktop | [ws/vfs.md](./ws/vfs.md) | 34 |
 | References & vibes | [ws/references.md](./ws/references.md) | 22 |
 
+The packet total matches `node scripts/tools/generate-ws-api-docs.js`; this index lists `get_app_options` and `retry_account_data` under account/app bootstrap even though the generator currently attributes them to the handler file that also owns generation quips.
+
 ## Related legacy docs
 
 - [docs/websocket_android_guide.md](../websocket_android_guide.md) — older Android-focused subset (Kotlin examples); superseded by this tree for completeness
