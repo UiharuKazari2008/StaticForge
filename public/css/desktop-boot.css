@@ -372,6 +372,8 @@ body.dreamscape-install-wizard {
     overflow: hidden;
 }
 
-body.dreamscape-install-wizard .modal:not(#dreamscapeOsInstallWizardModal):not(.on-top) {
-    pointer-events: none;
+/* Hide all other modals (including .on-top boot dialogs) while the install wizard is active */
+body.dreamscape-install-wizard .modal:not(#dreamscapeOsInstallWizardModal) {
+    display: none !important;
+    pointer-events: none !important;
 }

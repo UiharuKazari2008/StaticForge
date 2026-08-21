@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const metadataWriteQueue = require('./metadataWriteQueue');
 const crypto = require('crypto');
 const sharp = require('sharp');
 
@@ -223,73 +224,75 @@ class WorkspaceManager {
         return null;
     }
 
-    // Sync workspace files with actual filesystem
+    // Sync workspace files with actual filesystem (SQL ownership is source of truth)
     async syncWorkspaceFiles() {
         try {
-            // Get clone for modification
-            const workspaces = this.globalResources.getWorkspacesConfig({ clone: true });
+            const metadataDb = this.globalResources.getMetadataDatabase();
+            if (!metadataDb) {
+                return;
+            }
 
-            // Get all image files from the images directory
             const imageFiles = fs.readdirSync(this.IMAGES_DIR)
                 .filter(f => f.match(/\.(png|jpg|jpeg)$/i))
                 .filter(f => !f.startsWith('.'));
 
-            // Track all files that exist in workspaces (both files and scraps)
-            const workspaceFiles = new Set();
-            Object.values(workspaces).forEach(workspace => {
-                // Add files from the files array
-                workspace.files.forEach(file => workspaceFiles.add(file));
-                // Add files from the scraps array
-                if (workspace.scraps) {
-                    workspace.scraps.forEach(file => workspaceFiles.add(file));
-                }
-            });
+            const imageSet = new Set(imageFiles);
+            const workspaces = this.globalResources.getWorkspacesConfig();
+            const workspaceIds = Object.keys(workspaces);
+            const knownFiles = new Set();
+            const ownershipChanges = [];
+            const pinChanges = [];
 
-            // Add missing files to default workspace
-            const missingFiles = imageFiles.filter(file => !workspaceFiles.has(file));
+            for (const workspaceId of workspaceIds) {
+                const files = await metadataDb.listWorkspaceGalleryFilenames(workspaceId, 'files');
+                const scraps = await metadataDb.listWorkspaceGalleryFilenames(workspaceId, 'scraps');
+                const pins = await metadataDb.listGalleryWorkspacePinFilenames(workspaceId);
+
+                for (const filename of files) {
+                    knownFiles.add(filename);
+                    if (!imageSet.has(filename)) {
+                        ownershipChanges.push({
+                            op: 'remove', filename, workspaceId, bucket: 'files'
+                        });
+                    }
+                }
+                for (const filename of scraps) {
+                    knownFiles.add(filename);
+                    if (!imageSet.has(filename)) {
+                        ownershipChanges.push({
+                            op: 'remove', filename, workspaceId, bucket: 'scraps'
+                        });
+                    }
+                }
+                for (const filename of pins) {
+                    if (!imageSet.has(filename)) {
+                        pinChanges.push({
+                            op: 'remove', filename, workspaceId
+                        });
+                    }
+                }
+            }
+
+            const missingFiles = imageFiles.filter(file => !knownFiles.has(file));
             if (missingFiles.length > 0) {
-                // Sort missing files by timestamp before adding
                 const sortedMissingFiles = this.sortFilesByTimestamp(missingFiles);
-                workspaces.default.files.push(...sortedMissingFiles);
+                ownershipChanges.push(
+                    ...this._collectGalleryOwnershipUpserts('default', 'files', sortedMissingFiles)
+                );
             }
 
-            // Remove non-existent files from all workspaces (both files and scraps)
-            let removedCount = 0;
-            Object.values(workspaces).forEach(workspace => {
-                // Remove from files array
-                const originalFilesLength = workspace.files.length;
-                workspace.files = workspace.files.filter(file => imageFiles.includes(file));
-                removedCount += originalFilesLength - workspace.files.length;
-
-                // Remove from scraps array
-                if (workspace.scraps) {
-                    const originalScrapsLength = workspace.scraps.length;
-                    workspace.scraps = workspace.scraps.filter(file => imageFiles.includes(file));
-                    removedCount += originalScrapsLength - workspace.scraps.length;
-                }
-
-                // Remove from pinned array
-                if (workspace.pinned) {
-                    const originalPinnedLength = workspace.pinned.length;
-                    workspace.pinned = workspace.pinned.filter(file => imageFiles.includes(file));
-                    removedCount += originalPinnedLength - workspace.pinned.length;
-                }
-            });
-
-            if (removedCount > 0) {
-            }
-
-            // Save changes if any were made
-            if (missingFiles.length > 0 || removedCount > 0) {
-                this.globalResources.saveConfig('workspaces', workspaces);
+            if (ownershipChanges.length > 0 || pinChanges.length > 0) {
+                this._queueGalleryOwnershipAndPinSync(ownershipChanges, pinChanges);
                 this.bumpAllGalleryDestructiveTimestamps();
             }
 
-            // Sync pinned/scrapped files to ensure consistency
-            this.syncWorkspacePinnedScraps();
-            
+            await this.organizeOrphanedFiles();
+            await this.pruneAllAbsentImageFilenamesOnBoot();
         } catch (error) {
             console.error('Error syncing workspace files:', error.message || error);
+            if (error && error.stack) {
+                console.error(error.stack);
+            }
         }
     }
 
@@ -465,19 +468,36 @@ class WorkspaceManager {
         const movedRefs = refDb.moveAllReferencesBetweenWorkspaces(id, 'default');
         const movedVibes = refDb.moveAllVibesBetweenWorkspaces(id, 'default');
 
-        // Count items being moved (use database counts for references/vibes)
+        // Gallery membership lives in SQL after strip — do not trust empty in-memory arrays.
+        const files = await this._readWorkspaceGalleryFilenames(id, 'files');
+        const scraps = await this._readWorkspaceGalleryFilenames(id, 'scraps');
+        const metadataDb = this.globalResources.getMetadataDatabase();
+        let pinned = workspace.pinned || [];
+        if (metadataDb) {
+            try {
+                pinned = await metadataDb.listGalleryWorkspacePinFilenames(id);
+            } catch (error) {
+                console.warn('Failed to read pins for workspace delete; using in-memory list:', error.message || error);
+            }
+        }
+        const gallerySource = { files, scraps, pinned };
+
+        // Count items being moved (use database counts for references/vibes/gallery)
         const movedCount =
             (workspace.presets?.length || 0) +
             movedVibes + // Use database count
             movedRefs + // Use database count
-            (workspace.files?.length || 0) +
-            (workspace.scraps?.length || 0) +
-            (workspace.pinned?.length || 0);
+            files.length +
+            scraps.length +
+            pinned.length;
+
+        const ownershipChanges = this._collectGalleryOwnershipMoves(id, 'default', gallerySource);
+        const pinChanges = this._collectGalleryPinMoves(id, 'default', gallerySource);
 
         workspaces.default.presets.push(...workspace.presets);
-        workspaces.default.files.push(...workspace.files);
-        workspaces.default.scraps.push(...workspace.scraps);
-        workspaces.default.pinned.push(...workspace.pinned);
+        workspaces.default.files.push(...files);
+        workspaces.default.scraps.push(...scraps);
+        workspaces.default.pinned.push(...pinned);
 
         // Remove duplicates
         workspaces.default.presets = [...new Set(workspaces.default.presets)];
@@ -487,6 +507,9 @@ class WorkspaceManager {
 
         delete workspaces[id];
         this.globalResources.saveConfig('workspaces', workspaces);
+        if (ownershipChanges.length > 0 || pinChanges.length > 0) {
+            this._queueGalleryOwnershipAndPinSync(ownershipChanges, pinChanges);
+        }
         this.bumpGalleryDestructiveTimestamp(['default']);
 
         // Delete notes associated with this workspace
@@ -523,19 +546,36 @@ class WorkspaceManager {
         const movedRefs = refDb.moveAllReferencesBetweenWorkspaces(sourceId, targetId);
         const movedVibes = refDb.moveAllVibesBetweenWorkspaces(sourceId, targetId);
 
-        // Count items being moved (use database counts for references/vibes)
+        // Gallery membership lives in SQL after strip — do not trust empty in-memory arrays.
+        const files = await this._readWorkspaceGalleryFilenames(sourceId, 'files');
+        const scraps = await this._readWorkspaceGalleryFilenames(sourceId, 'scraps');
+        const metadataDb = this.globalResources.getMetadataDatabase();
+        let pinned = sourceWorkspace.pinned || [];
+        if (metadataDb) {
+            try {
+                pinned = await metadataDb.listGalleryWorkspacePinFilenames(sourceId);
+            } catch (error) {
+                console.warn('Failed to read pins for workspace dump; using in-memory list:', error.message || error);
+            }
+        }
+        const gallerySource = { files, scraps, pinned };
+
+        // Count items being moved (use database counts for references/vibes/gallery)
         const movedCount =
             (sourceWorkspace.presets?.length || 0) +
             movedVibes + // Use database count
             movedRefs + // Use database count
-            (sourceWorkspace.files?.length || 0) +
-            (sourceWorkspace.scraps?.length || 0) +
-            (sourceWorkspace.pinned?.length || 0);
+            files.length +
+            scraps.length +
+            pinned.length;
+
+        const ownershipChanges = this._collectGalleryOwnershipMoves(sourceId, targetId, gallerySource);
+        const pinChanges = this._collectGalleryPinMoves(sourceId, targetId, gallerySource);
 
         targetWorkspace.presets.push(...sourceWorkspace.presets);
-        targetWorkspace.files.push(...sourceWorkspace.files);
-        targetWorkspace.scraps.push(...sourceWorkspace.scraps);
-        targetWorkspace.pinned.push(...sourceWorkspace.pinned);
+        targetWorkspace.files.push(...files);
+        targetWorkspace.scraps.push(...scraps);
+        targetWorkspace.pinned.push(...pinned);
 
         // Remove duplicates
         targetWorkspace.presets = [...new Set(targetWorkspace.presets)];
@@ -545,6 +585,9 @@ class WorkspaceManager {
 
         delete workspaces[sourceId];
         this.globalResources.saveConfig('workspaces', workspaces);
+        if (ownershipChanges.length > 0 || pinChanges.length > 0) {
+            this._queueGalleryOwnershipAndPinSync(ownershipChanges, pinChanges);
+        }
         this.bumpGalleryDestructiveTimestamp([targetId]);
 
         // Move notes to target workspace
@@ -835,19 +878,18 @@ class WorkspaceManager {
     }
 
     // Get files for active workspace (includes default)
-    getActiveWorkspaceFiles(sessionId = null) {
+    async getActiveWorkspaceFiles(sessionId = null) {
 
         if (!sessionId) {
             throw new Error('Session ID is required to get active workspace files');
         }
 
         const workspaceId = this.getActiveWorkspace(sessionId);
-        // Include active workspace files if not default
         const workspaces = this.globalResources.getWorkspacesConfig();
         if (workspaces[workspaceId]) {
-            return workspaces[workspaceId].files;
+            return this._readWorkspaceGalleryFilenames(workspaceId, 'files');
         }
-        return workspaces.default.files;
+        return this._readWorkspaceGalleryFilenames('default', 'files');
     }
 
     // Get cache files for active workspace (includes default) - uses database as source of truth
@@ -882,34 +924,20 @@ class WorkspaceManager {
 
     // Sort all workspace files by timestamp
     sortAllWorkspaceFiles() {
-
-        let totalSorted = 0;
-        const workspaces = this.globalResources.getWorkspacesConfig({ clone: true });
-        Object.values(workspaces).forEach(workspace => {
-            if (workspace.files && workspace.files.length > 0) {
-                const originalOrder = [...workspace.files];
-                workspace.files = this.sortFilesByTimestamp(workspace.files);
-
-                // Check if order changed
-                const orderChanged = originalOrder.some((file, index) => file !== workspace.files[index]);
-                if (orderChanged) {
-                    totalSorted += workspace.files.length;
-                }
-            }
-        });
-
-        if (totalSorted > 0) {
-            this.globalResources.saveConfig('workspaces', workspaces);
-        }
+        // Gallery order is materialized in gallery_workspace_items.sort_mtime — no JSON sort.
     }
 
-    // Organize orphaned upscaled and pinned files to their correct this.workspaces
-    organizeOrphanedFiles() {
-
+    // Organize orphaned upscaled files to their correct workspace (SQL ownership lookup)
+    async organizeOrphanedFiles() {
         let movedCount = 0;
+        const ownershipChanges = [];
 
-        // Get all files from filesystem to check for orphaned upscaled files
         if (!fs.existsSync(this.IMAGES_DIR)) {
+            return movedCount;
+        }
+
+        const metadataDb = this.globalResources.getMetadataDatabase();
+        if (!metadataDb) {
             return movedCount;
         }
 
@@ -917,69 +945,69 @@ class WorkspaceManager {
             .filter(f => f.match(/\.(png|jpg|jpeg)$/i))
             .filter(f => !f.startsWith('.'));
 
-        // Find upscaled files that are orphaned (original is in a workspace but upscaled is not)
         const upscaledFiles = allImageFiles.filter(f => f.includes('_upscaled'));
-        const workspaces = this.globalResources.getWorkspacesConfig({ clone: true });
 
         for (const upscaledFile of upscaledFiles) {
-            // Get the original file name
             const originalFile = upscaledFile.replace('_upscaled.', '.');
-
-            // Find which workspace contains the original file
-            let originalWorkspaceId = null;
-            for (const [workspaceId, workspace] of Object.entries(workspaces)) {
-                if (workspace.files && workspace.files.includes(originalFile)) {
-                    originalWorkspaceId = workspaceId;
-                    break;
-                }
-                if (workspace.scraps && workspace.scraps.includes(originalFile)) {
-                    originalWorkspaceId = workspaceId;
-                    break;
-                }
-                if (workspace.pinned && workspace.pinned.includes(originalFile)) {
-                    originalWorkspaceId = workspaceId;
-                    break;
-                }
+            const originalOwnership = await metadataDb.getGalleryOwnershipForFilename(originalFile);
+            if (!originalOwnership) {
+                continue;
             }
 
-            // If original is in a workspace but upscaled is not, move upscaled to same workspace
-            if (originalWorkspaceId) {
-                let upscaledIsOrphaned = true;
-                for (const workspace of Object.values(workspaces)) {
-                    if ((workspace.files && workspace.files.includes(upscaledFile)) ||
-                        (workspace.scraps && workspace.scraps.includes(upscaledFile)) ||
-                        (workspace.pinned && workspace.pinned.includes(upscaledFile))) {
-                        upscaledIsOrphaned = false;
-                        break;
-                    }
-                }
-
-                if (upscaledIsOrphaned) {
-                    // Add upscaled file to the same workspace as original
-                    const targetWorkspace = workspaces[originalWorkspaceId];
-                    if (targetWorkspace.files && targetWorkspace.files.includes(originalFile)) {
-                        targetWorkspace.files.push(upscaledFile);
-                        movedCount++;
-                        console.log(`📁 Moved orphaned upscaled file ${upscaledFile} to workspace ${targetWorkspace.name}`);
-                    } else if (targetWorkspace.scraps && targetWorkspace.scraps.includes(originalFile)) {
-                        targetWorkspace.scraps.push(upscaledFile);
-                        movedCount++;
-                        console.log(`📁 Moved orphaned upscaled file ${upscaledFile} to scraps in workspace ${targetWorkspace.name}`);
-                    } else if (targetWorkspace.pinned && targetWorkspace.pinned.includes(originalFile)) {
-                        targetWorkspace.pinned.push(upscaledFile);
-                        movedCount++;
-                        console.log(`📁 Moved orphaned upscaled file ${upscaledFile} to pinned in workspace ${targetWorkspace.name}`);
-                    }
-                }
+            const upscaledOwnership = await metadataDb.getGalleryOwnershipForFilename(upscaledFile);
+            if (upscaledOwnership) {
+                continue;
             }
+
+            const bucket = originalOwnership.bucket === 'scraps' ? 'scraps' : 'files';
+            ownershipChanges.push({
+                op: 'upsert',
+                filename: upscaledFile,
+                workspaceId: originalOwnership.workspaceId,
+                bucket
+            });
+            movedCount++;
+            console.log(`📁 Linked orphaned upscaled file ${upscaledFile} to workspace ${originalOwnership.workspaceId} (${bucket})`);
         }
 
-        if (movedCount > 0) {
-            this.globalResources.saveConfig('workspaces', workspaces);
-            console.log(`✅ Organized ${movedCount} orphaned upscaled files to their correct this.workspaces`);
+        if (ownershipChanges.length > 0) {
+            this._queueGalleryOwnershipSync(ownershipChanges);
+            this.bumpAllGalleryDestructiveTimestamps();
+            console.log(`✅ Organized ${movedCount} orphaned upscaled files via SQL ownership`);
         }
 
         return movedCount;
+    }
+
+    /**
+     * Clear in-memory gallery arrays after SQL seed; rewrite workspaces.json without membership arrays.
+     */
+    stripGalleryArraysFromWorkspacesCache() {
+        if (this._galleryArraysStripped) {
+            return false;
+        }
+        this._galleryArraysStripped = true;
+
+        const workspaces = this.globalResources.getWorkspacesConfig({ clone: true });
+        let hadGalleryData = false;
+        Object.values(workspaces).forEach((workspace) => {
+            if (!workspace || typeof workspace !== 'object') {
+                return;
+            }
+            if ((workspace.files?.length) || (workspace.scraps?.length) || (workspace.pinned?.length)) {
+                hadGalleryData = true;
+            }
+            workspace.files = [];
+            workspace.scraps = [];
+            workspace.pinned = [];
+        });
+
+        this.globalResources.setWorkspacesConfigCache(workspaces);
+        if (hadGalleryData) {
+            this.globalResources.saveConfig('workspaces', workspaces);
+            console.log('✓ workspaces.json migrated to settings-only (gallery membership in SQL)');
+        }
+        return hadGalleryData;
     }
 
     // Initialize workspaces on module load
@@ -990,9 +1018,20 @@ class WorkspaceManager {
         let needsSave = false;
         
         Object.values(workspaces).forEach(workspace => {
-            // Ensure scraps arrays exist
-            if (!workspace.scraps) {
+            if (!workspace || typeof workspace !== 'object') {
+                return;
+            }
+            // In-memory only — SQL owns gallery membership on disk.
+            if (!Array.isArray(workspace.files)) {
+                workspace.files = [];
+                needsSave = true;
+            }
+            if (!Array.isArray(workspace.scraps)) {
                 workspace.scraps = [];
+                needsSave = true;
+            }
+            if (!Array.isArray(workspace.pinned)) {
+                workspace.pinned = [];
                 needsSave = true;
             }
             
@@ -1010,9 +1049,7 @@ class WorkspaceManager {
             this.globalResources.saveConfig('workspaces', workspaces);
         }
 
-        this.sortAllWorkspaceFiles(); // Sort existing files by timestamp
-        this.organizeOrphanedFiles(); // Organize orphaned upscaled files
-        this.pruneAllAbsentImageFilenamesOnBoot();
+        this.sortAllWorkspaceFiles();
 
         if (this.globalResources && this.globalResources.getLogger) {
             const finalWorkspaces = this.globalResources.getWorkspacesConfig();
@@ -1021,43 +1058,62 @@ class WorkspaceManager {
     }
 
     // Get scraps for active workspace (only that workspace)
-    getActiveWorkspaceScraps(sessionId = null) {
+    async getActiveWorkspaceScraps(sessionId = null) {
 
         if (!sessionId) {
             throw new Error('Session ID is required to get active workspace scraps');
         }
 
         const workspaceId = this.getActiveWorkspace(sessionId);
-        const scraps = this.globalResources.getWorkspacesConfig({ path: [workspaceId, 'scraps'] });
-        return scraps || [];
+        return this._readWorkspaceGalleryFilenames(workspaceId, 'scraps');
     }
 
     // Get pinned images for active workspace (only that workspace)
-    getActiveWorkspacePinned(sessionId = null) {
+    async getActiveWorkspacePinned(sessionId = null) {
 
         if (!sessionId) {
             throw new Error('Session ID is required to get active workspace pinned images');
         }
 
         const workspaceId = this.getActiveWorkspace(sessionId);
+        const metadataDb = this.globalResources.getMetadataDatabase();
+        if (metadataDb) {
+            try {
+                return await metadataDb.listGalleryWorkspacePinFilenames(workspaceId);
+            } catch (error) {
+                console.warn('Failed to read pinned filenames from database; falling back to workspace.json:', error);
+            }
+        }
         const pinned = this.globalResources.getWorkspacesConfig({ path: [workspaceId, 'pinned'] });
         return pinned || [];
     }
 
     /**
-     * Collect every files/scraps/pinned basename from all workspaces and prune missing images once at boot.
+     * Collect every gallery filename from SQL and prune missing images once at boot.
      */
-    pruneAllAbsentImageFilenamesOnBoot() {
+    async pruneAllAbsentImageFilenamesOnBoot() {
+        const metadataDb = this.globalResources.getMetadataDatabase();
         const workspaces = this.globalResources.getWorkspacesConfig();
         const allFilenames = [];
-        Object.values(workspaces).forEach(workspace => {
-            if (!workspace) {
-                return;
+
+        if (metadataDb) {
+            for (const workspaceId of Object.keys(workspaces)) {
+                const files = await metadataDb.listWorkspaceGalleryFilenames(workspaceId, 'files');
+                const scraps = await metadataDb.listWorkspaceGalleryFilenames(workspaceId, 'scraps');
+                const pins = await metadataDb.listGalleryWorkspacePinFilenames(workspaceId);
+                allFilenames.push(...files, ...scraps, ...pins);
             }
-            allFilenames.push(...(workspace.files || []));
-            allFilenames.push(...(workspace.scraps || []));
-            allFilenames.push(...(workspace.pinned || []));
-        });
+        } else {
+            Object.values(workspaces).forEach(workspace => {
+                if (!workspace) {
+                    return;
+                }
+                allFilenames.push(...(workspace.files || []));
+                allFilenames.push(...(workspace.scraps || []));
+                allFilenames.push(...(workspace.pinned || []));
+            });
+        }
+
         this.pruneAbsentImageFilenamesFromWorkspaces(allFilenames);
     }
 
@@ -1097,7 +1153,7 @@ class WorkspaceManager {
     }
 
     // Remove files from all this.workspaces (used when files are deleted)
-    removeFilesFromWorkspaces(filenames) {
+    removeFilesFromWorkspaces(filenames, options = {}) {
         // Filter out null/invalid filenames
         const validFilenames = filenames.filter(filename => filename && typeof filename === 'string');
         if (validFilenames.length === 0) {
@@ -1129,8 +1185,10 @@ class WorkspaceManager {
         });
 
         if (needsSave) {
-            this.globalResources.saveConfig('workspaces', workspaces);
-            this.bumpAllGalleryDestructiveTimestamps();
+            this.globalResources.setWorkspacesConfigCache(workspaces);
+            if (options.skipDestructiveBump !== true) {
+                this.bumpAllGalleryDestructiveTimestamps();
+            }
         }
 
         if (totalRemoved > 0) {
@@ -1140,19 +1198,181 @@ class WorkspaceManager {
     }
 
     _galleryBucketForType(type) {
-        if (type === 'files' || type === 'scraps' || type === 'pinned') return type;
+        if (type === 'files' || type === 'scraps') return type;
         return null;
+    }
+
+    _isGalleryMembershipType(type) {
+        return type === 'files' || type === 'scraps' || type === 'pinned';
+    }
+
+    _commitWorkspacesState(workspaces, type) {
+        if (this._isGalleryMembershipType(type)) {
+            this.globalResources.setWorkspacesConfigCache(workspaces);
+            return;
+        }
+        this.globalResources.saveConfig('workspaces', workspaces);
+    }
+
+    async _readWorkspaceGalleryFilenames(workspaceId, bucket = 'files') {
+        const metadataDb = this.globalResources.getMetadataDatabase();
+        if (metadataDb) {
+            try {
+                return await metadataDb.listWorkspaceGalleryFilenames(workspaceId, bucket);
+            } catch (error) {
+                console.warn(`Failed to read ${bucket} filenames from database; falling back to workspace.json:`, error);
+            }
+        }
+        const workspaces = this.globalResources.getWorkspacesConfig();
+        const workspace = workspaces[workspaceId];
+        if (!workspace) {
+            return [];
+        }
+        if (bucket === 'scraps') {
+            return workspace.scraps || [];
+        }
+        return workspace.files || [];
+    }
+
+    _collectGalleryPinMoves(sourceWorkspaceId, targetWorkspaceId, sourceWorkspace) {
+        const changes = [];
+        if (!sourceWorkspace) {
+            return changes;
+        }
+
+        for (const filename of sourceWorkspace.pinned || []) {
+            changes.push(
+                { op: 'remove', filename, workspaceId: sourceWorkspaceId },
+                { op: 'upsert', filename, workspaceId: targetWorkspaceId }
+            );
+        }
+
+        return changes;
+    }
+
+    _queueGalleryPinSync(changes) {
+        if (!changes || changes.length === 0) {
+            return;
+        }
+        const metadataDb = this.globalResources.metadataDatabase;
+        if (!metadataDb) {
+            return;
+        }
+        Promise.all(changes.map(({ op, filename, workspaceId }) => (
+            op === 'upsert'
+                ? metadataDb.addGalleryWorkspacePin(workspaceId, filename)
+                : metadataDb.removeGalleryWorkspacePin(workspaceId, filename)
+        ))).catch((err) => {
+            console.error('Gallery pin sync failed:', err.message || err);
+        });
+    }
+
+    _queueGalleryOwnershipAndPinSync(ownershipChanges, pinChanges) {
+        this._queueGalleryOwnershipSync(ownershipChanges);
+        this._queueGalleryPinSync(pinChanges);
+    }
+
+    _collectGalleryOwnershipUpserts(workspaceId, bucket, filenames) {
+        return filenames
+            .filter((filename) => filename && typeof filename === 'string')
+            .map((filename) => ({ op: 'upsert', filename, workspaceId, bucket }));
+    }
+
+    _collectGalleryOwnershipRemovals(workspaceId, bucket, filenames) {
+        return filenames
+            .filter((filename) => filename && typeof filename === 'string')
+            .map((filename) => ({ op: 'remove', filename, workspaceId, bucket }));
+    }
+
+    _collectGalleryPinUpserts(workspaceId, filenames) {
+        return filenames
+            .filter((filename) => filename && typeof filename === 'string')
+            .map((filename) => ({ op: 'upsert', filename, workspaceId }));
+    }
+
+    _collectGalleryPinRemovals(workspaceId, filenames) {
+        return filenames
+            .filter((filename) => filename && typeof filename === 'string')
+            .map((filename) => ({ op: 'remove', filename, workspaceId }));
+    }
+
+    _collectGalleryOwnershipMoves(sourceWorkspaceId, targetWorkspaceId, sourceWorkspace) {
+        const changes = [];
+        if (!sourceWorkspace) {
+            return changes;
+        }
+
+        for (const filename of sourceWorkspace.files || []) {
+            changes.push(
+                { op: 'remove', filename, workspaceId: sourceWorkspaceId, bucket: 'files' },
+                { op: 'upsert', filename, workspaceId: targetWorkspaceId, bucket: 'files' }
+            );
+        }
+        for (const filename of sourceWorkspace.scraps || []) {
+            changes.push(
+                { op: 'remove', filename, workspaceId: sourceWorkspaceId, bucket: 'scraps' },
+                { op: 'upsert', filename, workspaceId: targetWorkspaceId, bucket: 'scraps' }
+            );
+        }
+
+        return changes;
+    }
+
+    /**
+     * Expand move/remove sets with on-disk original/upscaled siblings.
+     * In-memory workspace.files is empty after SQL strip — do not rely on it alone.
+     */
+    _expandRelatedGalleryFilenames(filenames, workspaces = null) {
+        const allFilesToMove = new Set(
+            (filenames || []).filter((filename) => filename && typeof filename === 'string')
+        );
+        if (allFilesToMove.size === 0) {
+            return [];
+        }
+
+        const memoryFiles = new Set();
+        if (workspaces) {
+            Object.values(workspaces).forEach((workspace) => {
+                (workspace.files || []).forEach((file) => memoryFiles.add(file));
+            });
+        }
+
+        for (const filename of Array.from(allFilesToMove)) {
+            const baseName = this.globalResources.getPngMetadata().getBaseName(filename);
+            const extMatch = filename.match(/\.(png|jpg|jpeg)$/i);
+            const ext = extMatch ? extMatch[0] : '';
+            if (!baseName || !ext) {
+                continue;
+            }
+
+            const candidates = [
+                `${baseName}${ext}`,
+                `${baseName}_upscaled${ext}`
+            ];
+            for (const candidate of candidates) {
+                if (memoryFiles.has(candidate)
+                    || fs.existsSync(path.join(this.IMAGES_DIR, candidate))) {
+                    allFilesToMove.add(candidate);
+                }
+            }
+
+            this.findRelatedFiles(filename, Array.from(memoryFiles)).forEach((file) => {
+                allFilesToMove.add(file);
+            });
+        }
+
+        return Array.from(allFilesToMove);
     }
 
     _queueGalleryOwnershipSync(changes) {
         if (!changes || changes.length === 0) return;
-        if (!this.globalResources.isInitialized()) return;
-        const metadataDb = this.globalResources.getMetadataDatabase();
+        const metadataDb = this.globalResources.metadataDatabase;
+        if (!metadataDb) return;
         Promise.all(changes.map(({ op, filename, workspaceId, bucket }) => (
             op === 'upsert'
                 ? metadataDb.upsertGalleryOwnership(filename, workspaceId, bucket)
                 : metadataDb.removeGalleryOwnership(filename, workspaceId, bucket)
-        ))).catch(err => {
+        ))).then(() => metadataWriteQueue.drainAll()).catch(err => {
             console.error('Gallery ownership sync failed:', err.message || err);
         });
     }
@@ -1267,8 +1487,17 @@ class WorkspaceManager {
                 }
                 this._queueGalleryOwnershipSync(ownershipChanges);
             }
+            if (type === 'pinned' && actuallyAdded.length > 0) {
+                this._queueGalleryPinSync(actuallyAdded.map((filename) => ({
+                    op: 'upsert',
+                    filename,
+                    workspaceId: targetId
+                })));
+            }
 
-            this.globalResources.saveConfig('workspaces', workspaces);
+            if (!workspacesOverride) {
+                this._commitWorkspacesState(workspaces, type);
+            }
             if (type === 'scraps') {
                 this.bumpAllGalleryDestructiveTimestamps();
             }
@@ -1317,10 +1546,12 @@ class WorkspaceManager {
 
         switch (type) {
             case 'files': {
-                const originalFilesLength = workspaces[targetId].files.length;
-                actuallyRemoved.push(...workspaces[targetId].files.filter(item => validItems.includes(item)));
-                workspaces[targetId].files = workspaces[targetId].files.filter(item => !validItems.includes(item));
-                removedCount = originalFilesLength - workspaces[targetId].files.length;
+                const memFiles = workspaces[targetId].files || [];
+                const memRemoved = memFiles.filter(item => validItems.includes(item));
+                workspaces[targetId].files = memFiles.filter(item => !validItems.includes(item));
+                // After strip, memory arrays are empty — still queue SQL removals for requested items
+                actuallyRemoved.push(...(memRemoved.length > 0 ? memRemoved : validItems));
+                removedCount = actuallyRemoved.length;
                 break;
             }
 
@@ -1329,24 +1560,27 @@ class WorkspaceManager {
                 if (!workspaces[targetId].scraps) {
                     workspaces[targetId].scraps = [];
                 }
-                const scrapsBefore = workspaces[targetId].scraps;
-                actuallyRemoved.push(...scrapsBefore.filter(item => validItems.includes(item)));
-                workspaces[targetId].scraps = scrapsBefore.filter(item => !validItems.includes(item));
-                removedCount = scrapsBefore.length - workspaces[targetId].scraps.length;
+                {
+                    const scrapsBefore = workspaces[targetId].scraps;
+                    const memRemoved = scrapsBefore.filter(item => validItems.includes(item));
+                    workspaces[targetId].scraps = scrapsBefore.filter(item => !validItems.includes(item));
+                    const removedFromScraps = memRemoved.length > 0 ? memRemoved : validItems.slice();
+                    actuallyRemoved.push(...removedFromScraps);
+                    removedCount = removedFromScraps.length;
 
-                // For scraps, move removed items back to files of the target workspace
-                if (removedCount > 0) {
-                    const removedFromScraps = scrapsBefore.filter(item => validItems.includes(item));
-                    removedFromScraps.forEach(item => {
-                        if (!workspaces[targetId].files.includes(item)) {
-                            workspaces[targetId].files.push(item);
-                        }
-                    });
-                }
+                    // For scraps, move removed items back to files of the target workspace
+                    if (removedCount > 0) {
+                        removedFromScraps.forEach(item => {
+                            if (!workspaces[targetId].files.includes(item)) {
+                                workspaces[targetId].files.push(item);
+                            }
+                        });
+                    }
 
-                // Also remove from default workspace scraps if not the default workspace (scraps are shared)
-                if (targetId !== 'default' && workspaces.default && workspaces.default.scraps) {
-                    workspaces.default.scraps = workspaces.default.scraps.filter(item => !validItems.includes(item));
+                    // Also remove from default workspace scraps if not the default workspace (scraps are shared)
+                    if (targetId !== 'default' && workspaces.default && workspaces.default.scraps) {
+                        workspaces.default.scraps = workspaces.default.scraps.filter(item => !validItems.includes(item));
+                    }
                 }
                 break;
 
@@ -1357,10 +1591,11 @@ class WorkspaceManager {
                 break;
 
             case 'pinned': {
-                const originalPinnedLength = workspaces[targetId].pinned.length;
-                actuallyRemoved.push(...workspaces[targetId].pinned.filter(item => validItems.includes(item)));
-                workspaces[targetId].pinned = workspaces[targetId].pinned.filter(item => !validItems.includes(item));
-                removedCount = originalPinnedLength - workspaces[targetId].pinned.length;
+                const memPinned = workspaces[targetId].pinned || [];
+                const memRemoved = memPinned.filter(item => validItems.includes(item));
+                workspaces[targetId].pinned = memPinned.filter(item => !validItems.includes(item));
+                actuallyRemoved.push(...(memRemoved.length > 0 ? memRemoved : validItems));
+                removedCount = actuallyRemoved.length;
                 break;
             }
 
@@ -1383,10 +1618,16 @@ class WorkspaceManager {
                 }
                 this._queueGalleryOwnershipSync(ownershipChanges);
             }
+            if (type === 'pinned' && actuallyRemoved.length > 0) {
+                this._queueGalleryPinSync(actuallyRemoved.map((filename) => ({
+                    op: 'remove',
+                    filename,
+                    workspaceId: targetId
+                })));
+            }
 
             if (!workspacesOverride) {
-                // If workspaces wasn't passed in, we need to save the clone we created
-                this.globalResources.saveConfig('workspaces', workspaces);
+                this._commitWorkspacesState(workspaces, type);
                 if (type === 'files') {
                     this.bumpGalleryDestructiveTimestamp([targetId]);
                     for (const filename of actuallyRemoved) {
@@ -1469,85 +1710,18 @@ class WorkspaceManager {
 
             // For files, expand to include related/upscaled files before removing
             if (type === 'files') {
-                // Get all files from all workspaces to find related files
-                const allWorkspaceFiles = new Set();
-                Object.values(workspaces).forEach(workspace => {
-                    workspace.files.forEach(file => allWorkspaceFiles.add(file));
-                });
-
-                // Find all related files for each filename, including explicit upscaled variants
-                const allFilesToMove = new Set();
-                for (const filename of validItems) {
-                    const baseName = this.globalResources.getPngMetadata().getBaseName(filename);
-                    const extMatch = filename.match(/\.(png|jpg|jpeg)$/i);
-                    const ext = extMatch ? extMatch[0] : '';
-                    // Always add the original file
-                    allFilesToMove.add(filename);
-                    // Add upscaled variants if present in any workspace
-                    const upscaled = `${baseName}_upscaled${ext}`;
-                    if (allWorkspaceFiles.has(upscaled)) allFilesToMove.add(upscaled);
-                    // Add all other related files (legacy logic)
-                    const relatedFiles = this.findRelatedFiles(filename, Array.from(allWorkspaceFiles));
-                    relatedFiles.forEach(file => allFilesToMove.add(file));
-                }
-                validItems = Array.from(allFilesToMove);
+                validItems = this._expandRelatedGalleryFilenames(validItems, workspaces);
             }
 
             movedCount = this.removeFromWorkspaceArray(type, validItems, sourceWorkspaceId, workspaces);
         } else {
-            // Remove from all workspaces
-            Object.values(workspaces).forEach(workspace => {
-                switch (type) {
-                    case 'files':
-                        // Get all files from all workspaces to find related files
-                        const allWorkspaceFiles = new Set();
-                        Object.values(workspaces).forEach(ws => {
-                            ws.files.forEach(file => allWorkspaceFiles.add(file));
-                        });
+            if (type === 'files') {
+                validItems = this._expandRelatedGalleryFilenames(validItems, workspaces);
+            }
 
-                        // Find all related files for each filename, including explicit upscaled variants
-                        const allFilesToMove = new Set();
-                        for (const filename of validItems) {
-                            const baseName = this.globalResources.getPngMetadata().getBaseName(filename);
-                            const extMatch = filename.match(/\.(png|jpg|jpeg)$/i);
-                            const ext = extMatch ? extMatch[0] : '';
-                            // Always add the original file
-                            allFilesToMove.add(filename);
-                            // Add upscaled variants if present in any workspace
-                            const upscaled = `${baseName}_upscaled${ext}`;
-                            if (allWorkspaceFiles.has(upscaled)) allFilesToMove.add(upscaled);
-                            // Add all other related files (legacy logic)
-                            const relatedFiles = this.findRelatedFiles(filename, Array.from(allWorkspaceFiles));
-                            relatedFiles.forEach(file => allFilesToMove.add(file));
-                        }
-                        validItems = Array.from(allFilesToMove);
-
-                        const originalFilesLength = workspace.files.length;
-                        workspace.files = workspace.files.filter(item => !validItems.includes(item));
-                        movedCount += originalFilesLength - workspace.files.length;
-                        break;
-
-                    case 'scraps':
-                        if (workspace.scraps) {
-                            const originalScrapsLength = workspace.scraps.length;
-                            workspace.scraps = workspace.scraps.filter(item => !validItems.includes(item));
-                            movedCount += originalScrapsLength - workspace.scraps.length;
-                        }
-                        break;
-
-                    case 'presets':
-                        const originalPresetsLength = workspace.presets.length;
-                        workspace.presets = workspace.presets.filter(item => !validItems.includes(item));
-                        movedCount += originalPresetsLength - workspace.presets.length;
-                        break;
-
-                    case 'pinned':
-                        const originalPinnedLength = workspace.pinned.length;
-                        workspace.pinned = workspace.pinned.filter(item => !validItems.includes(item));
-                        movedCount += originalPinnedLength - workspace.pinned.length;
-                        break;
-                }
-            });
+            for (const workspaceId of Object.keys(workspaces)) {
+                movedCount += this.removeFromWorkspaceArray(type, validItems, workspaceId, workspaces);
+            }
         }
 
         // Add items to target workspace (avoiding duplicates)
@@ -1559,7 +1733,7 @@ class WorkspaceManager {
         }
 
         if (movedCount > 0) {
-            this.globalResources.saveConfig('workspaces', workspaces);
+            this._commitWorkspacesState(workspaces, type);
             if (type === 'files') {
                 if (sourceWorkspaceId) {
                     this.bumpGalleryDestructiveTimestamp([sourceWorkspaceId, targetWorkspaceId]);
@@ -1591,6 +1765,7 @@ class WorkspaceManager {
         let pinnedMoved = 0;
         let scrapsMoved = 0;
         const ownershipChanges = [];
+        const pinChanges = [];
 
         // Check each file to see if it's pinned or scrapped in any workspace
         filenames.forEach(filename => {
@@ -1616,8 +1791,8 @@ class WorkspaceManager {
                     if (workspaces[workspaceId].pinned) {
                         workspaces[workspaceId].pinned = workspaces[workspaceId].pinned.filter(f => f !== filename);
                     }
-                    ownershipChanges.push({
-                        op: 'remove', filename, workspaceId, bucket: 'pinned'
+                    pinChanges.push({
+                        op: 'remove', filename, workspaceId
                     });
                     pinnedMoved++;
                 });
@@ -1628,8 +1803,8 @@ class WorkspaceManager {
                 }
                 if (!workspaces[targetWorkspaceId].pinned.includes(filename)) {
                     workspaces[targetWorkspaceId].pinned.push(filename);
-                    ownershipChanges.push({
-                        op: 'upsert', filename, workspaceId: targetWorkspaceId, bucket: 'pinned'
+                    pinChanges.push({
+                        op: 'upsert', filename, workspaceId: targetWorkspaceId
                     });
                 }
             }
@@ -1659,17 +1834,22 @@ class WorkspaceManager {
         });
 
         if (pinnedMoved > 0 || scrapsMoved > 0) {
-            this._queueGalleryOwnershipSync(ownershipChanges);
+            this._queueGalleryOwnershipAndPinSync(ownershipChanges, pinChanges);
             this.globalResources.saveConfig('workspaces', workspaces);
             console.log(`📌 Moved ${pinnedMoved} pinned files and ${scrapsMoved} scrapped files to workspace: ${workspaces[targetWorkspaceId].name}`);
         }
     }
 
-    // Sync pinned/scrapped files across this.workspaces to ensure consistency
+    // Sync pinned/scrapped files across workspaces (legacy JSON — no-op when SQL is authoritative)
     syncWorkspacePinnedScraps() {
+        return;
+    }
 
+    _legacySyncWorkspacePinnedScrapsJson() {
         let correctionsMade = 0;
         const allFiles = new Set();
+        const ownershipChanges = [];
+        const pinChanges = [];
 
         // Get clone for modification
         const workspaces = this.globalResources.getWorkspacesConfig({ clone: true });
@@ -1705,6 +1885,9 @@ class WorkspaceManager {
                             if (targetWorkspaceId !== workspaceId) {
                                 // Remove from current workspace
                                 workspace.pinned = workspace.pinned.filter(f => f !== file);
+                                pinChanges.push({
+                                    op: 'remove', filename: file, workspaceId
+                                });
 
                                 // Add to target workspace
                                 if (!workspaces[targetWorkspaceId].pinned) {
@@ -1712,6 +1895,9 @@ class WorkspaceManager {
                                 }
                                 if (!workspaces[targetWorkspaceId].pinned.includes(file)) {
                                     workspaces[targetWorkspaceId].pinned.push(file);
+                                    pinChanges.push({
+                                        op: 'upsert', filename: file, workspaceId: targetWorkspaceId
+                                    });
                                 }
 
                                 console.log(`📌 Moved pinned file ${file} from ${workspace.name} to ${workspaces[targetWorkspaceId].name}`);
@@ -1721,6 +1907,9 @@ class WorkspaceManager {
                         } else {
                             // File doesn't exist in any workspace, remove it
                             workspace.pinned = workspace.pinned.filter(f => f !== file);
+                            pinChanges.push({
+                                op: 'remove', filename: file, workspaceId
+                            });
                             console.log(`🗑️ Removed non-existent pinned file ${file} from ${workspace.name}`);
                             correctionsMade++;
                             needsSave = true;
@@ -1732,6 +1921,9 @@ class WorkspaceManager {
 
         if (needsSave) {
             console.log(`✅ Made ${correctionsMade} corrections to pinned files across this.workspaces`);
+            if (ownershipChanges.length > 0 || pinChanges.length > 0) {
+                this._queueGalleryOwnershipAndPinSync(ownershipChanges, pinChanges);
+            }
             this.globalResources.saveConfig('workspaces', workspaces);
         }
     }
@@ -1907,6 +2099,7 @@ class WorkspaceManager {
         }
 
         let addedCount = 0;
+        const actuallyAdded = [];
         const workspace = workspaces[targetWorkspaceId];
 
         switch (type) {
@@ -1917,6 +2110,7 @@ class WorkspaceManager {
                 for (const item of validItems) {
                     if (!workspace.pinned.includes(item)) {
                         workspace.pinned.push(item);
+                        actuallyAdded.push(item);
                         addedCount++;
                     }
                 }
@@ -1928,6 +2122,7 @@ class WorkspaceManager {
                 for (const item of validItems) {
                     if (!workspace.scraps.includes(item)) {
                         workspace.scraps.push(item);
+                        actuallyAdded.push(item);
                         addedCount++;
                     }
                 }
@@ -1936,7 +2131,20 @@ class WorkspaceManager {
                 throw new Error(`Unsupported type for bulk add: ${type}`);
         }
 
-        this.globalResources.saveConfig('workspaces', workspaces);
+        if (addedCount > 0) {
+            const bucket = this._galleryBucketForType(type);
+            if (bucket) {
+                this._queueGalleryOwnershipSync(
+                    this._collectGalleryOwnershipUpserts(targetWorkspaceId, bucket, actuallyAdded)
+                );
+            }
+            if (type === 'pinned') {
+                this._queueGalleryPinSync(
+                    this._collectGalleryPinUpserts(targetWorkspaceId, actuallyAdded)
+                );
+            }
+            this._commitWorkspacesState(workspaces, type);
+        }
         return { success: true, addedCount };
     }
 
@@ -1960,28 +2168,50 @@ class WorkspaceManager {
         }
 
         let removedCount = 0;
+        const actuallyRemoved = [];
         const workspace = workspaces[targetWorkspaceId];
 
         switch (type) {
             case 'pinned':
                 if (workspace.pinned) {
-                    const originalLength = workspace.pinned.length;
+                    const memRemoved = workspace.pinned.filter(item => validItems.includes(item));
                     workspace.pinned = workspace.pinned.filter(item => !validItems.includes(item));
-                    removedCount = originalLength - workspace.pinned.length;
+                    actuallyRemoved.push(...(memRemoved.length > 0 ? memRemoved : validItems));
+                    removedCount = actuallyRemoved.length;
+                } else {
+                    actuallyRemoved.push(...validItems);
+                    removedCount = validItems.length;
                 }
                 break;
             case 'scraps':
                 if (workspace.scraps) {
-                    const originalLength = workspace.scraps.length;
+                    const memRemoved = workspace.scraps.filter(item => validItems.includes(item));
                     workspace.scraps = workspace.scraps.filter(item => !validItems.includes(item));
-                    removedCount = originalLength - workspace.scraps.length;
+                    actuallyRemoved.push(...(memRemoved.length > 0 ? memRemoved : validItems));
+                    removedCount = actuallyRemoved.length;
+                } else {
+                    actuallyRemoved.push(...validItems);
+                    removedCount = validItems.length;
                 }
                 break;
             default:
                 throw new Error(`Unsupported type for bulk remove: ${type}`);
         }
 
-        this.globalResources.saveConfig('workspaces', workspaces);
+        if (removedCount > 0) {
+            const bucket = this._galleryBucketForType(type);
+            if (bucket && actuallyRemoved.length > 0) {
+                this._queueGalleryOwnershipSync(
+                    this._collectGalleryOwnershipRemovals(targetWorkspaceId, bucket, actuallyRemoved)
+                );
+            }
+            if (type === 'pinned' && actuallyRemoved.length > 0) {
+                this._queueGalleryPinSync(
+                    this._collectGalleryPinRemovals(targetWorkspaceId, actuallyRemoved)
+                );
+            }
+            this._commitWorkspacesState(workspaces, type);
+        }
         return { success: true, removedCount };
     }
 

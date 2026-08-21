@@ -4,7 +4,10 @@ const crypto = require('crypto');
 const https = require('https');
 const sharp = require('sharp');
 const { generateMobilePreviews } = require('./previewUtils');
+const { encodeBlurhashFromBuffer } = require('./blurhashUtils');
 const replicationRemoteFetch = require('./replicationRemoteFetch');
+const { broadcastGalleryMutation } = require('./ws/handlers/120-galleryHandler');
+const { browserRequest } = require('./browserHttp');
 
 const REFERENCES_DESTRUCTIVE = { destructive: true };
 
@@ -94,6 +97,7 @@ class ReferencesWebSocketHandlers {
                     filename: hash,
                     mtime: fileCache.cachedAt * 1000, // Convert seconds to milliseconds for client
                     size: fileCache.size,
+                    blurhash: fileCache.blurhash || null,
                     hasPreview: true, // Cache files always have previews
                     workspaceId: workspaceId,
                     metadata: fileCache.metadata || null // Metadata already included from JOIN
@@ -169,6 +173,7 @@ class ReferencesWebSocketHandlers {
                     filename: `${vibeId}.json`, // For backward compatibility
                     id: vibe.id,
                     preview: hasPreview ? `${vibe.previewHash}.webp` : null,
+                    blurhash: vibe.blurhash || null,
                     mtime: vibe.mtime,
                     createdAt: vibe.createdAt || vibe.mtime, // Client expects createdAt as alternative to mtime
                     size: 0, // Not needed, but kept for compatibility
@@ -771,7 +776,8 @@ class ReferencesWebSocketHandlers {
             // Update database with file cache (use size we already have)
             const refDb = this.globalResources.getReferenceMetadataDatabase();
             refDb.setFileCache(hash, {
-                size: imageBuffer.length
+                size: imageBuffer.length,
+                blurhash: await encodeBlurhashFromBuffer(imageBuffer)
             });
 
             // Add to workspace in database
@@ -2507,80 +2513,50 @@ class ReferencesWebSocketHandlers {
             throw new Error('NovelAI is temporarily locked after repeated API errors. An admin must review the Service Key in the Security Center to unlock it.');
         }
 
-        return new Promise((resolve, reject) => {
-            const postData = JSON.stringify(body);
-            const options = {
-                hostname: 'image.novelai.net',
-                port: 443,
-                path: '/ai/encode-vibe',
-                method: 'POST',
-                headers: {
-                    "accept": "*/*",
-                    "accept-language": "en-US,en;q=0.9,en-GB;q=0.8",
-                    "authorization": `Bearer ${novelAiKey}`,
-                    "content-type": "application/json",
-                    "content-length": Buffer.byteLength(postData),
-                    "priority": "u=1, i",
-                    "dnt": "1",
-                    "sec-ch-ua": "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\", \"Microsoft Edge\";v=\"138\"",
-                    "sec-ch-ua-mobile": "?0",
-                    "sec-ch-ua-platform": "\"macOS\"",
-                    "sec-fetch-dest": "empty",
-                    "sec-fetch-mode": "cors",
-                    "sec-fetch-site": "same-site",
-                    "x-correlation-id": crypto.randomBytes(3).toString('hex').toUpperCase(),
-                    "x-initiated-at": new Date().toISOString(),
-                    "referer": "https://novelai.net/",
-                    "origin": "https://novelai.net",
-                    "sec-gpc": "1",
-                    "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0"
-                }
-            };
+        const postData = JSON.stringify(body);
+        // browserRequest: modules/browserHttp.js
+        const res = await browserRequest({
+            hostname: 'image.novelai.net',
+            port: 443,
+            path: '/ai/encode-vibe',
+            method: 'POST',
+            headers: {
+                accept: '*/*',
+                authorization: `Bearer ${novelAiKey}`,
+                'x-initiated-at': new Date().toISOString(),
+                'sec-gpc': '1'
+            }
+        }, Buffer.from(postData), { acceptResType: 'json' });
 
-            const req = https.request(options, (res) => {
-                let data = [];
-
-                res.on('data', chunk => data.push(chunk));
-                res.on('end', async () => {
-                    // Get new balance and calculate credit usage
-                    const vibeCreditUsage = await this.globalResources.calculateCreditUsage();
-                    if (vibeCreditUsage.totalUsage > 0) {
-                        console.log(`💰 Vibe encoding credits used: ${vibeCreditUsage.totalUsage} ${vibeCreditUsage.usageType === 'paid' ? 'paid' : 'fixed'}`);
-                    }
-                    // Add unattributed receipt for vibe encoding
-                    if (vibeCreditUsage.totalUsage > 0) {
-                        await this.globalResources.getMetadataDatabase().addUnattributedReceipt({
-                            type: 'vibe_encoding',
-                            cost: vibeCreditUsage.totalUsage,
-                            creditType: vibeCreditUsage.usageType,
-                            date: Date.now().valueOf()
-                        });
-                    }
-
-                    const buffer = Buffer.concat(data);
-                    if (res.statusCode === 200) {
-                        apiKeyManager.recordApiSuccess('novelai');
-                        resolve(buffer.toString('base64'));
-                    } else {
-                        try {
-                            const errorResponse = JSON.parse(buffer.toString());
-                            apiKeyManager.recordApiFailure('novelai', res.statusCode, errorResponse.message);
-                            reject(new Error(`Error encoding vibe: ${errorResponse.statusCode || res.statusCode} ${errorResponse.message || 'Unknown error'}`));
-                        } catch (e) {
-                            apiKeyManager.recordApiFailure('novelai', res.statusCode, `HTTP ${res.statusCode}`);
-                            reject(new Error(`Error encoding vibe: HTTP ${res.statusCode}`));
-                        }
-                    }
-                });
+        // Get new balance and calculate credit usage
+        const vibeCreditUsage = await this.globalResources.calculateCreditUsage();
+        if (vibeCreditUsage.totalUsage > 0) {
+            console.log(`💰 Vibe encoding credits used: ${vibeCreditUsage.totalUsage} ${vibeCreditUsage.usageType === 'paid' ? 'paid' : 'fixed'}`);
+        }
+        // Add unattributed receipt for vibe encoding
+        if (vibeCreditUsage.totalUsage > 0) {
+            await this.globalResources.getMetadataDatabase().addUnattributedReceipt({
+                type: 'vibe_encoding',
+                cost: vibeCreditUsage.totalUsage,
+                creditType: vibeCreditUsage.usageType,
+                date: Date.now().valueOf()
             });
+        }
 
-            req.on('error', (error) => {
-                reject(new Error(`Request error: ${error.message}`));
-            });
+        if (res.statusCode === 200) {
+            apiKeyManager.recordApiSuccess('novelai');
+            return res.body.toString('base64');
+        }
 
-            req.write(postData);
-            req.end();
-        });
+        try {
+            const errorResponse = JSON.parse(res.body.toString());
+            apiKeyManager.recordApiFailure('novelai', res.statusCode, errorResponse.message);
+            throw new Error(`Error encoding vibe: ${errorResponse.statusCode || res.statusCode} ${errorResponse.message || 'Unknown error'}`);
+        } catch (e) {
+            if (e.message && e.message.startsWith('Error encoding vibe:')) throw e;
+            apiKeyManager.recordApiFailure('novelai', res.statusCode, `HTTP ${res.statusCode}`);
+            throw new Error(`Error encoding vibe: HTTP ${res.statusCode}`);
+        }
     }
 
 
@@ -3027,8 +3003,11 @@ class ReferencesWebSocketHandlers {
             // Handle preview - use existing temp preview if available, otherwise generate new one
             const baseName = path.basename(finalFilename, path.extname(finalFilename));
 
-            // Generate both main and @2x previews for mobile devices
-            await generateMobilePreviews(finalFilePath, baseName);
+            // Generate both main and @2x / @lq previews + BlurHash
+            const uploadPreviewResult = await generateMobilePreviews(finalFilePath, baseName);
+            if (uploadPreviewResult?.blurhash) {
+                await this.globalResources.getMetadataDatabase().setImageBlurhash(finalFilename, uploadPreviewResult.blurhash);
+            }
             console.log(`📸 Generated previews: ${baseName}`);
 
             // Add to workspace files
@@ -3071,8 +3050,11 @@ class ReferencesWebSocketHandlers {
             }
 
             // Broadcast gallery update
-            const galleryData = await this.handlers.buildGalleryData('images', clientInfo);
-            wsServer.broadcastGalleryUpdate(galleryData, 'images');
+            await broadcastGalleryMutation(this.handlers, wsServer, clientInfo, {
+                viewType: 'images',
+                action: 'append_top',
+                filename: finalFilename
+            });
 
             this.handlers.sendToClient(ws, {
                 type: 'upload_workspace_image_response',

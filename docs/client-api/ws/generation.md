@@ -46,6 +46,20 @@ Implementation: `modules/ws/handlers/generationImpl.js`
 
 ---
 
+---
+
+---
+
+---
+
+---
+
+---
+
+---
+
+---
+
 ## Detailed packets
 
 ### `apply_tendai_preview`
@@ -158,7 +172,7 @@ Additional response/push types from handler:
 
 Additional response/push types from handler:
 - `image_generation_intermediate`
-- `image_generation_error`
+- `image_generation_error` — exact API failure: `error` string (HTTP status prefixed when known), top-level `statusCode` / `code`, and `data: { statusCode, code, message }`. Stream ended with no final image uses `code: "STREAM_NO_FINAL"`.
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
@@ -260,6 +274,7 @@ Additional response/push types from handler:
 | `presetName` | Optional |
 | `model` | Optional |
 | `periodKey` | Optional |
+| `text_replacements_seed` | Optional |
 
 **Success response:** `resolve_text_replacements_response`
 

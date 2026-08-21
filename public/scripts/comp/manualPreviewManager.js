@@ -261,25 +261,19 @@ async function updateManualPreviewBlurredBackground(imageUrl) {
             .replace(/\.(png|jpg|jpeg)$/i, '')
             .replace(/_upscaled$/, '');
 
-        // Get the blurred preview URL - encode the baseName to handle spaces and special characters
-        const blurPreviewUrl = `/previews/${encodeURIComponent(baseName)}@blur.webp`;
-
-        // Check if the blurred preview exists
-        try {
-            const response = await fetch(blurPreviewUrl, {
-                method: 'HEAD',
-                cache: 'no-store'
-            });
-            if (!response.ok) {
-                // Blurred preview doesn't exist, hide backgrounds
-                const bg1 = document.getElementById('manualPreviewBlurBackground1');
-                const bg2 = document.getElementById('manualPreviewBlurBackground2');
-                if (bg1) bg1.style.opacity = '0';
-                if (bg2) bg2.style.opacity = '0';
-                return;
-            }
-        } catch (error) {
-            // Blurred preview doesn't exist, hide backgrounds
+        // Soft backdrop from BlurHash only (CSS filter supplies blur; no @lq)
+        let blurPreviewUrl = null;
+        const galleryMatch = (typeof allImages !== 'undefined' && Array.isArray(allImages))
+            ? allImages.find((img) => img.base === baseName || img.filename === filename
+                || img.original === filename || img.upscaled === filename)
+            : null;
+        const hash = galleryMatch?.blurhash
+            || galleryMatch?.metadata?.forge_data?.blurhash
+            || null;
+        if (hash) {
+            blurPreviewUrl = blurhashToDataUrl(hash, 32, 32);
+        }
+        if (!blurPreviewUrl) {
             const bg1 = document.getElementById('manualPreviewBlurBackground1');
             const bg2 = document.getElementById('manualPreviewBlurBackground2');
             if (bg1) bg1.style.opacity = '0';
@@ -535,7 +529,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                 // Server-saved image: always load via same-origin URL (service worker caches /images/)
                 const generatedFilename = response.headers.get('X-Generated-Filename');
                 if (generatedFilename) {
-                    imageUrl = `/images/${generatedFilename}`;
+                    imageUrl = localGalleryImageUrl(generatedFilename);
                     imageData = {
                         original: generatedFilename,
                         base: generatedFilename,
@@ -549,7 +543,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                     imageData = await window.wsClient.requestImageByIndex(index, viewType);
                     if (imageData) {
                         const previewFilename = imageData.upscaled || imageData.original || imageData.filename;
-                        imageUrl = previewFilename ? `/images/${previewFilename}` : null;
+                        imageUrl = previewFilename ? localGalleryImageUrl(previewFilename) : null;
                     }
                 } catch (error) {
                     console.warn('Failed to get image by index:', error);
@@ -723,7 +717,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
             if (window.initialEdit && window.initialEdit.image) {
                 // Show original image for comparison
                 if (originalImage) {
-                    const originalImageUrl = `/images/${window.initialEdit.image.original || window.initialEdit.image.filename}`;
+                    const originalImageUrl = localGalleryImageUrl(window.initialEdit.image.original || window.initialEdit.image.filename);
                     releaseManualPreviewOriginalImageSrc();
                     originalImage.src = originalImageUrl;
                     originalImage.classList.remove('hidden');
@@ -753,7 +747,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                     const lastGenFilename = lastGenImage.original || lastGenImage.filename || lastGenImage.upscaled;
                     if (lastGenFilename) {
                         releaseManualPreviewOriginalImageSrc();
-                        originalImage.src = `/images/${lastGenFilename}`;
+                        originalImage.src = localGalleryImageUrl(lastGenFilename);
                         originalImage.classList.remove('hidden');
                         originalImage.onclick = function () {
                             // When clicked, restore the original image
@@ -780,7 +774,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                     const lastGenFilename = lastGenImage.original || lastGenImage.filename || lastGenImage.upscaled;
                     if (lastGenFilename) {
                         releaseManualPreviewOriginalImageSrc();
-                        originalImage.src = `/images/${lastGenFilename}`;
+                        originalImage.src = localGalleryImageUrl(lastGenFilename);
                         originalImage.classList.remove('hidden');
                         originalImage.onclick = function () {
                             swapManualPreviewImages();
@@ -1002,7 +996,7 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
         window.showManualPreviewNavigationLoading(true);
         if (previewImage && previewPlaceholder) {
             // Construct image URL from the image object
-            const imageUrl = `/images/${imageObj.upscaled || imageObj.original || imageObj.filename}`;
+            const imageUrl = localGalleryImageUrl(imageObj.upscaled || imageObj.original || imageObj.filename);
 
             let imageWidth, imageHeight;
             previewImage.dataset.manualPreviewUrl = imageUrl;
@@ -1246,7 +1240,7 @@ function swapManualPreviewImages() {
     if (Array.from(imageContainers).some(container => container.classList.contains('swapped'))) {
         // Switch back to generated image
         if (window.lastGeneration && window.lastGeneration.filename) {
-            const generatedImageUrl = `/images/${window.lastGeneration.filename}`;
+            const generatedImageUrl = localGalleryImageUrl(window.lastGeneration.filename);
             releaseManualPreviewImageSrc();
             previewImage.dataset.manualPreviewUrl = generatedImageUrl;
             previewImage.src = generatedImageUrl;
@@ -1299,7 +1293,7 @@ function swapManualPreviewImages() {
     } else {
         // Switch to original image
         if (window.initialEdit && window.initialEdit.image) {
-            const originalImageUrl = `/images/${window.initialEdit.image.upscaled || window.initialEdit.image.original}`;
+            const originalImageUrl = localGalleryImageUrl(window.initialEdit.image.upscaled || window.initialEdit.image.original);
             releaseManualPreviewImageSrc();
             previewImage.dataset.manualPreviewUrl = originalImageUrl;
             previewImage.src = originalImageUrl;
@@ -1687,7 +1681,7 @@ async function restoreOriginalImage() {
 
         if (previewImage && originalImage) {
             // Restore the original image to the main preview
-            const imageUrl = `/images/${window.navigationOriginalImage.image.original || window.navigationOriginalImage.image.filename}`;
+            const imageUrl = localGalleryImageUrl(window.navigationOriginalImage.image.original || window.navigationOriginalImage.image.filename);
             releaseManualPreviewImageSrc();
             previewImage.dataset.manualPreviewUrl = imageUrl;
             previewImage.src = imageUrl;
@@ -1860,7 +1854,7 @@ function handleManualPreviewClick(e) {
                     window.currentManualPreviewImage.filename;
                 isOpeningLightbox = true;
                 try {
-                    window.showLightbox({ url: `/images/${imageUrl}` });
+                    window.showLightbox({ url: localGalleryImageUrl(imageUrl) });
                 } finally {
                     // Reset flag after a delay to allow lightbox to open
                     setTimeout(() => {
@@ -1949,7 +1943,7 @@ async function loadWorkspaceImagesForOverlay() {
                     img.src = `/previews/${encodeURIComponent(window.deviceUtils.getGalleryPreviewUrl(image.preview))}`;
                 } else {
                     // Fallback to full image if no preview available
-                    img.src = `/images/${image.upscaled || image.original || image.filename}`;
+                    img.src = localGalleryImageUrl(image.upscaled || image.original || image.filename);
                 }
                 img.alt = image.prompt || 'Generated image';
                 img.loading = 'lazy';

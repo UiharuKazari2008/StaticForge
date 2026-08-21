@@ -647,6 +647,10 @@ function deletePipelineStage(stageId) {
         const stageType = stageItem.dataset.stageType;
         // unwirePipelineStageControls: public/scripts/comp/pipelineStageControls.js
         unwirePipelineStageControls(stageId);
+        // teardownDropdown: public/scripts/comp/dropdown.js
+        stageItem.querySelectorAll('.custom-dropdown').forEach((dropdown) => {
+            teardownDropdown(dropdown);
+        });
         stageItem.remove();
         // Update all stages if deleting an expand canvas stage
         if (stageType === STAGE_TYPES.EXPAND_CANVAS) {
@@ -1351,6 +1355,14 @@ function getManualModalValues() {
 // Clear all pipeline stages
 function clearPipelineStages() {
     if (pipelineStagesContainer) {
+        pipelineStagesContainer.querySelectorAll('.pipeline-stage-item').forEach((item) => {
+            // unwirePipelineStageControls: public/scripts/comp/pipelineStageControls.js
+            unwirePipelineStageControls(item.id);
+            // teardownDropdown: public/scripts/comp/dropdown.js
+            item.querySelectorAll('.custom-dropdown').forEach((dropdown) => {
+                teardownDropdown(dropdown);
+            });
+        });
         pipelineStagesContainer.innerHTML = '';
     }
     pipelineStageCounter = 0;

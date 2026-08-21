@@ -136,6 +136,14 @@ function naxtExtractEmphasisBias(segment) {
         const bias = parseFloat(m[1]);
         return Number.isFinite(bias) ? bias : null;
     }
+    // listManagedEmphasisBlocks: public/scripts/comp/emphasisGroupIdCodec.js
+    if (hasManagedEmphasisGroupIds(s)) {
+        const blocks = listManagedEmphasisBlocks(s);
+        if (blocks.length >= 1 && blocks[0].start === 0) {
+            const w = blocks[0].textWeight;
+            if (Number.isFinite(w)) return w;
+        }
+    }
     return null;
 }
 
@@ -156,6 +164,22 @@ function naxtReplaceLastTagInTagsPart(tagsPart, newFragment) {
 /** Uses global emphasis helpers (present after full page script load). */
 function naxtApplyEmphasisToFragment(fragment, bias) {
     if (!fragment || bias == null || bias === 1.0) return fragment;
+    // hasManagedEmphasisGroupIds / listManagedEmphasisBlocks / buildManagedEmphasisGroupText:
+    //   public/scripts/comp/emphasisGroupIdCodec.js
+    if (hasManagedEmphasisGroupIds(fragment)) {
+        const blocks = listManagedEmphasisBlocks(fragment);
+        if (blocks.length === 1 && blocks[0].start === 0 && Number.isFinite(bias)) {
+            const b = blocks[0];
+            const mode = b.legacy ? 'visible' : 'hidden';
+            const rebuilt = buildManagedEmphasisGroupText(b.id, b.innerText, {
+                mode,
+                weight: bias,
+                omitClose: !b.needsTerminator
+            });
+            return rebuilt + fragment.slice(b.end);
+        }
+        return fragment;
+    }
     if (typeof hasEmphasisGroup === 'function' && hasEmphasisGroup(fragment)) return fragment;
     if (typeof applyBiasToText === 'function') return applyBiasToText(fragment, bias);
     return fragment;

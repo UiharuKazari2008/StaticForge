@@ -111,11 +111,13 @@ function buildPresetTokenCountCache(promptConfig, tokenizer) {
     if (promptConfig.nsfw_presets && typeof promptConfig.nsfw_presets === 'object') {
         for (const [key, preset] of Object.entries(promptConfig.nsfw_presets)) {
             const entry = {};
-            if (preset.add?.base) {
-                entry.prompt = countPresetString(tokenizer, preset.add.base, true);
+            const promptParts = [preset.add?.base_prefix, preset.add?.base].filter(Boolean);
+            const ucParts = [preset.add?.uc_prefix, preset.add?.uc].filter(Boolean);
+            if (promptParts.length) {
+                entry.prompt = countPresetString(tokenizer, promptParts.join(', '), true);
             }
-            if (preset.add?.uc) {
-                entry.uc = countPresetString(tokenizer, preset.add.uc, true);
+            if (ucParts.length) {
+                entry.uc = countPresetString(tokenizer, ucParts.join(', '), true);
             }
             if (entry.prompt !== undefined || entry.uc !== undefined) {
                 cache.nsfw[String(key)] = entry;

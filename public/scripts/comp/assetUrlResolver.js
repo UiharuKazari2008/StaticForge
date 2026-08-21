@@ -39,24 +39,64 @@ function isReplicationSharedGalleryMenuAvailable() {
     return ctx.gallerySharedDefault === 'manual';
 }
 
+/** Local /images URL — always encode so `?` `#` spaces etc. stay in the path. */
+function localGalleryImageUrl(filename) {
+    if (!filename) return '';
+    return `/images/${encodeURIComponent(filename)}`;
+}
+
+/** Local /previews URL — always encode path segment. */
+function localGalleryPreviewUrl(previewName) {
+    if (!previewName) return '';
+    return `/previews/${encodeURIComponent(previewName)}`;
+}
+
+/** Local /image/slim|opti URL — always encode path segment. */
+function localGalleryDerivedImageUrl(kind, filename) {
+    if (!filename || (kind !== 'slim' && kind !== 'opti')) return '';
+    return `/image/${kind}/${encodeURIComponent(filename)}`;
+}
+
+/** Local /cache/preview URL — always encode path segment (full filename, incl. .webp). */
+function localCachePreviewUrl(previewName) {
+    if (!previewName) return '';
+    return `/cache/preview/${encodeURIComponent(previewName)}`;
+}
+
+/** Local /cache/upload URL — always encode path segment. */
+function localCacheUploadUrl(uploadName) {
+    if (!uploadName) return '';
+    return `/cache/upload/${encodeURIComponent(uploadName)}`;
+}
+
+/** Local /cache/wallpapers URL — encode full filename (`id.png`). */
+function localCacheWallpaperUrl(workspaceId) {
+    if (!workspaceId) return '';
+    return `/cache/wallpapers/${encodeURIComponent(`${workspaceId}.png`)}`;
+}
+
 function buildLocalAssetPath(kind, key, item) {
     if (!key) return '';
     if (kind === 'gallery-image') {
-        return `/images/${encodeURIComponent(key)}`;
+        // localGalleryImageUrl: this file
+        return localGalleryImageUrl(key);
     }
     if (kind === 'gallery-preview') {
         const preview = key.endsWith('.webp') ? key : `${key}.webp`;
         if (typeof getGalleryPreviewUrl === 'function') {
-            return `/previews/${encodeURIComponent(getGalleryPreviewUrl(preview))}`;
+            // localGalleryPreviewUrl: this file
+            return localGalleryPreviewUrl(getGalleryPreviewUrl(preview));
         }
-        return `/previews/${encodeURIComponent(preview)}`;
+        return localGalleryPreviewUrl(preview);
     }
     if (kind === 'reference-preview') {
         const preview = key.endsWith('.webp') ? key : `${key}.webp`;
-        return `/cache/preview/${encodeURIComponent(preview)}`;
+        // localCachePreviewUrl: this file
+        return localCachePreviewUrl(preview);
     }
     if (kind === 'reference-upload') {
-        return `/cache/upload/${encodeURIComponent(key)}`;
+        // localCacheUploadUrl: this file
+        return localCacheUploadUrl(key);
     }
     if (item && item.preview && (kind === 'gallery-preview' || !kind)) {
         return buildLocalAssetPath('gallery-preview', item.preview, item);
@@ -102,9 +142,10 @@ function resolveGalleryPreviewUrl(image) {
         if (remote) return remote;
     }
     if (typeof getGalleryPreviewUrl === 'function') {
-        return `/previews/${encodeURIComponent(getGalleryPreviewUrl(previewKey))}`;
+        // localGalleryPreviewUrl: this file
+        return localGalleryPreviewUrl(getGalleryPreviewUrl(previewKey));
     }
-    return `/previews/${encodeURIComponent(previewKey)}`;
+    return localGalleryPreviewUrl(previewKey);
 }
 
 function resolveGalleryFullImageUrl(image) {
@@ -119,5 +160,6 @@ function resolveGalleryFullImageUrl(image) {
         const remote = buildRemoteAssetPath('gallery-image', filename);
         if (remote) return remote;
     }
-    return `/images/${encodeURIComponent(filename)}`;
+    // localGalleryImageUrl: this file
+    return localGalleryImageUrl(filename);
 }

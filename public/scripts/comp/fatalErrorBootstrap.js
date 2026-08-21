@@ -3,6 +3,48 @@
  * script fence verification (see scripts/app.js markers). Loads first so failures in
  * later bundles still surface a recovery UI.
  */
+
+// Hover capability for CSS (manual preview, loupe, etc.): html.can-hover / html.no-hover.
+// Some browsers report (hover: none) with maxTouchPoints === 0 on a normal mouse PC.
+// Markup defaults to can-hover; this script corrects to no-hover only for real touch-only.
+(function applyDreamscapeHoverCapability() {
+    function mq(query) {
+        try {
+            return !!(window.matchMedia && window.matchMedia(query).matches);
+        } catch (e) {
+            return false;
+        }
+    }
+    function computeCanHover() {
+        if (mq('(any-hover: hover)') || mq('(hover: hover)')) return true;
+        // No touch hardware but MQ says no-hover → broken desktop report
+        if ((navigator.maxTouchPoints || 0) === 0) return true;
+        return false;
+    }
+    function applyHoverCapability(forceCanHover) {
+        var can = forceCanHover === true ? true : computeCanHover();
+        var root = document.documentElement;
+        root.classList.toggle('can-hover', can);
+        root.classList.toggle('no-hover', !can);
+        window.__dreamscapeCanHover = can;
+    }
+    applyHoverCapability(false);
+    window.addEventListener('pointermove', function onDreamscapePtr(e) {
+        if (e.pointerType === 'mouse' && !window.__dreamscapeCanHover) {
+            applyHoverCapability(true);
+            window.removeEventListener('pointermove', onDreamscapePtr, true);
+        }
+    }, true);
+    try {
+        var hoverMq = window.matchMedia('(any-hover: hover)');
+        if (hoverMq) {
+            var onHoverMq = function () { applyHoverCapability(false); };
+            if (hoverMq.addEventListener) hoverMq.addEventListener('change', onHoverMq);
+            else if (hoverMq.addListener) hoverMq.addListener(onHoverMq);
+        }
+    } catch (e) { /* ignore */ }
+})();
+
 (function () {
     __dreamscapeFatalNavBypass = false;
     __dreamscapeFence = (typeof __dreamscapeFence !== 'undefined' && __dreamscapeFence)
@@ -124,10 +166,8 @@
 
     function formatIssueForCursor(detail) {
         var lines = [
-            'Fix this application error in the staticforge codebase.',
-            '',
+            'The application encountered an error:',
             '## Error',
-            '',
             '**Message:** ' + (detail.message || 'Error'),
             '**Reason:** ' + (detail.reason || 'Unknown'),
             '**File & line:** ' + (detail.fileLine || '(unknown)'),
@@ -135,15 +175,17 @@
             '**Relative path:** ' + (relativePathFromUrl(detail.errorUrl) || '(unknown)'),
             '**Timestamp:** ' + (detail.timestamp || new Date().toISOString()),
             '**Page:** ' + location.href,
-            '',
-            '### Stack trace',
-            '',
-            '```',
-            detail.stack || '(no stack trace)',
-            '```',
-            '',
-            'Please investigate the root cause and apply a minimal fix that matches existing project conventions.'
         ];
+        if (detail.stack) {
+            lines.push(
+                '',
+                '### Stack trace',
+                '```',
+                detail.stack,
+                '```'
+            );
+        }
+        lines.push('');
         return lines.join('\n');
     }
 

@@ -2111,6 +2111,11 @@ body.desktop-mode #manualModal #windowListEditorBtn {
     /* Allow right-click on wallpaper for context menu */
 }
 
+/* Boot: no wallpaper crossfade while early settings → loadWorkspaces settle */
+body.wallpaper-boot .desktop-wallpaper {
+    transition: none;
+}
+
 /* Show desktop wallpaper only in desktop mode when workspace has wallpaper */
 body.desktop-mode .desktop-wallpaper {
     opacity: 1;

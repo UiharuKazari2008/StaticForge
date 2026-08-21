@@ -600,7 +600,7 @@ textarea {
 .badge {
     display: inline-block;
     padding: 2px 8px;
-    border-radius: 12px;
+    border-radius: var(--border-radius-md);
     font-size: 0.75rem;
     font-weight: 600;
     font-variation-settings: "wght" var(--wght-semibold);
@@ -683,6 +683,7 @@ textarea {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    position: relative;
 }
 
 #characterAutocompleteOverlay .character-autocomplete-list {
@@ -732,6 +733,60 @@ textarea {
     font-size: 0.6rem;
     line-height: 1.2;
     color: var(--primary-color-light);
+}
+
+/* Alt+Y / Alt+U session filter & sort cycle HUD (inside overlay or tool window) */
+.autofill-cycle-hud {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+    min-width: 140px;
+    max-width: min(220px, calc(100% - 16px));
+    max-height: min(220px, 60%);
+    overflow: auto;
+    padding: 6px 8px;
+    border-radius: var(--border-radius-md);
+    background: var(--glass-layer-dark-5);
+    border: 1px solid var(--glass-border-2);
+    box-shadow: 0 6px 18px var(--shadow-secondary);
+    -webkit-backdrop-filter: var(--glass-blur-2, none);
+    backdrop-filter: var(--glass-blur-2, none);
+    pointer-events: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.autofill-cycle-hud-title {
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    text-align: center;
+}
+
+.autofill-cycle-hud-options {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.autofill-cycle-hud-option {
+    padding: 3px 8px;
+    border-radius: var(--border-radius-sm);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-align: center;
+    white-space: nowrap;
+}
+
+.autofill-cycle-hud-option.selected {
+    background: var(--primary-color);
+    color: var(--text-primary);
+    font-weight: 600;
 }
 
 .character-autocomplete-item {

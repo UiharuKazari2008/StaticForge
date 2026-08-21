@@ -25,7 +25,7 @@ actions:
       - Manifests in dsapManifests.js or grimoireCoreDomains.js; impls self-register.
 metadata:
   priority: high
-  version: 3.0
+  version: 3.1
 </rule>
 
 ## New Unified Design (Grimoire Domain Routing)
@@ -129,12 +129,21 @@ Use only documented members (same contract for core domains and applets):
 
 - `host.getRoot()` — container
 - `host.navigate(pseudoUrl)` — route (inside shell or globally)
+- `host.setUrl(pseudoUrl, options?)` — update address/history without destroy/reinit (same registration)
 - `host.refresh()`
 - `host.getPathSegments()` / `host.getQueryParam(name)`
 - `host.showToast(...)`
 - `host.on(eventName, handler)` — ws listener (auto-cleaned)
 - `host.getWsClient()`
 - `host.shell` — the hosting TagWikiSearchModal / WikiWindowInstance / pane
+- **Context menu (Grimoire display right-click on DSAP pages):**
+  - `host.registerContextMenuItems(match, itemsOrBuilder)` — `match` is a CSS selector or `(el, ctx) => boolean`; `itemsOrBuilder` is a list-item array or `(el, ctx) => items[]`. Returns unregister. Cleared on navigate-away via `clearContextMenuItems`.
+  - `host.registerContextMenuAction(actionId, handler)` — `handler(el, item, ctx)` for string action ids (including declarative attrs).
+  - `host.clearContextMenuItems()` — usually automatic on deactivate.
+  - Declarative (simple cases): on any element under the DSAP root set `data-dsap-ctx-action`, `data-dsap-ctx-label`, `data-dsap-ctx-icon`, optional `data-dsap-ctx-items` (JSON array), and extra `data-dsap-ctx-*` payload fields (copied into `item.data`). Register the action id with `registerContextMenuAction`.
+  - Menu merge order: registered items → declarative attrs → built-in link/image defaults → page chrome (Reload, Copy Link URI, New Window, etc.).
+  - Example applets with element menus: Image Search (`omegasearchDsapApplet.js`), Agora Explore (`exploreDsapApplet.js`), Security Center, Knowledge Memories, Data Management (workspaces/favorites), Novels, Dynamic Quips (phrasebook/preview).
+  - Skip when shell link/image chrome is enough (e.g. Dreamscape Home tool links, Autofill forms, replication wizard chrome).
 
 **Do not** mutate global UI outside the host. Never call `host.setTitle()` (shell owns address bar).
 
@@ -144,6 +153,7 @@ Use only documented members (same contract for core domains and applets):
 - `WikiWindowInstance` (and main modal panes) implement `navigate(url)` and delegate to the registry.
 - History entries for domains use appropriate `type` ('dsap', 'wiki', 'search', 'static-wiki-page', ...).
 - "Open in new window" from a domain page copies history when possible.
+- Desktop shortcuts may use type `dsap` with `{ url, title, icon?, imageIcon? }` (opens via `openDsapInStandaloneWindow`).
 
 ## Lifecycle rules
 

@@ -5,9 +5,9 @@ const EXPLORER_DEFAULT_VIEW_KEY = 'explorerDefaultViewMode';
 
 const EXPLORER_IMAGE_GALLERY_CONTEXT_ACTIONS = new Set([
     'toggle-favorite', 'reroll', 'download', 'copy', 'open-in-window', 'modify',
-    'expand-canvas', 'upscale', 'view-image-data', 'start-chat', 'set-wallpaper',
-    'jump-to-image', 'create-reference', 'create-desktop-shortcut', 'scrap', 'delete',
-    'move-to-workspace'
+    'expand-canvas', 'upscale', 'view-image-data', 'start-chat', 'publish-to-explorer',
+    'set-wallpaper', 'jump-to-image', 'create-reference', 'create-desktop-shortcut',
+    'scrap', 'delete', 'move-to-workspace'
 ]);
 
 const DESKTOP_GLOBAL_CONTEXT_ACTIONS = new Set([
@@ -573,6 +573,7 @@ class ExplorerApplet {
                     },
                     { separator: true },
                     { icon: 'fas fa-person-to-portal', text: 'Create Chat', action: 'start-chat' },
+                    { icon: 'fas fa-globe', text: 'Publish to Explorer', action: 'publish-to-explorer' },
                     {
                         icon: 'fas fa-image',
                         text: 'Set as Wallpaper',
@@ -1335,6 +1336,10 @@ class ExplorerApplet {
             case 'start-chat':
                 if (chatSystem) chatSystem.openChatModal(filename, image.characterName || null);
                 break;
+            case 'publish-to-explorer':
+                // openPublishToExplorerDialog — public/scripts/comp/galleryView.js
+                openPublishToExplorerDialog(image);
+                break;
             case 'set-wallpaper':
                 openDesktopSettingsModal(`file:${filename}`);
                 break;
@@ -1974,7 +1979,7 @@ class ExplorerApplet {
     async _downloadImageFilename(filename) {
         if (!filename) return;
         const link = document.createElement('a');
-        link.href = `/images/${filename}`;
+        link.href = localGalleryImageUrl(filename);
         link.download = filename;
         document.body.appendChild(link);
         link.click();
@@ -1985,7 +1990,8 @@ class ExplorerApplet {
         const filename = item.previewImageFilename || item.targetId || item.shortcutData?.filename;
         if (!filename) return;
         try {
-            const resp = await fetch(`/images/${encodeURIComponent(filename)}`);
+            // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+            const resp = await fetch(localGalleryImageUrl(filename));
             const blob = await resp.blob();
             // copyBlobToClipboard: public/scripts/utils/dreamscapeClipboard.js
             await copyBlobToClipboard(blob, { name: filename });
@@ -3437,7 +3443,8 @@ class ExplorerApplet {
                 : item.galleryPreview;
             imagePreview.style.backgroundImage = `url('/previews/${encodeURIComponent(previewUrl)}')`;
         } else if (item.previewImageFilename) {
-            imagePreview.style.backgroundImage = `url('/images/${encodeURIComponent(item.previewImageFilename)}')`;
+            // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+            imagePreview.style.backgroundImage = `url('${localGalleryImageUrl(item.previewImageFilename)}')`;
         }
         const flareHolder = document.createElement('div');
         flareHolder.className = 'desktop-shortcut-flare-holder';
@@ -3458,9 +3465,10 @@ class ExplorerApplet {
         const sd = item.shortcutData || {};
         const hash = sd.hash || item.previewHash || item.targetId;
         if (sd.preview || item.previewCachePreview) {
-            imagePreview.style.backgroundImage = `url('/cache/preview/${sd.preview || item.previewCachePreview}')`;
+            imagePreview.style.backgroundImage = `url('${localCachePreviewUrl(sd.preview || item.previewCachePreview)}')`;
         } else if (hash) {
-            imagePreview.style.backgroundImage = `url('/cache/preview/${hash}.webp')`;
+            // localCachePreviewUrl: public/scripts/comp/assetUrlResolver.js
+            imagePreview.style.backgroundImage = `url('${localCachePreviewUrl(`${hash}.webp`)}')`;
         }
         const flareHolder = document.createElement('div');
         flareHolder.className = 'desktop-shortcut-flare-holder';

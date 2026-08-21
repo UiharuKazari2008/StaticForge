@@ -1,115 +1,34 @@
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 const sharp = require('sharp');
 const wsPacketRegistry = require('../wsPacketRegistry');
 const { isImageLarge, matchOriginalResolution } = require('../../imageTools');
 const replicationRemoteFetch = require('../../replicationRemoteFetch');
-const { isReplicationEnabled } = require('../../replication/replicationContracts');
+const { isReplicationGalleryClient, canGalleryUseRemoteMaster } = require('../../replication/replicationContracts');
 
 const GALLERY_DESTRUCTIVE = { destructive: true };
 
-function buildGalleryHash(baseArray, workspaceId, viewType) {
-    // Stable identity hash: file membership only (no mtime, no pin state).
-    const hashItems = [...baseArray].sort((a, b) => String(a.base || '').localeCompare(String(b.base || '')));
-    const hashSource = hashItems.map(item => {
-        return `${item.base}|${item.original || ''}|${item.upscaled || ''}`;
-    }).join('\n');
-
-    return crypto.createHash('sha256')
-        .update(`${workspaceId}::${viewType}::${baseArray.length}::${hashSource}`)
-        .digest('hex');
-}
-
-function buildPinnedIndexes(baseArray, pinnedFiles, existingFilenamesSet = null) {
-    const rawPins = Array.isArray(pinnedFiles) ? pinnedFiles : [];
-    const pinsForHash = (existingFilenamesSet && typeof existingFilenamesSet.has === 'function')
-        ? rawPins.filter(f => existingFilenamesSet.has(f))
-        : rawPins;
-    if (!pinsForHash.length || !baseArray.length) {
-        return [];
-    }
-
-    const fileToIndex = new Map();
-    for (let i = 0; i < baseArray.length; i++) {
-        const { original, upscaled } = baseArray[i];
-        if (original) {
-            fileToIndex.set(original, i);
-        }
-        if (upscaled) {
-            fileToIndex.set(upscaled, i);
-        }
-    }
-
-    const pinnedIndexes = [];
-    for (let p = 0; p < pinsForHash.length; p++) {
-        const idx = fileToIndex.get(pinsForHash[p]);
-        if (idx !== undefined) {
-            pinnedIndexes.push(idx);
-        }
-    }
-    if (pinnedIndexes.length > 1) {
-        pinnedIndexes.sort((a, b) => a - b);
-    }
-    return pinnedIndexes;
-}
-
-function filterGalleryBaseItems(baseArray, viewType, lightweightMetadata = {}) {
-    const items = [];
-    for (const item of baseArray) {
-        const file = item.upscaled || item.original;
-        if (!file) {
-            continue;
-        }
-        if (viewType === 'upscaled') {
-            const meta = lightweightMetadata[file] || {};
-            const isLarge = meta.width && meta.height
-                ? isImageLarge(meta.width, meta.height)
-                : false;
-            if (!item.upscaled && !isLarge) {
-                continue;
-            }
-        }
-        items.push(item);
-    }
-    return items;
-}
-
-function fileExistsInImages(imagesDir, filename) {
-    return !!(filename && fs.existsSync(path.join(imagesDir, filename)));
-}
-
-function fileExistsInPreviews(previewsDir, previewBase) {
-    if (!previewBase) return false;
-    const previewName = previewBase.endsWith('.webp') ? previewBase : `${previewBase}.webp`;
-    return fs.existsSync(path.join(previewsDir, previewName));
-}
-
-async function resolveGalleryItemReplicationFields(handlers, {
+const GALLERY_BLOCK_SIZE = 750;
+function buildGalleryReplicationFields({
     file,
     base,
     preview,
     metadataPresent,
     imageOwnership,
     previewOwnership,
-    imagesDir,
-    previewsDir,
     masterReachable,
     remoteOnly = false
 }) {
-    const hasFullImage = fileExistsInImages(imagesDir, file);
+    const hasFullImage = !remoteOnly;
     const hasMetadata = metadataPresent === true;
-    const hasLocalPreview = fileExistsInPreviews(previewsDir, preview || base);
     let storage = 'local';
 
-    if (remoteOnly || !hasFullImage) {
-        if (remoteOnly) {
-            storage = 'remote';
-        } else if (imageOwnership && imageOwnership.storage === 'remote') {
-            storage = 'remote';
-        } else if (previewOwnership && previewOwnership.storage === 'remote' && !hasLocalPreview) {
-            storage = 'remote';
-        }
+    if (remoteOnly) {
+        storage = 'remote';
+    } else if (imageOwnership && imageOwnership.storage === 'remote') {
+        storage = 'remote';
+    } else if (previewOwnership && previewOwnership.storage === 'remote') {
+        storage = 'remote';
     }
 
     return {
@@ -146,46 +65,338 @@ function buildGalleryOwnershipEntries(baseArray) {
     return entries;
 }
 
-async function filterReplicationGalleryIndex(assetRegistry, baseArray, imagesDir, previewsDir, countRemote = false) {
-    const ownershipMap = await assetRegistry.getOwnershipBatch(buildGalleryOwnershipEntries(baseArray));
-    const filtered = [];
-    let remoteCount = 0;
+function mapMaterializedItemToGalleryRow(item) {
+    const { base, original, upscaled, mtime, width, height, size, blurhash } = item;
+    const file = upscaled || original;
+    if (!file) {
+        return null;
+    }
+    const itemWidth = width || null;
+    const itemHeight = height || null;
+    const isLarge = itemWidth && itemHeight ? isImageLarge(itemWidth, itemHeight) : false;
 
-    for (const item of baseArray) {
-        const file = item.upscaled || item.original;
-        if (!file) {
-            continue;
-        }
+    return {
+        base,
+        original,
+        upscaled,
+        filename: file,
+        preview: `${base}.webp`,
+        blurhash: blurhash || null,
+        mtime: mtime || Date.now(),
+        width: itemWidth,
+        height: itemHeight,
+        size: size || 0,
+        isLarge
+    };
+}
 
-        const imageOwnership = ownershipMap.get(`gallery-image::${file}`);
-        const previewOwnership = ownershipMap.get(`gallery-preview::${item.base}.webp`);
-        const hasFullImage = fileExistsInImages(imagesDir, file);
-        const hasLocalPreview = fileExistsInPreviews(previewsDir, item.base);
-        const isRemote = !hasFullImage && (
-            (imageOwnership && imageOwnership.storage === 'remote') ||
-            (previewOwnership && previewOwnership.storage === 'remote' && !hasLocalPreview)
-        );
+async function buildGalleryRowForFilename(handlers, clientInfo, viewType, filename) {
+    if (!clientInfo?.sessionId || !filename) {
+        return null;
+    }
 
-        if (isRemote) {
-            if (countRemote) {
-                remoteCount++;
+    const workspaceId = handlers.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
+    const metadataDb = handlers.globalResources.getMetadataDatabase();
+    const index = await metadataDb.findGalleryWorkspaceItemIndex(workspaceId, viewType, filename);
+    if (index >= 0) {
+        const page = await metadataDb.listWorkspaceGalleryItemsPaginated(workspaceId, viewType, index, 1);
+        const item = page.items?.[0];
+        const row = item ? mapMaterializedItemToGalleryRow(item) : null;
+        if (row && (row.original === filename || row.upscaled === filename || row.filename === filename)) {
+            // Ownership can materialize the row before image metadata exists (null w/h).
+            // Prefer hot/lightweight dims so PhotoSwipe does not fall back to 1024×1024.
+            if (!row.width || !row.height) {
+                try {
+                    const lightMap = await metadataDb.getLightweightMetadata([filename]);
+                    const meta = lightMap?.[filename];
+                    if (meta?.width && meta?.height) {
+                        row.width = meta.width;
+                        row.height = meta.height;
+                        row.isLarge = isImageLarge(row.width, row.height);
+                    }
+                } catch (_err) { /* keep materialized row */ }
             }
-        } else {
-            filtered.push(item);
+            return row;
         }
     }
 
-    return { filtered, remoteCount };
+    // Materialized index can lag hot ownership writes — synthesize from lightweight metadata
+    // instead of returning an unrelated head item.
+    try {
+        const lightMap = await metadataDb.getLightweightMetadata([filename]);
+        const meta = lightMap?.[filename];
+        if (!meta) {
+            return null;
+        }
+        const base = String(filename).replace(/\.(png|jpg|jpeg)$/i, '').replace(/_upscaled$/i, '');
+        const isUpscaled = Boolean(meta.upscaled) || /_upscaled\./i.test(filename);
+        return mapMaterializedItemToGalleryRow({
+            base,
+            original: isUpscaled ? (meta.parent || null) : filename,
+            upscaled: isUpscaled ? filename : null,
+            mtime: meta.mtime,
+            width: meta.width,
+            height: meta.height,
+            size: meta.size
+        });
+    } catch (_err) {
+        return null;
+    }
+}
+
+async function broadcastGalleryMutation(handlers, wsServer, clientInfo, options = {}) {
+    const viewType = options.viewType || 'images';
+    const action = options.action || 'invalidate_sync';
+
+    if (!clientInfo?.sessionId) {
+        return;
+    }
+
+    const workspaceId = handlers.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
+    const metadataDb = handlers.globalResources.getMetadataDatabase();
+    const timestamp = new Date().toISOString();
+
+    if (action === 'append_top' && options.filename) {
+        const newItem = await buildGalleryRowForFilename(handlers, clientInfo, viewType, options.filename);
+        if (newItem) {
+            wsServer.broadcast({
+                type: 'gallery_updated',
+                data: {
+                    action: 'append_top',
+                    newItems: [newItem],
+                    viewType
+                },
+                timestamp
+            });
+            return;
+        }
+    }
+
+    const probeMeta = await metadataDb.getGalleryWorkspaceProbeMeta(workspaceId, viewType);
+    wsServer.broadcast({
+        type: 'gallery_updated',
+        data: {
+            action: 'invalidate_sync',
+            viewType,
+            total: Number(probeMeta?.totalItems) || 0
+        },
+        timestamp
+    });
+}
+
+function sendGalleryMetaProbeResponse(handlers, ws, requestId, {
+    viewType,
+    activeWorkspaceId,
+    lastGalleryDestructiveAt,
+    totalItems,
+    pinnedIndexes,
+    offset,
+    limit
+}) {
+    handlers.stopKeepAliveInterval(requestId);
+    handlers.sendToClient(ws, {
+        type: 'request_gallery_response',
+        requestId,
+        data: {
+            gallery: [],
+            viewType,
+            workspaceId: activeWorkspaceId,
+            blockSize: GALLERY_BLOCK_SIZE,
+            pinnedIndexes: Array.isArray(pinnedIndexes) ? pinnedIndexes : [],
+            lastGalleryDestructiveAt,
+            pagination: {
+                offset,
+                limit,
+                hasMore: totalItems > 0,
+                totalItems
+            }
+        },
+        timestamp: new Date().toISOString()
+    });
+}
+
+async function tryFastGalleryMetaProbe(metadataDb, activeWorkspaceId, viewType) {
+    const probeMeta = await metadataDb.getGalleryWorkspaceProbeMeta(activeWorkspaceId, viewType);
+    if (!probeMeta || probeMeta.totalItems < 0) {
+        return null;
+    }
+
+    return probeMeta;
+}
+
+async function tryServeGalleryFastPaginatedPage(handlers, ws, requestId, {
+    metadataDb,
+    activeWorkspaceId,
+    viewType,
+    offset,
+    limit,
+    light,
+    includePinnedStatus,
+    lastGalleryDestructiveAt,
+    galleryClient,
+    masterReachable,
+    replicationConfig,
+    showSharedRemote,
+    shouldFilterReplicationIndex,
+    assetRegistry,
+    isGalleryBlockFetch,
+    afterCursor
+}) {
+    if (!light) {
+        return false;
+    }
+
+    const paginationOptions = afterCursor ? { afterCursor } : null;
+    const page = await metadataDb.listWorkspaceGalleryItemsPaginated(
+        activeWorkspaceId,
+        viewType,
+        offset,
+        limit,
+        paginationOptions
+    );
+    let paginatedItems = page.items || [];
+    const totalItems = page.totalItems || 0;
+    if (totalItems <= 0 && paginatedItems.length <= 0) {
+        return false;
+    }
+
+    let pageOwnershipMap = null;
+    if (!isGalleryBlockFetch && shouldFilterReplicationIndex && assetRegistry && paginatedItems.length > 0) {
+        pageOwnershipMap = await assetRegistry.getOwnershipBatch(buildGalleryOwnershipEntries(paginatedItems));
+        const filtered = [];
+        for (const item of paginatedItems) {
+            const file = item.upscaled || item.original;
+            if (!file) {
+                continue;
+            }
+            const imageOwnership = pageOwnershipMap.get(`gallery-image::${file}`);
+            const previewOwnership = pageOwnershipMap.get(`gallery-preview::${item.base}.webp`);
+            const isRemoteOnly = (imageOwnership && imageOwnership.storage === 'remote')
+                || (previewOwnership && previewOwnership.storage === 'remote');
+            if (!isRemoteOnly) {
+                filtered.push(item);
+            }
+        }
+        paginatedItems = filtered;
+    }
+
+    const hasMore = (offset + limit) < totalItems;
+
+    const getPreviewFilename = (baseName) => `${baseName}.webp`;
+
+    let pinnedSet = null;
+    let pinnedIndexes = [];
+    if (!isGalleryBlockFetch && includePinnedStatus && viewType === 'images' && offset === 0) {
+        const pinBases = await metadataDb.listGalleryWorkspacePinBases(activeWorkspaceId);
+        if (pinBases.length > 0) {
+            const pinBaseSet = new Set(pinBases);
+            pinnedSet = new Set();
+            for (const item of paginatedItems) {
+                if (!pinBaseSet.has(item.base)) {
+                    continue;
+                }
+                if (item.original) {
+                    pinnedSet.add(item.original);
+                }
+                if (item.upscaled) {
+                    pinnedSet.add(item.upscaled);
+                }
+            }
+            if (limit >= totalItems) {
+                pinnedIndexes = await metadataDb.listGalleryWorkspacePinIndexes(activeWorkspaceId);
+            }
+        }
+    }
+
+    const gallery = [];
+    for (const item of paginatedItems) {
+        const { base, original, upscaled, mtime, width, height, size } = item;
+        const file = upscaled || original;
+        if (!file) {
+            continue;
+        }
+        const itemWidth = width || null;
+        const itemHeight = height || null;
+        const isLarge = itemWidth && itemHeight ? isImageLarge(itemWidth, itemHeight) : false;
+
+        const row = {
+            base,
+            original,
+            upscaled,
+            filename: file,
+            preview: getPreviewFilename(base),
+            mtime: mtime || Date.now(),
+            width: itemWidth,
+            height: itemHeight,
+            size: size || 0,
+            isLarge,
+            isPinned: pinnedSet ? pinnedSet.has(file) : false
+        };
+
+        if (galleryClient && pageOwnershipMap) {
+            Object.assign(row, buildGalleryReplicationFields({
+                file,
+                base,
+                preview: getPreviewFilename(base),
+                metadataPresent: Boolean(mtime),
+                imageOwnership: pageOwnershipMap.get(`gallery-image::${file}`),
+                previewOwnership: pageOwnershipMap.get(`gallery-preview::${getPreviewFilename(base)}`),
+                masterReachable,
+                remoteOnly: false
+            }));
+        }
+
+        gallery.push(row);
+    }
+
+    let replicationContext = null;
+    if (galleryClient && !isGalleryBlockFetch) {
+        replicationContext = replicationRemoteFetch.buildReplicationContext(
+            replicationConfig,
+            masterReachable,
+            showSharedRemote
+        );
+    }
+
+    if (!isGalleryBlockFetch) {
+        await new Promise((resolve) => { setImmediate(resolve); });
+    }
+
+    handlers.stopKeepAliveInterval(requestId);
+    handlers.sendToClient(ws, {
+        type: 'request_gallery_response',
+        requestId,
+        data: {
+            gallery,
+            viewType,
+            workspaceId: activeWorkspaceId,
+            blockSize: GALLERY_BLOCK_SIZE,
+            blockOffset: offset,
+            pinnedIndexes,
+            lastGalleryDestructiveAt,
+            replicationContext,
+            pagination: {
+                offset,
+                limit,
+                hasMore,
+                totalItems
+            }
+        },
+        timestamp: new Date().toISOString()
+    });
+    return true;
 }
 
 async function handleGalleryRequest(handlers, ws, message, clientInfo, wsServer) {
-    const { requestId, viewType = 'images', includePinnedStatus = true, light = false, offset = 0, workspaceId: clientWorkspaceId } = message;
+    const { requestId, viewType = 'images', includePinnedStatus = true, offset = 0, workspaceId: clientWorkspaceId } = message;
+    const light = message.light !== false;
     const limit = message.limit !== undefined && message.limit !== null ? Number(message.limit) : 100;
+    const isHashProbe = limit === 0;
+    const isGalleryBlockFetch = message.galleryBlockFetch === true || limit >= GALLERY_BLOCK_SIZE;
+    const afterCursor = message.afterCursor || null;
+    const effectiveIncludePinned = isGalleryBlockFetch ? false : includePinnedStatus;
 
     try {
-        // Start keep-alive for potentially long gallery requests
-        handlers.startKeepAliveInterval(ws, requestId, 10000); // Every 10 seconds for gallery requests
-
         const wm = handlers.globalResources.getWorkspaceManager();
         const workspaces = handlers.globalResources.getWorkspacesConfig();
         let activeWorkspaceId = wm.getActiveWorkspace(clientInfo.sessionId) || 'default';
@@ -198,381 +409,134 @@ async function handleGalleryRequest(handlers, ws, message, clientInfo, wsServer)
             activeWorkspaceId = clientWorkspaceId;
         }
 
-        // Get files based on view type
-        let files;
-        if (viewType === 'scraps') {
-            files = wm.getActiveWorkspaceScraps(clientInfo.sessionId);
-        } else if (viewType === 'pinned') {
-            files = wm.getActiveWorkspacePinned(clientInfo.sessionId);
-        } else if (viewType === 'upscaled') {
-            files = wm.getActiveWorkspaceFiles(clientInfo.sessionId);
-        } else {
-            // Default to regular images
-            files = wm.getActiveWorkspaceFiles(clientInfo.sessionId);
-        }
-
-        // Get pinned status if requested
-        let pinnedFiles = [];
-        let pinnedSet = null;
-        if (includePinnedStatus) {
-            pinnedFiles = wm.getActiveWorkspacePinned(clientInfo.sessionId);
-            pinnedSet = new Set(pinnedFiles);
-        }
-
-        if (!Array.isArray(files)) {
-            console.error('Files is not an array:', files);
-            files = [];
-        }
-
-        const replicationConfig = handlers.globalResources.getReplicationService().getReplicationConfig();
-        const replicationEnabled = isReplicationEnabled(replicationConfig);
-        const existingOnDisk = wm.filterFilenamesExistingOnDisk(files, pinnedFiles);
-
-        // Helper function to get base name
-        const getBaseName = (filename) => {
-            const base = filename.replace(/\.(png|jpg|jpeg)$/i, '');
-            return base.replace(/_upscaled$/, '');
-        };
-
-        // Helper function to get preview filename
-        const getPreviewFilename = (baseName) => {
-            return `${baseName}.webp`;
-        };
-
-        files = files.filter((f) => existingOnDisk.has(f));
-        if (includePinnedStatus) {
-            pinnedFiles = pinnedFiles.filter((f) => existingOnDisk.has(f));
-        }
-
-        const baseMap = {};
-        for (const file of files) {
-            const base = getBaseName(file);
-            if (!baseMap[base]) baseMap[base] = { original: null, upscaled: null };
-            if (file.includes('_upscaled')) baseMap[base].upscaled = file;
-            else baseMap[base].original = file;
-        }
-
-        let baseArray = Object.keys(baseMap).map(base => ({
-            base,
-            ...baseMap[base]
-        }));
+        const metadataDb = handlers.globalResources.getMetadataDatabase();
+        const galleryBucket = metadataDb.viewTypeToGalleryBucket(viewType);
 
         const workspaceRecord = handlers.globalResources.getWorkspaceManager().getWorkspace(activeWorkspaceId);
         const lastGalleryDestructiveAt = Number(workspaceRecord?.lastGalleryDestructiveAt) || 0;
 
-        // Hash probe (limit 0): membership hash only — no mtime sort, no page metadata, no replication index work
-        if (limit === 0) {
-            let hashSortMetadata = {};
-            let galleryIndexBase = filterGalleryBaseItems(baseArray, viewType, hashSortMetadata);
-            if (viewType === 'upscaled' && baseArray.length > 0) {
-                const filesForFilter = baseArray
-                    .map(({ original, upscaled }) => upscaled || original)
-                    .filter(Boolean);
-                hashSortMetadata = await handlers.globalResources.getMetadataDatabase().getLightweightMetadata(filesForFilter);
-                galleryIndexBase = filterGalleryBaseItems(baseArray, viewType, hashSortMetadata);
-            }
-            const galleryHash = buildGalleryHash(galleryIndexBase, activeWorkspaceId, viewType);
-            const totalItems = galleryIndexBase.length;
-
-            handlers.stopKeepAliveInterval(requestId);
-            handlers.sendToClient(ws, {
-                type: 'request_gallery_response',
-                requestId: requestId,
-                data: {
-                    gallery: [],
-                    viewType,
-                    workspaceId: activeWorkspaceId,
-                    galleryHash,
-                    pinnedIndexes: [],
-                    lastGalleryDestructiveAt,
-                    pagination: {
-                        offset,
-                        limit,
-                        hasMore: totalItems > 0,
-                        totalItems
-                    }
-                },
-                timestamp: new Date().toISOString()
+        // Meta probe (limit:0) — O(1) SQL meta only; return before any replication / index work
+        if (isHashProbe) {
+            const fastProbe = await tryFastGalleryMetaProbe(metadataDb, activeWorkspaceId, viewType);
+            sendGalleryMetaProbeResponse(handlers, ws, requestId, {
+                viewType,
+                activeWorkspaceId,
+                lastGalleryDestructiveAt,
+                totalItems: fastProbe?.totalItems ?? 0,
+                pinnedIndexes: [],
+                offset,
+                limit
             });
             return;
         }
 
-        let metadataPresence = {};
+        handlers.startKeepAliveInterval(ws, requestId, 10000);
+
+        if (isGalleryBlockFetch && light) {
+            const servedBlockPage = await tryServeGalleryFastPaginatedPage(handlers, ws, requestId, {
+                metadataDb,
+                activeWorkspaceId,
+                viewType,
+                offset,
+                limit,
+                light,
+                includePinnedStatus: false,
+                lastGalleryDestructiveAt,
+                galleryClient: false,
+                masterReachable: false,
+                replicationConfig: null,
+                showSharedRemote: false,
+                shouldFilterReplicationIndex: false,
+                assetRegistry: null,
+                isGalleryBlockFetch: true,
+                afterCursor
+            });
+            if (servedBlockPage) {
+                return;
+            }
+            handlers.stopKeepAliveInterval(requestId);
+            handlers.sendError(ws, 'Gallery page unavailable', 'Fast gallery block path failed', requestId);
+            return;
+        }
+
+        const replicationConfig = handlers.globalResources.getReplicationService().getReplicationConfig();
+        const galleryClient = isReplicationGalleryClient(replicationConfig);
+        const canUseRemoteMaster = canGalleryUseRemoteMaster(replicationConfig);
+
         let masterReachable = false;
         let showSharedRemote = false;
         let assetRegistry = null;
-        let remoteHiddenCount = 0;
-        let replicationContext = null;
-        let replicationWarning = null;
         let needsReplicationBanner = false;
-        const imagesDir = handlers.globalResources.getPath('images');
-        const previewsDir = handlers.globalResources.getPath('previews');
 
-        if (replicationEnabled) {
+        if (galleryClient) {
             assetRegistry = handlers.globalResources.getReplicationService().getAssetRegistry();
-            masterReachable = await replicationRemoteFetch.probeMasterReachable(false, handlers.globalResources);
+        }
+
+        if (canUseRemoteMaster) {
             const sessionShowShared = await resolveSessionGalleryShowShared(handlers, clientInfo);
             showSharedRemote = replicationRemoteFetch.shouldShowSharedGallery(
                 replicationConfig,
                 sessionShowShared
             );
+            if (showSharedRemote) {
+                masterReachable = await replicationRemoteFetch.probeMasterReachable(false, handlers.globalResources);
+            }
             needsReplicationBanner = replicationRemoteFetch.shouldShowReplicationBanner(
                 replicationConfig,
                 masterReachable
             );
-            const notOnDisk = files.filter((f) => !existingOnDisk.has(f));
-            if (notOnDisk.length > 0) {
-                metadataPresence = await handlers.globalResources.getMetadataDatabase().getLightweightMetadata(notOnDisk);
-            }
-            files = files.filter((f) => existingOnDisk.has(f) || metadataPresence[f]);
-            if (includePinnedStatus) {
-                pinnedFiles = pinnedFiles.filter((f) => existingOnDisk.has(f) || metadataPresence[f]);
-            }
-            const rebuiltBaseMap = {};
-            for (const file of files) {
-                const base = getBaseName(file);
-                if (!rebuiltBaseMap[base]) rebuiltBaseMap[base] = { original: null, upscaled: null };
-                if (file.includes('_upscaled')) rebuiltBaseMap[base].upscaled = file;
-                else rebuiltBaseMap[base].original = file;
-            }
-            baseArray = Object.keys(rebuiltBaseMap).map(base => ({
-                base,
-                ...rebuiltBaseMap[base]
-            }));
         }
 
-        let sortMetadata = {};
-        if (baseArray.length > 0) {
-            const filesForSort = baseArray
-                .map(({ original, upscaled }) => upscaled || original)
-                .filter(Boolean);
-            sortMetadata = await handlers.globalResources.getMetadataDatabase().getLightweightMetadata(filesForSort);
+        const needsRemoteMerge = canUseRemoteMaster && showSharedRemote && masterReachable;
+        const shouldFilterReplicationIndex = galleryClient && assetRegistry
+            && !needsRemoteMerge
+            && replicationConfig.connectivity !== 'airgapped';
 
-            baseArray.forEach(item => {
-                const file = item.upscaled || item.original;
-                const metadata = sortMetadata[file];
-                item.mtime = metadata?.mtime || Date.now();
-            });
-        }
-
-        baseArray.sort((a, b) => b.mtime - a.mtime);
-
-        if (replicationEnabled && showSharedRemote && masterReachable) {
-            const replicationGalleryProxy = require('../../replicationGalleryProxy');
-            const localFilenameSet = new Set(files);
-            const remoteFilenames = await replicationGalleryProxy.fetchRemoteGalleryFilenames(
-                handlers.globalResources,
-                { workspaceId: activeWorkspaceId, viewType }
-            );
-            if (remoteFilenames.length > 0) {
-                baseArray = replicationGalleryProxy.mergeRemoteGalleryBaseArray(
-                    baseArray,
-                    remoteFilenames,
-                    localFilenameSet
-                );
-            }
-        }
-
-        const viewFilteredBase = filterGalleryBaseItems(baseArray, viewType, sortMetadata);
-        let galleryIndexBase = viewFilteredBase;
-
-        if (replicationEnabled) {
-            const shouldFilterReplicationIndex = assetRegistry
-                && !(showSharedRemote && masterReachable)
-                && replicationConfig.connectivity !== 'airgapped';
-
-            if (shouldFilterReplicationIndex && limit > 0) {
-                const indexResult = await filterReplicationGalleryIndex(
-                    assetRegistry,
-                    viewFilteredBase,
-                    imagesDir,
-                    previewsDir,
-                    needsReplicationBanner && limit > 0
-                );
-                galleryIndexBase = indexResult.filtered;
-                remoteHiddenCount = indexResult.remoteCount;
-            }
-
-            replicationContext = replicationRemoteFetch.buildReplicationContext(
-                replicationConfig,
+        // Light paginated requests always use SQL LIMIT/OFFSET — never build the full gallery index
+        if (light && !needsRemoteMerge) {
+            const servedFastPage = await tryServeGalleryFastPaginatedPage(handlers, ws, requestId, {
+                metadataDb,
+                activeWorkspaceId,
+                viewType,
+                offset,
+                limit,
+                light,
+                includePinnedStatus: effectiveIncludePinned,
+                lastGalleryDestructiveAt,
+                galleryClient,
                 masterReachable,
-                showSharedRemote
-            );
-            if (needsReplicationBanner) {
-                replicationWarning = {
-                    masterDisplayName: replicationRemoteFetch.getMasterDisplayName(replicationConfig),
-                    localCount: galleryIndexBase.length,
-                    remoteHiddenCount
-                };
+                replicationConfig,
+                showSharedRemote,
+                shouldFilterReplicationIndex,
+                assetRegistry,
+                isGalleryBlockFetch: false,
+                afterCursor
+            });
+            if (servedFastPage) {
+                return;
             }
+            handlers.stopKeepAliveInterval(requestId);
+            handlers.sendError(ws, 'Gallery page unavailable', 'Fast gallery path failed', requestId);
+            return;
         }
-        const galleryHash = buildGalleryHash(galleryIndexBase, activeWorkspaceId, viewType);
-        const pinnedIndexes = (viewType === 'images' && includePinnedStatus)
-            ? buildPinnedIndexes(galleryIndexBase, pinnedFiles, existingOnDisk)
-            : [];
-
-        // Apply pagination on the filtered index so offsets, pins, and totals align with the response
-        const totalItems = galleryIndexBase.length;
-        const paginatedItems = galleryIndexBase.slice(offset, offset + limit);
-        const hasMore = (offset + limit) < totalItems;
-
-        let gallery = [];
-        const pageOwnershipMap = (replicationEnabled && assetRegistry && paginatedItems.length > 0)
-            ? await assetRegistry.getOwnershipBatch(buildGalleryOwnershipEntries(paginatedItems))
-            : null;
 
         if (light) {
-            // Light mode: file identity + lightweight DB fields (mtime/dims) — no full metadata blobs
-            const pageFiles = paginatedItems.flatMap(({ original, upscaled }) => [original, upscaled].filter(Boolean));
-            const lightweightForPage = {};
-            const missingPageFiles = [];
-            for (const f of pageFiles) {
-                if (sortMetadata[f]) {
-                    lightweightForPage[f] = sortMetadata[f];
-                } else {
-                    missingPageFiles.push(f);
-                }
-            }
-            if (missingPageFiles.length > 0) {
-                Object.assign(
-                    lightweightForPage,
-                    await handlers.globalResources.getMetadataDatabase().getLightweightMetadata(missingPageFiles)
-                );
-            }
-
-            for (const item of paginatedItems) {
-                const { base, original, upscaled, mtime } = item;
-                const file = upscaled || original;
-                if (!file) continue;
-
-                const meta = lightweightForPage[file] || sortMetadata[file] || {};
-                const isLarge = meta.width && meta.height
-                    ? isImageLarge(meta.width, meta.height)
-                    : false;
-
-                gallery.push({
-                    base,
-                    original,
-                    upscaled,
-                    filename: file,
-                    preview: getPreviewFilename(base),
-                    mtime: mtime || meta.mtime || Date.now(),
-                    width: meta.width || null,
-                    height: meta.height || null,
-                    size: meta.size || 0,
-                    isLarge,
-                    isPinned: pinnedSet ? pinnedSet.has(file) : false,
-                    ...(replicationEnabled ? await resolveGalleryItemReplicationFields(handlers, {
-                        file,
-                        base,
-                        preview: getPreviewFilename(base),
-                        metadataPresent: !!meta.mtime || !!metadataPresence[file],
-                        imageOwnership: pageOwnershipMap ? pageOwnershipMap.get(`gallery-image::${file}`) : null,
-                        previewOwnership: pageOwnershipMap
-                            ? pageOwnershipMap.get(`gallery-preview::${getPreviewFilename(base)}`)
-                            : null,
-                        imagesDir,
-                        previewsDir,
-                        masterReachable,
-                        remoteOnly: !!item.remoteOnly
-                    }) : {})
-                });
-            }
-        } else {
-            // Full mode: load metadata for paginated items
-            const filesToLoad = paginatedItems.flatMap(({ original, upscaled }) => [original, upscaled].filter(Boolean));
-            const allMetadata = await handlers.globalResources.getMetadataDatabase().getMultipleMetadata(filesToLoad);
-
-            for (const item of paginatedItems) {
-                const { base, original, upscaled } = item;
-
-                // Get the file to use (prefer upscaled, then original)
-                const file = upscaled || original;
-                if (!file) continue;
-
-                // Get metadata from database (already loaded in batch)
-                let fileMetadata = allMetadata[file];
-                if (!fileMetadata && item.remoteOnly) {
-                    fileMetadata = { mtime: item.mtime || Date.now(), size: 0 };
-                } else if (!fileMetadata) {
-                    // If not in batch, try individual lookup
-                    try {
-                        fileMetadata = await handlers.globalResources.getMetadataDatabase().getCachedMetadata(file);
-                        if (!fileMetadata) {
-                            console.log(`🔄 Loading metadata for file: ${file}`);
-                            // Try to extract metadata for the missing file
-                            fileMetadata = await handlers.globalResources.getMetadataDatabase().getImageMetadata(file, handlers.globalResources.getPath("images"));
-                            if (!fileMetadata) {
-                                console.warn(`❌ Could not extract metadata for file: ${file}`);
-                                continue;
-                            }
-                        }
-                    } catch (error) {
-                        console.error(`❌ Error loading metadata for file ${file}:`, error);
-                        continue;
-                    }
-                }
-
-                const preview = getPreviewFilename(base);
-                const isLarge = fileMetadata?.width && fileMetadata?.height ?
-                    isImageLarge(fileMetadata.width, fileMetadata.height) : false;
-
-                gallery.push({
-                    base,
-                    original,
-                    upscaled,
-                    filename: file,
-                    preview,
-                    mtime: fileMetadata.mtime || Date.now(),
-                    size: fileMetadata.size || 0,
-                    isLarge: isLarge,
-                    isPinned: pinnedSet ? pinnedSet.has(file) : false,
-                    // Include dimensions for PhotoSwipe
-                    width: fileMetadata.width || null,
-                    height: fileMetadata.height || null,
-                    ...(replicationEnabled ? await resolveGalleryItemReplicationFields(handlers, {
-                        file,
-                        base,
-                        preview,
-                        metadataPresent: true,
-                        imageOwnership: pageOwnershipMap ? pageOwnershipMap.get(`gallery-image::${file}`) : null,
-                        previewOwnership: pageOwnershipMap ? pageOwnershipMap.get(`gallery-preview::${preview}`) : null,
-                        imagesDir,
-                        previewsDir,
-                        masterReachable,
-                        remoteOnly: !!item.remoteOnly
-                    }) : {})
-                });
-            }
+            handlers.stopKeepAliveInterval(requestId);
+            handlers.sendError(ws, 'Gallery unavailable', 'Remote gallery merge required', requestId);
+            return;
         }
 
-        const localVisibleCount = galleryIndexBase.length;
-
-        // Stop keep-alive when complete
+        // Plan: request_gallery never builds a full workspace index (gallery-cache-revision-system.md).
+        // Non-light / remote-merge callers must use light paginated LIMIT/OFFSET via tryServeGalleryFastPaginatedPage.
         handlers.stopKeepAliveInterval(requestId);
+        handlers.sendError(
+            ws,
+            'Gallery unavailable',
+            'Use light paginated request_gallery (probe limit:0, blocks via LIMIT/OFFSET)',
+            requestId
+        );
+        return;
 
-        // Send response — pinnedIndexes are global gallery positions; per-item isPinned is set on each row
-        handlers.sendToClient(ws, {
-            type: 'request_gallery_response',
-            requestId: requestId,
-            data: {
-                gallery,
-                viewType,
-                workspaceId: activeWorkspaceId,
-                galleryHash,
-                pinnedIndexes: (viewType === 'images' && includePinnedStatus) ? pinnedIndexes : [],
-                lastGalleryDestructiveAt,
-                replicationContext,
-                replicationWarning,
-                pagination: {
-                    offset,
-                    limit,
-                    hasMore,
-                    totalItems
-                }
-            },
-            timestamp: new Date().toISOString()
-        });
 
     } catch (error) {
         // Stop keep-alive on error
@@ -584,28 +548,12 @@ async function handleGalleryRequest(handlers, ws, message, clientInfo, wsServer)
 }
 
 async function resolveImageWorkspaceOwnership(handlers, filename) {
-    if (!filename) return null;
+    if (!filename) {
+        return null;
+    }
 
     const metadataDb = handlers.globalResources.getMetadataDatabase();
-    const fromDb = await metadataDb.getGalleryOwnershipForFilename(filename);
-    if (fromDb) return fromDb;
-
-    const workspaces = handlers.globalResources.getWorkspacesConfig();
-    const matches = [];
-    for (const [workspaceId, workspace] of Object.entries(workspaces || {})) {
-        let bucket = null;
-        if (workspace.files?.includes(filename)) bucket = 'files';
-        else if (workspace.pinned?.includes(filename)) bucket = 'pinned';
-        else if (workspace.scraps?.includes(filename)) bucket = 'scraps';
-        if (bucket) matches.push({ workspaceId, bucket });
-    }
-    if (!matches.length) return null;
-
-    return {
-        workspaceId: matches[0].workspaceId,
-        bucket: matches[0].bucket,
-        workspaces: matches
-    };
+    return metadataDb.getGalleryOwnershipForFilename(filename);
 }
 
 // Handle image metadata request messages
@@ -619,63 +567,64 @@ async function handleImageMetadataRequest(handlers, ws, message, clientInfo, wsS
 
     try {
         const imagesDir = handlers.globalResources.getPath("images");
-        const filePath = path.join(imagesDir, filename);
-        const fileExists = fs.existsSync(filePath);
-
         const workspaceId = handlers.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
+        const metadataDb = handlers.globalResources.getMetadataDatabase();
 
         // Track client workspace usage
         handlers.metadataCache.trackClientWorkspace(clientInfo.sessionId, workspaceId);
 
         let cachedMetadata = handlers.metadataCache.get(workspaceId, filename);
 
-        // If not in cache, get from database
+        // Hot path: memory → SQL (read-only). Do not touch the filesystem until SQL misses.
         if (!cachedMetadata) {
-            cachedMetadata = await handlers.globalResources.getMetadataDatabase().getCachedMetadata(filename, false);
-
+            cachedMetadata = await metadataDb.getCachedMetadata(filename, false);
             if (cachedMetadata) {
                 handlers.metadataCache.set(workspaceId, filename, cachedMetadata);
             }
         }
 
-        if (!cachedMetadata && !fileExists && isReplicationEnabled(
-            handlers.globalResources.getReplicationService().getReplicationConfig()
-        )) {
-            try {
-                await replicationRemoteFetch.readAssetBuffer(
-                    'gallery-image',
-                    filename,
-                    handlers.globalResources,
-                    { cacheToLocal: true }
-                );
-                cachedMetadata = await handlers.globalResources.getMetadataDatabase().getImageMetadata(filename, imagesDir);
-                if (cachedMetadata) {
-                    handlers.metadataCache.set(workspaceId, filename, cachedMetadata);
-                }
-            } catch (fetchError) {
-                if (fetchError instanceof replicationRemoteFetch.ReplicationAssetError
-                    || fetchError.code === 'REPLICATION_ASSET_UNAVAILABLE') {
-                    replicationRemoteFetch.sendReplicationAssetError(
-                        handlers,
-                        ws,
-                        fetchError,
-                        message.requestId,
-                        'request_image_metadata'
+        if (!cachedMetadata) {
+            const filePath = path.join(imagesDir, filename);
+            const fileExists = fs.existsSync(filePath);
+
+            if (!fileExists && canGalleryUseRemoteMaster(
+                handlers.globalResources.getReplicationService().getReplicationConfig()
+            )) {
+                try {
+                    await replicationRemoteFetch.readAssetBuffer(
+                        'gallery-image',
+                        filename,
+                        handlers.globalResources,
+                        { cacheToLocal: true }
                     );
+                    cachedMetadata = await metadataDb.getImageMetadata(filename, imagesDir);
+                    if (cachedMetadata) {
+                        handlers.metadataCache.set(workspaceId, filename, cachedMetadata);
+                    }
+                } catch (fetchError) {
+                    if (fetchError instanceof replicationRemoteFetch.ReplicationAssetError
+                        || fetchError.code === 'REPLICATION_ASSET_UNAVAILABLE') {
+                        replicationRemoteFetch.sendReplicationAssetError(
+                            handlers,
+                            ws,
+                            fetchError,
+                            message.requestId,
+                            'request_image_metadata'
+                        );
+                        return;
+                    }
+                }
+            }
+
+            if (!cachedMetadata && fileExists) {
+                console.log(`🔄 Metadata not found in cache for ${filename}, extracting...`);
+                cachedMetadata = await metadataDb.getImageMetadata(filename, imagesDir);
+                if (!cachedMetadata) {
+                    handlers.sendError(ws, 'Failed to extract metadata', 'request_image_metadata', message.requestId);
                     return;
                 }
+                handlers.metadataCache.set(workspaceId, filename, cachedMetadata);
             }
-        }
-
-        // If still not found, extract from local file when present
-        if (!cachedMetadata && fileExists) {
-            console.log(`🔄 Metadata not found in cache for ${filename}, extracting...`);
-            cachedMetadata = await handlers.globalResources.getMetadataDatabase().getImageMetadata(filename, imagesDir);
-            if (!cachedMetadata) {
-                handlers.sendError(ws, 'Failed to extract metadata', 'request_image_metadata', message.requestId);
-                return;
-            }
-            handlers.metadataCache.set(workspaceId, filename, cachedMetadata);
         }
 
         if (!cachedMetadata) {
@@ -688,12 +637,9 @@ async function handleImageMetadataRequest(handlers, ws, message, clientInfo, wsS
 
         // If this is an upscaled image and has a parent, get the parent's metadata (without receipts)
         if (cachedMetadata.upscaled && cachedMetadata.parent) {
-            const parentMetadata = await handlers.globalResources.getMetadataDatabase().getCachedMetadata(cachedMetadata.parent, false);
+            const parentMetadata = await metadataDb.getCachedMetadata(cachedMetadata.parent, false);
             if (parentMetadata) {
                 metadata = parentMetadata.metadata;
-                console.log(`📋 Using parent metadata for upscaled image: ${cachedMetadata.parent}`);
-            } else {
-                console.log(`⚠️ Parent metadata not found for: ${cachedMetadata.parent}`);
             }
         }
 
@@ -718,17 +664,23 @@ async function handleImageMetadataRequest(handlers, ws, message, clientInfo, wsS
             matchedPreset = matchOriginalResolution(metadata, currentPromptConfig.resolutions || {});
         }
 
-        const result = await handlers.globalResources.getPngMetadata().extractRelevantFields(metadata, filename);
+        // Extract fields and ownership in parallel — ownership is indexed SQL, extract was doing full-file reads
+        const [result, ownership] = await Promise.all([
+            handlers.globalResources.getPngMetadata().extractRelevantFields(metadata, filename),
+            resolveImageWorkspaceOwnership(handlers, filename)
+        ]);
+        if (!result) {
+            handlers.sendError(ws, 'No NovelAI metadata found', 'request_image_metadata', message.requestId);
+            return;
+        }
         if (matchedPreset) result.matchedPreset = matchedPreset;
 
-        const ownership = await resolveImageWorkspaceOwnership(handlers, filename);
         if (ownership) {
             result.workspaceId = ownership.workspaceId;
             result.workspaceIds = ownership.workspaces.map((entry) => entry.workspaceId);
             result.workspaceBucket = ownership.bucket;
         }
 
-        // Send response
         handlers.sendToClient(ws, {
             type: 'request_image_metadata_response',
             requestId: message.requestId,
@@ -742,204 +694,6 @@ async function handleImageMetadataRequest(handlers, ws, message, clientInfo, wsS
     }
 }
 
-// Helper function to build gallery data for a given view type
-async function buildGalleryData(handlers, viewType = 'images', clientInfo = null) {
-    // Helper functions for file processing
-    const getBaseName = (filename) => {
-        const base = filename.replace(/\.(png|jpg|jpeg|webp)$/i, '');
-        return base.replace(/_upscaled$/, '');
-    };
-
-    // Validate that clientInfo is provided since workspace functions now require session IDs
-    if (!clientInfo || !clientInfo.sessionId) {
-        throw new Error('Client info with session ID is required to build gallery data');
-    }
-
-    // Get files based on view type
-    let files;
-    const sessionId = clientInfo.sessionId;
-    switch (viewType) {
-        case 'scraps':
-            files = handlers.globalResources.getWorkspaceManager().getActiveWorkspaceScraps(sessionId);
-            break;
-        case 'pinned':
-            files = handlers.globalResources.getWorkspaceManager().getActiveWorkspacePinned(sessionId);
-            break;
-        case 'upscaled':
-            files = handlers.globalResources.getWorkspaceManager().getActiveWorkspaceFiles(sessionId);
-            break;
-        case 'images':
-        default:
-            files = handlers.globalResources.getWorkspaceManager().getActiveWorkspaceFiles(sessionId);
-            break;
-    }
-
-    if (!Array.isArray(files)) {
-        console.error('Files is not an array:', files);
-        files = [];
-    }
-
-    const wm = handlers.globalResources.getWorkspaceManager();
-    const existingOnDisk = wm.filterFilenamesExistingOnDisk(files);
-    files = files.filter(f => existingOnDisk.has(f));
-
-    const baseMap = {};
-    for (const file of files) {
-        const base = getBaseName(file);
-        if (!baseMap[base]) baseMap[base] = { original: null, upscaled: null };
-        if (file.includes('_upscaled')) baseMap[base].upscaled = file;
-        else baseMap[base].original = file;
-    }
-
-    // Get all metadata in batch (without receipts for performance)
-    const allFiles = Object.values(baseMap).flatMap(({ original, upscaled }) => [original, upscaled].filter(Boolean));
-    const allMetadata = await handlers.globalResources.getMetadataDatabase().getMultipleMetadata(allFiles);
-    
-    const gallery = [];
-    for (const base in baseMap) {
-        const { original, upscaled } = baseMap[base];
-
-        // Get the file to use (prefer upscaled, then original)
-        const file = upscaled || original;
-        if (!file) continue;
-
-        // Get metadata from batch (already loaded)
-        let metadata = allMetadata[file];
-        if (!metadata) {
-            // If not in batch, try individual lookup (without receipts)
-            metadata = await handlers.globalResources.getMetadataDatabase().getCachedMetadata(file, false);
-            if (!metadata) {
-                console.log(`🔄 Loading metadata for file: ${file}`);
-                try {
-                    // Try to extract metadata for the missing file
-                    metadata = await handlers.globalResources.getMetadataDatabase().getImageMetadata(file, handlers.globalResources.getPath("images"));
-                    if (!metadata) {
-                        console.warn(`❌ Could not extract metadata for file: ${file}`);
-                        continue;
-                    }
-                } catch (error) {
-                    console.error(`❌ Error loading metadata for file ${file}:`, error);
-                    continue;
-                }
-            }
-        }
-
-        const preview = `${base}.webp`;
-        const isLarge = metadata?.width && metadata?.height ?
-            isImageLarge(metadata.width, metadata.height) : false;
-
-        if (viewType === 'upscaled') {
-            // For upscaled view, include images that have upscaled versions OR are wallpaper/large
-            const shouldInclude = upscaled || isLarge;
-            if (!shouldInclude) continue;
-        }
-
-        gallery.push({
-            base,
-            original,
-            upscaled,
-            preview,
-            mtime: metadata.mtime || Date.now(),
-            size: metadata.size || 0,
-            isLarge: isLarge,
-            // Include dimensions for PhotoSwipe
-            width: metadata.width || null,
-            height: metadata.height || null,
-            seed: metadata.metadata?.seed || null
-        });
-    }
-
-    // Sort by newest first
-    gallery.sort((a, b) => b.mtime - a.mtime);
-
-    return gallery;
-}
-
-async function buildLightweightGalleryList(handlers, viewType, clientInfo) {
-    if (!clientInfo || !clientInfo.sessionId) {
-        throw new Error('Client info with session ID is required to build gallery list');
-    }
-
-    const sessionId = clientInfo.sessionId;
-    const wm = handlers.globalResources.getWorkspaceManager();
-    let files;
-
-    switch (viewType) {
-        case 'scraps':
-            files = wm.getActiveWorkspaceScraps(sessionId);
-            break;
-        case 'pinned':
-            files = wm.getActiveWorkspacePinned(sessionId);
-            break;
-        case 'upscaled':
-        case 'images':
-        default:
-            files = wm.getActiveWorkspaceFiles(sessionId);
-            break;
-    }
-
-    if (!Array.isArray(files) || files.length === 0) {
-        return [];
-    }
-
-    const getBaseName = (filename) => {
-        const base = filename.replace(/\.(png|jpg|jpeg|webp)$/i, '');
-        return base.replace(/_upscaled$/, '');
-    };
-
-    const existingOnDisk = wm.filterFilenamesExistingOnDisk(files);
-    files = files.filter(f => existingOnDisk.has(f));
-    if (files.length === 0) {
-        return [];
-    }
-
-    const baseMap = {};
-    for (const file of files) {
-        const base = getBaseName(file);
-        if (!baseMap[base]) baseMap[base] = { original: null, upscaled: null };
-        if (file.includes('_upscaled')) baseMap[base].upscaled = file;
-        else baseMap[base].original = file;
-    }
-
-    const baseArray = Object.keys(baseMap).map(base => ({
-        base,
-        ...baseMap[base]
-    }));
-
-    const allFiles = baseArray
-        .map(({ original, upscaled }) => upscaled || original)
-        .filter(Boolean);
-    const lightweightMetadata = await handlers.globalResources.getMetadataDatabase().getLightweightMetadata(allFiles);
-
-    baseArray.forEach(item => {
-        const file = item.upscaled || item.original;
-        const metadata = lightweightMetadata[file];
-        item.mtime = metadata?.mtime || 0;
-    });
-
-    const filtered = filterGalleryBaseItems(baseArray, viewType, lightweightMetadata);
-    filtered.sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
-
-    return filtered.map(item => {
-        const file = item.upscaled || item.original;
-        const metadata = lightweightMetadata[file] || {};
-        return {
-            base: item.base,
-            original: item.original,
-            upscaled: item.upscaled,
-            filename: file,
-            preview: `${item.base}.webp`,
-            mtime: item.mtime || metadata.mtime || Date.now(),
-            size: metadata.size || 0,
-            isLarge: metadata.width && metadata.height
-                ? isImageLarge(metadata.width, metadata.height)
-                : false,
-            width: metadata.width || null,
-            height: metadata.height || null
-        };
-    });
-}
-
 // Handle image by index request messages
 async function handleImageByIndexRequest(handlers, ws, message, clientInfo, wsServer) {
     const { index, viewType = 'images' } = message;
@@ -950,44 +704,53 @@ async function handleImageByIndexRequest(handlers, ws, message, clientInfo, wsSe
     }
 
     try {
-        const gallery = await buildLightweightGalleryList(handlers, viewType, clientInfo);
+        if (!clientInfo?.sessionId) {
+            handlers.sendError(ws, 'Session required', 'request_image_by_index', message.requestId);
+            return;
+        }
 
-        if (gallery.length === 0) {
+        const workspaceId = handlers.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
+        const metadataDb = handlers.globalResources.getMetadataDatabase();
+        const page = await metadataDb.listWorkspaceGalleryItemsPaginated(workspaceId, viewType, index, 1);
+        const totalItems = page.totalItems || 0;
+
+        if (totalItems === 0 || !page.items?.length) {
             handlers.sendError(ws, 'No images found', 'request_image_by_index', message.requestId);
             return;
         }
 
-        // Check if index is valid
-        if (index < 0 || index >= gallery.length) {
+        if (index < 0 || index >= totalItems) {
             handlers.sendError(ws, 'Index out of bounds', 'request_image_by_index', message.requestId);
             return;
         }
 
-        const image = gallery[index];
+        const image = mapMaterializedItemToGalleryRow(page.items[0]);
+        if (!image) {
+            handlers.sendError(ws, 'No images found', 'request_image_by_index', message.requestId);
+            return;
+        }
 
         // Load full metadata only for the target image (check cache first)
         let metadata = null;
         try {
             const filePath = path.join(handlers.globalResources.getPath("images"), image.original);
             if (fs.existsSync(filePath)) {
-                const workspaceId = handlers.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
-                
                 // Track client workspace usage
                 handlers.metadataCache.trackClientWorkspace(clientInfo.sessionId, workspaceId);
-                
+
                 // Check in-memory cache first
                 let cachedMetadata = handlers.metadataCache.get(workspaceId, image.original);
-                
+
                 // If not in cache, get from database
                 if (!cachedMetadata) {
                     cachedMetadata = await handlers.globalResources.getMetadataDatabase().getCachedMetadata(image.original, false);
-                    
+
                     // If found, add to cache
                     if (cachedMetadata) {
                         handlers.metadataCache.set(workspaceId, image.original, cachedMetadata);
                     }
                 }
-                
+
                 if (cachedMetadata && cachedMetadata.metadata) {
                     metadata = await handlers.globalResources.getPngMetadata().extractRelevantFields(cachedMetadata.metadata, image.original);
                 }
@@ -1026,12 +789,14 @@ async function handleFindImageIndexRequest(handlers, ws, message, clientInfo, ws
     }
 
     try {
-        const gallery = await buildLightweightGalleryList(handlers, viewType, clientInfo);
+        if (!clientInfo?.sessionId) {
+            handlers.sendError(ws, 'Session required', 'find_image_index', message.requestId);
+            return;
+        }
 
-        // Find the index of the requested filename
-        const index = gallery.findIndex(img =>
-            img.original === filename || img.upscaled === filename
-        );
+        const workspaceId = handlers.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
+        const metadataDb = handlers.globalResources.getMetadataDatabase();
+        const index = await metadataDb.findGalleryWorkspaceItemIndex(workspaceId, viewType, filename);
 
         // Send response
         handlers.sendToClient(ws, {
@@ -1054,13 +819,16 @@ async function resolveSessionGalleryShowShared(handlers, clientInfo) {
     if (!clientInfo.sessionId) return false;
     const store = handlers.globalResources.getSessionStore();
     if (!store || typeof store.get !== 'function') return false;
-    return new Promise((resolve) => {
-        store.get(clientInfo.sessionId, (err, sess) => {
-            const enabled = sess?.galleryShowSharedRemote === true;
-            clientInfo.galleryShowSharedRemote = enabled;
-            resolve(enabled);
-        });
-    });
+    return Promise.race([
+        new Promise((resolve) => {
+            store.get(clientInfo.sessionId, (err, sess) => {
+                const enabled = sess?.galleryShowSharedRemote === true;
+                clientInfo.galleryShowSharedRemote = enabled;
+                resolve(enabled);
+            });
+        }),
+        new Promise((resolve) => setTimeout(() => resolve(false), 3000))
+    ]);
 }
 
 async function handleSetGalleryShowShared(handlers, ws, message, clientInfo, wsServer) {
@@ -1134,6 +902,7 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
 
         const results = [];
         const errors = [];
+        const allFilenamesToRemoveFromWorkspaces = new Set();
 
         // Helper functions
         const getBaseName = (filename) => {
@@ -1225,13 +994,10 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
                     }
                 }
 
-                // Remove files from workspaces first
-                if (filenamesToRemoveFromWorkspaces.length > 0) {
-                    handlers.globalResources.getWorkspaceManager().removeFilesFromWorkspaces(filenamesToRemoveFromWorkspaces);
+                // Queue workspace + metadata cleanup (batched after all filesystem deletes)
+                for (const fn of filenamesToRemoveFromWorkspaces) {
+                    allFilenamesToRemoveFromWorkspaces.add(fn);
                 }
-
-                // Remove metadata from cache
-                await handlers.globalResources.getMetadataDatabase().removeImageMetadata(filenamesToRemoveFromWorkspaces);
 
                 // Delete reference metadata for deleted files
                 for (const filename of filenamesToRemoveFromWorkspaces) {
@@ -1257,8 +1023,14 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
             }
         }
 
-        // Sync workspace files to remove any remaining references to deleted files
-        await handlers.globalResources.getWorkspaceManager().syncWorkspaceFiles();
+        const filenamesRemoved = [...allFilenamesToRemoveFromWorkspaces];
+        if (filenamesRemoved.length > 0) {
+            handlers.globalResources.getWorkspaceManager().removeFilesFromWorkspaces(
+                filenamesRemoved,
+                { skipDestructiveBump: true }
+            );
+            await handlers.globalResources.getMetadataDatabase().removeImageMetadata(filenamesRemoved);
+        }
 
         console.log(`✅ Bulk delete completed: ${results.length} successful, ${errors.length} failed`);
 
@@ -1646,8 +1418,8 @@ function registerPackets(handlersCtx) {
         }, { owner: 'gallery', ...meta });
     };
 
-    regFn('request_gallery', handleGalleryRequest);
-    regFn('request_image_metadata', handleImageMetadataRequest);
+    regFn('request_gallery', handleGalleryRequest, { dispatch: 'parallel' });
+    regFn('request_image_metadata', handleImageMetadataRequest, { dispatch: 'parallel' });
     regFn('request_url_upload_metadata', handleUrlUploadMetadataRequest);
     regFn('request_image_by_index', handleImageByIndexRequest);
     regFn('find_image_index', handleFindImageIndexRequest);
@@ -1660,5 +1432,5 @@ function registerPackets(handlersCtx) {
 
 module.exports = {
     registerPackets,
-    buildGalleryData
+    broadcastGalleryMutation
 };

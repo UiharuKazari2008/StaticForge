@@ -235,7 +235,7 @@ These are **pushes** — handle asynchronously. Registered in `public/scripts/ws
 | `search_results_complete` | File search finished | Final result set reference |
 | `dynamic_generation_progress_update` | Rentan / dynamic gen | `phase`, `data` (may include `requestId` routing) |
 | `image_generation_progress` | Streaming step preview | Step index, preview base64/thumbnail, `requestId` |
-| `image_generation_error` | Generation failed (push path) | Error message, `requestId` |
+| `image_generation_error` | Generation failed (push path) | Exact API message in `error` (prefixed with HTTP/`statusCode` when present); `statusCode`, `code`, and `data.{statusCode,code,message}`; `requestId` |
 | `image_generation_response` | Some flows push final result | Same shape as request response (also used as correlated reply) |
 | `image_upscaling_response` / `image_upscaling_error` | Upscale complete/fail | Result filename or error |
 | `image_expansion_response` / `image_expansion_error` | Expansion complete/fail | Result metadata or error |

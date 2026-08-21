@@ -8,12 +8,14 @@ User-facing applet and tool names follow a **Dreamscape** style: short, tangible
 
 | launchId | Display name | Role |
 |----------|--------------|------|
+| `explore-gallery` | **Agora** | NovelAI Explore community image gallery |
 | `explorer` | **Cartograph** | VFS browser (workspaces, files, notes, trash) |
 | `config-editor` | **Runes** | Registry-style server config editor |
 | `event-viewer` | **Periscope** | Admin log tail, vitals, WebSocket telemetry |
 
 ### Run search aliases (non-exhaustive)
 
+- **Agora:** `agora`, `explore`, `explore gallery`, `image gallery`, `community gallery`
 - **Cartograph:** `explorer`, `files`, `file explorer`, `cartograph`, `vfs`
 - **Runes:** `config`, `settings`, `settings editor`, `runes`
 - **Periscope:** `log`, `logs`, `console`, `periscope`, `event viewer`, `events`, …

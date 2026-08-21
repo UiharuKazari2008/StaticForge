@@ -298,6 +298,7 @@ const MANUAL_CLASSIC_RIGHT = [
     shortcutListItem('F3', 'Weight Rack', 'fas fa-weight-scale'),
     shortcutListItem('ALT + F3', 'Reset Emphasis', 'fas fa-eraser', true),
     shortcutListItem('ALT + S', 'Split Emphasis', 'fas fa-scissors', true),
+    shortcutListItem('ALT + SHIFT + S', 'Split at Commas', 'fas fa-knife-kitchen', true),
     shortcutListItem('F4', 'Quick Access', 'fas fa-book-atlas'),
     shortcutListDivider(),
     shortcutListItem('F5', 'Generate', 'nai-sparkles'),
@@ -958,6 +959,7 @@ function handleKeyDown(event) {
     // Handle Alt key press — universal overlay from keyboard registry
     if (event.key === 'Alt') {
         if (suppressAltOverlayUntilRelease) return;
+        if (event.repeat) return;
         ensureKeyboardShortcutOverlaysRegistered();
         // getActiveKeyboardOverlayEntries: public/scripts/comp/modalKeyboardRegistry.js
         const overlayEntries = getActiveKeyboardOverlayEntries();
@@ -984,7 +986,7 @@ function handleKeyDown(event) {
     
     switch (`${event.ctrlKey ? 'CTRL+' : ''}${event.altKey ? 'ALT+' : ''}${event.metaKey ? 'META+' : ''}${event.shiftKey ? 'SHIFT+' : ''}${event.key.toUpperCase()}`) {
         case 'F1':
-            if (shouldHandleBracketGenShortcuts && bracketGenerationApplet) {
+            if (shouldHandleBracketGenShortcuts && typeof bracketGenerationApplet !== 'undefined' && bracketGenerationApplet) {
                 event.preventDefault();
                 event.stopPropagation();
                 bracketGenerationApplet.setActiveField('prompt');
@@ -1003,7 +1005,7 @@ function handleKeyDown(event) {
             switchManualTab('prompt', document.activeElement);
             break;
         case 'F2':
-            if (shouldHandleBracketGenShortcuts && bracketGenerationApplet) {
+            if (shouldHandleBracketGenShortcuts && typeof bracketGenerationApplet !== 'undefined' && bracketGenerationApplet) {
                 event.preventDefault();
                 event.stopPropagation();
                 bracketGenerationApplet.setActiveField('uc');
@@ -1021,6 +1023,20 @@ function handleKeyDown(event) {
             event.stopPropagation();
             switchManualTab('uc', document.activeElement);
             break;
+        case 'ALT+E':
+            {
+                const activeTextarea = document.activeElement;
+                if (activeTextarea && activeTextarea.matches('.prompt-textarea, .character-prompt-textarea')) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    // promptTextareaToolbar.handleAltEEmphasisShortcut: public/scripts/comp/promptTextareaToolbar.js
+                    if (window.promptTextareaToolbar) {
+                        const tb = window.promptTextareaToolbar.getToolbarFromTextarea(activeTextarea);
+                        window.promptTextareaToolbar.handleAltEEmphasisShortcut(activeTextarea, tb);
+                    }
+                }
+            }
+            break;
         case 'ALT+F1':
             if (!shouldHandleManualModalActions) break;
             event.preventDefault();
@@ -1032,9 +1048,7 @@ function handleKeyDown(event) {
             event.preventDefault();
             event.stopPropagation();
             // openAutofillToolWindow: public/scripts/comp/autocompleteUtils.js
-            if (typeof openAutofillToolWindow === 'function') {
-                openAutofillToolWindow(document.activeElement);
-            }
+            openAutofillToolWindow(document.activeElement);
             break;
         case 'F3':
             {
@@ -1066,8 +1080,11 @@ function handleKeyDown(event) {
             if (!shouldHandleManualModalActions) break;
             event.preventDefault();
             event.stopPropagation();
-            showDatasetTagToolbar();
-            showShortcutActionToast('Quick access');
+            // public/scripts/comp/featureLoader.js
+            void featureLoader.loadFeature('dataset_tag_toolbar').then(() => {
+                showDatasetTagToolbar();
+                showShortcutActionToast('Quick access');
+            });
             break;
         case 'F5':
             if (!shouldHandleManualModalActions) break;
@@ -1177,7 +1194,7 @@ function handleKeyDown(event) {
             }
             break;
         case 'F8':
-            if (shouldHandleBracketGenShortcuts && bracketGenerationApplet) {
+            if (shouldHandleBracketGenShortcuts && typeof bracketGenerationApplet !== 'undefined' && bracketGenerationApplet) {
                 event.preventDefault();
                 event.stopPropagation();
                 bracketGenerationApplet.compileStages();
@@ -1229,7 +1246,7 @@ function handleKeyDown(event) {
             if (label) showShortcutActionToast(label);
             break;
         case 'ALT+A':
-            if (shouldHandleBracketGenShortcuts && bracketGenerationApplet) {
+            if (shouldHandleBracketGenShortcuts && typeof bracketGenerationApplet !== 'undefined' && bracketGenerationApplet) {
                 event.preventDefault();
                 event.stopPropagation();
                 void bracketGenerationApplet.addStep();
@@ -1243,7 +1260,7 @@ function handleKeyDown(event) {
             showShortcutActionToast('New Character');
             break;
         case 'ALT+K':
-            if (shouldHandleBracketGenShortcuts && bracketGenerationApplet) {
+            if (shouldHandleBracketGenShortcuts && typeof bracketGenerationApplet !== 'undefined' && bracketGenerationApplet) {
                 event.preventDefault();
                 event.stopPropagation();
                 void bracketGenerationApplet.promptAddKeyword();
@@ -1412,12 +1429,13 @@ function handleKeyUp(event) {
             hideShortcutsOverlay();
 
             // Double-tap Alt opens Run applet (runApplet: public/scripts/comp/runApplet.js)
-            if (!event.ctrlKey && !event.shiftKey && !event.metaKey && window.runApplet) {
+            if (!event.ctrlKey && !event.shiftKey && !event.metaKey) {
                 const now = Date.now();
                 if (runAppletLastAltUpTime && now - runAppletLastAltUpTime < RUN_APPLET_DOUBLE_ALT_MS) {
                     runAppletLastAltUpTime = 0;
                     event.preventDefault();
-                    window.runApplet.toggle();
+                    // public/scripts/comp/featureLoader.js
+                    void featureLoader.loadFeature('run').then(() => runApplet.toggle());
                     return;
                 }
                 runAppletLastAltUpTime = now;
@@ -1619,6 +1637,12 @@ function showShortcutsOverlay() {
     if (!shortcutsOverlay) return;
     if (suppressAltOverlayUntilRelease) return;
 
+    if (shortcutsOverlay.classList.contains('visible')) {
+        clearTimeout(shortcutOverlayTimeout);
+        shortcutOverlayTimeout = setTimeout(hideShortcutsOverlayIfAltReleased, 30000);
+        return;
+    }
+
     ensureKeyboardShortcutOverlaysRegistered();
     if (!renderShortcutsOverlayFromRegistry()) return;
 
@@ -1627,9 +1651,12 @@ function showShortcutsOverlay() {
 
     shortcutsOverlay.classList.add('visible');
     clearTimeout(shortcutOverlayTimeout);
-    shortcutOverlayTimeout = setTimeout(() => {
-        shortcutsOverlay.classList.remove('visible');
-    }, 30000);
+    shortcutOverlayTimeout = setTimeout(hideShortcutsOverlayIfAltReleased, 30000);
+}
+
+function hideShortcutsOverlayIfAltReleased() {
+    if (activeAltKeyCodes.size > 0) return;
+    hideShortcutsOverlay();
 }
 
 // Hide shortcuts overlay

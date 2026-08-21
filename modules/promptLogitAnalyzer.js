@@ -187,7 +187,7 @@ class PromptLogitAnalyzer {
                 multiplier *= 1.05;
                 cleanText = cleanText.substring(1, cleanText.length - 1).trim();
             } else if (cleanText.startsWith('[') && cleanText.endsWith(']')) {
-                multiplier *= 0.952; // 1 / 1.05
+                multiplier *= (1 / 1.05); // NovelAI official weaken = 1/strengthen
                 cleanText = cleanText.substring(1, cleanText.length - 1).trim();
             } else {
                 break;

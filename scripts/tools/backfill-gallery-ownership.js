@@ -2,8 +2,9 @@
 /**
  * Manual backfill for gallery_workspace_ownership (Phase 3 — Ownership JOIN).
  *
- * Populates incremental ownership rows from workspace.json. Does NOT run on boot.
- * Run AFTER facet backfill completes to avoid concurrent heavy writes on metadata.db.
+ * Populates gallery_workspace_ownership from workspace.json.
+ * Run once after migration or to rebuild; day-to-day updates go through workspace.js upsert/remove.
+ * Boot also calls ensureGalleryOwnershipFromWorkspaces when the table is empty or counts drift.
  *
  * Usage (from repo root, server may stay running):
  *
@@ -17,10 +18,11 @@
  *
  * After backfill, SQL workspace scope is enabled by default (USE_WORKSPACE_MEMBERSHIP).
  *
- * Deferred incremental writers (not wired in Phase 3):
- *   modules/workspace.js — addToWorkspaceArray / removeFromWorkspaceArray / moveToWorkspaceArray
- *   modules/ws/handlers/90-workspaceHandler.js — move/pin/scrap
- *   modules/imageGeneration.js — post-generation addToWorkspaceArray
+ * Deferred incremental writers (wired in workspace.js):
+ *   addToWorkspaceArray / removeFromWorkspaceArray / moveToWorkspaceArray / handlePinnedScrappedFilesOnMove
+ *   syncWorkspaceFiles / deleteWorkspace / dumpWorkspace / organizeOrphanedFiles
+ *   bulkAddToWorkspaceArray / bulkRemoveFromWorkspaceArray
+ *   imageGeneration.js — post-generation addToWorkspaceArray
  */
 
 const fs = require('fs');

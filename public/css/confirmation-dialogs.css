@@ -54,6 +54,100 @@
     justify-content: flex-end;
 }
 
+/* Publish to NovelAI Explore — galleryView.js openPublishToExplorerDialog */
+#confirmationDialog.explore-publish-dialog-modal {
+    max-width: min(440px, calc(90vw - calc(2 * var(--spacing-md))));
+}
+
+.explore-publish-dialog {
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.explore-publish-preview {
+    width: 100%;
+    max-height: 220px;
+    overflow: hidden;
+    border: 1px solid var(--glass-border-2);
+    border-radius: var(--border-radius-md);
+    background: var(--glass-layer-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.explore-publish-preview img {
+    display: block;
+    max-width: 100%;
+    max-height: 220px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+}
+
+.explore-publish-hint {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    opacity: 0.85;
+}
+
+.explore-publish-dialog .form-group {
+    margin-bottom: 0;
+}
+
+.explore-publish-title-count {
+    margin-top: 4px;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-align: right;
+}
+
+.explore-publish-title-count.is-warning {
+    color: var(--text-accent, #e8b86d);
+}
+
+.explore-publish-guidelines {
+    border: 1px solid var(--glass-border-2);
+    border-radius: var(--border-radius-md);
+    background: var(--glass-layer-2);
+    padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.explore-publish-guidelines-title {
+    font-weight: 600;
+    font-size: 0.85rem;
+    margin-bottom: 6px;
+}
+
+.explore-publish-guidelines ul {
+    margin: 0;
+    padding-left: 1.15rem;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--text-secondary);
+}
+
+.explore-publish-guidelines li + li {
+    margin-top: 3px;
+}
+
+.explore-publish-restriction {
+    border: 1px solid rgba(232, 120, 100, 0.45);
+    background: rgba(232, 80, 70, 0.12);
+    color: var(--text-primary);
+    border-radius: var(--border-radius-md);
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-size: 0.82rem;
+    line-height: 1.4;
+}
+
+.explore-publish-restriction.hidden {
+    display: none;
+}
+
 .confirmation-btn {
     padding: 8px 16px;
     border: 1px solid var(--glass-border-2);

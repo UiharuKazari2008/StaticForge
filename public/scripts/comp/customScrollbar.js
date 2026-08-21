@@ -149,30 +149,37 @@ class CustomScrollbar {
                     }
                 });
 
-                // Handle attribute changes (e.g., when hidden class is removed from modal)
-                if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-                    const target = mutation.target;
-                    // Check if a modal was just shown (hidden class removed)
-                    if (target.classList && target.classList.contains('modal') && !target.classList.contains('hidden')) {
-                        // Look for scrollbar-enabled elements inside this modal
-                        const dataAttrElements = target.querySelectorAll && target.querySelectorAll('[data-custom-scrollbar]');
-                        if (dataAttrElements) {
-                            dataAttrElements.forEach(element => {
-                                if (!this.scrollbars.has(element)) {
-                                    this.createScrollbar(element);
-                                }
-                            });
-                        }
+                // Tear down trackers when scroll shells leave the DOM (Map keys block GC)
+                mutation.removedNodes.forEach((node) => {
+                    if (node.nodeType !== Node.ELEMENT_NODE) return;
+                    if (this.scrollbars.has(node)) {
+                        this.destroy(node);
                     }
-                }
+                    if (!this.scrollbars.size || !node.querySelectorAll) return;
+                    node.querySelectorAll('[data-custom-scrollbar], .form-section-scroll').forEach((el) => {
+                        if (this.scrollbars.has(el)) {
+                            this.destroy(el);
+                        }
+                    });
+                });
+
             });
         });
 
         observer.observe(document.body, {
             childList: true,
-            subtree: true,
-            attributes: true,
-            attributeFilter: ['class']
+            subtree: true
+        });
+
+        document.addEventListener('staticforge:modal-lifecycle', (e) => {
+            if (!e.detail || e.detail.type !== 'opened') return;
+            const modal = e.detail.id ? document.getElementById(e.detail.id) : null;
+            if (!modal) return;
+            modal.querySelectorAll('[data-custom-scrollbar], .form-section-scroll:not([data-custom-scrollbar])').forEach((el) => {
+                if (!this.scrollbars.has(el)) {
+                    this.createScrollbar(el);
+                }
+            });
         });
     }
 
@@ -592,6 +599,7 @@ class CustomScrollbar {
         if (data) {
             try {
                 this._cancelScheduledUpdate(element);
+                this._layoutBatchPending.delete(element);
 
                 if (data._resizeObserver) {
                     data._resizeObserver.disconnect();

@@ -1,7 +1,7 @@
 /**
  * App Init Steps (Phase 2 — app.js refactor)
  *
- * registerInitStep(0.44–100) boot sequence for StaticForge.
+ * registerInitStep(0.45–100) boot sequence for StaticForge.
  * Extracted from public/scripts/app.js batch 11.
  */
 
@@ -14,30 +14,48 @@ if (window.wsClient) {
         if (!data || !data.inProgress) {
             return;
         }
-        if (logViewerApplet && typeof logViewerApplet.onRuntimeCompileProgress === 'function') {
+        // logViewerApplet — public/scripts/comp/logViewerApplet.js (on-open via featureLoader)
+        const logViewerLoaded = typeof logViewerApplet !== 'undefined' && logViewerApplet;
+        if (logViewerLoaded && logViewerApplet.onRuntimeCompileProgress) {
             logViewerApplet.onRuntimeCompileProgress({ data });
         }
-        if (!logViewerApplet?._runtimeCompilePopoverLocked && window.serviceWorkerManager) {
-            window.serviceWorkerManager.handleRuntimeCompileProgress(data);
+        if ((!logViewerLoaded || !logViewerApplet._runtimeCompilePopoverLocked) && serviceWorkerManager) {
+            serviceWorkerManager.handleRuntimeCompileProgress(data);
         }
     }
 
     function handleRuntimeCompileCompleteBroadcast(data) {
-        if (logViewerApplet && typeof logViewerApplet.onRuntimeCompileComplete === 'function') {
+        // logViewerApplet — public/scripts/comp/logViewerApplet.js (on-open via featureLoader)
+        const logViewerLoaded = typeof logViewerApplet !== 'undefined' && logViewerApplet;
+        if (logViewerLoaded && logViewerApplet.onRuntimeCompileComplete) {
             logViewerApplet.onRuntimeCompileComplete({ data });
         }
-        if (!logViewerApplet?._runtimeCompilePopoverLocked && window.serviceWorkerManager) {
-            window.serviceWorkerManager.handleRuntimeCompileComplete(data);
+        if ((!logViewerLoaded || !logViewerApplet._runtimeCompilePopoverLocked) && serviceWorkerManager) {
+            serviceWorkerManager.handleRuntimeCompileComplete(data);
         }
-        if (data && data.errors && data.errors.length > 0 && typeof showRuntimeCompileErrors === 'function') {
+        if (data && data.errors && data.errors.length > 0) {
+            // showRuntimeCompileErrors: public/scripts/appInitSteps.js
             showRuntimeCompileErrors(data.errors);
         }
+    }
+
+    let lastRuntimeCompileErrorsKey = '';
+
+    function runtimeCompileErrorsKey(errors) {
+        return errors.map(function (entry) {
+            return (entry.file || '') + '\0' + (entry.error || '');
+        }).join('\n');
     }
 
     function showRuntimeCompileErrors(errors) {
         if (!errors || !errors.length) {
             return;
         }
+        const key = runtimeCompileErrorsKey(errors);
+        if (key === lastRuntimeCompileErrorsKey) {
+            return;
+        }
+        lastRuntimeCompileErrorsKey = key;
         const lines = errors.slice(0, 4).map(function (entry) {
             return (entry.file || '(unknown)') + ': ' + (entry.error || 'Unknown error');
         });
@@ -113,14 +131,8 @@ if (window.wsClient) {
                             false
                         );
                     }
-                } else {
-                    // Server is ready, hide any readiness notifications
-                    if (window.wsClient && window.wsClient.bannerManager) {
-                        window.wsClient.bannerManager.hideWebSocketTicker();
-                    }
-                    if (data.runtimeCompile && Array.isArray(data.runtimeCompile.errors) && data.runtimeCompile.errors.length > 0) {
-                        showRuntimeCompileErrors(data.runtimeCompile.errors);
-                    }
+                } else if (window.wsClient && window.wsClient.bannerManager) {
+                    window.wsClient.bannerManager.hideWebSocketTicker();
                 }
 
                 return data;
@@ -131,13 +143,26 @@ if (window.wsClient) {
         return null;
     }
 
-    // Priority 0.44: Surface runtime compile errors from server boot (non-blocking)
-    window.wsClient.registerInitStep(0.44, 'Checking runtime assets', async () => {
-        const data = await checkServerReadiness();
-        if (data && data.runtimeCompile && Array.isArray(data.runtimeCompile.errors) && data.runtimeCompile.errors.length > 0) {
-            showRuntimeCompileErrors(data.runtimeCompile.errors);
+    // Fallback if WS connect push was missed — uses lastServerStartupStatus from pingHost (OPTIONS /status)
+    function surfaceBootRuntimeCompileErrorsFromStatus() {
+        const status = window.wsClient && window.wsClient.lastServerStartupStatus;
+        if (!status || !status.runtimeCompile) {
+            return;
         }
-    }, true);
+        // serverManagement — public/scripts/comp/serverManagement.js (on-open via featureLoader)
+        if (typeof serverManagement !== 'undefined' && serverManagement && serverManagement.setRuntimeCompileStatus) {
+            serverManagement.setRuntimeCompileStatus(status.runtimeCompile);
+        }
+        const errors = status.runtimeCompile.errors;
+        if (Array.isArray(errors) && errors.length > 0) {
+            showRuntimeCompileErrors(errors);
+        }
+    }
+
+    window.surfaceBootRuntimeCompileErrorsFromStatus = surfaceBootRuntimeCompileErrorsFromStatus;
+    window.showRuntimeCompileErrors = showRuntimeCompileErrors;
+    window.handleRuntimeCompileProgressBroadcast = handleRuntimeCompileProgressBroadcast;
+    window.handleRuntimeCompileCompleteBroadcast = handleRuntimeCompileCompleteBroadcast;
 
     // Priority 0.45: User global settings (startup behaviour, Atelier, etc.) from server config
     window.wsClient.registerInitStep(0.45, 'Loading user global settings', async () => {
@@ -154,7 +179,16 @@ if (window.wsClient) {
                     const settings = await window.wsClient.getDesktopSettings();
 
                     if (settings) {
-                        const { wallpaper, wallpaperPosition, color, backgroundColor } = settings;
+                        const { wallpaper, wallpaperPosition, color, backgroundColor, workspaceId } = settings;
+
+                        // Suppress wallpaper image transition until loadWorkspaces finishes
+                        document.body.classList.add('wallpaper-boot');
+
+                        // Set data-workspace before workspace list loads so [data-workspace=…]
+                        // CSS matches the early wallpaper (avoids default wallpaper flash)
+                        if (workspaceId) {
+                            document.body.setAttribute('data-workspace', workspaceId);
+                        }
 
                         // Apply colors
                         if (color) {
@@ -175,19 +209,19 @@ if (window.wsClient) {
 
                             switch (type) {
                                 case 'file':
-                                    wallpaperUrl = `/images/${id}`;
+                                    wallpaperUrl = localGalleryImageUrl(id);
                                     break;
                                 case 'cache':
-                                    wallpaperUrl = `/cache/upload/${id}`;
+                                    wallpaperUrl = localCacheUploadUrl(id);
                                     break;
                                 case 'cache-preview':
-                                    wallpaperUrl = `/cache/preview/${id}`;
+                                    wallpaperUrl = localCachePreviewUrl(id);
                                     break;
                                 case 'vibe':
                                     wallpaperUrl = `/cache/vibe/${id}`;
                                     break;
                                 case 'wallpaper':
-                                    wallpaperUrl = `/cache/wallpapers/${id}.png`;
+                                    wallpaperUrl = localCacheWallpaperUrl(id);
                                     break;
                                 case 'url':
                                     wallpaperUrl = id;
@@ -197,8 +231,13 @@ if (window.wsClient) {
                             if (wallpaperUrl) {
                                 const position = wallpaperPosition || 'center';
                                 // formatCssUrl: public/scripts/comp/workspaceUtils.js
-                                document.documentElement.style.setProperty('--desktop-wallpaper', formatCssUrl(wallpaperUrl));
+                                const wallpaperCss = formatCssUrl(wallpaperUrl);
+                                // Set on body (not only html) so inherited vars beat a mismatched
+                                // [data-workspace] rule if theme attribute is still wrong briefly
+                                document.documentElement.style.setProperty('--desktop-wallpaper', wallpaperCss);
                                 document.documentElement.style.setProperty('--desktop-wallpaper-position', position);
+                                document.body.style.setProperty('--desktop-wallpaper', wallpaperCss);
+                                document.body.style.setProperty('--desktop-wallpaper-position', position);
 
                                 // Preload the wallpaper image
                                 const img = new Image();
@@ -327,7 +366,7 @@ if (window.wsClient) {
                 }
             }
             await loadGallery(false, null, {
-                silent: !autoLaunchWorkspace,
+                showProgress: true,
                 startupBoot: true
             });
             await updateGalleryGrid(true, true);

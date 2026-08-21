@@ -36,6 +36,7 @@ const pm2Service = require('./modules/pm2Service');
 const runtimeAssetService = require('./modules/runtimeAssetService');
 const workspaceCssService = require('./modules/workspaceCssService');
 const serverStartupStatus = require('./modules/serverStartupStatus');
+const { browserRequest } = require('./modules/browserHttp');
 
 let runtimeCompileComplete = false;
 
@@ -779,6 +780,12 @@ async function generateCacheData(directory) {
                     ? '/' + relativePath.substring(7) // Remove 'public/' prefix
                     : '/' + relativePath;
 
+                // Masters stay on disk for compile input only — SW gets optimised sizes from runtime-assets
+                if (runtimeAssetService.isAppIconWebPath
+                    && runtimeAssetService.isAppIconWebPath(webPath)) {
+                    continue;
+                }
+
                 // SHA-256 of bytes actually served to clients (optimised copy for managed css/scripts)
                 let hashPath = filePath;
                 if (runtimeAssetService.isRuntimeManagedWebPath(webPath)) {
@@ -800,6 +807,16 @@ async function generateCacheData(directory) {
                 console.warn(`⚠️ Error processing file ${file}:`, error.message);
             }
         }
+
+        // Optimised app icon sizes from .cache/runtime-assets (omit public masters above)
+        if (typeof runtimeAssetService.listOptimisedAppIconManifestEntries === 'function') {
+            const iconEntries = runtimeAssetService.listOptimisedAppIconManifestEntries(__dirname);
+            for (const entry of iconEntries) {
+                if (!assets.some((a) => a.path === entry.path)) {
+                    assets.push(entry);
+                }
+            }
+        }
         
         // Sort by path for consistent ordering
         assets.sort((a, b) => a.path.localeCompare(b.path));
@@ -818,7 +835,7 @@ async function generateCacheData(directory) {
 }
 
 // Recursively scan directory for files
-async function scanDirectory(dir) {
+async function scanDirectory(dir, relFromPublic = '') {
     const files = [];
     
     try {
@@ -826,11 +843,17 @@ async function scanDirectory(dir) {
         
         for (const item of items) {
             const itemPath = path.join(dir, item);
+            const itemRel = relFromPublic ? `${relFromPublic}/${item}` : item;
+            // App icon masters are compile inputs only — optimised sizes come from runtime-assets
+            if (runtimeAssetService.isAppIconsMasterRelPath
+                && runtimeAssetService.isAppIconsMasterRelPath(itemRel)) {
+                continue;
+            }
             const stats = fs.statSync(itemPath);
             
             if (stats.isDirectory()) {
                 // Recursively scan subdirectories
-                const subFiles = await scanDirectory(itemPath);
+                const subFiles = await scanDirectory(itemPath, itemRel);
                 files.push(...subFiles.map(subFile => path.join(item, subFile)));
             } else {
                 files.push(item);
@@ -1025,66 +1048,40 @@ async function getBalance() {
             };
         }
 
-        const options = {
+        // browserRequest: modules/browserHttp.js
+        const res = await browserRequest({
             hostname: 'image.novelai.net',
             port: 443,
             path: '/user/subscription',
             method: 'GET',
             headers: {
-                "accept": "*/*",
-                "accept-language": "en-US,en;q=0.9,en-GB;q=0.8",
-                "authorization": `Bearer ${novelAiApiKey}`,
-                "content-type": "application/json",
-                "priority": "u=1, i",
-                "sec-ch-ua": "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\", \"Microsoft Edge\";v=\"138\"",
-                "sec-ch-ua-mobile": "?0",
-                "sec-ch-ua-platform": "\"macOS\"",
-                "sec-fetch-dest": "empty",
-                "sec-fetch-mode": "cors",
-                "sec-fetch-site": "same-site",
-                "x-correlation-id": crypto.randomBytes(3).toString('hex').toUpperCase(),
-                "x-initiated-at": new Date().toISOString(),
-                "referer": "https://novelai.net/",
-                "origin": "https://novelai.net",
-                "sec-gpc": "1",
-                "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0"
-              }
-        };
-        
-        const balanceData = await new Promise((resolve, reject) => {
-            const req = https.request(options, (res) => {
-                let data = [];
-                res.on('data', chunk => data.push(chunk));
-                res.on('end', () => {
-                    const buffer = Buffer.concat(data);
-                    if (res.statusCode === 200) {
-                        try {
-                            const response = JSON.parse(buffer.toString());
-                            apiKeyManager.recordApiSuccess('novelai');
-                            resolve(response);
-                        } catch (e) {
-                            reject(new Error('Invalid JSON response from NovelAI API'));
-                        }
-                    } else {
-                        try {
-                            const errorResponse = JSON.parse(buffer.toString());
-                            apiKeyManager.recordApiFailure('novelai', res.statusCode, errorResponse.message || errorResponse.error);
-                            reject(new Error(`Balance API error: ${errorResponse.message || errorResponse.error || 'Unknown error'}`));
-                        } catch (e) {
-                            apiKeyManager.recordApiFailure('novelai', res.statusCode, `HTTP ${res.statusCode}`);
-                            reject(new Error(`Balance API error: HTTP ${res.statusCode}`));
-                        }
-                    }
-                });
-            });
-            
-            req.on('error', error => {
-                console.error('❌ Balance API request error:', error.message);
-                reject(error);
-            });
-            
-            req.end();
-        });
+                accept: '*/*',
+                'content-type': 'application/json',
+                authorization: `Bearer ${novelAiApiKey}`,
+                'x-initiated-at': new Date().toISOString(),
+                'sec-gpc': '1'
+            }
+        }, null, { acceptResType: 'json', json: false });
+
+        let balanceData;
+        if (res.statusCode === 200) {
+            try {
+                balanceData = JSON.parse(res.body.toString());
+                apiKeyManager.recordApiSuccess('novelai');
+            } catch (e) {
+                throw new Error('Invalid JSON response from NovelAI API');
+            }
+        } else {
+            try {
+                const errorResponse = JSON.parse(res.body.toString());
+                apiKeyManager.recordApiFailure('novelai', res.statusCode, errorResponse.message || errorResponse.error);
+                throw new Error(`Balance API error: ${errorResponse.message || errorResponse.error || 'Unknown error'}`);
+            } catch (e) {
+                if (e.message && e.message.startsWith('Balance API error:')) throw e;
+                apiKeyManager.recordApiFailure('novelai', res.statusCode, `HTTP ${res.statusCode}`);
+                throw new Error(`Balance API error: HTTP ${res.statusCode}`);
+            }
+        }
         
         // Extract training steps information
         const fixedTrainingStepsLeft = balanceData?.trainingStepsLeft?.fixedTrainingStepsLeft || 0;
@@ -1133,32 +1130,6 @@ async function getUserData() {
             };
         }
 
-        const options = {
-            hostname: 'image.novelai.net',
-            port: 443,
-            path: '/user/data',
-            method: 'GET',
-            headers: {
-                "accept": "*/*",
-                "accept-language": "en-US,en;q=0.9,en-GB;q=0.8",
-                "authorization": `Bearer ${novelAiApiKey}`,
-                "content-type": "application/json",
-                "priority": "u=1, i",
-                "sec-ch-ua": "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\", \"Microsoft Edge\";v=\"138\"",
-                "sec-ch-ua-mobile": "?0",
-                "sec-ch-ua-platform": "\"macOS\"",
-                "sec-fetch-dest": "empty",
-                "sec-fetch-mode": "cors",
-                "sec-fetch-site": "same-site",
-                "x-correlation-id": crypto.randomBytes(3).toString('hex').toUpperCase(),
-                "x-initiated-at": new Date().toISOString(),
-                "referer": "https://novelai.net/",
-                "origin": "https://novelai.net",
-                "sec-gpc": "1",
-                "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0"
-              }
-        };
-
         // Helper function to check if error is retryable (network errors)
         const isRetryableError = (error) => {
             if (!error || !error.code) return false;
@@ -1167,46 +1138,48 @@ async function getUserData() {
         };
 
         // Helper function to make the API request
-        const makeRequest = () => {
-            return new Promise((resolve, reject) => {
-                const req = https.request(options, (res) => {
-                    let data = [];
-                    res.on('data', chunk => data.push(chunk));
-                    res.on('end', () => {
-                        const buffer = Buffer.concat(data);
-                        if (res.statusCode === 200) {
-                            try {
-                                const response = JSON.parse(buffer.toString());
-                                apiKeyManager.recordApiSuccess('novelai');
-                                resolve({
-                                    ok: true,
-                                    ...response,
-                                });
-                            } catch (e) {
-                                reject(new Error('Invalid JSON response from NovelAI API'));
-                            }
-                        } else {
-                            try {
-                                const errorResponse = JSON.parse(buffer.toString());
-                                console.error('❌ User data API error:', errorResponse);
-                                apiKeyManager.recordApiFailure('novelai', res.statusCode, errorResponse.message);
-                                resolve({
-                                    ok: false,
-                                    statusCode: res.statusCode,
-                                    error: errorResponse.message || 'Unknown error'
-                                })
-                            } catch (e) {
-                                apiKeyManager.recordApiFailure('novelai', res.statusCode, `HTTP ${res.statusCode}`);
-                                reject(new Error(`User data API error: HTTP ${res.statusCode}`));
-                            }
-                        }
-                    });
-                });
-                req.on('error', error => {
-                    reject(error);
-                });
-                req.end();
-            });
+        // browserRequest: modules/browserHttp.js
+        const makeRequest = async () => {
+            const res = await browserRequest({
+                hostname: 'image.novelai.net',
+                port: 443,
+                path: '/user/data',
+                method: 'GET',
+                headers: {
+                    accept: '*/*',
+                    'content-type': 'application/json',
+                    authorization: `Bearer ${novelAiApiKey}`,
+                    'x-initiated-at': new Date().toISOString(),
+                    'sec-gpc': '1'
+                }
+            }, null, { acceptResType: 'json', json: false });
+
+            if (res.statusCode === 200) {
+                try {
+                    const response = JSON.parse(res.body.toString());
+                    apiKeyManager.recordApiSuccess('novelai');
+                    return {
+                        ok: true,
+                        ...response,
+                    };
+                } catch (e) {
+                    throw new Error('Invalid JSON response from NovelAI API');
+                }
+            }
+
+            try {
+                const errorResponse = JSON.parse(res.body.toString());
+                console.error('❌ User data API error:', errorResponse);
+                apiKeyManager.recordApiFailure('novelai', res.statusCode, errorResponse.message);
+                return {
+                    ok: false,
+                    statusCode: res.statusCode,
+                    error: errorResponse.message || 'Unknown error'
+                };
+            } catch (e) {
+                apiKeyManager.recordApiFailure('novelai', res.statusCode, `HTTP ${res.statusCode}`);
+                throw new Error(`User data API error: HTTP ${res.statusCode}`);
+            }
         };
 
         // Retry logic
@@ -1429,6 +1402,37 @@ app.use('/previews/:preview', authMiddleware, (req, res) => {
 app.get('/naxCache/:gallerySlug/:filename', authMiddleware, (req, res) => {
     handleNaxImageRequest(globalResources, req, res, cacheDir);
 });
+// Agora / Explore: lazy-fetch missing thumbs/blobs into .cache/explore_files before static serve
+app.use('/cache/explore_files', authMiddleware, async (req, res, next) => {
+    try {
+        const base = path.basename(String(req.path || '').replace(/^\/+/, ''));
+        if (!base || base.includes('..')) return next();
+        const abs = path.join(cacheDir, 'explore_files', base);
+        if (fs.existsSync(abs)) return next();
+
+        const thumbMatch = /^thumb_([0-9a-fA-F-]{36})(?:\.[a-zA-Z0-9]+)?$/.exec(base);
+        const blobMatch = /^blob_([0-9a-fA-F-]{36})(?:\.[a-zA-Z0-9]+)?$/.exec(base);
+        const match = thumbMatch || blobMatch;
+        if (!match) return next();
+
+        const explore = globalResources.getNovelaiExploreGallery?.();
+        if (!explore || typeof explore.ensureExploreImage !== 'function') return next();
+        const apiKeyManager = globalResources.getApiKeyManager?.();
+        const kind = blobMatch ? 'blob' : 'thumbnail';
+        const ensured = await explore.ensureExploreImage(match[1], kind, {
+            apiKey: apiKeyManager?.getActiveApiKey?.('novelai'),
+            apiKeyManager
+        });
+        if (ensured?.filePath && path.basename(ensured.filePath) !== base) {
+            // Content-Type may have added an extension; redirect to actual cached name
+            return res.redirect(302, `/cache/explore_files/${path.basename(ensured.filePath)}`);
+        }
+        return next();
+    } catch (err) {
+        console.warn('[explore_files] ensure failed:', err.message);
+        return next();
+    }
+});
 app.use('/cache', authMiddleware, (req, res, next) => {
     // Wallpapers reuse a stable per-workspace path (/cache/wallpapers/<id>.png) but the
     // content is overwritten on every upload, so they must revalidate (ETag/Last-Modified)
@@ -1557,6 +1561,71 @@ app.use('/images/:filename', authMiddleware, async (req, res) => {
     // Handle download request
     if (req.query.download === 'true') {
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    }
+
+    // Clipboard / origin Comment: restore tEXt Comment from stealth (pre-forge NAI Comment)
+    if ((req.query.clipboardOrigin === 'true' || req.query.clipboard === 'true')
+        && path.extname(filename).toLowerCase() === '.png') {
+        try {
+            const imageBuffer = fs.readFileSync(filePath);
+            const pngMeta = globalResources.getPngMetadata();
+            // restoreOriginCommentFromStealth: modules/pngMetadata.js
+            const restored = await pngMeta.restoreOriginCommentFromStealth(imageBuffer);
+            const outBuffer = restored.restored ? restored.buffer : imageBuffer;
+            // verifyNovelAiSignature: modules/pngMetadata.js
+            const naiSig = await pngMeta.verifyNovelAiSignature(outBuffer);
+            res.setHeader('X-NovelAI-Signature-Valid', naiSig.ok ? 'true' : 'false');
+            res.setHeader('Access-Control-Expose-Headers', 'X-NovelAI-Signature-Valid');
+            res.setHeader('Content-Type', 'image/png');
+            res.setHeader('Content-Length', outBuffer.length);
+            res.setHeader('Cache-Control', 'no-store');
+            if (restored.restored) {
+                console.log(`[/images clipboardOrigin] Restored origin Comment for ${filename} (${outBuffer.length} bytes, naiSig=${naiSig.ok})`);
+            } else {
+                console.log(`[/images clipboardOrigin] No stealth origin for ${filename}; sending original (naiSig=${naiSig.ok})`);
+            }
+            return res.send(outBuffer);
+        } catch (error) {
+            console.error('Error processing clipboardOrigin:', error);
+            // Fall through to normal file sending
+        }
+    }
+
+    // Download: attest NovelAI (+ Forge when forge_data is present) via response headers
+    if (req.query.download === 'true' && path.extname(filename).toLowerCase() === '.png') {
+        try {
+            const imageBuffer = fs.readFileSync(filePath);
+            const pngMeta = globalResources.getPngMetadata();
+            // verifyNovelAiSignature: modules/pngMetadata.js
+            const naiSig = await pngMeta.verifyNovelAiSignature(imageBuffer);
+            res.setHeader('X-NovelAI-Signature-Valid', naiSig.ok ? 'true' : 'false');
+            const expose = ['X-NovelAI-Signature-Valid'];
+
+            let hasForgeData = false;
+            try {
+                const comment = JSON.parse(pngMeta.readMetadata(imageBuffer).tEXt?.Comment || '{}');
+                hasForgeData = !!(comment && comment.forge_data);
+            } catch (_) { /* ignore */ }
+
+            let forgeOk = null;
+            if (hasForgeData) {
+                // verifyForgeSignature: modules/pngMetadata.js
+                const forgeSig = await pngMeta.verifyForgeSignature(imageBuffer);
+                forgeOk = forgeSig.ok;
+                res.setHeader('X-Forge-Signature-Valid', forgeOk ? 'true' : 'false');
+                expose.push('X-Forge-Signature-Valid');
+            }
+
+            res.setHeader('Access-Control-Expose-Headers', expose.join(', '));
+            res.setHeader('Content-Type', 'image/png');
+            res.setHeader('Content-Length', imageBuffer.length);
+            console.log(`[/images download] ${filename} naiSig=${naiSig.ok}` +
+                (forgeOk !== null ? ` forgeSig=${forgeOk}` : ''));
+            return res.send(imageBuffer);
+        } catch (error) {
+            console.error('Error processing download signature headers:', error);
+            // Fall through to normal file sending
+        }
     }
 
     // Handle stripContext query parameter for PNG files

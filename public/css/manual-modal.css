@@ -14,8 +14,9 @@ div#manualModal:not(.windowed) {
 
 /* Manual modal title bar - hidden by default (maximized), shown when windowed */
 #manualModal:not(.windowed) .modal-window-title,
-#manualModal:not(.windowed) .modal-window-controls {
-    display: none;
+#manualModal:not(.windowed) .modal-window-controls,
+#manualModal:not(.windowed) .resize-handle {
+    display: none !important;
 }
 
 /* Manual modal windowed state */
@@ -161,6 +162,12 @@ div#manualModal:not(.windowed) {
     transition: opacity 0.5s ease-in-out;
     z-index: 0;
     border-radius: var(--border-radius-xl);
+    /* @blur.webp used sharp.blur(10); BlurHash/@lq need CSS soft-focus */
+    -webkit-filter: blur(28px) brightness(0.72);
+    filter: blur(28px) brightness(0.72);
+    transform: scale(1.18);
+    transform-origin: center center;
+    will-change: opacity, filter;
 }
 
 .manual-preview-content {
@@ -431,27 +438,28 @@ div#manualModal:not(.windowed) {
     right: unset;
 }
 
-@media (hover: hover) {
-    .manual-preview-content .manual-preview-image-container img.manual-preview-original-image:hover:not(:disabled) {
+/* hover capability: html.can-hover (see app.html bootstrap) */
+
+    html.can-hover .manual-preview-content .manual-preview-image-container img.manual-preview-original-image:hover:not(:disabled) {
         opacity: 1;
         transform: translateY(-50%) translateX(calc(100% - 72px));
         height: 55%;
         border-radius: 0px;
     }
 
-    .manual-preview-content .manual-preview-image-container.swapped .manual-preview-original-image:hover:not(:disabled) {
+    html.can-hover .manual-preview-content .manual-preview-image-container.swapped .manual-preview-original-image:hover:not(:disabled) {
         opacity: 1;
         transform: translateY(-50%) translateX(calc(-100% + 72px));
     }
 
-    .manual-preview-content:hover:not(:disabled) .manual-preview-image-container img.manual-preview-original-image {
+    html.can-hover .manual-preview-content:hover:not(:disabled) .manual-preview-image-container img.manual-preview-original-image {
         opacity: 0.75;
     }
 
-    .manual-preview-content:not(:hover) .manual-preview-controls-top-left {
+    html.can-hover .manual-preview-content:not(:hover) .manual-preview-controls-top-left {
         opacity: 0;
     }
-}
+
 
 #manualPreviewCloseBtn {
     -webkit-backdrop-filter: blur(3px);
@@ -723,10 +731,11 @@ div#manualModal:not(.windowed) {
     transition: var(--transition-preview-control);
 }
 
-@media (hover: hover) {
+/* hover capability: html.can-hover (see app.html bootstrap) */
 
-    .manual-preview-content:not(:hover) .btn-secondary:not(:hover):not(#manualPreviewCloseBtn),
-    .manual-preview-content:not(:hover) .btn-danger:not(:hover) {
+
+    html.can-hover .manual-preview-content:not(:hover) .btn-secondary:not(:hover):not(#manualPreviewCloseBtn),
+html.can-hover .manual-preview-content:not(:hover) .btn-danger:not(:hover) {
         background: hsl(0 0% 0% / 0%);
         border-color: hsl(0 0% 0% / 0%);
         box-shadow: none;
@@ -738,7 +747,7 @@ div#manualModal:not(.windowed) {
         color: var(--text-accent-tinted);
     }
 
-    .manual-preview-content:not(:hover) .btn-primary:not(:hover) {
+    html.can-hover .manual-preview-content:not(:hover) .btn-primary:not(:hover) {
         box-shadow: none;
         -webkit-backdrop-filter: none;
         backdrop-filter: none;
@@ -748,109 +757,111 @@ div#manualModal:not(.windowed) {
         color: var(--text-accent-tinted);
     }
 
-    .manual-preview-content:not(:hover) .btn-danger:not(:hover) {
+    html.can-hover .manual-preview-content:not(:hover) .btn-danger:not(:hover) {
         color: hsl(0, 100%, 85%);
     }
-}
 
-@media (hover: hover) {
-    .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner {
+
+/* hover capability: html.can-hover (see app.html bootstrap) */
+
+    html.can-hover .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner {
         max-width: 85%;
         max-height: 85%;
         will-change: max-width, max-height;
     }
 
-    .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner #manualPreviewImage {
+    html.can-hover .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner #manualPreviewImage {
         box-shadow: 0 0px 40px 5px hsl(0deg 0% 0% / 50%);
         will-change: box-shadow;
     }
 
     /* Inhibit preview hover zoom until generation completes */
-    .generating .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner {
+    html.can-hover .generating .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner {
         max-width: 75%;
         max-height: 75%;
     }
 
-    .generating.manual-preview-dynamic-gen-active .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner {
+    html.can-hover .generating.manual-preview-dynamic-gen-active .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner {
         max-width: 65%;
         max-height: 65%;
     }
 
-    .streaming .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner {
+    html.can-hover .streaming .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner {
         max-width: 87.5%;
         max-height: 87.5%;
     }
 
-    .generating .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner #manualPreviewImage,
-    .streaming .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner #manualPreviewImage {
+    html.can-hover .generating .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner #manualPreviewImage,
+html.can-hover .streaming .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner #manualPreviewImage {
         box-shadow: 0 0px 0px 0px hsl(0deg 0% 0% / 0%);
     }
-}
 
-/* Touch / no-hover devices: preview controls stay in their resting (as-if-preview-hovered) visible state and get no hover styling, preventing focus/hover locking after a tap. Resting values mirror the base button rules in app.css. */
-@media (hover: none) {
-    .manual-preview-container .btn-primary:hover:not(:disabled) {
+
+/* True touch-only (html.no-hover): preview controls stay in their resting (as-if-preview-hovered) visible state and get no hover styling, preventing focus/hover locking after a tap. Resting values mirror the base button rules in app.css. */
+/* hover capability: html.no-hover (see app.html bootstrap) */
+
+    html.no-hover .manual-preview-container .btn-primary:hover:not(:disabled) {
         background: var(--primary-glass-color);
         border-color: var(--primary-glass-border);
         box-shadow: var(--glass-shadow-3), inset 0 0 15px #ffffff2b;
         color: var(--text-accent-tinted);
     }
 
-    .manual-preview-container .btn-secondary:hover:not(:disabled),
-    .manual-preview-container .pswp__button--custom:hover:not(:disabled) {
+    html.no-hover .manual-preview-container .btn-secondary:hover:not(:disabled),
+html.no-hover .manual-preview-container .pswp__button--custom:hover:not(:disabled) {
         background: var(--glass-layer-3);
         border-color: var(--glass-border-3);
         box-shadow: var(--glass-shadow-3), inset 0 0 15px #ffffff2b;
         color: var(--text-accent-tinted);
     }
 
-    .manual-preview-container .btn-danger:hover:not(:disabled) {
+    html.no-hover .manual-preview-container .btn-danger:hover:not(:disabled) {
         background: var(--danger-glass-color);
         border-color: var(--danger-glass-border);
         box-shadow: var(--glass-shadow-3);
         color: hsl(0 100% 85%);
     }
 
-    .manual-preview-content .manual-preview-controls-top-left {
+    html.no-hover .manual-preview-content .manual-preview-controls-top-left {
         opacity: 1;
     }
 
-    .manual-preview-content .dynamic-generation-overlay {
+    html.no-hover .manual-preview-content .dynamic-generation-overlay {
         opacity: 1;
     }
 
-    .manual-preview-content .dynamic-generation-overlay-body {
+    html.no-hover .manual-preview-content .dynamic-generation-overlay-body {
         gap: 12px;
     }
 
-    .manual-preview-content .overlay-time {
+    html.no-hover .manual-preview-content .overlay-time {
         font-size: 2.75em;
     }
 
-    .manual-preview-content .overlay-weather-info {
+    html.no-hover .manual-preview-content .overlay-weather-info {
         opacity: 1;
     }
 
-    .manual-preview-content .overlay-weather-icon .wi {
+    html.no-hover .manual-preview-content .overlay-weather-icon .wi {
         font-size: 2.5em;
         padding-top: 0;
     }
 
-    .manual-preview-content .manual-preview-image-container-inner,
-    .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner {
+    html.no-hover .manual-preview-content .manual-preview-image-container-inner,
+html.no-hover .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner {
         max-width: 100%;
         max-height: 100%;
     }
 
-    .manual-preview-content .manual-preview-image-container-inner #manualPreviewImage,
-    .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner #manualPreviewImage {
+    html.no-hover .manual-preview-content .manual-preview-image-container-inner #manualPreviewImage,
+html.no-hover .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner #manualPreviewImage {
         box-shadow: 0 15px 20px 0px hsl(0deg 0% 0% / 20%);
     }
 
-    .manual-preview-content:hover:not(:disabled) .manual-preview-image-container img.manual-preview-original-image {
+    html.no-hover .manual-preview-content:hover:not(:disabled) .manual-preview-image-container img.manual-preview-original-image {
         opacity: 0;
     }
-}
+
 
 /* Manual Preview Workspace Overlay */
 .manual-preview-workspace-overlay {
@@ -933,13 +944,14 @@ div#manualModal:not(.windowed) {
     animation: workspaceFadeIn 0.5s ease-out forwards;
 }
 
-@media (hover: hover) {
-    .workspace-image-item:hover:not(:disabled) {
+/* hover capability: html.can-hover (see app.html bootstrap) */
+
+    html.can-hover .workspace-image-item:hover:not(:disabled) {
         transform: scale(1.05);
         box-shadow: var(--glass-shadow-3);
         border-color: var(--primary-color);
     }
-}
+
 
 .workspace-image-item img {
     width: 100%;
@@ -948,11 +960,12 @@ div#manualModal:not(.windowed) {
     transition: opacity 0.2s ease;
 }
 
-@media (hover: hover) {
-    .workspace-image-item:hover:not(:disabled) img {
+/* hover capability: html.can-hover (see app.html bootstrap) */
+
+    html.can-hover .workspace-image-item:hover:not(:disabled) img {
         opacity: 0.8;
     }
-}
+
 
 @keyframes workspaceFadeIn {
     from {
@@ -1015,11 +1028,12 @@ div#manualModal:not(.windowed) {
     opacity: 1;
 }
 
-@media (hover: hover) {
-    .manual-preview-content:not(:hover) .dynamic-generation-overlay {
+/* hover capability: html.can-hover (see app.html bootstrap) */
+
+    html.can-hover .manual-preview-content:not(:hover) .dynamic-generation-overlay {
         opacity: 0.5;
     }
-}
+
 
 /* Rentan overlay hover affordances disabled while generating */
 .generating .manual-preview-content .dynamic-generation-overlay,
@@ -1027,28 +1041,29 @@ div#manualModal:not(.windowed) {
     opacity: 1;
 }
 
-@media (hover: hover) {
-    .generating .manual-preview-content .dynamic-generation-overlay-body,
-    .generating .manual-preview-content:hover .dynamic-generation-overlay-body {
+/* hover capability: html.can-hover (see app.html bootstrap) */
+
+    html.can-hover .generating .manual-preview-content .dynamic-generation-overlay-body,
+html.can-hover .generating .manual-preview-content:hover .dynamic-generation-overlay-body {
         gap: 6px;
     }
 
-    .generating .manual-preview-content .overlay-time,
-    .generating .manual-preview-content:hover .overlay-time {
+    html.can-hover .generating .manual-preview-content .overlay-time,
+html.can-hover .generating .manual-preview-content:hover .overlay-time {
         font-size: 2.5em;
     }
 
-    .generating .manual-preview-content .overlay-weather-info,
-    .generating .manual-preview-content:hover .overlay-weather-info {
+    html.can-hover .generating .manual-preview-content .overlay-weather-info,
+html.can-hover .generating .manual-preview-content:hover .overlay-weather-info {
         opacity: 0;
     }
 
-    .generating .manual-preview-content .overlay-weather-icon .wi,
-    .generating .manual-preview-content:hover .overlay-weather-icon .wi {
+    html.can-hover .generating .manual-preview-content .overlay-weather-icon .wi,
+html.can-hover .generating .manual-preview-content:hover .overlay-weather-icon .wi {
         font-size: 1.75em;
         padding-top: 0.25em;
     }
-}
+
 
 /* Rentan Overlay */
 .dynamic-generation-overlay {
@@ -1079,11 +1094,12 @@ div#manualModal:not(.windowed) {
     transition: gap var(--transition-slow);
 }
 
-@media (hover: hover) {
-    .manual-preview-content:hover:not(:disabled) .dynamic-generation-overlay-body {
+/* hover capability: html.can-hover (see app.html bootstrap) */
+
+    html.can-hover .manual-preview-content:hover:not(:disabled) .dynamic-generation-overlay-body {
         gap: 12px;
     }
-}
+
 
 .overlay-time-section {
     flex: 1;
@@ -1105,11 +1121,12 @@ div#manualModal:not(.windowed) {
     transition: font-size var(--transition-slow);
 }
 
-@media (hover: hover) {
-    .manual-preview-content:hover:not(:disabled) .overlay-time {
+/* hover capability: html.can-hover (see app.html bootstrap) */
+
+    html.can-hover .manual-preview-content:hover:not(:disabled) .overlay-time {
         font-size: 2.75em;
     }
-}
+
 
 .overlay-weather-section {
     flex: 2;
@@ -1131,11 +1148,12 @@ div#manualModal:not(.windowed) {
     transition: opacity var(--transition-slow);
 }
 
-@media (hover: hover) {
-    .manual-preview-content:hover:not(:disabled) .overlay-weather-info {
+/* hover capability: html.can-hover (see app.html bootstrap) */
+
+    html.can-hover .manual-preview-content:hover:not(:disabled) .overlay-weather-info {
         opacity: 1;
     }
-}
+
 
 .overlay-weather-condition {
     font-size: 0.65em;
@@ -1191,12 +1209,13 @@ div#manualModal:not(.windowed) {
     padding-top: 0.25em;
 }
 
-@media (hover: hover) {
-    .manual-preview-content:hover:not(:disabled) .overlay-weather-icon .wi {
+/* hover capability: html.can-hover (see app.html bootstrap) */
+
+    html.can-hover .manual-preview-content:hover:not(:disabled) .overlay-weather-icon .wi {
         font-size: 2.5em;
         padding-top: 0em;
     }
-}
+
 
 .weather-fallback-icon {
     font-size: 20px;
@@ -2615,11 +2634,27 @@ i#carouselCacheIcon {
     display: none;
 }
 
+.prompt-textarea-toolbar.emphasis-mode .token-info-container,
+.prompt-textarea-toolbar.emphasis-mode .toolbar-left > .token-count {
+    display: none;
+}
+
 .prompt-textarea-toolbar.emphasis-mode .toolbar-emphasis-elements {
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
     justify-content: flex-start;
+}
+
+.emphasis-group-chip .emphasis-group-chip-value {
+    font-variation-settings: "wght" 600;
+    font-size: 0.95em;
+    min-width: 1.6em;
+    text-align: center;
+}
+
+.emphasis-group-chip.has-group-value {
+    min-width: 2.4em;
 }
 
 .prompt-textarea-toolbar .toggle-btn[data-state="on"] {

@@ -18,7 +18,7 @@ function handleImageGenerationErrorMessage(message, wsClient) {
     }
 
     if (message.requestId) {
-        let errorMsg = message.error || 'Image generation failed';
+        let errorMsg = message.error || message.data?.message || 'Image generation failed';
 
         if (message.details) {
             errorMsg += `\nDetails: ${message.details}`;
@@ -27,12 +27,24 @@ function handleImageGenerationErrorMessage(message, wsClient) {
             console.error('❌ Error stack:', message.stack);
         }
 
-        wsClient.resolveRequest(message.requestId, null, new Error(errorMsg));
+        const err = new Error(errorMsg);
+        const statusCode = message.statusCode ?? message.data?.statusCode;
+        const errorCode = message.code ?? message.data?.code;
+        if (statusCode != null) {
+            err.statusCode = statusCode;
+            err.status = statusCode;
+        }
+        if (errorCode != null) {
+            err.code = errorCode;
+        }
+        wsClient.resolveRequest(message.requestId, null, err);
     }
 
     if (typeof isGenerating !== 'undefined') {
         isGenerating = false;
     }
+    // updateImageGenerationIndicator: public/scripts/comp/trayIndicators.js
+    updateImageGenerationIndicator();
 
     // updateManualGenerateBtnState: public/scripts/comp/manualFormHelpers.js
     if (typeof updateManualGenerateBtnState === 'function') {

@@ -12,6 +12,7 @@
     "ai": "^4.2.0",
     "axios": "^1.6.0",
     "better-sqlite3": "^12.2.0",
+    "blurhash": "^2.0.5",
     "bottleneck": "^2.19.5",
     "canvas": "^3.1.2",
     "clarinet": "^0.12.6",

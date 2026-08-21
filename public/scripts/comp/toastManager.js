@@ -26,6 +26,28 @@ let toastCounter = 0;
  */
 const activeToasts = new Map();
 
+function _clearToastDismissTimer(stored) {
+    if (!stored?.timeoutId) return;
+    clearTimeout(stored.timeoutId);
+    stored.timeoutId = null;
+}
+
+function _setToastDismissTimer(toastId, delay) {
+    const stored = activeToasts.get(toastId);
+    if (!stored || delay === false) return null;
+    _clearToastDismissTimer(stored);
+    const timeoutId = setTimeout(() => {
+        const current = activeToasts.get(toastId);
+        if (current?.timeoutId === timeoutId) {
+            current.timeoutId = null;
+        }
+        removeGlassToast(toastId);
+    }, Math.max(0, Number(delay) || 0));
+    stored.timeoutId = timeoutId;
+    activeToasts.set(toastId, stored);
+    return timeoutId;
+}
+
 /**
  * Global button handler registry for toast buttons
  * @type {Map<number, object>}
@@ -317,6 +339,13 @@ function _showDesktopPopupForToast(toastId, type, title, message, timeout, custo
         return false;
     }
 
+    for (const [existingId, existing] of activeToasts) {
+        if (existingId !== toastId && existing.desktopPopoverAnchor === anchor) {
+            removeGlassToast(existingId);
+            break;
+        }
+    }
+
     const resolvedTimeout = timeout === false ? 8000 : timeout;
     const revealGenerationIndicator = title === 'Generation Complete' && anchor.classList.contains('hidden');
     if (revealGenerationIndicator) {
@@ -486,9 +515,7 @@ function _appendGlassToastDom(toastId, type, title, message, showProgress, timeo
     });
 
     if (timeout !== false && !showProgress) {
-        setTimeout(() => {
-            removeGlassToast(toastId);
-        }, timeout);
+        _setToastDismissTimer(toastId, timeout);
     }
 }
 
@@ -534,7 +561,8 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
         inAppOnly,
         timeout: resolvedTimeout,
         nativeRouted: false,
-        desktopPopoverAnchor: null
+        desktopPopoverAnchor: null,
+        timeoutId: null
     });
 
     if (!buttons && _promoteToastToDesktopPopupIfWired(toastId, type, title, message, showProgress, resolvedTimeout, customIcon)) {
@@ -550,9 +578,7 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
         if (buttons) _androidNotifyToast(toastId, 'updateNotificationActions', numericId, _getAndroidActionsJson(toastId));
 
         if (resolvedTimeout !== false && !showProgress) {
-            setTimeout(() => {
-                removeGlassToast(toastId);
-            }, resolvedTimeout);
+            _setToastDismissTimer(toastId, resolvedTimeout);
         }
 
         return toastId;
@@ -655,10 +681,11 @@ function removeGlassToast(toastId) {
     if (stored?.nativeRouted && !_isInAppOnlyToast(toastId)) {
         const elapsed = Date.now() - (stored.createdAt || 0);
         if (elapsed < ANDROID_DISMISS_DEFER_MS) {
-            setTimeout(() => removeGlassToast(toastId), ANDROID_DISMISS_DEFER_MS - elapsed);
+            _setToastDismissTimer(toastId, ANDROID_DISMISS_DEFER_MS - elapsed);
             return;
         }
     }
+    _clearToastDismissTimer(stored);
 
     const vibeInterval = vibeEncodingProgressIntervals.get(toastId);
     if (vibeInterval) {
@@ -1340,9 +1367,9 @@ function updateGlassToastComplete(toastId, options = {}) {
 
     if (_shouldRouteToastToNativeBridge(toastId)) {
         if (timeout !== null && timeout !== false) {
-            setTimeout(() => removeGlassToast(toastId), timeout);
+            _setToastDismissTimer(toastId, timeout);
         } else if (showProgress === false) {
-            setTimeout(() => removeGlassToast(toastId), 5000);
+            _setToastDismissTimer(toastId, 5000);
         }
     }
 
@@ -1377,13 +1404,7 @@ function updateGlassToastComplete(toastId, options = {}) {
             // Set default timeout for completed progress toasts
             const stored = activeToasts.get(toastId);
             if (stored) {
-                if (stored.timeoutId) {
-                    clearTimeout(stored.timeoutId);
-                }
-                stored.timeoutId = setTimeout(() => {
-                    removeGlassToast(toastId);
-                }, 5000); // 5 second default timeout
-                activeToasts.set(toastId, stored);
+                _setToastDismissTimer(toastId, 5000);
             }
         }
     }
@@ -1400,15 +1421,10 @@ function updateGlassToastComplete(toastId, options = {}) {
             activeToasts.set(toastId, stored);
 
             // Clear existing timeout and set new one
-            if (stored.timeoutId) {
-                clearTimeout(stored.timeoutId);
-            }
+            _clearToastDismissTimer(stored);
 
             if (timeout !== false) {
-                stored.timeoutId = setTimeout(() => {
-                    removeGlassToast(toastId);
-                }, timeout);
-                activeToasts.set(toastId, stored);
+                _setToastDismissTimer(toastId, timeout);
             }
         }
     }

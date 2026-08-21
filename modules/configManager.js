@@ -609,9 +609,6 @@ class ConfigManager {
                         textareaFont: null,
                         sort: 0,
                         presets: [],
-                        files: [],
-                        scraps: [],
-                        pinned: [],
                         groups: {}
                     }
                 };
@@ -799,16 +796,17 @@ class ConfigManager {
                     } else {
                         // Validate default workspace structure
                         const defaultWs = config.default;
-                        const requiredFields = ['name', 'color', 'sort', 'presets', 'files', 'scraps', 'pinned', 'groups'];
+                        const requiredFields = ['name', 'color', 'sort', 'presets', 'groups'];
                         for (const field of requiredFields) {
                             if (!(field in defaultWs)) {
                                 errors.push(`default workspace missing required field: ${field}`);
                             }
                         }
                         if (!Array.isArray(defaultWs.presets)) errors.push('default.presets must be an array');
-                        if (!Array.isArray(defaultWs.files)) errors.push('default.files must be an array');
-                        if (!Array.isArray(defaultWs.scraps)) errors.push('default.scraps must be an array');
-                        if (!Array.isArray(defaultWs.pinned)) errors.push('default.pinned must be an array');
+                        // Gallery membership (files/scraps/pinned) is SQL-only on disk — optional if present (legacy checkpoints).
+                        if ('files' in defaultWs && !Array.isArray(defaultWs.files)) errors.push('default.files must be an array');
+                        if ('scraps' in defaultWs && !Array.isArray(defaultWs.scraps)) errors.push('default.scraps must be an array');
+                        if ('pinned' in defaultWs && !Array.isArray(defaultWs.pinned)) errors.push('default.pinned must be an array');
                         if (typeof defaultWs.groups !== 'object' || Array.isArray(defaultWs.groups) || defaultWs.groups === null) {
                             errors.push('default.groups must be an object');
                         }
@@ -1142,6 +1140,7 @@ class ConfigManager {
                             workspace.presets = [];
                             modified = true;
                         }
+                        // Gallery membership arrays are SQL-only on disk; keep empty arrays in memory for legacy call sites.
                         if (!Array.isArray(workspace.files)) {
                             workspace.files = [];
                             modified = true;
@@ -1519,6 +1518,23 @@ class ConfigManager {
     }
 
     /**
+     * Strip gallery membership arrays before persisting workspaces.json (SQL is source of truth).
+     * @private
+     */
+    _prepareWorkspacesForDisk(workspaces) {
+        const diskCopy = JSON.parse(JSON.stringify(workspaces));
+        Object.values(diskCopy).forEach((workspace) => {
+            if (!workspace || typeof workspace !== 'object' || Array.isArray(workspace)) {
+                return;
+            }
+            delete workspace.files;
+            delete workspace.scraps;
+            delete workspace.pinned;
+        });
+        return diskCopy;
+    }
+
+    /**
      * Persist config to disk immediately
      * @private
      */
@@ -1535,14 +1551,17 @@ class ConfigManager {
         }
 
         const { skipCheckpoint = false } = options;
+        const dataToWrite = configType === 'workspaces'
+            ? this._prepareWorkspacesForDisk(configData)
+            : configData;
         try {
-            configInfo.checkpointManager.saveWithCheckpoint(configData, {
+            configInfo.checkpointManager.saveWithCheckpoint(dataToWrite, {
                 createCheckpoint: !skipCheckpoint,
                 validateData: true,
                 skipCheckpointIfInvalid: false
             });
 
-            // Update cache metadata from disk to ensure timestamps stay accurate
+            // Keep full in-memory workspaces (including empty gallery arrays for legacy call sites).
             configInfo.cache = configData;
             if (fs.existsSync(configInfo.path)) {
                 const stats = fs.statSync(configInfo.path);

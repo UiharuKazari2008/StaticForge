@@ -39,6 +39,20 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 
 ---
 
+---
+
+---
+
+---
+
+---
+
+---
+
+---
+
+---
+
 ## Detailed packets
 
 ### `generation_quips_clear`

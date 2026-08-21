@@ -254,9 +254,7 @@ function buildAutofillSettingsMenuSections() {
 function handleAutofillSettingsMenuAction(action, item) {
     if (action === 'autofill-open-tool-window') {
         // openAutofillToolWindow: public/scripts/comp/autocompleteUtils.js
-        if (typeof openAutofillToolWindow === 'function') {
-            openAutofillToolWindow(null, { focusSearch: true });
-        }
+        openAutofillToolWindow(null, { focusSearch: true });
         return true;
     }
     if (action === 'autofill-set-search-delay') {

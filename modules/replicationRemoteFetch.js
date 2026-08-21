@@ -7,7 +7,7 @@ const path = require('path');
 const http = require('http');
 const https = require('https');
 const { URL } = require('url');
-const { REPLICATION_ERROR_CODES } = require('./replication/replicationContracts');
+const { REPLICATION_ERROR_CODES, canGalleryUseRemoteMaster } = require('./replication/replicationContracts');
 
 let globalResourcesRef = null;
 let masterReachableCache = { value: null, expiresAt: 0 };
@@ -138,7 +138,7 @@ function invalidateMasterReachableCache() {
 
 async function probeMasterReachable(force = false, globalResources = null) {
     const config = getReplicationConfig(globalResources);
-    if (!config || !config.masterAccessUrl || isAirgapped(config)) {
+    if (!canGalleryUseRemoteMaster(config)) {
         return false;
     }
 
@@ -278,6 +278,7 @@ module.exports = {
     resolveLocalPath,
     localFileExists,
     buildRemoteAssetUrl,
+    httpRequestBuffer,
     probeMasterReachable,
     readAssetBuffer,
     sendReplicationAssetError,

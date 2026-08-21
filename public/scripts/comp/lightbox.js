@@ -426,30 +426,31 @@ function getLightboxDataSource() {
             filenameToShow = img.upscaled;
         }
 
-        // Get metadata for this image to get dimensions
-        let width = 1024; // Default fallback
-        let height = 1024; // Default fallback
-
-        // Try to get dimensions from the image object if available
-        // Use img.width/height first (actual file dimensions) before metadata (which may be from original for expanded images)
-        if (img.width && img.height) {
-            width = img.width;
-            height = img.height;
-        } else if (img.metadata && img.metadata.width && img.metadata.height) {
-            width = img.metadata.width;
-            height = img.metadata.height;
+        // Prefer list-row pixel dims, then actual_* (file), then metadata (may be source size for expands).
+        // Missing dims used to fall through to 1024×1024 and make expanded images look square in PhotoSwipe.
+        let width = Number(img.width) || 0;
+        let height = Number(img.height) || 0;
+        const meta = img.metadata || null;
+        if ((!width || !height) && meta) {
+            width = Number(meta.actual_width || meta.width) || 0;
+            height = Number(meta.actual_height || meta.height) || 0;
+        }
+        if (!width || !height) {
+            width = 0;
+            height = 0;
         }
 
         return {
-            src: `/images/${filenameToShow}`,
-            width: width,
-            height: height,
+            // resolveGalleryFullImageUrl: public/scripts/comp/assetUrlResolver.js
+            src: resolveGalleryFullImageUrl(img) || localGalleryImageUrl(filenameToShow),
+            width: width || undefined,
+            height: height || undefined,
             data: {
                 filename: filenameToShow,
                 base: img.base,
                 upscaled: img.upscaled,
                 original: img.original,
-                metadata: img.metadata || null
+                metadata: meta
             }
         };
     });
@@ -644,6 +645,44 @@ async function initializePhotoSwipe() {
             return adjustThumbBoundsForPhotoSwipeMount(thumbBounds);
         });
 
+        // Correct slide aspect when gallery list lacked width/height (common for expanded images).
+        lightbox.on('loadComplete', (e) => {
+            const slide = e.slide;
+            const img = e.content?.element;
+            if (!slide || !img || e.isError) return;
+            const nw = img.naturalWidth;
+            const nh = img.naturalHeight;
+            if (!(nw > 0 && nh > 0)) return;
+            if (slide.width === nw && slide.height === nh) return;
+
+            slide.width = nw;
+            slide.height = nh;
+            if (slide.data) {
+                slide.data.width = nw;
+                slide.data.height = nh;
+            }
+
+            const fileData = slide.data?.data;
+            const filename = fileData?.filename || fileData?.upscaled || fileData?.original;
+            if (filename && Array.isArray(allImages)) {
+                const galleryItem = allImages.find((item) =>
+                    item.original === filename || item.upscaled === filename || item.filename === filename
+                );
+                if (galleryItem && (galleryItem.width !== nw || galleryItem.height !== nh)) {
+                    galleryItem.width = nw;
+                    galleryItem.height = nh;
+                }
+            }
+
+            if (slide.zoomLevels) {
+                slide.zoomLevels.update(nw, nh, slide.panAreaSize);
+            }
+            slide.updateContentSize(true);
+            if (slide.isActive && lightbox.pswp && !lightbox.pswp.isDestroying) {
+                lightbox.pswp.updateSize(true);
+            }
+        });
+
         // Function to update button visibility based on current slide
         const updateButtonVisibility = (bottomBar, pswp) => {
             if (!bottomBar || !pswp) return;
@@ -777,9 +816,12 @@ async function initializePhotoSwipe() {
                                     // Get the filename - prefer upscaled, fallback to original
                                     const imageData = currentItem.data.data;
                                     const filename = imageData.upscaled || imageData.original || imageData.filename;
-                                    if (filename && window.chatSystem) {
+                                    if (filename) {
                                         // Close PhotoSwipe first, then open chat modal
                                         pswp.close();
+                                        if (window.featureLoader) {
+                                            await window.featureLoader.loadFeature('chat');
+                                        }
                                         let characterName = imageData.characterName || null;
                                         if (!characterName) {
                                             try {
@@ -789,7 +831,9 @@ async function initializePhotoSwipe() {
                                                 characterName = null;
                                             }
                                         }
-                                        window.chatSystem.openChatModal(filename, characterName);
+                                        if (window.chatSystem) {
+                                            window.chatSystem.openChatModal(filename, characterName);
+                                        }
                                     }
                                 }
                             }

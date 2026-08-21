@@ -5,6 +5,7 @@ const { minify: minifyJs } = require('terser');
 const { transform: transformCss } = require('lightningcss');
 const { dedupeCssLiterals } = require('./cssValueDeduper');
 const runtimeCompileLogStore = require('./runtimeCompileLogStore');
+const appIconRuntimeAssets = require('./appIconRuntimeAssets');
 
 const HEADER_MARKER = 'DO NOT EDIT, READ ONLY OPTIMISED VERSION';
 const MANAGED_ROOTS = ['css', 'scripts'];
@@ -528,6 +529,14 @@ async function ensureCompiledForRequest(projectRoot, webPath) {
     if (!isRuntimeManagedWebPath(webPath)) {
         return { changed: false };
     }
+    if (appIconRuntimeAssets.isAppIconWebPath(webPath)) {
+        try {
+            return await appIconRuntimeAssets.ensureCompiledForRequest(projectRoot, webPath);
+        } catch (err) {
+            console.error(`[Runtime Compile] app icon ${webPath}: ${err.message}`);
+            return { changed: false, error: err.message, rel: webPath };
+        }
+    }
     const abs = webPathToSourcePath(projectRoot, webPath);
     if (!fs.existsSync(abs)) {
         return { changed: false };
@@ -600,6 +609,30 @@ async function compileRuntimeAssets(projectRoot, options = {}) {
 
         finalizeStats(stats);
 
+        let appIconResult = null;
+        try {
+            if (showConsoleProgress) {
+                process.stdout.write('[Runtime Compile] App icons…\n');
+            }
+            emitProgress(files.length, files.length, 'static_images/app_icons', stats);
+            appIconResult = await appIconRuntimeAssets.compileAppIcons(projectRoot, { force });
+            compiled += appIconResult.compiled || 0;
+            skipped += appIconResult.skipped || 0;
+            if (Array.isArray(appIconResult.errors) && appIconResult.errors.length > 0) {
+                errors.push(...appIconResult.errors);
+            }
+            if (appIconResult.stats) {
+                stats.sourceBytes += appIconResult.stats.sourceBytes || 0;
+                stats.outputBytes += appIconResult.stats.outputBytes || 0;
+                stats.compiledFiles += appIconResult.stats.compiledFiles || 0;
+                stats.totalFiles += appIconResult.stats.totalFiles || 0;
+                finalizeStats(stats);
+            }
+        } catch (err) {
+            console.error(`[Runtime Compile] app icons: ${err.message}`);
+            errors.push({ file: 'public/static_images/app_icons', error: err.message });
+        }
+
         compileState.complete = true;
         compileState.inProgress = false;
         compileState.lastRunAt = Date.now();
@@ -622,6 +655,7 @@ async function compileRuntimeAssets(projectRoot, options = {}) {
             skipped,
             errors,
             stats,
+            appIcons: appIconResult,
             lastRunAt: compileState.lastRunAt,
             runId
         };
@@ -689,7 +723,10 @@ function isRuntimeManagedWebPath(webPath) {
     if (isManagedWebPath(webPath)) {
         return true;
     }
-    return webPath === WORKSPACE_CSS_WEB_PATH;
+    if (webPath === WORKSPACE_CSS_WEB_PATH) {
+        return true;
+    }
+    return appIconRuntimeAssets.isAppIconWebPath(webPath);
 }
 
 function resolveServedPath(projectRoot, webPath, debugMode) {
@@ -705,6 +742,13 @@ function resolveServedPath(projectRoot, webPath, debugMode) {
         if (compiledPath) {
             return compiledPath;
         }
+    }
+    if (appIconRuntimeAssets.isAppIconWebPath(webPath)) {
+        const iconPath = appIconRuntimeAssets.resolveServedAppIconPath(projectRoot, webPath, debugMode);
+        if (iconPath) {
+            return iconPath;
+        }
+        return webPathToSourcePath(projectRoot, webPath);
     }
     if (debugMode || !isManagedWebPath(webPath)) {
         return webPathToSourcePath(projectRoot, webPath);
@@ -763,5 +807,11 @@ module.exports = {
     setProgressBroadcastCallback,
     setCompileLogBroadcastCallback,
     initCompileLogStore,
-    formatBytes
+    formatBytes,
+    isAppIconWebPath: appIconRuntimeAssets.isAppIconWebPath,
+    isAppIconsMasterRelPath: appIconRuntimeAssets.isAppIconsMasterRelPath,
+    listOptimisedAppIconManifestEntries: appIconRuntimeAssets.listOptimisedAppIconManifestEntries,
+    compileAppIcons: appIconRuntimeAssets.compileAppIcons,
+    APP_ICON_SIZES: appIconRuntimeAssets.ICON_SIZES,
+    APP_ICON_DEFAULT_SIZE: appIconRuntimeAssets.DEFAULT_SIZE
 };

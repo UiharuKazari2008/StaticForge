@@ -34,6 +34,20 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 
 ---
 
+---
+
+---
+
+---
+
+---
+
+---
+
+---
+
+---
+
 ## Detailed packets
 
 ### `get_user_global_settings`

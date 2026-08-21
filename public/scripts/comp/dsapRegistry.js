@@ -17,6 +17,8 @@
  * Use appMenuLocation 'tools' (or appMenu: false) to control in-window app menu placement.
  * - activate(shell, match) gives full control (used by core domains and complex shims).
  * - getContent(match) + drivers for self-contained hosted content.
+ * - Host context menus: host.registerContextMenuItems / registerContextMenuAction + data-dsap-ctx-* attrs
+ *   (see collectDsapHostContextMenuItems / dispatchDsapContextMenuAction; Grimoire chrome in tagWikiSearchModal.js).
  * - See grimoireCoreDomains.js and dsapManifests.js for examples.
  *
  * Grimoire navigate/render: public/scripts/comp/tagWikiSearchModal.js
@@ -604,6 +606,17 @@ function deactivateDsapOnShell(shell, options = {}) {
     const rootEl = state.rootEl || state.host?.getRoot?.();
     teardownDsapDropdownsInRoot(rootEl);
 
+    // customScrollbar: public/scripts/comp/customScrollbar.js — release Map + observers before DOM wipe
+    if (rootEl && customScrollbar) {
+        rootEl.querySelectorAll('[data-custom-scrollbar], .form-section-scroll').forEach((el) => {
+            customScrollbar.destroy(el);
+        });
+    }
+
+    if (state.host && typeof state.host.clearContextMenuItems === 'function') {
+        state.host.clearContextMenuItems();
+    }
+
     if (state.driver && typeof state.driver.destroy === 'function') {
         try {
             state.driver.destroy(state.host);
@@ -658,7 +671,7 @@ function createDsapHost(shell, registration, url, rootEl) {
         navigate(pseudoUrl) {
             if (typeof shell.navigate === 'function') {
                 shell.navigate(pseudoUrl);
-            } else if (tagWikiSearchModal && typeof tagWikiSearchModal.navigate === 'function') {
+            } else if (typeof tagWikiSearchModal !== 'undefined' && tagWikiSearchModal && tagWikiSearchModal.navigate) {
                 tagWikiSearchModal.navigate(pseudoUrl);
             }
         },
@@ -740,11 +753,235 @@ function createDsapHost(shell, registration, url, rootEl) {
 
         getWsClient() {
             return window.wsClient || null;
+        },
+
+        /**
+         * Register context-menu items for matching elements inside this applet.
+         * @param {string|function} match CSS selector or (el, ctx) => boolean
+         * @param {Array|function} itemsOrBuilder list items or (el, ctx) => items[]
+         * @returns {function} unregister
+         */
+        registerContextMenuItems(match, itemsOrBuilder) {
+            if (!match || itemsOrBuilder == null) return () => {};
+            const entry = { match, itemsOrBuilder };
+            host._contextMenuRegistrations.push(entry);
+            return () => {
+                const idx = host._contextMenuRegistrations.indexOf(entry);
+                if (idx >= 0) host._contextMenuRegistrations.splice(idx, 1);
+            };
+        },
+
+        /** Register a handler for declarative / string action ids (e.g. data-dsap-ctx-action). */
+        registerContextMenuAction(actionId, handler) {
+            const id = String(actionId || '').trim();
+            if (!id || typeof handler !== 'function') return () => {};
+            host._contextMenuActions.set(id, handler);
+            return () => {
+                if (host._contextMenuActions.get(id) === handler) {
+                    host._contextMenuActions.delete(id);
+                }
+            };
+        },
+
+        clearContextMenuItems() {
+            host._contextMenuRegistrations.length = 0;
+            host._contextMenuActions.clear();
         }
     };
 
     host._listeners = listeners;
+    host._contextMenuRegistrations = [];
+    host._contextMenuActions = new Map();
     return host;
+}
+
+/**
+ * Collect applet-contributed context menu list items for a click target.
+ * Merge order for callers: registered (deepest) → declarative attrs → (caller adds link/image + chrome).
+ * @returns {{ items: Array, actionElement: Element|null }}
+ */
+function collectDsapHostContextMenuItems(host, clickEl) {
+    const empty = { items: [], actionElement: null };
+    if (!host || !clickEl) return empty;
+
+    const root = typeof host.getRoot === 'function' ? host.getRoot() : null;
+    if (!root || !root.contains(clickEl)) return empty;
+
+    const ctx = { host, root, shell: host.shell };
+    const items = [];
+    let actionElement = null;
+
+    // 1. Registered matchers — prefer deepest matching element
+    const regs = host._contextMenuRegistrations || [];
+    if (regs.length) {
+        const scored = [];
+        for (let i = 0; i < regs.length; i++) {
+            const reg = regs[i];
+            const matchedEl = resolveDsapContextMenuMatch(reg.match, clickEl, root, ctx);
+            if (!matchedEl) continue;
+            let depth = 0;
+            let n = matchedEl;
+            while (n && n !== root) {
+                depth++;
+                n = n.parentElement;
+            }
+            scored.push({ reg, matchedEl, depth, order: i });
+        }
+        scored.sort((a, b) => (b.depth - a.depth) || (a.order - b.order));
+        for (const row of scored) {
+            const built = typeof row.reg.itemsOrBuilder === 'function'
+                ? row.reg.itemsOrBuilder(row.matchedEl, ctx)
+                : row.reg.itemsOrBuilder;
+            if (!Array.isArray(built) || !built.length) continue;
+            if (!actionElement) actionElement = row.matchedEl;
+            for (const item of built) {
+                if (item && typeof item === 'object') {
+                    items.push(decorateDsapContextMenuItem(item, row.matchedEl));
+                }
+            }
+        }
+    }
+
+    // 2. Declarative attrs on closest annotated ancestor
+    const declEl = clickEl.closest('[data-dsap-ctx-action], [data-dsap-ctx-items]');
+    if (declEl && root.contains(declEl)) {
+        if (!actionElement) actionElement = declEl;
+        const declItems = parseDsapDeclarativeContextMenuItems(declEl);
+        for (const item of declItems) {
+            items.push(decorateDsapContextMenuItem(item, declEl));
+        }
+    }
+
+    return { items, actionElement };
+}
+
+function resolveDsapContextMenuMatch(match, clickEl, root, ctx) {
+    if (typeof match === 'function') {
+        let el = clickEl;
+        while (el && el !== root.parentElement) {
+            if (match(el, ctx)) return el;
+            if (el === root) break;
+            el = el.parentElement;
+        }
+        return null;
+    }
+    const selector = String(match || '').trim();
+    if (!selector) return null;
+    try {
+        const found = clickEl.closest(selector);
+        if (found && root.contains(found)) return found;
+        return null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function decorateDsapContextMenuItem(item, el) {
+    const out = Object.assign({}, item);
+    out._dsapCtxElement = el;
+    if (out.action && typeof out.action === 'string' && !out.action.startsWith('dsap-ctx:')) {
+        // Keep raw action id for host.registerContextMenuAction; shell prefixes routing.
+        out._dsapCtxActionId = out.action;
+        out.action = `dsap-ctx:${out.action}`;
+    } else if (typeof out.handler === 'function' && !out.action) {
+        out.action = 'dsap-ctx:handler';
+        out._dsapCtxHandler = out.handler;
+    }
+    return out;
+}
+
+function parseDsapDeclarativeContextMenuItems(el) {
+    const items = [];
+    const itemsJson = el.getAttribute('data-dsap-ctx-items');
+    if (itemsJson) {
+        try {
+            const parsed = JSON.parse(itemsJson);
+            if (Array.isArray(parsed)) {
+                for (const raw of parsed) {
+                    if (!raw || typeof raw !== 'object') continue;
+                    items.push(buildDsapDeclarativeItem(el, raw.action, raw.text || raw.label, raw.icon, raw));
+                }
+            }
+        } catch (e) {
+            console.warn('DSAP data-dsap-ctx-items JSON parse failed:', e);
+        }
+    }
+
+    const action = el.getAttribute('data-dsap-ctx-action');
+    if (action) {
+        items.push(buildDsapDeclarativeItem(
+            el,
+            action,
+            el.getAttribute('data-dsap-ctx-label') || action,
+            el.getAttribute('data-dsap-ctx-icon') || 'fas fa-ellipsis-h',
+            null
+        ));
+    }
+
+    return items.filter(Boolean);
+}
+
+function buildDsapDeclarativeItem(el, action, label, icon, rawExtra) {
+    const actionId = String(action || '').trim();
+    if (!actionId) return null;
+    const data = {};
+    if (el && el.attributes) {
+        for (const attr of el.attributes) {
+            if (!attr.name.startsWith('data-dsap-ctx-')) continue;
+            if (attr.name === 'data-dsap-ctx-action' || attr.name === 'data-dsap-ctx-label'
+                || attr.name === 'data-dsap-ctx-icon' || attr.name === 'data-dsap-ctx-items') {
+                continue;
+            }
+            const key = attr.name.slice('data-dsap-ctx-'.length).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+            data[key] = attr.value;
+        }
+    }
+    if (rawExtra && typeof rawExtra === 'object') {
+        Object.keys(rawExtra).forEach((k) => {
+            if (k === 'action' || k === 'text' || k === 'label' || k === 'icon') return;
+            data[k] = rawExtra[k];
+        });
+    }
+    return {
+        text: String(label || actionId),
+        icon: icon || 'fas fa-ellipsis-h',
+        action: actionId,
+        data,
+        disabled: !!(rawExtra && rawExtra.disabled)
+    };
+}
+
+/** Dispatch a dsap-ctx:* menu action through the host action map / item handler. */
+function dispatchDsapContextMenuAction(host, action, item, clickEl) {
+    if (!host || !action) return false;
+    const el = (item && item._dsapCtxElement) || clickEl || null;
+
+    if (item && typeof item._dsapCtxHandler === 'function') {
+        try {
+            item._dsapCtxHandler(el, item, { host, shell: host.shell });
+        } catch (e) {
+            console.error('DSAP context menu handler failed:', e);
+        }
+        return true;
+    }
+
+    let actionId = item && item._dsapCtxActionId;
+    if (!actionId && String(action).startsWith('dsap-ctx:')) {
+        actionId = String(action).slice('dsap-ctx:'.length);
+    }
+    if (!actionId) return false;
+
+    const handler = host._contextMenuActions && host._contextMenuActions.get(actionId);
+    if (typeof handler !== 'function') {
+        console.warn('DSAP context menu action not registered:', actionId);
+        return true;
+    }
+    try {
+        handler(el, item, { host, shell: host.shell });
+    } catch (e) {
+        console.error('DSAP context menu action failed:', actionId, e);
+    }
+    return true;
 }
 
 function activateDsapOnShell(shell, url, options = {}) {
@@ -923,15 +1160,18 @@ function navigateDsapIfMatched(shell, url, options = {}) {
     return true;
 }
 
-function openDsapInGrimoire(url, options = {}) {
+async function openDsapInGrimoire(url, options = {}) {
     const targetUrl = String(url || '').trim();
     if (!targetUrl) {
         console.warn('openDsapInGrimoire: missing url');
         return;
     }
 
+    // public/scripts/comp/featureLoader.js — TagWikiSearchModal / wikiWindowManager
+    await featureLoader.loadFeature('grimoire');
+
     if (options.standalone) {
-        openDsapInStandaloneWindow(targetUrl, options);
+        await openDsapInStandaloneWindow(targetUrl, options);
         return;
     }
 
@@ -939,7 +1179,7 @@ function openDsapInGrimoire(url, options = {}) {
     if (!modal) return;
 
     const runNav = () => {
-        if (typeof modal.navigate === 'function') {
+        if (modal.navigate) {
             modal.navigate(targetUrl);
         } else {
             prepareAndActivateDsapOnShell(modal, targetUrl);
@@ -954,21 +1194,24 @@ function openDsapInGrimoire(url, options = {}) {
     }
 }
 
-function openDsapInStandaloneWindow(url, options = {}) {
+async function openDsapInStandaloneWindow(url, options = {}) {
     const targetUrl = String(url || '').trim();
     if (!targetUrl) return;
 
+    // public/scripts/comp/featureLoader.js
+    await featureLoader.loadFeature('grimoire');
+
     const match = resolveDsap(targetUrl);
     if (!match) {
-        openDsapInGrimoire(targetUrl);
+        await openDsapInGrimoire(targetUrl);
         return;
     }
 
     // wikiWindowManager.createDsapWindow: public/scripts/comp/tagWikiSearchModal.js
-    if (wikiWindowManager && typeof wikiWindowManager.createDsapWindow === 'function') {
+    if (typeof wikiWindowManager !== 'undefined' && wikiWindowManager && wikiWindowManager.createDsapWindow) {
         wikiWindowManager.createDsapWindow(targetUrl, options.historyToCopy || null);
         return;
     }
 
-    openDsapInGrimoire(targetUrl);
+    await openDsapInGrimoire(targetUrl);
 }

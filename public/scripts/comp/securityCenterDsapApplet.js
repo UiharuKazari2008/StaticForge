@@ -95,6 +95,7 @@ function securityDsapShortUserAgent(ua) {
 function securityDsapTelemetryEventLabel(type) {
     if (type === 'app') return 'App Load';
     if (type === 'login') return 'Login';
+    if (type === 'client_perf') return 'Client Perf';
     return type || '—';
 }
 
@@ -625,6 +626,7 @@ const securityDsapScopedCss = `
 [data-dsap="security-dyna"] .sec-badge.scraping { background: #663300; }
 [data-dsap="security-dyna"] .sec-badge.telemetry-login { background: #003366; }
 [data-dsap="security-dyna"] .sec-badge.telemetry-app { background: #336633; }
+[data-dsap="security-dyna"] .sec-badge.telemetry-perf { background: #5a3b00; }
 [data-dsap="security-dyna"] .sec-telemetry-filter {
   display: inline-flex;
   align-items: center;
@@ -908,6 +910,7 @@ const securityDsapDriver = {
         this._wireTabs(root, host);
         this._showView(root);
         this._wireViewControls(root, host);
+        this._wireGrimoireContextMenus(host);
         setTimeout(() => this._wireClickMenus(root, host), 0);
         this._loadCurrentView(root);
     },
@@ -942,6 +945,89 @@ const securityDsapDriver = {
             contextMenu.detachClickMenuFromElement(el);
         });
         this._clickMenuTargets = [];
+    },
+
+    _wireGrimoireContextMenus(host) {
+        if (!host || typeof host.registerContextMenuItems !== 'function') return;
+
+        host.registerContextMenuItems('tr[data-sec-ip]', (el) => {
+            const ip = el.dataset.secIp;
+            if (!ip) return [];
+            return [
+                { text: 'Copy IP', icon: 'fas fa-copy', action: 'sec-copy-ip', data: { ip } },
+                { text: 'View Details', icon: 'fas fa-info-circle', action: 'sec-details', data: { ip } },
+                { text: 'Unblock', icon: 'fas fa-unlock', action: 'sec-unblock', data: { ip } },
+                { text: 'Export to Gateway', icon: 'fas fa-upload', action: 'sec-export-gw', data: { ip } }
+            ];
+        });
+
+        host.registerContextMenuItems('tr[data-sec-path]', (el) => {
+            const path = el.dataset.secPath;
+            if (!path) return [];
+            return [
+                { text: 'Copy Path', icon: 'fas fa-copy', action: 'sec-copy-path', data: { path } },
+                { text: 'Remove Path', icon: 'fas fa-trash', action: 'sec-delete-path', data: { path } }
+            ];
+        });
+
+        host.registerContextMenuItems('tr[data-sec-telemetry-id]', (el) => {
+            const id = el.dataset.secTelemetryId;
+            if (!id) return [];
+            const ev = (this._state?.telemetry?.items || []).find((item) => String(item.id) === String(id));
+            const ip = ev?.ip || '';
+            const items = [
+                { text: 'View Details', icon: 'fas fa-info-circle', action: 'sec-tel-details', data: { id } }
+            ];
+            if (ip) {
+                items.push({ text: 'Copy IP', icon: 'fas fa-copy', action: 'sec-copy-tel-ip', data: { ip } });
+            }
+            return items;
+        });
+
+        const copyText = (text) => {
+            if (!text) return;
+            // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
+            copyTextToClipboard(text).then(() => {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('success', null, 'Copied to clipboard', false, 3000, '<i class="fas fa-check"></i>');
+                }
+            }).catch(() => {});
+        };
+
+        host.registerContextMenuAction('sec-copy-ip', (el, item) => {
+            copyText(item?.data?.ip || el?.dataset?.secIp);
+        });
+        host.registerContextMenuAction('sec-details', (el, item) => {
+            const root = host.getRoot();
+            const ip = item?.data?.ip || el?.dataset?.secIp;
+            if (root && ip) void this._showBlockedDetails(root, ip);
+        });
+        host.registerContextMenuAction('sec-unblock', (el, item) => {
+            const root = host.getRoot();
+            const ip = item?.data?.ip || el?.dataset?.secIp;
+            if (root && ip) void this._unblockIp(root, ip);
+        });
+        host.registerContextMenuAction('sec-export-gw', (el, item) => {
+            const root = host.getRoot();
+            const ip = item?.data?.ip || el?.dataset?.secIp;
+            if (root && ip) void this._exportIp(root, ip);
+        });
+        host.registerContextMenuAction('sec-copy-path', (el, item) => {
+            copyText(item?.data?.path || el?.dataset?.secPath);
+        });
+        host.registerContextMenuAction('sec-delete-path', (el, item) => {
+            const root = host.getRoot();
+            const path = item?.data?.path || el?.dataset?.secPath;
+            if (root && path) void this._deleteHoneypotPath(root, path);
+        });
+        host.registerContextMenuAction('sec-tel-details', (el, item) => {
+            const root = host.getRoot();
+            const id = item?.data?.id || el?.dataset?.secTelemetryId;
+            if (root && id) this._showTelemetryDetails(root, id);
+        });
+        host.registerContextMenuAction('sec-copy-tel-ip', (el, item) => {
+            copyText(item?.data?.ip);
+        });
     },
 
     _attachClickMenu(btn, config) {
@@ -1276,7 +1362,8 @@ const securityDsapDriver = {
             const telOptions = [
                 { value: '', label: 'All events' },
                 { value: 'login', label: 'Login' },
-                { value: 'app', label: 'App Load' }
+                { value: 'app', label: 'App Load' },
+                { value: 'client_perf', label: 'Client Performance' }
             ];
             const telConfig = {
                 position: 'anchor',
@@ -1531,7 +1618,9 @@ const securityDsapDriver = {
         if (!tbody) return;
 
         tbody.innerHTML = items.map((ev) => {
-            const badgeClass = ev.eventType === 'app' ? 'telemetry-app' : 'telemetry-login';
+            const badgeClass = ev.eventType === 'client_perf'
+                ? 'telemetry-perf'
+                : (ev.eventType === 'app' ? 'telemetry-app' : 'telemetry-login');
             return `
 <tr data-sec-telemetry-id="${securityDsapEscapeAttr(ev.id)}">
   <td>${securityDsapEscapeHtml(securityDsapFormatTimestamp(ev.recordedAt))}</td>
@@ -1561,6 +1650,26 @@ const securityDsapDriver = {
         const storage = ev.storage || {};
         const sw = ev.serviceWorker || {};
         const conn = ev.connection || {};
+        const perf = ev.payload || {};
+        const perfFrame = perf.frame || {};
+        const perfHeap = perf.heap || {};
+        const perfGallery = perf.gallery || {};
+        const perfAutofill = perf.autofill || {};
+        const perfLongTaskBuckets = perfFrame.longTaskBuckets || {};
+        const perfMeasures = perf.namedMeasures || {};
+        const perfHealthMeasure = perfMeasures.serviceWorkerHealth || {};
+        const perfSampleBuildMeasure = perfMeasures.sampleBuild || {};
+        const perfDetails = ev.eventType === 'client_perf'
+            ? `
+<div><strong>Reason:</strong> ${securityDsapEscapeHtml(perf.reason || '—')} · <strong>Uptime:</strong> ${securityDsapEscapeHtml(String(Math.round((perf.uptimeMs || 0) / 1000)))}s</div>
+<div><strong>Glass:</strong> ${perf.glass?.glassOn ? 'On' : 'Off'} · <strong>Visibility:</strong> ${securityDsapEscapeHtml(perf.visibility || '—')}</div>
+<div><strong>Frames:</strong> FPS ${securityDsapEscapeHtml(String(perfFrame.estimatedFps ?? '—'))}, p95 ${securityDsapEscapeHtml(String(perfFrame.p95FrameMs ?? '—'))}ms, long tasks ${securityDsapEscapeHtml(String(perfFrame.longTaskCount || 0))} / ${securityDsapEscapeHtml(String(perfFrame.longTaskDurationMs || 0))}ms total / ${securityDsapEscapeHtml(String(perfFrame.longTaskMaxDurationMs || 0))}ms max</div>
+<div><strong>Long-task buckets:</strong> &lt;100ms ${securityDsapEscapeHtml(String(perfLongTaskBuckets.under100Ms || 0))}, 100–249ms ${securityDsapEscapeHtml(String(perfLongTaskBuckets.from100To249Ms || 0))}, 250–999ms ${securityDsapEscapeHtml(String(perfLongTaskBuckets.from250To999Ms || 0))}, 1000ms+ ${securityDsapEscapeHtml(String(perfLongTaskBuckets.atLeast1000Ms || 0))}</div>
+<div><strong>Named timing:</strong> SW health ${securityDsapEscapeHtml(String(perfHealthMeasure.averageDurationMs ?? '—'))}ms avg / ${securityDsapEscapeHtml(String(perfHealthMeasure.maxDurationMs ?? '—'))}ms max (${securityDsapEscapeHtml(String(perfHealthMeasure.count || 0))}), sample build ${securityDsapEscapeHtml(String(perfSampleBuildMeasure.averageDurationMs ?? '—'))}ms avg / ${securityDsapEscapeHtml(String(perfSampleBuildMeasure.maxDurationMs ?? '—'))}ms max (${securityDsapEscapeHtml(String(perfSampleBuildMeasure.count || 0))})</div>
+<div><strong>Heap:</strong> ${perfHeap.usedJSHeapSize ? `${securityDsapEscapeHtml(String(Math.round(perfHeap.usedJSHeapSize / 1048576)))} MiB used` : 'Unavailable'}</div>
+<div><strong>Gallery:</strong> ${securityDsapEscapeHtml(String(perfGallery.allImages || 0))} images, ${securityDsapEscapeHtml(String(perfGallery.visibleItems || 0))} visible, ${securityDsapEscapeHtml(String(perfGallery.placeholderQueue || 0))} queued</div>
+<div><strong>Autofill:</strong> ${securityDsapEscapeHtml(String(perfAutofill.lastRebuildMs ?? '—'))}ms last, ${securityDsapEscapeHtml(String(perfAutofill.resultCount || 0))} results</div>`
+            : '';
 
         body.innerHTML = `
 <div><strong>Event:</strong> ${securityDsapEscapeHtml(securityDsapTelemetryEventLabel(ev.eventType))}</div>
@@ -1579,7 +1688,8 @@ const securityDsapDriver = {
 <div><strong>Connection:</strong> ${conn.effectiveType ? `${securityDsapEscapeHtml(conn.effectiveType)} (${securityDsapEscapeHtml(String(conn.downlink || '—'))} Mbps, RTT ${securityDsapEscapeHtml(String(conn.rtt || '—'))}ms)` : '—'}</div>
 <div><strong>Service worker:</strong> ${sw.supported ? (sw.registered ? `Registered (${securityDsapEscapeHtml(sw.scope || '')})` : 'Supported, not registered') : 'Not supported'}</div>
 <div><strong>Storage:</strong> local=${storage.localStorage ? 'yes' : 'no'}, session=${storage.sessionStorage ? 'yes' : 'no'}, indexedDB=${storage.indexedDB ? 'yes' : 'no'}</div>
-<div><strong>Features:</strong> WebGL=${features.webGL ? 'yes' : 'no'}, WebP=${features.webp ? 'yes' : 'no'}, touch=${features.touch ? 'yes' : 'no'}, geolocation=${features.geolocation ? 'yes' : 'no'}</div>`;
+<div><strong>Features:</strong> WebGL=${features.webGL ? 'yes' : 'no'}, WebP=${features.webp ? 'yes' : 'no'}, touch=${features.touch ? 'yes' : 'no'}, geolocation=${features.geolocation ? 'yes' : 'no'}</div>
+${perfDetails}`;
     },
 
     async _showBlockedDetails(root, ip) {

@@ -78,6 +78,20 @@ Both add filenames to a workspace's pinned list and broadcast `workspace_updated
 
 ---
 
+---
+
+---
+
+---
+
+---
+
+---
+
+---
+
+---
+
 ## Detailed packets
 
 ### `workspace_activate`

@@ -747,10 +747,9 @@ function handleRequestBodyReplacementToolbarAction(action, textarea, toolbar, ev
 
 // Open quick access
 function openRequestBodyReplacementQuickAccess(textarea) {
-    if (window.showDatasetTagToolbar) {
-        textarea.focus();
-        window.showDatasetTagToolbar();
-    }
+    textarea.focus();
+    // public/scripts/comp/featureLoader.js
+    void featureLoader.loadFeature('dataset_tag_toolbar').then(() => showDatasetTagToolbar());
 }
 
 // Open emphasis mode
@@ -882,6 +881,10 @@ function renderRequestBodyReplacementsList() {
         return;
     }
 
+    // teardownDropdown: public/scripts/comp/dropdown.js
+    listContainer.querySelectorAll('.custom-dropdown').forEach((dropdown) => {
+        teardownDropdown(dropdown);
+    });
     listContainer.innerHTML = '';
 
     if (requestBodyReplacements.length === 0) {
@@ -1288,6 +1291,11 @@ function exitEditMode(item, cancel = false) {
     const replacement = requestBodyReplacements[index];
     if (!replacement) return;
     
+    // teardownDropdown: public/scripts/comp/dropdown.js — before wiping edit controls
+    item.querySelectorAll('.custom-dropdown').forEach((dropdown) => {
+        teardownDropdown(dropdown);
+    });
+
     // Restore display mode
     item.classList.remove('editing');
     

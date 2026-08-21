@@ -796,34 +796,44 @@ function setupMainMenuContextMenus() {
 
             case 'open-notebook':
                 // Open notebook modal directly
-                window.notepadManager.openNotebook();
+                (async () => {
+                    try {
+                        if (window.featureLoader) {
+                            await window.featureLoader.loadFeature('notepad');
+                        }
+                        if (window.notepadManager) {
+                            window.notepadManager.openNotebook();
+                        }
+                    } catch (err) {
+                        console.error('Failed to load notepad manager:', err);
+                    }
+                })();
                 break;
 
             case 'open-encyclopedia':
-                if (window.tagWikiSearchModal) {
-                    window.tagWikiSearchModal.open();
-                } else {
-                    const tagWikiSearchModalEl = document.getElementById('tagWikiSearchModal');
-                    if (tagWikiSearchModalEl) {
-                        openModal(tagWikiSearchModalEl);
-                    }
-                }
+                // openGrimoireApplet: public/scripts/comp/featureLoader.js
+                void openGrimoireApplet();
                 break;
 
             case 'open-naxt':
-                if (window.naxtApplet) {
-                    window.naxtApplet.open();
-                } else {
-                    const naxtModalEl = document.getElementById('naxtModal');
-                    if (naxtModalEl) {
-                        openModal(naxtModalEl);
-                    }
-                }
+                // openNaxtApplet: public/scripts/comp/featureLoader.js
+                void openNaxtApplet();
                 break;
 
             case 'open-chat':
                 // Open chat modal directly
-                window.chatSystem.showAllChats();
+                (async () => {
+                    try {
+                        if (window.featureLoader) {
+                            await window.featureLoader.loadFeature('chat');
+                        }
+                        if (window.chatSystem) {
+                            window.chatSystem.showAllChats();
+                        }
+                    } catch (err) {
+                        console.error('Failed to load chat system:', err);
+                    }
+                })();
                 break;
 
             case 'cache-manager':
@@ -861,7 +871,18 @@ function setupMainMenuContextMenus() {
                 break;
 
             case 'chat-manager':
-                window.chatSystem.showAllChats();
+                (async () => {
+                    try {
+                        if (window.featureLoader) {
+                            await window.featureLoader.loadFeature('chat');
+                        }
+                        if (window.chatSystem) {
+                            window.chatSystem.showAllChats();
+                        }
+                    } catch (err) {
+                        console.error('Failed to load chat system:', err);
+                    }
+                })();
                 break;
 
             case 'security-center':

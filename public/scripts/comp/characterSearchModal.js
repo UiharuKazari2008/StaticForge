@@ -126,25 +126,60 @@ class CharacterSearchModal extends WikiDisplayBase {
             return;
         }
 
-        const results = this.characters.filter(char => {
-            const nameMatch = char.name && char.name.toLowerCase().includes(query);
-            const copyrightMatch = char.copyright && char.copyright.toLowerCase().includes(query);
-            return nameMatch || copyrightMatch;
+        const searchWords = query.split(/\s+/).filter(Boolean);
+        const textHasWord = (text, word) => {
+            if (!text || !word) return false;
+            const tokens = text.split(/[^a-z0-9]+/).filter(Boolean);
+            if (tokens.some(token => token === word)) return true;
+            if (word.length >= 3 && tokens.some(token => token.startsWith(word))) return true;
+            return false;
+        };
+
+        const scored = [];
+        for (const char of this.characters) {
+            const name = char.name ? char.name.toLowerCase() : '';
+            const copyright = char.copyright ? char.copyright.toLowerCase() : '';
+            if (!name) continue;
+
+            const nameWordHits = searchWords.filter(word => textHasWord(name, word)).length;
+            const copyrightWordHits = copyright
+                ? searchWords.filter(word => textHasWord(copyright, word)).length
+                : 0;
+            const nameMatches = nameWordHits === searchWords.length;
+            const copyrightMatches = !!copyright && copyrightWordHits === searchWords.length;
+            const nameContains = name.includes(query);
+            const copyrightContains = copyright.includes(query);
+            const copyrightPrefix = copyright.startsWith(query);
+            const partialNameMatch = !nameMatches
+                && searchWords.length > 1
+                && textHasWord(name, searchWords[0]);
+
+            if (!nameMatches && !copyrightMatches && !nameContains && !copyrightContains
+                && !copyrightPrefix && !partialNameMatch) {
+                continue;
+            }
+
+            let score = 0;
+            if (copyrightPrefix) {
+                score = 200 + (copyright.length === query.length ? 20 : 0);
+            } else if (name.startsWith(query) || nameMatches) {
+                score = 150 + nameWordHits * 10;
+            } else if (nameContains) {
+                score = 120;
+            } else if (partialNameMatch) {
+                score = 80 + nameWordHits * 15;
+            } else if (copyrightMatches || copyrightContains) {
+                score = 100 + copyrightWordHits * 5;
+            }
+            scored.push({ char, score, name });
+        }
+
+        scored.sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            return a.name.localeCompare(b.name);
         });
 
-        // Sort results: prioritize exact name starts, then inclusion
-        results.sort((a, b) => {
-            const aName = a.name.toLowerCase();
-            const bName = b.name.toLowerCase();
-            const aStarts = aName.startsWith(query);
-            const bStarts = bName.startsWith(query);
-
-            if (aStarts && !bStarts) return -1;
-            if (!aStarts && bStarts) return 1;
-            return aName.localeCompare(bName);
-        });
-
-        this.renderResults(results);
+        this.renderResults(scored.map(entry => entry.char));
     }
 
     renderResults(results) {

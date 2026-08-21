@@ -309,30 +309,31 @@
     opacity: 0;
 }
 
-/* Touch / no-hover devices: the docked (idle) loupe rests visible and grabbable at its parked corner, so a direct press-drag pulls it into active/dragging mode exactly like a desktop drag. It intentionally does NOT peek/escalate from the sticky tap-hover of the preview area (position stays at the anchor, opacity stays at its resting value), but it is never hidden and keeps pointer-events so the drag-out gesture can start. Desktop (hover) behaviour is untouched. */
-@media (hover: none) {
-    .image-loupe-hover-scope:not(:hover) .image-loupe[data-state="idle"],
-    .image-loupe-hover-scope:hover .image-loupe[data-state="idle"],
-    .image-loupe[data-state="idle"]:hover {
+/* True touch-only (html.no-hover): the docked (idle) loupe rests visible and grabbable at its parked corner, so a direct press-drag pulls it into active/dragging mode exactly like a desktop drag. It intentionally does NOT peek/escalate from the sticky tap-hover of the preview area (position stays at the anchor, opacity stays at its resting value), but it is never hidden and keeps pointer-events so the drag-out gesture can start. Hybrid / broken-MQ desktops use html.can-hover instead. */
+/* hover capability: html.no-hover (see app.html bootstrap) */
+
+    html.no-hover .image-loupe-hover-scope:not(:hover) .image-loupe[data-state="idle"],
+html.no-hover .image-loupe-hover-scope:hover .image-loupe[data-state="idle"],
+html.no-hover .image-loupe[data-state="idle"]:hover {
         opacity: 0.25;
         pointer-events: auto;
     }
 
-    .image-loupe-hover-scope:hover .image-loupe[data-state="idle"][data-corner],
-    .image-loupe[data-state="idle"][data-corner]:hover {
+    html.no-hover .image-loupe-hover-scope:hover .image-loupe[data-state="idle"][data-corner],
+html.no-hover .image-loupe[data-state="idle"][data-corner]:hover {
         left: var(--image-loupe-idle-anchor-x, 0%);
         top: var(--image-loupe-idle-anchor-y, 100%);
     }
 
     /* Compare reveal: on touch the ring stays collapsed regardless of sticky preview hover and only re-expands while the loupe is actively held/dragged. */
-    .image-loupe-hover-scope.compare-loupe-reveal-on .image-loupe[data-state="active"]:not(.is-dragging):not(.is-held) {
+    html.no-hover .image-loupe-hover-scope.compare-loupe-reveal-on .image-loupe[data-state="active"]:not(.is-dragging):not(.is-held) {
         --image-loupe-ring-width: 0px;
     }
 
-    .image-loupe-hover-scope.compare-loupe-reveal-on .image-loupe[data-state="active"]:not(.is-dragging):not(.is-held) .image-loupe-ring {
+    html.no-hover .image-loupe-hover-scope.compare-loupe-reveal-on .image-loupe[data-state="active"]:not(.is-dragging):not(.is-held) .image-loupe-ring {
         opacity: 0;
     }
-}
+
 
 .image-loupe-host[data-corner-zone="top-left"]::before,
 .image-loupe-host[data-corner-zone="top-right"]::before,

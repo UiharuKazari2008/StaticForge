@@ -11,7 +11,7 @@ if (!isMainThread) {
     // Check if previews already exist and skip if requested
     if (skipExisting) {
         const previewsDir = path.resolve(__dirname, '../.previews');
-        const previewTypes = ['.webp', '@2x.webp', '@lq.webp', '@blur.webp'];
+        const previewTypes = ['.webp', '@2x.webp', '@lq.webp'];
         const allExist = previewTypes.every(type => {
             const previewPath = path.join(previewsDir, `${basename}${type}`);
             return fs.existsSync(previewPath);
@@ -53,6 +53,7 @@ class ParallelPreviewGenerator {
         let skipped = 0;
         let errors = 0;
         const startTime = Date.now();
+        const pendingBlurhashes = [];
         
         // Process in batches
         for (let i = 0; i < imageFiles.length; i += this.batchSize) {
@@ -64,7 +65,7 @@ class ParallelPreviewGenerator {
                 
                 // Remove existing previews if force regenerate
                 if (this.forceRegenerate) {
-                    const previewTypes = ['.webp', '@2x.webp', '@lq.webp', '@blur.webp'];
+                    const previewTypes = ['.webp', '@2x.webp', '@lq.webp'];
                     for (const type of previewTypes) {
                         const previewPath = path.join(previewsDir, `${basename}${type}`);
                         if (fs.existsSync(previewPath)) {
@@ -86,6 +87,12 @@ class ParallelPreviewGenerator {
                             } else {
                                 processed++;
                                 console.log(`✅ Processed: ${message.basename} (${processed + skipped}/${imageFiles.length})`);
+                                if (message.result?.blurhash) {
+                                    pendingBlurhashes.push({
+                                        filename: imageFile,
+                                        blurhash: message.result.blurhash
+                                    });
+                                }
                             }
                         } else {
                             errors++;
@@ -108,6 +115,15 @@ class ParallelPreviewGenerator {
             
             // Wait for current batch to complete
             await Promise.all(workers);
+
+            if (pendingBlurhashes.length && this.globalResources?.getMetadataDatabase) {
+                const metadataDb = this.globalResources.getMetadataDatabase();
+                for (const entry of pendingBlurhashes) {
+                    // modules/metadataDatabase.js — setImageBlurhash
+                    await metadataDb.setImageBlurhash(entry.filename, entry.blurhash);
+                }
+                pendingBlurhashes.length = 0;
+            }
             
             // Report progress
             const totalProcessed = processed + skipped;
@@ -173,7 +189,7 @@ class ParallelPreviewGenerator {
         // Filter to only images without previews
         const imagesNeedingPreviews = imageFiles.filter(imageFile => {
             const basename = this.globalResources.getPngMetadata().getBaseName(imageFile);
-            const previewTypes = ['.webp', '@2x.webp', '@lq.webp', '@blur.webp'];
+            const previewTypes = ['.webp', '@2x.webp', '@lq.webp'];
             return !previewTypes.every(type => {
                 const previewPath = path.join(previewsDir, `${basename}${type}`);
                 return fs.existsSync(previewPath);

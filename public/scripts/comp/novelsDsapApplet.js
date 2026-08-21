@@ -37,7 +37,56 @@ const novelsDsapDriver = {
         const root = host.getRoot();
         this._state._onClick = (e) => this._onClick(e);
         root.addEventListener('click', this._state._onClick);
+        this._wireGrimoireContextMenus(host);
         this._render(host);
+    },
+
+    _wireGrimoireContextMenus(host) {
+        if (!host || typeof host.registerContextMenuItems !== 'function') return;
+
+        const copyText = (text) => {
+            if (!text) return;
+            // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
+            copyTextToClipboard(text).then(() => {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('success', null, 'Copied to clipboard', false, 3000, '<i class="fas fa-check"></i>');
+                }
+            }).catch(() => {});
+        };
+
+        host.registerContextMenuItems('.novels-list-item', (el) => {
+            const id = el.dataset.novelsId;
+            if (!id) return [];
+            const name = el.querySelector('span')?.textContent?.trim() || id;
+            return [
+                { text: 'Open Novel', icon: 'fas fa-book', action: 'novels-open', data: { id } },
+                { text: 'Copy Title', icon: 'fas fa-copy', action: 'novels-copy-name', data: { name } }
+            ];
+        });
+
+        host.registerContextMenuItems('[data-novels-field="content"]', (el) => {
+            const text = el.value || el.textContent || '';
+            if (!String(text).trim()) return [];
+            return [
+                { text: 'Copy Content', icon: 'fas fa-clipboard', action: 'novels-copy-content', data: { text } }
+            ];
+        });
+
+        host.registerContextMenuAction('novels-open', (el, item) => {
+            const id = item?.data?.id || el?.dataset?.novelsId;
+            if (!id) return;
+            host.navigate(`dsap://${NOVELS_DSAP_URL}/novel/${encodeURIComponent(id)}`);
+        });
+        host.registerContextMenuAction('novels-copy-name', (el, item) => {
+            copyText(item?.data?.name || el?.dataset?.novelsName || el?.querySelector?.('span')?.textContent?.trim());
+        });
+        host.registerContextMenuAction('novels-copy-content', (el, item) => {
+            const text = item?.data?.text
+                || el?.value
+                || host.getRoot()?.querySelector?.('[data-novels-field="content"]')?.value
+                || '';
+            copyText(text);
+        });
     },
 
     refresh(host) {
@@ -90,7 +139,7 @@ const novelsDsapDriver = {
         const novels = await this._loadNovels();
         const items = novels.length
             ? novels.map((n) => `
-                <div class="novels-list-item" data-novels-id="${novelsDsapEscapeHtml(n.id)}">
+                <div class="novels-list-item" data-novels-id="${novelsDsapEscapeHtml(n.id)}" data-novels-name="${String(n.name || '').replace(/"/g, '&quot;')}">
                     <span>${novelsDsapEscapeHtml(n.name)}</span>
                     <span class="text-muted">${novelsDsapEscapeHtml(n.updated_at ? new Date(n.updated_at * 1000).toLocaleDateString() : '')}</span>
                 </div>`).join('')

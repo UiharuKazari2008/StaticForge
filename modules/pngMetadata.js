@@ -1,8 +1,40 @@
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
+const crypto = require('crypto');
 const sharp = require('sharp');
-const { getImageDimensions, getResolutionFromDimensions } = require('./imageTools');
+const { getResolutionFromDimensions } = require('./imageTools');
+const {
+    signGeneratedImage,
+    verifyGeneratedImage
+} = require('./forgeSigning');
+
+// NovelAI image attestation public key (Ed25519 raw → SPKI)
+// https://github.com/NovelAI/novelai-image-metadata/blob/main/nai_sig.py
+const NAI_VERIFY_PUBKEY_B64 = 'Y2JcQAOhLwzwSDUJPNgL04nS0Tbqm7cSRc4xk0vRMic=';
+const NAI_VERIFY_PUBKEY = crypto.createPublicKey({
+    key: Buffer.concat([
+        Buffer.from('302a300506032b6570032100', 'hex'),
+        Buffer.from(NAI_VERIFY_PUBKEY_B64, 'base64')
+    ]),
+    format: 'der',
+    type: 'spki'
+});
+
+/**
+ * Remove signed_hash from an exact NAI Comment JSON string (no re-serialize).
+ * Signing payload is RGB + this string (Python json.dumps of comment sans signed_hash).
+ */
+function stripSignedHashFromCommentJson(commentStr) {
+    if (typeof commentStr !== 'string' || !commentStr.includes('signed_hash')) {
+        return { commentWithoutSig: commentStr, signatureB64: null };
+    }
+    const sigMatch = commentStr.match(/"signed_hash"\s*:\s*"([A-Za-z0-9+/=]+)"/);
+    const signatureB64 = sigMatch ? sigMatch[1] : null;
+    let commentWithoutSig = commentStr.replace(/\s*,\s*"signed_hash"\s*:\s*"[A-Za-z0-9+/=]+"/, '');
+    commentWithoutSig = commentWithoutSig.replace(/"signed_hash"\s*:\s*"[A-Za-z0-9+/=]+"\s*,\s*/, '');
+    return { commentWithoutSig, signatureB64 };
+}
 
 // Stealth LSB steganography signatures (NovelAI / AUTOMATIC1111 stealth_pnginfo)
 // All signatures are exactly 15 characters (used as a fixed 120-bit prefix).
@@ -13,6 +45,27 @@ const STEALTH_SIGNATURES = {
     stealth_rgbcomp: { mode: 'rgb', compressed: true }
 };
 const STEALTH_SIGNATURE_BITS = 15 * 8;
+// Match NovelAI Explore PNG Title (API embeds "NovelAI generated image")
+const STANDARD_PNG_TITLE = 'AI generated image';
+
+/** Python json.dumps default separators: (', ', ': ') */
+function stringifyNaiStyle(obj) {
+    if (obj === null) return 'null';
+    if (typeof obj === 'boolean') return obj ? 'true' : 'false';
+    if (typeof obj === 'number') {
+        if (!Number.isFinite(obj)) return 'null';
+        return JSON.stringify(obj);
+    }
+    if (typeof obj === 'string') return JSON.stringify(obj);
+    if (Array.isArray(obj)) {
+        return '[' + obj.map(stringifyNaiStyle).join(', ') + ']';
+    }
+    const parts = [];
+    for (const key of Object.keys(obj)) {
+        parts.push(JSON.stringify(key) + ': ' + stringifyNaiStyle(obj[key]));
+    }
+    return '{' + parts.join(', ') + '}';
+}
 
 class PngMetadata {
     constructor(globalResources) {
@@ -269,7 +322,7 @@ class PngMetadata {
                 existingMetadata.forge_data.preset_name = existingPresetName;
             }
             
-            // Create new PNG with updated metadata
+            // Create new PNG with updated metadata (Title set via insertTextChunk on Comment)
             return this.insertTextChunk(imageBuffer, 'Comment', JSON.stringify(existingMetadata));
             
         } catch (error) {
@@ -402,7 +455,12 @@ class PngMetadata {
             newBuffer.set(fullChunk, beforeIend.length);
             newBuffer.set(afterIend, beforeIend.length + fullChunk.length);
         }
-        return Buffer.from(newBuffer);
+        let out = Buffer.from(newBuffer);
+        // Any Comment write also sets Explore-aligned Title (covers generate/copy/upscale/strip rebuilds)
+        if (keyword === 'Comment') {
+            out = this.insertTextChunk(out, 'Title', STANDARD_PNG_TITLE);
+        }
+        return out;
     } catch (error) {
         console.error('Error inserting text chunk:', error.message);
         return imageBuffer;
@@ -779,7 +837,7 @@ class PngMetadata {
                     char.center.x !== null && 
                     char.center.y !== null && 
                     (char.center.x !== 0.5 || char.center.y !== 0.5)
-                ) || meta.v4_prompt.use_coords
+                )
             ) : forgeData.use_coords || false,
             strength: meta.strength || forgeData.img2img_strength,
             noise: meta.noise || forgeData.img2img_noise,
@@ -790,22 +848,33 @@ class PngMetadata {
             compiled_characterPrompts: compiledCharacterPrompts
         };
 
-        // If image_source is present, get width and height from the file and add to result
+        // If image_source is present, resolve source dimensions without reading the whole file
         if (result.image_source) {
             try {
-                const imagesDir = this.globalResources.getPath('images');
-                const uploadCacheDir = this.globalResources.getPath('uploadCache');
-                const imagePath = result.image_source.startsWith('file:')
-                    ? path.join(imagesDir, result.image_source.replace('file:', ''))
-                    : result.image_source.startsWith('cache:')
-                        ? path.join(uploadCacheDir, result.image_source.replace('cache:', ''))
-                        : null;
-                if (imagePath && fs.existsSync(imagePath)) {
-                    const { width, height } = await getImageDimensions(fs.readFileSync(imagePath));
-                    result.image_source_width = width;
-                    result.image_source_height = height;
+                const storedSourceWidth = Number(forgeData.image_source_width);
+                const storedSourceHeight = Number(forgeData.image_source_height);
+                if (Number.isFinite(storedSourceWidth) && storedSourceWidth > 0
+                    && Number.isFinite(storedSourceHeight) && storedSourceHeight > 0) {
+                    result.image_source_width = storedSourceWidth;
+                    result.image_source_height = storedSourceHeight;
+                } else {
+                    const imagesDir = this.globalResources.getPath('images');
+                    const uploadCacheDir = this.globalResources.getPath('uploadCache');
+                    const imagePath = result.image_source.startsWith('file:')
+                        ? path.join(imagesDir, result.image_source.replace('file:', ''))
+                        : result.image_source.startsWith('cache:')
+                            ? path.join(uploadCacheDir, result.image_source.replace('cache:', ''))
+                            : null;
+                    // sharp(path).metadata() reads headers only — never fs.readFileSync the whole PNG
+                    if (imagePath && fs.existsSync(imagePath)) {
+                        const dims = await sharp(imagePath).metadata();
+                        if (dims.width && dims.height) {
+                            result.image_source_width = dims.width;
+                            result.image_source_height = dims.height;
+                        }
+                    }
                 }
-        
+
                 // Add mask bias if present in forge data
                 if (forgeData.mask_bias !== undefined) {
                     result.mask_bias = forgeData.mask_bias;
@@ -1392,8 +1461,19 @@ class PngMetadata {
                 existingMetadata.forge_data.history.push(historyEntry);
             }
 
-            // Apply the metadata to the target buffer
-            return this.updateMetadataWithExisting(targetBuffer, existingMetadata);
+            // Apply Comment (+ Title via insertTextChunk); restore Source/Software/Description from source
+            let out = this.updateMetadataWithExisting(targetBuffer, existingMetadata);
+            const srcText = sourceMetadata.tEXt || {};
+            if (srcText.Source) {
+                out = this.insertTextChunk(out, 'Source', srcText.Source);
+            }
+            if (srcText.Software) {
+                out = this.insertTextChunk(out, 'Software', srcText.Software);
+            }
+            if (srcText.Description) {
+                out = this.insertTextChunk(out, 'Description', srcText.Description);
+            }
+            return out;
 
         } catch (error) {
             console.error('Error copying metadata:', error.message);
@@ -1408,13 +1488,308 @@ class PngMetadata {
             // Create new Comment chunk with the merged metadata
             const commentText = JSON.stringify(existingMetadata);
 
-            // Insert the Comment chunk into the PNG
+            // Title set via insertTextChunk on Comment
             return this.insertTextChunk(imageBuffer, 'Comment', commentText);
 
         } catch (error) {
             console.error('Error updating metadata with existing data:', error.message);
             return imageBuffer;
         }
+    }
+
+    /**
+     * Row-major RGB bytes (H×W×3) matching numpy image_array[:,:,:3].tobytes().
+     */
+    async extractRgbBytes(buffer) {
+        const { data, info } = await sharp(buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+        const { width, height, channels } = info;
+        const rgb = Buffer.alloc(width * height * 3);
+        let o = 0;
+        for (let i = 0; i < width * height; i++) {
+            const p = i * channels;
+            rgb[o++] = data[p];
+            rgb[o++] = data[p + 1];
+            rgb[o++] = data[p + 2];
+        }
+        return rgb;
+    }
+
+    /**
+     * Write stealth_pngcomp into alpha LSB. Returns a new PNG buffer (text chunks are not preserved).
+     * @param {Buffer} buffer
+     * @param {object} outer - { Description, Software, Source, 'Generation time', Comment: string }
+     */
+    async writeStealthPngComp(buffer, outer) {
+        const { data, info } = await sharp(buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+        const { width, height, channels } = info;
+        if (channels < 4) {
+            throw new Error('writeStealthPngComp requires an alpha channel');
+        }
+
+        // Preserve NovelAI outer key order
+        const ordered = {
+            Description: outer.Description != null ? outer.Description : '',
+            Software: outer.Software != null ? outer.Software : 'NovelAI',
+            Source: outer.Source != null ? outer.Source : '',
+            'Generation time': outer['Generation time'] != null ? outer['Generation time'] : 0,
+            Comment: typeof outer.Comment === 'string' ? outer.Comment : JSON.stringify(outer.Comment || {})
+        };
+        const jsonStr = stringifyNaiStyle(ordered);
+        const compressed = zlib.gzipSync(Buffer.from(jsonStr, 'utf8'));
+        const magic = Buffer.from('stealth_pngcomp', 'ascii');
+        const lenBits = compressed.length * 8;
+        const lenBuf = Buffer.alloc(4);
+        lenBuf.writeUInt32BE(lenBits >>> 0, 0);
+
+        const bitStream = [];
+        const pushByte = (b) => {
+            for (let i = 7; i >= 0; i--) bitStream.push((b >> i) & 1);
+        };
+        for (let i = 0; i < magic.length; i++) pushByte(magic[i]);
+        for (let i = 0; i < 4; i++) pushByte(lenBuf[i]);
+        for (let i = 0; i < compressed.length; i++) pushByte(compressed[i]);
+
+        const maxBits = width * height;
+        if (bitStream.length > maxBits) {
+            throw new Error(`Stealth payload too large (${bitStream.length} bits > ${maxBits} alpha capacity)`);
+        }
+
+        const pixels = Buffer.from(data);
+        for (let index = 0; index < bitStream.length; index++) {
+            const x = Math.floor(index / height);
+            const y = index % height;
+            const pi = (y * width + x) * channels + 3;
+            pixels[pi] = (pixels[pi] & 0xfe) | bitStream[index];
+        }
+
+        return sharp(pixels, { raw: { width, height, channels: 4 } }).png().toBuffer();
+    }
+
+    /**
+     * Ensure original NAI Comment is present in stealth. Does not rewrite if already present.
+     * @returns {{ buffer: Buffer, originComment: string, embedded: boolean, wroteStealth: boolean, textMeta: object }}
+     */
+    async ensureOriginCommentInStealth(imageBuffer) {
+        const textMeta = this.readMetadata(imageBuffer);
+        const textComment = textMeta?.tEXt?.Comment || '';
+
+        const stealth = await this.readStealthMetadata(imageBuffer);
+        if (stealth?.tEXt?.Comment) {
+            return {
+                buffer: imageBuffer,
+                originComment: stealth.tEXt.Comment,
+                embedded: true,
+                wroteStealth: false,
+                textMeta,
+                stealthMeta: stealth
+            };
+        }
+
+        // No stealth — embed origin Comment from tEXt (strip forge_data if present)
+        let originComment = textComment;
+        try {
+            const parsed = JSON.parse(textComment);
+            if (parsed && typeof parsed === 'object' && parsed.forge_data) {
+                const stripped = { ...parsed };
+                delete stripped.forge_data;
+                originComment = stringifyNaiStyle(stripped);
+            }
+        } catch (_) { /* keep raw tEXt Comment string */ }
+
+        const outer = {
+            Description: textMeta?.tEXt?.Description || '',
+            Software: textMeta?.tEXt?.Software || 'NovelAI',
+            Source: textMeta?.tEXt?.Source || '',
+            'Generation time': textMeta?.tEXt?.['Generation time'] != null
+                ? (isNaN(Number(textMeta.tEXt['Generation time']))
+                    ? textMeta.tEXt['Generation time']
+                    : Number(textMeta.tEXt['Generation time']))
+                : 0,
+            Comment: originComment
+        };
+
+        // Preserve existing non-text chunks' pixels via raw rewrite; caller re-applies tEXt
+        const stegaBuffer = await this.writeStealthPngComp(imageBuffer, outer);
+        return {
+            buffer: stegaBuffer,
+            originComment,
+            embedded: true,
+            wroteStealth: true,
+            textMeta,
+            stealthMeta: null
+        };
+    }
+
+    /**
+     * Replace tEXt Comment with stealth origin Comment (exact string). For clipboard / export.
+     */
+    async restoreOriginCommentFromStealth(imageBuffer) {
+        const stealth = await this.readStealthMetadata(imageBuffer);
+        if (!stealth?.tEXt?.Comment) {
+            return { buffer: imageBuffer, restored: false };
+        }
+
+        const textMeta = this.readMetadata(imageBuffer);
+        let cleaned = this.stripPngTextChunks(imageBuffer);
+        cleaned = this.insertTextChunk(cleaned, 'Comment', stealth.tEXt.Comment);
+
+        const source = stealth.tEXt.Source || textMeta?.tEXt?.Source;
+        const software = stealth.tEXt.Software || textMeta?.tEXt?.Software;
+        const description = stealth.tEXt.Description || textMeta?.tEXt?.Description;
+        if (description) cleaned = this.insertTextChunk(cleaned, 'Description', description);
+        if (software) cleaned = this.insertTextChunk(cleaned, 'Software', software);
+        if (source) cleaned = this.insertTextChunk(cleaned, 'Source', source);
+        // Title via Comment insert side-effect → set Explore-aligned title
+        cleaned = this.insertTextChunk(cleaned, 'Title', STANDARD_PNG_TITLE);
+
+        const genTime = textMeta?.tEXt?.['Generation time'] || textMeta?.tEXt?.Generation_time;
+        if (genTime != null && genTime !== '') {
+            cleaned = this.insertTextChunk(cleaned, 'Generation time', String(genTime));
+        }
+
+        return { buffer: cleaned, restored: true, originComment: stealth.tEXt.Comment };
+    }
+
+    /**
+     * Embed/confirm origin Comment in stealth, write forge_data, then attest with forge_signed_hash.
+     */
+    async finalizeWithForgeData(imageBuffer, forgeData) {
+        const ensured = await this.ensureOriginCommentInStealth(imageBuffer);
+        let buffer = ensured.buffer;
+        const originComment = ensured.originComment || '';
+
+        // If we rewrote pixels for stealth, re-apply prior tEXt (sans forge) before merging forge_data
+        if (ensured.wroteStealth && ensured.textMeta?.tEXt) {
+            const t = ensured.textMeta.tEXt;
+            if (t.Comment) buffer = this.insertTextChunk(buffer, 'Comment', t.Comment);
+            if (t.Description) buffer = this.insertTextChunk(buffer, 'Description', t.Description);
+            if (t.Software) buffer = this.insertTextChunk(buffer, 'Software', t.Software);
+            if (t.Source) buffer = this.insertTextChunk(buffer, 'Source', t.Source);
+            if (t['Generation time']) buffer = this.insertTextChunk(buffer, 'Generation time', t['Generation time']);
+            else if (t.Generation_time) buffer = this.insertTextChunk(buffer, 'Generation time', t.Generation_time);
+        }
+
+        const nextForge = { ...(forgeData || {}) };
+        nextForge.origin_response_embedded = !!ensured.embedded;
+        delete nextForge.forge_signed_hash;
+
+        // Merge forge_data first (adds software/history/etc.) then sign the final shape
+        buffer = this.updateMetadata(buffer, nextForge);
+        try {
+            const meta = this.readMetadata(buffer);
+            const comment = JSON.parse(meta.tEXt.Comment);
+            const finalForge = comment.forge_data || {};
+            delete finalForge.forge_signed_hash;
+            finalForge.origin_response_embedded = !!ensured.embedded;
+            const rgb = await this.extractRgbBytes(buffer);
+            this.attestForgeData(rgb, originComment, finalForge);
+            comment.forge_data = finalForge;
+            buffer = this.insertTextChunk(buffer, 'Comment', JSON.stringify(comment));
+        } catch (e) {
+            console.error('Forge image signing failed:', e.message);
+        }
+        return buffer;
+    }
+
+    /**
+     * Verify NovelAI Comment.signed_hash (Ed25519 over RGB + comment JSON sans signed_hash).
+     * Prefers stealth origin Comment (exact bytes); falls back to tEXt Comment.
+     * @returns {{ ok: boolean, reason: string|null, source: 'stealth'|'text'|null }}
+     */
+    async verifyNovelAiSignature(imageBuffer) {
+        let rgb;
+        try {
+            rgb = await this.extractRgbBytes(imageBuffer);
+        } catch (e) {
+            return { ok: false, reason: 'rgb_extract_failed', source: null };
+        }
+
+        const tryComment = (commentStr, source) => {
+            if (!commentStr || typeof commentStr !== 'string') {
+                return { ok: false, reason: 'no_comment', source };
+            }
+            let c = commentStr;
+            try {
+                const parsed = JSON.parse(c);
+                // Outer stealth wrapper may nest Comment
+                if (parsed && typeof parsed.Comment === 'string' && parsed.Comment.includes('signed_hash')) {
+                    c = parsed.Comment;
+                }
+            } catch (_) { /* use raw string */ }
+
+            const { commentWithoutSig, signatureB64 } = stripSignedHashFromCommentJson(c);
+            if (!signatureB64) {
+                return { ok: false, reason: 'no_signed_hash', source };
+            }
+            try {
+                const payload = Buffer.concat([rgb, Buffer.from(commentWithoutSig, 'utf8')]);
+                const ok = crypto.verify(null, payload, NAI_VERIFY_PUBKEY, Buffer.from(signatureB64, 'base64'));
+                return { ok, reason: ok ? null : 'bad_signature', source };
+            } catch (_) {
+                return { ok: false, reason: 'verify_error', source };
+            }
+        };
+
+        const stealth = await this.readStealthMetadata(imageBuffer);
+        if (stealth?.tEXt?.Comment) {
+            const stealthResult = tryComment(stealth.tEXt.Comment, 'stealth');
+            if (stealthResult.ok || stealthResult.reason !== 'no_signed_hash') {
+                return stealthResult;
+            }
+        }
+
+        const textMeta = this.readMetadata(imageBuffer);
+        if (textMeta?.tEXt?.Comment) {
+            return tryComment(textMeta.tEXt.Comment, 'text');
+        }
+
+        return { ok: false, reason: 'no_signed_hash', source: null };
+    }
+
+    /**
+     * Sign forge_data for an image (mutates forgeData with forge_signed_hash).
+     */
+    attestForgeData(rgbBuffer, originComment, forgeData) {
+        if (!this.globalResources || !forgeData) return forgeData;
+        try {
+            forgeData.forge_signed_hash = signGeneratedImage(
+                this.globalResources,
+                rgbBuffer,
+                originComment || '',
+                forgeData
+            );
+        } catch (e) {
+            console.error('Forge image signing failed:', e.message);
+        }
+        return forgeData;
+    }
+
+    /**
+     * Verify forge_signed_hash on an image buffer.
+     */
+    async verifyForgeSignature(imageBuffer) {
+        const textMeta = this.readMetadata(imageBuffer);
+        if (!textMeta?.tEXt?.Comment) return { ok: false, reason: 'no_comment' };
+        let comment;
+        try {
+            comment = JSON.parse(textMeta.tEXt.Comment);
+        } catch (_) {
+            return { ok: false, reason: 'bad_comment' };
+        }
+        const forgeData = comment.forge_data;
+        const sig = forgeData?.forge_signed_hash;
+        if (!sig) return { ok: false, reason: 'no_forge_signed_hash' };
+
+        const stealth = await this.readStealthMetadata(imageBuffer);
+        const originComment = stealth?.tEXt?.Comment || '';
+        if (!originComment) return { ok: false, reason: 'no_origin_comment' };
+
+        const rgb = await this.extractRgbBytes(imageBuffer);
+        // verifyGeneratedImage: modules/forgeSigning.js
+        const ok = this.globalResources
+            ? verifyGeneratedImage(this.globalResources, rgb, originComment, forgeData, sig)
+            : false;
+        return { ok, reason: ok ? null : 'bad_signature' };
     }
 }
 

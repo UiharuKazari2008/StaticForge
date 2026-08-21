@@ -57,14 +57,28 @@ function openTokenDisplayModal(textarea) {
     }
     
     const rawText = textarea.value;
-    const text = stripPromptBlocksForEffectivePrompt(rawText || '', { stageIndex: 0, pipelineStageGeneration: false });
+    // Same strip as the token bar — managed ZW / visible :MAGIC: must not become <unk>.
+    // stripTextForTokenCount: public/scripts/comp/promptTextareaToolbar.js
+    // stripManagedEmphasisDelimitersForCounting: public/scripts/comp/emphasisGroupIdCodec.js
+    // stripPromptBlocksForEffectivePrompt: public/scripts/comp/promptStageBlocks.js
+    let text;
+    if (typeof promptTextareaToolbar !== 'undefined' && promptTextareaToolbar
+        && typeof promptTextareaToolbar.stripTextForTokenCount === 'function') {
+        text = promptTextareaToolbar.stripTextForTokenCount(rawText || '');
+    } else {
+        text = stripPromptBlocksForEffectivePrompt(rawText || '', {
+            stageIndex: 0,
+            pipelineStageGeneration: false
+        });
+        text = stripManagedEmphasisDelimitersForCounting(text);
+    }
     if (!text.trim()) {
         showGlassToast('info', 'Info', 'No text to analyze', false, 3000, '<i class="fas fa-info-circle"></i>');
         return;
     }
     
     try {
-        // Analyze text to get detailed tokens (using stripped text)
+        // Analyze after stage + managed-delim strip (matches toolbar count)
         const analysis = t5Tokenizer.analyzeTexts([text], true);
         if (!analysis?.results?.[0]?.detailedTokens) {
             showGlassToast('error', 'Error', 'Failed to analyze tokens', false, 5000, '<i class="nai-cross"></i>');

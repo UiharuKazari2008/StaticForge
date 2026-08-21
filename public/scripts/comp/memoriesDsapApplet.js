@@ -1369,6 +1369,7 @@ const memoriesDsapDriver = {
 
         // Wire common controls (they only make sense in their respective views)
         this._wireCommonControls(root);
+        this._wireGrimoireContextMenus(host);
 
         // Category filter (list only)
         setTimeout(() => {
@@ -1501,6 +1502,105 @@ const memoriesDsapDriver = {
                 }
             });
         }
+    },
+
+    _wireGrimoireContextMenus(host) {
+        if (!host || typeof host.registerContextMenuItems !== 'function') return;
+
+        const copyText = (text) => {
+            if (!text) return;
+            // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
+            copyTextToClipboard(text).then(() => {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('success', null, 'Copied to clipboard', false, 3000, '<i class="fas fa-check"></i>');
+                }
+            }).catch(() => {});
+        };
+
+        host.registerContextMenuItems('.memories-memory-item', (el) => {
+            const name = el.dataset.memoryName;
+            if (!name) return [];
+            return [
+                { text: 'Open Memory', icon: 'fas fa-book-open', action: 'mem-open', data: { name } },
+                { text: 'Copy Name', icon: 'fas fa-copy', action: 'mem-copy-name', data: { name } },
+                {
+                    text: 'Copy Description',
+                    icon: 'fas fa-align-left',
+                    action: 'mem-copy-desc',
+                    data: { desc: el.dataset.memoryDesc || '' },
+                    disabled: !el.dataset.memoryDesc
+                },
+                { text: 'Delete Memory', icon: 'fas fa-trash', action: 'mem-delete', data: { name } }
+            ];
+        });
+
+        host.registerContextMenuItems('.memories-static-rule-item', (el) => {
+            const ruleId = el.dataset.ruleId;
+            const textEl = el.querySelector('.memories-static-rule-text');
+            const text = (textEl && textEl.textContent) || '';
+            return [
+                { text: 'Copy Rule Text', icon: 'fas fa-copy', action: 'mem-copy-rule', data: { text } },
+                { text: 'Delete Rule', icon: 'fas fa-trash', action: 'mem-delete-rule', data: { ruleId } }
+            ];
+        });
+
+        host.registerContextMenuAction('mem-open', (el, item) => {
+            const name = item?.data?.name || el?.dataset?.memoryName;
+            if (!name) return;
+            const meta = this._state?.listMeta || {};
+            const listCtx = {
+                page: meta.page,
+                perPage: meta.perPage,
+                search: meta.search || '',
+                category: meta.category || ''
+            };
+            const url = memoriesDsapBuildDetailUrl(name, listCtx);
+            if (typeof host.navigate === 'function') host.navigate(url);
+        });
+        host.registerContextMenuAction('mem-copy-name', (el, item) => {
+            copyText(item?.data?.name || el?.dataset?.memoryName);
+        });
+        host.registerContextMenuAction('mem-copy-desc', (el, item) => {
+            copyText(item?.data?.desc || el?.dataset?.memoryDesc);
+        });
+        host.registerContextMenuAction('mem-delete', async (el, item) => {
+            const name = item?.data?.name || el?.dataset?.memoryName;
+            if (!name) return;
+            const ok = await showConfirmationDialog(
+                `Delete memory "${name}"? This cannot be undone.`,
+                [
+                    { text: 'Delete', value: true, className: 'btn-danger' },
+                    { text: 'Cancel', value: false, className: 'btn-secondary' }
+                ]
+            );
+            if (!ok) return;
+            try {
+                const resp = await window.wsClient.sendMessage('delete_knowledge_memory', { name });
+                if (resp && resp.success) {
+                    if (typeof showGlassToast === 'function') showGlassToast('success', null, 'Memory deleted');
+                    if (this._state?.current?.name === name) {
+                        this._navigateBackToList();
+                    } else {
+                        void this._loadPagedList(this._state.listMeta || {});
+                    }
+                } else if (typeof showGlassToast === 'function') {
+                    showGlassToast('error', null, 'Delete failed');
+                }
+            } catch (e) {
+                if (typeof showGlassToast === 'function') showGlassToast('error', null, 'Error deleting');
+            }
+        });
+        host.registerContextMenuAction('mem-copy-rule', (el, item) => {
+            const text = item?.data?.text
+                || el?.querySelector?.('.memories-static-rule-text')?.textContent
+                || '';
+            copyText(String(text || '').trim());
+        });
+        host.registerContextMenuAction('mem-delete-rule', (el, item) => {
+            const root = host.getRoot();
+            const ruleId = item?.data?.ruleId || el?.dataset?.ruleId;
+            if (root && ruleId) void this._deleteDirectorRule(root, ruleId);
+        });
     },
 
     refresh(host) {
@@ -1757,6 +1857,8 @@ const memoriesDsapDriver = {
         items.forEach(mem => {
             const item = document.createElement('div');
             item.className = 'memories-memory-item';
+            item.dataset.memoryName = mem.name || '';
+            item.dataset.memoryDesc = mem.description || '';
 
             const last = mem.last_used_at ? memoriesDsapFormatDate(mem.last_used_at) : 'Never';
             const catBadge = mem.category ? `<span class="memories-badge category">${memoriesDsapEscapeHtml(mem.category)}</span>` : '';

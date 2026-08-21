@@ -841,12 +841,12 @@ async function handleTransformationTypeChange(requestType) {
         bias = typeof metadata.image_bias === 'number' ? metadata.image_bias : 2;
         customBias = typeof metadata.image_bias === 'object' ? metadata.image_bias : undefined;
         const [type, id] = source.split(':');
-        previewUrl = type === 'file' ? `/images/${id}` : `/cache/preview/${id}.webp`;
+        previewUrl = type === 'file' ? localGalleryImageUrl(id) : localCachePreviewUrl(`${id}.webp`);
     } else {
         const filename = image.filename || image.original;
         if (!filename) return;
         source = `file:${filename}`;
-        previewUrl = `/images/${filename}`;
+        previewUrl = localGalleryImageUrl(filename);
     }
 
     window.uploadedImageData = {
@@ -1204,16 +1204,8 @@ function updateDatasetDisplay() {
     }
 
     if (datasetIcon) {
-        // Priority: furry > backgrounds > anime (default)
-        let iconClass = 'nai-sakura'; // default (anime)
-        if (selectedDatasets.includes('furry')) {
-            iconClass = 'nai-paw';
-        } else if (selectedDatasets.includes('backgrounds')) {
-            iconClass = 'fas fa-tree';
-        } else {
-            iconClass = 'nai-sakura';
-        }
-        datasetIcon.className = iconClass;
+        // getDatasetLeadIconClass: public/scripts/comp/utilities.js
+        datasetIcon.className = getDatasetLeadIconClass(selectedDatasets);
     }
 
     // Update toggle state - on when more than just anime is selected
@@ -2009,6 +2001,12 @@ function applyBiasToText(input, bias) {
         return input;
     }
 
+    // hasManagedEmphasisGroupIds: public/scripts/comp/emphasisGroupIdCodec.js
+    // Do not wrap managed ZWSP groups in classic N:: (weights live in forge / visible weight digits).
+    if (typeof input === 'string' && hasManagedEmphasisGroupIds(input)) {
+        return input;
+    }
+
     // Check if input is already a complete emphasis group (starts with BIAS:: and ends with ::)
     const isCompleteGroup = /^(-?\d+\.?\d*)::.+::$/s.test(input);
     
@@ -2093,7 +2091,7 @@ function setupDatasetDropdownContextMenu() {
                     { separator: true },
                     {
                         icon: 'fas fa-paragraph',
-                        text: 'Newlines',
+                        text: 'Keep Newlines',
                         action: 'toggleNewlines',
                         keepMenuOpen: true,
                         showIndicator: true,
@@ -2104,7 +2102,7 @@ function setupDatasetDropdownContextMenu() {
                     },
                     {
                         icon: 'fas fa-hashtag',
-                        text: 'Auto Char Numerisize',
+                        text: 'Auto Char Numerize',
                         action: 'toggleAutoCharNumerize',
                         keepMenuOpen: true,
                         showIndicator: true,
@@ -2115,7 +2113,7 @@ function setupDatasetDropdownContextMenu() {
                     },
                     {
                         icon: 'fas fa-wand-magic-sparkles',
-                        text: 'Auto Format (blur)',
+                        text: 'Auto Format',
                         action: 'toggleAutoFormat',
                         keepMenuOpen: true,
                         showIndicator: true,
@@ -2174,23 +2172,29 @@ function handleDatasetContextMenuAction(event) {
             resetDatasets();
             break;
         case 'toggleNewlines':
-            window.keepPromptNewlines = !window.keepPromptNewlines;
+            keepPromptNewlines = !keepPromptNewlines;
             // syncKeepNewlinesButtons: public/scripts/comp/promptTextareaToolbar.js
-            if (window.promptTextareaToolbar) {
-                window.promptTextareaToolbar.syncKeepNewlinesButtons();
-            }
+            promptTextareaToolbar.syncKeepNewlinesButtons();
+            // updatePromptStatusIcons: public/scripts/comp/utilities.js
+            updatePromptStatusIcons();
             break;
         case 'toggleAutoCharNumerize':
-            window.autoCharNumerize = window.autoCharNumerize === false;
+            autoCharNumerize = autoCharNumerize === false;
+            // updatePromptStatusIcons: public/scripts/comp/utilities.js
+            updatePromptStatusIcons();
             break;
         case 'toggleAutoFormat':
-            window.autoFormatOnBlur = window.autoFormatOnBlur === false;
+            autoFormatOnBlur = autoFormatOnBlur === false;
             break;
         case 'togglePromptNormalize':
-            window.promptNormalize = window.promptNormalize === false;
+            promptNormalize = promptNormalize === false;
+            // updatePromptStatusIcons: public/scripts/comp/utilities.js
+            updatePromptStatusIcons();
             break;
         case 'toggleDeduplicate':
-            window.deduplicateTags = window.deduplicateTags === false;
+            deduplicateTags = deduplicateTags === false;
+            // updatePromptStatusIcons: public/scripts/comp/utilities.js
+            updatePromptStatusIcons();
             break;
     }
 }

@@ -49,6 +49,15 @@ function applyReplacementOnResolvedText(result, replacement) {
     let appliedSuccessfully = false;
     let method = 'direct';
 
+    const getCleanPattern = (str) => {
+        if (!str) return '';
+        let clean = String(str);
+        if (typeof stripManagedEmphasisDelimitersForCounting === 'function') {
+            clean = stripManagedEmphasisDelimitersForCounting(clean);
+        }
+        return clean.replace(/-?\d+(?:\.\d+)?::/g, '').replace(/::/g, '').trim();
+    };
+
     if (action === 'delete') {
         let textToDelete = selectText;
         if (selectText && result.includes(selectText)) {
@@ -62,7 +71,15 @@ function applyReplacementOnResolvedText(result, replacement) {
                 result = result.split(textToDelete).join('');
             }
             appliedSuccessfully = true;
-        } else if (fallbackSelectText && result.includes(fallbackSelectText)) {
+        } else if (selectText) {
+            const cleanSelect = getCleanPattern(selectText);
+            if (cleanSelect && result.includes(cleanSelect)) {
+                result = result.split(cleanSelect).join('');
+                appliedSuccessfully = true;
+                method = 'emphasis-matched';
+            }
+        }
+        if (!appliedSuccessfully && fallbackSelectText && result.includes(fallbackSelectText)) {
             textToDelete = fallbackSelectText;
             if (count !== undefined && count !== null) {
                 for (let i = 0; i < count; i++) {
@@ -83,12 +100,20 @@ function applyReplacementOnResolvedText(result, replacement) {
         if (selectText && result.includes(selectText)) {
             result = result.replace(selectText, replaceText);
             appliedSuccessfully = true;
-        } else if (fallbackSelectText && result.includes(fallbackSelectText)) {
+        } else if (selectText) {
+            const cleanSelect = getCleanPattern(selectText);
+            if (cleanSelect && result.includes(cleanSelect)) {
+                result = result.replace(cleanSelect, replaceText);
+                appliedSuccessfully = true;
+                method = 'emphasis-matched';
+            }
+        }
+        if (!appliedSuccessfully && fallbackSelectText && result.includes(fallbackSelectText)) {
             result = result.replace(fallbackSelectText, replaceText);
             appliedSuccessfully = true;
             method = 'fallback';
-        } else if (!isCritical && alternativeText) {
-            const needsComma = result.trim() && !result.trim().endsWith(',') && !result.trim().endsWith('::');
+        } else if (!appliedSuccessfully && !isCritical && alternativeText) {
+            const needsComma = result.trim() && !result.trim().endsWith(',') && !textEndsWithEmphasisGroupClose(result);
             result = result.trimEnd() + (needsComma ? ', ' : ' ') + alternativeText;
             appliedSuccessfully = true;
             method = 'alternative';
@@ -106,6 +131,13 @@ function applyReplacementOnResolvedText(result, replacement) {
                 insertPosition = anchorIndex + anchorText.length;
                 appliedSuccessfully = true;
                 method = 'anchor';
+            } else {
+                const cleanAnchor = getCleanPattern(anchorText);
+                if (cleanAnchor && result.includes(cleanAnchor)) {
+                    insertPosition = result.indexOf(cleanAnchor) + cleanAnchor.length;
+                    appliedSuccessfully = true;
+                    method = 'anchor';
+                }
             }
         }
 
@@ -114,13 +146,20 @@ function applyReplacementOnResolvedText(result, replacement) {
             if (index !== -1) {
                 insertPosition = index + selectText.length;
                 appliedSuccessfully = true;
-            } else if (fallbackSelectText && result.includes(fallbackSelectText)) {
-                insertPosition = result.indexOf(fallbackSelectText) + fallbackSelectText.length;
-                appliedSuccessfully = true;
-                method = 'fallback';
-            } else if (!isCritical && alternativeText) {
-                textToAppend = alternativeText;
-                method = 'alternative';
+            } else {
+                const cleanSelect = getCleanPattern(selectText);
+                if (cleanSelect && result.includes(cleanSelect)) {
+                    insertPosition = result.indexOf(cleanSelect) + cleanSelect.length;
+                    appliedSuccessfully = true;
+                    method = 'emphasis-matched';
+                } else if (fallbackSelectText && result.includes(fallbackSelectText)) {
+                    insertPosition = result.indexOf(fallbackSelectText) + fallbackSelectText.length;
+                    appliedSuccessfully = true;
+                    method = 'fallback';
+                } else if (!isCritical && alternativeText) {
+                    textToAppend = alternativeText;
+                    method = 'alternative';
+                }
             }
         }
 
@@ -298,8 +337,22 @@ function validateReplacementAgainstResolved(replacement, applicationContext) {
     const selectText = (replacement?.select_text || '').trim();
     if (!selectText && action !== 'append') return false;
     if (selectText && targetText.indexOf(selectText) !== -1) return true;
-    if (replacement.fallback_select_text && targetText.indexOf(replacement.fallback_select_text.trim()) !== -1) return true;
-    if ((replacement.anchor_text || '').trim() && targetText.indexOf(replacement.anchor_text.trim()) !== -1) return true;
+
+    const stripEmphasis = (str) => {
+        if (!str) return '';
+        let clean = String(str);
+        if (typeof stripManagedEmphasisDelimitersForCounting === 'function') {
+            clean = stripManagedEmphasisDelimitersForCounting(clean);
+        }
+        return clean.replace(/-?\d+(?:\.\d+)?::/g, '').replace(/::/g, '').trim();
+    };
+
+    const cleanSelect = stripEmphasis(selectText);
+    const cleanTarget = stripEmphasis(targetText);
+
+    if (cleanSelect && cleanTarget && cleanTarget.indexOf(cleanSelect) !== -1) return true;
+    if (replacement.fallback_select_text && (targetText.indexOf(replacement.fallback_select_text.trim()) !== -1 || (cleanTarget && cleanTarget.indexOf(stripEmphasis(replacement.fallback_select_text.trim())) !== -1))) return true;
+    if ((replacement.anchor_text || '').trim() && (targetText.indexOf(replacement.anchor_text.trim()) !== -1 || (cleanTarget && cleanTarget.indexOf(stripEmphasis(replacement.anchor_text.trim())) !== -1))) return true;
     if (!replacement.is_critical && replacement.alternative_text) return true;
     return false;
 }

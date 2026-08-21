@@ -24,9 +24,20 @@ class WorkspaceWebSocketHandlers {
             const refDb = this.globalResources.getReferenceMetadataDatabase();
             const workspaceIds = Object.keys(workspaces);
             const workspaceCacheCounts = refDb.getWorkspaceReferenceCounts(workspaceIds);
-            
-            // Transform to include workspace metadata
-            const workspaceList = Object.entries(workspaces).map(([id, workspace]) => ({
+            const metadataDb = this.globalResources.metadataDatabase;
+            const galleryFileCounts = metadataDb
+                ? await metadataDb.getGalleryWorkspaceImageCountsById(workspaceIds, 'images')
+                : new Map();
+
+            const workspaceList = Object.entries(workspaces).map(([id, workspace]) => {
+                let fileCount = Array.isArray(workspace.files) ? workspace.files.length : 0;
+                if (metadataDb) {
+                    const metaCount = galleryFileCounts.get(id);
+                    if (metaCount != null) {
+                        fileCount = metaCount;
+                    }
+                }
+                return {
                 id,
                 name: workspace.name,
                 color: workspace.color || '#102040',
@@ -36,12 +47,13 @@ class WorkspaceWebSocketHandlers {
                 wallpaper: workspace.wallpaper || null,
                 wallpaperPosition: workspace.wallpaperPosition || null,
                 sort: workspace.sort || 0, // Include sort field
-                fileCount: workspace.files.length,
-                presetCount: workspace.presets.length,
+                fileCount,
+                presetCount: Array.isArray(workspace.presets) ? workspace.presets.length : 0,
                 cacheFileCount: workspaceCacheCounts[id] || 0, // Use database count
                 isActive: id === activeWorkspaceId,
                 isDefault: id === 'default'
-            }));
+            };
+            });
 
             this.handlers.sendToClient(ws, {
                 type: 'workspace_list_response',
@@ -71,7 +83,19 @@ class WorkspaceWebSocketHandlers {
             // Get cache file count from database
             const refDb = this.globalResources.getReferenceMetadataDatabase();
             const cacheFileCount = refDb.getWorkspaceReferences(activeId).length;
-            
+            const metadataDb = this.globalResources.metadataDatabase;
+            let fileCount = Array.isArray(workspace.files) ? workspace.files.length : 0;
+            if (metadataDb) {
+                try {
+                    const meta = await metadataDb.getGalleryWorkspaceIndexMeta(activeId, 'images');
+                    if (meta && meta.totalItems != null) {
+                        fileCount = meta.totalItems;
+                    }
+                } catch (_error) {
+                    // Fall back to in-memory array length when SQL meta is unavailable.
+                }
+            }
+
             this.handlers.sendToClient(ws, {
                 type: 'workspace_get_response',
                 requestId: message.requestId,
@@ -83,8 +107,8 @@ class WorkspaceWebSocketHandlers {
                     primaryFont: typeof workspace.primaryFont !== 'undefined' ? workspace.primaryFont : null,
                     textareaFont: typeof workspace.textareaFont !== 'undefined' ? workspace.textareaFont : null,
                     sort: workspace.sort || 0, // Include sort field
-                    fileCount: workspace.files.length,
-                    presetCount: workspace.presets.length,
+                    fileCount,
+                    presetCount: Array.isArray(workspace.presets) ? workspace.presets.length : 0,
                     cacheFileCount: cacheFileCount // Use database count
                 },
                 timestamp: new Date().toISOString()
@@ -191,7 +215,7 @@ class WorkspaceWebSocketHandlers {
                 return;
             }
 
-            const movedCount = this.globalResources.getWorkspaceManager().deleteWorkspace(id);
+            const movedCount = await this.globalResources.getWorkspaceManager().deleteWorkspace(id);
 
             // Clear metadata cache for deleted workspace
             this.handlers.metadataCache.clearWorkspace(id);
@@ -269,7 +293,7 @@ class WorkspaceWebSocketHandlers {
                 return;
             }
 
-            const result = this.globalResources.getWorkspaceManager().dumpWorkspace(sourceId, targetId);
+            const result = await this.globalResources.getWorkspaceManager().dumpWorkspace(sourceId, targetId);
 
             this.handlers.sendToClient(ws, {
                 type: 'workspace_dump_response',
@@ -315,18 +339,14 @@ class WorkspaceWebSocketHandlers {
                 return;
             }
 
-            // Get workspace files (including default workspace files)
+            // Get workspace files (including default workspace files) from SQL ownership
+            const workspaceManager = this.globalResources.getWorkspaceManager();
             const workspaceFiles = new Set();
-
-            // Always include default workspace files
-            const defaultWorkspace = this.globalResources.getWorkspaceManager().getWorkspace('default');
-            if (defaultWorkspace && defaultWorkspace.files) {
-                defaultWorkspace.files.forEach(file => workspaceFiles.add(file));
-            }
-
-            // Include current workspace files if not default
-            if (id !== 'default' && workspace.files) {
-                workspace.files.forEach(file => workspaceFiles.add(file));
+            const defaultFiles = await workspaceManager._readWorkspaceGalleryFilenames('default', 'files');
+            defaultFiles.forEach((file) => workspaceFiles.add(file));
+            if (id !== 'default') {
+                const currentFiles = await workspaceManager._readWorkspaceGalleryFilenames(id, 'files');
+                currentFiles.forEach((file) => workspaceFiles.add(file));
             }
 
             this.handlers.sendToClient(ws, {
@@ -438,7 +458,7 @@ class WorkspaceWebSocketHandlers {
             }
 
             // Get scraps for the requested workspace (scraps are shared across workspaces)
-            const scraps = this.globalResources.getWorkspaceManager().getActiveWorkspaceScraps(clientInfo.sessionId);
+            const scraps = await this.globalResources.getWorkspaceManager().getActiveWorkspaceScraps(clientInfo.sessionId);
 
             this.handlers.sendToClient(ws, {
                 type: 'workspace_get_scraps_response',
@@ -467,7 +487,7 @@ class WorkspaceWebSocketHandlers {
             }
 
             // Get pinned images for the requested workspace
-            const pinned = this.globalResources.getWorkspaceManager().getActiveWorkspacePinned(clientInfo.sessionId);
+            const pinned = await this.globalResources.getWorkspaceManager().getActiveWorkspacePinned(clientInfo.sessionId);
 
             this.handlers.sendToClient(ws, {
                 type: 'workspace_get_pinned_response',

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="disable-blur">
+<html lang="en" class="disable-blur can-hover">
 
 <head>
     <meta charset="UTF-8">
@@ -24,8 +24,16 @@
         }
         window.isDesktop = isWideScreen && (galleryWindowPreference === 'windowed');
 
+        // Hover capability (html.can-hover / html.no-hover): applied in
+        // fatalErrorBootstrap.js so service-worker updates deliver it even when
+        // a cached app.html is still serving. Markup defaults to can-hover.
+
         // Detect Shift key on startup for step-by-step mode (desktop mode only)
         window.shiftKeyOnStartup = false;
+
+        // Globals needed by early components
+        window.t5Tokenizer = null;
+        window.pinModalPromise = null;
 
         // Sync developer mode to cookie so the server can serve source css/js when enabled
         try {
@@ -186,89 +194,76 @@
         media="screen and (device-width: 1024px) and (device-height: 768px) and (-webkit-device-pixel-ratio: 2)"
         href="/static_images/apple-splash-2048x1536.png">
 
-    <link rel="stylesheet" href="/css/fonts.css?sha=192566366b1ba69e13ff5043dc576548ceafc2c41c11395d0617f907e20627f5">
-    <link rel="stylesheet" href="/dist/fontawesome/css/fontawesome.min.css">
+    <link rel="stylesheet" href="/css/fonts.css?sha=571ed5569b22ce33e63c389388b2fe88838d9da6e273e6028eb3763f7636cccc">
     <link rel="stylesheet" href="/dist/fontawesome/css/all.min.css">
-    <link rel="stylesheet" href="/css/app.css?sha=4bd113e99ef33f5c065e958c2bb7983bbb320a15c03f173e7f085c135314afb0">
-    <link rel="stylesheet" id="workspace-styles" href="/css/workspaces.css?sha=d267c20e24c2b0498d096616ebbe7d342b106287a17787015cf669a762af18a7">
-    <link rel="stylesheet" href="/css/custom-dropdown.css?sha=5768e054df99cbf23d6a3717100faf676c8d61f48ff005b08d7090c16014aff0">
+    <link rel="stylesheet" href="/css/app.css?sha=c8abc3918dafd1638625286732fc18761eb68a29ed84af647ca4cdbb941c8b79">
+    <link rel="stylesheet" id="workspace-styles" href="/css/workspaces.css?sha=c4699f95f90578552b8cb880bea0d9ac7ca2f88fa814c84c5392067106c77cf2">
+    <link rel="stylesheet" href="/css/custom-dropdown.css?sha=37c77e84993abb88cb49262872e6033f2e0130db1ca318ae6148bfb3f50dd8e2">
     <!-- Feature-scoped styles (split from app.css) -->
-    <link rel="stylesheet" href="/css/desktop-shell.css?sha=7ad8a401b3e68e285618683f270be72813adc927c40fa62da9553c371aae9a1b">
-    <link rel="stylesheet" href="/css/menu-chrome.css?sha=a26d99094eef97d33145e895f258c86c325972400224490f08f6f7c03521ac90">
-    <link rel="stylesheet" href="/css/desktop-settings.css?sha=50571fab1d1956bdb0c782fb07c29bf268b134160a9cfaa3209011a68d0db0f0">
-    <link rel="stylesheet" href="/css/modal-dimensions.css?sha=0e046d50f66fbfea2f5e99486bd0d82cac181d7dfcea06a7326ab38b46bd0707">
-    <link rel="stylesheet" href="/css/modal-theme-glass.css?sha=0dd4dfa5dfd5fd2422f57327d3b540b3f2f4e8f2f1c3bfbfb40f6d8e9950acac">
-    <link rel="stylesheet" href="/css/modal-window-title-toolbar.css?sha=b3dc97a5afc4dd992580926d73ddbf8db9e565211c7940c96081ba77f376d604">
-    <link rel="stylesheet" href="/css/context-menu.css?sha=c7eb93ceded17cc4322dd4289657dcebaaf740ddeaf61922431aae528d6008f0">
-    <link rel="stylesheet" href="/css/gallery-toolbar.css?sha=6c3aa00850488df57edca7b44b62abb156ccf3819cdfdbe71ee71a96cc1d836a">
-    <link rel="stylesheet" href="/css/gallery-core.css?sha=b7837b9ff0ed4c3ccdd1cf11eea006731fda56133b80e92f5c4308341190b921">
-    <link rel="stylesheet" href="/css/gallery-move.css?sha=3a94bbb9238bdd2531c954c7caaa0467b6a96b3bc42c4462def2024120de7c61">
-    <link rel="stylesheet" href="/css/lightbox.css?sha=2e90f8b3bc5d1af610b4bab71de7403d2d7d4999d92556a80b31e82dd7b2ef9d">
-    <link rel="stylesheet" href="/css/manual-modal.css?sha=2ccd84b3bec813bee367d97190af88a6376c5fce1c17341fb96f11c8a85afeb1">
-    <link rel="stylesheet" href="/css/manual-modal-prompt-form.css?sha=186790584f59ab8d5de557c6215aad59bc02d555938357601fa52ba1ec3e0c8a">
-    <link rel="stylesheet" href="/css/novel-tool.css?sha=db0175cc5fbf29bf193b1eb3bc51bb7de2e6e16bf2186336231fd3b8f8707bff">
-    <link rel="stylesheet" href="/css/manual-modal-preview-tools.css?sha=b643196750eaf4fc783c2222880a45b1db525e4aea4e7a0d5db6eaf0e53b692c">
-    <link rel="stylesheet" href="/css/manual-modal-generate.css?sha=f65e2be18864095e94f7357f5784dbbb6abf533b3c6fc31050211e0a7ddfd8c6">
-    <link rel="stylesheet" href="/css/manual-modal-viewer.css?sha=bb6734bd64a6a77bdbf366403c2bc69df4780d3028dc7b7c5aac93c237e61b3b">
-    <link rel="stylesheet" href="/css/custom-scrollbar.css?sha=3ca77b3db2223676493c6f7a42c66fcb1247e8d6795a0e045b364551fad5560e">
-    <link rel="stylesheet" href="/css/genso-lock.css?sha=95296b692dd2dda96ea7020835cc1a2d45620f6134c0845c47f24241de1c7d21">
-    <link rel="stylesheet" href="/css/imageExpansion.css?sha=efd6debaaa973ed8aa4786f2bcc5967883378e661082f3286fa88bc145b45ffd">
-    <link rel="stylesheet" href="/css/weather-location.css?sha=f473226a7370c92a2212ac1469bbeaf08064fe51fec408d5071cfafd2c9467c2">
-    <link rel="stylesheet" href="/css/weather-cards.css?sha=e3c98cad64fd704da3b2f11ee117a3af85408600b55c7dad9f93bdd8c751d6c3">
-    <link rel="stylesheet" href="/css/weather-lcd.css?sha=fe6dc1a60cbd4855faa9f90deaeb28bbffad0ecd57062e52ceec0673344493e8">
-    <link rel="stylesheet" href="/css/director.css?sha=6376db5d5d0c1f34a4d1f88718e171c1ac26740c7876f29dea45368eff0089f9">
-    <link rel="stylesheet" href="/css/vibe-manager.css?sha=17d537f973604bd41aba150de80ab5011e4ad313a370eb1b66d8c76981b283be">
-    <link rel="stylesheet" href="/css/mask-editor.css?sha=1b5a33ee8f4946fd69055fe7c59115e0e1f905192226cafb4793ba042cfb7bbe">
-    <link rel="stylesheet" href="/css/cache-browser.css?sha=f1642f5e2c0628d288d8032f8d8ff8a6c4692ee7c2109c098da536292af9d23c">
-    <link rel="stylesheet" href="/css/chat-modal.css?sha=2017f2e947a8a80826a1d744c85748b05dbaa810089f0a05ea94bcac08a2e7f8">
-    <link rel="stylesheet" href="/css/unified-upload.css?sha=51ba9ed48940be4b148f2e285af008eb5f3782d80427a37a2f430eb868a171a3">
-    <link rel="stylesheet" href="/css/genso-manager.css?sha=03869ddc2cdfd08e1c4574fdc136b6c1a3b1c62b4494f3b7fc4d2680aa3c0af9">
-    <link rel="stylesheet" href="/css/shared-text-replacement.css?sha=053eaf0056e97bde8890b9ece6aa512881ef1e3aac47c28dcfe8881cb23fb455">
-    <link rel="stylesheet" href="/css/autocomplete.css?sha=1605482e5fc3c69b6688fc6308c8dbee65e09da605335a880c099feb52709b83">
-    <link rel="stylesheet" href="/css/spell-check.css?sha=0ed5c0f94a751a596329479ac80fcd70590aef245798e81e33bde606bcdad10b">
-    <link rel="stylesheet" href="/css/toasts.css?sha=40384f06cdf9301135068213662293b2e7fcd0f256c94000e2f83c10f857a218">
-    <link rel="stylesheet" href="/css/memoriesDsap.css?sha=42084763612d3db336ec503c89cf69d3ff5e8dea128a0a287f47da2b89c552da">
-    <link rel="stylesheet" href="/css/dsap-smf.css?sha=36d676adbbdda7497e874a35c35a01fdd1cf4381606c879f097ad36e62b5856e">
-    <link rel="stylesheet" href="/css/fatal-error.css?sha=baeebb7f1db7944c69a2cc8455011edbc7c1c8afd4cf5f969cbe9ce9a4998c1c">
-    <link rel="stylesheet" href="/css/run-applet.css?sha=38c0d6e64f66cf681d7685e12d61b7747878534db4eb026a5472ba5d34369d52">
-    <link rel="stylesheet" href="/css/keyboard-shortcuts.css?sha=174e5e3f5e94f354a0995c304782967d47b4d86a9fe059dc96ce3e930f8e10bc">
-    <link rel="stylesheet" href="/css/window-switcher.css?sha=e4cb0e5f86ba1f0e5e8b0e309feda5961778737dce7026de4189294ce953b6f3">
-    <link rel="stylesheet" href="/css/confirmation-dialogs.css?sha=35ae9597559259a784f3413017334daebda25d4f00c3095513cec592e84ae738">
-    <link rel="stylesheet" href="/css/about-melaton.css?sha=00fbfd47ecf9837c4a9ea35a5933f2196c4e414ca7fe9cfa9c1bde8aeae9192c">
-    <link rel="stylesheet" href="/css/desktop-boot.css?sha=a2ff823257584a9da5aa5e0ee6d74b6ed5aafd2e5564e302cd1551f215379e11">
-    <link rel="stylesheet" href="/css/connection-dial.css?sha=0fe5964f88dcb2072f29daddc2a283080a2362fd3e397767c1b3514ada5e3b42">
-    <link rel="stylesheet" href="/css/config-editor.css?sha=b204051304ca7f6f4a58aae8c4e2bbdac91a4fd2cdd386735014e332e1f9bc3a">
-    <link rel="stylesheet" href="/css/naxt-shell.css?sha=55417a320ab4fd1f9e5eca30b24409a4c3c21e6a86ca45411de5a82328a9ca3c">
-    <link rel="stylesheet" href="/css/notepad.css?sha=59667ca1decc7e4a4e3cb29c2b31c19fc49c8a27ef40529c4100591846124d0c">
-    <link rel="stylesheet" href="/css/websocket-requests.css?sha=441535ae8bd9ee3e5e16be0654e89e47412f192e6526ef960ebe817af4adc372">
-    <link rel="stylesheet" href="/css/log-viewer.css?sha=51772e2af1f0fbd77646d42f22cd64bea86a8ced7d24a6518fc6683e41817a1e">
-    <link rel="stylesheet" href="/css/requestBodyReplacements.css?sha=38f89407055828f1cdd5ee540d4d7706fe8b317baccfa467a3f2984f1207aa84">
-    <link rel="stylesheet" href="/css/spellbook.css?sha=7ed7aa86a45c971b5be716550355978471a04de7398d2928c9d09dbc69ef33e1">
-    <link rel="stylesheet" href="/css/bracket-generation.css?sha=794e0b0e1f3e6046fe57bc2197e1dc3054d8a442e51ba184e51b6ed190c2a613">
-    <link rel="stylesheet" href="/css/generation-quips.css?sha=6d61e08e3dac8e9fd504db6cee0edbf1d96955c58b09b5da2017b6abee1f26b5">
-    <link rel="stylesheet" href="/css/manual-modal-splash.css?sha=a2e66d5e0180115f22dbe1c5356fe362d123ca08921dab7c2ef3be69051e7acb">
-    <link rel="stylesheet" href="/css/token-display.css?sha=62184e7ed467c54846750da6d091fa65c92cc4ecbc3a043492360b8b9fa76516">
-    <link rel="stylesheet" href="/css/compiled-prompt-lcd.css?sha=44a9921bc26ccc20bbc5f4d5f5ca141299f8cf4ded42569911098327226c9e0a">
-    <link rel="stylesheet" href="/css/tag-wiki-search.css?sha=18880ae0d599e9d7e53f35ad158c73d6249451021f491d6ad586e995f294c534">
-    <link rel="stylesheet" href="/css/grimoire-browser.css?sha=af4acc2b30f3dbedf0f1c08e27a46fe4f77564a6afff1c174810f527297dc298">
-    <link rel="stylesheet" href="/css/explorer.css?sha=682b9b8cac9a6eeffbb467258b402d22145885142eeee1c53065a5bcea0abab6">
-    <link rel="stylesheet" href="/css/emphasis-groups-tool.css?sha=0749496f9818f5229d4bc69bda0d4237430f3de3c25a8d27693018f92883b601">
-    <link rel="stylesheet" href="/css/emphasis-manager.css?sha=fc2e5165b7073939e89bebba8cca2875ec8a9ffb3c105793879394f6ab5b35a9">
-    <link rel="stylesheet" href="/css/windows-classic-theme.css?sha=7a50f950abe1d0e55636a3bf3374a1ff8e2cd30de7cd9ec54be0cfd10b2aef50">
-    <link rel="stylesheet" href="/css/service-worker-tray.css?sha=ae53864bcb0d5c6c96fa2b85af7b9ddd27b4031137c4b8482cfe0ffea7b99805">
-    <link rel="stylesheet" href="/css/gallery-loading.css?sha=346ea995001dd3f07d6e8b59f63c63b3176e70442c7805d4c3c29ee382c6dc2a">
-    <link rel="stylesheet" href="/css/7.scoped.css?sha=e20f9818872835c835277f18b592869328169524f1fb5958eb1bc76ced543478">
-    <link rel="stylesheet" href="/css/pin-modal.css?sha=be4337a4d0ff26b40f74565457ed17512ace07ee26bc29425b850e72d0b67929">
+    <link rel="stylesheet" href="/css/desktop-shell.css?sha=57886c8ec2287428e74487d0b325785d0ae6d50c817c1863f4244518fa1e9255">
+    <link rel="stylesheet" href="/css/menu-chrome.css?sha=fd61ee6b08e1adcbbc7d5b698b8830ca718b0b7d0a147e76a6fa121e8785843b">
+    <link rel="stylesheet" href="/css/desktop-settings.css?sha=b667dbf13f1d944dd935bc4542aaf08738104bc543c3dfb08e740d701d2d0c04">
+    <link rel="stylesheet" href="/css/modal-dimensions.css?sha=0239a70559997ed5802a3a10c2dd0ddd8c675cebf4ff3d37af0058f6ec61438e">
+    <link rel="stylesheet" href="/css/modal-theme-glass.css?sha=48da9ed40daa093366c6c56b9f88ecba638febebfe70b9c472cc78a8549420a0">
+    <link rel="stylesheet" href="/css/modal-window-title-toolbar.css?sha=f32f41f9f2d0efe9537f255cfbc57f9e879af173b284591f26d7771439fd2829">
+    <link rel="stylesheet" href="/css/context-menu.css?sha=282446cd97bfbd6443f5c2220441ad96a74ed17c5b01404657b4ea4d0310699e">
+    <link rel="stylesheet" href="/css/gallery-toolbar.css?sha=dbff77f543fb4704e5eb5e3d1ade1cc637d6f37176f3d9f62feff76314a2742f">
+    <link rel="stylesheet" href="/css/gallery-core.css?sha=021d589c575798a5c08eed28b28067e26b2c5df7143a37d7b7a3b17ec5d0d2b9">
+    <link rel="stylesheet" href="/css/gallery-move.css?sha=21f3b582d166b379005161e58efac1f73f43e0f829a2a1a7f88112b5527e5591">
+    <link rel="stylesheet" href="/css/lightbox.css?sha=35afc17c4275c4de0d30c90cbe8f1f55bf72a97dd08b32a83bc47b35109b58d8">
+    <link rel="stylesheet" href="/css/manual-modal.css?sha=3fab90fce7b552b44a90258a347b2e9fa5efb08148e3788452f54d6a6cc10ad9">
+    <link rel="stylesheet" href="/css/manual-modal-prompt-form.css?sha=9e73d75e5675701b6c99dfdb77048a3d504a6d073ec237ca0ba11912132b7e70">
+    <link rel="stylesheet" href="/css/novel-tool.css?sha=42e4e83af79bae72c4c8960133e2dd99c24c687ab999a1aaf09a71cd0bc08e64">
+    <link rel="stylesheet" href="/css/manual-modal-preview-tools.css?sha=4f942cd5305aacd80868fb9bad3ba0955a841d2cdfe3fc22aa0f079a4a324571">
+    <link rel="stylesheet" href="/css/manual-modal-generate.css?sha=61f8c621bfe4051c6b1372792ace5fc3cb10a942ae6a6faa3e8da52b9d0cb402">
+    <link rel="stylesheet" href="/css/manual-modal-viewer.css?sha=530f77c755674f36ecb0169f3ca44dbaf573a444c1a19f144f71c01516cf1baa">
+    <link rel="stylesheet" href="/css/custom-scrollbar.css?sha=281a0566e03dc04e8d734afdaaf5459a41c98d253ca28c927e3055a49b6065a1">
+    <link rel="stylesheet" href="/css/genso-lock.css?sha=3928bbe3c79ed04068e97b21bc20d8e376ab44deeed27144498fa4f52d97ee1f">
+    <link rel="stylesheet" href="/css/imageExpansion.css?sha=03fd9c98cb3c1bcf7227eb4d1d93d7f55e920744ef41a1725faf374748490f75">
+    <link rel="stylesheet" href="/css/weather-location.css?sha=3f497f5fe12a956e8db85df41d209e6c38834b58408e158bf0cf994ff7388542">
+    <link rel="stylesheet" href="/css/weather-cards.css?sha=c8e97c39be431dda1fe0033c75348328edcedd60056ecea32ac34ec859e2f32b">
+    <link rel="stylesheet" href="/css/weather-lcd.css?sha=159685dcf123c29b0f063410b63164f84a295323e7ea8c9b30392fa913c30f76">
+    <link rel="stylesheet" href="/css/director.css?sha=e66042522041eb4c50d86c0b3af57955db67ec222aa8cf78cbf2dca80a7560bf">
+    <link rel="stylesheet" href="/css/vibe-manager.css?sha=1cb36bb5fe767c28ddfc5ae0444807cc969bded38c1ba1490363539e925b2f6d">
+    <link rel="stylesheet" href="/css/mask-editor.css?sha=85988bdcbdf3c87d367cc2603487cb267348e08d6a0bf482b3bd36f147a4ab34">
+    <link rel="stylesheet" href="/css/cache-browser.css?sha=9cf1ef1c37086d52d18e1f53a8b4e923b4f2d4014959636c1ab15cc592479f45">
+    <link rel="stylesheet" href="/css/unified-upload.css?sha=ddecb2a54184e914087c54e680824720010423b541a6ec52eea6603e1cc55487">
+    <link rel="stylesheet" href="/css/genso-manager.css?sha=6b7471690d4769a7865ab12cee90f5fdbed8dd73b003001167f81dfb4846dce3">
+    <link rel="stylesheet" href="/css/shared-text-replacement.css?sha=338a72452596afc982b6c022831951847b6a44684f31c033df19368ac207db5f">
+    <link rel="stylesheet" href="/css/autocomplete.css?sha=b321b2897dfcab460245841e10094bd274168c1d58f14375200484a9b890be74">
+    <link rel="stylesheet" href="/css/spell-check.css?sha=4e85b07d63d64b182e0086b69d84313c88f80b2a9ac626d7e9bb82efdde831a1">
+    <link rel="stylesheet" href="/css/toasts.css?sha=b695a9ead3444935ba4e7e8c59a957d99586ca9e0aa7cc2f11bf91c90b6090e9">
+    <link rel="stylesheet" href="/css/memoriesDsap.css?sha=f7fef1417518b3269946a74bc7bf9c946082b4233fc230077f22985b70748228">
+    <link rel="stylesheet" href="/css/dsap-smf.css?sha=da4401d07b6fe09dbdd09031274f0c33981f2920a986059e9d03bb922ee9a7a4">
+    <link rel="stylesheet" href="/css/fatal-error.css?sha=aff5cffbe53e37b93e97d716dcc5126e1866b887fab7067026da213474003443">
+    <link rel="stylesheet" href="/css/keyboard-shortcuts.css?sha=b6b6e4670fd4b55ef44ad62a46b886bfe5e50cd4b6cf11bfe0495e92612690d0">
+    <link rel="stylesheet" href="/css/window-switcher.css?sha=5dc87b66f31e32e0bb3db64e8c5caed12396e7495be7b7875c17e1240ffcdf54">
+    <link rel="stylesheet" href="/css/confirmation-dialogs.css?sha=d484bbe7195d1df209d141fcd55d0e932174c1600a175093c0d0624052437782">
+    <link rel="stylesheet" href="/css/about-melaton.css?sha=ec91fe61da672f1e723a25d8dc68aadd22464f87866f4abbc555fdab4d113909">
+    <link rel="stylesheet" href="/css/desktop-boot.css?sha=2195457d00de5e315a0de2c2591b16afc4a7908bf80fdfb5dd875e5ed66ad44d">
+    <link rel="stylesheet" href="/css/connection-dial.css?sha=d78b021b710e9ba005f3a4141a0477a50f73b2ea9ad85b01f9bd38404aaa1b44">
+    <link rel="stylesheet" href="/css/websocket-requests.css?sha=31f8c7aca804dcd93c4091ad5362981fe2067186ee7dbb63c9a1074ef4147be6">
+    <link rel="stylesheet" href="/css/requestBodyReplacements.css?sha=6d5af88a1a2d75c258995e47b986f93fda6ed98ae4470aac935bb6db979120c6">
+    <link rel="stylesheet" href="/css/generation-quips.css?sha=ba794f22b90d6dd5da8c5b94b46b962e7292a551c7ac6b033c405eae23807338">
+    <link rel="stylesheet" href="/css/manual-modal-splash.css?sha=90844024aa7059d80c89eb98953e6e8b002442cedcc6f203f5056f450f888eb6">
+    <link rel="stylesheet" href="/css/token-display.css?sha=f7549b664ca8164957e316328b61da0ee0f76848ce0949a0e24ab51dca632c22">
+    <link rel="stylesheet" href="/css/grimoire-browser.css?sha=e26a52d8d4f034f357d20720ba2913cf1d22440f4e21d05eb5c94a55cd930ccb">
+    <link rel="stylesheet" href="/css/emphasis-groups-tool.css?sha=8601349e668b62daeeb5d62991a1471f58948c6d031eee6439aab54edc211ef9">
+    <link rel="stylesheet" href="/css/emphasis-manager.css?sha=42db6953f33250e0a16b7410e43692ba8acae006d801f6a9f6526a3ddfd1301a">
+    <link rel="stylesheet" href="/css/windows-classic-theme.css?sha=bffe5e53cd5300486322056e94eb3550259565fe02f1ca394e4b7c560473cee8">
+    <link rel="stylesheet" href="/css/service-worker-tray.css?sha=b71d1e07077cf9a9c707945cca0effcc56b0bd0b54692ec105fcc42ee756c3b4">
+    <link rel="stylesheet" href="/css/gallery-loading.css?sha=c315bc301a0b2e2eaf17c38d24c1a3c1e29fa63d058d1989f7769aaf20bccb32">
+    <link rel="stylesheet" href="/css/7.scoped.css?sha=d957ae1216653bf1678cf4b9d5f4e489ac12710cd04eb15f4bc3f22199017528">
+    <link rel="stylesheet" href="/css/pin-modal.css?sha=b2941f25ac25101b008f288ae9983ccedc243d9e63a5a46abd353488a4ec5294">
     <link rel="stylesheet" href="/dist/photoswipe/photoswipe.css">
-    <link rel="stylesheet" href="/css/blockContainer.css?sha=4562188dc93c449b54ee5bc67c2d449ca5ac5532adeed4b50b18aa95e8de28cf">
-    <link rel="stylesheet" href="/css/image-loupe.css?sha=abf92fd06c73c053d82238824945240c25107c59eafb7a460b907f51be62b9bb">
-    <link rel="stylesheet" href="/css/virtual-keyboard.css?sha=01a97b8329e0719cdc98cfcb50a42ed14bb45b27c5d227af603121c3bf77694d">
+    <link rel="stylesheet" href="/css/blockContainer.css?sha=20a4a35616f00b4d783497536e7fd1e6b5d3eea49b0e8af7a658eb395eeebedb">
+    <link rel="stylesheet" href="/css/image-loupe.css?sha=699fe24b75435d26e5bace5264bf7fb1bac8a4aabdd00d09ac55b377388a3249">
+    <link rel="stylesheet" href="/css/virtual-keyboard.css?sha=4be6d6f56f54a5456247b04099dbd1fb5b6bf455ba167d97e1cf3872dd6af490">
     <link rel="stylesheet" href="/dist/mdi/materialdesignicons.min.css">
     <link rel="stylesheet" href="/dist/fonts/weather-icons.min.css">
     <link rel="stylesheet" href="/dist/remixicon/remixicon.css">
     <!-- Terminal: global .hidden — must stay last in the stylesheet stack -->
-    <link rel="stylesheet" href="/css/hidden.css?sha=3f641944999b70a72bdfe8465cc7dcb58b4daf4c7fcda181533618d97d7fae37">
-    <script src="/scripts/comp/tagSets.js"></script>
+    <link rel="stylesheet" href="/css/hidden.css?sha=ca8b9c0e5d491ba4ebdaeb71559dc1d3cfc6b760044b20fc5eb593e80d8a55e3">
     <script src="/scripts/comp/blockContainer.js"></script>
     <script src="/scripts/utils/deviceUtils.js"></script>
     <script src="/scripts/utils/dreamscapeClipboard.js"></script>
@@ -1427,6 +1422,22 @@
                                                         title="Datasets enabled">
                                                         <i class="nai-sakura"></i>
                                                     </div>
+                                                    <div class="prompt-status-icon keep-newlines-on hidden"
+                                                        title="Keep Newlines on (not default)">
+                                                        <i class="fas fa-paragraph"></i>
+                                                    </div>
+                                                    <div class="prompt-status-icon auto-char-off hidden"
+                                                        title="Auto Char Number off (not default)">
+                                                        <i class="fas fa-hashtag"></i>
+                                                    </div>
+                                                    <div class="prompt-status-icon prompt-normalize-off hidden"
+                                                        title="Prompt Normalize off (not default)">
+                                                        <i class="fas fa-align-left"></i>
+                                                    </div>
+                                                    <div class="prompt-status-icon deduplicate-off hidden"
+                                                        title="Deduplicate off (not default)">
+                                                        <i class="fas fa-clone"></i>
+                                                    </div>
                                                 </div>
                                                 <div class="prompt-textarea-toolbar hidden">
                                                     <div class="toolbar-left">
@@ -1505,6 +1516,11 @@
                                                                 data-action="autofill" data-state="on"
                                                                 title="Toggle SmartText Autofill">
                                                                 <i class="fas fa-lightbulb"></i>
+                                                            </button>
+                                                            <button type="button"
+                                                                class="btn-secondary btn-small toolbar-btn toggle-btn emphasis-group-chip"
+                                                                data-action="emphasis-group-chip" data-state="off" title="Emphasis">
+                                                                <i class="fas fa-dial"></i><span class="emphasis-group-chip-value hidden">1.0</span>
                                                             </button>
                                                             <div id="promptActionsDropdown"
                                                                 class="custom-dropdown dark dropright">
@@ -1648,6 +1664,22 @@
                                                         title="Datasets enabled">
                                                         <i class="nai-sakura"></i>
                                                     </div>
+                                                    <div class="prompt-status-icon keep-newlines-on hidden"
+                                                        title="Keep Newlines on (not default)">
+                                                        <i class="fas fa-paragraph"></i>
+                                                    </div>
+                                                    <div class="prompt-status-icon auto-char-off hidden"
+                                                        title="Auto Char Number off (not default)">
+                                                        <i class="fas fa-hashtag"></i>
+                                                    </div>
+                                                    <div class="prompt-status-icon prompt-normalize-off hidden"
+                                                        title="Prompt Normalize off (not default)">
+                                                        <i class="fas fa-align-left"></i>
+                                                    </div>
+                                                    <div class="prompt-status-icon deduplicate-off hidden"
+                                                        title="Deduplicate off (not default)">
+                                                        <i class="fas fa-clone"></i>
+                                                    </div>
                                                 </div>
                                                 <div class="prompt-textarea-toolbar hidden">
                                                     <div class="toolbar-left">
@@ -1718,6 +1750,11 @@
                                                                 data-action="autofill" data-state="on"
                                                                 title="Toggle Autofill">
                                                                 <i class="fas fa-lightbulb"></i>
+                                                            </button>
+                                                            <button type="button"
+                                                                class="btn-secondary btn-small toolbar-btn toggle-btn emphasis-group-chip"
+                                                                data-action="emphasis-group-chip" data-state="off" title="Emphasis">
+                                                                <i class="fas fa-dial"></i><span class="emphasis-group-chip-value hidden">1.0</span>
                                                             </button>
                                                             <div id="ucActionsDropdown" class="custom-dropdown">
                                                                 <button type="button" id="ucActionsDropdownBtn"
@@ -1860,6 +1897,12 @@
                                         title="Force Paid Request">
                                         <i class="fas fa-dollar-sign"></i>
                                     </button>
+                                    <div id="manualTokenFreeDisplay" class="inset-badge gen-count-display token-free-display hidden" style="height: 32px;" title="Prompt tokens free">
+                                        <div class="price-list-container">
+                                            <i id="manualTokenFreeIcon" class="fas fa-check" aria-hidden="true"></i>
+                                            <span id="manualTokenFree" class="price-list">512</span>
+                                        </div>
+                                    </div>
                                     <div id="manualGenCountDisplay" class="inset-badge gen-count-display hidden" style="height: 32px;" title="24h generation count">
                                         <div class="price-list-container">
                                             <span id="manualGenCount" class="price-list">-</span>
@@ -3027,6 +3070,11 @@
                                                     data-action="autofill" data-state="on" title="Toggle SmartText Autofill">
                                                     <i class="fas fa-lightbulb"></i>
                                                 </button>
+                                                <button type="button"
+                                                    class="btn-secondary btn-small toolbar-btn toggle-btn emphasis-group-chip"
+                                                    data-action="emphasis-group-chip" data-state="off" title="Emphasis">
+                                                    <i class="fas fa-dial"></i><span class="emphasis-group-chip-value hidden">1.0</span>
+                                                </button>
                                                 <div id="expansionCompiledPromptActionsDropdown"
                                                     class="custom-dropdown dark dropright">
                                                     <button type="button" id="expansionCompiledPromptActionsDropdownBtn"
@@ -3109,6 +3157,11 @@
                                                     class="btn-secondary btn-small toolbar-btn toggle-btn"
                                                     data-action="autofill" data-state="on" title="Toggle SmartText Autofill">
                                                     <i class="fas fa-lightbulb"></i>
+                                                </button>
+                                                <button type="button"
+                                                    class="btn-secondary btn-small toolbar-btn toggle-btn emphasis-group-chip"
+                                                    data-action="emphasis-group-chip" data-state="off" title="Emphasis">
+                                                    <i class="fas fa-dial"></i><span class="emphasis-group-chip-value hidden">1.0</span>
                                                 </button>
                                                 <div id="expansionCompiledUcActionsDropdown"
                                                     class="custom-dropdown dark dropright">
@@ -4661,130 +4714,6 @@ Examples:
         </div>
     </div>
 
-    <!-- Chat Modal -->
-    <div id="chatModal" class="modal hidden tool-window on-top">
-        <div class="modal-window-controls">
-            <button id="closeChatBtn" class="btn-danger btn-small close-btn" type="button" title="Close"><i
-                    class="fa-regular fa-xmark-large"></i></button>
-        </div>
-        <div class="modal-content gallery-move-modal-content dark">
-            <div class="gallery-move-left-panel">
-                <img id="chatBackgroundImage" src="/static_images/background.jpg" alt="Character image"
-                    class="gallery-move-background-image">
-                <div class="gallery-move-left-header">
-                    <h3 id="chatModalTitle"><i class="fas fa-person-to-portal"></i> Birth Persona</h3>
-                </div>
-                <div class="gallery-move-overlay">
-                    <div class="gallery-move-image-info-overlay">
-                        <p><strong>Character:</strong> <span id="chatCharacterName">Unknown</span></p>
-                        <p><strong>Filename:</strong> <span id="chatFilename">unknown.png</span></p>
-                    </div>
-                </div>
-            </div>
-            <div class="gallery-move-right-panel">
-                <div class="modal-header gallery-move-header">
-                    <h3>Chat Settings</h3>
-                </div>
-                <div class="gallery-move-content">
-                    <div class="chat-settings-form">
-                        <div class="form-group">
-                            <label for="chatName">Name</label>
-                            <input type="text" id="chatName" class="form-control"
-                                placeholder="Enter chat name (optional)">
-                        </div>
-
-                        <div class="form-group">
-                            <label for="chatMindSeed">Mind Seed</label>
-                            <textarea id="chatMindSeed" class="form-control" rows="3"
-                                placeholder="Enter character context or personality traits..."></textarea>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="chatStoryContext">Story So Far (Optional)</label>
-                            <textarea id="chatStoryContext" class="form-control" rows="4"
-                                placeholder="Enter the story context and what has happened so far..."></textarea>
-                            <small class="form-text text-muted">Provide narrative context to help establish the
-                                character's current situation and history.</small>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="chatViewerContext">Viewer Context</label>
-                            <textarea id="chatViewerContext" class="form-control" rows="3"
-                                placeholder="Describe your character or relationship..."></textarea>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="chatVerbosityBtn">Verbosity</label>
-                            <div id="chatVerbosityDropdown" class="custom-dropdown">
-                                <button type="button" id="chatVerbosityBtn" class="custom-dropdown-btn hover-show colored">
-                                    <span id="chatVerbositySelected">Expressive</span>
-                                </button>
-                                <div id="chatVerbosityMenu" class="custom-dropdown-menu hidden"></div>
-                            </div>
-                            <input type="hidden" id="chatVerbosityHidden" value="3">
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" id="startChatBtn" class="btn-primary">
-                        <span>Birth</span>
-                        <i class="fas fa-person-to-portal"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Chat Interface Modal -->
-    <div id="chatInterfaceModal" class="modal resizeable-window hidden" data-window-min-width="800"
-        data-window-min-height="500">
-        <div class="modal-window-title">
-            <div class="modal-window-title-main">
-                <i class="mdi mdi-1-5 mdi-chat icon-fa"></i>
-                <img src="/static_images/app_icons/chat.png" alt="" class="icon-image" />
-                <span>Chat</span>
-            </div>
-        </div>
-        <div class="modal-window-controls">
-            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
-                <i class="fa-regular fa-window-minimize"></i>
-            </button>
-            <button id="closeChatInterfaceBtn" class="btn-danger close-btn btn-small" title="Close"><i
-                    class="fa-regular fa-xmark-large"></i></button>
-        </div>
-        <div class="modal-content chat-interface-content">
-            <div class="chat-interface-split">
-                <!-- Chat List Panel -->
-                <div class="chat-list-panel">
-                    <div class="chat-list-content">
-                        <div id="chatSessionsList" class="chat-sessions-list">
-                            <!-- Chat sessions will be populated here -->
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Chat Messages Panel -->
-                <div class="chat-messages-panel">
-                    <div class="chat-messages-content form-section-scroll reverse-scroll">
-                        <div id="chatMessagesList" class="chat-messages-list">
-                            <!-- Messages will be populated here -->
-                        </div>
-                    </div>
-
-                    <div class="chat-input-panel">
-                        <div class="chat-input-container">
-                            <textarea id="chatMessageInput" class="chat-message-input hover-show"
-                                placeholder="Type your message..." rows="1"></textarea>
-                            <button id="chatSendBtn" class="btn-primary chat-send-btn" disabled>
-                                <i class="mdi mdi-1-5 mdi-send"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Explorer Modal -->
     <div id="explorerModal" class="modal toolbar-visible resizeable-window hidden"
         data-window-identifier="explorer"
@@ -5343,6 +5272,10 @@ Examples:
                                             data-action="autofill" data-state="on" title="Toggle SmartText Autofill">
                                             <i class="fas fa-lightbulb"></i>
                                         </button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn emphasis-group-chip"
+                                            data-action="emphasis-group-chip" data-state="off" title="Emphasis">
+                                            <i class="fas fa-dial"></i><span class="emphasis-group-chip-value hidden">1.0</span>
+                                        </button>
                                         <div id="cachePromptActionsDropdown" class="custom-dropdown dark dropright">
                                             <button type="button" id="cachePromptActionsDropdownBtn"
                                                 class="btn-secondary btn-small toolbar-btn">
@@ -5760,117 +5693,6 @@ Examples:
         </div>
     </div>
 
-    <!-- Open Note Modal -->
-    <div id="openNoteModal" class="modal hidden tool-window">
-        <div class="modal-window-title">
-            <div class="modal-window-title-main">
-                <i class="fas fa-folder-open icon-fa"></i>
-                <img src="/static_images/app_icons/notebook.png" alt="" class="icon-image" />
-                <span>Open Note</span>
-            </div>
-        </div>
-        <div class="modal-window-controls">
-            <button type="button" id="openNoteSidebarToggleBtn" class="btn-secondary btn-small open-note-sidebar-toggle" title="Workspaces">
-                <i class="fas fa-bars"></i>
-            </button>
-            <button type="button" id="closeOpenNoteModalBtn" class="btn-danger close-btn btn-small" title="Close">
-                <i class="fa-regular fa-xmark-large"></i>
-            </button>
-        </div>
-        <div class="modal-content open-note-modal-content dark">
-            <div class="open-note-layout" id="openNoteLayout">
-                <div class="open-note-sidebar-backdrop" id="openNoteSidebarBackdrop"></div>
-                <div class="open-note-sidebar" id="openNoteWorkspaceSidebar">
-                    <div class="open-note-sidebar-header">Workspaces</div>
-                    <div id="openNoteWorkspaceList" class="open-note-workspace-list">
-                        <!-- Workspaces populated by JavaScript -->
-                    </div>
-                </div>
-                <div class="open-note-main">
-                    <div class="open-note-list-scroll">
-                        <div id="openNoteList" class="note-selection-list">
-                            <!-- Notes populated by JavaScript -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Update Note Modal -->
-    <div id="updateNoteModal" class="modal hidden tool-window on-top">
-        <div class="modal-window-title">
-            <div class="modal-window-title-main">
-                <i class="fas fa-cog icon-fa"></i>
-                <img src="/static_images/app_icons/notebook.png" alt="" class="icon-image" />
-                <span>Modify Note</span>
-            </div>
-        </div>
-        <div class="modal-window-controls">
-            <button type="button" id="closeUpdateNoteModalBtn" class="btn-danger close-btn btn-small" title="Close">
-                <i class="fa-regular fa-xmark-large"></i>
-            </button>
-        </div>
-        <div class="modal-content dark">
-            <div class="modal-body modal-padding">
-                <div class="form-group">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="noteUpdateName">Name</label>
-                            <input type="text" id="noteUpdateName" class="form-control hover-show colored"
-                                placeholder="Note name...">
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="noteUpdateColor">Color</label>
-                            <div id="noteUpdateColorDropdown" class="custom-dropdown">
-                                <button type="button" id="noteUpdateColorDropdownBtn"
-                                    class="custom-dropdown-btn hover-show colored">
-                                    <span id="noteUpdateColorSelected">Select color...</span>
-                                </button>
-                                <div id="noteUpdateColorDropdownMenu" class="custom-dropdown-menu hidden">
-                                    <!-- Options will be populated by JavaScript -->
-                                </div>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label for="noteUpdateIcon">Icon</label>
-                            <div id="noteUpdateIconDropdown" class="custom-dropdown">
-                                <button type="button" id="noteUpdateIconDropdownBtn"
-                                    class="custom-dropdown-btn hover-show colored">
-                                    <span id="noteUpdateIconSelected">Select icon...</span>
-                                </button>
-                                <div id="noteUpdateIconDropdownMenu" class="custom-dropdown-menu hidden">
-                                    <!-- Options will be populated by JavaScript -->
-                                </div>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label for="noteUpdateWorkspace">Workspace</label>
-                            <div id="noteUpdateWorkspaceDropdown" class="custom-dropdown">
-                                <button type="button" id="noteUpdateWorkspaceDropdownBtn"
-                                    class="custom-dropdown-btn hover-show colored">
-                                    <span id="noteUpdateWorkspaceSelected">Select workspace...</span>
-                                </button>
-                                <div id="noteUpdateWorkspaceDropdownMenu" class="custom-dropdown-menu hidden">
-                                    <!-- Options will be populated by JavaScript -->
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer-colored">
-                <div class="modal-actions">
-                    <button type="button" id="saveUpdateNoteBtn" class="btn-primary btn-small">
-                        Update <i class="fas fa-save"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Emphasis Groups Tool Template (will be cloned for multiple instances) -->
     <div id="emphasisGroupsToolTemplate" class="modal toolbar-visible hidden transient tool-window resizeable-window emphasis-groups-tool"
         data-window-identifier="emphasis-groups-tool"
@@ -5908,6 +5730,10 @@ Examples:
                         title="Increase maximum by 0.25" aria-label="Increase maximum weight">
                         <i class="fas fa-plus"></i>
                     </button>
+                    <button type="button" id="emphasisGroupsPullBandBtn" class="btn-secondary toolbar-input-segment icon-only emphasis-groups-range-step emphasis-groups-normalize-control hidden"
+                        title="Pull Band Range — peak slider to 100%, set max to that weight">
+                        <i class="fas fa-arrow-left-long-to-line"></i>
+                    </button>
                     <button type="button" id="emphasisGroupsAutoRangeBtn" class="btn-secondary toolbar-input-segment icon-only emphasis-groups-range-step indicator hidden emphasis-groups-normalize-control"
                         data-state="off" title="Auto Band — click for one-shot; right-click for automatic scaling">
                         <i class="fas fa-wand-magic-sparkles"></i>
@@ -5919,12 +5745,12 @@ Examples:
                         <span class="emphasis-delta-glyph" aria-hidden="true">Δ</span>
                     </button>
                     <button type="button" id="emphasisGroupsDistributionModeBtn" class="btn-secondary btn-toggle toolbar-input-segment icon-only"
-                        data-state="off" title="Distribution mode — each group importance is independent; preview until Apply">
+                        data-state="off" title="Distribution mode — importance 50 unbiased; >75 forces over peers, <25 forces under; preview until Apply">
                         <i class="fas fa-chart-area"></i>
                     </button>
                 </div>
-                <button type="button" id="emphasisGroupsScopeBtn" class="btn-secondary btn-toggle icon-only hidden emphasis-groups-normalize-control"
-                    data-state="off" title="Selected groups only">
+                <button type="button" id="emphasisGroupsScopeBtn" class="btn-secondary btn-toggle icon-only hidden"
+                    data-state="off" title="Selected groups only" hidden aria-hidden="true" tabindex="-1">
                     <i class="fas fa-list-check"></i>
                 </button>
                 <div class="emphasis-groups-toolbar-spacer" aria-hidden="true"></div>
@@ -5961,45 +5787,6 @@ Examples:
                     <div id="emphasisGroupsEmpty" class="emphasis-groups-empty hidden">No emphasis groups in this prompt.</div>
                 </div>
             </div>
-        </div>
-    </div>
-
-    <!-- Notepad Modal Template (will be cloned for multiple instances) -->
-    <div id="notepadModalTemplate" class="modal hidden transient notepad-modal resizeable-window"
-        data-window-max-width="1000" data-window-max-height="800" data-window-min-width="400"
-        data-window-min-height="300">
-
-        <div class="modal-window-title">
-            <div class="modal-window-title-main">
-                <i class="fas fa-file-lines icon-fa"></i>
-                <img src="/static_images/app_icons/pencil.png" alt="" class="icon-image" />
-                <span id="notepadTitle">Notepad</span>
-            </div>
-        </div>
-        <div class="modal-window-controls">
-            <div id="notepadDropdown" class="custom-dropdown dark dropright">
-                <button type="button" id="notepadDropdownBtn" class="btn-secondary btn-small">
-                    <i class="fas fa-chevron-down"></i>
-                </button>
-                <div id="notepadDropdownMenu" class="custom-dropdown-menu hidden">
-                    <!-- Options will be populated by JavaScript -->
-                </div>
-            </div>
-            <button type="button" id="notepadSaveBtn" class="btn-primary btn-small" title="Save">
-                <i class="fas fa-save"></i>
-            </button>
-            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
-                <i class="fa-regular fa-window-minimize"></i>
-            </button>
-            <button type="button" id="notepadMaximizeBtn" class="btn-secondary btn-small" title="Maximize">
-                <i class="fa-regular fa-window-maximize"></i>
-            </button>
-            <button type="button" class="btn-danger close-btn btn-small" title="Close">
-                <i class="fa-regular fa-xmark-large"></i>
-            </button>
-        </div>
-        <div class="modal-content modal-padding notepad-modal-content light">
-            <textarea id="notepadTextarea" class="notepad-textarea" placeholder="Start typing..."></textarea>
         </div>
     </div>
 
@@ -6065,6 +5852,143 @@ Examples:
                     title="Full Screen">
                     <i class="fas fa-expand-arrows-alt"></i>
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="imagePromptInspectorTemplate"
+        class="modal hidden transient resizeable-window image-prompt-inspector"
+        data-window-max-width="1200" data-window-max-height="1100" data-window-min-width="420"
+        data-window-min-height="420">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-glasses-round icon-fa"></i>
+                <img src="/static_images/app_icons/glasses.png" alt="" class="icon-image" />
+                <span id="imagePromptInspectorTitle">Properties</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" id="imagePromptInspectorJsonBtn"
+                class="btn-secondary toolbar-btn btn-small" title="Show metadata JSON">
+                <i class="fas fa-brackets-curly"></i>
+            </button>
+            <button type="button" class="btn-secondary minimize-btn" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" class="btn-secondary toolbar-btn btn-small modal-work-area-maximize"
+                title="Maximize">
+                <i class="fa-regular fa-window-maximize"></i>
+            </button>
+            <button type="button" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content dark image-prompt-inspector-content">
+            <div class="image-prompt-inspector-summary">
+                <img id="imagePromptInspectorThumb" class="image-prompt-inspector-thumb hidden" src="" alt="">
+                <div class="image-prompt-inspector-file">
+                    <span id="imagePromptInspectorFilename" class="image-prompt-inspector-filename">Image</span>
+                    <span id="imagePromptInspectorSubtitle" class="image-prompt-inspector-subtitle"></span>
+                </div>
+            </div>
+            <div class="image-prompt-inspector-controls">
+                <div id="imagePromptInspectorPromptTabs" class="gallery-toggle-group" data-active="prompt"
+                    role="tablist" aria-label="Prompt type">
+                    <button type="button" class="gallery-toggle-btn active" data-prompt-type="prompt"
+                        title="Base Prompt" role="tab" aria-selected="true">
+                        <i class="ri-code-block"></i>
+                    </button>
+                    <button type="button" class="gallery-toggle-btn hidden" data-prompt-type="director"
+                        title="Creative Directive" role="tab" aria-selected="false">
+                        <i class="ri-text-block"></i>
+                    </button>
+                    <button type="button" class="gallery-toggle-btn" data-prompt-type="uc"
+                        title="Undesired Content" role="tab" aria-selected="false">
+                        <i class="ri-eraser-fill"></i>
+                    </button>
+                    <div class="gallery-toggle-slider"></div>
+                </div>
+                <button type="button" id="imagePromptInspectorLaneToggle"
+                    class="btn-secondary toggle-btn icon-only"
+                    data-state="off" data-prompt-lane="input"
+                    title="Showing input prompt; click for computed prompt"
+                    aria-label="Toggle input or computed prompt" aria-pressed="false">
+                    <i class="fas fa-hammer"></i>
+                </button>
+            </div>
+            <div id="imagePromptInspectorScrollShell"
+                class="image-prompt-inspector-scroll-shell scrollbar-padding"
+                data-custom-scrollbar data-scrollable-wrapper-class="image-prompt-inspector-scrollable">
+                <div class="image-prompt-inspector-scroll-inner">
+                    <section class="image-prompt-inspector-section">
+                        <h3 id="imagePromptInspectorPromptHeading" class="image-prompt-inspector-section-title">
+                            <i class="fas fa-align-left"></i> Prompt
+                        </h3>
+                        <div class="prompt-textarea-container image-prompt-inspector-prompt-container">
+                            <div class="prompt-textarea-background"></div>
+                            <div class="prompt-textarea-emphasis-wrap">
+                                <textarea id="imagePromptInspectorPrompt"
+                                    class="form-control prompt-textarea textarea-inset image-prompt-inspector-prompt"
+                                    rows="1" readonly tabindex="-1" spellcheck="false"
+                                    aria-label="Selected image prompt"></textarea>
+                            </div>
+                        </div>
+                        <div id="imagePromptInspectorCharacters" class="image-prompt-inspector-characters hidden"></div>
+                    </section>
+                    <section class="image-prompt-inspector-section">
+                        <h3 class="image-prompt-inspector-section-title">
+                            <i class="fas fa-sliders"></i> Parameters
+                        </h3>
+                        <div id="imagePromptInspectorParameters" class="blueprint-info"></div>
+                    </section>
+                    <section class="image-prompt-inspector-section">
+                        <h3 class="image-prompt-inspector-section-title">
+                            <i class="fas fa-wand-magic-sparkles"></i> Text Expanders
+                        </h3>
+                        <div id="imagePromptInspectorExpanders"
+                            class="text-replacement-lock-list image-prompt-inspector-expanders"></div>
+                    </section>
+                    <section class="image-prompt-inspector-section">
+                        <h3 class="image-prompt-inspector-section-title">
+                            <i class="fas fa-sparkles"></i> Dynamic Generation
+                        </h3>
+                        <div id="imagePromptInspectorDynamic"
+                            class="info-grid image-prompt-inspector-dynamic"></div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image Prompt Inspector JSON Metadata Window Template -->
+    <div id="imagePromptInspectorJsonTemplate"
+        class="modal hidden transient resizeable-window tool-window on-top image-prompt-inspector-json"
+        data-window-max-width="1400" data-window-max-height="1100" data-window-min-width="640"
+        data-window-min-height="420">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-brackets-curly icon-fa"></i>
+                <span>Image Metadata JSON</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" class="btn-secondary toolbar-btn btn-small modal-work-area-maximize"
+                title="Maximize">
+                <i class="fa-regular fa-window-maximize"></i>
+            </button>
+            <button type="button" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content dark image-prompt-inspector-json-content">
+            <div id="imagePromptInspectorJsonScrollShell"
+                class="image-prompt-inspector-json-scroll-shell scrollbar-padding"
+                data-custom-scrollbar data-scrollable-wrapper-class="image-prompt-inspector-json-scrollable">
+                <pre id="imagePromptInspectorJsonBody"
+                    class="image-prompt-inspector-json-body selectable"></pre>
             </div>
         </div>
     </div>
@@ -7359,6 +7283,68 @@ Examples:
         </div>
     </div>
 
+    <!-- Character Database Browser Applet -->
+    <div id="characterDbModal" class="modal hidden resizeable-window"
+        data-window-max-width="1400" data-window-max-height="1000"
+        data-window-min-width="720" data-window-min-height="420">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-users icon-fa"></i>
+                <span>Characters</span>
+            </div>
+        </div>
+        <div class="modal-focus-overlay"></div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" id="closeCharacterDbBtn" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content character-db-modal-content dark">
+            <div class="character-db-search-row">
+                <i class="fas fa-magnifying-glass character-db-search-icon" aria-hidden="true"></i>
+                <input type="text" id="characterDbSearchInput" class="form-control character-db-search-input"
+                    placeholder="Search characters…" autocomplete="off" spellcheck="false" />
+                <button type="button" id="characterDbSearchClearBtn" class="btn-secondary btn-small character-db-search-clear hidden" title="Clear search" aria-label="Clear search">
+                    <i class="fas fa-xmark"></i>
+                </button>
+            </div>
+            <div id="characterDbSearchHits" class="character-db-search-hits hidden"></div>
+            <div class="character-db-layout">
+                <div class="character-db-panel" data-panel="copyright">
+                    <div class="character-db-panel-header">Copyrights</div>
+                    <div class="character-db-panel-body">
+                        <div class="character-db-scroll-shell scrollbar-padding" data-custom-scrollbar
+                            data-scrollable-wrapper-class="character-db-scrollable">
+                            <div id="characterDbCopyrightList" class="character-db-list"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="character-db-panel" data-panel="character">
+                    <div class="character-db-panel-header">Characters</div>
+                    <div class="character-db-panel-body">
+                        <div class="character-db-scroll-shell scrollbar-padding" data-custom-scrollbar
+                            data-scrollable-wrapper-class="character-db-scrollable">
+                            <div id="characterDbCharacterList" class="character-db-list"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="character-db-panel" data-panel="tagtext">
+                    <div class="character-db-panel-header">Tag text</div>
+                    <div class="character-db-panel-body">
+                        <div class="character-db-scroll-shell scrollbar-padding" data-custom-scrollbar
+                            data-scrollable-wrapper-class="character-db-scrollable">
+                            <div id="characterDbTagList" class="character-db-list"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="characterDbStatus" class="character-db-status-bar"></div>
+        </div>
+    </div>
+
     <!-- Runes: edit value (tool window) -->
     <div id="configEditorValueModal" class="modal hidden resizeable-window tool-window on-top"
         data-parent-modal-id="configEditorModal"
@@ -7621,15 +7607,16 @@ Examples:
     <script src="scripts/comp/modalKeyboardRegistry.js"></script>
     <script src="scripts/ws/wsInboundRegistry.js"></script>
     <script src="scripts/ws/inboundHandlerManifest.js"></script>
+    <script src="scripts/comp/generationProgress.js"></script>
     <script src="scripts/websocket.js"></script>
+    <script src="scripts/comp/clientPerfSampler.js"></script>
     <script src="scripts/comp/serviceWorkerManager.js"></script>
     <script src="scripts/comp/dropdown.js"></script>
     <script src="scripts/comp/imageLoupe.js"></script>
     <script src="scripts/comp/lightbox.js"></script>
     <script src="scripts/comp/imageViewer.js"></script>
-    <script src="scripts/comp/spellbookModal.js"></script>
+    <script src="scripts/comp/blurhashUtil.js"></script>
     <script src="scripts/comp/modelManager.js"></script>
-    <script src="scripts/comp/chatSystem.js"></script>
     <script src="scripts/comp/inpaint.js"></script>
     <script src="scripts/comp/workspaceUtils.js"></script>
     <script src="scripts/comp/textareaUtils.js"></script>
@@ -7637,6 +7624,7 @@ Examples:
     <script src="scripts/comp/promptApplyPipeline.js"></script>
     <script src="scripts/comp/compileToPromptsApplet.js"></script>
     <script src="scripts/comp/requestBodyReplacementsModal.js"></script>
+    <script src="scripts/comp/seedSproutManager.js"></script>
     <script src="scripts/comp/presetManager.js"></script>
     <script src="scripts/comp/autofillRankingConfig.js"></script>
     <script src="scripts/comp/autocompleteUtils.js"></script>
@@ -7645,11 +7633,13 @@ Examples:
     <script src="scripts/utils/referenceUtils.js"></script>
     <script src="scripts/comp/imageBias.js"></script>
     <script src="scripts/comp/imageExpansion.js"></script>
+    <script src="scripts/comp/uploadHandlers.js"></script>
     <script src="scripts/comp/referenceManager.js"></script>
     <script src="scripts/comp/promptStageBlocks.js"></script>
     <script src="protected/t5-tokenizer.js"></script>
     <script src="scripts/comp/emphasisWeightMath.js"></script>
     <script src="scripts/comp/emphasisParse.js"></script>
+    <script src="scripts/comp/emphasisGroupIdCodec.js"></script>
     <script src="scripts/comp/emphasisSelection.js"></script>
     <script src="scripts/comp/emphasisSubgroup.js"></script>
     <script src="scripts/comp/emphasisHighlight.js"></script>
@@ -7663,25 +7653,16 @@ Examples:
     <!-- Core Grimoire pseudo-domains (en.grimoire.jp, wiki.*, docs.*, etc.) registered via the same domain+alias system -->
     <script src="scripts/comp/grimoireCoreDomains.js"></script>
     <script src="scripts/comp/dreamscapeHomeDsap.js"></script>
-    <script src="scripts/comp/tagWikiSearchModal.js"></script>
-    <script src="scripts/comp/naxtApplet.js"></script>
-    <script src="scripts/comp/naxVibesApplet.js"></script>
-    <script src="scripts/comp/configEditorApplet.js"></script>
-    <script src="scripts/comp/characterSearchModal.js"></script>
     <script src="scripts/ws/wsDispatchPolicy.js"></script>
     <script src="scripts/comp/websocketRequestsModal.js"></script>
     <script src="scripts/comp/confirmationDialog.js"></script>
-    <script src="scripts/comp/serverManagement.js"></script>
-    <script src="scripts/comp/logViewerApplet.js"></script>
     <script src="scripts/comp/creditCostDialog.js"></script>
     <script src="scripts/comp/galleryToolbar.js"></script>
     <script src="scripts/comp/customScrollbar.js"></script>
     <script src="scripts/comp/pinModal.js"></script>
     <script src="scripts/comp/runCommandIndex.js"></script>
-    <script src="scripts/comp/runApplet.js"></script>
     <script src="scripts/comp/keyboardShortcuts.js"></script>
     <script src="scripts/comp/virtualKeyboard.js"></script>
-    <script src="scripts/comp/datasetTagToolbar.js"></script>
     <script src="scripts/comp/presetTokenCount.js"></script>
     <script src="scripts/comp/promptTextareaToolbar.js"></script>
     <script src="scripts/comp/assetUrlResolver.js"></script>
@@ -7692,15 +7673,11 @@ Examples:
     <script src="scripts/comp/vfsVirtualGrid.js"></script>
     <script src="scripts/comp/vfsImportRouter.js"></script>
     <script src="scripts/comp/vfsSystemOpenRouter.js"></script>
-    <script src="scripts/comp/explorerApplet.js"></script>
     <script src="scripts/comp/desktopShortcuts.js"></script>
-    <script src="scripts/comp/notepadManager.js"></script>
     <script src="scripts/comp/fileSearch.js"></script>
-    <script src="scripts/comp/ipManagement.js"></script>
     <script src="scripts/comp/director.js"></script>
     <script src="scripts/comp/utilities.js"></script>
     <script src="scripts/comp/manualDropdownManager.js"></script>
-    <script src="scripts/comp/bracketGenerationApplet.js"></script>
     <script src="scripts/comp/promptTextareaContextMenu.js"></script>
     <script src="scripts/comp/dynamicGenerationLockState.js"></script>
     <script src="scripts/comp/dynamicGenerationCarousel.js"></script>
@@ -7725,8 +7702,8 @@ Examples:
     <script src="scripts/comp/novelAiAccountStatus.js"></script>
     <script src="scripts/comp/accountDataBootstrap.js"></script>
     <script src="scripts/comp/compareViewManager.js"></script>
-    <script src="scripts/comp/compiledPromptInspector.js"></script>
     <script src="scripts/comp/exitConfirmation.js"></script>
+    <script src="scripts/comp/trayIndicators.js"></script>
     <script src="scripts/comp/systemTrayManager.js"></script>
     <script src="scripts/comp/windowControlsOverlay.js"></script>
     <script src="scripts/comp/errorDisplay.js"></script>
@@ -7737,18 +7714,15 @@ Examples:
     <script src="scripts/comp/generationOrchestrator.js"></script>
     <script src="scripts/comp/androidNotificationBridge.js"></script>
     <script src="scripts/comp/connectionManager.js"></script>
-    <script src="scripts/comp/trayIndicators.js"></script>
-    <script src="scripts/comp/seedSproutManager.js"></script>
     <script src="scripts/comp/manualFormHelpers.js"></script>
-    <script src="scripts/comp/uploadHandlers.js"></script>
     <script src="scripts/comp/manualUploadHandlers.js"></script>
     <script src="scripts/comp/galleryActions.js"></script>
     <script src="scripts/comp/bulkOperationsManager.js"></script>
     <script src="scripts/comp/uiResize.js"></script>
     <script src="scripts/comp/cacheAndReadOnly.js"></script>
     <script src="scripts/comp/windowManagementHelpers.js"></script>
-    <script src="scripts/comp/generationProgress.js"></script>
     <script src="scripts/appWebSocketHandlers.js"></script>
+    <script src="scripts/comp/featureLoader.js"></script>
     <script src="scripts/appInitSteps.js"></script>
     <script src="scripts/comp/telemetryClient.js"></script>
     <script src="scripts/app.js"></script>

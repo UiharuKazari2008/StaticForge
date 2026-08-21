@@ -178,7 +178,8 @@ function releaseVariationImageSrc() {
     variationImage.onload = null;
     variationImage.onerror = null;
     const src = variationImage.currentSrc || variationImage.src || '';
-    if (src.startsWith('blob:')) {
+    // Do not revoke originalDataUrl — crop pipeline reuses it across preview swaps
+    if (src.startsWith('blob:') && src !== window.uploadedImageData?.originalDataUrl) {
         URL.revokeObjectURL(src);
     }
     variationImage.removeAttribute('src');
@@ -552,7 +553,7 @@ async function handleManualPreviewImageContextMenuAction(event) {
                 const filename = window.currentManualPreviewImage.original;
                 if (filename) {
                     const source = `file:${filename}`;
-                    const previewUrl = `/images/${filename}`;
+                    const previewUrl = localGalleryImageUrl(filename);
 
                     window.uploadedImageData = {
                         image_source: source,
@@ -1715,6 +1716,18 @@ function disableDynamicGeneration() {
 
     clearManualRentanContextOverlay();
 
+    // Same creative-off cleanup as creativeBtn toggle (dynamicGenerationManager.js)
+    updateCreativeDirectiveVisibility();
+    const stageItems = pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item');
+    if (stageItems) {
+        stageItems.forEach(stageItem => {
+            // updateStageCreativeDirectiveVisibility: public/scripts/comp/pipelineStageManager.js
+            updateStageCreativeDirectiveVisibility(stageItem.id);
+        });
+    }
+    // updateAllTextOverlayPlaceholders: public/scripts/comp/textOverlayManager.js
+    updateAllTextOverlayPlaceholders();
+
     if (typeof updateDynamicGenerationToggleBtn === 'function') {
         updateDynamicGenerationToggleBtn();
     }
@@ -1789,12 +1802,13 @@ function clearManualForm() {
     selectedNsfwValue = 0; // Default to Neutral
     nsfwBias = 1.0; // Default bias
 
+    appendQuality = true;
+    qualityPresetBias = 1.0;
+
     // Update NSFW button display
     updateNsfwButtonDisplay();
     updateDatasetDisplay();
     renderDatasetDropdown();
-
-    appendQuality = true;
 
     autoPositionBtn.setAttribute('data-state', 'on');
 
@@ -1816,6 +1830,7 @@ function clearManualForm() {
 
     // Clear generating state
     isGenerating = false;
+    updateImageGenerationIndicator();
     updateManualGenerateBtnState();
     forceStopPreviewAnimation();
 
@@ -2273,7 +2288,8 @@ function addSharedFieldsToRequestBody(requestBody, values) {
         requestBody.allCharacterPrompts = values.characterPrompts;
         requestBody.use_coords = false;
         if (values.autoPositionBtn && values.autoPositionBtn.getAttribute('data-state') !== 'on') {
-            if (Array.from(values.characterItems).some(item => item.dataset.positionX && item.dataset.positionY)) {
+            if (characterPromptsHaveCustomCoords(values.characterPrompts) ||
+                Array.from(values.characterItems).some(item => item.dataset.positionX && item.dataset.positionY)) {
                 requestBody.use_coords = true;
             }
         }
@@ -2313,7 +2329,28 @@ function addSharedFieldsToRequestBody(requestBody, values) {
         ? getEmphasisNormalizationFieldStore()
         : (window.emphasisNormalizationByField || null);
     if (emphasisNormStore && Object.keys(emphasisNormStore).length > 0) {
-        requestBody.emphasis_normalization = { ...emphasisNormStore };
+        // Dual-write character_N keys by DOM order so server sanitize fieldHints match.
+        const normPayload = { ...emphasisNormStore };
+        const characterItems = characterPromptsContainer
+            ? characterPromptsContainer.querySelectorAll('.character-prompt-item')
+            : [];
+        characterItems.forEach((item, index) => {
+            const characterId = item.id;
+            if (!characterId) return;
+            const promptKey = `${characterId}_prompt`;
+            const ucKey = `${characterId}_uc`;
+            const promptNegKey = `${characterId}_promptNegative`;
+            if (normPayload[promptKey]) {
+                normPayload[`character_${index}`] = { ...normPayload[promptKey] };
+            }
+            if (normPayload[ucKey]) {
+                normPayload[`character_${index}_uc`] = { ...normPayload[ucKey] };
+            }
+            if (normPayload[promptNegKey]) {
+                normPayload[`character_${index}_prompt_negative`] = { ...normPayload[promptNegKey] };
+            }
+        });
+        requestBody.emphasis_normalization = normPayload;
     }
 
     // Collect dynamic generation data from current button states
@@ -2757,7 +2794,7 @@ function updateDynamicGenerationOverlay(context) {
 // skipContentCheck: If true, skip confirmation check (caller handles it)
 // skipContentLoad: If true, skip loading content (just show modal)
 async function openManualModalWithContent(content = null, event = null) {
-    // wireStudioVfsDrop: public/scripts/comp/explorerApplet.js
+    // wireStudioVfsDrop: public/scripts/comp/explorerApplet.js (deferred; desktop loads explorer at init 18)
     if (typeof wireStudioVfsDrop === 'function') wireStudioVfsDrop();
 
     // Check if modal is already open
@@ -2935,6 +2972,9 @@ async function openManualModalWithContent(content = null, event = null) {
                     presetData.noiseScheduler = noiseObj ? noiseObj.meta : 'karras';
                 }
 
+                if (typeof convertMetadataEmphasisToManaged === 'function') {
+                    presetData = convertMetadataEmphasisToManaged(presetData);
+                }
                 await loadIntoManualForm('preset', presetData);
             } else {
                 console.error('❌ Invalid response structure:', _presetData);
@@ -2942,6 +2982,9 @@ async function openManualModalWithContent(content = null, event = null) {
             }
         } else if (loadMetadata) {
             updateSplashScreenStatus('Loading metadata...');
+            if (typeof convertMetadataEmphasisToManaged === 'function') {
+                loadMetadata = convertMetadataEmphasisToManaged(loadMetadata);
+            }
             await loadIntoManualForm('metadata', loadMetadata, loadImage);
         } else if (!isRunning) {
             clearManualForm();
@@ -3017,23 +3060,36 @@ async function openManualModalWithContent(content = null, event = null) {
         });
     };
 
+    // Resolve only after splash is gone and the window is actually open so callers
+    // (e.g. Agora import defaults toast) do not flash over the splash.
     const deferOpenUntilSplashDismissed = window.isDesktop && manualModal.classList.contains('hidden-alt');
-    if (deferOpenUntilSplashDismissed) {
-        hideSplashScreen(() => {
-            requestAnimationFrame(() => {
-                manualModal.classList.remove('opening');
-                void manualModal.offsetWidth;
-                openModal(manualModal);
-                manualPrompt.focus();
-                schedulePostOpenPromptLayout();
-            });
-        });
-    } else {
-        hideSplashScreen();
-        openModal(manualModal);
-        manualPrompt.focus();
-        schedulePostOpenPromptLayout();
-    }
+    const splashStillVisible = window.isDesktop && splashScreen && !splashScreen.classList.contains('hidden');
+    await new Promise((resolve) => {
+        const afterSplashDismissed = () => {
+            if (deferOpenUntilSplashDismissed) {
+                requestAnimationFrame(() => {
+                    manualModal.classList.remove('opening');
+                    void manualModal.offsetWidth;
+                    openModal(manualModal);
+                    manualPrompt.focus();
+                    schedulePostOpenPromptLayout();
+                    resolve();
+                });
+                return;
+            }
+            openModal(manualModal);
+            manualPrompt.focus();
+            schedulePostOpenPromptLayout();
+            resolve();
+        };
+
+        if (deferOpenUntilSplashDismissed || splashStillVisible) {
+            hideSplashScreen(afterSplashDismissed);
+        } else {
+            hideSplashScreen();
+            afterSplashDismissed();
+        }
+    });
 }
 
 // Update creative directive visibility based on creative mode and dynamic generation visibility
@@ -3084,6 +3140,9 @@ function updateLoadButtonState() {
     updateManualPriceDisplay();
     if (typeof updateManualGenCountDisplay === 'function') {
         updateManualGenCountDisplay();
+    }
+    if (typeof updateManualTokenFreeDisplay === 'function') {
+        updateManualTokenFreeDisplay();
     }
 
     // Check if "show both" mode is active and hide tab buttons container if needed
@@ -3453,26 +3512,14 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
         if (data.allCharacterPrompts && Array.isArray(data.allCharacterPrompts)) {
             // Handle new allCharacterPrompts format
 
-            // Check if any character has valid coordinates to determine actual use_coords
-            const hasValidCoords = data.allCharacterPrompts.some(char =>
-                char.center &&
-                char.center.x !== null &&
-                char.center.y !== null &&
-                (char.center.x !== 0.5 || char.center.y !== 0.5)
-            );
-            const actualUseCoords = hasValidCoords || data.use_coords || false;
+            // Only real non-default placements enable coords; ignore stale v4/forge use_coords
+            // flags (NAI stores use_coords:false with 0.5 placeholders; broken gens may flip true).
+            const actualUseCoords = characterPromptsHaveCustomCoords(data.allCharacterPrompts);
 
             loadCharacterPrompts(data.allCharacterPrompts, actualUseCoords);
             autoPositionBtn.setAttribute('data-state', actualUseCoords ? 'off' : 'on');
         } else if (data.characterPrompts && Array.isArray(data.characterPrompts)) {
-            // Check if any character has valid coordinates to determine actual use_coords
-            const hasValidCoords = data.characterPrompts.some(char =>
-                char.center &&
-                char.center.x !== null &&
-                char.center.y !== null &&
-                (char.center.x !== 0.5 || char.center.y !== 0.5)
-            );
-            const actualUseCoords = hasValidCoords || data.use_coords || false;
+            const actualUseCoords = characterPromptsHaveCustomCoords(data.characterPrompts);
 
             loadCharacterPrompts(data.characterPrompts, actualUseCoords);
             autoPositionBtn.setAttribute('data-state', actualUseCoords ? 'off' : 'on');
@@ -3612,9 +3659,12 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
             appendQuality = true;
         }
 
-        // Load quality preset bias if available
-        if (data.quality_preset_bias !== undefined) {
-            qualityPresetBias = parseFloat(data.quality_preset_bias);
+        // Load quality preset bias if available (top-level or forge_data)
+        const loadedQualityBias = data.quality_preset_bias !== undefined
+            ? data.quality_preset_bias
+            : data.forge_data?.quality_preset_bias;
+        if (loadedQualityBias !== undefined) {
+            qualityPresetBias = parseFloat(loadedQualityBias);
         } else {
             qualityPresetBias = 1.0;
         }
@@ -3745,13 +3795,13 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
                 imageBiasAdjustmentData.currentBias = data.image_bias;
             }
             if (imageType === 'cache') {
-                previewUrl = `/cache/preview/${identifier}.webp`;
+                previewUrl = localCachePreviewUrl(`${identifier}.webp`);
             } else if (imageType === 'file') {
                 // Check if this is a temporary file from URL download
                 if (image && image.isTempFile && image.tempFilename) {
                     previewUrl = `/temp/${image.tempFilename}`;
                 } else {
-                    previewUrl = `/images/${identifier}`;
+                    previewUrl = localGalleryImageUrl(identifier);
                 }
             }
             if (previewUrl) {
@@ -3873,9 +3923,9 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
             let previewUrl = '';
 
             if (imageType === 'file') {
-                previewUrl = `/images/${identifier}`;
+                previewUrl = localGalleryImageUrl(identifier);
             } else if (imageType === 'cache') {
-                previewUrl = `/cache/preview/${identifier}.webp`;
+                previewUrl = localCachePreviewUrl(`${identifier}.webp`);
             }
 
             if (previewUrl && variationImage) {
@@ -4399,6 +4449,7 @@ async function handleManualGeneration(e, options = {}) {
 
     // Set generating state
     isGenerating = true;
+    updateImageGenerationIndicator();
     updateManualGenerateBtnState();
 
     // Fade out existing dialogs when starting new generation
@@ -4439,6 +4490,7 @@ async function handleManualGeneration(e, options = {}) {
     // Validate required fields for both paths
     if (!validateFields(['model', 'prompt', 'resolutionValue'], 'Please fill in all required fields (Model, Prompt, Resolution)')) {
         isGenerating = false;
+        updateImageGenerationIndicator();
         updateManualGenerateBtnState();
         return;
     }
@@ -4448,6 +4500,7 @@ async function handleManualGeneration(e, options = {}) {
         const bracketOk = await validateBracketPlaceholdersBeforeGeneration(values);
         if (!bracketOk) {
             isGenerating = false;
+            updateImageGenerationIndicator();
             updateManualGenerateBtnState();
             return;
         }
@@ -4535,6 +4588,7 @@ async function handleManualGeneration(e, options = {}) {
 
         if (!confirmed) {
             isGenerating = false;
+            updateImageGenerationIndicator();
             updateManualGenerateBtnState();
             return;
         }
@@ -4647,7 +4701,7 @@ async function handleManualGeneration(e, options = {}) {
             }
 
             if (filename) {
-                const imageSrc = `/images/${filename}`;
+                const imageSrc = localGalleryImageUrl(filename);
                 const wsClient = window.wsClient;
                 let contentLength = result.contentLength || result.metadata?.file_size || null;
                 if ((!contentLength || contentLength <= 0) && wsClient?.pendingGenerationDownloadBytes > 0) {
@@ -4786,6 +4840,7 @@ async function handleManualGeneration(e, options = {}) {
         }
         showManualLoading(false);
         isGenerating = false;
+        updateImageGenerationIndicator();
         updateManualGenerateBtnState();
         hideDynamicGenerationProgressOverlayImmediate();
     }
@@ -5730,7 +5785,7 @@ function handleManualPreviewVariationClick(e) {
         const filename = window.currentManualPreviewImage.original;
         if (filename) {
             const source = `file:${filename}`;
-            const previewUrl = `/images/${filename}`;
+            const previewUrl = localGalleryImageUrl(filename);
 
             window.uploadedImageData = {
                 image_source: source,

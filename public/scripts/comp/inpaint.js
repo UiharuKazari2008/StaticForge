@@ -1478,7 +1478,9 @@ function openMaskEditor() {
         // Check if we have a placeholder image (current image for regular image)
         if (window.uploadedImageData && window.uploadedImageData.isPlaceholder) {
             // Use the placeholder image as background
-            const backgroundImageValue = `url("${window.uploadedImageData.image_source.replace('file:', '/images/')}")`;
+            // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+            const placeholderFile = String(window.uploadedImageData.image_source || '').replace(/^file:/, '');
+            const backgroundImageValue = `url("${localGalleryImageUrl(placeholderFile)}")`;
             canvasInner.style.setProperty('--background-image', backgroundImageValue);
             canvasInner.style.setProperty('--background-aspect-ratio', `${canvasWidth} / ${canvasHeight}`);
             canvasInner.style.setProperty('--background-size', 'contain');

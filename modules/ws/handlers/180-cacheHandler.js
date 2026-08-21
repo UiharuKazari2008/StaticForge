@@ -1,5 +1,6 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
 const runtimeAssetService = require('../../runtimeAssetService');
+const { broadcastGalleryMutation } = require('./120-galleryHandler');
 
 const CACHE_DESTRUCTIVE = { destructive: true };
 const SYSTEM_DESTRUCTIVE = { destructive: true };
@@ -153,8 +154,10 @@ async function handleRebuildMetadataCache(handlersCtx, ws, message, clientInfo, 
             timestamp: new Date().toISOString()
         });
 
-        const galleryData = await handlersCtx.buildGalleryData('images', clientInfo);
-        wsServer.broadcastGalleryUpdate(galleryData, 'images');
+        await broadcastGalleryMutation(handlersCtx, wsServer, clientInfo, {
+            viewType: 'images',
+            action: 'invalidate_sync'
+        });
 
     } catch (error) {
         handlersCtx.stopKeepAliveInterval(message.requestId);

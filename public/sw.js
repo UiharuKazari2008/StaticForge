@@ -181,6 +181,22 @@ function getCanonicalUrl(input) {
   return url.split('?')[0];
 }
 
+/**
+ * Image URLs whose query changes server processing must not use the query-stripped
+ * image cache (would return a plain cached PNG without custom headers / transforms).
+ */
+function shouldBypassImageCache(request) {
+  if (request.headers.get('X-Preview-Finalize') === '1') return true;
+  try {
+    const url = new URL(request.url);
+    if (url.searchParams.get('clipboardOrigin') === 'true') return true;
+    if (url.searchParams.get('clipboard') === 'true') return true;
+    if (url.searchParams.get('download') === 'true') return true;
+    if (url.searchParams.get('stripContext') === 'true') return true;
+  } catch (_) { /* ignore */ }
+  return false;
+}
+
 function isManagedImageCacheUrl(url) {
   return url.includes('/images/') || url.includes('/previews/') || url.includes('/naxCache/');
 }
@@ -367,7 +383,7 @@ async function enforceImageCachePolicy() {
 async function handleImageRequest(event) {
   const { request } = event;
   const canonicalUrl = getCanonicalUrl(request.url);
-  const bypassImageCache = request.headers.get('X-Preview-Finalize') === '1';
+  const bypassImageCache = shouldBypassImageCache(request);
   const cache = await caches.open(IMAGE_CACHE);
   const cachedResponse = bypassImageCache ? null : await cache.match(canonicalUrl);
 
@@ -414,7 +430,10 @@ async function handleImageRequest(event) {
   });
   // Cache.put() can throw NetworkError (quota, body stream errors). Must not reject the fetch
   // handler or the browser shows a broken image and logs an uncaught promise rejection.
-  if (networkResponse && networkResponse.ok && networkResponse.status >= 200 && networkResponse.status < 300 && shouldCacheResponse(networkResponse)) {
+  // Never store bypass responses under the canonical key (would poison normal image loads).
+  if (!bypassImageCache
+      && networkResponse && networkResponse.ok && networkResponse.status >= 200 && networkResponse.status < 300
+      && shouldCacheResponse(networkResponse)) {
     try {
       await cache.put(canonicalUrl, networkResponse.clone());
       await upsertImageMetadata(canonicalUrl, networkResponse);

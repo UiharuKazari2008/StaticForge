@@ -1,0 +1,149 @@
+<!-- Open Note Modal -->
+<div id="openNoteModal" class="modal hidden tool-window">
+    <div class="modal-window-title">
+        <div class="modal-window-title-main">
+            <i class="fas fa-folder-open icon-fa"></i>
+            <img src="/static_images/app_icons/notebook.png" alt="" class="icon-image" />
+            <span>Open Note</span>
+        </div>
+    </div>
+    <div class="modal-window-controls">
+        <button type="button" id="openNoteSidebarToggleBtn" class="btn-secondary btn-small open-note-sidebar-toggle" title="Workspaces">
+            <i class="fas fa-bars"></i>
+        </button>
+        <button type="button" id="closeOpenNoteModalBtn" class="btn-danger close-btn btn-small" title="Close">
+            <i class="fa-regular fa-xmark-large"></i>
+        </button>
+    </div>
+    <div class="modal-content open-note-modal-content dark">
+        <div class="open-note-layout" id="openNoteLayout">
+            <div class="open-note-sidebar-backdrop" id="openNoteSidebarBackdrop"></div>
+            <div class="open-note-sidebar" id="openNoteWorkspaceSidebar">
+                <div class="open-note-sidebar-header">Workspaces</div>
+                <div id="openNoteWorkspaceList" class="open-note-workspace-list">
+                    <!-- Workspaces populated by JavaScript -->
+                </div>
+            </div>
+            <div class="open-note-main">
+                <div class="open-note-list-scroll">
+                    <div id="openNoteList" class="note-selection-list">
+                        <!-- Notes populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Update Note Modal -->
+<div id="updateNoteModal" class="modal hidden tool-window on-top">
+    <div class="modal-window-title">
+        <div class="modal-window-title-main">
+            <i class="fas fa-cog icon-fa"></i>
+            <img src="/static_images/app_icons/notebook.png" alt="" class="icon-image" />
+            <span>Modify Note</span>
+        </div>
+    </div>
+    <div class="modal-window-controls">
+        <button type="button" id="closeUpdateNoteModalBtn" class="btn-danger close-btn btn-small" title="Close">
+            <i class="fa-regular fa-xmark-large"></i>
+        </button>
+    </div>
+    <div class="modal-content dark">
+        <div class="modal-body modal-padding">
+            <div class="form-group">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="noteUpdateName">Name</label>
+                        <input type="text" id="noteUpdateName" class="form-control hover-show colored"
+                            placeholder="Note name...">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="noteUpdateColor">Color</label>
+                        <div id="noteUpdateColorDropdown" class="custom-dropdown">
+                            <button type="button" id="noteUpdateColorDropdownBtn"
+                                class="custom-dropdown-btn hover-show colored">
+                                <span id="noteUpdateColorSelected">Select color...</span>
+                            </button>
+                            <div id="noteUpdateColorDropdownMenu" class="custom-dropdown-menu hidden">
+                                <!-- Options will be populated by JavaScript -->
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="noteUpdateIcon">Icon</label>
+                        <div id="noteUpdateIconDropdown" class="custom-dropdown">
+                            <button type="button" id="noteUpdateIconDropdownBtn"
+                                class="custom-dropdown-btn hover-show colored">
+                                <span id="noteUpdateIconSelected">Select icon...</span>
+                            </button>
+                            <div id="noteUpdateIconDropdownMenu" class="custom-dropdown-menu hidden">
+                                <!-- Options will be populated by JavaScript -->
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="noteUpdateWorkspace">Workspace</label>
+                        <div id="noteUpdateWorkspaceDropdown" class="custom-dropdown">
+                            <button type="button" id="noteUpdateWorkspaceDropdownBtn"
+                                class="custom-dropdown-btn hover-show colored">
+                                <span id="noteUpdateWorkspaceSelected">Select workspace...</span>
+                            </button>
+                            <div id="noteUpdateWorkspaceDropdownMenu" class="custom-dropdown-menu hidden">
+                                <!-- Options will be populated by JavaScript -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer-colored">
+            <div class="modal-actions">
+                <button type="button" id="saveUpdateNoteBtn" class="btn-primary btn-small">
+                    Update <i class="fas fa-save"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Notepad Modal Template (will be cloned for multiple instances) -->
+<div id="notepadModalTemplate" class="modal hidden transient notepad-modal resizeable-window"
+    data-window-max-width="1000" data-window-max-height="800" data-window-min-width="400"
+    data-window-min-height="300">
+
+    <div class="modal-window-title">
+        <div class="modal-window-title-main">
+            <i class="fas fa-file-lines icon-fa"></i>
+            <img src="/static_images/app_icons/pencil.png" alt="" class="icon-image" />
+            <span id="notepadTitle">Notepad</span>
+        </div>
+    </div>
+    <div class="modal-window-controls">
+        <div id="notepadDropdown" class="custom-dropdown dark dropright">
+            <button type="button" id="notepadDropdownBtn" class="btn-secondary btn-small">
+                <i class="fas fa-chevron-down"></i>
+            </button>
+            <div id="notepadDropdownMenu" class="custom-dropdown-menu hidden">
+                <!-- Options will be populated by JavaScript -->
+            </div>
+        </div>
+        <button type="button" id="notepadSaveBtn" class="btn-primary btn-small" title="Save">
+            <i class="fas fa-save"></i>
+        </button>
+        <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+            <i class="fa-regular fa-window-minimize"></i>
+        </button>
+        <button type="button" id="notepadMaximizeBtn" class="btn-secondary btn-small" title="Maximize">
+            <i class="fa-regular fa-window-maximize"></i>
+        </button>
+        <button type="button" class="btn-danger close-btn btn-small" title="Close">
+            <i class="fa-regular fa-xmark-large"></i>
+        </button>
+    </div>
+    <div class="modal-content modal-padding notepad-modal-content light">
+        <textarea id="notepadTextarea" class="notepad-textarea" placeholder="Start typing..."></textarea>
+    </div>
+</div>

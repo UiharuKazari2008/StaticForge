@@ -159,6 +159,10 @@ div#spellbookCustomPresetDropdown {
     transition: opacity 0.5s ease-in-out;
     z-index: var(--z-layer-1);
     border-radius: 6px;
+    -webkit-filter: blur(28px) brightness(0.72);
+    filter: blur(28px) brightness(0.72);
+    transform: scale(1.18);
+    transform-origin: center center;
 }
 
 /* Overlay buttons container */

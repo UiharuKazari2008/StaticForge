@@ -2689,11 +2689,15 @@ class ContextMenuController {
     attachToElement(element, config) {
         if (!element || !config) return;
 
-        // Store the config in a way that preserves functions
-        const configId = 'context-menu-config-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
         this.configs = this.configs || {};
-        this.configs[configId] = config;
+        let configId = element.getAttribute('data-context-menu');
+        if (configId && this.configs[configId]) {
+            this.configs[configId] = config;
+            return;
+        }
 
+        configId = 'context-menu-config-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        this.configs[configId] = config;
         element.setAttribute('data-context-menu', configId);
     }
 

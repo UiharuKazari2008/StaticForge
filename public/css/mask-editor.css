@@ -849,8 +849,10 @@ body.desktop-mode .page-background {
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
-    -webkit-filter: brightness(0.7);
-    filter: brightness(0.7);
+    -webkit-filter: blur(28px) brightness(0.7);
+    filter: blur(28px) brightness(0.7);
+    transform: scale(1.18);
+    transform-origin: center center;
     opacity: 0.5;
     z-index: 0;
 }

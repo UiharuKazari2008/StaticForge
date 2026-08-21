@@ -34,9 +34,9 @@ function finishExpansionGenerationUi() {
     }
     // hideDynamicGenerationProgressOverlayImmediate: public/scripts/comp/manualModalManager.js
     hideDynamicGenerationProgressOverlayImmediate();
-    if (typeof stopPreviewAnimation === 'function') {
-        stopPreviewAnimation();
-    }
+    // forceStopPreviewAnimation: public/scripts/comp/manualModalManager.js
+    // Prefer force-stop so fadeOut/animationend races cannot leave lines spinning.
+    forceStopPreviewAnimation();
 }
 
 function normalizeExpansionCharacterPrompts(arr) {
@@ -134,6 +134,7 @@ function getExpansionCharacterPromptTextareaHtml(characterId, field, text) {
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="quick-access" title="Quick Access"><i class="fas fa-book-atlas"></i></button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="search" title="Search"><i class="fas fa-search"></i></button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle Autofill"><i class="fas fa-lightbulb"></i></button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn emphasis-group-chip" data-action="emphasis-group-chip" data-state="off" title="Emphasis"><i class="fas fa-dial"></i><span class="emphasis-group-chip-value hidden">1.0</span></button>
                                         <div id="characterUCActionsDropdown_${safeId}" class="custom-dropdown dark dropright">
                                             <button type="button" id="characterUCActionsDropdownBtn_${safeId}" class="btn-secondary btn-small toolbar-btn"><i class="fas fa-toolbox"></i></button>
                                             <div id="characterUCActionsDropdownMenu_${safeId}" class="custom-dropdown-menu hidden"></div>
@@ -170,6 +171,7 @@ function getExpansionCharacterPromptTextareaHtml(characterId, field, text) {
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="quick-access" title="Quick Access"><i class="fas fa-book-atlas"></i></button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="search" title="Search"><i class="fas fa-search"></i></button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle Autofill"><i class="fas fa-lightbulb"></i></button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn emphasis-group-chip" data-action="emphasis-group-chip" data-state="off" title="Emphasis"><i class="fas fa-dial"></i><span class="emphasis-group-chip-value hidden">1.0</span></button>
                                         <div id="characterActionsDropdown_${safeId}" class="custom-dropdown dark dropright">
                                             <button type="button" id="characterActionsDropdownBtn_${safeId}" class="btn-secondary btn-small toolbar-btn"><i class="fas fa-toolbox"></i></button>
                                             <div id="characterActionsDropdownMenu_${safeId}" class="custom-dropdown-menu hidden"></div>
@@ -1496,7 +1498,7 @@ async function submitImageExpansionReroll() {
                 });
             }
 
-            const imageSrc = `/images/${result.filename}`;
+            const imageSrc = localGalleryImageUrl(result.filename);
             const mockResponse = {
                 headers: {
                     get: (headerName) => {
@@ -1887,7 +1889,7 @@ async function submitImageExpansion() {
                 manualForm.classList.remove('streaming');
             }
 
-            const imageSrc = `/images/${result.filename}`;
+            const imageSrc = localGalleryImageUrl(result.filename);
             const mockResponse = {
                 headers: {
                     get: (headerName) => {

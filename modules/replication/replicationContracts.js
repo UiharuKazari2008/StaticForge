@@ -252,6 +252,23 @@ function isReplicationEnabled(config) {
     return role !== 'standalone';
 }
 
+/** Child/ephemeral node — not standalone or master host. */
+function isReplicationGalleryClient(config) {
+    const role = config && config.role ? config.role : 'standalone';
+    return role === 'child' || role === 'ephemeral';
+}
+
+/** Gallery may call masterAccessUrl (shared merge, remote asset fetch). Standalone/master never. */
+function canGalleryUseRemoteMaster(config) {
+    if (!isReplicationGalleryClient(config)) {
+        return false;
+    }
+    if (!config || !config.masterAccessUrl) {
+        return false;
+    }
+    return config.connectivity !== 'airgapped';
+}
+
 /** Ephemeral nodes export cargo manually; full changelog sync is child-only. */
 function canRunReplicationAutoSync(config) {
     const role = config && config.role ? config.role : 'standalone';
@@ -294,6 +311,8 @@ module.exports = {
     isReplicationTransferMode,
     normalizeReplicationConfig,
     isReplicationEnabled,
+    isReplicationGalleryClient,
+    canGalleryUseRemoteMaster,
     canRunReplicationAutoSync,
     canRunReplicationBulkTransfer,
     isReplicationDestructivePacket

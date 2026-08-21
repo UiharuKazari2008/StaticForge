@@ -114,6 +114,18 @@ function findAutoDetectTagBounds(value, cursorPosition) {
         };
     }
 
+    // findManagedEmphasisBlockAtCursor: public/scripts/comp/emphasisGroupIdCodec.js
+    const managedBlock = findManagedEmphasisBlockAtCursor(value, cursorPosition);
+    if (managedBlock) {
+        return {
+            start: managedBlock.start,
+            end: managedBlock.end,
+            mode: 'group',
+            weight: managedBlock.weight,
+            managedId: managedBlock.id
+        };
+    }
+
     const emphasisBlock = findEmphasisBlockAtCursor(value, cursorPosition);
     if (emphasisBlock) {
         return {
@@ -129,6 +141,22 @@ function findAutoDetectTagBounds(value, cursorPosition) {
 
     let blockStart = findEmphasisBlockEndBefore(value, cursorPosition);
 
+    // Managed open/close ends are term boundaries (same role as classic ::)
+    // listManagedEmphasisBlocks: public/scripts/comp/emphasisGroupIdCodec.js
+    if (hasManagedEmphasisGroupIds(value)) {
+        const managedBlocks = listManagedEmphasisBlocks(value);
+        for (let i = 0; i < managedBlocks.length; i++) {
+            const b = managedBlocks[i];
+            if (b.end <= cursorPosition) {
+                blockStart = Math.max(blockStart, b.end);
+            }
+            if (b.openEnd <= cursorPosition && b.openEnd > blockStart
+                && cursorPosition <= b.closeStart) {
+                blockStart = Math.max(blockStart, b.openEnd);
+            }
+        }
+    }
+
     const commaIdx = textBeforeCursor.lastIndexOf(',');
     if (commaIdx >= 0) blockStart = Math.max(blockStart, commaIdx + 1);
     const semicolonIdx = textBeforeCursor.lastIndexOf(';');
@@ -142,6 +170,20 @@ function findAutoDetectTagBounds(value, cursorPosition) {
     }
 
     let blockEnd = findEmphasisBlockStartAfter(value, cursorPosition);
+
+    if (hasManagedEmphasisGroupIds(value)) {
+        const managedBlocks = listManagedEmphasisBlocks(value);
+        for (let i = 0; i < managedBlocks.length; i++) {
+            const b = managedBlocks[i];
+            if (b.start >= cursorPosition) {
+                blockEnd = Math.min(blockEnd, b.start);
+            }
+            if (b.closeStart >= cursorPosition && b.closeStart < blockEnd
+                && cursorPosition >= b.openEnd) {
+                blockEnd = Math.min(blockEnd, b.closeStart);
+            }
+        }
+    }
 
     const forwardDelimiters = [',', ';', '|'];
     for (const delimiter of forwardDelimiters) {

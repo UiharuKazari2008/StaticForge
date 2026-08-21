@@ -84,7 +84,8 @@ function updateAndroidNotificationBody() {
 function buildAbsoluteImageUrl(imagePath) {
     if (!imagePath) return '';
     if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) return imagePath;
-    const path = imagePath.startsWith('/') ? imagePath : `/images/${imagePath}`;
+    // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+    const path = imagePath.startsWith('/') ? imagePath : localGalleryImageUrl(imagePath);
     return (typeof location !== 'undefined' && location.origin) ? (location.origin + path) : path;
 }
 

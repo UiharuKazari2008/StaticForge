@@ -363,6 +363,11 @@ function recordDirectKeyboardListenerWarning(type, listener) {
 }
 
 function dispatchKeyboardRegistryEvent(event) {
+    // OS key-repeat on modifiers (~30–60/s) must not scan the registry or re-enter handlers.
+    if (event.repeat && isModifierKeyOnly(event)) {
+        return false;
+    }
+
     const listeners = collectActiveKeyboardListeners(event);
     let consumed = false;
     let blocked = false;

@@ -1,0 +1,257 @@
+/* Character Database Browser applet — scripts/comp/characterDbApplet.js */
+body.desktop-mode #characterDbModal.modal:not(.minimised):not(.maximised) {
+    width: min(1100px, 94vw);
+    height: min(680px, 85vh);
+}
+
+#characterDbModal .character-db-modal-content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+    gap: var(--spacing-xs, 4px);
+}
+
+#characterDbModal .character-db-search-row {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    position: relative;
+}
+
+#characterDbModal .character-db-search-icon {
+    position: absolute;
+    left: 8px;
+    opacity: 0.55;
+    font-size: 0.85em;
+    pointer-events: none;
+    z-index: 1;
+}
+
+#characterDbModal .character-db-search-input {
+    flex: 1;
+    min-width: 0;
+    padding-left: 28px;
+    font-size: 0.88em;
+}
+
+#characterDbModal .character-db-search-clear {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+}
+
+#characterDbModal .character-db-search-hits {
+    flex: 0 0 auto;
+    max-height: 140px;
+    overflow: auto;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+    border-radius: 4px;
+    margin-bottom: 2px;
+}
+
+#characterDbModal .character-db-search-hit {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 6px 8px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.06));
+}
+
+#characterDbModal .character-db-search-hit:hover,
+#characterDbModal .character-db-search-hit.active {
+    background: var(--hover-bg, rgba(255, 255, 255, 0.08));
+}
+
+#characterDbModal .character-db-search-hit-name {
+    font-size: 0.9em;
+}
+
+#characterDbModal .character-db-search-hit-meta {
+    font-size: 0.75em;
+    opacity: 0.65;
+}
+
+#characterDbModal .character-db-layout {
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+    min-height: 0;
+    gap: 0;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+#characterDbModal .character-db-panel {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+}
+
+#characterDbModal .character-db-panel:last-child {
+    border-right: none;
+}
+
+#characterDbModal .character-db-panel-header {
+    flex: 0 0 auto;
+    padding: 6px 8px;
+    font-size: 0.78em;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.7;
+    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+}
+
+#characterDbModal .character-db-panel-body {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+#characterDbModal .character-db-scroll-shell {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* Block layout — scrollable-content defaults to flex+height:100% which stretches sparse lists */
+#characterDbModal .scrollable-content.character-db-scrollable {
+    display: block;
+    height: 100%;
+    min-height: 0 !important;
+    overflow: auto;
+    padding: 2px 4px 2px 2px;
+}
+
+#characterDbModal .character-db-list {
+    display: block;
+}
+
+#characterDbModal .character-db-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 6px;
+    cursor: pointer;
+    border-radius: 3px;
+    min-width: 0;
+    min-height: 0;
+    box-sizing: border-box;
+}
+
+#characterDbModal .character-db-row:hover {
+    background: var(--hover-bg, rgba(255, 255, 255, 0.06));
+}
+
+#characterDbModal .character-db-row.active {
+    background: var(--active-bg, rgba(120, 160, 255, 0.18));
+}
+
+#characterDbModal .character-db-row[data-kind="base-prompt"],
+#characterDbModal .character-db-row[data-kind="overload"] {
+    align-items: flex-start;
+    padding: 6px;
+}
+
+#characterDbModal .character-db-row-label {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.88em;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#characterDbModal .character-db-row[data-kind="base-prompt"] .character-db-row-label,
+#characterDbModal .character-db-row[data-kind="overload"] .character-db-row-label {
+    white-space: normal;
+    word-break: break-word;
+    overflow: visible;
+    text-overflow: unset;
+}
+
+#characterDbModal .character-db-row-label.muted {
+    opacity: 0.55;
+    font-style: italic;
+}
+
+#characterDbModal .character-db-row-count {
+    flex: 0 0 auto;
+    font-size: 0.72em;
+    opacity: 0.55;
+    line-height: 1;
+}
+
+#characterDbModal .character-db-row-meta {
+    display: block;
+    font-size: 0.72em;
+    opacity: 0.55;
+    margin-bottom: 2px;
+    line-height: 1.2;
+}
+
+#characterDbModal .character-db-copy-btn {
+    flex: 0 0 auto;
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+    min-height: 22px;
+    padding: 0;
+    opacity: 0.55;
+}
+
+#characterDbModal .character-db-row:hover .character-db-copy-btn,
+#characterDbModal .character-db-copy-btn:focus {
+    opacity: 1;
+}
+
+#characterDbModal .character-db-empty {
+    padding: 8px 6px;
+    font-size: 0.85em;
+    opacity: 0.55;
+}
+
+#characterDbModal .character-db-status-bar {
+    flex: 0 0 auto;
+    font-size: 0.78em;
+    opacity: 0.7;
+    padding: 2px 4px 0;
+    min-height: 1.2em;
+}
+
+#characterDbModal .character-db-form-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#characterDbModal .character-db-form-stack label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.85em;
+}
+
+#confirmationDialog .character-db-form-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#confirmationDialog .character-db-form-stack label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.85em;
+}

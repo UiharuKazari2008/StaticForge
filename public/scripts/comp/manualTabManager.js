@@ -96,6 +96,11 @@ function switchManualTab(targetTab, previouslyFocused = undefined) {
     // Sync the selection to all character prompts
     syncCharacterPromptTabs(targetTab);
 
+    // updateManualTokenFreeDisplay: public/scripts/comp/utilities.js
+    if (typeof updateManualTokenFreeDisplay === 'function') {
+        updateManualTokenFreeDisplay();
+    }
+
     if (ownsScrollbarBatch) {
         customScrollbar.endLayoutBatch();
     }
@@ -234,6 +239,11 @@ function toggleManualShowBoth() {
     // Update prompt status icons after toggling show both
     updatePromptStatusIcons();
     createDebouncedContextResolution();
+
+    // updateManualTokenFreeDisplay: public/scripts/comp/utilities.js
+    if (typeof updateManualTokenFreeDisplay === 'function') {
+        updateManualTokenFreeDisplay();
+    }
 }
 
 function attachManualTabListeners(signal) {

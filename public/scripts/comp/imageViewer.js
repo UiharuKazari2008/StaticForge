@@ -547,22 +547,14 @@ class ImageViewer {
         setModalSizePreservingCenter(this.element, modalWidth, modalHeight);
     }
 
-    // Get blur preview URL from metadata
+    // Soft backdrop from BlurHash only (CSS filter blurs it; @lq is for PhotoSwipe, not backdrops)
     getBlurPreviewUrl() {
-        // For gallery images with filenames
-        if (this.metadata.filename || this.metadata.base || this.metadata.original) {
-            const filename = this.metadata.filename || this.metadata.base || this.metadata.original;
-            const baseName = this.getBaseName(filename);
-            return `/previews/${encodeURIComponent(baseName)}@blur.webp`;
-        }
-
-        // For cache/reference images with preview info
-        if (this.metadata.preview) {
-            const blurPreview = this.metadata.preview.replace('.webp', '@blur.webp');
-            return `/previews/${encodeURIComponent(blurPreview)}`;
-        }
-
-        return null;
+        const hash = this.metadata?.blurhash
+            || this.metadata?.forge_data?.blurhash
+            || this.metadata?.metadata?.forge_data?.blurhash
+            || null;
+        if (!hash) return null;
+        return blurhashToDataUrl(hash, 32, 32);
     }
 
     // Get base name without _upscaled suffix and extension
@@ -774,6 +766,11 @@ class ImageViewer {
                     action: 'image-viewer-creator'
                 },
                 {
+                    icon: 'fas fa-glasses-round',
+                    text: 'Properties',
+                    action: 'image-viewer-inspect-prompts'
+                },
+                {
                     icon: 'mdi mdi-1-25 mdi-relative-scale',
                     text: 'Expand Canvas',
                     action: 'image-viewer-expand'
@@ -879,6 +876,10 @@ class ImageViewer {
                 break;
             case 'image-viewer-creator':
                 this.openInCreator();
+                break;
+            case 'image-viewer-inspect-prompts':
+                // public/scripts/comp/featureLoader.js
+                void featureLoader.loadFeature('image_prompt_inspector').then(() => openImagePromptInspector(this.metadata));
                 break;
             case 'image-viewer-expand':
                 this.expand();
@@ -1447,9 +1448,13 @@ class ImageViewer {
         }
     }
 
-    startChat() {
+    async startChat() {
         const filename = this.getImageFilename();
-        if (!filename || !window.chatSystem) return;
+        if (!filename) return;
+        if (window.featureLoader) {
+            await window.featureLoader.loadFeature('chat');
+        }
+        if (!window.chatSystem) return;
         const characterName = this.metadata?.characterName || this.metadata?.metadata?.character_name || null;
         window.chatSystem.openChatModal(filename, characterName);
     }
@@ -1572,9 +1577,9 @@ window.openGalleryImageInViewer = function (imageData) {
         // For newly generated images
         imageSrc = imageData.url;
     } else {
-        // For gallery images - prefer highest quality version
-        const filename = imageData.upscaled || imageData.original;
-        imageSrc = `/images/${filename}`;
+        // resolveGalleryFullImageUrl / localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+        imageSrc = resolveGalleryFullImageUrl(imageData)
+            || localGalleryImageUrl(imageData.upscaled || imageData.original);
     }
 
     const title = imageData.filename || imageData.base || 'Gallery Image';
@@ -1593,13 +1598,13 @@ window.openReferenceImageInViewer = function (cacheImage) {
         } else if (cacheImage.type === 'vibe' && cacheImage.source) {
             imageSrc = `data:image/png;base64,${cacheImage.source}`;
         } else if (cacheImage.hasPreview) {
-            imageSrc = `/cache/preview/${cacheImage.hasPreview}`;
+            imageSrc = localCachePreviewUrl(cacheImage.hasPreview);
         }
     } else {
         if (cacheImage.hash) {
-            imageSrc = `/cache/upload/${cacheImage.hash}`;
+            imageSrc = localCacheUploadUrl(cacheImage.hash);
         } else if (cacheImage.hasPreview) {
-            imageSrc = `/cache/preview/${cacheImage.hash}.webp`;
+            imageSrc = localCachePreviewUrl(`${cacheImage.hash}.webp`);
         }
     }
 

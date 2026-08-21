@@ -195,6 +195,9 @@ class BannerManager {
             'update_user_global_settings': 'Save User Settings',
             'get_nax_vibes_gallery': 'Browse Vibes',
             'clear_nax_vibes_gallery_cache': 'Refresh Browse Vibes Cache',
+            'get_novelai_explore_gallery': 'Agora Gallery',
+            'clear_novelai_explore_gallery_cache': 'Refresh Agora Cache',
+            'ensure_novelai_explore_image': 'Agora Image Cache',
             'generate_nax_custom_tag': 'Create Custom Tag (NAX)',
             'delete_nax_custom_tag': 'Delete Custom Tag (NAX)',
             'fetch_autofill_wiki_previews': 'Fetch Wiki',
@@ -521,6 +524,7 @@ class WebSocketClient {
         'get_generation_quips_wiki',
         'workspace_update_settings',
         'workspace_update_window_positions',
+        'request_image_metadata',
     ]);
 
     static GENERATION_QUIPS_MESSAGE_TYPES = new Set([
@@ -607,6 +611,7 @@ class WebSocketClient {
         this.maxReconnectDelay = WebSocketClient.DELAY_RECONNECT_MAX;
         this.isConnecting = false;
         this.isManualClose = false;
+        this.startupHaltedForInstall = false;
         this._reconnectTimer = null;
         this.circuitBreaker = false; // New: circuit breaker to prevent infinite retries
         this.lastConnectionAttempt = 0;
@@ -1423,6 +1428,11 @@ class WebSocketClient {
     }
 
     _renderPreStartupDialog() {
+        // serviceWorkerManager._isInstallWizardActive: public/scripts/comp/serviceWorkerManager.js
+        if (window.serviceWorkerManager && window.serviceWorkerManager._isInstallWizardActive()) {
+            return;
+        }
+
         const modal = document.getElementById('desktopPreStartupModal');
         const statusEl = document.getElementById('desktopPreStartupStatus');
         const progressWrap = modal?.querySelector('.desktop-prestartup-progress');
@@ -2449,6 +2459,10 @@ class WebSocketClient {
     // Windows Startup Modal Methods (Desktop Mode Only)
     showWindowsStartupModal(message = 'Initializing...', progress = 0) {
         if (!window.isDesktop) return;
+        // serviceWorkerManager._isInstallWizardActive: public/scripts/comp/serviceWorkerManager.js
+        if (window.serviceWorkerManager && window.serviceWorkerManager._isInstallWizardActive()) {
+            return;
+        }
 
         const modal = document.getElementById('windowsStartupModal');
         const statusElement = document.getElementById('windowsStartupStatus');
@@ -2807,6 +2821,11 @@ class WebSocketClient {
 
         try {
             for (const step of this.initSteps) {
+                if (this.connectionPhase === 'auth' || !this.isConnected()) {
+                    console.log('⚠️ Initialization paused/aborted: auth required or disconnected');
+                    this.initializationLock = false;
+                    return;
+                }
                 this.currentInitStep++;
                 const stepSkipped = this.initializationCompleted && !step.runOnReconnect;
                 // Calculate progress: base percentage + steps percentage
@@ -2837,6 +2856,11 @@ class WebSocketClient {
                     await step.stepFunction();   // run the step
                 } catch (error) {
                     console.error(`❌ Error in init step "${step.message}":`, error);
+                    if (this.connectionPhase === 'auth' || !this.isConnected()) {
+                        console.log('⚠️ Aborting init steps due to auth error or disconnect.');
+                        this.initializationLock = false;
+                        return;
+                    }
                     // scripts/comp/fatalErrorBootstrap.js — presentDreamscapeApplicationError
                     presentDreamscapeApplicationError(
                         'Init step failed: ' + step.message,
@@ -2964,10 +2988,8 @@ class WebSocketClient {
             this._reconnectOnFocusRegain('resume');
         });
 
-        // Listen for service worker network activity events
-        navigator.serviceWorker.addEventListener('message', (event) => {
-            this.handleServiceWorkerMessage(event);
-        });
+        // ServiceWorkerManager owns the single service-worker message listener and
+        // forwards NETWORK_ACTIVITY events here.
     }
 
     /**
@@ -2981,7 +3003,7 @@ class WebSocketClient {
      * @throws {Error} If connection cannot be established after retries
      */
     async connect() {
-        if (this.isManualClose) {
+        if (this.isManualClose || this._isStartupHaltedForInstall()) {
             return;
         }
 
@@ -3007,6 +3029,12 @@ class WebSocketClient {
             this._initializingBeatComplete = true;
         }
 
+        if (this.isManualClose || this._isStartupHaltedForInstall()) {
+            this.isConnecting = false;
+            this.connectionLock = false;
+            return;
+        }
+
         const dialingStart = Date.now();
         this._setConnectionBeat('dialing', {
             attempt: this.reconnectAttempts,
@@ -3017,15 +3045,29 @@ class WebSocketClient {
             // Step 1: First ping the host over HTTP to ensure it's responsive
             try {
                 await this.pingHost();
+                if (this.isManualClose || this._isStartupHaltedForInstall()) {
+                    this.isConnecting = false;
+                    this.connectionLock = false;
+                    return;
+                }
                 await this._ensureBeatMinDuration('dialing', dialingStart);
                 await this._runConnectionBeat('negotiation', {
                     attempt: this.reconnectAttempts,
                     maxAttempts: this.maxReconnectAttempts
                 });
+                if (this.isManualClose || this._isStartupHaltedForInstall()) {
+                    this.isConnecting = false;
+                    this.connectionLock = false;
+                    return;
+                }
             } catch (pingError) {
                 console.error('❌ Host availability check failed:', pingError.message);
                 this.isConnecting = false;
                 this.connectionLock = false;
+
+                if (this.isManualClose || this._isStartupHaltedForInstall()) {
+                    return;
+                }
 
                 if (this._shouldUsePreStartupDialog() && !this.serverStartupReady) {
                     const bootMessage = this.lastServerStartupStatus?.stageMessage || 'Waiting for server…';
@@ -3059,6 +3101,12 @@ class WebSocketClient {
             this.ws.onopen = async () => {
                 this.isConnecting = false;
                 this.connectionLock = false; // Release connection lock on success
+
+                if (this.isManualClose || this._isStartupHaltedForInstall()) {
+                    this.disconnect(true);
+                    return;
+                }
+
                 const isReconnection = this.initializationCompleted;
                 this.reconnectAttempts = 0;
                 this.reconnectDelay = 1000;
@@ -3068,6 +3116,11 @@ class WebSocketClient {
                     attempt: 0,
                     maxAttempts: this.maxReconnectAttempts
                 });
+
+                if (this.isManualClose || this._isStartupHaltedForInstall()) {
+                    this.disconnect(true);
+                    return;
+                }
 
                 this.connectionStats.connectedAt = Date.now();
 
@@ -3099,11 +3152,24 @@ class WebSocketClient {
                     }
                 }
 
-                // Boot gate owns update checks — proceed to init steps after handoff
+                // Boot gate owns update checks — block handoff/init until cache sync finishes
+                if (!this.initializationCompleted && window.serviceWorkerManager) {
+                    await window.serviceWorkerManager.ensureBootComplete();
+                }
+
+                // Install wizard reloads the page — never hand off or run init after halt
+                if (this.isManualClose || this._isStartupHaltedForInstall()) {
+                    return;
+                }
+
                 await this._completePreStartupHandoff();
                 await this._completeConnectionDialHandoff();
 
                 if (!this.initializationCompleted) {
+                    // surfaceBootRuntimeCompileErrorsFromStatus: public/scripts/appInitSteps.js
+                    if (typeof surfaceBootRuntimeCompileErrorsFromStatus === 'function') {
+                        surfaceBootRuntimeCompileErrorsFromStatus();
+                    }
                     // Complete any remaining initialization steps (includes authentication)
                     // Now with RTT data available for dynamic timeout adjustment
                     this.executeInitSteps();
@@ -3358,7 +3424,30 @@ class WebSocketClient {
         }
     }
 
+    /**
+     * Hard-stop connect/reconnect/startup handoff for OS install — page will reload when install finishes.
+     * suppressAutoReconnect + disconnect; public/scripts/comp/serviceWorkerManager.js (_showInstallWizardUi)
+     */
+    haltStartupForInstallReload() {
+        this.startupHaltedForInstall = true;
+        this.suppressAutoReconnect();
+        this.disconnect(true);
+        this.isConnecting = false;
+        this.connectionLock = false;
+    }
+
+    _isStartupHaltedForInstall() {
+        if (this.startupHaltedForInstall) {
+            return true;
+        }
+        // serviceWorkerManager._isInstallWizardActive: public/scripts/comp/serviceWorkerManager.js
+        return Boolean(window.serviceWorkerManager && window.serviceWorkerManager._isInstallWizardActive());
+    }
+
     reconnect() {
+        if (this._isStartupHaltedForInstall()) {
+            return;
+        }
         // Check if we're in circuit breaker mode
         if (this.circuitBreaker) {
             const timeSinceLastAttempt = Date.now() - this.lastConnectionAttempt;
@@ -3422,6 +3511,9 @@ class WebSocketClient {
 
     // Method to force reconnect (used after authentication)
     forceReconnect() {
+        if (this._isStartupHaltedForInstall()) {
+            return;
+        }
         this.isManualClose = false;
         this.reconnectAttempts = 0;
         this.reconnectDelay = 1000;
@@ -3435,6 +3527,9 @@ class WebSocketClient {
 
     // Manual reconnect method for user-initiated reconnection
     manualReconnect() {
+        if (this._isStartupHaltedForInstall()) {
+            return;
+        }
         this.isManualClose = false;
         this.reconnectAttempts = 0;
         this.reconnectDelay = 1000;
@@ -3472,7 +3567,7 @@ class WebSocketClient {
         console.log(`👁️ App regained focus (${source}) — checking WebSocket...`);
 
         // If the page is actually being closed/navigated away, don't reconnect
-        if (this.isManualClose) {
+        if (this.isManualClose || this._isStartupHaltedForInstall()) {
             return;
         }
 
@@ -3619,6 +3714,13 @@ class WebSocketClient {
         if (message.type === 'connection') {
             // syncAuthLocalStorageFromServer: public/scripts/comp/connectionManager.js
             syncAuthLocalStorageFromServer(message);
+            if (message.authenticated === false) {
+                this.handleAuthError({
+                    type: 'auth_error',
+                    message: 'Authentication required',
+                    code: 'AUTH_REQUIRED'
+                });
+            }
             return;
         }
 
@@ -4188,7 +4290,8 @@ class WebSocketClient {
             this.releaseDataImageSrc(document.getElementById('manualPreviewImage'));
         }
         if (!modalType || modalType === 'spellbook') {
-            const spellbookImg = spellbookModalManager?.previewImage;
+            // spellbookModalManager: public/scripts/comp/spellbookModal.js
+            const spellbookImg = window.spellbookModalManager?.previewImage;
             this.releaseDataImageSrc(spellbookImg);
         }
     }
@@ -4557,7 +4660,8 @@ class WebSocketClient {
                 console.warn('⚠️ manualPreviewImage element not found');
             }
         } else if (modalType === 'spellbook') {
-            const spellbookPreviewImage = spellbookModalManager?.previewImage;
+            // spellbookModalManager: public/scripts/comp/spellbookModal.js
+            const spellbookPreviewImage = window.spellbookModalManager?.previewImage;
             const imageContainer = spellbookPreviewImage?.closest('.spellbook-preview-image-container');
             if (spellbookPreviewImage) {
                 if (isFirstStep) {
@@ -4664,7 +4768,8 @@ class WebSocketClient {
             session = this.beginStreamingStepSession(modalType, `prefetch-${Date.now()}`);
         }
 
-        const imageUrl = `/images/${filename}`;
+        // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+        const imageUrl = localGalleryImageUrl(filename);
         const knownBytes = Number(contentLength) > 0 ? Number(contentLength) : 0;
 
         if (session.finalPrefetch
@@ -4754,6 +4859,14 @@ class WebSocketClient {
         const guardedRequestId = this._resolveGenerationCloseGuardRequestId(modalType);
 
         try {
+            // Caller already has the final result (WS response resolved). Mark the session
+            // complete so waitForStreamingStepsComplete cannot hang when the server skipped
+            // phase:complete (e.g. expand/reroll with no_save: true).
+            const existingSession = this.getStreamingStepSession(modalType);
+            if (existingSession) {
+                existingSession.serverGenerationComplete = true;
+            }
+
             if (filename) {
                 this.ensureGenerationFinalPrefetch(modalType, filename, contentLength);
             }
@@ -4800,7 +4913,7 @@ class WebSocketClient {
      * spellbookModalManager: public/scripts/comp/spellbookModal.js
      */
     isSpellbookGenerationActive() {
-        return Boolean(spellbookModalManager?.isGenerating);
+        return Boolean(window.spellbookModalManager?.isGenerating);
     }
 
     /**
@@ -4889,6 +5002,12 @@ class WebSocketClient {
             this.applyRentanGenerationProgressUi(data.phase, data);
         }
 
+        // Gallery reroll placeholder progress (public/scripts/comp/galleryView.js)
+        const galleryRerollActive = galleryRerollOwnsGalleryDom();
+        if (galleryRerollActive) {
+            updateGalleryRerollProgress(requestId, data);
+        }
+
         if (data.phase === 'generating' && typeof setGenerationPreviewForegroundLinesActive === 'function') {
             setGenerationPreviewForegroundLinesActive(true);
         }
@@ -4907,7 +5026,7 @@ class WebSocketClient {
                 progressState.progress = 0;
                 progressState.timer = setInterval(() => {
                     progressState.progress = Math.min(progressState.progress + 1, 15);
-                    if (typeof updateGlassToastProgress === 'function' && progressToastId) {
+                    if (!galleryRerollActive && typeof updateGlassToastProgress === 'function' && progressToastId) {
                         updateGlassToastProgress(progressToastId, progressState.progress);
                     }
                 }, 1000);
@@ -4916,7 +5035,7 @@ class WebSocketClient {
                 progressState.progress = 76;
                 progressState.timer = setInterval(() => {
                     progressState.progress = Math.min(progressState.progress + 1, 95);
-                    if (typeof updateGlassToastProgress === 'function' && progressToastId) {
+                    if (!galleryRerollActive && typeof updateGlassToastProgress === 'function' && progressToastId) {
                         updateGlassToastProgress(progressToastId, progressState.progress);
                     }
                 }, 1000);
@@ -4929,75 +5048,29 @@ class WebSocketClient {
             }
 
             // Update progress toast if it exists (skip for timer phases that are self-updating)
-            if (typeof updateGlassToastProgress === 'function' && progressToastId &&
-                data.phase !== 'starting' && data.phase !== 'upscaling') {
+            if (!galleryRerollActive
+                && typeof updateGlassToastProgress === 'function' && progressToastId
+                && data.phase !== 'starting' && data.phase !== 'upscaling') {
                 updateGlassToastProgress(progressToastId, progressPercent);
             }
 
             // Update main message line with progress status (line 2)
-            if (typeof updateGlassToastMessage === 'function' && progressToastId) {
-                let statusMessage = '';
-                switch (data.phase) {
-                    case 'starting':
-                        statusMessage = 'Analyzing request...';
-                        break;
-                    case 'tool_execution':
-                        if (data.currentKey && data.totalKeys) {
-                            statusMessage = `Executing tools (${data.currentKey}/${data.totalKeys})...`;
+            if (!galleryRerollActive && typeof updateGlassToastMessage === 'function' && progressToastId) {
+                // getGenerationStatusMessage: public/scripts/comp/generationProgress.js
+                let statusMessage = typeof getGenerationStatusMessage === 'function'
+                    ? getGenerationStatusMessage(data)
+                    : 'Processing...';
+                if (data.phase === 'stage_delay' && data.delayMs && !progressState.delayTimer) {
+                    let remainingSeconds = Math.ceil(data.delayMs / 1000);
+                    progressState.delayTimer = setInterval(() => {
+                        remainingSeconds--;
+                        if (remainingSeconds > 0) {
+                            updateGlassToastMessage(progressToastId, `Stage delay: ${remainingSeconds}s remaining`);
                         } else {
-                            statusMessage = 'Executing tools...';
+                            clearInterval(progressState.delayTimer);
+                            progressState.delayTimer = null;
                         }
-                        break;
-                    case 'streaming':
-                        statusMessage = 'Processing AI response...';
-                        break;
-                    case 'completion':
-                        statusMessage = 'AI processing complete, starting generation...';
-                        break;
-                    case 'generating':
-                        if (data.totalStages && data.currentStage !== undefined) {
-                            // Staged generation
-                            const stageType = data.stageType || 'stage';
-                            statusMessage = `Stage ${data.currentStage}/${data.totalStages}: ${stageType}`;
-                        } else {
-                            statusMessage = 'Generating image...';
-                        }
-                        break;
-                    case 'stage_delay':
-                        if (data.delayMs) {
-                            const delaySeconds = Math.ceil(data.delayMs / 1000);
-                            statusMessage = `Stage delay: ${delaySeconds}s remaining`;
-
-                            // Start countdown timer for stage delay
-                            if (!progressState.delayTimer) {
-                                let remainingSeconds = delaySeconds;
-                                progressState.delayTimer = setInterval(() => {
-                                    remainingSeconds--;
-                                    if (remainingSeconds > 0) {
-                                        if (typeof updateGlassToastMessage === 'function' && progressToastId) {
-                                            updateGlassToastMessage(progressToastId, `Stage delay: ${remainingSeconds}s remaining`);
-                                        }
-                                    } else {
-                                        // Clear timer when countdown reaches 0
-                                        if (progressState.delayTimer) {
-                                            clearInterval(progressState.delayTimer);
-                                            progressState.delayTimer = null;
-                                        }
-                                    }
-                                }, 1000);
-                            }
-                        } else {
-                            statusMessage = 'Stage delay...';
-                        }
-                        break;
-                    case 'upscaling':
-                        statusMessage = 'Upscaling image...';
-                        break;
-                    case 'previews':
-                        statusMessage = 'Generating previews...';
-                        break;
-                    default:
-                        statusMessage = 'Processing...';
+                    }, 1000);
                 }
                 updateGlassToastMessage(progressToastId, statusMessage);
             }
@@ -5038,17 +5111,18 @@ class WebSocketClient {
 
             if (toastPreviewData && typeof updateGlassToastImagePreview === 'function') {
                 const manualModalEl = document.getElementById('manualModal');
-                const skipToastPreview = data.phase === 'generating'
-                    && manualModalEl
-                    && !manualModalEl.classList.contains('hidden')
-                    && !this.isSpellbookGenerationActive();
+                const skipToastPreview = galleryRerollActive
+                    || (data.phase === 'generating'
+                        && manualModalEl
+                        && !manualModalEl.classList.contains('hidden')
+                        && !this.isSpellbookGenerationActive());
 
                 if (!skipToastPreview) {
                     updateGlassToastImagePreview(progressToastId, toastPreviewData);
                 }
             }
 
-            if (data.phase === 'generating') {
+            if (data.phase === 'generating' && !galleryRerollActive) {
                 const stepFrames = Array.isArray(data.stepFrames) ? data.stepFrames : null;
                 const hasSingleStep = data.currentStep !== undefined && data.imageData;
                 if (stepFrames && stepFrames.length > 0) {
@@ -5094,6 +5168,15 @@ class WebSocketClient {
                     this.pendingGenerationDownloadFilename = data.filename || null;
                 }
 
+                const rerollHandledInGallery = isGalleryRerollRequest(requestId);
+
+                if (rerollHandledInGallery && data.filename) {
+                    completeGalleryRerollSession(requestId, data.filename, {
+                        openPreview: true,
+                        contentLength: data.contentLength
+                    });
+                }
+
                 if (progressToastId && typeof clearGlassToastImagePreview === 'function') {
                     clearGlassToastImagePreview(progressToastId);
                 }
@@ -5107,7 +5190,7 @@ class WebSocketClient {
                 // Clear any running timers
                 this.cleanupGenerationProgressState(requestId);
 
-                if (typeof updateGlassToastComplete === 'function') {
+                if (!rerollHandledInGallery && typeof updateGlassToastComplete === 'function') {
                     updateGlassToastComplete(progressToastId, {
                         type: 'success',
                         title: 'Generation Complete',
@@ -5231,13 +5314,21 @@ class WebSocketClient {
 
         try {
             // Stream progress like a normal generation (toast 3rd line + step previews); dims added when a preview surface is available
+            const reqId = requestId || this.generateRequestId();
+            // beginGalleryRerollSession, galleryRerollUsesPlaceholder: public/scripts/comp/galleryView.js
+            if (galleryRerollUsesPlaceholder()) {
+                beginGalleryRerollSession(reqId);
+            }
             const params = this._attachStepPreviewDimensions({
                 filename,
                 workspace,
                 allow_paid: allowPaid,
                 enableStreaming: true
             }, 'manual');
-            const result = await this.sendMessage('reroll_image', params);
+            const result = await this.sendMessage('reroll_image', params, true, { requestId: reqId });
+            if (result && typeof result === 'object') {
+                result.__requestId = reqId;
+            }
             return result;
         } catch (error) {
             console.error('Reroll image error:', error);
@@ -5245,9 +5336,10 @@ class WebSocketClient {
         }
     }
 
-    // Partial fetches (probe, add-latest) must not join the full-gallery pagination group.
+    // Partial fetches (probe, add-latest, block sync) must not join the full-gallery pagination group.
     isPartialGalleryRequest(options = {}) {
         if (options && options.skipGalleryPagination) return true;
+        if (options && options.galleryBlockFetch) return true;
         const limit = Number(options.limit);
         if (limit === 0) return true;
         return limit > 0 && limit < 750;
@@ -5263,7 +5355,8 @@ class WebSocketClient {
                 viewType,
                 includePinnedStatus,
                 workspaceId,
-                ...options // Support light, offset, limit parameters
+                ...options,
+                light: options.light !== false
             };
 
             // All gallery requests during active pagination loading should use pagination tracking
@@ -6258,6 +6351,10 @@ class WebSocketClient {
         return this.sendMessage('get_telemetry', { page, limit, search, eventType });
     }
 
+    async reportClientPerf(samples) {
+        return this.sendMessage('report_client_perf', { samples }, false);
+    }
+
     async unblockIP(ip) {
         return this.sendMessage('unblock_ip', { ip });
     }
@@ -6470,6 +6567,10 @@ class WebSocketClient {
             // Critical initialization requests should fail fast if server is not ready
             if (message.type === 'get_app_options') {
                 baseTimeout = WebSocketClient.TIMEOUT_GET_APP_OPTIONS;
+            } else if (message.type === 'workspace_list' || message.type === 'desktop_get_shortcuts') {
+                baseTimeout = 15000;
+            } else if (message.type === 'upload_novelai_explore_image') {
+                baseTimeout = 120000;
             }
 
             // Calculate dynamic timeout based on RTT
@@ -6570,15 +6671,37 @@ class WebSocketClient {
                 type,
                 showBanner,
                 offset: data.offset || 0,
-                limit: data.limit || 0
+                limit: data.limit || 0,
+                timestamp: Date.now()
             });
 
             // Increment pending requests count
             this.incrementPendingRequests();
 
+            let baseTimeout = 60000;
+            if (type === 'request_gallery' && Number(data.limit) === 0) {
+                baseTimeout = 120000;
+            }
+            const timeoutMs = this.getEffectiveTimeout(baseTimeout);
+            const timeoutId = setTimeout(() => {
+                if (!this.pendingRequests.has(requestId)) {
+                    return;
+                }
+                const request = this.pendingRequests.get(requestId);
+                this.pendingRequests.delete(requestId);
+                this.decrementPendingRequests();
+                const timeoutError = new Error(`Request timeout after ${Math.round(timeoutMs / 1000)} seconds`);
+                timeoutError.code = 'REQUEST_TIMEOUT';
+                timeoutError.requestId = requestId;
+                timeoutError.requestType = type;
+                reject(timeoutError);
+            }, timeoutMs);
+            this.pendingRequests.get(requestId).timeoutId = timeoutId;
+
             try {
                 this.send(message);
             } catch (error) {
+                this.clearTimeoutSafely(timeoutId);
                 this.pendingRequests.delete(requestId);
                 this.decrementPendingRequests();
                 reject(error);
@@ -7008,11 +7131,10 @@ class WebSocketClient {
 
     // Open Periscope tasks sidebar (replaces legacy Task Manager modal)
     openRequestsModal() {
-        if (typeof logViewerApplet !== 'undefined' && logViewerApplet) {
+        // public/scripts/comp/featureLoader.js
+        void featureLoader.loadFeature('log_viewer').then(() => {
             logViewerApplet.open({ showTasksSidebar: true });
-            return;
-        }
-        console.warn('Periscope not initialized');
+        });
     }
 
     // Refresh websocket indicators (useful if new indicators are added to DOM dynamically)
@@ -7857,13 +7979,14 @@ class WebSocketClient {
             if (request.type === 'request_gallery' && data && data.pagination) {
                 const requestLimit = Number(request.limit) || 0;
                 const isPartialGalleryRequest = requestLimit > 0 && requestLimit < 750;
+                const isGalleryBlockFetchResponse = requestLimit >= 750;
                 const shouldEnableGalleryPagination = data.pagination.hasMore && requestLimit > 0 && !isPartialGalleryRequest;
                 if (shouldEnableGalleryPagination && !this.isGalleryLoadingActive) {
                     // This response indicates pagination has started - set the flag for future requests
                     this.isGalleryLoadingActive = true;
                     // Don't create pagination group yet - wait for the next request
-                } else if (!data.pagination.hasMore && this.isGalleryLoadingActive) {
-                    // This was the final pagination chunk
+                } else if (!data.pagination.hasMore && this.isGalleryLoadingActive && !isGalleryBlockFetchResponse) {
+                    // Block-sync responses end via endGalleryBlockFetchSession; do not clear mid multi-block fetch.
                     this.completeGalleryLoading();
                 }
             }

@@ -45,6 +45,7 @@ const WIZARD_FILE_THRESHOLD = 20;
 const DOWNLOAD_STALL_MS = 60000;
 const INSTALL_WIZARD_SESSION_KEY = 'dreamscapeOsInstallWizard';
 const LOGIN_BOOT_SESSION_KEY = 'dreamscapeLoginBoot';
+const SERVICE_WORKER_HEALTH_CHECK_MEASURE = 'staticforge:service-worker-health-check';
 
 const LOGIN_CRITICAL_EXACT_PATHS = new Set([
     '/',
@@ -238,12 +239,8 @@ class ServiceWorkerManager {
         if (this._isInstallWizardActive()) {
             return false;
         }
-        // wsClient: public/scripts/websocket.js
-        return Boolean(
-            window.isDesktop &&
-            window.wsClient &&
-            !window.wsClient.preStartupHandoffCompleted
-        );
+        // Block startup update UI until runBootSequence finishes (not just pre-startup dialog handoff)
+        return Boolean(window.isDesktop && !this.bootComplete);
     }
 
     isBootComplete() {
@@ -751,7 +748,7 @@ class ServiceWorkerManager {
 
             const laterBtn = document.createElement('button');
             laterBtn.type = 'button';
-            laterBtn.className = 'btn-standard btn-small';
+            laterBtn.className = 'btn-standard';
             laterBtn.textContent = 'Later';
             laterBtn.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -761,7 +758,7 @@ class ServiceWorkerManager {
 
             const downloadBtn = document.createElement('button');
             downloadBtn.type = 'button';
-            downloadBtn.className = 'btn-standard btn-small';
+            downloadBtn.className = 'btn-standard';
             downloadBtn.textContent = 'Download now';
             downloadBtn.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -781,7 +778,7 @@ class ServiceWorkerManager {
 
             const laterBtn = document.createElement('button');
             laterBtn.type = 'button';
-            laterBtn.className = 'btn-standard btn-small';
+            laterBtn.className = 'btn-standard';
             laterBtn.textContent = 'Later';
             laterBtn.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -791,7 +788,7 @@ class ServiceWorkerManager {
 
             const restartBtn = document.createElement('button');
             restartBtn.type = 'button';
-            restartBtn.className = 'btn-standard btn-small';
+            restartBtn.className = 'btn-standard';
             restartBtn.textContent = 'Restart';
             restartBtn.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -2229,6 +2226,11 @@ class ServiceWorkerManager {
         const { type, files, url, completed, total, currentFile } = event.data;
         
         switch (type) {
+            case 'NETWORK_ACTIVITY':
+                // wsClient.handleServiceWorkerMessage: public/scripts/websocket.js
+                wsClient.handleServiceWorkerMessage(event);
+                break;
+
             case 'STATIC_CACHE_STARTED':
                 this.updateAvailable = true;
                 this.isUpdating = true;
@@ -2543,11 +2545,12 @@ class ServiceWorkerManager {
         
         // Send health check ping every 10 seconds
         this.healthCheckInterval = setInterval(() => {
-            this.sendHealthCheckPing();
+            if (document.hidden) return;
+            this._runMeasuredHealthCheckPing();
         }, 10000);
         
         // Send initial ping immediately
-        this.sendHealthCheckPing();
+        this._runMeasuredHealthCheckPing();
     }
 
     stopHealthCheck() {
@@ -2556,6 +2559,15 @@ class ServiceWorkerManager {
             this.healthCheckInterval = null;
         }
         this.healthCheckStartTime = null;
+    }
+
+    _runMeasuredHealthCheckPing() {
+        const startedAt = performance.now();
+        this.sendHealthCheckPing();
+        performance.measure(SERVICE_WORKER_HEALTH_CHECK_MEASURE, {
+            start: startedAt,
+            end: performance.now()
+        });
     }
 
     sendHealthCheckPing() {
@@ -2941,11 +2953,6 @@ class ServiceWorkerManager {
                     console.log('Service Worker installing state changed after force update:', event.target.state);
                 });
             }
-
-            // Re-add message listener
-            navigator.serviceWorker.addEventListener('message', (event) => {
-                this.handleServiceWorkerMessage(event);
-            });
 
             // Step 7: Wait for new service worker to be ready
             await this.waitForServiceWorkerReady();
@@ -3360,6 +3367,8 @@ class ServiceWorkerManager {
         this.resetPendingUpdateFuse();
 
         try {
+            // suppressWebSocketReconnectForReload: public/scripts/comp/modalUtils.js
+            suppressWebSocketReconnectForReload();
             // Set bypass confirmation to true to avoid confirmation dialogs
             bypassConfirmation = true;
             
@@ -3681,6 +3690,19 @@ class ServiceWorkerManager {
         this._resetInstallWizardEtaState();
         document.body.classList.add('dreamscape-install-wizard', 'initializing');
         this._writeInstallWizardSession({ phase: 'wizard', pendingCount });
+
+        // Install wizard owns the screen — dismiss overlapping boot dialogs (both are .on-top)
+        // and hard-stop WS startup/reconnect (page reloads when install finishes).
+        // wsClient.haltStartupForInstallReload / _hidePreStartupDialog: public/scripts/websocket.js
+        if (window.wsClient) {
+            window.wsClient.haltStartupForInstallReload();
+            window.wsClient._hidePreStartupDialog();
+        }
+        const windowsStartup = document.getElementById('windowsStartupModal');
+        if (windowsStartup && !windowsStartup.classList.contains('hidden')) {
+            // closeModal: public/scripts/comp/modalUtils.js
+            closeModal(windowsStartup);
+        }
 
         const status = this._buildInstallWizardStatus('prepare', 0, pendingCount);
 

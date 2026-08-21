@@ -177,6 +177,16 @@ const metadataWriteQueue = {
         this.removedGalleryOwnership.add(key);
     },
 
+    removeHotGalleryOwnershipForFilename(filename) {
+        if (!filename) return;
+        for (const [key, entry] of this.hotGalleryOwnership.entries()) {
+            if (entry.row.filename === filename) {
+                this.hotGalleryOwnership.delete(key);
+                this.removedGalleryOwnership.add(key);
+            }
+        }
+    },
+
     isGalleryOwnershipRemoved(key) {
         return this.removedGalleryOwnership.has(key);
     },
@@ -189,6 +199,22 @@ const metadataWriteQueue = {
             if (!this.hotGalleryOwnership.has(key)) continue;
             if (entry.row.filename === filename) {
                 rows.push(entry.row);
+            }
+        }
+        return rows;
+    },
+
+    getHotGalleryOwnershipForWorkspace(workspaceId, bucket = 'files') {
+        if (!workspaceId) return [];
+        const rows = [];
+        const targetBucket = bucket || 'files';
+        for (const [key, entry] of this.hotGalleryOwnership.entries()) {
+            this.evictExpiredGalleryOwnership(key);
+            if (!this.hotGalleryOwnership.has(key)) continue;
+            if (this.removedGalleryOwnership.has(key)) continue;
+            const row = entry.row;
+            if (row.workspaceId === workspaceId && (row.bucket || 'files') === targetBucket) {
+                rows.push(row);
             }
         }
         return rows;

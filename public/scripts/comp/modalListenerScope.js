@@ -91,6 +91,9 @@ function onModalOpened(modal) {
     }
     scope.controller = new AbortController();
     modalListenerDevLog('opened', { id: modal.id });
+    document.dispatchEvent(new CustomEvent('staticforge:modal-lifecycle', {
+        detail: { type: 'opened', id: modal.id || null }
+    }));
     invokeModalAttachCallbacks(modal, scope.controller.signal);
     // onModalKeyboardModalOpened: public/scripts/comp/modalKeyboardRegistry.js
     if (onModalKeyboardModalOpened) {
@@ -102,6 +105,9 @@ function onModalClosed(modal) {
     if (!modal) return;
     detachModalListeners(modal);
     modalListenerDevLog('closed', { id: modal.id });
+    document.dispatchEvent(new CustomEvent('staticforge:modal-lifecycle', {
+        detail: { type: 'closed', id: modal.id || null }
+    }));
     // onModalKeyboardModalClosed: public/scripts/comp/modalKeyboardRegistry.js
     if (onModalKeyboardModalClosed) {
         onModalKeyboardModalClosed(modal);

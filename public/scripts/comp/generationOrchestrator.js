@@ -177,6 +177,7 @@ async function generateImage(event = null) {
 
     // Set generating state
     isGenerating = true;
+    updateImageGenerationIndicator();
     updateManualGenerateBtnState();
 
     const selectedValue = presetSelect.value;
@@ -278,6 +279,7 @@ async function generateImage(event = null) {
     } finally {
         // Reset generating state
         isGenerating = false;
+        updateImageGenerationIndicator();
         updateManualGenerateBtnState();
 
         // Clear progress and loading states

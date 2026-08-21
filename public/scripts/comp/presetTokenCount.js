@@ -15,7 +15,11 @@ function getModelKeyForTokenCount() {
 
 function countTokensForText(text) {
     if (!text || !t5Tokenizer) return 0;
-    return t5Tokenizer.countTokens(text);
+    // stripManagedEmphasisDelimitersForCounting: public/scripts/comp/emphasisGroupIdCodec.js
+    const forCount = typeof stripManagedEmphasisDelimitersForCounting === 'function'
+        ? stripManagedEmphasisDelimitersForCounting(text)
+        : text;
+    return t5Tokenizer.countTokens(forCount);
 }
 
 function maxFromExpanderEntry(entry) {
@@ -348,7 +352,8 @@ function getActivePresetTokenDelta(combinedPromptText) {
             if (nsfwEntry.prompt) {
                 let p = nsfwEntry.prompt;
                 if (typeof nsfwBias !== 'undefined' && nsfwBias !== 1.0 && typeof applyBiasToText === 'function') {
-                    const raw = window.optionsData?.nsfw_presets?.[String(nsfwVal)]?.add?.base;
+                    const add = window.optionsData?.nsfw_presets?.[String(nsfwVal)]?.add;
+                    const raw = [add?.base_prefix, add?.base].filter(Boolean).join(', ');
                     if (raw) p = countTokensForText(applyBiasToText(raw, nsfwBias) + ', ');
                 }
                 result.prompt += p;
@@ -356,7 +361,8 @@ function getActivePresetTokenDelta(combinedPromptText) {
             if (nsfwEntry.uc) {
                 let u = nsfwEntry.uc;
                 if (typeof nsfwBias !== 'undefined' && nsfwBias !== 1.0 && typeof applyBiasToText === 'function') {
-                    const raw = window.optionsData?.nsfw_presets?.[String(nsfwVal)]?.add?.uc;
+                    const add = window.optionsData?.nsfw_presets?.[String(nsfwVal)]?.add;
+                    const raw = [add?.uc_prefix, add?.uc].filter(Boolean).join(', ');
                     if (raw) u = countTokensForText(applyBiasToText(raw, nsfwBias) + ', ');
                 }
                 result.uc += u;
@@ -420,6 +426,12 @@ function computeRentanTokenDelta() {
 
 function formatTokenCountLabel(displayTotal, nonEditableTokens) {
     const ne = nonEditableTokens || 0;
+    if (displayTotal < 2) {
+        if (ne > 0) {
+            return `${ne} N.E.T.`;
+        }
+        return `No tokens`;
+    }
     if (ne > 0) {
         return `${displayTotal} tokens (+${ne})`;
     }

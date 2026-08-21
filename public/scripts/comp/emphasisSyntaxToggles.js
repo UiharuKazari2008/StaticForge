@@ -3,7 +3,10 @@
 function stripEmphasisFromText(text) {
     if (!text) return '';
 
-    let result = text;
+    // stripManagedEmphasisDelimitersForCounting: public/scripts/comp/emphasisGroupIdCodec.js
+    let result = typeof stripManagedEmphasisDelimitersForCounting === 'function'
+        ? stripManagedEmphasisDelimitersForCounting(text)
+        : text;
     let prev;
 
     do {

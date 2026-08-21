@@ -1,7 +1,7 @@
 // Emphasis weight/share constants and math
 
 const EMPHASIS_WEIGHT_MIN = -6;
-const EMPHASIS_WEIGHT_MAX = 6;
+const EMPHASIS_WEIGHT_MAX = 9;
 const EMPHASIS_WEIGHT_STEP = 0.1;
 const EMPHASIS_WEIGHT_FINE_STEP = 0.01;
 const EMPHASIS_NORMALIZE_WEIGHT_STEP = 0.001;
@@ -28,16 +28,20 @@ function formatEmphasisWeight(value) {
     return String(parseFloat(clampEmphasisWeight(value).toFixed(2)));
 }
 
-/** Toolbar display: always 1 decimal; 2 when value uses 0.01 precision. */
+/** Toolbar display: 1 decimal default; 2 when 0.01 precision; up to 4 for NovelAI 1.05^n brace weights. */
 function formatEmphasisWeightDisplay(value) {
     if (value === '---') return '---';
-    const n = clampEmphasisWeight(value);
-    const oneDecimal = Math.round(n * 10) / 10;
-    const twoDecimal = Math.round(n * 100) / 100;
-    if (Math.abs(twoDecimal - oneDecimal) > 0.0001) {
-        return twoDecimal.toFixed(2);
+    const n = clampEmphasisWeightNormalize(value);
+    const four = Math.round(n * 10000) / 10000;
+    const two = Math.round(n * 100) / 100;
+    const one = Math.round(n * 10) / 10;
+    if (Math.abs(four - two) > 0.00005) {
+        return String(parseFloat(four.toFixed(4)));
     }
-    return oneDecimal.toFixed(1);
+    if (Math.abs(two - one) > 0.0001) {
+        return two.toFixed(2);
+    }
+    return one.toFixed(1);
 }
 
 function clampEmphasisWeightNormalize(value) {
@@ -55,7 +59,7 @@ function formatEmphasisWeightNormalize(value) {
 function isEligibleForEmphasisNormalize(weight) {
     if (weight === '---') return false;
     const w = typeof weight === 'number' ? weight : parseFloat(weight);
-    return !isNaN(w) && w >= 1;
+    return !isNaN(w) && w >= 1.0;
 }
 
 function formatEmphasisNormalizeDisplay(share, weight) {
@@ -95,6 +99,14 @@ const EMPHASIS_AUTO_TOP_MAX = 3.0;
 const EMPHASIS_AUTO_LENGTH_COMPENSATION = 0.62;
 /** Keep every group at least this fraction of an equal share before renorm. */
 const EMPHASIS_AUTO_SHARE_FLOOR_FRAC = 0.42;
+/** After Auto Band / Normalize, raise peak unlocked share to at least this % of the track. */
+const EMPHASIS_AUTO_SHARE_BAND_MIN = 50;
+/** Distribution importance: 50 = unbiased (0…100 slider). */
+const EMPHASIS_IMPORTANCE_UNBIASED = 50;
+/** Below this, hard under-rank laws apply in distribution mode. */
+const EMPHASIS_IMPORTANCE_LOW_BAND = 25;
+/** Above this, hard over-rank laws apply in distribution mode. */
+const EMPHASIS_IMPORTANCE_HIGH_BAND = 75;
 
 function normalizeEmphasisShareArray(scores) {
     const safe = (scores || []).map((v) => Math.max(0, Number(v) || 0));
@@ -106,6 +118,86 @@ function normalizeEmphasisShareArray(scores) {
         return safe.map(() => clampEmphasisShare(each));
     }
     return safe.map((v) => clampEmphasisShare((v / sum) * 100));
+}
+
+/**
+ * Soft multiplier for distribution importance (50 → 1).
+ * Edges are steeper so 75/25 already pull hard before ordinal enforcement.
+ */
+function emphasisImportanceBiasMultiplier(bias) {
+    const b = Math.max(0, Math.min(100, Number.isFinite(bias) ? bias : EMPHASIS_IMPORTANCE_UNBIASED));
+    if (b >= EMPHASIS_IMPORTANCE_HIGH_BAND) {
+        const t = (b - EMPHASIS_IMPORTANCE_HIGH_BAND) / (100 - EMPHASIS_IMPORTANCE_HIGH_BAND);
+        return 2 + Math.pow(t, 1.35) * 6;
+    }
+    if (b <= EMPHASIS_IMPORTANCE_LOW_BAND) {
+        const t = b / EMPHASIS_IMPORTANCE_LOW_BAND;
+        return Math.max(0.01, 0.5 * Math.pow(t, 1.35));
+    }
+    if (b <= EMPHASIS_IMPORTANCE_UNBIASED) {
+        return 0.5 + ((b - EMPHASIS_IMPORTANCE_LOW_BAND)
+            / (EMPHASIS_IMPORTANCE_UNBIASED - EMPHASIS_IMPORTANCE_LOW_BAND)) * 0.5;
+    }
+    return 1 + ((b - EMPHASIS_IMPORTANCE_UNBIASED)
+        / (EMPHASIS_IMPORTANCE_HIGH_BAND - EMPHASIS_IMPORTANCE_UNBIASED));
+}
+
+/**
+ * When any bias is outside 25–75, enforce ordinal laws among locals:
+ * >75 must outrank lower-bias peers; <25 must under-rank higher-bias peers.
+ * Mid-band keeps soft attention order, slotted between high and low tiers.
+ */
+function enforceEmphasisImportanceExtremeOrdering(entries, softShares) {
+    const n = (entries || []).length;
+    if (n <= 1) return (softShares || []).slice();
+
+    const hasExtreme = entries.some((e) => {
+        const b = Number.isFinite(e?.bias) ? e.bias : EMPHASIS_IMPORTANCE_UNBIASED;
+        return b > EMPHASIS_IMPORTANCE_HIGH_BAND || b < EMPHASIS_IMPORTANCE_LOW_BAND;
+    });
+    if (!hasExtreme) return softShares.slice();
+
+    const rows = entries.map((e, idx) => ({
+        idx,
+        bias: Number.isFinite(e?.bias) ? e.bias : EMPHASIS_IMPORTANCE_UNBIASED,
+        soft: Number(softShares[idx]) || 0
+    }));
+
+    const high = rows
+        .filter((r) => r.bias > EMPHASIS_IMPORTANCE_HIGH_BAND)
+        .sort((a, b) => (b.bias - a.bias) || (b.soft - a.soft));
+    const mid = rows
+        .filter((r) => r.bias >= EMPHASIS_IMPORTANCE_LOW_BAND && r.bias <= EMPHASIS_IMPORTANCE_HIGH_BAND)
+        .sort((a, b) => (b.soft - a.soft) || (b.bias - a.bias));
+    const low = rows
+        .filter((r) => r.bias < EMPHASIS_IMPORTANCE_LOW_BAND)
+        .sort((a, b) => (a.bias - b.bias) || (a.soft - b.soft));
+
+    const ordered = high.concat(mid, low);
+    const magnitudes = rows.map((r) => r.soft).sort((a, b) => b - a);
+    const out = new Array(n).fill(0);
+    ordered.forEach((row, rank) => {
+        out[row.idx] = magnitudes[rank];
+    });
+    return normalizeEmphasisShareArray(out);
+}
+
+/**
+ * Apply distribution importance biases to attention-equalized relative shares (parallel arrays).
+ */
+function applyEmphasisImportanceBiasToRelativeShares(baseRelatives, biases) {
+    const n = (baseRelatives || []).length;
+    if (!n) return [];
+    const entries = [];
+    const softScores = [];
+    for (let i = 0; i < n; i++) {
+        const bias = Number.isFinite(biases?.[i]) ? biases[i] : EMPHASIS_IMPORTANCE_UNBIASED;
+        const base = Math.max(0, Number(baseRelatives[i]) || 0);
+        entries.push({ bias });
+        softScores.push(base * emphasisImportanceBiasMultiplier(bias));
+    }
+    const soft = normalizeEmphasisShareArray(softScores);
+    return enforceEmphasisImportanceExtremeOrdering(entries, soft);
 }
 
 /**

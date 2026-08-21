@@ -113,6 +113,41 @@ function calculateGenerationProgress(progressData) {
     }
 }
 
+/** Status line for generation progress UI (toast + gallery reroll placeholder). */
+function getGenerationStatusMessage(progressData) {
+    const d = progressData || {};
+    switch (d.phase) {
+        case 'starting':
+            return 'Analyzing request...';
+        case 'tool_execution':
+            return d.currentKey && d.totalKeys
+                ? `Executing tools (${d.currentKey}/${d.totalKeys})...`
+                : 'Executing tools...';
+        case 'streaming':
+            return 'Processing AI response...';
+        case 'completion':
+            return 'AI processing complete, starting generation...';
+        case 'generating':
+            if (d.totalStages != null && d.currentStage != null) {
+                return `Stage ${d.currentStage}/${d.totalStages}: ${d.stageType || 'stage'}`;
+            }
+            if (d.totalSteps && d.currentStep != null) {
+                return `Step ${d.currentStep}/${d.totalSteps}`;
+            }
+            return 'Generating image...';
+        case 'stage_delay':
+            return d.delayMs ? `Stage delay: ${Math.ceil(d.delayMs / 1000)}s remaining` : 'Stage delay...';
+        case 'upscaling':
+            return 'Upscaling image...';
+        case 'previews':
+            return 'Generating previews...';
+        case 'complete':
+            return 'Preparing download...';
+        default:
+            return 'Processing...';
+    }
+}
+
 /**
  * Initialize stage indicators for manual modal generation
  * @param {number} totalStages - Total number of stages in the generation

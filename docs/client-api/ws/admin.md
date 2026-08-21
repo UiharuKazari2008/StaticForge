@@ -32,6 +32,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `list_application_auth_requests` | `list_application_auth_requests_response` | session | Handler: handleListApplicationAuthRequests |
 | `list_application_keys` | `list_application_keys_response` | session | Handler: handleListApplicationKeys |
 | `refresh_application_key` | `refresh_application_key_response` | critical | Handler: handleRefreshApplicationKey |
+| `report_client_perf` | `report_client_perf_response` | session | Handler: handleReportClientPerf |
 | `request_application_authorization` | `request_application_authorization_response` | critical | Handler: handleRequestApplicationAuthorization |
 | `request_temp_access_token` | `temp_access_token_response` | critical | Handler: handleRequestTempAccessToken |
 | `revoke_application_key` | `revoke_application_key_response` | session | Handler: handleRevokeApplicationKey |
@@ -61,6 +62,20 @@ Errors use `type: "error"` via `sendError()` — see [websocket.md](../websocket
 ## Read-only restrictions
 
 Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveOperation()` return `READONLY_RESTRICTED` for `userType: "readonly"` sessions.
+
+---
+
+---
+
+---
+
+---
+
+---
+
+---
+
+---
 
 ---
 
@@ -535,6 +550,26 @@ Additional response/push types from handler:
 Additional response/push types from handler:
 - `auth_error`
 - `application_key_refreshed`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `report_client_perf`
+
+**Auth:** Session required
+
+**Handler:** modules/ws/handlers/190-adminHandler.js → `handleReportClientPerf`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `samples` | Optional |
+
+**Validation errors:**
+- At least one valid performance sample is required
+
+**Success response:** `report_client_perf_response`
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 

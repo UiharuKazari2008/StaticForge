@@ -7,6 +7,8 @@
     { "path": ["defaultGrokModel"], "type": "string", "label": "Default Grok Model", "editorType": "input", "description": "Default model ID for Grok chat requests" },
     { "path": ["chat_streaming_enabled"], "type": "boolean", "label": "Chat Streaming", "editMode": "inline" },
     { "path": ["debugNovelAI"], "type": "boolean", "label": "Debug NovelAI", "editMode": "inline" },
+    { "path": ["novelaiExplore"], "type": "object", "label": "NovelAI Explore", "closed": true, "required": true },
+    { "path": ["novelaiExplore", "uploadsEnabled"], "type": "boolean", "label": "Explore Uploads Enabled", "editMode": "inline", "required": true, "description": "Allow Publish to Explorer (POST explore.novelai.net/post/image). Keep false until upload flow is verified safe." },
     {
       "path": ["log_verbosity"],
       "type": "string",

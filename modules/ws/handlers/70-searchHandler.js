@@ -427,49 +427,29 @@ async function handleFileSearch(handlers, ws, message, clientInfo, wsServer) {
 
 async function initializeSearchCache(handlers, sessionId, viewType) {
         try {
-            // Initialize search cache for this session and view
-            // Now we only store the workspace file list, not all metadata
-
-            // Get the active workspace for this session
+            // Prefer ownership-scope cache (no 50k-filename IN lists). Materialized files[]
+            // is only kept when membership SQL is unavailable for this view.
+            // Pass active workspace id — null/empty is treated as global (*) by resolveWorkspaceFilesForSearch.
             const activeWorkspaceId = handlers.globalResources.getWorkspaceManager().getActiveWorkspace(sessionId);
-            const activeWorkspace = handlers.globalResources.getWorkspaceManager().getWorkspace(activeWorkspaceId);
+            const resolved = await resolveWorkspaceFilesForSearch(
+                handlers,
+                sessionId,
+                activeWorkspaceId,
+                viewType
+            );
 
-            if (!activeWorkspace) {
-                throw new Error(`Active workspace not found for session ${sessionId}`);
-            }
-
-            // Get files for the current view type from the active workspace
-            let workspaceFiles = [];
-            switch (viewType) {
-                case 'scraps':
-                    workspaceFiles = activeWorkspace.scraps || [];
-                    break;
-                case 'pinned':
-                    workspaceFiles = activeWorkspace.pinned || [];
-                    break;
-                case 'upscaled':
-                    // For upscaled, query database for upscaled files
-                    // We'll filter in the database query
-                    const metadataDb = handlers.globalResources.getMetadataDatabase();
-                    const allFilenames = await metadataDb.getAllFilenames();
-                    // Get metadata for all files to check upscaled status
-                    // Actually, we can query the database for upscaled files directly
-                    workspaceFiles = allFilenames; // Will be filtered by database query
-                    break;
-                default: // 'images'
-                    workspaceFiles = activeWorkspace.files || [];
-                    break;
-            }
-
-            // Store in cache - only file list, not metadata
             searchCache.set(sessionId, {
                 viewType,
-                files: workspaceFiles,
-                timestamp: Date.now(),
-                workspaceId: activeWorkspaceId
+                files: resolved.files || null,
+                workspaceScope: resolved.workspaceScope || null,
+                workspaceId: resolved.workspaceId,
+                timestamp: Date.now()
             });
 
-            console.log(`✅ Search cache initialized for session ${sessionId}: ${workspaceFiles.length} files, view: ${viewType}`);
+            const scopeLabel = resolved.workspaceScope
+                ? `scope ${resolved.workspaceScope.workspaceIds?.join(',') || '?'} / ${resolved.workspaceScope.bucket || 'files'}`
+                : `${(resolved.files || []).length} files`;
+            console.log(`✅ Search cache initialized for session ${sessionId}: ${scopeLabel}, view: ${viewType}`);
 
         } catch (error) {
             console.error('❌ Error initializing search cache:', error);
@@ -780,14 +760,17 @@ async function getTagSuggestions(handlers, query, viewType, sessionId, limit = 2
                 throw new Error('Search cache not initialized. Call search_files with action="start" first.');
             }
 
-            // Get workspace files for filtering
-            let workspaceFiles = cacheData.files || [];
-            
-            // For upscaled view, we need to filter by upscaled status later
+            const workspaceFiles = cacheData.files || null;
+            const workspaceScope = cacheData.workspaceScope || null;
             const metadataDb = handlers.globalResources.getMetadataDatabase();
             
-            // Get suggestions from database
-            let suggestions = await metadataDb.getTagSuggestionsFromDatabase(query, workspaceFiles, limit * 2); // Get more for context filtering
+            // Get suggestions from database (workspaceScope avoids giant filename IN lists)
+            let suggestions = await metadataDb.getTagSuggestionsFromDatabase(
+                query,
+                workspaceFiles,
+                limit * 2,
+                { workspaceScope }
+            );
             
             // Filter by upscaled status if needed
             if (viewType === 'upscaled') {
@@ -803,6 +786,11 @@ async function getTagSuggestions(handlers, query, viewType, sessionId, limit = 2
             // Apply context-aware ranking if context tags are provided
             if (contextTags && contextTags.length > 0) {
                 console.log('🔍 Backend: Applying context-aware ranking with tags:', contextTags);
+
+                let rankingCorpusSize = workspaceFiles?.length || 0;
+                if (rankingCorpusSize <= 0 && workspaceScope) {
+                    rankingCorpusSize = await metadataDb.countWorkspaceCorpusFiles(workspaceScope);
+                }
                 
                 // For each suggestion, find files that match both the suggestion and context tags
                 for (const suggestion of suggestions) {
@@ -810,20 +798,24 @@ async function getTagSuggestions(handlers, query, viewType, sessionId, limit = 2
                     
                     // Query database for files that match both this suggestion and context tags
                     const contextQuery = [...contextTags, suggestion.originalTag || suggestion.tag].join(',');
-                    const contextMatchingFiles = await metadataDb.searchFilesInDatabase(contextQuery, workspaceFiles, viewType);
+                    const contextMatchingFiles = await metadataDb.searchFilesInDatabase(
+                        contextQuery,
+                        workspaceFiles,
+                        viewType,
+                        { workspaceScope }
+                    );
                     contextScore = contextMatchingFiles.length;
 
                     // Boost score for context-relevant suggestions (base rank matches non-context suggestions)
                     suggestion.contextScore = contextScore;
-                    suggestion.boostedScore = handlers.globalResources.getMetadataDatabase().computeTagSuggestionRankScore(suggestion, workspaceFiles.length) + (contextScore * 10);
+                    suggestion.boostedScore = handlers.globalResources.getMetadataDatabase().computeTagSuggestionRankScore(suggestion, rankingCorpusSize) + (contextScore * 10);
                 }
 
                 console.log('🔍 Backend: Context scores applied, sorting by boosted scores');
 
-                // Sort by boosted score (context relevance + diversity-aware base rank)
                 suggestions.sort((a, b) => {
-                    const scoreA = a.boostedScore != null ? a.boostedScore : handlers.globalResources.getMetadataDatabase().computeTagSuggestionRankScore(a, workspaceFiles.length);
-                    const scoreB = b.boostedScore != null ? b.boostedScore : handlers.globalResources.getMetadataDatabase().computeTagSuggestionRankScore(b, workspaceFiles.length);
+                    const scoreA = a.boostedScore != null ? a.boostedScore : handlers.globalResources.getMetadataDatabase().computeTagSuggestionRankScore(a, rankingCorpusSize);
+                    const scoreB = b.boostedScore != null ? b.boostedScore : handlers.globalResources.getMetadataDatabase().computeTagSuggestionRankScore(b, rankingCorpusSize);
                     if (scoreA !== scoreB) return scoreB - scoreA;
                     return (a.originalTag || a.tag).localeCompare(b.originalTag || b.tag);
                 });
@@ -1096,15 +1088,21 @@ async function searchFilesByTags(handlers, query, viewType, sessionId) {
                 throw new Error(`View type mismatch. Cache initialized for ${cacheData.viewType}, but searching in ${viewType}`);
             }
 
-            // Get workspace files for filtering
-            let workspaceFiles = cacheData.files || [];
+            // Get workspace files / ownership scope for filtering
+            const workspaceFiles = cacheData.files || null;
+            const workspaceScope = cacheData.workspaceScope || null;
             
             // For upscaled view, we need to filter by upscaled status
             // We'll do this after getting search results from database
             const metadataDb = handlers.globalResources.getMetadataDatabase();
             
             // Use database query for search
-            const searchResults = await metadataDb.searchFilesInDatabase(query, workspaceFiles, viewType);
+            const searchResults = await metadataDb.searchFilesInDatabase(
+                query,
+                workspaceFiles,
+                viewType,
+                { workspaceScope }
+            );
             
             // Filter by upscaled status if needed
             let filteredResults = searchResults;

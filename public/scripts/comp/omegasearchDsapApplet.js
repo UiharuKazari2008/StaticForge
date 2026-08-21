@@ -164,7 +164,8 @@ function omegasearchDsapPreviewUrl(filename) {
     if (globalThis.deviceUtils && typeof globalThis.deviceUtils.getGalleryPreviewUrl === 'function') {
         previewPath = globalThis.deviceUtils.getGalleryPreviewUrl(previewPath);
     }
-    return `/previews/${encodeURIComponent(previewPath)}`;
+    // localGalleryPreviewUrl: public/scripts/comp/assetUrlResolver.js
+    return localGalleryPreviewUrl(previewPath);
 }
 
 function omegasearchDsapDefaultFilters() {
@@ -1211,7 +1212,7 @@ ${omegasearchDsapBuildStatsHtml().replace('class="dsap-smf-stats"', 'class="dsap
       <div class="dsap-smf-toolbar" id="omegaDetailActions">
         <button type="button" class="dsap-smf-btn dsap-smf-btn-small" data-omega-detail-action="jump" disabled title="Jump to image in gallery"><i class="fas fa-crosshairs"></i> Jump to Image</button>
         <button type="button" class="dsap-smf-btn dsap-smf-btn-small" data-omega-detail-action="workspace" disabled title="Switch to image workspace"><i class="fas fa-planet-ringed"></i> Go to Workspace</button>
-        <button type="button" class="dsap-smf-btn dsap-smf-btn-small" data-omega-detail-action="editor" disabled title="Open in DreamStudio editor"><i class="fas fa-compass-drafting"></i> Open in Editor</button>
+        <button type="button" class="dsap-smf-btn dsap-smf-btn-small" data-omega-detail-action="editor" disabled title="Open in DreamStudio editor"><i class="fas fa-compass-drafting"></i> Open in Studio</button>
         <button type="button" class="dsap-smf-btn dsap-smf-btn-small" data-omega-detail-action="favorite" disabled title="Favorite image"><i class="fa-regular fa-star" id="omegaDetailFavoriteIcon"></i> <span id="omegaDetailFavoriteLabel">Favorite</span></button>
         <button type="button" class="dsap-smf-btn dsap-smf-btn-small" data-omega-detail-action="window" disabled title="Open in Lumen window"><i class="fas fa-window"></i> Open in Window</button>
         <button type="button" class="dsap-smf-btn dsap-smf-btn-small" data-omega-detail-action="download" disabled title="Download image"><i class="fas fa-download"></i> Download</button>
@@ -1787,6 +1788,7 @@ const omegasearchDsapDriver = {
         this._cacheElements(root);
         this._wireEvents(root);
         this._wireMainTabs(host);
+        this._wireGrimoireContextMenus(host);
         setTimeout(() => {
             this._wireClickMenus(root);
             this._wireChipMatchMenus();
@@ -1852,6 +1854,148 @@ const omegasearchDsapDriver = {
             contextMenu.detachClickMenuFromElement(el);
         });
         this._chipMenuTargets = [];
+    },
+
+    _wireGrimoireContextMenus(host) {
+        if (!host || typeof host.registerContextMenuItems !== 'function') return;
+
+        host.registerContextMenuItems('.omega-dsap-gallery-item', (el) => {
+            const filename = el.dataset.filename;
+            if (!filename) return [];
+            return [
+                {
+                    text: 'Download Image',
+                    icon: 'fas fa-download',
+                    action: 'omega-download-file',
+                    data: { filename }
+                },
+                {
+                    text: 'Open in Window',
+                    icon: 'fas fa-window',
+                    action: 'omega-open-window-file',
+                    data: { filename }
+                }
+            ];
+        });
+
+        host.registerContextMenuItems('#omegaDetailImage', () => {
+            if (!this._state?.detailFile) return [];
+            return [
+                {
+                    text: 'Open in Window',
+                    icon: 'fas fa-window',
+                    action: 'omega-open-window-detail'
+                },
+                {
+                    text: 'Open in Studio',
+                    icon: 'fas fa-compass-drafting',
+                    action: 'omega-open-studio-detail'
+                }
+            ];
+        });
+
+        host.registerContextMenuAction('omega-open-details', (el, item) => {
+            const filename = (item && item.data && item.data.filename)
+                || el?.getAttribute?.('data-dsap-ctx-filename')
+                || el?.closest?.('.omega-dsap-gallery-item')?.dataset?.filename;
+            if (!filename || !this._state) return;
+            this._state.view = 'detail';
+            this._state.detailFile = filename;
+            this._syncViewTabs();
+            this._syncResultsVisibility();
+            this._pushUrl();
+            this._loadDetail(filename);
+        });
+
+        host.registerContextMenuAction('omega-download-detail', () => {
+            this._downloadDetailImage();
+        });
+
+        host.registerContextMenuAction('omega-download-file', (el, item) => {
+            const filename = (item && item.data && item.data.filename)
+                || el?.closest?.('.omega-dsap-gallery-item')?.dataset?.filename;
+            if (!filename) return;
+            const image = omegasearchDsapResolveDetailImage(filename, null);
+            // downloadImage: public/scripts/comp/galleryView.js
+            downloadImage(image);
+        });
+
+        host.registerContextMenuAction('omega-open-window-file', (el, item) => {
+            const filename = (item && item.data && item.data.filename)
+                || el?.closest?.('.omega-dsap-gallery-item')?.dataset?.filename;
+            if (!filename) return;
+            const image = omegasearchDsapResolveDetailImage(filename, null);
+            // openGalleryImageInViewer: public/scripts/comp/imageViewer.js
+            const viewer = openGalleryImageInViewer(image);
+            if (viewer?.element) {
+                viewer.element.dataset.imageData = JSON.stringify(image);
+            }
+        });
+
+        host.registerContextMenuAction('omega-open-window-detail', () => {
+            this._openDetailInWindow();
+        });
+
+        host.registerContextMenuAction('omega-open-studio-detail', () => {
+            this._openDetailInEditor();
+        });
+
+        host.registerContextMenuItems('.omega-dsap-usage-row', (el) => {
+            const snippet = el.dataset.omegaUsageSnippet || '';
+            const index = el.dataset.omegaUsageIndex;
+            const items = [];
+            if (snippet) {
+                items.push({
+                    text: 'Copy Snippet',
+                    icon: 'fas fa-copy',
+                    action: 'omega-copy-usage-snippet',
+                    data: { text: snippet }
+                });
+            }
+            if (index != null && index !== '') {
+                items.push({
+                    text: 'Copy Full Prompt',
+                    icon: 'fas fa-align-left',
+                    action: 'omega-copy-usage-prompt',
+                    data: { index: Number(index) }
+                });
+            }
+            return items;
+        });
+
+        host.registerContextMenuAction('omega-copy-usage-snippet', (el, item) => {
+            const text = item?.data?.text || el?.dataset?.omegaUsageSnippet || '';
+            if (!text) return;
+            // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
+            copyTextToClipboard(text).then(() => {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('success', null, 'Copied to clipboard', false, 3000, '<i class="fas fa-check"></i>');
+                }
+            }).catch(() => {});
+        });
+
+        host.registerContextMenuAction('omega-copy-usage-prompt', async (el, item) => {
+            const index = item?.data?.index ?? Number(el?.dataset?.omegaUsageIndex);
+            const usage = this._state?.usages?.[index];
+            if (!usage) return;
+            let text = usage.fullPrompt || usage.displayText || '';
+            if (!usage.fullPrompt) {
+                const usageKey = omegasearchDsapUsageKey(usage, index);
+                const cached = this._state.usagePromptCache?.[usageKey];
+                if (cached) {
+                    const tmp = document.createElement('div');
+                    tmp.innerHTML = cached;
+                    text = tmp.textContent || text;
+                }
+            }
+            if (!text) return;
+            // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
+            copyTextToClipboard(text).then(() => {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('success', null, 'Copied to clipboard', false, 3000, '<i class="fas fa-check"></i>');
+                }
+            }).catch(() => {});
+        });
     },
 
     _teardownClickMenus() {
@@ -3671,7 +3815,11 @@ const omegasearchDsapDriver = {
             const meta = row.metadata || {};
             const dims = meta.width && meta.height ? `${meta.width}×${meta.height}` : '';
             item.innerHTML = `
-                <img src="${omegasearchDsapPreviewUrl(filename)}" alt="${omegasearchDsapEscapeAttr(filename)}" loading="lazy">
+                <img src="${omegasearchDsapPreviewUrl(filename)}" alt="${omegasearchDsapEscapeAttr(filename)}" loading="lazy"
+                    data-dsap-ctx-action="omega-open-details"
+                    data-dsap-ctx-label="Open Details"
+                    data-dsap-ctx-icon="fas fa-magnifying-glass"
+                    data-dsap-ctx-filename="${omegasearchDsapEscapeAttr(filename)}">
                 <div class="omega-dsap-gallery-item-score">${omegasearchDsapEscapeHtml(dims || filename)}</div>
             `;
             frag.appendChild(item);
@@ -3707,6 +3855,8 @@ const omegasearchDsapDriver = {
 
             const tr = document.createElement('tr');
             tr.className = 'omega-dsap-usage-row';
+            tr.dataset.omegaUsageIndex = String(index);
+            tr.dataset.omegaUsageSnippet = usage.displayText || '';
             tr.innerHTML = `
                 <td>${omegasearchDsapEscapeHtml(usage.block || '')}</td>
                 <td>${omegasearchDsapEscapeHtml(locationParts.join(' · '))}</td>
@@ -3893,6 +4043,9 @@ const omegasearchDsapDriver = {
             img.onerror = onImageDone;
             img.src = `/images/${encodeURIComponent(filename)}`;
             img.alt = filename;
+            img.setAttribute('data-dsap-ctx-action', 'omega-download-detail');
+            img.setAttribute('data-dsap-ctx-label', 'Download Image');
+            img.setAttribute('data-dsap-ctx-icon', 'fas fa-download');
             if (img.complete) onImageDone();
         }
 

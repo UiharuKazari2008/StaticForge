@@ -67,6 +67,11 @@ class DesktopShortcutsManager {
                 contextMenu: this.getAppletContextMenu,
                 onClick: this.handleAppletClick
             },
+            dsap: {
+                icon: this.createDsapIcon,
+                contextMenu: this.getDsapContextMenu,
+                onClick: this.handleDsapClick
+            },
             request: {
                 icon: this.createRequestIcon,
                 contextMenu: this.getRequestContextMenu,
@@ -350,11 +355,14 @@ class DesktopShortcutsManager {
         this.currentWorkspace = workspaceId;
         this.clearSelection();
 
+        // Initial boot: step 18 (Loading Desktop Shortcuts) loads after containers are ready.
+        if (skipAnimation) {
+            return;
+        }
+
         await this.loadShortcuts(workspaceId);
-        
-        // Only render shortcuts if containers are initialized and not during initial load
-        // The init step will handle rendering after containers are ready
-        if (!skipAnimation && this.gridContainer && this.freeformContainer) {
+
+        if (this.gridContainer && this.freeformContainer) {
             this.renderShortcuts();
         }
     }
@@ -397,7 +405,10 @@ class DesktopShortcutsManager {
         }
 
         // Get metadata from notepadManager's centralized cache
-        return await window.notepadManager.getNotesMetadata(this.currentWorkspace);
+        if (window.notepadManager && typeof window.notepadManager.getNotesMetadata === 'function') {
+            return await window.notepadManager.getNotesMetadata(this.currentWorkspace);
+        }
+        return null;
     }
 
     // Render all shortcuts
@@ -483,7 +494,8 @@ class DesktopShortcutsManager {
         if (this._isEditableShortcutTarget(e.target) || this._isEditableShortcutTarget(document.activeElement)) return false;
         if (this._isDesktopKeyboardFocused(e)) return true;
         // isDesktopSurfaceContextTarget: public/scripts/comp/explorerApplet.js
-        return isDesktopSurfaceContextTarget(e.target);
+        return typeof isDesktopSurfaceContextTarget === 'function'
+            && isDesktopSurfaceContextTarget(e.target);
     }
 
     wireKeyboardListeners() {
@@ -516,7 +528,7 @@ class DesktopShortcutsManager {
             if (localStorage.getItem('userType') === 'readonly') return false;
             const explorer = typeof initializeExplorerApplet === 'function'
                 ? initializeExplorerApplet()
-                : explorerApplet;
+                : (typeof explorerApplet !== 'undefined' ? explorerApplet : null);
             if (!explorer?.clipboard) return false;
             e.preventDefault();
             e.stopPropagation();
@@ -559,7 +571,7 @@ class DesktopShortcutsManager {
                 if (localStorage.getItem('userType') === 'readonly') return false;
                 const explorer = typeof initializeExplorerApplet === 'function'
                     ? initializeExplorerApplet()
-                    : explorerApplet;
+                    : (typeof explorerApplet !== 'undefined' ? explorerApplet : null);
                 return !!(explorer && explorer.clipboard);
             },
             label: 'Paste',
@@ -1321,7 +1333,8 @@ class DesktopShortcutsManager {
             imagePreview.style.backgroundImage = `url('/previews/${encodeURIComponent(previewUrl)}')`;
         } else if (shortcut.data && shortcut.data.filename) {
             // Fallback to full image if preview not available
-            imagePreview.style.backgroundImage = `url('/images/${shortcut.data.filename}')`;
+            // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+            imagePreview.style.backgroundImage = `url('${localGalleryImageUrl(shortcut.data.filename)}')`;
         }
 
         // Flare holder for overlay effect
@@ -1387,16 +1400,16 @@ class DesktopShortcutsManager {
                         };
                         openGalleryImageInViewer(imageObj);
                     } else {
-                        // Fallback to basic viewer
-                        openImageInViewer(`/images/${filename}`, filename);
+                        // Fallback to basic viewer — localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+                        openImageInViewer(localGalleryImageUrl(filename), filename);
                     }
                 } catch (error) {
                     console.warn('Failed to get metadata, opening with defaults:', error);
-                    openImageInViewer(`/images/${filename}`, filename);
+                    openImageInViewer(localGalleryImageUrl(filename), filename);
                 }
             } else {
-                // No WebSocket, open with basic viewer
-                openImageInViewer(`/images/${filename}`, filename);
+                // No WebSocket, open with basic viewer — localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+                openImageInViewer(localGalleryImageUrl(filename), filename);
             }
         } catch (error) {
             console.error('Failed to open image preview:', error);
@@ -1448,10 +1461,15 @@ class DesktopShortcutsManager {
         }
 
         // Open notepad (individual window)
-        if (typeof notepadManager !== 'undefined') {
-            await notepadManager.openExistingNote(shortcut.data.noteId);
-        } else {
-            console.error('Notepad manager not available');
+        try {
+            if (window.featureLoader) {
+                await window.featureLoader.loadFeature('notepad');
+            }
+            if (typeof notepadManager !== 'undefined') {
+                await notepadManager.openExistingNote(shortcut.data.noteId);
+            }
+        } catch (err) {
+            console.error('Failed to load or open notepad:', err);
         }
     }
 
@@ -1462,21 +1480,28 @@ class DesktopShortcutsManager {
             return;
         }
 
-        // Open notebook and load this specific note
-        if (typeof notepadManager !== 'undefined' && typeof notepadManager.openNotebook === 'function') {
-            await notepadManager.openNotebook();
-            // Wait a moment for the notebook to open, then load the note
-            setTimeout(async () => {
-                if (typeof notepadManager.notebookLoadNote === 'function') {
-                    await notepadManager.notebookLoadNote(shortcut.data.noteId, false);
-                }
-            }, 100);
-        } else {
-            console.error('Notebook functionality not available');
-            // Fallback to regular notepad
-            if (typeof notepadManager !== 'undefined') {
-                await notepadManager.openExistingNote(shortcut.data.noteId);
+        try {
+            if (window.featureLoader) {
+                await window.featureLoader.loadFeature('notepad');
             }
+            // Open notebook and load this specific note
+            if (typeof notepadManager !== 'undefined' && typeof notepadManager.openNotebook === 'function') {
+                await notepadManager.openNotebook();
+                // Wait a moment for the notebook to open, then load the note
+                setTimeout(async () => {
+                    if (typeof notepadManager.notebookLoadNote === 'function') {
+                        await notepadManager.notebookLoadNote(shortcut.data.noteId, false);
+                    }
+                }, 100);
+            } else {
+                console.error('Notebook functionality not available');
+                // Fallback to regular notepad
+                if (typeof notepadManager !== 'undefined') {
+                    await notepadManager.openExistingNote(shortcut.data.noteId);
+                }
+            }
+        } catch (err) {
+            console.error('Failed to load or open notebook:', err);
         }
     }
 
@@ -1532,10 +1557,11 @@ class DesktopShortcutsManager {
             // References use /cache/preview/{hash}.webp or /cache/preview/{preview}
             if (shortcut.data.preview) {
                 // If preview is provided (standalone vibes), use it
-                imagePreview.style.backgroundImage = `url('/cache/preview/${shortcut.data.preview}')`;
+                imagePreview.style.backgroundImage = `url('${localCachePreviewUrl(shortcut.data.preview)}')`;
             } else {
                 // Otherwise use hash.webp (regular cache images)
-                imagePreview.style.backgroundImage = `url('/cache/preview/${shortcut.data.hash}.webp')`;
+                // localCachePreviewUrl: public/scripts/comp/assetUrlResolver.js
+                imagePreview.style.backgroundImage = `url('${localCachePreviewUrl(`${shortcut.data.hash}.webp`)}')`;
             }
         }
 
@@ -1662,8 +1688,13 @@ class DesktopShortcutsManager {
         // Render image icon if available
         if (hasImageIcon && applet.imageIcon) {
             const imageIcon = document.createElement('img');
-            const imagePath = applet.imageIcon.startsWith('/') ? applet.imageIcon : `/static_images/app_icons/${applet.imageIcon}`;
-            imageIcon.src = imagePath;
+            // resolveAppIconPath / buildAppIconSrcset: public/scripts/comp/modalUtils.js
+            imageIcon.src = resolveAppIconPath(applet.imageIcon);
+            const srcset = buildAppIconSrcset(applet.imageIcon);
+            if (srcset) {
+                imageIcon.setAttribute('srcset', srcset);
+                imageIcon.setAttribute('sizes', '192px');
+            }
             imageIcon.className = 'icon-image';
             imageIcon.alt = '';
             icon.appendChild(imageIcon);
@@ -1689,6 +1720,69 @@ class DesktopShortcutsManager {
         }
     }
 
+    createDsapIcon(shortcut) {
+        const icon = document.createElement('div');
+        icon.className = 'desktop-shortcut-icon';
+        const data = shortcut.data || {};
+        const hasImageIcon = !!data.imageIcon;
+
+        if (data.icon) {
+            const fa = document.createElement('i');
+            fa.className = hasImageIcon ? `${data.icon} icon-fa` : data.icon;
+            icon.appendChild(fa);
+        } else if (!hasImageIcon) {
+            const fa = document.createElement('i');
+            fa.className = 'fas fa-puzzle-piece';
+            icon.appendChild(fa);
+        }
+
+        if (hasImageIcon) {
+            const imageIcon = document.createElement('img');
+            // resolveAppIconPath / buildAppIconSrcset: public/scripts/comp/modalUtils.js
+            imageIcon.src = resolveAppIconPath(data.imageIcon);
+            const srcset = buildAppIconSrcset(data.imageIcon);
+            if (srcset) {
+                imageIcon.setAttribute('srcset', srcset);
+                imageIcon.setAttribute('sizes', '192px');
+            }
+            imageIcon.className = 'icon-image';
+            imageIcon.alt = '';
+            icon.appendChild(imageIcon);
+        }
+
+        return icon;
+    }
+
+    getDsapContextMenu(shortcut) {
+        return {
+            sections: [
+                {
+                    type: 'list',
+                    items: this.getShortcutManagementMenuItems(false, shortcut)
+                }
+            ]
+        };
+    }
+
+    handleDsapClick(shortcut) {
+        const url = shortcut.data && shortcut.data.url;
+        if (!url) {
+            showGlassToast('error', 'Error', 'Applet shortcut is missing URL', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+            return;
+        }
+        // openDsapInStandaloneWindow: public/scripts/comp/dsapRegistry.js
+        if (typeof openDsapInStandaloneWindow === 'function') {
+            openDsapInStandaloneWindow(url);
+            return;
+        }
+        // openDsapInGrimoire: public/scripts/comp/dsapRegistry.js
+        if (typeof openDsapInGrimoire === 'function') {
+            openDsapInGrimoire(url);
+            return;
+        }
+        showGlassToast('error', 'Error', 'Grimoire applet launcher not available', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+    }
+
     createBracketGenerationIcon(shortcut) {
         const icon = document.createElement('div');
         icon.className = 'desktop-shortcut-icon';
@@ -1698,7 +1792,12 @@ class DesktopShortcutsManager {
         icon.appendChild(faIcon);
 
         const imageIcon = document.createElement('img');
-        imageIcon.src = '/static_images/app_icons/stack.png';
+        imageIcon.src = resolveAppIconPath('stack.png');
+        const stackSrcset = buildAppIconSrcset('stack.png');
+        if (stackSrcset) {
+            imageIcon.setAttribute('srcset', stackSrcset);
+            imageIcon.setAttribute('sizes', '192px');
+        }
         imageIcon.className = 'icon-image';
         imageIcon.alt = '';
         icon.appendChild(imageIcon);
@@ -1724,15 +1823,12 @@ class DesktopShortcutsManager {
         }
         const manualModal = document.getElementById('manualModal');
         const editorOpen = manualModal && !manualModal.classList.contains('hidden');
-        if (window.bracketGenerationApplet) {
-            window.bracketGenerationApplet.open({
-                state: shortcut.data.state,
-                autoCompile: editorOpen,
-                desktopShortcut: { id: shortcut.id, name: shortcut.name }
-            });
-        } else {
-            showGlassToast('error', null, 'Phasewalker not available', false, 4000);
-        }
+        // openBracketGenerationApplet: public/scripts/comp/featureLoader.js
+        void openBracketGenerationApplet({
+            state: shortcut.data.state,
+            autoCompile: editorOpen,
+            desktopShortcut: { id: shortcut.id, name: shortcut.name }
+        });
     }
 
     createFolderIcon() {
@@ -2180,10 +2276,8 @@ class DesktopShortcutsManager {
         const tagName = shortcut.data.tagName;
 
         try {
-            if (!tagWikiSearchModal) {
-                showGlassToast('error', 'Error', 'Wiki window manager not available', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
-                return;
-            }
+            // public/scripts/comp/featureLoader.js
+            await featureLoader.loadFeature('grimoire');
 
             // Normal desktop launch: respect local DB cache for the wiki body and derived image files.
             // Only force live update if the user explicitly chooses "Refresh from online".
@@ -2226,10 +2320,8 @@ class DesktopShortcutsManager {
         const { siteId, pageId, title } = shortcut.data;
 
         try {
-            if (!wikiWindowManager) {
-                showGlassToast('error', 'Error', 'Wiki window manager not available', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
-                return;
-            }
+            // public/scripts/comp/featureLoader.js — wikiWindowManager in tagWikiSearchModal.js
+            await featureLoader.loadFeature('grimoire');
 
             if (!wsClient || !wsClient.isConnected()) {
                 showGlassToast('error', 'Error', 'WebSocket not connected', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
@@ -2323,20 +2415,23 @@ class DesktopShortcutsManager {
             filename: shortcut.data.filename
         };
 
-        if (window.naxtApplet && typeof window.naxtApplet.openNaxItemInViewer === 'function') {
-            window.naxtApplet.openNaxItemInViewer(item);
-            return;
-        }
-
-        const src = this.naxTagImageUrl(item);
-        if (src && typeof openImageInViewer === 'function') {
-            openImageInViewer(src, item.tag, {
-                url: src,
-                genericExternalImage: true,
-                naxFilename: item.filename,
-                naxGallerySlug: item.gallerySlug
-            });
-        }
+        // public/scripts/comp/featureLoader.js
+        void featureLoader.loadFeature('naxt').then(() => {
+            if (naxtApplet.openNaxItemInViewer) {
+                naxtApplet.openNaxItemInViewer(item);
+                return;
+            }
+            const src = this.naxTagImageUrl(item);
+            // openImageInViewer: public/scripts/comp/imageViewer.js
+            if (src && openImageInViewer) {
+                openImageInViewer(src, item.tag, {
+                    url: src,
+                    genericExternalImage: true,
+                    naxFilename: item.filename,
+                    naxGallerySlug: item.gallerySlug
+                });
+            }
+        });
     }
 
     getNaxTagContextMenu(shortcut) {
@@ -2508,14 +2603,16 @@ class DesktopShortcutsManager {
                     ? this.shortcuts.find((s) => s.id === shortcutId)
                     : shortcut;
                 if (this.getSelectedCount() > 1 && this.isShortcutSelected(shortcutId)) {
-                    if (explorerApplet) explorerApplet._contextMenuTarget = null;
+                    if (typeof explorerApplet !== 'undefined' && explorerApplet) {
+                        explorerApplet._contextMenuTarget = null;
+                    }
                     config.sections = this.getBulkContextMenu().sections;
                     return;
                 }
                 // public/scripts/comp/explorerApplet.js buildDesktopShortcutContextMenu
                 const explorer = typeof initializeExplorerApplet === 'function'
                     ? initializeExplorerApplet()
-                    : explorerApplet;
+                    : (typeof explorerApplet !== 'undefined' ? explorerApplet : null);
                 if (explorer && explorer.buildDesktopShortcutContextMenu && menuShortcut) {
                     explorer._contextMenuTarget = explorer._shortcutToExplorerItem(
                         menuShortcut,
@@ -2617,13 +2714,18 @@ class DesktopShortcutsManager {
         };
 
         // Add event listeners for drag (check threshold on first move)
+        if (this._dragDocumentController) {
+            this._dragDocumentController.abort();
+        }
+        this._dragDocumentController = new AbortController();
+        const dragSignal = this._dragDocumentController.signal;
         const moveHandler = (e) => this.handleDragMove(e);
-        const endHandler = (e) => this.handleDragEnd(e, moveHandler, endHandler);
+        const endHandler = (e) => this.handleDragEnd(e);
 
-        document.addEventListener('mousemove', moveHandler);
-        document.addEventListener('touchmove', moveHandler, { passive: false });
-        document.addEventListener('mouseup', endHandler);
-        document.addEventListener('touchend', endHandler);
+        document.addEventListener('mousemove', moveHandler, { signal: dragSignal });
+        document.addEventListener('touchmove', moveHandler, { passive: false, signal: dragSignal });
+        document.addEventListener('mouseup', endHandler, { signal: dragSignal });
+        document.addEventListener('touchend', endHandler, { signal: dragSignal });
     }
 
     // Handle drag move
@@ -2785,14 +2887,13 @@ class DesktopShortcutsManager {
     }
 
     // Handle drag end
-    async handleDragEnd(event, moveHandler, endHandler) {
+    async handleDragEnd(event) {
         if (!this.draggedShortcut) return;
 
-        // Remove event listeners
-        document.removeEventListener('mousemove', moveHandler);
-        document.removeEventListener('touchmove', moveHandler);
-        document.removeEventListener('mouseup', endHandler);
-        document.removeEventListener('touchend', endHandler);
+        if (this._dragDocumentController) {
+            this._dragDocumentController.abort();
+            this._dragDocumentController = null;
+        }
 
         // Check if we actually entered drag mode
         if (this.isDragging) {
@@ -3571,6 +3672,12 @@ desktopShortcuts = new DesktopShortcutsManager();
 wsClient.registerInitStep(18, 'Loading Desktop Shortcuts', async () => {
     // Only initialize and load desktop shortcuts if in desktop mode
     if (window.isDesktop) {
+        // Desktop surface helpers live in explorerApplet.js (context target, paste, shortcut menus)
+        // public/scripts/comp/featureLoader.js
+        await featureLoader.loadFeature('explorer');
+        // wireStudioVfsDrop: public/scripts/comp/explorerApplet.js
+        wireStudioVfsDrop();
+
         desktopShortcuts.init();
         
         // Load and render shortcuts for current workspace
@@ -3589,7 +3696,7 @@ document.addEventListener('contextMenuAction', async (event) => {
     const { action, target } = event.detail;
 
     // public/scripts/comp/explorerApplet.js isDesktopSurfaceContextTarget
-    if (isDesktopSurfaceContextTarget(target)) return;
+    if (typeof isDesktopSurfaceContextTarget === 'function' && isDesktopSurfaceContextTarget(target)) return;
     
     // Check if this is a desktop shortcut
     const shortcutElement = target.closest('.desktop-shortcut');
@@ -3609,7 +3716,7 @@ document.addEventListener('contextMenuAction', async (event) => {
 
     const explorer = typeof initializeExplorerApplet === 'function'
         ? initializeExplorerApplet()
-        : explorerApplet;
+        : (typeof explorerApplet !== 'undefined' ? explorerApplet : null);
 
     if (explorer && (action.startsWith('explorer-') || action === 'remove-shortcut')) {
         const item = explorer._shortcutToExplorerItem(shortcut, { isDesktopShortcut: true });
@@ -3622,7 +3729,8 @@ document.addEventListener('contextMenuAction', async (event) => {
         explorer._contextMenuTarget = item;
 
         // public/scripts/comp/explorerApplet.js EXPLORER_IMAGE_GALLERY_CONTEXT_ACTIONS
-        if (EXPLORER_IMAGE_GALLERY_CONTEXT_ACTIONS.has(action)) {
+        if (typeof EXPLORER_IMAGE_GALLERY_CONTEXT_ACTIONS !== 'undefined'
+            && EXPLORER_IMAGE_GALLERY_CONTEXT_ACTIONS.has(action)) {
             if (await explorer._handleImageGalleryContextAction(action, item, event)) return;
         }
     }
@@ -3812,7 +3920,8 @@ document.addEventListener('contextMenuAction', async (event) => {
                 // Create download link
                 const filename = shortcut.data.filename;
                 const link = document.createElement('a');
-                link.href = `/images/${filename}`;
+                // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+                link.href = localGalleryImageUrl(filename);
                 link.download = filename;
                 document.body.appendChild(link);
                 link.click();
@@ -3822,14 +3931,18 @@ document.addEventListener('contextMenuAction', async (event) => {
             break;
 
         case 'nax-tag-copy':
-            if (shortcut.type === 'nax-tag' && shortcut.data && shortcut.data.tag && window.naxtApplet) {
-                window.naxtApplet.copyTag(shortcut.data.tag);
+            if (shortcut.type === 'nax-tag' && shortcut.data && shortcut.data.tag) {
+                // public/scripts/comp/featureLoader.js
+                void featureLoader.loadFeature('naxt').then(() => naxtApplet.copyTag(shortcut.data.tag));
             }
             break;
 
         case 'nax-tag-add-to-prompt':
-            if (shortcut.type === 'nax-tag' && shortcut.data && shortcut.data.tag && window.naxtApplet) {
-                window.naxtApplet.addToPrompt(shortcut.data.tag, shortcut.data.gallerySlug);
+            if (shortcut.type === 'nax-tag' && shortcut.data && shortcut.data.tag) {
+                // public/scripts/comp/featureLoader.js
+                void featureLoader.loadFeature('naxt').then(() => {
+                    naxtApplet.addToPrompt(shortcut.data.tag, shortcut.data.gallerySlug);
+                });
             }
             break;
             

@@ -763,6 +763,7 @@ function dataMgmtDsapWireWorkspaceDragReorder(list) {
 
     let draggedItem = null;
     let draggedIndex = null;
+    let dragDocumentController = null;
 
     list.querySelectorAll('.data-mgmt-ws-drag-handle').forEach((handle) => {
         handle.addEventListener('mousedown', startDrag);
@@ -782,8 +783,14 @@ function dataMgmtDsapWireWorkspaceDragReorder(list) {
         draggedIndex = Array.from(list.children).indexOf(item);
         draggedItem.classList.add('dragging');
 
-        document.addEventListener('mousemove', onDrag);
-        document.addEventListener('mouseup', endDrag);
+        // Per-drag document listeners — AbortController aligned with pipelineStageControls.js
+        if (dragDocumentController) {
+            dragDocumentController.abort();
+        }
+        dragDocumentController = new AbortController();
+        const dragSignal = dragDocumentController.signal;
+        document.addEventListener('mousemove', onDrag, { signal: dragSignal });
+        document.addEventListener('mouseup', endDrag, { signal: dragSignal });
         document.body.style.userSelect = 'none';
     }
 
@@ -836,8 +843,10 @@ function dataMgmtDsapWireWorkspaceDragReorder(list) {
         if (!draggedItem) return;
         e.preventDefault();
 
-        document.removeEventListener('mousemove', onDrag);
-        document.removeEventListener('mouseup', endDrag);
+        if (dragDocumentController) {
+            dragDocumentController.abort();
+            dragDocumentController = null;
+        }
 
         draggedItem.classList.remove('dragging');
         Array.from(list.children).forEach((item) => item.classList.remove('drag-over'));
@@ -2067,6 +2076,89 @@ const dataMgmtDsapDriver = {
         dsapSmfSetActiveTab(root, 'data-data-tab', activeTab);
         // dsapSmfUpdateHeaderTool: public/scripts/comp/dsapSmfMarkup.js
         dsapSmfUpdateHeaderTool(root, DATA_DSAP_TAB_LABELS[activeTab] || 'Status');
+        this._wireGrimoireContextMenus(host);
+    },
+
+    _wireGrimoireContextMenus(host) {
+        if (!host || typeof host.registerContextMenuItems !== 'function') return;
+        if (host._dataMgmtCtxWired) return;
+        host._dataMgmtCtxWired = true;
+
+        const copyText = (text) => {
+            if (!text) return;
+            // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
+            copyTextToClipboard(text).then(() => {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('success', null, 'Copied to clipboard', false, 3000, '<i class="fas fa-check"></i>');
+                }
+            }).catch(() => {});
+        };
+
+        host.registerContextMenuItems('.data-mgmt-ws-row', (el) => {
+            const id = el.dataset.workspaceId;
+            if (!id) return [];
+            const name = el.querySelector('.data-mgmt-ws-name')?.textContent?.trim() || id;
+            const isDefault = id === 'default';
+            const items = [
+                { text: 'Workspace Settings', icon: 'fas fa-cog', action: 'dm-ws-settings', data: { id } },
+                { text: 'Copy Workspace ID', icon: 'fas fa-copy', action: 'dm-ws-copy-id', data: { id } }
+            ];
+            if (!isDefault) {
+                items.push(
+                    { text: 'Dump Workspace', icon: 'mdi mdi-folder-move', action: 'dm-ws-dump', data: { id, name } },
+                    { text: 'Delete Workspace', icon: 'fas fa-trash', action: 'dm-ws-delete', data: { id, name } }
+                );
+            }
+            return items;
+        });
+
+        host.registerContextMenuItems('.data-mgmt-fav-row', (el) => {
+            const name = el.querySelector('.data-mgmt-fav-name')?.textContent?.trim() || '';
+            const type = el.dataset.type;
+            const index = el.dataset.index;
+            const removeType = type === 'tag' ? 'tags' : 'textReplacements';
+            return [
+                { text: 'Copy Name', icon: 'fas fa-copy', action: 'dm-fav-copy-name', data: { name } },
+                {
+                    text: 'Remove Favorite',
+                    icon: 'fas fa-trash',
+                    action: 'dm-fav-remove',
+                    data: { type: removeType, index: Number(index) }
+                }
+            ];
+        });
+
+        host.registerContextMenuAction('dm-ws-settings', (el, item) => {
+            const id = item?.data?.id || el?.dataset?.workspaceId;
+            // editWorkspaceSettings: public/scripts/comp/workspaceUtils.js (or workspace UI)
+            if (id && typeof editWorkspaceSettings === 'function') editWorkspaceSettings(id);
+        });
+        host.registerContextMenuAction('dm-ws-copy-id', (el, item) => {
+            copyText(item?.data?.id || el?.dataset?.workspaceId);
+        });
+        host.registerContextMenuAction('dm-ws-dump', (el, item) => {
+            const id = item?.data?.id || el?.dataset?.workspaceId;
+            const name = item?.data?.name || '';
+            // showDumpWorkspaceModal: workspace dump UI
+            if (id && typeof showDumpWorkspaceModal === 'function') showDumpWorkspaceModal(id, name);
+        });
+        host.registerContextMenuAction('dm-ws-delete', (el, item) => {
+            const id = item?.data?.id || el?.dataset?.workspaceId;
+            const name = item?.data?.name || '';
+            // confirmDeleteWorkspace: workspace delete UI
+            if (id && typeof confirmDeleteWorkspace === 'function') confirmDeleteWorkspace(id, name);
+        });
+        host.registerContextMenuAction('dm-fav-copy-name', (el, item) => {
+            copyText(item?.data?.name || el?.querySelector?.('.data-mgmt-fav-name')?.textContent?.trim());
+        });
+        host.registerContextMenuAction('dm-fav-remove', (el, item) => {
+            const type = item?.data?.type;
+            const index = item?.data?.index;
+            // removeFavorite: public/scripts/comp/textReplacementManager.js
+            if (type != null && index != null && typeof removeFavorite === 'function') {
+                removeFavorite(type, Number(index));
+            }
+        });
     },
 
     destroy(host) {

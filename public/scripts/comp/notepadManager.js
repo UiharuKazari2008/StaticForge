@@ -2072,10 +2072,29 @@ class Notepad {
 // Initialize notepad manager
 const notepadManager = new NotepadManager();
 
-// Register WebSocket initialization step
-wsClient.registerInitStep(19, 'Initializing notepad manager', async () => {
-    await notepadManager.init();
-});
-
 // Export for global access
 window.notepadManager = notepadManager;
+
+if (window.wsClient) {
+    if (window.wsClient.initializationCompleted) {
+        notepadManager.init();
+    } else {
+        window.wsClient.registerInitStep(19, 'Initializing notepad manager', async () => {
+            await notepadManager.init();
+        });
+    }
+} else {
+    const initInterval = setInterval(() => {
+        if (window.wsClient) {
+            clearInterval(initInterval);
+            if (window.wsClient.initializationCompleted) {
+                notepadManager.init();
+            } else {
+                window.wsClient.registerInitStep(19, 'Initializing notepad manager', async () => {
+                    await notepadManager.init();
+                });
+            }
+        }
+    }, 500);
+    setTimeout(() => clearInterval(initInterval), 30000);
+}

@@ -8,6 +8,10 @@ let emphasisEditingValue = 1.0;
 let emphasisEditingTarget = null;
 let emphasisEditingSelection = null;
 let emphasisEditingMode = 'normal'; // 'normal', 'brace', 'group'
+/** Managed group id when editing invisible delimiters (weights in forge bag). */
+let emphasisEditingManagedId = null;
+/** When normalize is on: editor shows/edits track percent instead of absolute weight. */
+let emphasisEditingValueUnit = 'weight'; // 'weight' | 'percent'
 /** Saved group/normal context when drilling into brace mode; restored on toggle back (no text apply). */
 let emphasisModeParentContext = null;
 
@@ -93,7 +97,8 @@ function switchBraceToGroupOrNormal(value) {
         emphasisEditingValue: (v) => { emphasisEditingValue = v; },
         emphasisEditingTarget: (v) => { emphasisEditingTarget = v; },
         emphasisEditingSelection: (v) => { emphasisEditingSelection = v; },
-        emphasisEditingMode: (v) => { emphasisEditingMode = v; }
+        emphasisEditingMode: (v) => { emphasisEditingMode = v; },
+        emphasisEditingValueUnit: (v) => { emphasisEditingValueUnit = v; }
     };
     Object.keys(state).forEach((name) => {
         Object.defineProperty(window, name, {
@@ -102,10 +107,14 @@ function switchBraceToGroupOrNormal(value) {
             configurable: true
         });
     });
+    Object.defineProperty(window, 'emphasisEditingValueUnit', {
+        get: () => emphasisEditingValueUnit,
+        set: (v) => { emphasisEditingValueUnit = v; },
+        configurable: true
+    });
 })();
 function applyEmphasisDirectly(target, weight, mode = 'normal') {
     if (!target) {
-        console.log('No target provided');
         return false;
     }
     
@@ -113,34 +122,25 @@ function applyEmphasisDirectly(target, weight, mode = 'normal') {
     const selectionStart = target.selectionStart;
     const selectionEnd = target.selectionEnd;
     
-    // Check if there's a valid text selection
     if (selectionStart === selectionEnd) {
-        console.log('No text selected');
-        return false; // No text selected
+        return false;
     }
     
-    // Get the selected text
     const selectedText = value.substring(selectionStart, selectionEnd).trim();
     if (!selectedText) {
-        return false; // Empty selection
+        return false;
     }
     
-    // Check if selected text is just a number (prevent emphasis application)
-    // This includes patterns like "2", "2.05", "1.5", "-3.14", etc.
     const pureNumberPattern = /^-?\d+(\.\d+)?$/;
     if (pureNumberPattern.test(selectedText)) {
-        console.log('Selected text is a pure number, not applying emphasis:', selectedText);
-        return false; // Don't apply emphasis to pure numbers
+        return false;
     }
     
-    // Check if selected text is a number followed by "::" (part of emphasis syntax)
     const numberWithColonsPattern = /^-?\d+(\.\d+)?::$/;
     if (numberWithColonsPattern.test(selectedText)) {
-        console.log('Selected text is a number with colons, not applying emphasis:', selectedText);
-        return false; // Don't apply emphasis to numbers that are part of emphasis weights
+        return false;
     }
     
-    // Ensure weight is a valid number
     let numericWeight;
     if (typeof weight === 'string') {
         numericWeight = parseFloat(weight);
@@ -153,6 +153,20 @@ function applyEmphasisDirectly(target, weight, mode = 'normal') {
     numericWeight = clampEmphasisWeight(numericWeight);
     if (mode === 'brace') {
         numericWeight = snapWeightForBraceMode(numericWeight);
+    }
+
+    // Managed path for group/normal (not brace) — current hidden|visible mode
+    // wrapOrUpdateManagedEmphasisSelection: public/scripts/comp/emphasisGroupIdCodec.js
+    if (mode !== 'brace') {
+        const managedResult = wrapOrUpdateManagedEmphasisSelection(target, numericWeight);
+        if (managedResult && managedResult.success) {
+            hideCharacterAutocomplete();
+            if (window.autoResizeTextarea) {
+                window.autoResizeTextarea(target);
+            }
+            target.setSelectionRange(managedResult.start, managedResult.end);
+            return managedResult;
+        }
     }
 
     const formattedWeight = formatEmphasisWeight(numericWeight);
@@ -191,7 +205,10 @@ function applyEmphasisDirectly(target, weight, mode = 'normal') {
         replaceStart = overlappingGroup.start;
         replaceEnd = overlappingGroup.end;
         innerText = overlappingGroup.innerText;
-        emphasizedText = `${formattedWeight}::${innerText}${overlappingGroup.needsTerminator ? '::' : ''}`;
+        emphasizedText = overlappingGroup.needsTerminator
+            // formatClassicClosedEmphasisGroup: public/scripts/comp/emphasisGroupIdCodec.js
+            ? formatClassicClosedEmphasisGroup(formattedWeight, innerText)
+            : `${formattedWeight}::${innerText}`;
     } else if (overlappingBrace) {
         replaceStart = overlappingBrace.start;
         replaceEnd = overlappingBrace.end;
@@ -210,17 +227,18 @@ function applyEmphasisDirectly(target, weight, mode = 'normal') {
             const needsTerminator = shouldAddTerminator(value, selectionEnd, {
                 allowAutoTerminationByNextGroup: false
             });
-            emphasizedText = `${formattedWeight}::${innerText}${needsTerminator ? '::' : ''}`;
-        } else if (mode === 'group') {
-            const needsTerminator = shouldAddTerminator(value, selectionEnd, {
-                allowAutoTerminationByNextGroup: false
-            });
-            emphasizedText = `${formattedWeight}::${selectedText}${needsTerminator ? '::' : ''}`;
+            emphasizedText = needsTerminator
+                // formatClassicClosedEmphasisGroup: public/scripts/comp/emphasisGroupIdCodec.js
+                ? formatClassicClosedEmphasisGroup(formattedWeight, innerText)
+                : `${formattedWeight}::${innerText}`;
         } else {
             const needsTerminator = shouldAddTerminator(value, selectionEnd, {
                 allowAutoTerminationByNextGroup: false
             });
-            emphasizedText = `${formattedWeight}::${selectedText}${needsTerminator ? '::' : ''}`;
+            emphasizedText = needsTerminator
+                // formatClassicClosedEmphasisGroup: public/scripts/comp/emphasisGroupIdCodec.js
+                ? formatClassicClosedEmphasisGroup(formattedWeight, selectedText)
+                : `${formattedWeight}::${selectedText}`;
         }
     }
 
@@ -228,24 +246,15 @@ function applyEmphasisDirectly(target, weight, mode = 'normal') {
     const afterText = value.substring(replaceEnd);
     const newValue = beforeText + emphasizedText + afterText;
     
-    console.log('Replacing text:', { 
-        original: value.substring(selectionStart, selectionEnd),
-        emphasized: emphasizedText,
-        newValue: newValue.substring(0, 100) + '...'
-    });
-    
     // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
     setTextareaValuePreservingUndo(target, newValue);
     
-    // Set cursor position after the emphasized text
     const newCursorPosition = replaceStart + emphasizedText.length;
     target.setSelectionRange(newCursorPosition, newCursorPosition);
     
-    // Trigger input event to update any dependent UI
     dispatchPromptTextareaInputEvent(target, { skipAutofill: true });
     hideCharacterAutocomplete();
 
-    // Update emphasis highlighting
     if (window.autoResizeTextarea) {
         window.autoResizeTextarea(target);
     }
@@ -253,7 +262,6 @@ function applyEmphasisDirectly(target, weight, mode = 'normal') {
         window.updateEmphasisHighlighting(target);
     }
     
-    // Return the emphasized text and its position for reselection
     return {
         success: true,
         emphasizedText: emphasizedText,
@@ -263,23 +271,69 @@ function applyEmphasisDirectly(target, weight, mode = 'normal') {
 }
 
 function startEmphasisEditing(target) {
-    if (!target) return;
+    if (!target) return false;
 
     clearEmphasisModeParentContext();
     emphasisEditingTarget = target;
+    emphasisEditingManagedId = null;
+    emphasisEditingValueUnit = 'weight';
     const value = target.value;
-    const cursorPosition = target.selectionStart;
+    const selectionStart = target.selectionStart;
+    const selectionEnd = target.selectionEnd;
+    // Prefer live caret; fall back to last in-field caret (blur/format can move selection to end).
+    const lastCaret = Number.isFinite(target._emphasisLastCaret) ? target._emphasisLastCaret : selectionStart;
+    const cursorCandidates = [selectionStart];
+    if (selectionEnd !== selectionStart) {
+        cursorCandidates.push(Math.max(0, selectionEnd - 1), selectionEnd);
+        cursorCandidates.push(Math.floor((selectionStart + selectionEnd) / 2));
+    }
+    if (lastCaret !== selectionStart) cursorCandidates.push(lastCaret);
 
     let insideEmphasis = false;
     let emphasisMode = 'normal'; // 'normal', 'brace', 'group'
+    let cursorPosition = selectionStart;
 
-    const emphasisBlock = findEmphasisBlockAtCursor(value, cursorPosition);
+    // findManagedEmphasisBlockAtCursor / resolveEmphasisBagForTextarea: public/scripts/comp/emphasisGroupIdCodec.js
+    const bag = resolveEmphasisBagForTextarea(target);
+    let managedBlock = null;
+    for (let i = 0; i < cursorCandidates.length; i++) {
+        managedBlock = findManagedEmphasisBlockAtCursor(value, cursorCandidates[i], bag);
+        if (managedBlock) {
+            cursorPosition = cursorCandidates[i];
+            break;
+        }
+    }
+    if (managedBlock) {
+        insideEmphasis = true;
+        emphasisEditingManagedId = managedBlock.id;
+        emphasisEditingValue = managedBlock.weight;
+        emphasisEditingSelection = {
+            start: managedBlock.start,
+            end: managedBlock.end
+        };
+        emphasisMode = 'group';
+        // getEmphasisNormalizeBandForTextarea: public/scripts/comp/emphasisGroupIdCodec.js
+        const band = getEmphasisNormalizeBandForTextarea(target);
+        if (band.enabled) {
+            const share = resolveEmphasisShareForManagedBlock(target, managedBlock, band);
+            if (Number.isFinite(share)) {
+                emphasisEditingValueUnit = 'percent';
+                emphasisEditingValue = clampEmphasisShare(share);
+            }
+        }
+    }
+
+    const emphasisBlock = insideEmphasis
+        ? null
+        : (findEmphasisBlockAtCursor(value, cursorPosition)
+            || (cursorPosition !== selectionStart ? findEmphasisBlockAtCursor(value, selectionStart) : null)
+            || (lastCaret !== cursorPosition && lastCaret !== selectionStart
+                ? findEmphasisBlockAtCursor(value, lastCaret)
+                : null));
     if (emphasisBlock) {
         insideEmphasis = true;
         emphasisEditingValue = emphasisBlock.weight;
 
-        const selectionStart = target.selectionStart;
-        const selectionEnd = target.selectionEnd;
         const hasSelection = selectionStart !== selectionEnd;
 
         if (hasSelection) {
@@ -300,13 +354,36 @@ function startEmphasisEditing(target) {
             emphasisMode = 'brace';
         } else if (emphasisMode !== 'brace') {
             emphasisMode = 'group';
+            const band = getEmphasisNormalizeBandForTextarea(target);
+            if (band.enabled) {
+                const bag = band.bag || {};
+                let share = null;
+                if (Array.isArray(bag.percentages)) {
+                    const groups = listAllEmphasisTargets(value).filter((t) => t.type === 'group');
+                    const idx = groups.findIndex((g) =>
+                        g.start === emphasisBlock.start && g.end === emphasisBlock.end
+                    );
+                    if (idx >= 0 && Number.isFinite(bag.percentages[idx])) {
+                        share = bag.percentages[idx];
+                    }
+                }
+                if (!Number.isFinite(share) && Number.isFinite(emphasisBlock.weight)) {
+                    share = weightToShare(
+                        emphasisBlock.weight,
+                        band.minWeight,
+                        band.maxWeight,
+                        { normalizePrecision: true }
+                    );
+                }
+                if (Number.isFinite(share)) {
+                    emphasisEditingValueUnit = 'percent';
+                    emphasisEditingValue = clampEmphasisShare(share);
+                }
+            }
         }
     }
 
     if (!insideEmphasis) {
-        // Check if there's a text selection
-        const selectionStart = target.selectionStart;
-        const selectionEnd = target.selectionEnd;
         const hasSelection = selectionStart !== selectionEnd;
 
         if (hasSelection) {
@@ -321,7 +398,7 @@ function startEmphasisEditing(target) {
             const autoBounds = findAutoDetectTagBounds(value, cursorPosition);
             const blockText = value.substring(autoBounds.start, autoBounds.end);
 
-            if (blockText.length < 2) return;
+            if (blockText.length < 2) return false;
 
             if (autoBounds.mode === 'brace') {
                 emphasisEditingValue = autoBounds.weight;
@@ -390,6 +467,7 @@ function startEmphasisEditing(target) {
         }
     };
     emphasisEditingTarget.addEventListener('blur', blurHandler);
+    return true;
 }
 
 // Add border highlight around selected text for emphasis editing
@@ -436,26 +514,46 @@ function adjustEmphasisEditing(delta) {
     // Handle special "---" value (remove emphasis)
     if (emphasisEditingValue === "---") {
         if (delta > 0) {
-            emphasisEditingValue = 1.0;
+            emphasisEditingValue = emphasisEditingValueUnit === 'percent' ? 1 : 1.0;
         } else {
-            emphasisEditingValue = 0.9;
+            emphasisEditingValue = emphasisEditingValueUnit === 'percent' ? 0 : 0.9;
         }
-    } else {
-        // Convert to number if it's a string (for integer inputs)
-        let currentValue = typeof emphasisEditingValue === 'string' ? parseFloat(emphasisEditingValue) : emphasisEditingValue;
-        
-        // Check if we're crossing the "---" threshold
-        if (currentValue <= 0.9 && currentValue + delta > 0.9) {
-            emphasisEditingValue = "---";
-        } else if (currentValue >= 1.0 && currentValue + delta < 1.0) {
-            emphasisEditingValue = "---";
+    } else if (emphasisEditingValueUnit === 'percent') {
+        let currentValue = typeof emphasisEditingValue === 'string'
+            ? parseFloat(emphasisEditingValue)
+            : emphasisEditingValue;
+        const step = Math.abs(delta) >= 0.1 ? (delta > 0 ? 1 : -1) : (delta > 0 ? 0.1 : -0.1);
+        // Larger toolbar ± should move ~1%; shift fine → 0.1% via getEmphasisAdjustStep mapping below
+        const pctStep = Math.abs(delta) <= 0.011 ? 0.1 : (Math.abs(delta) <= 0.11 ? 1 : 5);
+        emphasisEditingValue = clampEmphasisShare(currentValue + (delta > 0 ? pctStep : -pctStep));
         } else {
-            emphasisEditingValue = clampEmphasisWeight(currentValue + delta);
+            // Convert to number if it's a string (for integer inputs)
+            let currentValue = typeof emphasisEditingValue === 'string' ? parseFloat(emphasisEditingValue) : emphasisEditingValue;
+
             if (emphasisEditingMode === 'brace') {
-                emphasisEditingValue = snapWeightForBraceMode(emphasisEditingValue);
+                // NovelAI brace levels: step ±1 nesting (1.05^n), not additive 0.1
+                // stepBraceEmphasisWeight / weightFromBraceLevel: public/scripts/comp/emphasisParse.js
+                const dir = delta > 0 ? 1 : -1;
+                if (Math.abs(currentValue - 1) < 0.0001 && dir < 0) {
+                    emphasisEditingValue = '---';
+                } else if (Math.abs(currentValue - 1) < 0.0001 && dir > 0) {
+                    emphasisEditingValue = weightFromBraceLevel(1, 'brace');
+                } else {
+                    const next = stepBraceEmphasisWeight(currentValue, dir);
+                    if ((currentValue > 1 && next < 1) || (currentValue < 1 && next > 1)) {
+                        emphasisEditingValue = 1;
+                    } else {
+                        emphasisEditingValue = next;
+                    }
+                }
+            } else if (currentValue <= 0.9 && currentValue + delta > 0.9) {
+                emphasisEditingValue = '---';
+            } else if (currentValue >= 1.0 && currentValue + delta < 1.0) {
+                emphasisEditingValue = '---';
+            } else {
+                emphasisEditingValue = clampEmphasisWeight(currentValue + delta);
             }
         }
-    }
     
     // Update selection highlight to show the new emphasis value
     if (emphasisEditingTarget && emphasisEditingSelection) {
@@ -494,11 +592,89 @@ function applyEmphasisEditing() {
     clearEmphasisModeParentContext();
     const target = emphasisEditingTarget;
     const value = target.value;
+    const managedId = emphasisEditingManagedId;
     
     // Check if we're in toolbar mode (needed for both "---" and normal cases)
     const container = target.closest('.prompt-textarea-container, .character-prompt-textarea-container');
     const toolbar = container ? container.querySelector('.prompt-textarea-toolbar') : null;
     const isToolbarMode = toolbar && toolbar.classList.contains('emphasis-mode');
+
+    const finishToolbarClose = () => {
+        emphasisEditingActive = false;
+        emphasisEditingTarget = null;
+        emphasisEditingSelection = null;
+        emphasisEditingMode = 'normal';
+        emphasisEditingManagedId = null;
+        emphasisEditingValueUnit = 'weight';
+        removeEmphasisSelectionHighlight(target);
+        autoResizeTextarea(target);
+        updateEmphasisHighlighting(target);
+        if (isToolbarMode && toolbar) {
+            if (window.promptTextareaToolbar && window.promptTextareaToolbar.closeEmphasisMode) {
+                window.promptTextareaToolbar.closeEmphasisMode(toolbar);
+            }
+        }
+    };
+
+    // Managed invisible group: weights live in forge bag; text keeps delimiters.
+    // writeManagedEmphasisGroupWeightsForTextarea / findManagedEmphasisBlockAtCursor:
+    //   public/scripts/comp/emphasisGroupIdCodec.js
+    if (managedId != null) {
+        const live = findManagedEmphasisBlockAtCursor(
+            value,
+            emphasisEditingSelection.start,
+            resolveEmphasisBagForTextarea(target)
+        );
+        if (emphasisEditingValue === '---') {
+            const replaceStart = live ? live.start : emphasisEditingSelection.start;
+            const replaceEnd = live ? live.end : emphasisEditingSelection.end;
+            const body = live ? live.innerText : value.substring(replaceStart, replaceEnd);
+            setTextareaValuePreservingUndo(target, value.substring(0, replaceStart) + body + value.substring(replaceEnd));
+            target.setSelectionRange(replaceStart + body.length, replaceStart + body.length);
+            writeManagedEmphasisGroupWeightsForTextarea(target, [{ id: managedId, remove: true }]);
+            dispatchPromptTextareaInputEvent(target, { skipAutofill: true });
+            hideCharacterAutocomplete();
+            finishToolbarClose();
+            return;
+        }
+
+        const weightNum = typeof emphasisEditingValue === 'string'
+            ? parseFloat(emphasisEditingValue)
+            : emphasisEditingValue;
+        let finalWeight = clampEmphasisWeight(weightNum);
+        if (emphasisEditingValueUnit === 'percent') {
+            const band = getEmphasisNormalizeBandForTextarea(target);
+            finalWeight = shareToWeightFromRange(
+                clampEmphasisShare(weightNum),
+                band.minWeight,
+                band.maxWeight
+            );
+        }
+        writeManagedEmphasisGroupWeightsForTextarea(target, [{
+            id: managedId,
+            weight: finalWeight
+        }]);
+        // Persist share into bag percentages when normalize on
+        const band = getEmphasisNormalizeBandForTextarea(target);
+        if (band.enabled && emphasisEditingValueUnit === 'percent') {
+            const store = getEmphasisNormalizationFieldStore();
+            const share = clampEmphasisShare(weightNum);
+            getEmphasisNormalizationDualWriteKeys(target.id).forEach((key) => {
+                const prev = store[key] || {};
+                const percentagesByKey = { ...(prev.percentagesByKey || {}) };
+                percentagesByKey[`managed:${managedId}`] = share;
+                percentagesByKey[managedId] = share;
+                store[key] = { ...prev, percentagesByKey, enabled: true };
+            });
+            syncEmphasisNormalizationPreviewMetadata();
+        }
+        dispatchPromptTextareaInputEvent(target, { skipAutofill: true });
+        hideCharacterAutocomplete();
+        finishToolbarClose();
+        // refreshEmphasisGroupsToolInstancesFromForgeState: public/scripts/comp/emphasisGroupsToolManager.js
+        refreshEmphasisGroupsToolInstancesFromForgeState();
+        return;
+    }
     
     // Handle special "---" value (remove emphasis)
     if (emphasisEditingValue === "---") {
@@ -544,6 +720,7 @@ function applyEmphasisEditing() {
         emphasisEditingTarget = null;
         emphasisEditingSelection = null;
         emphasisEditingMode = 'normal';
+        emphasisEditingManagedId = null;
         
         // Trigger input event to update any dependent UI
         dispatchPromptTextareaInputEvent(target, { skipAutofill: true });
@@ -637,18 +814,47 @@ function applyEmphasisEditing() {
             }
         }
     } else {
-        // Create new emphasis block - determine if we need a terminator
+        // Create new emphasis block — respect field syntax mode (managed vs classic)
+        // getEmphasisSyntaxModeForTextarea / buildManagedEmphasisGroupText:
+        //   public/scripts/comp/emphasisGroupIdCodec.js
+        const syntaxMode = getEmphasisSyntaxModeForTextarea(target);
         const needsTerminator = shouldAddTerminator(value, emphasisEditingSelection.end);
-        
-        // Check if we're at the end of an existing group and need to start a new number emphasis
-        const groupInfo = getPreviousGroupInfo(value, emphasisEditingSelection.start);
-        if (groupInfo.isAtEndOfGroup) {
-            // We're at the end of a group, just apply the emphasis to the selected text
-            const previousWeight = groupInfo.previousWeight || weight;
-            emphasizedText = `${weight}::${textToEmphasize} ${previousWeight}::`;
+        const weightNum = typeof emphasisEditingValue === 'string'
+            ? parseFloat(emphasisEditingValue)
+            : emphasisEditingValue;
+
+        if (syntaxMode === 'hidden' || syntaxMode === 'visible') {
+            const bag = resolveEmphasisBagForTextarea(target) || {};
+            const groupsById = pruneEmphasisGroupsByIdToLiveText(bag.groupsById || {}, value);
+            const id = allocateNextManagedEmphasisGroupId(groupsById);
+            if (id < 0) return;
+            const managedMode = syntaxMode === 'visible' ? 'visible' : 'hidden';
+            emphasizedText = buildManagedEmphasisGroupText(id, textToEmphasize, {
+                mode: managedMode,
+                weight: weightNum,
+                omitClose: !needsTerminator
+            });
+            writeManagedEmphasisGroupWeightsForTextarea(target, [{ id, weight: clampEmphasisWeight(weightNum) }]);
+            const store = getEmphasisNormalizationFieldStore();
+            getEmphasisNormalizationDualWriteKeys(target.id).forEach((key) => {
+                store[key] = {
+                    ...(store[key] || {}),
+                    syntaxMode,
+                    groupsById: {
+                        ...((store[key] && store[key].groupsById) || {}),
+                        [id]: clampEmphasisWeight(weightNum)
+                    }
+                };
+            });
+            syncEmphasisNormalizationPreviewMetadata();
         } else {
-            // Normal case - use terminator logic
-            emphasizedText = `${weight}::${textToEmphasize}${needsTerminator ? ':: ' : ''}`;
+            const groupInfo = getPreviousGroupInfo(value, emphasisEditingSelection.start);
+            if (groupInfo.isAtEndOfGroup) {
+                const previousWeight = groupInfo.previousWeight || weight;
+                emphasizedText = `${weight}::${textToEmphasize} ${previousWeight}::`;
+            } else {
+                emphasizedText = `${weight}::${textToEmphasize}${needsTerminator ? ':: ' : ''}`;
+            }
         }
     }
 
@@ -788,6 +994,7 @@ function applyEmphasisEditing() {
     emphasisEditingTarget = null;
     emphasisEditingSelection = null;
     emphasisEditingMode = 'normal';
+    emphasisEditingManagedId = null;
 
     // Trigger input event to update any dependent UI
     dispatchPromptTextareaInputEvent(target, { skipAutofill: true });
@@ -959,11 +1166,34 @@ function cancelEmphasisEditing() {
     emphasisEditingTarget = null;
     emphasisEditingSelection = null;
     emphasisEditingMode = 'normal';
+    emphasisEditingManagedId = null;
+    emphasisEditingValueUnit = 'weight';
     
     // Refresh emphasis highlighting on the target
     if (target) {
         updateEmphasisHighlighting(target);
     }
+}
+
+function applySuggestedEmphasisEditing() {
+    if (!emphasisEditingTarget || !emphasisEditingActive) return false;
+    // resolveSuggestedEmphasisForTextarea: public/scripts/comp/emphasisGroupIdCodec.js
+    const suggested = resolveSuggestedEmphasisForTextarea(
+        emphasisEditingTarget,
+        emphasisEditingManagedId
+    );
+    if (!suggested) return false;
+    if (emphasisEditingValueUnit === 'percent' && Number.isFinite(suggested.share)) {
+        emphasisEditingValue = clampEmphasisShare(suggested.share);
+    } else if (Number.isFinite(suggested.weight)) {
+        emphasisEditingValue = clampEmphasisWeight(suggested.weight);
+    } else {
+        return false;
+    }
+    if (emphasisEditingTarget && emphasisEditingSelection) {
+        addEmphasisSelectionHighlight(emphasisEditingTarget, emphasisEditingSelection);
+    }
+    return true;
 }
 
 function updateEmphasisTooltipVisibility() {

@@ -39,28 +39,52 @@ function replicationReadAuth(globalResources) {
     };
 }
 
-function listWorkspaceGalleryFiles(globalResources, workspaceId, viewType) {
+async function listWorkspaceGalleryFiles(globalResources, workspaceId, viewType) {
     const wm = globalResources.getWorkspaceManager();
     const workspace = wm.getWorkspace(workspaceId);
     if (!workspace) {
         throw Object.assign(new Error(`Workspace ${workspaceId} not found`), { statusCode: 404 });
     }
 
+    let metadataDb = null;
+    try {
+        metadataDb = globalResources.getMetadataDatabase();
+    } catch (_err) { /* database not initialized yet or offline */ }
+
     let files;
     if (viewType === 'scraps') {
-        files = Array.isArray(workspace.scraps) ? [...workspace.scraps] : [];
+        if (metadataDb) {
+            files = await metadataDb.listWorkspaceGalleryFilenames(workspaceId, 'scraps');
+        } else {
+            files = Array.isArray(workspace.scraps) ? [...workspace.scraps] : [];
+        }
     } else if (viewType === 'pinned') {
-        files = Array.isArray(workspace.pinned) ? [...workspace.pinned] : [];
+        if (metadataDb) {
+            files = await metadataDb.listGalleryWorkspacePinFilenames(workspaceId);
+        } else {
+            files = Array.isArray(workspace.pinned) ? [...workspace.pinned] : [];
+        }
     } else {
-        const workspaceFiles = new Set();
-        const defaultWorkspace = wm.getWorkspace('default');
-        if (defaultWorkspace && defaultWorkspace.files) {
-            defaultWorkspace.files.forEach((file) => workspaceFiles.add(file));
+        if (metadataDb) {
+            const workspaceFiles = new Set();
+            const defaultFiles = await metadataDb.listWorkspaceGalleryFilenames('default', 'files');
+            defaultFiles.forEach((file) => workspaceFiles.add(file));
+            if (workspaceId !== 'default') {
+                const specificFiles = await metadataDb.listWorkspaceGalleryFilenames(workspaceId, 'files');
+                specificFiles.forEach((file) => workspaceFiles.add(file));
+            }
+            files = Array.from(workspaceFiles);
+        } else {
+            const workspaceFiles = new Set();
+            const defaultWorkspace = wm.getWorkspace('default');
+            if (defaultWorkspace && defaultWorkspace.files) {
+                defaultWorkspace.files.forEach((file) => workspaceFiles.add(file));
+            }
+            if (workspaceId !== 'default' && workspace.files) {
+                workspace.files.forEach((file) => workspaceFiles.add(file));
+            }
+            files = Array.from(workspaceFiles);
         }
-        if (workspaceId !== 'default' && workspace.files) {
-            workspace.files.forEach((file) => workspaceFiles.add(file));
-        }
-        files = Array.from(workspaceFiles);
     }
 
     return {
@@ -94,11 +118,11 @@ async function fetchMasterGalleryList(globalResources, { workspaceId, viewType }
 function register(app, globalResources) {
     const readAuth = replicationReadAuth(globalResources);
 
-    app.get('/replication/gallery/workspace-files', readAuth, (req, res) => {
+    app.get('/replication/gallery/workspace-files', readAuth, async (req, res) => {
         try {
             const workspaceId = req.query.workspaceId || 'default';
             const viewType = req.query.viewType || 'images';
-            const data = listWorkspaceGalleryFiles(globalResources, workspaceId, viewType);
+            const data = await listWorkspaceGalleryFiles(globalResources, workspaceId, viewType);
             res.json({
                 success: true,
                 data,

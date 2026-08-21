@@ -6,6 +6,7 @@ const SYSTEM_TRAY_BOOT_STAGGER_MS = 70;
 function prepareSystemTrayBackground() {
     if (window._systemTrayBackgroundPrepared) return;
     window._systemTrayBackgroundPrepared = true;
+    if (!isDesktop) return;
 
     const trayIconIds = [
         'imageGenerationIndicator',
@@ -31,7 +32,6 @@ function prepareSystemTrayBackground() {
     // updateSubscriptionRenewalIndicator, updateFixedCreditsIndicator, updateImageGenerationIndicator: public/scripts/comp/trayIndicators.js
     setInterval(updateSubscriptionRenewalIndicator, 3600000);
     setInterval(updateFixedCreditsIndicator, 60000);
-    setInterval(updateImageGenerationIndicator, 500);
 }
 
 async function startBackgroundTrayServices() {

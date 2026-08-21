@@ -182,7 +182,8 @@ async function addImageAsReference(image) {
         const toastId = showGlassToast('info', 'Adding Reference', 'Copying image to workspace references...', true, false, '<i class="fas fa-plus-circle"></i>');
         
         // Convert image to base64 for WebSocket upload
-        const imageResponse = await fetch(`/images/${filename}`);
+        // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+        const imageResponse = await fetch(localGalleryImageUrl(filename));
         const imageBlob = await imageResponse.blob();
         const base64 = await blobToBase64(imageBlob);
         
@@ -233,7 +234,8 @@ async function addImageAsVibeTransfer(image) {
         const filename = image.filename || image.original || image.upscaled;
         
         // Convert image to base64 for vibe encoding
-        const imageResponse = await fetch(`/images/${filename}`);
+        // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+        const imageResponse = await fetch(localGalleryImageUrl(filename));
         const imageBlob = await imageResponse.blob();
         const base64 = await blobToBase64(imageBlob);
         
@@ -364,7 +366,8 @@ function showGalleryMoveModal(filename) {
         const firstImage = selectedImages[0];
         
         if (backgroundImage && firstImage) {
-            backgroundImage.src = `/images/${firstImage}`;
+            // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+            backgroundImage.src = localGalleryImageUrl(firstImage);
             backgroundImage.alt = `Images to move: ${selectedImages.length} selected`;
         }
         
@@ -379,7 +382,8 @@ function showGalleryMoveModal(filename) {
     } else {
         // Single image mode
         if (backgroundImage) {
-            backgroundImage.src = `/images/${filename}`;
+            // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+            backgroundImage.src = localGalleryImageUrl(filename);
             backgroundImage.alt = `Image to move: ${filename}`;
         }
         
@@ -422,7 +426,8 @@ function startGalleryMoveCrossFade(selectedImages) {
             
             setTimeout(() => {
                 // Update image source
-                backgroundImage.src = `/images/${currentImage}`;
+                // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+                backgroundImage.src = localGalleryImageUrl(currentImage);
                 backgroundImage.alt = `Images to move: ${selectedImages.length} selected`;
                 
                 // Fade in new image
@@ -539,6 +544,8 @@ function renderGalleryMoveWorkspaceDropdown() {
 async function hideGalleryMoveModal() {
     const modal = document.getElementById('galleryMoveModal');
     if (modal) {
+        // closeAllDropdownsInRoot: public/scripts/comp/dropdown.js
+        closeAllDropdownsInRoot(modal);
         await closeModal(modal);
     }
     

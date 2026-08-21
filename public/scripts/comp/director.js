@@ -2495,11 +2495,12 @@ class Director {
         if (session.filename) {
             if (session.image_type === 'cache' || session.image_type === 'sessions') {
                 // For cache images, use cache preview
-                return `/cache/preview/${session.filename}.webp`;
+                return localCachePreviewUrl(`${session.filename}.webp`);
             } else {
                 // For generated images, use previews directory
                 const baseName = session.filename.split('.').slice(0, -1).join('.');
-                return `/previews/${baseName}.webp`;
+                // localGalleryPreviewUrl: public/scripts/comp/assetUrlResolver.js
+                return localGalleryPreviewUrl(`${baseName}.webp`);
             }
         }
         return '/static_images/background.jpg';

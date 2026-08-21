@@ -36,6 +36,7 @@ const GLOBAL_RESOURCES_STEPS = [
     { id: 'gr_tag_search_db', message: 'Initializing tag search database…' },
     { id: 'gr_nax_tags', message: 'Initializing NAX tags database…' },
     { id: 'gr_nax_vibes', message: 'Initializing NAX vibes gallery…' },
+    { id: 'gr_novelai_explore', message: 'Initializing NovelAI Explore gallery…' },
     { id: 'gr_nax_generation', message: 'Loading NAX tag generation config…' },
     { id: 'gr_reference_metadata', message: 'Initializing reference metadata database…' },
     { id: 'gr_generation_quips_db', message: 'Initializing generation quips database…' },

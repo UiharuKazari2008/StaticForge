@@ -1,6 +1,7 @@
 const { generateImageWebSocket, handleRerollGeneration, expandImage, rerollExpandedImage, previewExpandImagePrompt, compileDynamicGenerationWebSocket, applyTendaiPreviewWebSocket } = require('../../imageGeneration');
 const { upscaleImageWebSocket } = require('../../imageUpscaling');
 const { resolveDynamicContext } = require('../../dynamicGenerationHandlers');
+const { broadcastGalleryMutation } = require('./120-galleryHandler');
 
 function normalizeExpansionOverrideParams(data) {
     let op = data.overrideParams;
@@ -55,6 +56,7 @@ async function handleImageGeneration(handlers, ws, message, clientInfo, wsServer
         handlers.startKeepAliveInterval(ws, requestId, 15000);
         handlers.registerActiveGeneration(ws, requestId);
 
+        let result = null;
         if (enableStreaming) {
             handlers.globalResources.getLogger().detailed('🎬 Starting streaming image generation...');
 
@@ -73,7 +75,7 @@ async function handleImageGeneration(handlers, ws, message, clientInfo, wsServer
                 }
             };
 
-            const result = await generateImageWebSocket(handlers.globalResources,
+            result = await generateImageWebSocket(handlers.globalResources,
                 data,
                 clientInfo.userType,
                 clientInfo.sessionId,
@@ -112,7 +114,7 @@ async function handleImageGeneration(handlers, ws, message, clientInfo, wsServer
                 timestamp: new Date().toISOString()
             });
         } else {
-            const result = await generateImageWebSocket(handlers.globalResources,
+            result = await generateImageWebSocket(handlers.globalResources,
                 data,
                 clientInfo.userType,
                 clientInfo.sessionId,
@@ -152,8 +154,13 @@ async function handleImageGeneration(handlers, ws, message, clientInfo, wsServer
             });
         }
 
-        const galleryData = await handlers.buildGalleryData('images', clientInfo);
-        wsServer.broadcastGalleryUpdate(galleryData, 'images');
+        if (result && result.filename) {
+            await broadcastGalleryMutation(handlers, wsServer, clientInfo, {
+                viewType: 'images',
+                action: 'append_top',
+                filename: result.filename
+            });
+        }
 
         handlers.stopKeepAliveInterval(requestId);
     } catch (error) {
@@ -161,13 +168,22 @@ async function handleImageGeneration(handlers, ws, message, clientInfo, wsServer
 
         console.error('❌ Image generation error:', error);
 
-        const userFriendlyError = handlers.getImageGenerationErrorMessage(error);
+        const statusCode = error?.statusCode ?? error?.status ?? null;
+        const errorCode = error?.code ?? null;
+        const exactMessage = error?.message || String(error);
+        const errorText = statusCode != null ? `${statusCode} ${exactMessage}` : exactMessage;
 
         handlers.sendToClient(ws, {
             type: 'image_generation_error',
             requestId: requestId,
-            data: null,
-            error: userFriendlyError,
+            data: {
+                statusCode,
+                code: errorCode,
+                message: exactMessage
+            },
+            error: errorText,
+            statusCode,
+            code: errorCode,
             timestamp: new Date().toISOString()
         });
     } finally {
@@ -222,8 +238,13 @@ async function handleImageReroll(handlers, ws, message, clientInfo, wsServer) {
             timestamp: new Date().toISOString()
         });
 
-        const galleryData = await handlers.buildGalleryData('images', clientInfo);
-        wsServer.broadcastGalleryUpdate(galleryData, 'images');
+        if (result && result.filename) {
+            await broadcastGalleryMutation(handlers, wsServer, clientInfo, {
+                viewType: 'images',
+                action: 'append_top',
+                filename: result.filename
+            });
+        }
     } catch (error) {
         handlers.stopKeepAliveInterval(requestId);
         console.error('❌ Image reroll error:', error);
@@ -277,8 +298,12 @@ async function handleImageUpscaling(handlers, ws, message, clientInfo, wsServer)
             timestamp: new Date().toISOString()
         });
 
-        const galleryData = await handlers.buildGalleryData('images', clientInfo);
-        wsServer.broadcastGalleryUpdate(galleryData, 'images');
+        // Upscale upgrades the same base gallery row (fills upscaled) and bumps sort_mtime to head
+        await broadcastGalleryMutation(handlers, wsServer, clientInfo, {
+            viewType: 'images',
+            action: 'append_top',
+            filename: result.filename
+        });
     } catch (error) {
         console.error('❌ Image upscaling error:', error);
 
@@ -427,8 +452,13 @@ async function handleImageExpansion(handlers, ws, message, clientInfo, wsServer)
             timestamp: new Date().toISOString()
         });
 
-        const galleryData = await handlers.buildGalleryData('images', clientInfo);
-        wsServer.broadcastGalleryUpdate(galleryData, 'images');
+        if (result && result.filename) {
+            await broadcastGalleryMutation(handlers, wsServer, clientInfo, {
+                viewType: 'images',
+                action: 'append_top',
+                filename: result.filename
+            });
+        }
     } catch (error) {
         console.error('❌ Image expansion error:', error);
 

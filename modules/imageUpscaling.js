@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 const https = require('https');
+const { browserRequest } = require('./browserHttp');
 let __runtimeGr = null;
 function bindRuntimeGlobalResources(globalResources) { __runtimeGr = globalResources; }
 
@@ -56,64 +56,34 @@ const upscaleWithNovelAI = async (imageBuffer, scale, width, height) => {
     };
 
     const postData = JSON.stringify(payload);
-    const options = {
+    // browserRequest: modules/browserHttp.js
+    const res = await browserRequest({
         hostname: 'api.novelai.net',
         port: 443,
         path: '/ai/upscale',
         method: 'POST',
         headers: {
-            "accept": "*/*",
-            "accept-language": "en-US,en;q=0.9,en-GB;q=0.8",
-            "authorization": `Bearer ${apiKey}`,
-            "content-type": "application/json",
-            "content-length": Buffer.byteLength(postData),
-            "priority": "u=1, i",
-            "dnt": "1",
-            "sec-ch-ua": "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\", \"Microsoft Edge\";v=\"138\"",
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": "\"macOS\"",
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-site",
-            "x-correlation-id": crypto.randomBytes(3).toString('hex').toUpperCase(),
-            "x-initiated-at": new Date().toISOString(),
-            "referer": "https://novelai.net/",
-            "origin": "https://novelai.net",
-            "sec-gpc": "1",
-            "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0"
+            accept: '*/*',
+            authorization: `Bearer ${apiKey}`,
+            'x-initiated-at': new Date().toISOString(),
+            'sec-gpc': '1'
         }
-    };
+    }, Buffer.from(postData), { acceptResType: 'json' });
 
-    const zipBuffer = await new Promise((resolve, reject) => {
-        const req = https.request(options, (res) => {
-            let data = [];
-            res.on('data', chunk => data.push(chunk));
-            res.on('end', () => {
-                const buffer = Buffer.concat(data);
-                if (res.statusCode === 200) {
-                    apiKeyManager.recordApiSuccess('novelai');
-                    resolve(buffer);
-                } else {
-                    try {
-                        const errorResponse = JSON.parse(buffer.toString());
-                        apiKeyManager.recordApiFailure('novelai', res.statusCode, errorResponse.message || errorResponse.error);
-                        reject(new Error(`NovelAI Upscale API error: ${errorResponse.error || 'Unknown error'}`));
-                    } catch (e) {
-                        apiKeyManager.recordApiFailure('novelai', res.statusCode, `HTTP ${res.statusCode}`);
-                        reject(new Error(`NovelAI Upscale API error: HTTP ${res.statusCode}`));
-                    }
-                }
-            });
-        });
+    if (res.statusCode !== 200) {
+        try {
+            const errorResponse = JSON.parse(res.body.toString());
+            apiKeyManager.recordApiFailure('novelai', res.statusCode, errorResponse.message || errorResponse.error);
+            throw new Error(`NovelAI Upscale API error: ${errorResponse.error || 'Unknown error'}`);
+        } catch (e) {
+            if (e.message && e.message.startsWith('NovelAI Upscale API error:')) throw e;
+            apiKeyManager.recordApiFailure('novelai', res.statusCode, `HTTP ${res.statusCode}`);
+            throw new Error(`NovelAI Upscale API error: HTTP ${res.statusCode}`);
+        }
+    }
 
-        req.on('error', error => {
-            console.error('❌ NovelAI Upscale API request error:', error.message);
-            reject(error);
-        });
-
-        req.write(postData);
-        req.end();
-    });
+    apiKeyManager.recordApiSuccess('novelai');
+    const zipBuffer = res.body;
 
     // Extract the first file from the ZIP
     const AdmZip = require('adm-zip');
@@ -310,8 +280,10 @@ async function upscaleImage(globalResources, filename, workspaceId, req, res, up
         const previewPath = path.join(__runtimeGr.getPath("previews"), previewFile);
         
         if (!fs.existsSync(previewPath)) {
-            // Generate both main and @2x previews for mobile devices
-            await generateMobilePreviews(upscaledPath, baseName);
+            const previewResult = await generateMobilePreviews(upscaledPath, baseName);
+            if (previewResult?.blurhash) {
+                await __runtimeGr.getMetadataDatabase().setImageBlurhash(upscaledFilename, previewResult.blurhash);
+            }
             console.log(`📸 Generated mobile previews for ${baseName}`);
         }
         
@@ -374,8 +346,10 @@ async function upscaleImageWebSocket(globalResources, filename, workspaceId, use
         const previewPath = path.join(__runtimeGr.getPath("previews"), previewFile);
         
         if (!fs.existsSync(previewPath)) {
-            // Generate both main and @2x previews for mobile devices
-            await generateMobilePreviews(upscaledPath, baseName);
+            const previewResult = await generateMobilePreviews(upscaledPath, baseName);
+            if (previewResult?.blurhash) {
+                await __runtimeGr.getMetadataDatabase().setImageBlurhash(upscaledFilename, previewResult.blurhash);
+            }
             console.log(`📸 Generated previews for ${baseName}`);
         }
         

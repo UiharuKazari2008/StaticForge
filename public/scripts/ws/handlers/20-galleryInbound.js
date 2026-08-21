@@ -1,6 +1,11 @@
 // Gallery inbound WebSocket handlers — gallery_updated.
 // registerWsInboundHandler: public/scripts/ws/wsInboundRegistry.js
 
+function galleryItemIdentityKey(img) {
+    if (!img) return null;
+    return img.original || img.filename || img.upscaled || null;
+}
+
 function detectGalleryChanges(oldImages, newImages) {
     if (!oldImages || !newImages) {
         return { type: 'full_reload' };
@@ -11,11 +16,11 @@ function detectGalleryChanges(oldImages, newImages) {
     }
 
     if (oldImages.length > 0 && newImages.length > 0) {
-        const oldFirst = oldImages[0];
-        const newFirst = newImages[0];
+        const oldFirstKey = galleryItemIdentityKey(oldImages[0]);
+        const newFirstKey = galleryItemIdentityKey(newImages[0]);
 
-        if (oldFirst.original !== newFirst.original) {
-            const oldFirstIndex = newImages.findIndex(img => img.original === oldFirst.original);
+        if (oldFirstKey && newFirstKey && oldFirstKey !== newFirstKey) {
+            const oldFirstIndex = newImages.findIndex((img) => galleryItemIdentityKey(img) === oldFirstKey);
             if (oldFirstIndex > 0) {
                 return {
                     type: 'shift_indexes',
@@ -27,15 +32,21 @@ function detectGalleryChanges(oldImages, newImages) {
 
     if (newImages.length > oldImages.length) {
         const addedCount = newImages.length - oldImages.length;
-        const addedItems = newImages.slice(0, addedCount);
-
-        const existingOriginals = new Set(oldImages.map(img => img.original));
-        const allAddedAreNew = addedItems.every(img => !existingOriginals.has(img.original));
-
-        if (allAddedAreNew) {
+        // Confirm old list is a contiguous tail of the new list (true head prepend)
+        let tailAligns = oldImages.length === 0;
+        if (!tailAligns) {
+            tailAligns = true;
+            for (let i = 0; i < oldImages.length; i++) {
+                if (galleryItemIdentityKey(oldImages[i]) !== galleryItemIdentityKey(newImages[i + addedCount])) {
+                    tailAligns = false;
+                    break;
+                }
+            }
+        }
+        if (tailAligns) {
             return {
                 type: 'append_top',
-                newItems: addedItems
+                newItems: newImages.slice(0, addedCount)
             };
         }
     }
@@ -45,7 +56,7 @@ function detectGalleryChanges(oldImages, newImages) {
     }
 
     for (let i = 0; i < oldImages.length; i++) {
-        if (oldImages[i].original !== newImages[i].original) {
+        if (galleryItemIdentityKey(oldImages[i]) !== galleryItemIdentityKey(newImages[i])) {
             return { type: 'full_reload' };
         }
     }
@@ -56,13 +67,44 @@ function detectGalleryChanges(oldImages, newImages) {
 function appendNewGalleryItems(newItems) {
     if (!newItems || newItems.length === 0) return;
 
+    // galleryRerollOwnsGalleryDom: public/scripts/comp/galleryView.js
+    if (galleryRerollOwnsGalleryDom()) return;
+
     if (!manualModal.classList.contains('hidden') && !manualModal.classList.contains('windowed')) return;
 
     // isGalleryWindowHidden: public/scripts/comp/galleryView.js
     if (isGalleryWindowHidden()) return;
 
-    for (let i = newItems.length - 1; i >= 0; i--) {
-        const newItem = createGalleryItem(newItems[i], i, true);
+    // findGalleryDomItemByIdentity / updateGalleryItemElementFromData: public/scripts/comp/galleryView.js
+    // Upscale upgrades an existing base tile; true duplicates are skipped after update.
+    const itemsToInsert = [];
+    for (let i = 0; i < newItems.length; i++) {
+        const imageData = newItems[i];
+        const existingDom = findGalleryDomItemByIdentity(imageData);
+        if (existingDom) {
+            updateGalleryItemElementFromData(existingDom, imageData);
+            if (!isGalleryScrolledFromHead() && gallery.children[0] !== existingDom) {
+                gallery.insertBefore(existingDom, gallery.children[0]);
+            }
+            continue;
+        }
+        itemsToInsert.push(imageData);
+    }
+
+    if (itemsToInsert.length === 0) {
+        reindexGallery();
+        return;
+    }
+
+    // isGalleryScrolledFromHead, offsetGalleryItemIndexes: public/scripts/comp/galleryView.js
+    if (isGalleryScrolledFromHead()) {
+        offsetGalleryItemIndexes(itemsToInsert.length);
+        return;
+    }
+
+    for (let i = itemsToInsert.length - 1; i >= 0; i--) {
+        const imageData = itemsToInsert[i];
+        const newItem = createGalleryItem(imageData, i, true);
         newItem.classList.add('gallery-placeholder', 'fade-in');
         gallery.insertBefore(newItem, gallery.children[0]);
 
@@ -70,7 +112,7 @@ function appendNewGalleryItems(newItems) {
             newItem.classList.remove('fade-in');
             newItem.classList.remove('gallery-placeholder');
             if (!newItem.querySelector('img')) {
-                addImgToGalleryItemAsync(newItem, newItems[i]);
+                addImgToGalleryItemAsync(newItem, imageData);
             }
             newItem.classList.add('slide-in');
             newItem.addEventListener('animationend', function slideHandler() {
@@ -87,15 +129,13 @@ function appendNewGalleryItems(newItems) {
 function shiftGalleryIndexes(shiftAmount) {
     if (!shiftAmount || shiftAmount <= 0) return;
 
-    for (let i = 0; i < shiftAmount; i++) {
-        const placeholderItem = document.createElement('div');
-        placeholderItem.className = 'gallery-item gallery-placeholder';
-        placeholderItem.dataset.index = i.toString();
-        placeholderItem.dataset.filename = 'placeholder';
-        gallery.insertBefore(placeholderItem, gallery.children[0]);
+    // offsetGalleryItemIndexes / isGalleryScrolledFromHead: public/scripts/comp/galleryView.js
+    if (isGalleryScrolledFromHead()) {
+        offsetGalleryItemIndexes(shiftAmount);
+        return;
     }
 
-    reindexGallery();
+    // At head: show the new list from index 0 (same end state as a cheap top redisplay)
     resetInfiniteScroll();
     displayCurrentPageOptimized();
 }
@@ -115,7 +155,6 @@ function applyGalleryRemovalByFilenames(filenames) {
 
     removeMultipleImagesFromGallery(imagesToRemove);
     driftGalleryImagesSyncState(allImages.length);
-    queueGallerySnapshotPersist();
     syncServiceWorkerImageCacheRules();
 }
 
@@ -152,6 +191,43 @@ function handleGalleryActionUpdate(data) {
         return;
     }
 
+    if (data.action === 'append_top') {
+        const newItems = Array.isArray(data.newItems) ? data.newItems : [];
+        if (newItems.length === 0) {
+            return;
+        }
+
+        // prependToActiveGalleryList: public/scripts/comp/galleryView.js — upserts (upscale upgrades same base)
+        const changedItems = [];
+        for (let i = newItems.length - 1; i >= 0; i--) {
+            if (prependToActiveGalleryList(newItems[i])) {
+                changedItems.unshift(newItems[i]);
+            }
+        }
+        if (changedItems.length === 0) {
+            return;
+        }
+
+        if (isGalleryWindowHidden()) {
+            syncServiceWorkerImageCacheRules();
+            return;
+        }
+
+        syncServiceWorkerImageCacheRules();
+        if (sortGalleryData) {
+            sortGalleryData();
+        }
+        triggerBuildGalleryNavigationCache();
+        appendNewGalleryItems(changedItems);
+        console.log(`Gallery: Appended/updated ${changedItems.length} item(s) via action`);
+        return;
+    }
+
+    if (data.action === 'invalidate_sync') {
+        galleryImagesSyncState = null;
+        return;
+    }
+
     console.warn('Gallery action update not handled:', data.action);
 }
 
@@ -163,6 +239,19 @@ async function handleGalleryUpdatedData(data) {
             syncServiceWorkerImageCacheRules();
         } else if (data.action) {
             handleGalleryActionUpdate(data);
+        }
+        return;
+    }
+
+    // galleryRerollOwnsGalleryDom: public/scripts/comp/galleryView.js
+    if (galleryRerollOwnsGalleryDom()) {
+        if (data.gallery) {
+            setActiveGalleryList(data.gallery);
+            syncServiceWorkerImageCacheRules();
+            if (sortGalleryData) {
+                sortGalleryData();
+            }
+            triggerBuildGalleryNavigationCache();
         }
         return;
     }
@@ -190,16 +279,9 @@ async function handleGalleryUpdatedData(data) {
         const changes = detectGalleryChanges(oldImages, newImages);
 
         if (changes.type === 'full_reload') {
-            setActiveGalleryList(newImages);
-            syncServiceWorkerImageCacheRules();
-            if (sortGalleryData) {
-                sortGalleryData();
-            }
-            triggerBuildGalleryNavigationCache();
-            clearSelection();
-            resetInfiniteScroll();
-            displayCurrentPageOptimized();
-            console.log('Gallery: Full reload performed');
+            // applyGalleryListReload: public/scripts/comp/galleryView.js — keeps viewport when scrolled
+            const mode = applyGalleryListReload(newImages);
+            console.log(`Gallery: Full reload performed (${mode})`);
         } else if (changes.type === 'append_top') {
             setActiveGalleryList(newImages);
             syncServiceWorkerImageCacheRules();

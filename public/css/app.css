@@ -3426,7 +3426,7 @@ body.desktop-mode .modal-backdrop {
     box-shadow: 3px 3px 20px 1px #000000a3, inset 0 0 0 1px #ffffff2b;
     z-index: var(--z-modal);
     transform: translateZ(0) translate(-50%, -50%) scale(1);
-    will-change: backdrop-filter, transform, opacity, background-color;
+    /* will-change only on opening/closing/minimising/drag — not permanently (layer cost) */
     contain: layout;
     transition: var(--transition-modal-glass);
 }
@@ -3638,6 +3638,49 @@ body.desktop-mode .modal[data-window-content-anchor="top"] {
     backdrop-filter: none;
 }
 
+.modal-drag-resize-frame:not(.hidden) {
+    will-change: left, top, width, height;
+}
+
+/* Drop expensive glass blur while the window is being moved/resized */
+.modal[data-dragging="true"],
+.modal[data-resizing="true"] {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+/* Live drag: move via compositor translate; --modal-offset-* stay frozen until release */
+.modal[data-dragging="true"] {
+    transform: translateZ(0) translate(calc(-50% + var(--modal-drag-x, 0px)), calc(-50% + var(--modal-drag-y, 0px))) scale(1);
+    will-change: transform;
+}
+
+.modal[data-window-content-anchor="top"][data-dragging="true"] {
+    transform: translateZ(0) translate(calc(-50% + var(--modal-drag-x, 0px)), var(--modal-drag-y, 0px)) scale(1);
+}
+
+.modal[data-resizing="true"] {
+    will-change: width, height, left, top;
+}
+
+/*
+ * Desktop: only the focused window(s) pay for backdrop-filter.
+ * Inactive windows keep the solid glass fill; active-window / on-top / animating keep blur.
+ */
+body.desktop-mode .modal {
+    transition: box-shadow var(--transition-normal), background-color var(--transition-slow);
+}
+
+body.desktop-mode .modal:not(.active-window):not(.opening):not(.closing):not(.minimising):not(.unminimising):not([data-dragging="true"]):not([data-resizing="true"]) {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+body.desktop-mode .modal:not(.active-window):not(.opening):not(.closing):not(.minimising):not(.unminimising):not([data-dragging="true"]):not([data-resizing="true"]) .modal-content-toolbar-overlay {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
 .modal-padding {
     padding: var(--spacing-md);
 }
@@ -3674,20 +3717,20 @@ body.desktop-mode .modal[data-window-content-anchor="top"] {
 .modal.alert-theme.opening,
 .modal.warning-theme.opening,
 .modal.success-theme.opening {
-    will-change: transform, opacity, filter;
+    will-change: transform, opacity;
 }
 
 #manualModal:not(.windowed).opening {
-    will-change: opacity, filter;
+    will-change: opacity;
 }
 
 .modal.closing,
 .modal[data-window-content-anchor="top"].closing {
-    will-change: transform, opacity, filter;
+    will-change: transform, opacity;
 }
 
 #manualModal:not(.windowed).closing {
-    will-change: opacity, filter;
+    will-change: opacity;
 }
 
 .modal.minimising,

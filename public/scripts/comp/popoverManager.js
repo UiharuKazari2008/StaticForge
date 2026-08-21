@@ -283,6 +283,9 @@ const PopoverManager = {
         if (popoverData.onHide) {
             popoverData.onHide(popoverData.popover, element);
         }
+        if (!element.isConnected) {
+            this.detach(element);
+        }
     },
     
     /**
@@ -463,6 +466,7 @@ const PopoverManager = {
     _teardownHoverListeners(popoverData) {
         if (!popoverData?.hoverListeners) return;
         const { element, popover, hoverListeners } = popoverData;
+        hoverListeners.cancelTimers();
         element.removeEventListener('mouseenter', hoverListeners.elementEnter);
         element.removeEventListener('mouseleave', hoverListeners.elementLeave);
         popover.removeEventListener('mouseenter', hoverListeners.popoverEnter);
@@ -476,6 +480,7 @@ const PopoverManager = {
     _teardownNotificationDismissListeners(popoverData) {
         if (!popoverData?.notificationDismissListeners) return;
         const { element, popover, notificationDismissListeners } = popoverData;
+        notificationDismissListeners.cancelTimers();
         element.removeEventListener('mouseleave', notificationDismissListeners.elementLeave);
         popover.removeEventListener('mouseleave', notificationDismissListeners.popoverLeave);
         popoverData.notificationDismissListeners = null;
@@ -547,7 +552,8 @@ const PopoverManager = {
         popoverData.notificationDismissListeners = {
             elementLeave: scheduleHide,
             popoverEnter: cancelHide,
-            popoverLeave: scheduleHide
+            popoverLeave: scheduleHide,
+            cancelTimers: cancelHide
         };
     },
 
@@ -596,6 +602,14 @@ const PopoverManager = {
                 hideTimeout = null;
             }
         };
+
+        const cancelTimers = () => {
+            if (showTimeout) {
+                clearTimeout(showTimeout);
+                showTimeout = null;
+            }
+            cancelHide();
+        };
         
         element.addEventListener('mouseenter', showPopover);
         element.addEventListener('mouseleave', hidePopover);
@@ -607,7 +621,8 @@ const PopoverManager = {
             elementEnter: showPopover,
             elementLeave: hidePopover,
             popoverEnter: cancelHide,
-            popoverLeave: hidePopover
+            popoverLeave: hidePopover,
+            cancelTimers
         };
     },
     

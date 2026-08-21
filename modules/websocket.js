@@ -215,6 +215,9 @@ class WebSocketServer {
             }
             this.sendToClient(ws, connectionPayload);
 
+            // Push boot-time compile failures stored in runtimeAssetService (no clients were connected at compile time)
+            this.sendStoredRuntimeCompileErrorsToClient(ws);
+
             // Restore session workspace for reconnection sync (only if authenticated)
             if (clientInfo.authenticated && clientInfo.sessionId) {
                 await this.restoreSessionWorkspace(clientInfo.sessionId, ws);
@@ -273,6 +276,33 @@ class WebSocketServer {
         });
 
         console.log('✓ WebSocket server initialized');
+    }
+
+    /**
+     * Send persisted runtime compile errors to a newly connected client.
+     * modules/runtimeAssetService.js — compileState.errors, also on OPTIONS /status
+     */
+    sendStoredRuntimeCompileErrorsToClient(ws) {
+        try {
+            const runtimeAssetService = require('./runtimeAssetService');
+            const status = runtimeAssetService.getPublicStatus();
+            const errors = status && Array.isArray(status.errors) ? status.errors : [];
+            if (errors.length === 0) {
+                return;
+            }
+            this.sendToClient(ws, {
+                type: 'runtime_compile_error',
+                data: {
+                    errors,
+                    compiled: status.compiled || 0,
+                    skipped: 0,
+                    timestamp: Date.now()
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (err) {
+            console.warn('sendStoredRuntimeCompileErrorsToClient:', err.message);
+        }
     }
 
     /**
@@ -438,7 +468,9 @@ class WebSocketServer {
         // Get message handlers from globalResources
         try {
             const handlers = this.globalResources.getWebSocketMessageHandlers();
-            handlers.handleMessage(ws, message, clientInfo, this);
+            void handlers.handleMessage(ws, message, clientInfo, this).catch((err) => {
+                console.error('❌ WebSocket message handler error:', err);
+            });
         } catch (error) {
             console.error('❌ Failed to get WebSocket message handlers:', error.message);
             this.sendToClient(ws, {

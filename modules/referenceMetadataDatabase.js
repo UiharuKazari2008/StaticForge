@@ -112,12 +112,19 @@ class ReferenceMetadataDatabase {
             CREATE TABLE IF NOT EXISTS reference_file_cache (
                 hash TEXT PRIMARY KEY NOT NULL,
                 size INTEGER NOT NULL,
+                blurhash TEXT,
                 cached_at INTEGER DEFAULT (strftime('%s', 'now')),
                 updated_at INTEGER DEFAULT (strftime('%s', 'now'))
             )
         `;
 
         this.db.exec(createFileCacheTable);
+
+        try {
+            this.db.exec(`ALTER TABLE reference_file_cache ADD COLUMN blurhash TEXT`);
+        } catch (error) {
+            // Column already exists
+        }
 
         // Reference workspace ownership table - replaces cacheFiles arrays in workspace.json
         // Links references (cache files) to workspaces
@@ -142,6 +149,7 @@ class ReferenceMetadataDatabase {
                 type TEXT NOT NULL,
                 image_source TEXT,
                 preview_hash TEXT,
+                blurhash TEXT,
                 imported_from INTEGER DEFAULT 0,
                 created_at INTEGER DEFAULT (strftime('%s', 'now')),
                 updated_at INTEGER DEFAULT (strftime('%s', 'now'))
@@ -152,6 +160,12 @@ class ReferenceMetadataDatabase {
 
         try {
             this.db.exec(`ALTER TABLE reference_vibe_metadata ADD COLUMN locked INTEGER DEFAULT 0`);
+        } catch (error) {
+            // Column already exists
+        }
+
+        try {
+            this.db.exec(`ALTER TABLE reference_vibe_metadata ADD COLUMN blurhash TEXT`);
         } catch (error) {
             // Column already exists
         }
@@ -503,6 +517,7 @@ class ReferenceMetadataDatabase {
                     return {
                         hash: result.hash,
                         size: result.size,
+                        blurhash: result.blurhash || null,
                         cachedAt: result.cached_at,
                         updatedAt: result.updated_at,
                         // Include metadata if it exists
@@ -528,6 +543,7 @@ class ReferenceMetadataDatabase {
                     return {
                         hash: result.hash,
                         size: result.size,
+                        blurhash: result.blurhash || null,
                         cachedAt: result.cached_at,
                         updatedAt: result.updated_at
                     };
@@ -551,8 +567,9 @@ class ReferenceMetadataDatabase {
             const now = Math.floor(Date.now() / 1000);
             const stmt = this.db.prepare(`
                 INSERT OR REPLACE INTO reference_file_cache (
-                    hash, size, cached_at, updated_at
-                ) VALUES (?, ?, 
+                    hash, size, blurhash, cached_at, updated_at
+                ) VALUES (?, ?,
+                    COALESCE(?, (SELECT blurhash FROM reference_file_cache WHERE hash = ?)),
                     COALESCE((SELECT cached_at FROM reference_file_cache WHERE hash = ?), ?),
                     ?
                 )
@@ -561,6 +578,8 @@ class ReferenceMetadataDatabase {
             stmt.run(
                 hash,
                 fileData.size || 0,
+                fileData.blurhash || null,
+                hash,
                 hash,
                 now,
                 now
@@ -607,6 +626,7 @@ class ReferenceMetadataDatabase {
                 cacheMap[result.hash] = {
                     hash: result.hash,
                     size: result.size,
+                    blurhash: result.blurhash || null,
                     cachedAt: result.cached_at,
                     updatedAt: result.updated_at,
                     // Include metadata if it exists
@@ -643,8 +663,9 @@ class ReferenceMetadataDatabase {
             const now = Math.floor(Date.now() / 1000);
             const stmt = this.db.prepare(`
                 INSERT OR REPLACE INTO reference_file_cache (
-                    hash, size, cached_at, updated_at
-                ) VALUES (?, ?, 
+                    hash, size, blurhash, cached_at, updated_at
+                ) VALUES (?, ?,
+                    COALESCE(?, (SELECT blurhash FROM reference_file_cache WHERE hash = ?)),
                     COALESCE((SELECT cached_at FROM reference_file_cache WHERE hash = ?), ?),
                     ?
                 )
@@ -656,6 +677,8 @@ class ReferenceMetadataDatabase {
                     stmt.run(
                         fileData.hash,
                         fileData.size || 0,
+                        fileData.blurhash || null,
+                        fileData.hash,
                         fileData.hash,
                         now,
                         now
@@ -927,6 +950,7 @@ class ReferenceMetadataDatabase {
                     type: result.type,
                     imageSource: result.image_source,
                     previewHash: result.preview_hash,
+                    blurhash: result.blurhash || null,
                     comment: result.comment || null, // From joined reference_metadata
                     importedFrom: result.imported_from || 0,
                     encodings: encodings,
@@ -997,9 +1021,11 @@ class ReferenceMetadataDatabase {
 
             const stmt = this.db.prepare(`
                 INSERT OR REPLACE INTO reference_vibe_metadata (
-                    id, type, image_source, preview_hash, imported_from, locked,
+                    id, type, image_source, preview_hash, blurhash, imported_from, locked,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?,
+                ) VALUES (?, ?, ?, ?,
+                    COALESCE(?, (SELECT blurhash FROM reference_vibe_metadata WHERE id = ?)),
+                    ?, ?,
                     COALESCE((SELECT created_at FROM reference_vibe_metadata WHERE id = ?), ?),
                     ?
                 )
@@ -1010,6 +1036,8 @@ class ReferenceMetadataDatabase {
                 vibeData.type || 'base64',
                 vibeData.imageSource || null,
                 previewHash,
+                vibeData.blurhash || null,
+                vibeId,
                 vibeData.importedFrom || 0,
                 lockedVal,
                 vibeId,
@@ -1982,6 +2010,102 @@ class ReferenceMetadataDatabase {
      */
     getCheckpointManager() {
         return this.checkpointManager || null;
+    }
+
+    /**
+     * Fill missing reference_file_cache / reference_vibe_metadata.blurhash (DB only).
+     * Uses this process's live better-sqlite3 connection.
+     */
+    async backfillMissingBlurhashes(options = {}) {
+        if (!this.db) {
+            throw new Error('Reference metadata database not initialized');
+        }
+
+        const blurhashBackfill = require('./blurhashBackfill');
+        const opts = blurhashBackfill.resolveOptions(options);
+        const log = opts.log;
+
+        const globalResources = this.globalResources;
+        const previewCacheDir = options.previewCacheDir || globalResources.getPath('previewCache');
+        const uploadCacheDir = options.uploadCacheDir || globalResources.getPath('uploadCache');
+
+        const where = opts.force ? '' : "WHERE blurhash IS NULL OR blurhash = ''";
+        let rows = this.db.prepare(`SELECT hash FROM reference_file_cache ${where}`).all();
+        if (opts.limit > 0) rows = rows.slice(0, opts.limit);
+
+        log(
+            `📎 Reference BlurHash backfill: ${rows.length} file(s)` +
+            ` — chunk ${opts.batchSize}, concurrency ${opts.concurrency}`
+        );
+
+        const updateStmt = this.db.prepare(
+            `UPDATE reference_file_cache SET blurhash = ?, updated_at = strftime('%s', 'now') WHERE hash = ?`
+        );
+        const commitRefs = this.db.transaction((pairs) => {
+            for (const [hash, key] of pairs) {
+                updateStmt.run(hash, key);
+            }
+        });
+
+        const refTotals = await blurhashBackfill.processInChunks(rows, {
+            batchSize: opts.batchSize,
+            concurrency: opts.concurrency,
+            label: 'refs',
+            log,
+            encodeOne: async (row) => {
+                const blurhash = await blurhashBackfill.encodeReferenceFileBlurhash(row.hash, {
+                    previewCacheDir,
+                    uploadCacheDir
+                });
+                return blurhash ? [blurhash, row.hash] : null;
+            },
+            commitPairs: (pairs) => commitRefs(pairs)
+        });
+
+        let vibes = this.db.prepare(`
+            SELECT id, preview_hash, image_source, type FROM reference_vibe_metadata
+            ${opts.force ? '' : "WHERE blurhash IS NULL OR blurhash = ''"}
+        `).all();
+        if (opts.limit > 0) vibes = vibes.slice(0, opts.limit);
+
+        log(
+            `🎭 Vibe BlurHash backfill: ${vibes.length} row(s)` +
+            ` — chunk ${opts.batchSize}, concurrency ${opts.concurrency}`
+        );
+
+        const vibeStmt = this.db.prepare(
+            `UPDATE reference_vibe_metadata SET blurhash = ?, updated_at = strftime('%s', 'now') WHERE id = ?`
+        );
+        const cacheLookup = this.db.prepare('SELECT blurhash FROM reference_file_cache WHERE hash = ?');
+        const commitVibes = this.db.transaction((pairs) => {
+            for (const [hash, id] of pairs) {
+                vibeStmt.run(hash, id);
+            }
+        });
+
+        const vibeTotals = await blurhashBackfill.processInChunks(vibes, {
+            batchSize: opts.batchSize,
+            concurrency: opts.concurrency,
+            label: 'vibes',
+            log,
+            encodeOne: async (vibe) => {
+                const blurhash = await blurhashBackfill.encodeVibeBlurhash(vibe, {
+                    previewCacheDir,
+                    lookupCacheBlurhash: (key) => cacheLookup.get(key)?.blurhash || null
+                });
+                return blurhash ? [blurhash, vibe.id] : null;
+            },
+            commitPairs: (pairs) => commitVibes(pairs)
+        });
+
+        return {
+            refsUpdated: refTotals.updated,
+            refsFailed: refTotals.failed,
+            refsTotal: rows.length,
+            vibesUpdated: vibeTotals.updated,
+            vibesFailed: vibeTotals.failed,
+            vibesTotal: vibes.length
+        };
     }
 
     close() {

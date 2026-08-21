@@ -181,27 +181,91 @@ function detachVirtualKeyboardSuppress() {
 
 let virtualKeyboardInputRaf = 0;
 let virtualKeyboardInputTarget = null;
+let virtualKeyboardInputType = 'insertText';
+let virtualKeyboardInputData = null;
 
-function dispatchInputOnTarget(target) {
+function getVirtualKeyboardActiveTarget() {
+    return virtualKeyboardActiveTarget;
+}
+
+function virtualKeyboardKeyOpts(key, code) {
+    return {
+        key,
+        code: code || key,
+        bubbles: true,
+        cancelable: true,
+        ctrlKey: virtualKeyboardModifiers.ctrl,
+        altKey: virtualKeyboardModifiers.alt,
+        shiftKey: virtualKeyboardModifiers.shift
+    };
+}
+
+function virtualKeyboardCodeForChar(ch) {
+    if (!ch || ch.length !== 1) return ch;
+    if (ch >= '0' && ch <= '9') return `Digit${ch}`;
+    if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')) return `Key${ch.toUpperCase()}`;
+    if (ch === ' ') return 'Space';
+    if (ch === '\n') return 'Enter';
+    if (ch === '\t') return 'Tab';
+    return ch;
+}
+
+function dispatchInputOnTarget(target, inputType = 'insertText', data = null) {
     if (!target) return;
     try {
-        target.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText' }));
+        const init = { bubbles: true, cancelable: true, inputType: inputType || 'insertText' };
+        if (data != null) init.data = data;
+        target.dispatchEvent(new InputEvent('input', init));
     } catch (e) {
         target.dispatchEvent(new Event('input', { bubbles: true }));
     }
 }
 
+/** True when a cancelable beforeinput was prevented (prompt handlers intercepted). */
+function virtualKeyboardDispatchBeforeInput(target, inputType, data) {
+    if (!target) return false;
+    try {
+        const init = { bubbles: true, cancelable: true, inputType };
+        if (data != null) init.data = data;
+        const ev = new InputEvent('beforeinput', init);
+        target.dispatchEvent(ev);
+        return !!ev.defaultPrevented;
+    } catch (e) {
+        return false;
+    }
+}
+
+function virtualKeyboardDispatchKeydown(key, code) {
+    const target = virtualKeyboardActiveTarget;
+    if (!target) return false;
+    const ev = new KeyboardEvent('keydown', virtualKeyboardKeyOpts(key, code || key));
+    target.dispatchEvent(ev);
+    return !!ev.defaultPrevented;
+}
+
+function virtualKeyboardDispatchKeyup(key, code) {
+    const target = virtualKeyboardActiveTarget;
+    if (!target) return;
+    target.dispatchEvent(new KeyboardEvent('keyup', virtualKeyboardKeyOpts(key, code || key)));
+}
+
 /** Defer input listeners so caret/value settle before autofill / highlight handlers run. */
-function scheduleVirtualKeyboardInput(target) {
+function scheduleVirtualKeyboardInput(target, inputType = 'insertText', data = null) {
     if (!target) return;
     virtualKeyboardInputTarget = target;
+    virtualKeyboardInputType = inputType || 'insertText';
+    virtualKeyboardInputData = data;
     if (virtualKeyboardInputRaf) return;
     virtualKeyboardInputRaf = requestAnimationFrame(() => {
         virtualKeyboardInputRaf = 0;
         const pendingTarget = virtualKeyboardInputTarget;
+        const pendingType = virtualKeyboardInputType;
+        const pendingData = virtualKeyboardInputData;
         virtualKeyboardInputTarget = null;
+        virtualKeyboardInputType = 'insertText';
+        virtualKeyboardInputData = null;
         if (pendingTarget && pendingTarget.isConnected) {
-            dispatchInputOnTarget(pendingTarget);
+            dispatchInputOnTarget(pendingTarget, pendingType, pendingData);
         }
     });
 }
@@ -223,7 +287,8 @@ function virtualKeyboardWithEditableTarget(target, fn) {
     }
 }
 
-function virtualKeyboardInsertText(text) {
+/** Mutate value only — callers fire keydown/beforeinput first so prompt handlers can intercept. */
+function virtualKeyboardCommitText(text, inputType = 'insertText') {
     const target = virtualKeyboardActiveTarget;
     if (!target || text == null || text === '') return;
 
@@ -243,31 +308,59 @@ function virtualKeyboardInsertText(text) {
         const newPos = start + String(text).length;
         target.setSelectionRange(newPos, newPos);
     });
-    scheduleVirtualKeyboardInput(target);
+    scheduleVirtualKeyboardInput(target, inputType, text);
+}
+
+function virtualKeyboardInsertText(text) {
+    const target = virtualKeyboardActiveTarget;
+    if (!target || text == null || text === '') return;
+    if (typeof target.selectionStart !== 'number') return;
+    // isTextInputComposing: public/scripts/comp/textareaUtils.js
+    if (typeof isTextInputComposing === 'function' && isTextInputComposing(target)) return;
+
+    const str = String(text);
+    // Match desktop: keydown → beforeinput → commit. Prompt autofill/emphasis listen on those.
+    if (str.length === 1 && !virtualKeyboardModifiers.ctrl && !virtualKeyboardModifiers.alt) {
+        const key = str === '\n' ? 'Enter' : (str === '\t' ? 'Tab' : str);
+        const code = virtualKeyboardCodeForChar(str);
+        if (virtualKeyboardDispatchKeydown(key, code)) {
+            virtualKeyboardDispatchKeyup(key, code);
+            return;
+        }
+        const beforeType = str === '\n' ? 'insertLineBreak' : 'insertText';
+        if (virtualKeyboardDispatchBeforeInput(target, beforeType, str === '\n' ? null : str)) {
+            virtualKeyboardDispatchKeyup(key, code);
+            return;
+        }
+        virtualKeyboardCommitText(str, beforeType);
+        virtualKeyboardDispatchKeyup(key, code);
+        return;
+    }
+
+    virtualKeyboardCommitText(str, 'insertText');
 }
 
 function virtualKeyboardDispatchKey(key, code) {
-    const target = virtualKeyboardActiveTarget;
-    if (!target) return;
-
-    const opts = {
-        key,
-        code: code || key,
-        bubbles: true,
-        cancelable: true,
-        ctrlKey: virtualKeyboardModifiers.ctrl,
-        altKey: virtualKeyboardModifiers.alt,
-        shiftKey: virtualKeyboardModifiers.shift
-    };
-
-    target.dispatchEvent(new KeyboardEvent('keydown', opts));
-    target.dispatchEvent(new KeyboardEvent('keyup', opts));
+    if (virtualKeyboardDispatchKeydown(key, code)) {
+        virtualKeyboardDispatchKeyup(key, code);
+        return;
+    }
+    virtualKeyboardDispatchKeyup(key, code);
 }
 
 function virtualKeyboardHandleBackspace() {
     const target = virtualKeyboardActiveTarget;
     if (!target || typeof target.selectionStart !== 'number') return;
     if (typeof isTextInputComposing === 'function' && isTextInputComposing(target)) return;
+
+    if (virtualKeyboardDispatchKeydown('Backspace', 'Backspace')) {
+        virtualKeyboardDispatchKeyup('Backspace', 'Backspace');
+        return;
+    }
+    if (virtualKeyboardDispatchBeforeInput(target, 'deleteContentBackward', null)) {
+        virtualKeyboardDispatchKeyup('Backspace', 'Backspace');
+        return;
+    }
 
     virtualKeyboardWithEditableTarget(target, () => {
         const start = target.selectionStart;
@@ -288,27 +381,50 @@ function virtualKeyboardHandleBackspace() {
             target.setSelectionRange(start - 1, start - 1);
         }
     });
-    scheduleVirtualKeyboardInput(target);
+    scheduleVirtualKeyboardInput(target, 'deleteContentBackward');
+    virtualKeyboardDispatchKeyup('Backspace', 'Backspace');
 }
 
 function virtualKeyboardHandleEnter() {
     const target = virtualKeyboardActiveTarget;
     if (!target) return;
-    if (target.tagName === 'TEXTAREA') {
-        virtualKeyboardInsertText('\n');
-    } else {
-        virtualKeyboardDispatchKey('Enter', 'Enter');
+
+    if (virtualKeyboardDispatchKeydown('Enter', 'Enter')) {
+        virtualKeyboardDispatchKeyup('Enter', 'Enter');
+        return;
     }
+
+    if (target.tagName === 'TEXTAREA') {
+        if (virtualKeyboardDispatchBeforeInput(target, 'insertLineBreak', null)) {
+            virtualKeyboardDispatchKeyup('Enter', 'Enter');
+            return;
+        }
+        virtualKeyboardCommitText('\n', 'insertLineBreak');
+        virtualKeyboardDispatchKeyup('Enter', 'Enter');
+        return;
+    }
+
+    virtualKeyboardDispatchKeyup('Enter', 'Enter');
 }
 
 function virtualKeyboardHandleTab() {
     const target = virtualKeyboardActiveTarget;
     if (!target) return;
-    if (virtualKeyboardModifiers.ctrl || virtualKeyboardModifiers.alt) {
-        virtualKeyboardDispatchKey('Tab', 'Tab');
+
+    if (virtualKeyboardDispatchKeydown('Tab', 'Tab')) {
+        virtualKeyboardDispatchKeyup('Tab', 'Tab');
         return;
     }
-    virtualKeyboardInsertText('\t');
+    if (virtualKeyboardModifiers.ctrl || virtualKeyboardModifiers.alt) {
+        virtualKeyboardDispatchKeyup('Tab', 'Tab');
+        return;
+    }
+    if (virtualKeyboardDispatchBeforeInput(target, 'insertText', '\t')) {
+        virtualKeyboardDispatchKeyup('Tab', 'Tab');
+        return;
+    }
+    virtualKeyboardCommitText('\t', 'insertText');
+    virtualKeyboardDispatchKeyup('Tab', 'Tab');
 }
 
 function moveVirtualKeyboardCaretByDelta(target, deltaX, deltaY) {

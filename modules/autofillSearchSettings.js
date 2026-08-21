@@ -26,6 +26,7 @@ function pickPreset(value, presets, fallback) {
 
 function normalizeAutofillSearchSettings(raw) {
     const base = raw && typeof raw === 'object' ? raw : {};
+    const typeFilter = base.resultTypeFilter;
     return {
         enabled: base.enabled !== false,
         spellcheck: base.spellcheck !== false,
@@ -36,7 +37,11 @@ function normalizeAutofillSearchSettings(raw) {
         dbFurryTags: base.dbFurryTags !== false,
         wikiPreviews: base.wikiPreviews !== false,
         searchDelayMs: pickPreset(base.searchDelayMs, AUTOFILL_SEARCH_DELAY_PRESETS, DEFAULT_AUTOFILL_SEARCH_SETTINGS.searchDelayMs),
-        maxResults: pickPreset(base.maxResults, AUTOFILL_SEARCH_MAX_RESULTS_PRESETS, DEFAULT_AUTOFILL_SEARCH_SETTINGS.maxResults)
+        maxResults: pickPreset(base.maxResults, AUTOFILL_SEARCH_MAX_RESULTS_PRESETS, DEFAULT_AUTOFILL_SEARCH_SETTINGS.maxResults),
+        resultTypeFilter: (typeFilter === 'characters' || typeFilter === 'tags'
+            || typeFilter === 'expanders' || typeFilter === 'dynamic')
+            ? typeFilter
+            : null
     };
 }
 

@@ -5,6 +5,8 @@ const backdrop = document.querySelector('.modal-backdrop');
 const MODAL_Z_BASE = 1002; // Base z-index for modal stacking (above --z-modal = 1100)
 const MODAL_Z_ON_TOP_BASE = 2800; // Base z-index for on-top modals (matches --z-modal-top CSS variable)
 const MODAL_Z_INCREMENT = 10; // Increment between modal layers
+/** After this many bump layers in a tier, compact with a full stack rewrite */
+const MODAL_Z_COMPACT_LAYER_LIMIT = 250;
 let modalStack = []; // Array to track modal stack order
 
 // Bootstrap / connection overlays — never shown as taskbar window buttons
@@ -60,6 +62,18 @@ let windowUsageStack = []; // Array of modal elements in order of activation
 let windowFocusRegainedTime = 0; // Timestamp when window regained focus
 const FOCUS_GRACE_PERIOD = 200; // Don't change active window for 200ms after regaining focus
 
+// Cached --true-inset-top resolution (env() calc cannot be parseFloat'd from the custom property)
+let modalTrueInsetProbeEl = null;
+let cachedModalTrueInsetTop = null;
+let modalTrueInsetCacheValid = false;
+let modalTrueInsetInvalidateScheduled = false;
+
+/** Active drag/resize session — avoids per-mousemove querySelector + DOM attribute parsing */
+let activeModalInteraction = null;
+let cachedWindowFrameEl = null;
+/** True while document move/end listeners are bound for an active drag/resize */
+let modalInteractionMoveListenersAttached = false;
+
 // Listen to window focus events to track when browser window regains focus
 window.addEventListener('focus', () => {
     windowFocusRegainedTime = Date.now();
@@ -70,6 +84,10 @@ document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
         windowFocusRegainedTime = Date.now();
     }
+});
+
+window.addEventListener('resize', () => {
+    modalTrueInsetCacheValid = false;
 });
 
 // Integer desktop title-band bias (CSS uses 18px; was calc(0.5 * 35px) = 17.5px)
@@ -87,8 +105,7 @@ function getDesktopModalTopBias() {
     return window.isDesktop ? MODAL_DESKTOP_TOP_BIAS_PX : 0;
 }
 
-function getModalWorkAreaBounds() {
-    const trueInsetTop = getModalTrueInsetTop();
+function computeModalWorkAreaBounds(trueInsetTop) {
     let bottom = window.innerHeight;
     if (window.isDesktop && document.body.classList.contains('desktop-mode')) {
         const taskbar = document.getElementById('desktopTaskbar');
@@ -104,6 +121,13 @@ function getModalWorkAreaBounds() {
         width: window.innerWidth,
         height: Math.max(0, bottom - trueInsetTop)
     };
+}
+
+function getModalWorkAreaBounds() {
+    if (activeModalInteraction && activeModalInteraction.workArea) {
+        return activeModalInteraction.workArea;
+    }
+    return computeModalWorkAreaBounds(getModalTrueInsetTop());
 }
 
 function getModalDragMaxTopEdge(minVisible = MODAL_MIN_VISIBLE_PX) {
@@ -219,12 +243,80 @@ function updateModalMaximizeButtonIcon(modal) {
     }
 }
 
+/** Build persisted quadrant position/size from a layout rect (live or _preMaximizeLayout). */
+function buildWindowPositionEntryFromLayout(modal, layout, containerWidth, containerHeight) {
+    if (!modal || !layout) {
+        return null;
+    }
+    if (!windowRestoresPosition(modal) && !windowRestoresSize(modal)) {
+        return null;
+    }
+
+    const left = Number(layout.left);
+    const top = Number(layout.top);
+    const width = Number(layout.width);
+    const height = Number(layout.height);
+    if (![left, top, width, height].every(Number.isFinite)) {
+        return null;
+    }
+
+    const position = {};
+    if (windowRestoresPosition(modal)) {
+        position.topLeft = pixelToQuadrantPosition(
+            Math.round(left),
+            Math.round(top),
+            containerWidth,
+            containerHeight
+        );
+    }
+
+    if (windowRestoresSize(modal) && (shouldSaveShellBoundsFromRect(modal) || modal.classList.contains('resizeable-window'))) {
+        position.bottomRight = pixelToQuadrantPosition(
+            Math.round(left + width),
+            Math.round(top + height),
+            containerWidth,
+            containerHeight
+        );
+    }
+
+    if (!position.topLeft && !position.bottomRight) {
+        return null;
+    }
+    return position;
+}
+
+/** Persist last normal geometry into the in-memory map (maximize must not leave work-area bounds). */
+function commitModalLayoutToWindowPositions(modal, layout) {
+    const windowKey = getWindowPositionKey(modal);
+    if (!windowKey || !layout) {
+        return false;
+    }
+    if (modal.classList.contains('transient') && !transientWindowsWithPositions.has(windowKey)) {
+        return false;
+    }
+
+    const entry = buildWindowPositionEntryFromLayout(
+        modal,
+        layout,
+        window.innerWidth,
+        window.innerHeight
+    );
+    if (!entry) {
+        return false;
+    }
+
+    globalWindowPositions[windowKey] = entry;
+    return true;
+}
+
 function maximizeModalToWorkArea(modal) {
     if (!modal || isModalMaximized(modal)) {
         return;
     }
 
+    // Capture and commit last normal geometry before work-area override
     modal._preMaximizeLayout = captureModalLayoutState(modal);
+    commitModalLayoutToWindowPositions(modal, modal._preMaximizeLayout);
     modal.classList.add('modal-maximized');
 
     clearModalPixelAnchor(modal);
@@ -242,6 +334,8 @@ function maximizeModalToWorkArea(modal) {
         bubbles: false,
         detail: { modal }
     }));
+    // Flush last normal state (save path uses _preMaximizeLayout while maximized)
+    debouncedSaveWindowPositions();
 }
 
 function restoreModalFromMaximize(modal) {
@@ -1049,16 +1143,120 @@ function restoreLinkedToolWindowParent(toolWindow) {
     return true;
 }
 
+function getModalTrueInsetProbe() {
+    if (!modalTrueInsetProbeEl || !modalTrueInsetProbeEl.isConnected) {
+        modalTrueInsetProbeEl = document.createElement('div');
+        modalTrueInsetProbeEl.setAttribute('aria-hidden', 'true');
+        modalTrueInsetProbeEl.style.cssText = 'position:absolute;top:var(--true-inset-top,0px);left:0;width:0;height:0;margin:0;padding:0;border:0;visibility:hidden;pointer-events:none;';
+        document.body.appendChild(modalTrueInsetProbeEl);
+    }
+    return modalTrueInsetProbeEl;
+}
+
 function getModalTrueInsetTop() {
-    const tempEl = document.createElement('div');
-    tempEl.style.position = 'absolute';
-    tempEl.style.top = 'var(--true-inset-top, 0px)';
-    tempEl.style.visibility = 'hidden';
-    tempEl.style.pointerEvents = 'none';
-    document.body.appendChild(tempEl);
-    const trueInsetTop = tempEl.offsetTop || 0;
-    document.body.removeChild(tempEl);
+    if (activeModalInteraction && Number.isFinite(activeModalInteraction.trueInsetTop)) {
+        return activeModalInteraction.trueInsetTop;
+    }
+    if (modalTrueInsetCacheValid && cachedModalTrueInsetTop != null) {
+        return cachedModalTrueInsetTop;
+    }
+    const trueInsetTop = getModalTrueInsetProbe().offsetTop || 0;
+    cachedModalTrueInsetTop = trueInsetTop;
+    modalTrueInsetCacheValid = true;
+    if (!modalTrueInsetInvalidateScheduled) {
+        modalTrueInsetInvalidateScheduled = true;
+        requestAnimationFrame(() => {
+            modalTrueInsetInvalidateScheduled = false;
+            modalTrueInsetCacheValid = false;
+        });
+    }
     return trueInsetTop;
+}
+
+function scheduleModalInteractionVisual(applyFn) {
+    const session = activeModalInteraction;
+    if (!session) {
+        applyFn();
+        return;
+    }
+    session.pendingVisual = applyFn;
+    if (session.rafId) {
+        return;
+    }
+    session.rafId = requestAnimationFrame(() => {
+        session.rafId = 0;
+        const fn = session.pendingVisual;
+        session.pendingVisual = null;
+        if (fn) {
+            fn();
+        }
+    });
+}
+
+function flushModalInteractionVisual() {
+    const session = activeModalInteraction;
+    if (!session) {
+        return;
+    }
+    if (session.rafId) {
+        cancelAnimationFrame(session.rafId);
+        session.rafId = 0;
+    }
+    const fn = session.pendingVisual;
+    session.pendingVisual = null;
+    if (fn) {
+        fn();
+    }
+}
+
+function applyModalDragTransform(modal, dragX, dragY) {
+    if (!modal) {
+        return;
+    }
+    modal.style.setProperty('--modal-drag-x', `${roundCssPixel(dragX)}px`);
+    modal.style.setProperty('--modal-drag-y', `${roundCssPixel(dragY)}px`);
+}
+
+function clearModalDragTransform(modal) {
+    if (!modal) {
+        return;
+    }
+    modal.style.removeProperty('--modal-drag-x');
+    modal.style.removeProperty('--modal-drag-y');
+}
+
+function attachModalInteractionMoveListeners() {
+    if (modalInteractionMoveListenersAttached) {
+        return;
+    }
+    document.addEventListener('mousemove', handleModalInteraction);
+    document.addEventListener('mouseup', handleModalInteractionEnd);
+    document.addEventListener('touchmove', handleModalInteraction, { passive: false });
+    document.addEventListener('touchend', handleModalInteractionEnd, { passive: false });
+    document.addEventListener('touchcancel', handleModalInteractionEnd, { passive: false });
+    modalInteractionMoveListenersAttached = true;
+}
+
+function detachModalInteractionMoveListeners() {
+    if (!modalInteractionMoveListenersAttached) {
+        return;
+    }
+    document.removeEventListener('mousemove', handleModalInteraction);
+    document.removeEventListener('mouseup', handleModalInteractionEnd);
+    document.removeEventListener('touchmove', handleModalInteraction);
+    document.removeEventListener('touchend', handleModalInteractionEnd);
+    document.removeEventListener('touchcancel', handleModalInteractionEnd);
+    modalInteractionMoveListenersAttached = false;
+}
+
+function endModalInteractionSession() {
+    const session = activeModalInteraction;
+    flushModalInteractionVisual();
+    if (session && session.modal) {
+        clearModalDragTransform(session.modal);
+    }
+    activeModalInteraction = null;
+    detachModalInteractionMoveListeners();
 }
 
 function getModalMinDimensions(modal) {
@@ -1750,22 +1948,16 @@ function getTopOpenModal() {
 function initializeModalDragging() {
     // Tier A permanent globals (modal-listener-refactor-plan.md) — keep on document/window; gate in handlers:
     // focus, visibilitychange — focus grace period (top of modalUtils.js)
-    // mousedown/mousemove/mouseup, touchstart/touchmove/touchend — drag/resize (below)
+    // mousedown/touchstart — drag/resize start (below); move/end attach only while interacting
     // click — minimize button, desktop empty-space clear-active (below)
     // contextMenuAction — taskbar context menu (initializeDesktopTaskbar)
     // DOMContentLoaded — bootstrap dragging, taskbar, start menu (bottom of modalUtils.js)
     // Gallery window resize — attachModalListeners(galleryWindow) in activateGalleryResizeListener
     // Start menu outside-click — AbortController in openStartMenu/closeStartMenu
 
-    // Add drag functionality to all modal title bars
+    // Start only — move/end listeners attach for the active drag/resize session
     document.addEventListener('mousedown', handleModalInteraction);
-    document.addEventListener('mousemove', handleModalInteraction);
-    document.addEventListener('mouseup', handleModalInteractionEnd);
-
-    // Add touch support for dragging and resizing
     document.addEventListener('touchstart', handleModalInteraction, { passive: false });
-    document.addEventListener('touchmove', handleModalInteraction, { passive: false });
-    document.addEventListener('touchend', handleModalInteractionEnd, { passive: false });
 
     // Add global minimize button handler
     document.addEventListener('click', (e) => {
@@ -1853,30 +2045,34 @@ function initializeModalDragging() {
 
 function handleModalInteraction(e) {
     if (e.type === 'mousedown' || e.type === 'touchstart') {
-        handleModalDragStart(e) || handleModalResizeStart(e);
-    } else if (e.type === 'mousemove' || e.type === 'touchmove') {
-        // Find any modal that's currently being dragged or resized
-        const draggedModal = document.querySelector('.modal[data-dragging="true"]');
-        const resizedModal = document.querySelector('.modal[data-resizing="true"]');
-
-        if (draggedModal) {
-            handleModalDrag(e, draggedModal);
-        } else if (resizedModal) {
-            handleModalResize(e, resizedModal);
+        if (handleModalDragStart(e) || handleModalResizeStart(e)) {
+            attachModalInteractionMoveListeners();
+        }
+        return;
+    }
+    if (e.type === 'mousemove' || e.type === 'touchmove') {
+        const session = activeModalInteraction;
+        if (!session) return;
+        if (session.type === 'drag') {
+            handleModalDrag(e, session.modal);
+        } else if (session.type === 'resize') {
+            handleModalResize(e, session.modal);
         }
     }
 }
 
 function handleModalInteractionEnd(e) {
-    // Find any modal that's currently being dragged or resized
-    const draggedModal = document.querySelector('.modal[data-dragging="true"]');
-    const resizedModal = document.querySelector('.modal[data-resizing="true"]');
-
-    if (draggedModal) {
-        handleModalDragEnd(e, draggedModal);
-    } else if (resizedModal) {
-        handleModalResizeEnd(e, resizedModal);
+    const session = activeModalInteraction;
+    if (!session) {
+        detachModalInteractionMoveListeners();
+        return;
     }
+    if (session.type === 'drag') {
+        handleModalDragEnd(e, session.modal);
+    } else if (session.type === 'resize') {
+        handleModalResizeEnd(e, session.modal);
+    }
+    detachModalInteractionMoveListeners();
 }
 
 function handleModalDragStart(e) {
@@ -1898,6 +2094,11 @@ function handleModalDragStart(e) {
     const modal = titleBar.closest('.modal');
     if (!modal) return;
 
+    // Do not allow dragging manual modal if not windowed (i.e. not in desktop mode)
+    if (modal.id === 'manualModal' && !modal.classList.contains('windowed')) {
+        return;
+    }
+
     // Prevent dragging if modal is hidden or animating
     if (modal.classList.contains('hidden') || modal.classList.contains('hidden-alt') || modal.classList.contains('opening') || modal.classList.contains('closing')) {
         return;
@@ -1905,17 +2106,20 @@ function handleModalDragStart(e) {
 
     e.preventDefault();
 
+    if (activeModalInteraction) {
+        endModalInteractionSession();
+    }
+
     prepareModalForDragOrResize(modal);
 
     // Get coordinates from touch or mouse event
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
 
-    // Store drag state as data attributes on the modal
+    // Keep attributes for non-hot-path readers (backdrop, layout refresh, virtual keyboard)
     modal.setAttribute('data-dragging', 'true');
     modal.setAttribute('data-drag-start-x', clientX);
     modal.setAttribute('data-drag-start-y', clientY);
 
-    // Get current offset values and store them
     const computedStyle = getComputedStyle(modal);
     const modalStartOffsetX = parseFloat(computedStyle.getPropertyValue('--modal-offset-x') || '0');
     const modalStartOffsetY = parseFloat(computedStyle.getPropertyValue('--modal-offset-y') || '0');
@@ -1923,10 +2127,37 @@ function handleModalDragStart(e) {
     modal.setAttribute('data-modal-start-offset-x', modalStartOffsetX);
     modal.setAttribute('data-modal-start-offset-y', modalStartOffsetY);
 
-    // Add dragging class to title bar
+    const modalRect = modal.getBoundingClientRect();
+    modalTrueInsetCacheValid = false;
+    const trueInsetTop = getModalTrueInsetTop();
+    const livePreview = isLiveWindowRepositioningEnabled();
+
+    activeModalInteraction = {
+        type: 'drag',
+        modal,
+        livePreview,
+        trueInsetTop,
+        workArea: computeModalWorkAreaBounds(trueInsetTop),
+        desktopTopBias: getDesktopModalTopBias(),
+        containerWidth: window.innerWidth,
+        containerHeight: window.innerHeight,
+        topAnchored: isModalTopAnchored(modal),
+        startX: clientX,
+        startY: clientY,
+        startOffsetX: modalStartOffsetX,
+        startOffsetY: modalStartOffsetY,
+        width: modalRect.width,
+        height: modalRect.height,
+        previewOffsetX: modalStartOffsetX,
+        previewOffsetY: modalStartOffsetY,
+        moved: modal.hasAttribute('data-modal-moved'),
+        rafId: 0,
+        pendingVisual: null
+    };
+
     titleBar.classList.add('dragging');
 
-    if (isLiveWindowRepositioningEnabled()) {
+    if (livePreview) {
         showWindowFrameForModal(modal);
     }
 
@@ -1947,78 +2178,74 @@ function handleModalDragStart(e) {
 }
 
 function handleModalDrag(e, draggedModal) {
-    if (!draggedModal) return;
+    const session = activeModalInteraction;
+    if (!session || session.type !== 'drag' || session.modal !== draggedModal) return;
 
     e.preventDefault();
 
-    const dragStartX = parseFloat(draggedModal.getAttribute('data-drag-start-x'));
-    const dragStartY = parseFloat(draggedModal.getAttribute('data-drag-start-y'));
-    const modalStartOffsetX = parseFloat(draggedModal.getAttribute('data-modal-start-offset-x'));
-    const modalStartOffsetY = parseFloat(draggedModal.getAttribute('data-modal-start-offset-y'));
-
-    // Get coordinates from touch or mouse event
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
 
-    const deltaX = clientX - dragStartX;
-    const deltaY = clientY - dragStartY;
+    let newOffsetX = session.startOffsetX + (clientX - session.startX);
+    let newOffsetY = session.startOffsetY + (clientY - session.startY);
 
-    let newOffsetX = modalStartOffsetX + deltaX;
-    let newOffsetY = modalStartOffsetY + deltaY;
-
-    // Mark modal as moved if it hasn't been moved before
-    if (!draggedModal.hasAttribute('data-modal-moved')) {
+    if (!session.moved) {
+        session.moved = true;
         draggedModal.setAttribute('data-modal-moved', 'true');
-        // Since modal was just moved, update backdrop state
         updateBackdropVisibility();
     }
 
-    // Get modal dimensions
-    const modalRect = draggedModal.getBoundingClientRect();
+    const clamped = session.topAnchored
+        ? clampModalOffsetsForTopAnchor(newOffsetX, newOffsetY, session.width, session.height, { allowOffscreen: true })
+        : clampModalOffsetsForRect(newOffsetX, newOffsetY, session.width, session.height, { allowOffscreen: true });
+    session.previewOffsetX = clamped.offsetX;
+    session.previewOffsetY = clamped.offsetY;
 
-    const clamped = isModalTopAnchored(draggedModal)
-        ? clampModalOffsetsForTopAnchor(newOffsetX, newOffsetY, modalRect.width, modalRect.height, { allowOffscreen: true })
-        : clampModalOffsetsForRect(newOffsetX, newOffsetY, modalRect.width, modalRect.height, { allowOffscreen: true });
-    newOffsetX = clamped.offsetX;
-    newOffsetY = clamped.offsetY;
-
-    if (isLiveWindowRepositioningEnabled()) {
-        draggedModal.setAttribute('data-preview-offset-x', String(newOffsetX));
-        draggedModal.setAttribute('data-preview-offset-y', String(newOffsetY));
-        const width = modalRect.width;
-        const height = modalRect.height;
-        const trueInsetTop = getModalTrueInsetTop();
-        const left = (window.innerWidth / 2) + newOffsetX - (width / 2);
-        const top = isModalTopAnchored(draggedModal)
-            ? trueInsetTop + newOffsetY
-            : (window.innerHeight / 2) + newOffsetY + (0.5 * trueInsetTop) - getDesktopModalTopBias() - (height / 2);
-        updateWindowFrameRect({ left, top, width, height });
+    if (session.livePreview) {
+        scheduleModalInteractionVisual(() => {
+            const s = activeModalInteraction;
+            if (!s || s.type !== 'drag') return;
+            const left = (s.containerWidth / 2) + s.previewOffsetX - (s.width / 2);
+            const top = s.topAnchored
+                ? s.trueInsetTop + s.previewOffsetY
+                : (s.containerHeight / 2) + s.previewOffsetY + (0.5 * s.trueInsetTop) - s.desktopTopBias - (s.height / 2);
+            updateWindowFrameRect({ left, top, width: s.width, height: s.height });
+        });
         return;
     }
 
-    setModalOffsetPx(draggedModal, newOffsetX, newOffsetY, { snap: false, settle: false });
+    // Live window drag: compositor translate only; offsets commit on mouseup
+    scheduleModalInteractionVisual(() => {
+        const s = activeModalInteraction;
+        if (!s || s.type !== 'drag') return;
+        applyModalDragTransform(
+            s.modal,
+            s.previewOffsetX - s.startOffsetX,
+            s.previewOffsetY - s.startOffsetY
+        );
+    });
 }
 
 function handleModalDragEnd(e, draggedModal) {
     if (!draggedModal) return;
+
+    const session = (activeModalInteraction && activeModalInteraction.modal === draggedModal)
+        ? activeModalInteraction
+        : null;
+
+    flushModalInteractionVisual();
 
     const titleBar = draggedModal.querySelector('.modal-window-title');
     if (titleBar) {
         titleBar.classList.remove('dragging');
     }
 
-    // Clear drag state data attributes
-    draggedModal.removeAttribute('data-dragging');
-    draggedModal.removeAttribute('data-drag-start-x');
-    draggedModal.removeAttribute('data-drag-start-y');
-    draggedModal.removeAttribute('data-modal-start-offset-x');
-    draggedModal.removeAttribute('data-modal-start-offset-y');
-
     let offsetX;
     let offsetY;
-    if (isLiveWindowRepositioningEnabled()) {
-        offsetX = parseFloat(draggedModal.getAttribute('data-preview-offset-x'));
-        offsetY = parseFloat(draggedModal.getAttribute('data-preview-offset-y'));
+    const livePreview = session ? session.livePreview : isLiveWindowRepositioningEnabled();
+    if (livePreview) {
+        offsetX = session ? session.previewOffsetX : NaN;
+        offsetY = session ? session.previewOffsetY : NaN;
         if (!Number.isFinite(offsetX) || !Number.isFinite(offsetY)) {
             const computedStyle = getComputedStyle(draggedModal);
             offsetX = parseFloat(computedStyle.getPropertyValue('--modal-offset-x') || '0');
@@ -2027,17 +2254,29 @@ function handleModalDragEnd(e, draggedModal) {
         hideWindowFrame();
         draggedModal.removeAttribute('data-preview-offset-x');
         draggedModal.removeAttribute('data-preview-offset-y');
+    } else if (session && Number.isFinite(session.previewOffsetX) && Number.isFinite(session.previewOffsetY)) {
+        offsetX = session.previewOffsetX;
+        offsetY = session.previewOffsetY;
     } else {
         const computedStyle = getComputedStyle(draggedModal);
         offsetX = parseFloat(computedStyle.getPropertyValue('--modal-offset-x') || '0');
         offsetY = parseFloat(computedStyle.getPropertyValue('--modal-offset-y') || '0');
     }
+
+    // Commit offsets while drag transform is still applied, then drop the translate
+    // so the window does not jump back to the pre-drag position for a frame.
+    activeModalInteraction = null;
+    setModalOffsetPx(draggedModal, offsetX, offsetY, { snap: false, settle: false });
+    clearModalDragTransform(draggedModal);
+    draggedModal.removeAttribute('data-dragging');
+    draggedModal.removeAttribute('data-drag-start-x');
+    draggedModal.removeAttribute('data-drag-start-y');
+    draggedModal.removeAttribute('data-modal-start-offset-x');
+    draggedModal.removeAttribute('data-modal-start-offset-y');
     setModalOffsetPx(draggedModal, offsetX, offsetY, { snap: true, settle: true });
 
-    // Check backdrop when stopping drag
     updateBackdropVisibility();
 
-    // Save window position if this is a non-transient window, or transient window with dataset identifier
     const isTransient = draggedModal.classList.contains('transient');
     if (windowRestoresPosition(draggedModal)
         && (!isTransient || (draggedModal.dataset.windowIdentifier && transientWindowsWithPositions.has(draggedModal.dataset.windowIdentifier)))
@@ -2054,6 +2293,11 @@ function handleModalResizeStart(e) {
     const modal = resizeHandle.closest('.modal');
     if (!modal) return false;
 
+    // Do not allow resizing manual modal if not windowed (i.e. not in desktop mode)
+    if (modal.id === 'manualModal' && !modal.classList.contains('windowed')) {
+        return false;
+    }
+
     // Prevent resizing if modal is hidden or animating
     if (modal.classList.contains('hidden') || modal.classList.contains('hidden-alt') || modal.classList.contains('opening') || modal.classList.contains('closing')) {
         return false;
@@ -2061,25 +2305,25 @@ function handleModalResizeStart(e) {
 
     e.preventDefault();
 
+    if (activeModalInteraction) {
+        endModalInteractionSession();
+    }
+
     prepareModalForDragOrResize(modal);
 
-    // Get coordinates from touch or mouse event
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
 
-    // Store resize state as data attributes on the modal
     modal.setAttribute('data-resizing', 'true');
     modal.setAttribute('data-resize-start-x', clientX);
     modal.setAttribute('data-resize-start-y', clientY);
 
-    // Get modal current dimensions and position and store them
     const modalRect = modal.getBoundingClientRect();
     modal.setAttribute('data-resize-start-width', modalRect.width);
     modal.setAttribute('data-resize-start-height', modalRect.height);
     modal.setAttribute('data-resize-start-left', modalRect.left);
     modal.setAttribute('data-resize-start-top', modalRect.top);
 
-    // Determine resize direction from handle classes and store it
     let resizeDirection = '';
     if (resizeHandle.classList.contains('nw')) resizeDirection = 'nw';
     else if (resizeHandle.classList.contains('ne')) resizeDirection = 'ne';
@@ -2092,11 +2336,48 @@ function handleModalResizeStart(e) {
 
     modal.setAttribute('data-resize-direction', resizeDirection);
 
-    if (isLiveWindowRepositioningEnabled()) {
+    const livePreview = isLiveWindowRepositioningEnabled();
+    modalTrueInsetCacheValid = false;
+    const trueInsetTop = getModalTrueInsetTop();
+    const maxWidth = modal.dataset.windowMaxWidth ? parseInt(modal.dataset.windowMaxWidth, 10) : Infinity;
+    const maxHeight = modal.dataset.windowMaxHeight ? parseInt(modal.dataset.windowMaxHeight, 10) : Infinity;
+    const minWidth = modal.dataset.windowMinWidth ? parseInt(modal.dataset.windowMinWidth, 10) : 200;
+    const minHeight = modal.dataset.windowMinHeight ? parseInt(modal.dataset.windowMinHeight, 10) : 150;
+
+    activeModalInteraction = {
+        type: 'resize',
+        modal,
+        livePreview,
+        trueInsetTop,
+        workArea: computeModalWorkAreaBounds(trueInsetTop),
+        desktopTopBias: getDesktopModalTopBias(),
+        containerWidth: window.innerWidth,
+        containerHeight: window.innerHeight,
+        topAnchoredResize: isModalResizeTopAnchored(modal),
+        startX: clientX,
+        startY: clientY,
+        startWidth: modalRect.width,
+        startHeight: modalRect.height,
+        startLeft: modalRect.left,
+        startTop: modalRect.top,
+        direction: resizeDirection,
+        minWidth,
+        minHeight,
+        maxWidth,
+        maxHeight,
+        previewWidth: modalRect.width,
+        previewHeight: modalRect.height,
+        previewLeft: modalRect.left,
+        previewTop: modalRect.top,
+        shouldUpdatePosition: false,
+        rafId: 0,
+        pendingVisual: null
+    };
+
+    if (livePreview) {
         showWindowFrameForModal(modal);
     }
 
-    // Bring modal to front when resizing starts (only for moveable modals)
     const isBlocked = modal.id === 'manualModal' && !modal.classList.contains('windowed');
     const hasTitleBar = modal.querySelector('.modal-window-title') !== null;
     const isMoveable = hasTitleBar && !isBlocked;
@@ -2105,162 +2386,145 @@ function handleModalResizeStart(e) {
         bringModalToFront(modal);
     }
 
-    // Check backdrop when starting resize
     updateBackdropVisibility();
 
     return true;
 }
 
 function handleModalResize(e, resizedModal) {
-    if (!resizedModal) return;
+    const session = activeModalInteraction;
+    if (!session || session.type !== 'resize' || session.modal !== resizedModal) return;
 
     e.preventDefault();
 
-    const resizeStartX = parseFloat(resizedModal.getAttribute('data-resize-start-x'));
-    const resizeStartY = parseFloat(resizedModal.getAttribute('data-resize-start-y'));
-    const resizeStartWidth = parseFloat(resizedModal.getAttribute('data-resize-start-width'));
-    const resizeStartHeight = parseFloat(resizedModal.getAttribute('data-resize-start-height'));
-    const resizeStartLeft = parseFloat(resizedModal.getAttribute('data-resize-start-left'));
-    const resizeStartTop = parseFloat(resizedModal.getAttribute('data-resize-start-top'));
-    const resizeDirection = resizedModal.getAttribute('data-resize-direction');
-
-    // Get coordinates from touch or mouse event
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
 
-    const deltaX = clientX - resizeStartX;
-    const deltaY = clientY - resizeStartY;
+    const deltaX = clientX - session.startX;
+    const deltaY = clientY - session.startY;
+    const resizeDirection = session.direction;
 
-    let newWidth = resizeStartWidth;
-    let newHeight = resizeStartHeight;
-    let newLeft = resizeStartLeft;
-    let newTop = resizeStartTop;
+    let newWidth = session.startWidth;
+    let newHeight = session.startHeight;
+    let newLeft = session.startLeft;
+    let newTop = session.startTop;
     let shouldUpdatePosition = false;
 
-    // Calculate new dimensions and position based on resize direction
-    // This implements OS-like window resizing where the opposite edge/corner stays fixed
-
-    // Handle horizontal resizing
+    // OS-like resizing: opposite edge/corner stays fixed
     if (resizeDirection.includes('w')) {
-        // Left edge: width changes AND left position moves (right edge stays anchored)
-        const widthChange = -deltaX; // Negative because we're moving left edge left/right
-        newWidth = Math.max(200, resizeStartWidth + widthChange);
-        newLeft = resizeStartLeft + (resizeStartWidth - newWidth);
+        const widthChange = -deltaX;
+        newWidth = Math.max(session.minWidth, session.startWidth + widthChange);
+        newLeft = session.startLeft + (session.startWidth - newWidth);
         shouldUpdatePosition = true;
     } else if (resizeDirection.includes('e')) {
-        // Right edge: width changes, left edge stays anchored
-        newWidth = Math.max(200, resizeStartWidth + deltaX);
-        newLeft = resizeStartLeft; // Keep left position fixed
+        newWidth = Math.max(session.minWidth, session.startWidth + deltaX);
+        newLeft = session.startLeft;
         shouldUpdatePosition = true;
     }
 
-    // Handle vertical resizing
     if (resizeDirection.includes('n')) {
-        // Top edge: height changes AND top position moves (bottom edge stays anchored)
-        const heightChange = -deltaY; // Negative because we're moving top edge up/down
-        newHeight = Math.max(150, resizeStartHeight + heightChange);
-        newTop = resizeStartTop + (resizeStartHeight - newHeight);
+        const heightChange = -deltaY;
+        newHeight = Math.max(session.minHeight, session.startHeight + heightChange);
+        newTop = session.startTop + (session.startHeight - newHeight);
         shouldUpdatePosition = true;
     } else if (resizeDirection.includes('s')) {
-        // Bottom edge: height changes, top edge stays anchored
-        newHeight = Math.max(150, resizeStartHeight + deltaY);
-        newTop = resizeStartTop; // Keep top position fixed
+        newHeight = Math.max(session.minHeight, session.startHeight + deltaY);
+        newTop = session.startTop;
         shouldUpdatePosition = true;
     }
 
-    // Apply constraints based on dataset values
-    const maxWidth = resizedModal.dataset.windowMaxWidth ?
-        parseInt(resizedModal.dataset.windowMaxWidth) : Infinity;
-    const maxHeight = resizedModal.dataset.windowMaxHeight ?
-        parseInt(resizedModal.dataset.windowMaxHeight) : Infinity;
-    const minWidth = resizedModal.dataset.windowMinWidth ?
-        parseInt(resizedModal.dataset.windowMinWidth) : 200; // Reasonable minimum
-    const minHeight = resizedModal.dataset.windowMinHeight ?
-        parseInt(resizedModal.dataset.windowMinHeight) : 150; // Reasonable minimum
+    newWidth = Math.max(session.minWidth, Math.min(newWidth, session.maxWidth));
+    newHeight = Math.max(session.minHeight, Math.min(newHeight, session.maxHeight));
 
-    newWidth = Math.max(minWidth, Math.min(newWidth, maxWidth));
-    newHeight = Math.max(minHeight, Math.min(newHeight, maxHeight));
-
-    const workArea = getModalWorkAreaBounds();
+    const workArea = session.workArea;
     if (resizeDirection.includes('e') && !resizeDirection.includes('w')) {
-        newWidth = Math.min(newWidth, workArea.right - resizeStartLeft);
+        newWidth = Math.min(newWidth, workArea.right - session.startLeft);
     }
     if (resizeDirection.includes('w') && !resizeDirection.includes('e')) {
-        const maxWidthFromWorkArea = resizeStartLeft + resizeStartWidth - workArea.left;
+        const maxWidthFromWorkArea = session.startLeft + session.startWidth - workArea.left;
         newWidth = Math.min(newWidth, maxWidthFromWorkArea);
-        newLeft = resizeStartLeft + resizeStartWidth - newWidth;
+        newLeft = session.startLeft + session.startWidth - newWidth;
     }
     if (resizeDirection.includes('s') && !resizeDirection.includes('n')) {
-        newHeight = Math.min(newHeight, workArea.bottom - resizeStartTop);
+        newHeight = Math.min(newHeight, workArea.bottom - session.startTop);
     }
     if (resizeDirection.includes('n') && !resizeDirection.includes('s')) {
-        const maxHeightFromWorkArea = resizeStartTop + resizeStartHeight - workArea.top;
+        const maxHeightFromWorkArea = session.startTop + session.startHeight - workArea.top;
         newHeight = Math.min(newHeight, maxHeightFromWorkArea);
-        newTop = resizeStartTop + resizeStartHeight - newHeight;
+        newTop = session.startTop + session.startHeight - newHeight;
     }
 
-    newWidth = Math.max(minWidth, roundCssPixel(newWidth));
-    newHeight = Math.max(minHeight, roundCssPixel(newHeight));
+    newWidth = Math.max(session.minWidth, roundCssPixel(newWidth));
+    newHeight = Math.max(session.minHeight, roundCssPixel(newHeight));
 
-    const topAnchoredResize = isModalResizeTopAnchored(resizedModal);
-    if (isLiveWindowRepositioningEnabled()) {
-        let previewLeft = newLeft;
-        let previewTop = newTop;
-        if (topAnchoredResize) {
-            previewTop = resizeStartTop;
-            previewLeft = resizeDirection.includes('w')
-                ? resizeStartLeft + resizeStartWidth - newWidth
-                : resizeStartLeft;
-        }
-        updateWindowFrameRect({
-            left: previewLeft,
-            top: previewTop,
-            width: newWidth,
-            height: newHeight
-        });
-        resizedModal.setAttribute('data-preview-width', String(newWidth));
-        resizedModal.setAttribute('data-preview-height', String(newHeight));
-        resizedModal.setAttribute('data-preview-left', String(previewLeft));
-        resizedModal.setAttribute('data-preview-top', String(previewTop));
-        return;
+    let previewLeft = newLeft;
+    let previewTop = newTop;
+    if (session.topAnchoredResize) {
+        previewTop = session.startTop;
+        previewLeft = resizeDirection.includes('w')
+            ? session.startLeft + session.startWidth - newWidth
+            : session.startLeft;
     }
 
-    resizedModal.style.width = `${newWidth}px`;
-    resizedModal.style.height = `${newHeight}px`;
+    session.previewWidth = newWidth;
+    session.previewHeight = newHeight;
+    session.previewLeft = previewLeft;
+    session.previewTop = previewTop;
+    session.shouldUpdatePosition = shouldUpdatePosition;
 
-    if (topAnchoredResize) {
-        let anchorLeft = resizeStartLeft;
-        if (resizeDirection.includes('w')) {
-            anchorLeft = resizeStartLeft + resizeStartWidth - newWidth;
-        }
-        setModalPositionFromViewportRect(resizedModal, {
-            left: anchorLeft,
-            top: resizeStartTop,
-            width: newWidth,
-            height: newHeight
+    if (session.livePreview) {
+        scheduleModalInteractionVisual(() => {
+            const s = activeModalInteraction;
+            if (!s || s.type !== 'resize') return;
+            updateWindowFrameRect({
+                left: s.previewLeft,
+                top: s.previewTop,
+                width: s.previewWidth,
+                height: s.previewHeight
+            });
         });
         return;
     }
 
-    // Update position so the anchored edge/corner stays fixed while resizing
-    if (shouldUpdatePosition) {
-        const trueInsetTop = getModalTrueInsetTop();
-        let offsetX = (newLeft + newWidth / 2) - (window.innerWidth / 2);
-        let offsetY = (newTop + newHeight / 2) - (window.innerHeight / 2) - (0.5 * trueInsetTop) + getDesktopModalTopBias();
-        const clamped = clampModalOffsetsForRect(offsetX, offsetY, newWidth, newHeight);
-        setModalOffsetPx(resizedModal, clamped.offsetX, clamped.offsetY, { snap: false, settle: false });
-    }
+    scheduleModalInteractionVisual(() => {
+        const s = activeModalInteraction;
+        if (!s || s.type !== 'resize') return;
+        s.modal.style.width = `${s.previewWidth}px`;
+        s.modal.style.height = `${s.previewHeight}px`;
+
+        if (s.topAnchoredResize) {
+            const offsetX = (s.previewLeft + s.previewWidth / 2) - (s.containerWidth / 2);
+            const offsetY = s.previewTop - s.trueInsetTop;
+            const clamped = clampModalOffsetsForTopAnchor(offsetX, offsetY, s.previewWidth, s.previewHeight);
+            setModalOffsetPx(s.modal, clamped.offsetX, clamped.offsetY, { snap: false, settle: false });
+            return;
+        }
+
+        if (s.shouldUpdatePosition) {
+            const offsetX = (s.previewLeft + s.previewWidth / 2) - (s.containerWidth / 2);
+            const offsetY = (s.previewTop + s.previewHeight / 2) - (s.containerHeight / 2) - (0.5 * s.trueInsetTop) + s.desktopTopBias;
+            const clamped = clampModalOffsetsForRect(offsetX, offsetY, s.previewWidth, s.previewHeight);
+            setModalOffsetPx(s.modal, clamped.offsetX, clamped.offsetY, { snap: false, settle: false });
+        }
+    });
 }
 
 function handleModalResizeEnd(e, resizedModal) {
     if (!resizedModal) return;
 
-    if (isLiveWindowRepositioningEnabled()) {
-        const previewWidth = parseFloat(resizedModal.getAttribute('data-preview-width'));
-        const previewHeight = parseFloat(resizedModal.getAttribute('data-preview-height'));
-        const previewLeft = parseFloat(resizedModal.getAttribute('data-preview-left'));
-        const previewTop = parseFloat(resizedModal.getAttribute('data-preview-top'));
-        const topAnchoredResize = isModalResizeTopAnchored(resizedModal);
+    const session = (activeModalInteraction && activeModalInteraction.modal === resizedModal)
+        ? activeModalInteraction
+        : null;
+
+    flushModalInteractionVisual();
+
+    const livePreview = session ? session.livePreview : isLiveWindowRepositioningEnabled();
+    if (livePreview) {
+        const previewWidth = session ? session.previewWidth : NaN;
+        const previewHeight = session ? session.previewHeight : NaN;
+        const previewLeft = session ? session.previewLeft : NaN;
+        const previewTop = session ? session.previewTop : NaN;
+        const topAnchoredResize = session ? session.topAnchoredResize : isModalResizeTopAnchored(resizedModal);
 
         if (Number.isFinite(previewWidth) && Number.isFinite(previewHeight) && Number.isFinite(previewLeft) && Number.isFinite(previewTop)) {
             resizedModal.style.width = `${previewWidth}px`;
@@ -2273,9 +2537,12 @@ function handleModalResizeEnd(e, resizedModal) {
                     height: previewHeight
                 });
             } else {
-                const trueInsetTop = getModalTrueInsetTop();
-                const offsetX = (previewLeft + previewWidth / 2) - (window.innerWidth / 2);
-                const offsetY = (previewTop + previewHeight / 2) - (window.innerHeight / 2) - (0.5 * trueInsetTop) + getDesktopModalTopBias();
+                const trueInsetTop = session ? session.trueInsetTop : getModalTrueInsetTop();
+                const desktopTopBias = session ? session.desktopTopBias : getDesktopModalTopBias();
+                const containerWidth = session ? session.containerWidth : window.innerWidth;
+                const containerHeight = session ? session.containerHeight : window.innerHeight;
+                const offsetX = (previewLeft + previewWidth / 2) - (containerWidth / 2);
+                const offsetY = (previewTop + previewHeight / 2) - (containerHeight / 2) - (0.5 * trueInsetTop) + desktopTopBias;
                 const clamped = clampModalOffsetsForRect(offsetX, offsetY, previewWidth, previewHeight);
                 setModalOffsetPx(resizedModal, clamped.offsetX, clamped.offsetY, { snap: false, settle: false });
             }
@@ -2288,15 +2555,15 @@ function handleModalResizeEnd(e, resizedModal) {
         hideWindowFrame();
     }
 
+    activeModalInteraction = null;
+
     const computedStyle = getComputedStyle(resizedModal);
     const offsetX = parseFloat(computedStyle.getPropertyValue('--modal-offset-x') || '0');
     const offsetY = parseFloat(computedStyle.getPropertyValue('--modal-offset-y') || '0');
     setModalOffsetPx(resizedModal, offsetX, offsetY, { snap: true, settle: true });
 
-    // Check backdrop when stopping resize
     updateBackdropVisibility();
 
-    // Clear resize state data attributes
     resizedModal.removeAttribute('data-resizing');
     resizedModal.removeAttribute('data-resize-start-x');
     resizedModal.removeAttribute('data-resize-start-y');
@@ -2310,7 +2577,6 @@ function handleModalResizeEnd(e, resizedModal) {
         detail: { modal: resizedModal }
     }));
 
-    // Save window position if this is a non-transient window, or transient window with dataset identifier
     const isTransient = resizedModal.classList.contains('transient');
     if ((windowRestoresPosition(resizedModal) || windowRestoresSize(resizedModal))
         && (!isTransient || (resizedModal.dataset.windowIdentifier && transientWindowsWithPositions.has(resizedModal.dataset.windowIdentifier)))
@@ -2530,6 +2796,11 @@ function closeMainModal(modal) {
     if (!modal) return Promise.resolve();
 
     if (shouldPersistWindowPosition(modal)) {
+        // Window may be hidden before the 10s debounce fires — commit last normal
+        // geometry now so a later flush cannot drop or overwrite with work-area bounds
+        if (isModalMaximized(modal) && modal._preMaximizeLayout) {
+            commitModalLayoutToWindowPositions(modal, modal._preMaximizeLayout);
+        }
         debouncedSaveWindowPositions();
     }
 
@@ -2568,9 +2839,14 @@ function closeMainModal(modal) {
 
     // Function to clean up after animation completes
     const cleanup = () => {
+        if (activeModalInteraction && activeModalInteraction.modal === modal) {
+            hideWindowFrame();
+            endModalInteractionSession();
+        }
         // Reset modal position offsets (persistable windows restore size/position from saved data on reopen)
         if (!shouldPersistWindowPosition(modal)) {
             clearModalPixelAnchor(modal);
+            clearModalDragTransform(modal);
             modal.style.removeProperty('--modal-offset-x');
             modal.style.removeProperty('--modal-offset-y');
             modal.style.removeProperty('width');
@@ -2578,6 +2854,7 @@ function closeMainModal(modal) {
         } else {
             // Drop pixel-settled so reopen applies saved offsets/rect instead of stale pixel vars
             clearModalPixelAnchor(modal);
+            clearModalDragTransform(modal);
         }
         modal.removeAttribute('data-resizing');
         modal.removeAttribute('data-resize-start-x');
@@ -2739,20 +3016,56 @@ function assignModalZIndex(modal) {
     setActiveWindow(modal);
 }
 
+function getModalStackGroupMaxZIndex(isOnTop, excludeModal) {
+    const base = isOnTop ? MODAL_Z_ON_TOP_BASE : MODAL_Z_BASE;
+    let maxZ = base - MODAL_Z_INCREMENT;
+    for (let i = 0; i < modalStack.length; i++) {
+        const m = modalStack[i];
+        if (!m || m === excludeModal) continue;
+        if (m.classList.contains('on-top') !== isOnTop) continue;
+        const z = parseInt(m.style.zIndex, 10);
+        if (Number.isFinite(z) && z > maxZ) {
+            maxZ = z;
+        }
+    }
+    return maxZ;
+}
+
+/** Bump one modal above its tier peers without rewriting every window's z-index. */
+function bumpModalZIndexToFront(modal) {
+    const isOnTop = modal.classList.contains('on-top');
+    const base = isOnTop ? MODAL_Z_ON_TOP_BASE : MODAL_Z_BASE;
+    const maxZ = getModalStackGroupMaxZIndex(isOnTop, modal);
+    if (maxZ >= base + (MODAL_Z_INCREMENT * MODAL_Z_COMPACT_LAYER_LIMIT)) {
+        updateModalStackZIndexes({ skipActiveWindow: true });
+        return;
+    }
+
+    const zIndex = maxZ + MODAL_Z_INCREMENT;
+    modal.setAttribute('data-modal-z-index', String(zIndex));
+    modal.setAttribute('data-modal-stack-position', String(modalStack.length));
+    modal.style.zIndex = zIndex;
+    if (isOnTop) {
+        modal.classList.add('active-window');
+    }
+}
+
 function bringModalToFront(modal) {
     if (!modal) return;
 
-    // Move modal to the top of the stack
     const modalIndex = modalStack.indexOf(modal);
+    // Already top of stack — only refresh active/taskbar state
+    if (modalIndex !== -1 && modalIndex === modalStack.length - 1) {
+        setActiveWindow(modal);
+        updateTaskbarActiveStates();
+        return;
+    }
+
     if (modalIndex !== -1) {
-        // Remove from current position
         modalStack.splice(modalIndex, 1);
     }
-    // Add to top of stack
     modalStack.push(modal);
-
-    // Reassign z-indexes to all modals in the stack
-    updateModalStackZIndexes();
+    bumpModalZIndexToFront(modal);
 
     setActiveWindow(modal);
 
@@ -2760,7 +3073,8 @@ function bringModalToFront(modal) {
     updateTaskbarActiveStates();
 }
 
-function updateModalStackZIndexes() {
+function updateModalStackZIndexes(options) {
+    const opts = options || {};
     // Separate modals into regular and on-top groups
     const regularModals = [];
     const onTopModals = [];
@@ -2794,6 +3108,10 @@ function updateModalStackZIndexes() {
     document.querySelectorAll('.modal.on-top').forEach(onTopModal => {
         onTopModal.classList.add('active-window');
     });
+
+    if (opts.skipActiveWindow) {
+        return;
+    }
 
     // When z-indexes change, the top window (last in stack) should be active
     // But don't override main active window if the top modal is a tool window
@@ -2876,8 +3194,13 @@ function updateBackdropVisibility() {
     }
 
     // Count visible non-transient, non-moved modals that are not being dragged or resized
-    const draggedModal = document.querySelector('.modal[data-dragging="true"]');
-    const resizedModal = document.querySelector('.modal[data-resizing="true"]');
+    const interactionModal = activeModalInteraction ? activeModalInteraction.modal : null;
+    const draggedModal = interactionModal && interactionModal.hasAttribute('data-dragging')
+        ? interactionModal
+        : null;
+    const resizedModal = interactionModal && interactionModal.hasAttribute('data-resizing')
+        ? interactionModal
+        : null;
     const visibleNonTransientModals = Array.from(document.querySelectorAll('.modal')).filter(m =>
         !m.classList.contains('hidden') &&
         !m.classList.contains('minimised') &&
@@ -3261,9 +3584,15 @@ async function hideGalleryWindow() {
     }
 
     galleryWindow.setAttribute('data-modal-moved', 'true');
+    if (isModalMaximized(galleryWindow) && galleryWindow._preMaximizeLayout) {
+        commitModalLayoutToWindowPositions(galleryWindow, galleryWindow._preMaximizeLayout);
+    }
     debouncedSaveWindowPositions();
 
     await closeModal(galleryWindow);
+
+    // hideGalleryProgressModal: public/scripts/comp/galleryView.js
+    hideGalleryProgressModal();
 
     // Clear gallery content like manual modal does
     clearGallery();
@@ -3354,6 +3683,10 @@ function debounceGalleryResize(func, wait) {
 // Desktop Taskbar Management
 let taskbarWindows = null;
 let taskbarClock = null;
+let taskbarClockAlignmentTimer = null;
+let taskbarClockInterval = null;
+let taskbarClockIntervalTicks = 0;
+let taskbarClockResyncAt = 0;
 
 function initializeDesktopTaskbar() {
     taskbarWindows = document.getElementById('taskbarWindows');
@@ -3364,9 +3697,9 @@ function initializeDesktopTaskbar() {
         return;
     }
 
-    // Update clock every second
+    // The clock displays minutes, so align once and update only on minute boundaries.
     updateTaskbarClock();
-    setInterval(updateTaskbarClock, 1000);
+    scheduleTaskbarClock();
 
     // Set up modal observation
     observeModals();
@@ -3410,12 +3743,8 @@ const desktopIconsConfig = [
         icon: 'fa-duotone fa-book',
         label: 'Wiki',
         action: () => {
-            if (window.tagWikiSearchModal) {
-                window.tagWikiSearchModal.open();
-            } else {
-                const modal = document.getElementById('tagWikiSearchModal');
-                if (modal) openModal(modal);
-            }
+            // openGrimoireApplet: public/scripts/comp/featureLoader.js
+            void openGrimoireApplet();
         }
     },
     {
@@ -3428,6 +3757,33 @@ const desktopIconsConfig = [
     }
 ];
 
+function scheduleTaskbarClock() {
+    if (taskbarClockAlignmentTimer) {
+        clearTimeout(taskbarClockAlignmentTimer);
+        taskbarClockAlignmentTimer = null;
+    }
+    if (taskbarClockInterval) {
+        clearInterval(taskbarClockInterval);
+        taskbarClockInterval = null;
+    }
+
+    taskbarClockIntervalTicks = 0;
+    const minuteMs = 60000;
+    const nextMinuteDelay = minuteMs - (Date.now() % minuteMs);
+    taskbarClockAlignmentTimer = setTimeout(() => {
+        taskbarClockAlignmentTimer = null;
+        updateTaskbarClock();
+        taskbarClockResyncAt = Date.now() + (60 * minuteMs);
+        taskbarClockInterval = setInterval(() => {
+            updateTaskbarClock();
+            taskbarClockIntervalTicks++;
+            if (taskbarClockIntervalTicks >= 60 || Date.now() >= taskbarClockResyncAt) {
+                scheduleTaskbarClock();
+            }
+        }, minuteMs);
+    }, nextMinuteDelay);
+}
+
 function updateTaskbarClock() {
     if (!taskbarClock) return;
 
@@ -3438,8 +3794,8 @@ function updateTaskbarClock() {
     const timeEl = taskbarClock.querySelector('.taskbar-time');
     const dateEl = taskbarClock.querySelector('.taskbar-date');
 
-    if (timeEl) timeEl.textContent = timeStr;
-    if (dateEl) dateEl.textContent = dateStr;
+    if (timeEl && timeEl.textContent !== timeStr) timeEl.textContent = timeStr;
+    if (dateEl && dateEl.textContent !== dateStr) dateEl.textContent = dateStr;
 }
 
 function observeModals() {
@@ -3677,10 +4033,15 @@ function updateTaskbarActiveStates() {
 
                 // Update image icon src if it exists and changed
                 if (imageIconEl && imageIcon) {
-                    const imagePath = imageIcon.startsWith('/') ? imageIcon : `/static_images/app_icons/${imageIcon}`;
+                    const imagePath = resolveAppIconPath(imageIcon);
                     const expectedSrc = new URL(imagePath, window.location.origin).href;
                     if (imageIconEl.src !== expectedSrc) {
                         imageIconEl.src = expectedSrc;
+                    }
+                    const srcset = buildAppIconSrcset(imageIcon);
+                    if (srcset && imageIconEl.getAttribute('srcset') !== srcset) {
+                        imageIconEl.setAttribute('srcset', srcset);
+                        imageIconEl.setAttribute('sizes', '192px');
                     }
                 }
 
@@ -3943,7 +4304,8 @@ function updateTaskbarWindows() {
                         if (currentImageIconEl.src.includes('/static_images/app_icons/')) {
                             const parts = currentImageIconEl.src.split('/static_images/app_icons/');
                             if (parts.length > 1) {
-                                currentImageIcon = parts[1].split('?')[0]; // Remove query params
+                                const rel = parts[1].split('?')[0];
+                                currentImageIcon = rel.split('/').pop();
                             }
                         }
                     }
@@ -4051,9 +4413,7 @@ function renderIcon(icon, className = '') {
 
     // If it's an image icon, render as img tag
     if (isImageIcon(icon)) {
-        const imagePath = resolveAppIconPath(icon);
-        const classAttr = className ? ` class="icon-image ${className}"` : ' class="icon-image"';
-        return `<img src="${imagePath}" alt=""${classAttr} />`;
+        return renderAppIconImg(icon, className);
     }
 
     // Otherwise, it's a Font Awesome icon class
@@ -4062,13 +4422,55 @@ function renderIcon(icon, className = '') {
 }
 
 // Helper function to render both icon and imageIcon (for CSS-based switching)
-function resolveAppIconPath(imageIcon) {
+// Size variants are generated server-side into .cache/runtime-assets (modules/appIconRuntimeAssets.js)
+const APP_ICON_SRCSET_SIZES = [32, 64, 128, 192, 384];
+
+function appIconBasename(imageIcon) {
+    const val = String(imageIcon || '').trim();
+    if (!val) return '';
+    try {
+        if (val.startsWith('http://') || val.startsWith('https://') || val.startsWith('//') || val.startsWith('/')) {
+            const url = new URL(val, window.location.origin);
+            const parts = url.pathname.split('/');
+            return parts[parts.length - 1] || '';
+        }
+    } catch (_e) {
+        // fall through
+    }
+    const cleaned = val.replace(/^static_images\/app_icons\//, '').replace(/^\/?static_images\/app_icons\//, '');
+    const parts = cleaned.split('/');
+    return parts[parts.length - 1] || '';
+}
+
+function resolveAppIconPath(imageIcon, size) {
     const val = String(imageIcon || '').trim();
     if (!val) return '';
     if (val.startsWith('http://') || val.startsWith('https://') || val.startsWith('//')) return val;
-    if (val.startsWith('/')) return val;
-    if (val.startsWith('static_images/')) return `/${val}`;
-    return `/static_images/app_icons/${val}`;
+    const filename = appIconBasename(val);
+    if (!filename) return '';
+    if (val.startsWith('/') && !val.includes('/static_images/app_icons/')) return val;
+    if (val.startsWith('static_images/') && !val.includes('app_icons/')) return `/${val}`;
+    const sizeNum = Number(size);
+    if (sizeNum && APP_ICON_SRCSET_SIZES.includes(sizeNum)) {
+        return `/static_images/app_icons/${sizeNum}/${filename}`;
+    }
+    return `/static_images/app_icons/${filename}`;
+}
+
+function buildAppIconSrcset(imageIcon) {
+    const filename = appIconBasename(imageIcon);
+    if (!filename) return '';
+    return APP_ICON_SRCSET_SIZES
+        .map((size) => `${resolveAppIconPath(filename, size)} ${size}w`)
+        .join(', ');
+}
+
+function renderAppIconImg(imageIcon, className = '') {
+    const imagePath = resolveAppIconPath(imageIcon);
+    const srcset = buildAppIconSrcset(imageIcon);
+    const classAttr = className ? ` class="icon-image ${className}"` : ' class="icon-image"';
+    const srcsetAttr = srcset ? ` srcset="${srcset}" sizes="192px"` : '';
+    return `<img src="${imagePath}" alt=""${srcsetAttr}${classAttr} />`;
 }
 
 function renderDualIcon(icon, imageIcon, className = '') {
@@ -4089,15 +4491,11 @@ function renderDualIcon(icon, imageIcon, className = '') {
         }
     }
 
-    // Render image icon (shown in desktop mode)
+    // Render image icon (shown in desktop mode) — srcset picks optimised runtime size
     if (imageIcon) {
-        const imagePath = resolveAppIconPath(imageIcon);
-        const classAttr = className ? ` class="icon-image ${className}"` : ' class="icon-image"';
-        html += `<img src="${imagePath}" alt=""${classAttr} />`;
+        html += renderAppIconImg(imageIcon, className);
     } else if (icon && isImageIcon(icon)) {
-        const imagePath = resolveAppIconPath(icon);
-        const classAttr = className ? ` class="icon-image ${className}"` : ' class="icon-image"';
-        html += `<img src="${imagePath}" alt=""${classAttr} />`;
+        html += renderAppIconImg(icon, className);
     }
 
     return html;
@@ -4229,6 +4627,14 @@ function getModalType(modal) {
         return 'imageViewer';
     }
 
+    if (modal.id && modal.id.startsWith('imagePromptInspector_')) {
+        return 'imagePromptInspector';
+    }
+
+    if (modal.id && modal.id.startsWith('imagePromptInspectorJson_')) {
+        return 'imagePromptInspectorJson';
+    }
+
     // Check for notepad modals (if they follow similar pattern)
     if (modal.id && modal.id.startsWith('notepad_')) {
         return 'notepad';
@@ -4241,6 +4647,14 @@ function getModalType(modal) {
     // Check for specific modal classes
     if (modal.classList.contains('image-viewer-modal')) {
         return 'imageViewer';
+    }
+
+    if (modal.classList.contains('image-prompt-inspector')) {
+        return 'imagePromptInspector';
+    }
+
+    if (modal.classList.contains('image-prompt-inspector-json')) {
+        return 'imagePromptInspectorJson';
     }
 
     if (modal.classList.contains('emphasis-groups-tool')) {
@@ -4422,6 +4836,7 @@ function restoreMinimizedModal(modal, taskbarItem) {
 
 // Toggle taskbar group menu (dropdown/dropup)
 let activeGroupMenu = null;
+let taskbarGroupMenuCloseHandler = null;
 
 function toggleTaskbarGroupMenu(groupItem, modals) {
     // Close any existing group menu
@@ -4436,6 +4851,9 @@ function toggleTaskbarGroupMenu(groupItem, modals) {
         closeTaskbarGroupMenu();
         return;
     }
+
+    // Drop any prior outside-click handler before opening a new menu
+    closeTaskbarGroupMenu();
 
     // Create menu
     const menu = document.createElement('div');
@@ -4514,21 +4932,27 @@ function toggleTaskbarGroupMenu(groupItem, modals) {
     activeGroupMenu = groupItem;
     groupItem.classList.add('group-menu-open');
 
-    // Close menu when clicking outside
-    const closeHandler = (e) => {
+    // Close menu when clicking outside (must be removed in closeTaskbarGroupMenu)
+    taskbarGroupMenuCloseHandler = (e) => {
         if (!menu.contains(e.target) && !groupItem.contains(e.target)) {
             closeTaskbarGroupMenu();
-            document.removeEventListener('click', closeHandler);
         }
     };
 
     // Use setTimeout to avoid immediate close
     setTimeout(() => {
-        document.addEventListener('click', closeHandler);
+        if (taskbarGroupMenuCloseHandler) {
+            document.addEventListener('click', taskbarGroupMenuCloseHandler);
+        }
     }, 10);
 }
 
 function closeTaskbarGroupMenu() {
+    if (taskbarGroupMenuCloseHandler) {
+        document.removeEventListener('click', taskbarGroupMenuCloseHandler);
+        taskbarGroupMenuCloseHandler = null;
+    }
+
     const menu = document.querySelector('.taskbar-group-menu');
     if (menu) {
         menu.remove();
@@ -4880,12 +5304,13 @@ document.addEventListener('contextMenuAction', (e) => {
             showGlassToast('warning', 'Desktop', 'Paste is not available in read-only mode', false, 4000);
             return;
         }
-        const explorer = typeof initializeExplorerApplet === 'function'
-            ? initializeExplorerApplet()
-            : explorerApplet;
-        if (explorer?.clipboard) {
-            void explorer.pasteToDesktopSurface();
-        }
+        // public/scripts/comp/featureLoader.js
+        void featureLoader.loadFeature('explorer').then(() => {
+            const explorer = initializeExplorerApplet();
+            if (explorer?.clipboard) {
+                void explorer.pasteToDesktopSurface();
+            }
+        });
         return;
     }
 
@@ -5063,11 +5488,11 @@ const startMenuLaunchables = [
     },
     { launchId: 'spellbook', icon: 'fas fa-hat-wizard', imageIcon: 'caster.png', text: 'Spellcaster', appMenu: true, action: () => { window.spellbookModalManager.openModal(); } },
     { launchId: 'reference', icon: 'fas fa-swatchbook', imageIcon: 'ref.png', text: 'Reference', appMenu: true, action: () => { showCacheManagerModal(); } },
-    { launchId: 'bracket-generation', icon: 'fas fa-layer-group', imageIcon: 'stack.png', text: 'Phasewalker', desktopOnly: true, appMenu: true, action: () => { if (window.bracketGenerationApplet) { window.bracketGenerationApplet.open(); } else { const modal = document.getElementById('bracketGenerationModal'); if (modal) openModal(modal); } } },
-    { launchId: 'encyclopedia', icon: 'fas fa-book', imageIcon: 'books.png', text: 'Grimoire', appMenu: true, action: () => { if (window.tagWikiSearchModal) { window.tagWikiSearchModal.open(); } else { const modal = document.getElementById('tagWikiSearchModal'); if (modal) openModal(modal); } } },
-    { launchId: 'naxt', icon: 'fas fa-flask', imageIcon: 'test_tube.png', text: 'Atelier', appMenu: true, action: () => { if (window.naxtApplet) { window.naxtApplet.open(); } else { const modal = document.getElementById('naxtModal'); if (modal) openModal(modal); } } },
-    { launchId: 'notebook', icon: 'fas fa-notebook', imageIcon: 'notebook.png', text: 'Notion', appMenu: true, action: () => { window.notepadManager.openNotebook(); }, rightAction: { icon: 'fas fa-sticky-note', tooltip: 'New Note', action: () => { window.notepadManager.handleNewNote(); } } },
-    { launchId: 'chat', icon: 'fas fa-messages', imageIcon: 'chat.png', text: 'Chat', appMenu: true, action: () => { if (window.chatSystem) window.chatSystem.showAllChats(); } },
+    { launchId: 'bracket-generation', icon: 'fas fa-layer-group', imageIcon: 'stack.png', text: 'Phasewalker', desktopOnly: true, appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openBracketGenerationApplet(); } },
+    { launchId: 'encyclopedia', icon: 'fas fa-book', imageIcon: 'books.png', text: 'Grimoire', appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openGrimoireApplet(); } },
+    { launchId: 'naxt', icon: 'fas fa-flask', imageIcon: 'test_tube.png', text: 'Atelier', appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openNaxtApplet(); } },
+    { launchId: 'notebook', icon: 'fas fa-notebook', imageIcon: 'notebook.png', text: 'Notion', appMenu: true, action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('notepad'); } window.notepadManager.openNotebook(); }, rightAction: { icon: 'fas fa-sticky-note', tooltip: 'New Note', action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('notepad'); } window.notepadManager.handleNewNote(); } } },
+    { launchId: 'chat', icon: 'fas fa-messages', imageIcon: 'chat.png', text: 'Chat', appMenu: true, action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('chat'); } window.chatSystem.showAllChats(); } },
     { launchId: 'explorer', icon: 'fas fa-folder-open', imageIcon: 'explorer.png', text: 'Cartograph', appMenu: true, action: () => { openExplorerApplet(); } },
 ];
 
@@ -5085,7 +5510,7 @@ const startMenuShellConfig = [
         appMenu: false
     },
     { icon: 'fas fa-toolbox', imageIcon: 'toolbox.png', text: 'Toolbox', hasSubmenu: true, submenu: 'tools', appMenu: false },
-    { launchId: 'run', icon: 'fas fa-magnifying-glass', imageIcon: 'search.png', text: 'Run', appMenu: false, action: () => { if (window.runApplet) { window.runApplet.open(); } } },
+    { launchId: 'run', icon: 'fas fa-magnifying-glass', imageIcon: 'search.png', text: 'Run', appMenu: false, action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('run'); runApplet.open(); } },
 ];
 
 /** @deprecated Use startMenuLaunchables + startMenuShellConfig */
@@ -5131,8 +5556,9 @@ function buildToolsSubmenuItems() {
         { launchId: 'presets', icon: 'fas fa-book-spells', imageIcon: 'presetbook.png', text: 'Spellbook', appMenuLocation: 'tools', action: () => { showPresetManager(); } },
         { launchId: 'expanders', icon: 'fas fa-book-font', imageIcon: 'expanders.png', text: 'Expanders', appMenuLocation: 'tools', action: () => { showTextReplacementManager(); } },
         { launchId: 'memories', icon: 'fas fa-box-open-full', imageIcon: 'dna.png', text: 'Enshutsuka', appMenuLocation: 'tools', action: () => { openKnowledgeMemoriesModal(); } },
-        { launchId: 'config-editor', icon: 'fas fa-binary', imageIcon: 'slider.png', text: 'Runes', desktopOnly: true, appMenuLocation: 'tools', action: () => { if (window.configEditorApplet) { window.configEditorApplet.open(); } else { const modal = document.getElementById('configEditorModal'); if (modal) openModal(modal); } } },
-        { launchId: 'event-viewer', icon: 'fas fa-wave-square', imageIcon: 'event_viewer.png', text: 'Periscope', desktopOnly: true, appMenuLocation: 'tools', action: () => { if (logViewerApplet) { logViewerApplet.open(); } else { const modal = document.getElementById('logViewerModal'); if (modal) openModal(modal); } } },
+        { launchId: 'config-editor', icon: 'fas fa-binary', imageIcon: 'slider.png', text: 'Runes', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('config_editor'); configEditorApplet.open(); } },
+        { launchId: 'character-db', icon: 'fas fa-users', text: 'Characters', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('character_db'); characterDbApplet.open(); } },
+        { launchId: 'event-viewer', icon: 'fas fa-wave-square', imageIcon: 'event_viewer.png', text: 'Periscope', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('log_viewer'); logViewerApplet.open(); } },
     ].filter(isStartMenuEntryEnabled);
     // getDsapStartMenuEntriesAtLocation: public/scripts/comp/dsapRegistry.js
     const dsapAtTools = typeof getDsapStartMenuEntriesAtLocation === 'function'
@@ -5668,6 +6094,8 @@ async function runClientRestartDirect() {
 
 async function runRestartDssDirect() {
     closeStartMenuAfterPowerAction();
+    // public/scripts/comp/featureLoader.js
+    await featureLoader.loadFeature('server_management');
     if (!serverManagement.isAdminSession()) {
         showGlassToast('error', 'Access Denied', 'Admin access required to restart DreamScape Server', false, 5000, '<i class="fas fa-lock"></i>');
         return;
@@ -6080,6 +6508,13 @@ function buildStartMenu() {
     if (!startMenuItems) return;
 
     closeAllStartMenuPopouts();
+    // teardownDropdown: public/scripts/comp/dropdown.js — power menu rebuilt below
+    if (startMenuPowerDropdown) {
+        teardownDropdown(startMenuPowerDropdown);
+        startMenuPowerDropdown = null;
+        startMenuPowerToggle = null;
+        startMenuPowerMenu = null;
+    }
     startMenuItems.innerHTML = '';
 
     const desktop = isDesktopStartMenuEnvironment();
@@ -6435,7 +6870,7 @@ async function uploadCustomWallpaper(file) {
 
             if (response.success) {
                 // Precache the new wallpaper: delete old cache entry, then load and cache the new one
-                const wallpaperUrl = `/cache/wallpapers/${currentWorkspace}.png`;
+                const wallpaperUrl = localCacheWallpaperUrl(currentWorkspace);
                 await precacheWallpaper(wallpaperUrl);
 
                 // Update the wallpaper state to use the custom wallpaper
@@ -6660,15 +7095,15 @@ function resolveWorkspaceWallpaperUrl(wallpaperPath) {
     const id = idParts.join(':');
     switch (type) {
         case 'file':
-            return `/images/${id}`;
+            return localGalleryImageUrl(id);
         case 'cache':
-            return `/cache/upload/${id}`;
+            return localCacheUploadUrl(id);
         case 'cache-preview':
-            return `/cache/preview/${id}`;
+            return localCachePreviewUrl(id);
         case 'vibe':
             return `/cache/vibe/${id}`;
         case 'wallpaper':
-            return `/cache/wallpapers/${id}.png`;
+            return localCacheWallpaperUrl(id);
         case 'url':
             return id;
         default:
@@ -6905,7 +7340,9 @@ function setupDesktopContextMenu() {
 
     const desktopContextMenuConfig = {
         beforeShow: () => {
-            if (explorerApplet) explorerApplet._contextMenuTarget = null;
+            if (typeof explorerApplet !== 'undefined' && explorerApplet) {
+                explorerApplet._contextMenuTarget = null;
+            }
         },
         sections: [
             {
@@ -6922,10 +7359,8 @@ function setupDesktopContextMenu() {
                         action: 'desktop-paste',
                         hidden: () => {
                             if (localStorage.getItem('userType') === 'readonly') return true;
-                            const explorer = typeof initializeExplorerApplet === 'function'
-                                ? initializeExplorerApplet()
-                                : explorerApplet;
-                            return !(explorer && explorer.clipboard);
+                            if (typeof explorerApplet === 'undefined' || !explorerApplet) return true;
+                            return !explorerApplet.clipboard;
                         }
                     },
                     {
@@ -7146,14 +7581,17 @@ function setLiveWindowRepositioningEnabled(enabled) {
 }
 
 function getWindowFrameElement() {
-    let frame = document.getElementById('modalDragResizeFrame');
-    if (frame) {
-        return frame;
+    if (cachedWindowFrameEl && cachedWindowFrameEl.isConnected) {
+        return cachedWindowFrameEl;
     }
-    frame = document.createElement('div');
-    frame.id = 'modalDragResizeFrame';
-    frame.className = 'modal-drag-resize-frame hidden';
-    document.body.appendChild(frame);
+    let frame = document.getElementById('modalDragResizeFrame');
+    if (!frame) {
+        frame = document.createElement('div');
+        frame.id = 'modalDragResizeFrame';
+        frame.className = 'modal-drag-resize-frame hidden';
+        document.body.appendChild(frame);
+    }
+    cachedWindowFrameEl = frame;
     return frame;
 }
 
@@ -7173,7 +7611,7 @@ function showWindowFrameForModal(modal) {
 }
 
 function hideWindowFrame() {
-    const frame = document.getElementById('modalDragResizeFrame');
+    const frame = cachedWindowFrameEl || document.getElementById('modalDragResizeFrame');
     if (frame) {
         frame.classList.add('hidden');
     }
@@ -7337,19 +7775,19 @@ async function openDesktopSettingsModal(wallpaperPath = null) {
         const id = idParts.join(':'); // Rejoin in case the ID contains colons (e.g., URLs)
         switch (type) {
             case 'file':
-                desktopSettingsState.wallpaperUrl = `/images/${id}`;
+                desktopSettingsState.wallpaperUrl = localGalleryImageUrl(id);
                 break;
             case 'cache':
-                desktopSettingsState.wallpaperUrl = `/cache/upload/${id}`;
+                desktopSettingsState.wallpaperUrl = localCacheUploadUrl(id);
                 break;
             case 'cache-preview':
-                desktopSettingsState.wallpaperUrl = `/cache/preview/${id}`;
+                desktopSettingsState.wallpaperUrl = localCachePreviewUrl(id);
                 break;
             case 'vibe':
                 desktopSettingsState.wallpaperUrl = `/cache/vibe/${id}`;
                 break;
             case 'wallpaper':
-                desktopSettingsState.wallpaperUrl = `/cache/wallpapers/${id}.png`;
+                desktopSettingsState.wallpaperUrl = localCacheWallpaperUrl(id);
                 break;
             case 'url':
                 desktopSettingsState.wallpaperUrl = id; // Use the custom URL directly
@@ -8175,16 +8613,16 @@ async function saveDesktopWorkspaceSettings() {
     if (desktopSettingsState.wallpaperUrl) {
         const url = desktopSettingsState.wallpaperUrl;
         if (url.startsWith('/cache/upload/')) {
-            newWallpaperPath = `cache:${url.replace('/cache/upload/', '')}`;
+            newWallpaperPath = `cache:${decodeURIComponent(url.replace('/cache/upload/', ''))}`;
         } else if (url.startsWith('/cache/preview/')) {
-            newWallpaperPath = `cache-preview:${url.replace('/cache/preview/', '')}`;
+            newWallpaperPath = `cache-preview:${decodeURIComponent(url.replace('/cache/preview/', ''))}`;
         } else if (url.startsWith('/cache/vibe/')) {
-            newWallpaperPath = `vibe:${url.replace('/cache/vibe/', '')}`;
+            newWallpaperPath = `vibe:${decodeURIComponent(url.replace('/cache/vibe/', ''))}`;
         } else if (url.startsWith('/cache/wallpapers/')) {
-            const workspaceId = url.replace('/cache/wallpapers/', '').replace('.png', '');
+            const workspaceId = decodeURIComponent(url.replace('/cache/wallpapers/', '')).replace(/\.png$/i, '');
             newWallpaperPath = `wallpaper:${workspaceId}`;
         } else if (url.startsWith('/images/')) {
-            newWallpaperPath = `file:${url.replace('/images/', '')}`;
+            newWallpaperPath = `file:${decodeURIComponent(url.replace('/images/', ''))}`;
         } else if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('//')) {
             // Custom URL (external or protocol-relative)
             newWallpaperPath = `url:${url}`;
@@ -8442,11 +8880,6 @@ function saveWindowPositions(options = {}) {
             return;
         }
 
-        // Maximize is a temporary layout override — never persist work-area bounds
-        if (modal.classList.contains('modal-maximized')) {
-            return;
-        }
-
         // Skip transient windows unless they're marked for position restoration
         const isTransient = modal.classList.contains('transient');
 
@@ -8472,27 +8905,31 @@ function saveWindowPositions(options = {}) {
             return;
         }
 
-        // Get current position and size in pixels
-        const modalRect = modal.getBoundingClientRect();
+        // Maximize is a temporary layout override — persist last normal geometry only
+        let layoutForSave;
+        if (modal.classList.contains('modal-maximized')) {
+            if (!modal._preMaximizeLayout) {
+                return;
+            }
+            layoutForSave = modal._preMaximizeLayout;
+        } else {
+            const modalRect = modal.getBoundingClientRect();
+            layoutForSave = {
+                left: modalRect.left,
+                top: modalRect.top,
+                width: modalRect.width,
+                height: modalRect.height
+            };
+        }
 
-        // Use actual rendered top-left corner position from getBoundingClientRect
-        // This accounts for all CSS adjustments (true-inset-top, desktop mode, etc.)
-        // Round to whole numbers for consistency
-        const topLeftX = Math.round(modalRect.left);
-        const topLeftY = Math.round(modalRect.top);
-
-        // Convert top-left to quadrant position
-        const topLeftQuadrant = pixelToQuadrantPosition(topLeftX, topLeftY, containerWidth, containerHeight);
-
-        // Get bottom-right corner for size from rendered rect (resizeable / desktop shells)
-        let bottomRightQuadrant = null;
-        if (windowRestoresSize(modal) && (shouldSaveShellBoundsFromRect(modal) || modal.classList.contains('resizeable-window'))) {
-            bottomRightQuadrant = pixelToQuadrantPosition(
-                Math.round(modalRect.right),
-                Math.round(modalRect.bottom),
-                containerWidth,
-                containerHeight
-            );
+        const position = buildWindowPositionEntryFromLayout(
+            modal,
+            layoutForSave,
+            containerWidth,
+            containerHeight
+        );
+        if (!position) {
+            return;
         }
 
         // Only save if window has been moved or resized, or is a persistable desktop shell
@@ -8505,21 +8942,8 @@ function saveWindowPositions(options = {}) {
             modal.setAttribute('data-modal-moved', 'true');
         }
 
-        if (shouldForceSave || modal.hasAttribute('data-modal-moved') || bottomRightQuadrant) {
-            const position = {};
-
-            if (windowRestoresPosition(modal)) {
-                position.topLeft = topLeftQuadrant;
-            }
-
-            // Add bottom-right corner if window has custom size
-            if (bottomRightQuadrant) {
-                position.bottomRight = bottomRightQuadrant;
-            }
-
-            if (position.topLeft || position.bottomRight) {
-                windowPositions[windowKey] = position;
-            }
+        if (shouldForceSave || modal.hasAttribute('data-modal-moved') || position.bottomRight) {
+            windowPositions[windowKey] = position;
         }
     });
 

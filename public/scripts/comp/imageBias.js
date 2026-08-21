@@ -198,7 +198,7 @@ function selectImageBias(value) {
 }
 
 // Update image bias display
-function updateImageBiasDisplay(value) {
+async function updateImageBiasDisplay(value) {
     const buttonGrid = imageBiasDropdownBtn.querySelector('.mask-bias-grid');
     if (!buttonGrid) return;
 
@@ -241,7 +241,8 @@ function updateImageBiasDisplay(value) {
         buttonGrid.classList.remove('custom-bias');
     }
 
-    handleImageBiasChange();
+    // Await so concurrent cropImageToResolution calls cannot revoke blobs mid-load
+    await handleImageBiasChange();
 
     closeImageBiasDropdown();
 }
@@ -274,7 +275,7 @@ async function handleImageBiasChange() {
 // Internal function to crop image to resolution (existing function, keeping for compatibility)
 function cropImageToResolutionInternal(dataUrl, bias) {
     const biasFractions = [0, 0.25, 0.5, 0.75, 1];
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
         if (!dataUrl) {
             console.warn('No dataUrl provided to cropImageToResolutionInternal');
             resolve(dataUrl);
@@ -330,6 +331,10 @@ function cropImageToResolutionInternal(dataUrl, bias) {
 
             // Convert to blob instead of data URL to avoid memory issues
             canvas.toBlob((blob) => {
+                if (!blob) {
+                    reject(new Error('Failed to create cropped image blob'));
+                    return;
+                }
                 // Create blob URL and store it in window for cleanup
                 const blobUrl = URL.createObjectURL(blob);
 
@@ -342,22 +347,35 @@ function cropImageToResolutionInternal(dataUrl, bias) {
                 resolve(blobUrl);
             }, 'image/png');
         };
+        img.onerror = function() {
+            reject(new Error('Failed to load image for cropping'));
+        };
         img.src = dataUrl;
     });
 }
 
-// Clean up blob URLs to prevent memory leaks
+// Clean up cropped preview blob URLs. Never revoke originalDataUrl here —
+// cropImageToResolution reuses it across calls; releaseUploadedImageDataHeavyFields owns that lifetime.
 function cleanupBlobUrls() {
+    const keepUrl = window.uploadedImageData?.originalDataUrl;
     if (window.croppedImageBlobUrls) {
         window.croppedImageBlobUrls.forEach(blobUrl => {
+            if (keepUrl && blobUrl === keepUrl) return;
             URL.revokeObjectURL(blobUrl);
         });
-        window.croppedImageBlobUrls = [];
+        window.croppedImageBlobUrls = keepUrl
+            ? window.croppedImageBlobUrls.filter(u => u === keepUrl)
+            : [];
+    }
+    if (window.uploadedImageData) {
+        delete window.uploadedImageData.croppedBlobUrl;
     }
 }
 
 function trackBiasPreviewBlob(url) {
     if (!url || !url.startsWith('blob:')) return;
+    // originalDataUrl is managed separately — tracking it here lets cleanupBlobUrls kill the source mid-crop
+    if (window.uploadedImageData?.originalDataUrl === url) return;
     if (!window.croppedImageBlobUrls) {
         window.croppedImageBlobUrls = [];
     }
@@ -369,10 +387,31 @@ function cleanupBiasConfirmPreviewElements() {
         const el = document.getElementById(id);
         if (!el) return;
         if (el.src && el.src.startsWith('blob:')) {
-            URL.revokeObjectURL(el.src);
+            const url = el.src;
+            URL.revokeObjectURL(url);
+            if (window.croppedImageBlobUrls) {
+                window.croppedImageBlobUrls = window.croppedImageBlobUrls.filter((u) => u !== url);
+            }
         }
         el.removeAttribute('src');
     });
+}
+
+/** Replace img.src, revoking the prior blob URL and dropping it from the track list. */
+function replaceBiasPreviewImageSrc(img, url) {
+    if (!img) return;
+    const prev = img.src;
+    if (prev && prev.startsWith('blob:') && prev !== url) {
+        URL.revokeObjectURL(prev);
+        if (window.croppedImageBlobUrls) {
+            window.croppedImageBlobUrls = window.croppedImageBlobUrls.filter((u) => u !== prev);
+        }
+    }
+    if (url) {
+        img.src = url;
+    } else {
+        img.removeAttribute('src');
+    }
 }
 
 function releaseUploadedImageDataHeavyFields() {
@@ -583,15 +622,16 @@ async function showImageBiasAdjustmentModal() {
         } else {
             let imageUrl = null;
             if (imageSource.startsWith('file:')) {
-                imageUrl = `/images/${imageSource.replace('file:', '')}`;
+                imageUrl = localGalleryImageUrl(imageSource.replace('file:', ''));
             } else if (imageSource.startsWith('cache:')) {
-                imageUrl = `/cache/preview/${imageSource.replace('cache:', '')}.webp`;
+                imageUrl = localCachePreviewUrl(`${imageSource.replace('cache:', '')}.webp`);
             }
             if (imageUrl) {
                 const response = await fetch(imageUrl);
                 const blob = await response.blob();
                 imageDataUrl = URL.createObjectURL(blob);
-                trackBiasPreviewBlob(imageDataUrl);
+                // originalDataUrl lifetime: releaseUploadedImageDataHeavyFields
+                window.uploadedImageData.originalDataUrl = imageDataUrl;
             }
         }
     }
@@ -1066,7 +1106,7 @@ async function updateClientPreview() {
         const clientPreview = await generateClientBiasPreview();
         const clientImage = document.getElementById('clientPreviewImage');
         if (clientImage) {
-            clientImage.src = clientPreview;
+            replaceBiasPreviewImageSrc(clientImage, clientPreview);
         } else {
             console.warn('Client preview image element not found');
         }
@@ -1098,14 +1138,14 @@ async function testBiasAdjustment() {
         const clientPreview = await generateClientBiasPreview();
         const clientTestImage = document.getElementById('clientTestImage');
         if (clientTestImage) {
-            clientTestImage.src = clientPreview;
+            replaceBiasPreviewImageSrc(clientTestImage, clientPreview);
         }
 
         // Generate server-side preview
         const serverPreview = await generateServerBiasPreview();
         const serverTestImage = document.getElementById('serverTestImage');
         if (serverTestImage) {
-            serverTestImage.src = serverPreview;
+            replaceBiasPreviewImageSrc(serverTestImage, serverPreview);
         }
 
         resultsDiv.classList.remove('hidden');
@@ -1244,14 +1284,14 @@ async function generateConfirmationPreviews() {
         const clientPreview = await generateClientBiasPreview();
         const confirmClientPreview = document.getElementById('confirmClientPreview');
         if (confirmClientPreview && clientPreview) {
-            confirmClientPreview.src = clientPreview;
+            replaceBiasPreviewImageSrc(confirmClientPreview, clientPreview);
         }
 
         // Generate server preview
         const serverPreview = await generateServerBiasPreview();
         const confirmServerPreview = document.getElementById('confirmServerPreview');
         if (confirmServerPreview && serverPreview) {
-            confirmServerPreview.src = serverPreview;
+            replaceBiasPreviewImageSrc(confirmServerPreview, serverPreview);
         }
     } catch (error) {
         console.error('Failed to generate confirmation previews:', error);
@@ -1399,7 +1439,7 @@ async function applyImageBiasChange(value, callback) {
         window.uploadedImageData.bias = parseInt(value);
     }
 
-    updateImageBiasDisplay(value);
+    await updateImageBiasDisplay(value);
     
     // Update image bias orientation after changing bias
     updateImageBiasOrientation();
@@ -1466,7 +1506,7 @@ async function cropImageToResolution() {
     }
 
     try {
-        // Clean up any existing blob URLs before creating new ones
+        // Clean up cropped preview blobs only (originalDataUrl is preserved)
         cleanupBlobUrls();
 
         // Get the image data URL
@@ -1479,15 +1519,15 @@ async function cropImageToResolution() {
             } else {
                 let imageUrl = null;
                 if (imageSource.startsWith('file:')) {
-                    imageUrl = `/images/${imageSource.replace('file:', '')}`;
+                    imageUrl = localGalleryImageUrl(imageSource.replace('file:', ''));
                 } else if (imageSource.startsWith('cache:')) {
-                    imageUrl = `/cache/preview/${imageSource.replace('cache:', '')}.webp`;
+                    imageUrl = localCachePreviewUrl(`${imageSource.replace('cache:', '')}.webp`);
                 }
                 if (imageUrl) {
                     const response = await fetch(imageUrl);
                     const blob = await response.blob();
                     imageDataUrl = URL.createObjectURL(blob);
-                    trackBiasPreviewBlob(imageDataUrl);
+                    // Do not trackBiasPreviewBlob — original lifetime is releaseUploadedImageDataHeavyFields
                 }
             }
             window.uploadedImageData.originalDataUrl = imageDataUrl;
@@ -1542,13 +1582,14 @@ async function cropImageToResolution() {
         updateImageBiasOrientation();
     } catch (error) {
         console.error('Failed to crop image to resolution:', error);
+        cleanupBlobUrls();
         showError('Failed to crop image to resolution');
     }
 }
 
 // New function to crop image with dynamic bias adjustments
 function cropImageWithDynamicBias(dataUrl, bias) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = function() {
             const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
@@ -1607,6 +1648,10 @@ function cropImageWithDynamicBias(dataUrl, bias) {
 
             // Convert to blob
             canvas.toBlob((blob) => {
+                if (!blob) {
+                    reject(new Error('Failed to create dynamic-bias cropped blob'));
+                    return;
+                }
                 const blobUrl = URL.createObjectURL(blob);
 
                 if (!window.croppedImageBlobUrls) {
@@ -1616,6 +1661,9 @@ function cropImageWithDynamicBias(dataUrl, bias) {
 
                 resolve(blobUrl);
             }, 'image/png');
+        };
+        img.onerror = function() {
+            reject(new Error('Failed to load image for dynamic bias crop'));
         };
         img.src = dataUrl;
     });

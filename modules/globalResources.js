@@ -8,24 +8,13 @@ const path = require('path');
 const crypto = require('crypto');
 const nekoaijs = require('nekoai-js');
 const OpenAI = require('openai');
-const AnimeTagSearch = require('./animeTagSearch');
-const FurryTagSearch = require('./furryTagSearch');
-const FastTagSearch = require('./fastTagSearch');
 const SpellChecker = require('./spellChecker');
 const WordLookupService = require('./wordLookupService');
 const t5TokenizerService = require('./t5-tokenizer-service');
 const { buildPresetTokenCountCache } = require('./presetTokenCountCache');
-const knowledgeMemoryDb = require('./knowledgeMemoryDatabase');
-const tagSearchDatabase = require('./tagSearchDatabase');
-const naxTagsDatabase = require('./naxTagsDatabase');
-const NaxTagGenerationService = require('./naxTagGeneration');
-const naxVibesGallery = require('./naxVibesGallery');
 const apiKeyManager = require('./apiKeyManager');
 const applicationAuthDatabase = require('./applicationAuthDatabase');
 const telemetryDatabase = require('./telemetryDatabase');
-const { ApplicationAuthManager } = require('./applicationAuthManager');
-const ReferenceMetadataDatabase = require('./referenceMetadataDatabase');
-const GenerationQuipsDatabase = require('./generationQuipsDatabase');
 const { GenerationQuipsManager } = require('./generationQuipsManager');
 const NovelHandlers = require('./novelHandlers');
 const DatasetTagService = require('./datasetTagService');
@@ -46,20 +35,13 @@ const {
     evaluateAccountHealthAfterBalanceSync,
 } = require('./accountDataHealth');
 const {
-    initializeAccountSubscriptionSnapshot,
     recordSubscriptionRefresh,
     getAccountSubscriptionNoticeFields,
 } = require('./accountSubscriptionSnapshot');
-const metadataDatabase = require('./metadataDatabase');
-const chatDatabase = require('./chatDatabase');
-const directorDatabase = require('./directorDatabase');
 const notesDatabase = require('./notesDatabase');
 const vfsDatabase = require('./vfsDatabase');
-const { VfsManager } = require('./vfsManager');
-const TagLookup = require('./tag-lookup');
 const TagAutofillSearch = require('./tagAutofillSearch');
 const logger = require('./logger');
-const { asyncSQLiteManager } = require('./sqliteAsyncWrapper');
 const { WebSocketServer } = require('./websocket');
 const dataPlumbing = require('./dataPlumbing');
 const { ConfigManager, GlobalCheckpointManager } = require('./configManager');
@@ -68,6 +50,7 @@ const imageCounter = require('./imageCounter');
 const tracing = require('./tracing');
 const ParallelPreviewGenerator = require('./parallelPreviewGenerator');
 const PngMetadata = require('./pngMetadata');
+const { ensureForgeSigningKeys } = require('./forgeSigning');
 const TextReplacements = require('./textReplacements');
 const LocalPromptOptimizer = require('./localPromptOptimizer');
 const ConfigEditorService = require('./configEditorService');
@@ -75,9 +58,10 @@ const CheckpointManagementService = require('./checkpointManagementService');
 const staticWiki = require('./staticWiki');
 const grimoireDomainRegistry = require('./grimoireDomainRegistry');
 const { TagSuggestionsCache } = require('./cache');
-const { createAuthMiddleware, createApplicationAuthEarlyMiddleware, createDevAuthMiddleware } = require('./auth');
+const { createAuthMiddleware, createDevAuthMiddleware } = require('./auth');
 const polymoduleManager = require('./polymoduleManager');
 const { NodeHtmlMarkdown } = require('node-html-markdown');
+const { INIT_STEPS, databases: bootstrapDatabases } = require('./bootstrap/initSteps');
 
 class GlobalResources {
     constructor() {
@@ -111,6 +95,7 @@ class GlobalResources {
         this.naxTagsDatabase = null;
         this.naxTagGeneration = null;
         this.naxVibesGallery = null;
+        this.novelaiExploreGallery = null;
         this.referenceMetadataDatabase = null;
         this.generationQuipsDatabase = null;
         this.generationQuipsManager = null;
@@ -260,6 +245,7 @@ class GlobalResources {
             naxTagGeneration: false,
             referenceMetadataDatabase: false,
             generationQuipsDatabase: false,
+            charactersDatabase: false,
             generationQuipsManager: false,
             generationQuipsAutoUpdate: false,
             datasetTagService: false,
@@ -531,6 +517,21 @@ class GlobalResources {
     }
 
     /**
+     * Update workspaces in-memory cache without persisting gallery membership arrays to disk.
+     * SQL gallery_workspace_ownership is the source of truth for files/scraps/pins.
+     */
+    setWorkspacesConfigCache(workspaces) {
+        if (!this.configManager) {
+            throw new Error('ConfigManager not initialized');
+        }
+        const configInfo = this.configManager._configs?.workspaces;
+        if (!configInfo) {
+            throw new Error('Workspaces config not loaded');
+        }
+        configInfo.cache = workspaces;
+    }
+
+    /**
      * Get workspace desktop config
      * @param {Object} options - Options
      * @param {boolean} options.clone - If true, returns a deep clone of the config
@@ -747,10 +748,18 @@ class GlobalResources {
             // Log viewer path UUID (secure config, needed before route registration)
             this.ensureLogViewerPathUuid();
             this.ensureVfsPathUuid();
+            // Image attestation keys (Ed25519) — auto-create if missing
+            // ensureForgeSigningKeys: modules/forgeSigning.js
+            this.ensureForgeSigningKeys();
         } catch (error) {
             console.error('[init] Error preparing global resources:', error.message);
             return false;
         }
+    }
+
+    ensureForgeSigningKeys() {
+        // ensureForgeSigningKeys: modules/forgeSigning.js
+        return ensureForgeSigningKeys(this);
     }
 
     async _runInitStep(stepId, label, fn) {
@@ -804,19 +813,10 @@ class GlobalResources {
     }
 
     /**
-     * Initialize all global resources at server startup
-     * 
-     * Dependency Order:
-     * 1. Logger (no dependencies, needed by everything)
-     * 2. T5 Tokenizer & Spell Checker (no dependencies)
-     * 3. Databases (need logger; needed by managers)
-     * 4. Singleton Managers (memoryManager -> promptManager -> aiServiceManager)
-     *    - memoryManager: needs logger + chatDatabase
-     *    - promptManager: needs logger + metadataDatabase + chatDatabase + memoryManager
-     *    - aiServiceManager: needs logger + chatDatabase + promptManager + memoryManager
-     * 5. Workspace & DatasetTagService (need logger)
-     * 6. Other services (custom resolutions, API clients, character data, tag search)
-     * 
+     * Initialize all global resources at server startup.
+     * Pipeline: modules/bootstrap/initSteps.js (INIT_STEPS).
+     * DB/tag bodies: modules/bootstrap/databases.js.
+     *
      * @param {Object} options - Initialization options
      * @returns {Promise<boolean>} - Success status
      */
@@ -830,162 +830,40 @@ class GlobalResources {
         this._startupReporter = typeof options.reportStartup === 'function' ? options.reportStartup : null;
 
         try {
-            await this._runInitStepSync('gr_configs', 'Loading configuration', () => {
-                if (!this.configManager) {
-                    this.initializeConfigs();
+            for (const step of INIT_STEPS) {
+                if (step.afterReady) {
+                    continue;
                 }
-            });
-
-            await this._runInitStepSync('gr_logger', 'Starting logger', () => {
-                if (!this.logger) {
-                    this.initializeLogger();
+                if (step.when && !step.when(this, options)) {
+                    if (step.skipMessage && this.logger?.bootSubStep) {
+                        this.logger.bootSubStep(step.skipMessage);
+                    }
+                    continue;
                 }
-            });
-
-            await this._runInitStepSync('gr_lru_cache', 'Initializing LRU caches', () => {
-                this.initializeLRUCaches();
-            });
-
-            await this._runInitStepSync('gr_api_keys', 'Initializing API key manager', () => {
-                this.initializeApiKeyManager();
-            });
-
-            await this._runInitStepSync('gr_polymodules', 'Registering polymorphic modules', () => {
-                this.initializePolymodules();
-            });
-
-            await this._runInitStep('gr_html_markdown', 'Initializing HTML to Markdown converter', async () => {
-                await this.initializeHtmlMarkdown();
-            });
-
-            await this._runInitStep('gr_t5_tokenizer', 'Loading T5 tokenizer', async () => {
-                await this.initializeT5Tokenizer();
-            });
-
-            await this._runInitStep('gr_spell_checker', 'Loading spell checker', async () => {
-                await this.initializeSpellChecker();
-            });
-
-            await this._runInitStep('gr_word_lookup', 'Loading dictionary service', async () => {
-                await this.initializeWordLookupService();
-            });
-
-            await this._runInitStep('gr_auxiliary', 'Loading auxiliary services', async () => {
-                await this.initializeAuxiliaryServices();
-            });
-
-            await this._runInitStep('gr_databases', 'Setting up databases', async () => {
-                await this.initializeDatabases();
-            });
-
-            await this._runInitStep('gr_replication', 'Initializing replication stack', async () => {
-                await this.initializeReplicationStack();
-            });
-
-            await this._runInitStepSync('gr_knowledge_memory', 'Initializing knowledge memory database', () => {
-                this.initializeKnowledgeMemoryDb();
-            });
-
-            await this._runInitStepSync('gr_tag_search_db', 'Initializing tag search database', () => {
-                this.initializeTagSearchDatabase();
-            });
-
-            await this._runInitStepSync('gr_nax_tags', 'Initializing NAX tags database', () => {
-                this.initializeNaxTagsDatabase();
-            });
-
-            await this._runInitStepSync('gr_nax_vibes', 'Initializing NAX vibes gallery', () => {
-                this.initializeNaxVibesGallery();
-            });
-
-            await this._runInitStepSync('gr_nax_generation', 'Loading NAX tag generation config', () => {
-                this.initializeNaxTagGeneration();
-            });
-
-            await this._runInitStepSync('gr_reference_metadata', 'Initializing reference metadata database', () => {
-                this.initializeReferenceMetadataDatabase();
-            });
-
-            await this._runInitStepSync('gr_generation_quips_db', 'Initializing generation quips database', () => {
-                this.initializeGenerationQuipsDatabase();
-            });
-
-            await this._runInitStepSync('gr_singleton_managers', 'Initializing AI and memory managers', () => {
-                this.initializeSingletonManagers();
-            });
-
-            await this._runInitStepSync('gr_workspace', 'Loading workspace system', () => {
-                this.initializeWorkspace();
-            });
-
-            await this._runInitStepSync('gr_generation_quips_mgr', 'Initializing generation quips manager', () => {
-                this.initializeGenerationQuipsManager();
-            });
-
-            await this._runInitStepSync('gr_novel_handlers', 'Initializing novel handlers', () => {
-                this.initializeNovelHandlers();
-            });
-
-            await this._runInitStepSync('gr_queue', 'Initializing queue', () => {
-                this.initializeQueue();
-            });
-
-            await this._runInitStepSync('gr_favorites', 'Initializing favorites manager', () => {
-                this.initializeFavoritesManager();
-            });
-
-            await this._runInitStepSync('gr_checkpoint', 'Initializing checkpoint manager', () => {
-                this.initializeGlobalCheckpointManager();
-            });
-
-            await this._runInitStep('gr_dataset_tags', 'Loading dataset tag service', async () => {
-                await this.initializeDatasetTagService();
-            });
-
-            await this._runInitStepSync('gr_custom_resolutions', 'Loading custom resolutions', () => {
-                this.initializeCustomResolutions();
-            });
-
-            await this._runInitStep('gr_master_clients', 'Initializing API clients', async () => {
-                await this.initializeMasterClients();
-            });
-
-            await this._runInitStep('gr_character_data', 'Loading character data', async () => {
-                await this.loadCharacterData();
-            });
-
-            const { loadTagSearchServices = !!this.getConfig()?.preloadTags || false } = options;
-            if (loadTagSearchServices) {
-                await this._runInitStep('gr_tag_search_services', 'Loading tag search services', async () => {
-                    await this.initializeTagSearchServices();
-                });
-            } else if (this.logger?.bootSubStep) {
-                this.logger.bootSubStep('Skipping tag search services (lazy-load)');
+                if (step.sync) {
+                    this._runInitStepSync(step.id, step.label, () => step.run(this, options));
+                } else {
+                    await this._runInitStep(step.id, step.label, () => step.run(this, options));
+                }
             }
 
-            await this._runInitStepSync('gr_system_info', 'Initializing system info cache', () => {
-                this.initializeSystemInfoCache();
-            });
-
-            await this._runInitStepSync('gr_novelai_status', 'Starting NovelAI status monitor', () => {
-                this.initializeNovelAiStatusMonitor();
-            });
-
-            await this._runInitStepSync('gr_account_snapshot', 'Initializing account subscription snapshot', () => {
-                initializeAccountSubscriptionSnapshot(this);
-            });
-
-            await this._runInitStep('gr_workspace_sync', 'Syncing workspace files', async () => {
-                if (this.workspace) {
-                    try {
-                        await this.workspace.syncWorkspaceFiles();
-                    } catch (error) {
-                        console.error('[init] Failed to sync workspace files after initialization:', error.message);
-                    }
-                }
-            });
-
+            // Mark ready before workspace SQL/filesystem reconcile — sync uses getMetadataDatabase().
             this.initialized = true;
+
+            for (const step of INIT_STEPS) {
+                if (!step.afterReady) {
+                    continue;
+                }
+                if (step.when && !step.when(this, options)) {
+                    continue;
+                }
+                if (step.sync) {
+                    this._runInitStepSync(step.id, step.label, () => step.run(this, options));
+                } else {
+                    await this._runInitStep(step.id, step.label, () => step.run(this, options));
+                }
+            }
+
             this.initEndTime = Date.now();
             this._startupReporter = null;
 
@@ -1024,27 +902,10 @@ class GlobalResources {
      * Initialize legacy JSON tag indexes (AnimeTagSearch, FurryTagSearch, FastTagSearch).
      * Prompt autofill local tags use TagLookup via tagAutofillSearch (not these modules).
      * Still required by fastTagSearch.js and promptLogitAnalyzer.js until migrated.
+     * Body: modules/bootstrap/databases.js
      */
     async initializeTagSearchServices() {
-        try {
-            // AnimeTagSearch loads dataset_tags.json + indexes
-            this.animeTagSearch = new AnimeTagSearch(this);
-            this.initializationProgress.animeTagSearch = true;
-            console.log('✓ AnimeTagSearch loaded');
-
-            // FurryTagSearch loads dataset_tags_furry.json + indexes
-            this.furryTagSearch = new FurryTagSearch(this);
-            this.initializationProgress.furryTagSearch = true;
-            console.log('✓ FurryTagSearch loaded');
-
-            // FastTagSearch wraps both
-            this.fastTagSearch = new FastTagSearch(this);
-            this.initializationProgress.fastTagSearch = true;
-            console.log('✓ FastTagSearch initialized');
-        } catch (error) {
-            console.error('  ❌ Failed to load tag search services:', error);
-            throw error;
-        }
+        return bootstrapDatabases.initializeTagSearchServices(this);
     }
 
     /**
@@ -1223,23 +1084,34 @@ class GlobalResources {
     }
 
     /**
-     * Load character data for auto-complete
+     * Load character data for auto-complete from SQLite (.cache/characters.db).
+     * Auto-imports characters.json once when the DB is empty.
      */
     async loadCharacterData() {
         try {
             const fs = require('fs');
-            const characterDataPath = this.getPath('characters');
-
-            if (fs.existsSync(characterDataPath)) {
-                const data = JSON.parse(fs.readFileSync(characterDataPath, 'utf8'));
-                this.characterDataArray = data.data || [];
-                this.initializationProgress.characterData = true;
-                console.log(`✓ Character Data Loaded (${this.characterDataArray.length} characters)`);
-            } else {
-                console.log('    ⚠️  Character Data not found');
+            const db = this.charactersDatabase;
+            if (!db) {
+                console.log('    ⚠️  Characters database not initialized');
                 this.characterDataArray = [];
                 this.initializationProgress.characterData = true;
+                return;
             }
+
+            if (db.countCharacters() === 0) {
+                const characterDataPath = this.getPath('characters');
+                if (fs.existsSync(characterDataPath)) {
+                    const data = JSON.parse(fs.readFileSync(characterDataPath, 'utf8'));
+                    const stats = db.importFromJsonData(data, { replace: true });
+                    console.log(
+                        `✓ Characters JSON imported into DB (${stats.characters} characters, ${stats.copyrights} copyrights)`
+                    );
+                }
+            }
+
+            this.refreshCharacterDataCache();
+            this.initializationProgress.characterData = true;
+            console.log(`✓ Character Data Loaded (${this.characterDataArray.length} characters)`);
         } catch (error) {
             console.error('  ❌ Failed to load character data:', error);
             this.characterDataArray = [];
@@ -1248,124 +1120,60 @@ class GlobalResources {
     }
 
     /**
+     * Rebuild in-memory character array from SQLite (autofill + applet).
+     */
+    refreshCharacterDataCache() {
+        if (this.charactersDatabase) {
+            this.characterDataArray = this.charactersDatabase.listAllAsArray();
+        } else {
+            this.characterDataArray = [];
+        }
+        return this.characterDataArray;
+    }
+
+    getCharactersDatabase() {
+        if (!this.initialized || !this.charactersDatabase) {
+            throw new Error('Characters database not initialized - call initialize() first');
+        }
+        return this.charactersDatabase;
+    }
+
+    /**
      * Initialize knowledge memory database
      */
+    // modules/bootstrap/databases.js
     initializeKnowledgeMemoryDb() {
-        try {
-            // Ensure database is initialized (may have been called in web_server.js, but ensure it's done)
-            const { initializeKnowledgeMemoryDatabase } = knowledgeMemoryDb;
-            const initialized = initializeKnowledgeMemoryDatabase(this.getPath('databases'));
-
-            if (!initialized) {
-                throw new Error('Failed to initialize knowledge memory database');
-            }
-
-            // Store a reference to the module for global access
-            this.knowledgeMemoryDb = knowledgeMemoryDb;
-            this.initializationProgress.knowledgeMemoryDb = true;
-            console.log('✓ Knowledge memory database ready');
-        } catch (error) {
-            console.error('  ❌ Failed to load knowledge memory database:', error);
-            throw error;
-        }
+        return bootstrapDatabases.initializeKnowledgeMemoryDb(this);
     }
 
-    /**
-     * Initialize tag search database
-     */
+    // modules/bootstrap/databases.js
     initializeTagSearchDatabase() {
-        try {
-            const { initializeTagSearchDatabase } = tagSearchDatabase;
-            const initialized = initializeTagSearchDatabase(this.getPath('databases'));
-
-            if (!initialized) {
-                throw new Error('Failed to initialize tag search database');
-            }
-
-            this.tagSearchDatabase = tagSearchDatabase;
-            this.initializationProgress.tagSearchDatabase = true;
-            console.log('✓ Tag search database ready');
-        } catch (error) {
-            console.error('  ❌ Failed to load tag search database:', error);
-            throw error;
-        }
+        return bootstrapDatabases.initializeTagSearchDatabase(this);
     }
 
-    /**
-     * NAX.moe vibes gallery HTML proxy + 2h response cache
-     */
+    // modules/bootstrap/databases.js
     initializeNaxVibesGallery() {
-        naxVibesGallery.initNaxVibesGallery(this.getPath('cache'));
-        this.naxVibesGallery = naxVibesGallery;
-        console.log('✓ NAX vibes gallery proxy ready');
+        return bootstrapDatabases.initializeNaxVibesGallery(this);
     }
 
-    /**
-     * Initialize NAX tags database (optional; created by scripts/import-nax-tags.js)
-     */
+    // modules/bootstrap/databases.js
     initializeNaxTagsDatabase() {
-        try {
-            const ok = naxTagsDatabase.initializeNaxTagsDatabase(this.getPath('naxTagsDb'));
-            if (!ok) {
-                throw new Error('Failed to initialize NAX tags database');
-            }
-            this.naxTagsDatabase = naxTagsDatabase;
-            this.initializationProgress.naxTagsDatabase = true;
-            console.log('✓ NAX tags database ready');
-        } catch (error) {
-            console.error('  ❌ Failed to load NAX tags database:', error);
-            throw error;
-        }
+        return bootstrapDatabases.initializeNaxTagsDatabase(this);
     }
 
-    /**
-     * Initialize NAX custom tag generation (optional nax_generation_config.json)
-     */
+    // modules/bootstrap/databases.js
     initializeNaxTagGeneration() {
-        try {
-            this.naxTagGeneration = new NaxTagGenerationService(this);
-            try {
-                this.naxTagGeneration.loadConfig();
-                console.log('✓ NAX tag generation config loaded');
-            } catch (err) {
-                const msg = err && err.message ? err.message : String(err);
-                if (msg.includes('not found')) {
-                    console.log('   - NAX generation config not found (optional); custom tag previews disabled');
-                } else {
-                    console.warn('   ⚠️ NAX generation config invalid:', msg);
-                }
-            }
-            this.initializationProgress.naxTagGeneration = true;
-        } catch (error) {
-            console.error('  ❌ Failed to initialize NAX tag generation:', error);
-            throw error;
-        }
+        return bootstrapDatabases.initializeNaxTagGeneration(this);
     }
 
-    /**
-     * Initialize reference metadata database
-     */
+    // modules/bootstrap/databases.js
     initializeReferenceMetadataDatabase() {
-        try {
-            // Create a single instance that will be shared
-            this.referenceMetadataDatabase = new ReferenceMetadataDatabase(this);
-            this.initializationProgress.referenceMetadataDatabase = true;
-            console.log('✓ Reference metadata database ready');
-        } catch (error) {
-            console.error('  ❌ Failed to initialize reference metadata database:', error);
-            throw error;
-        }
+        return bootstrapDatabases.initializeReferenceMetadataDatabase(this);
     }
 
+    // modules/bootstrap/databases.js
     initializeGenerationQuipsDatabase() {
-        try {
-            this.generationQuipsDatabase = new GenerationQuipsDatabase(this);
-            this.initializationProgress.generationQuipsDatabase = true;
-            console.log('✓ Generation quips database ready');
-        } catch (error) {
-            console.error('  ❌ Failed to initialize generation quips database:', error);
-            throw error;
-        }
+        return bootstrapDatabases.initializeGenerationQuipsDatabase(this);
     }
 
     initializeGenerationQuipsManager() {
@@ -1531,6 +1339,14 @@ class GlobalResources {
         try {
             this.workspace = new WorkspaceManager(this);
             this.workspace.initializeWorkspaces();
+            if (this.metadataDatabase?.ensureGalleryOwnershipFromWorkspaces) {
+                const workspaces = this.getWorkspacesConfig();
+                this.metadataDatabase.ensureGalleryOwnershipFromWorkspaces(workspaces).then(() => {
+                    this.workspace?.stripGalleryArraysFromWorkspacesCache?.();
+                }).catch((err) => {
+                    console.warn('Gallery ownership reconcile skipped:', err.message || err);
+                });
+            }
             this.initializationProgress.workspace = true;
             console.log('✓ SolarSystem (Workspaces) module ready');
         } catch (error) {
@@ -1553,19 +1369,9 @@ class GlobalResources {
         }
     }
 
-    /**
-     * Initialize async SQLite manager
-     */
+    // modules/bootstrap/databases.js
     initializeAsyncSQLiteManager() {
-        try {
-            // Initialize the async SQLite manager
-            asyncSQLiteManager.initialize();
-            this.asyncSQLiteManager = asyncSQLiteManager;
-            console.log('✓ SQLite Manager ready');
-        } catch (error) {
-            console.error('  ❌ Failed to initialize async SQLite manager:', error);
-            throw error;
-        }
+        return bootstrapDatabases.initializeAsyncSQLiteManager(this);
     }
 
     /**
@@ -1590,105 +1396,9 @@ class GlobalResources {
         }
     }
 
-    /**
-     * Initialize all SQLite databases
-     */
+    // modules/bootstrap/databases.js
     async initializeDatabases() {
-        try {
-            // Initialize async SQLite manager first
-            this.initializeAsyncSQLiteManager();
-
-            // Initialize metadata database
-            const databasesPath = this.getPath('databases');
-            await metadataDatabase.initializeDatabase(databasesPath, this.pngMetadata);
-            this.metadataDatabase = metadataDatabase;
-            this.initializationProgress.metadataDatabase = true;
-            console.log('✓ ForgeData and Sidechannel (Metadata) database ready');
-
-            // Initialize chat database
-            if (chatDatabase.initializeChatDatabase) {
-                const success = await chatDatabase.initializeChatDatabase(databasesPath);
-                if (!success) {
-                    throw new Error('Failed to initialize chat database - check logs above for details');
-                }
-            }
-            this.chatDatabase = chatDatabase;
-            this.initializationProgress.chatDatabase = true;
-            console.log('✓ Persona Chat (LinkXi) database ready');
-
-            // Initialize director database
-            if (directorDatabase.initializeDirectorDatabase) {
-                const success = await directorDatabase.initializeDirectorDatabase(databasesPath);
-                if (!success) {
-                    throw new Error('Failed to initialize director database - check logs above for details');
-                }
-            }
-            this.directorDatabase = directorDatabase;
-            this.initializationProgress.directorDatabase = true;
-            console.log('✓ Enshutsuka Sessions (Image Director) database ready');
-
-            // Initialize notes database
-            if (notesDatabase.initializeNotesDatabase) {
-                const success = await notesDatabase.initializeNotesDatabase(databasesPath);
-                if (!success) {
-                    throw new Error('Failed to initialize notes database - check logs above for details');
-                }
-            }
-            this.notesDatabase = notesDatabase;
-            this.initializationProgress.notesDatabase = true;
-            console.log('✓ Notes database ready');
-
-            if (applicationAuthDatabase.initializeApplicationAuthDatabase) {
-                const appAuthOk = await applicationAuthDatabase.initializeApplicationAuthDatabase(databasesPath);
-                if (!appAuthOk) {
-                    throw new Error('Failed to initialize application auth database - check logs above for details');
-                }
-            }
-            this.applicationAuthDatabase = applicationAuthDatabase;
-            this.initializationProgress.applicationAuthDatabase = true;
-            console.log('✓ Application auth database ready');
-
-            if (telemetryDatabase.initializeTelemetryDatabase) {
-                const telemetryOk = await telemetryDatabase.initializeTelemetryDatabase(databasesPath);
-                if (!telemetryOk) {
-                    throw new Error('Failed to initialize telemetry database - check logs above for details');
-                }
-            }
-            this.telemetryDatabase = telemetryDatabase;
-            this.initializationProgress.telemetryDatabase = true;
-            console.log('✓ Telemetry database ready');
-
-            if (vfsDatabase.initializeVfsDatabase) {
-                const vfsOk = await vfsDatabase.initializeVfsDatabase(databasesPath);
-                if (!vfsOk) {
-                    throw new Error('Failed to initialize VFS database - check logs above for details');
-                }
-            }
-            this.vfsDatabase = vfsDatabase;
-            this.vfsManager = new VfsManager(this);
-            const fs = require('fs');
-            const userFilesPath = this.getPath('userFiles');
-            if (!fs.existsSync(userFilesPath)) {
-                fs.mkdirSync(userFilesPath, { recursive: true });
-            }
-            this.initializationProgress.vfsDatabase = true;
-            console.log('✓ VFS database ready');
-
-            // Initialize tag database (tag-lookup)
-            const tagLookup = new TagLookup(this);
-            await tagLookup.initializeDatabase(databasesPath);
-            // modules/autofillRankingSettings.js — global autofill ranking config (config.autofillRanking)
-            tagLookup.setRankingConfig(this.getConfig()?.autofillRanking);
-            this.tagDatabase = tagLookup;
-            this.initializationProgress.tagDatabase = true;
-            console.log('✓ Tag Wiki database ready');
-
-            this.initializeApplicationAuthManager();
-        } catch (error) {
-            console.error('  ❌ Failed to initialize databases:', error);
-            console.error('  Full error stack:', error.stack);
-            throw error;
-        }
+        return bootstrapDatabases.initializeDatabases(this);
     }
 
 
@@ -2235,18 +1945,9 @@ class GlobalResources {
         }
     }
 
+    // modules/bootstrap/databases.js
     initializeApplicationAuthManager() {
-        if (this.applicationAuthManager) {
-            return;
-        }
-        try {
-            this.applicationAuthManager = new ApplicationAuthManager(this);
-            this.applicationAuthEarlyMiddleware = createApplicationAuthEarlyMiddleware(this);
-            console.log('✓ Application auth manager initialized');
-        } catch (error) {
-            console.error('  ❌ Failed to initialize application auth manager:', error);
-            throw error;
-        }
+        return bootstrapDatabases.initializeApplicationAuthManager(this);
     }
 
     /**
@@ -2468,6 +2169,16 @@ class GlobalResources {
     }
 
     /**
+     * NovelAI Explore / Agora gallery (search proxy + image cache)
+     */
+    getNovelaiExploreGallery() {
+        if (!this.novelaiExploreGallery) {
+            throw new Error('NovelAI Explore gallery not initialized');
+        }
+        return this.novelaiExploreGallery;
+    }
+
+    /**
      * Get Reference Metadata Database instance
      */
     getReferenceMetadataDatabase() {
@@ -2614,8 +2325,8 @@ class GlobalResources {
      * Get Metadata Database instance
      */
     getMetadataDatabase() {
-        if (!this.initialized || !this.metadataDatabase) {
-            throw new Error('Global resources not initialized - call initialize() first');
+        if (!this.metadataDatabase) {
+            throw new Error('Metadata database not initialized');
         }
         return this.metadataDatabase;
     }
@@ -4396,7 +4107,7 @@ class GlobalResources {
 
         // Count how many previews need to be generated
         let missingPreviews = 0;
-        const previewTypes = ['.webp', '@2x.webp', '@lq.webp', '@blur.webp'];
+        const previewTypes = ['.webp', '@2x.webp', '@lq.webp'];
 
         for (const base in baseMap) {
             const imgFile = baseMap[base].original || baseMap[base].upscaled;
@@ -4473,12 +4184,17 @@ class GlobalResources {
         // Remove orphan previews
         let orphanCount = 0;
         for (const preview of previews) {
-            // Handle regular previews (.webp), @2x previews (@2x.webp), and blur previews (@blur.webp), and low quality previews (@lq.webp)
+            // Handle regular previews (.webp), @2x, @lq. Legacy @blur.webp is always removed (replaced by BlurHash).
             let base;
+            if (preview.endsWith('@blur.webp')) {
+                try {
+                    fs.unlinkSync(path.join(previewsDir, preview));
+                    orphanCount++;
+                } catch (_e) { /* ignore */ }
+                continue;
+            }
             if (preview.endsWith('@lq.webp')) {
                 base = preview.replace(/@lq\.webp$/, '');
-            } else if (preview.endsWith('@blur.webp')) {
-                base = preview.replace(/@blur\.webp$/, '');
             } else if (preview.endsWith('@2x.webp')) {
                 base = preview.replace(/@2x\.webp$/, '');
             } else if (preview.endsWith('.webp')) {
@@ -4502,6 +4218,52 @@ class GlobalResources {
 
         if (orphanCount > 0) {
             this.logger.bootSubStep(`Removed ${orphanCount} orphan preview files`);
+        }
+
+        // Fill missing BlurHash rows via the live DB connections (never open a second writer).
+        try {
+            const blurhashLog = (msg) => {
+                if (String(msg).startsWith('  …')) {
+                    console.log(msg);
+                    return;
+                }
+                this.logger.bootSubStep(msg);
+            };
+            const imageStats = await metadataDb.backfillMissingBlurhashes({
+                imagesDir,
+                previewsDir,
+                log: blurhashLog
+            });
+            if (imageStats.total > 0 || imageStats.updated > 0) {
+                this.logger.bootSubStep(
+                    `BlurHash gallery: updated ${imageStats.updated}/${imageStats.total}` +
+                    ` (gallery sync ${imageStats.gallerySynced}, failed ${imageStats.failed})`
+                );
+            } else {
+                this.logger.bootSubStep('BlurHash gallery: up to date');
+            }
+
+            const refDb = this.referenceMetadataDatabase;
+            if (refDb) {
+                // modules/referenceMetadataDatabase.js — backfillMissingBlurhashes
+                const refStats = await refDb.backfillMissingBlurhashes({
+                    previewCacheDir: this.getPath('previewCache'),
+                    uploadCacheDir: this.getPath('uploadCache'),
+                    log: blurhashLog
+                });
+                const refWork = (refStats.refsTotal || 0) + (refStats.vibesTotal || 0);
+                if (refWork > 0 || refStats.refsUpdated || refStats.vibesUpdated) {
+                    this.logger.bootSubStep(
+                        `BlurHash refs: files ${refStats.refsUpdated}/${refStats.refsTotal},` +
+                        ` vibes ${refStats.vibesUpdated}/${refStats.vibesTotal}`
+                    );
+                } else {
+                    this.logger.bootSubStep('BlurHash refs: up to date');
+                }
+            }
+        } catch (blurhashError) {
+            this.logger.error('BlurHash backfill during preview sync failed:', blurhashError);
+            this.logger.bootSubStep(`⚠️ BlurHash backfill failed: ${blurhashError.message}`);
         }
 
         // Also check cache previews

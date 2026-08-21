@@ -12,11 +12,8 @@ __dreamscapeFence = (typeof __dreamscapeFence !== 'undefined' && __dreamscapeFen
     : Object.create(null);
 __dreamscapeFence['app.js'] = false;
 
-// T5 Tokenizer global instance (init: appInitSteps.js)
-let t5Tokenizer = null;
-
-// Session re-auth promise shared by connectionManager.js
-let pinModalPromise = null;
+// T5 Tokenizer global instance (init: appInitSteps.js; declared in app.html)
+// Session re-auth promise shared by connectionManager.js (declared in app.html)
 
 // Tag-highlighting dataset from protected bundle
 if (typeof u1 !== 'undefined') {
@@ -46,6 +43,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadBlurPreference();
     // wireFocusOverlayListeners: public/scripts/comp/focusOverlayManager.js
     wireFocusOverlayListeners();
+    // startClientPerfSampler: public/scripts/comp/clientPerfSampler.js
+    startClientPerfSampler();
 });
 
 __dreamscapeFence['app.js'] = true;

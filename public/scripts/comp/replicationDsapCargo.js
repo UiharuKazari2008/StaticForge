@@ -15,9 +15,17 @@ let replicationCargoPanelState = {
     transferMode: 'tape-stream-compressed',
     overrideMode: null,
     lastManifestId: null,
+    lastResponseUrl: null,
     statusText: 'Idle',
     defaultTransferMode: 'tape-stream-compressed'
 };
+
+function replicationCargoRevokeLastResponseUrl() {
+    if (replicationCargoPanelState.lastResponseUrl) {
+        URL.revokeObjectURL(replicationCargoPanelState.lastResponseUrl);
+        replicationCargoPanelState.lastResponseUrl = null;
+    }
+}
 
 function replicationCargoEscapeHtml(text) {
     if (text == null) return '';
@@ -294,7 +302,9 @@ async function replicationCargoUploadFile(root, host, file) {
         if (responsePath) {
             const responseJson = JSON.stringify(complete, null, 2);
             const blob = new Blob([responseJson], { type: 'application/json' });
+            replicationCargoRevokeLastResponseUrl();
             const responseUrl = URL.createObjectURL(blob);
+            replicationCargoPanelState.lastResponseUrl = responseUrl;
             html += `<p><a href="${replicationCargoEscapeHtml(responseUrl)}" download="${replicationCargoEscapeHtml(responsePath)}">Download ${replicationCargoEscapeHtml(responsePath)}</a></p>`;
         }
         meta.innerHTML = html;
@@ -360,6 +370,7 @@ function replicationCargoDestroyPanel(root) {
     if (btn && typeof contextMenu !== 'undefined') {
         contextMenu.detachClickMenuFromElement(btn);
     }
+    replicationCargoRevokeLastResponseUrl();
     replicationCargoPanelState.overrideMode = null;
 }
 

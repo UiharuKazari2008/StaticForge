@@ -40,8 +40,8 @@ class FileSearch {
     }
 
     /**
-     * Drop-down below the field only on narrow viewports.
-     * deviceUtils.isMobileDevice() is true for most touch desktops — that wrongly forced mobile layout.
+     * Narrow viewports auto-expand the suggestion list.
+     * Window direction is always drop-up (menubar sits at the bottom).
      */
     isFileSearchDropDownViewport() {
         return Boolean(window.matchMedia && window.matchMedia('(max-width: 767px)').matches);
@@ -117,52 +117,23 @@ class FileSearch {
                 }
             } else if (e.key === 'ArrowDown') {
                 e.preventDefault();
-                const dropDown = this.isFileSearchDropDownViewport();
-                if (dropDown) {
-                    this.navigateSuggestions(1);
-                } else {
-                    this.navigateSuggestions(-1);
-                }
+                // Drop-up list: Down moves toward the input (lower index visually near field)
+                this.navigateSuggestions(-1);
             } else if (e.key === 'ArrowUp') {
                 e.preventDefault();
-                const dropDown = this.isFileSearchDropDownViewport();
-                if (dropDown) {
-                    this.navigateSuggestions(-1);
-                } else {
-                    this.navigateSuggestions(1);
-                }
+                this.navigateSuggestions(1);
             } else if (e.key === 'PageDown') {
                 e.preventDefault();
-                const dropDown = this.isFileSearchDropDownViewport();
-                if (dropDown) {
-                    this.handlePageNavigation(1);
-                } else {
-                    this.handlePageNavigation(-1);
-                }
+                this.handlePageNavigation(-1);
             } else if (e.key === 'PageUp') {
                 e.preventDefault();
-                const dropDown = this.isFileSearchDropDownViewport();
-                if (dropDown) {
-                    this.handlePageNavigation(-1);
-                } else {
-                    this.handlePageNavigation(1);
-                }
+                this.handlePageNavigation(1);
             } else if (e.key === 'Home') {
                 e.preventDefault();
-                const dropDown = this.isFileSearchDropDownViewport();
-                if (dropDown) {
-                    this.handleHomeEndNavigation(false);
-                } else {
-                    this.handleHomeEndNavigation(true);
-                }
+                this.handleHomeEndNavigation(true);
             } else if (e.key === 'End') {
                 e.preventDefault();
-                const dropDown = this.isFileSearchDropDownViewport();
-                if (dropDown) {
-                    this.handleHomeEndNavigation(true);
-                } else {
-                    this.handleHomeEndNavigation(false);
-                }
+                this.handleHomeEndNavigation(false);
             }
             // Don't intercept left/right arrows - allow text navigation
         });
@@ -694,7 +665,7 @@ class FileSearch {
                 <div class="preview-images-grid">
                     ${previewImages.map(fileInfo => `
                         <div class="preview-image-item" data-filename="${fileInfo.filename}" title="${fileInfo.sourceTag}">
-                            <img src="/previews/${encodeURIComponent(this.getBaseName(fileInfo.filename))}.webp" 
+                            <img src="${localGalleryPreviewUrl(`${this.getBaseName(fileInfo.filename)}.webp`)}" 
                                  alt="${fileInfo.filename}" 
                                  loading="lazy"
                                  onerror="this.classList.add('hidden'); this.nextElementSibling.classList.remove('hidden');">
@@ -778,24 +749,18 @@ class FileSearch {
         this.autofillOverlay.style.left = rect.left + 'px';
         this.autofillOverlay.style.width = Math.max(rect.width, 300) + 'px';
 
-        if (narrow) {
-            this.autofillOverlay.style.top = (rect.bottom + 5) + 'px';
-            this.autofillOverlay.style.bottom = 'auto';
+        // Always open upward — search field lives in the bottom menubar on desktop and mobile.
+        this.autofillOverlay.style.bottom = (window.innerHeight - rect.top + 5) + 'px';
+        this.autofillOverlay.style.top = 'auto';
+        this.autofillOverlay.classList.add('bottom-up');
+        this.autofillOverlay.classList.remove('top-down');
 
+        if (narrow) {
             this.expandedResults = true;
             this.autofillOverlay.classList.add('expanded');
-
-            this.autofillOverlay.classList.add('top-down');
-            this.autofillOverlay.classList.remove('bottom-up');
         } else {
-            this.autofillOverlay.style.bottom = (window.innerHeight - rect.top + 5) + 'px';
-            this.autofillOverlay.style.top = 'auto';
-
             this.expandedResults = false;
             this.autofillOverlay.classList.remove('expanded');
-
-            this.autofillOverlay.classList.add('bottom-up');
-            this.autofillOverlay.classList.remove('top-down');
         }
 
         if (this.tagSuggestions && this.tagSuggestions.length > 0) {
@@ -953,25 +918,12 @@ class FileSearch {
     }
 
     async initializeSearchWithGalleryData(viewType) {
-        // Execute cache initialization and gallery data request in parallel
-        const [cacheResult, galleryResp] = await Promise.all([
-            window.wsClient.initializeSearchCache(viewType),
-            window.wsClient.requestGalleryData(viewType).catch(error => {
-                console.warn('⚠️ Could not get fresh gallery data, using current:', error.message);
-                return null;
-            })
-        ]);
+        // Cache init only — do not refetch gallery (allImages is already the filter corpus).
+        const cacheResult = await window.wsClient.initializeSearchCache(viewType);
 
-        // Normalize gallery response shape
-        const galleryData = galleryResp && (galleryResp.gallery ? galleryResp : (galleryResp.data || {}));
-        const galleryArray = galleryData.gallery || galleryData.images || null;
-
-        // Handle cache initialization result
         if (cacheResult && cacheResult.status === 'cache_ready') {
             this.cacheInitialized = true;
             this.cacheViewType = viewType;
-            // Don't set window.originalAllImages here - we'll use the current allImages for filtering
-            // The search cache is initialized, but we filter against the actual displayed gallery
         } else {
             throw new Error('Cache initialization failed - unexpected response');
         }

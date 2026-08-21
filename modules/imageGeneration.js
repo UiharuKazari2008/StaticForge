@@ -69,7 +69,22 @@ const {
     dimensionsMaxUnderArea
 } = require('./imageTools');
 const { generateMobilePreviews } = require('./previewUtils');
+const { encodeBlurhashFromBuffer } = require('./blurhashUtils');
 const { upscaleImageCore } = require('./imageUpscaling');
+
+async function ensureForgeDataBlurhash(forgeData, imageBuffer) {
+    if (!forgeData || forgeData.blurhash || !imageBuffer) return forgeData;
+    const hash = await encodeBlurhashFromBuffer(imageBuffer);
+    if (hash) forgeData.blurhash = hash;
+    return forgeData;
+}
+
+async function storePreviewBlurhash(globalResources, filename, previewResult) {
+    const hash = previewResult?.blurhash;
+    if (!hash || !filename || !globalResources?.getMetadataDatabase) return;
+    // modules/metadataDatabase.js — setImageBlurhash
+    await globalResources.getMetadataDatabase().setImageBlurhash(filename, hash);
+}
 
 /**
  * Normalizes legacy period keys to new period key names
@@ -301,28 +316,30 @@ function applyNsfwProcessing(prompt, negativePrompt, characterPrompts, nsfwValue
             }
         }
 
-        // Apply additions
+        // Apply suffix additions only (*_prefix applied later, after UC preset — see applyNsfwPrefixes)
         if (nsfwPreset.add) {
-            if (nsfwPreset.add.base) {
-                const addedText = applyBiasToText(nsfwPreset.add.base, nsfwBias);
+            const add = nsfwPreset.add;
+
+            if (add.base) {
+                const addedText = applyBiasToText(add.base, nsfwBias);
                 processedPrompt = addToPrompt(processedPrompt, addedText);
                 modifications.prompt.push(addedText);
             }
-            if (nsfwPreset.add.uc) {
-                const addedText = applyBiasToText(nsfwPreset.add.uc, nsfwBias);
+            if (add.uc) {
+                const addedText = applyBiasToText(add.uc, nsfwBias);
                 processedNegativePrompt = addToPrompt(processedNegativePrompt, addedText);
                 modifications.uc.push(addedText);
             }
-            if (nsfwPreset.add.chara_base) {
-                const addedText = applyBiasToText(nsfwPreset.add.chara_base, nsfwBias);
+            if (add.chara_base) {
+                const addedText = applyBiasToText(add.chara_base, nsfwBias);
                 processedCharacterPrompts = processedCharacterPrompts.map(char => ({
                     ...char,
                     prompt: addToPrompt(char.prompt, addedText)
                 }));
                 modifications.character_prompts.push(addedText);
             }
-            if (nsfwPreset.add.chara_uc) {
-                const addedText = applyBiasToText(nsfwPreset.add.chara_uc, nsfwBias);
+            if (add.chara_uc) {
+                const addedText = applyBiasToText(add.chara_uc, nsfwBias);
                 processedCharacterPrompts = processedCharacterPrompts.map(char => ({
                     ...char,
                     uc: addToPrompt(char.uc, addedText)
@@ -427,6 +444,58 @@ function applyNsfwProcessing(prompt, negativePrompt, characterPrompts, nsfwValue
 }
 
 /**
+ * Apply NSFW *_prefix additions after UC/quality/dataset assembly so prefixes stay at the front.
+ * Companion to applyNsfwProcessing (which handles remove + suffix adds earlier).
+ */
+function applyNsfwPrefixes(prompt, negativePrompt, characterPrompts, nsfwValue, nsfwBias, promptConfig) {
+    let processedPrompt = prompt;
+    let processedNegativePrompt = negativePrompt;
+    let processedCharacterPrompts = characterPrompts ? [...characterPrompts] : [];
+    const modifications = { prompt: [], uc: [], character_prompts: [], character_uc: [] };
+
+    function prependToPrompt(text, addition) {
+        if (!addition) return text;
+        if (!text) return addition;
+        return `${addition}, ${text}`;
+    }
+
+    const nsfwPreset = promptConfig?.nsfw_presets?.[nsfwValue.toString()];
+    const add = nsfwPreset?.add;
+    if (!add) {
+        return { processedPrompt, processedNegativePrompt, processedCharacterPrompts, modifications };
+    }
+
+    if (add.base_prefix) {
+        const addedText = applyBiasToText(add.base_prefix, nsfwBias);
+        processedPrompt = prependToPrompt(processedPrompt, addedText);
+        modifications.prompt.push(addedText);
+    }
+    if (add.uc_prefix) {
+        const addedText = applyBiasToText(add.uc_prefix, nsfwBias);
+        processedNegativePrompt = prependToPrompt(processedNegativePrompt, addedText);
+        modifications.uc.push(addedText);
+    }
+    if (add.chara_base_prefix) {
+        const addedText = applyBiasToText(add.chara_base_prefix, nsfwBias);
+        processedCharacterPrompts = processedCharacterPrompts.map(char => ({
+            ...char,
+            prompt: prependToPrompt(char.prompt, addedText)
+        }));
+        modifications.character_prompts.push(addedText);
+    }
+    if (add.chara_uc_prefix) {
+        const addedText = applyBiasToText(add.chara_uc_prefix, nsfwBias);
+        processedCharacterPrompts = processedCharacterPrompts.map(char => ({
+            ...char,
+            uc: prependToPrompt(char.uc, addedText)
+        }));
+        modifications.character_uc.push(addedText);
+    }
+
+    return { processedPrompt, processedNegativePrompt, processedCharacterPrompts, modifications };
+}
+
+/**
  * Apply bias to text with inner numeric emphasis
  * @param {string} input - The text to apply bias to
  * @param {number} bias - The bias value to apply
@@ -434,6 +503,12 @@ function applyNsfwProcessing(prompt, negativePrompt, characterPrompts, nsfwValue
  */
 function applyBiasToText(input, bias) {
     if (bias === 1.0 || bias === undefined) {
+        return input;
+    }
+
+    // Do not nest classic N:: around managed ZWSP groups (expand happens elsewhere).
+    const { hasManagedEmphasisGroupIds } = require('./emphasisGroupIdSyntax');
+    if (typeof input === 'string' && hasManagedEmphasisGroupIds(input)) {
         return input;
     }
 
@@ -1147,6 +1222,12 @@ function stripEmphasisSyntax(text) {
     if (!text) return '';
     
     let stripped = text.trim();
+    // stripManagedEmphasisDelimitersForCounting: modules/emphasisGroupIdSyntax.js
+    try {
+        const { stripManagedEmphasisDelimitersForCounting } = require('./emphasisGroupIdSyntax');
+        stripped = stripManagedEmphasisDelimitersForCounting(stripped).trim();
+    } catch (_) { /* codec optional during boot races */ }
+
     let previousStripped = '';
     let iterations = 0;
     const maxIterations = 20; // Prevent infinite loops
@@ -1727,6 +1808,35 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             }));
         }
 
+        // Expand managed id delimiters → classic N:: before UC / inline-negative merge helpers
+        // (those helpers only understand classic syntax). prepareEmphasisTextForNovelAI:
+        //   modules/emphasisGroupIdSyntax.js
+        {
+            const { prepareEmphasisTextForNovelAI, hasManagedEmphasisGroupIds } = require('./emphasisGroupIdSyntax');
+            const emphasisNormEarly = body.emphasis_normalization || null;
+            const expandManagedEarly = (text, fieldHint) => {
+                if (typeof text !== 'string' || !hasManagedEmphasisGroupIds(text)) return text;
+                return prepareEmphasisTextForNovelAI(text, emphasisNormEarly, fieldHint).text;
+            };
+            processedPrompt = expandManagedEarly(processedPrompt, 'prompt');
+            processedNegativePrompt = expandManagedEarly(processedNegativePrompt, 'uc');
+            processedPromptNegativeFragment = expandManagedEarly(processedPromptNegativeFragment, 'prompt_negative');
+            if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) {
+                processedCharacterPrompts = processedCharacterPrompts.map((char, index) => {
+                    if (!char || typeof char !== 'object') return char;
+                    return {
+                        ...char,
+                        prompt: expandManagedEarly(char.prompt, `character_${index}`),
+                        uc: expandManagedEarly(char.uc, `character_${index}_uc`),
+                        input_prompt_negative: expandManagedEarly(
+                            char.input_prompt_negative,
+                            `character_${index}_prompt_negative`
+                        )
+                    };
+                });
+            }
+        }
+
         // Apply Preset Controls
         //
         // Track preset controls applied - will be passed to dynamic generation
@@ -2074,6 +2184,47 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 appliedPresetControls.uc.push({
                     action: 'uc_preset',
                     text: selectedUc.value
+                });
+            }
+        }
+
+        // NSFW *_prefix after UC/dataset assembly so prefixes stay at the front (e.g. Remove → nsfw, lowres, …)
+        if (nsfwValue !== undefined && nsfwValue !== 0) {
+            let nsfwPrefixMods = { prompt: [], uc: [], character_prompts: [], character_uc: [] };
+            ({ processedPrompt, processedNegativePrompt, processedCharacterPrompts, modifications: nsfwPrefixMods } = applyNsfwPrefixes(
+                processedPrompt,
+                processedNegativePrompt,
+                processedCharacterPrompts,
+                nsfwValue,
+                nsfwBias,
+                currentPromptConfig
+            ));
+            if (nsfwPrefixMods.prompt.length > 0) {
+                appliedPresetControls.prompt.push({
+                    action: 'nsfw_processing',
+                    bias: nsfwBias,
+                    text: nsfwPrefixMods.prompt.join(', ')
+                });
+            }
+            if (nsfwPrefixMods.uc.length > 0) {
+                appliedPresetControls.uc.push({
+                    action: 'nsfw_processing',
+                    bias: nsfwBias,
+                    text: nsfwPrefixMods.uc.join(', ')
+                });
+            }
+            if (nsfwPrefixMods.character_prompts.length > 0) {
+                appliedPresetControls.character_prompts.push({
+                    action: 'nsfw_processing',
+                    bias: nsfwBias,
+                    text: nsfwPrefixMods.character_prompts.join(', ')
+                });
+            }
+            if (nsfwPrefixMods.character_uc.length > 0) {
+                appliedPresetControls.character_uc.push({
+                    action: 'nsfw_processing',
+                    bias: nsfwBias,
+                    text: nsfwPrefixMods.character_uc.join(', ')
                 });
             }
         }
@@ -2797,6 +2948,12 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 
                 while (chainRetries < maxChainRetries) {
                     try {
+                        if (body.emphasis_normalization && typeof body.emphasis_normalization === 'object') {
+                            dynaRequest = {
+                                ...dynaRequest,
+                                emphasis_normalization: body.emphasis_normalization
+                            };
+                        }
                         dynamicResult = await processDynamicGenerationCore(__runtimeGr, 
                             dynaRequest,
                             contextForAI,
@@ -3269,7 +3426,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             steps: parseInt(stepsValue),
             scale: parseFloat(guidanceValue.toString()),
             cfg_rescale: parseFloat(rescaleValue.toString()),
-            skip_cfg_above_sigma: varietyValue ? 58 : undefined,
+            skip_cfg_above_sigma: varietyValue ? 59.04722600415217 : undefined,
             sampler: body.sampler ? __runtimeGr.getNekoAiService('Sampler')[body.sampler.toUpperCase()] : (preset?.sampler ? __runtimeGr.getNekoAiService('Sampler')[preset.sampler.toUpperCase()] : __runtimeGr.getNekoAiService('Sampler').EULER_ANC),
             noise_schedule: body.noiseScheduler ? __runtimeGr.getNekoAiService('Noise')[body.noiseScheduler.toUpperCase()] : (preset?.noiseScheduler ? __runtimeGr.getNekoAiService('Noise')[preset.noiseScheduler.toUpperCase()] : __runtimeGr.getNekoAiService('Noise').KARRAS),
             no_save: body.no_save !== undefined ? body.no_save : preset?.no_save,
@@ -3281,8 +3438,11 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             characterPrompts: body.characterPrompts || preset?.characterPrompts || undefined,
             allCharacterPrompts: processedCharacterPrompts || undefined,
             input_character_prompts: body.allCharacterPrompts || preset?.allCharacterPrompts || undefined,
+            // Pass through for forge_data; API path normalizes null→0.5 before nekoai-js.
+            use_coords: body.use_coords !== undefined ? !!body.use_coords : (preset?.use_coords !== undefined ? !!preset.use_coords : undefined),
             dataset_config: body.dataset_config || preset?.dataset_config || undefined,
             append_quality: body.append_quality !== undefined ? body.append_quality : preset?.append_quality,
+            quality_preset_bias: body.quality_preset_bias !== undefined ? body.quality_preset_bias : preset?.quality_preset_bias,
             append_uc: body.append_uc !== undefined ? body.append_uc : preset?.append_uc,
             append_quality_id: selectedQualityId,
             append_uc_id: selectedUcId,
@@ -3769,39 +3929,126 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 .trim();
         };
         const { normalizeEmphasisPromptSyntax } = require('./emphasisPromptSyntax');
-        const sanitizeAndNormalizeText = (text) => normalizeEmphasisPromptSyntax(
-            normalizePromptSeparators(sanitizeMarkerFromText(text)),
-            { fixCommas: true }
-        );
+        // prepareEmphasisTextForNovelAI: modules/emphasisGroupIdSyntax.js
+        // Expand Weight Rack managed ids → classic N::…:: before syntax normalize; strip unmanaged ZW.
+        const {
+            prepareEmphasisTextForNovelAI,
+            hasManagedEmphasisGroupIds
+        } = require('./emphasisGroupIdSyntax');
+        const emphasisNormForExpand = baseOptions.emphasis_normalization
+            || body.emphasis_normalization
+            || null;
+        const sanitizeAndNormalizeText = (text, fieldHint) => {
+            let out = sanitizeMarkerFromText(text);
+            if (typeof out === 'string' && hasManagedEmphasisGroupIds(out)) {
+                const prepared = prepareEmphasisTextForNovelAI(out, emphasisNormForExpand, fieldHint);
+                if (prepared.warnings.length) {
+                    console.warn(
+                        `⚠️ Emphasis group id expand (${fieldHint || 'text'}): ${prepared.warnings.join(', ')}`
+                    );
+                }
+                if (prepared.strippedLeftoverDelims) {
+                    console.warn(
+                        `⚠️ Emphasis group id leftover delims stripped (${fieldHint || 'text'}): ${prepared.strippedLeftoverDelims}`
+                    );
+                }
+                out = prepared.text;
+            }
+            return normalizeEmphasisPromptSyntax(
+                normalizePromptSeparators(out),
+                { fixCommas: true }
+            );
+        };
+
+        // Preserve managed ids in forge input_* (editor hydrate); API fields still expand below.
+        const managedInputSnapshots = {};
+        if (typeof baseOptions.input_prompt === 'string' && hasManagedEmphasisGroupIds(baseOptions.input_prompt)) {
+            managedInputSnapshots.input_prompt = baseOptions.input_prompt;
+        }
+        if (typeof baseOptions.input_uc === 'string' && hasManagedEmphasisGroupIds(baseOptions.input_uc)) {
+            managedInputSnapshots.input_uc = baseOptions.input_uc;
+        }
+        if (typeof baseOptions.input_prompt_negative === 'string'
+            && hasManagedEmphasisGroupIds(baseOptions.input_prompt_negative)) {
+            managedInputSnapshots.input_prompt_negative = baseOptions.input_prompt_negative;
+        }
+        if (Array.isArray(baseOptions.input_character_prompts)) {
+            const hasManagedChar = baseOptions.input_character_prompts.some((char) =>
+                char && typeof char === 'object' && (
+                    (typeof char.prompt === 'string' && hasManagedEmphasisGroupIds(char.prompt))
+                    || (typeof char.uc === 'string' && hasManagedEmphasisGroupIds(char.uc))
+                    || (typeof char.input_prompt_negative === 'string'
+                        && hasManagedEmphasisGroupIds(char.input_prompt_negative))
+                    || (typeof char.prompt_negative === 'string'
+                        && hasManagedEmphasisGroupIds(char.prompt_negative))
+                )
+            );
+            if (hasManagedChar) {
+                managedInputSnapshots.input_character_prompts = baseOptions.input_character_prompts.map((char) => (
+                    char && typeof char === 'object' ? { ...char } : char
+                ));
+            }
+        }
 
         const sanitizeMarkerFromCharacterPrompts = (characterPrompts) => {
             if (!Array.isArray(characterPrompts)) return characterPrompts;
-            return characterPrompts.map(char => {
+            return characterPrompts.map((char, index) => {
                 if (!char || typeof char !== 'object') return char;
-                return {
+                const fieldHint = `character_${index}`;
+                const next = {
                     ...char,
-                    prompt: sanitizeAndNormalizeText(char.prompt),
-                    uc: sanitizeAndNormalizeText(char.uc)
+                    prompt: sanitizeAndNormalizeText(char.prompt, fieldHint),
+                    uc: sanitizeAndNormalizeText(char.uc, `${fieldHint}_uc`)
                 };
+                if (typeof char.input_prompt_negative === 'string') {
+                    next.input_prompt_negative = sanitizeAndNormalizeText(
+                        char.input_prompt_negative,
+                        `${fieldHint}_prompt_negative`
+                    );
+                }
+                if (typeof char.prompt_negative === 'string') {
+                    next.prompt_negative = sanitizeAndNormalizeText(
+                        char.prompt_negative,
+                        `${fieldHint}_prompt_negative`
+                    );
+                }
+                return next;
             });
         };
 
-        baseOptions.prompt = sanitizeAndNormalizeText(baseOptions.prompt);
-        baseOptions.negative_prompt = sanitizeAndNormalizeText(baseOptions.negative_prompt);
-        baseOptions.input_prompt = sanitizeAndNormalizeText(baseOptions.input_prompt);
-        baseOptions.input_uc = sanitizeAndNormalizeText(baseOptions.input_uc);
-        baseOptions.input_prompt_negative = sanitizeAndNormalizeText(baseOptions.input_prompt_negative);
+        baseOptions.prompt = sanitizeAndNormalizeText(baseOptions.prompt, 'prompt');
+        baseOptions.negative_prompt = sanitizeAndNormalizeText(baseOptions.negative_prompt, 'uc');
+        baseOptions.input_prompt = sanitizeAndNormalizeText(baseOptions.input_prompt, 'prompt');
+        baseOptions.input_uc = sanitizeAndNormalizeText(baseOptions.input_uc, 'uc');
+        baseOptions.input_prompt_negative = sanitizeAndNormalizeText(
+            baseOptions.input_prompt_negative,
+            'prompt_negative'
+        );
         baseOptions.allCharacterPrompts = sanitizeMarkerFromCharacterPrompts(baseOptions.allCharacterPrompts);
         baseOptions.input_character_prompts = sanitizeMarkerFromCharacterPrompts(baseOptions.input_character_prompts);
+
+        // Restore managed text for forge hydrate (API prompt/uc already expanded above).
+        if (managedInputSnapshots.input_prompt !== undefined) {
+            baseOptions.input_prompt = managedInputSnapshots.input_prompt;
+        }
+        if (managedInputSnapshots.input_uc !== undefined) {
+            baseOptions.input_uc = managedInputSnapshots.input_uc;
+        }
+        if (managedInputSnapshots.input_prompt_negative !== undefined) {
+            baseOptions.input_prompt_negative = managedInputSnapshots.input_prompt_negative;
+        }
+        if (managedInputSnapshots.input_character_prompts) {
+            baseOptions.input_character_prompts = managedInputSnapshots.input_character_prompts;
+        }
 
         // compiled_prompt is written earlier (before this pass); strip internal append markers so they never reach client/metadata.
         const compiledPromptRef = baseOptions.dynamic_generation?.compiled_prompt;
         if (compiledPromptRef) {
             if (compiledPromptRef.prompt != null) {
-                compiledPromptRef.prompt = sanitizeAndNormalizeText(compiledPromptRef.prompt);
+                compiledPromptRef.prompt = sanitizeAndNormalizeText(compiledPromptRef.prompt, 'prompt');
             }
             if (compiledPromptRef.uc != null) {
-                compiledPromptRef.uc = sanitizeAndNormalizeText(compiledPromptRef.uc);
+                compiledPromptRef.uc = sanitizeAndNormalizeText(compiledPromptRef.uc, 'uc');
             }
             compiledPromptRef.characterPrompts = sanitizeMarkerFromCharacterPrompts(compiledPromptRef.characterPrompts);
         }
@@ -3855,6 +4102,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
     delete apiOpts.mask_compressed;
     delete apiOpts.dataset_config;
     delete apiOpts.append_quality;
+    delete apiOpts.quality_preset_bias;
     delete apiOpts.append_uc;
     delete apiOpts.input_prompt;
     delete apiOpts.input_uc;
@@ -3901,16 +4149,35 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         // Filter enabled characters for API request
         const enabledCharacters = processedCharacterPrompts.filter(char => char.enabled);
         
-        // Convert to API format: remove chara_name and use_coords from individual characters
-        const apiCharacters = enabledCharacters.map(char => ({
-            prompt: char.prompt,
-            uc: char.uc,
-            center: char.center,
-            enabled: char.enabled
-        }));
+        // Convert to API format: remove chara_name and use_coords from individual characters.
+        // Stock nekoai-js: null/undefined center is treated as non-0.5 → use_coords true,
+        // then fills every center to 0.5/0.5 and collapses multi-char. Always send explicit
+        // 0.5 placeholders when Auto Position / no real placements.
+        const hasCustomCoords = enabledCharacters.some((char) => {
+            const x = char.center?.x;
+            const y = char.center?.y;
+            if (typeof x !== 'number' || typeof y !== 'number') return false;
+            return x !== 0.5 || y !== 0.5;
+        });
+        // Explicit false (Auto Position) wins; otherwise only real placements enable coords.
+        const useCoords = opts.use_coords === false ? false : hasCustomCoords;
+
+        const apiCharacters = enabledCharacters.map(char => {
+            let center = char.center;
+            if (!useCoords || !center || typeof center.x !== 'number' || typeof center.y !== 'number') {
+                center = { x: 0.5, y: 0.5 };
+            }
+            return {
+                prompt: char.prompt,
+                uc: char.uc,
+                center,
+                enabled: char.enabled
+            };
+        });
         
         if (apiCharacters.length > 0) {
             apiOpts.characterPrompts = apiCharacters;
+            apiOpts.use_coords = useCoords;
         }
     }
     
@@ -3932,8 +4199,14 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         }
         __runtimeGr.getImageCounter().logGeneration();
 
-        if (streamingCallback !== undefined && typeof streamingCallback === 'function' && opts.action !== __runtimeGr.getNekoAiService('Action').IMG2IMG) {
-            // Streaming generation with callback
+        // Plain img2img: NovelAI's stream endpoint does not emit step events (often returns a ZIP).
+        // Inpaint (infill) and text2img do stream. Keep batch ZIP for IMG2IMG only.
+        const ActionEnum = __runtimeGr.getNekoAiService('Action');
+        const wantsStream = streamingCallback !== undefined && typeof streamingCallback === 'function';
+        const canStreamAction = opts.action !== ActionEnum.IMG2IMG;
+
+        if (wantsStream && canStreamAction) {
+            // Streaming generation with callback (GENERATE / INPAINT emit step intermediates)
             const client = __runtimeGr.getNovelAiClient();
             if (!client) {
                 throw new Error('NovelAI client is not available. Please configure API key in secure.config.json.');
@@ -4028,17 +4301,24 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                     } catch (_streamCloseErr) { /* ignore */ }
                 }
                 }
+            } else if (Array.isArray(streamingResponse) && streamingResponse[0]) {
+                // Library returned batch images instead of a stream (e.g. action without step stream)
+                console.log("⚠️ Streaming unavailable for this action — using batch result");
+                img = streamingResponse[0];
             } else {
                 // Fallback to regular generation if streaming not available
                 console.log("⚠️ Streaming not available, falling back to regular generation");
-                const client = __runtimeGr.getNovelAiClient();
-                if (!client) {
+                const clientFallback = __runtimeGr.getNovelAiClient();
+                if (!clientFallback) {
                     throw new Error('NovelAI client is not available. Please configure API key in secure.config.json.');
                 }
-                [img] = await client.generateImage(apiOpts, false, true, true);
+                [img] = await clientFallback.generateImage(apiOpts, false, true, true);
             }
         } else {
-            // Regular non-streaming generation
+            // Regular non-streaming generation (also plain img2img — no NovelAI step stream)
+            if (wantsStream && !canStreamAction) {
+                console.log('⚠️ Plain img2img has no NovelAI step stream — using batch /ai/generate-image');
+            }
             const client = __runtimeGr.getNovelAiClient();
             if (!client) {
                 throw new Error('NovelAI client is not available. Please configure API key in secure.config.json.');
@@ -4053,10 +4333,14 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             throw cancelErr;
         }
 
-        // Successful round-trip to NovelAI — reset the tripwire failure counter.
-        if (img) {
-            __runtimeGr.getApiKeyManager().recordApiSuccess('novelai');
+        if (!img) {
+            const emptyStreamErr = new Error('Streaming completed without a final image from NovelAI');
+            emptyStreamErr.code = 'STREAM_NO_FINAL';
+            throw emptyStreamErr;
         }
+
+        // Successful round-trip to NovelAI — reset the tripwire failure counter.
+        __runtimeGr.getApiKeyManager().recordApiSuccess('novelai');
         
         // Get new balance and calculate credit usage
         creditUsage = await __runtimeGr.calculateCreditUsage();
@@ -4074,11 +4358,16 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 apiKeyManager.recordApiFailure('novelai', status, error.message);
             }
         }
-        // Provide more context for the error before re-throwing
-        const enhancedError = new Error(`Image generation failed: ${error.message || error}`);
-        enhancedError.originalError = error;
-        enhancedError.name = error.name || 'ImageGenerationError';
-        throw enhancedError;
+        // Preserve exact NovelAI message + status/code; do not wrap into a new Error that drops them.
+        if (error && typeof error === 'object') {
+            if (error.statusCode == null && error.status != null) {
+                error.statusCode = error.status;
+            }
+            throw error;
+        }
+        const fallbackErr = new Error(String(error));
+        fallbackErr.name = 'ImageGenerationError';
+        throw fallbackErr;
     }
     
     const timestamp = Date.now().toString();
@@ -4184,7 +4473,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             }
         }
         
-        // Save unprocessed input values
+        // Save editor input values for hydrate (managed ids preserved when present; see sanitize snapshots above)
         if (opts.input_prompt !== undefined) {
             forgeData.input_prompt = opts.input_prompt;
         }
@@ -4328,25 +4617,41 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 forgeData.stage_seeds = completeStageSeeds;
                 console.log(`💾 Injecting ${completeStageSeeds.length} stage seeds into metadata (${stageSeeds.length} previous + current)`);
             }
-            
-            // Update metadata with modified forge_data
+
+            await ensureForgeDataBlurhash(forgeData, buffer);
+
+            // Ensure NAI origin Comment lives in stealth on these stage pixels; sign forge attestation
+            const pngMeta = __runtimeGr.getPngMetadata();
+            const ensured = await pngMeta.ensureOriginCommentInStealth(buffer);
+            finalBuffer = ensured.wroteStealth
+                ? pngMeta.stripPngTextChunks(ensured.buffer)
+                : pngMeta.stripPngTextChunks(buffer);
+            forgeData.origin_response_embedded = !!ensured.embedded;
+            delete forgeData.forge_signed_hash;
             metadata.forge_data = { ...forgeData };
-            
-            // Re-inject complete metadata structure directly
-            finalBuffer = __runtimeGr.getPngMetadata().insertTextChunk(finalBuffer, 'Comment', JSON.stringify(metadata));
-            
-            // Preserve Source and Software from base metadata if they exist
+            // Write Comment first so forge_data matches what we attest (incl. software defaults later if needed)
+            finalBuffer = pngMeta.insertTextChunk(finalBuffer, 'Comment', JSON.stringify(metadata));
             if (baseMetadata.tEXt?.Source) {
-                finalBuffer = __runtimeGr.getPngMetadata().insertTextChunk(finalBuffer, 'Source', baseMetadata.tEXt.Source);
+                finalBuffer = pngMeta.insertTextChunk(finalBuffer, 'Source', baseMetadata.tEXt.Source);
             }
             if (baseMetadata.tEXt?.Software) {
-                finalBuffer = __runtimeGr.getPngMetadata().insertTextChunk(finalBuffer, 'Software', baseMetadata.tEXt.Software);
+                finalBuffer = pngMeta.insertTextChunk(finalBuffer, 'Software', baseMetadata.tEXt.Software);
+            }
+            try {
+                const rgb = await pngMeta.extractRgbBytes(finalBuffer);
+                // attestForgeData: modules/pngMetadata.js
+                pngMeta.attestForgeData(rgb, ensured.originComment || '', metadata.forge_data);
+                finalBuffer = pngMeta.insertTextChunk(finalBuffer, 'Comment', JSON.stringify(metadata));
+            } catch (signErr) {
+                console.error('Forge image signing failed (stage):', signErr.message);
             }
             
-            console.log(`📝 Stage metadata: preserved base, updated forge_data`);
+            console.log(`📝 Stage metadata: preserved base, updated forge_data (origin_response_embedded=${!!forgeData.origin_response_embedded})`);
         } else {
             // Normal mode: create new metadata
-            finalBuffer = __runtimeGr.getPngMetadata().updateMetadata(buffer, forgeData);
+            await ensureForgeDataBlurhash(forgeData, buffer);
+            // finalizeWithForgeData: modules/pngMetadata.js
+            finalBuffer = await __runtimeGr.getPngMetadata().finalizeWithForgeData(buffer, forgeData);
 
             // Extract the metadata that was just embedded into the buffer
             const rawMetadata = __runtimeGr.getPngMetadata().readMetadata(finalBuffer);
@@ -4406,8 +4711,9 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             // Generate preview
             const baseName = __runtimeGr.getPngMetadata().getBaseName(name);
 
-            // Generate both main and @2x previews for mobile devices
-            await generateMobilePreviews(path.join(__runtimeGr.getPath('images'), name), baseName);
+            // Generate main / @2x / @lq previews + BlurHash (replaces @blur.webp)
+            const previewResult = await generateMobilePreviews(path.join(__runtimeGr.getPath('images'), name), baseName);
+            await storePreviewBlurhash(__runtimeGr, name, previewResult);
             __runtimeGr.getLogger().detailed(`📸 Generated previews for ${baseName}`);
 
             // Send completion progress update
@@ -4470,6 +4776,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 upscaled_at: Date.now(),
                 generation_type: 'upscaled'
             };
+            await ensureForgeDataBlurhash(upscaledForgeData, scaledBuffer);
             const updatedScaledBuffer = __runtimeGr.getPngMetadata().updateMetadata(scaledBuffer, upscaledForgeData);
             const upscaledName = name.replace('.png', '_upscaled.png');
 
@@ -4491,7 +4798,8 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 await __runtimeGr.getMetadataDatabase().addReceiptMetadata(name, __runtimeGr.getPath('images'), upscaledReceiptData, upscaledForgeData);
                 await recordReplicationGalleryJournal(upscaledName, targetWorkspaceId);
                 
-                await generateMobilePreviews(path.join(__runtimeGr.getPath('images'), upscaledName), upscaledBaseName);
+                const upscaledPreviewResult = await generateMobilePreviews(path.join(__runtimeGr.getPath('images'), upscaledName), upscaledBaseName);
+                await storePreviewBlurhash(__runtimeGr, upscaledName, upscaledPreviewResult);
                 
                 const plumbing = __runtimeGr.getDataPlumbing();
                 plumbing.publish('ws:broadcast:receipt', upscaledReceiptData);
@@ -4552,8 +4860,8 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             // Generate preview
             const baseName = __runtimeGr.getPngMetadata().getBaseName(name);
             
-            // Generate both main and @2x previews for mobile devices
-            await generateMobilePreviews(path.join(__runtimeGr.getPath('images'), name), baseName);
+            const legacyPreviewResult = await generateMobilePreviews(path.join(__runtimeGr.getPath('images'), name), baseName);
+            await storePreviewBlurhash(__runtimeGr, name, legacyPreviewResult);
             __runtimeGr.getLogger().detailed(`📸 Generated previews for ${baseName}`);
         }
         
@@ -7323,16 +7631,35 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         
         // Generate preview
         const expandedBaseName = __runtimeGr.getPngMetadata().getBaseName(expandedFilename);
-        await generateMobilePreviews(expandedPath, expandedBaseName);
+        const expandedPreviewResult = await generateMobilePreviews(expandedPath, expandedBaseName);
+        await storePreviewBlurhash(__runtimeGr, expandedFilename, expandedPreviewResult);
 
-        // Get metadata for the response
+        // no_save skips handleGeneration's phase:complete — notify client so streaming finalize can finish.
+        if (ws && handler && requestId) {
+            handler.sendGenerationProgress(ws, requestId, {
+                phase: 'complete',
+                hasDynamicGen: false,
+                isUpscaling: false,
+                contentLength: expandedBuffer.length,
+                filename: expandedFilename
+            });
+        }
+
+        // no_save skipped handleGeneration's addReceiptMetadata — register so gallery width/height
+        // are real pixel dims (otherwise PhotoSwipe falls back to 1024×1024 squares).
         let responseMetadata = null;
         try {
             const metadataDatabase = __runtimeGr.getMetadataDatabase();
-            responseMetadata = await metadataDatabase.getImageMetadata(expandedFilename, __runtimeGr.getPath('images'));
-            if (responseMetadata) {
-                responseMetadata = __runtimeGr.getPngMetadata().extractRelevantFields(responseMetadata, expandedFilename);
-            }
+            const imagesDir = __runtimeGr.getPath('images');
+            const dbRow = await metadataDatabase.addReceiptMetadata(expandedFilename, imagesDir, null, null);
+            const pngMeta = (dbRow?.metadata && typeof dbRow.metadata === 'object') ? dbRow.metadata : {};
+            responseMetadata = await __runtimeGr.getPngMetadata().extractRelevantFields({
+                ...pngMeta,
+                width: dbRow?.width ?? pngMeta.width,
+                height: dbRow?.height ?? pngMeta.height,
+                actual_width: dbRow?.width ?? pngMeta.actual_width,
+                actual_height: dbRow?.height ?? pngMeta.actual_height
+            }, expandedFilename);
         } catch (metadataError) {
             console.warn('⚠️ Failed to get metadata for expanded image:', metadataError);
         }
@@ -7635,16 +7962,36 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
         }
         
         // Generate preview
-        await generateMobilePreviews(expandedPath, __runtimeGr.getPngMetadata().getBaseName(expandedFilename));
+        const rerollExpandedBase = __runtimeGr.getPngMetadata().getBaseName(expandedFilename);
+        const rerollPreviewResult = await generateMobilePreviews(expandedPath, rerollExpandedBase);
+        await storePreviewBlurhash(__runtimeGr, expandedFilename, rerollPreviewResult);
 
-        // Get metadata for the response
+        // no_save skips handleGeneration's phase:complete — notify client so streaming finalize can finish.
+        if (ws && handler && requestId) {
+            handler.sendGenerationProgress(ws, requestId, {
+                phase: 'complete',
+                hasDynamicGen: false,
+                isUpscaling: false,
+                contentLength: expandedBuffer.length,
+                filename: expandedFilename
+            });
+        }
+
+        // no_save skipped handleGeneration's addReceiptMetadata — register so gallery width/height
+        // are real pixel dims (otherwise PhotoSwipe falls back to 1024×1024 squares).
         let responseMetadata = null;
         try {
             const metadataDatabase = __runtimeGr.getMetadataDatabase();
-            responseMetadata = await metadataDatabase.getImageMetadata(expandedFilename, __runtimeGr.getPath('images'));
-            if (responseMetadata) {
-                responseMetadata = __runtimeGr.getPngMetadata().extractRelevantFields(responseMetadata, expandedFilename);
-            }
+            const imagesDir = __runtimeGr.getPath('images');
+            const dbRow = await metadataDatabase.addReceiptMetadata(expandedFilename, imagesDir, null, null);
+            const pngMeta = (dbRow?.metadata && typeof dbRow.metadata === 'object') ? dbRow.metadata : {};
+            responseMetadata = await __runtimeGr.getPngMetadata().extractRelevantFields({
+                ...pngMeta,
+                width: dbRow?.width ?? pngMeta.width,
+                height: dbRow?.height ?? pngMeta.height,
+                actual_width: dbRow?.width ?? pngMeta.actual_width,
+                actual_height: dbRow?.height ?? pngMeta.actual_height
+            }, expandedFilename);
         } catch (metadataError) {
             console.warn('⚠️ Failed to get metadata for rerolled expanded image:', metadataError);
         }

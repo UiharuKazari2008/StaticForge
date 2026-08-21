@@ -1,17 +1,17 @@
 /* Emphasis groups tool — scripts/comp/emphasisGroupsToolManager.js */
-.emphasis-groups-tool > .modal-content {
+.emphasis-groups-tool>.modal-content {
     padding: 0;
     overflow: hidden;
 }
 
-.emphasis-groups-tool .emphasis-groups-title-toolbar > .emphasis-groups-toolbar-spacer {
+.emphasis-groups-tool .emphasis-groups-title-toolbar>.emphasis-groups-toolbar-spacer {
     flex: 1 1 auto;
     min-width: 0;
     align-self: stretch;
     pointer-events: none;
 }
 
-.emphasis-groups-tool .emphasis-groups-title-toolbar > .button-group:has(.form-control, input:not([type="hidden"])) {
+.emphasis-groups-tool .emphasis-groups-title-toolbar>.button-group:has(.form-control, input:not([type="hidden"])) {
     flex: 0 1 auto;
     min-width: 0;
 }
@@ -143,24 +143,6 @@
     color: var(--text-primary);
 }
 
-.emphasis-groups-card-row .emphasis-groups-card-select {
-    flex-shrink: 0;
-    min-width: 1.75rem;
-    min-height: 1.75rem;
-    width: 1.75rem;
-    height: 1.75rem;
-    padding: 0;
-    font-size: 0.72rem;
-}
-
-.emphasis-groups-card-row .emphasis-groups-card-select[data-state="off"] {
-    opacity: 0.55;
-}
-
-.emphasis-groups-card-row .emphasis-groups-card-select[data-state="off"] i {
-    opacity: 0.7;
-}
-
 .emphasis-groups-normalize-active .emphasis-groups-card-normalize-participant .emphasis-groups-card-direct {
     display: none;
 }
@@ -223,14 +205,6 @@
     flex-shrink: 0;
 }
 
-.emphasis-groups-tool.emphasis-groups-scope-selected .emphasis-groups-card-normalize-participant[data-selected="off"] .emphasis-groups-card-slider-row {
-    opacity: 0.72;
-}
-
-.emphasis-groups-tool.emphasis-groups-scope-selected .emphasis-groups-card[data-selected="on"] {
-    border-color: var(--primary-color, #7aa2ff);
-}
-
 .emphasis-groups-card-band .gallery-toggle-btn .tab-text {
     max-width: none;
     font-size: 0.64rem;
@@ -258,6 +232,15 @@
     align-items: center;
     gap: 8px;
     min-width: 0;
+    /*
+     * Must match the painted thumb box (global .glass-slider is 22px + border).
+     * Wrong width → zero error at mid-track, growing offset toward the ends.
+     */
+    --emphasis-slider-thumb-w: 22px;
+    --emphasis-slider-thumb-half: 11px;
+    --emphasis-notch-suggested: 255, 228, 196;
+    --emphasis-notch-absmax: 255, 64, 64;
+    --emphasis-notch-arrow-alpha: 0.28;
 }
 
 .emphasis-groups-card-slider-row .slider-container {
@@ -269,12 +252,26 @@
     background: var(--glass-layer-dark-4);
     border: 1px solid var(--glass-border-2);
     border-radius: var(--border-radius-lg);
+    /* Inset glow lives on ::after so ticks/notches/arrows sit underneath it */
+    box-shadow: none;
+    position: relative;
+    isolation: isolate;
+}
+
+/* Track inner glow — above ticks/notches/arrows, below thumb */
+.emphasis-groups-card-slider-row .slider-container::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
     box-shadow: inset 0 0 16px #0000008c;
+    pointer-events: none;
+    z-index: 4;
 }
 
 .emphasis-groups-card-slider-row .slider-value {
     flex-shrink: 0;
-    min-width: 2.35rem;
+    min-width: 7.5rem;
     font-size: 0.8rem;
     font-weight: 600;
     font-variation-settings: "wght" 600;
@@ -292,6 +289,86 @@
     display: flex;
     align-items: center;
     min-width: 0;
+    position: relative;
+}
+
+/* Marker colors (shared by in-range notches + off-range arrows) */
+.emphasis-groups-slider-notch {
+    position: absolute;
+    width: 2px;
+    /* Same thumb-center formula as .slider-tick (--tick-frac set inline 0–1) */
+    left: calc(var(--emphasis-slider-thumb-half) + (100% - var(--emphasis-slider-thumb-w)) * var(--tick-frac, 0));
+    transform: translateX(-50%);
+    pointer-events: none;
+    z-index: 1;
+    /* below track ::after glow */
+    border-radius: 1px;
+}
+
+/* Suggested optimal — orangish white, half height from the top */
+.emphasis-groups-slider-notch-optimal {
+    top: 0;
+    bottom: auto;
+    height: 50%;
+    background: rgba(var(--emphasis-notch-suggested), 0.9);
+    opacity: 1;
+}
+
+/* Abs max — red, three-quarter height from the top */
+.emphasis-groups-slider-notch-absmax {
+    top: 0;
+    bottom: auto;
+    height: 75%;
+    width: 2px;
+    background: rgba(var(--emphasis-notch-absmax), 0.9);
+    opacity: 1;
+}
+
+/* Off-range markers — same color as the tick they represent, low opacity */
+.emphasis-groups-slider-notch-arrow {
+    position: absolute;
+    top: 50%;
+    z-index: 1;
+    /* below track ::after glow */
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    font-size: 1em;
+    line-height: 1;
+    opacity: var(--emphasis-notch-arrow-alpha);
+}
+
+/* Sit under thumb centers at min / max */
+.emphasis-groups-slider-notch-arrow-left {
+    left: var(--emphasis-slider-thumb-half);
+    transform: translate(-50%, -50%);
+}
+
+.emphasis-groups-slider-notch-arrow-right {
+    left: calc(100% - var(--emphasis-slider-thumb-half));
+    right: auto;
+    transform: translate(-50%, -50%);
+}
+
+.emphasis-groups-slider-notch-arrow-optimal {
+    color: rgb(var(--emphasis-notch-suggested));
+}
+
+.emphasis-groups-slider-notch-arrow-absmax {
+    color: rgb(var(--emphasis-notch-absmax));
+}
+
+.emphasis-groups-card-context {
+    opacity: 0.72;
+    pointer-events: none;
+}
+
+.emphasis-groups-card-context .emphasis-groups-card-slider-row-context .slider-container {
+    visibility: hidden;
+    min-height: 18px;
 }
 
 .emphasis-groups-card-value-host .emphasis-groups-card-weight-input {
@@ -306,6 +383,8 @@
     border-radius: 3px;
     border: 1px solid transparent;
     box-sizing: border-box;
+    position: relative;
+    z-index: 5;
 }
 
 .emphasis-groups-tool .emphasis-groups-card-slider-row .slider-container .glass-slider {
@@ -319,6 +398,9 @@
     cursor: ew-resize;
     background: transparent;
     touch-action: none;
+    position: relative;
+    z-index: 5;
+    /* thumb above inset glow; ticks stay under glow */
 }
 
 .emphasis-groups-tool .emphasis-groups-card-slider-row .slider-container .glass-slider::-webkit-slider-runnable-track {
@@ -333,16 +415,59 @@
     border: none;
 }
 
+/*
+ * Thumb: half-height center notch (25%–75%), ~50% opacity, with glow only on
+ * the notch (stacked soft gradient beams — thumbs can't use ::before).
+ */
+.emphasis-groups-tool .emphasis-groups-card-slider-row .slider-container .glass-slider::-webkit-slider-thumb,
+.emphasis-groups-tool .emphasis-groups-card-slider-row .slider-container .glass-slider::-moz-range-thumb,
+.emphasis-groups-tool .emphasis-groups-card-slider-row .slider-container .glass-slider::-ms-thumb {
+    box-sizing: border-box;
+    width: var(--emphasis-slider-thumb-w);
+    height: 20px;
+    background-color: var(--glass-layer-3);
+    /* Core mark (50% white) + soft outer glow layers, all notch-only */
+    background-image:
+        linear-gradient(to bottom,
+            transparent 0%,
+            transparent 25%,
+            rgba(255, 255, 255, 0.5) 25%,
+            rgba(255, 255, 255, 0.5) 75%,
+            transparent 75%,
+            transparent 100%),
+        linear-gradient(to bottom,
+            transparent 0%,
+            transparent 22%,
+            rgba(255, 255, 255, 0.22) 22%,
+            rgba(255, 255, 255, 0.22) 78%,
+            transparent 78%,
+            transparent 100%),
+        linear-gradient(to bottom,
+            transparent 0%,
+            transparent 18%,
+            rgba(255, 228, 196, 0.18) 18%,
+            rgba(255, 228, 196, 0.18) 82%,
+            transparent 82%,
+            transparent 100%);
+    background-size:
+        1px 100%,
+        2px 100%,
+        3px 100%;
+    background-position: center;
+    background-repeat: no-repeat;
+    box-shadow: var(--glass-shadow-3);
+}
+
 .emphasis-groups-tool .emphasis-groups-card-slider-row .slider-container .glass-slider::-webkit-slider-thumb {
-    width: 14px;
-    height: 16px;
-    margin-top: -8px;
+    margin-top: -10px;
+}
+
+.emphasis-groups-tool .emphasis-groups-card-slider-row .slider-container .glass-slider::-moz-range-thumb {
+    border: 1.5px solid var(--glass-border-3);
 }
 
 .emphasis-groups-tool .emphasis-groups-card-slider-row .slider-container .glass-slider::-ms-thumb {
-    width: 14px;
-    height: 16px;
-    margin-top: -8px;
+    margin-top: -10px;
 }
 
 .emphasis-groups-empty {
@@ -353,11 +478,106 @@
 }
 
 
-.emphasis-groups-tool .emphasis-groups-card-delta-lock {
+.emphasis-groups-tool .emphasis-groups-card-delta-lock,
+.emphasis-groups-tool .emphasis-groups-card-snap-suggest,
+.emphasis-groups-tool .emphasis-groups-card-merge-groups,
+.emphasis-groups-tool .emphasis-groups-card-split-commas {
     justify-content: center;
     align-items: center;
     min-width: 2.25rem;
     font-size: 0.85em;
     padding: .125em .125em;
     min-height: 1.6rem;
+}
+
+@keyframes emphasis-compensate-flash {
+
+    0%,
+    100% {
+        background: #7eb8ff;
+        border-color: #4a90e2;
+        box-shadow: 0 0 10px 2px rgba(126, 184, 255, 0.35);
+    }
+
+    50% {
+        background: #c5e0ff;
+        border-color: #9ec9ff;
+        box-shadow: 0 0 16px 3px rgba(126, 184, 255, 0.8);
+    }
+}
+
+.emphasis-groups-tool .indicator.emphasis-groups-compensate-hint:not([data-state="on"])::after {
+    animation: emphasis-compensate-flash 1.2s ease-in-out infinite;
+}
+
+.slider-ticks-container {
+    position: relative;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    z-index: 1;
+    /* ticks layer under ::after glow */
+}
+
+/*
+ * Full-width layer; each mark uses:
+ *   left = thumbHalf + pct * (100% - thumbW)
+ * matching how the browser places the range thumb center.
+ */
+.slider-ticks {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 1;
+    padding: 0;
+}
+
+.slider-tick {
+    position: absolute;
+    width: 1.5px;
+    height: 100%;
+    background-color: rgba(255, 255, 255, 0.2);
+    /* --tick-frac set inline 0–1; matches browser thumb-center mapping */
+    left: calc(var(--emphasis-slider-thumb-half) + (100% - var(--emphasis-slider-thumb-w)) * var(--tick-frac, 0));
+    transform: translateX(-50%);
+}
+
+/* Half notch — every 0.5 on the weight axis */
+.slider-tick.half-height {
+    height: 50%;
+    bottom: 0;
+    top: auto;
+}
+
+/* Three-quarter notch — every whole number */
+.slider-tick.three-quarter-height {
+    height: 75%;
+    bottom: 0;
+    top: auto;
+}
+
+/* Colored from computeEmphasisWeightColor (inline rgba, muted alpha) */
+.slider-tick.emphasis-tick {
+    width: 1.5px;
+}
+
+.slider-tick.blue-tick {
+    /* Full landmark at -1 — light blue, slightly muted */
+    background-color: rgba(110, 195, 255, 0.7);
+    width: 2px;
+    height: 100%;
+    top: 0;
+    bottom: auto;
+}
+
+.slider-tick.green-tick {
+    /* Full landmark at 0 — emphasis green, slightly muted */
+    background-color: rgba(45, 215, 65, 0.7);
+    width: 2px;
+    height: 100%;
+    top: 0;
+    bottom: auto;
 }

@@ -820,13 +820,19 @@ function promptCtxApplyPastedText(textarea, start, end, text) {
     replaceTextareaRangePreservingUndo(textarea, start, end, text);
     const pos = start + text.length;
     textarea.setSelectionRange(pos, pos);
-    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    // settleManagedEmphasisAfterPaste: public/scripts/comp/emphasisGroupIdCodec.js
+    // Expands classic N:: → managed ids for the target field (main ↔ character safe).
+    settleManagedEmphasisAfterPaste(textarea, pos);
 }
 
 function promptCtxCopySelectedText(textarea) {
     if (!promptCtxHasMeaningfulSelection(textarea)) return;
     const { start, end } = promptCtxGetSelectionRange(textarea);
-    const text = textarea.value.substring(start, end);
+    // selectionNeedsManagedClipboardExpand / getManagedEmphasisClipboardTextForSelection:
+    //   public/scripts/comp/emphasisGroupIdCodec.js
+    const text = selectionNeedsManagedClipboardExpand(textarea.value || '', start, end)
+        ? getManagedEmphasisClipboardTextForSelection(textarea)
+        : textarea.value.substring(start, end);
     // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
     copyTextToClipboard(text).catch(() => {
         textarea.focus();
@@ -837,10 +843,20 @@ function promptCtxCopySelectedText(textarea) {
 function promptCtxCutSelectedText(textarea) {
     if (!promptCtxHasMeaningfulSelection(textarea)) return;
     const { start, end } = promptCtxGetSelectionRange(textarea);
+    // selectionNeedsManagedClipboardExpand / cutManagedEmphasisSelection:
+    //   public/scripts/comp/emphasisGroupIdCodec.js
+    if (selectionNeedsManagedClipboardExpand(textarea.value || '', start, end)) {
+        const text = cutManagedEmphasisSelection(textarea);
+        copyTextToClipboard(text).catch(() => { /* cut already applied */ });
+        return;
+    }
     const text = textarea.value.substring(start, end);
     // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
     copyTextToClipboard(text).then(() => {
-        promptCtxApplyPastedText(textarea, start, end, '');
+        // replaceTextareaRangePreservingUndo: public/scripts/comp/textareaUtils.js
+        replaceTextareaRangePreservingUndo(textarea, start, end, '');
+        textarea.setSelectionRange(start, start);
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
     }).catch(() => {
         textarea.focus();
         document.execCommand('cut');
@@ -883,8 +899,11 @@ function handlePromptTextareaContextMenuAction(action, textarea, item) {
             break;
         case 'prompt-ctx-search-wiki': {
             const term = state.contextTerm;
-            if (term && tagWikiSearchModal) {
-                tagWikiSearchModal.openSearchForTerm(term);
+            if (term) {
+                // public/scripts/comp/featureLoader.js
+                void featureLoader.loadFeature('grimoire').then(() => {
+                    tagWikiSearchModal.openSearchForTerm(term);
+                });
             }
             break;
         }
@@ -926,6 +945,11 @@ function handlePromptTextareaContextMenuAction(action, textarea, item) {
             if (splitEmphasisBlock) splitEmphasisBlock(textarea);
             if (updateEmphasisHighlighting) updateEmphasisHighlighting(textarea);
             break;
+        case 'prompt-ctx-split-emphasis-commas':
+            // splitEmphasisGroupAtCommasAtCursor: public/scripts/comp/emphasisParse.js
+            if (splitEmphasisGroupAtCommasAtCursor) splitEmphasisGroupAtCommasAtCursor(textarea);
+            if (updateEmphasisHighlighting) updateEmphasisHighlighting(textarea);
+            break;
         case 'prompt-ctx-clear-emphasis':
             if (removeAllEmphasisFromSelection) removeAllEmphasisFromSelection(textarea);
             if (updateEmphasisHighlighting) updateEmphasisHighlighting(textarea);
@@ -949,7 +973,8 @@ function handlePromptTextareaContextMenuAction(action, textarea, item) {
             promptCtxDeleteAllDisabledBlocks(textarea);
             break;
         case 'prompt-ctx-quick-access':
-            if (showDatasetTagToolbar) showDatasetTagToolbar();
+            // public/scripts/comp/featureLoader.js
+            void featureLoader.loadFeature('dataset_tag_toolbar').then(() => showDatasetTagToolbar());
             break;
         case 'prompt-ctx-save-favorite':
             if (promptCtxHasMeaningfulSelection(textarea) && showAddToFavoritesDialog) {
@@ -1187,6 +1212,19 @@ function getPromptTextareaContextMenuConfig() {
                         action: 'prompt-ctx-split-emphasis',
                         loadfn: (icon, target) => {
                             icon.disabled = promptCtxIsCreativeDirectiveTextarea(target);
+                        }
+                    },
+                    {
+                        icon: 'fas fa-knife-kitchen',
+                        tooltip: 'Split at Commas',
+                        action: 'prompt-ctx-split-emphasis-commas',
+                        loadfn: (icon, target) => {
+                            if (promptCtxIsCreativeDirectiveTextarea(target)) {
+                                icon.disabled = true;
+                                return;
+                            }
+                            // canSplitEmphasisGroupAtCommasAtCursor: public/scripts/comp/emphasisParse.js
+                            icon.disabled = !canSplitEmphasisGroupAtCommasAtCursor(target);
                         }
                     },
                     {

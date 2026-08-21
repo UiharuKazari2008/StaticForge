@@ -1,0 +1,123 @@
+<!-- Chat Modal -->
+<div id="chatModal" class="modal hidden tool-window on-top">
+    <div class="modal-window-controls">
+        <button id="closeChatBtn" class="btn-danger btn-small close-btn" type="button" title="Close"><i
+                class="fa-regular fa-xmark-large"></i></button>
+    </div>
+    <div class="modal-content gallery-move-modal-content dark">
+        <div class="gallery-move-left-panel">
+            <img id="chatBackgroundImage" src="/static_images/background.jpg" alt="Character image"
+                class="gallery-move-background-image">
+            <div class="gallery-move-left-header">
+                <h3 id="chatModalTitle"><i class="fas fa-person-to-portal"></i> Birth Persona</h3>
+            </div>
+            <div class="gallery-move-overlay">
+                <div class="gallery-move-image-info-overlay">
+                    <p><strong>Character:</strong> <span id="chatCharacterName">Unknown</span></p>
+                    <p><strong>Filename:</strong> <span id="chatFilename">unknown.png</span></p>
+                </div>
+            </div>
+        </div>
+        <div class="gallery-move-right-panel">
+            <div class="modal-header gallery-move-header">
+                <h3>Chat Settings</h3>
+            </div>
+            <div class="gallery-move-content">
+                <div class="chat-settings-form">
+                    <div class="form-group">
+                        <label for="chatName">Name</label>
+                        <input type="text" id="chatName" class="form-control"
+                            placeholder="Enter chat name (optional)">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="chatMindSeed">Mind Seed</label>
+                        <textarea id="chatMindSeed" class="form-control" rows="3"
+                            placeholder="Enter character context or personality traits..."></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="chatStoryContext">Story So Far (Optional)</label>
+                        <textarea id="chatStoryContext" class="form-control" rows="4"
+                            placeholder="Enter the story context and what has happened so far..."></textarea>
+                        <small class="form-text text-muted">Provide narrative context to help establish the
+                            character's current situation and history.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="chatViewerContext">Viewer Context</label>
+                        <textarea id="chatViewerContext" class="form-control" rows="3"
+                            placeholder="Describe your character or relationship..."></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="chatVerbosityBtn">Verbosity</label>
+                        <div id="chatVerbosityDropdown" class="custom-dropdown">
+                            <button type="button" id="chatVerbosityBtn" class="custom-dropdown-btn hover-show colored">
+                                <span id="chatVerbositySelected">Expressive</span>
+                            </button>
+                            <div id="chatVerbosityMenu" class="custom-dropdown-menu hidden"></div>
+                        </div>
+                        <input type="hidden" id="chatVerbosityHidden" value="3">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" id="startChatBtn" class="btn-primary">
+                    <span>Birth</span>
+                    <i class="fas fa-person-to-portal"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Chat Interface Modal -->
+<div id="chatInterfaceModal" class="modal resizeable-window hidden" data-window-min-width="800"
+    data-window-min-height="500">
+    <div class="modal-window-title">
+        <div class="modal-window-title-main">
+            <i class="mdi mdi-1-5 mdi-chat icon-fa"></i>
+            <img src="/static_images/app_icons/chat.png" alt="" class="icon-image" />
+            <span>Chat</span>
+        </div>
+    </div>
+    <div class="modal-window-controls">
+        <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+            <i class="fa-regular fa-window-minimize"></i>
+        </button>
+        <button id="closeChatInterfaceBtn" class="btn-danger close-btn btn-small" title="Close"><i
+                class="fa-regular fa-xmark-large"></i></button>
+    </div>
+    <div class="modal-content chat-interface-content">
+        <div class="chat-interface-split">
+            <!-- Chat List Panel -->
+            <div class="chat-list-panel">
+                <div class="chat-list-content">
+                    <div id="chatSessionsList" class="chat-sessions-list">
+                        <!-- Chat sessions will be populated here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Messages Panel -->
+            <div class="chat-messages-panel">
+                <div class="chat-messages-content form-section-scroll reverse-scroll">
+                    <div id="chatMessagesList" class="chat-messages-list">
+                        <!-- Messages will be populated here -->
+                    </div>
+                </div>
+
+                <div class="chat-input-panel">
+                    <div class="chat-input-container">
+                        <textarea id="chatMessageInput" class="chat-message-input hover-show"
+                            placeholder="Type your message..." rows="1"></textarea>
+                        <button id="chatSendBtn" class="btn-primary chat-send-btn" disabled>
+                            <i class="mdi mdi-1-5 mdi-send"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

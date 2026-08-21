@@ -176,6 +176,8 @@ function renderGroupedDropdown(menu, groups, selectHandler, closeHandler, select
  * Opens a dropdown menu. Automatically closes any other open dropdowns.
  */
 function openDropdown(menu, button) {
+    if (!menu) return;
+
     // Close all other open dropdowns first
     openDropdowns.forEach(dropdown => {
         if (dropdown.menu !== menu) {
@@ -199,6 +201,8 @@ function openDropdown(menu, button) {
  * Closes a dropdown menu.
  */
 function closeDropdown(menu, button) {
+    if (!menu) return;
+
     const container = getDropdownContainer(menu, button);
     if (container) {
         unregisterDropdownGuard(container);
@@ -229,6 +233,7 @@ function closeDropdown(menu, button) {
  * Toggles a dropdown menu.
  */
 function toggleDropdown(menu, button) {
+    if (!menu) return;
     if (!menu.classList.contains('hidden') || menu.classList.contains('custom-dropdown-closing')) {
         closeDropdown(menu, button);
     } else {

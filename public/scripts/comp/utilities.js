@@ -1320,6 +1320,61 @@ function updateManualPriceDisplay(bypass = false) {
 }
 
 /**
+ * Update tokens-free badge (to the left of generation count) for the active prompt/UC tab.
+ * @param {{ editablePrompt?: number, editableUc?: number, nePrompt?: number, neUc?: number }|null} groupTotals
+ */
+function updateManualTokenFreeDisplay(groupTotals) {
+    const container = document.getElementById('manualTokenFreeDisplay');
+    const freeEl = document.getElementById('manualTokenFree');
+    if (!container || !freeEl) return;
+
+    const tabButtons = document.querySelector('#manualModal #tab-buttons');
+    const activeTab = tabButtons?.getAttribute('data-active') || 'prompt';
+    const maxTokens = 512;
+
+    if (activeTab === 'creative') {
+        container.classList.add('hidden');
+        return;
+    }
+
+    let totals = groupTotals;
+    // promptTextareaToolbar: public/scripts/comp/promptTextareaToolbar.js
+    if (!totals && typeof promptTextareaToolbar !== 'undefined' && promptTextareaToolbar?._groupTotalsReady) {
+        totals = promptTextareaToolbar._groupTotals;
+    }
+
+    let total = 0;
+    if (totals) {
+        if (activeTab === 'uc') {
+            total = (totals.editableUc || 0) + (totals.neUc || 0);
+        } else {
+            total = (totals.editablePrompt || 0) + (totals.nePrompt || 0);
+        }
+    }
+
+    // Allow negative when overcommitted past the 512 token budget
+    const free = maxTokens - total;
+    freeEl.textContent = free;
+    const tabLabel = activeTab === 'uc' ? 'UC' : 'Prompt';
+    container.title = `${free} tokens free (${tabLabel}, ${total}/${maxTokens} used)`;
+
+    const isCritical = free < 64;
+    const isWarning = !isCritical && total > 256;
+    container.classList.toggle('token-free-warning', isWarning);
+    container.classList.toggle('token-free-critical', isCritical);
+    container.classList.remove('over-limit');
+
+    const iconEl = document.getElementById('manualTokenFreeIcon');
+    if (iconEl) {
+        iconEl.className = (isWarning || isCritical)
+            ? 'fas fa-exclamation'
+            : 'fas fa-check';
+    }
+
+    container.classList.remove('hidden');
+}
+
+/**
  * Update the 24h generation count display (separate counter to the left of price/balance)
  */
 function updateManualGenCountDisplay() {
@@ -1631,27 +1686,44 @@ function autoResizeTextarea(textarea, _minHeight = 70, extraContainerHeight = 0,
         ? parseInt(priorInline, 10)
         : textarea.offsetHeight;
 
+    const container = textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container');
+    const isDirectorPrompt = container && container.classList.contains('director-prompt');
+    const isTextOverlayPrompt = container && container.classList.contains('text-overlay-prompt');
+    let totalPadding = 0;
+
+    // For director / text-overlay prompts, use CSS min-height (avoid getComputedStyle unless needed)
+    if (isDirectorPrompt || isTextOverlayPrompt) {
+        const computedStyle = window.getComputedStyle(textarea);
+        const cssMinHeight = parseFloat(computedStyle.minHeight) || 24;
+        minHeight = cssMinHeight;
+    }
+
+    const valueLen = textarea.value.length;
+    const prevMeta = textarea._autoResizeMeta;
+    const toolbar = container && container.querySelector('.prompt-textarea-toolbar');
+    const toolbarVis = !!(toolbar && !toolbar.classList.contains('hidden'));
+    // scrollHeight read without writing height='auto' — avoids forced reflow on most keystrokes
+    // (SO/CSS-Tricks: height=auto every input is the typing lag source).
+    const overflowPx = textarea.scrollHeight - textarea.clientHeight;
+    const needsGrow = overflowPx > 1;
+    const needsShrinkCheck = !!(prevMeta && valueLen < prevMeta.len);
+    const toolbarChanged = !!(prevMeta && prevMeta.toolbarVis !== toolbarVis);
+
+    if (!layoutOnly && !needsGrow && !needsShrinkCheck && !toolbarChanged
+        && prevMeta && prevMeta.height === priorEffectivePx) {
+        textarea._autoResizeMeta = { len: valueLen, height: priorEffectivePx, toolbarVis };
+        return false;
+    }
+
     let transitionStartHeight = null;
     if (!layoutOnly) {
         transitionStartHeight = (priorInline && priorInline !== 'auto')
             ? priorInline
-            : `${textarea.offsetHeight}px`;
+            : `${priorEffectivePx}px`;
     }
 
-    // Reset height to auto to get the correct scrollHeight
+    // Reset height to auto for accurate scrollHeight (required to shrink after deletes)
     textarea.style.height = 'auto';
-
-    // Calculate new height based on content, accounting for padding
-    const computedStyle = window.getComputedStyle(textarea);
-    const isDirectorPrompt = textarea.closest('.prompt-textarea-container.director-prompt');
-    const isTextOverlayPrompt = textarea.closest('.prompt-textarea-container.text-overlay-prompt');
-    let totalPadding = 0;
-
-    // For director prompts and text overlay prompts, use the CSS min-height instead of the passed parameter
-    if (isDirectorPrompt || isTextOverlayPrompt) {
-        const cssMinHeight = parseFloat(computedStyle.minHeight) || 24;
-        minHeight = cssMinHeight;
-    }
 
     // Ensure scrollHeight is calculated correctly
     let scrollHeight = textarea.scrollHeight;
@@ -1673,9 +1745,8 @@ function autoResizeTextarea(textarea, _minHeight = 70, extraContainerHeight = 0,
                     void textarea.offsetHeight;
                 }
                 textarea.style.height = nextHeight;
+                textarea._autoResizeMeta = { len: textarea.value.length, height: newHeight, toolbarVis };
 
-                // Update container height if it exists
-                const container = textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container');
                 if (container) {
                     syncPromptTextareaContainerMeasurements(container, extraContainerHeight);
                 }
@@ -1689,10 +1760,11 @@ function autoResizeTextarea(textarea, _minHeight = 70, extraContainerHeight = 0,
     const newHeight = Math.ceil(calculatedHeight / 2) * 2;
     const nextHeight = `${newHeight}px`;
 
+    textarea._autoResizeMeta = { len: valueLen, height: newHeight, toolbarVis };
+
     if (priorEffectivePx === newHeight) {
         textarea.style.height = (priorInline && priorInline !== 'auto') ? priorInline : nextHeight;
-        if (!deferContainerSync) {
-            const container = textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container');
+        if (!deferContainerSync && (toolbarChanged || !prevMeta)) {
             syncPromptTextareaContainerMeasurements(container, extraContainerHeight);
         }
         return false;
@@ -1706,7 +1778,6 @@ function autoResizeTextarea(textarea, _minHeight = 70, extraContainerHeight = 0,
     textarea.style.height = nextHeight;
 
     if (!deferContainerSync) {
-        const container = textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container');
         syncPromptTextareaContainerMeasurements(container, extraContainerHeight);
     }
     return true;
@@ -1723,415 +1794,284 @@ function scheduleAutoResizeTextarea(textarea, minHeight = 70, extraContainerHeig
 
 
 /**
+ * Lead icon for selected datasets. optionsData uses values like "furry dataset"
+ * / "background dataset" — never match the bare token "furry" against unrelated strings.
+ * @param {string[]} datasets
+ * @returns {string} icon className
+ */
+function getDatasetLeadIconClass(datasets) {
+    const list = Array.isArray(datasets) ? datasets : [];
+    for (let i = 0; i < list.length; i++) {
+        const v = String(list[i] || '').toLowerCase().trim();
+        if (v === 'furry' || v === 'furry dataset' || v.startsWith('furry ')) {
+            return 'nai-paw';
+        }
+    }
+    for (let i = 0; i < list.length; i++) {
+        const v = String(list[i] || '').toLowerCase().trim();
+        if (
+            v === 'backgrounds'
+            || v === 'background'
+            || v === 'background dataset'
+            || v.startsWith('background')
+        ) {
+            return 'fas fa-tree';
+        }
+    }
+    return 'nai-sakura';
+}
+
+/** Studio defaults: Keep Newlines off; Auto Char / Normalize / Deduplicate on. */
+function syncPromptOptionStatusIcons(container) {
+    if (!container) return;
+    // Globals declared in promptTextareaToolbar.js (defaults); init step 37 may refresh them
+    const keepOn = !!keepPromptNewlines;
+    const autoCharOff = autoCharNumerize === false;
+    const normalizeOff = promptNormalize === false;
+    const dedupeOff = deduplicateTags === false;
+
+    const keepIcon = container.querySelector('.prompt-status-icon.keep-newlines-on');
+    if (keepIcon) {
+        keepIcon.classList.toggle('hidden', !keepOn);
+        keepIcon.title = 'Keep Newlines on (not default)';
+    }
+    const autoCharIcon = container.querySelector('.prompt-status-icon.auto-char-off');
+    if (autoCharIcon) {
+        autoCharIcon.classList.toggle('hidden', !autoCharOff);
+        autoCharIcon.title = 'Auto Char Number off (not default)';
+    }
+    const normalizeIcon = container.querySelector('.prompt-status-icon.prompt-normalize-off');
+    if (normalizeIcon) {
+        normalizeIcon.classList.toggle('hidden', !normalizeOff);
+        normalizeIcon.title = 'Prompt Normalize off (not default)';
+    }
+    const dedupeIcon = container.querySelector('.prompt-status-icon.deduplicate-off');
+    if (dedupeIcon) {
+        dedupeIcon.classList.toggle('hidden', !dedupeOff);
+        dedupeIcon.title = 'Deduplicate off (not default)';
+    }
+}
+
+/**
  * Update prompt status icons based on current state
- * @param {HTMLTextAreaElement} textarea
  * @returns {void}
- * @description Updates the prompt status icons based on the current state of the quality, dataset, and UC presets.
- * @example
- * updatePromptStatusIcons();
  */
 function updatePromptStatusIcons() {
     const promptTabs = document.querySelector('#manualModal .prompt-tabs');
     const isShowingBoth = promptTabs && promptTabs.classList.contains('show-both');
-    
-    // Update main prompt status icons
+    const datasets = (typeof selectedDatasets !== 'undefined' && Array.isArray(selectedDatasets))
+        ? selectedDatasets
+        : [];
+
+    const applyDatasetIcon = (datasetIcon) => {
+        if (!datasetIcon) return;
+        const hasDatasets = datasets.length > 0;
+        datasetIcon.classList.toggle('hidden', !hasDatasets);
+        const iconElement = datasetIcon.querySelector('i');
+        if (iconElement && hasDatasets) {
+            // getDatasetLeadIconClass: this file
+            iconElement.className = getDatasetLeadIconClass(datasets);
+        }
+    };
+
+    const applySeasonIcon = (seasonIcon) => {
+        if (!seasonIcon) return;
+        const seasonState = seasonBtn ? seasonBtn.getAttribute('data-state') : 'off';
+        const seasonOverride = seasonBtn ? seasonBtn.getAttribute('data-override') : null;
+        const iconElement = seasonIcon.querySelector('i');
+        if (seasonState === 'on' && seasonOverride) {
+            seasonIcon.classList.remove('hidden');
+            if (iconElement) {
+                const season = seasonOverride.toLowerCase();
+                let seasonIconClass = 'fas fa-leaf';
+                if (season.includes('spring')) {
+                    seasonIconClass = 'fas fa-seedling';
+                } else if (season.includes('summer')) {
+                    seasonIconClass = 'fas fa-sun';
+                } else if (season.includes('fall') || season.includes('autumn')) {
+                    seasonIconClass = 'fas fa-leaf';
+                } else if (season.includes('winter')) {
+                    seasonIconClass = 'fas fa-snowflake';
+                }
+                iconElement.className = seasonIconClass;
+            }
+        } else {
+            seasonIcon.classList.add('hidden');
+        }
+    };
+
+    const applyClothingActivityCreative = (container) => {
+        const clothingIcon = container.querySelector('.prompt-status-icon.clothing-enabled');
+        if (clothingIcon) {
+            const btn = document.getElementById('creativeBtn');
+            const clothingEnabled = btn ? btn.getAttribute('data-toggle-clothing') === 'true' : false;
+            clothingIcon.classList.toggle('hidden', !clothingEnabled);
+        }
+        const activityIcon = container.querySelector('.prompt-status-icon.activity-enabled');
+        if (activityIcon) {
+            const btn = document.getElementById('creativeBtn');
+            const actionEnabled = btn ? btn.getAttribute('data-toggle-action') === 'true' : false;
+            activityIcon.classList.toggle('hidden', !actionEnabled);
+        }
+        const creativeIcon = container.querySelector('.prompt-status-icon.creative-enabled');
+        if (creativeIcon) {
+            const creativeState = creativeBtn ? creativeBtn.getAttribute('data-state') : 'off';
+            creativeIcon.classList.toggle('hidden', creativeState !== 'on');
+        }
+    };
+
+    const applyNsfwIcon = (nsfwIcon) => {
+        if (!nsfwIcon) return;
+        const isNsfwActive = typeof selectedNsfwValue !== 'undefined' && selectedNsfwValue !== 0;
+        nsfwIcon.classList.toggle('hidden', !isNsfwActive);
+        const iconElement = nsfwIcon.querySelector('i');
+        if (iconElement && isNsfwActive) {
+            const iconMap = {
+                3: 'fas fa-heart',
+                2: 'fas fa-face-grin-hearts',
+                1: 'fas fa-face-grin-wink',
+                '-1': 'fas fa-shield-xmark',
+                '-2': 'fas fa-shield-cross'
+            };
+            iconElement.className = iconMap[selectedNsfwValue.toString()] || 'fas fa-shield';
+        }
+    };
+
     const mainPromptContainer = document.querySelector('#prompt-tab .prompt-textarea-container');
     if (mainPromptContainer) {
         const qualityIcon = mainPromptContainer.querySelector('.prompt-status-icon.quality-enabled');
-        const datasetIcon = mainPromptContainer.querySelector('.prompt-status-icon.dataset-enabled');
-        const ucIcon = mainPromptContainer.querySelector('.prompt-status-icon.uc-enabled');
-        
-        // Quality icon
         if (qualityIcon) {
             qualityIcon.classList.toggle('hidden', !appendQuality);
         }
+        applyDatasetIcon(mainPromptContainer.querySelector('.prompt-status-icon.dataset-enabled'));
 
-        // Dataset icon - always show, use default sakura when none selected
-        if (datasetIcon) {
-            datasetIcon.classList.remove('hidden');
-
-            // Find the icon element inside the dataset icon container
-            const iconElement = datasetIcon.querySelector('i');
-            if (iconElement) {
-                // Priority: furry > backgrounds > anime (default)
-                const datasets = window.selectedDatasets || selectedDatasets || [];
-                let iconClass = 'nai-sakura'; // default (anime)
-                if (datasets.includes('furry')) {
-                    iconClass = 'nai-paw';
-                } else if (datasets.includes('backgrounds')) {
-                    iconClass = 'fas fa-tree';
-                } else {
-                    iconClass = 'nai-sakura';
-                }
-                iconElement.className = iconClass;
-            }
-        }
-
-        // UC icon (only show when not in show both mode)
+        const ucIcon = mainPromptContainer.querySelector('.prompt-status-icon.uc-enabled');
         if (ucIcon && !isShowingBoth) {
-            const ucBtn = window.ucPresetsDropdownBtn || ucPresetsDropdownBtn;
-            const ucState = ucBtn ? ucBtn.getAttribute('data-state') : 'off';
+            const ucState = ucPresetsDropdownBtn ? ucPresetsDropdownBtn.getAttribute('data-state') : 'off';
             ucIcon.classList.toggle('hidden', ucState !== 'on');
-
-            // Update UC level dots
             if (ucState === 'on') {
-                const ucPreset = window.selectedUcPreset || selectedUcPreset || 3;
+                const ucPreset = (typeof selectedUcPreset !== 'undefined' ? selectedUcPreset : null) || 3;
                 ucIcon.setAttribute('data-uc-level', ucPreset.toString());
             }
         }
 
-        // Time of day icon
         const timeOfDayIcon = mainPromptContainer.querySelector('.prompt-status-icon.time-of-day-enabled');
         if (timeOfDayIcon) {
-            const todBtn = window.todBtn || todBtn;
             const todState = todBtn ? todBtn.getAttribute('data-state') : 'off';
             timeOfDayIcon.classList.toggle('hidden', todState !== 'on');
         }
 
-        // Custom date set icon
         const customDateIcon = mainPromptContainer.querySelector('.prompt-status-icon.custom-date-set');
         if (customDateIcon) {
-            const todBtn = window.todBtn || todBtn;
             const todState = todBtn ? todBtn.getAttribute('data-state') : 'off';
             const todOverride = todBtn ? todBtn.getAttribute('data-override') : null;
             const hasDate = todOverride && todOverride.includes('/');
-
-            if (todState === 'on' && hasDate) {
-                customDateIcon.classList.remove('hidden');
-            } else {
-                customDateIcon.classList.add('hidden');
-            }
+            customDateIcon.classList.toggle('hidden', !(todState === 'on' && hasDate));
         }
 
-        // Weather icon
         const weatherIcon = mainPromptContainer.querySelector('.prompt-status-icon.weather-enabled');
         if (weatherIcon) {
-            const weatherBtn = window.weatherBtn || weatherBtn;
             const weatherState = weatherBtn ? weatherBtn.getAttribute('data-state') : 'off';
             weatherIcon.classList.toggle('hidden', weatherState !== 'on');
         }
 
-        // Location set icon
         const locationIcon = mainPromptContainer.querySelector('.prompt-status-icon.location-set');
         if (locationIcon) {
-            const weatherBtn = window.weatherBtn || weatherBtn;
             const weatherState = weatherBtn ? weatherBtn.getAttribute('data-state') : 'off';
             const hasLocation = weatherBtn && weatherBtn.hasAttribute('data-location');
-
-            if (weatherState === 'on' && hasLocation) {
-                locationIcon.classList.remove('hidden');
-            } else {
-                locationIcon.classList.add('hidden');
-            }
+            locationIcon.classList.toggle('hidden', !(weatherState === 'on' && hasLocation));
         }
 
-        // Season icon
-        const seasonIcon = mainPromptContainer.querySelector('.prompt-status-icon.season-enabled');
-        if (seasonIcon) {
-            const seasonBtn = window.seasonBtn || seasonBtn;
-            const seasonState = seasonBtn ? seasonBtn.getAttribute('data-state') : 'off';
-            const seasonOverride = seasonBtn ? seasonBtn.getAttribute('data-override') : null;
-            const iconElement = seasonIcon.querySelector('i');
-
-            if (seasonState === 'on' && seasonOverride) {
-                seasonIcon.classList.remove('hidden');
-                if (iconElement) {
-                    // Set icon based on season
-                    const season = seasonOverride.toLowerCase();
-                    let seasonIconClass = 'fas fa-leaf'; // default
-                    if (season.includes('spring')) {
-                        seasonIconClass = 'fas fa-seedling';
-                    } else if (season.includes('summer')) {
-                        seasonIconClass = 'fas fa-sun';
-                    } else if (season.includes('fall') || season.includes('autumn')) {
-                        seasonIconClass = 'fas fa-leaf';
-                    } else if (season.includes('winter')) {
-                        seasonIconClass = 'fas fa-snowflake';
-                    }
-                    iconElement.className = seasonIconClass;
-                }
-            } else {
-                seasonIcon.classList.add('hidden');
-            }
-        }
-
-        // Clothing icon
-        const clothingIcon = mainPromptContainer.querySelector('.prompt-status-icon.clothing-enabled');
-        if (clothingIcon) {
-            const creativeBtn = document.getElementById('creativeBtn');
-            const clothingEnabled = creativeBtn ? creativeBtn.getAttribute('data-toggle-clothing') === 'true' : false;
-            clothingIcon.classList.toggle('hidden', !clothingEnabled);
-        }
-
-        // Activity icon
-        const activityIcon = mainPromptContainer.querySelector('.prompt-status-icon.activity-enabled');
-        if (activityIcon) {
-            const creativeBtn = document.getElementById('creativeBtn');
-            const actionEnabled = creativeBtn ? creativeBtn.getAttribute('data-toggle-action') === 'true' : false;
-            activityIcon.classList.toggle('hidden', !actionEnabled);
-        }
-
-        // Creative icon
-        const creativeIcon = mainPromptContainer.querySelector('.prompt-status-icon.creative-enabled');
-        if (creativeIcon) {
-            const creativeBtn = window.creativeBtn || creativeBtn;
-            const creativeState = creativeBtn ? creativeBtn.getAttribute('data-state') : 'off';
-            creativeIcon.classList.toggle('hidden', creativeState !== 'on');
-        }
-
-        // NSFW icon - show when NSFW setting is not neutral
-        const nsfwIcon = mainPromptContainer.querySelector('.prompt-status-icon.nsfw-enabled');
-        if (nsfwIcon) {
-            // Import selectedNsfwValue from manualDropdownManager
-            const isNsfwActive = typeof selectedNsfwValue !== 'undefined' && selectedNsfwValue !== 0;
-            nsfwIcon.classList.toggle('hidden', !isNsfwActive);
-
-            // Update icon based on NSFW mode
-            const iconElement = nsfwIcon.querySelector('i');
-            if (iconElement && isNsfwActive) {
-                const iconMap = {
-                    3: 'fas fa-heart', // Nude
-                    2: 'fas fa-face-grin-hearts', // Skimpy
-                    1: 'fas fa-face-grin-wink', // Allow
-                    '-1': 'fas fa-shield-xmark',  // Remove
-                    '-2': 'fas fa-shield-cross'   // Cleanse
-                };
-                iconElement.className = iconMap[selectedNsfwValue.toString()] || 'fas fa-shield';
-            }
-        }
+        applySeasonIcon(mainPromptContainer.querySelector('.prompt-status-icon.season-enabled'));
+        applyClothingActivityCreative(mainPromptContainer);
+        applyNsfwIcon(mainPromptContainer.querySelector('.prompt-status-icon.nsfw-enabled'));
+        // syncPromptOptionStatusIcons: this file
+        syncPromptOptionStatusIcons(mainPromptContainer);
     }
-    
-    // Update UC prompt status icons
+
     const ucPromptContainer = document.querySelector('#uc-tab .prompt-textarea-container');
     if (ucPromptContainer) {
         const qualityIcon = ucPromptContainer.querySelector('.prompt-status-icon.quality-enabled');
-        const datasetIcon = ucPromptContainer.querySelector('.prompt-status-icon.dataset-enabled');
-        const ucIcon = ucPromptContainer.querySelector('.prompt-status-icon.uc-enabled');
-        
-        // Quality icon
         if (qualityIcon) {
             qualityIcon.classList.toggle('hidden', !appendQuality);
         }
+        applyDatasetIcon(ucPromptContainer.querySelector('.prompt-status-icon.dataset-enabled'));
 
-        // Dataset icon - always show, use default sakura when none selected
-        if (datasetIcon) {
-            datasetIcon.classList.remove('hidden');
-
-            // Find the icon element inside the dataset icon container
-            const iconElement = datasetIcon.querySelector('i');
-            if (iconElement) {
-                // Priority: furry > backgrounds > anime (default)
-                const datasets = window.selectedDatasets || selectedDatasets || [];
-                let iconClass = 'nai-sakura'; // default (anime)
-                if (datasets.includes('furry')) {
-                    iconClass = 'nai-paw';
-                } else if (datasets.includes('backgrounds')) {
-                    iconClass = 'fas fa-tree';
-                } else {
-                    iconClass = 'nai-sakura';
-                }
-                iconElement.className = iconClass;
-            }
-        }
-
-        // UC icon
+        const ucIcon = ucPromptContainer.querySelector('.prompt-status-icon.uc-enabled');
         if (ucIcon) {
-            const ucBtn = window.ucPresetsDropdownBtn || ucPresetsDropdownBtn;
-            const ucState = ucBtn ? ucBtn.getAttribute('data-state') : 'off';
+            const ucState = ucPresetsDropdownBtn ? ucPresetsDropdownBtn.getAttribute('data-state') : 'off';
             ucIcon.classList.toggle('hidden', ucState !== 'on');
-
-            // Update UC level dots
             if (ucState === 'on') {
-                const ucPreset = window.selectedUcPreset || selectedUcPreset || 3;
+                const ucPreset = (typeof selectedUcPreset !== 'undefined' ? selectedUcPreset : null) || 3;
                 ucIcon.setAttribute('data-uc-level', ucPreset.toString());
             }
         }
 
-        // Time of day icon
         const timeOfDayIcon = ucPromptContainer.querySelector('.prompt-status-icon.time-of-day-enabled');
         if (timeOfDayIcon) {
-            const todBtn = window.todBtn || todBtn;
             const todState = todBtn ? todBtn.getAttribute('data-state') : 'off';
             timeOfDayIcon.classList.toggle('hidden', todState !== 'on');
         }
 
-        // Custom date set icon
         const customDateIcon = ucPromptContainer.querySelector('.prompt-status-icon.custom-date-set');
         if (customDateIcon) {
-            const todBtn = window.todBtn || todBtn;
             const todState = todBtn ? todBtn.getAttribute('data-state') : 'off';
             const todOverride = todBtn ? todBtn.getAttribute('data-override') : null;
             const hasDate = todOverride && todOverride.includes('/');
-
-            if (todState === 'on' && hasDate) {
-                customDateIcon.classList.remove('hidden');
-            } else {
-                customDateIcon.classList.add('hidden');
-            }
+            customDateIcon.classList.toggle('hidden', !(todState === 'on' && hasDate));
         }
 
-        // Weather icon
         const weatherIcon = ucPromptContainer.querySelector('.prompt-status-icon.weather-enabled');
         if (weatherIcon) {
-            const weatherBtn = window.weatherBtn || weatherBtn;
             const weatherState = weatherBtn ? weatherBtn.getAttribute('data-state') : 'off';
             weatherIcon.classList.toggle('hidden', weatherState !== 'on');
         }
 
-        // Location set icon
         const locationIcon = ucPromptContainer.querySelector('.prompt-status-icon.location-set');
         if (locationIcon) {
-            const weatherBtn = window.weatherBtn || weatherBtn;
             const weatherState = weatherBtn ? weatherBtn.getAttribute('data-state') : 'off';
             const hasLocation = weatherBtn && weatherBtn.hasAttribute('data-location');
-
-            if (weatherState === 'on' && hasLocation) {
-                locationIcon.classList.remove('hidden');
-            } else {
-                locationIcon.classList.add('hidden');
-            }
+            locationIcon.classList.toggle('hidden', !(weatherState === 'on' && hasLocation));
         }
 
-        // Season icon
-        const seasonIcon = ucPromptContainer.querySelector('.prompt-status-icon.season-enabled');
-        if (seasonIcon) {
-            const seasonBtn = window.seasonBtn || seasonBtn;
-            const seasonState = seasonBtn ? seasonBtn.getAttribute('data-state') : 'off';
-            const seasonOverride = seasonBtn ? seasonBtn.getAttribute('data-override') : null;
-            const iconElement = seasonIcon.querySelector('i');
-
-            if (seasonState === 'on' && seasonOverride) {
-                seasonIcon.classList.remove('hidden');
-                if (iconElement) {
-                    // Set icon based on season
-                    const season = seasonOverride.toLowerCase();
-                    let seasonIconClass = 'fas fa-leaf'; // default
-                    if (season.includes('spring')) {
-                        seasonIconClass = 'fas fa-seedling';
-                    } else if (season.includes('summer')) {
-                        seasonIconClass = 'fas fa-sun';
-                    } else if (season.includes('fall') || season.includes('autumn')) {
-                        seasonIconClass = 'fas fa-leaf';
-                    } else if (season.includes('winter')) {
-                        seasonIconClass = 'fas fa-snowflake';
-                    }
-                    iconElement.className = seasonIconClass;
-                }
-            } else {
-                seasonIcon.classList.add('hidden');
-            }
-        }
-
-        // Clothing icon
-        const clothingIcon = ucPromptContainer.querySelector('.prompt-status-icon.clothing-enabled');
-        if (clothingIcon) {
-            const creativeBtn = document.getElementById('creativeBtn');
-            const clothingEnabled = creativeBtn ? creativeBtn.getAttribute('data-toggle-clothing') === 'true' : false;
-            clothingIcon.classList.toggle('hidden', !clothingEnabled);
-        }
-
-        // Activity icon
-        const activityIcon = ucPromptContainer.querySelector('.prompt-status-icon.activity-enabled');
-        if (activityIcon) {
-            const creativeBtn = document.getElementById('creativeBtn');
-            const actionEnabled = creativeBtn ? creativeBtn.getAttribute('data-toggle-action') === 'true' : false;
-            activityIcon.classList.toggle('hidden', !actionEnabled);
-        }
-
-        // Creative icon
-        const creativeIcon = ucPromptContainer.querySelector('.prompt-status-icon.creative-enabled');
-        if (creativeIcon) {
-            const creativeBtn = window.creativeBtn || creativeBtn;
-            const creativeState = creativeBtn ? creativeBtn.getAttribute('data-state') : 'off';
-            creativeIcon.classList.toggle('hidden', creativeState !== 'on');
-        }
-
-        // NSFW icon - show when NSFW setting is not neutral
-        const nsfwIcon = ucPromptContainer.querySelector('.prompt-status-icon.nsfw-enabled');
-        if (nsfwIcon) {
-            // Import selectedNsfwValue from manualDropdownManager
-            const isNsfwActive = typeof selectedNsfwValue !== 'undefined' && selectedNsfwValue !== 0;
-            nsfwIcon.classList.toggle('hidden', !isNsfwActive);
-
-            // Update icon based on NSFW mode
-            const iconElement = nsfwIcon.querySelector('i');
-            if (iconElement && isNsfwActive) {
-                const iconMap = {
-                    3: 'fas fa-heart', // Nude
-                    2: 'fas fa-face-grin-hearts', // Skimpy
-                    1: 'fas fa-face-grin-wink', // Allow
-                    '-1': 'fas fa-shield-xmark',  // Remove
-                    '-2': 'fas fa-shield-cross'   // Cleanse
-                };
-                iconElement.className = iconMap[selectedNsfwValue.toString()] || 'fas fa-shield';
-            }
-        }
+        applySeasonIcon(ucPromptContainer.querySelector('.prompt-status-icon.season-enabled'));
+        applyClothingActivityCreative(ucPromptContainer);
+        applyNsfwIcon(ucPromptContainer.querySelector('.prompt-status-icon.nsfw-enabled'));
+        // syncPromptOptionStatusIcons: this file
+        syncPromptOptionStatusIcons(ucPromptContainer);
     }
 
-    // Check if dynamic generation controls are visible - if so, hide dynamic generation icons to avoid duplication
     const dynamicGenerationGroup = document.getElementById('dynamicGenerationGroup');
     const isDynamicGenVisible = dynamicGenerationGroup && !dynamicGenerationGroup.classList.contains('hidden');
+    const dynamicGenIcons = ['time-of-day-enabled', 'weather-enabled', 'location-set', 'custom-date-set', 'season-enabled', 'clothing-enabled', 'activity-enabled', 'creative-enabled'];
 
     if (isDynamicGenVisible) {
-        // Hide dynamic generation feature icons while the Enshutsuka panel is open
-        const dynamicGenIcons = ['time-of-day-enabled', 'weather-enabled', 'location-set', 'custom-date-set', 'season-enabled', 'clothing-enabled', 'activity-enabled', 'creative-enabled'];
-
-        // Hide on main prompt
-        dynamicGenIcons.forEach(iconClass => {
+        dynamicGenIcons.forEach((iconClass) => {
             const mainIcon = mainPromptContainer?.querySelector(`.prompt-status-icon.${iconClass}`);
-            if (mainIcon) {
-                mainIcon.classList.add('hidden');
-            }
-        });
-
-        // Hide on UC prompt
-        dynamicGenIcons.forEach(iconClass => {
+            if (mainIcon) mainIcon.classList.add('hidden');
             const ucIcon = ucPromptContainer?.querySelector(`.prompt-status-icon.${iconClass}`);
-            if (ucIcon) {
-                ucIcon.classList.add('hidden');
-            }
+            if (ucIcon) ucIcon.classList.add('hidden');
         });
     }
 
-    // In show both mode, ensure proper icon visibility
     if (isShowingBoth) {
-        // Hide UC icon on main prompt
         const mainUcIcon = mainPromptContainer?.querySelector('.prompt-status-icon.uc-enabled');
-        if (mainUcIcon) {
-            mainUcIcon.classList.add('hidden');
-        }
-        
-        // Hide quality and dataset icons on UC prompt
+        if (mainUcIcon) mainUcIcon.classList.add('hidden');
         const ucQualityIcon = ucPromptContainer?.querySelector('.prompt-status-icon.quality-enabled');
         const ucDatasetIcon = ucPromptContainer?.querySelector('.prompt-status-icon.dataset-enabled');
-        if (ucQualityIcon) {
-            ucQualityIcon.classList.add('hidden');
-        }
-        if (ucDatasetIcon) {
-            ucDatasetIcon.classList.add('hidden');
-        }
-
-        // Hide dynamic generation feature icons on UC prompt in show both mode
-        const dynamicGenIcons = ['time-of-day-enabled', 'weather-enabled', 'location-set', 'custom-date-set', 'season-enabled', 'clothing-enabled', 'activity-enabled', 'creative-enabled'];
-        dynamicGenIcons.forEach(iconClass => {
+        if (ucQualityIcon) ucQualityIcon.classList.add('hidden');
+        if (ucDatasetIcon) ucDatasetIcon.classList.add('hidden');
+        dynamicGenIcons.forEach((iconClass) => {
             const ucIcon = ucPromptContainer?.querySelector(`.prompt-status-icon.${iconClass}`);
-            if (ucIcon) {
-                ucIcon.classList.add('hidden');
-            }
+            if (ucIcon) ucIcon.classList.add('hidden');
         });
     }
 
-    if (typeof refreshTokenBarCounts === 'function') {
-        refreshTokenBarCounts();
-    }
+    // refreshTokenBarCounts: public/scripts/comp/promptTextareaToolbar.js (or token bar helpers)
+    refreshTokenBarCounts();
 }
 
 
-/**
- * Valid numeric emphasis weight immediately before "::" (opening or closing delimiter).
- * @param {string} weight
- * @returns {boolean}
- */
 function isValidEmphasisWeightBeforeDelimiter(weight) {
     if (!weight) return false;
     return /^-?(?:0(?:\.\d+)?|[1-9]\d*(?:\.\d+)?|\.\d+)$/.test(weight);
@@ -2177,6 +2117,48 @@ function applyPromptFormattingBeforeGeneration() {
 }
 
 /**
+ * Protect emphasis spans from comma formatting (classic N:: and managed ZWSP groups).
+ * listManagedEmphasisBlocks / hasManagedEmphasisGroupIds: public/scripts/comp/emphasisGroupIdCodec.js
+ * listEmphasisBlocks: public/scripts/comp/emphasisParse.js
+ */
+function protectEmphasisSpansForCommaFormat(text) {
+    const protectedSpans = [];
+    let out = text || '';
+    let counter = 0;
+
+    if (hasManagedEmphasisGroupIds(out)) {
+        const blocks = listManagedEmphasisBlocks(out);
+        for (let i = blocks.length - 1; i >= 0; i--) {
+            const b = blocks[i];
+            const placeholder = `__EMPHASIS_${counter}__`;
+            protectedSpans.push({ placeholder, match: out.slice(b.start, b.end) });
+            out = out.slice(0, b.start) + placeholder + out.slice(b.end);
+            counter++;
+        }
+    }
+
+    // All classic N:: blocks (closed + auto-terminating) — not only fully closed no-colon inners
+    const classicBlocks = listEmphasisBlocks(out);
+    for (let i = classicBlocks.length - 1; i >= 0; i--) {
+        const b = classicBlocks[i];
+        const placeholder = `__EMPHASIS_${counter}__`;
+        protectedSpans.push({ placeholder, match: out.slice(b.start, b.end) });
+        out = out.slice(0, b.start) + placeholder + out.slice(b.end);
+        counter++;
+    }
+
+    return { text: out, protectedSpans };
+}
+
+function restoreEmphasisSpansAfterCommaFormat(text, protectedSpans) {
+    let out = text || '';
+    (protectedSpans || []).forEach(({ placeholder, match }) => {
+        out = out.replace(placeholder, match);
+    });
+    return out;
+}
+
+/**
  * Apply formatted text to a textarea
  * @param {HTMLTextAreaElement} textarea
  * @param {boolean} lostFocus
@@ -2186,8 +2168,12 @@ function applyPromptFormattingBeforeGeneration() {
  * applyFormattedText(textarea, lostFocus);
  */
 function applyFormattedText(textarea, lostFocus) {
-    // Store cursor position if textarea is in focus
-    const cursorPosition = !lostFocus ? textarea.selectionStart : -1;
+    // Store cursor position if textarea is in focus; always keep a blur snapshot —
+    // setTextareaValuePreservingUndo uses setRangeText(..., 'end') and would otherwise
+    // leave the caret at EOF so Edit Emphasis sees "New Group".
+    const savedSelStart = textarea.selectionStart;
+    const savedSelEnd = textarea.selectionEnd;
+    const cursorPosition = !lostFocus ? savedSelStart : -1;
 
     let text = normalizePromptNewlines(textarea.value);
     // Preserve user newlines during comma/whitespace formatting logic.
@@ -2213,25 +2199,11 @@ function applyFormattedText(textarea, lostFocus) {
         text = text
             .split('|').map(item => item.trim()).filter(Boolean).join(' | ');
 
-        // Handle comma splitting more carefully to preserve :: groups
-        // First, protect :: groups by temporarily replacing them
-        const emphasisGroups = [];
-        let emphasisCounter = 0;
-        text = text.replace(/(-?\d+\.?\d*)::([^:]+)::/g, (match, weight, content) => {
-            const placeholder = `__EMPHASIS_${emphasisCounter}__`;
-            emphasisGroups.push({ placeholder, match });
-            emphasisCounter++;
-            return placeholder;
-        });
-
-        // Now split by commas, but be careful not to split within protected groups
-        const commaParts = text.split(',').map(item => item.trim()).filter(Boolean);
-        text = commaParts.join(', ');
-
-        // Restore emphasis groups
-        emphasisGroups.forEach(({ placeholder, match }) => {
-            text = text.replace(placeholder, match);
-        });
+        // Protect classic N:: and managed ZWSP groups before comma normalize
+        const protectedBlur = protectEmphasisSpansForCommaFormat(text);
+        text = protectedBlur.text;
+        const commaPartsBlur = text.split(',').map(item => item.trim()).filter(Boolean);
+        text = restoreEmphasisSpansAfterCommaFormat(commaPartsBlur.join(', '), protectedBlur.protectedSpans);
 
         // Remove leading | or , and trim start
         text = text.replace(/^(\||,)+\s*/, '');
@@ -2240,25 +2212,10 @@ function applyFormattedText(textarea, lostFocus) {
         text = text
             .split('|').map(item => item.trim()).join(' | ');
 
-        // Handle comma splitting more carefully to preserve :: groups
-        // First, protect :: groups by temporarily replacing them
-        const emphasisGroups = [];
-        let emphasisCounter = 0;
-        text = text.replace(/(-?\d+\.?\d*)::([^:]+)::/g, (match, weight, content) => {
-            const placeholder = `__EMPHASIS_${emphasisCounter}__`;
-            emphasisGroups.push({ placeholder, match });
-            emphasisCounter++;
-            return placeholder;
-        });
-
-        // Now split by commas, but be careful not to split within protected groups
-        const commaParts = text.split(',').map(item => item.trim()).join(', ');
-        text = commaParts;
-
-        // Restore emphasis groups
-        emphasisGroups.forEach(({ placeholder, match }) => {
-            text = text.replace(placeholder, match);
-        });
+        const protectedFocus = protectEmphasisSpansForCommaFormat(text);
+        text = protectedFocus.text;
+        const commaPartsFocus = text.split(',').map(item => item.trim()).join(', ');
+        text = restoreEmphasisSpansAfterCommaFormat(commaPartsFocus, protectedFocus.protectedSpans);
     }
 
     // Fix curly brace groups: ensure each group has equal number of { and }
@@ -2289,6 +2246,10 @@ function applyFormattedText(textarea, lostFocus) {
 
     // If not focused, remove empty tags (consecutive commas with only spaces between)
     if (lostFocus) {
+        // Re-protect so empty-segment / spacing cleanup cannot tear managed or classic groups
+        const protectedCleanup = protectEmphasisSpansForCommaFormat(text);
+        text = protectedCleanup.text;
+
         // Remove any sequence of commas (with any amount of spaces between) that does not have text between them
         // e.g. ",   ,", ", ,", ",,"
         text = text.replace(/(?:^|,)\s*(?=,|$)/g, ''); // Remove empty segments
@@ -2297,6 +2258,10 @@ function applyFormattedText(textarea, lostFocus) {
         // Remove extra spaces after cleanup
         text = text.replace(/,\s+/g, ', ');
         text = text.replace(/\s+,/g, ',');
+        // Collapse double spaces between tags/placeholders (newlines are PROMPT_NEWLINE_PLACEHOLDER)
+        text = text.replace(/ {2,}/g, ' ');
+
+        text = restoreEmphasisSpansAfterCommaFormat(text, protectedCleanup.protectedSpans);
 
         // Step 2: Restore disable blocks
         disableBlocks.forEach(block => {
@@ -2304,16 +2269,40 @@ function applyFormattedText(textarea, lostFocus) {
         });
     }
 
-    if (lostFocus && typeof normalizeEmphasisPromptSyntax === 'function') {
-        text = normalizeEmphasisPromptSyntax(text, { fixCommas: true });
+    if (lostFocus) {
+        // normalizeEmphasisPromptSyntax: public/scripts/comp/emphasisParse.js
+        // Keep managed spans intact while classic :: syntax fixes run
+        const protectedNorm = protectEmphasisSpansForCommaFormat(text);
+        text = restoreEmphasisSpansAfterCommaFormat(
+            normalizeEmphasisPromptSyntax(protectedNorm.text, { fixCommas: true }),
+            protectedNorm.protectedSpans
+        );
     }
     text = fixNewlinesMissingLeadingSpace(text);
 
     text = text.replace(new RegExp(PROMPT_NEWLINE_PLACEHOLDER, 'g'), '\n');
     text = fixNewlinesMissingLeadingSpace(text);
     text = normalizePromptNewlines(text);
+    // trimManagedEmphasisInnerEdges / trimClassicEmphasisInnerEdges /
+    // normalizeManagedEmphasisEditorText: public/scripts/comp/emphasisGroupIdCodec.js
+    // Edge commas/spaces survive protectEmphasisSpansForCommaFormat (span is opaque).
+    // Only on blur: while focused a trailing inner space may still start the next word.
+    if (lostFocus) {
+        text = trimClassicEmphasisInnerEdges(text);
+        text = trimManagedEmphasisInnerEdges(text);
+        // Unpaired closes → strip dead ZW → re-trim edges (orphan heal can leave trailing ", ")
+        text = normalizeManagedEmphasisEditorText(text).text;
+    }
     // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
     setTextareaValuePreservingUndo(textarea, text);
+
+    // Import classic N:: leftovers into hidden/visible managed form on blur
+    // importUnmanagedEmphasisGroupsForTextarea: public/scripts/comp/emphasisGroupIdCodec.js
+    if (lostFocus
+        && textarea.matches('.prompt-textarea, .character-prompt-textarea')
+        && !textarea.closest('.creative-directive-container, .prompt-textarea-container.director-prompt')) {
+        importUnmanagedEmphasisGroupsForTextarea(textarea);
+    }
 
     // Restore cursor position if textarea was in focus
     if (!lostFocus && cursorPosition >= 0) {
@@ -2321,6 +2310,14 @@ function applyFormattedText(textarea, lostFocus) {
         const newPosition = Math.min(cursorPosition, text.length);
         textarea.setSelectionRange(newPosition, newPosition);
         textarea.focus();
+    } else if (lostFocus) {
+        const max = textarea.value.length;
+        const start = Math.max(0, Math.min(savedSelStart, max));
+        const end = Math.max(0, Math.min(savedSelEnd, max));
+        textarea.setSelectionRange(start, end);
+        if (Number.isFinite(start)) {
+            textarea._emphasisLastCaret = start;
+        }
     }
 }
 

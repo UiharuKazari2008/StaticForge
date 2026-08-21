@@ -214,8 +214,6 @@ class WebSocketMessageHandlers {
         this.metadataCache = new MetadataCache(1000); // LRU cache with 1000 items
         this.metadataCache.startCleanup(); // Start periodic cleanup
         this.vfsHandlers = new VfsWebSocketHandlers(this);
-        const { buildGalleryData } = require('./ws/handlers/120-galleryHandler');
-        this.buildGalleryData = (viewType, clientInfo) => buildGalleryData(this, viewType, clientInfo);
         registerAllWsHandlers(this);
 
         // Bind any Grimoire domain/applet declared WS packets so they can own their messages
@@ -300,11 +298,19 @@ class WebSocketMessageHandlers {
                 }
             }
 
-            // Continue with normal message handling
-            await this.routeMessage(ws, message, clientInfo, wsServer);
-
-            // Log successful completion with timing
-            const processingTime = Date.now() - startTime;
+            // Continue with normal message handling (never block the ws receive path)
+            void this.routeMessage(ws, message, clientInfo, wsServer).catch((error) => {
+                const processingTime = Date.now() - startTime;
+                console.error(`❌ WebSocket message failed: ${message.type} (ID: ${requestId}) - ${processingTime}ms - Error:`, error.message);
+                wsServer.sendToClient(ws, {
+                    type: 'error',
+                    message: error.message || 'Internal server error',
+                    details: message.type,
+                    requestId: message.requestId || null,
+                    code: 'INTERNAL_ERROR',
+                    timestamp: new Date().toISOString()
+                });
+            });
         } catch (error) {
             // Log error with timing
             const processingTime = Date.now() - startTime;
@@ -468,6 +474,11 @@ class WebSocketMessageHandlers {
             'generation_quips_run',
             'generation_quips_clear',
             'update_autofill_ranking',
+            'upload_novelai_explore_image',
+            'character_db_upsert',
+            'character_db_delete',
+            'character_db_rename_copyright',
+            'character_db_delete_copyright',
         ];
         return destructiveOperations.includes(messageType) || isReplicationDestructivePacket(messageType);
     }
@@ -678,10 +689,12 @@ class WebSocketMessageHandlers {
             const shortcuts = workspaceDesktop.shortcuts || [];
             
             // Return wallpaper/position/colors from workspace config and shortcuts from desktop config
+            // workspaceId lets the client set data-workspace early so boot does not flash default wallpaper
             this.sendToClient(ws, {
                 type: 'desktop_get_settings_response',
                 requestId: message.requestId,
                 data: {
+                    workspaceId: workspaceId,
                     wallpaper: wallpaper,
                     wallpaperPosition: wallpaperPosition,
                     color: color,
@@ -697,6 +710,7 @@ class WebSocketMessageHandlers {
                 type: 'desktop_get_settings_response',
                 requestId: message.requestId,
                 data: {
+                    workspaceId: 'default',
                     wallpaper: null,
                     wallpaperPosition: null,
                     color: '#102040',

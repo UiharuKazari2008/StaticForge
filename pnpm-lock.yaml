@@ -45,6 +45,9 @@ importers:
       better-sqlite3:
         specifier: ^12.2.0
         version: 12.2.0
+      blurhash:
+        specifier: ^2.0.5
+        version: 2.0.5
       bottleneck:
         specifier: ^2.19.5
         version: 2.19.5
@@ -1390,6 +1393,9 @@ packages:
     resolution: {integrity: sha512-LoF5gae+hlmfORcG1M5+5XZi4LBmvlXTzwJWzUlPryN/SJdSflZvROM2TwkT0GMpq7oqT48NRd4GS7BiVBc5OQ==}
     engines: {node: '>= 0.8.0'}
     hasBin: true
+
+  blurhash@2.0.5:
+    resolution: {integrity: sha512-cRygWd7kGBQO3VEhPiTgq4Wc43ctsM+o46urrmPOiuAe+07fzlSB9OJVdpgDL0jPqXUVQ9ht7aq7kxOeJHRK+w==}
 
   bodec@0.1.0:
     resolution: {integrity: sha512-Ylo+MAo5BDUq1KA3f3R/MFhh+g8cnHmo8bz3YPGhI1znrMaf77ol1sfvYJzsw3nTE+Y2GryfDxBaR+AqpAkEHQ==}
@@ -6233,6 +6239,8 @@ snapshots:
       readable-stream: 3.6.2
 
   blessed@0.1.81: {}
+
+  blurhash@2.0.5: {}
 
   bodec@0.1.0: {}
 

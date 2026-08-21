@@ -17,6 +17,114 @@ let virtualScrollEnabled = true; // Enable virtual scrolling
 let currentImage = null;
 let savedGalleryPosition = null;
 let galleryClearTimeout = null;
+let cachedGalleryWindowEl = null;
+let cachedGalleryContainerEl = null;
+let galleryScrollRaf = 0;
+// Per scroll/rAF pass: strip Y math from one calibration (see measureGalleryStripGeometry)
+let galleryStripGeometryPass = null;
+
+// Cached #galleryWindow / .gallery-container; re-query when disconnected
+function getGalleryScrollRoots() {
+    if (!cachedGalleryWindowEl || !cachedGalleryWindowEl.isConnected) {
+        cachedGalleryWindowEl = document.getElementById('galleryWindow');
+        cachedGalleryContainerEl = null;
+    }
+    if (cachedGalleryWindowEl && (!cachedGalleryContainerEl || !cachedGalleryContainerEl.isConnected)) {
+        cachedGalleryContainerEl = cachedGalleryWindowEl.querySelector('.gallery-container');
+    }
+    const galleryWindow = cachedGalleryWindowEl;
+    const galleryContainer = cachedGalleryContainerEl;
+    return {
+        galleryWindow,
+        galleryContainer,
+        isContainerScroll: !!(galleryContainer && document.body.classList.contains('desktop-mode'))
+    };
+}
+
+/** Viewport bounds in scroll space + one containerRect for the pass. */
+function getGalleryViewportBounds(roots) {
+    const { galleryContainer, isContainerScroll } = roots || getGalleryScrollRoots();
+    if (isContainerScroll && galleryContainer) {
+        const viewportTop = galleryContainer.scrollTop;
+        return {
+            viewportTop,
+            viewportBottom: viewportTop + galleryContainer.clientHeight,
+            pageY: 0,
+            containerRect: galleryContainer.getBoundingClientRect()
+        };
+    }
+    const trueInsetTop = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--true-inset-top')) || 0;
+    const pageY = window.pageYOffset || document.documentElement.scrollTop;
+    const viewportTop = pageY + trueInsetTop;
+    return {
+        viewportTop,
+        viewportBottom: viewportTop + (window.innerHeight - trueInsetTop),
+        pageY,
+        containerRect: null
+    };
+}
+
+/**
+ * Calibrate strip geometry once (first cell + optional second-row stride).
+ * .gallery uses CSS grid with gap:0 — DOM order drives rows, not data-index.
+ * Returns null when unsafe; callers fall back to getBoundingClientRect.
+ */
+function measureGalleryStripGeometry(items, viewport, roots) {
+    const columns = realGalleryColumns || 0;
+    if (!columns || !items || items.length === 0 || !viewport) return null;
+
+    const firstRect = items[0].getBoundingClientRect();
+    let itemHeight = firstRect.height;
+    if (!(itemHeight > 0) && itemSizePx > 0) itemHeight = itemSizePx;
+    if (!(itemHeight > 0)) return null;
+
+    const { galleryContainer, isContainerScroll } = roots || getGalleryScrollRoots();
+    let firstTop;
+    if (isContainerScroll && galleryContainer && viewport.containerRect) {
+        firstTop = firstRect.top - viewport.containerRect.top + galleryContainer.scrollTop;
+    } else {
+        firstTop = firstRect.top + viewport.pageY;
+    }
+
+    // Refine stride from the first cell of the next row when present
+    if (items.length > columns) {
+        const secondRect = items[columns].getBoundingClientRect();
+        let secondTop;
+        if (isContainerScroll && galleryContainer && viewport.containerRect) {
+            secondTop = secondRect.top - viewport.containerRect.top + galleryContainer.scrollTop;
+        } else {
+            secondTop = secondRect.top + viewport.pageY;
+        }
+        const stride = secondTop - firstTop;
+        if (stride > 1) {
+            itemHeight = stride;
+        }
+    }
+
+    return { firstTop, itemHeight, columns };
+}
+
+function galleryItemScrollBoundsFromDomIndex(domIndex, geometry) {
+    if (!geometry || domIndex < 0) return null;
+    const row = Math.floor(domIndex / geometry.columns);
+    const itemTop = geometry.firstTop + row * geometry.itemHeight;
+    return { itemTop, itemBottom: itemTop + geometry.itemHeight };
+}
+
+function galleryItemScrollBoundsFromRect(item, roots, viewport) {
+    const rect = item.getBoundingClientRect();
+    const { galleryContainer, isContainerScroll } = roots;
+    if (isContainerScroll && galleryContainer && viewport.containerRect) {
+        return {
+            itemTop: rect.top - viewport.containerRect.top + galleryContainer.scrollTop,
+            itemBottom: rect.bottom - viewport.containerRect.top + galleryContainer.scrollTop
+        };
+    }
+    return {
+        itemTop: rect.top + viewport.pageY,
+        itemBottom: rect.bottom + viewport.pageY
+    };
+}
 
 // Bidirectional infinite scroll tracking
 let displayedStartIndex = 0; // First displayed image index in allImages array
@@ -114,20 +222,65 @@ let galleryImagesLoadTask = null;
 
 // Last successful images sync for this session (avoids stale IndexedDB re-fetch when memory is current)
 let galleryImagesSyncState = null;
-let gallerySnapshotPersistTimer = null;
+let galleryRefreshNotificationId = null;
 
-function markGalleryImagesSyncState(workspaceId, viewType, hash, total, pinnedIndexes, destructiveAt) {
-    if (!hash || !total) {
+function markGalleryImagesSyncState(workspaceId, viewType, total, pinnedIndexes, destructiveAt) {
+    if (!total) {
         return;
     }
     galleryImagesSyncState = {
         workspaceId: workspaceId || 'default',
         viewType: viewType || 'images',
-        hash,
         total,
         pinnedIndexes: Array.isArray(pinnedIndexes) ? pinnedIndexes.slice() : [],
         destructiveAt: Number(destructiveAt) || 0
     };
+}
+
+function galleryStoredDestructiveAt(stored) {
+    return Number(stored?.destructiveAt) || 0;
+}
+
+function galleryDestructiveTimestampInvalidatesCache(probeDestructiveAt, ...storedSources) {
+    const probeAt = Number(probeDestructiveAt) || 0;
+    if (!probeAt) {
+        return false;
+    }
+    for (const stored of storedSources) {
+        if (!stored) {
+            continue;
+        }
+        if (probeAt > galleryStoredDestructiveAt(stored)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function gallerySessionMatchesProbe(probe) {
+    if (!galleryImagesSyncState || !probe) {
+        return false;
+    }
+    const serverTotal = Number(probe.total) || 0;
+    if (!serverTotal || galleryImagesSyncState.total !== serverTotal) {
+        return false;
+    }
+    return !galleryDestructiveTimestampInvalidatesCache(probe.lastGalleryDestructiveAt, galleryImagesSyncState);
+}
+
+function canAppendOnlyGallerySync(storedTotal, probeTotal, probeDestructiveAt, storedDestructiveAt) {
+    const cachedTotal = Number(storedTotal) || 0;
+    const serverTotal = Number(probeTotal) || 0;
+    const totalDelta = serverTotal - cachedTotal;
+    if (totalDelta <= 0 || cachedTotal <= 0) {
+        return false;
+    }
+    const probeAt = Number(probeDestructiveAt) || 0;
+    const storedAt = Number(storedDestructiveAt) || 0;
+    if (probeAt && probeAt > storedAt) {
+        return false;
+    }
+    return true;
 }
 
 function invalidateGalleryImagesSyncState() {
@@ -138,128 +291,7 @@ function driftGalleryImagesSyncState(newTotal) {
     if (!galleryImagesSyncState) {
         return;
     }
-    galleryImagesSyncState.hash = null;
     galleryImagesSyncState.total = Number(newTotal) || 0;
-}
-
-function scheduleGallerySnapshotPersist() {
-    if (gallerySnapshotPersistTimer) {
-        clearTimeout(gallerySnapshotPersistTimer);
-    }
-    gallerySnapshotPersistTimer = setTimeout(() => {
-        gallerySnapshotPersistTimer = null;
-        persistGallerySnapshotFromMemory();
-    }, 1500);
-}
-
-function queueGallerySnapshotPersist() {
-    queueMicrotask(() => {
-        persistGallerySnapshotFromMemory();
-    });
-    scheduleGallerySnapshotPersist();
-}
-
-async function saveGallerySnapshotToIndexedDb(workspaceId, viewType, galleryHash, gallery, serverDestructiveAt, pinnedIndexes) {
-    if (!galleryHash || !Array.isArray(gallery) || gallery.length === 0) {
-        return false;
-    }
-    await galleryMetadataCache.initPromise;
-    const slimItems = slimGalleryList(gallery);
-    const pins = Array.isArray(pinnedIndexes)
-        ? pinnedIndexes
-        : extractPinnedIndexesFromGallery(slimItems);
-    await galleryMetadataCache.setGallerySnapshot(workspaceId, viewType, galleryHash, slimItems, {
-        lastGalleryDestructiveAt: Number(serverDestructiveAt) || 0,
-        pinnedIndexes: pins
-    });
-    markGalleryImagesSyncState(
-        workspaceId,
-        viewType,
-        galleryHash,
-        slimItems.length,
-        pins,
-        serverDestructiveAt
-    );
-    return true;
-}
-
-async function persistGallerySnapshotFromMemory() {
-    if (!allImages || allImages.length === 0 || currentGalleryView !== 'images') {
-        return false;
-    }
-    const workspaceId = getGalleryLoadWorkspaceId();
-    const sync = galleryImagesSyncState;
-    if (sync
-        && sync.workspaceId === workspaceId
-        && sync.viewType === 'images'
-        && sync.hash
-        && sync.total === allImages.length) {
-        return false;
-    }
-    try {
-        await galleryMetadataCache.initPromise;
-        const probe = await loadGalleryChunk('images', 0, 0);
-        if (probe.workspaceId && probe.workspaceId !== workspaceId) {
-            return false;
-        }
-        if (!probe.galleryHash || !probe.total) {
-            return false;
-        }
-
-        const serverTotal = probe.total;
-        const memoryCount = allImages.length;
-
-        if (memoryCount === serverTotal) {
-            return saveGallerySnapshotToIndexedDb(
-                workspaceId,
-                'images',
-                probe.galleryHash,
-                allImages,
-                probe.lastGalleryDestructiveAt,
-                probe.pinnedIndexes
-            );
-        }
-
-        if (memoryCount < serverTotal) {
-            const delta = serverTotal - memoryCount;
-            if (delta > INCREMENTAL_HEAD_SYNC_MAX_DELTA) {
-                console.warn(
-                    `Gallery snapshot persist: memory is ${delta} items behind server (max incremental ${INCREMENTAL_HEAD_SYNC_MAX_DELTA})`
-                );
-                return false;
-            }
-            const incremental = await tryIncrementalGalleryHeadSync(
-                allImages,
-                probe,
-                'images',
-                null,
-                galleryLoadLogNoop
-            );
-            if (!incremental) {
-                console.warn('Gallery snapshot persist: incremental catch-up failed');
-                return false;
-            }
-            const merged = slimGalleryList(incremental.dataItems);
-            const hash = incremental.hashProbe.galleryHash || probe.galleryHash;
-            const pins = incremental.hashProbe.pinnedIndexes || probe.pinnedIndexes;
-            if (allImages.length < merged.length) {
-                setActiveGalleryList(merged, { preserveSyncState: true });
-            }
-            return saveGallerySnapshotToIndexedDb(
-                workspaceId,
-                'images',
-                hash,
-                merged,
-                probe.lastGalleryDestructiveAt,
-                pins
-            );
-        }
-
-        return false;
-    } catch (error) {
-        console.warn('Gallery snapshot persist failed:', error);
-        return false;
-    }
 }
 
 // Tracks which view/workspace load results are still valid (rapid view switches).
@@ -279,6 +311,7 @@ function markGalleryDisplayed() {
 }
 
 function issueGalleryLoadToken(viewType) {
+    galleryBlockSyncPartialRevealToken = null;
     return {
         id: ++galleryLoadTokenCounter,
         viewType,
@@ -329,25 +362,33 @@ function publishGalleryImagesLoadProgress(progress) {
     });
 }
 
-function shouldShowGalleryLoadProgress(loadOptions, progressCallback) {
-    if (progressCallback) {
+function shouldShowGalleryLoadProgress(loadOptions) {
+    if (isGalleryWindowHidden()) {
         return false;
     }
     const opts = (loadOptions && typeof loadOptions === 'object') ? loadOptions : {};
-    if (opts.showProgress === true) {
-        return true;
-    }
     if (opts.showProgress === false) {
         return false;
     }
-    // Defer progress until the gallery window is opened (startup tray / dontAutoLaunchWorkspace).
-    if (opts.silent === true) {
-        return false;
-    }
-    if (opts.startupBoot === true && isGalleryWindowHidden()) {
-        return false;
+    if (opts.showProgress === true) {
+        return true;
     }
     return true;
+}
+
+/** Clear gallery progress ownership when the shared confirmation dialog was closed elsewhere. */
+function syncGalleryProgressDialogState() {
+    if (!galleryProgressModal) {
+        return;
+    }
+    // isConfirmationDialogActive: public/scripts/comp/confirmationDialog.js
+    if (typeof isConfirmationDialogActive === 'function' && !isConfirmationDialogActive()) {
+        galleryProgressModal = null;
+        galleryProgressBarElement = null;
+        galleryProgressTextElement = null;
+        galleryProgressContainerElement = null;
+        galleryProgressModeSwitched = false;
+    }
 }
 
 function displayGalleryContentIfNeeded() {
@@ -377,7 +418,7 @@ async function joinGalleryImagesLoad(progressCallback, opts) {
     const loadLog = acquireGalleryLoadLogger('images', getGalleryLoadWorkspaceId());
     loadLog.step('join', 'Joining in-flight gallery load instead of starting a duplicate', {
         workspaceId: task.workspaceId,
-        showProgress: shouldShowGalleryLoadProgress(opts, progressCallback)
+        showProgress: shouldShowGalleryLoadProgress(opts)
     });
 
     const galleryDataReady = typeof isGalleryReady === 'function'
@@ -390,7 +431,7 @@ async function joinGalleryImagesLoad(progressCallback, opts) {
         return;
     }
 
-    const wantProgress = shouldShowGalleryLoadProgress(opts, progressCallback);
+    const wantProgress = shouldShowGalleryLoadProgress(opts);
     let galleryLoadingProgressShown = false;
     let unsub = () => {};
 
@@ -433,7 +474,7 @@ async function prepareGalleryWindowContent() {
     }
 
     if (canJoinGalleryImagesLoad()) {
-        await loadGallery(false, null, { showProgress: true });
+        await joinGalleryImagesLoad(null, { showProgress: true });
         return;
     }
 
@@ -470,8 +511,7 @@ function applyPinnedIndexesOverlay(gallery, pinnedIndexes) {
         return gallery;
     }
     const pins = Array.isArray(pinnedIndexes) ? pinnedIndexes : [];
-    const pinCount = pins.length;
-    if (pinCount === 0) {
+    if (pins.length === 0) {
         for (let i = 0; i < gallery.length; i++) {
             if (gallery[i]) {
                 gallery[i].isPinned = false;
@@ -492,6 +532,38 @@ const GALLERY_CHUNK_SIZE = 750;
 const INCREMENTAL_HEAD_SYNC_MAX_DELTA = 500;
 const GALLERY_LOAD_LOG_MAX_ENTRIES = 500;
 const GALLERY_LOAD_LOG_CLIENT_SOURCE_ID = 'client:gallery-load';
+
+let galleryBlockSyncPartialRevealToken = null;
+
+function galleryChunkAfterCursor(item) {
+    if (!item || item.base == null) {
+        return null;
+    }
+    const sortMtime = Number(item.mtime);
+    if (!Number.isFinite(sortMtime)) {
+        return null;
+    }
+    return { sortMtime, base: String(item.base) };
+}
+
+function maybeRevealGalleryDuringBlockSync(partialItems, probe, totalItems, loadToken, loadLog = galleryLoadLogNoop) {
+    if (!partialItems.length || !isGalleryLoadTokenCurrent(loadToken) || partialItems.length >= totalItems) {
+        return;
+    }
+    if (galleryBlockSyncPartialRevealToken === loadToken) {
+        return;
+    }
+    galleryBlockSyncPartialRevealToken = loadToken;
+    loadLog.step('partial-reveal', 'Showing gallery after first block while sync continues', {
+        loaded: partialItems.length,
+        expectedTotal: totalItems
+    });
+    setActiveGalleryList(slimGalleryList(partialItems.slice()), { preserveSyncState: true });
+    if (typeof hideGalleryProgressModal === 'function') {
+        hideGalleryProgressModal();
+    }
+    displayGalleryContentIfNeeded();
+}
 
 let galleryLoadLogSession = 0;
 let galleryLoadLogRequestCount = 0;
@@ -523,14 +595,16 @@ function appendGalleryLoadLogEntry(session, decision, reason, details) {
     while (galleryLoadLogBuffer.length > GALLERY_LOAD_LOG_MAX_ENTRIES) {
         galleryLoadLogBuffer.shift();
     }
-    if (logViewerApplet && logViewerApplet.isClientGalleryLogSourceActive()) {
+    // logViewerApplet — public/scripts/comp/logViewerApplet.js (on-open via featureLoader)
+    if (typeof logViewerApplet !== 'undefined' && logViewerApplet && logViewerApplet.isClientGalleryLogSourceActive()) {
         logViewerApplet.onGalleryLoadLogEntry(entry);
     }
 }
 
 function clearGalleryLoadLogBuffer() {
     galleryLoadLogBuffer.length = 0;
-    if (logViewerApplet && logViewerApplet.isClientGalleryLogSourceActive()) {
+    // logViewerApplet — public/scripts/comp/logViewerApplet.js (on-open via featureLoader)
+    if (typeof logViewerApplet !== 'undefined' && logViewerApplet && logViewerApplet.isClientGalleryLogSourceActive()) {
         logViewerApplet.renderClientGalleryLogContent();
     }
 }
@@ -611,44 +685,90 @@ function galleryLoadProbeSummary(probe) {
     }
     return {
         total: probe.total || 0,
-        hash: probe.galleryHash || null,
-        hashShort: probe.galleryHash ? `${probe.galleryHash.slice(0, 12)}…` : null,
         pinCount: Array.isArray(probe.pinnedIndexes) ? probe.pinnedIndexes.length : 0,
         workspaceId: probe.workspaceId || null,
         destructiveAt: probe.lastGalleryDestructiveAt || 0
     };
 }
 
-function galleryLoadSnapshotSummary(snapshot) {
-    if (!snapshot) {
-        return { hasSnapshot: false };
+function allGalleryBlockOffsets(total) {
+    const offsets = [];
+    for (let o = 0; o < total; o += GALLERY_CHUNK_SIZE) {
+        offsets.push(o);
     }
-    return {
-        hasSnapshot: true,
-        cachedCount: Array.isArray(snapshot.gallery) ? snapshot.gallery.length : 0,
-        cachedHash: snapshot.galleryHash || snapshot.hash || null,
-        cachedHashShort: (snapshot.galleryHash || snapshot.hash)
-            ? `${(snapshot.galleryHash || snapshot.hash).slice(0, 12)}…`
-            : null,
-        cachedPinCount: Array.isArray(snapshot.pinnedIndexes) ? snapshot.pinnedIndexes.length : 0,
-        cachedAt: snapshot.cachedAt || null
-    };
+    return offsets;
 }
 
-function reportGalleryBlockProgress(progressCallback, loaded, total, offset) {
-    if (!progressCallback || total <= 0) {
+function planGalleryBlockFetch(total, loadLog = galleryLoadLogNoop) {
+    loadLog.step('plan-server-only', 'Fetching all gallery blocks from server', {
+        serverTotal: Number(total) || 0
+    });
+    return { action: 'full', offsets: allGalleryBlockOffsets(total), blockByOffset: new Map() };
+}
+
+/** Push progress to in-flight joiners, the load modal/toast, and an optional caller callback. */
+function publishGalleryLoadProgress(progress, progressCallback = null) {
+    publishGalleryImagesLoadProgress(progress);
+    updateGalleryLoadingProgress(progress);
+    if (progressCallback) {
+        try {
+            progressCallback(progress);
+        } catch (e) {
+            console.error('Gallery load progress callback error:', e);
+        }
+    }
+}
+
+/** Yield so the progress modal/toast can paint between block fetches. */
+function yieldGalleryProgressPaint() {
+    return new Promise((resolve) => {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(resolve);
+        });
+    });
+}
+
+function reportGalleryBlockProgress(progressCallback, blockIndex, totalBlocks, totalItems) {
+    if (totalBlocks <= 0) {
         return;
     }
-    const progressRatio = loaded / total;
-    const blocksLeft = Math.max(0, Math.ceil((total - loaded) / GALLERY_CHUNK_SIZE));
-    progressCallback({
-        loaded,
-        total,
-        offset,
-        progress: Math.min(1, progressRatio),
-        phase: progressRatio < 0.75 ? 'initial' : 'remaining',
-        blocksLeft
-    });
+    const blocksDone = blockIndex < 0 ? 0 : blockIndex + 1;
+    const blocksLeft = Math.max(0, totalBlocks - blocksDone);
+    publishGalleryLoadProgress({
+        loaded: blocksDone,
+        total: totalBlocks,
+        totalItems: totalItems || 0,
+        offset: blockIndex < 0 ? 0 : blockIndex * GALLERY_CHUNK_SIZE,
+        chunkSize: GALLERY_CHUNK_SIZE,
+        progress: totalBlocks > 0 ? Math.min(1, blocksDone / totalBlocks) : 0,
+        phase: 'block_fetch',
+        blocksLeft,
+        blockIndex: blockIndex < 0 ? 0 : blockIndex,
+        totalBlocks
+    }, progressCallback);
+}
+
+function emitGalleryCacheValidProgress(progressCallback, total) {
+    publishGalleryLoadProgress({
+        loaded: total || 0,
+        total: total || 0,
+        offset: total || 0,
+        progress: 1,
+        phase: 'cache_valid',
+        blocksLeft: 0
+    }, progressCallback);
+}
+
+function beginGalleryBlockFetchSession() {
+    if (window.wsClient) {
+        window.wsClient.isGalleryLoadingActive = true;
+    }
+}
+
+function endGalleryBlockFetchSession() {
+    if (window.wsClient && typeof window.wsClient.completeGalleryLoading === 'function') {
+        window.wsClient.completeGalleryLoading();
+    }
 }
 
 async function finalizeGalleryImagesLoad(dataItems, probe, workspaceId, viewType, serverDestructiveAt, loadLog = galleryLoadLogNoop, loadToken = null) {
@@ -656,36 +776,21 @@ async function finalizeGalleryImagesLoad(dataItems, probe, workspaceId, viewType
         loadLog.step('stale-discard', 'Discarded stale gallery load before apply', { viewType });
         return;
     }
-    const galleryHash = probe.galleryHash;
     const pinnedIndexes = Array.isArray(probe.pinnedIndexes) ? probe.pinnedIndexes : [];
     loadLog.step('finalize', 'Applying pinned overlay after gallery data is complete', {
         itemCount: dataItems.length,
-        pinCount: pinnedIndexes.length,
-        hash: galleryHash ? `${galleryHash.slice(0, 12)}…` : null
+        pinCount: pinnedIndexes.length
     });
     applyPinnedIndexesOverlay(dataItems, pinnedIndexes);
     const slimItems = slimGalleryList(dataItems);
     setActiveGalleryList(slimItems, { preserveSyncState: true });
-
-    if (galleryHash && workspaceId) {
-        markGalleryImagesSyncState(workspaceId, viewType, galleryHash, slimItems.length, pinnedIndexes, serverDestructiveAt);
-        void galleryMetadataCache.initPromise.then(() => galleryMetadataCache.setGallerySnapshot(
-            workspaceId,
-            viewType,
-            galleryHash,
-            slimItems,
-            {
-                lastGalleryDestructiveAt: serverDestructiveAt,
-                pinnedIndexes
-            }
-        ));
-        loadLog.step('snapshot-save', 'Queued IndexedDB gallery snapshot save', {
-            workspaceId,
-            viewType,
-            itemCount: dataItems.length,
-            pinCount: pinnedIndexes.length
-        });
-    }
+    markGalleryImagesSyncState(
+        workspaceId,
+        viewType,
+        slimItems.length,
+        pinnedIndexes,
+        serverDestructiveAt
+    );
 }
 
 async function probeGalleryState(viewType, workspaceId, loadLog = galleryLoadLogNoop) {
@@ -698,68 +803,135 @@ async function probeGalleryState(viewType, workspaceId, loadLog = galleryLoadLog
         await window.wsClient.setActiveWorkspace(workspaceId);
         probe = await loadGalleryChunk(viewType, 0, 0);
     }
-    loadLog.step('probe', 'Hash probe received from server', galleryLoadProbeSummary(probe));
+    loadLog.step('probe', 'Gallery meta probe received from server', galleryLoadProbeSummary(probe));
     return probe;
 }
 
-async function fetchGalleryBlocksInto(viewType, totalItems, dataItems, progressCallback, loadLog = galleryLoadLogNoop) {
+function canUseSessionGalleryMemory(workspaceId, viewType = 'images', probe = null) {
+    if (!galleryImagesSyncState
+        || galleryImagesSyncState.workspaceId !== (workspaceId || 'default')
+        || galleryImagesSyncState.viewType !== viewType
+        || !allImages
+        || allImages.length === 0
+        || allImages.length !== galleryImagesSyncState.total) {
+        return false;
+    }
+    if (probe) {
+        return gallerySessionMatchesProbe(probe);
+    }
+    // Same-session reload: trust in-memory gallery when sync state is stamped.
+    return galleryImagesSyncState.total > 0;
+}
+
+function shouldSkipGallerySortAfterSnapshotLoad() {
+    return gallerySortOrder === 'desc' && !isNarrowGallerySearchActive();
+}
+
+async function fetchGalleryBlocksInto(viewType, workspaceId, totalItems, probe, dataItems, progressCallback, loadLog = galleryLoadLogNoop, loadToken = null, offsetsToFetch = null) {
     dataItems.length = 0;
+    if (!totalItems || !probe) {
+        return dataItems;
+    }
+
+    const offsets = offsetsToFetch && offsetsToFetch.length
+        ? offsetsToFetch.slice()
+        : planGalleryBlockFetch(totalItems, loadLog).offsets;
+    const totalBlocks = offsets.length;
+    const blockByOffset = new Map();
+
     loadLog.step('block-fetch', 'Fetching gallery blocks from server', {
         viewType,
         totalItems,
-        chunkSize: GALLERY_CHUNK_SIZE
+        blockCount: totalBlocks
     });
 
-    while (dataItems.length < totalItems) {
-        const limit = Math.min(GALLERY_CHUNK_SIZE, totalItems - dataItems.length);
-        const result = await loadGalleryChunk(viewType, dataItems.length, limit);
-        const chunk = result.chunk || [];
-        if (!chunk.length) {
-            loadLog.step('block-fetch-stall', 'Block fetch stopped: empty chunk returned', {
-                offset: dataItems.length,
-                limit,
-                loaded: dataItems.length,
-                expectedTotal: totalItems
-            });
-            break;
+    beginGalleryBlockFetchSession();
+
+    if (totalBlocks > 0) {
+        reportGalleryBlockProgress(progressCallback, -1, totalBlocks, totalItems);
+    }
+
+    let afterCursor = null;
+
+    try {
+        for (let blockIndex = 0; blockIndex < offsets.length; blockIndex++) {
+            const offset = offsets[blockIndex];
+            await yieldGalleryProgressPaint();
+            reportGalleryBlockProgress(progressCallback, blockIndex, totalBlocks, totalItems);
+
+            const limit = Math.min(GALLERY_CHUNK_SIZE, totalItems - offset);
+            const chunkOpts = { galleryBlockFetch: true };
+            if (afterCursor) {
+                chunkOpts.afterCursor = afterCursor;
+            }
+            const result = await loadGalleryChunk(viewType, offset, limit, chunkOpts);
+            const chunk = result.chunk || [];
+            if (!chunk.length) {
+                loadLog.step('block-fetch-stall', 'Block fetch stopped: empty chunk returned', { offset, blockIndex });
+                break;
+            }
+
+            const slimChunk = slimGalleryList(chunk);
+            afterCursor = galleryChunkAfterCursor(slimChunk[slimChunk.length - 1]);
+            if (offset === 0) {
+                maybeRevealGalleryDuringBlockSync(slimChunk, probe, totalItems, loadToken, loadLog);
+            }
+            blockByOffset.set(offset, { offset, items: slimChunk });
+
+            await yieldGalleryProgressPaint();
+            reportGalleryBlockProgress(progressCallback, blockIndex, totalBlocks, totalItems);
         }
 
-        dataItems.push(...chunk);
-        reportGalleryBlockProgress(progressCallback, dataItems.length, totalItems, dataItems.length);
-
-        if (!result.hasMore && dataItems.length < totalItems) {
-            loadLog.step('block-fetch-stall', 'Block fetch stopped: server reported no more items', {
-                loaded: dataItems.length,
-                expectedTotal: totalItems
-            });
-            break;
+        for (const offset of allGalleryBlockOffsets(totalItems)) {
+            const block = blockByOffset.get(offset);
+            if (!block || !Array.isArray(block.items) || !block.items.length) {
+                loadLog.step('block-fetch-stall', 'Block assembly stopped: missing block', { offset });
+                break;
+            }
+            dataItems.push(...block.items);
         }
+    } finally {
+        endGalleryBlockFetchSession();
     }
 
     loadLog.step('block-fetch-done', 'Block fetch finished', {
         loaded: dataItems.length,
-        expectedTotal: totalItems
+        expectedTotal: totalItems,
+        blocksRequested: totalBlocks
     });
     return dataItems;
 }
 
-async function verifyGalleryProbeHash(viewType, expectedHash, loadLog = galleryLoadLogNoop) {
-    if (!expectedHash) {
-        loadLog.step('hash-verify-skip', 'Skipped hash verification: no expected hash');
-        return null;
+async function fetchAndFinalizeGalleryBlocks(viewType, workspaceId, totalItems, probe, serverDestructiveAt, progressCallback, loadLog, loadToken, offsetsToFetch = null) {
+    const dataItems = [];
+    await fetchGalleryBlocksInto(viewType, workspaceId, totalItems, probe, dataItems, progressCallback, loadLog, loadToken, offsetsToFetch);
+    if (!isGalleryLoadTokenCurrent(loadToken)) {
+        return false;
     }
-    const hashProbe = await loadGalleryChunk(viewType, 0, 0);
-    if (hashProbe.galleryHash !== expectedHash) {
-        loadLog.step('hash-verify-fail', 'Hash verification failed', {
-            expected: `${expectedHash.slice(0, 12)}…`,
-            actual: hashProbe.galleryHash ? `${hashProbe.galleryHash.slice(0, 12)}…` : null
-        });
-        return null;
+    if (dataItems.length !== totalItems) {
+        if (dataItems.length > 0) {
+            await finalizeGalleryImagesLoad(
+                dataItems,
+                probe,
+                workspaceId,
+                viewType,
+                serverDestructiveAt,
+                loadLog,
+                loadToken
+            );
+        }
+        return false;
     }
-    loadLog.step('hash-verify-ok', 'Hash verification passed', {
-        hash: `${expectedHash.slice(0, 12)}…`
-    });
-    return hashProbe;
+    await finalizeGalleryImagesLoad(
+        dataItems,
+        probe,
+        workspaceId,
+        viewType,
+        serverDestructiveAt,
+        loadLog,
+        loadToken
+    );
+    return true;
 }
 
 async function tryIncrementalGalleryHeadSync(cachedGallery, probe, viewType, progressCallback, loadLog = galleryLoadLogNoop) {
@@ -785,7 +957,7 @@ async function tryIncrementalGalleryHeadSync(cachedGallery, probe, viewType, pro
     let offset = 0;
     while (headItems.length < delta) {
         const limit = Math.min(GALLERY_CHUNK_SIZE, delta - headItems.length);
-        const result = await loadGalleryChunk(viewType, offset, limit);
+        const result = await loadGalleryChunk(viewType, offset, limit, { galleryBlockFetch: true });
         const chunk = result.chunk || [];
         if (!chunk.length) {
             loadLog.step('incremental-abort', 'Incremental sync aborted: empty head chunk', {
@@ -796,12 +968,11 @@ async function tryIncrementalGalleryHeadSync(cachedGallery, probe, viewType, pro
         }
         headItems.push(...chunk);
         offset += chunk.length;
-        reportGalleryBlockProgress(progressCallback, headItems.length, totalItems, offset);
     }
 
     const overlapSize = Math.min(5, cachedLen);
     if (overlapSize > 0) {
-        const boundaryResult = await loadGalleryChunk(viewType, delta, overlapSize);
+        const boundaryResult = await loadGalleryChunk(viewType, delta, overlapSize, { galleryBlockFetch: true });
         const boundaryChunk = boundaryResult.chunk || [];
         if (!verifyGalleryOverlap(cachedGallery, boundaryChunk, Math.min(overlapSize, boundaryChunk.length))) {
             loadLog.step('incremental-abort', 'Incremental sync aborted: cached tail does not overlap server boundary', {
@@ -825,29 +996,15 @@ async function tryIncrementalGalleryHeadSync(cachedGallery, probe, viewType, pro
         return null;
     }
 
-    const hashProbe = await verifyGalleryProbeHash(viewType, probe.galleryHash, loadLog);
-    if (!hashProbe) {
-        loadLog.step('incremental-abort', 'Incremental sync aborted: hash verification failed after merge');
-        return null;
-    }
-
     loadLog.step('incremental-ok', 'Incremental head sync succeeded', {
         headFetched: headItems.length,
         cachedReused: cachedLen,
         total: dataItems.length
     });
-    return { dataItems, hashProbe };
+    return { dataItems, probe };
 }
 
-function resolveIncrementalSyncBaseGallery(storedSnapshot, workspaceId, viewType, totalItems, loadLog = galleryLoadLogNoop) {
-    const fromSnapshot = storedSnapshot && Array.isArray(storedSnapshot.gallery)
-        ? storedSnapshot.gallery
-        : null;
-
-    if (fromSnapshot && fromSnapshot.length > 0 && fromSnapshot.length < totalItems) {
-        return fromSnapshot;
-    }
-
+function resolveIncrementalSyncBaseGallery(workspaceId, viewType, totalItems, loadLog = galleryLoadLogNoop) {
     if (viewType === 'images'
         && currentGalleryView === 'images'
         && getGalleryLoadWorkspaceId() === workspaceId
@@ -861,284 +1018,136 @@ function resolveIncrementalSyncBaseGallery(storedSnapshot, workspaceId, viewType
         });
         return allImages;
     }
-
     return null;
 }
 
-async function syncGalleryImagesFromBlocks(probe, storedSnapshot, viewType, workspaceId, progressCallback, serverDestructiveAt, loadLog = galleryLoadLogNoop, loadToken = null) {
-    const totalItems = probe.total;
-    const targetHash = probe.galleryHash;
-    const serverAt = Number(serverDestructiveAt) || 0;
-
-    if (storedSnapshot && serverAt > (Number(storedSnapshot.lastGalleryDestructiveAt) || 0)) {
-        loadLog.step('cache-stale', 'IndexedDB snapshot predates server maintenance timestamp; hash verification still required', {
-            serverDestructiveAt: serverAt,
-            snapshotDestructiveAt: Number(storedSnapshot.lastGalleryDestructiveAt) || 0
-        });
-    }
-
-    loadLog.step('sync-evaluate', 'Evaluating gallery sync strategy', {
-        probe: galleryLoadProbeSummary(probe),
-        snapshot: galleryLoadSnapshotSummary(storedSnapshot)
-    });
-
-    if (viewType === 'images'
-        && galleryImagesSyncState
-        && galleryImagesSyncState.workspaceId === workspaceId
-        && galleryImagesSyncState.viewType === viewType
-        && galleryImagesSyncState.hash === targetHash
-        && galleryImagesSyncState.total === totalItems
-        && allImages
-        && allImages.length === totalItems) {
-        loadLog.step('session-hit', 'In-memory gallery matches server probe', {
-            itemCount: totalItems,
-            hash: `${targetHash.slice(0, 12)}…`,
-            pinCount: Array.isArray(probe.pinnedIndexes) ? probe.pinnedIndexes.length : 0
-        });
-        applyPinnedIndexesOverlay(allImages, probe.pinnedIndexes);
-        if (Array.isArray(probe.pinnedIndexes)) {
-            galleryImagesSyncState.pinnedIndexes = probe.pinnedIndexes.slice();
-        }
-        loadLog.done('loaded from session memory');
-        return true;
-    }
-
-    if (!totalItems || !targetHash) {
-        loadLog.step('sync-defer', 'Deferring to legacy full chunk loader', {
-            reason: !totalItems ? 'missing server total' : 'missing server hash'
-        });
-        return false;
-    }
-
-    const cachedGallery = storedSnapshot && Array.isArray(storedSnapshot.gallery)
-        ? storedSnapshot.gallery
-        : null;
-
-    const snapshotHash = storedSnapshot
-        ? (storedSnapshot.galleryHash || storedSnapshot.hash || null)
-        : null;
-
-    if (storedSnapshot
-        && snapshotHash === targetHash
-        && cachedGallery
-        && cachedGallery.length === totalItems) {
-        loadLog.step('cache-hit', 'Using IndexedDB snapshot: hash and item count match server', {
-            itemCount: totalItems,
-            hash: `${targetHash.slice(0, 12)}…`,
-            pinCount: Array.isArray(storedSnapshot.pinnedIndexes) ? storedSnapshot.pinnedIndexes.length : 0
-        });
-        if (!isGalleryLoadTokenCurrent(loadToken)) {
-            loadLog.step('stale-discard', 'Discarded stale gallery load before cache apply', { viewType });
-            return false;
-        }
-        const probeForLoad = Array.isArray(storedSnapshot.pinnedIndexes) && storedSnapshot.pinnedIndexes.length > 0
-            ? { ...probe, pinnedIndexes: storedSnapshot.pinnedIndexes }
-            : probe;
-        applyPinnedIndexesOverlay(cachedGallery, probeForLoad.pinnedIndexes);
-        const slimItems = slimGalleryList(cachedGallery);
-        setActiveGalleryList(slimItems, { preserveSyncState: true });
-        markGalleryImagesSyncState(
-            workspaceId,
-            viewType,
-            targetHash,
-            slimItems.length,
-            probeForLoad.pinnedIndexes,
-            serverDestructiveAt
-        );
-        loadLog.done('loaded from IndexedDB cache');
-        return true;
-    }
-
-    if (storedSnapshot && cachedGallery) {
-        if (snapshotHash !== targetHash) {
-            loadLog.step('cache-miss', 'IndexedDB snapshot hash differs from server', {
-                cachedHash: snapshotHash ? `${snapshotHash.slice(0, 12)}…` : null,
-                serverHash: `${targetHash.slice(0, 12)}…`
-            });
-        } else if (cachedGallery.length !== totalItems) {
-            loadLog.step('cache-partial', 'IndexedDB snapshot hash matches but item count differs', {
-                cachedCount: cachedGallery.length,
-                serverTotal: totalItems
-            });
-        }
-    } else {
-        loadLog.step('cache-miss', 'No usable IndexedDB snapshot for this workspace/view');
-    }
-
-    const incrementalBaseGallery = resolveIncrementalSyncBaseGallery(
-        storedSnapshot,
-        workspaceId,
-        viewType,
-        totalItems,
-        loadLog
-    );
-    const incrementalDelta = incrementalBaseGallery ? (totalItems - incrementalBaseGallery.length) : 0;
-
-    if (incrementalBaseGallery
-        && incrementalDelta > 0
-        && incrementalDelta <= INCREMENTAL_HEAD_SYNC_MAX_DELTA) {
-        const incremental = await tryIncrementalGalleryHeadSync(incrementalBaseGallery, probe, viewType, progressCallback, loadLog);
-        if (incremental) {
-            await finalizeGalleryImagesLoad(
-                incremental.dataItems,
-                { ...probe, pinnedIndexes: incremental.hashProbe.pinnedIndexes },
-                workspaceId,
-                viewType,
-                serverDestructiveAt,
-                loadLog,
-                loadToken
-            );
-            loadLog.done('loaded via incremental head sync');
-            return true;
-        }
-    } else if (incrementalBaseGallery && incrementalDelta > INCREMENTAL_HEAD_SYNC_MAX_DELTA) {
-        loadLog.step('incremental-skip', 'Head delta too large for incremental sync', {
-            cachedCount: incrementalBaseGallery.length,
-            serverTotal: totalItems,
-            delta: incrementalDelta,
-            maxDelta: INCREMENTAL_HEAD_SYNC_MAX_DELTA
-        });
-    }
-
-    loadLog.step('full-block-sync', 'Falling back to full block sync with hash verification', {
-        expectedTotal: totalItems,
-        expectedHash: `${targetHash.slice(0, 12)}…`
-    });
-
-    let expectedHash = targetHash;
-    for (let attempt = 0; attempt < 2; attempt++) {
-        if (attempt > 0) {
-            loadLog.step('full-block-retry', 'Retrying full block sync after hash mismatch', {
-                attempt: attempt + 1,
-                expectedHash: `${expectedHash.slice(0, 12)}…`
-            });
-        }
-
-        const dataItems = [];
-        await fetchGalleryBlocksInto(viewType, totalItems, dataItems, progressCallback, loadLog);
-
-        if (dataItems.length !== totalItems) {
-            loadLog.step('full-block-incomplete', 'Full block sync did not reach expected item count', {
-                loaded: dataItems.length,
-                expectedTotal: totalItems,
-                attempt: attempt + 1
-            });
-            continue;
-        }
-
-        const hashProbe = await verifyGalleryProbeHash(viewType, expectedHash, loadLog);
-        if (hashProbe) {
-            await finalizeGalleryImagesLoad(
-                dataItems,
-                { ...probe, pinnedIndexes: hashProbe.pinnedIndexes, galleryHash: hashProbe.galleryHash },
-                workspaceId,
-                viewType,
-                serverDestructiveAt,
-                loadLog,
-                loadToken
-            );
-            loadLog.done('loaded via full block sync', { attempts: attempt + 1 });
-            return true;
-        }
-
-        const refreshProbe = await loadGalleryChunk(viewType, 0, 0);
-        expectedHash = refreshProbe.galleryHash || expectedHash;
-        loadLog.step('hash-refresh', 'Server hash changed during block sync; updated expected hash', {
-            nextHash: expectedHash ? `${expectedHash.slice(0, 12)}…` : null
-        });
-    }
-
-    loadLog.step('sync-failed', 'Block sync strategies exhausted; deferring to legacy chunk loader');
-    return false;
-}
-
-// IndexedDB utilities for gallery metadata caching
+// IndexedDB utilities for per-image metadata / thumbnails (not gallery list cache)
 class GalleryMetadataCache {
     constructor() {
         this.dbName = 'StaticForgeGallery';
-        this.version = 2;
+        this.version = 7;
         this.db = null;
         this.snapshotCleanupDone = false;
         this.initPromise = this.initDB();
     }
 
-    async initDB() {
-        return new Promise((resolve, reject) => {
+    _openDatabase() {
+        const openAttempt = new Promise((resolve, reject) => {
+            if (!('indexedDB' in window)) {
+                reject(new Error('IndexedDB not supported'));
+                return;
+            }
+
             const request = indexedDB.open(this.dbName, this.version);
 
             request.onerror = () => {
-                console.warn('IndexedDB not available, falling back to memory-only caching');
-                resolve(null);
+                reject(request.error || new Error('IndexedDB open failed'));
+            };
+
+            request.onblocked = () => {
+                reject(new Error('IndexedDB open blocked'));
             };
 
             request.onsuccess = (event) => {
-                this.db = event.target.result;
-                // Run legacy/orphan snapshot cleanup once during init.
-                if (!this.snapshotCleanupDone) {
-                    this.snapshotCleanupDone = true;
-                    this.cleanupLegacySnapshotEntries();
-                    this.runMaintenance();
-                }
-                resolve(this.db);
+                resolve(event.target.result);
             };
 
             request.onupgradeneeded = (event) => {
                 const db = event.target.result;
+                // Drop abandoned gallery list cache stores from earlier revisions
+                for (const storeName of ['gallerySnapshots', 'galleryMeta', 'galleryBlocks', 'galleryPins']) {
+                    if (db.objectStoreNames.contains(storeName)) {
+                        db.deleteObjectStore(storeName);
+                    }
+                }
 
-                // Create object store for metadata by base filename
+                let metadataStore;
                 if (!db.objectStoreNames.contains('metadata')) {
-                    const metadataStore = db.createObjectStore('metadata', { keyPath: 'base' });
+                    metadataStore = db.createObjectStore('metadata', { keyPath: 'base' });
                     metadataStore.createIndex('mtime', 'mtime', { unique: false });
+                } else {
+                    metadataStore = event.target.transaction.objectStore('metadata');
+                }
+                if (!metadataStore.indexNames.contains('cachedAt')) {
+                    metadataStore.createIndex('cachedAt', 'cachedAt', { unique: false });
                 }
 
-                // Create object store for thumbnails
+                let thumbnailStore;
                 if (!db.objectStoreNames.contains('thumbnails')) {
-                    db.createObjectStore('thumbnails', { keyPath: 'base' });
+                    thumbnailStore = db.createObjectStore('thumbnails', { keyPath: 'base' });
+                } else {
+                    thumbnailStore = event.target.transaction.objectStore('thumbnails');
                 }
-
-                // Create object store for full gallery snapshots by workspace/view/hash
-                if (!db.objectStoreNames.contains('gallerySnapshots')) {
-                    const snapshotStore = db.createObjectStore('gallerySnapshots', { keyPath: 'key' });
-                    snapshotStore.createIndex('workspaceView', 'workspaceView', { unique: false });
-                    snapshotStore.createIndex('cachedAt', 'cachedAt', { unique: false });
+                if (!thumbnailStore.indexNames.contains('cachedAt')) {
+                    thumbnailStore.createIndex('cachedAt', 'cachedAt', { unique: false });
                 }
             };
         });
+
+        const timeoutMs = 15000;
+        return Promise.race([
+            openAttempt,
+            new Promise((_, reject) => {
+                setTimeout(() => reject(new Error(`IndexedDB open timed out after ${timeoutMs}ms`)), timeoutMs);
+            })
+        ]);
     }
 
-    buildSnapshotKey(workspaceId, viewType) {
-        return `${workspaceId || 'default'}::${viewType || 'images'}`;
-    }
+    async eraseDatabase() {
+        if (this.db) {
+            try {
+                this.db.close();
+            } catch (e) { /* ignore */ }
+            this.db = null;
+        }
+        if (!('indexedDB' in window)) {
+            return false;
+        }
 
-    async cleanupLegacySnapshotEntries() {
-        if (!this.db) return;
-        return new Promise((resolve) => {
-            const transaction = this.db.transaction(['gallerySnapshots'], 'readwrite');
-            const store = transaction.objectStore('gallerySnapshots');
-            const request = store.openCursor();
-
-            request.onsuccess = (event) => {
-                const cursor = event.target.result;
-                if (!cursor) {
-                    resolve();
-                    return;
-                }
-
-                const key = String(cursor.primaryKey || '');
-                const record = cursor.value || {};
-                const workspaceId = record.workspaceId || 'default';
-                const viewType = record.viewType || 'images';
-                const expectedKey = this.buildSnapshotKey(workspaceId, viewType);
-                const isLegacyKeyFormat = key !== expectedKey;
-
-                if (isLegacyKeyFormat) {
-                    cursor.delete();
-                }
-                cursor.continue();
+        await new Promise((resolve) => {
+            const deleteReq = indexedDB.deleteDatabase(this.dbName);
+            const timeout = setTimeout(resolve, 5000);
+            const finish = () => {
+                clearTimeout(timeout);
+                resolve();
             };
-            request.onerror = () => resolve();
-            transaction.onerror = () => resolve();
+            deleteReq.onsuccess = finish;
+            deleteReq.onerror = finish;
+            deleteReq.onblocked = finish;
         });
+
+        this.snapshotCleanupDone = false;
+        return true;
+    }
+
+    async initDB(isRetry = false) {
+        try {
+            const db = await this._openDatabase();
+            this.db = db;
+            db.onclose = () => {
+                if (this.db === db) {
+                    this.db = null;
+                }
+            };
+
+            if (!this.snapshotCleanupDone) {
+                this.snapshotCleanupDone = true;
+                void Promise.resolve()
+                    .then(() => this.runMaintenance())
+                    .catch((err) => console.warn('Gallery IndexedDB maintenance failed:', err));
+            }
+
+            return this.db;
+        } catch (error) {
+            console.warn('Gallery IndexedDB failed to open; erasing corrupt database:', error);
+            await this.eraseDatabase();
+            if (!isRetry) {
+                return this.initDB(true);
+            }
+            console.warn('Gallery IndexedDB unavailable after erase; memory-only metadata cache');
+            this.db = null;
+            return null;
+        }
     }
 
     async getMetadata(base) {
@@ -1182,21 +1191,21 @@ class GalleryMetadataCache {
         return new Promise((resolve) => {
             const transaction = this.db.transaction(['thumbnails'], 'readwrite');
             const store = transaction.objectStore('thumbnails');
-            const request = store.put({ base, data: thumbnailData });
+            const request = store.put({ base, data: thumbnailData, cachedAt: Date.now() });
 
             request.onsuccess = () => resolve();
             request.onerror = () => resolve();
         });
     }
 
-    async clearOldEntries(maxAge = 7 * 24 * 60 * 60 * 1000) { // 7 days
+    async clearOldEntries(maxAge = 7 * 24 * 60 * 60 * 1000) {
         if (!this.db) return;
         const cutoff = Date.now() - maxAge;
 
         return new Promise((resolve) => {
             const transaction = this.db.transaction(['metadata'], 'readwrite');
             const store = transaction.objectStore('metadata');
-            const index = store.index('mtime');
+            const index = store.index('cachedAt');
             const range = IDBKeyRange.upperBound(cutoff);
             const request = index.openCursor(range);
 
@@ -1208,7 +1217,9 @@ class GalleryMetadataCache {
                     deleted++;
                     cursor.continue();
                 } else {
-                    console.log(`🧹 Cleaned up ${deleted} old gallery metadata entries`);
+                    if (deleted > 0) {
+                        console.log(`🧹 Cleaned up ${deleted} old gallery metadata entries`);
+                    }
                     resolve();
                 }
             };
@@ -1216,134 +1227,46 @@ class GalleryMetadataCache {
         });
     }
 
-    async getGallerySnapshot(workspaceId, viewType, hash, lastGalleryDestructiveAt = 0) {
-        if (!this.db || !hash) return null;
-        const key = this.buildSnapshotKey(workspaceId, viewType);
-
+    async clearOldThumbnails(maxAge = 7 * 24 * 60 * 60 * 1000, maxEntries = 2000) {
+        if (!this.db) return;
+        const cutoff = Date.now() - maxAge;
         return new Promise((resolve) => {
-            const transaction = this.db.transaction(['gallerySnapshots'], 'readonly');
-            const store = transaction.objectStore('gallerySnapshots');
-            const request = store.get(key);
+            const transaction = this.db.transaction(['thumbnails'], 'readwrite');
+            const store = transaction.objectStore('thumbnails');
+            let remaining = 0;
+            let deleted = 0;
 
-            request.onsuccess = () => {
-                const snapshot = request.result || null;
-                if (!snapshot) {
-                    resolve(null);
-                    return;
-                }
-                const snapshotHash = snapshot.galleryHash || snapshot.hash || null;
-                if (snapshotHash !== hash) {
-                    resolve(null);
-                    return;
-                }
-                // Hash match is sufficient; lastGalleryDestructiveAt can bump on benign server maintenance.
-                resolve(snapshot);
+            const countRequest = store.count();
+            countRequest.onsuccess = () => {
+                remaining = countRequest.result || 0;
+                const request = store.openCursor();
+                request.onsuccess = (event) => {
+                    const cursor = event.target.result;
+                    if (!cursor) return;
+                    const cachedAt = Number(cursor.value?.cachedAt) || 0;
+                    if (cachedAt < cutoff || remaining > maxEntries) {
+                        cursor.delete();
+                        remaining--;
+                        deleted++;
+                    }
+                    cursor.continue();
+                };
             };
-            request.onerror = () => resolve(null);
-        });
-    }
-
-    async getStoredGallerySnapshot(workspaceId, viewType) {
-        if (!this.db) return null;
-        const key = this.buildSnapshotKey(workspaceId, viewType);
-
-        return new Promise((resolve) => {
-            const transaction = this.db.transaction(['gallerySnapshots'], 'readonly');
-            const store = transaction.objectStore('gallerySnapshots');
-            const request = store.get(key);
-
-            request.onsuccess = () => {
-                resolve(request.result || null);
+            transaction.oncomplete = () => {
+                if (deleted > 0) {
+                    console.log(`🧹 Cleaned up ${deleted} old gallery thumbnail entries`);
+                }
+                resolve();
             };
-            request.onerror = () => resolve(null);
-        });
-    }
-
-    async setGallerySnapshot(workspaceId, viewType, hash, gallery, meta = {}) {
-        if (!this.db || !hash || !Array.isArray(gallery)) return;
-        const key = this.buildSnapshotKey(workspaceId, viewType);
-        const lastGalleryDestructiveAt = Number(meta.lastGalleryDestructiveAt) || 0;
-        const pinnedIndexes = Array.isArray(meta.pinnedIndexes)
-            ? meta.pinnedIndexes
-            : extractPinnedIndexesFromGallery(gallery);
-        const workspaceView = key;
-
-        return new Promise((resolve) => {
-            const transaction = this.db.transaction(['gallerySnapshots'], 'readwrite');
-            transaction.oncomplete = () => resolve();
             transaction.onerror = () => resolve();
-            const store = transaction.objectStore('gallerySnapshots');
-            const baseRecord = {
-                workspaceView,
-                workspaceId: workspaceId || 'default',
-                viewType: viewType || 'images',
-                galleryHash: hash,
-                hash,
-                gallery,
-                totalItems: gallery.length,
-                pinnedIndexes,
-                lastGalleryDestructiveAt,
-                cachedAt: Date.now()
-            };
-            store.put({ ...baseRecord, key });
-        });
-    }
-
-    async updateGallerySnapshotPins(workspaceId, viewType, hash, gallery, pinnedIndexes) {
-        if (!this.db || !hash || !Array.isArray(gallery)) {
-            return;
-        }
-        const stored = await this.getStoredGallerySnapshot(workspaceId, viewType);
-        const lastGalleryDestructiveAt = stored
-            ? (Number(stored.lastGalleryDestructiveAt) || 0)
-            : 0;
-        await this.setGallerySnapshot(workspaceId, viewType, hash, gallery, {
-            lastGalleryDestructiveAt,
-            pinnedIndexes
+            transaction.onabort = () => resolve();
         });
     }
 
     async runMaintenance() {
         await this.clearOldEntries();
-        await this.pruneStaleGallerySnapshots();
+        await this.clearOldThumbnails();
     }
-
-    async pruneStaleGallerySnapshots(keepKeys = null) {
-        if (!this.db) return;
-        const keepSet = keepKeys instanceof Set ? keepKeys : null;
-
-        return new Promise((resolve) => {
-            const transaction = this.db.transaction(['gallerySnapshots'], 'readwrite');
-            const store = transaction.objectStore('gallerySnapshots');
-            const request = store.openCursor();
-
-            request.onsuccess = (event) => {
-                const cursor = event.target.result;
-                if (!cursor) {
-                    resolve();
-                    return;
-                }
-                const key = String(cursor.primaryKey || '');
-                if (keepSet && keepSet.has(key)) {
-                    cursor.continue();
-                    return;
-                }
-                if (!keepSet) {
-                    const record = cursor.value || {};
-                    const age = Date.now() - (Number(record.cachedAt) || 0);
-                    if (age < 14 * 24 * 60 * 60 * 1000) {
-                        cursor.continue();
-                        return;
-                    }
-                }
-                cursor.delete();
-                cursor.continue();
-            };
-            request.onerror = () => resolve();
-            transaction.onerror = () => resolve();
-        });
-    }
-
 }
 
 /** Strip embedded metadata blobs from gallery index rows — list fields only. */
@@ -1357,6 +1280,7 @@ function slimGalleryListItem(item) {
         original: item.original,
         upscaled: item.upscaled,
         preview: item.preview,
+        blurhash: item.blurhash || null,
         mtime: item.mtime,
         width: item.width,
         height: item.height,
@@ -1408,36 +1332,6 @@ function verifyGalleryOverlap(cachedGallery, serverChunk, count) {
     return true;
 }
 
-async function tryLoadGalleryFromIndexedSnapshot(snapshotWorkspaceId, viewType, galleryHash, totalItems, pinnedIndexes, serverDestructiveAt = 0) {
-    if (!galleryHash || totalItems <= 0) {
-        return false;
-    }
-
-    await galleryMetadataCache.initPromise;
-
-    const storedSnapshot = await galleryMetadataCache.getStoredGallerySnapshot(
-        snapshotWorkspaceId,
-        viewType
-    );
-    const loadLog = acquireGalleryLoadLogger(viewType, snapshotWorkspaceId);
-    loadLog.step('start', 'Gallery snapshot entry from show/open path');
-    const probe = {
-        galleryHash,
-        total: totalItems,
-        pinnedIndexes: Array.isArray(pinnedIndexes) ? pinnedIndexes : []
-    };
-
-    return syncGalleryImagesFromBlocks(
-        probe,
-        storedSnapshot,
-        viewType,
-        snapshotWorkspaceId,
-        null,
-        serverDestructiveAt,
-        loadLog
-    );
-}
-
 // Gallery view state
 let currentGalleryView = 'images'; // 'images', 'scraps', 'pinned', 'upscaled'
 
@@ -1476,6 +1370,17 @@ let lastVisibleItemIndex = -1;
 
 // Global images array (shared with main app)
 let allImages = [];
+
+function getGalleryPerformanceSnapshot() {
+    return {
+        allImages: allImages.length,
+        visibleItems: visibleItems.size,
+        placeholderQueue: placeholderResolutionQueue.length,
+        displayedStartIndex,
+        displayedEndIndex,
+        loadingMore: isLoadingMore
+    };
+}
 
 // Track current visible index for title bar
 let currentVisibleIndex = 0;
@@ -1636,21 +1541,19 @@ function processNextPlaceholders() {
     // so visible rows never stay empty while off-screen rows keep changing.
     if (isScrolling && Math.abs(scrollVelocity) > 1.2) {
         const resolveVisibleNow = () => {
-            const galleryWindow = document.querySelector('#galleryWindow');
-            const galleryContainer = galleryWindow ? galleryWindow.querySelector('.gallery-container') : null;
-            const isContainerScroll = galleryContainer && document.body.classList.contains('desktop-mode');
+            const { galleryContainer, isContainerScroll } = getGalleryScrollRoots();
             const viewportTop = isContainerScroll && galleryContainer ? galleryContainer.scrollTop : (window.pageYOffset || document.documentElement.scrollTop || 0);
             const viewportBottom = viewportTop + (isContainerScroll && galleryContainer ? galleryContainer.clientHeight : window.innerHeight);
             const maxImmediate = 4;
             let resolved = 0;
             const placeholders = gallery ? gallery.querySelectorAll('.gallery-item.gallery-placeholder') : [];
+            const containerRect = isContainerScroll && galleryContainer ? galleryContainer.getBoundingClientRect() : null;
             for (let i = 0; i < placeholders.length && resolved < maxImmediate; i++) {
                 const el = placeholders[i];
                 const rect = el.getBoundingClientRect();
                 let itemTop;
                 let itemBottom;
-                if (isContainerScroll && galleryContainer) {
-                    const containerRect = galleryContainer.getBoundingClientRect();
+                if (isContainerScroll && galleryContainer && containerRect) {
                     itemTop = rect.top - containerRect.top + galleryContainer.scrollTop;
                     itemBottom = rect.bottom - containerRect.top + galleryContainer.scrollTop;
                 } else {
@@ -1768,45 +1671,50 @@ function processNextPlaceholders() {
 
     // Prioritize placeholders: always resolve in-viewport first, then apply direction preference.
     if (Math.abs(scrollVelocity) > 0.5) {
-        // Sort queue to prioritize based on visibility + scroll direction
         const viewportCenter = viewportTop + (window.innerHeight / 2);
         const viewportPad = itemHeight * 0.5;
+        const pageY = window.pageYOffset;
+        // Precompute geometry once — never call getBoundingClientRect inside the comparator
+        const metrics = new Map();
+        for (let qi = 0; qi < placeholderResolutionQueue.length; qi++) {
+            const entry = placeholderResolutionQueue[qi];
+            if (!entry.element) {
+                metrics.set(entry, { top: Infinity, center: Infinity, inViewport: false });
+                continue;
+            }
+            const rect = entry.element.getBoundingClientRect();
+            const top = rect.top + pageY;
+            const bottom = rect.bottom + pageY;
+            metrics.set(entry, {
+                top,
+                center: (top + bottom) * 0.5,
+                inViewport: bottom > (viewportTop - viewportPad) && top < (viewportBottom + viewportPad)
+            });
+        }
 
         placeholderResolutionQueue.sort((a, b) => {
-            if (!a.element || !b.element) return 0;
+            const am = metrics.get(a);
+            const bm = metrics.get(b);
+            if (!am || !bm) return 0;
 
-            const aRect = a.element.getBoundingClientRect();
-            const bRect = b.element.getBoundingClientRect();
-            const aTop = aRect.top + window.pageYOffset;
-            const aBottom = aRect.bottom + window.pageYOffset;
-            const bTop = bRect.top + window.pageYOffset;
-            const bBottom = bRect.bottom + window.pageYOffset;
+            if (am.inViewport !== bm.inViewport) return am.inViewport ? -1 : 1;
 
-            const aInViewport = aBottom > (viewportTop - viewportPad) && aTop < (viewportBottom + viewportPad);
-            const bInViewport = bBottom > (viewportTop - viewportPad) && bTop < (viewportBottom + viewportPad);
-            if (aInViewport !== bInViewport) return aInViewport ? -1 : 1;
-
-            const aDist = Math.abs((aTop + aBottom) * 0.5 - viewportCenter);
-            const bDist = Math.abs((bTop + bBottom) * 0.5 - viewportCenter);
+            const aDist = Math.abs(am.center - viewportCenter);
+            const bDist = Math.abs(bm.center - viewportCenter);
             if (aDist !== bDist) return aDist - bDist;
 
             if (scrollVelocity > 0) {
-                // Scrolling down - prioritize items below viewport center
-                const aIsBelow = aTop > viewportCenter;
-                const bIsBelow = bTop > viewportCenter;
-
-                if (aIsBelow && !bIsBelow) return -1; // a comes first
-                if (bIsBelow && !aIsBelow) return 1;  // b comes first
-                return 0; // same priority
-            } else {
-                // Scrolling up - prioritize items above viewport center
-                const aIsAbove = aTop < viewportCenter;
-                const bIsAbove = bTop < viewportCenter;
-
-                if (aIsAbove && !bIsAbove) return -1; // a comes first
-                if (bIsAbove && !aIsAbove) return 1;  // b comes first
-                return 0; // same priority
+                const aIsBelow = am.top > viewportCenter;
+                const bIsBelow = bm.top > viewportCenter;
+                if (aIsBelow && !bIsBelow) return -1;
+                if (bIsBelow && !aIsBelow) return 1;
+                return 0;
             }
+            const aIsAbove = am.top < viewportCenter;
+            const bIsAbove = bm.top < viewportCenter;
+            if (aIsAbove && !bIsAbove) return -1;
+            if (bIsAbove && !aIsAbove) return 1;
+            return 0;
         });
     }
 
@@ -2027,7 +1935,6 @@ function setActiveGalleryList(newGallery, options = {}) {
         invalidateGalleryImagesSyncState();
     } else if (!options.preserveSyncState) {
         driftGalleryImagesSyncState(list.length);
-        queueGallerySnapshotPersist();
     }
 
     allImages = list;
@@ -2050,17 +1957,165 @@ function setActiveGalleryList(newGallery, options = {}) {
     return allImages;
 }
 
-/** Prepend a new item to the active gallery; keeps search baseline in sync when present. */
-function prependToActiveGalleryList(item) {
-    if (!item) return;
-    const slimItem = slimGalleryListItem(item);
-    allImages.unshift(slimItem);
+/** Display file for a gallery tile (upscaled preferred). */
+function galleryListItemDisplayKey(img) {
+    if (!img) return null;
+    if (typeof img === 'string') return img;
+    return img.filename || img.upscaled || img.original || null;
+}
+
+function galleryListItemIdentityKeys(itemOrFilename) {
+    if (!itemOrFilename) return [];
+    if (typeof itemOrFilename === 'string') return [itemOrFilename];
+    const keys = [];
+    [itemOrFilename.filename, itemOrFilename.upscaled, itemOrFilename.original].forEach((k) => {
+        if (k && !keys.includes(k)) keys.push(k);
+    });
+    return keys;
+}
+
+function galleryListItemMatchesIdentity(img, identityKeys) {
+    if (!img || !identityKeys || identityKeys.length === 0) return false;
+    const imgKeys = [img.filename, img.upscaled, img.original].filter(Boolean);
+    return identityKeys.some((k) => imgKeys.includes(k));
+}
+
+/** True when this exact file is already on a list row (as filename/original/upscaled). */
+function activeGalleryHasExactFile(filename) {
+    if (!filename) return false;
+    const match = (img) => img.filename === filename || img.original === filename || img.upscaled === filename;
+    if (allImages.some(match)) return true;
     if (window.originalAllImages && window.originalAllImages !== allImages) {
-        window.originalAllImages.unshift(slimItem);
+        return window.originalAllImages.some(match);
+    }
+    return false;
+}
+
+function findActiveGalleryListIndexForItem(item) {
+    if (!item) return -1;
+    const displayKey = galleryListItemDisplayKey(item);
+    if (displayKey) {
+        const exact = allImages.findIndex((img) =>
+            img.filename === displayKey || img.upscaled === displayKey || img.original === displayKey
+        );
+        if (exact >= 0) return exact;
+    }
+    if (item.upscaled) {
+        const byUpscaled = allImages.findIndex((img) =>
+            img.upscaled === item.upscaled || img.filename === item.upscaled
+        );
+        if (byUpscaled >= 0) return byUpscaled;
+    }
+    if (item.base) {
+        const byBase = allImages.findIndex((img) => img.base && img.base === item.base);
+        if (byBase >= 0) return byBase;
+    }
+    if (item.original) {
+        const byOriginal = allImages.findIndex((img) =>
+            img.original === item.original || img.filename === item.original
+        );
+        if (byOriginal >= 0) return byOriginal;
+    }
+    return -1;
+}
+
+function mergeSlimGalleryListItems(existing, incoming) {
+    const slimIncoming = slimGalleryListItem(incoming);
+    const merged = slimGalleryListItem({
+        ...(existing || {}),
+        ...slimIncoming,
+        base: slimIncoming.base || (existing && existing.base) || null,
+        original: slimIncoming.original || (existing && existing.original) || null,
+        upscaled: slimIncoming.upscaled || (existing && existing.upscaled) || null,
+        preview: slimIncoming.preview || (existing && existing.preview) || null,
+        blurhash: slimIncoming.blurhash || (existing && existing.blurhash) || null,
+        mtime: Math.max(Number(slimIncoming.mtime) || 0, Number(existing && existing.mtime) || 0) || slimIncoming.mtime,
+        width: slimIncoming.width != null ? slimIncoming.width : (existing && existing.width),
+        height: slimIncoming.height != null ? slimIncoming.height : (existing && existing.height),
+        size: slimIncoming.size || (existing && existing.size) || 0
+    });
+    merged.filename = merged.upscaled || merged.original || merged.filename;
+    return merged;
+}
+
+function findGalleryDomItemByIdentity(itemOrFilename) {
+    if (!gallery) return null;
+    const keys = galleryListItemIdentityKeys(itemOrFilename);
+    if (keys.length === 0) return null;
+    const items = gallery.querySelectorAll('.gallery-item[data-filename], .gallery-placeholder[data-filename]');
+    for (let i = 0; i < items.length; i++) {
+        const fn = items[i].dataset.filename;
+        if (fn && keys.includes(fn)) return items[i];
+    }
+    return null;
+}
+
+/** Update an existing gallery cell after upscale / metadata refresh. */
+function updateGalleryItemElementFromData(el, imageData) {
+    if (!el || !imageData) return;
+    const filename = galleryListItemDisplayKey(imageData);
+    if (filename) {
+        el.dataset.filename = filename;
+        const checkbox = el.querySelector('.gallery-item-checkbox');
+        if (checkbox) checkbox.dataset.filename = filename;
+    }
+    if (imageData.mtime != null) {
+        el.dataset.time = imageData.mtime || 0;
+    }
+    // Refresh preview — display file may have changed (original → upscaled)
+    if (el.querySelector('img')) {
+        removeImgFromGalleryItem(el);
+    }
+    if (!el.classList.contains('gallery-placeholder')) {
+        addImgToGalleryItemAsync(el, imageData);
+    }
+}
+
+/**
+ * Prepend or upgrade a gallery list row at head.
+ * Upscale fills `upscaled` on the same base — merge + move to head instead of skipping.
+ * Returns false when the list is already identical at head.
+ */
+function prependToActiveGalleryList(item) {
+    if (!item) return false;
+    const slimIncoming = slimGalleryListItem(item);
+    const idx = findActiveGalleryListIndexForItem(slimIncoming);
+
+    if (idx >= 0) {
+        const merged = mergeSlimGalleryListItems(allImages[idx], slimIncoming);
+        const head = allImages[0];
+        const unchanged = idx === 0
+            && head
+            && head.filename === merged.filename
+            && head.upscaled === merged.upscaled
+            && head.original === merged.original
+            && Number(head.mtime) === Number(merged.mtime)
+            && head.width === merged.width
+            && head.height === merged.height;
+        if (unchanged) return false;
+
+        allImages.splice(idx, 1);
+        allImages.unshift(merged);
+        if (window.originalAllImages && window.originalAllImages !== allImages) {
+            const baseIdx = window.originalAllImages.findIndex((img) =>
+                galleryListItemMatchesIdentity(img, galleryListItemIdentityKeys(merged))
+            );
+            if (baseIdx >= 0) {
+                window.originalAllImages.splice(baseIdx, 1);
+            }
+            window.originalAllImages.unshift(merged);
+        }
+        return true;
+    }
+
+    allImages.unshift(slimIncoming);
+    if (window.originalAllImages && window.originalAllImages !== allImages) {
+        window.originalAllImages.unshift(slimIncoming);
     }
     if (window.filteredImageIndices && Array.isArray(window.filteredImageIndices)) {
-        window.filteredImageIndices = window.filteredImageIndices.map((idx) => idx + 1);
+        window.filteredImageIndices = window.filteredImageIndices.map((i) => i + 1);
     }
+    return true;
 }
 
 window.setActiveGalleryList = setActiveGalleryList;
@@ -2282,7 +2337,8 @@ function getGalleryImageSrcCandidates(image) {
     if (filename) {
         const fullSrc = typeof resolveGalleryFullImageUrl === 'function'
             ? resolveGalleryFullImageUrl(image)
-            : `/images/${encodeURIComponent(filename)}`;
+            // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+            : localGalleryImageUrl(filename);
         add(fullSrc);
     }
     return candidates;
@@ -2307,12 +2363,20 @@ function releaseGalleryItemImage(img) {
 
 function disposeGalleryItemElement(item) {
     if (!item) return;
+    // contextMenu: public/scripts/comp/contextMenu.js
+    contextMenu.detachFromElement(item);
     if (intersectionObserver) {
         intersectionObserver.unobserve(item);
     }
     const img = item.querySelector('img');
     if (img) {
         releaseGalleryItemImage(img);
+    }
+    if (item.style.backgroundImage) {
+        item.style.backgroundImage = '';
+        item.style.backgroundSize = '';
+        item.style.backgroundPosition = '';
+        item.style.backgroundRepeat = '';
     }
 }
 
@@ -2359,6 +2423,7 @@ function applyGalleryItemImage(img, image, options = {}) {
 
     img.alt = image.base || '';
     img.loading = options.eager ? 'eager' : 'lazy';
+    img.decoding = 'async';
     img.classList.add('loading-image');
 
     const finish = () => {
@@ -2998,7 +3063,7 @@ window.applyFilteredImages = function (images, originalIndices = null) {
 
         displayCurrentPageOptimized();
         markGalleryDisplayed();
-        updateGalleryTitleBar();
+        updateGalleryTitleBar({ syncTaskbar: true });
         updateGalleryPlaceholders();
     } catch (e) {
         console.error('Error applying filtered images:', e);
@@ -3054,13 +3119,18 @@ function galleryProgressLeftLabel(viewType) {
 }
 
 function showGalleryDataProgressModal(viewType = 'images') {
+    syncGalleryProgressDialogState();
+    if (isGalleryWindowHidden()) {
+        return;
+    }
+
     const viewName = galleryProgressLeftLabel(viewType);
 
     if (!window.isDesktop) {
         galleryProgressToastId = showGlassToast(
             'info',
             'Loading',
-            `Loading ${viewName} gallery...`,
+            `Loading ${viewName}...`,
             false,
             false,
             '<img class="loading" src="/static_images/azuspin.gif" alt="Loading" style="width: 34px; height: 34px;">'
@@ -3082,7 +3152,8 @@ function showGalleryDataProgressModal(viewType = 'images') {
 
     const syntheticEvent = createGalleryWindowCenterEvent();
 
-    galleryProgressModal = showConfirmationDialog(
+    // showConfirmationDialog returns a Promise — track ownership with a flag, not the Promise
+    showConfirmationDialog(
         progressHtml,
         [],
         syntheticEvent,
@@ -3094,6 +3165,7 @@ function showGalleryDataProgressModal(viewType = 'images') {
             manualPosition: true
         }
     );
+    galleryProgressModal = true;
 
     if (!syntheticEvent) {
         requestAnimationFrame(() => {
@@ -3120,6 +3192,7 @@ function showGalleryLoadingProgressModal() {
 }
 
 function ensureGalleryLoadProgressVisible() {
+    syncGalleryProgressDialogState();
     if (galleryProgressModal || galleryProgressToastId) {
         if (galleryProgressModal && typeof positionConfirmationDialog === 'function') {
             const centerEvent = createGalleryWindowCenterEvent();
@@ -3134,7 +3207,19 @@ function ensureGalleryLoadProgressVisible() {
 }
 
 function updateGalleryDataProgress(progress) {
-    if (!galleryProgressModal && !galleryProgressToastId) return;
+    syncGalleryProgressDialogState();
+    if (!galleryProgressModal && !galleryProgressToastId) {
+        if (progress && progress.phase === 'block_fetch') {
+            ensureGalleryLoadProgressVisible();
+        } else if (isGalleryWindowHidden()) {
+            return;
+        } else {
+            ensureGalleryLoadProgressVisible();
+        }
+    }
+    if (!galleryProgressModal && !galleryProgressToastId) {
+        return;
+    }
 
     const modeRef = { value: galleryProgressModeSwitched };
 
@@ -3254,39 +3339,30 @@ async function switchGalleryView(view, force = false, progressCallback = null) {
         galleryProgressShown = true;
     }
 
-    // Create combined progress callback
-    const combinedProgressCallback = progressCallback ? (progress) => {
-        // Call workspace progress callback if provided
-        if (progressCallback) {
-            progressCallback(progress);
-        }
-        // Call gallery progress if we're showing gallery progress
-        if (galleryProgressShown) {
-            updateGalleryProgress(progress);
-        }
-    } : galleryProgressShown ? updateGalleryProgress : null;
-
     // Handle view-specific logic
     switch (view) {
         case 'scraps':
             document.body.classList.add('scraps-grayscale');
-            await loadScraps(combinedProgressCallback, loadToken);
+            await loadScraps(progressCallback, loadToken);
             break;
         case 'images':
             document.body.classList.remove('scraps-grayscale');
-            await loadGallery(false, combinedProgressCallback, { loadToken });
+            await loadGallery(false, progressCallback, {
+                loadToken,
+                showProgress: false
+            });
             break;
         case 'pinned':
             document.body.classList.remove('scraps-grayscale');
-            await loadPinned(combinedProgressCallback, loadToken);
+            await loadPinned(progressCallback, loadToken);
             break;
         case 'upscaled':
             document.body.classList.remove('scraps-grayscale');
-            await loadUpscaled(combinedProgressCallback, loadToken);
+            await loadUpscaled(progressCallback, loadToken);
             break;
     }
 
-    updateGalleryTitleBar();
+    updateGalleryTitleBar({ syncTaskbar: true });
 
     // Update workspace overlay if modal is open and maximized
     if (!manualModal.classList.contains('hidden') && !manualModal.classList.contains('windowed')) {
@@ -3298,6 +3374,20 @@ async function switchGalleryView(view, force = false, progressCallback = null) {
     // Hide gallery progress if we showed it
     if (galleryProgressShown) {
         hideGalleryProgressModal();
+    }
+
+    // Workspace switch modal must clear even if inner load path skipped the callback
+    if (typeof window.workspaceLoadingCompleteCallback === 'function') {
+        window.workspaceLoadingCompleteCallback();
+    }
+
+    // Ensure tiles render when in-memory list was populated during load (IDB hit / sync)
+    if (view === 'images' && allImages && allImages.length > 0 && !isGalleryWindowHidden() && !isJumpingToPosition) {
+        if (window.isWorkspaceSwitching) {
+            displayGalleryInitialPageOrRestored();
+        } else {
+            displayGalleryContentIfNeeded();
+        }
     }
 }
 
@@ -3554,37 +3644,39 @@ async function loadGallery(addLatest, progressCallback = null, loadOptions = nul
             const payload = result.data || result;
             const { gallery: latestItems } = payload;
             const serverTotal = Number(payload.pagination?.totalItems || payload.total || 0);
-            const serverHash = payload.galleryHash || null;
             const serverDestructiveAt = Number(payload.lastGalleryDestructiveAt) || 0;
             const serverPinnedIndexes = Array.isArray(payload.pinnedIndexes) ? payload.pinnedIndexes : null;
+            const workspaceId = getGalleryLoadWorkspaceId();
 
+            let prependedLatest = false;
             if (latestItems && latestItems.length > 0) {
-                prependToActiveGalleryList(latestItems[0]);
+                // Prefer gallery_updated append_top — no-op when that path already added this row
+                prependedLatest = prependToActiveGalleryList(latestItems[0]);
 
-                sortGalleryData();
-                if (!window.filteredImageIndices || window.filteredImageIndices.length === allImages.length) {
-                    buildGalleryNavigationCache(allImages);
-                }
-                driftGalleryImagesSyncState(allImages.length);
+                if (prependedLatest) {
+                    sortGalleryData();
+                    if (!window.filteredImageIndices || window.filteredImageIndices.length === allImages.length) {
+                        buildGalleryNavigationCache(allImages);
+                    }
 
-                if (serverHash && serverTotal === allImages.length) {
-                    await saveGallerySnapshotToIndexedDb(
-                        getGalleryLoadWorkspaceId(),
-                        'images',
-                        serverHash,
-                        allImages,
-                        serverDestructiveAt,
-                        serverPinnedIndexes
-                    );
-                } else {
-                    queueGallerySnapshotPersist();
+                    if (serverTotal === allImages.length) {
+                        markGalleryImagesSyncState(
+                            workspaceId,
+                            'images',
+                            allImages.length,
+                            serverPinnedIndexes,
+                            serverDestructiveAt
+                        );
+                    } else {
+                        driftGalleryImagesSyncState(allImages.length);
+                    }
                 }
             }
 
             document.dispatchEvent(new CustomEvent('galleryUpdated'));
 
             const isGalleryHidden = isGalleryWindowHidden();
-            if (!isGalleryHidden && !isJumpingToPosition) {
+            if (prependedLatest && !isGalleryHidden && !isJumpingToPosition && !galleryRerollOwnsGalleryDom()) {
                 await addNewGalleryItemAfterGeneration(allImages[0]);
             }
 
@@ -3625,29 +3717,20 @@ async function loadGallery(addLatest, progressCallback = null, loadOptions = nul
             };
             galleryImagesLoadTask = loadTask;
 
-            let activeProgressCallback = progressCallback;
-            // Desktop: progress modal; mobile: toast (showGalleryDataProgressModal)
-            if (shouldShowGalleryLoadProgress(opts, progressCallback)) {
+            if (shouldShowGalleryLoadProgress(opts)) {
                 showGalleryLoadingProgressModal();
                 galleryLoadingProgressShown = true;
-                activeProgressCallback = updateGalleryLoadingProgress;
             }
 
-            const emitGalleryLoadProgress = (p) => {
-                publishGalleryImagesLoadProgress(p);
-                if (activeProgressCallback) {
-                    activeProgressCallback(p);
-                }
-            };
-
             loadTask.promise = (async () => {
-                await loadCompleteGallery('images', emitGalleryLoadProgress, loadToken);
+                await loadCompleteGallery('images', progressCallback, loadToken);
                 if (!isGalleryLoadTokenCurrent(loadToken)) {
                     return;
                 }
 
-                // Apply current sort order to the loaded data
-                sortGalleryData();
+                if (!shouldSkipGallerySortAfterSnapshotLoad()) {
+                    sortGalleryData();
+                }
 
                 // Dispatch galleryUpdated event so background system can set initial image
                 // This ensures the background is set only after gallery is actually loaded
@@ -3731,16 +3814,25 @@ async function loadGallery(addLatest, progressCallback = null, loadOptions = nul
 }
 
 // Load gallery chunk with metadata
-async function loadGalleryChunk(viewType = 'images', offset = 0, limit = 100) {
-    const requestOptions = {
+async function loadGalleryChunk(viewType = 'images', offset = 0, limit = 100, extraOpts = null) {
+    const requestOpts = {
         offset: offset,
         limit: limit,
-        light: true
+        light: true,
+        ...(extraOpts && typeof extraOpts === 'object' ? extraOpts : {})
     };
     if (limit === 0) {
-        requestOptions.skipGalleryPagination = true;
+        requestOpts.skipGalleryPagination = true;
     }
-    const result = await window.wsClient.requestGallery(viewType, true, requestOptions);
+    if (limit >= GALLERY_CHUNK_SIZE) {
+        requestOpts.galleryBlockFetch = true;
+        requestOpts.includePinnedStatus = false;
+    }
+    if (extraOpts && extraOpts.afterCursor) {
+        requestOpts.afterCursor = extraOpts.afterCursor;
+    }
+    const includePinned = requestOpts.includePinnedStatus !== false;
+    const result = await window.wsClient.requestGallery(viewType, includePinned, requestOpts);
 
     const payload = (result && result.data) ? result.data : result;
     const { gallery: chunk, pagination } = payload || {};
@@ -3748,7 +3840,8 @@ async function loadGalleryChunk(viewType = 'images', offset = 0, limit = 100) {
         chunk: chunk || [],
         hasMore: pagination?.hasMore || false,
         total: pagination?.totalItems || 0,
-        galleryHash: payload.galleryHash || payload.hash || null,
+        blockSize: Number(payload.blockSize) || GALLERY_CHUNK_SIZE,
+        blockOffset: Number(payload.blockOffset) || offset,
         pinnedIndexes: Array.isArray(payload.pinnedIndexes) ? payload.pinnedIndexes : [],
         lastGalleryDestructiveAt: Number(payload.lastGalleryDestructiveAt) || 0,
         workspaceId: payload.workspaceId || ((typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : 'default')
@@ -3772,172 +3865,110 @@ async function loadCompleteGallery(viewType = 'images', progressCallback = null,
     const loadLog = acquireGalleryLoadLogger(viewType, workspaceId);
     loadLog.step('start', 'Beginning gallery load', { viewType, workspaceId });
 
+    const finishGalleryLoadProgress = (loaded, total, phase = 'complete') => {
+        publishGalleryLoadProgress({
+            loaded,
+            total,
+            offset: loaded,
+            progress: 1,
+            phase,
+            blocksLeft: 0
+        }, progressCallback);
+        if (window.wsClient && typeof window.wsClient.completeGalleryLoading === 'function') {
+            window.wsClient.completeGalleryLoading();
+        }
+    };
+
     try {
-        const chunkSize = GALLERY_CHUNK_SIZE;
-        let dataItems = [];
-        let offset = 0;
-        let totalItems = 0;
-        let probe = null;
-        let galleryHash = null;
-        let serverDestructiveAt = 0;
-        let galleryResponseWorkspaceId = workspaceId;
+        let probe = await probeGalleryState(viewType, workspaceId, loadLog);
+        let totalItems = probe.total || 0;
+        let serverDestructiveAt = probe.lastGalleryDestructiveAt || 0;
 
-        if (viewType === 'images') {
-            if (window.wsClient && typeof window.wsClient.completeGalleryLoading === 'function') {
-                window.wsClient.completeGalleryLoading();
-            }
-            if (progressCallback) {
-                progressCallback({
-                    loaded: 0,
-                    total: 0,
-                    offset: 0,
-                    progress: 0.02,
-                    phase: 'hash_probe',
-                    suppressBlocks: true
-                });
-            }
-            await galleryMetadataCache.initPromise;
-            const [probeResult, storedSnapshot] = await Promise.all([
-                probeGalleryState(viewType, workspaceId, loadLog),
-                galleryMetadataCache.getStoredGallerySnapshot(workspaceId, viewType)
-            ]);
-            probe = probeResult;
-            galleryResponseWorkspaceId = probe.workspaceId || workspaceId;
-            galleryHash = probe.galleryHash || null;
-            totalItems = probe.total || 0;
-            serverDestructiveAt = probe.lastGalleryDestructiveAt || 0;
+        if (!totalItems) {
+            const head = await loadGalleryChunk(viewType, 0, 1);
+            totalItems = head.total || (head.chunk && head.chunk.length) || 0;
+            serverDestructiveAt = head.lastGalleryDestructiveAt || serverDestructiveAt;
+            probe = {
+                total: totalItems,
+                pinnedIndexes: head.pinnedIndexes || (probe && probe.pinnedIndexes) || [],
+                lastGalleryDestructiveAt: head.lastGalleryDestructiveAt || serverDestructiveAt
+            };
+        }
 
-            if (galleryHash && galleryResponseWorkspaceId === workspaceId && totalItems > 0) {
-                const synced = await syncGalleryImagesFromBlocks(
-                    probe,
-                    storedSnapshot,
-                    viewType,
+        if (viewType === 'images' && canUseSessionGalleryMemory(workspaceId, viewType, probe)) {
+            applyPinnedIndexesOverlay(allImages, probe.pinnedIndexes);
+            if (Array.isArray(probe.pinnedIndexes)) {
+                galleryImagesSyncState.pinnedIndexes = probe.pinnedIndexes.slice();
+            }
+            galleryImagesSyncState.destructiveAt = Number(probe.lastGalleryDestructiveAt) || galleryImagesSyncState.destructiveAt || 0;
+            loadLog.done('loaded from session memory');
+            emitGalleryCacheValidProgress(progressCallback, totalItems);
+            finishGalleryLoadProgress(allImages.length, allImages.length, 'cache_valid');
+            return;
+        }
+
+        const incrementalBase = resolveIncrementalSyncBaseGallery(workspaceId, viewType, totalItems, loadLog);
+        const incrementalDelta = incrementalBase ? (totalItems - incrementalBase.length) : 0;
+        if (incrementalBase
+            && incrementalDelta > 0
+            && incrementalDelta <= INCREMENTAL_HEAD_SYNC_MAX_DELTA
+            && canAppendOnlyGallerySync(
+                incrementalBase.length,
+                totalItems,
+                probe.lastGalleryDestructiveAt,
+                galleryImagesSyncState?.destructiveAt
+            )) {
+            const incremental = await tryIncrementalGalleryHeadSync(
+                incrementalBase,
+                probe,
+                viewType,
+                progressCallback,
+                loadLog
+            );
+            if (incremental && isGalleryLoadTokenCurrent(loadToken)) {
+                await finalizeGalleryImagesLoad(
+                    incremental.dataItems,
+                    { ...probe, pinnedIndexes: incremental.probe.pinnedIndexes },
                     workspaceId,
-                    progressCallback,
+                    viewType,
                     serverDestructiveAt,
                     loadLog,
                     loadToken
                 );
-                if (synced) {
-                    if (!isGalleryLoadTokenCurrent(loadToken)) {
-                        loadLog.step('stale-discard', 'Discarded stale gallery load after block sync', { viewType });
-                        return;
-                    }
-                    if (window.wsClient && typeof window.wsClient.completeGalleryLoading === 'function') {
-                        window.wsClient.completeGalleryLoading();
-                    }
-                    if (progressCallback) {
-                        progressCallback({
-                            loaded: allImages.length,
-                            total: allImages.length,
-                            offset: allImages.length,
-                            progress: 1,
-                            phase: 'remaining',
-                            blocksLeft: 0
-                        });
-                    }
-                    return;
-                }
-            } else {
-                loadLog.step('sync-skip', 'Skipped block sync evaluator', {
-                    reason: !galleryHash
-                        ? 'missing hash'
-                        : (galleryResponseWorkspaceId !== workspaceId
-                            ? 'workspace mismatch'
-                            : 'server total is zero')
-                });
+                loadLog.done('loaded via incremental head sync');
+                finishGalleryLoadProgress(totalItems, totalItems);
+                return;
             }
         }
 
-        loadLog.step('legacy-chunk-loader', 'Using legacy sequential chunk loader', {
-            viewType,
-            knownTotal: totalItems || null
-        });
-
-        const needFirstChunkForProgress = progressCallback && totalItems === 0 && !(viewType === 'images' && probe);
-        if (needFirstChunkForProgress) {
-            const firstChunk = await loadGalleryChunk(viewType, 0, 1);
-            galleryHash = galleryHash || firstChunk.galleryHash || null;
-            serverDestructiveAt = serverDestructiveAt || firstChunk.lastGalleryDestructiveAt || 0;
-            if (firstChunk.total > 0) {
-                totalItems = firstChunk.total;
-            } else if (firstChunk.chunk && firstChunk.chunk.length > 0) {
-                totalItems = firstChunk.chunk.length;
-            }
-        }
-
-        let loadedItems = 0;
-        let lastChunkResult = null;
-
-        while (true) {
-            const chunkResult = await loadGalleryChunk(viewType, offset, chunkSize);
-            lastChunkResult = chunkResult;
-            const { chunk, hasMore, total, galleryHash: chunkHash, lastGalleryDestructiveAt: chunkDestructive } = chunkResult;
-
-            if (total > 0 && totalItems === 0) {
-                totalItems = total;
-            }
-            if (chunkHash) {
-                galleryHash = chunkHash;
-            }
-            if (typeof chunkDestructive === 'number' && !Number.isNaN(chunkDestructive)) {
-                serverDestructiveAt = chunkDestructive;
-            }
-
-            if (!chunk || chunk.length === 0) {
-                break;
-            }
-
-            dataItems.push(...chunk);
-            loadedItems += chunk.length;
-            offset += chunk.length;
-
-            if (progressCallback && loadedItems > totalItems) {
-                totalItems = loadedItems;
-            }
-
-            reportGalleryBlockProgress(progressCallback, loadedItems, totalItems, offset);
-
-            if (!hasMore) {
-                break;
-            }
-        }
-
-        const finalizeProbe = {
-            galleryHash: galleryHash || (lastChunkResult && lastChunkResult.galleryHash) || null,
-            total: totalItems,
-            pinnedIndexes: probe && Array.isArray(probe.pinnedIndexes) ? probe.pinnedIndexes : []
-        };
-
-        if (finalizeProbe.galleryHash && galleryResponseWorkspaceId === workspaceId) {
-            await finalizeGalleryImagesLoad(dataItems, finalizeProbe, workspaceId, viewType, serverDestructiveAt, loadLog, loadToken);
-            loadLog.done('loaded via legacy chunk loader with snapshot save');
-        } else if (isGalleryLoadTokenCurrent(loadToken)) {
-            setActiveGalleryList(dataItems);
-            loadLog.done('loaded via legacy chunk loader without snapshot save', {
+        if (totalItems > 0) {
+            const fetched = await fetchAndFinalizeGalleryBlocks(
                 viewType,
-                itemCount: dataItems.length,
-                reason: !finalizeProbe.galleryHash ? 'missing hash' : 'workspace mismatch'
-            });
-        } else {
-            loadLog.step('stale-discard', 'Discarded stale gallery load from legacy chunk loader', { viewType });
+                workspaceId,
+                totalItems,
+                probe,
+                serverDestructiveAt,
+                progressCallback,
+                loadLog,
+                loadToken
+            );
+            if (fetched && isGalleryLoadTokenCurrent(loadToken)) {
+                loadLog.done('loaded via server block fetch');
+                finishGalleryLoadProgress(totalItems, totalItems);
+                return;
+            }
         }
 
-        if (progressCallback && totalItems > 0) {
-            progressCallback({
-                loaded: loadedItems,
-                total: totalItems,
-                offset: offset,
-                progress: 1,
-                phase: 'remaining',
-                blocksLeft: 0
-            });
+        if (isGalleryLoadTokenCurrent(loadToken)) {
+            if (allImages && allImages.length > 0) {
+                loadLog.done('gallery load partial — keeping in-memory items');
+                finishGalleryLoadProgress(allImages.length, totalItems || allImages.length);
+                return;
+            }
+            setActiveGalleryList([]);
+            loadLog.done('gallery load produced no items');
+            finishGalleryLoadProgress(0, 0);
         }
-
-        if (window.wsClient && typeof window.wsClient.completeGalleryLoading === 'function') {
-            window.wsClient.completeGalleryLoading();
-        }
-
     } catch (error) {
         loadLog.step('error', 'Gallery load failed', { message: error && error.message ? error.message : String(error) });
         if (window.wsClient && typeof window.wsClient.completeGalleryLoading === 'function') {
@@ -3948,13 +3979,164 @@ async function loadCompleteGallery(viewType = 'images', progressCallback = null,
     }
 }
 
+const GALLERY_DEEP_SCROLL_INDEX = 100;
+
+function getGalleryScrollHeadIndex() {
+    // getFirstVisibleRowIndex: public/scripts/comp/galleryView.js
+    return typeof getFirstVisibleRowIndex === 'function'
+        ? getFirstVisibleRowIndex()
+        : (currentVisibleIndex || 0);
+}
+
+/** Any scroll away from the true head — use cheap index offset, do not jump to top. */
+function isGalleryScrolledFromHead() {
+    return getGalleryScrollHeadIndex() > 0;
+}
+
+/** Past first ~100 items — reroll uses zoom+overlay instead of inline head placeholder. */
+function isGalleryDeepScrolled() {
+    return getGalleryScrollHeadIndex() > GALLERY_DEEP_SCROLL_INDEX;
+}
+
+/** Cheap +1 index sync after a new head item — avoids full displayGalleryFromStartIndex reflow. */
+function offsetGalleryItemIndexes(shiftAmount = 1, options = {}) {
+    if (!gallery || !shiftAmount || shiftAmount <= 0) return;
+    const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
+    if (items.length === 0) return;
+
+    let firstIndex = Infinity;
+    items.forEach((el) => {
+        const idx = parseInt(el.dataset.index || '0', 10) + shiftAmount;
+        el.dataset.index = String(idx);
+        if (idx < firstIndex) firstIndex = idx;
+
+        if (window.filteredImageIndices && window.filteredImageIndices[idx] !== undefined) {
+            el.dataset.fileIndex = String(window.filteredImageIndices[idx]);
+        } else {
+            el.dataset.fileIndex = String(idx);
+        }
+    });
+
+    if (typeof currentVisibleIndex === 'number') {
+        currentVisibleIndex += shiftAmount;
+    }
+
+    if (options.insertLeadingPlaceholder !== false && Number.isFinite(firstIndex) && firstIndex > 0) {
+        const leadIndex = firstIndex - 1;
+        const fileIndex = window.filteredImageIndices && window.filteredImageIndices[leadIndex] !== undefined
+            ? window.filteredImageIndices[leadIndex]
+            : leadIndex;
+        const image = allImages[fileIndex];
+        const placeholder = document.createElement('div');
+        placeholder.className = 'gallery-item gallery-placeholder';
+        placeholder.dataset.index = String(leadIndex);
+        placeholder.dataset.fileIndex = String(fileIndex);
+        placeholder.dataset.filename = image
+            ? (image.filename || image.original || image.upscaled || `__ph_${leadIndex}`)
+            : `__ph_${leadIndex}`;
+        gallery.insertBefore(placeholder, gallery.firstChild);
+    }
+
+    // updateGalleryTitleBar: public/scripts/comp/galleryView.js
+    updateGalleryTitleBar({ syncTaskbar: true });
+}
+
+/** Snapshot of what the user is looking at before a list replace. */
+function captureGalleryViewportAnchor() {
+    if (!isGalleryScrolledFromHead()) return null;
+    const filteredIndex = getGalleryScrollHeadIndex();
+    const fileIndex = window.filteredImageIndices && window.filteredImageIndices[filteredIndex] !== undefined
+        ? window.filteredImageIndices[filteredIndex]
+        : filteredIndex;
+    const image = allImages[fileIndex];
+    return {
+        filteredIndex,
+        filename: image ? (image.filename || image.original || image.upscaled || null) : null
+    };
+}
+
+function resolveGalleryViewportAnchorIndex(anchor) {
+    if (!anchor) return 0;
+    const effectiveLength = window.filteredImageIndices && window.filteredImageIndices.length > 0
+        ? window.filteredImageIndices.length
+        : allImages.length;
+    if (effectiveLength <= 0) return 0;
+
+    if (anchor.filename) {
+        const fileIdx = allImages.findIndex((img) =>
+            img && (img.filename === anchor.filename || img.original === anchor.filename || img.upscaled === anchor.filename)
+        );
+        if (fileIdx >= 0) {
+            if (window.filteredImageIndices && window.filteredImageIndices.length > 0) {
+                const filteredIdx = window.filteredImageIndices.indexOf(fileIdx);
+                if (filteredIdx >= 0) return filteredIdx;
+            } else {
+                return fileIdx;
+            }
+        }
+    }
+
+    return Math.max(0, Math.min(anchor.filteredIndex || 0, effectiveLength - 1));
+}
+
+/**
+ * Replace gallery list and redisplay. When scrolled, keep the same viewport content
+ * instead of resetInfiniteScroll + displayCurrentPageOptimized (which jumps to 0).
+ */
+function applyGalleryListReload(newImages, options = {}) {
+    const preserveScroll = options.preserveScroll !== false;
+    const anchor = preserveScroll ? captureGalleryViewportAnchor() : null;
+
+    setActiveGalleryList(newImages);
+    syncServiceWorkerImageCacheRules();
+    // sortGalleryData: public/scripts/comp/galleryView.js
+    if (typeof sortGalleryData === 'function') sortGalleryData();
+    // triggerBuildGalleryNavigationCache: public/scripts/comp/galleryView.js / workspaceUtils
+    if (typeof triggerBuildGalleryNavigationCache === 'function') {
+        triggerBuildGalleryNavigationCache();
+    } else if (!window.filteredImageIndices || window.filteredImageIndices.length === allImages.length) {
+        buildGalleryNavigationCache(allImages);
+    }
+    // clearSelection: public/scripts/comp/galleryView.js
+    if (typeof clearSelection === 'function') clearSelection();
+
+    if (anchor) {
+        const target = resolveGalleryViewportAnchorIndex(anchor);
+        // displayGalleryFromStartIndex: public/scripts/comp/galleryView.js
+        displayGalleryFromStartIndex(target, false);
+        return 'preserved';
+    }
+
+    resetInfiniteScroll();
+    displayCurrentPageOptimized();
+    return 'head';
+}
+
 // Add a new gallery item after generation with fade-in and slide-in animations
 async function addNewGalleryItemAfterGeneration(newImage) {
+    if (galleryRerollOwnsGalleryDom()) return;
     // Don't add new gallery items if manual modal is open and maximized
     if (!manualModal.classList.contains('hidden') && !manualModal.classList.contains('windowed')) return;
 
     // Don't add new gallery items if gallery is hidden in desktop mode
     if (isGalleryWindowHidden()) return;
+
+    // Upscale / re-delivery: upgrade existing base tile instead of skipping
+    const existingDom = findGalleryDomItemByIdentity(newImage);
+    if (existingDom) {
+        updateGalleryItemElementFromData(existingDom, newImage);
+        if (!isGalleryScrolledFromHead() && gallery.children[0] !== existingDom) {
+            gallery.insertBefore(existingDom, gallery.children[0]);
+            reindexGallery();
+        }
+        return;
+    }
+
+    // Scrolled away from head: keep viewport — only offset indexes (no jump-to-top / no insert into view)
+    if (isGalleryScrolledFromHead()) {
+        offsetGalleryItemIndexes(1);
+        return;
+    }
 
     // Skip img until placeholder clears — previews may not exist yet when gallery_updated arrives
     const newItem = createGalleryItem(newImage, 0, true);
@@ -3979,6 +4161,398 @@ async function addNewGalleryItemAfterGeneration(newImage) {
         newItem.removeEventListener('animationend', handler);
     });
     reindexGallery();
+}
+
+// Gallery reroll session
+let activeGalleryRerollSession = null;
+let lastGalleryRerollResolvedFilename = null;
+const REROLL_GEN_CAP = 65;
+const REROLL_HEAD_LIMIT = 10;
+
+function galleryRerollUsesPlaceholder() {
+    return !isGalleryWindowHidden()
+        && (manualModal.classList.contains('hidden') || manualModal.classList.contains('windowed'));
+}
+
+function isGalleryRerollSessionActive() {
+    return !!activeGalleryRerollSession?.requestId;
+}
+
+function isGalleryRerollRequest(requestId) {
+    const s = activeGalleryRerollSession;
+    if (!s?.requestId || s.completed) return false;
+    if (s.requestId === requestId) return true;
+    return window.wsClient?.pendingRequests?.get(requestId)?.type === 'reroll_image';
+}
+
+function galleryRerollOwnsGalleryDom() {
+    const s = activeGalleryRerollSession;
+    if (!s) return false;
+    if (s.mode === 'overlay' && s.ui?.root?.isConnected) return true;
+    if (s.mode === 'inline' && s.ui?.root?.isConnected) return true;
+    return !!s.ui?.root?.isConnected;
+}
+
+async function rerollLoadHead() {
+    const s = activeGalleryRerollSession;
+    if (s?.head?.total) return s.head;
+    if (!window.wsClient?.isConnected()) return null;
+    const head = await loadGalleryChunk('images', 0, REROLL_HEAD_LIMIT);
+    if (s) s.head = head;
+    return head;
+}
+
+function paintGalleryRerollPlaceholder(percent, status, previewData) {
+    const s = activeGalleryRerollSession;
+    const ui = s?.ui;
+    if (!ui?.root?.isConnected) return;
+    const pct = Math.min(100, Math.max(s.lastProgress || 0, percent));
+    s.lastProgress = pct;
+    if (ui.bar) ui.bar.style.width = `${pct}%`;
+    if (status && ui.status) ui.status.textContent = status;
+    if (previewData && ui.preview) {
+        const src = previewData.startsWith('data:') ? previewData : `data:image/jpeg;base64,${previewData}`;
+        if (ui.preview.src !== src) ui.preview.src = src;
+        ui.preview.classList.remove('hidden');
+    }
+}
+
+function setGalleryRerollLock(locked) {
+    const cls = 'gallery-reroll-locked';
+    const zoomCls = 'gallery-reroll-zoomed';
+    const galleryEl = document.getElementById('gallery');
+    const container = document.querySelector('#galleryWindow .gallery-container');
+    if (locked) {
+        galleryEl?.classList.add(cls);
+        container?.classList.add(cls);
+    } else {
+        galleryEl?.classList.remove(cls, zoomCls);
+        container?.classList.remove(cls, zoomCls);
+    }
+}
+
+function buildGalleryRerollGeneratingInnerHtml() {
+    return '<div class="gallery-generating-overlay"><div class="gallery-generating-progress-track"><div class="gallery-generating-progress-bar"></div></div><div class="gallery-generating-status">Starting...</div><img class="gallery-generating-step-preview hidden" alt=""></div>';
+}
+
+function beginGalleryRerollOverlaySession(requestId) {
+    const galleryEl = document.getElementById('gallery');
+    const container = document.querySelector('#galleryWindow .gallery-container') || galleryEl?.parentElement;
+    if (!container) return null;
+
+    galleryEl?.classList.add('gallery-reroll-zoomed');
+    container.classList.add('gallery-reroll-zoomed');
+
+    const overlay = document.createElement('div');
+    overlay.className = 'gallery-reroll-overlay';
+    overlay.dataset.rerollRequestId = requestId;
+    overlay.innerHTML = [
+        '<div class="gallery-reroll-preview-square gallery-item gallery-placeholder gallery-generating">',
+        buildGalleryRerollGeneratingInnerHtml(),
+        '</div>',
+        '<div class="gallery-reroll-overlay-actions round-button-row hidden">',
+        '<button type="button" class="round-button btn-secondary" data-reroll-action="jump-top" title="Jump to top"><i class="fas fa-arrow-up"></i></button>',
+        '<button type="button" class="round-button btn-secondary" data-reroll-action="open-studio" title="Open in Studio"><i class="fas fa-pen-field"></i></button>',
+        '<button type="button" class="round-button btn-secondary" data-reroll-action="reroll-again" title="Reroll again"><i class="fas fa-dice"></i></button>',
+        '<button type="button" class="round-button btn-secondary" data-reroll-action="download" title="Download"><i class="fas fa-download"></i></button>',
+        '<button type="button" class="round-button btn-secondary" data-reroll-action="copy" title="Copy Image"><i class="fas fa-clipboard"></i></button>',
+        '<button type="button" class="round-button btn-secondary" data-reroll-action="return" title="Close overlay and return"><i class="fas fa-xmark"></i></button>',
+        '</div>'
+    ].join('');
+
+    container.appendChild(overlay);
+    const square = overlay.querySelector('.gallery-reroll-preview-square');
+    activeGalleryRerollSession.ui = {
+        root: overlay,
+        square,
+        bar: overlay.querySelector('.gallery-generating-progress-bar'),
+        status: overlay.querySelector('.gallery-generating-status'),
+        preview: overlay.querySelector('.gallery-generating-step-preview'),
+        actions: overlay.querySelector('.gallery-reroll-overlay-actions')
+    };
+    overlay.addEventListener('click', onGalleryRerollOverlayActionClick);
+    return overlay;
+}
+
+function onGalleryRerollOverlayActionClick(event) {
+    const btn = event.target.closest('[data-reroll-action]');
+    if (!btn) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const action = btn.dataset.rerollAction;
+    const s = activeGalleryRerollSession;
+    const image = s?.resolvedImage;
+    switch (action) {
+        case 'jump-top':
+            dismissGalleryRerollOverlay({ jumpToTop: true });
+            break;
+        case 'open-studio':
+            if (image) {
+                // openManualModalWithContent: public/scripts/comp/manualModalManager.js
+                openManualModalWithContent({ type: 'image', image, metadata: image.metadata || null }, event);
+            }
+            break;
+        case 'reroll-again':
+            if (image) {
+                const againImage = image;
+                dismissGalleryRerollOverlay({ syncIndexes: true });
+                // rerollImage: public/scripts/comp/galleryActions.js
+                rerollImage(againImage, event);
+            }
+            break;
+        case 'download':
+            if (image) downloadImage(image);
+            break;
+        case 'copy':
+            if (image) copyImageToClipboard(image);
+            break;
+        case 'return':
+            dismissGalleryRerollOverlay({ syncIndexes: true });
+            break;
+    }
+}
+
+function showGalleryRerollOverlayActions(image) {
+    const s = activeGalleryRerollSession;
+    if (!s?.ui?.actions) return;
+    s.resolvedImage = image || s.resolvedImage;
+    if (s.ui.square) {
+        s.ui.square.classList.remove('gallery-placeholder', 'gallery-generating');
+        const genOverlay = s.ui.square.querySelector('.gallery-generating-overlay');
+        if (genOverlay) genOverlay.remove();
+        let img = s.ui.square.querySelector('img.gallery-reroll-result-img');
+        if (!img) {
+            img = document.createElement('img');
+            img.className = 'gallery-reroll-result-img';
+            s.ui.square.appendChild(img);
+        }
+        if (image) applyGalleryItemImage(img, image, { eager: true });
+    }
+    s.ui.actions.classList.remove('hidden');
+}
+
+function dismissGalleryRerollOverlay(options = {}) {
+    const s = activeGalleryRerollSession;
+    const wasOverlay = s?.mode === 'overlay';
+    const resolved = s?.resolvedImage;
+    clearGalleryRerollSession(false);
+    if (options.jumpToTop) {
+        // displayGalleryFromStartIndex: public/scripts/comp/galleryView.js
+        displayGalleryFromStartIndex(0, !!resolved);
+        return;
+    }
+    if (options.syncIndexes && wasOverlay) {
+        offsetGalleryItemIndexes(1);
+    }
+}
+
+function beginGalleryRerollSession(requestId) {
+    if (!requestId) return null;
+    const hidden = !galleryRerollUsesPlaceholder();
+    const deep = !hidden && isGalleryDeepScrolled();
+    activeGalleryRerollSession = {
+        requestId,
+        hidden,
+        mode: hidden ? 'hidden' : (deep ? 'overlay' : 'inline'),
+        lastProgress: 0,
+        completed: false,
+        ui: null,
+        head: null,
+        resolvedImage: null
+    };
+    if (hidden) return null;
+
+    const galleryEl = document.getElementById('gallery');
+    if (!galleryEl) return null;
+
+    if (deep) {
+        setGalleryRerollLock(true);
+        return beginGalleryRerollOverlaySession(requestId);
+    }
+
+    // Near top: reflow to index 0 so the new tile is visible
+    // displayGalleryFromStartIndex: public/scripts/comp/galleryView.js
+    if (getFirstVisibleRowIndex() > 0) {
+        displayGalleryFromStartIndex(0, false);
+    } else {
+        const galleryWindow = document.querySelector('#galleryWindow');
+        const galleryContainer = galleryWindow ? galleryWindow.querySelector('.gallery-container') : null;
+        if (galleryContainer && document.body.classList.contains('desktop-mode')) {
+            galleryContainer.scrollTop = 0;
+        } else {
+            window.scrollTo({ top: 0, behavior: 'instant' });
+        }
+    }
+
+    const placeholder = document.createElement('div');
+    placeholder.className = 'gallery-item gallery-placeholder gallery-generating fade-in';
+    placeholder.dataset.filename = '__generating__';
+    placeholder.dataset.rerollRequestId = requestId;
+    placeholder.dataset.index = '0';
+    placeholder.dataset.fileIndex = '0';
+    placeholder.innerHTML = buildGalleryRerollGeneratingInnerHtml();
+    galleryEl.insertBefore(placeholder, galleryEl.children[0]);
+    activeGalleryRerollSession.ui = {
+        root: placeholder,
+        bar: placeholder.querySelector('.gallery-generating-progress-bar'),
+        status: placeholder.querySelector('.gallery-generating-status'),
+        preview: placeholder.querySelector('.gallery-generating-step-preview')
+    };
+    setGalleryRerollLock(true);
+    placeholder.addEventListener('animationend', function handler() {
+        placeholder.classList.remove('fade-in');
+        placeholder.removeEventListener('animationend', handler);
+    });
+    return placeholder;
+}
+
+function updateGalleryRerollProgress(requestId, progressData) {
+    const s = activeGalleryRerollSession;
+    if (!isGalleryRerollRequest(requestId) || s.completed || s.hidden || !s.ui?.root?.isConnected) return;
+    if (s.requestId !== requestId && window.wsClient?.pendingRequests?.get(requestId)?.type === 'reroll_image') {
+        s.requestId = requestId;
+        if (s.ui?.root) s.ui.root.dataset.rerollRequestId = requestId;
+    }
+    let pct = 0;
+    // calculateGenerationProgress: public/scripts/comp/generationProgress.js
+    if (typeof calculateGenerationProgress === 'function') {
+        const raw = calculateGenerationProgress(progressData);
+        if (progressData.phase === 'complete') pct = 100;
+        else if (progressData.phase === 'previews') pct = Math.min(REROLL_GEN_CAP - 1, raw * REROLL_GEN_CAP / 100);
+        else pct = raw * REROLL_GEN_CAP / 100;
+    }
+    // getGenerationStatusMessage: public/scripts/comp/generationProgress.js
+    const status = typeof getGenerationStatusMessage === 'function'
+        ? getGenerationStatusMessage(progressData)
+        : 'Generating...';
+    const previewData = progressData.imageData
+        || (Array.isArray(progressData.stepFrames) && progressData.stepFrames.length
+            ? progressData.stepFrames[progressData.stepFrames.length - 1].imageData
+            : null);
+    paintGalleryRerollPlaceholder(pct, status, previewData);
+}
+
+async function resolveGalleryRerollResultItem(filename) {
+    if (!filename) return null;
+    const match = (img) => img.original === filename || img.upscaled === filename || img.filename === filename;
+    const inMemory = allImages.find(match);
+    if (inMemory?.width != null) return inMemory;
+
+    const upsert = (item) => {
+        const slim = slimGalleryListItem(item);
+        const name = slim.filename || slim.original || slim.upscaled;
+        const idx = allImages.findIndex((img) => img.original === name || img.upscaled === name || img.filename === name);
+        if (idx >= 0) {
+            allImages[idx] = slim;
+        } else {
+            prependToActiveGalleryList(slim);
+            sortGalleryData();
+            if (!window.filteredImageIndices || window.filteredImageIndices.length === allImages.length) {
+                buildGalleryNavigationCache(allImages);
+            }
+            driftGalleryImagesSyncState(allImages.length);
+        }
+        return slim;
+    };
+
+    try {
+        const head = await rerollLoadHead();
+        const fromHead = (head?.chunk || []).find(match);
+        if (fromHead) return upsert(fromHead);
+    } catch (error) {
+        console.warn('Gallery reroll: head metadata fetch failed', error);
+    }
+
+    if (inMemory) return inMemory;
+
+    const base = filename.replace(/\.(png|jpg|jpeg)$/i, '').replace(/_upscaled$/, '');
+    const stub = { filename, base, preview: `${base}.webp`, mtime: Date.now() };
+    if (filename.includes('_upscaled')) stub.upscaled = filename;
+    else stub.original = filename;
+    return upsert(stub);
+}
+
+function replaceGalleryRerollPlaceholder(placeholderEl, image) {
+    if (!placeholderEl?.parentNode || !image) return null;
+    const parent = placeholderEl.parentNode;
+    const nextSibling = placeholderEl.nextSibling;
+    disposeGalleryItemElement(placeholderEl);
+    placeholderEl.remove();
+    const newItem = createGalleryItem(image, 0, true);
+    const img = document.createElement('img');
+    applyGalleryItemImage(img, image, { eager: true });
+    const overlay = newItem.querySelector('.gallery-item-overlay');
+    if (overlay) newItem.insertBefore(img, overlay);
+    else newItem.appendChild(img);
+    newItem.classList.add('fade-in');
+    parent.insertBefore(newItem, nextSibling);
+    newItem.addEventListener('animationend', function handler() {
+        newItem.classList.remove('fade-in');
+        newItem.removeEventListener('animationend', handler);
+    });
+    reindexGallery();
+    return newItem;
+}
+
+function clearGalleryRerollSession(removePlaceholder) {
+    const s = activeGalleryRerollSession;
+    if (!s) return;
+    if (removePlaceholder !== false && s.ui?.root?.parentNode) {
+        if (s.mode === 'inline') {
+            disposeGalleryItemElement(s.ui.root);
+            s.ui.root.remove();
+            reindexGallery();
+        } else if (s.mode === 'overlay') {
+            s.ui.root.removeEventListener('click', onGalleryRerollOverlayActionClick);
+            s.ui.root.remove();
+        }
+    } else if (s.mode === 'overlay' && s.ui?.root?.parentNode) {
+        s.ui.root.removeEventListener('click', onGalleryRerollOverlayActionClick);
+        s.ui.root.remove();
+    }
+    setGalleryRerollLock(false);
+    activeGalleryRerollSession = null;
+}
+
+async function completeGalleryRerollSession(requestId, filename, options = {}) {
+    const s = activeGalleryRerollSession;
+    if (!isGalleryRerollRequest(requestId) || s.completed) return null;
+    s.completed = true;
+    if (s.requestId !== requestId && window.wsClient?.pendingRequests?.get(requestId)?.type === 'reroll_image') {
+        s.requestId = requestId;
+    }
+    window.skipNextGalleryRefresh = (window.skipNextGalleryRefresh || 0) + 2;
+    paintGalleryRerollPlaceholder(REROLL_GEN_CAP, 'Finalizing...');
+
+    const resolvedImage = await resolveGalleryRerollResultItem(filename);
+    s.resolvedImage = resolvedImage;
+    lastGalleryRerollResolvedFilename = filename;
+    syncServiceWorkerImageCacheRules();
+
+    // Deep-scroll overlay: keep zoom + preview actions; do not jump or open viewer
+    if (s.mode === 'overlay' && s.ui?.root?.isConnected) {
+        paintGalleryRerollPlaceholder(100, 'Complete');
+        showGalleryRerollOverlayActions(resolvedImage);
+        return resolvedImage;
+    }
+
+    let resolvedElement = null;
+    if (!s.hidden && s.mode === 'inline' && s.ui?.root) {
+        resolvedElement = replaceGalleryRerollPlaceholder(s.ui.root, resolvedImage);
+        s.ui = null;
+    }
+    clearGalleryRerollSession(false);
+    if (options.openPreview !== false && resolvedImage) {
+        // openGalleryImageInViewer: public/scripts/comp/imageViewer.js
+        openGalleryImageInViewer(resolvedImage);
+    }
+    return resolvedElement || resolvedImage;
+}
+
+function failGalleryRerollSession(requestId) {
+    if (isGalleryRerollRequest(requestId) || activeGalleryRerollSession?.requestId === requestId) {
+        clearGalleryRerollSession(true);
+    }
 }
 
 // Helper function to get gallery container dimensions
@@ -4432,6 +5006,8 @@ function createGalleryItem(image, index, skipImgElement = false) {
     // Only create img element if not skipping (for placeholders)
     let img = null;
     if (!skipImgElement) {
+        // public/scripts/comp/blurhashUtil.js
+        applyBlurhashPlaceholder(item, image.blurhash);
         img = document.createElement('img');
         applyGalleryItemImage(img, image);
     }
@@ -4626,13 +5202,18 @@ function createGalleryItem(image, index, skipImgElement = false) {
                             icon: 'fas fa-glasses-round',
                             text: 'Properties',
                             action: 'view-image-data',
-                            disabled: true
+                            disabled: !image?.filename && !image?.metadata
                         },
                         { separator: true },
                         {
                             icon: 'fas fa-person-to-portal',
                             text: 'Create Chat',
                             action: 'start-chat'
+                        },
+                        {
+                            icon: 'fas fa-globe',
+                            text: 'Publish to Explorer',
+                            action: 'publish-to-explorer'
                         },
                         {
                             icon: 'fas fa-image',
@@ -4768,6 +5349,9 @@ function addImgToGalleryItem(item, image) {
     };
 
     img.src = `/previews/${encodeURIComponent(previewUrl)}`;
+
+    // BlurHash placeholder behind thumb while loading (public/scripts/comp/blurhashUtil.js)
+    applyBlurhashPlaceholder(item, image.blurhash);
 
     img.onerror = function () {
         // Keep image hidden when it fails to load
@@ -5015,6 +5599,9 @@ function addImgToGalleryItemAsync(item, image, onComplete) {
         return;
     }
 
+    // public/scripts/comp/blurhashUtil.js — placeholder behind thumb while loading
+    applyBlurhashPlaceholder(item, image.blurhash);
+
     const img = document.createElement('img');
     applyGalleryItemImage(img, image, {
         onComplete: onComplete
@@ -5259,13 +5846,11 @@ function handleInfiniteScroll() {
     if (suppressGalleryPositionHintUntilInteraction) return;
 
     // Detect if we're scrolling in a container or window
-    const galleryWindow = document.querySelector('#galleryWindow');
-    const galleryContainer = galleryWindow ? galleryWindow.querySelector('.gallery-container') : null;
-    const isContainerScroll = galleryContainer && document.body.classList.contains('desktop-mode');
+    const { galleryContainer, isContainerScroll } = getGalleryScrollRoots();
 
     let scrollTop, containerHeight, scrollHeight;
 
-    if (isContainerScroll) {
+    if (isContainerScroll && galleryContainer) {
         // Container scroll mode - use container dimensions
         scrollTop = galleryContainer.scrollTop;
         containerHeight = galleryContainer.clientHeight;
@@ -5622,53 +6207,21 @@ function updateGalleryGrid(onlyIfChanged = false, updatePlaceholders = true) {
 function updateVisibleItems() {
     if (!gallery) return;
 
-    // Detect scroll container (gallery-container is always used when available)
-    const galleryWindow = document.querySelector('#galleryWindow');
-    const galleryContainer = galleryWindow ? galleryWindow.querySelector('.gallery-container') : null;
-    const isContainerScroll = galleryContainer && document.body.classList.contains('desktop-mode');
-
+    const roots = getGalleryScrollRoots();
     visibleItems.clear();
     const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
-
-    let viewportTop, viewportBottom;
-    if (isContainerScroll && galleryContainer) {
-        // Desktop modal mode - use container dimensions
-        viewportTop = galleryContainer.scrollTop;
-        viewportBottom = viewportTop + galleryContainer.clientHeight;
-    } else {
-        // Mobile/normal mode - use window dimensions, accounting for --true-inset-top
-        const trueInsetTop = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--true-inset-top')) || 0;
-        viewportTop = (window.pageYOffset || document.documentElement.scrollTop) + trueInsetTop;
-        viewportBottom = viewportTop + (window.innerHeight - trueInsetTop);
-    }
+    const viewport = getGalleryViewportBounds(roots);
+    // Prefer same-rAF strip geometry from updateVirtualScrollInternal; else calibrate locally (do not leak across frames)
+    const geometry = galleryStripGeometryPass || measureGalleryStripGeometry(items, viewport, roots);
 
     let firstVisibleIndex = null;
-    items.forEach((item, index) => {
-        const rect = item.getBoundingClientRect();
-        let isVisible = false;
+    const total = items.length;
+    for (let i = 0; i < total; i++) {
+        const item = items[i];
+        const bounds = (geometry && galleryItemScrollBoundsFromDomIndex(i, geometry))
+            || galleryItemScrollBoundsFromRect(item, roots, viewport);
 
-        if (isContainerScroll && galleryContainer) {
-            // For container scroll, check if item is within container bounds
-            const containerRect = galleryContainer.getBoundingClientRect();
-            const itemTopRelativeToContainer = rect.top - containerRect.top + galleryContainer.scrollTop;
-            const itemBottomRelativeToContainer = rect.bottom - containerRect.top + galleryContainer.scrollTop;
-
-            // Check if item is visible in container viewport
-            if (itemBottomRelativeToContainer > viewportTop && itemTopRelativeToContainer < viewportBottom) {
-                isVisible = true;
-            }
-        } else {
-            // For window scroll, use window coordinates
-            const itemTop = rect.top + window.pageYOffset;
-            const itemBottom = rect.bottom + window.pageYOffset;
-
-            // Check if item is visible in viewport
-            if (itemBottom > viewportTop && itemTop < viewportBottom) {
-                isVisible = true;
-            }
-        }
-
-        if (isVisible) {
+        if (bounds.itemBottom > viewport.viewportTop && bounds.itemTop < viewport.viewportBottom) {
             const galleryIndex = parseInt(item.dataset.index, 10);
             if (!isNaN(galleryIndex)) {
                 visibleItems.add(galleryIndex);
@@ -5677,13 +6230,14 @@ function updateVisibleItems() {
                 }
             }
         }
-    });
+    }
 
     // Update current visible index for title bar (row-aligned index, same as position hints / restore)
     if (firstVisibleIndex !== null) {
         const eff = window.filteredImageIndices ? window.filteredImageIndices.length : allImages.length;
         const c = realGalleryColumns || 5;
         currentVisibleIndex = snapGalleryFilteredIndexToRowStart(firstVisibleIndex, c, eff);
+        // Scroll-driven title only — do not rebuild taskbar (syncTaskbar on view/search callers)
         updateGalleryTitleBar();
     }
 
@@ -5696,10 +6250,12 @@ function updateVisibleItems() {
 }
 
 /**
- * Update gallery window title bar
+ * Update gallery window title bar.
+ * @param {{ syncTaskbar?: boolean }} [options] - Pass syncTaskbar:true when view/search/list
+ *   structure changes. Scroll-driven calls must omit it (avoids full updateTaskbarWindows).
  */
-function updateGalleryTitleBar() {
-    const galleryWindow = document.querySelector('#galleryWindow');
+function updateGalleryTitleBar(options) {
+    const { galleryWindow } = getGalleryScrollRoots();
     if (!galleryWindow) return;
 
     const titleElement = galleryWindow.querySelector('.gallery-window-title .modal-window-title-main span');
@@ -5733,8 +6289,15 @@ function updateGalleryTitleBar() {
         title += ` (${currentVisibleIndex + 1} of ${effectiveLength})`;
     }
 
-    titleElement.innerHTML = title;
-    updateTaskbarWindows()
+    if (titleElement.innerHTML !== title) {
+        titleElement.innerHTML = title;
+    }
+
+    // Modal open/close/minimize paths already refresh the taskbar; only sync here on structural gallery changes
+    if (options && options.syncTaskbar) {
+        // updateTaskbarWindows: public/scripts/comp/modalUtils.js
+        updateTaskbarWindows();
+    }
 }
 
 /**
@@ -5747,10 +6310,9 @@ function getFirstVisibleRowIndex() {
     const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
     if (items.length === 0) return 0;
 
-    // Detect scroll container
-    const galleryWindow = document.querySelector('#galleryWindow');
-    const galleryContainer = galleryWindow ? galleryWindow.querySelector('.gallery-container') : null;
-    const isContainerScroll = galleryContainer && document.body.classList.contains('desktop-mode');
+    // Detect scroll container (cached roots)
+    const roots = getGalleryScrollRoots();
+    const { galleryContainer, isContainerScroll } = roots;
 
     let viewportTop;
     if (isContainerScroll && galleryContainer) {
@@ -5765,18 +6327,21 @@ function getFirstVisibleRowIndex() {
     // Ignore cells only barely peeking into view (typical off-by-one row: previous row's sliver at top).
     const minVisibleHeightFraction = 0.22;
 
+    // One containerRect for this restore/hint pass (behavior unchanged; avoids N container GBCRs)
+    const containerRect = isContainerScroll && galleryContainer ? galleryContainer.getBoundingClientRect() : null;
+    const pageY = window.pageYOffset;
+
     const itemScrollBounds = (item) => {
         const rect = item.getBoundingClientRect();
-        if (isContainerScroll && galleryContainer) {
-            const containerRect = galleryContainer.getBoundingClientRect();
+        if (isContainerScroll && galleryContainer && containerRect) {
             return {
                 itemTop: rect.top - containerRect.top + galleryContainer.scrollTop,
                 itemBottom: rect.bottom - containerRect.top + galleryContainer.scrollTop
             };
         }
         return {
-            itemTop: rect.top + window.pageYOffset,
-            itemBottom: rect.bottom + window.pageYOffset
+            itemTop: rect.top + pageY,
+            itemBottom: rect.bottom + pageY
         };
     };
 
@@ -6056,35 +6621,32 @@ function resolveVisiblePlaceholders() {
     // Update visible items first (title bar / tracking); visibility uses same scroll root as updateVisibleItems
     updateVisibleItems();
 
-    const galleryWindow = document.querySelector('#galleryWindow');
-    const galleryContainer = galleryWindow ? galleryWindow.querySelector('.gallery-container') : null;
-    const isContainerScroll = galleryContainer && document.body.classList.contains('desktop-mode');
-
-    let viewportTop;
-    let viewportBottom;
-    if (isContainerScroll && galleryContainer) {
-        viewportTop = galleryContainer.scrollTop;
-        viewportBottom = viewportTop + galleryContainer.clientHeight;
-    } else {
-        const trueInsetTop = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--true-inset-top')) || 0;
-        viewportTop = (window.pageYOffset || document.documentElement.scrollTop) + trueInsetTop;
-        viewportBottom = viewportTop + (window.innerHeight - trueInsetTop);
+    const roots = getGalleryScrollRoots();
+    const viewport = getGalleryViewportBounds(roots);
+    const allStrip = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
+    const geometry = measureGalleryStripGeometry(allStrip, viewport, roots);
+    // Map gallery child → DOM index once for strip math (avoid per-placeholder indexOf)
+    let domIndexByEl = null;
+    if (geometry && allStrip.length) {
+        domIndexByEl = new Map();
+        for (let di = 0; di < allStrip.length; di++) {
+            domIndexByEl.set(allStrip[di], di);
+        }
     }
 
-    placeholders.forEach(placeholder => {
-        const rect = placeholder.getBoundingClientRect();
-        let itemTop;
-        let itemBottom;
-        if (isContainerScroll && galleryContainer) {
-            const containerRect = galleryContainer.getBoundingClientRect();
-            itemTop = rect.top - containerRect.top + galleryContainer.scrollTop;
-            itemBottom = rect.bottom - containerRect.top + galleryContainer.scrollTop;
-        } else {
-            itemTop = rect.top + window.pageYOffset;
-            itemBottom = rect.bottom + window.pageYOffset;
+    placeholders.forEach((placeholder) => {
+        let bounds = null;
+        if (geometry && domIndexByEl) {
+            const domIndex = domIndexByEl.get(placeholder);
+            if (domIndex !== undefined) {
+                bounds = galleryItemScrollBoundsFromDomIndex(domIndex, geometry);
+            }
+        }
+        if (!bounds) {
+            bounds = galleryItemScrollBoundsFromRect(placeholder, roots, viewport);
         }
 
-        if (itemBottom > viewportTop && itemTop < viewportBottom) {
+        if (bounds.itemBottom > viewport.viewportTop && bounds.itemTop < viewport.viewportBottom) {
             const fileIndex = parseInt(placeholder.dataset.fileIndex, 10);
             const filteredIndex = parseInt(placeholder.dataset.index || '0', 10);
             queuePlaceholderResolution(placeholder, fileIndex, filteredIndex);
@@ -6214,9 +6776,7 @@ function updateScrollVelocity(scrollTarget = null) {
 // Initialize intersection observer for better performance
 function initIntersectionObserver() {
     // Detect scroll container (gallery-container is always used when available)
-    const galleryWindow = document.querySelector('#galleryWindow');
-    const galleryContainer = galleryWindow ? galleryWindow.querySelector('.gallery-container') : null;
-    const isContainerScroll = galleryContainer && document.body.classList.contains('desktop-mode');
+    const { galleryContainer, isContainerScroll } = getGalleryScrollRoots();
 
     // If observer exists and root needs to change, disconnect and recreate
     if (intersectionObserver) {
@@ -6268,14 +6828,12 @@ function updateVirtualScroll() {
     // Don't update virtual scroll if gallery is hidden in desktop mode
     if (isGalleryWindowHidden()) return;
 
-    // Throttle virtual scroll updates for better performance with many items
-    if (virtualScrollThrottle) {
-        clearTimeout(virtualScrollThrottle);
+    // Coalesce to one rAF (same pattern as vfsVirtualGrid._scheduleScrollUpdate)
+    if (virtualScrollThrottle) return;
+    virtualScrollThrottle = requestAnimationFrame(() => {
         virtualScrollThrottle = null;
-    }
-    virtualScrollThrottle = setTimeout(() => {
         updateVirtualScrollInternal();
-    }, 16);
+    });
 }
 
 function updateVirtualScrollInternal() {
@@ -6288,12 +6846,14 @@ function updateVirtualScrollInternal() {
 
     if (suppressGalleryPositionHintUntilInteraction) return;
 
+    // Hoist scroll roots + strip geometry once for this rAF (shared with updateVisibleItems)
+    const rootsVs = getGalleryScrollRoots();
+    const { galleryContainer: galleryContainerVs, isContainerScroll: isContainerScrollVs } = rootsVs;
+    const viewportVs = getGalleryViewportBounds(rootsVs);
+    galleryStripGeometryPass = measureGalleryStripGeometry(items, viewportVs, rootsVs);
+
     // First, update visible items tracking
     updateVisibleItems();
-
-    const galleryWindowVs = document.querySelector('#galleryWindow');
-    const galleryContainerVs = galleryWindowVs ? galleryWindowVs.querySelector('.gallery-container') : null;
-    const isContainerScrollVs = galleryContainerVs && document.body.classList.contains('desktop-mode');
 
     // Detect fast scrolling and adjust buffer size accordingly
     const isRapidScrolling = Math.abs(scrollVelocity) > 3; // Increased threshold for rapid scrolling
@@ -6302,24 +6862,34 @@ function updateVirtualScrollInternal() {
     const rowsPerPage = galleryRows
     const visibleIndices = Array.from(visibleItems);
 
-    if (visibleIndices.length === 0) return;
+    if (visibleIndices.length === 0) {
+        galleryStripGeometryPass = null;
+        return;
+    }
 
     // Calculate actual rows visible on screen based on viewport
     let rowsOnScreen = rowsPerPage;
     if (rowsOnScreen < 3) rowsOnScreen = 3; // Minimum fallback
 
-    // Calculate actual item height for accurate row calculations
-    let itemHeight = window.innerHeight / rowsOnScreen; // Rough estimate
-    const sampleItem = gallery.querySelector('.gallery-item, .gallery-placeholder');
-    if (sampleItem) {
-        const sampleRect = sampleItem.getBoundingClientRect();
-        if (sampleRect.height > 0) {
-            itemHeight = sampleRect.height;
-            // Recalculate rows based on actual item height
-            const viewportHeight = window.innerHeight;
-            rowsOnScreen = Math.floor(viewportHeight / itemHeight);
-            if (rowsOnScreen < 3) rowsOnScreen = 3;
+    // Prefer calibrated strip height; one sample GBCR only if geometry missing
+    let itemHeight = galleryStripGeometryPass
+        ? galleryStripGeometryPass.itemHeight
+        : (window.innerHeight / rowsOnScreen);
+    if (!galleryStripGeometryPass) {
+        const sampleItem = items[0];
+        if (sampleItem) {
+            const sampleRect = sampleItem.getBoundingClientRect();
+            if (sampleRect.height > 0) {
+                itemHeight = sampleRect.height;
+            }
         }
+    }
+    if (itemHeight > 0) {
+        const viewportHeight = isContainerScrollVs && galleryContainerVs
+            ? galleryContainerVs.clientHeight
+            : window.innerHeight;
+        rowsOnScreen = Math.floor(viewportHeight / itemHeight);
+        if (rowsOnScreen < 3) rowsOnScreen = 3;
     }
 
     // Add buffer for upper and lower row that is possibly partially in frame
@@ -6376,6 +6946,10 @@ function updateVirtualScrollInternal() {
         const isGalleryItem = el.classList.contains('gallery-item');
         const hasPlaceholderClass = el.classList.contains('gallery-placeholder');
 
+        if (el.classList.contains('gallery-generating')) {
+            continue;
+        }
+
         // Gallery list index (must align minKeep/maxKeep and visibleItems — all gallery-index space)
         const itemIndex = parseInt(el.dataset.index || i.toString(), 10);
         if (isNaN(itemIndex)) {
@@ -6397,40 +6971,13 @@ function updateVirtualScrollInternal() {
             // Check for predictive loading: items near viewport but not fully visible
             let isItemNearViewport = isItemVisible;
             if (!isItemNearViewport && hasPlaceholderClass) {
-                // Calculate predictive buffer based on item height and scroll direction
-                const itemRect = el.getBoundingClientRect();
-                const itemHeight = itemRect.height || window.innerHeight / 5; // fallback estimate
-                const predictiveBuffer = itemHeight * 2; // Load items 2 rows away
-
-                // Get viewport bounds
-                const galleryWindow = document.querySelector('#galleryWindow');
-                const galleryContainer = galleryWindow ? galleryWindow.querySelector('.gallery-container') : null;
-                const isContainerScroll = galleryContainer && document.body.classList.contains('desktop-mode');
-
-                let viewportTop, viewportBottom;
-                if (isContainerScroll && galleryContainer) {
-                    viewportTop = galleryContainer.scrollTop;
-                    viewportBottom = viewportTop + galleryContainer.clientHeight;
-                } else {
-                    const trueInsetTop = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--true-inset-top')) || 0;
-                    viewportTop = (window.pageYOffset || document.documentElement.scrollTop) + trueInsetTop;
-                    viewportBottom = viewportTop + (window.innerHeight - trueInsetTop);
-                }
-
-                // Calculate item position
-                let itemTop, itemBottom;
-                if (isContainerScroll && galleryContainer) {
-                    const containerRect = galleryContainer.getBoundingClientRect();
-                    itemTop = itemRect.top - containerRect.top + galleryContainer.scrollTop;
-                    itemBottom = itemRect.bottom - containerRect.top + galleryContainer.scrollTop;
-                } else {
-                    itemTop = itemRect.top + window.pageYOffset;
-                    itemBottom = itemRect.bottom + window.pageYOffset;
-                }
-
-                // Check if item is within predictive buffer
-                const isAboveViewport = itemBottom > viewportTop - predictiveBuffer && itemTop < viewportTop;
-                const isBelowViewport = itemTop < viewportBottom + predictiveBuffer && itemBottom > viewportBottom;
+                // Hoisted viewport + strip math (or one GBCR fallback) — no per-item querySelector/getComputedStyle
+                const cellHeight = (galleryStripGeometryPass && galleryStripGeometryPass.itemHeight) || itemHeight || (window.innerHeight / 5);
+                const predictiveBuffer = cellHeight * 2; // Load items 2 rows away
+                const bounds = (galleryStripGeometryPass && galleryItemScrollBoundsFromDomIndex(i, galleryStripGeometryPass))
+                    || galleryItemScrollBoundsFromRect(el, rootsVs, viewportVs);
+                const isAboveViewport = bounds.itemBottom > viewportVs.viewportTop - predictiveBuffer && bounds.itemTop < viewportVs.viewportTop;
+                const isBelowViewport = bounds.itemTop < viewportVs.viewportBottom + predictiveBuffer && bounds.itemBottom > viewportVs.viewportBottom;
 
                 isItemNearViewport = isItemVisible || isAboveViewport || isBelowViewport;
             }
@@ -6858,37 +7405,20 @@ function updateVirtualScrollInternal() {
     displayedEndIndex = Math.max(displayedStartIndex, newLast + 1);
 
     // --- Force resolve all placeholders in the visible/buffered range to real items ---
-    // Recompute visible/buffered range after any placeholder changes
+    // Recompute visible/buffered range after any placeholder changes (re-calibrate; DOM may have grown)
     const updatedItems = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
     const updatedTotal = updatedItems.length;
-    // Recompute visible indices (same scroll root as updateVisibleItems: window vs gallery-container)
-    let viewportTopVs;
-    let viewportBottomVs;
-    if (isContainerScrollVs && galleryContainerVs) {
-        viewportTopVs = galleryContainerVs.scrollTop;
-        viewportBottomVs = viewportTopVs + galleryContainerVs.clientHeight;
-    } else {
-        const trueInsetTopVs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--true-inset-top')) || 0;
-        viewportTopVs = (window.pageYOffset || document.documentElement.scrollTop) + trueInsetTopVs;
-        viewportBottomVs = viewportTopVs + (window.innerHeight - trueInsetTopVs);
-    }
+    const viewportAfter = getGalleryViewportBounds(rootsVs);
+    const geometryAfter = measureGalleryStripGeometry(updatedItems, viewportAfter, rootsVs);
     let updatedVisible = new Set();
-    updatedItems.forEach((item, index) => {
-        const rect = item.getBoundingClientRect();
-        let itemTop;
-        let itemBottom;
-        if (isContainerScrollVs && galleryContainerVs) {
-            const containerRectVs = galleryContainerVs.getBoundingClientRect();
-            itemTop = rect.top - containerRectVs.top + galleryContainerVs.scrollTop;
-            itemBottom = rect.bottom - containerRectVs.top + galleryContainerVs.scrollTop;
-        } else {
-            itemTop = rect.top + window.pageYOffset;
-            itemBottom = rect.bottom + window.pageYOffset;
-        }
-        if (itemBottom > viewportTopVs && itemTop < viewportBottomVs) {
+    for (let index = 0; index < updatedTotal; index++) {
+        const item = updatedItems[index];
+        const bounds = (geometryAfter && galleryItemScrollBoundsFromDomIndex(index, geometryAfter))
+            || galleryItemScrollBoundsFromRect(item, rootsVs, viewportAfter);
+        if (bounds.itemBottom > viewportAfter.viewportTop && bounds.itemTop < viewportAfter.viewportBottom) {
             updatedVisible.add(index);
         }
-    });
+    }
     const updatedVisibleIndices = Array.from(updatedVisible);
     if (updatedVisibleIndices.length > 0) {
         const minVisible = Math.min(...updatedVisibleIndices);
@@ -6932,13 +7462,17 @@ function updateVirtualScrollInternal() {
     if (scrollPositionPreservationEnabled) {
         restoreScrollPosition();
     }
+
+    galleryStripGeometryPass = null;
 }
 
-// Remove image from gallery and add placeholder at the end
 // Refresh the entire gallery display to ensure consistency
 function refreshGalleryDisplay() {
     if (isGalleryWindowHidden()) return;
     if (!manualModal.classList.contains('hidden') && !manualModal.classList.contains('windowed')) return;
+
+    // captureGalleryViewportAnchor: public/scripts/comp/galleryView.js — before wiping DOM
+    const anchor = captureGalleryViewportAnchor();
 
     // Clear current gallery
     if (gallery) {
@@ -6950,15 +7484,18 @@ function refreshGalleryDisplay() {
         gallery.innerHTML = '';
     }
 
-    // Reset scroll and display state
-    resetInfiniteScroll();
-
-    // Redisplay all items
-    displayCurrentPageOptimized();
+    if (anchor) {
+        const target = resolveGalleryViewportAnchorIndex(anchor);
+        // displayGalleryFromStartIndex: public/scripts/comp/galleryView.js
+        displayGalleryFromStartIndex(target, false);
+    } else {
+        resetInfiniteScroll();
+        displayCurrentPageOptimized();
+    }
 
     // Update UI elements
     updateGalleryPlaceholders();
-    updateGalleryTitleBar();
+    updateGalleryTitleBar({ syncTaskbar: true });
 }
 
 function removeImageFromGallery(image) {
@@ -7703,18 +8240,26 @@ window.wsClient.registerInitStep(30, 'Initializing Gallery System', async () => 
         }, adjustedDebounceDelay);
     }
 
-    window.addEventListener('scroll', () => {
-        updateScrollVelocity();
-        throttledInfiniteScroll();
-    });
-
-    // Also listen to gallery container scroll (for desktop modal mode)
-    const galleryContainer = document.querySelector('#galleryWindow .gallery-container');
-    if (galleryContainer) {
-        galleryContainer.addEventListener('scroll', () => {
-            updateScrollVelocity(galleryContainer);
+    // Velocity every scroll event; coalesce heavy work to one rAF
+    function onGalleryScrollEvent(scrollTarget) {
+        updateScrollVelocity(scrollTarget || null);
+        if (galleryScrollRaf) return;
+        galleryScrollRaf = requestAnimationFrame(() => {
+            galleryScrollRaf = 0;
             throttledInfiniteScroll();
         });
+    }
+
+    window.addEventListener('scroll', () => {
+        onGalleryScrollEvent(null);
+    }, { passive: true });
+
+    // Also listen to gallery container scroll (for desktop modal mode)
+    const { galleryContainer } = getGalleryScrollRoots();
+    if (galleryContainer) {
+        galleryContainer.addEventListener('scroll', () => {
+            onGalleryScrollEvent(galleryContainer);
+        }, { passive: true });
     }
 
     wireGalleryToolbarListeners();
@@ -8204,50 +8749,50 @@ window.sortGalleryData = sortGalleryData;
 window.toggleGallerySortOrder = toggleGallerySortOrder;
 window.galleryMetadataCache = galleryMetadataCache;
 
-// Track current gallery refresh notification
-let galleryRefreshNotificationId = null;
-
 // Handle workspace image additions via WebSocket
 document.addEventListener('workspaceImageAdded', async (event) => {
     const { workspaceId, imageFilenames } = event.detail;
+
+    // galleryRerollOwnsGalleryDom: public/scripts/comp/galleryView.js
+    if (galleryRerollOwnsGalleryDom()) {
+        return;
+    }
 
     // Check if the gallery is visible and if we're viewing the images gallery
     if (!gallery || gallery.classList.contains('hidden') || currentGalleryView !== 'images') {
         return;
     }
 
-    // Determine if we should auto-refresh or show a notification
-    const shouldShowNotification = isSelectionMode || displayedStartIndex > 0;
-
-    if (shouldShowNotification) {
-        // Gallery is scrolled or in multi-select mode - show persistent notification
-        const count = imageFilenames.length;
+    // Selection mode: do not mutate the grid under the user — offer an explicit refresh
+    if (isSelectionMode) {
+        const count = Array.isArray(imageFilenames) ? imageFilenames.length : 1;
         const imageText = count === 1 ? 'image' : 'images';
 
-        // Remove existing notification if present
         if (galleryRefreshNotificationId) {
             removeGlassToast(galleryRefreshNotificationId);
         }
 
-        // Show persistent notification with refresh button
         galleryRefreshNotificationId = showGlassToast(
             'info',
             'New Images Available',
             `${count} new ${imageText} added to workspace`,
             false,
-            0, // No timeout - persistent
+            0,
             '<i class="fas fa-images"></i>',
             [
                 {
                     text: 'Refresh Gallery',
                     className: 'btn-primary',
-                    callback: () => {
-                        // Refresh the gallery
-                        switchGalleryView(currentGalleryView, true);
-                        // Remove the notification
+                    callback: async () => {
+                        const anchor = captureGalleryViewportAnchor();
                         if (galleryRefreshNotificationId) {
                             removeGlassToast(galleryRefreshNotificationId);
                             galleryRefreshNotificationId = null;
+                        }
+                        await switchGalleryView(currentGalleryView, true);
+                        if (anchor) {
+                            const target = resolveGalleryViewportAnchorIndex(anchor);
+                            await displayGalleryFromStartIndex(target, false);
                         }
                     }
                 },
@@ -8255,7 +8800,6 @@ document.addEventListener('workspaceImageAdded', async (event) => {
                     text: 'Dismiss',
                     className: 'btn-secondary',
                     callback: () => {
-                        // Just dismiss the notification
                         if (galleryRefreshNotificationId) {
                             removeGlassToast(galleryRefreshNotificationId);
                             galleryRefreshNotificationId = null;
@@ -8264,12 +8808,18 @@ document.addEventListener('workspaceImageAdded', async (event) => {
                 }
             ]
         );
-    } else {
-        scrollPositionPreservationEnabled = true;
-        preserveScrollPosition();
-        await loadGallery(true);
-        restoreScrollPosition();
+        return;
     }
+
+    // Prefer gallery_updated append_top; only fetch when exact files are not on any row yet
+    // (activeGalleryHasExactFile: public/scripts/comp/galleryView.js)
+    const filenames = Array.isArray(imageFilenames) ? imageFilenames : [];
+    if (filenames.length > 0 && filenames.every((fn) => activeGalleryHasExactFile(fn))) {
+        return;
+    }
+
+    // Fallback when append_top has not landed yet — loadGallery(true) upserts if it races later
+    await loadGallery(true);
 });
 
 // Display gallery starting from a specific index
@@ -8726,6 +9276,278 @@ function triggerGalleryMoveWithSelection() {
     showGalleryMoveModal(null);
 }
 
+const EXPLORE_PUBLISH_TITLE_MIN = 3;
+const EXPLORE_PUBLISH_TITLE_MAX = 40;
+const EXPLORE_PUBLISH_REGISTER_URL = 'https://novelai.net/explore/register';
+const EXPLORE_PUBLISH_GUIDELINES = [
+    'All posts currently undergo manual review and may be approved or rejected at our discretion.',
+    'No NSFW.',
+    'No Copyright/Character/Artist tags or content.',
+    'No advertising or self-promotional content permitted.',
+    'Character Reference, Image-to-Image, and Inpainting are not allowed.',
+    'Vibe Transfer is allowed, but may be rejected upon review.'
+];
+
+function getExplorePublishFilename(image) {
+    if (!image) return null;
+    return image.upscaled || image.original || image.filename || null;
+}
+
+function getExplorePublishPreviewUrl(image) {
+    if (!image) return '';
+    if (image.preview) {
+        // getGalleryPreviewUrl — this file
+        const previewName = getGalleryPreviewUrl(image.preview) || image.preview;
+        if (previewName) return `/previews/${encodeURIComponent(previewName)}`;
+    }
+    const filename = getExplorePublishFilename(image);
+    // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+    return localGalleryImageUrl(filename);
+}
+
+function escapeExplorePublishHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function buildExplorePublishDialogHtml(image) {
+    const previewUrl = getExplorePublishPreviewUrl(image);
+    const guidelines = EXPLORE_PUBLISH_GUIDELINES
+        .map((line) => `<li>${escapeExplorePublishHtml(line)}</li>`)
+        .join('');
+    return `
+<div class="explore-publish-dialog">
+  <div class="explore-publish-preview">
+    <img src="${escapeExplorePublishHtml(previewUrl)}" alt="Image preview">
+  </div>
+  <p class="explore-publish-hint">Only raw images generated by NovelAI can be accepted.</p>
+  <div class="form-group">
+    <label for="explorePublishTitle">Post Title</label>
+    <input type="text" id="explorePublishTitle" class="hover-show" maxlength="${EXPLORE_PUBLISH_TITLE_MAX}"
+      placeholder="Give your image a creative title" autocomplete="off">
+    <div class="explore-publish-title-count is-warning" id="explorePublishTitleCount">0/${EXPLORE_PUBLISH_TITLE_MAX}</div>
+  </div>
+  <div class="explore-publish-guidelines">
+    <div class="explore-publish-guidelines-title">Upload Guidelines</div>
+    <ul>${guidelines}</ul>
+  </div>
+  <div id="explorePublishRestriction" class="explore-publish-restriction hidden" role="alert"></div>
+</div>`;
+}
+
+function wireExplorePublishDialog(dialog, options = {}) {
+    const filename = options.filename;
+    const titleInput = dialog.querySelector('#explorePublishTitle');
+    const countEl = dialog.querySelector('#explorePublishTitleCount');
+    const restrictionEl = dialog.querySelector('#explorePublishRestriction');
+    const uploadBtn = dialog.querySelector('[data-dialog-primary="1"]');
+    if (!titleInput || !uploadBtn) return;
+
+    let restriction = options.restriction || null;
+    let checkFailed = !!options.checkFailed;
+    let checkPending = !!filename && !!wsClient;
+
+    const syncUploadEnabled = () => {
+        const title = titleInput.value.trim();
+        const titleOk = title.length >= EXPLORE_PUBLISH_TITLE_MIN
+            && title.length <= EXPLORE_PUBLISH_TITLE_MAX;
+        if (countEl) {
+            countEl.textContent = `${titleInput.value.length}/${EXPLORE_PUBLISH_TITLE_MAX}`;
+            countEl.classList.toggle('is-warning', title.length < EXPLORE_PUBLISH_TITLE_MIN);
+        }
+        uploadBtn.disabled = checkPending || checkFailed || !!restriction || !titleOk;
+    };
+
+    const setRestriction = (next) => {
+        restriction = next || null;
+        if (!restrictionEl) return;
+        if (restriction?.message) {
+            restrictionEl.textContent = restriction.message;
+            restrictionEl.classList.remove('hidden');
+        } else {
+            restrictionEl.textContent = '';
+            restrictionEl.classList.add('hidden');
+        }
+        syncUploadEnabled();
+    };
+
+    titleInput.addEventListener('input', syncUploadEnabled);
+    setRestriction(restriction);
+    syncUploadEnabled();
+    setTimeout(() => titleInput.focus(), 0);
+
+    if (!filename || !wsClient) return;
+
+    // Preflight: modules/ws/handlers/105-exploreHandler.js check_novelai_explore_upload
+    wsClient.sendMessage('check_novelai_explore_upload', { filename }, false)
+        .then((data) => {
+            checkPending = false;
+            if (data?.code === 'EXPLORE_UPLOADS_DISABLED') {
+                checkFailed = true;
+                setRestriction({
+                    message: 'Explore uploads are disabled on this server (config novelaiExplore.uploadsEnabled).'
+                });
+                return;
+            }
+            if (data?.code === 'EXPLORE_NOT_REGISTERED' || (data?.error && /not registered/i.test(data.error))) {
+                checkFailed = true;
+                setRestriction({
+                    message: 'Register on NovelAI Explore before publishing. Open Agora → Register, then try again.'
+                });
+                return;
+            }
+            if (data?.success === false || data?.code === 'EXPLORE_BANNED' || data?.error) {
+                checkFailed = true;
+                setRestriction({ message: data.error || 'Unable to verify Explore upload eligibility.' });
+                return;
+            }
+            if (data?.restriction) {
+                setRestriction(data.restriction);
+            } else {
+                setRestriction(null);
+            }
+        })
+        .catch((err) => {
+            checkPending = false;
+            checkFailed = true;
+            setRestriction({
+                message: (err && err.message) || String(err) || 'Unable to verify Explore upload eligibility.'
+            });
+        });
+}
+
+async function openPublishToExplorerDialog(image) {
+    const filename = getExplorePublishFilename(image);
+    if (!filename) {
+        showGlassToast('error', 'Explorer', 'No image file to publish', false, 4000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+    if (!wsClient) {
+        showGlassToast('error', 'Explorer', 'Not connected to server', false, 4000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+
+    // showConfirmationDialog — public/scripts/comp/confirmationDialog.js
+    const confirmed = await showConfirmationDialog(
+        buildExplorePublishDialogHtml(image),
+        [
+            { text: 'Upload Image', value: true, icon: 'fas fa-globe', className: 'btn-standard primary' },
+            { text: 'Cancel', value: false, className: 'btn-standard' }
+        ],
+        null,
+        {
+            title: 'Publish to Explorer',
+            icon: 'fas fa-globe',
+            width: 440,
+            onDialogReady: (signal) => {
+                const dialog = document.getElementById('confirmationDialog');
+                if (!dialog) return;
+                dialog.classList.add('explore-publish-dialog-modal');
+                const clearClass = () => dialog.classList.remove('explore-publish-dialog-modal');
+                if (signal) signal.addEventListener('abort', clearClass, { once: true });
+                wireExplorePublishDialog(dialog, { filename });
+            },
+            resolveValue: (value, dialog) => {
+                dialog?.classList.remove('explore-publish-dialog-modal');
+                if (!value) return false;
+                const title = dialog?.querySelector('#explorePublishTitle')?.value?.trim() || '';
+                if (title.length < EXPLORE_PUBLISH_TITLE_MIN || title.length > EXPLORE_PUBLISH_TITLE_MAX) {
+                    showGlassToast(
+                        'info',
+                        'Explorer',
+                        `Title must be between ${EXPLORE_PUBLISH_TITLE_MIN} and ${EXPLORE_PUBLISH_TITLE_MAX} characters long.`,
+                        false,
+                        4000
+                    );
+                    return false;
+                }
+                return { title, filename };
+            }
+        }
+    );
+
+    if (!confirmed || confirmed === false) return;
+
+    const toastId = showGlassToast(
+        'info',
+        'Explorer',
+        'Uploading to NovelAI Explore…',
+        true,
+        false,
+        '<i class="fas fa-globe"></i>'
+    );
+    try {
+        const data = await wsClient.sendMessage('upload_novelai_explore_image', {
+            filename: confirmed.filename,
+            title: confirmed.title
+        }, false);
+
+        if (data?.code === 'EXPLORE_UPLOADS_DISABLED') {
+            // updateGlassToast — public/scripts/comp/toastManager.js
+            updateGlassToast(
+                toastId,
+                'warning',
+                'Explorer',
+                'Explore uploads are disabled on this server',
+                '<i class="fas fa-ban"></i>'
+            );
+            return;
+        }
+        if (data?.code === 'EXPLORE_NOT_REGISTERED') {
+            updateGlassToast(toastId, 'warning', 'Explorer', 'Register on NovelAI Explore first', '<i class="fas fa-user-plus"></i>');
+            updateGlassToastButtons(toastId, [
+                {
+                    text: 'Register',
+                    onClick: () => {
+                        open(data.registerUrl || EXPLORE_PUBLISH_REGISTER_URL, '_blank', 'noopener');
+                    }
+                }
+            ]);
+            return;
+        }
+        if (data?.success === false || data?.error || data?.code) {
+            updateGlassToast(
+                toastId,
+                'error',
+                'Explorer',
+                data.error || data.restriction?.message || 'Upload failed',
+                '<i class="fas fa-exclamation-triangle"></i>'
+            );
+            return;
+        }
+
+        const exploreUrl = data?.exploreUrl || (data?.id ? `https://novelai.net/explore/image/${data.id}` : null);
+        updateGlassToast(
+            toastId,
+            'success',
+            'Explorer',
+            data?.title ? `Uploaded “${data.title}” — pending review` : 'Uploaded — pending review',
+            '<i class="fas fa-globe"></i>'
+        );
+        if (exploreUrl) {
+            updateGlassToastButtons(toastId, [
+                {
+                    text: 'Open',
+                    onClick: () => {
+                        open(exploreUrl, '_blank', 'noopener');
+                    }
+                }
+            ]);
+        }
+    } catch (err) {
+        updateGlassToast(
+            toastId,
+            'error',
+            'Explorer',
+            (err && err.message) || String(err) || 'Upload failed',
+            '<i class="fas fa-exclamation-triangle"></i>'
+        );
+    }
+}
+
 // Context menu action handlers for gallery items
 function handleGalleryContextMenuAction(event) {
     const { action, target, item } = event.detail;
@@ -8809,9 +9631,23 @@ function handleGalleryContextMenuAction(event) {
 
         case 'start-chat':
             // Open chat modal for this image
-            if (window.chatSystem) {
-                window.chatSystem.openChatModal(filename, image.characterName || null);
-            }
+            (async () => {
+                try {
+                    if (window.featureLoader) {
+                        await window.featureLoader.loadFeature('chat');
+                    }
+                    if (window.chatSystem) {
+                        window.chatSystem.openChatModal(filename, image.characterName || null);
+                    }
+                } catch (err) {
+                    console.error('Failed to load chat system:', err);
+                }
+            })();
+            break;
+
+        case 'publish-to-explorer':
+            // openPublishToExplorerDialog — this file
+            openPublishToExplorerDialog(image);
             break;
 
         case 'delete':
@@ -8843,7 +9679,8 @@ function handleGalleryContextMenuAction(event) {
             break;
 
         case 'view-image-data':
-            // Open image data viewer window
+            // public/scripts/comp/featureLoader.js
+            void featureLoader.loadFeature('image_prompt_inspector').then(() => openImagePromptInspector(image));
             break;
 
         case 'expand-canvas':
@@ -9019,11 +9856,23 @@ function copyImageToClipboard(image) {
             if (image.url) {
                 imageUrl = image.url;
             } else {
-                const filename = image.upscaled || image.original;
-                imageUrl = `/images/${filename}`;
+                // resolveGalleryFullImageUrl / localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+                imageUrl = resolveGalleryFullImageUrl(image)
+                    || localGalleryImageUrl(image.upscaled || image.original);
             }
 
-            const response = await fetch(imageUrl);
+            // Prefer server restore of stealth origin Comment (strips forge_data from tEXt)
+            // Path is encodeURIComponent'd so literal `?` in filenames is `%3F`; only real query uses `?`.
+            const clipboardUrl = imageUrl.includes('?')
+                ? `${imageUrl}&clipboardOrigin=true`
+                : `${imageUrl}?clipboardOrigin=true`;
+
+            let response = await fetch(clipboardUrl, { cache: 'no-store' });
+            if (!response.ok) {
+                response = await fetch(imageUrl, { cache: 'no-store' });
+            }
+            const naiSigValid = response.headers.get('X-NovelAI-Signature-Valid');
+            const naiSigInvalid = naiSigValid !== null && naiSigValid.toLowerCase() !== 'true';
             const blob = await response.blob();
             const filename = image.filename || image.original || image.upscaled;
             const name = filename ? String(filename).split('/').pop() : 'image.png';
@@ -9032,7 +9881,19 @@ function copyImageToClipboard(image) {
 
             const sizeText = formatClipboardBlobSize(blob);
             if (showGlassToast) {
-                showGlassToast('success', 'Image copied to clipboard!', `(${sizeText})`, false, 3000, '<i class="fas fa-clipboard-check"></i>');
+                if (naiSigInvalid) {
+                    showGlassToast(
+                        'warning',
+                        'Image copied to clipboard!',
+                        `(${sizeText})<br>NAI Signing Key Invalid`,
+                        false,
+                        4000,
+                        '<i class="fas fa-exclamation-triangle"></i>'
+                    );
+                } else {
+                    // showGlassToast: public/scripts/comp/toastManager.js
+                    showGlassToast('success', 'Image copied to clipboard!', `(${sizeText})`, false, 3000, '<i class="fas fa-clipboard-check"></i>');
+                }
             }
         } catch (error) {
             console.error('Failed to copy image to clipboard:', error);
@@ -10264,9 +11125,10 @@ function buildPreviewUrlForCache(image) {
 
 function buildImageUrlForCache(image) {
     if (!image) return null;
-    const filename = image.filename || image.original || image.upscaled;
-    if (!filename) return null;
-    return `/images/${filename}`;
+    // resolveGalleryFullImageUrl / localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+    return resolveGalleryFullImageUrl(image)
+        || localGalleryImageUrl(image.filename || image.original || image.upscaled)
+        || null;
 }
 
 function syncServiceWorkerImageCacheRules() {
@@ -10324,7 +11186,7 @@ function syncServiceWorkerImageCacheRules() {
     }, 300);
 }
 
-// Get image metadata via WebSocket with fallback to HTTP
+// Get image metadata via WebSocket with optional IndexedDB cache (never block editor on gallery DB init)
 async function getImageMetadata(filename) {
     try {
         const previewImage = window.currentManualPreviewImage;
@@ -10352,34 +11214,35 @@ async function getImageMetadata(filename) {
             }
         }
 
-        // IndexedDB metadata cache — public/scripts/comp/galleryView.js galleryMetadataCache
-        if (window.galleryMetadataCache) {
-            await window.galleryMetadataCache.initPromise;
-            const base = String(filename || '').replace(/\.(png|jpg|jpeg|webp)$/i, '');
-            if (base) {
-                const cached = await window.galleryMetadataCache.getMetadata(base);
-                if (cached) {
-                    const { base: _base, cachedAt: _cachedAt, ...metadata } = cached;
-                    if (Object.keys(metadata).length > 0) {
-                        return metadata;
+        const cacheBase = String(filename || '').replace(/\.(png|jpg|jpeg|webp)$/i, '');
+        if (cacheBase && window.galleryMetadataCache) {
+            try {
+                await Promise.race([
+                    window.galleryMetadataCache.initPromise,
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('idb-init-timeout')), 500))
+                ]);
+                if (window.galleryMetadataCache.db) {
+                    const cached = await window.galleryMetadataCache.getMetadata(cacheBase);
+                    if (cached) {
+                        const { base: _base, cachedAt: _cachedAt, ...metadata } = cached;
+                        if (Object.keys(metadata).length > 0) {
+                            return metadata;
+                        }
                     }
                 }
+            } catch (_idbError) {
+                // Fall through to WebSocket — gallery list DB must not block manual editor
             }
         }
 
-        // Use WebSocket API
         if (!window.wsClient || !window.wsClient.isConnected()) {
             throw new Error('WebSocket not connected');
         }
 
         const metadata = await window.wsClient.requestImageMetadata(filename);
 
-        // Persist to IndexedDB for cross-session reuse — galleryMetadataCache.setMetadata
-        if (galleryMetadataCache && metadata) {
-            const cacheBase = String(filename || '').replace(/\.(png|jpg|jpeg|webp)$/i, '');
-            if (cacheBase) {
-                galleryMetadataCache.setMetadata(cacheBase, metadata);
-            }
+        if (galleryMetadataCache && metadata && cacheBase) {
+            void galleryMetadataCache.setMetadata(cacheBase, metadata);
         }
 
         return metadata;
@@ -10476,9 +11339,9 @@ function downloadImage(image) {
         link.download = filename;
         link.click();
     } else {
-        // For existing images
+        // For existing images — localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
         const link = document.createElement('a');
-        link.href = `/images/${filename}?download=true`;
+        link.href = `${localGalleryImageUrl(filename)}?download=true`;
         link.download = filename;
         link.click();
     }
@@ -10501,9 +11364,9 @@ function downloadImageSlim(image) {
         filename = image;
     }
 
-    // Use the slim endpoint
+    // Use the slim endpoint — localGalleryDerivedImageUrl: public/scripts/comp/assetUrlResolver.js
     const link = document.createElement('a');
-    link.href = `/image/slim/${filename}`;
+    link.href = localGalleryDerivedImageUrl('slim', filename);
     link.download = filename;
     link.click();
 }
@@ -10525,9 +11388,9 @@ function downloadImageOptimized(image) {
         filename = image;
     }
 
-    // Use the optimized endpoint
+    // Use the optimized endpoint — localGalleryDerivedImageUrl: public/scripts/comp/assetUrlResolver.js
     const link = document.createElement('a');
-    link.href = `/image/opti/${filename}`;
+    link.href = localGalleryDerivedImageUrl('opti', filename);
     link.download = filename;
     link.click();
 }
@@ -10595,3 +11458,34 @@ async function deleteImage(image, event = null) {
 // Add context menu event listener
 document.addEventListener('contextMenuAction', handleGalleryContextMenuAction);
 document.addEventListener('contextMenuAction', handleBulkActionsContextMenu);
+document.addEventListener('contextMenuAction', handleBulkActionsContextMenu);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

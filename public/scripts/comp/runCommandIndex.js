@@ -55,6 +55,7 @@ const RUN_APP_ALIAS_GROUPS = [
     { aliases: ['notion', 'notes', 'notebook', 'notepad'], launchIds: ['notebook'] },
     { aliases: ['chat', 'girlfriend', 'friend', 'erp', 'roleplay', 'messages'], launchIds: ['chat'] },
     { aliases: ['atelier', 'naxt', 'naxt tag', 'tag lab'], launchIds: ['naxt'] },
+    { aliases: ['agora', 'explore', 'explore gallery', 'image gallery', 'community gallery', 'novelai explore'], launchIds: ['explore-gallery'] },
     { aliases: ['expanders', 'text replacement', 'expander', 'prefix', 'prefixes'], launchIds: ['expanders'] },
     { aliases: ['import', 'upload' ,'vibe', 'style'], launchIds: ['import'] },
     { aliases: ['phasewalker', 'phase', 'bracket', 'stages'], launchIds: ['bracket-generation'] },
@@ -376,22 +377,19 @@ async function getRunNaxGalleriesCached() {
 }
 
 async function openRunNaxtGallerySearch(gallerySlug, query) {
-    // naxtApplet: public/scripts/comp/naxtApplet.js
-    if (!window.naxtApplet) {
-        showGlassToast('info', 'Run', 'Atelier is not available', false, 2500);
-        return;
-    }
-    const wasHidden = !window.naxtApplet.modal || window.naxtApplet.modal.classList.contains('hidden');
+    // openNaxtApplet / naxtApplet: public/scripts/comp/featureLoader.js + naxtApplet.js
+    await featureLoader.loadFeature('naxt');
+    const wasHidden = !naxtApplet.modal || naxtApplet.modal.classList.contains('hidden');
     if (wasHidden) {
-        await window.naxtApplet.open();
+        await naxtApplet.open();
     } else {
-        await window.naxtApplet.ensureGalleries();
+        await naxtApplet.ensureGalleries();
     }
-    const state = window.naxtApplet.getBrowseState();
+    const state = naxtApplet.getBrowseState();
     state.gallerySlug = gallerySlug || state.gallerySlug;
     state.query = query || '';
-    window.naxtApplet.applyBrowseState(state);
-    await window.naxtApplet.reloadFromTop(false);
+    naxtApplet.applyBrowseState(state);
+    await naxtApplet.reloadFromTop(false);
 }
 
 function buildRunDatasetTagEntry(result, promptTarget) {
@@ -636,6 +634,9 @@ function buildRunNoteEntriesFromList(notes, shortcuts) {
             icon: RUN_CATEGORY_ICONS.note,
             keywords: [note.name, ...aliasNames].filter(Boolean),
             execute: async () => {
+                if (window.featureLoader) {
+                    await window.featureLoader.loadFeature('notepad');
+                }
                 await window.notepadManager.openExistingNote(note.id);
             }
         });
@@ -864,8 +865,10 @@ async function copyRunTagText(text) {
 async function runAppendTagToPhasewalkerStep(tagText, keyword, stepIndex, field, createNew) {
     const add = String(tagText || '').trim();
     if (!add) return;
+    // public/scripts/comp/featureLoader.js
+    await featureLoader.loadFeature('bracket_gen');
     // bracketGenEnsureStepStateReady, bracketGenerationApplet: public/scripts/comp/bracketGenerationApplet.js
-    if (typeof bracketGenEnsureStepStateReady !== 'function' || !bracketGenEnsureStepStateReady()) {
+    if (!bracketGenEnsureStepStateReady()) {
         showGlassToast('info', 'Run', 'Configure Phasewalker keywords first', false, 2500);
         return;
     }
@@ -888,12 +891,8 @@ async function runAppendTagToPhasewalkerStep(tagText, keyword, stepIndex, field,
 }
 
 function openPhasewalkerEditor() {
-    if (window.bracketGenerationApplet) {
-        window.bracketGenerationApplet.open();
-        return;
-    }
-    const modal = document.getElementById('bracketGenerationModal');
-    if (modal && typeof openModal === 'function') openModal(modal);
+    // openBracketGenerationApplet: public/scripts/comp/featureLoader.js
+    void openBracketGenerationApplet();
 }
 
 function buildPhasewalkerContextSubmenuItems(tagText, options) {
@@ -1340,12 +1339,14 @@ async function fetchRunAsyncEntries(query, categoryHint, generation) {
     const inPrompt = Boolean(getRunPromptInsertTarget());
     const wsId = typeof activeWorkspace !== 'undefined' ? activeWorkspace : (window.activeWorkspace || 'default');
 
-    if (window.tagWikiSearchModal && typeof window.tagWikiSearchModal.searchTagWiki === 'function' && query.length >= 1) {
+    if (query.length >= 1) {
         try {
-            const wikiResults = await window.tagWikiSearchModal.searchTagWiki(query, { limit: 8 });
+            // public/scripts/comp/featureLoader.js
+            await featureLoader.loadFeature('grimoire');
+            const wikiResults = await tagWikiSearchModal.searchTagWiki(query, { limit: 8 });
             if (generation !== runSearchGeneration) return [];
             const wikiEntries = [];
-            (wikiResults || []).slice(0, 6).forEach((result, idx) => {
+            (wikiResults || []).slice(0, 6).forEach((result) => {
                 const name = result.title || result.name || result.tag || query;
                 const hasWiki = !!result.hasWiki;
                 wikiEntries.push({
@@ -1356,12 +1357,12 @@ async function fetchRunAsyncEntries(query, categoryHint, generation) {
                     icon: RUN_CATEGORY_ICONS.wiki,
                     keywords: [name],
                     execute: async () => {
-                        if (!window.tagWikiSearchModal) return;
-                        const opened = await window.tagWikiSearchModal.openStandaloneWikiIfDirectMatch(name, {
+                        await featureLoader.loadFeature('grimoire');
+                        const opened = await tagWikiSearchModal.openStandaloneWikiIfDirectMatch(name, {
                             force: hasWiki
                         });
                         if (!opened) {
-                            window.tagWikiSearchModal.openSearchForTerm(name);
+                            tagWikiSearchModal.openSearchForTerm(name);
                         }
                     }
                 });
@@ -1460,6 +1461,9 @@ async function fetchRunAsyncEntries(query, categoryHint, generation) {
                     keywords: [note.name, query],
                     score: 48,
                     execute: async () => {
+                        if (window.featureLoader) {
+                            await window.featureLoader.loadFeature('notepad');
+                        }
                         await window.notepadManager.openExistingNote(note.id);
                     }
                 });
@@ -1544,7 +1548,7 @@ function getRunEntryActionItems(entry) {
 function getRunEntryActionMenu(entry) {
     if (!entry) return null;
 
-    if (entry.category === 'note' && entry.noteData && window.notepadManager) {
+    if (entry.category === 'note' && entry.noteData) {
         const noteData = entry.noteData;
         return {
             sections: [
@@ -1561,6 +1565,9 @@ function getRunEntryActionMenu(entry) {
                 }
             ],
             onAction: async (action) => {
+                if (window.featureLoader) {
+                    await window.featureLoader.loadFeature('notepad');
+                }
                 switch (action) {
                     case 'open':
                         await window.notepadManager.openExistingNote(noteData.id);
@@ -1637,11 +1644,12 @@ function getRunEntryActionMenu(entry) {
         const extraOnAction = entry.category === 'wiki'
             ? async (action) => {
                 const term = entry.label;
-                if (!window.tagWikiSearchModal) return;
+                // public/scripts/comp/featureLoader.js
+                await featureLoader.loadFeature('grimoire');
                 if (action === 'standalone') {
-                    await window.tagWikiSearchModal.openStandaloneWikiIfDirectMatch(term, { force: true });
+                    await tagWikiSearchModal.openStandaloneWikiIfDirectMatch(term, { force: true });
                 } else if (action === 'browser') {
-                    window.tagWikiSearchModal.openSearchForTerm(term);
+                    tagWikiSearchModal.openSearchForTerm(term);
                 }
             }
             : null;

@@ -63,17 +63,25 @@ function fixEmphasisDigitBeforeDoubleColon(text) {
 function fixEmphasisGroupCommaViolations(text) {
     if (!text || !text.includes('::')) return text;
 
-    // End of segment: "movements, ::" → "movements::" (comma must not sit before closing ::)
-    text = text.replace(/([^:\d])\s*,\s*(?=::(\s|,|$))/g, '$1');
+    // Comma before any "::": "movements, ::" → "movements::", "foo, ::bar" → "foo::bar"
+    text = text.replace(/([^:\d])\s*,\s*(?=::)/g, '$1');
+
+    // Misplaced comma after next-group opener: "end:: 1.0::, start" → "end::, 1.0::start"
+    text = text.replace(/(::)\s*(-?\d+(?:\.\d+)?)::\s*,\s*/g, '$1, $2::');
+
+    // Word then weight::, text (no prior closer): "standing 1.21::, detailed" → "standing::, 1.21::detailed"
+    text = text.replace(/([^\s:,]+)\s+(-?\d+(?:\.\d+)?)::,\s*/g, '$1::, $2::');
 
     // After outer comma, inner "::, " is duplicate: ", 3.54::, unborn" → ", 3.54::unborn"
     text = text.replace(/(,\s*)(-?\d+(?:\.\d+)?)::,\s*/g, '$1$2::');
 
     // Closing terminator inside a weight group: "kicking ::" → "kicking::"
     // Also: next group without comma ("kicking :: 1.1::"), comma after close ("clothed ::,"), disable close ("womb::/")
+    // Never glue onto a digit — "2025 ::" must stay spaced (years / numbers are not closers to absorb).
     text = text.replace(
         /([^:,\s])\s+(::)(?=\s*(?:,\s*|\/|-?\d+(?:\.\d+)?::|\s*$))/g,
         (match, before, delim, offset, whole) => {
+            if (/\d/.test(before)) return match;
             const closeIndex = offset + before.length;
             const ifStripped = whole.slice(0, closeIndex) + '::' + whole.slice(offset + match.length);
             if (needsSpaceBeforeDoubleColon(ifStripped, closeIndex)) {

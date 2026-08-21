@@ -16,6 +16,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `request_image_metadata` | `request_image_metadata_response` | session | Handler: handleImageMetadataRequest |
 | `request_url_upload_metadata` | `request_url_upload_metadata_response` | session | Handler: handleUrlUploadMetadataRequest |
 | `send_to_sequenzia_bulk` | `send_to_sequenzia_bulk_response` | session | Handler: handleSendToSequenziaBulk |
+| `set_gallery_show_shared` | `set_gallery_show_shared_response` | session | Handler: handleSetGalleryShowShared |
 | `update_image_preset_bulk` | `update_image_preset_bulk_response` | admin/destructive | Handler: handleUpdateImagePresetBulk |
 
 ## Response envelope
@@ -36,6 +37,20 @@ Errors use `type: "error"` via `sendError()` — see [websocket.md](../websocket
 ## Read-only restrictions
 
 `delete_images_bulk` and `update_image_preset_bulk` are destructive (admin only). Other gallery packets are readable by readonly users.
+
+---
+
+---
+
+---
+
+---
+
+---
+
+---
+
+---
 
 ---
 
@@ -124,11 +139,12 @@ Additional response/push types from handler:
 | `requestId` | Optional |
 | `viewType` | Optional |
 | `includePinnedStatus` | Optional |
-| `light` | Optional |
 | `offset` | Optional |
-| `limit` | Optional |
 | `workspaceId` | Optional |
-| `galleryShowSharedRemote` | Optional |
+| `light` | Optional |
+| `limit` | Optional |
+| `galleryBlockFetch` | Optional |
+| `afterCursor` | Optional |
 
 **Success response:** `request_gallery_response`
 
@@ -211,6 +227,23 @@ Additional response/push types from handler:
 
 **Push side effects:**
 - `gallery_updated`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `set_gallery_show_shared`
+
+**Auth:** Session required
+
+**Handler:** modules/ws/handlers/120-galleryHandler.js → `handleSetGalleryShowShared`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `enabled` | Optional |
+
+**Success response:** `set_gallery_show_shared_response`
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 

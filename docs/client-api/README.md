@@ -60,7 +60,7 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | [feature-map.md](./feature-map.md) | UI feature → REST/WS matrix |
 | [README-CHILD.md](../README-CHILD.md) | Child/ephemeral replication deployment (master pairing, bootstrap, daily ops) |
 
-### WebSocket domains (277 request types)
+### WebSocket domains (285 request types)
 
 | Domain | File | Packets |
 |--------|------|---------|
@@ -74,10 +74,12 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | Director | [ws/director.md](./ws/director.md) | 12 |
 | Notes (+ novels) | [ws/notes.md](./ws/notes.md) | 14 |
 | NAX | [ws/nax.md](./ws/nax.md) | 11 |
+| Agora (NovelAI Explore) | [ws/explore.md](./ws/explore.md) | 3 |
 | Text replacements | [ws/textReplacements.md](./ws/textReplacements.md) | 6 |
 | Favorites | [ws/favorites.md](./ws/favorites.md) | 3 |
 | Account & app bootstrap | [ws/account.md](./ws/account.md) | 2 |
 | Generation quips | [ws/quips.md](./ws/quips.md) | 4 |
+| Character database | [ws/characterDb.md](./ws/characterDb.md) | 5 |
 | Knowledge / memories | [ws/knowledge.md](./ws/knowledge.md) | 7 |
 | Persona | [ws/persona.md](./ws/persona.md) | 2 |
 | User settings | [ws/userSettings.md](./ws/userSettings.md) | 2 |

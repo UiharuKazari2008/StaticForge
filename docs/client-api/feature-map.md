@@ -13,6 +13,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 |---------|------|-----|------|-------------|
 | PIN login | `POST /` login | — | — | Login UI, pin modal |
 | Session check | `OPTIONS /app`, `POST /` ping | `connection` | — | localStorage sync |
+| Client performance telemetry | — | `report_client_perf`, `get_telemetry` | — | FPS/long-task/heap and UI-size sampling; Security Center details |
 | Logout | `POST /` logout | disconnect | — | Clear local state |
 | Server readiness | `OPTIONS /status` | — | — | Connection dial UI |
 | Bearer API key | `?auth=` / `Authorization` | — | — | — |
@@ -54,6 +55,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Gallery scroll restore | — | `gallery_position_hint` | `gallery_scroll_state` | — |
 | Sequenzia export | — | `send_to_sequenzia_bulk` | — | — |
 | Update image preset tag | — | `update_image_preset_bulk` | — | — |
+| Publish workspace image to NovelAI Explore | — | `check_novelai_explore_upload`, `upload_novelai_explore_image` | — | Gallery / Explorer context menu → Publish to Explorer |
 
 ---
 
@@ -77,7 +79,8 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | File search | — | `search_files` | `search_results_*` | File search modal |
 | Tag wiki / Grimoire | `GET /private/wiki/*` (cached pages) | `search_tag_wiki`, `get_tag_wiki_page`, `refresh_tag_wiki_page`, `resolve_grimoire_url` | — | DSAP router, panes |
 | Static NovelAI docs | — | `get_static_wiki_site_index`, `get_static_wiki_page` | — | — |
-| Character search | `GET /characters.json` | `search_characters` | — | Modal UI |
+| Character search | — | `search_characters` | `search_results_update` | Autofill overlay |
+| Character database browser | — | `get_character_db`, `character_db_upsert`, `character_db_delete`, `character_db_rename_copyright`, `character_db_delete_copyright` | — | Tools applet (`characterDbApplet`); SQLite `.cache/characters.db`; import `scripts/import-characters-json.js` |
 | Search index admin | — | `search_index_*` | `search_indexing_status` | — |
 | Spellcheck custom word | — | `spellcheck_add_word` | — | — |
 | NAX tags | `GET /naxCache/...` | `get_nax_*`, `set_nax_*`, `generate_nax_custom_tag` | — | NAX applets |
@@ -188,7 +191,7 @@ Operational guide: [README-CHILD.md](../../README-CHILD.md).
 | Category | Count |
 |----------|-------|
 | Documented REST route groups | ~25 explicit + static |
-| WS request types (client → server) | **277** |
+| WS request types (client → server) | **294** |
 | WS server push types (common) | **~50** |
 | Auth flows | **3** (PIN session, Bearer loginKey, dev key — dev middleware exists but is **not mounted** on any route; see [authentication.md](./authentication.md#development-auth)) |
 

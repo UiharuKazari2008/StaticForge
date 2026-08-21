@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { normalizeAutofillSearchSettings } = require('./autofillSearchSettings');
+const { getBrowserHeaders, decompressIfNeeded } = require('./browserHttp');
 
 // Search functionality module
 class SearchService {
@@ -531,44 +532,71 @@ class SearchService {
                     return { results: [], spellCheck: null };
                 }
 
+                const typeFilter = settings.resultTypeFilter || null;
+                const wantCharacters = !typeFilter || typeFilter === 'characters';
+                const wantTags = !typeFilter || typeFilter === 'tags';
+                const wantExpanders = !typeFilter || typeFilter === 'expanders';
+                const wantSpellSide = !typeFilter;
+
                 const tagOptions = {
                     isContinuation: isContinuation,
                     priorQuery: priorQuery || '',
                     autofillSettings: settings
                 };
 
-                const runCharacters = this.performCharacterSearch(tagSearchQuery, model, ws, requestId).then(results => {
-                    return results;
-                }).catch(error => {
-                    console.error('Character search error:', error);
-                    if (ws) {
-                        this.sendSearchWs(ws,{
-                            type: 'search_results_update',
-                            service: 'characters',
-                            results: [],
-                            isComplete: true,
-                            timestamp: new Date().toISOString(),
-                            requestId: requestId
-                        });
-                    }
-                    return [];
-                });
+                const completeSkippedService = (serviceName, serviceOrder = 0) => {
+                    if (!ws) return Promise.resolve([]);
+                    this.sendSearchWs(ws, {
+                        type: 'search_status_update',
+                        services: [{ name: serviceName, status: 'completed' }],
+                        requestId: requestId
+                    });
+                    this.sendSearchWs(ws, {
+                        type: 'search_results_update',
+                        service: serviceName,
+                        results: [],
+                        serviceOrder,
+                        isComplete: true,
+                        timestamp: new Date().toISOString(),
+                        requestId: requestId
+                    });
+                    return Promise.resolve([]);
+                };
 
-                const runTags = (settings.naiAnimeTags || settings.naiFurryTags || settings.dbAnimeTags || settings.dbFurryTags)
+                const runCharacters = wantCharacters
+                    ? this.performCharacterSearch(tagSearchQuery, model, ws, requestId).then(results => {
+                        return results;
+                    }).catch(error => {
+                        console.error('Character search error:', error);
+                        if (ws) {
+                            this.sendSearchWs(ws,{
+                                type: 'search_results_update',
+                                service: 'characters',
+                                results: [],
+                                isComplete: true,
+                                timestamp: new Date().toISOString(),
+                                requestId: requestId
+                            });
+                        }
+                        return [];
+                    })
+                    : completeSkippedService('characters', 1);
+
+                const runTags = wantTags && (settings.naiAnimeTags || settings.naiFurryTags || settings.dbAnimeTags || settings.dbFurryTags)
                     ? this.performTagSearch(tagSearchQuery, model, ws, sessionId, requestId, tagOptions).catch(error => {
                         console.error('Tag search error:', error);
                         return [];
                     })
                     : Promise.resolve([]);
 
-                const runSpellcheck = settings.spellcheck
+                const runSpellcheck = wantSpellSide && settings.spellcheck
                     ? this.performSpellCheckAsync(spellCheckInput, ws, requestId).catch(error => {
                         console.error('Spellcheck error:', error);
                         return null;
                     })
                     : Promise.resolve(null);
 
-                const runWordLookup = settings.thesaurus
+                const runWordLookup = wantSpellSide && settings.thesaurus
                     ? runSpellcheck.then(spellCheckData =>
                         this.performWordLookupAsync(spellCheckInput, ws, requestId, spellCheckData)
                     ).catch(error => {
@@ -577,19 +605,21 @@ class SearchService {
                     })
                     : Promise.resolve(null);
 
-                const runTextReplacements = this.performTextReplacementSearch(searchQuery, ws, hasPickSuffix, requestId).catch(error => {
-                    console.error('Text replacement search error:', error);
-                    if (ws) {
-                        this.sendSearchWs(ws, {
-                            type: 'search_results_update',
-                            service: 'textReplacements',
-                            results: [],
-                            isComplete: true,
-                            timestamp: new Date().toISOString()
-                        });
-                    }
-                    return [];
-                });
+                const runTextReplacements = wantExpanders
+                    ? this.performTextReplacementSearch(searchQuery, ws, hasPickSuffix, requestId).catch(error => {
+                        console.error('Text replacement search error:', error);
+                        if (ws) {
+                            this.sendSearchWs(ws, {
+                                type: 'search_results_update',
+                                service: 'textReplacements',
+                                results: [],
+                                isComplete: true,
+                                timestamp: new Date().toISOString()
+                            });
+                        }
+                        return [];
+                    })
+                    : completeSkippedService('textReplacements', 2);
 
                 const [characterResults, tagResults, spellcheckData, wordLookupData, textReplacementResults] = await Promise.allSettled([
                     runCharacters,
@@ -774,6 +804,91 @@ class SearchService {
         }
     }
 
+    /**
+     * True when `word` is a whole token in `text`, or a prefix of a token (len >= 3).
+     * Avoids short false positives like "art" matching inside "hearts".
+     */
+    characterTextHasSearchWord(textLower, word) {
+        if (!textLower || !word) return false;
+        const tokens = textLower.split(/[^a-z0-9]+/).filter(Boolean);
+        if (tokens.some(token => token === word)) return true;
+        if (word.length >= 3 && tokens.some(token => token.startsWith(word))) return true;
+        return false;
+    }
+
+    /**
+     * Score a character against a search query.
+     * Supports: full word AND on name/copyright (any order — "sayo minakami" ↔ "minakami sayo"),
+     * phrase contains, copyright prefix (series browse), single-token hits anywhere in the name
+     * ("sayo" → "minakami sayo"), and partial multi-word name hits ("asuna yuuki" → "asuna (sao)").
+     * @returns {{ similarity: number } | null}
+     */
+    scoreCharacterSearchMatch(characterNameLower, characterCopyrightLower, searchTerm, searchWords) {
+        const nameWordHits = searchWords.filter(word =>
+            this.characterTextHasSearchWord(characterNameLower, word)
+        ).length;
+        const copyrightWordHits = characterCopyrightLower
+            ? searchWords.filter(word => this.characterTextHasSearchWord(characterCopyrightLower, word)).length
+            : 0;
+
+        const nameMatches = nameWordHits === searchWords.length;
+        const copyrightMatches = !!characterCopyrightLower && copyrightWordHits === searchWords.length;
+        const nameContains = characterNameLower.includes(searchTerm);
+        const copyrightContains = !!characterCopyrightLower && characterCopyrightLower.includes(searchTerm);
+        // Typing a series title prefix lists every character under that copyright
+        const copyrightPrefix = !!characterCopyrightLower && characterCopyrightLower.startsWith(searchTerm);
+        // Multi-word: keep characters whose name contains the first typed token
+        // ("asuna yuuki" still finds "asuna (sao)" even though "yuuki" is absent)
+        const partialNameMatch = !nameMatches
+            && searchWords.length > 1
+            && this.characterTextHasSearchWord(characterNameLower, searchWords[0]);
+
+        if (!nameMatches && !copyrightMatches && !nameContains && !copyrightContains
+            && !copyrightPrefix && !partialNameMatch) {
+            return null;
+        }
+
+        const nameSimilarity = this.calculateSimilarity(searchTerm, characterNameLower);
+        const copyrightSimilarity = characterCopyrightLower
+            ? this.calculateSimilarity(searchTerm, characterCopyrightLower)
+            : 0;
+
+        let similarity;
+        if (copyrightPrefix) {
+            // Prefer series browse above weak name partials; keep relative copyright prefix quality
+            similarity = Math.max(copyrightSimilarity, 60) + 25;
+        } else if (nameMatches || nameContains) {
+            similarity = Math.max(nameSimilarity, copyrightSimilarity);
+            if (nameMatches && searchWords.length > 1) {
+                // All query tokens present (any order) — boost over accidental substring hits
+                similarity += 15;
+            } else if (nameMatches && searchWords.length === 1) {
+                // Given-name / mid-name exact token (e.g. "sayo" → "minakami sayo")
+                const tokens = characterNameLower.split(/[^a-z0-9]+/).filter(Boolean);
+                const tokenIndex = tokens.findIndex(t => t === searchWords[0]
+                    || (searchWords[0].length >= 3 && t.startsWith(searchWords[0])));
+                if (tokenIndex > 0) {
+                    similarity = Math.max(similarity, 88 - Math.min(tokenIndex, 6) * 2);
+                }
+            }
+        } else if (partialNameMatch) {
+            const coverage = Math.max(nameWordHits, 1) / searchWords.length;
+            const bestWordSim = Math.max(
+                ...searchWords
+                    .filter(word => this.characterTextHasSearchWord(characterNameLower, word))
+                    .map(word => this.calculateSimilarity(word, characterNameLower))
+            );
+            similarity = (bestWordSim * coverage) + 12;
+        } else {
+            similarity = Math.max(nameSimilarity, copyrightSimilarity);
+            if (copyrightMatches) {
+                similarity += 20;
+            }
+        }
+
+        return { similarity };
+    }
+
     // Private methods
     async performCharacterSearch(query, model, ws = null, requestId = null) {
         try {
@@ -798,32 +913,24 @@ class SearchService {
                 
                 const characterNameLower = character.name.toLowerCase();
                 const characterCopyrightLower = character.copyright ? character.copyright.toLowerCase() : '';
-                
-                // Check if all search words appear in name or copyright (in any order)
-                const nameMatches = searchWords.every(word => characterNameLower.includes(word));
-                const copyrightMatches = characterCopyrightLower ? searchWords.every(word => characterCopyrightLower.includes(word)) : false;
-                
-                // Also check if full search term appears as substring (for exact matches)
-                const nameContains = characterNameLower.includes(searchTerm);
-                const copyrightContains = characterCopyrightLower ? characterCopyrightLower.includes(searchTerm) : false;
-                
-                if (nameMatches || copyrightMatches || nameContains || copyrightContains) {
-                    // Calculate similarity score
-                    const nameSimilarity = this.calculateSimilarity(searchTerm, characterNameLower);
-                    const copyrightSimilarity = characterCopyrightLower ? this.calculateSimilarity(searchTerm, characterCopyrightLower) : 0;
-                    const maxSimilarity = Math.max(nameSimilarity, copyrightSimilarity);
+                const match = this.scoreCharacterSearchMatch(
+                    characterNameLower,
+                    characterCopyrightLower,
+                    searchTerm,
+                    searchWords
+                );
+                if (!match) return;
 
-                    characterResults.push({
-                        type: 'character',
-                        name: character.name,
-                        character: character, // Include full character data
-                        count: 5000, // Characters get medium priority
-                        serviceOrder: 1, // Characters come before text replacements but after tags
-                        resultOrder: index,
-                        serviceName: 'characters',
-                        similarity: maxSimilarity // Add similarity score for sorting
-                    });
-                }
+                characterResults.push({
+                    type: 'character',
+                    name: character.name,
+                    character: character, // Include full character data
+                    count: 5000, // Characters get medium priority
+                    serviceOrder: 1, // Characters come before text replacements but after tags
+                    resultOrder: index,
+                    serviceName: 'characters',
+                    similarity: match.similarity
+                });
             });
 
             // Sort character results by similarity (highest first)
@@ -987,28 +1094,21 @@ class SearchService {
             }
 
             const url = `https://image.novelai.net/ai/generate-image/suggest-tags?model=${apiModel}&prompt=${encodeURIComponent(normalizedQuery)}`;
+            // getBrowserHeaders / decompressIfNeeded: modules/browserHttp.js — keep https.request for abort support
+            const headers = getBrowserHeaders({
+                acceptResType: 'any',
+                json: false,
+                extra: {
+                    accept: '*/*',
+                    'content-type': 'application/json',
+                    authorization: `Bearer ${this._getNovelAiApiKey()}`,
+                    'cache-control': 'no-cache',
+                    pragma: 'no-cache'
+                }
+            });
             const options = {
                 method: 'GET',
-                headers: {
-                    'accept': '*/*',
-                    'accept-language': 'en-US,en;q=0.9',
-                    'authorization': `Bearer ${this._getNovelAiApiKey()}`,
-                    'cache-control': 'no-cache',
-                    'content-type': 'application/json',
-                    'dnt': '1',
-                    'sec-gpc': '1',
-                    'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0',
-                    'referer': 'https://novelai.net/',
-                    'origin': 'https://novelai.net',
-                    'pragma': 'no-cache',
-                    'priority': 'u=1, i',
-                    'sec-ch-ua': '"Not)A;Brand";v="8", "Chromium";v="138", "Google Chrome";v="138"',
-                    'sec-ch-ua-mobile': '?0',
-                    'sec-ch-ua-platform': '"Windows"',
-                    'sec-fetch-dest': 'empty',
-                    'sec-fetch-mode': 'cors',
-                    'sec-fetch-site': 'same-site'
-                }
+                headers
             };
 
             return new Promise((resolve, reject) => {
@@ -1053,17 +1153,19 @@ class SearchService {
                         reject(new Error(`Response error: ${error.message}`));
                     });
 
-                    res.on('end', () => {
+                    res.on('end', async () => {
                         // Check if request was aborted before processing response
                         if (abortSignal.aborted) {
                             // Request was aborted, no need to process response
                             return;
                         }
 
-                        const buffer = Buffer.concat(data);
+                        const raw = Buffer.concat(data);
+                        // decompressIfNeeded: modules/browserHttp.js
+                        const buffer = await decompressIfNeeded(raw, res.headers['content-encoding']);
                         if (res.statusCode === 200) {
                             try {
-                                const response = JSON.parse(buffer.toString());
+                                const response = JSON.parse(buffer.toString('utf8'));
                                 // Clean up pending request
                                 this.markRequestCompleted(sessionId, apiModel, requestId);
                                 this.globalResources.getApiKeyManager().recordApiSuccess('novelai');
@@ -1071,7 +1173,9 @@ class SearchService {
                             } catch (e) {
                                 // Clean up pending request
                                 this.markRequestCompleted(sessionId, apiModel, requestId);
-                                console.log(`❌ Request for ${apiModel} failed: Invalid JSON response`);
+                                const encoding = res.headers['content-encoding'] || 'identity';
+                                const preview = buffer.slice(0, 80).toString('utf8').replace(/\s+/g, ' ');
+                                console.log(`❌ Request for ${apiModel} failed: Invalid JSON response (encoding=${encoding}, bytes=${buffer.length}, preview=${JSON.stringify(preview)})`);
                                 reject(new Error('Invalid JSON response from NovelAI API'));
                             }
                         } else {
@@ -1515,22 +1619,63 @@ class SearchService {
         await sendMergedPreviews(anime, furry);
     }
 
+    /**
+     * Similarity for character search.
+     * Prefer start matches, then exact/prefix token matches in any order/position
+     * (so "sayo" ranks "minakami sayo", and "sayo minakami" matches the same name).
+     */
     calculateSimilarity(searchTerm, text) {
-        // Simple similarity calculation based on:
-        // 1. Exact match at start (highest priority)
-        // 2. Contains the search term
-        // 3. Length difference (shorter is better)
+        if (!searchTerm || !text) return 0;
+
+        if (text === searchTerm) return 100;
 
         if (text.startsWith(searchTerm)) {
-            return 100 - (text.length - searchTerm.length); // Exact start match
+            return 100 - Math.min(40, text.length - searchTerm.length);
+        }
+
+        const textTokens = text.split(/[^a-z0-9]+/).filter(Boolean);
+        const searchWords = searchTerm.split(/\s+/).filter(Boolean);
+
+        if (searchWords.length > 0 && textTokens.length > 0) {
+            let hitScore = 0;
+            let hits = 0;
+            for (const word of searchWords) {
+                let best = 0;
+                for (let i = 0; i < textTokens.length; i++) {
+                    const token = textTokens[i];
+                    const positionPenalty = Math.min(i, 8) * 2;
+                    if (token === word) {
+                        best = Math.max(best, 94 - positionPenalty);
+                    } else if (word.length >= 3 && token.startsWith(word)) {
+                        best = Math.max(best, 82 - positionPenalty);
+                    } else if (word.length >= 4 && token.includes(word)) {
+                        best = Math.max(best, 50 - Math.min(i, 8));
+                    }
+                }
+                if (best > 0) {
+                    hits += 1;
+                    hitScore += best;
+                }
+            }
+
+            if (hits === searchWords.length) {
+                return hitScore / searchWords.length;
+            }
+            // Multi-word partial coverage (e.g. first token only)
+            if (hits > 0 && searchWords.length > 1) {
+                return (hitScore / searchWords.length) * 0.85;
+            }
+            if (hits > 0) {
+                return hitScore / searchWords.length;
+            }
         }
 
         if (text.includes(searchTerm)) {
             const index = text.indexOf(searchTerm);
-            return 50 - index - (text.length - searchTerm.length); // Contains match, closer to start is better
+            return Math.max(20, 50 - index - (text.length - searchTerm.length));
         }
 
-        return 0; // No match
+        return 0;
     }
 
     performSpellCheck(query) {

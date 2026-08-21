@@ -10,8 +10,14 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 |---|---|---|---|
 | `fetch_autofill_wiki_previews` | `fetch_autofill_wiki_previews_response` | session | Handler: handleFetchAutofillWikiPreviews |
 | `get_dataset_tags_for_path` | `get_dataset_tags_for_path_response` | session | Handler: handleGetDatasetTagsForPath |
+| `get_prompt_index_status` | `get_prompt_index_status_response` | session | Handler: handleGetPromptIndexStatus |
 | `lookup_city` | `lookup_city_response` | session | Handler: handleCityLookup |
 | `omegasearch_query` | `omegasearch_query_response` | session | Handler: handleOmegasearchQuery |
+| `prompt_index_cancel` | `prompt_index_cancel_response` | session | Handler: handlePromptIndexCancel |
+| `prompt_index_pause` | `prompt_index_pause_response` | session | Handler: handlePromptIndexPause |
+| `prompt_index_reconcile` | `prompt_index_reconcile_response` | session | Handler: handlePromptIndexReconcile |
+| `prompt_index_resume` | `prompt_index_resume_response` | session | Handler: handlePromptIndexResume |
+| `prompt_index_start` | `prompt_index_start_response` | session | Handler: handlePromptIndexStart |
 | `search_characters` | `search_characters_response` | session | Handler: handleCharacterSearch |
 | `search_dataset_tags` | `search_dataset_tags_response` | session | Handler: handleDatasetTagSearch |
 | `search_files` | `search_files_response` | session | Handler: handleFileSearch |
@@ -41,6 +47,20 @@ Errors use `type: "error"` via `sendError()` — see [websocket.md](../websocket
 ## Read-only restrictions
 
 Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveOperation()` return `READONLY_RESTRICTED` for `userType: "readonly"` sessions.
+
+---
+
+---
+
+---
+
+---
+
+---
+
+---
+
+---
 
 ---
 
@@ -81,6 +101,22 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 | `path` | Optional |
 
 **Success response:** `get_dataset_tags_for_path_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `get_prompt_index_status`
+
+**Auth:** Session required
+
+**Handler:** modules/ws/handlers/70-searchHandler.js → `handleGetPromptIndexStatus`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+
+**Success response:** `get_prompt_index_status_response`
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
@@ -125,6 +161,86 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 | `forceRefresh` | Optional |
 
 **Success response:** `omegasearch_query_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `prompt_index_cancel`
+
+**Auth:** Session required
+
+**Handler:** modules/ws/handlers/70-searchHandler.js → `handlePromptIndexCancel`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+
+**Success response:** `prompt_index_cancel_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `prompt_index_pause`
+
+**Auth:** Session required
+
+**Handler:** modules/ws/handlers/70-searchHandler.js → `handlePromptIndexPause`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+
+**Success response:** `prompt_index_pause_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `prompt_index_reconcile`
+
+**Auth:** Session required
+
+**Handler:** modules/ws/handlers/70-searchHandler.js → `handlePromptIndexReconcile`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+
+**Success response:** `prompt_index_reconcile_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `prompt_index_resume`
+
+**Auth:** Session required
+
+**Handler:** modules/ws/handlers/70-searchHandler.js → `handlePromptIndexResume`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+
+**Success response:** `prompt_index_resume_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `prompt_index_start`
+
+**Auth:** Session required
+
+**Handler:** modules/ws/handlers/70-searchHandler.js → `handlePromptIndexStart`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+
+**Success response:** `prompt_index_start_response`
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 

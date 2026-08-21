@@ -23,6 +23,7 @@ const OWNER_TO_DOC = {
     director: 'director.md',
     notes: 'notes.md',
     nax: 'nax.md',
+    explore: 'explore.md',
     textReplacements: 'textReplacements.md',
     favorites: 'favorites.md',
     quips: 'quips.md',
@@ -39,6 +40,8 @@ const OWNER_TO_DOC = {
     vfs: 'vfs.md',
     applicationAuth: 'admin.md',
     novel: 'notes.md',
+    character_db: 'characterDb.md',
+    autofillRanking: 'autofillRanking.md',
 };
 
 function readText(filePath) {

@@ -1,5 +1,13 @@
 const crypto = require('crypto');
 const { applyStageConditionalPromptBlocks } = require('./promptStageBlocks');
+// hasManagedEmphasisGroupIds, listManagedEmphasisBlocks: modules/emphasisGroupIdSyntax.js
+let _emphasisGroupIdSyntax;
+function getEmphasisGroupIdSyntax() {
+    if (!_emphasisGroupIdSyntax) {
+        _emphasisGroupIdSyntax = require('./emphasisGroupIdSyntax');
+    }
+    return _emphasisGroupIdSyntax;
+}
 
 class TextReplacements {
     constructor(globalResources = null) {
@@ -202,7 +210,44 @@ class TextReplacements {
             periodKey = this.normalizePeriodKey(periodKey);
         }
 
-        const replacements = [];
+        // Managed emphasis wraps inner text with invisible delimiters, so !KEY right before
+        // a close barrier fails the (?=[,\s|\[\]{}:]|$) expander lookahead. Lift groups to
+        // placeholders (recurse on inners), run expanders on the shell, then restore so
+        // early expand in imageGeneration can still map ids → classic N::. Never flatten:
+        // flattening dropped weights and left bare tags in NovelAI Comment metadata.
+        const managedPreReplacements = [];
+        const managedPlaceholders = [];
+        let workingText = text;
+        try {
+            const emphasisSyntax = getEmphasisGroupIdSyntax();
+            if (emphasisSyntax.hasManagedEmphasisGroupIds(workingText)) {
+                const blocks = emphasisSyntax.listManagedEmphasisBlocks(workingText);
+                for (let i = blocks.length - 1; i >= 0; i--) {
+                    const block = blocks[i];
+                    const innerResult = this.applyTextReplacements(
+                        block.innerText,
+                        presetName,
+                        model,
+                        periodKey,
+                        lockedReplacements,
+                        stageData
+                    );
+                    if (innerResult.replacements?.length) {
+                        managedPreReplacements.push(...innerResult.replacements);
+                    }
+                    const ph = `\uE000SFME${managedPlaceholders.length}\uE000`;
+                    managedPlaceholders.push({
+                        ph,
+                        open: workingText.slice(block.start, block.openEnd),
+                        close: workingText.slice(block.closeStart, block.end),
+                        inner: innerResult.text
+                    });
+                    workingText = workingText.slice(0, block.start) + ph + workingText.slice(block.end);
+                }
+            }
+        } catch (_) { /* emphasis codec optional during boot races */ }
+
+        const replacements = managedPreReplacements;
         // Mutable copy so duplicate placeholders (same !key~) consume distinct locks in order
         const lockPool = (lockedReplacements && lockedReplacements.length > 0)
             ? lockedReplacements.slice()
@@ -220,7 +265,7 @@ class TextReplacements {
 
         const stageDataForBlocks = stageData || { stageIndex: 0, pipelineStageGeneration: false };
         // Slash-delimited blocks first: avoids !PRESET_NAME eating "!PRESET_NAME/..." and matches the rule that "/" in the token means not a plain expander
-        let result = applyStageConditionalPromptBlocks(text, stageDataForBlocks);
+        let result = applyStageConditionalPromptBlocks(workingText, stageDataForBlocks);
 
         // Handle disable syntax !/content/ - remove content from text and trim
         result = result.replace(/(\s*)!\/([^\/]+)\/(\s*)/g, (match, beforeSpace, content, afterSpace) => {
@@ -1022,6 +1067,14 @@ class TextReplacements {
             }
             return replacement;
         });
+
+        if (managedPlaceholders.length) {
+            for (let i = 0; i < managedPlaceholders.length; i++) {
+                const s = managedPlaceholders[i];
+                if (!result.includes(s.ph)) continue;
+                result = result.split(s.ph).join(s.open + s.inner + s.close);
+            }
+        }
 
         return { text: result, replacements: enrichedReplacements };
     }

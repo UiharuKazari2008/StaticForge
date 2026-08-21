@@ -704,6 +704,7 @@ const quipsDsapDriver = {
 
         this._wireSettingsDropdownModalScope(host);
         this._wireQuipsTabs(root, host);
+        this._wireGrimoireContextMenus(host);
 
         if (quipsDsapIsPhrasebookView(host)) {
             void this._loadPhrasebook();
@@ -937,6 +938,50 @@ const quipsDsapDriver = {
         }
 
         this._wireSettingsClickMenus();
+    },
+
+    _wireGrimoireContextMenus(host) {
+        if (!host || typeof host.registerContextMenuItems !== 'function') return;
+
+        const copyText = (text) => {
+            if (!text) return;
+            // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
+            copyTextToClipboard(text).then(() => {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('success', null, 'Copied to clipboard', false, 3000, '<i class="fas fa-check"></i>');
+                }
+            }).catch(() => {});
+        };
+
+        host.registerContextMenuItems('.quips-dsap-phrasebook-body ul.quip-wiki-phrases li', (el) => {
+            const text = (el.textContent || '').trim();
+            if (!text) return [];
+            return [{ text: 'Copy Phrase', icon: 'fas fa-copy', action: 'quips-copy-phrase', data: { text } }];
+        });
+
+        host.registerContextMenuItems('.quips-dsap-phrasebook-body .quip-wiki-term-title', (el) => {
+            const text = (el.textContent || '').trim();
+            if (!text) return [];
+            return [{ text: 'Copy Term', icon: 'fas fa-copy', action: 'quips-copy-term', data: { text } }];
+        });
+
+        host.registerContextMenuItems('.quips-dsap-preview-row', (el) => {
+            const phrase = el.dataset.quipsPhrase
+                || el.querySelector('.quips-dsap-preview-phrase')?.textContent?.trim()
+                || '';
+            if (!phrase) return [];
+            return [{ text: 'Copy Phrase', icon: 'fas fa-copy', action: 'quips-copy-preview-phrase', data: { text: phrase } }];
+        });
+
+        host.registerContextMenuAction('quips-copy-phrase', (el, item) => {
+            copyText(item?.data?.text || (el?.textContent || '').trim());
+        });
+        host.registerContextMenuAction('quips-copy-term', (el, item) => {
+            copyText(item?.data?.text || (el?.textContent || '').trim());
+        });
+        host.registerContextMenuAction('quips-copy-preview-phrase', (el, item) => {
+            copyText(item?.data?.text || el?.dataset?.quipsPhrase || '');
+        });
     },
 
     _teardownClickMenus() {
@@ -1239,7 +1284,7 @@ const quipsDsapDriver = {
             if (previews.length) {
                 previewsEl.classList.remove('hidden');
                 previewsEl.innerHTML = previews.map((item) => `
-                    <div class="quips-dsap-preview-row">
+                    <div class="quips-dsap-preview-row" data-quips-phrase="${quipsDsapEscapeAttr(item.phrase || '')}">
                         <span class="quips-dsap-preview-term">${quipsDsapEscapeHtml(item.term)}</span>
                         <span class="quips-dsap-preview-phrase">${quipsDsapEscapeHtml(item.phrase)}</span>
                     </div>

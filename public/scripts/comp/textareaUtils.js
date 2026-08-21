@@ -33,7 +33,9 @@ const textInputSideEffectQueues = new WeakMap();
 
 /**
  * Run a non-editing input side effect after the browser commits the keystroke.
- * Coalesces multiple input events and callbacks per textarea per frame. Does not stop propagation.
+ * Coalesces multiple input events and callbacks per textarea per frame (rAF throttle,
+ * same-function callbacks deduped — web.dev/debounce-your-input-handlers pattern).
+ * Does not stop propagation.
  */
 function scheduleTextInputSideEffect(textarea, fn) {
     if (!textarea || typeof fn !== 'function') return;
@@ -44,7 +46,10 @@ function scheduleTextInputSideEffect(textarea, fn) {
         queue = [];
         textInputSideEffectQueues.set(textarea, queue);
     }
-    queue.push(fn);
+    // Same listener often schedules from both keydown and input in one turn — run once.
+    if (queue.indexOf(fn) === -1) {
+        queue.push(fn);
+    }
 
     if (textInputSideEffectRafIds.has(textarea)) {
         return;
@@ -56,7 +61,9 @@ function scheduleTextInputSideEffect(textarea, fn) {
         textInputSideEffectQueues.delete(textarea);
         if (!textarea.isConnected) return;
         if (isTextInputComposing(textarea)) return;
-        pending.forEach((cb) => cb());
+        for (let i = 0; i < pending.length; i++) {
+            pending[i]();
+        }
     });
     textInputSideEffectRafIds.set(textarea, rafId);
 }
@@ -81,7 +88,9 @@ function isPromptTextareaContentKeydown(e) {
 }
 
 /**
- * Defer resize + emphasis highlight on input and content-changing keydown.
+ * Defer resize + emphasis highlight on input (and paste via input).
+ * Keep keydown free of visual work so the browser can commit the glyph first
+ * (Nolan Lawson / web.dev: light input handlers + rAF-coalesced side effects).
  * Resize runs once per frame; highlight is debounced in emphasisHighlight.js.
  * options.minHeight — passed to autoResizeTextarea; options.onResize — called after resize.
  */
@@ -112,10 +121,6 @@ function wirePromptTextareaVisualUpdates(textarea, options = {}) {
 
     // addSafeEventListener: public/scripts/comp/utilities.js
     addSafeEventListener(textarea, 'input', scheduleVisualUpdates, 'promptVisualInput');
-    addSafeEventListener(textarea, 'keydown', (e) => {
-        if (!isPromptTextareaContentKeydown(e)) return;
-        scheduleVisualUpdates(e);
-    }, 'promptVisualKeydown');
 }
 
 /**
@@ -212,8 +217,8 @@ function createEditableTextareaContainer(options = {}) {
                 <button type="button" class="btn-secondary btn-small toolbar-btn indicator" data-action="autofill" data-state="off" title="Toggle Autofill">
                     <i class="fas fa-lightbulb-slash"></i>
                 </button>
-                <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
-                    <i class="fas fa-weight-scale"></i>
+                <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn emphasis-group-chip" data-action="emphasis-group-chip" data-state="off" title="Emphasis">
+                    <i class="fas fa-dial"></i><span class="emphasis-group-chip-value hidden">1.0</span>
                 </button>
                 <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
                     <i class="fas fa-book-font"></i>
@@ -271,6 +276,9 @@ function wireManualStylePromptTextarea(textarea) {
     if (attachPromptTextareaContextMenu) {
         attachPromptTextareaContextMenu(textarea);
     }
+
+    // wireManagedEmphasisCaretGuards: public/scripts/comp/emphasisGroupIdCodec.js
+    wireManagedEmphasisCaretGuards(textarea);
 
     const autofillBtn = textarea.closest('.character-prompt-textarea-container, .prompt-textarea-container')
         ?.querySelector('[data-action="autofill"]');
@@ -444,11 +452,9 @@ function setupEditableTextareaToolbar(toolbar, textarea, customActionHandler = n
 function handleDefaultToolbarAction(action, textarea, toolbar) {
     switch (action) {
         case 'quick-access':
-            // Open the dataset tag toolbar
-            if (window.showDatasetTagToolbar) {
-                textarea.focus();
-                window.showDatasetTagToolbar();
-            }
+            textarea.focus();
+            // public/scripts/comp/featureLoader.js
+            void featureLoader.loadFeature('dataset_tag_toolbar').then(() => showDatasetTagToolbar());
             break;
         case 'emphasis':
             // Start emphasis editing

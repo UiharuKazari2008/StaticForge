@@ -326,8 +326,8 @@
     background: var(--glass-layer-dark-5);
 }
 
-.tag-wiki-search-display .scrollable-content {
-    padding: var(--spacing-md);
+.tag-wiki-search-display > .scrollable-content {
+    padding: 0;
 }
 
 .tag-wiki-display-content {

@@ -119,6 +119,12 @@ function applyBiasToText(input, bias) {
         return input;
     }
 
+    // Do not nest classic N:: around managed ZWSP groups (expand happens elsewhere).
+    const { hasManagedEmphasisGroupIds } = require('./emphasisGroupIdSyntax');
+    if (typeof input === 'string' && hasManagedEmphasisGroupIds(input)) {
+        return input;
+    }
+
     // Check if input is already a complete emphasis group (starts with BIAS:: and ends with ::)
     const isCompleteGroup = /^(-?\d+\.?\d*)::.+::$/s.test(input);
     
@@ -3859,6 +3865,14 @@ function deconflictOverlappingReplacement(selectText, workingContent, replacemen
  */
 function extractBiasFromText(text) {
     if (!text || typeof text !== 'string') return null;
+
+    const { hasManagedEmphasisGroupIds, listManagedEmphasisBlocks } = require('./emphasisGroupIdSyntax');
+    if (hasManagedEmphasisGroupIds(text)) {
+        const blocks = listManagedEmphasisBlocks(text);
+        if (blocks.length >= 1 && blocks[0].start === 0 && Number.isFinite(blocks[0].textWeight)) {
+            return blocks[0].textWeight;
+        }
+    }
     
     // Check if text starts with numeric emphasis pattern
     if (!/^(-?\d+\.?\d*)::/.test(text)) {
@@ -3897,6 +3911,9 @@ function extractBiasFromText(text) {
  */
 function hasEmphasisGroup(text) {
     if (!text || typeof text !== 'string') return false;
+
+    const { hasManagedEmphasisGroupIds } = require('./emphasisGroupIdSyntax');
+    if (hasManagedEmphasisGroupIds(text)) return true;
     
     // Check for complete emphasis group: #.#::text::
     const completeGroupPattern = /^(-?\d+\.?\d*)::.+::$/s;
@@ -10007,6 +10024,58 @@ async function processDynamicGenerationCore(globalResources, dynamicConfig, cont
     let apiCalls = [];
     // Declare allPhase1AttemptIds at function scope so it's accessible in catch block for cleanup
     const allPhase1AttemptIds = [];
+
+    // Expand managed emphasis ids → classic N:: before Grok / parsePromptSegments / Tendai hydrate.
+    // prepareEmphasisTextForNovelAI: modules/emphasisGroupIdSyntax.js
+    {
+        const {
+            prepareEmphasisTextForNovelAI,
+            hasManagedEmphasisGroupIds
+        } = require('./emphasisGroupIdSyntax');
+        const emphasisNorm = dynamicConfig?.emphasis_normalization || null;
+        const expandForAi = (text, fieldHint) => {
+            if (typeof text !== 'string' || !hasManagedEmphasisGroupIds(text)) return text;
+            const prepared = prepareEmphasisTextForNovelAI(text, emphasisNorm, fieldHint);
+            if (prepared.warnings?.length) {
+                console.warn(
+                    `⚠️ Dynagen emphasis expand (${fieldHint || 'text'}): ${prepared.warnings.join(', ')}`
+                );
+            }
+            return prepared.text;
+        };
+        prompt = expandForAi(prompt, 'prompt');
+        uc = expandForAi(uc, 'uc');
+        if (typeof dynamicConfig?._hash_input_prompt_negative === 'string'
+            && hasManagedEmphasisGroupIds(dynamicConfig._hash_input_prompt_negative)) {
+            dynamicConfig._hash_input_prompt_negative = expandForAi(
+                dynamicConfig._hash_input_prompt_negative,
+                'prompt_negative'
+            );
+        }
+        if (Array.isArray(characterPrompts) && characterPrompts.length) {
+            characterPrompts = characterPrompts.map((char, i) => {
+                if (!char || typeof char !== 'object') return char;
+                const next = {
+                    ...char,
+                    prompt: expandForAi(char.prompt, `character_${i}`),
+                    uc: expandForAi(char.uc, `character_${i}_uc`)
+                };
+                if (typeof char.input_prompt_negative === 'string') {
+                    next.input_prompt_negative = expandForAi(
+                        char.input_prompt_negative,
+                        `character_${i}_prompt_negative`
+                    );
+                }
+                if (typeof char.prompt_negative === 'string') {
+                    next.prompt_negative = expandForAi(
+                        char.prompt_negative,
+                        `character_${i}_prompt_negative`
+                    );
+                }
+                return next;
+            });
+        }
+    }
     
     try {
         const stageDataForStrip = stageContext && (stageContext.stageIndex !== undefined || stageContext.pipelineStageGeneration !== undefined)

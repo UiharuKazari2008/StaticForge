@@ -29,6 +29,8 @@ async function executeRandomPrompt() {
     const requestType = getRequestTypeForRandomPrompt();
     const nsfw = (selectedNsfwValue.toString() === '1' || selectedNsfwValue.toString() === '2' || selectedNsfwValue.toString() === '3');
 
+    // public/scripts/comp/featureLoader.js — tagSets.js defines randomPrompt / u1
+    await featureLoader.loadFeature('tag_sets');
     const promptData = await randomPrompt(requestType, nsfw);
 
     if (promptData && Array.isArray(promptData)) {

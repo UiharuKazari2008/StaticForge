@@ -164,7 +164,8 @@ function buildCompareDataFromImageObject(imageObj) {
     const filename = imageObj.upscaled || imageObj.original || imageObj.filename;
     if (!filename) return null;
     return {
-        url: `/images/${filename}`,
+        // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+        url: localGalleryImageUrl(filename),
         width: imageObj.width || 0,
         height: imageObj.height || 0,
         chainSourceFile: filename

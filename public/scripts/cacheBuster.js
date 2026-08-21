@@ -6,6 +6,7 @@
 class CacheBuster {
     constructor() {
         this.version = Date.now();
+        this.observer = null;
         this.init();
     }
     
@@ -54,7 +55,7 @@ class CacheBuster {
     
     // Monitor for dynamically added tags
     observeDynamicTags() {
-        const observer = new MutationObserver((mutations) => {
+        this.observer = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
                 mutation.addedNodes.forEach((node) => {
                     if (node.nodeType === Node.ELEMENT_NODE) {
@@ -71,34 +72,13 @@ class CacheBuster {
                                 this.addCacheBustingToElement(node, 'src');
                             }
                         }
-                        
-                        // Check children of added nodes
-                        const cssLinks = node.querySelectorAll && node.querySelectorAll('link[rel="stylesheet"]');
-                        const jsScripts = node.querySelectorAll && node.querySelectorAll('script[src]');
-                        
-                        if (cssLinks) {
-                            cssLinks.forEach(link => {
-                                if (link.href && !this.isExternalUrl(link.href)) {
-                                    this.addCacheBustingToElement(link, 'href');
-                                }
-                            });
-                        }
-                        
-                        if (jsScripts) {
-                            jsScripts.forEach(script => {
-                                if (script.src && !this.isExternalUrl(script.src)) {
-                                    this.addCacheBustingToElement(script, 'src');
-                                }
-                            });
-                        }
                     }
                 });
             });
         });
         
-        observer.observe(document.head, {
-            childList: true,
-            subtree: true
+        this.observer.observe(document.head, {
+            childList: true
         });
     }
     

@@ -563,6 +563,10 @@ function toggleTextOverlayEnabled(textOverlayId) {
 function deleteTextOverlay(textOverlayId) {
     const item = document.getElementById(textOverlayId);
     if (item) {
+        // teardownDropdown: public/scripts/comp/dropdown.js
+        item.querySelectorAll('.custom-dropdown').forEach((dropdown) => {
+            teardownDropdown(dropdown);
+        });
         item.remove();
 
         // Hide container if no more text overlays
@@ -574,6 +578,10 @@ function deleteTextOverlay(textOverlayId) {
 }
 
 function clearTextOverlays() {
+    textOverlaysContainer.querySelectorAll('.custom-dropdown').forEach((dropdown) => {
+        // teardownDropdown: public/scripts/comp/dropdown.js
+        teardownDropdown(dropdown);
+    });
     textOverlaysContainer.innerHTML = '';
     textOverlaysContainer.classList.add('hidden');
     textOverlayCounter = 0;

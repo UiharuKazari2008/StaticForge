@@ -176,6 +176,48 @@ async function handleGetTelemetry(handlersCtx, ws, message, clientInfo, wsServer
     }
 }
 
+async function handleReportClientPerf(handlersCtx, ws, message, clientInfo) {
+    try {
+        const telemetryDb = handlersCtx.globalResources.getTelemetryDatabase?.();
+        if (!telemetryDb?.recordTelemetryEvent) {
+            handlersCtx.sendError(ws, 'Telemetry database not available', 'report_client_perf', message.requestId);
+            return;
+        }
+
+        const samples = Array.isArray(message.samples) ? message.samples.slice(0, 20) : [];
+        const validSamples = samples.filter((sample) => {
+            if (!sample || typeof sample !== 'object' || Array.isArray(sample)) return false;
+            return JSON.stringify(sample).length <= 16384;
+        });
+        if (validSamples.length === 0) {
+            handlersCtx.sendError(ws, 'At least one valid performance sample is required', 'INVALID_PERF_SAMPLE', message.requestId);
+            return;
+        }
+
+        for (const sample of validSamples) {
+            await telemetryDb.recordTelemetryEvent({
+                eventType: 'client_perf',
+                clientTimestamp: Number(sample.timestamp) || null,
+                ip: clientInfo.ip || null,
+                userType: clientInfo.userType || null,
+                sessionId: clientInfo.sessionId || null,
+                route: typeof sample.page === 'string' ? sample.page.slice(0, 256) : '/app',
+                payload: sample
+            });
+        }
+
+        handlersCtx.sendToClient(ws, {
+            type: 'report_client_perf_response',
+            requestId: message.requestId,
+            data: { success: true, recorded: validSamples.length },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ Error recording client performance telemetry:', error);
+        handlersCtx.sendError(ws, 'Failed to record client performance telemetry', error.message, message.requestId);
+    }
+}
+
 async function handleUnblockIP(handlersCtx, ws, message, clientInfo, wsServer) {
     try {
         if (clientInfo.userType !== 'admin') {
@@ -760,6 +802,7 @@ function registerPackets(handlersCtx) {
 
     reg('get_blocked_ips', handleGetBlockedIPs);
     reg('get_telemetry', handleGetTelemetry);
+    reg('report_client_perf', handleReportClientPerf);
     reg('unblock_ip', handleUnblockIP, ADMIN_DESTRUCTIVE);
     reg('export_ip_to_gateway', handleExportIPToGateway, ADMIN_DESTRUCTIVE);
     reg('get_ip_blocking_reasons', handleGetIPBlockingReasons);

@@ -1032,7 +1032,8 @@ function handleDynamicGenerationContextMenuAction(e) {
             updatePromptStatusIcons();
             createDebouncedContextResolution();
         } else if (action === 'showInspector') {
-            showCompiledPromptModal();
+            // public/scripts/comp/featureLoader.js
+            void featureLoader.loadFeature('compiled_prompt_inspector').then(() => showCompiledPromptModal());
         } else if (action === 'compileToPrompts') {
             // startCompileToPrompts: compileToPromptsApplet.js
             startCompileToPrompts();

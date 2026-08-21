@@ -152,13 +152,13 @@ function getPreciseReferencePreviewUrl(refData) {
     }
     if (refData.type === 'cache') {
         const hash = refData.hash || refData.id;
-        if (hash) return `/cache/preview/${hash}.webp`;
+        if (hash) return localCachePreviewUrl(`${hash}.webp`);
     }
     if (refData.type === 'file') {
         const name = refData.filename || refData.id;
-        if (name) return `/images/${name}`;
+        if (name) return localGalleryImageUrl(name);
     }
-    return refData.id ? `/cache/preview/${refData.id}.webp` : null;
+    return refData.id ? localCachePreviewUrl(`${refData.id}.webp`) : null;
 }
 
 function getPreciseReferenceFullImageUrl(refData) {
@@ -168,11 +168,11 @@ function getPreciseReferenceFullImageUrl(refData) {
     }
     if (refData.type === 'cache') {
         const hash = refData.hash || refData.id;
-        if (hash) return `/cache/upload/${hash}`;
+        if (hash) return localCacheUploadUrl(hash);
     }
     if (refData.type === 'file') {
         const name = refData.filename || refData.id;
-        if (name) return `/images/${name}`;
+        if (name) return localGalleryImageUrl(name);
     }
     return getPreciseReferencePreviewUrl(refData);
 }
@@ -781,14 +781,14 @@ function createCacheGalleryItem(cacheImage) {
     if (cacheImage.isStandalone) {
         // For standalone vibes, use the vibe's preview or fallback
         if (cacheImage.hasPreview) {
-            img.src = `/cache/preview/${cacheImage.hasPreview}`;
+            img.src = localCachePreviewUrl(cacheImage.hasPreview);
         } else {
             img.src = '/static_images/background.jpg';
         }
     } else {
         // For cache images (with or without vibes)
         if (cacheImage.hasPreview) {
-            img.src = `/cache/preview/${cacheImage.hash}.webp`;
+            img.src = localCachePreviewUrl(`${cacheImage.hash}.webp`);
         } else {
             img.src = `/cache/${cacheImage.hash}`;
         }
@@ -1420,14 +1420,14 @@ async function loadPreciseReferencesFromMetadata(data) {
             referenceData = {
                 type: 'cache',
                 id: refId,
-                url: `/cache/preview/${refId}.webp`,
+                url: localCachePreviewUrl(`${refId}.webp`),
                 hash: refId
             };
         } else if (refType === 'file') {
             referenceData = {
                 type: 'file',
                 id: refId,
-                url: `/images/${refId}`,
+                url: localGalleryImageUrl(refId),
                 filename: refId
             };
         }
@@ -1451,7 +1451,7 @@ async function addAsCharacterReference(cacheImage) {
         const referenceData = {
             type: 'cache',
             id: cacheImage.hash,
-            url: `/cache/preview/${cacheImage.hash}.webp`,
+            url: localCachePreviewUrl(`${cacheImage.hash}.webp`),
             filename: cacheImage.filename,
             hash: cacheImage.hash
         };
@@ -1592,7 +1592,7 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, to
     const preview = document.createElement('img');
     preview.className = 'vibe-reference-preview';
     if (vibeRef.preview) {
-        preview.src = `/cache/preview/${vibeRef.preview}`;
+        preview.src = localCachePreviewUrl(vibeRef.preview);
     } else if (vibeRef.type === 'base64' && vibeRef.image) {
         preview.src = `data:image/png;base64,${vibeRef.image}`;
     } else {
@@ -1628,9 +1628,9 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, to
         if (vibeRef.type === 'base64' && vibeRef.source) {
             imageSrc = `data:image/png;base64,${vibeRef.source}`;
         } else if (vibeRef.type === 'cache' && vibeRef.source) {
-            imageSrc = `/cache/upload/${vibeRef.source}`;
+            imageSrc = localCacheUploadUrl(vibeRef.source);
         } else if (vibeRef.preview) {
-            imageSrc = `/cache/preview/${vibeRef.preview}`;
+            imageSrc = localCachePreviewUrl(vibeRef.preview);
         }
                 
         if (imageSrc) {
@@ -2199,7 +2199,7 @@ async function selectCacheImageInternal(cacheImage) {
         };
 
         // Load actual image dimensions
-        const previewUrl = `/cache/preview/${cacheImage.hash}.webp`;
+        const previewUrl = localCachePreviewUrl(`${cacheImage.hash}.webp`);
         await new Promise((resolve) => {
             const tempImg = new Image();
             tempImg.onload = () => {
@@ -2609,14 +2609,14 @@ function createCacheManagerGalleryItem(cacheImage) {
     if (cacheImage.isStandalone) {
         // For standalone vibes, use the vibe's preview or fallback
         if (cacheImage.hasPreview) {
-            img.src = `/cache/preview/${cacheImage.hasPreview}`;
+            img.src = localCachePreviewUrl(cacheImage.hasPreview);
         } else {
             img.src = '/static_images/background.jpg';
         }
     } else {
         // For cache images (with or without vibes)
         if (cacheImage.hasPreview) {
-            img.src = `/cache/preview/${cacheImage.hash}.webp`;
+            img.src = localCachePreviewUrl(`${cacheImage.hash}.webp`);
         } else {
             img.src = `/cache/${cacheImage.hash}`;
         }
@@ -4249,7 +4249,7 @@ async function handleUnifiedUploadOpenInEditor() {
             }
             
             if (!metadata) {
-                showError('No valid metadata found to open in editor');
+                showError('No valid metadata found to open in the editor');
                 return;
             }
 
@@ -4291,11 +4291,11 @@ async function handleUnifiedUploadOpenInEditor() {
             unifiedUploadModalManager.hide();
 
         } else {
-            showError('Open in Editor is only available for blueprint mode');
+            showError('Open in Studio is only available for blueprint mode');
         }
     } catch (error) {
-        console.error('Error opening in editor:', error);
-        showError('Failed to open in editor: ' + error.message);
+        console.error('Error opening in the editor:', error);
+        showError('Failed to open in the editor: ' + error.message);
     }
 }
 
@@ -4319,7 +4319,8 @@ function transformRawMetadataForEditor(metadata) {
                 char.center.y !== null &&
                 (char.center.x !== 0.5 || char.center.y !== 0.5)
             );
-            transformed.use_coords = hasValidCoords || forgeData.use_coords || false;
+            // Ignore stale forge/v4 use_coords when no real placements exist
+            transformed.use_coords = hasValidCoords;
         }
 
         // Extract basic fields
@@ -4451,7 +4452,7 @@ function transformRawMetadataForEditor(metadata) {
                     char.center.y !== null &&
                     (char.center.x !== 0.5 || char.center.y !== 0.5)
                 );
-                transformed.use_coords = hasValidCoords || v4Prompt.use_coords || false;
+                transformed.use_coords = hasValidCoords;
             }
         }
     }
@@ -4532,7 +4533,7 @@ function transformMetadataForEditor(metadata) {
             char.center.y !== null &&
             (char.center.x !== 0.5 || char.center.y !== 0.5)
         );
-        transformed.use_coords = hasValidCoords || transformed.use_coords || false;
+        transformed.use_coords = hasValidCoords;
     }
     
     // Handle v4_prompt character data if available
@@ -4579,7 +4580,7 @@ function transformMetadataForEditor(metadata) {
                 char.center.y !== null &&
                 (char.center.x !== 0.5 || char.center.y !== 0.5)
             );
-            transformed.use_coords = hasValidCoords || transformed.v4_prompt.use_coords || false;
+            transformed.use_coords = hasValidCoords;
         }
     }
     
@@ -4596,7 +4597,7 @@ function transformMetadataForEditor(metadata) {
                 char.center.y !== null &&
                 (char.center.x !== 0.5 || char.center.y !== 0.5)
             );
-            transformed.use_coords = hasValidCoords || transformed.forge_data.use_coords || false;
+            transformed.use_coords = hasValidCoords;
         }
         
         // Extract other forge data fields
@@ -5584,7 +5585,7 @@ function showVibeEncodingModal(mode, data = null, targetModel = null, targetIe =
             if (vibeEncodingConfirmBtn) vibeEncodingConfirmBtn.disabled = false;
             vibeEncodingCurrentVibeImage = data;
             if (backgroundImage && data && data.preview) {
-                backgroundImage.src = `/cache/preview/${data.preview}`;
+                backgroundImage.src = localCachePreviewUrl(data.preview);
             }
             if (modeDisplay) modeDisplay.textContent = 'IE Request';
             break;
@@ -5599,7 +5600,7 @@ function showVibeEncodingModal(mode, data = null, targetModel = null, targetIe =
             // Show reference image only as background
             if (data && backgroundImage) {
                 if (data.hasPreview) {
-                    backgroundImage.src = `/cache/preview/${data.hash}.webp`;
+                    backgroundImage.src = localCachePreviewUrl(`${data.hash}.webp`);
                 } else {
                     backgroundImage.src = `/cache/${data.hash}`;
                 }
@@ -5861,7 +5862,7 @@ function createVibeManagerGalleryItem(vibeImage) {
     // Create image element
     const img = document.createElement('img');
     if (vibeImage.preview) {
-        img.src = `/cache/preview/${vibeImage.preview}`;
+        img.src = localCachePreviewUrl(vibeImage.preview);
     } else {
         img.src = '/static_images/background.jpg'; // Fallback image
     }
@@ -5975,9 +5976,9 @@ function createVibeManagerGalleryItem(vibeImage) {
         if (vibeImage.type === 'base64' && vibeImage.source) {
             imageSrc = `data:image/png;base64,${vibeImage.source}`;
         } else if (vibeImage.type === 'cache' && vibeImage.source) {
-            imageSrc = `/cache/upload/${vibeImage.source}`;
+            imageSrc = localCacheUploadUrl(vibeImage.source);
         } else if (vibeImage.preview) {
-            imageSrc = `/cache/preview/${vibeImage.preview}`;
+            imageSrc = localCachePreviewUrl(vibeImage.preview);
         }
         if (imageSrc) {
             showLightbox({ url: imageSrc });
@@ -7025,9 +7026,7 @@ async function updateUnifiedUploadPreview() {
             };
         } else {
             // For regular files, create object URL
-            const imageUrl = URL.createObjectURL(currentFile);
-            backgroundImage.src = imageUrl;
-            backgroundImage.onload = () => URL.revokeObjectURL(imageUrl);
+            assignImagePreviewObjectUrl(backgroundImage, currentFile);
         }
     }
 
@@ -7112,28 +7111,201 @@ async function updateUnifiedUploadPreview() {
     }
 }
 
+// Assign a blob/file preview URL to an <img>, revoking any prior URL on replace/load/error.
+function assignImagePreviewObjectUrl(imgEl, fileOrBlob) {
+    if (!imgEl || !fileOrBlob) return null;
+    if (imgEl._previewObjectUrl) {
+        URL.revokeObjectURL(imgEl._previewObjectUrl);
+        imgEl._previewObjectUrl = null;
+    }
+    const imageUrl = URL.createObjectURL(fileOrBlob);
+    imgEl._previewObjectUrl = imageUrl;
+    const revokeIfCurrent = () => {
+        if (imgEl._previewObjectUrl === imageUrl) {
+            URL.revokeObjectURL(imageUrl);
+            imgEl._previewObjectUrl = null;
+        }
+    };
+    imgEl.onload = revokeIfCurrent;
+    imgEl.onerror = revokeIfCurrent;
+    imgEl.src = imageUrl;
+    return imageUrl;
+}
+
 // Handle PNG file selection and check for NovelAI metadata
 async function handlePNGFile(file, backgroundImage) {
-    // Create a preview URL for the uploaded image
-    const imageUrl = URL.createObjectURL(file);
-    backgroundImage.src = imageUrl;
-    
-    // Clean up the object URL when the image loads
-    backgroundImage.onload = () => {
-        URL.revokeObjectURL(imageUrl);
-    };
+    // assignImagePreviewObjectUrl — revoke prior URL + on load/error
+    assignImagePreviewObjectUrl(backgroundImage, file);
 }
 
 // Handle regular image file selection
 async function handleImageFile(file, backgroundImage) {
-    // Create a preview URL for the uploaded image
-    const imageUrl = URL.createObjectURL(file);
-    backgroundImage.src = imageUrl;
-    
-    // Clean up the object URL when the image loads
-    backgroundImage.onload = () => {
-        URL.revokeObjectURL(imageUrl);
-    };
+    assignImagePreviewObjectUrl(backgroundImage, file);
+}
+
+// Build blueprint / forge metadata HTML (shared by unified upload + image prompt inspector)
+function buildBlueprintInfoHtml(metadata) {
+    if (!metadata || typeof metadata !== 'object') {
+        console.error('Invalid metadata structure:', metadata);
+        return '<div class="form-group"><label>Error</label><div class="meta-value">Invalid metadata structure</div></div>';
+    }
+
+    let infoRows = [[], [], [], [], []];
+
+    // Source encoding badge (JtEXt / JiTXt / JzTXt / LSB Alpha / LSB RGB)
+    if (metadata._encoding) {
+        const encIcon = metadata._encoding.startsWith('LSB') ? 'fa-eye-slash' : 'fa-file-code';
+        infoRows[0].push(`<div class="form-group auto-width"><label class="justify-end" for="modelName">Encoding</label><div class="meta-value justify-end"><span class="forgedata-badge"><i class="fa-light ${encIcon}"></i><span>${metadata._encoding}</span></span></div></div>`);
+    }
+
+    // Model information - use prettified model name
+    if (metadata.source) {
+        const modelKey = determineModelFromMetadata(metadata);
+        const modelDisplayName = getModelDisplayName(modelKey);
+        infoRows[1].push(`<div class="form-group"><label for="modelName">Model</label><div class="meta-value">${modelDisplayName}</div></div>`);
+    }
+
+    // Resolution information - use priority order: embedded JSON > server dimensions > client fallback
+    let resolutionText = null;
+    if (metadata.resolution) {
+        resolutionText = formatResolution(metadata.resolution, metadata.width, metadata.height);
+    } else if (metadata.actual_resolution) {
+        resolutionText = metadata.actual_resolution_display;
+    } else if (metadata.width && metadata.height) {
+        resolutionText = formatResolution(null, metadata.width, metadata.height);
+    } else if (metadata.actual_width && metadata.actual_height) {
+        resolutionText = `${metadata.actual_width} × ${metadata.actual_height}`;
+    }
+    if (resolutionText) {
+        let resolutionHtml = `<div class="form-group"><label for="modelName">Resolution</label><div class="meta-value space-between"><span>${resolutionText}</span>`;
+        if (metadata.scale_ratio) {
+            resolutionHtml += ` <span class="badge custom-dropdown-badge scale-ratio-badge" title="Image scaled up from ${metadata.scale_ratio.original_dimensions} to ${metadata.scale_ratio.current_dimensions}">${metadata.scale_ratio.display}</span>`;
+        }
+        resolutionHtml += `</div></div>`;
+        infoRows[1].push(resolutionHtml);
+    }
+    if (metadata.seed !== undefined) {
+        infoRows[1].push(`<div class="form-group auto-width"><label class="justify-end" for="modelName">Seed</label><div class="meta-value justify-end">${metadata.seed}</div></div>`);
+    }
+
+    // Generation parameters
+    if (metadata.steps) {
+        infoRows[2].push(`<div class="form-group auto-width"><label for="modelName">Steps</label><div class="meta-value">${metadata.steps}</div></div>`);
+    }
+    if (metadata.scale) {
+        infoRows[2].push(`<div class="form-group auto-width"><label for="modelName">Guidance</label><div class="meta-value space-between"><span>${metadata.scale.toFixed(1)}</span>${metadata.cfg_rescale && metadata.cfg_rescale > 0 ? '<i class="fas fa-sparkle"></i>' : ''}</div></div>`);
+    }
+    if (metadata.cfg_rescale !== undefined) {
+        infoRows[2].push(`<div class="form-group auto-width"><label for="modelName">Rescale</label><div class="meta-value">${metadata.cfg_rescale ? (metadata.cfg_rescale * 100).toFixed(0) + '%' : 'None'}</div></div>`);
+    }
+    if (metadata.sampler) {
+        const samplerObj = getSamplerMeta(metadata.sampler);
+        const samplerText = samplerObj ? `<span>${samplerObj.display_short || samplerObj.display}</span>${samplerObj.badge ? `<span class="custom-dropdown-badge ${samplerObj.badge_class}">${samplerObj.badge}</span>` : ''}` : metadata.sampler;
+        infoRows[2].push(`<div class="form-group"><label for="modelName">Sampler</label><div class="meta-value">${samplerText}</div></div>`);
+    }
+    if (metadata.noise_schedule) {
+        const noiseObj = getNoiseMeta(metadata.noise_schedule);
+        const noiseText = noiseObj ? noiseObj.display : metadata.noise_schedule;
+        infoRows[2].push(`<div class="form-group"><label for="modelName">Noise Scheduler</label><div class="meta-value">${noiseText}</div></div>`);
+    }
+
+    const infoBadges = [];
+    if (metadata._encoding) {
+        const encIcon = metadata._encoding.startsWith('LSB') ? 'fa-eye-slash' : 'fa-file-code';
+        infoBadges.push(`<div class="forgedata-badge"><i class="fa-light ${encIcon}"></i><span>${metadata._encoding}</span></div>`);
+    }
+
+    if (metadata.forge_data) {
+        infoRows[0].unshift(`<div class="form-group"><label for="modelName">Software</label><div class="meta-value"><i class="fa-light fa-sparkles"></i><span>${metadata.forge_data.software}</span></div></div>`);
+        infoRows[3].push(`<div class="form-group"><label for="modelName">Preset Name</label><div class="meta-value">${metadata.forge_data.preset_name || 'Manual'}</div></div>`);
+        let icon = '<i class="nai-sakura"></i>';
+        let text = 'Anime';
+        if (metadata.forge_data.dataset_config !== undefined && metadata.forge_data.dataset_config?.include?.length > 0) {
+            if (metadata.forge_data.dataset_config?.include?.includes('furry')) {
+                icon = '<i class="nai-paw"></i>';
+                text = 'Furry';
+            } else if (metadata.forge_data.dataset_config?.include?.includes('background')) {
+                icon = '<i class="fa-solid fa-mountain-city"></i>';
+                text = 'Background';
+            } else if (metadata.forge_data.dataset_config?.include?.includes('danbooru')) {
+                text = 'Danbooru';
+            }
+
+            if (metadata.forge_data.dataset_config?.include?.length > 1) {
+                text = `${metadata.forge_data.dataset_config?.include?.length} Dataset${metadata.forge_data.dataset_config?.include?.length > 1 ? 's' : ''}`;
+            }
+        }
+        infoBadges.push(`<div class="forgedata-badge">${icon}<span>${text}</span></div>`);
+
+        if (metadata.forge_data.input_prompt !== undefined) {
+            infoBadges.push(`<div class="forgedata-badge"><i class="fa-light fa-pen-nib"></i><span>Prompt</span></div>`);
+        }
+        if (metadata.forge_data.allCharacters !== undefined) {
+            if (metadata.forge_data.input_uc !== undefined
+                && metadata.forge_data.allCharacters.length > 0
+                && metadata.forge_data.allCharacters.some(character => character.uc && character.uc.trim().length > 0)) {
+                infoBadges.push(`<div class="forgedata-badge"><i class="fa-light fa-ban"></i><span>Multi-UC</span></div>`);
+            } else if (metadata.forge_data.append_uc !== undefined) {
+                infoBadges.push(`<div class="forgedata-badge"><i class="fa-light fa-soap"></i><span>UC</span></div>`);
+            }
+            if (metadata.forge_data.append_uc !== undefined) {
+                infoBadges.push(`<div class="forgedata-badge"><i class="fa-light fa-soap"></i><span>UC</span></div>`);
+            }
+            infoBadges.push(`<div class="forgedata-badge"><i class="fa-light ${metadata.forge_data.allCharacters.length > 1 ? 'fa-user-group' : 'fa-child'}"></i><span>${metadata.forge_data.allCharacters.length > 1 ? metadata.forge_data.allCharacters.length + ' Characters' : 'Character'}</span></div>`);
+        } else {
+            if (metadata.forge_data.input_uc !== undefined) {
+                infoBadges.push(`<div class="forgedata-badge"><i class="fa-light fa-ban"></i><span>UC</span></div>`);
+            }
+            if (metadata.forge_data.append_uc !== undefined) {
+                infoBadges.push(`<div class="forgedata-badge"><i class="fa-light fa-soap"></i><span>UC</span></div>`);
+            }
+        }
+        if (metadata.forge_data.append_quality !== undefined) {
+            infoBadges.push(`<div class="forgedata-badge"><i class="fa-light fa-crown"></i><span>Quality</span></div>`);
+        }
+        if (metadata.forge_data.image_source !== undefined) {
+            infoBadges.push(`<div class="forgedata-badge"><i class="fa-light fa-scanner-image"></i><span>Reference Image</span></div>`);
+        }
+        if (metadata.forge_data.image_bias !== undefined) {
+            infoBadges.push(`<div class="forgedata-badge"><i class="fa-light fa-crop"></i><span>NDRB</span></div>`);
+        }
+        if (metadata.forge_data.chara_reference_source !== undefined) {
+            infoBadges.push(`<div class="forgedata-badge"><i class="nai-precise-reference"></i><span>Precise Reference</span></div>`);
+        }
+        if (metadata.forge_data.mask_compressed !== undefined) {
+            infoBadges.push(`<div class="forgedata-badge"><i class="nai-inpaint"></i><span>InPaint</span></div>`);
+        }
+        if (metadata.forge_data.vibe_transfer !== undefined && metadata.forge_data.vibe_transfer.length > 0) {
+            infoBadges.push(`<div class="forgedata-badge"><i class="nai-vibe-transfer"></i><span>${metadata.forge_data.vibe_transfer.length > 1 ? metadata.forge_data.vibe_transfer.length + ' Encodings' : 'Vibe Encoding'}</span></div>`);
+        }
+        if (metadata.forge_data.date_generated) {
+            const date = new Date(metadata.forge_data.date_generated);
+            infoRows[0].push(`<div class="form-group auto-width"><label class="justify-end" for="modelName">Date</label><div class="meta-value justify-end">${date.toLocaleDateString()}</div></div>`);
+        }
+    } else {
+        let softwareName = metadata.source;
+        try {
+            const items = softwareName.split(' ');
+            const version = items.pop();
+            let name = items.slice(0, -1).join(' ');
+            if (name.includes('V4')) {
+                name = name.split(' V4')[0];
+            }
+            softwareName = name;
+            if (version) {
+                softwareName += ` (${version})`;
+            }
+        } catch (e) {
+            softwareName = 'NovelAI Diffusion';
+        }
+        infoRows[0].unshift(`<div class="form-group"><label for="modelName">Software</label><div class="meta-value"><i class="nai-pen-tip-light"></i><span>${softwareName}</span></div></div>`);
+    }
+
+    if (infoBadges.length > 0) {
+        infoRows[4].push(`<div class="form-group"><label for="modelName">Available Data</label><div class="meta-value badge-list">${infoBadges.join('')}</div></div>`);
+    }
+
+    return infoRows.filter(row => row.length > 0).map(row => `<div class="form-row">${row.join('')}</div>`).join('');
 }
 
 // Show blueprint preview with metadata information
@@ -7143,162 +7315,14 @@ function showBlueprintPreview(metadata) {
     if (overlay) {
         overlay.classList.remove('hidden');
     }
-    
+
     const blueprintPreview = document.getElementById('unifiedUploadBlueprintPreview');
     const blueprintInfo = document.getElementById('unifiedUploadBlueprintInfo');
-    
+
     if (blueprintPreview && blueprintInfo) {
         blueprintPreview.classList.remove('hidden');
-        
-        // Validate metadata structure
-        if (!metadata || typeof metadata !== 'object') {
-            console.error('Invalid metadata structure:', metadata);
-            blueprintInfo.innerHTML = '<div class="form-group"><label>Error</label><div class="meta-value">Invalid metadata structure</div></div>';
-            return;
-        }
-        
-        // Build metadata display using the latest system
-        let infoRows = [[],[],[],[],[]];
-
-        // Source encoding badge (JtEXt / JiTXt / JzTXt / LSB Alpha / LSB RGB)
-        if (metadata._encoding) {
-            const encIcon = metadata._encoding.startsWith('LSB') ? 'fa-eye-slash' : 'fa-file-code';
-            infoRows[0].push(`<div class="form-group auto-width"><label class="justify-end" for="modelName">Encoding</label><div class="meta-value justify-end"><span class="badge forgedata-badge"><i class="fa-light ${encIcon}"></i><span>${metadata._encoding}</span></span></div></div>`);
-        }
-
-        // Model information - use prettified model name
-        if (metadata.source) {
-            const modelKey = determineModelFromMetadata(metadata);
-            const modelDisplayName = getModelDisplayName(modelKey);
-            infoRows[1].push(`<div class="form-group"><label for="modelName">Model</label><div class="meta-value">${modelDisplayName}</div></div>`);
-        }
-        
-        // Resolution information - use priority order: embedded JSON > server dimensions > client fallback
-        let resolutionText = null;
-        if (metadata.resolution) {
-            resolutionText = formatResolution(metadata.resolution, metadata.width, metadata.height);
-        } else if (metadata.actual_resolution) {
-            resolutionText = metadata.actual_resolution_display;
-        } else if (metadata.width && metadata.height) {
-            resolutionText = formatResolution(null, metadata.width, metadata.height);
-        } else if (metadata.actual_width && metadata.actual_height) {
-            resolutionText = `${metadata.actual_width} × ${metadata.actual_height}`;
-        }                
-        if (resolutionText) {                    
-            let resolutionHtml = `<div class="form-group"><label for="modelName">Resolution</label><div class="meta-value space-between"><span>${resolutionText}</span>`
-            if (metadata.scale_ratio)
-                resolutionHtml += ` <span class="badge custom-dropdown-badge scale-ratio-badge" title="Image scaled up from ${metadata.scale_ratio.original_dimensions} to ${metadata.scale_ratio.current_dimensions}">${metadata.scale_ratio.display}</span>`;
-            resolutionHtml += `</div></div>`;
-            infoRows[1].push(resolutionHtml);
-        }
-        if (metadata.seed !== undefined) {
-            infoRows[1].push(`<div class="form-group auto-width"><label class="justify-end" for="modelName">Seed</label><div class="meta-value justify-end">${metadata.seed}</div></div>`);
-        }
-        
-        // Generation parameters
-        if (metadata.steps) {
-            infoRows[2].push(`<div class="form-group auto-width"><label for="modelName">Steps</label><div class="meta-value">${metadata.steps}</div></div>`);
-        }
-        if (metadata.scale) {
-            infoRows[2].push(`<div class="form-group auto-width"><label for="modelName">Guidance</label><div class="meta-value space-between"><span>${metadata.scale.toFixed(1)}</span>${metadata.cfg_rescale && metadata.cfg_rescale > 0 ? '<i class="fas fa-sparkle"></i>' : ''}</div></div>`);
-        }
-        if (metadata.cfg_rescale !== undefined) {
-            infoRows[2].push(`<div class="form-group auto-width"><label for="modelName">Rescale</label><div class="meta-value">${metadata.cfg_rescale ? (metadata.cfg_rescale * 100).toFixed(0) + '%' : 'None'}</div></div>`);
-        }
-        if (metadata.sampler) {
-            const samplerObj = getSamplerMeta(metadata.sampler);
-            const samplerText = samplerObj ? `<span>${samplerObj.display_short || samplerObj.display}</span>${samplerObj.badge ? `<span class="custom-dropdown-badge ${samplerObj.badge_class}">${samplerObj.badge}</span>` : ''}` : metadata.sampler;
-            infoRows[2].push(`<div class="form-group"><label for="modelName">Sampler</label><div class="meta-value">${samplerText}</div></div>`);
-        }
-        if (metadata.noise_schedule) {
-            const noiseObj = getNoiseMeta(metadata.noise_schedule);
-            const noiseText = noiseObj ? noiseObj.display : metadata.noise_schedule;
-            infoRows[2].push(`<div class="form-group"><label for="modelName">Noise Scheduler</label><div class="meta-value">${noiseText}</div></div>`);
-        }
-        if (metadata.forge_data) {
-            infoRows[0].unshift(`<div class="form-group"><label for="modelName">Software</label><div class="meta-value"><i class="fa-light fa-sparkles"></i><span>${metadata.forge_data.software}</span></div></div>`);
-            infoRows[3].push(`<div class="form-group"><label for="modelName">Preset Name</label><div class="meta-value">${metadata.forge_data.preset_name || 'Manual'}</div></div>`);
-            let infoBadges = [];
-            let icon = '<i class="nai-sakura"></i>';
-            let text = 'Anime'
-            if (metadata.forge_data.dataset_config !== undefined && metadata.forge_data.dataset_config?.include?.length > 0) {
-                if (metadata.forge_data.dataset_config?.include?.includes('furry')) {
-                    icon = '<i class="nai-paw"></i>';
-                    text = 'Furry';
-                } else if (metadata.forge_data.dataset_config?.include?.includes('background')) {
-                    icon = '<i class="fa-solid fa-mountain-city"></i>';
-                    text = 'Background';
-                } else {
-                    if (metadata.forge_data.dataset_config?.include?.includes('danbooru')) {
-                        text = 'Danbooru';
-                    }
-                }
-                
-                if (metadata.forge_data.dataset_config?.include?.length > 1) {
-                    text = `${metadata.forge_data.dataset_config?.include?.length} Dataset${metadata.forge_data.dataset_config?.include?.length > 1 ? 's' : ''}`;
-                }
-            }
-            infoBadges.push(`<div class="badge forgedata-badge">${icon}<span>${text}</span></div>`);
-
-            if (metadata.forge_data.input_prompt !== undefined)
-                infoBadges.push(`<div class="badge forgedata-badge"><i class="fa-light fa-pen-nib"></i><span>Prompt</span></div>`);
-            if (metadata.forge_data.allCharacters !== undefined) {
-                if (metadata.forge_data.input_uc !== undefined && 
-                    metadata.forge_data.allCharacters.length > 0 && 
-                    metadata.forge_data.allCharacters.some(character => character.uc && character.uc.trim().length > 0)) {
-                    infoBadges.push(`<div class="badge forgedata-badge"><i class="fa-light fa-ban"></i><span>Multi-UC</span></div>`);
-                } else if (metadata.forge_data.append_uc !== undefined) {
-                    infoBadges.push(`<div class="badge forgedata-badge"><i class="fa-light fa-soap"></i><span>UC</span></div>`);
-                }
-                if (metadata.forge_data.append_uc !== undefined) 
-                    infoBadges.push(`<div class="badge forgedata-badge"><i class="fa-light fa-soap"></i><span>UC</span></div>`);
-                infoBadges.push(`<div class="badge forgedata-badge"><i class="fa-light ${metadata.forge_data.allCharacters.length > 1 ? 'fa-user-group' : 'fa-child'}"></i><span>${metadata.forge_data.allCharacters.length > 1 ? metadata.forge_data.allCharacters.length + ' Characters' : 'Character'}</span></div>`);
-            } else {
-                if (metadata.forge_data.input_uc !== undefined)
-                    infoBadges.push(`<div class="badge forgedata-badge"><i class="fa-light fa-ban"></i><span>UC</span></div>`);
-                if (metadata.forge_data.append_uc !== undefined)
-                    infoBadges.push(`<div class="badge forgedata-badge"><i class="fa-light fa-soap"></i><span>UC</span></div>`);                        
-            }
-            if (metadata.forge_data.append_quality !== undefined)
-                infoBadges.push(`<div class="badge forgedata-badge"><i class="fa-light fa-crown"></i><span>Quality</span></div>`);
-            if (metadata.forge_data.image_source !== undefined)
-                infoBadges.push(`<div class="badge forgedata-badge"><i class="fa-light fa-scanner-image"></i><span>Reference Image</span></div>`);
-            if (metadata.forge_data.image_bias !== undefined)
-                infoBadges.push(`<div class="badge forgedata-badge"><i class="fa-light fa-crop"></i><span>NDRB</span></div>`);
-            if (metadata.forge_data.chara_reference_source !== undefined)
-                infoBadges.push(`<div class="badge forgedata-badge"><i class="nai-precise-reference"></i><span>Precise Reference</span></div>`);
-            if (metadata.forge_data.mask_compressed !== undefined)
-                infoBadges.push(`<div class="badge forgedata-badge"><i class="nai-inpaint"></i><span>InPaint</span></div>`);
-            if (metadata.forge_data.vibe_transfer !== undefined && metadata.forge_data.vibe_transfer.length > 0)
-                infoBadges.push(`<div class="badge forgedata-badge"><i class="nai-vibe-transfer"></i><span>${metadata.forge_data.vibe_transfer.length > 1 ? metadata.forge_data.vibe_transfer.length + ' Encodings' : 'Vibe Encoding'}</span></div>`);
-            if (infoBadges.length > 0) {
-                infoRows[4].push(`<div class="form-group"><label for="modelName">Available Data</label><div class="meta-value badge-list">${infoBadges.join('')}</div></div>`);
-            }
-            if (metadata.forge_data.date_generated) {
-                const date = new Date(metadata.forge_data.date_generated);
-                infoRows[0].push(`<div class="form-group auto-width"><label class="justify-end" for="modelName">Date</label><div class="meta-value justify-end">${date.toLocaleDateString()}</div></div>`);
-            }
-        } else {
-            let softwareName = metadata.source;
-            try {
-                const items = softwareName.split(' ');
-                const version = items.pop();
-                let name = items.slice(0, -1).join(' ');
-                if (name.includes('V4')) {
-                    name = name.split(' V4')[0];
-                }
-                softwareName = name;
-                if (version) {
-                    softwareName += ` (${version})`;
-                }
-            } catch (e) {
-                softwareName = 'NovelAI Diffusion';
-            }
-            infoRows[0].unshift(`<div class="form-group"><label for="modelName">Software</label><div class="meta-value"><i class="nai-pen-tip-light"></i><span>${softwareName}</span></div></div>`);
-        }
-        
-        const htmlContent = infoRows.filter(row => row.length > 0).map(row => `<div class="form-row">${row.join('')}</div>`).join('');
-        blueprintInfo.innerHTML = htmlContent;
+        // buildBlueprintInfoHtml — shared blueprint metadata rows
+        blueprintInfo.innerHTML = buildBlueprintInfoHtml(metadata);
     }
 }
 
@@ -7918,15 +7942,8 @@ function initializeCacheManager() {
     if (cacheManagerNaxVibesBtn) {
         cacheManagerNaxVibesBtn.addEventListener('click', () => {
             // Primary experience is now the DSAP applet on the NovelAI domain (early 2010s Web 2.0 vibe)
-            if (typeof openDsapInGrimoire === 'function') {
-                openDsapInGrimoire('dsap://vibes.novelai.net');
-            } else if (typeof naxVibesApplet !== 'undefined' && naxVibesApplet && typeof naxVibesApplet.open === 'function') {
-                // Fallback to legacy modal
-                naxVibesApplet.open();
-            } else {
-                const modal = document.getElementById('naxVibesModal');
-                if (modal && typeof openModal === 'function') openModal(modal);
-            }
+            // openDsapInGrimoire: public/scripts/comp/dsapRegistry.js
+            openDsapInGrimoire('dsap://vibes.novelai.net');
         });
     }
 
@@ -8863,9 +8880,7 @@ async function handleClipboardFile(file) {
         // Update background image for clipboard files
         const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
         if (backgroundImage && file) {
-            const imageUrl = URL.createObjectURL(file);
-            backgroundImage.src = imageUrl;
-            backgroundImage.onload = () => URL.revokeObjectURL(imageUrl);
+            assignImagePreviewObjectUrl(backgroundImage, file);
         }
         
         // Enable confirm button

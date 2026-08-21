@@ -17,6 +17,7 @@ const ISPY_DSAP_MANIFEST_URL = 'ispy.dreamscape.jp';
 const OMEGASEARCH_DSAP_MANIFEST_URL = 'omegasearch.dyna.dreamscape.jp';
 const DATA_DSAP_MANIFEST_URL = 'data.dreamscape.jp';
 const AUTOFILL_DSAP_MANIFEST_URL = 'autofill.dreamscape.jp';
+const EXPLORE_DSAP_MANIFEST_URL = 'explore.novelai.net';
 
 function openDataManagementDsap(tabId) {
     let target;
@@ -242,6 +243,35 @@ function registerDsapManifests() {
             startMenuIndex: 1,
             launch() {
                 openDsapInGrimoire(`dsap://${ISPY_DSAP_MANIFEST_URL}/`);
+            }
+        }
+    });
+
+    registerDsap({
+        url: EXPLORE_DSAP_MANIFEST_URL,
+        aliases: [
+            `dsap://${EXPLORE_DSAP_MANIFEST_URL}`,
+            'novelai.net/explore/gallery',
+            'novelai.net/explore',
+            'applet.novelai.net/explore',
+            'en.grimoire.jp/applets/explore',
+            'applet.grimoire.jp/explore'
+        ],
+        type: 'dsap',
+        title: 'Agora',
+        assets: {
+            scripts: ['scripts/comp/blurhashUtil.js', 'scripts/comp/exploreDsapApplet.js']
+        },
+        menuEntry: {
+            launchId: 'explore-gallery',
+            icon: 'fas fa-landmark',
+            imageIcon: 'agora.png',
+            text: 'Agora',
+            appMenu: false,
+            startMenuIndex: 7,
+            launch() {
+                // openDsapInGrimoire: public/scripts/comp/dsapRegistry.js
+                openDsapInGrimoire(`dsap://${EXPLORE_DSAP_MANIFEST_URL}/`);
             }
         }
     });

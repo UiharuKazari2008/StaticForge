@@ -65,7 +65,7 @@ function getCheckpointManager() {
 
 function normalizeEventType(value) {
     const t = String(value || 'login').toLowerCase();
-    if (t === 'app' || t === 'login') return t;
+    if (t === 'app' || t === 'login' || t === 'client_perf') return t;
     return 'login';
 }
 
@@ -182,6 +182,7 @@ async function listTelemetryEvents({ page = 1, limit = 15, search = '', eventTyp
             userType: row.user_type,
             sessionId: row.session_id,
             route: row.route,
+            payload,
             connection: payload.connection || null,
             serviceWorker: payload.serviceWorker || {},
             storage: payload.storage || {},

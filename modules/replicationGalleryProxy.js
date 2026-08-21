@@ -3,6 +3,7 @@
  */
 
 const replicationRemoteFetch = require('./replicationRemoteFetch');
+const { canGalleryUseRemoteMaster } = require('./replication/replicationContracts');
 
 function getBaseName(filename) {
     const base = String(filename || '').replace(/\.(png|jpg|jpeg)$/i, '');
@@ -11,7 +12,7 @@ function getBaseName(filename) {
 
 async function fetchRemoteGalleryFilenames(globalResources, { workspaceId, viewType } = {}) {
     const config = globalResources.getReplicationService().getReplicationConfig();
-    if (!config.masterAccessUrl || config.connectivity === 'airgapped') {
+    if (!canGalleryUseRemoteMaster(config)) {
         return [];
     }
     const reachable = await replicationRemoteFetch.probeMasterReachable(false, globalResources);
@@ -25,10 +26,19 @@ async function fetchRemoteGalleryFilenames(globalResources, { workspaceId, viewT
     });
     const base = (config.masterAccessUrl || '').replace(/\/$/, '');
     const token = config.replicationReadToken || config.replicationToken || '';
-    const headers = token ? { 'X-Replication-Token': token } : {};
-    const res = await fetch(`${base}/replication/gallery/workspace-files?${params.toString()}`, { headers });
-    const json = await res.json();
-    if (!res.ok || json.success === false) {
+    const headers = {
+        'User-Agent': 'StaticForge-Replication/1.0',
+        ...(token ? { 'X-Replication-Token': token } : {})
+    };
+    const url = `${base}/replication/gallery/workspace-files?${params.toString()}`;
+    const { buffer } = await replicationRemoteFetch.httpRequestBuffer(url, { headers, timeoutMs: 8000 });
+    let json;
+    try {
+        json = JSON.parse(buffer.toString('utf8'));
+    } catch (_err) {
+        return [];
+    }
+    if (json.success === false) {
         return [];
     }
     return Array.isArray(json.data?.files) ? json.data.files : [];

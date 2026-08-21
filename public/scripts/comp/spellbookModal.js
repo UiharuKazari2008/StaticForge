@@ -1128,6 +1128,7 @@ class SpellbookModalManager {
         if (this.isGenerating || !this.selectedPreset) return;
 
         this.isGenerating = true;
+        updateImageGenerationIndicator();
         this.generateBtn.disabled = true;
         this.generateBtn.innerHTML = '<i class="fas fa-spinner-third fa-spin"></i>';
 
@@ -1167,6 +1168,7 @@ class SpellbookModalManager {
                         this.generateBtn.disabled = false;
                         this.generateBtn.innerHTML = '<i class="nai-sparkles"></i>';
                         this.isGenerating = false;
+                        updateImageGenerationIndicator();
                         return;
                     }
                     // Set allow_paid flag for this request
@@ -1247,7 +1249,7 @@ class SpellbookModalManager {
 
             // Display the generated image in the modal
             if (filename && this.previewImage) {
-                const imageUrl = `/images/${filename}`;
+                const imageUrl = localGalleryImageUrl(filename);
                 const needsDownloadOverlay = !finalizeResult.skippedDownloadUi && !finalizeResult.prefetchedBlobUrl;
 
                 if (needsDownloadOverlay) {
@@ -1335,6 +1337,7 @@ class SpellbookModalManager {
             }
             // Reset generating state
             this.isGenerating = false;
+            updateImageGenerationIndicator();
             this.generateBtn.disabled = false;
             this.generateBtn.innerHTML = '<i class="nai-sparkles"></i>';
             
@@ -1352,6 +1355,7 @@ class SpellbookModalManager {
                 this.setProgressCancelVisible(false);
                 this.dynamicGenerationActive = false;
                 this.isGenerating = false;
+                updateImageGenerationIndicator();
                 this.generateBtn.disabled = false;
                 this.generateBtn.innerHTML = '<i class="nai-sparkles"></i>';
                 return;
@@ -1383,6 +1387,7 @@ class SpellbookModalManager {
             }
             // Reset generating state
             this.isGenerating = false;
+            updateImageGenerationIndicator();
             this.generateBtn.disabled = false;
             this.generateBtn.innerHTML = '<i class="nai-sparkles"></i>';
 
@@ -1415,20 +1420,19 @@ class SpellbookModalManager {
                 .replace(/\.(png|jpg|jpeg)$/i, '')
                 .replace(/_upscaled$/, '');
 
-            // Get the blurred preview URL
-            const blurPreviewUrl = `/previews/${encodeURIComponent(baseName)}@blur.webp`;
-
-            // Check if the blurred preview exists
-            try {
-                const response = await fetch(blurPreviewUrl, { method: 'HEAD' });
-                if (!response.ok) {
-                    // Blurred preview doesn't exist, hide backgrounds
-                    if (this.blurBackground1) this.blurBackground1.style.opacity = '0';
-                    if (this.blurBackground2) this.blurBackground2.style.opacity = '0';
-                    return;
-                }
-            } catch (error) {
-                // Blurred preview doesn't exist, hide backgrounds
+            // Soft backdrop from BlurHash only (CSS filter supplies blur; no @lq)
+            let blurPreviewUrl = null;
+            const galleryMatch = (typeof allImages !== 'undefined' && Array.isArray(allImages))
+                ? allImages.find((img) => img.base === baseName || img.filename === filename
+                    || img.original === filename || img.upscaled === filename)
+                : null;
+            const hash = galleryMatch?.blurhash
+                || galleryMatch?.metadata?.forge_data?.blurhash
+                || null;
+            if (hash) {
+                blurPreviewUrl = blurhashToDataUrl(hash, 32, 32);
+            }
+            if (!blurPreviewUrl) {
                 if (this.blurBackground1) this.blurBackground1.style.opacity = '0';
                 if (this.blurBackground2) this.blurBackground2.style.opacity = '0';
                 return;
@@ -1586,7 +1590,7 @@ class SpellbookModalManager {
 
         // Create download link
         const link = document.createElement('a');
-        link.href = `/images/${this.generatedFilename}`;
+        link.href = localGalleryImageUrl(this.generatedFilename);
         link.download = this.generatedFilename;
         link.style.display = 'none';
 
@@ -1697,7 +1701,7 @@ class SpellbookModalManager {
                 // Update the preview image to show the upscaled version (file on disk)
                 if (this.previewImage) {
                     this.releaseSpellbookPreviewImageSrc();
-                    this.previewImage.src = `/images/${upscaledFilename}`;
+                    this.previewImage.src = localGalleryImageUrl(upscaledFilename);
                     this.previewImage.classList.remove('hidden');
                 }
 

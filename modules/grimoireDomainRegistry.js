@@ -270,6 +270,20 @@ registerDomain({
   title: 'NAX Vibes'
 });
 
+// NovelAI Explore community gallery (Agora)
+registerDomain({
+  domain: 'explore.novelai.net',
+  aliases: [
+    'novelai.net/explore/gallery',
+    'novelai.net/explore',
+    'applet.novelai.net/explore',
+    'dsap://explore.novelai.net',
+    'en.grimoire.jp/applets/explore',
+    'applet.grimoire.jp/explore'
+  ],
+  title: 'Agora'
+});
+
 registerDomain({
   domain: 'novels.dyna.dreamscape.jp',
   aliases: [

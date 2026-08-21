@@ -340,6 +340,10 @@ function cleanupCreditCostDialog(dialog) {
     creditCostDialogConfirmHandler = null;
     creditCostDialogCancelHandler = null;
     if (dialog) {
+        // teardownDropdown: public/scripts/comp/dropdown.js
+        dialog.querySelectorAll('.custom-dropdown').forEach((dropdown) => {
+            teardownDropdown(dropdown);
+        });
         // closeModal — public/scripts/comp/modalUtils.js
         closeModal(dialog).then(() => {
             if (dialog.parentNode) {

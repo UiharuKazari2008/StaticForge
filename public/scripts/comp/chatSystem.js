@@ -251,7 +251,7 @@ class ChatSystem {
         
         // Set the background image
         const backgroundImage = document.getElementById('chatBackgroundImage');
-        backgroundImage.src = `/images/${filename}`;
+        backgroundImage.src = localGalleryImageUrl(filename);
         
         // Update modal info
         document.getElementById('chatCharacterName').textContent = characterName || 'Unknown';
@@ -449,7 +449,7 @@ class ChatSystem {
             
             sessionElement.innerHTML = `
                 <div class="chat-session-preview">
-                    <img src="/previews/${encodeURIComponent(session.filename.replace(/\.(jpg|jpeg|png|webp)$/i, ''))}.webp" alt="Character" class="chat-session-avatar" 
+                    <img src="${localGalleryPreviewUrl(`${session.filename.replace(/\.(jpg|jpeg|png|webp)$/i, '')}.webp`)}" alt="Character" class="chat-session-avatar" 
                          onerror="this.src='/static_images/icon-96x96.png'">
                     <div class="chat-session-info">
                         <div class="chat-session-name">${session.chat_name || session.character_name || 'Unnamed Chat'}</div>
@@ -573,7 +573,7 @@ class ChatSystem {
         const panelContainer = document.querySelector('.chat-messages-panel');
         if (panelContainer) {
             if (this.currentFilename) {
-                panelContainer.style.backgroundImage = `url("/images/${this.currentFilename}")`;
+                panelContainer.style.backgroundImage = `url("${localGalleryImageUrl(this.currentFilename)}")`;
                 panelContainer.classList.add('has-background');
             } else {
                 panelContainer.style.backgroundImage = '';
@@ -669,7 +669,8 @@ class ChatSystem {
     
     renderAssistantResponse(eventMessages) {
         const container = document.getElementById('chatMessagesList');
-        const avatarSrc = `/images/${encodeURIComponent(this.currentFilename)}`;
+        // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+        const avatarSrc = localGalleryImageUrl(this.currentFilename);
         
         // Group events by timestamp
         const timestampGroups = {};
@@ -1038,7 +1039,7 @@ class ChatSystem {
         if (messageType === 'user' && this.personaSettings?.profile_photo_base64) {
             avatarSrc = `data:image/jpeg;base64,${this.personaSettings.profile_photo_base64}`;
         } else if (messageType === 'assistant') {
-            avatarSrc = `/images/${this.currentFilename}`;
+            avatarSrc = localGalleryImageUrl(this.currentFilename);
         }
         
         let messageContent = content;
@@ -1884,50 +1885,54 @@ class ChatSystem {
     }
 }
 
-if (window.wsClient) {
-    window.wsClient.registerInitStep(88, 'Setting up chat system', async () => {
-        try {
-            // Ensure WebSocket is connected before initializing
-            if (!window.wsClient.isConnected()) {
-                console.warn('⚠️ WebSocket not connected when initializing chat system, waiting...');
-                // Wait up to 10 seconds for connection
-                let attempts = 0;
-                while (!window.wsClient.isConnected() && attempts < 10) {
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    attempts++;
-                }
-            }
+function initializeChatSystemInstance() {
+    if (!window.chatSystem) {
+        window.chatSystem = new ChatSystem();
+        console.log('✅ Chat system initialized');
+    } else {
+        console.log('ℹ️ Chat system already exists, skipping re-initialization');
+    }
+}
 
-            // Create chat system instance
-            if (!window.chatSystem) {
-                window.chatSystem = new ChatSystem();
-                console.log('✅ Chat system initialized');
-            } else {
-                console.log('ℹ️ Chat system already exists, skipping re-initialization');
-            }
-        } catch (error) {
-            console.error('❌ Failed to initialize chat system:', error);
-            // Still create the instance so the UI doesn't break
-            if (!window.chatSystem) {
-                window.chatSystem = new ChatSystem();
-            }
-        }
-    });
-} else {
-    console.error('❌ WebSocket client not available when chatSystem.js loaded');
-    // Try to initialize later when wsClient becomes available
-    const initInterval = setInterval(() => {
-        if (window.wsClient) {
-            clearInterval(initInterval);
-            window.wsClient.registerInitStep(88, 'Setting up chat system', async () => {
+if (window.wsClient) {
+    if (window.wsClient.initializationCompleted) {
+        initializeChatSystemInstance();
+    } else {
+        window.wsClient.registerInitStep(88, 'Setting up chat system', async () => {
+            try {
+                // Ensure WebSocket is connected before initializing
+                if (!window.wsClient.isConnected()) {
+                    console.warn('⚠️ WebSocket not connected when initializing chat system, waiting...');
+                    // Wait up to 10 seconds for connection
+                    let attempts = 0;
+                    while (!window.wsClient.isConnected() && attempts < 10) {
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        attempts++;
+                    }
+                }
+                initializeChatSystemInstance();
+            } catch (error) {
+                console.error('❌ Failed to initialize chat system:', error);
                 if (!window.chatSystem) {
                     window.chatSystem = new ChatSystem();
                 }
-            });
+            }
+        });
+    }
+} else {
+    console.error('❌ WebSocket client not available when chatSystem.js loaded');
+    const initInterval = setInterval(() => {
+        if (window.wsClient) {
+            clearInterval(initInterval);
+            if (window.wsClient.initializationCompleted) {
+                initializeChatSystemInstance();
+            } else {
+                window.wsClient.registerInitStep(88, 'Setting up chat system', async () => {
+                    initializeChatSystemInstance();
+                });
+            }
         }
     }, 500);
-    
-    // Give up after 30 seconds
     setTimeout(() => clearInterval(initInterval), 30000);
 }
 

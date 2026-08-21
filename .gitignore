@@ -22,6 +22,8 @@ securePrompts/*
 tmp/
 .agents/skills/*
 .cursor/debug-*
+graphify-out/
+**/graphify-out/
 nax_tags.json
 danbooru_tagwiki.json
 danbooru_tagwiki_merged.json

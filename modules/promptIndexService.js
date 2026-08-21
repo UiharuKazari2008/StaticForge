@@ -32,7 +32,8 @@ class PromptIndexService {
 
     async refreshStats() {
         const metadataDb = this.globalResources.getMetadataDatabase();
-        this.stats = await metadataDb.getPromptIndexStats();
+        // Default path stays cheap; drift is only needed for reconcile / admin tooling.
+        this.stats = await metadataDb.getPromptIndexStats({ includeDrift: false });
         return this.stats;
     }
 
@@ -177,7 +178,7 @@ class PromptIndexService {
     async reconcile() {
         const metadataDb = this.globalResources.getMetadataDatabase();
         const result = await metadataDb.reconcilePromptFtsFlags();
-        await this.refreshStats();
+        this.stats = await metadataDb.getPromptIndexStats({ includeDrift: true, bypassCache: true });
         this.broadcastStatus({
             status: this.stats?.ftsPending > 0 ? 'pending' : 'up_to_date',
             message: result.updated > 0
@@ -188,7 +189,10 @@ class PromptIndexService {
     }
 
     async getStatusForConnect() {
-        await this.refreshStats();
+        // Connect path must stay cheap — skip drift scan and prefer cache.
+        this.stats = await this.globalResources.getMetadataDatabase().getPromptIndexStats({
+            includeDrift: false
+        });
         return this.buildPromptFtsSnapshot();
     }
 

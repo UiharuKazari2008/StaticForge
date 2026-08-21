@@ -18,6 +18,19 @@ function getCellLabelFromCoords(x, y) {
     return positions[`${x},${y}`] || null;
 }
 
+/** True only for fully-specified, non-default centers (not null and not 0.5/0.5 placeholders). */
+function characterHasCustomCoords(char) {
+    const x = char && char.center ? char.center.x : null;
+    const y = char && char.center ? char.center.y : null;
+    if (typeof x !== 'number' || typeof y !== 'number') return false;
+    return x !== 0.5 || y !== 0.5;
+}
+
+/** NovelAI Auto Position ≡ use_coords false; only real placements enable coords mode. */
+function characterPromptsHaveCustomCoords(characterPrompts) {
+    return Array.isArray(characterPrompts) && characterPrompts.some(characterHasCustomCoords);
+}
+
 function updateAutoPositionToggle() {
     const characterItems = characterPromptsContainer.querySelectorAll('.character-prompt-item');
     const autoPositionBtn = document.getElementById('autoPositionBtn');
@@ -436,6 +449,9 @@ function buildCharacterUcTabContainerHtml(characterId, ucValue, promptNegativeVa
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle SmartText Autofill">
                                             <i class="fas fa-lightbulb"></i>
                                         </button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn emphasis-group-chip" data-action="emphasis-group-chip" data-state="off" title="Emphasis">
+                                            <i class="fas fa-dial"></i><span class="emphasis-group-chip-value hidden">1.0</span>
+                                        </button>
                                         <div id="characterUCActionsDropdown_${characterId}" class="custom-dropdown dark dropright">
                                             <button type="button" id="characterUCActionsDropdownBtn_${characterId}" class="btn-secondary btn-small toolbar-btn">
                                                 <i class="fas fa-toolbox"></i>
@@ -459,7 +475,14 @@ function wireCharacterPromptTextarea(textarea, blurExtra) {
     addSafeEventListener(textarea, 'input', handleCharacterAutocompleteInput, 'autocomplete');
     addSafeEventListener(textarea, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
     addSafeEventListener(textarea, 'focus', () => startEmphasisHighlighting(textarea), 'focus');
-    addSafeEventListener(textarea, 'blur', () => {
+    addSafeEventListener(textarea, 'blur', (e) => {
+        const related = e.relatedTarget;
+        const container = textarea.closest('.character-prompt-textarea-container, .prompt-textarea-container');
+        // Stay in same field chrome (toolbar / sibling UC+negative) — keep caret for Edit Emphasis.
+        if (related && container && container.contains(related)) {
+            if (blurExtra) blurExtra();
+            return;
+        }
         if (window.autoFormatOnBlur !== false) applyFormattedText(textarea, true);
         updateEmphasisHighlighting(textarea);
         autoResizeTextarea(textarea);
@@ -474,6 +497,8 @@ function wireCharacterPromptTextarea(textarea, blurExtra) {
     if (attachPromptTextareaContextMenu) {
         attachPromptTextareaContextMenu(textarea);
     }
+    // wireManagedEmphasisCaretGuards: public/scripts/comp/emphasisGroupIdCodec.js
+    wireManagedEmphasisCaretGuards(textarea);
 }
 
 function addCharacterPrompt() {
@@ -558,6 +583,9 @@ function addCharacterPrompt() {
                                         </button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle SmartText Autofill">
                                             <i class="fas fa-lightbulb"></i>
+                                        </button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn emphasis-group-chip" data-action="emphasis-group-chip" data-state="off" title="Emphasis">
+                                            <i class="fas fa-dial"></i><span class="emphasis-group-chip-value hidden">1.0</span>
                                         </button>
                                         <div id="characterActionsDropdown_${characterId}" class="custom-dropdown dark dropright">
                                             <button type="button" id="characterActionsDropdownBtn_${characterId}" class="btn-secondary btn-small toolbar-btn">
@@ -674,15 +702,27 @@ function deleteCharacterPrompt(characterId) {
         const ucField = document.getElementById(`${characterId}_uc`);
         const promptNegativeField = document.getElementById(`${characterId}_promptNegative`);
 
-        if (promptField) {
-            cleanupSafeEventListeners(promptField);
-        }
-        if (ucField) {
-            cleanupSafeEventListeners(ucField);
-        }
-        if (promptNegativeField) {
-            cleanupSafeEventListeners(promptNegativeField);
-        }
+        [promptField, ucField, promptNegativeField].forEach((field) => {
+            if (!field) return;
+            // stopEmphasisHighlighting: public/scripts/comp/emphasisHighlight.js
+            if (emphasisHighlightingTarget === field) {
+                stopEmphasisHighlighting();
+            }
+            // cleanupSafeEventListeners: public/scripts/comp/utilities.js
+            cleanupSafeEventListeners(field);
+        });
+
+        // disposeToolbar: public/scripts/comp/promptTextareaToolbar.js
+        characterItem.querySelectorAll('.prompt-textarea-toolbar').forEach((toolbar) => {
+            if (promptTextareaToolbar) {
+                promptTextareaToolbar.disposeToolbar(toolbar);
+            }
+        });
+
+        // teardownDropdown: public/scripts/comp/dropdown.js
+        characterItem.querySelectorAll('.custom-dropdown').forEach((dropdown) => {
+            teardownDropdown(dropdown);
+        });
 
         characterItem.remove();
         updateAutoPositionToggle();
@@ -732,7 +772,8 @@ function moveCharacterPrompt(characterId, direction) {
 }
 
 // Initialize drag and drop functionality for character prompt reordering
-// Initialize drag and drop functionality for character prompt reordering
+let _characterPromptDragDocumentController = null;
+
 function initializeCharacterPromptDragAndDrop() {
     const list = document.getElementById('characterPromptsContainer');
     if (!list) {
@@ -781,17 +822,22 @@ function initializeCharacterPromptDragAndDrop() {
         // Add dragging class
         draggedItem.classList.add('dragging');
 
-        // Add event listeners for drag movement - only mouse events on document
+        // Per-drag document listeners — AbortController aligned with pipelineStageControls.js
         if (e.type === 'mousedown') {
-            document.addEventListener('mousemove', onDrag);
-            document.addEventListener('mouseup', endDrag);
+            if (_characterPromptDragDocumentController) {
+                _characterPromptDragDocumentController.abort();
+            }
+            _characterPromptDragDocumentController = new AbortController();
+            const dragSignal = _characterPromptDragDocumentController.signal;
+            document.addEventListener('mousemove', onDrag, { signal: dragSignal });
+            document.addEventListener('mouseup', endDrag, { signal: dragSignal });
         }
 
         document.body.style.userSelect = 'none';
 
         // Haptic feedback
-        if (window.navigator && window.navigator.vibrate && e.type === 'touchstart') {
-            window.navigator.vibrate(50);
+        if (navigator && navigator.vibrate && e.type === 'touchstart') {
+            navigator.vibrate(50);
         }
     }
 
@@ -903,9 +949,10 @@ function initializeCharacterPromptDragAndDrop() {
             e.preventDefault();
         }
 
-        // Remove document event listeners
-        document.removeEventListener('mousemove', onDrag);
-        document.removeEventListener('mouseup', endDrag);
+        if (_characterPromptDragDocumentController) {
+            _characterPromptDragDocumentController.abort();
+            _characterPromptDragDocumentController = null;
+        }
 
         // Remove dragging classes
         draggedItem.classList.remove('dragging');
@@ -969,6 +1016,10 @@ function getCharacterPrompts() {
             if (storedX && storedY) {
                 center = { x: parseFloat(storedX), y: parseFloat(storedY) };
             }
+        } else {
+            // Auto Position: never send null — stock nekoai-js treats null as
+            // non-0.5 and wrongly enables use_coords (collapses multi-char).
+            center = { x: 0.5, y: 0.5 };
         }
 
         characterPrompts.push({
@@ -1150,13 +1201,29 @@ function clearCharacterPrompts() {
         const characterId = item.id;
         const promptField = document.getElementById(`${characterId}_prompt`);
         const ucField = document.getElementById(`${characterId}_uc`);
+        const promptNegativeField = document.getElementById(`${characterId}_promptNegative`);
 
-        if (promptField) {
-            cleanupSafeEventListeners(promptField);
-        }
-        if (ucField) {
-            cleanupSafeEventListeners(ucField);
-        }
+        [promptField, ucField, promptNegativeField].forEach((field) => {
+            if (!field) return;
+            // stopEmphasisHighlighting: public/scripts/comp/emphasisHighlight.js
+            if (emphasisHighlightingTarget === field) {
+                stopEmphasisHighlighting();
+            }
+            // cleanupSafeEventListeners: public/scripts/comp/utilities.js
+            cleanupSafeEventListeners(field);
+        });
+
+        // disposeToolbar: public/scripts/comp/promptTextareaToolbar.js
+        item.querySelectorAll('.prompt-textarea-toolbar').forEach((toolbar) => {
+            if (promptTextareaToolbar) {
+                promptTextareaToolbar.disposeToolbar(toolbar);
+            }
+        });
+
+        // teardownDropdown: public/scripts/comp/dropdown.js
+        item.querySelectorAll('.custom-dropdown').forEach((dropdown) => {
+            teardownDropdown(dropdown);
+        });
     });
     characterPromptsContainer.innerHTML = '';
     characterPromptCounter = 0;
@@ -1279,6 +1346,9 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle SmartText Autofill">
                                             <i class="fas fa-lightbulb"></i>
                                         </button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn emphasis-group-chip" data-action="emphasis-group-chip" data-state="off" title="Emphasis">
+                                            <i class="fas fa-dial"></i><span class="emphasis-group-chip-value hidden">1.0</span>
+                                        </button>
                                         <div id="characterActionsDropdown_${characterId}" class="custom-dropdown dark dropright">
                                             <button type="button" id="characterActionsDropdownBtn_${characterId}" class="btn-secondary btn-small toolbar-btn">
                                                 <i class="fas fa-toolbox"></i>
@@ -1309,8 +1379,9 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
             characterItem.dataset.charaName = character.chara_name;
         }
 
-        // Store position data if available
-        if (character.center) {
+        // Store position data only for real placements (not null / not 0.5 placeholders).
+        // Old images and broken gens often have center:null or 0.5/0.5 with stale use_coords.
+        if (useCoords && characterHasCustomCoords(character)) {
             characterItem.dataset.positionX = character.center.x;
             characterItem.dataset.positionY = character.center.y;
             characterItem.dataset.positionCell = getCellLabelFromCoords(character.center.x, character.center.y);

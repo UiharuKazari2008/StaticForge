@@ -53,18 +53,18 @@ function normalizeWallpaperPath(wallpaper) {
         return `url:${wallpaper}`;
     }
     
-    // Convert from legacy URL/path format
+    // Convert from legacy URL/path format (path segments are encodeURIComponent'd)
     if (wallpaper.startsWith('/cache/upload/')) {
-        return `cache:${wallpaper.replace('/cache/upload/', '')}`;
+        return `cache:${decodeURIComponent(wallpaper.replace('/cache/upload/', ''))}`;
     } else if (wallpaper.startsWith('/cache/preview/')) {
-        return `cache-preview:${wallpaper.replace('/cache/preview/', '')}`;
+        return `cache-preview:${decodeURIComponent(wallpaper.replace('/cache/preview/', ''))}`;
     } else if (wallpaper.startsWith('/cache/vibe/')) {
-        return `vibe:${wallpaper.replace('/cache/vibe/', '')}`;
+        return `vibe:${decodeURIComponent(wallpaper.replace('/cache/vibe/', ''))}`;
     } else if (wallpaper.startsWith('/cache/wallpapers/')) {
-        const workspaceId = wallpaper.replace('/cache/wallpapers/', '').replace('.png', '');
+        const workspaceId = decodeURIComponent(wallpaper.replace('/cache/wallpapers/', '')).replace(/\.png$/i, '');
         return `wallpaper:${workspaceId}`;
     } else if (wallpaper.startsWith('/images/')) {
-        return `file:${wallpaper.replace('/images/', '')}`;
+        return `file:${decodeURIComponent(wallpaper.replace('/images/', ''))}`;
     } else if (!wallpaper.includes(':') && !wallpaper.includes('/')) {
         return `file:${wallpaper}`;
     }
@@ -237,19 +237,19 @@ function generateAllWorkspaceStyles() {
             const id = idParts.join(':'); // Rejoin in case the ID contains colons (e.g., URLs)
             switch (type) {
                 case 'file':
-                    workspaceWallpaper = `/images/${id}`;
+                    workspaceWallpaper = localGalleryImageUrl(id);
                     break;
                 case 'cache':
-                    workspaceWallpaper = `/cache/upload/${id}`;
+                    workspaceWallpaper = localCacheUploadUrl(id);
                     break;
                 case 'cache-preview':
-                    workspaceWallpaper = `/cache/preview/${id}`;
+                    workspaceWallpaper = localCachePreviewUrl(id);
                     break;
                 case 'vibe':
                     workspaceWallpaper = `/cache/vibe/${id}`;
                     break;
                 case 'wallpaper':
-                    workspaceWallpaper = `/cache/wallpapers/${id}.png`;
+                    workspaceWallpaper = localCacheWallpaperUrl(id);
                     break;
                 case 'url':
                     workspaceWallpaper = id; // Use the URL directly
@@ -315,19 +315,19 @@ function generateWorkspaceStyles(workspaceId) {
         const id = idParts.join(':'); // Rejoin in case the ID contains colons (e.g., URLs)
         switch (type) {
             case 'file':
-                workspaceWallpaper = `/images/${id}`;
+                workspaceWallpaper = localGalleryImageUrl(id);
                 break;
             case 'cache':
-                workspaceWallpaper = `/cache/upload/${id}`;
+                workspaceWallpaper = localCacheUploadUrl(id);
                 break;
             case 'cache-preview':
-                workspaceWallpaper = `/cache/preview/${id}`;
+                workspaceWallpaper = localCachePreviewUrl(id);
                 break;
             case 'vibe':
                 workspaceWallpaper = `/cache/vibe/${id}`;
                 break;
             case 'wallpaper':
-                workspaceWallpaper = `/cache/wallpapers/${id}.png`;
+                workspaceWallpaper = localCacheWallpaperUrl(id);
                 break;
             case 'url':
                 workspaceWallpaper = id; // Use the URL directly
@@ -959,6 +959,10 @@ async function loadWorkspaces() {
         document.documentElement.style.removeProperty('--workspace-background-color');
         document.documentElement.style.removeProperty('--desktop-wallpaper');
         document.documentElement.style.removeProperty('--desktop-wallpaper-position');
+        document.body.style.removeProperty('--desktop-wallpaper');
+        document.body.style.removeProperty('--desktop-wallpaper-position');
+        // Re-enable wallpaper transitions now that the correct theme is painted
+        document.body.classList.remove('wallpaper-boot');
 
         renderWorkspaceDropdown();
         updateActiveWorkspaceDisplay();
@@ -1107,21 +1111,25 @@ async function updateAutomaticBackground() {
             return;
         }
         
-        // Get the blur preview image - encode the preview name to handle spaces and special characters
-        const blurPreviewUrl = `/previews/${encodeURIComponent(firstImage.preview.replace('.webp', '@blur.webp'))}`;
+        // BlurHash only for soft backdrop (CSS filter supplies the blur)
+        let backgroundUrl = null;
+        if (firstImage.blurhash) {
+            backgroundUrl = blurhashToDataUrl(firstImage.blurhash, 32, 32);
+        }
+        if (!backgroundUrl) return;
         
-        if (lastBackgroundUrl && lastBackgroundUrl === blurPreviewUrl) return;
+        if (lastBackgroundUrl && lastBackgroundUrl === backgroundUrl) return;
         
         // Preload the image to ensure smooth transition
-        await preloadImage(blurPreviewUrl);
+        await preloadImage(backgroundUrl);
         
         // Reset fail count on successful load
         backgroundLoadFailCount = 0;
         
         // Perform crossfade transition
-        await performBackgroundTransition(blurPreviewUrl);
-        setDefaultBackgroundForWorkspace(blurPreviewUrl);
-        lastBackgroundUrl = blurPreviewUrl;
+        await performBackgroundTransition(backgroundUrl);
+        setDefaultBackgroundForWorkspace(backgroundUrl);
+        lastBackgroundUrl = backgroundUrl;
         
     } catch (error) {
         backgroundLoadFailCount++;
@@ -1213,6 +1221,17 @@ async function performBackgroundTransition(newImageUrl) {
     }
 }
 
+function resolveBlurBackgroundUrl(imageLike) {
+    if (!imageLike) return null;
+    const hash = imageLike.blurhash
+        || imageLike.metadata?.forge_data?.blurhash
+        || imageLike.forge_data?.blurhash
+        || null;
+    if (!hash) return null;
+    // Small decode — CSS blur on the backdrop does the soft-focus
+    return blurhashToDataUrl(hash, 32, 32);
+}
+
 // Ensure we have an initial background image when switching workspaces
 async function ensureInitialBackgroundImage() {
     try {
@@ -1226,13 +1245,13 @@ async function ensureInitialBackgroundImage() {
                 console.log('❌ Still no gallery images available after waiting');
                 return;
             }
-            // Use the retry image
-            const blurPreviewUrl = `/previews/${encodeURIComponent(retryImage.preview.replace('.webp', '@blur.webp'))}`;
+            const blurPreviewUrl = resolveBlurBackgroundUrl(retryImage);
+            if (!blurPreviewUrl) return;
             await setBackgroundImage(blurPreviewUrl);
             await setDefaultBackgroundForWorkspace(blurPreviewUrl);
         } else {
-            // Get the blur preview image
-            const blurPreviewUrl = `/previews/${encodeURIComponent(firstImage.preview.replace('.webp', '@blur.webp'))}`;
+            const blurPreviewUrl = resolveBlurBackgroundUrl(firstImage);
+            if (!blurPreviewUrl) return;
             await setBackgroundImage(blurPreviewUrl);
             await setDefaultBackgroundForWorkspace(blurPreviewUrl);
         }            
@@ -1619,9 +1638,27 @@ function showWorkspaceProgressModal(workspaceName) {
     }, 100);
 }
 
+function isGalleryCacheValidatePhase(progress) {
+    const phase = progress && progress.phase;
+    if (phase === 'hash_probe') {
+        return true;
+    }
+    return phase === 'cache_valid' && Number(progress.progress) < 1;
+}
+
+function isGalleryMetaProbePhase(progress) {
+    const phase = progress && progress.phase;
+    return phase === 'meta_probe';
+}
+
+function isGalleryBlockFetchPhase(progress) {
+    const phase = progress && progress.phase;
+    return phase === 'block_fetch' || phase === 'initial' || phase === 'remaining';
+}
+
 // Shared label for gallery chunk loading (public/scripts/comp/galleryView.js loadCompleteGallery)
 function formatGalleryBlocksProgressLabel(progress) {
-    if (progress && (progress.phase === 'hash_probe' || progress.suppressBlocks === true)) {
+    if (progress && (isGalleryCacheValidatePhase(progress) || isGalleryMetaProbePhase(progress) || progress.suppressBlocks === true)) {
         return '';
     }
     if (progress && typeof progress.blocksLeft === 'number') {
@@ -1640,10 +1677,23 @@ function formatGalleryBlocksProgressLabel(progress) {
     return '---';
 }
 
-// Marquee until first gallery block loads (public/scripts/websocket.js formatPaginationGroupTickerText)
+// hash_probe stays marquee; determinate once total is known (public/scripts/websocket.js formatPaginationGroupTickerText)
 function shouldGalleryProgressUseDeterminate(progress) {
-    if (!progress || progress.phase === 'hash_probe' || progress.suppressBlocks === true) {
+    if (!progress || progress.suppressBlocks === true) {
         return false;
+    }
+    if (isGalleryCacheValidatePhase(progress) || isGalleryMetaProbePhase(progress)) {
+        return false;
+    }
+    if (progress.phase === 'cache_valid' || progress.phase === 'complete') {
+        return true;
+    }
+    if (isGalleryBlockFetchPhase(progress)) {
+        return true;
+    }
+    const total = Number(progress.total) || 0;
+    if (total > 0) {
+        return true;
     }
     const loaded = Number(progress.loaded) || 0;
     if (loaded <= 0) {
@@ -1656,7 +1706,18 @@ function shouldGalleryProgressUseDeterminate(progress) {
 }
 
 function formatGalleryProgressStatusText(progress) {
-    if (!progress || progress.phase === 'hash_probe' || progress.suppressBlocks === true) {
+    if (!progress) {
+        return 'Loading...';
+    }
+    if (isGalleryMetaProbePhase(progress)) {
+        return 'Preparing Workspace…';
+    }
+    if (isGalleryBlockFetchPhase(progress)) {
+        const detail = formatGalleryBlocksProgressLabel(progress);
+        const suffix = detail ? ` (${detail})` : '';
+        return `Loading gallery${suffix}`;
+    }
+    if (progress.suppressBlocks === true) {
         return 'Loading...';
     }
     const detail = formatGalleryBlocksProgressLabel(progress);
@@ -1665,7 +1726,18 @@ function formatGalleryProgressStatusText(progress) {
 }
 
 function formatWorkspaceProgressStatusText(progress) {
-    if (!progress || progress.phase === 'hash_probe' || progress.suppressBlocks === true) {
+    if (!progress) {
+        return 'Preparing...';
+    }
+    if (isGalleryMetaProbePhase(progress)) {
+        return 'Preparing Workspace…';
+    }
+    if (isGalleryBlockFetchPhase(progress)) {
+        const detail = formatGalleryBlocksProgressLabel(progress);
+        const suffix = detail ? ` (${detail})` : '';
+        return `Loading gallery${suffix}`;
+    }
+    if (progress.suppressBlocks === true) {
         return 'Preparing...';
     }
     const detail = formatGalleryBlocksProgressLabel(progress);
@@ -1781,8 +1853,11 @@ async function setActiveWorkspace(id) {
         // Wait for fade out
         await new Promise(resolve => setTimeout(resolve, 300));
 
+        const isSameWorkspace = id === activeWorkspace;
         // resetGalleryForWorkspaceSwitch: public/scripts/comp/galleryView.js
-        resetGalleryForWorkspaceSwitch();
+        if (!isSameWorkspace) {
+            resetGalleryForWorkspaceSwitch();
+        }
 
         // Use WebSocket API if available, otherwise fall back to HTTP
         if (window.wsClient && window.wsClient.isConnected()) {
@@ -2442,9 +2517,9 @@ function initializeWorkspaceSystem() {
     if (Object.keys(workspaces).length > 0) {
         generateAllWorkspaceStyles();
         switchWorkspaceTheme(activeWorkspace);
-    } else {
-        document.body.setAttribute('data-workspace', 'default');
     }
+    // Do not force data-workspace=default here — early desktop settings may already
+    // have set the correct id; loadWorkspaces (init step 12) will set it next.
     
     // Set up a flag to track if styles have been initialized
     window.workspaceStylesInitialized = true;
@@ -3005,9 +3080,11 @@ function initializeWebSocketWorkspaceEvents() {
     // Listen for workspace activation from WebSocket
     document.addEventListener('workspaceActivated', async (event) => {
         const data = event.detail;
-        
+        const incomingId = data.workspaceId;
+        const sameWorkspace = incomingId === activeWorkspace;
+
         // Update active workspace and refresh UI
-        activeWorkspace = data.workspaceId;
+        activeWorkspace = incomingId;
         
         // Update workspace settings immediately (this will also notify desktop shortcuts)
         const workspace = workspaces[activeWorkspace];
@@ -3018,10 +3095,30 @@ function initializeWebSocketWorkspaceEvents() {
         // Refresh UI components (no need to reload workspaces)
         renderWorkspaceDropdown();
         updateActiveWorkspaceDisplay();
-        
-        // Set up the completion callback and load gallery
+
         window.workspaceLoadingCompleteCallback = completeWorkspaceSwitch;
-        await switchGalleryView(currentGalleryView || 'images', true, updateWorkspaceProgress);        
+
+        // Join startup/in-flight load instead of wiping and reloading the same workspace
+        if (sameWorkspace && typeof canJoinGalleryImagesLoad === 'function' && canJoinGalleryImagesLoad()) {
+            if (typeof joinGalleryImagesLoad === 'function') {
+                await joinGalleryImagesLoad(updateWorkspaceProgress, { showProgress: false });
+            }
+            completeWorkspaceSwitch();
+            return;
+        }
+
+        const galleryReady = typeof isGalleryReady === 'function'
+            ? isGalleryReady()
+            : (typeof allImages !== 'undefined' && allImages && allImages.length > 0);
+        if (sameWorkspace && galleryReady) {
+            if (typeof displayGalleryContentIfNeeded === 'function') {
+                displayGalleryContentIfNeeded();
+            }
+            completeWorkspaceSwitch();
+            return;
+        }
+        
+        await switchGalleryView(currentGalleryView || 'images', true, updateWorkspaceProgress);
         
         // Clear the workspace switching flag
         isWorkspaceSwitching = false;

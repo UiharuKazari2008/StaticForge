@@ -17,6 +17,13 @@ let textReplacementPaginationInfo = {
 
 function extractBiasFromTextForDisplay(text) {
     if (!text || typeof text !== 'string') return null;
+    // listManagedEmphasisBlocks: public/scripts/comp/emphasisGroupIdCodec.js
+    if (hasManagedEmphasisGroupIds(text)) {
+        const blocks = listManagedEmphasisBlocks(text);
+        if (blocks.length >= 1 && blocks[0].start === 0 && Number.isFinite(blocks[0].textWeight)) {
+            return blocks[0].textWeight;
+        }
+    }
     if (!/^(-?\d+\.?\d*)::/.test(text)) {
         return null;
     }
@@ -38,6 +45,8 @@ function extractBiasFromTextForDisplay(text) {
 
 function hasEmphasisGroupForDisplay(text) {
     if (!text || typeof text !== 'string') return false;
+    // hasManagedEmphasisGroupIds: public/scripts/comp/emphasisGroupIdCodec.js
+    if (hasManagedEmphasisGroupIds(text)) return true;
     const completeGroupPattern = /^(-?\d+\.?\d*)::[\s\S]+::$/;
     if (completeGroupPattern.test(text)) return true;
     const autoTerminatingPattern = /^(-?\d+\.?\d*)::/;
@@ -719,14 +728,10 @@ function handleTextReplacementToolbarAction(action, textarea, toolbar, event) {
 
 // Text replacement toolbar action functions
 function openTextReplacementQuickAccess(textarea) {
-    // Open the dataset tag toolbar for text replacements
-    if (window.showDatasetTagToolbar) {
-        // Ensure the textarea has focus so the toolbar can detect it
-        textarea.focus();
-        
-        // Show the dataset tag toolbar
-        window.showDatasetTagToolbar();
-    }
+    // Ensure the textarea has focus so the toolbar can detect it
+    textarea.focus();
+    // public/scripts/comp/featureLoader.js
+    void featureLoader.loadFeature('dataset_tag_toolbar').then(() => showDatasetTagToolbar());
 }
 
 function openTextReplacementEmphasisMode(textarea, toolbar) {
@@ -1664,7 +1669,9 @@ function validateDynamicReplacementCanApply(replacement) {
         || window._lastCompileToPromptsApplicationContext;
     // validateReplacementAgainstResolved: promptApplyPipeline.js
     if (applicationContext?.streams && typeof validateReplacementAgainstResolved === 'function') {
-        return validateReplacementAgainstResolved(replacement, applicationContext);
+        if (validateReplacementAgainstResolved(replacement, applicationContext)) {
+            return true;
+        }
     }
 
     const action = replacement.action?.toLowerCase() || 'replace';
@@ -1690,17 +1697,34 @@ function validateDynamicReplacementCanApply(replacement) {
         return true;
     }
 
+    // Helper to strip emphasis delimiters for comparison
+    const stripEmphasis = (str) => {
+        if (!str) return '';
+        let clean = String(str);
+        if (typeof stripManagedEmphasisDelimitersForCounting === 'function') {
+            clean = stripManagedEmphasisDelimitersForCounting(clean);
+        }
+        return clean.replace(/-?\d+(?:\.\d+)?::/g, '').replace(/::/g, '').trim();
+    };
+
+    const cleanSelect = stripEmphasis(selectText);
+    const cleanTarget = stripEmphasis(targetText);
+
+    if (cleanSelect && cleanTarget && cleanTarget.indexOf(cleanSelect) !== -1) {
+        return true;
+    }
+
     // Check fallback_select_text
     if (replacement.fallback_select_text) {
         const fallbackText = replacement.fallback_select_text.trim();
-        if (targetText.indexOf(fallbackText) !== -1) {
+        if (targetText.indexOf(fallbackText) !== -1 || (cleanTarget && cleanTarget.indexOf(stripEmphasis(fallbackText)) !== -1)) {
             return true;
         }
     }
 
     // Check anchor text
     const anchorText = (replacement.anchor_text || '').trim();
-    if (anchorText && targetText.indexOf(anchorText) !== -1) {
+    if (anchorText && (targetText.indexOf(anchorText) !== -1 || (cleanTarget && cleanTarget.indexOf(stripEmphasis(anchorText)) !== -1))) {
         return true;
     }
 
@@ -1714,18 +1738,19 @@ function validateDynamicReplacementCanApply(replacement) {
 
 // Get the target text for a dynamic replacement
 function getDynamicReplacementTargetText(replacement) {
-    if (replacement.targetType === 'prompt') {
-        const textarea = document.getElementById('manualPrompt');
-        return textarea ? textarea.value : null;
-    } else if (replacement.targetType === 'uc') {
-        const textarea = document.getElementById('manualUc');
-        return textarea ? textarea.value : null;
-    } else if (replacement.targetType === 'character') {
-        // Access character prompt by index
-        const characterPromptsContainer = document.getElementById('characterPromptsContainer');
-        if (!characterPromptsContainer) return null;
+    const targetType = replacement.targetType || 'prompt';
+    let textarea = null;
+    if (targetType === 'prompt' || targetType === 'manualPrompt') {
+        textarea = document.getElementById('manualPrompt');
+    } else if (targetType === 'uc' || targetType === 'negative_prompt' || targetType === 'input_prompt_negative' || targetType === 'prompt_negative' || targetType === 'manualUc') {
+        textarea = document.getElementById('manualUc');
+    } else if (targetType === 'manualPromptNegative') {
+        textarea = document.getElementById('manualPromptNegative');
+    } else if (targetType === 'character') {
+        const container = document.getElementById('characterPromptsContainer');
+        if (!container) return null;
         
-        const characterItems = characterPromptsContainer.querySelectorAll('.character-prompt-item');
+        const characterItems = container.querySelectorAll('.character-prompt-item');
         const characterIndex = replacement.targetSource;
         
         if (characterIndex < 0 || characterIndex >= characterItems.length) {
@@ -1736,10 +1761,9 @@ function getDynamicReplacementTargetText(replacement) {
         const characterId = characterItem.id;
         const field = replacement.targetField || 'prompt'; // 'prompt' or 'uc'
         
-        const textarea = document.getElementById(`${characterId}_${field}`);
-        return textarea ? textarea.value : null;
+        textarea = document.getElementById(`${characterId}_${field}`);
     }
-    return null;
+    return textarea ? textarea.value : null;
 }
 
 // Apply a Rentan modification (Tendai) client-side (mimics server logic)
@@ -1752,10 +1776,12 @@ function applyDynamicReplacementClientSide(replacement) {
     
     // Get the target textarea
     let textarea = null;
-    if (targetType === 'prompt') {
+    if (targetType === 'prompt' || targetType === 'manualPrompt') {
         textarea = document.getElementById('manualPrompt');
-    } else if (targetType === 'uc') {
+    } else if (targetType === 'uc' || targetType === 'negative_prompt' || targetType === 'input_prompt_negative' || targetType === 'prompt_negative' || targetType === 'manualUc') {
         textarea = document.getElementById('manualUc');
+    } else if (targetType === 'manualPromptNegative') {
+        textarea = document.getElementById('manualPromptNegative');
     } else if (targetType === 'character') {
         // Access character prompt by index
         const characterPromptsContainer = document.getElementById('characterPromptsContainer');
@@ -1806,6 +1832,15 @@ function applyDynamicReplacementClientSide(replacement) {
     let method = 'direct';
     let appliedSuccessfully = false;
 
+    const getCleanPattern = (str) => {
+        if (!str) return '';
+        let clean = String(str);
+        if (typeof stripManagedEmphasisDelimitersForCounting === 'function') {
+            clean = stripManagedEmphasisDelimitersForCounting(clean);
+        }
+        return clean.replace(/-?\d+(?:\.\d+)?::/g, '').replace(/::/g, '').trim();
+    };
+
     if (action === 'delete') {
         // Delete action
         let deleteCount = 0;
@@ -1815,7 +1850,6 @@ function applyDynamicReplacementClientSide(replacement) {
         // Try primary select_text
         if (selectText && result.includes(selectText)) {
             if (count !== undefined && count !== null) {
-                // Delete specific number of occurrences
                 for (let i = 0; i < count; i++) {
                     const index = result.indexOf(textToDelete);
                     if (index === -1) break;
@@ -1823,11 +1857,17 @@ function applyDynamicReplacementClientSide(replacement) {
                     deleteCount++;
                 }
             } else {
-                // Delete all occurrences
                 result = result.split(textToDelete).join('');
-                deleteCount = 1; // Mark as successful
+                deleteCount = 1;
             }
             appliedSuccessfully = deleteCount > 0;
+        } else if (selectText) {
+            const cleanSelect = getCleanPattern(selectText);
+            if (cleanSelect && result.includes(cleanSelect)) {
+                result = result.split(cleanSelect).join('');
+                appliedSuccessfully = true;
+                method = 'emphasis-matched';
+            }
         }
 
         // Try fallback if primary failed
@@ -1862,6 +1902,13 @@ function applyDynamicReplacementClientSide(replacement) {
         if (selectText && result.includes(selectText)) {
             result = result.replace(selectText, replaceText);
             appliedSuccessfully = true;
+        } else if (selectText) {
+            const cleanSelect = getCleanPattern(selectText);
+            if (cleanSelect && result.includes(cleanSelect)) {
+                result = result.replace(cleanSelect, replaceText);
+                appliedSuccessfully = true;
+                method = 'emphasis-matched';
+            }
         }
 
         // Try fallback if primary failed
@@ -1874,8 +1921,7 @@ function applyDynamicReplacementClientSide(replacement) {
 
         // Try alternative if both failed and replacement is optional
         if (!appliedSuccessfully && !isCritical && alternativeText) {
-            // Append alternative text to end
-            const needsComma = result.trim() && !result.trim().endsWith(',') && !result.trim().endsWith('::');
+            const needsComma = result.trim() && !result.trim().endsWith(',') && !textEndsWithEmphasisGroupClose(result);
             result = result.trimEnd() + (needsComma ? ', ' : ' ') + alternativeText;
             appliedSuccessfully = true;
             method = 'alternative';
@@ -1898,45 +1944,51 @@ function applyDynamicReplacementClientSide(replacement) {
                 appliedSuccessfully = true;
                 anchorApplied = true;
                 method = 'anchor';
+            } else {
+                const cleanAnchor = getCleanPattern(anchorText);
+                if (cleanAnchor && result.includes(cleanAnchor)) {
+                    insertPosition = result.indexOf(cleanAnchor) + cleanAnchor.length;
+                    appliedSuccessfully = true;
+                    anchorApplied = true;
+                    method = 'anchor';
+                }
             }
         }
 
         if (!anchorApplied && selectText && selectText.trim()) {
-            // Try to find select_text and append after it
             const index = result.indexOf(selectText);
             if (index !== -1) {
                 insertPosition = index + selectText.length;
                 appliedSuccessfully = true;
-            } else if (fallbackSelectText && result.includes(fallbackSelectText)) {
-                // Try fallback
-                const fallbackIndex = result.indexOf(fallbackSelectText);
-                insertPosition = fallbackIndex + fallbackSelectText.length;
-                appliedSuccessfully = true;
-                method = 'fallback';
-            } else if (!isCritical && alternativeText) {
-                // Use alternative text at end
-                textToAppend = alternativeText;
-                method = 'alternative';
+            } else {
+                const cleanSelect = getCleanPattern(selectText);
+                if (cleanSelect && result.includes(cleanSelect)) {
+                    insertPosition = result.indexOf(cleanSelect) + cleanSelect.length;
+                    appliedSuccessfully = true;
+                    method = 'emphasis-matched';
+                } else if (fallbackSelectText && result.includes(fallbackSelectText)) {
+                    const fallbackIndex = result.indexOf(fallbackSelectText);
+                    insertPosition = fallbackIndex + fallbackSelectText.length;
+                    appliedSuccessfully = true;
+                    method = 'fallback';
+                } else if (!isCritical && alternativeText) {
+                    textToAppend = alternativeText;
+                    method = 'alternative';
+                }
             }
         } else {
-            // No select_text provided, append to end
-            // Look for the append marker to insert before presets
             const markerIndex = result.indexOf(APPEND_MARKER);
             if (markerIndex !== -1) {
-                // Found marker, insert before it
                 insertPosition = markerIndex;
-                // Check if there's a comma before the marker that we should remove
                 if (insertPosition > 2 && result.substring(insertPosition - 2, insertPosition) === ', ') {
-                    insertPosition -= 2; // Remove the comma and space before marker
+                    insertPosition -= 2;
                 }
                 console.log(`📍 Found append marker, inserting before presets`);
             } else {
-                // No marker found, append to end (fallback)
                 insertPosition = result.length;
             }
         }
 
-        // Insert at determined position
         const needsComma = insertPosition > 0 && result[insertPosition - 1] !== ',' && result[insertPosition - 1] !== ' ';
         const separator = needsComma ? ', ' : '';
         result = result.substring(0, insertPosition) + separator + textToAppend + result.substring(insertPosition);
@@ -1947,19 +1999,17 @@ function applyDynamicReplacementClientSide(replacement) {
         return { success: false, error: 'Failed to apply replacement' };
     }
 
-    // Remove the append marker before applying to textarea
-    // Handle both ", MARKER" and standalone "MARKER" patterns
     result = result.replace(new RegExp(`,\\s*${APPEND_MARKER}|${APPEND_MARKER}`, 'g'), '');
 
-    // Update the textarea
-    // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
     setTextareaValuePreservingUndo(textarea, result);
 
-    // Trigger input event to update any dependent UI
+    if (typeof importUnmanagedEmphasisGroupsForTextarea === 'function') {
+        importUnmanagedEmphasisGroupsForTextarea(textarea);
+    }
+
     const inputEvent = new Event('input', { bubbles: true });
     textarea.dispatchEvent(inputEvent);
 
-    // Trigger other updates (auto-resize, highlighting, etc.)
     if (typeof autoResizeTextarea === 'function') {
         autoResizeTextarea(textarea);
     }
@@ -2400,10 +2450,8 @@ async function applyDynamicReplacementFromLockModal(globalIndex) {
             if (typeof renderTextReplacementLockList === 'function') renderTextReplacementLockList();
             if (typeof updateMainLockButtonState === 'function') updateMainLockButtonState();
             showGlassToast('success', null, 'Applied replacement and removed from list', false, 3000, '<i class="fas fa-check"></i>');
-        } else {
-            showGlassToast('error', null, result.error || 'Failed to apply replacement', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+            return;
         }
-        return;
     }
 
     const result = applyDynamicReplacementClientSide(replacementWithMetadata);
@@ -2800,7 +2848,8 @@ function wireTextReplacementLockModalListeners() {
                             action: 'deleteManagedPhases',
                             loadfn: function (item) {
                                 // hasManagedBracketArtifacts: public/scripts/comp/bracketGenerationApplet.js
-                                const hasManaged = hasManagedBracketArtifacts();
+                                const hasManaged = typeof hasManagedBracketArtifacts === 'function'
+                                    && hasManagedBracketArtifacts();
                                 item.disabled = !hasManaged;
                             }
                         }
@@ -3798,17 +3847,19 @@ function selectRandomTextReplacement(seed, index) {
 // Resolve prompt textarea for a text-replacement seed source (server assigns sources; merge is server-side)
 function getTextareaForReplacementSource(source) {
     if (!source) return null;
-    if (source === 'prompt') return document.getElementById('manualPrompt');
-    if (source === 'negative_prompt') return document.getElementById('manualUc');
-    if (source === 'input_prompt_negative') return document.getElementById('manualPromptNegative');
-    if (!source.startsWith('character_') || !characterPromptsContainer) return null;
+    if (source === 'prompt' || source === 'manualPrompt') return document.getElementById('manualPrompt');
+    if (source === 'negative_prompt' || source === 'input_prompt_negative' || source === 'prompt_negative' || source === 'uc' || source === 'manualUc') return document.getElementById('manualUc');
+    if (source === 'manualPromptNegative') return document.getElementById('manualPromptNegative');
+    
+    const container = document.getElementById('characterPromptsContainer');
+    if (!source.startsWith('character_') || !container) return null;
 
     const charIndex = parseInt(source.split('_')[1], 10);
     if (isNaN(charIndex)) return null;
-    const item = characterPromptsContainer.querySelectorAll('.character-prompt-item')[charIndex];
+    const item = container.querySelectorAll('.character-prompt-item')[charIndex];
     if (!item) return null;
 
-    if (source.endsWith('_input_prompt_negative')) {
+    if (source.endsWith('_input_prompt_negative') || source.endsWith('_promptNegative')) {
         return document.getElementById(`${item.id}_promptNegative`);
     }
     if (source.endsWith('_uc')) {
@@ -3825,31 +3876,49 @@ function replacePlaceholderInPrompt(seed, index) {
     const textarea = getTextareaForReplacementSource(seed.source);
     if (!textarea) {
         console.warn('Could not find textarea for replacement source:', seed.source);
+        showGlassToast('error', null, 'Could not find target prompt area for replacement', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
         return;
     }
 
     // Get the original pattern to replace
-    const patternToReplace = seed.pattern || `!${seed.key}`;
+    const patternToReplace = seed.pattern || (seed.key ? `!${seed.key}` : '');
+    if (!patternToReplace) {
+        showGlassToast('error', null, 'Invalid replacement pattern', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
 
     // Escape special regex characters in the pattern
     const escapedPattern = patternToReplace.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
     // Replace the pattern with the resolved value
-    const currentText = textarea.value;
-    const newText = currentText.replace(new RegExp(escapedPattern, 'g'), seed.value);
+    const currentText = textarea.value || '';
+    const replacementValue = seed.value ?? '';
+    const newText = currentText.replace(new RegExp(escapedPattern, 'g'), replacementValue);
 
-    // Update the textarea
-    textarea.value = newText;
+    if (newText === currentText && !currentText.includes(patternToReplace)) {
+        showGlassToast('warning', null, `Pattern "${patternToReplace}" not found in target prompt`, false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
 
-    // Trigger input event to update any dependent UI
+    // Update the textarea preserving undo history
+    if (typeof setTextareaValuePreservingUndo === 'function') {
+        setTextareaValuePreservingUndo(textarea, newText);
+    } else {
+        textarea.value = newText;
+    }
+
+    // Trigger input event to update dependent UI
     const inputEvent = new Event('input', { bubbles: true });
     textarea.dispatchEvent(inputEvent);
 
-    // Remove this replacement from the current seeds and locked replacements
+    if (typeof autoResizeTextarea === 'function') autoResizeTextarea(textarea);
+    if (typeof updateEmphasisHighlighting === 'function') updateEmphasisHighlighting(textarea);
+
+    // Remove this replacement from current seeds and locked replacements
     removeTextReplacement(index);
 
-    // Show a brief success indication
-    showGlassToast('success', null, `Replaced "${patternToReplace}" with "${seed.value}" and removed from replacements`, false, 2500, '<i class="fas fa-exchange-alt"></i>');
+    // Show success toast
+    showGlassToast('success', null, `Replaced "${patternToReplace}" with "${replacementValue}"`, false, 2500, '<i class="fas fa-exchange-alt"></i>');
 }
 
 // Remove a text replacement from both current seeds and locked replacements
