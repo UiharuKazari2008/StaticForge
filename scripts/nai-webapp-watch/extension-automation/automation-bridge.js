@@ -8,7 +8,7 @@
  *
  * This runs without the DevTools panel. It re-fetches resources discovered via
  * Performance Resource Timing + DOM script/link tags, packs a store-method ZIP,
- * and triggers a browser download (caught by Playwright acceptDownloads).
+ * and triggers a browser download (saved via CDP Browser.setDownloadBehavior).
  *
  * Upstream extension: https://github.com/up209d/ResourcesSaverExt (GPL-3.0+)
  * Pin: see scripts/nai-webapp-watch/extension-automation/SOURCE.txt

@@ -95,8 +95,11 @@ Reference captures (local only, **do not commit**): `tmp/v5Gen.txt`, `tmp/v5Sear
 - Setup: `./scripts/nai-webapp-watch/setup-dump-deps.sh`
 - Overlay docs: `scripts/nai-webapp-watch/extension-automation/`
 - Upstream pin: `scripts/nai-webapp-watch/extension-automation/SOURCE.txt` (up209d/ResourcesSaverExt @ 2.0.6 / 2fa02b7, GPL-3.0+)
-- Headed Chrome + `xvfb-run` — not `--headless`
+- Launch: system Chrome (`CHROME_BIN` / google-chrome-stable) with `--load-extension` / `--disable-extensions-except`
+- Control: CDP over WebSocket (built into `dump-novelai-webapp.js`; no Playwright)
+- Display: headed + `xvfb-run` required for reliable extension load — not classic `--headless`; `--headless=new` only if verified
 - Automation message: `RESOURCES_SAVER_AUTOMATION_SAVE` / `RESOURCES_SAVER_AUTOMATION_SAVE_RESULT`
+- Dry-check: `./scripts/nai-webapp-watch/dump-novelai-webapp.sh --dry-check`
 
 ## Agent rules
 

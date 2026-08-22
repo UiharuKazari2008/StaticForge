@@ -29,6 +29,9 @@ Exit `0` = unchanged vs baseline. Exit `2` = something changed.
 ## Full dump (only when poll reports change)
 
 Headed Chrome + Xvfb + [ResourcesSaverExt](https://github.com/up209d/ResourcesSaverExt) (`unpacked2x`) with StaticForge automation overlay.
+Driven over **CDP** (Chrome DevTools Protocol) — no Playwright, no bundled Chromium.
+
+**Headless caveat:** classic `--headless` cannot load extensions. Prefer `dump-novelai-webapp.sh` (xvfb headed). `DUMP_HEADLESS=1` / `--headless` tries `--headless=new` only; verify content-script inject before relying on it. Containers may need `DUMP_CHROME_NO_SANDBOX=1`.
 
 ### One-time dump-host setup
 
@@ -36,14 +39,18 @@ Headed Chrome + Xvfb + [ResourcesSaverExt](https://github.com/up209d/ResourcesSa
 # From StaticForge repo root (any checkout path)
 sudo apt install xvfb                 # if missing
 # google-chrome-stable on PATH, or export CHROME_BIN=...
-# install repo JS deps first (package.json now lists the headed-dump automation package)
-#   e.g. your usual package-manager install at repo root
 ./scripts/nai-webapp-watch/setup-dump-deps.sh
 # clones pinned ResourcesSaverExt into gitignored tools/ResourcesSaverExt/
 # applies scripts/nai-webapp-watch/extension-automation/ overlay
 ```
 
 Optional override: `RESOURCES_SAVER_EXT_PATH=/abs/path/to/unpacked2x`.
+
+Dry-check (launches Chrome + extension + CDP, no navigation):
+
+```bash
+./scripts/nai-webapp-watch/dump-novelai-webapp.sh --dry-check
+```
 
 ### Run dump
 
@@ -90,7 +97,7 @@ Focus on API contracts only (`PE(` caps, model slugs, `params_version`, UC/`Nb()
 |------|------|
 | `poll-hashes.js` | Cheap public-endpoint poll |
 | `daily-tick.sh` | Operator + `/loop` entry |
-| `dump-novelai-webapp.{js,sh}` | Headed Xvfb dump |
+| `dump-novelai-webapp.{js,sh}` | Headed Xvfb + CDP dump (no Playwright) |
 | `.cursor/nai-webapp-watch/state.json` | Committed hash baseline |
 | `setup-dump-deps.sh` | Fetch extension into `tools/` + apply automation overlay |
 | `extension-automation/` | Checked-in overlay (postMessage bridge) |
