@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fetch ResourcesSaverExt into tools/ and apply automation overlay.
-# Also see README for host packages: xvfb, google-chrome-stable, and the playwright devDependency.
+# Host packages: xvfb, google-chrome-stable (or CHROME_BIN). No Playwright.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
@@ -28,7 +28,7 @@ cat > "$EXT_DIR/README.md" <<'MD'
 Downloaded by scripts/nai-webapp-watch/setup-dump-deps.sh.
 
 - Upstream: https://github.com/up209d/ResourcesSaverExt (GPL-3.0+)
-- Load path for Playwright: unpacked2x/
+- Load path for Chrome --load-extension: unpacked2x/
 - Automation overlay: scripts/nai-webapp-watch/extension-automation/
 
 Do not commit this directory (tools/ is gitignored).
@@ -36,4 +36,5 @@ MD
 bash "$OVERLAY/apply.sh" "$UNPACKED"
 test -f "$UNPACKED/automation-bridge.js"
 echo "[nai-webapp-dump-setup] ready: $UNPACKED"
-echo "[nai-webapp-dump-setup] host needs: xvfb, google-chrome-stable (or CHROME_BIN), and playwright as a repo devDependency"
+echo "[nai-webapp-dump-setup] host needs: xvfb, google-chrome-stable (or CHROME_BIN)"
+echo "[nai-webapp-dump-setup] dump drives Chrome over CDP (no Playwright)"

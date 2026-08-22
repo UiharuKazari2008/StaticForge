@@ -1,7 +1,7 @@
 # ResourcesSaverExt automation overlay
 
 Upstream **Save All Resources** (`up209d/ResourcesSaverExt`, GPL-3.0+) is a DevTools
-panel extension. StaticForge’s headed dump talks to it via page `postMessage`, which
+panel extension. StaticForge’s headed dump (Chrome + CDP, no Playwright) talks to it via page `postMessage`, which
 stock upstream does not implement.
 
 `setup-dump-deps.sh` downloads a pinned upstream tree into gitignored
