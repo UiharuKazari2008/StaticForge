@@ -28,26 +28,27 @@ Exit `0` = unchanged vs baseline. Exit `2` = something changed.
 
 ## Full dump (only when poll reports change)
 
-Headed Chrome + Xvfb + patched [ResourcesSaverExt](../../tools/ResourcesSaverExt/README.md).
+Headed Chrome + Xvfb + [ResourcesSaverExt](https://github.com/up209d/ResourcesSaverExt) (`unpacked2x`) with StaticForge automation overlay.
 
-Prerequisites:
+### One-time dump-host setup
 
 ```bash
-# google-chrome-stable already on this box
-sudo apt install xvfb            # if missing
-pnpm add -D playwright           # once
+# From StaticForge repo root (any checkout path)
+sudo apt install xvfb                 # if missing
+# google-chrome-stable on PATH, or export CHROME_BIN=...
+# install repo JS deps (includes the headed-dump browser automation package)
+./scripts/nai-webapp-watch/setup-dump-deps.sh
+# clones pinned ResourcesSaverExt into gitignored tools/ResourcesSaverExt/
+# applies scripts/nai-webapp-watch/extension-automation/ overlay
 ```
 
-Run:
+Optional override: `RESOURCES_SAVER_EXT_PATH=/abs/path/to/unpacked2x`.
+
+### Run dump
 
 ```bash
-chmod +x scripts/nai-webapp-watch/dump-novelai-webapp.sh
 ./scripts/nai-webapp-watch/dump-novelai-webapp.sh
 ```
-
-Output: `tmp/nai-webapp-dumps/` (**gitignored** — same policy as `tmp/`).
-
-Do **not** commit dumps, JWT captures, or recaptcha tokens from DevTools HARs.
 
 ## Daily `/loop 1d` (local Cursor)
 
@@ -64,7 +65,7 @@ Per [loop skill](https://cursor.com/docs/agent/loop) — fixed 1-day interval:
 ```bash
 while true; do
   sleep 86400
-  echo 'AGENT_LOOP_TICK_nai-webapp-watch {"prompt":"Run ./scripts/nai-webapp-watch/daily-tick.sh from /home/kanmi/staticforge. If exit 2, run dump-novelai-webapp.sh then diff API contracts per novelai-webapp-review skill. Never commit tmp/ or secrets."}'
+  echo 'AGENT_LOOP_TICK_nai-webapp-watch {"prompt":"Run ./scripts/nai-webapp-watch/daily-tick.sh from the StaticForge repo root. If exit 2, run dump-novelai-webapp.sh then diff API contracts per novelai-webapp-review skill. Never commit tmp/ or secrets."}'
 done
 ```
 
@@ -90,4 +91,6 @@ Focus on API contracts only (`PE(` caps, model slugs, `params_version`, UC/`Nb()
 | `daily-tick.sh` | Operator + `/loop` entry |
 | `dump-novelai-webapp.{js,sh}` | Headed Xvfb dump |
 | `.cursor/nai-webapp-watch/state.json` | Committed hash baseline |
-| `tools/ResourcesSaverExt/` | Vendored extension + automation patch |
+| `setup-dump-deps.sh` | Fetch extension into `tools/` + apply automation overlay |
+| `extension-automation/` | Checked-in overlay (postMessage bridge) |
+| `tools/ResourcesSaverExt/` | Local (gitignored) extension tree after setup |

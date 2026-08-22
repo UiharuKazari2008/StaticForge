@@ -32,7 +32,7 @@ Track official NovelAI **public** frontend/API contract drift without recaptcha,
 1. **Cheap poll** (always):
 
 ```bash
-cd /home/kanmi/staticforge
+cd /path/to/StaticForge   # repo root
 ./scripts/nai-webapp-watch/daily-tick.sh
 ```
 
@@ -58,12 +58,12 @@ node scripts/nai-webapp-watch/poll-hashes.js --write
 
 ## `/loop 1d` (local Cursor)
 
-Arm once (see [loop skill](file:///home/kanmi/.cursor/skills-cursor/loop/SKILL.md)):
+Arm once (see [loop skill](https://cursor.com/docs/agent/loop)):
 
 ```bash
 while true; do
   sleep 86400
-  echo 'AGENT_LOOP_TICK_nai-webapp-watch {"prompt":"In /home/kanmi/staticforge run ./scripts/nai-webapp-watch/daily-tick.sh. Exit 2 → dump-novelai-webapp.sh then contract diff per novelai-webapp-review skill. Never commit tmp/ secrets."}'
+  echo 'AGENT_LOOP_TICK_nai-webapp-watch {"prompt":"From the StaticForge repo root run ./scripts/nai-webapp-watch/daily-tick.sh. Exit 2 → dump-novelai-webapp.sh then contract diff per novelai-webapp-review skill. Never commit tmp/ secrets."}'
 done
 ```
 
@@ -91,10 +91,12 @@ Reference captures (local only, **do not commit**): `tmp/v5Gen.txt`, `tmp/v5Sear
 
 ## ResourcesSaverExt dump method
 
-- Vendored: `tools/ResourcesSaverExt/unpacked2x/`
-- Patch docs: `tools/ResourcesSaverExt/README.md`
-- Headed Chrome + `xvfb-run` — not `--headless` (DevTools extensions need headed)
-- Automation message: `RESOURCES_SAVER_AUTOMATION_SAVE`
+- Local (gitignored) after setup: `tools/ResourcesSaverExt/unpacked2x/`
+- Setup: `./scripts/nai-webapp-watch/setup-dump-deps.sh`
+- Overlay docs: `scripts/nai-webapp-watch/extension-automation/`
+- Upstream pin: `scripts/nai-webapp-watch/extension-automation/SOURCE.txt` (up209d/ResourcesSaverExt @ 2.0.6 / 2fa02b7, GPL-3.0+)
+- Headed Chrome + `xvfb-run` — not `--headless`
+- Automation message: `RESOURCES_SAVER_AUTOMATION_SAVE` / `RESOURCES_SAVER_AUTOMATION_SAVE_RESULT`
 
 ## Agent rules
 
@@ -107,5 +109,6 @@ Reference captures (local only, **do not commit**): `tmp/v5Gen.txt`, `tmp/v5Sear
 ## Related docs
 
 - Operator README: `scripts/nai-webapp-watch/README.md`
+- Dump setup: `scripts/nai-webapp-watch/setup-dump-deps.sh`
 - Baseline: `.cursor/nai-webapp-watch/state.json`
 - NovelAI docs import (separate batch): `scripts/README-novelai-docs.md`

@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 /**
  * Headed Chrome dump of novelai.net public assets via patched ResourcesSaverExt.
- * Requires: google-chrome-stable, xvfb-run, playwright (`pnpm add -D playwright`).
+ * Requires: google-chrome-stable (or CHROME_BIN), xvfb-run, playwright devDependency,
+ * and tools/ResourcesSaverExt/unpacked2x from setup-dump-deps.sh.
  *
  * Usage:
+ *   ./scripts/nai-webapp-watch/setup-dump-deps.sh
  *   ./scripts/nai-webapp-watch/dump-novelai-webapp.sh
  *   node scripts/nai-webapp-watch/dump-novelai-webapp.js --out tmp/nai-webapp-dumps
  */
@@ -13,7 +15,10 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..', '..');
-const EXT_PATH = path.join(ROOT, 'tools', 'ResourcesSaverExt', 'unpacked2x');
+const DEFAULT_EXT = path.join(ROOT, 'tools', 'ResourcesSaverExt', 'unpacked2x');
+const EXT_PATH = process.env.RESOURCES_SAVER_EXT_PATH
+    ? path.resolve(process.env.RESOURCES_SAVER_EXT_PATH)
+    : DEFAULT_EXT;
 const DEFAULT_OUT = path.join(ROOT, 'tmp', 'nai-webapp-dumps');
 const TARGET_URL = 'https://novelai.net/';
 
@@ -53,12 +58,19 @@ async function runDump(opts) {
     try {
         ({ chromium } = require('playwright'));
     } catch (_) {
-        console.error('[nai-webapp-dump] playwright not installed. Run: pnpm add -D playwright');
+        console.error('[nai-webapp-dump] missing automation dependency; see scripts/nai-webapp-watch/README.md');
         process.exit(1);
     }
 
     if (!fs.existsSync(EXT_PATH)) {
         console.error('[nai-webapp-dump] missing extension at', EXT_PATH);
+        console.error('[nai-webapp-dump] run: ./scripts/nai-webapp-watch/setup-dump-deps.sh');
+        console.error('[nai-webapp-dump] optional override: RESOURCES_SAVER_EXT_PATH=/path/to/unpacked2x');
+        process.exit(1);
+    }
+    if (!fs.existsSync(path.join(EXT_PATH, 'automation-bridge.js'))) {
+        console.error('[nai-webapp-dump] extension found but automation overlay missing');
+        console.error('[nai-webapp-dump] re-run: ./scripts/nai-webapp-watch/setup-dump-deps.sh');
         process.exit(1);
     }
 
