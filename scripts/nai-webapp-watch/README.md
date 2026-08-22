@@ -36,7 +36,8 @@ Headed Chrome + Xvfb + [ResourcesSaverExt](https://github.com/up209d/ResourcesSa
 # From StaticForge repo root (any checkout path)
 sudo apt install xvfb                 # if missing
 # google-chrome-stable on PATH, or export CHROME_BIN=...
-# install repo JS deps (includes the headed-dump browser automation package)
+# install repo JS deps first (package.json now lists the headed-dump automation package)
+#   e.g. your usual package-manager install at repo root
 ./scripts/nai-webapp-watch/setup-dump-deps.sh
 # clones pinned ResourcesSaverExt into gitignored tools/ResourcesSaverExt/
 # applies scripts/nai-webapp-watch/extension-automation/ overlay
