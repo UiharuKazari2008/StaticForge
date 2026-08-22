@@ -115,6 +115,7 @@ class ServiceWorkerManager {
         this.pendingApplyFiles = null;
         this.pendingUpdateKind = 'restart';
         this.lastAppliedWorkspaceCssHash = null;
+        this.agentSession = new URLSearchParams(location.search).get('agent') === '1';
 
         // Boot gate state — public/scripts/websocket.js awaits ensureBootComplete()
         this.bootPhase = 'idle';
@@ -834,7 +835,56 @@ class ServiceWorkerManager {
         return true;
     }
     
+    async _initAgentSession() {
+        this._kickApplicationBootEarly();
+        this._showBootUiEarly('Starting cacheless agent session…');
+
+        try {
+            await this._waitForServerReady();
+
+            const hadController = 'serviceWorker' in navigator && Boolean(navigator.serviceWorker.controller);
+            if ('serviceWorker' in navigator) {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                await Promise.all(registrations.map((registration) => registration.unregister()));
+            }
+
+            const resetKey = 'dreamscapeAgentWorkerReset';
+            if (hadController && sessionStorage.getItem(resetKey) !== '1') {
+                sessionStorage.setItem(resetKey, '1');
+                location.reload();
+                await new Promise(() => {});
+                return;
+            }
+            sessionStorage.removeItem(resetKey);
+
+            if ('caches' in globalThis) {
+                const cacheNames = await caches.keys();
+                await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)));
+            }
+
+            document.body.classList.remove('initializing');
+            if (globalThis.isLoginPage) {
+                this._resolveLoginBootComplete();
+            } else {
+                this._resolveBootComplete();
+            }
+        } catch (error) {
+            console.error('Agent session startup failed:', error);
+            if (globalThis.isLoginPage) {
+                this._resolveLoginBootComplete();
+            } else {
+                this._showBootFatalError(error);
+                this._resolveBootComplete();
+            }
+        }
+    }
+
     async init() {
+        if (this.agentSession) {
+            this.bootPromise = this._initAgentSession();
+            return;
+        }
+
         if ('serviceWorker' in navigator) {
             try {
                 this._kickApplicationBootEarly();
@@ -1106,6 +1156,9 @@ class ServiceWorkerManager {
     }
     
     async checkStaticFileUpdates(noToast = false) {
+        if (this.agentSession) {
+            return;
+        }
         if (!window.isLoginPage && !this.bootComplete && !this._bootOrchestrating) {
             return;
         }
@@ -1189,6 +1242,9 @@ class ServiceWorkerManager {
     }
 
     async updateStaticCache(files, noToast = false, cacheOptions = null) {
+        if (this.agentSession) {
+            return;
+        }
         if (!window.isLoginPage && !this.bootComplete && !this._bootOrchestrating) {
             this.queueCacheUpdateUntilBoot(files, noToast, cacheOptions);
             return;

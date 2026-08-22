@@ -92,6 +92,13 @@ function handleServerPing(data) {
             });
         }
     }
+    if (data.opusUsage !== undefined) {
+        if (window.optionsData) {
+            window.optionsData.opusUsage = data.opusUsage;
+        }
+        // usageToolManager: public/scripts/comp/usageToolManager.js
+        usageToolManager.updateUsage(data.opusUsage);
+    }
 
     if (data.accountHealth) {
         // applyAccountHealthFieldsToOptions / handleAccountHealthUpdate: public/scripts/comp/accountDataBootstrap.js

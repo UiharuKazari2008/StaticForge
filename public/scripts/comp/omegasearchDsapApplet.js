@@ -51,7 +51,8 @@ const OMEGASEARCH_NSFW_LEVEL_LABELS = {
     '2': 'Skimpy',
     '3': 'Nude'
 };
-const OMEGASEARCH_UC_LEVEL_LABELS = ['None', 'Human Focus', 'Light', 'Heavy', 'Curated'];
+// UC_PRESET_LEVEL_LABELS: public/scripts/comp/utilities.js
+const OMEGASEARCH_UC_LEVEL_LABELS = UC_PRESET_LEVEL_LABELS;
 const OMEGASEARCH_DEFAULT_LIMIT = 60;
 const OMEGASEARCH_SESSION_STORAGE_KEY = 'ispy-dsap-search-sessions-v1';
 let omegasearchDsapLastActiveSearch = null;

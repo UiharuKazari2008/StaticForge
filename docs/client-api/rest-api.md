@@ -49,6 +49,32 @@ Multi-action JSON endpoint. Body: `{ "action": string, "data": object }`.
 
 **Invalid action:** 400 `{ "success": false, "error": "Invalid action" }`
 
+### `GET /agent`
+
+**Auth:** Development auth (`Authorization: Bearer <devLoginKey>` preferred,
+`?auth=` fallback). Every request requires a direct loopback TCP peer,
+`enable_dev`, and the valid development key. Existing sessions do not bypass
+these checks. Forwarded client-address headers are ignored.
+
+Creates a persisted `dev_admin` session and returns a no-store bootstrap page.
+The bootstrap unregisters existing workers and replaces the location with
+`/app?agent=1`; the fresh agent page then deletes Cache Storage. This ordering
+also handles browsers still controlled by an older Dreamscape worker without
+deleting caches during its final navigation. Remote requests receive `403`, even
+with a valid key or a spoofed loopback `X-Forwarded-For`; missing development
+configuration returns `404` or `500`; missing or invalid credentials return
+`401` or `403`.
+
+When `enable_dev` is true but `secure.config.json:devLoginKey` is absent, the
+`500` response includes `code: "DEV_LOGIN_KEY_NOT_CONFIGURED"` and the expected
+config path. It never includes the configured or supplied credential.
+
+SSH local forwarding to server-side `127.0.0.1:9220` remains compatible because
+the tunnel connection appears as a direct loopback peer on the Dreamscape host.
+
+The redirected app session disables service-worker registration and clears
+existing Cache Storage before normal application boot.
+
 ### `OPTIONS /app`
 
 Session validation + server version. **Auth required.**
@@ -58,6 +84,8 @@ Response fields: `success`, `message`, `timestamp`, `serverVersion`, `versionMes
 ### `GET /app`
 
 Serves main app shell (`public/app.html`). **No auth on GET** (app bootstraps auth client-side).
+With `?agent=1`, the response also receives explicit no-store headers and the
+client starts in cacheless browser-agent mode.
 
 ---
 
@@ -508,6 +536,22 @@ Static character name list for the character search modal.
 Served from `public/protected/t5_tokenizer.json` via static middleware once authenticated.
 
 **Client:** `public/scripts/appInitSteps.js` fetches during app init (after login cookie is present).
+
+### `GET /protected/qwen35_tokenizer.def`
+
+**Auth:** Required — same `/protected/` session/application authentication as the T5 asset.
+
+Returns NovelAI's raw-deflate Qwen BPE definition. The server downloads it from the versioned upstream tokenizer URL on first use, validates it with `fflate`, and caches it under `.cache/tokenizers/`.
+
+**Success:** `200 application/octet-stream`; private browser cache for seven days.
+
+**Errors:** `502 { error: "Qwen tokenizer asset is unavailable" }` when the upstream asset cannot be fetched or validated.
+
+**Client:** `public/protected/qwen-tokenizer.js` loads this asset only when a model with `tokenizer: "qwen"` is selected.
+
+### `GET /protected/fflate.js`
+
+**Auth:** Required. Serves the installed `fflate` browser build used to decode tokenizer definitions.
 
 ---
 

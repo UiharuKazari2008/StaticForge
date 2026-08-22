@@ -1,4 +1,60 @@
 {
+  "quick_access": {
+    "novelai_v5": {
+      "shading": [
+        "depthness"
+      ],
+      "complexity": [
+        "low complexity",
+        "medium complexity",
+        "high complexity",
+        "ultra complexity"
+      ],
+      "alpha": [
+        "transparent background",
+        "has alpha",
+        "alpha transparency"
+      ],
+      "people": [
+        "attractive male"
+      ],
+      "meta_eras": [
+        "meta:novel era",
+        "meta:golden era"
+      ],
+      "visual_novel": [
+        "visual novel art",
+        "visual novel bg",
+        "visual novel cg",
+        "visual novel chibi",
+        "visual novel sprite"
+      ],
+      "_metadata": {
+        "prettyName": "NovelAI V5",
+        "icon": "fa-bolt",
+        "arrayNames": {
+          "shading": "Shading",
+          "complexity": "Complexity",
+          "alpha": "Alpha Transparency",
+          "people": "People",
+          "meta_eras": "Meta Eras",
+          "visual_novel": "Visual Novel"
+        },
+        "arrayIcons": {
+          "shading": "fa-circle-half-stroke",
+          "complexity": "fa-layer-group",
+          "alpha": "fa-chess-board",
+          "people": "fa-user",
+          "meta_eras": "fa-clock",
+          "visual_novel": "fa-book-open"
+        }
+      }
+    },
+    "_metadata": {
+      "prettyName": "Quick Access",
+      "icon": "fa-bolt"
+    }
+  },
   "attire": {
     "sexual": {
       "lingerie": [

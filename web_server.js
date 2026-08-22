@@ -25,6 +25,7 @@ const globalResources = require('./modules/globalResources');
 const { createApplicationAuthEarlyMiddleware } = require('./modules/auth');
 globalResources.prepare();
 const authMiddleware = globalResources.getAuthMiddleware();
+const devAuthMiddleware = globalResources.getDevAuthMiddleware();
 const { processDynamicImage } = require('./modules/imageTools');
 const { runCacheDirExpiry, CLEANUP_INTERVAL_MS, FIRST_RUN_DELAY_MS } = require('./modules/cacheDirExpiry');
 const { handleGeneration, buildOptions, handleRerollGeneration, handleStagedGeneration } = require('./modules/imageGeneration');
@@ -37,6 +38,8 @@ const runtimeAssetService = require('./modules/runtimeAssetService');
 const workspaceCssService = require('./modules/workspaceCssService');
 const serverStartupStatus = require('./modules/serverStartupStatus');
 const { browserRequest } = require('./modules/browserHttp');
+const { getQwenTokenizerDefinition } = require('./modules/qwenTokenizerAssetCache');
+const { getOpusUsageFromAccountData } = require('./modules/opusUsage');
 
 let runtimeCompileComplete = false;
 
@@ -701,6 +704,22 @@ function buildServiceWorkerCacheManifest() {
         };
     });
 
+    const protectedRuntimeFiles = [
+        {
+            url: '/protected/fflate.js',
+            filePath: path.resolve(__dirname, 'node_modules', 'fflate', 'umd', 'index.js')
+        }
+    ].filter(file => fs.existsSync(file.filePath))
+        .map(file => {
+            const stats = fs.statSync(file.filePath);
+            return {
+                url: file.url,
+                hash: runtimeAssetService.hashServedFile(file.filePath),
+                size: stats.size,
+                modified: stats.mtime.getTime()
+            };
+        });
+
     const routeNames = routeFiles.map(f => f.name);
     const splashOrScreenshotPattern = /^\/static_images\/(apple-splash|android-screenshot)-.*\.(png|jpg|jpeg|webp)$/i;
     const unrelatedFilePattern = /\.(backup\..*|md|markdown|txt|log|DS_Store|swp|tmp|bak)$/i;
@@ -718,7 +737,7 @@ function buildServiceWorkerCacheManifest() {
             modified: file.modified
         }));
 
-    return [...routeEntries, ...staticFiles];
+    return [...routeEntries, ...protectedRuntimeFiles, ...staticFiles];
 }
 
 // Recompile runtime assets, refresh server hash cache, and broadcast manifest to clients
@@ -978,10 +997,14 @@ app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 app.use(cookieParser());
 
 const sessionStore = globalResources.initializeSessionStore();
+const sessionSecret = globalResources.getSecureConfig({ path: 'sessionSecret' });
+if (!sessionSecret) {
+    throw new Error('Session secret is not configured in secure.config.json');
+}
 
 // Create session middleware
 const sessionMiddleware = session({
-    secret: globalResources.getConfig().sessionSecret || 'staticforge-very-secret-key',
+    secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
     store: sessionStore, // Use the shared session store
@@ -1012,11 +1035,29 @@ const wallpapersDir = path.join(cacheDir, 'wallpapers');
 const tempDownloadDir = path.join(cacheDir, 'tempDownload');
 const imagesDir = path.resolve(__dirname, 'images');
 const previewsDir = path.resolve(__dirname, '.previews');
+const fflateBrowserPath = path.resolve(__dirname, 'node_modules/fflate/umd/index.js');
 
 // Ensure cache directories exist
 [uploadCacheDir, previewCacheDir, vibeCacheDir, wallpapersDir, tempDownloadDir, imagesDir, previewsDir].forEach(dir => {
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
+    }
+});
+
+app.get('/protected/fflate.js', (req, res) => {
+    res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+    res.sendFile(fflateBrowserPath);
+});
+
+app.get('/protected/qwen35_tokenizer.def', async (req, res) => {
+    try {
+        const tokenizerPath = await getQwenTokenizerDefinition(cacheDir);
+        res.setHeader('Content-Type', 'application/octet-stream');
+        res.setHeader('Cache-Control', 'private, max-age=604800');
+        res.sendFile(tokenizerPath);
+    } catch (error) {
+        console.error('Qwen tokenizer asset error:', error.message);
+        res.status(502).json({ error: 'Qwen tokenizer asset is unavailable' });
     }
 });
 
@@ -1048,39 +1089,20 @@ async function getBalance() {
             };
         }
 
-        // browserRequest: modules/browserHttp.js
-        const res = await browserRequest({
-            hostname: 'image.novelai.net',
-            port: 443,
-            path: '/user/subscription',
-            method: 'GET',
-            headers: {
-                accept: '*/*',
-                'content-type': 'application/json',
-                authorization: `Bearer ${novelAiApiKey}`,
-                'x-initiated-at': new Date().toISOString(),
-                'sec-gpc': '1'
-            }
-        }, null, { acceptResType: 'json', json: false });
-
+        // NovelAI.getSubscription: ../NekoAI-JS/src/client.ts
+        const client = globalResources.getNovelAiClient();
+        if (!client) throw new Error('NovelAI client is unavailable');
         let balanceData;
-        if (res.statusCode === 200) {
-            try {
-                balanceData = JSON.parse(res.body.toString());
-                apiKeyManager.recordApiSuccess('novelai');
-            } catch (e) {
-                throw new Error('Invalid JSON response from NovelAI API');
-            }
-        } else {
-            try {
-                const errorResponse = JSON.parse(res.body.toString());
-                apiKeyManager.recordApiFailure('novelai', res.statusCode, errorResponse.message || errorResponse.error);
-                throw new Error(`Balance API error: ${errorResponse.message || errorResponse.error || 'Unknown error'}`);
-            } catch (e) {
-                if (e.message && e.message.startsWith('Balance API error:')) throw e;
-                apiKeyManager.recordApiFailure('novelai', res.statusCode, `HTTP ${res.statusCode}`);
-                throw new Error(`Balance API error: HTTP ${res.statusCode}`);
-            }
+        try {
+            balanceData = await client.getSubscription();
+            apiKeyManager.recordApiSuccess('novelai');
+        } catch (error) {
+            apiKeyManager.recordApiFailure(
+                'novelai',
+                error.statusCode || 0,
+                error.message || 'Subscription request failed'
+            );
+            throw error;
         }
         
         // Extract training steps information
@@ -1788,6 +1810,28 @@ for (const bootPath of ['/sw.js', '/manifest.json']) {
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
+app.get('/agent', devAuthMiddleware, (req, res) => {
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    req.session.save((error) => {
+        if (error) {
+            console.error('Agent session save failed:', error.message);
+            return res.status(500).json({ error: 'Failed to create agent session' });
+        }
+        return res.type('html').send(`<!doctype html>
+<meta charset="utf-8">
+<meta name="referrer" content="no-referrer">
+<title>Preparing Dreamscape</title>
+<script>
+(async () => {
+    if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map((registration) => registration.unregister()));
+    }
+    location.replace('/app?agent=1');
+})().catch(() => location.replace('/app?agent=1'));
+</script>`);
+    });
+});
 app.get('/.login.jpg', (req, res) => {
     res.sendFile(path.join(cacheDir, 'login_array.jpg'));
 });
@@ -1806,7 +1850,8 @@ app.post('/', serverReadinessMiddleware, express.json(), (req, res) => {
             const realIP = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || req.ip || req.connection.remoteAddress;
             
             const config = globalResources.getConfig();
-            if (pin === config.loginPin) {
+            const secureConfig = globalResources.getSecureConfig();
+            if (pin === secureConfig.loginPin) {
                 // Clear any failed login attempts on successful login
                 globalResources.unblockIP(realIP);
                 
@@ -1819,7 +1864,7 @@ app.post('/', serverReadinessMiddleware, express.json(), (req, res) => {
                     logViewerPathUuid: globalResources.getLogViewerPathUuid(),
                     vfsPathUuid: globalResources.getVfsPathUuid()
                 });
-            } else if (pin === config.readOnlyPin) {
+            } else if (pin === secureConfig.readOnlyPin) {
                 if (config.userPinLoginEnabled === false) {
                     return res.status(403).json({
                         success: false,
@@ -1977,6 +2022,11 @@ app.options('/app', authMiddleware, (req, res) => {
     res.json(response);
 });
 app.get('/app', (req, res) => {
+    if (req.query.agent === '1') {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private, max-age=0');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+    }
     res.sendFile(path.join(__dirname, 'public', 'app.html'));
 });
 
@@ -3239,6 +3289,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
         wsServer.startPingInterval(() => {
             return {
                 balance: globalResources.getAccountBalance(),
+                opusUsage: getOpusUsageFromAccountData(globalResources.getAccountData()),
                 accountHealth: globalResources.getAccountClientFields(),
                 queue_status: globalResources.getQueue().getStatus(),
                 image_count: globalResources.getImageCounter().getCount(),

@@ -525,6 +525,9 @@ class WebSocketClient {
         'workspace_update_settings',
         'workspace_update_window_positions',
         'request_image_metadata',
+        'runpod_pods_status',
+        'runpod_pod_start',
+        'runpod_pod_stop',
     ]);
 
     static GENERATION_QUIPS_MESSAGE_TYPES = new Set([
@@ -642,6 +645,8 @@ class WebSocketClient {
         this.preStartupAuthBusy = false;
         this.preStartupAuthHandlersSetup = false;
         this.preStartupMarqueeManualPause = false;
+        this.socketAuthenticated = null;
+        this._connectionWelcomeWaiters = [];
         this.serverStartupStatusOk = false;
         this.serverStartupReady = false;
         this.lastServerStartupStatus = null;
@@ -809,6 +814,9 @@ class WebSocketClient {
         if (!type) return false;
         if (type === 'ping' || type === 'pong') return true;
         if (type === 'get_generation_quips_status' || type === 'get_generation_quips_status_response') {
+            return true;
+        }
+        if (type === 'runpod_pods_status' || type === 'runpod_pods_status_response' || type === 'runpod_pods_status_update') {
             return true;
         }
         return false;
@@ -1608,8 +1616,57 @@ class WebSocketClient {
         }
     }
 
+    _resetSocketAuthState() {
+        const waiters = this._connectionWelcomeWaiters;
+        this._connectionWelcomeWaiters = [];
+        this.socketAuthenticated = null;
+        waiters.forEach((entry) => {
+            if (entry.timeoutId) clearTimeout(entry.timeoutId);
+            entry.resolve(false);
+        });
+    }
+
+    _resolveConnectionWelcome(authenticated) {
+        this.socketAuthenticated = authenticated === true;
+        const waiters = this._connectionWelcomeWaiters;
+        this._connectionWelcomeWaiters = [];
+        waiters.forEach((entry) => {
+            if (entry.timeoutId) clearTimeout(entry.timeoutId);
+            entry.resolve(this.socketAuthenticated);
+        });
+    }
+
+    _waitForConnectionWelcome(timeoutMs = 8000) {
+        if (this.socketAuthenticated !== null) {
+            return Promise.resolve(this.socketAuthenticated === true);
+        }
+        return new Promise((resolve) => {
+            const entry = {
+                timeoutId: null,
+                resolve: (authenticated) => {
+                    resolve(authenticated === true);
+                }
+            };
+            entry.timeoutId = setTimeout(() => {
+                const idx = this._connectionWelcomeWaiters.indexOf(entry);
+                if (idx !== -1) this._connectionWelcomeWaiters.splice(idx, 1);
+                if (this.socketAuthenticated === null) {
+                    this.socketAuthenticated = false;
+                }
+                resolve(this.socketAuthenticated === true);
+            }, timeoutMs);
+            this._connectionWelcomeWaiters.push(entry);
+        });
+    }
+
+    _canCompletePreStartupHandoff() {
+        return this._shouldUsePreStartupDialog()
+            && this.connectionPhase !== 'auth'
+            && this.socketAuthenticated === true;
+    }
+
     async _completePreStartupHandoff() {
-        if (!this._shouldUsePreStartupDialog()) return;
+        if (!this._canCompletePreStartupHandoff()) return;
 
         this.connectionUi.message = 'Preparing Melaton...';
         this._setConnectionPhase('connected', {
@@ -1617,8 +1674,10 @@ class WebSocketClient {
             message: 'Preparing Melaton...'
         });
         await new Promise((resolve) => setTimeout(resolve, 1000));
+        if (!this._canCompletePreStartupHandoff()) return;
         await this._hidePreStartupDialog();
         await new Promise((resolve) => setTimeout(resolve, 750));
+        if (!this._canCompletePreStartupHandoff()) return;
         this.preStartupHandoffCompleted = true;
     }
 
@@ -3022,6 +3081,7 @@ class WebSocketClient {
 
         this.connectionLock = true;
         this.isConnecting = true;
+        this._resetSocketAuthState();
         this._resetConnectionStatsSession();
 
         if (!this._initializingBeatComplete) {
@@ -3112,6 +3172,22 @@ class WebSocketClient {
                 this.reconnectDelay = 1000;
                 this.circuitBreaker = false; // Reset circuit breaker on successful connection
 
+                const sessionAuthenticated = await this._waitForConnectionWelcome();
+                if (this.isManualClose || this._isStartupHaltedForInstall()) {
+                    this.disconnect(true);
+                    return;
+                }
+                if (!sessionAuthenticated) {
+                    if (this.connectionPhase !== 'auth') {
+                        this.handleAuthError({
+                            type: 'auth_error',
+                            message: 'Authentication required',
+                            code: 'AUTH_REQUIRED'
+                        });
+                    }
+                    return;
+                }
+
                 await this._runConnectionBeat('establishing', {
                     attempt: 0,
                     maxAttempts: this.maxReconnectAttempts
@@ -3161,6 +3237,9 @@ class WebSocketClient {
                 if (this.isManualClose || this._isStartupHaltedForInstall()) {
                     return;
                 }
+                if (this.connectionPhase === 'auth' || this.socketAuthenticated !== true) {
+                    return;
+                }
 
                 await this._completePreStartupHandoff();
                 await this._completeConnectionDialHandoff();
@@ -3193,6 +3272,7 @@ class WebSocketClient {
                 this.isConnecting = false;
                 this.connectionLock = false;
                 this.connectionStats.connectedAt = null;
+                this._resetSocketAuthState();
 
                 // Stop periodic pings when connection is closed
                 this.stopPeriodicPings();
@@ -3714,6 +3794,7 @@ class WebSocketClient {
         if (message.type === 'connection') {
             // syncAuthLocalStorageFromServer: public/scripts/comp/connectionManager.js
             syncAuthLocalStorageFromServer(message);
+            this._resolveConnectionWelcome(message.authenticated === true);
             if (message.authenticated === false) {
                 this.handleAuthError({
                     type: 'auth_error',
@@ -4382,6 +4463,7 @@ class WebSocketClient {
             serverGenerationComplete: false,
             awaitingUpscaleFinal: false,
             finalPrefetch: null,
+            stagePreviewBlobUrl: null,
             firstStepDisplayed: false,
             crossfadeOverlay: null
         };
@@ -4400,6 +4482,7 @@ class WebSocketClient {
             session.crossfadeOverlay = null;
         }
         this.releaseStreamingStepPrefetch(session);
+        this._revokeStagePreviewBlob(session);
         if (Array.isArray(session.steps)) {
             for (const frame of session.steps) {
                 if (frame) frame.imageData = null;
@@ -4699,6 +4782,107 @@ class WebSocketClient {
             } catch (_e) { /* ignore */ }
         }
         session.finalPrefetch = null;
+    }
+
+    _revokeStagePreviewBlob(session) {
+        if (!session?.stagePreviewBlobUrl || !session.stagePreviewBlobUrl.startsWith('blob:')) {
+            if (session) session.stagePreviewBlobUrl = null;
+            return;
+        }
+        try {
+            URL.revokeObjectURL(session.stagePreviewBlobUrl);
+        } catch (_e) { /* ignore */ }
+        session.stagePreviewBlobUrl = null;
+    }
+
+    _applyStreamingPreviewSrc(modalType, src) {
+        if (modalType === 'manual') {
+            // showManualPreview: public/scripts/comp/manualModalManager.js
+            if (manualPreviewImage) {
+                this.releaseDataImageSrc(manualPreviewImage);
+                manualPreviewImage.src = src;
+                manualPreviewImage.classList.remove('hidden');
+            }
+            const previewPlaceholder = document.getElementById('manualPreviewPlaceholder');
+            if (previewPlaceholder) {
+                previewPlaceholder.classList.add('hidden');
+            }
+            if (showManualPreview) {
+                showManualPreview(true);
+            }
+            if (manualForm) {
+                manualForm.classList.add('streaming');
+            }
+            return;
+        }
+        // spellbookModalManager: public/scripts/comp/spellbookModal.js
+        const spellbookPreviewImage = window.spellbookModalManager?.previewImage;
+        if (spellbookPreviewImage) {
+            this.releaseDataImageSrc(spellbookPreviewImage);
+            spellbookPreviewImage.src = src;
+            spellbookPreviewImage.classList.remove('hidden');
+        }
+    }
+
+    resetStreamingSessionForNextStage(modalType) {
+        const session = this.getStreamingStepSession(modalType);
+        if (!session) return;
+        session.serverGenerationComplete = false;
+        session.awaitingUpscaleFinal = false;
+        session.firstStepDisplayed = true;
+        if (Array.isArray(session.steps)) {
+            for (const frame of session.steps) {
+                if (frame) frame.imageData = null;
+            }
+            session.steps.length = 0;
+        }
+        session.playIndex = 0;
+        session.totalSteps = 0;
+        this.releaseStreamingStepPrefetch(session);
+    }
+
+    async displayStageCompletePreview(modalType, data = {}) {
+        if (!modalType || (!data.filename && !data.imageData)) return;
+
+        let session = this.getStreamingStepSession(modalType);
+        if (!session) {
+            session = this.beginStreamingStepSession(modalType, data.requestId || `stage-${Date.now()}`);
+        }
+        // Clear the finished stage's frames before awaiting fetch so the next
+        // stage's stream is not wiped when this preview lands.
+        this.resetStreamingSessionForNextStage(modalType);
+
+        if (data.filename) {
+            const prefetch = this.ensureGenerationFinalPrefetch(modalType, data.filename, data.contentLength);
+            try {
+                if (prefetch?.promise) {
+                    await prefetch.promise;
+                }
+            } catch (_e) { /* use gallery URL fallback */ }
+
+            const readySession = this.getStreamingStepSession(modalType);
+            if (readySession?.steps?.length > 0) {
+                this.releaseStreamingStepPrefetch(readySession);
+                return;
+            }
+            const blobUrl = readySession?.finalPrefetch?.blobUrl;
+            if (blobUrl) {
+                this._revokeStagePreviewBlob(readySession);
+                readySession.stagePreviewBlobUrl = blobUrl;
+                if (readySession.finalPrefetch) {
+                    readySession.finalPrefetch.blobUrl = null;
+                    readySession.finalPrefetch = null;
+                }
+                this._applyStreamingPreviewSrc(modalType, blobUrl);
+            } else {
+                // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+                this._applyStreamingPreviewSrc(modalType, localGalleryImageUrl(data.filename));
+            }
+            return;
+        }
+
+        const mime = data.imageFormat === 'png' ? 'image/png' : 'image/jpeg';
+        this._applyStreamingPreviewSrc(modalType, `data:${mime};base64,${data.imageData}`);
     }
 
     endStreamingStepSession(modalType = null, releasePreview = false) {
@@ -5094,6 +5278,11 @@ class WebSocketClient {
                 }
             }
 
+            // applyStageResultsReviewProgress: public/scripts/comp/stageResultsReview.js
+            if (!galleryRerollActive && !this.isSpellbookGenerationActive()) {
+                applyStageResultsReviewProgress(data);
+            }
+
             // Handle reasoning display in 3rd line (only for actual reasoning)
             if (data.reasoning && typeof updateGlassToastReasoning === 'function') {
                 // Store toolState globally for toast manager to access
@@ -5144,6 +5333,17 @@ class WebSocketClient {
                             this.queueStreamingStep('manual', { ...data, requestId });
                         }
                     }
+                }
+            }
+
+            if (data.phase === 'stage_complete') {
+                const modalType = this.isSpellbookGenerationActive() ? 'spellbook' : 'manual';
+                const manualModalEl = document.getElementById('manualModal');
+                if (modalType === 'spellbook'
+                    || (manualModalEl && !manualModalEl.classList.contains('hidden'))) {
+                    this.displayStageCompletePreview(modalType, { ...data, requestId }).catch((err) => {
+                        console.warn('Stage preview update failed:', err);
+                    });
                 }
             }
 
@@ -5245,6 +5445,38 @@ class WebSocketClient {
             return result;
         } catch (error) {
             console.error('Expand image error:', error);
+            throw error;
+        }
+    }
+
+    async maxEnhanceImage(filename, workspace = null) {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        // assertClientImageGenerationAllowed: public/scripts/comp/novelAiAccountStatus.js
+        assertClientImageGenerationAllowed();
+
+        try {
+            return await this.sendMessage('max_enhance_image', { filename, workspace });
+        } catch (error) {
+            console.error('Max Enhance image error:', error);
+            throw error;
+        }
+    }
+
+    async enhanceImage(filename, scale, workspace = null) {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        // assertClientImageGenerationAllowed: public/scripts/comp/novelAiAccountStatus.js
+        assertClientImageGenerationAllowed();
+
+        try {
+            return await this.sendMessage('enhance_image', { filename, scale, workspace });
+        } catch (error) {
+            console.error('Enhance image error:', error);
             throw error;
         }
     }
@@ -5525,7 +5757,8 @@ class WebSocketClient {
                 autofillSessionId: options.autofillSessionId || null,
                 spellCheckText: options.spellCheckText || query,
                 isContinuation: options.isContinuation === true,
-                autofillSettings: options.autofillSettings || null
+                autofillSettings: options.autofillSettings || null,
+                modelMode: options.modelMode || 'anime'
             });
             return { success: true };
         } catch (error) {

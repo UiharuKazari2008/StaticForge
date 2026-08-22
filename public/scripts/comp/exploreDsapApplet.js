@@ -282,6 +282,8 @@ function exploreFormatModelLabel(parsed) {
     // determineModelFromMetadata: public/scripts/comp/utilities.js
     const detected = determineModelFromMetadata({ source: src, Source: src });
     const map = {
+        V5: 'NAI Diffusion V5 Full',
+        V5_CUR: 'NAI Diffusion V5 Curated',
         V4_5: 'NAI Diffusion V4.5 Full',
         V4_5_CUR: 'NAI Diffusion V4.5 Curated',
         V4: 'NAI Diffusion V4 Full',
@@ -455,7 +457,7 @@ function explorePresetModelKey(model) {
 function exploreResolveEditorModel(parsed) {
     if (parsed?.model) {
         const existing = explorePresetModelKey(parsed.model);
-        if (['v4_5', 'v4_5_cur', 'v4_5_mod', 'v4', 'v4_cur', 'v3', 'furry'].includes(existing)) {
+        if (['v5', 'v5_cur', 'v4_5', 'v4_5_cur', 'v4_5_mod', 'v4', 'v4_cur', 'v3', 'furry'].includes(existing)) {
             return existing;
         }
     }
@@ -463,6 +465,8 @@ function exploreResolveEditorModel(parsed) {
     // determineModelFromMetadata: public/scripts/comp/referenceManager.js
     const detected = determineModelFromMetadata({ source });
     const map = {
+        V5: 'v5',
+        V5_CUR: 'v5_cur',
         V4_5: 'v4_5',
         V4_5_CUR: 'v4_5_cur',
         V4: 'v4',
@@ -475,10 +479,7 @@ function exploreResolveEditorModel(parsed) {
 }
 
 function exploreQualityPresetsMap() {
-    // optionsData: populated with prompt config (quality_presets) for the session
-    return (typeof optionsData !== 'undefined' && optionsData?.quality_presets)
-        || window.optionsData?.quality_presets
-        || null;
+    return window.optionsData?.quality_presets || null;
 }
 
 function exploreResolveQualityPresetText(model) {
@@ -499,7 +500,7 @@ function exploreResolveQualityPresetText(model) {
 function exploreCollectQualityCandidates(model) {
     const presets = exploreQualityPresetsMap() || {};
     const ordered = [];
-    const keys = [explorePresetModelKey(model), 'v4_5', 'v4_5_mod', 'v4_5_cur', 'v4', 'v4_cur', 'v3', 'furry'];
+    const keys = [explorePresetModelKey(model), 'v5', 'v5_cur', 'v4_5', 'v4_5_mod', 'v4_5_cur', 'v4', 'v4_cur', 'v3', 'furry'];
     for (let i = 0; i < keys.length; i++) {
         const raw = presets[keys[i]];
         const text = typeof raw === 'string' ? raw.trim() : '';
@@ -511,10 +512,9 @@ function exploreCollectQualityCandidates(model) {
 
 function exploreResolveUcPresets(model) {
     const key = explorePresetModelKey(model);
-    const presets = (typeof optionsData !== 'undefined' && optionsData?.uc_presets)
-        || window.optionsData?.uc_presets
-        || null;
-    const raw = presets?.[key];
+    const presets = window.optionsData?.uc_presets || null;
+    // resolvePresetTableForModel: public/scripts/comp/utilities.js
+    const raw = resolvePresetTableForModel(presets, key);
     return Array.isArray(raw) ? raw : [];
 }
 
@@ -600,16 +600,20 @@ function exploreStripAndFlagPresets(metadata) {
     return metadata;
 }
 
-/** Enable furry dataset when the Explore model is furry — no sub-toggles. */
+/** Enable the canonical furry mode dataset for legacy Explore furry posts. */
 function exploreApplyFurryDatasetIfNeeded(metadata) {
-    if (!metadata || metadata.model !== 'furry') return metadata;
+    if (!metadata) return metadata;
+    // normalizeFurryDatasetMetadataForEditor: public/scripts/comp/referenceManager.js
+    normalizeFurryDatasetMetadataForEditor(metadata);
+    if (metadata.model !== 'furry') return metadata;
     metadata.dataset_config = {
         ...(metadata.dataset_config && typeof metadata.dataset_config === 'object' ? metadata.dataset_config : {}),
-        include: ['furry dataset'],
+        include: ['fur dataset'],
         nsfw: metadata.dataset_config?.nsfw != null ? metadata.dataset_config.nsfw : 0
     };
-    // Do not enable furry sub_toggles (human, etc.)
+    // Do not enable furry sub-toggles (human, etc.)
     if (metadata.dataset_config.settings) {
+        delete metadata.dataset_config.settings['fur dataset'];
         delete metadata.dataset_config.settings['furry dataset'];
     }
     return metadata;
@@ -981,7 +985,7 @@ async function exploreOpenInEditor(post) {
     if (!Array.isArray(metadata.dataset_config.include)) {
         delete metadata.dataset_config.include;
     }
-    // Furry model → enable "furry dataset" only (no sub-toggles).
+    // Furry model / fur-prefixed V5 prompt → canonical dataset, no sub-toggles.
     exploreApplyFurryDatasetIfNeeded(metadata);
 
     // Classic N:: → managed ids + forge bags (must happen before loadIntoManualForm).

@@ -93,6 +93,8 @@ let nsfwBias = 1.0; // Default bias
 let selectedUcPreset = 3; // Default to "Heavy"
 let appendQuality = true;
 let qualityPresetBias = 1.0; // Default bias for quality preset
+let appendTransparency = false;
+let transparencyBias = 1.0;
 let presetAutocompleteTimeout = null;
 let currentPresetAutocompleteTarget = null;
 let selectedPresetAutocompleteIndex = -1;
@@ -689,6 +691,7 @@ function closeManualWorkspaceDropdown() {
  * TODO: Move function implementation from app.js
  */
 function selectManualModel(value, group, preventPropagation = false) {
+    const previousModel = (manualSelectedModel || manualModelHidden?.value || '').toLowerCase();
     manualSelectedModel = value.toLowerCase();
 
     // If group is not provided, find it automatically
@@ -719,10 +722,35 @@ function selectManualModel(value, group, preventPropagation = false) {
     // Sync with hidden input for compatibility
     if (manualModelHidden) manualModelHidden.value = value.toLowerCase();
 
+    const switchedToV5 = isV5Model(manualSelectedModel) && !isV5Model(previousModel);
+    if (switchedToV5) {
+        keepPromptNewlines = true;
+        if (promptTextareaToolbar) promptTextareaToolbar.syncKeepNewlinesButtons();
+        updatePromptStatusIcons();
+    }
+
     if (preventPropagation) return;
+
+    // Migrate params when switching into/out of V5 (clear unsupported vibe / precise ref)
+    migrateManualParamsForModelChange(previousModel, manualSelectedModel);
+
     // Update UI visibility based on model selection
     updateV3ModelVisibility();
-
+    renderDatasetDropdown();
+    renderUcPresetsDropdown();
+    if (selectedUcPreset > 0) {
+        selectUcPreset(selectedUcPreset);
+    }
+    // characterPositionToolManager: public/scripts/comp/characterPositionToolManager.js
+    // characterPromptManager: public/scripts/comp/characterPromptManager.js
+    updateAutoPositionToggle();
+    // ensurePromptTokenizerForModel/getPromptTokenizer: public/scripts/comp/utilities.js
+    ensurePromptTokenizerForModel(manualSelectedModel).then(() => {
+        promptTextareaToolbar.updateAllTokenCounts();
+    }).catch((error) => {
+        console.error('Failed to load tokenizer for selected model:', error);
+        showGlassToast('error', 'Tokenizer Unavailable', 'Prompt token counts could not be loaded for this model.');
+    });
     // Trigger any listeners (e.g., updateGenerateButton or manual form update)
     updateManualPriceDisplay();
 
@@ -734,6 +762,33 @@ function selectManualModel(value, group, preventPropagation = false) {
 
     // Update UC textarea placeholder (presets are model-specific)
     updateUcTextareaPlaceholder();
+}
+
+/**
+ * Clear vibe / precise reference when switching to a model that does not support them.
+ * public/scripts/comp/utilities.js — getForgeModelFeatures
+ */
+function migrateManualParamsForModelChange(previousModel, nextModel) {
+    if (!nextModel || previousModel === nextModel) return;
+    const caps = getForgeModelFeatures(nextModel);
+    if (!caps) return;
+
+    if (caps.vibeTransfer === false) {
+        const vibeContainer = document.getElementById('vibeReferencesContainer');
+        if (vibeContainer) vibeContainer.innerHTML = '';
+    }
+    if (caps.preciseReference === false) {
+        // public/scripts/comp/manualModalManager.js — directorReferenceData
+        if (typeof clearDirectorReference === 'function') {
+            clearDirectorReference();
+        } else if (typeof directorReferenceData !== 'undefined') {
+            directorReferenceData = null;
+            const img = document.getElementById('directorReferenceImage');
+            if (img) img.src = '';
+            const section = document.getElementById('directorReferenceSection');
+            if (section) section.classList.add('hidden');
+        }
+    }
 }
 
 /**
@@ -914,11 +969,18 @@ async function handleTransformationTypeChange(requestType) {
 function renderDatasetDropdown() {
     datasetDropdownMenu.innerHTML = '';
     
-    const datasets = window.optionsData?.datasets || [
+    const modelKey = String(manualSelectedModel || manualModelHidden?.value || '').toLowerCase();
+    const modelCaps = getForgeModelFeatures(modelKey);
+    const configuredDatasets = window.optionsData?.datasets || [
         { value: 'anime dataset', display: 'Anime', icon: 'nai-sakura', type: 'dataset', min: -3, max: 5, default: 1.0, negative: false, sub_toggles: [] },
-        { value: 'furry dataset', display: 'Furry', icon: 'nai-paw', type: 'dataset', min: -3, max: 5, default: 1.0, negative: false, sub_toggles: [] },
+        { value: 'fur dataset', display: 'Furry', icon: 'nai-paw', type: 'dataset', min: -3, max: 5, default: 1.0, negative: false, sub_toggles: [] },
         { value: 'background dataset', display: 'Backgrounds', icon: 'fas fa-tree', type: 'dataset', min: -3, max: 5, default: 0.75, negative: false, sub_toggles: [] }
     ];
+    const datasets = configuredDatasets.filter((dataset) => {
+        const models = Array.isArray(dataset.models) ? dataset.models.map((model) => String(model).toLowerCase()) : null;
+        const excluded = Array.isArray(dataset.excludeModels) ? dataset.excludeModels.map((model) => String(model).toLowerCase()) : null;
+        return (!models || models.includes(modelKey)) && (!excluded || !excluded.includes(modelKey));
+    });
 
     // Add quality preset as a special preset type item
     const qualityPreset = {
@@ -928,9 +990,16 @@ function renderDatasetDropdown() {
         type: 'preset',
         isQualityPreset: true
     };
+    const transparencyPreset = modelCaps?.transparency === true ? {
+        value: '__transparency__',
+        display: 'Transparency',
+        icon: 'fas fa-chess-board',
+        type: 'preset',
+        isTransparencyPreset: true
+    } : null;
 
     // Combine quality with datasets
-    const allItems = [qualityPreset, ...datasets];
+    const allItems = [...datasets, qualityPreset, ...(transparencyPreset ? [transparencyPreset] : [])];
 
     // Group items by type
     const itemsByType = allItems.reduce((acc, item) => {
@@ -957,16 +1026,19 @@ function renderDatasetDropdown() {
         datasetDropdownMenu.appendChild(sectionHeader);
 
         itemsByType[type].forEach(dataset => {
-            // Special handling for quality preset
-            if (dataset.isQualityPreset) {
+            // Preset rows share the same compact bias controls.
+            if (dataset.isQualityPreset || dataset.isTransparencyPreset) {
                 const qualityToggleOption = document.createElement('div');
                 qualityToggleOption.className = 'custom-dropdown-option';
-                const isSelected = appendQuality;
+                const isTransparency = dataset.isTransparencyPreset === true;
+                const isSelected = isTransparency ? appendTransparency : appendQuality;
                 if (isSelected) {
                     qualityToggleOption.classList.add('selected');
                 }
 
-                const qualityBiasDisplay = qualityPresetBias !== 1.0 ? qualityPresetBias.toFixed(1) : '1.0';
+                const presetBias = isTransparency ? transparencyBias : qualityPresetBias;
+                const qualityBiasDisplay = presetBias !== 1.0 ? presetBias.toFixed(1) : '1.0';
+                const actionPrefix = isTransparency ? 'transparency' : 'quality';
 
                 qualityToggleOption.innerHTML = `
                     <div class="dataset-option-content">
@@ -977,11 +1049,11 @@ function renderDatasetDropdown() {
                         <div class="dataset-option-right">
                             ${isSelected ? `
                                 <div class="dataset-bias-controls">
-                                    <button type="button" class="dataset-bias-decrease" title="Decrease quality bias" data-action="quality-bias-decrease">
+                                    <button type="button" class="dataset-bias-decrease" title="Decrease ${dataset.display.toLowerCase()} bias" data-action="${actionPrefix}-bias-decrease">
                                         <i class="fas fa-minus"></i>
                                     </button>
-                                    <span class="dataset-bias-value" data-action="quality-bias">${qualityBiasDisplay}</span>
-                                    <button type="button" class="dataset-bias-increase" title="Increase quality bias" data-action="quality-bias-increase">
+                                    <span class="dataset-bias-value" data-action="${actionPrefix}-bias">${qualityBiasDisplay}</span>
+                                    <button type="button" class="dataset-bias-increase" title="Increase ${dataset.display.toLowerCase()} bias" data-action="${actionPrefix}-bias-increase">
                                         <i class="fas fa-plus"></i>
                                     </button>
                                 </div>
@@ -995,27 +1067,31 @@ function renderDatasetDropdown() {
                 optionLeft.addEventListener('click', (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    appendQuality = !appendQuality;
+                    if (isTransparency) {
+                        appendTransparency = !appendTransparency;
+                    } else {
+                        appendQuality = !appendQuality;
+                    }
                     updatePromptStatusIcons();
                     renderDatasetDropdown();
                 });
 
                 // Add click handlers for quality bias controls (only if selected)
                 if (isSelected) {
-                    const qualityBiasDecrease = qualityToggleOption.querySelector('[data-action="quality-bias-decrease"]');
-                    const qualityBiasIncrease = qualityToggleOption.querySelector('[data-action="quality-bias-increase"]');
-                    const qualityBiasValue = qualityToggleOption.querySelector('[data-action="quality-bias"]');
+                    const qualityBiasDecrease = qualityToggleOption.querySelector(`[data-action="${actionPrefix}-bias-decrease"]`);
+                    const qualityBiasIncrease = qualityToggleOption.querySelector(`[data-action="${actionPrefix}-bias-increase"]`);
+                    const qualityBiasValue = qualityToggleOption.querySelector(`[data-action="${actionPrefix}-bias"]`);
 
                     qualityBiasDecrease.addEventListener('click', (e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        adjustQualityPresetBias(-0.1);
+                        adjustDatasetPresetBias(isTransparency, -0.1);
                     });
 
                     qualityBiasIncrease.addEventListener('click', (e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        adjustQualityPresetBias(0.1);
+                        adjustDatasetPresetBias(isTransparency, 0.1);
                     });
 
                     // Add wheel event for quality bias value span
@@ -1023,7 +1099,7 @@ function renderDatasetDropdown() {
                         e.preventDefault();
                         e.stopPropagation();
                         const delta = e.deltaY > 0 ? -0.1 : 0.1;
-                        adjustQualityPresetBias(delta);
+                        adjustDatasetPresetBias(isTransparency, delta);
 
                         // Add visual feedback
                         qualityBiasValue.classList.add('scrolling');
@@ -1181,6 +1257,7 @@ function toggleDataset(value, datasetConfig) {
     updateDatasetDisplay();
     renderDatasetDropdown();
     updateSubTogglesButtonState();
+    renderUcPresetsDropdown();
     
     // Update prompt status icons to reflect dataset changes
     updatePromptStatusIcons();
@@ -1657,23 +1734,42 @@ function adjustQualityPresetBias(delta) {
     }
 }
 
+function adjustDatasetPresetBias(isTransparency, delta) {
+    if (!isTransparency) {
+        adjustQualityPresetBias(delta);
+        return;
+    }
+    transparencyBias = Math.max(0.0, Math.min(9.0, transparencyBias + delta));
+    transparencyBias = Math.round(transparencyBias * 10) / 10;
+    const valueEl = datasetDropdownMenu.querySelector('[data-action="transparency-bias"]');
+    if (valueEl) valueEl.textContent = transparencyBias !== 1.0 ? transparencyBias.toFixed(1) : '1.0';
+}
+
 /**
  * Render UC presets dropdown - MOVED FROM app.js
  * @function
  * @name renderUcPresetsDropdown
  * @description Renders the UC (Undesired Content) presets dropdown menu with available levels
  * @example
- * renderUcPresetsDropdown(); // Shows UC preset options (None, Human Focus, Light, Heavy, Curated)
+ * renderUcPresetsDropdown(); // Shows UC preset options (None, Human Focus, Light, Heavy, Curated, Furry Focus)
  */
 function renderUcPresetsDropdown() {
     ucPresetsDropdownMenu.innerHTML = '';
+    const furryFocus = selectedDatasets.some((dataset) => dataset === 'fur dataset' || dataset === 'furry dataset');
+    // resolvePresetTableForModel / UC_PRESET_LEVEL_LABELS: public/scripts/comp/utilities.js
+    const ucTable = resolvePresetTableForModel(window.optionsData?.uc_presets, manualSelectedModel);
     [
-        { value: 0, display: 'None' },
-        { value: 1, display: 'Human Focus' },
-        { value: 2, display: 'Light' },
-        { value: 3, display: 'Heavy' },
-        { value: 4, display: 'Curated' }
-    ].forEach(preset => {
+        { value: 0, display: UC_PRESET_LEVEL_LABELS[0] },
+        { value: 1, display: UC_PRESET_LEVEL_LABELS[1], furryFocus: false },
+        { value: 2, display: UC_PRESET_LEVEL_LABELS[2] },
+        { value: 3, display: UC_PRESET_LEVEL_LABELS[3] },
+        { value: 4, display: UC_PRESET_LEVEL_LABELS[4] },
+        { value: 5, display: UC_PRESET_LEVEL_LABELS[5] }
+    ].filter((preset) => {
+        if (preset.furryFocus === false && furryFocus) return false;
+        if (preset.value === 5 && (!Array.isArray(ucTable) || !ucTable[4])) return false;
+        return true;
+    }).forEach(preset => {
         const option = document.createElement('div');
         option.className = 'custom-dropdown-option';
         option.dataset.value = preset.value;
@@ -1700,7 +1796,7 @@ function renderUcPresetsDropdown() {
 
 /**
  * Select UC preset - MOVED FROM app.js
- * @param {number} value - UC preset level (0=None, 1=Human Focus, 2=Light, 3=Heavy, 4=Curated)
+ * @param {number} value - UC preset level (0=None, 1=Human Focus, 2=Light, 3=Heavy, 4=Curated, 5=Furry Focus)
  * @function
  * @name selectUcPreset
  * @description Updates the selected UC preset and updates the UI state and prompt status icons
@@ -1708,6 +1804,11 @@ function renderUcPresetsDropdown() {
  * selectUcPreset(4); // Selects 'Curated' UC preset
  */
 function selectUcPreset(value) {
+    // resolvePresetTableForModel: public/scripts/comp/utilities.js
+    const ucTable = resolvePresetTableForModel(window.optionsData?.uc_presets, manualSelectedModel);
+    if (value > 0 && Array.isArray(ucTable) && !ucTable[value - 1]) {
+        value = 0;
+    }
     selectedUcPreset = value;
 
     // Update UC boxes visual state
@@ -1860,9 +1961,8 @@ function addUcPresetContents() {
         return;
     }
 
-    // Map model value to key used in uc_presets
-    const modelKey = currentModel.toLowerCase();
-    const ucPresets = window.optionsData.uc_presets[modelKey];
+    // resolvePresetTableForModel: public/scripts/comp/utilities.js
+    const ucPresets = resolvePresetTableForModel(window.optionsData.uc_presets, currentModel);
 
     if (!ucPresets || !Array.isArray(ucPresets)) {
         showGlassToast('error', null, `No UC presets found for model ${currentModel}`, false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
@@ -1917,8 +2017,8 @@ function addUcPresetContents() {
     }
 
     // Show success message
-    const presetNames = ['None', 'Human Focus', 'Light', 'Heavy', 'Curated'];
-    showGlassToast('success', null, `Added ${presetNames[currentPresetIndex]} preset to UC`, false, 2000, '<i class="fas fa-check"></i>');
+    // UC_PRESET_LEVEL_LABELS: public/scripts/comp/utilities.js
+    showGlassToast('success', null, `Added ${UC_PRESET_LEVEL_LABELS[currentPresetIndex]} preset to UC`, false, 2000, '<i class="fas fa-check"></i>');
 }
 
 /**
@@ -1952,9 +2052,8 @@ function updateUcTextareaPlaceholder() {
         return;
     }
 
-    // Map model value to key used in uc_presets
-    const modelKey = currentModel.toLowerCase();
-    const ucPresets = window.optionsData.uc_presets[modelKey];
+    // resolvePresetTableForModel: public/scripts/comp/utilities.js
+    const ucPresets = resolvePresetTableForModel(window.optionsData.uc_presets, currentModel);
 
     if (!ucPresets || !Array.isArray(ucPresets)) {
         ucInput.placeholder = 'Enter undesired content...';
@@ -2225,9 +2324,8 @@ function addQualityPresetContents() {
         return;
     }
 
-    // Map model value to key used in quality_presets
-    const modelKey = currentModel.toLowerCase();
-    const qualityPresets = window.optionsData.quality_presets[modelKey];
+    // resolvePresetTableForModel: public/scripts/comp/utilities.js
+    const qualityPresets = resolvePresetTableForModel(window.optionsData.quality_presets, currentModel);
 
     if (!qualityPresets || (!Array.isArray(qualityPresets) && typeof qualityPresets !== 'string')) {
         showGlassToast('error', null, `No quality presets found for model ${currentModel}`, false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
@@ -2313,6 +2411,8 @@ function resetDatasets() {
     
     // Reset quality preset bias to 1.0
     qualityPresetBias = 1.0;
+    transparencyBias = 1.0;
+    appendTransparency = false;
     
     // Disable sub toggles
     if (window.datasetSettings) {

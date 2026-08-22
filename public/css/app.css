@@ -2730,6 +2730,7 @@ span.menu-logo,
 }
 
 .uc-boxes[data-uc-level="1"] .uc-box[data-level="1"],
+.uc-boxes[data-uc-level="5"] .uc-box[data-level="1"],
 .uc-boxes[data-uc-level="2"] .uc-box[data-level="1"],
 .uc-boxes[data-uc-level="2"] .uc-box[data-level="2"],
 .uc-boxes[data-uc-level="3"] .uc-box[data-level="1"],

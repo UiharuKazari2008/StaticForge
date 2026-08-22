@@ -163,7 +163,7 @@ async function handleCityLookup(handlers, ws, message, clientInfo, wsServer) {
     }
 
 async function handleCharacterSearch(handlers, ws, message, clientInfo, wsServer) {
-        const { query, model, requestId, autofillSessionId, spellCheckText, isContinuation, autofillSettings } = message;
+        const { query, model, requestId, autofillSessionId, spellCheckText, isContinuation, autofillSettings, modelMode } = message;
 
         if (!query) {
             handlers.sendError(ws, 'Missing query parameter', 'search_characters');
@@ -182,7 +182,7 @@ async function handleCharacterSearch(handlers, ws, message, clientInfo, wsServer
 
             const result = await handlers.globalResources.getSearchService().searchCharacters(
                 query, model, ws, clientInfo.sessionId, null, requestId, autofillSessionId,
-                { spellCheckText, isContinuation, autofillSettings: resolvedSettings }
+                { spellCheckText, isContinuation, autofillSettings: resolvedSettings, modelMode }
             );
 
             if (result && result.superseded) {

@@ -79,6 +79,36 @@ function promptCtxHasMeaningfulSelection(textarea) {
     return state.hasSelection && Boolean(String(state.selectedText || '').trim());
 }
 
+const SET_EMPHASIS_WEIGHTS = [
+    1.0, 1.125, 1.25, 1.35, 1.5, 1.75, 1.85, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0,
+    0.0, 0.25, 0.5, 0.75, -1, -2
+];
+
+function promptCtxCurrentEmphasisWeight(textarea) {
+    if (!textarea) return null;
+    const bag = resolveEmphasisBagForTextarea(textarea) || {};
+    const pos = textarea.selectionStart;
+    const block = findManagedEmphasisBlockAtCursor(textarea.value || '', pos, bag)
+        || findManagedEmphasisBlockAtCursor(textarea.value || '', Math.max(0, pos - 1), bag);
+    if (block && Number.isFinite(block.weight)) return block.weight;
+    return null;
+}
+
+function buildSetEmphasisGridItems(textarea) {
+    const current = promptCtxCurrentEmphasisWeight(textarea);
+    return [{
+        type: 'grid',
+        items: SET_EMPHASIS_WEIGHTS.map((weight) => ({
+            text: String(weight),
+            tooltip: `Set emphasis to ${weight}`,
+            action: 'prompt-ctx-set-emphasis',
+            data: { weight },
+            showIndicator: Number.isFinite(current),
+            checked: Number.isFinite(current) && current === weight
+        }))
+    }];
+}
+
 function promptCtxElevateDialogZIndex(dialog) {
     if (dialog) {
         dialog.style.zIndex = '5100';
@@ -954,6 +984,30 @@ function handlePromptTextareaContextMenuAction(action, textarea, item) {
             if (removeAllEmphasisFromSelection) removeAllEmphasisFromSelection(textarea);
             if (updateEmphasisHighlighting) updateEmphasisHighlighting(textarea);
             break;
+        case 'prompt-ctx-trim-start':
+            // trimManagedEmphasisStartAtCaret: public/scripts/comp/emphasisGroupIdCodec.js
+            trimManagedEmphasisStartAtCaret(textarea);
+            if (updateEmphasisHighlighting) updateEmphasisHighlighting(textarea);
+            if (promptTextareaToolbar) promptTextareaToolbar.updateEmphasisGroupChip(textarea, toolbar);
+            break;
+        case 'prompt-ctx-trim-end':
+            // trimManagedEmphasisEndAtCaret: public/scripts/comp/emphasisGroupIdCodec.js
+            trimManagedEmphasisEndAtCaret(textarea);
+            if (updateEmphasisHighlighting) updateEmphasisHighlighting(textarea);
+            if (promptTextareaToolbar) promptTextareaToolbar.updateEmphasisGroupChip(textarea, toolbar);
+            break;
+        case 'prompt-ctx-remove-emphasis':
+            if (promptTextareaToolbar) {
+                promptTextareaToolbar.removeEmphasisAtCaretOrSelection(textarea);
+            }
+            break;
+        case 'prompt-ctx-set-emphasis': {
+            const weight = item && item.data ? item.data.weight : null;
+            // applySetEmphasisWeight: public/scripts/comp/emphasisEditing.js
+            applySetEmphasisWeight(textarea, weight);
+            if (promptTextareaToolbar) promptTextareaToolbar.updateEmphasisGroupChip(textarea, toolbar);
+            break;
+        }
         case 'prompt-ctx-lowercase':
             if (window.promptTextareaToolbar) {
                 window.promptTextareaToolbar.lowercasePromptText(textarea);
@@ -1215,24 +1269,80 @@ function getPromptTextareaContextMenuConfig() {
                         }
                     },
                     {
-                        icon: 'fas fa-knife-kitchen',
-                        tooltip: 'Split at Commas',
-                        action: 'prompt-ctx-split-emphasis-commas',
+                        icon: 'fas fa-bracket-square',
+                        tooltip: 'Trim start',
+                        action: 'prompt-ctx-trim-start',
                         loadfn: (icon, target) => {
                             if (promptCtxIsCreativeDirectiveTextarea(target)) {
                                 icon.disabled = true;
                                 return;
                             }
+                            // canTrimManagedEmphasisStartAtCaret: public/scripts/comp/emphasisGroupIdCodec.js
+                            icon.disabled = !canTrimManagedEmphasisStartAtCaret(target);
+                        }
+                    },
+                    {
+                        icon: 'fas fa-bracket-square-right',
+                        tooltip: 'Trim end',
+                        action: 'prompt-ctx-trim-end',
+                        loadfn: (icon, target) => {
+                            if (promptCtxIsCreativeDirectiveTextarea(target)) {
+                                icon.disabled = true;
+                                return;
+                            }
+                            // canTrimManagedEmphasisEndAtCaret: public/scripts/comp/emphasisGroupIdCodec.js
+                            icon.disabled = !canTrimManagedEmphasisEndAtCaret(target);
+                        }
+                    },
+                    {
+                        icon: 'fas fa-eraser',
+                        tooltip: 'Remove Emphasis',
+                        action: 'prompt-ctx-remove-emphasis',
+                        loadfn: (icon, target) => {
+                            icon.disabled = promptCtxIsCreativeDirectiveTextarea(target);
+                        }
+                    }
+                ]
+            },
+            {
+                type: 'list',
+                loadfn: (section, target) => {
+                    if (section._element) {
+                        section._element.style.display = promptCtxIsStandardTextPrompt(target) ? 'none' : '';
+                    }
+                },
+                items: [
+                    {
+                        icon: 'fas fa-dial',
+                        text: 'Set Emphasis',
+                        openOnHover: true,
+                        loadfn: (menuItem, target) => {
+                            menuItem.disabled = promptCtxIsCreativeDirectiveTextarea(target);
+                        },
+                        optionsfn: (target) => buildSetEmphasisGridItems(target),
+                        handlerfn: (subItem, target) => {
+                            handlePromptTextareaContextMenuAction(subItem.action, target, subItem);
+                        }
+                    },
+                    {
+                        icon: 'fas fa-knife-kitchen',
+                        text: 'Subdivide Emphasis',
+                        action: 'prompt-ctx-split-emphasis-commas',
+                        loadfn: (menuItem, target) => {
+                            if (promptCtxIsCreativeDirectiveTextarea(target)) {
+                                menuItem.disabled = true;
+                                return;
+                            }
                             // canSplitEmphasisGroupAtCommasAtCursor: public/scripts/comp/emphasisParse.js
-                            icon.disabled = !canSplitEmphasisGroupAtCommasAtCursor(target);
+                            menuItem.disabled = !canSplitEmphasisGroupAtCommasAtCursor(target);
                         }
                     },
                     {
                         icon: 'fas fa-broom-wide',
-                        tooltip: 'Reset',
+                        text: 'Remove All',
                         action: 'prompt-ctx-clear-emphasis',
-                        loadfn: (icon, target) => {
-                            icon.disabled = promptCtxIsCreativeDirectiveTextarea(target);
+                        loadfn: (menuItem, target) => {
+                            menuItem.disabled = promptCtxIsCreativeDirectiveTextarea(target);
                         }
                     }
                 ]

@@ -931,6 +931,186 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
     }
 }
 
+async function openEnhanceModal(imageFilename, imageDimensions = null) {
+    if (!imageFilename) {
+        showGlassToast('error', 'Enhance', 'No image filename provided', false, 5000, '<i class="nai-cross"></i>');
+        return;
+    }
+
+    const scaleOptions = [
+        { value: '1', name: '1×' },
+        { value: '1.5', name: '1.5×' },
+        { value: '2', name: '2×' }
+    ];
+    let selectedEnhanceScale = 1.5;
+    const dimensionText = imageDimensions?.width && imageDimensions?.height
+        ? `${imageDimensions.width} × ${imageDimensions.height}`
+        : 'the source dimensions';
+    const confirmation = showConfirmationDialog(
+        `<div class="form-group">
+            <p>Enhance this image from ${dimensionText}?</p>
+            <label>Enhance size</label>
+            <div id="enhanceScaleDropdown" class="custom-dropdown dropup">
+                <button type="button" id="enhanceScaleDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                    <span id="enhanceScaleSelected">1.5×</span>
+                </button>
+                <div id="enhanceScaleDropdownMenu" class="custom-dropdown-menu hidden"></div>
+            </div>
+            <input type="hidden" id="enhanceScaleHidden" value="1.5">
+            <small>Enhance reprocesses the image with its prompt and saves a new gallery image.</small>
+        </div>`,
+        [
+            { text: 'Enhance', value: true, className: 'btn-primary', icon: 'fas fa-wand-magic-sparkles' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ],
+        null,
+        {
+            title: 'Enhance',
+            icon: 'fas fa-wand-magic-sparkles',
+            width: 440
+        }
+    );
+
+    setTimeout(() => {
+        const container = document.getElementById('enhanceScaleDropdown');
+        const button = document.getElementById('enhanceScaleDropdownBtn');
+        const menu = document.getElementById('enhanceScaleDropdownMenu');
+        const selected = document.getElementById('enhanceScaleSelected');
+        const hidden = document.getElementById('enhanceScaleHidden');
+        if (!container || !button || !menu || !selected || !hidden) return;
+
+        const selectScale = (value) => {
+            hidden.value = value;
+            selectedEnhanceScale = Number(value);
+            selected.textContent = scaleOptions.find((option) => option.value === value)?.name || '1.5×';
+        };
+        const renderScaleOptions = (value) => {
+            renderSimpleDropdown(
+                menu,
+                scaleOptions,
+                'value',
+                'name',
+                selectScale,
+                () => closeDropdown(menu, button),
+                value
+            );
+        };
+        setupDropdown(container, button, menu, renderScaleOptions, () => hidden.value);
+    }, 0);
+
+    const confirmed = await confirmation;
+    if (!confirmed) return;
+
+    const selectedScale = selectedEnhanceScale;
+    const enhanceToastId = showGlassToast(
+        'info',
+        'Enhancing',
+        `Enhancing image at ${selectedScale}×...`,
+        true,
+        false,
+        '<i class="fas fa-wand-magic-sparkles"></i>'
+    );
+
+    try {
+        const result = await wsClient.enhanceImage(imageFilename, selectedScale, activeWorkspace || null);
+        updateGlassToastComplete(enhanceToastId, {
+            type: 'success',
+            title: 'Enhance Complete',
+            message: 'Enhanced image saved to the gallery.',
+            customIcon: '<i class="fas fa-wand-magic-sparkles"></i>',
+            showProgress: false
+        });
+
+        const imageSrc = localGalleryImageUrl(result.filename);
+        const mockResponse = {
+            headers: {
+                get: (headerName) => {
+                    if (headerName === 'X-Generated-Filename') return result.filename;
+                    if (headerName === 'X-Seed') return result.seed;
+                    return null;
+                }
+            }
+        };
+        await handleImageResult(imageSrc, undefined, result.seed, mockResponse, result.metadata);
+    } catch (error) {
+        updateGlassToastComplete(enhanceToastId, {
+            type: 'error',
+            title: 'Enhance Failed',
+            message: error.message || 'Failed to enhance image',
+            customIcon: '<i class="nai-cross"></i>',
+            showProgress: false
+        });
+    }
+}
+
+async function openMaxEnhanceModal(imageFilename, imageDimensions = null) {
+    if (!imageFilename) {
+        showGlassToast('error', 'Max Enhance', 'No image filename provided', false, 5000, '<i class="nai-cross"></i>');
+        return;
+    }
+
+    const dimensionText = imageDimensions?.width && imageDimensions?.height
+        ? `${imageDimensions.width} × ${imageDimensions.height}`
+        : 'the source dimensions';
+    const confirmed = await showConfirmationDialog(
+        `<div class="form-group">
+            <p>Enhance this image at ${dimensionText}?</p>
+            <small>Max Enhance preserves the source width and height and creates a new gallery image.</small>
+        </div>`,
+        [
+            { text: 'Max Enhance', value: true, className: 'btn-primary', icon: 'fas fa-wand-magic-sparkles' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ],
+        null,
+        {
+            title: 'Max Enhance',
+            icon: 'fas fa-wand-magic-sparkles',
+            width: 440
+        }
+    );
+    if (!confirmed) return;
+
+    const enhanceToastId = showGlassToast(
+        'info',
+        'Max Enhancing',
+        'Enhancing image at its source dimensions...',
+        true,
+        false,
+        '<i class="fas fa-wand-magic-sparkles"></i>'
+    );
+
+    try {
+        const result = await wsClient.maxEnhanceImage(imageFilename, activeWorkspace || null);
+        updateGlassToastComplete(enhanceToastId, {
+            type: 'success',
+            title: 'Max Enhance Complete',
+            message: 'Enhanced image saved to the gallery.',
+            customIcon: '<i class="fas fa-wand-magic-sparkles"></i>',
+            showProgress: false
+        });
+
+        const imageSrc = localGalleryImageUrl(result.filename);
+        const mockResponse = {
+            headers: {
+                get: (headerName) => {
+                    if (headerName === 'X-Generated-Filename') return result.filename;
+                    if (headerName === 'X-Seed') return result.seed;
+                    return null;
+                }
+            }
+        };
+        await handleImageResult(imageSrc, undefined, result.seed, mockResponse, result.metadata);
+    } catch (error) {
+        updateGlassToastComplete(enhanceToastId, {
+            type: 'error',
+            title: 'Max Enhance Failed',
+            message: error.message || 'Failed to enhance image',
+            customIcon: '<i class="nai-cross"></i>',
+            showProgress: false
+        });
+    }
+}
+
 // Close image expansion modal
 function closeImageExpansionModal() {
     expansionCompiledPromptLoadToken++;

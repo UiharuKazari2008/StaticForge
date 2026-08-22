@@ -479,6 +479,8 @@ class WebSocketMessageHandlers {
             'character_db_delete',
             'character_db_rename_copyright',
             'character_db_delete_copyright',
+            'runpod_pod_start',
+            'runpod_pod_stop',
         ];
         return destructiveOperations.includes(messageType) || isReplicationDestructivePacket(messageType);
     }

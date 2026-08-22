@@ -510,6 +510,12 @@ function setupMainMenuContextMenus() {
                                     </span>
                                 </div>
                             </div>
+                            <div class="menu-item-row balance-list" id="contextAnlasOpusUsageRow">
+                                <i id="contextAnlasOpusUsageIcon" class="fas fa-battery-three-quarters"></i>
+                                <div class="price-list-container">
+                                    <span class="anlas-subscription-value" id="contextAnlasOpusUsage">—</span>
+                                </div>
+                            </div>
                         </div>
                     `,
                 loadfn: (section, target) => {
@@ -652,6 +658,9 @@ function setupMainMenuContextMenus() {
                     } catch (error) {
                         console.error('Error updating subscription info in context menu:', error);
                     }
+
+                    // usageToolManager: public/scripts/comp/usageToolManager.js
+                    usageToolManager.fillAnlasMenuUsageRow('');
                 }
             },
             {

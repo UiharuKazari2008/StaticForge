@@ -1,4 +1,99 @@
 /** Gallery bulk pin/move/delete ops (Phase 2 batch 13). */
+async function handleBulkCopy() {
+    const selectedImagesArray = getSelectedImages();
+    if (selectedImagesArray.length === 0) {
+        showError('No images selected');
+        return;
+    }
+
+    if (selectedImagesArray.length === 1) {
+        // copyImageToClipboard: public/scripts/comp/galleryView.js
+        copyImageToClipboard(selectedImagesArray[0]);
+        return;
+    }
+
+    // showGlassToast / updateGlassToastProgress / removeGlassToast: public/scripts/comp/toastManager.js
+    const toastId = showGlassToast(
+        'info',
+        'Copying images...',
+        `0 / ${selectedImagesArray.length}`,
+        true,
+        false,
+        '<i class="fas fa-clipboard"></i>'
+    );
+
+    try {
+        const fetched = [];
+        let failed = 0;
+        let anyNaiSigInvalid = false;
+
+        for (let i = 0; i < selectedImagesArray.length; i++) {
+            try {
+                // fetchGalleryImageBlobForClipboard: public/scripts/comp/galleryView.js
+                const item = await fetchGalleryImageBlobForClipboard(selectedImagesArray[i]);
+                fetched.push(item);
+                if (item.naiSigInvalid) anyNaiSigInvalid = true;
+            } catch (error) {
+                failed++;
+                console.error('Failed to fetch image for clipboard:', error);
+            }
+            updateGlassToastProgress(toastId, Math.round(((i + 1) / selectedImagesArray.length) * 100));
+            updateGlassToastMessage(toastId, `${i + 1} / ${selectedImagesArray.length}`);
+        }
+
+        if (!fetched.length) {
+            throw new Error('Failed to load images for clipboard');
+        }
+
+        // copyBlobsToClipboard: public/scripts/utils/dreamscapeClipboard.js
+        const result = await copyBlobsToClipboard(fetched);
+        removeGlassToast(toastId);
+
+        let toastMessage = `Copied ${result.copied} image(s)`;
+        if (failed > 0) {
+            toastMessage += ` (${failed} failed)`;
+        }
+
+        if (anyNaiSigInvalid) {
+            showGlassToast(
+                'warning',
+                'Images copied to clipboard!',
+                `${toastMessage}<br>NAI Signing Key Invalid`,
+                false,
+                4000,
+                '<i class="fas fa-exclamation-triangle"></i>'
+            );
+        } else {
+            showGlassToast('success', 'Images copied to clipboard!', toastMessage, false, 3000, '<i class="fas fa-clipboard-check"></i>');
+        }
+    } catch (error) {
+        console.error('Bulk copy error:', error);
+        removeGlassToast(toastId);
+        showError('Failed to copy images: ' + error.message);
+    }
+}
+
+function handleBulkDownload() {
+    const selectedImagesArray = getSelectedImages();
+    if (selectedImagesArray.length === 0) {
+        showError('No images selected');
+        return;
+    }
+
+    // downloadImage: public/scripts/comp/galleryView.js
+    selectedImagesArray.forEach((image) => downloadImage(image));
+
+    if (selectedImagesArray.length === 1) return;
+    showGlassToast(
+        'success',
+        null,
+        `Downloading ${selectedImagesArray.length} image(s)...`,
+        false,
+        3000,
+        '<i class="fas fa-download"></i>'
+    );
+}
+
 async function handleBulkUnpin(event = null) {
     const selectedCount = getSelectedCount();
     if (selectedCount === 0) {

@@ -1226,6 +1226,22 @@ body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .taskbar-window
     animation: pulse-generation 1.5s ease-in-out infinite;
 }
 
+.runpod-tray-icon {
+    color: var(--text-secondary);
+}
+
+.runpod-tray-icon.running i {
+    color: #81c784;
+}
+
+.runpod-tray-icon.busy i {
+    color: #ffb74d;
+}
+
+.runpod-tray-icon.error i {
+    color: #e57373;
+}
+
 /* Search Indexing Indicator */
 .search-indexing-indicator {
     color: var(--text-secondary);

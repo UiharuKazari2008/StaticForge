@@ -285,6 +285,10 @@ if (window.wsClient) {
     }, true);
 
     window.wsClient.registerInitStep(5, 'Initializing Tokenizer', async () => {
+        // ensurePromptTokenizerForModel: public/scripts/comp/utilities.js
+        // V5 (boot default) uses Qwen; start it while T5 JSON loads so the toolbar has a tokenizer.
+        const qwenReady = ensurePromptTokenizerForModel('v5');
+        let t5Ok = false;
         try {
             t5Tokenizer = new T5Tokenizer();
 
@@ -294,11 +298,18 @@ if (window.wsClient) {
             await t5Tokenizer.loadFromJSON(config);
 
             console.log('✅ T5 Tokenizer loaded successfully');
-            return true;
+            t5Ok = true;
         } catch (error) {
             console.error('❌ Failed to load T5 tokenizer:', error);
-            return false;
         }
+
+        try {
+            await qwenReady;
+        } catch (error) {
+            console.error('❌ Failed to load Qwen tokenizer:', error);
+        }
+
+        return t5Ok;
     }, true);
     window.wsClient.registerInitStep(10, 'Configuring Application', async () => {
         updateBalanceDisplay(window.optionsData?.balance);
@@ -328,7 +339,7 @@ if (window.wsClient) {
         selectManualSampler('k_euler_ancestral');
         selectManualResolution('normal_square', 'Normal');
         selectManualNoiseScheduler('karras');
-        selectManualModel('v4_5', '', true);
+        selectManualModel('v5', '', true);
 
         updateDatasetDisplay();
         updateSubTogglesButtonState();

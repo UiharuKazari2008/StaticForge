@@ -36,10 +36,12 @@ const VALID_RESOLUTION_TIERS = new Set(['normal', 'large', 'max']);
 const VALID_PROMPT_SOURCES = new Set(['compiled', 'input']);
 
 /** image_search_facets.model_norm forge keys (metadataDatabase extractSearchModelAndPresetFromPngMeta) */
-const MODEL_NORM_SLUGS = new Set(['v4_5', 'v4_5_cur', 'v4', 'v4_cur', 'v3', 'v3_furry']);
+const MODEL_NORM_SLUGS = new Set(['v5', 'v5_cur', 'v4_5', 'v4_5_cur', 'v4', 'v4_cur', 'v3', 'v3_furry']);
 
 /** NAI API slugs accepted by legacy search_models → model_norm for facet reader */
 const NAI_SLUG_TO_MODEL_NORM = {
+    'nai-diffusion-5-full': 'v5',
+    'nai-diffusion-5-curated': 'v5_cur',
     'nai-diffusion-4-5-full': 'v4_5',
     'nai-diffusion-4-5-curated': 'v4_5_cur',
     'nai-diffusion-4-full': 'v4',

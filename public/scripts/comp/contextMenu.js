@@ -1693,6 +1693,14 @@ class ContextMenuController {
             btn.appendChild(ic);
         }
 
+        if (cell.text != null && cell.text !== '') {
+            const label = document.createElement('span');
+            label.className = 'context-menu-grid-label';
+            label.textContent = typeof cell.text === 'function' ? cell.text(target) : String(cell.text);
+            btn.appendChild(label);
+            btn.classList.add('has-grid-text');
+        }
+
         if (this.itemWantsIndicator(cell)) {
             const indicatorStyle = this.getIndicatorStyle(cell) || 'box';
             const indicatorDot = document.createElement('span');

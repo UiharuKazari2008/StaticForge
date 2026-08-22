@@ -1,7 +1,53 @@
-const { generateImageWebSocket, handleRerollGeneration, expandImage, rerollExpandedImage, previewExpandImagePrompt, compileDynamicGenerationWebSocket, applyTendaiPreviewWebSocket } = require('../../imageGeneration');
+const { generateImageWebSocket, handleRerollGeneration, expandImage, rerollExpandedImage, enhanceImage, maxEnhanceImage, previewExpandImagePrompt, compileDynamicGenerationWebSocket, applyTendaiPreviewWebSocket } = require('../../imageGeneration');
 const { upscaleImageWebSocket } = require('../../imageUpscaling');
 const { resolveDynamicContext } = require('../../dynamicGenerationHandlers');
 const { broadcastGalleryMutation } = require('./120-galleryHandler');
+
+function collectSavedGenerationFilenames(result) {
+    const names = [];
+    const seen = new Set();
+    const pushName = (filename) => {
+        if (!filename || typeof filename !== 'string' || seen.has(filename)) return;
+        seen.add(filename);
+        names.push(filename);
+    };
+    if (Array.isArray(result?.filenames)) {
+        for (const entry of result.filenames) {
+            pushName(typeof entry === 'string' ? entry : entry?.filename);
+        }
+    }
+    pushName(result?.filename);
+    return names;
+}
+
+function attachStagedGenerationResponseFields(responseData, result) {
+    if (result.compiled_prompt) {
+        responseData.compiled_prompt = result.compiled_prompt;
+    }
+    if (result.text_replacements_seed) {
+        responseData.text_replacements_seed = result.text_replacements_seed;
+    }
+    if (result.stage_seeds) {
+        responseData.stage_seeds = result.stage_seeds;
+    }
+    if (result.total_stages) {
+        responseData.total_stages = result.total_stages;
+    }
+    const filenames = collectSavedGenerationFilenames(result);
+    if (filenames.length > 0) {
+        responseData.filenames = filenames;
+    }
+}
+
+async function broadcastSavedGenerationFilenames(handlers, wsServer, clientInfo, result) {
+    const filenames = collectSavedGenerationFilenames(result);
+    if (filenames.length === 0) return;
+    await broadcastGalleryMutation(handlers, wsServer, clientInfo, {
+        viewType: 'images',
+        action: 'append_top',
+        filenames
+    });
+}
 
 function normalizeExpansionOverrideParams(data) {
     let op = data.overrideParams;
@@ -93,19 +139,7 @@ async function handleImageGeneration(handlers, ws, message, clientInfo, wsServer
                 metadata: result.metadata,
                 contentLength
             };
-
-            if (result.compiled_prompt) {
-                responseData.compiled_prompt = result.compiled_prompt;
-            }
-            if (result.text_replacements_seed) {
-                responseData.text_replacements_seed = result.text_replacements_seed;
-            }
-            if (result.stage_seeds) {
-                responseData.stage_seeds = result.stage_seeds;
-            }
-            if (result.total_stages) {
-                responseData.total_stages = result.total_stages;
-            }
+            attachStagedGenerationResponseFields(responseData, result);
 
             handlers.sendToClient(ws, {
                 type: 'image_generation_response',
@@ -132,19 +166,7 @@ async function handleImageGeneration(handlers, ws, message, clientInfo, wsServer
                 metadata: result.metadata,
                 contentLength
             };
-
-            if (result.compiled_prompt) {
-                responseData.compiled_prompt = result.compiled_prompt;
-            }
-            if (result.text_replacements_seed) {
-                responseData.text_replacements_seed = result.text_replacements_seed;
-            }
-            if (result.stage_seeds) {
-                responseData.stage_seeds = result.stage_seeds;
-            }
-            if (result.total_stages) {
-                responseData.total_stages = result.total_stages;
-            }
+            attachStagedGenerationResponseFields(responseData, result);
 
             handlers.sendToClient(ws, {
                 type: 'image_generation_response',
@@ -154,13 +176,7 @@ async function handleImageGeneration(handlers, ws, message, clientInfo, wsServer
             });
         }
 
-        if (result && result.filename) {
-            await broadcastGalleryMutation(handlers, wsServer, clientInfo, {
-                viewType: 'images',
-                action: 'append_top',
-                filename: result.filename
-            });
-        }
+        await broadcastSavedGenerationFilenames(handlers, wsServer, clientInfo, result);
 
         handlers.stopKeepAliveInterval(requestId);
     } catch (error) {
@@ -238,13 +254,7 @@ async function handleImageReroll(handlers, ws, message, clientInfo, wsServer) {
             timestamp: new Date().toISOString()
         });
 
-        if (result && result.filename) {
-            await broadcastGalleryMutation(handlers, wsServer, clientInfo, {
-                viewType: 'images',
-                action: 'append_top',
-                filename: result.filename
-            });
-        }
+        await broadcastSavedGenerationFilenames(handlers, wsServer, clientInfo, result);
     } catch (error) {
         handlers.stopKeepAliveInterval(requestId);
         console.error('❌ Image reroll error:', error);
@@ -469,6 +479,123 @@ async function handleImageExpansion(handlers, ws, message, clientInfo, wsServer)
             requestId: requestId,
             data: null,
             error: error.message || 'Image expansion failed',
+            timestamp: new Date().toISOString()
+        });
+    } finally {
+        handlers.unregisterActiveGeneration(ws, requestId);
+        handlers.clearGenerationCancelled(requestId);
+    }
+}
+
+async function handleMaxEnhanceImage(handlers, ws, message, clientInfo, wsServer) {
+    const requestId = message.requestId || 'unknown';
+
+    try {
+        if (!message.filename) {
+            throw new Error('Filename is required');
+        }
+
+        handlers.startKeepAliveInterval(ws, requestId, 15000);
+        handlers.registerActiveGeneration(ws, requestId);
+
+        const result = await maxEnhanceImage(
+            handlers.globalResources,
+            message.filename,
+            clientInfo.sessionId,
+            message.workspace || null,
+            null,
+            ws,
+            handlers,
+            requestId
+        );
+
+        handlers.stopKeepAliveInterval(requestId);
+        const contentLength = handlers.resolveGeneratedImageContentLength(result);
+        handlers.sendToClient(ws, {
+            type: 'max_enhance_image_response',
+            requestId,
+            data: {
+                image: result.buffer ? result.buffer.toString('base64') : null,
+                filename: result.filename,
+                seed: result.seed,
+                metadata: result.metadata,
+                contentLength
+            },
+            timestamp: new Date().toISOString()
+        });
+        if (result.filename) {
+            await broadcastGalleryMutation(handlers, wsServer, clientInfo, {
+                viewType: 'images',
+                action: 'append_top',
+                filename: result.filename
+            });
+        }
+    } catch (error) {
+        handlers.stopKeepAliveInterval(requestId);
+        handlers.sendToClient(ws, {
+            type: 'max_enhance_image_error',
+            requestId,
+            data: null,
+            error: error.message || 'Max Enhance failed',
+            timestamp: new Date().toISOString()
+        });
+    } finally {
+        handlers.unregisterActiveGeneration(ws, requestId);
+        handlers.clearGenerationCancelled(requestId);
+    }
+}
+
+async function handleEnhanceImage(handlers, ws, message, clientInfo, wsServer) {
+    const requestId = message.requestId || 'unknown';
+
+    try {
+        if (!message.filename) {
+            throw new Error('Filename is required');
+        }
+
+        handlers.startKeepAliveInterval(ws, requestId, 15000);
+        handlers.registerActiveGeneration(ws, requestId);
+
+        const result = await enhanceImage(
+            handlers.globalResources,
+            message.filename,
+            message.scale,
+            clientInfo.sessionId,
+            message.workspace || null,
+            null,
+            ws,
+            handlers,
+            requestId
+        );
+
+        handlers.stopKeepAliveInterval(requestId);
+        const contentLength = handlers.resolveGeneratedImageContentLength(result);
+        handlers.sendToClient(ws, {
+            type: 'enhance_image_response',
+            requestId,
+            data: {
+                image: result.buffer ? result.buffer.toString('base64') : null,
+                filename: result.filename,
+                seed: result.seed,
+                metadata: result.metadata,
+                contentLength
+            },
+            timestamp: new Date().toISOString()
+        });
+        if (result.filename) {
+            await broadcastGalleryMutation(handlers, wsServer, clientInfo, {
+                viewType: 'images',
+                action: 'append_top',
+                filename: result.filename
+            });
+        }
+    } catch (error) {
+        handlers.stopKeepAliveInterval(requestId);
+        handlers.sendToClient(ws, {
+            type: 'enhance_image_error',
+            requestId,
+            data: null,
+            error: error.message || 'Enhance failed',
             timestamp: new Date().toISOString()
         });
     } finally {
@@ -707,6 +834,8 @@ module.exports = {
     handleImageUpscaling,
     handlePreviewExpandImagePrompt,
     handleImageExpansion,
+    handleEnhanceImage,
+    handleMaxEnhanceImage,
     handleImageExpansionReroll,
     handleCancelGeneration,
     handleDynamicGenerationProgress,

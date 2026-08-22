@@ -12,8 +12,10 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `cancel_generation` | `cancel_generation_response` | session | Handler: handleCancelGeneration |
 | `compile_dynamic_generation` | `compile_dynamic_generation_response` | admin/destructive | Handler: handleCompileDynamicGeneration |
 | `dynamic_generation_progress` | `dynamic_generation_progress_response` | session | Handler: handleDynamicGenerationProgress |
+| `enhance_image` | `enhance_image_response` | session | Handler: handleEnhanceImage |
 | `expand_image` | `image_expansion_response` | admin/destructive | Handler: handleImageExpansion |
 | `generate_image` | `image_generation_response` | admin/destructive | Handler: handleImageGeneration |
+| `max_enhance_image` | `max_enhance_image_response` | session | Handler: handleMaxEnhanceImage |
 | `preview_expand_image_prompt` | `expand_image_prompt_preview_response` | admin/destructive | Handler: handlePreviewExpandImagePrompt |
 | `reroll_expanded_image` | `image_expansion_reroll_response` | admin/destructive | Handler: handleImageExpansionReroll |
 | `reroll_image` | `image_reroll_response` | admin/destructive | Handler: handleImageReroll |
@@ -41,6 +43,18 @@ Errors use `type: "error"` via `sendError()` — see [websocket.md](../websocket
 All generation packets except `cancel_generation` and `dynamic_generation_progress` are **destructive** — blocked for `userType: "readonly"`.
 
 Implementation: `modules/ws/handlers/generationImpl.js`
+
+---
+
+---
+
+---
+
+---
+
+---
+
+---
 
 ---
 
@@ -132,6 +146,28 @@ Implementation: `modules/ws/handlers/generationImpl.js`
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
+### `enhance_image`
+
+**Auth:** Session required
+
+**Handler:** modules/ws/handlers/60-generationHandler.js → `handleEnhanceImage`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `filename` | Optional |
+| `scale` | Optional |
+| `workspace` | Optional |
+
+**Success response:** `enhance_image_response`
+
+Additional response/push types from handler:
+- `enhance_image_error`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
 ### `expand_image`
 
 **Auth:** Session required. Admin only (destructive — blocked for readonly)
@@ -170,9 +206,36 @@ Additional response/push types from handler:
 
 **Success response:** `image_generation_response`
 
+`data` includes `filename` (last saved image) and, for staged/pipeline runs, `filenames` (all saved stage files in order).
+
 Additional response/push types from handler:
+- `image_generation_progress` — streaming steps, `phase: "stage_complete"` after each earlier pipeline stage (filename or preview `imageData`), `phase: "complete"` only on the last stage
 - `image_generation_intermediate`
-- `image_generation_error` — exact API failure: `error` string (HTTP status prefixed when known), top-level `statusCode` / `code`, and `data: { statusCode, code, message }`. Stream ended with no final image uses `code: "STREAM_NO_FINAL"`.
+- `image_generation_error`
+
+**Push side effects:**
+- `gallery_updated` `append_top` with every saved stage filename, not only the last image
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `max_enhance_image`
+
+**Auth:** Session required
+
+**Handler:** modules/ws/handlers/60-generationHandler.js → `handleMaxEnhanceImage`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `filename` | Optional |
+| `workspace` | Optional |
+
+**Success response:** `max_enhance_image_response`
+
+Additional response/push types from handler:
+- `max_enhance_image_error`
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 

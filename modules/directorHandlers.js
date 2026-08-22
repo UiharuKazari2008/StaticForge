@@ -300,10 +300,10 @@ function generateDirectorSystemMessage(presetConfig = null, model = null, enable
 
         // Handle the current config structure where UC presets are arrays of strings
         if (Array.isArray(modelUcPresets)) {
-            const levelNames = ['None', 'Human Focused', 'Light', 'Heavy', 'Curated'];
+            const levelNames = ['None', 'Human Focused', 'Light', 'Heavy', 'Curated', 'Furry Focus'];
             modelUcPresets.forEach((ucPreset, index) => {
                 const level = index + 1; // 1-based level (0 is None)
-                if (level <= 4 && ucPreset) {
+                if (ucPreset && levelNames[level]) {
                     presetContent.push(` * ${level} = ${levelNames[level]}: "${ucPreset}"`);
                 }
             });

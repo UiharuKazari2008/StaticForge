@@ -101,7 +101,8 @@ const LOG_SOURCE_FILES = {
     server: 'server.log',
     error: 'error.log',
     generation: 'generation-detailed.log',
-    'runtime-minify': 'runtime-minify.log'
+    'runtime-minify': 'runtime-minify.log',
+    runpod: 'runpod.log'
 };
 
 const LOG_SOURCE_LABELS = {
@@ -109,7 +110,8 @@ const LOG_SOURCE_LABELS = {
     server: 'Server',
     error: 'Errors',
     generation: 'Generation (active)',
-    'runtime-minify': 'Minifier (CSS/JS)'
+    'runtime-minify': 'Minifier (CSS/JS)',
+    runpod: 'RunPod'
 };
 
 function formatConsoleTimestamp() {
@@ -432,6 +434,33 @@ const logger = winston.createLogger({
         })
     ]
 });
+
+const runpodLogger = winston.createLogger({
+    level: 'info',
+    transports: [
+        new winston.transports.File({
+            filename: path.join(logsDir, 'runpod.log'),
+            format: fileFormat,
+            maxsize: 10485760,
+            maxFiles: 14,
+            tailable: true
+        })
+    ]
+});
+
+logger.runpod = function runpodLog(level, message) {
+    const text = String(message);
+    if (level === 'error') {
+        runpodLogger.error(text);
+        logger.error(`[runpod] ${text}`);
+    } else if (level === 'warn') {
+        runpodLogger.warn(text);
+        logger.warn(`[runpod] ${text}`);
+    } else {
+        runpodLogger.info(text);
+        logger.info(`[runpod] ${text}`);
+    }
+};
 
 function countLinesUpTo(filePath, maxLines) {
     const bufferSize = 64 * 1024;

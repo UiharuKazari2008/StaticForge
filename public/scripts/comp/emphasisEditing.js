@@ -113,6 +113,25 @@ function switchBraceToGroupOrNormal(value) {
         configurable: true
     });
 })();
+function applySetEmphasisWeight(textarea, weight) {
+    if (!textarea) return false;
+    const numeric = typeof weight === 'string' ? parseFloat(weight) : weight;
+    if (!Number.isFinite(numeric)) return false;
+
+    if (textarea.selectionStart !== textarea.selectionEnd) {
+        const result = applyEmphasisDirectly(textarea, numeric);
+        if (updateEmphasisHighlighting) updateEmphasisHighlighting(textarea);
+        return Boolean(result && result.success);
+    }
+
+    if (!startEmphasisEditing(textarea)) return false;
+    emphasisEditingValue = numeric;
+    emphasisEditingValueUnit = 'weight';
+    applyEmphasisEditing();
+    if (updateEmphasisHighlighting) updateEmphasisHighlighting(textarea);
+    return true;
+}
+
 function applyEmphasisDirectly(target, weight, mode = 'normal') {
     if (!target) {
         return false;

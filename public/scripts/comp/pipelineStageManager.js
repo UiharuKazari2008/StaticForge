@@ -100,6 +100,9 @@ function renderAddItemDropdown() {
     // Stage options
     const stageTypes = [
         { value: STAGE_TYPES.EXPAND_CANVAS, name: 'Expand Canvas', icon: 'mdi mdi-1-25 mdi-relative-scale' },
+        ...(getForgeModelFeatures()?.maxEnhance
+            ? [{ value: STAGE_TYPES.VARIATION, name: 'Max Enhance', icon: 'fas fa-wand-magic-sparkles', presetUseBaseImage: true, maxEnhance: true }]
+            : []),
         { value: STAGE_TYPES.VARIATION, name: 'Enhance', icon: 'fas fa-diagram-venn', presetUseBaseImage: true },
         { value: STAGE_TYPES.VARIATION, name: 'Variation', icon: 'ri-image-ai-fill', presetUseBaseImage: false },
     ];
@@ -111,7 +114,7 @@ function renderAddItemDropdown() {
         option.innerHTML = `<i class="${type.icon}"></i> ${type.name}`;
 
         option.addEventListener('click', () => {
-            addPipelineStage(type.value, { useBaseImage: !!type.presetUseBaseImage });
+            addPipelineStage(type.value, { useBaseImage: !!type.presetUseBaseImage, maxEnhance: type.maxEnhance === true });
             closeDropdown(addItemDropdownMenu, addItemDropdownBtn);
         });
 
@@ -287,7 +290,10 @@ function resolvePipelineStageTypeMeta(type, options = {}) {
         typeName = 'Expand Canvas';
         typeIcon = 'mdi mdi-1-25 mdi-relative-scale';
     } else if (type === STAGE_TYPES.VARIATION) {
-        if (options.useBaseImage) {
+        if (options.maxEnhance) {
+            typeName = 'Max Enhance';
+            typeIcon = 'fas fa-wand-magic-sparkles';
+        } else if (options.useBaseImage) {
             typeName = 'Enhance';
             typeIcon = 'fas fa-diagram-venn';
         } else {
@@ -303,7 +309,10 @@ function getPipelineStageDefaultTypeName(stageId) {
     if (!stageItem) return 'Stage';
     const useBaseBtn = document.getElementById(`${stageId}_useBaseImageToggle`);
     const useBase = useBaseBtn?.dataset.state === 'on';
-    return resolvePipelineStageTypeMeta(stageItem.dataset.stageType, { useBaseImage: useBase }).typeName;
+    return resolvePipelineStageTypeMeta(stageItem.dataset.stageType, {
+        useBaseImage: useBase,
+        maxEnhance: stageItem.dataset.maxEnhance === 'true'
+    }).typeName;
 }
 
 function getPipelineStageDisplayName(stageItem) {
@@ -372,7 +381,10 @@ function refreshPipelineStageTypeLabel(stageId) {
     if (!stageItem || !typeLabel) return;
     const useBaseBtn = document.getElementById(`${stageId}_useBaseImageToggle`);
     const useBase = useBaseBtn?.dataset.state === 'on';
-    const meta = resolvePipelineStageTypeMeta(stageItem.dataset.stageType, { useBaseImage: useBase });
+    const meta = resolvePipelineStageTypeMeta(stageItem.dataset.stageType, {
+        useBaseImage: useBase,
+        maxEnhance: stageItem.dataset.maxEnhance === 'true'
+    });
     const displayName = getPipelineStageDisplayName(stageItem);
     const hammer = typeLabel.querySelector('.stage-managed-hammer');
     const hammerHtml = hammer ? hammer.outerHTML : '';
@@ -450,6 +462,7 @@ function addPipelineStage(type, options = {}) {
     stageItem.className = 'pipeline-stage-item';
     stageItem.id = stageId;
     stageItem.dataset.stageType = type;
+    if (options.maxEnhance === true) stageItem.dataset.maxEnhance = 'true';
 
     const stageHolder = document.createElement('div');
     stageHolder.className = 'pipeline-stage-holder';
@@ -1556,8 +1569,12 @@ function getPipelineStageMenuLabel(stageIndex) {
     if (stageType === STAGE_TYPES.EXPAND_CANVAS) {
         icon = 'mdi mdi-1-25 mdi-relative-scale';
     } else if (stageType === STAGE_TYPES.VARIATION) {
-        const useBaseBtn = document.getElementById(`${stageItem.id}_useBaseImageToggle`);
-        icon = useBaseBtn?.dataset.state === 'on' ? 'fas fa-diagram-venn' : 'ri-image-ai-fill';
+        if (stageItem.dataset.maxEnhance === 'true') {
+            icon = 'fas fa-wand-magic-sparkles';
+        } else {
+            const useBaseBtn = document.getElementById(`${stageItem.id}_useBaseImageToggle`);
+            icon = useBaseBtn?.dataset.state === 'on' ? 'fas fa-diagram-venn' : 'ri-image-ai-fill';
+        }
     }
     return { text: `Stage ${stageIndex} — ${typeName}`, hex, icon };
 }
@@ -1608,7 +1625,7 @@ function loadPipelineStages(stagesArray, stageSeeds = null) {
         } else if (stageData.type === STAGE_TYPES.ENHANCE || stageData.type === STAGE_TYPES.VARIATION) {
             // Migrate legacy enhance to variation with useBaseImage=true
             const useBaseImage = stageData.type === STAGE_TYPES.ENHANCE ? true : (stageData.useBaseImage !== false);
-            addPipelineStage(STAGE_TYPES.VARIATION, { useBaseImage });
+            addPipelineStage(STAGE_TYPES.VARIATION, { useBaseImage, maxEnhance: stageData.maxEnhance === true });
             const stageId = `stage_${pipelineStageCounter - 1}`; // Calculate after adding stage
 
             // Pass the seed from stage_seeds array
@@ -2007,7 +2024,7 @@ function renderEnhanceStage(stageId, options = {}) {
         <div class="stage-controls-section enhance-stage">
             <div class="form-row justify-spaced">
                 <div class="group-controls-container">
-                    <div class="form-group group-use-base-image">
+                    <div class="form-group group-use-base-image${options.maxEnhance === true ? ' hidden' : ''}">
                         <label for="${stageId}_useBaseImageToggle">Mode</label>
                         <div>
                             <button type="button" id="${stageId}_useBaseImageToggle" class="btn-secondary toggle-btn" data-state="${initialUseBaseImage ? 'on' : 'off'}">
@@ -2034,7 +2051,7 @@ function renderEnhanceStage(stageId, options = {}) {
                         </div>
                     </div>
                     
-                    <div class="form-group group-resolution">
+                    <div class="form-group group-resolution${options.maxEnhance === true ? ' hidden' : ''}">
                         <label for="${stageId}_resolution">
                             <span>Resolution</span>
                             <span id="${stageId}_resolutionAreaToggle" class="label-right-toggle hidden" title="Toggle between Normal (1MP) and Large (3MP) area limit">Normal</span>
@@ -3436,6 +3453,7 @@ function getEnhanceStageData(stageId) {
     const data = {
         type: STAGE_TYPES.VARIATION,
         useBaseImage,
+        maxEnhance: stageItem?.dataset.maxEnhance === 'true',
         saveResults: saveResultsToggle?.dataset.state === 'on',
         upscale: upscaleToggle?.dataset.state === 'on',
         stopAtStage: stopToggle?.dataset.state === 'on',

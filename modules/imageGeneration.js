@@ -44,10 +44,51 @@ async function encodeStepPreviewJpeg(imageBuffer, previewWidth, previewHeight) {
     return pipeline.jpeg({ quality: 72 }).toBuffer();
 }
 
+function isLastPipelineStage(opts) {
+    const total = Number(opts?.totalStages);
+    if (!Number.isFinite(total) || total <= 1) return true;
+    if (opts.stageIndex === undefined || opts.stageIndex === null) return true;
+    return (Number(opts.stageIndex) + 1) >= total;
+}
+
+function attachStageProgressFields(progressData, opts) {
+    if (!progressData || !opts) return progressData;
+    if (opts.stageIndex !== undefined) {
+        progressData.totalStages = opts.totalStages;
+        progressData.currentStage = opts.stageIndex + 1;
+        progressData.stageType = opts.stageType;
+    }
+    return progressData;
+}
+
+function sendStageOrGenerationComplete(ws, handler, opts, extra = {}) {
+    if (!ws || !handler) return;
+    const progressData = {
+        phase: isLastPipelineStage(opts) ? 'complete' : 'stage_complete',
+        hasDynamicGen: !!opts.dynamic_generation,
+        isUpscaling: extra.isUpscaling === true,
+        ...extra
+    };
+    attachStageProgressFields(progressData, opts);
+    handler.sendGenerationProgress(ws, opts.requestId || 'generation', progressData);
+}
+
 function mergeNovelForgeFieldsFromOpts(forgeData, opts) {
     if (!forgeData || !opts) return;
     if (opts.novel_note_id !== undefined) forgeData.novel_note_id = opts.novel_note_id;
     if (opts.novel_story_cursor_line !== undefined) forgeData.novel_story_cursor_line = opts.novel_story_cursor_line;
+    if (opts.enhance_scale !== undefined) {
+        forgeData.generation_type = 'enhanced';
+        forgeData.enhance_scale = opts.enhance_scale;
+        forgeData.enhance_source = opts.enhance_source;
+        forgeData.img2img_strength = opts.strength;
+        forgeData.img2img_noise = opts.noise;
+    }
+    if (opts.upscaled_enhance === true) {
+        forgeData.generation_type = 'max_enhance';
+        forgeData.max_enhance = true;
+        if (opts.max_enhance_source) forgeData.max_enhance_source = opts.max_enhance_source;
+    }
     if (opts.dynamic_generation !== undefined) {
         forgeData.dynamic_generation = sanitizeDynamicGenerationForForge(opts.dynamic_generation);
         if (opts.dynamic_generation?.compiled_prompt?.generated_image_name) {
@@ -967,19 +1008,43 @@ async function generatePresetSourceImage(globalResources, presetName, seed, reso
 }
 
 // Enhanced preset handling functions
+const PRESET_TABLE_MODEL_FALLBACKS = {
+    v5: ['v4_5', 'v4_5_cur', 'v4'],
+    v5_cur: ['v4_5_cur', 'v4_5', 'v4_cur', 'v4'],
+    v4_5: ['v4_5_cur', 'v4'],
+    v4_5_cur: ['v4_5', 'v4_cur'],
+    v4: ['v4_cur', 'v4_5'],
+    v4_cur: ['v4', 'v4_5_cur']
+};
+
+function resolvePresetModelKey(presetConfig, modelKey) {
+    if (!presetConfig || !modelKey) return null;
+    const key = String(modelKey).toLowerCase();
+    if (presetConfig[key] != null) return key;
+    const fallbacks = PRESET_TABLE_MODEL_FALLBACKS[key] || [];
+    for (let i = 0; i < fallbacks.length; i++) {
+        if (presetConfig[fallbacks[i]] != null) return fallbacks[i];
+    }
+    return null;
+}
+
 function selectPresetItem(presetConfig, modelKey, combinedPrompt, providedId = null) {
-    if (!presetConfig || !presetConfig[modelKey]) {
+    const resolvedKey = resolvePresetModelKey(presetConfig, modelKey);
+    if (!resolvedKey) {
         return null;
     }
     
-    const modelPresets = presetConfig[modelKey];
+    const modelPresets = presetConfig[resolvedKey];
     
     // Handle simple string/array format (backward compatibility)
     if (typeof modelPresets === 'string' || (Array.isArray(modelPresets) && typeof modelPresets[0] === 'string')) {
         if (typeof modelPresets === 'string') {
             return { value: modelPresets, id: 'default' };
         } else {
-            const index = Math.min(Math.max(providedId - 1, 0), modelPresets.length - 1) || 0;
+            const index = Math.max(providedId - 1, 0);
+            if (index >= modelPresets.length || !modelPresets[index]) {
+                return null;
+            }
             return { value: modelPresets[index], id: index + 1 };
         }
     }
@@ -1843,7 +1908,14 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
         const appliedPresetControls = { prompt: [], uc: [], character_prompts: [], character_uc: [] };
         
         // Process vibe append text injection for each vibe transfer (moved before baseOptions assignment)
-        if (body.vibe_transfer && Array.isArray(body.vibe_transfer) && body.vibe_transfer.length > 0) {
+        // Skip entirely when model-features gate vibeTransfer off (V5)
+        const earlyVibeCaps = __runtimeGr.getModelFeatures(body.model);
+        if (
+            !(earlyVibeCaps && earlyVibeCaps.vibeTransfer === false) &&
+            body.vibe_transfer &&
+            Array.isArray(body.vibe_transfer) &&
+            body.vibe_transfer.length > 0
+        ) {
             for (const vibeTransfer of body.vibe_transfer) {
                 try {
                     // Skip text injection if disabled for this vibe
@@ -1970,22 +2042,44 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     datasetConfigLookup[dataset.value] = dataset;
                 });
             }
+            // modules/modelFeatures.js — V5 remaps "furry dataset" → "fur dataset" in the prompt text
+            const { getModelFeatures: getForgeModelFeatures } = require('./modelFeatures');
+            const datasetAliases = {
+                'furry dataset': 'fur dataset',
+                ...(getForgeModelFeatures(body.model, __runtimeGr.getModelFeaturesMap())?.datasetAliases || {})
+            };
+            const normalizedDatasetConfig = {
+                ...body.dataset_config,
+                include: [],
+                bias: {},
+                settings: {}
+            };
             
             const datasetPrepends = [];
             const datasetAppends = [];
             
-            body.dataset_config.include.forEach(dataset => {
-                if (datasetMappings[dataset]) {
-                    let datasetText = datasetMappings[dataset];
-                    const datasetConfig = datasetConfigLookup[dataset];
+            body.dataset_config.include.forEach(rawDataset => {
+                const dataset = datasetAliases[rawDataset] || rawDataset;
+                const datasetConfig = datasetConfigLookup[dataset] || datasetConfigLookup[rawDataset];
+                const models = Array.isArray(datasetConfig?.models) ? datasetConfig.models.map((value) => String(value).toLowerCase()) : null;
+                const excluded = Array.isArray(datasetConfig?.excludeModels) ? datasetConfig.excludeModels.map((value) => String(value).toLowerCase()) : null;
+                const modelKey = String(body.model || '').toLowerCase();
+                const isAllowedForModel = (!models || models.includes(modelKey)) && (!excluded || !excluded.includes(modelKey));
+                if ((datasetMappings[dataset] || datasetAliases[rawDataset])
+                    && isAllowedForModel
+                    && !normalizedDatasetConfig.include.includes(dataset)) {
+                    let datasetText = datasetMappings[dataset] || dataset;
+                    normalizedDatasetConfig.include.push(dataset);
                     
                     // Determine if this is a preset-type dataset or regular dataset
                     const isPresetType = datasetConfig?.type === 'preset';
                     
                     // Get bias value and apply negative if configured
-                    let biasValue = body.dataset_config.bias && body.dataset_config.bias[dataset] !== undefined ? 
-                        body.dataset_config.bias[dataset] : 
+                    const configuredBias = body.dataset_config.bias?.[dataset] ?? body.dataset_config.bias?.[rawDataset];
+                    let biasValue = configuredBias !== undefined ?
+                        configuredBias :
                         (datasetConfig?.default !== undefined ? datasetConfig.default : 1.0);
+                    if (configuredBias !== undefined) normalizedDatasetConfig.bias[dataset] = configuredBias;
                     
                     // Apply negative multiplier if configured
                     if (datasetConfig?.negative === true) {
@@ -2005,8 +2099,9 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     }
                     
                     // Add sub-toggle values for the dataset if enabled (follow parent's rule)
-                    if (body.dataset_config.settings && body.dataset_config.settings[dataset]) {
-                        const datasetSettings = body.dataset_config.settings[dataset];
+                    const datasetSettings = body.dataset_config.settings?.[dataset] || body.dataset_config.settings?.[rawDataset];
+                    if (datasetSettings) {
+                        normalizedDatasetConfig.settings[dataset] = datasetSettings;
                         
                         // Get sub_toggles config for this dataset
                         const subTogglesConfig = datasetConfig?.sub_toggles || [];
@@ -2046,6 +2141,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     }
                 }
             });
+            body.dataset_config = normalizedDatasetConfig;
             
             // Apply dataset prepends at the beginning
             if (datasetPrepends.length > 0) {
@@ -2098,6 +2194,20 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     text: datasetAppendString
                 });
             }
+        }
+
+        const transparencyCaps = require('./modelFeatures').getModelFeatures(body.model, __runtimeGr.getModelFeaturesMap());
+        const alreadyRequestsTransparency = /(?:transparent\s+background|has\s+alpha|alpha\s+transparency)/i.test(processedPrompt);
+        if (body.append_transparency && transparencyCaps?.transparency === true && !alreadyRequestsTransparency) {
+            const requestedBias = Number(body.transparency_bias ?? 1);
+            const transparencyText = requestedBias !== 1
+                ? applyBiasToText('transparent background', requestedBias)
+                : 'transparent background';
+            processedPrompt = `${transparencyText}, ${processedPrompt}`;
+            appliedPresetControls.prompt.push({
+                action: 'transparency_prepend',
+                text: transparencyText
+            });
         }
 
         // Handle enhanced preset selections
@@ -3416,13 +3526,33 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
         }
 
         // Check if this is an img2img request
+        const forgeModelKey = String(body.model || '').toLowerCase();
+        const wantsInpaint = !!(body.mask || body.mask_compressed) && !!body.image && !forgeModelKey.includes('_inp');
+        // modules/modelFeatures.js — curated V5 inpaint remaps to V4.5 curated until ready
+        const { resolveApiModelSlug, getModelFeatures } = require('./modelFeatures');
+        const modelFeaturesMap = __runtimeGr.getModelFeaturesMap();
+        const apiModelSlug = resolveApiModelSlug(forgeModelKey, { inpaint: wantsInpaint }, modelFeaturesMap);
+        const ModelEnum = __runtimeGr.getNekoAiService('Model');
+        let resolvedApiModel = apiModelSlug
+            || ModelEnum[forgeModelKey.toUpperCase() + (wantsInpaint ? '_INP' : '')]
+            || ModelEnum[forgeModelKey.toUpperCase()];
+        // Prefer enum value matching the remapped slug (inpaint may differ from forge+_INP)
+        if (apiModelSlug && ModelEnum) {
+            const enumHit = Object.keys(ModelEnum).find((k) => ModelEnum[k] === apiModelSlug);
+            if (enumHit) resolvedApiModel = ModelEnum[enumHit];
+        }
+        const forgeCaps = getModelFeatures(forgeModelKey, modelFeaturesMap);
+        if (body.upscaled_enhance === true && forgeCaps?.maxEnhance !== true) {
+            throw new Error(`Max Enhance is not supported by model ${forgeModelKey || 'unknown'}`);
+        }
+
         const baseOptions = {
             prompt: processedPrompt,
             negative_prompt: processedNegativePrompt,
             input_prompt: rawPrompt,
             input_uc: rawNegativePrompt,
             input_prompt_negative: rawInputPromptNegative,
-            model: __runtimeGr.getNekoAiService('Model')[body.model.toUpperCase() + ((body.mask || body.mask_compressed) && body.image && !body.model.toUpperCase().includes('_INP') ? '_INP' : '')],
+            model: resolvedApiModel,
             steps: parseInt(stepsValue),
             scale: parseFloat(guidanceValue.toString()),
             cfg_rescale: parseFloat(rescaleValue.toString()),
@@ -3432,9 +3562,11 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             no_save: body.no_save !== undefined ? body.no_save : preset?.no_save,
             qualityToggle: false,
             ucPreset: 4,
+            params_version: forgeCaps?.paramsVersion,
             dynamicThresholding: body.dynamicThresholding || preset?.dynamicThresholding,
             seed: parseInt(seedValue || '0'),
-            upscale: upscaleValue,
+            upscale: (forgeCaps && forgeCaps.e2eUpscale === false) ? undefined : upscaleValue,
+            upscaled_enhance: body.upscaled_enhance === true && forgeCaps?.maxEnhance === true ? true : undefined,
             characterPrompts: body.characterPrompts || preset?.characterPrompts || undefined,
             allCharacterPrompts: processedCharacterPrompts || undefined,
             input_character_prompts: body.allCharacterPrompts || preset?.allCharacterPrompts || undefined,
@@ -3443,6 +3575,8 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             dataset_config: body.dataset_config || preset?.dataset_config || undefined,
             append_quality: body.append_quality !== undefined ? body.append_quality : preset?.append_quality,
             quality_preset_bias: body.quality_preset_bias !== undefined ? body.quality_preset_bias : preset?.quality_preset_bias,
+            append_transparency: body.append_transparency !== undefined ? !!body.append_transparency : !!preset?.append_transparency,
+            transparency_bias: body.transparency_bias !== undefined ? Number(body.transparency_bias) : preset?.transparency_bias,
             append_uc: body.append_uc !== undefined ? body.append_uc : preset?.append_uc,
             append_quality_id: selectedQualityId,
             append_uc_id: selectedUcId,
@@ -3457,6 +3591,23 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             deduplicate_tags: body.deduplicate_tags !== undefined ? !!body.deduplicate_tags : (preset && preset.deduplicate_tags !== undefined ? !!preset.deduplicate_tags : true),
             emphasis_normalization: body.emphasis_normalization !== undefined ? body.emphasis_normalization : (preset && preset.emphasis_normalization ? preset.emphasis_normalization : undefined),
         };
+
+        // Hard gate unsupported V5 capabilities (vibe / precise reference / e2e upscale)
+        if (forgeCaps) {
+            if (forgeCaps.vibeTransfer === false) {
+                baseOptions.vibe_transfer = undefined;
+            }
+            if (forgeCaps.e2eUpscale === false) {
+                baseOptions.upscale = undefined;
+            }
+            if (forgeCaps.paramsVersion != null && baseOptions.params_version == null) {
+                baseOptions.params_version = forgeCaps.paramsVersion;
+            }
+            if (forgeCaps.transparency === true && baseOptions.append_transparency) {
+                baseOptions.straight_alpha = true;
+                baseOptions.tag_hint_transparent_background = true;
+            }
+        }
 
         if (body.stepPreviewWidth && body.stepPreviewHeight) {
             const spw = parseInt(body.stepPreviewWidth, 10);
@@ -3497,6 +3648,15 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
 
         // nekoai-js MetadataProcessor.handleResolution caps at 3,047,424 px; explicit width/height from the client or pipeline can exceed it (e.g. 2304×1344).
         if (baseOptions.width && baseOptions.height) {
+            if (baseOptions.upscaled_enhance === true) {
+                const enhanceArea = baseOptions.width * baseOptions.height;
+                const minArea = Number(forgeCaps?.maxEnhanceMinArea);
+                const maxArea = Number(forgeCaps?.maxEnhanceMaxArea);
+                if ((Number.isFinite(minArea) && enhanceArea < minArea)
+                    || (Number.isFinite(maxArea) && enhanceArea > maxArea)) {
+                    throw new Error(`Max Enhance requires an image area between ${minArea} and ${maxArea} pixels; received ${enhanceArea}.`);
+                }
+            }
             const maxApiTotalPixels = 3047424;
             const w = baseOptions.width;
             const h = baseOptions.height;
@@ -3508,7 +3668,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             }
         }
 
-        if (body.chara_reference_source !== undefined) {
+        if (body.chara_reference_source !== undefined && !(forgeCaps && forgeCaps.preciseReference === false)) {
             try {
                 const sources = normalizeCharaReferenceSources(body.chara_reference_source);
                 let types = Array.isArray(body.chara_reference_type) ? body.chara_reference_type : [];
@@ -3671,7 +3831,9 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             
             const skipBaseImageResize = body.stage_index !== undefined || body.image_preletterboxed === true;
             if (targetDims.width && targetDims.height && !skipBaseImageResize) {
-                imageBuffer = await processDynamicImage(imageBuffer, targetDims, body.image_bias);
+                imageBuffer = baseOptions.append_transparency
+                    ? await processDynamicImageLetterbox(imageBuffer, targetDims, body.image_bias)
+                    : await processDynamicImage(imageBuffer, targetDims, body.image_bias);
                 console.log(`📏 Resized base image to ${targetDims.width}x${targetDims.height} with bias ${body.image_bias}`);
             } else if (skipBaseImageResize) {
                 if (body.image_preletterboxed) {
@@ -4103,6 +4265,8 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
     delete apiOpts.dataset_config;
     delete apiOpts.append_quality;
     delete apiOpts.quality_preset_bias;
+    delete apiOpts.append_transparency;
+    delete apiOpts.transparency_bias;
     delete apiOpts.append_uc;
     delete apiOpts.input_prompt;
     delete apiOpts.input_uc;
@@ -4137,6 +4301,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
     delete apiOpts.stepPreviewWidth;
     delete apiOpts.stepPreviewHeight;
     delete apiOpts.requestId;
+    delete apiOpts.max_enhance_source;
 
     // Process character prompts: only enabled characters go to API, all characters go to forge_data
     if (opts.allCharacterPrompts && Array.isArray(opts.allCharacterPrompts)) {
@@ -4493,6 +4658,12 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         if (opts.quality_preset_bias !== undefined) {
             forgeData.quality_preset_bias = opts.quality_preset_bias;
         }
+        if (opts.append_transparency !== undefined) {
+            forgeData.append_transparency = opts.append_transparency;
+        }
+        if (opts.transparency_bias !== undefined) {
+            forgeData.transparency_bias = opts.transparency_bias;
+        }
         if (opts.append_uc !== undefined) {
             forgeData.append_uc = opts.append_uc;
         }
@@ -4716,25 +4887,12 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             await storePreviewBlurhash(__runtimeGr, name, previewResult);
             __runtimeGr.getLogger().detailed(`📸 Generated previews for ${baseName}`);
 
-            // Send completion progress update
-            if (ws && handler) {
-                const progressData = {
-                    phase: 'complete',
-                    hasDynamicGen: !!opts.dynamic_generation,
-                    isUpscaling: !!opts.upscale,
-                    contentLength: finalBuffer.length,
-                    filename: name
-                };
-                
-                // Add stage information if available (convert to 1-based indexing for UI)
-                if (opts.stageIndex !== undefined) {
-                    progressData.totalStages = opts.totalStages;
-                    progressData.currentStage = opts.stageIndex + 1;
-                    progressData.stageType = opts.stageType;
-                }
-                
-                handler.sendGenerationProgress(ws, opts.requestId || 'generation', progressData);
-            }
+            // Last pipeline stage keeps phase:complete; earlier saved stages use stage_complete
+            sendStageOrGenerationComplete(ws, handler, opts, {
+                isUpscaling: !!opts.upscale,
+                contentLength: finalBuffer.length,
+                filename: name
+            });
         }
         
         if (opts.upscale) {
@@ -4805,25 +4963,11 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 plumbing.publish('ws:broadcast:receipt', upscaledReceiptData);
             }
 
-            // Send completion progress update after upscaling
-            if (ws && handler) {
-                const progressData = {
-                    phase: 'complete',
-                    hasDynamicGen: !!opts.dynamic_generation,
-                    isUpscaling: false,
-                    contentLength: updatedScaledBuffer.length,
-                    filename: upscaledName
-                };
-                
-                // Add stage information if available (convert to 1-based indexing for UI)
-                if (opts.stageIndex !== undefined) {
-                    progressData.totalStages = opts.totalStages;
-                    progressData.currentStage = opts.stageIndex + 1;
-                    progressData.stageType = opts.stageType;
-                }
-                
-                handler.sendGenerationProgress(ws, opts.requestId || 'generation', progressData);
-            }
+            sendStageOrGenerationComplete(ws, handler, opts, {
+                isUpscaling: false,
+                contentLength: updatedScaledBuffer.length,
+                filename: upscaledName
+            });
 
         // Return result with appropriate seed information
         const result = {
@@ -4838,6 +4982,23 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         return result;
         }
         
+        if (!shouldSave && !isLastPipelineStage(opts) && ws && handler && finalBuffer) {
+            try {
+                const jpegBuffer = await encodeStepPreviewJpeg(
+                    finalBuffer,
+                    opts.stepPreviewWidth,
+                    opts.stepPreviewHeight
+                );
+                sendStageOrGenerationComplete(ws, handler, opts, {
+                    isUpscaling: false,
+                    imageData: jpegBuffer.toString('base64'),
+                    imageFormat: 'jpeg'
+                });
+            } catch (encodeErr) {
+                sendStageOrGenerationComplete(ws, handler, opts, { isUpscaling: false });
+            }
+        }
+
         // Return result with appropriate seed information
         const finalResult = {
             buffer: finalBuffer,
@@ -5397,7 +5558,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                     }
                 } else if (stage.type === 'enhance' || stage.type === 'variation') {
                     // For variation, only validate strength/noise when using base image
-                    const needsImg2Img = stage.type === 'enhance' || stage.useBaseImage === true;
+                    const needsImg2Img = stage.type === 'enhance' || stage.maxEnhance === true || stage.useBaseImage === true;
                     if (needsImg2Img) {
                         if (stage.strength === undefined || stage.strength < 0 || stage.strength > 1) {
                             throw new Error(`Stage ${stageIndex}: Invalid strength value for ${stage.type} stage`);
@@ -5575,9 +5736,9 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                         if (stage.strength !== undefined) stageRequestBody.strength = stage.strength || 0.5;
                         if (stage.noise !== undefined) stageRequestBody.noise = stage.noise || 0;
                     }
-                    
+
                     // Handle resolution modifier (e.g., 'normal', 'large', 'xlarge')
-                    if (needsImg2Img && stage.resolution && (stageRequestBody.width && stageRequestBody.height)) {
+                    if (stage.maxEnhance !== true && needsImg2Img && stage.resolution && (stageRequestBody.width && stageRequestBody.height)) {
                         // Previous stage used custom dimensions - resize based on target area
                         const currentWidth = stageRequestBody.width;
                         const currentHeight = stageRequestBody.height;
@@ -5603,7 +5764,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                         } else {
                             console.log(`🎨 Enhance stage ${stageIndex}: Keeping dimensions ${currentWidth}x${currentHeight} (already at max under area cap)`);
                         }
-                    } else if (needsImg2Img && stage.resolution && stageRequestBody.resolution) {
+                    } else if (stage.maxEnhance !== true && needsImg2Img && stage.resolution && stageRequestBody.resolution) {
                         // Previous stage used named resolution - determine aspect ratio and apply modifier
                         const parts = stageRequestBody.resolution.toLowerCase().split('_');
                         const aspectRatio = parts.length > 1 ? parts.slice(1).join('_') : 'square';
@@ -5670,6 +5831,16 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                     delete stageRequestBody.inheritSeed;
                     delete stageRequestBody.autoSeed;
                 }
+
+                if (stage.maxEnhance === true) {
+                    const sourceDims = await getImageDimensions(currentBuffer);
+                    stageRequestBody.width = sourceDims.width;
+                    stageRequestBody.height = sourceDims.height;
+                    stageRequestBody.upscaled_enhance = true;
+                    stageRequestBody.upscale = undefined;
+                    stageRequestBody.max_enhance_source = stageRequestBody.chain_source || null;
+                    delete stageRequestBody.resolution;
+                }
                 
                 // Handle resolution conflicts: if named resolution is set, remove width/height, and vice versa
                 if (stageRequestBody.resolution && stageRequestBody.resolution !== 'custom') {
@@ -5688,7 +5859,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                 stageRequestBody.stageIndex = stageIndex; // Also set camelCase for consistency with checks
                 delete stageRequestBody.image;
                 // Only set image for expand-canvas, enhance, or variation with useBaseImage
-                if (stage.type === 'expand-canvas' || stage.type === 'enhance' || (stage.type === 'variation' && stage.useBaseImage)) {
+                if (stage.type === 'expand-canvas' || stage.type === 'enhance' || stage.maxEnhance === true || (stage.type === 'variation' && stage.useBaseImage)) {
                     stageRequestBody.image = `data:${currentBuffer.toString('base64')}`;
                 }
                 
@@ -5821,7 +5992,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                 }
                 
                 // Handle enhance/variation(useBaseImage) stages - pass current buffer for analysis
-                if ((stage.type === 'enhance' || (stage.type === 'variation' && stage.useBaseImage)) && stageRequestBody.dynamic_generation) {
+                if ((stage.type === 'enhance' || stage.maxEnhance === true || (stage.type === 'variation' && stage.useBaseImage)) && stageRequestBody.dynamic_generation) {
                     console.log(`✨ Enhance/Variation(useBaseImage) stage with dynamic generation - passing current image buffer for analysis`);
                     stageRequestBody.dynamic_generation.lastGeneratedImage = currentBuffer;
                     console.log(`📸 Passing current buffer to dynamic generation for stage ${stageIndex}`);
@@ -5842,7 +6013,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                 const StageAction = __runtimeGr.getNekoAiService('Action');
                 if (stage.type === 'expand-canvas') {
                     stageOpts.action = StageAction.INPAINT;
-                } else if (stage.type === 'enhance' || (stage.type === 'variation' && stage.useBaseImage === true)) {
+                } else if (stage.type === 'enhance' || stage.maxEnhance === true || (stage.type === 'variation' && stage.useBaseImage === true)) {
                     stageOpts.action = StageAction.IMG2IMG;
                 } else if (stage.type === 'variation') {
                     // Prompt-only variation (e.g. Phasewalker) — text-to-image, not img2img
@@ -6161,6 +6332,16 @@ async function convertMetadataToRequestFormat(globalResources, metadata, allowPa
         requestBody.quality_preset_bias = extractedMetadata.quality_preset_bias;
     } else if (forgeData.quality_preset_bias !== undefined) {
         requestBody.quality_preset_bias = forgeData.quality_preset_bias;
+    }
+    if (extractedMetadata.append_transparency !== undefined) {
+        requestBody.append_transparency = extractedMetadata.append_transparency;
+    } else if (forgeData.append_transparency !== undefined) {
+        requestBody.append_transparency = forgeData.append_transparency;
+    }
+    if (extractedMetadata.transparency_bias !== undefined) {
+        requestBody.transparency_bias = extractedMetadata.transparency_bias;
+    } else if (forgeData.transparency_bias !== undefined) {
+        requestBody.transparency_bias = forgeData.transparency_bias;
     }
     if (extractedMetadata.append_uc !== undefined) {
         requestBody.append_uc = extractedMetadata.append_uc;
@@ -8261,6 +8442,140 @@ async function applyTendaiPreviewWebSocket(globalResources, body, ws, handler, w
     };
 }
 
+async function maxEnhanceImage(globalResources, filename, sessionId, workspaceId = null, streamingCallback = null, ws = null, handler = null, requestId = null) {
+    bindRuntimeGlobalResources(globalResources);
+    const filePath = path.join(__runtimeGr.getPath('images'), filename);
+    if (!filename || !fs.existsSync(filePath)) {
+        throw new Error('Image not found');
+    }
+
+    const sourceBuffer = fs.readFileSync(filePath);
+    const sourceMetadata = __runtimeGr.getPngMetadata().readMetadata(sourceBuffer);
+    if (!sourceMetadata?.tEXt?.Comment) {
+        throw new Error('Max Enhance requires generation metadata');
+    }
+
+    const parsedMetadata = JSON.parse(sourceMetadata.tEXt.Comment);
+    const sourceDimensions = await getImageDimensions(sourceBuffer);
+    const requestBody = await convertMetadataToRequestFormat(globalResources, {
+        filename,
+        workspace: workspaceId,
+        metadata: parsedMetadata
+    });
+    const { getModelFeatures } = require('./modelFeatures');
+    const modelFeatures = getModelFeatures(requestBody.model, __runtimeGr.getModelFeaturesMap());
+    if (!modelFeatures?.maxEnhance) {
+        throw new Error(`Max Enhance is not supported by model ${requestBody.model || 'unknown'}`);
+    }
+
+    const area = sourceDimensions.width * sourceDimensions.height;
+    const minArea = Number(modelFeatures.maxEnhanceMinArea);
+    const maxArea = Number(modelFeatures.maxEnhanceMaxArea);
+    if ((Number.isFinite(minArea) && area < minArea)
+        || (Number.isFinite(maxArea) && area > maxArea)) {
+        throw new Error(`Max Enhance requires an image area between ${minArea} and ${maxArea} pixels; received ${area}.`);
+    }
+
+    requestBody.image = `data:${sourceBuffer.toString('base64')}`;
+    requestBody.width = sourceDimensions.width;
+    requestBody.height = sourceDimensions.height;
+    requestBody.upscaled_enhance = true;
+    requestBody.upscale = false;
+    requestBody.no_save = false;
+    requestBody.requestId = requestId;
+    delete requestBody.resolution;
+
+    const opts = await buildOptions(globalResources, requestBody, null, {}, ws, handler);
+    opts.action = __runtimeGr.getNekoAiService('Action').IMG2IMG;
+    opts.upscaled_enhance = true;
+    opts.upscale = undefined;
+    opts.max_enhance_source = filename;
+    opts.image_source = filename;
+    opts.original_filename = filename;
+    opts.requestId = requestId;
+
+    const mockReq = { session: { id: sessionId } };
+    return handleGeneration(
+        globalResources,
+        opts,
+        true,
+        requestBody.preset || null,
+        workspaceId,
+        mockReq,
+        streamingCallback,
+        ws,
+        handler,
+        sourceMetadata
+    );
+}
+
+async function enhanceImage(globalResources, filename, scale, sessionId, workspaceId = null, streamingCallback = null, ws = null, handler = null, requestId = null) {
+    bindRuntimeGlobalResources(globalResources);
+    const allowedScales = new Set([1, 1.5, 2]);
+    const enhanceScale = Number(scale);
+    if (!allowedScales.has(enhanceScale)) {
+        throw new Error('Enhance scale must be 1, 1.5, or 2');
+    }
+
+    const filePath = path.join(__runtimeGr.getPath('images'), filename);
+    if (!filename || !fs.existsSync(filePath)) {
+        throw new Error('Image not found');
+    }
+
+    const sourceBuffer = fs.readFileSync(filePath);
+    const sourceMetadata = __runtimeGr.getPngMetadata().readMetadata(sourceBuffer);
+    if (!sourceMetadata?.tEXt?.Comment) {
+        throw new Error('Enhance requires generation metadata');
+    }
+
+    const parsedMetadata = JSON.parse(sourceMetadata.tEXt.Comment);
+    const sourceDimensions = await getImageDimensions(sourceBuffer);
+    const requestBody = await convertMetadataToRequestFormat(globalResources, {
+        filename,
+        workspace: workspaceId,
+        metadata: parsedMetadata
+    });
+    const { getModelFeatures } = require('./modelFeatures');
+    const modelFeatures = getModelFeatures(requestBody.model, __runtimeGr.getModelFeaturesMap());
+    if (!modelFeatures?.maxEnhance) {
+        throw new Error(`Enhance is not supported by model ${requestBody.model || 'unknown'}`);
+    }
+
+    requestBody.image = `data:${sourceBuffer.toString('base64')}`;
+    requestBody.width = Math.max(1, Math.round(sourceDimensions.width * enhanceScale));
+    requestBody.height = Math.max(1, Math.round(sourceDimensions.height * enhanceScale));
+    requestBody.strength = 0.7;
+    requestBody.noise = 0.1;
+    requestBody.seed = crypto.randomInt(0, 4294967295);
+    requestBody.upscaled_enhance = false;
+    requestBody.upscale = false;
+    requestBody.no_save = false;
+    requestBody.requestId = requestId;
+    delete requestBody.resolution;
+
+    const opts = await buildOptions(globalResources, requestBody, null, {}, ws, handler);
+    opts.action = __runtimeGr.getNekoAiService('Action').IMG2IMG;
+    opts.enhance_scale = enhanceScale;
+    opts.enhance_source = filename;
+    opts.image_source = filename;
+    opts.original_filename = filename;
+    opts.requestId = requestId;
+
+    const mockReq = { session: { id: sessionId } };
+    return handleGeneration(
+        globalResources,
+        opts,
+        true,
+        requestBody.preset || null,
+        workspaceId,
+        mockReq,
+        streamingCallback,
+        ws,
+        handler,
+        sourceMetadata
+    );
+}
+
 module.exports = {
     generateImageWebSocket,
     buildOptions,
@@ -8279,5 +8594,7 @@ module.exports = {
     collectTextReplacementSeeds,
     compileDynamicGenerationWebSocket,
     applyTendaiPreviewWebSocket,
+    enhanceImage,
+    maxEnhanceImage,
 };
 

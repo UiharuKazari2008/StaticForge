@@ -5,6 +5,10 @@
  */
 
 const DREAMSCAPE_CLIPBOARD_READ_TIMEOUT_MS = 30000;
+const DREAMSCAPE_IMAGES_MIME = 'application/x-dreamscape-images+json';
+const DREAMSCAPE_IMAGES_FORMAT = `web ${DREAMSCAPE_IMAGES_MIME}`;
+
+let _copiedImageFiles = null;
 
 let _androidClipboardReadSeq = 0;
 const _androidClipboardPendingReads = {};
@@ -172,6 +176,81 @@ function _readClipboardAndroid() {
     });
 }
 
+function _isDreamscapeImagesType(type) {
+    return type === DREAMSCAPE_IMAGES_FORMAT || type === DREAMSCAPE_IMAGES_MIME;
+}
+
+function _imageItemFromBlob(blob, name, mime) {
+    const resolvedMime = mime || blob.type || 'image/png';
+    const ext = resolvedMime.split('/')[1] || 'png';
+    const file = new File([blob], name || `clipboard-image.${ext}`, { type: resolvedMime });
+    return { kind: 'image', mime: resolvedMime, blob, file };
+}
+
+function _filesFromDreamscapeImagesJson(json) {
+    const images = json && Array.isArray(json.images) ? json.images : [];
+    const items = [];
+    for (const img of images) {
+        if (!img || !img.base64) continue;
+        const mime = img.mime || 'image/png';
+        const blob = _base64ToBlob(_stripDataUrlBase64(img.base64), mime);
+        items.push(_imageItemFromBlob(blob, img.name, mime));
+    }
+    return items;
+}
+
+function _filesFromClipboardHtml(html) {
+    const items = [];
+    if (!html) return items;
+    const re = /<img[^>]+src="(data:image\/[^"]+)"/gi;
+    let match;
+    while ((match = re.exec(html))) {
+        const dataUrl = match[1];
+        const mimeMatch = dataUrl.match(/^data:([^;]+);base64,/);
+        const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+        const blob = _base64ToBlob(_stripDataUrlBase64(dataUrl), mime);
+        items.push(_imageItemFromBlob(blob, null, mime));
+    }
+    return items;
+}
+
+function _setCopiedImageFiles(list) {
+    _copiedImageFiles = list && list.length
+        ? list.map((item, index) => {
+            const mime = item.blob.type || 'image/png';
+            const ext = mime.split('/')[1] || 'png';
+            return new File([item.blob], item.name || `image-${index + 1}.${ext}`, { type: mime });
+        })
+        : null;
+}
+
+function _escapeClipboardHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/"/g, '&quot;');
+}
+
+async function _buildDreamscapeImagesPayload(list) {
+    const images = [];
+    for (const item of list) {
+        const mime = item.blob.type || 'image/png';
+        images.push({
+            name: item.name || 'image.png',
+            mime,
+            base64: await _blobToBase64(item.blob)
+        });
+    }
+    return images;
+}
+
+function _dreamscapeImagesToHtml(images) {
+    const imgs = images.map((img) =>
+        `<img src="data:${img.mime};base64,${img.base64}" alt="${_escapeClipboardHtml(img.name)}">`
+    ).join('');
+    return `<html><body><!--dreamscape-images:${images.length}-->${imgs}</body></html>`;
+}
+
 async function _readClipboardWeb() {
     const items = [];
     let empty = true;
@@ -180,12 +259,30 @@ async function _readClipboardWeb() {
         try {
             const clipboardItems = await navigator.clipboard.read();
             for (const clipItem of clipboardItems) {
+                let packedImages = [];
+                for (const type of clipItem.types) {
+                    if (!_isDreamscapeImagesType(type)) continue;
+                    const packed = await clipItem.getType(type);
+                    packedImages = _filesFromDreamscapeImagesJson(JSON.parse(await packed.text()));
+                    break;
+                }
+                if (!packedImages.length) {
+                    for (const type of clipItem.types) {
+                        if (type !== 'text/html') continue;
+                        const htmlBlob = await clipItem.getType(type);
+                        packedImages = _filesFromClipboardHtml(await htmlBlob.text());
+                        break;
+                    }
+                }
+                if (packedImages.length) {
+                    items.push(...packedImages);
+                    empty = false;
+                    continue;
+                }
                 for (const type of clipItem.types) {
                     if (type.startsWith('image/')) {
                         const blob = await clipItem.getType(type);
-                        const ext = type.split('/')[1] || 'png';
-                        const file = new File([blob], `clipboard-image.${ext}`, { type });
-                        items.push({ kind: 'image', mime: type, blob, file });
+                        items.push(_imageItemFromBlob(blob, null, type));
                         empty = false;
                     }
                 }
@@ -226,13 +323,35 @@ function getPrimaryTextFromClipboardResult(result) {
 }
 
 function getPrimaryImageFileFromClipboardResult(result) {
-    if (!result || !Array.isArray(result.items)) return null;
-    const imageItem = result.items.find((item) => item.kind === 'image' && (item.file || item.blob));
-    if (!imageItem) return null;
-    if (imageItem.file) return imageItem.file;
-    const mime = imageItem.mime || imageItem.blob.type || 'image/png';
-    const ext = mime.split('/')[1] || 'png';
-    return new File([imageItem.blob], `clipboard-image.${ext}`, { type: mime });
+    const files = getAllImageFilesFromClipboardResult(result);
+    return files.length ? files[0] : null;
+}
+
+function getAllImageFilesFromClipboardResult(result) {
+    const files = [];
+    if (result && Array.isArray(result.items)) {
+        for (const item of result.items) {
+            if (item.kind !== 'image' || (!item.file && !item.blob)) continue;
+            if (item.file) {
+                files.push(item.file);
+                continue;
+            }
+            files.push(_imageItemFromBlob(item.blob, item.name, item.mime).file);
+        }
+    }
+    if (
+        _copiedImageFiles
+        && _copiedImageFiles.length > files.length
+        && files.length === 1
+        && files[0].size === _copiedImageFiles[0].size
+    ) {
+        return _copiedImageFiles.slice();
+    }
+    return files;
+}
+
+function filesFromClipboardHtml(html) {
+    return _filesFromClipboardHtml(html).map((item) => item.file);
 }
 
 async function readClipboardText() {
@@ -400,11 +519,64 @@ async function copyTextToClipboard(text, options) {
 
 async function copyBlobToClipboard(blob, options) {
     const opts = options || {};
+    _setCopiedImageFiles([{ blob, name: opts.name }]);
     await writeClipboard({
         blob,
         name: opts.name,
         label: opts.label
     });
+}
+
+/** Copy one or more image blobs. OS clipboards keep one image/png, so extras go in HTML + a custom format. */
+async function copyBlobsToClipboard(items) {
+    const list = (items || []).filter((item) => item && item.blob);
+    if (!list.length) throw new Error('Nothing to write to clipboard');
+
+    _setCopiedImageFiles(list);
+
+    if (list.length === 1) {
+        await copyBlobToClipboard(list[0].blob, { name: list[0].name, label: list[0].label });
+        return { copied: 1 };
+    }
+
+    if (isAndroidClipboardBridgeActive()) {
+        await writeClipboard({
+            items: list.map((item) => ({
+                blob: item.blob,
+                name: item.name,
+                mime: item.blob.type
+            }))
+        });
+        return { copied: list.length };
+    }
+
+    if (!navigator.clipboard || !navigator.clipboard.write) {
+        throw new Error('Clipboard API not available');
+    }
+
+    const payloadImages = await _buildDreamscapeImagesPayload(list);
+    const htmlBlob = new Blob([_dreamscapeImagesToHtml(payloadImages)], { type: 'text/html' });
+    const customBlob = new Blob([JSON.stringify({ version: 1, images: payloadImages })], { type: DREAMSCAPE_IMAGES_MIME });
+    const firstType = list[0].blob.type || 'image/png';
+
+    const attempts = [
+        { [firstType]: list[0].blob, 'text/html': htmlBlob, [DREAMSCAPE_IMAGES_FORMAT]: customBlob },
+        { [firstType]: list[0].blob, 'text/html': htmlBlob },
+        { [firstType]: list[0].blob, [DREAMSCAPE_IMAGES_FORMAT]: customBlob },
+        { [firstType]: list[0].blob }
+    ];
+
+    let lastError = null;
+    for (let i = 0; i < attempts.length; i++) {
+        try {
+            await navigator.clipboard.write([new ClipboardItem(attempts[i])]);
+            return { copied: list.length, packed: i < attempts.length - 1 };
+        } catch (error) {
+            lastError = error;
+        }
+    }
+
+    throw lastError || new Error('Clipboard write failed');
 }
 
 function formatClipboardBlobSize(blob) {

@@ -268,6 +268,15 @@ const INIT_STEPS = [
         },
     },
     {
+        id: 'gr_runpod_pods',
+        label: 'Starting managed RunPod watcher',
+        afterReady: true,
+        sync: true,
+        run: (gr) => {
+            gr.getRunpodPodManager().start();
+        },
+    },
+    {
         id: 'gr_workspace_sync',
         label: 'Syncing workspace files',
         afterReady: true,

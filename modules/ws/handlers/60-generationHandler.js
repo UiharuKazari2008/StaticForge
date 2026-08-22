@@ -6,6 +6,8 @@ const {
     handleImageUpscaling,
     handlePreviewExpandImagePrompt,
     handleImageExpansion,
+    handleEnhanceImage,
+    handleMaxEnhanceImage,
     handleImageExpansionReroll,
     handleCancelGeneration,
     handleDynamicGenerationProgress,
@@ -37,6 +39,8 @@ function registerPackets(handlersCtx) {
     regFn('reroll_image', handleImageReroll, GENERATION_DESTRUCTIVE);
     regFn('upscale_image', handleImageUpscaling, GENERATION_DESTRUCTIVE);
     regFn('expand_image', handleImageExpansion, GENERATION_DESTRUCTIVE);
+    regFn('enhance_image', handleEnhanceImage, GENERATION_DESTRUCTIVE);
+    regFn('max_enhance_image', handleMaxEnhanceImage, GENERATION_DESTRUCTIVE);
     regFn('preview_expand_image_prompt', handlePreviewExpandImagePrompt, GENERATION_DESTRUCTIVE);
     regFn('reroll_expanded_image', handleImageExpansionReroll, GENERATION_DESTRUCTIVE);
     regFn('cancel_generation', handleCancelGeneration, WS_DISPATCH_FIFO_CONNECTION);

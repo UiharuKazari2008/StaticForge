@@ -29,6 +29,9 @@ function calculateGenerationProgress(progressData) {
             case 'previews':
                 return 98;
 
+            case 'stage_complete':
+                return Math.min((currentStage / totalStages) * 100, 99);
+
             case 'complete':
                 return 100;
 
@@ -141,6 +144,11 @@ function getGenerationStatusMessage(progressData) {
             return 'Upscaling image...';
         case 'previews':
             return 'Generating previews...';
+        case 'stage_complete':
+            if (d.totalStages != null && d.currentStage != null) {
+                return `Stage ${d.currentStage}/${d.totalStages} complete`;
+            }
+            return 'Stage complete';
         case 'complete':
             return 'Preparing download...';
         default:
@@ -202,7 +210,7 @@ function updateStageIndicators(progressData) {
         dot.classList.remove('completed', 'active', 'delay', 'generating');
         dot.style.removeProperty('--stage-progress');
 
-        if (dotStage < currentStage) {
+        if (dotStage < currentStage || (dotStage === currentStage && (phase === 'stage_complete' || phase === 'complete'))) {
             // Completed stages
             dot.classList.add('completed');
         } else if (dotStage === currentStage) {

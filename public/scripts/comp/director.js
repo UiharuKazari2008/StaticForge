@@ -2485,6 +2485,8 @@ class Director {
             // Include compilation flags so server knows to compile using buildOptions logic
             append_quality: appendQuality || false,
             quality_preset_bias: (typeof qualityPresetBias !== 'undefined' && qualityPresetBias !== 1.0) ? qualityPresetBias : undefined,
+            append_transparency: appendTransparency || false,
+            transparency_bias: transparencyBias !== 1.0 ? transparencyBias : undefined,
             append_uc: selectedUcPreset || 0,
             model: window.manualSelectedModel || 'v4_5'
         };

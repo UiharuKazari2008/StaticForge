@@ -34,9 +34,38 @@ function characterPromptsHaveCustomCoords(characterPrompts) {
 function updateAutoPositionToggle() {
     const characterItems = characterPromptsContainer.querySelectorAll('.character-prompt-item');
     const autoPositionBtn = document.getElementById('autoPositionBtn');
+    // characterPositionToolManager: public/scripts/comp/characterPositionToolManager.js
+    characterPositionToolManager.refreshOpenTool();
 
     if (characterItems.length === 0) {
         autoPositionBtn.classList.add('hidden');
+        return;
+    }
+
+    if (getForgeModelFeatures()?.freeformCharacterPosition === true) {
+        autoPositionBtn.classList.add('hidden');
+        characterItems.forEach((item, index) => {
+            const positionBtn = item.querySelector('.position-btn');
+            const moveUpBtn = item.querySelector('.move-up-btn');
+            const moveDownBtn = item.querySelector('.move-down-btn');
+            if (positionBtn) positionBtn.classList.add('hidden');
+            if (characterItems.length < 2) {
+                if (moveUpBtn) moveUpBtn.classList.add('hidden');
+                if (moveDownBtn) moveDownBtn.classList.add('hidden');
+                return;
+            }
+            if (moveUpBtn) {
+                moveUpBtn.classList.remove('hidden');
+                moveUpBtn.disabled = index === 0;
+                moveUpBtn.style.opacity = index === 0 ? '0.4' : '1';
+            }
+            if (moveDownBtn) {
+                moveDownBtn.classList.remove('hidden');
+                const last = index === characterItems.length - 1;
+                moveDownBtn.disabled = last;
+                moveDownBtn.style.opacity = last ? '0.4' : '1';
+            }
+        });
         return;
     }
 
@@ -122,6 +151,11 @@ function isPositionDialogTopModal() {
 }
 
 function showPositionDialog(characterId) {
+    // characterPositionToolManager: public/scripts/comp/characterPositionToolManager.js
+    if (getForgeModelFeatures()?.freeformCharacterPosition === true) {
+        characterPositionToolManager.open(characterId);
+        return;
+    }
     currentPositionCharacterId = characterId;
 
     const positionDialog = document.getElementById('positionDialog');
@@ -220,19 +254,38 @@ function confirmPosition() {
         const x = parseFloat(selectedPositionCell.dataset.x);
         const y = parseFloat(selectedPositionCell.dataset.y);
         const cellLabel = selectedPositionCell.dataset.cell;
-
-        // Update position button text to show current position
-        const characterItem = document.getElementById(currentPositionCharacterId);
-        const positionBtn = characterItem.querySelector('.position-btn');
-        positionBtn.innerHTML = `<i class="fas fa-crosshairs"></i> ${cellLabel}`;
-
-        // Store position data
-        characterItem.dataset.positionX = x;
-        characterItem.dataset.positionY = y;
-        characterItem.dataset.positionCell = cellLabel;
+        setCharacterPromptPosition(currentPositionCharacterId, x, y, cellLabel);
 
         hidePositionDialog();
     }
+}
+
+function setCharacterPromptPosition(characterId, x, y, cellLabel = null) {
+    const characterItem = document.getElementById(characterId);
+    if (!characterItem || !Number.isFinite(x) || !Number.isFinite(y)) return;
+    const positionBtn = characterItem.querySelector('.position-btn');
+    const label = cellLabel || `${Math.round(x * 100)}%, ${Math.round(y * 100)}%`;
+    if (positionBtn) positionBtn.innerHTML = `<i class="fas fa-crosshairs"></i> ${label}`;
+    characterItem.dataset.positionX = String(x);
+    characterItem.dataset.positionY = String(y);
+    if (cellLabel) {
+        characterItem.dataset.positionCell = cellLabel;
+    } else {
+        delete characterItem.dataset.positionCell;
+    }
+}
+
+function clearCharacterPromptPositions() {
+    characterPromptsContainer.querySelectorAll('.character-prompt-item').forEach((item) => {
+        delete item.dataset.positionX;
+        delete item.dataset.positionY;
+        delete item.dataset.positionCell;
+        const positionBtn = item.querySelector('.position-btn');
+        if (positionBtn) positionBtn.innerHTML = '<i class="fas fa-crosshairs"></i>';
+    });
+    const autoPositionBtn = document.getElementById('autoPositionBtn');
+    if (autoPositionBtn) autoPositionBtn.setAttribute('data-state', 'on');
+    updateAutoPositionToggle();
 }
 
 function handlePositionDialogKeydown(e) {

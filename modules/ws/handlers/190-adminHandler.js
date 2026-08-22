@@ -490,6 +490,7 @@ async function handleGetPinSettings(handlersCtx, ws, message, clientInfo, wsServ
         }
 
         const config = handlersCtx.globalResources.getConfig() || {};
+        const secureConfig = handlersCtx.globalResources.getSecureConfig() || {};
 
         handlersCtx.sendToClient(ws, {
             type: 'get_pin_settings_response',
@@ -497,8 +498,8 @@ async function handleGetPinSettings(handlersCtx, ws, message, clientInfo, wsServ
             data: {
                 success: true,
                 userPinLoginEnabled: config.userPinLoginEnabled !== false,
-                adminPinConfigured: !!(config.loginPin && String(config.loginPin).length > 0),
-                userPinConfigured: !!(config.readOnlyPin && String(config.readOnlyPin).length > 0)
+                adminPinConfigured: !!(secureConfig.loginPin && String(secureConfig.loginPin).length > 0),
+                userPinConfigured: !!(secureConfig.readOnlyPin && String(secureConfig.readOnlyPin).length > 0)
             },
             timestamp: new Date().toISOString()
         });
@@ -522,7 +523,7 @@ async function handleSetAdminPin(handlersCtx, ws, message, clientInfo, wsServer)
         }
 
         const trimmed = pin.trim();
-        handlersCtx.globalResources.modifyConfig('config').assign('loginPin', trimmed);
+        handlersCtx.globalResources.modifyConfig('secureConfig').assign('loginPin', trimmed);
 
         console.log(`🔐 Admin PIN updated by session ${clientInfo.sessionId}`);
 
@@ -555,7 +556,7 @@ async function handleSetUserPin(handlersCtx, ws, message, clientInfo, wsServer) 
         }
 
         const trimmed = pin.trim();
-        handlersCtx.globalResources.modifyConfig('config').assign('readOnlyPin', trimmed);
+        handlersCtx.globalResources.modifyConfig('secureConfig').assign('readOnlyPin', trimmed);
 
         console.log(`🔐 User PIN updated by session ${clientInfo.sessionId}`);
 

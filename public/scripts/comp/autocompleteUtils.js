@@ -3518,6 +3518,8 @@ function shouldPreserveAutofillListSelection() {
 
 // Map client model names to server model names
 const searchModelMapping = {
+    'v5': 'nai-diffusion-5-full',
+    'v5_cur': 'nai-diffusion-5-curated',
     'v4_5': 'nai-diffusion-4-5-full',
     'v4_5_cur': 'nai-diffusion-4-5-curated',
     'v4': 'nai-diffusion-4-full',
@@ -3534,8 +3536,15 @@ function getMappedManualModel() {
     return searchModelMapping[raw] || raw;
 }
 
+function getManualModelMode() {
+    return selectedDatasets.some((dataset) => dataset === 'fur dataset' || dataset === 'furry dataset')
+        ? 'furry'
+        : 'anime';
+}
+
 function isFurryApiModelSlotNeeded() {
-    return getMappedManualModel() !== 'nai-diffusion-furry-3';
+    const caps = getForgeModelFeatures(manualModel?.value);
+    return !caps?.suggestTagsTypeFurry && getMappedManualModel() !== 'nai-diffusion-furry-3';
 }
 
 // Function to initialize all autofill services
@@ -3560,7 +3569,9 @@ function initializeAutofillServicesForConfig(config) {
         }
 
         const currentModel = getMappedManualModel();
-        if (currentModel.startsWith('nai-diffusion') && (!server || server.naiAnimeTags !== false)) {
+        const currentModeEnabled = !server
+            || (getManualModelMode() === 'furry' ? server.naiFurryTags !== false : server.naiAnimeTags !== false);
+        if (currentModel.startsWith('nai-diffusion') && currentModeEnabled) {
             searchServices.set(currentModel, 'stalled');
         }
         if (isFurryApiModelSlotNeeded() && (!server || server.naiFurryTags !== false)) {
@@ -3669,7 +3680,8 @@ function getAutofillServicesConfigKey(config) {
         config.expanders ? '1' : '0',
         config.spellcheck ? '1' : '0',
         config.thesaurus ? '1' : '0',
-        serverKey
+        serverKey,
+        getManualModelMode()
     ].join('');
 }
 
@@ -3700,6 +3712,8 @@ const modelKeys = {
     "nai-diffusion-4-curated-preview": { type: "NovelAI", version: "v4 Curated" },
     "nai-diffusion-4-5-full": { type: "NovelAI", version: "v4.5" },
     "nai-diffusion-4-5-curated": { type: "NovelAI", version: "v4.5 Curated" },
+    "nai-diffusion-5-full": { type: "NovelAI", version: "v5" },
+    "nai-diffusion-5-curated": { type: "NovelAI", version: "v5 Curated" },
     "furry-local": { type: "Hidden", version: "e621" },
     "anime-local": { type: "Hidden", version: "Danbooru" },
     "dual-match": { type: "Global" }
@@ -5323,11 +5337,15 @@ function isServiceStatusInactiveIcon(status) {
 function getServiceIconClass(serviceName, status) {
     const inactive = isServiceStatusInactiveIcon(status);
     switch (serviceName) {
+        case 'nai-diffusion-5-full':
+        case 'nai-diffusion-5-curated':
         case 'nai-diffusion-4-5-full':
         case 'nai-diffusion-4-5':
         case 'nai-diffusion-4-full':
         case 'nai-diffusion-4-curated-preview':
         case 'nai-diffusion-3':
+        case 'v5':
+        case 'v5_cur':
         case 'v4':
         case 'v4_cur':
         case 'v4_5':
@@ -7793,7 +7811,8 @@ async function searchCharacters(query, target, forceRefresh, options) {
                         autofillSessionId: autofillSessionId,
                         spellCheckText: spellCheckText,
                         isContinuation: wsIsContinuation,
-                        autofillSettings: getAutofillSearchSettingsForRequest()
+                        autofillSettings: getAutofillSearchSettingsForRequest(),
+                        modelMode: getManualModelMode()
                     });
 
                     if (currentSearchRequestId !== thisSearchRequestId) {
@@ -7847,7 +7866,8 @@ async function searchCharacters(query, target, forceRefresh, options) {
                         autofillSessionId: autofillSessionId,
                         spellCheckText: spellCheckText,
                         isContinuation: wsIsContinuation,
-                        autofillSettings: getAutofillSearchSettingsForRequest()
+                        autofillSettings: getAutofillSearchSettingsForRequest(),
+                        modelMode: getManualModelMode()
                     });
 
                     if (currentSearchRequestId !== thisSearchRequestId) {
@@ -7890,7 +7910,8 @@ async function searchCharacters(query, target, forceRefresh, options) {
                         autofillSessionId: autofillSessionId,
                         spellCheckText: spellCheckText,
                         isContinuation: wsIsContinuation,
-                        autofillSettings: getAutofillSearchSettingsForRequest()
+                        autofillSettings: getAutofillSearchSettingsForRequest(),
+                        modelMode: getManualModelMode()
                     });
 
                     if (currentSearchRequestId !== thisSearchRequestId) {
@@ -10790,7 +10811,8 @@ function isAnimeModel(model) {
     return model && (
         model.includes('nai-diffusion-3') ||
         model.includes('nai-diffusion-4') ||
-        model.includes('nai-diffusion-4-5')
+        model.includes('nai-diffusion-4-5') ||
+        model.includes('nai-diffusion-5')
     );
 }
 

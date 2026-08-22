@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "capturedAt": "2026-08-21T03:16:12.267Z",
+  "policy": "Public endpoints only. No JWT, recaptcha, cookies, or generate APIs.",
+  "sources": {
+    "home": {
+      "url": "https://novelai.net/",
+      "status": 200,
+      "bytes": 195582,
+      "chunkCount": 7,
+      "chunkPathsSha256": "f03e49c1d3421d269e793dadabeb14a762d4dc577b3dc82afdc20a0e6d5a52be",
+      "chunkPathsSample": [
+        "/_next/static/chunks/473-fb905fc5ea13ac66.js",
+        "/_next/static/chunks/7311-5eb2760447762c74.js",
+        "/_next/static/chunks/9349-fac95c97052448b0.js",
+        "/_next/static/chunks/9730-a928c6eeabf9027a.js",
+        "/_next/static/chunks/framework-7e74bf61ca06990a.js",
+        "/_next/static/chunks/main-fd2eb16f9613dd4b.js",
+        "/_next/static/chunks/webpack-bb779c1944358e38.js"
+      ]
+    },
+    "updateReload": {
+      "url": "https://novelai.net/updateReload.json",
+      "status": 200,
+      "bytes": 525,
+      "etag": "\"39ee640a99b09dbf8bca91d481c02e1c\"",
+      "lastModified": null,
+      "sha256": "2472048644dd52437a7274461149b9dae0a19558cf79d8e43bed415a71775bc0"
+    },
+    "tokenizerQwen": {
+      "url": "https://novelai.net/tokenizer/compressed/qwen35_tokenizer.def?v=2&static=true",
+      "status": 200,
+      "bytes": 3687242,
+      "etag": "\"2acaf26bb7559b278ff65c07414cfcbc\"",
+      "lastModified": null
+    },
+    "journalV5": {
+      "url": "https://journal.novelai.net/image-generation-novelai-diffusion-v5-is-here-c2df7c6b8d2d/",
+      "status": 200,
+      "bytes": 35104,
+      "etag": null,
+      "lastModified": null,
+      "sha256": "41cb0d170078e450d7e16f6f3be2d1e8b5f3eb3076bc69ed10d565947de5178f"
+    },
+    "blogUsage": {
+      "url": "https://blog.novelai.net/subscription-updates-usage-limits-2025-88a208d5d9c5",
+      "status": 403,
+      "bytes": 5371,
+      "etag": null,
+      "lastModified": null,
+      "sha256": "c39910e53c77382ba322e6852f95b214c6f92a820007fdc5b6e7cc58ffdcf0b6",
+      "error": "HTTP 403"
+    }
+  }
+}

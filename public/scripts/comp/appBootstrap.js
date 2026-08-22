@@ -56,6 +56,9 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
             // applyNovelAiStatusFromOptions: public/scripts/comp/novelAiAccountStatus.js
             applyNovelAiStatusFromOptions(options);
 
+            // usageToolManager: public/scripts/comp/usageToolManager.js
+            usageToolManager.updateUsage(options.opusUsage);
+
             // loadDynamicGenerationQuips: public/scripts/comp/generationQuips.js
             if (typeof loadDynamicGenerationQuips === 'function') {
                 loadDynamicGenerationQuips().catch(() => {});

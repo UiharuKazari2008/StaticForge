@@ -81,6 +81,7 @@ class GlobalResources {
         this.spellChecker = null;
         this.t5Tokenizer = null;
         this.presetTokenCounts = null;
+        this.modelFeatures = null;
         this.searchService = null; // Lazy-loaded to avoid circular dependency
         this.textReplacements = null; // Will be initialized after configs are loaded
         this.staticWiki = null;
@@ -176,6 +177,7 @@ class GlobalResources {
 
         // Search service (lazy-loaded to avoid circular dependencies)
         this.searchService = null;
+        this.runpodPodManager = null;
 
         // Security and IP blocking system
         this.blockedIPs = new Map(); // IP -> { blockedAt, reason, attempts }
@@ -303,6 +305,7 @@ class GlobalResources {
             secureConfig: path.resolve(rootDir, 'secure.config.json'),
             promptConfig: path.resolve(rootDir, 'prompt.config.json'),
             directorConfig: path.resolve(rootDir, 'director.config.json'),
+            modelFeatures: path.resolve(rootDir, 'config', 'model-features.json'),
             favorites: path.join(rootDir, '.cache', 'favorites.json'),
             characters: path.resolve(rootDir, 'characters.json'),
 
@@ -2626,6 +2629,21 @@ class GlobalResources {
     }
 
     /**
+     * Managed RunPod GPU pod start/stop + idle auto-shutdown.
+     * runpodPodManager: modules/runpodPodManager.js
+     */
+    getRunpodPodManager() {
+        if (!this.initialized) {
+            throw new Error('Global resources not initialized - call initialize() first');
+        }
+        if (!this.runpodPodManager) {
+            const { RunpodPodManager } = require('./runpodPodManager');
+            this.runpodPodManager = new RunpodPodManager(this);
+        }
+        return this.runpodPodManager;
+    }
+
+    /**
      * Get apiKeyManager reference
      */
     getApiKeyManager() {
@@ -2746,6 +2764,30 @@ class GlobalResources {
             }
         }
         return undefined;
+    }
+
+    /**
+     * Boot-load NovelAI model feature caps (config/model-features.json).
+     * @returns {Record<string, object>}
+     */
+    getModelFeaturesMap() {
+        if (!this.modelFeatures) {
+            // modules/modelFeatures.js
+            const { loadModelFeatures } = require('./modelFeatures');
+            this.modelFeatures = loadModelFeatures(this.getPath('modelFeatures'));
+        }
+        return this.modelFeatures;
+    }
+
+    /**
+     * Feature caps for a Dreamscape forge model key (v5, v4_5, …).
+     * @param {string} forgeModel
+     * @returns {object|null}
+     */
+    getModelFeatures(forgeModel) {
+        // modules/modelFeatures.js
+        const { getModelFeatures } = require('./modelFeatures');
+        return getModelFeatures(forgeModel, this.getModelFeaturesMap());
     }
 
     /**

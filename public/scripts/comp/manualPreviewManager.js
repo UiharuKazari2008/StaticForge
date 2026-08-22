@@ -952,6 +952,12 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                 );
                 // Director new session functionality is always available
             }
+            if (response) {
+                // characterPositionToolManager: public/scripts/comp/characterPositionToolManager.js
+                characterPositionToolManager.handleGenerationComplete();
+            } else {
+                characterPositionToolManager.syncPreviewImage();
+            }
 
             refreshTextReplacementLockModalIfOpen();
 

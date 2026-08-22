@@ -307,6 +307,10 @@ span.context-menu-item-state {
     margin-bottom: -0.15em;
 }
 
+.token-progress-fill.low {
+    background: var(--warning-color, #ffc107);
+}
+
 .price-list-container {
     display: flex;
     flex-direction: row;
@@ -690,6 +694,18 @@ span.context-menu-item-state {
     font-size: 15px;
     line-height: 1;
     flex-shrink: 0;
+}
+
+.context-menu-grid-btn.has-grid-text {
+    width: auto;
+    min-width: 36px;
+    padding: 0 6px;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+.context-menu-grid-btn .context-menu-grid-label {
+    line-height: 1;
 }
 
 .context-menu-grid-btn.has-toggle-indicator {

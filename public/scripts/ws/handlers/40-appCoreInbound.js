@@ -4,8 +4,8 @@
 function handleQueueUpdateData(data, wsClient) {
     wsClient.triggerEvent('queue_update', data);
 
-    if (optionsData) {
-        optionsData.queue_status = data.value;
+    if (window.optionsData) {
+        window.optionsData.queue_status = data.value;
     }
 
     const wasBlockedOrProcessing = isQueueStopped || isQueueProcessing;

@@ -29,7 +29,7 @@
       "defaultSkeleton": {
         "prompt": "",
         "uc": "",
-        "model": "v4_5",
+        "model": "v5",
         "resolution": "NORMAL_PORTRAIT",
         "steps": 23,
         "guidance": 5.4,
@@ -41,6 +41,8 @@
         "variety": false,
         "allow_paid": false,
         "append_quality": true,
+        "append_transparency": false,
+        "transparency_bias": 1,
         "append_uc": 0,
         "dataset_config": { "include": [], "bias": {}, "settings": {} },
         "incrementing_indices": {}
@@ -59,6 +61,8 @@
     { "path": ["presets", "*", "request_upscale"], "type": "boolean", "label": "Request Upscale", "editMode": "inline" },
     { "path": ["presets", "*", "allow_paid"], "type": "boolean", "label": "Allow Paid", "editMode": "inline" },
     { "path": ["presets", "*", "append_quality"], "type": "boolean", "label": "Append Quality", "editMode": "inline" },
+    { "path": ["presets", "*", "append_transparency"], "type": "boolean", "label": "Append Transparency", "editMode": "inline" },
+    { "path": ["presets", "*", "transparency_bias"], "type": "number", "label": "Transparency Bias" },
     { "path": ["presets", "*", "append_uc"], "type": "number", "label": "Append UC" },
     { "path": ["presets", "*", "workspace"], "type": "string", "label": "Workspace", "editorType": "input" },
     { "path": ["presets", "*", "target_workspace"], "type": "string", "label": "Target Workspace", "editorType": "input" },
@@ -100,6 +104,8 @@
     { "path": ["datasets", "*", "max"], "type": "number", "label": "Max Bias", "required": true },
     { "path": ["datasets", "*", "default"], "type": "number", "label": "Default Bias", "required": true },
     { "path": ["datasets", "*", "negative"], "type": "boolean", "label": "Negative Toggle", "editMode": "inline", "required": true },
+    { "path": ["datasets", "*", "models"], "type": "array", "itemsType": "string", "label": "Allowed Models" },
+    { "path": ["datasets", "*", "excludeModels"], "type": "array", "itemsType": "string", "label": "Excluded Models" },
     { "path": ["datasets", "*", "sub_toggles"], "type": "array", "itemsType": "object", "label": "Sub Toggles", "required": true },
     {
       "path": ["datasets", "*", "sub_toggles", "*"],

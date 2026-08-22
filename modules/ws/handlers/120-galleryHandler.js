@@ -156,14 +156,31 @@ async function broadcastGalleryMutation(handlers, wsServer, clientInfo, options 
     const metadataDb = handlers.globalResources.getMetadataDatabase();
     const timestamp = new Date().toISOString();
 
-    if (action === 'append_top' && options.filename) {
-        const newItem = await buildGalleryRowForFilename(handlers, clientInfo, viewType, options.filename);
-        if (newItem) {
+    const appendFilenames = [];
+    if (Array.isArray(options.filenames)) {
+        for (const filename of options.filenames) {
+            if (filename && typeof filename === 'string') {
+                appendFilenames.push(filename);
+            }
+        }
+    } else if (options.filename && typeof options.filename === 'string') {
+        appendFilenames.push(options.filename);
+    }
+
+    if (action === 'append_top' && appendFilenames.length > 0) {
+        const newItems = [];
+        for (const filename of appendFilenames) {
+            const newItem = await buildGalleryRowForFilename(handlers, clientInfo, viewType, filename);
+            if (newItem) {
+                newItems.push(newItem);
+            }
+        }
+        if (newItems.length > 0) {
             wsServer.broadcast({
                 type: 'gallery_updated',
                 data: {
                     action: 'append_top',
-                    newItems: [newItem],
+                    newItems,
                     viewType
                 },
                 timestamp

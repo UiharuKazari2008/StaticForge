@@ -1975,3 +1975,57 @@ img.loading {
     }
 }
 
+/* Staged generation results review — scripts/comp/stageResultsReview.js */
+#stageResultsReview {
+    width: 1100px;
+    height: 820px;
+    box-sizing: border-box;
+    flex-direction: column;
+}
+
+#stageResultsReview > .modal-content {
+    overflow: hidden;
+    min-height: 0;
+    height: auto;
+    max-height: none;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+}
+
+#stageResultsReview .modal-body {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+}
+
+#stageResultsReview .stage-results-scroll-shell {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+#stageResultsReview .stage-results-scrollable {
+    height: 100%;
+    overflow: auto;
+    padding: 2px 4px 4px 0;
+}
+
+#stageResultsReview .gallery {
+    margin-bottom: 0;
+}
+
+#stageResultsReview .gallery-item-overlay {
+    opacity: 1;
+    justify-content: flex-end;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.72), transparent 55%);
+    pointer-events: none;
+}
+
+#stageResultsReview .gallery-item[data-stage-filename] {
+    cursor: pointer;
+}
+

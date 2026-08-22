@@ -1753,7 +1753,7 @@ function clearManualForm() {
     manualModal.classList.remove('show-preview', 'min-controls');
 
     // Reset custom dropdowns to defaults
-    selectManualModel('v4_5', '', true);
+    selectManualModel('v5', '', true);
     selectManualResolution('normal_square', 'Normal');
     selectManualSampler('k_euler_ancestral');
     selectManualNoiseScheduler('karras');
@@ -1804,6 +1804,8 @@ function clearManualForm() {
 
     appendQuality = true;
     qualityPresetBias = 1.0;
+    appendTransparency = false;
+    transparencyBias = 1.0;
 
     // Update NSFW button display
     updateNsfwButtonDisplay();
@@ -1816,7 +1818,9 @@ function clearManualForm() {
     selectUcPreset(3);
     renderUcPresetsDropdown();
 
-    window.keepPromptNewlines = false;
+    // isV5Model: public/scripts/comp/utilities.js — V5 defaults keep-newlines ON
+    keepPromptNewlines = isV5Model(manualSelectedModel);
+    if (promptTextareaToolbar) promptTextareaToolbar.syncKeepNewlinesButtons();
     window.autoCharNumerize = true;
     window.autoFormatOnBlur = true;
     window.promptNormalize = true;
@@ -2107,6 +2111,10 @@ function collectManualFormValues() {
     if (qualityPresetBias !== 1.0) {
         values.quality_preset_bias = qualityPresetBias;
     }
+    values.append_transparency = appendTransparency;
+    if (transparencyBias !== 1.0) {
+        values.transparency_bias = transparencyBias;
+    }
     values.append_uc = selectedUcPreset;
 
     // Collect vibe transfer data
@@ -2307,6 +2315,12 @@ function addSharedFieldsToRequestBody(requestBody, values) {
     }
     if (values.quality_preset_bias !== undefined) {
         requestBody.quality_preset_bias = values.quality_preset_bias;
+    }
+    if (values.append_transparency !== undefined) {
+        requestBody.append_transparency = values.append_transparency;
+    }
+    if (values.transparency_bias !== undefined) {
+        requestBody.transparency_bias = values.transparency_bias;
     }
 
     // Add vibe transfer data
@@ -3400,7 +3414,7 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
             }
         }
 
-        selectManualModel(data.model || 'v4_5', '');
+        selectManualModel(data.model || 'v5', '');
 
         // Handle resolution loading with proper custom dimension support
         let resolutionToSet = 'normal_portrait'; // Default fallback
@@ -3561,6 +3575,9 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
             if (hasNovelForge) novelRestoreFromForgeData(data);
         }
 
+        // normalizeFurryDatasetMetadataForEditor: public/scripts/comp/referenceManager.js
+        normalizeFurryDatasetMetadataForEditor(data);
+
         // Load new parameters from metadata if available
         if (data.dataset_config && data.dataset_config.include) {
             selectedDatasets = [...data.dataset_config.include];
@@ -3668,8 +3685,11 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
         } else {
             qualityPresetBias = 1.0;
         }
+        appendTransparency = !!(data.append_transparency ?? data.forge_data?.append_transparency);
+        const loadedTransparencyBias = data.transparency_bias ?? data.forge_data?.transparency_bias;
+        transparencyBias = loadedTransparencyBias !== undefined ? parseFloat(loadedTransparencyBias) : 1.0;
 
-        // Re-render dataset dropdown to reflect possibly-loaded quality bias value
+        // Re-render dataset dropdown to reflect loaded preset values
         renderDatasetDropdown();
 
         if (data.append_uc !== undefined) {
@@ -4618,9 +4638,13 @@ async function handleManualGeneration(e, options = {}) {
             : requestBody.pipeline.length + 1;
         console.log(`🎬 Staged generation detected: ${totalStages} stages total`);
         initializeStageIndicators(totalStages);
+        // openStageResultsReview: public/scripts/comp/stageResultsReview.js
+        openStageResultsReview(requestBody);
     } else {
         // Hide stage indicators for non-staged generations
         hideStageIndicators();
+        // releaseStageResultsReviewSession: public/scripts/comp/stageResultsReview.js
+        releaseStageResultsReviewSession();
     }
 
     // Add "generating" class when generation starts
@@ -4674,7 +4698,7 @@ async function handleManualGeneration(e, options = {}) {
         }
 
         if (result) {
-            const { filename, seed, compiled_prompt, text_replacements_seed, stage_seeds, metadata } = result;
+            const { filename, seed, compiled_prompt, text_replacements_seed, stage_seeds, metadata, filenames } = result;
 
             // Ensure nested metadata carries compiled_prompt (dialogs, names, etc.) when the payload lists it top-level only
             if (compiled_prompt && metadata && typeof metadata === 'object') {
@@ -4760,6 +4784,13 @@ async function handleManualGeneration(e, options = {}) {
                 updateStagesWithSeeds(stage_seeds);
             }
 
+            // applyStageResultsReviewFilenames: public/scripts/comp/stageResultsReview.js
+            if (Array.isArray(filenames) && filenames.length > 0) {
+                applyStageResultsReviewFilenames(filenames);
+            } else {
+                releaseStageResultsReviewSession();
+            }
+
             // Store compiled prompt if it was included in the response
             if (compiled_prompt && window.dynamicGenerationData) {
                 window.dynamicGenerationData.compiled_prompt = compiled_prompt;
@@ -4843,6 +4874,8 @@ async function handleManualGeneration(e, options = {}) {
         updateImageGenerationIndicator();
         updateManualGenerateBtnState();
         hideDynamicGenerationProgressOverlayImmediate();
+        // releaseStageResultsReviewSession: public/scripts/comp/stageResultsReview.js
+        releaseStageResultsReviewSession();
     }
 }
 

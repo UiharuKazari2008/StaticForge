@@ -1,0 +1,7 @@
+# NovelAI image documentation and V5 announcements for offline Grimoire import.
+https://docs.novelai.net/en/image/basics
+https://docs.novelai.net/en/image/enhance
+https://docs.novelai.net/en/image/characterprompt
+https://docs.novelai.net/en/image/precisereference
+https://journal.novelai.net/image-generation-novelai-diffusion-v5-is-here-c2df7c6b8d2d/
+https://blog.novelai.net/subscription-updates-usage-limits-2025-88a208d5d9c5

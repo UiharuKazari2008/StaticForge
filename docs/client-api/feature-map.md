@@ -12,6 +12,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Feature | REST | WS | Push | Client-only |
 |---------|------|-----|------|-------------|
 | PIN login | `POST /` login | — | — | Login UI, pin modal |
+| Browser-agent login | `GET /agent` → `/app?agent=1` | session-authenticated connection | — | Cacheless startup; service worker bypassed; desktop/windowed boot |
 | Session check | `OPTIONS /app`, `POST /` ping | `connection` | — | localStorage sync |
 | Client performance telemetry | — | `report_client_perf`, `get_telemetry` | — | FPS/long-task/heap and UI-size sampling; Security Center details |
 | Logout | `POST /` logout | disconnect | — | Clear local state |
@@ -26,13 +27,16 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 
 | Feature | REST | WS | Push | Client-only |
 |---------|------|-----|------|-------------|
-| Manual generate | — | `generate_image` | `image_generation_progress`, `image_generation_response`, `gallery_updated` | Manual modal UI |
+| Manual generate | — | `generate_image` | `image_generation_progress` (incl. `stage_complete`), `image_generation_response`, `gallery_updated` | Manual modal UI; staged runs open a Stage Results grid of saved-stage placeholders, preview each stage, and append every saved file |
+| Model-aware prompt tokens | `GET /protected/t5_tokenizer.json`, `GET /protected/qwen35_tokenizer.def` | — | — | T5 for V4.5; lazy Qwen BPE for V5 |
+| Opus generation usage | — | `get_app_options`, `retry_account_data` | periodic `ping` | Account-level inverted V5 usage % (Studio gen-count click, Anlas menus, Data Management); ping paints live values |
 | Preset generate (in-app) | — | `generate_preset` | same + `queue_update` | Spellbook UI |
 | Preset webhook | `GET /preset/:uuid` | — | `gallery_updated` (other clients) | — |
 | Queued preset | `GET /pending/preset/:uuid`, `GET /pending/retrieval/:id` | — | — | — |
 | Reroll (Recast) | `GET /reroll/:filename` (admin) | `reroll_image` | generation pushes | — |
 | Upscale | — | `upscale_image` | `image_upscaling_response` | — |
 | Expand canvas | — | `expand_image`, `preview_expand_image_prompt`, `reroll_expanded_image` | expansion responses | Image bias UI |
+| Enhance / Max Enhance | — | `enhance_image`, `max_enhance_image` | enhance responses, `gallery_updated` | Image viewer one-shot size picker |
 | Cancel generation | — | `cancel_generation` | — | — |
 | Dynamic / Rentan | — | `resolve_dynamic_context`, `compile_dynamic_generation`, `apply_tendai_preview`, `dynamic_generation_progress` | `dynamic_generation_progress_update` | Carousel UI |
 | Text replacements preview | — | `resolve_text_replacements` | — | — |
@@ -143,9 +147,10 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Text replacements CRUD | — | `get_text_replacements`, … | — | Text replacement manager |
 | Favorites | — | `favorites_*` | — | — |
 | Config editor | — | `config_editor_*` | — | Config editor applet |
+| Managed RunPod GPU pods | — | `runpod_pods_status`, `runpod_pod_start`, `runpod_pod_stop` | `runpod_pods_status_update` | Desktop tray icon; Periscope source `runpod`; auto-stop when no sessions and idle |
 | Security center | — | `get_blocked_ips`, `set_admin_pin`, `list_application_keys`, … | — | securityCenterDsapApplet |
 | API keys | — | `get_api_key_services`, `add_api_key`, … | — | apiKeyModal |
-| Log viewer | `GET /{logViewerPathUuid}/*` | — | — | logViewerApplet |
+| Log viewer | `GET /{logViewerPathUuid}/*` | — | — | logViewerApplet (Periscope); includes `runpod` source for managed GPU pods |
 | Pending queue admin | `GET /pending` | `cancel_pending_requests` | — | serverManagement |
 | Runtime recompile | — | `recompile_runtime_assets`, `refresh_server_cache` | `runtime_compile_*`, `service_worker_cache_update` | — |
 | Generation quips | — | `get_generation_quips`, `generation_quips_run`, … | `generation_quips_*` | quipsDsapApplet |
@@ -191,7 +196,7 @@ Operational guide: [README-CHILD.md](../../README-CHILD.md).
 | Category | Count |
 |----------|-------|
 | Documented REST route groups | ~25 explicit + static |
-| WS request types (client → server) | **294** |
+| WS request types (client → server) | **297** |
 | WS server push types (common) | **~50** |
 | Auth flows | **3** (PIN session, Bearer loginKey, dev key — dev middleware exists but is **not mounted** on any route; see [authentication.md](./authentication.md#development-auth)) |
 
@@ -204,6 +209,7 @@ Operational guide: [README-CHILD.md](../../README-CHILD.md).
 | Generation | `modules/ws/handlers/generationImpl.js` |
 | Gallery | `modules/ws/handlers/120-galleryHandler.js` |
 | Workspace | `modules/ws/handlers/90-workspaceHandler.js` |
+| Managed RunPod | `modules/ws/handlers/175-runpodHandler.js`, `modules/runpodPodManager.js` |
 | References | `modules/referencesWebSocketHandlers.js` |
 | VFS | `modules/vfsWebSocketHandlers.js` |
 | All packets | `modules/ws/handlers/*.js` + registry |

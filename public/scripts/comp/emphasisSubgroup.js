@@ -70,10 +70,10 @@ function countTokensForEmphasisContextText(raw) {
         stripped = stripManagedEmphasisDelimitersForCounting(stripped);
     }
     let tokens = 0;
-    if (typeof t5Tokenizer !== 'undefined' && t5Tokenizer) {
-        tokens = t5Tokenizer.countTokens(stripped);
-    } else if (typeof countTokensForText === 'function') {
+    if (typeof countTokensForText === 'function') {
         tokens = countTokensForText(stripped);
+    } else if (typeof t5Tokenizer !== 'undefined' && t5Tokenizer) {
+        tokens = t5Tokenizer.countTokens(stripped);
     } else {
         tokens = stripped.split(/\s+/).filter(Boolean).length;
     }

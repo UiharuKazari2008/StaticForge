@@ -86,6 +86,7 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | Config editor | [ws/configEditor.md](./ws/configEditor.md) | 3 |
 | Cache & runtime | [ws/cache.md](./ws/cache.md) | 7 |
 | Infrastructure | [ws/infrastructure.md](./ws/infrastructure.md) | 5 |
+| Managed RunPod pods | [ws/runpod.md](./ws/runpod.md) | 3 |
 | Admin / security (+ application auth) | [ws/admin.md](./ws/admin.md) | 31 |
 | VFS & desktop | [ws/vfs.md](./ws/vfs.md) | 27 |
 | References & vibes | [ws/references.md](./ws/references.md) | 22 |

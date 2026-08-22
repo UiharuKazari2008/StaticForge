@@ -204,6 +204,7 @@ On timeout client rejects with `Error` code `REQUEST_TIMEOUT`.
 When `enableStreaming: true` on `generate_image`, `generate_preset`, `expand_image`, etc.:
 
 - Intermediate/progress via `image_generation_progress`, `dynamic_generation_progress_update`
+- Staged/pipeline runs emit `phase: "stage_complete"` after each earlier stage so the editor preview can swap to that result; `phase: "complete"` is reserved for the last stage
 - Final result still on `image_generation_response` (or domain-specific `*_response`)
 - Client tracks streaming sessions in `WebSocketClient` (`beginStreamingStepSession`, etc.)
 
@@ -230,6 +231,7 @@ These are **pushes** — handle asynchronously. Registered in `public/scripts/ws
 | `preset_updated` / `preset_group_updated` | Preset config changed | Preset name/uuid or group id; clients refresh preset lists |
 | `receipt_notification` | NovelAI billing/receipt event | Receipt metadata for balance UI |
 | `search_indexing_status` | Connect + index state change | `status`: `idle` \| `indexing` \| `paused`, `message`, `paused`, `indexing` |
+| `runpod_pods_status_update` | Managed GPU pod start/stop/idle poll | `pods[]`, `loggedInUsers`, `configured`, `hasApiKey` |
 | `search_results_update` | File search incremental results | Search id, partial result rows |
 | `search_status_update` | File search progress | Status text, counts |
 | `search_results_complete` | File search finished | Final result set reference |

@@ -29,9 +29,25 @@ Successful replies usually use:
 
 Errors use `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors).
 
+## Ping server push fields
+
+The periodic server-initiated `ping.data` includes `balance`, `opusUsage`, `accountHealth`, `queue_status`, `image_count`, and `server_time`. `opusUsage` is either `null` or `{ percent, isNegative, timeUntilNextPercent }`.
+
 ## Read-only restrictions
 
 Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveOperation()` return `READONLY_RESTRICTED` for `userType: "readonly"` sessions.
+
+---
+
+---
+
+---
+
+---
+
+---
+
+---
 
 ---
 

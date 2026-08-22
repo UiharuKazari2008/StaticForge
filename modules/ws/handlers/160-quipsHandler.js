@@ -1,4 +1,5 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
+const { getOpusUsageFromAccountData } = require('../../opusUsage');
 
 const QUIPS_DESTRUCTIVE = { destructive: true };
 
@@ -7,6 +8,13 @@ async function handleGetAppOptions(handlersCtx, ws, message, clientInfo, wsServe
 
     try {
         const currentPromptConfig = handlersCtx.globalResources.getPromptConfig();
+
+        // Pull /user/subscription so Opus usage battery is present (userdata alone often lacks it)
+        try {
+            await handlersCtx.globalResources.refreshBalance(false);
+        } catch (_err) {
+            // Non-fatal — options still return; usage may be null until next balance refresh
+        }
 
         const modelEntries = Object.keys((handlersCtx.globalResources.getNekoAiService('Model')))
             .filter(key => !key.endsWith('_INP'))
@@ -60,6 +68,7 @@ async function handleGetAppOptions(handlersCtx, ws, message, clientInfo, wsServe
             ok: true,
             user: accountData,
             balance: accountBalance,
+            opusUsage: getOpusUsageFromAccountData(accountData),
             bootCycleId: handlersCtx.globalResources.bootCycleId || null,
             novelaiStatus,
             ...accountHealth,
@@ -79,6 +88,7 @@ async function handleGetAppOptions(handlersCtx, ws, message, clientInfo, wsServe
             uc_presets: currentPromptConfig.uc_presets || {},
             nsfw_presets: currentPromptConfig.nsfw_presets || {},
             preset_token_counts: handlersCtx.globalResources.getPresetTokenCounts(),
+            modelFeatures: handlersCtx.globalResources.getModelFeaturesMap(),
             activeWorkspace: activeWorkspaceData ? {
                 id: activeWorkspaceId,
                 data: activeWorkspaceData
@@ -116,6 +126,7 @@ async function handleRetryAccountData(handlersCtx, ws, message, clientInfo, wsSe
                 ...accountHealth,
                 user: accountData,
                 balance: accountBalance,
+                opusUsage: getOpusUsageFromAccountData(accountData),
             },
             timestamp: new Date().toISOString()
         });

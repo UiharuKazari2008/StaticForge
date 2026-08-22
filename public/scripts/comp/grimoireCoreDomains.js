@@ -191,7 +191,11 @@
     aliases: [
       'docs.novelai.jp/',
       'novelai.jp/docs',
-      'rdf://docs.novelai.jp'
+      'rdf://docs.novelai.jp',
+      'docs.novelai.net',
+      'journal.novelai.net',
+      'blog.novelai.net',
+      'novelai.medium.com'
     ],
     title: 'NovelAI Documentation',
     type: 'core',
@@ -200,6 +204,9 @@
 
       let rest = String(match.canonicalUrl || match.displayPath || '')
         .replace(/^(edtx|rdf):\/\//i, '')
+        .replace(/^journal\.novelai\.net\/?/i, 'journal/')
+        .replace(/^(?:blog\.novelai\.net|novelai\.medium\.com)\/?/i, 'blog/')
+        .replace(/^docs\.novelai\.net\/?/i, '')
         .replace(/^docs\.novelai\.jp\/?/i, '')
         .replace(/.*novelai[^/]*\/docs\/?/i, '');
 

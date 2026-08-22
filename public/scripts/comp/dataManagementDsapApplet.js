@@ -384,6 +384,17 @@ function dataMgmtDsapBuildAccountSectionHtml() {
       <tr><td class="data-mgmt-account-info-label">Renews</td><td id="dataMgmtAccountExpiry" class="data-mgmt-account-info-value">—</td></tr>
     </tbody>
   </table>
+  <div id="dataMgmtOpusUsageHost" class="data-mgmt-opus-usage-host hidden">
+    ${dsapSmfBuildSectionHdr('Opus Usage')}
+    ${dsapSmfBuildStatsTable([
+        { label: 'Usage', valueHtml: '<span id="dataMgmtOpusUsageValue">—</span>', width: '100%' }
+    ], 'dataMgmtOpusUsageStats')}
+    <div class="data-mgmt-opus-usage-bar-wrap">
+      <div class="token-progress-bar data-mgmt-opus-usage-bar">
+        <div id="dataMgmtOpusUsageFill" class="token-progress-fill"></div>
+      </div>
+    </div>
+  </div>
   <div id="dataMgmtBanMessageHost" class="data-mgmt-ban-host hidden"></div>
 </div>`;
 }
@@ -400,13 +411,12 @@ function dataMgmtDsapRenderAccountSection(root) {
     const banHost = root.querySelector('#dataMgmtBanMessageHost');
     if (!standingEl || !fixedEl || !paidEl || !totalEl) return;
 
-    const optionsData = window.optionsData || null;
-    const user = optionsData?.user || null;
-    const balance = optionsData?.balance || null;
-    const accountUsable = !optionsData?.accountDataDeferred && optionsData?.userDataValid !== false;
+    const user = window.optionsData?.user || null;
+    const balance = window.optionsData?.balance || null;
+    const accountUsable = !window.optionsData?.accountDataDeferred && window.optionsData?.userDataValid !== false;
     const userValid = accountUsable && dataMgmtDsapIsUserDataValid(user);
     const balanceValid = accountUsable && dataMgmtDsapIsBalanceDataValid(balance, user);
-    const standing = dataMgmtDsapResolveAccountStanding(user, balance, optionsData);
+    const standing = dataMgmtDsapResolveAccountStanding(user, balance, window.optionsData);
 
     standingEl.textContent = standing.label;
     if (standing.detail) standingEl.title = standing.detail;
@@ -448,7 +458,7 @@ function dataMgmtDsapRenderAccountSection(root) {
     }
 
     if (banHost) {
-        const banMessage = dataMgmtDsapResolveBanMessage(user, optionsData);
+        const banMessage = dataMgmtDsapResolveBanMessage(user, window.optionsData);
         if (banMessage) {
             banHost.classList.remove('hidden');
             banHost.innerHTML = dsapSmfBuildStatusBox(
@@ -463,6 +473,9 @@ function dataMgmtDsapRenderAccountSection(root) {
             banHost.innerHTML = '';
         }
     }
+
+    // usageToolManager: public/scripts/comp/usageToolManager.js
+    usageToolManager.fillDataMgmtAccountUsage();
 }
 
 function dataMgmtDsapRefreshAccountIfPresent() {
@@ -1947,6 +1960,11 @@ function dataMgmtDsapReplicationWirePage(root, host, subRoute) {
 const dataMgmtDsapScopedCss = `
 [data-dsap="data-mgmt"] .data-mgmt-view { padding: 4px 0 0; }
 [data-dsap="data-mgmt"] .data-mgmt-account-host { margin-bottom: 12px; }
+[data-dsap="data-mgmt"] .data-mgmt-opus-usage-host { margin-top: 10px; }
+[data-dsap="data-mgmt"] .data-mgmt-opus-usage-bar-wrap { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; }
+[data-dsap="data-mgmt"] .data-mgmt-opus-usage-bar { height: 8px; width: 100%; background: #e8eef4; border: 1px solid #c5ced8; }
+[data-dsap="data-mgmt"] .data-mgmt-opus-usage-bar .token-progress-fill { height: 100%; background: #3a7bd5; }
+[data-dsap="data-mgmt"] .data-mgmt-opus-usage-bar .token-progress-fill.low { background: #c79100; }
 [data-dsap="data-mgmt"] .data-mgmt-account-info-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 5px; background: #fff; }
 [data-dsap="data-mgmt"] .data-mgmt-account-info-table td { padding: 4px 6px; border: 1px solid #e2e8ee; vertical-align: top; }
 [data-dsap="data-mgmt"] .data-mgmt-account-info-label { width: 34%; font-weight: 600; background: #f4f6f8; color: var(--dsap-smf-context-bg, #336699); white-space: nowrap; }

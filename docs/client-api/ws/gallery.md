@@ -56,6 +56,18 @@ Errors use `type: "error"` via `sendError()` — see [websocket.md](../websocket
 
 ---
 
+---
+
+---
+
+---
+
+---
+
+---
+
+---
+
 ## Detailed packets
 
 ### `delete_images_bulk`

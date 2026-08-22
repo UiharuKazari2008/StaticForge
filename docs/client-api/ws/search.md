@@ -66,6 +66,18 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 
 ---
 
+---
+
+---
+
+---
+
+---
+
+---
+
+---
+
 ## Detailed packets
 
 ### `fetch_autofill_wiki_previews`
@@ -261,6 +273,7 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 | `spellCheckText` | Optional |
 | `isContinuation` | Optional |
 | `autofillSettings` | Optional |
+| `modelMode` | Optional |
 | `includes` | Optional |
 
 **Success response:** `search_characters_response`

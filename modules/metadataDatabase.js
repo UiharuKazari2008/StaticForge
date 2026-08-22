@@ -2463,6 +2463,8 @@ function isIndexingPaused() {
 
 /** Forge UI / filter keys (modelGroups) → API slug for text search aliases */
 const MODEL_FORGE_TO_NAI_SLUG = {
+    v5: 'nai-diffusion-5-full',
+    v5_cur: 'nai-diffusion-5-curated',
     v4_5: 'nai-diffusion-4-5-full',
     v4_5_cur: 'nai-diffusion-4-5-curated',
     v4: 'nai-diffusion-4-full',
@@ -2916,10 +2918,21 @@ function parseModelSourceFromPngMeta(pngMeta) {
 
 /**
  * Map metadata.source hash to internal forge model code (pngMetadata.js determineModelFromMetadata).
- * @returns {string} V4_5 | V4_5_CUR | V4 | V4_CUR | V3 | FURRY | unknown
+ * @returns {string} V5 | V5_CUR | V4_5 | V4_5_CUR | V4 | V4_CUR | V3 | FURRY | unknown
  */
 function determineForgeModelCode(source) {
     if (!source) return 'unknown';
+
+    if (source.includes('NovelAI Diffusion V5')) {
+        switch (source) {
+            case 'NovelAI Diffusion V5 0ADF9AB7':
+            case 'NovelAI Diffusion V5 DB276663':
+                return 'V5';
+            default:
+                if (source.includes('Curated') || source.includes('CUR')) return 'V5_CUR';
+                return 'V5';
+        }
+    }
 
     if (source.includes('NovelAI Diffusion V4') || source.includes('NovelAI Diffusion V4.5')) {
         switch (source) {

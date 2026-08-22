@@ -4011,8 +4011,9 @@ function populateUnifiedUploadModelDropdown() {
     if (window.optionsData?.models) {
         const v4Models = Object.entries(window.optionsData?.models)
             .filter(([key, value]) => {
-                // Filter for V4+ models (kayra, v4, v4_5, etc.)
+                // V4+ vibe-capable models only; V5 has vibeTransfer false
                 const modelKey = key.toLowerCase();
+                if (modelKey === 'v5' || modelKey === 'v5_cur' || modelKey.startsWith('v5')) return false;
                 return modelKey.includes('v4') || modelKey.includes('kayra') || modelKey.includes('opus');
             })
             .sort((a, b) => {
@@ -4299,6 +4300,39 @@ async function handleUnifiedUploadOpenInEditor() {
     }
 }
 
+function normalizeFurryDatasetMetadataForEditor(metadata) {
+    if (!metadata || typeof metadata !== 'object') return metadata;
+    const config = metadata.dataset_config && typeof metadata.dataset_config === 'object'
+        ? { ...metadata.dataset_config }
+        : {};
+    const includes = Array.isArray(config.include)
+        ? config.include.slice()
+        : (config.include ? [config.include] : []);
+    const prompt = String(metadata.prompt || '');
+    const prefix = prompt.match(/^\s*(?:(-?\d+(?:\.\d+)?)::)?(fur(?:ry)? dataset)(?:::\s*)?(?:,\s*)?/i);
+    const hasFurryDataset = includes.some((value) => /^(?:fur|furry) dataset$/i.test(String(value))) || !!prefix;
+
+    if (!hasFurryDataset) return metadata;
+    config.include = includes
+        .filter((value) => !/^(?:fur|furry) dataset$/i.test(String(value)))
+        .concat('fur dataset');
+
+    ['bias', 'settings'].forEach((key) => {
+        if (!config[key] || typeof config[key] !== 'object') return;
+        config[key] = { ...config[key] };
+        if (config[key]['fur dataset'] === undefined && config[key]['furry dataset'] !== undefined) {
+            config[key]['fur dataset'] = config[key]['furry dataset'];
+        }
+        delete config[key]['furry dataset'];
+    });
+    if (prefix?.[1] && Number(prefix[1]) !== 1) {
+        config.bias = { ...(config.bias || {}), 'fur dataset': Number(prefix[1]) };
+    }
+    metadata.dataset_config = config;
+    if (prefix) metadata.prompt = prompt.slice(prefix[0].length);
+    return metadata;
+}
+
 // Transform raw metadata from server to the format expected by the manual form
 function transformRawMetadataForEditor(metadata) {
     // Create a copy of the metadata to avoid modifying the original
@@ -4338,6 +4372,12 @@ function transformRawMetadataForEditor(metadata) {
         }
         if (forgeData.quality_preset_bias !== undefined) {
             transformed.quality_preset_bias = forgeData.quality_preset_bias;
+        }
+        if (forgeData.append_transparency !== undefined) {
+            transformed.append_transparency = forgeData.append_transparency;
+        }
+        if (forgeData.transparency_bias !== undefined) {
+            transformed.transparency_bias = forgeData.transparency_bias;
         }
         if (forgeData.append_uc !== undefined) {
             transformed.append_uc = forgeData.append_uc;
@@ -4466,6 +4506,12 @@ function transformRawMetadataForEditor(metadata) {
         if (detectedModel !== 'unknown') {
             // Convert the detected model to the format expected by the form
             switch (detectedModel) {
+                case 'V5':
+                    transformed.model = 'v5';
+                    break;
+                case 'V5_CUR':
+                    transformed.model = 'v5_cur';
+                    break;
                 case 'V4_5':
                     transformed.model = 'v4_5';
                     break;
@@ -4514,7 +4560,7 @@ function transformRawMetadataForEditor(metadata) {
         transformed.skip_cfg_above_sigma = metadata.skip_cfg_above_sigma;
     }
     
-    return transformed;
+    return normalizeFurryDatasetMetadataForEditor(transformed);
 }
 
 // Transform metadata to the format expected by the manual form
@@ -4616,6 +4662,12 @@ function transformMetadataForEditor(metadata) {
         if (transformed.forge_data.quality_preset_bias !== undefined) {
             transformed.quality_preset_bias = transformed.forge_data.quality_preset_bias;
         }
+        if (transformed.forge_data.append_transparency !== undefined) {
+            transformed.append_transparency = transformed.forge_data.append_transparency;
+        }
+        if (transformed.forge_data.transparency_bias !== undefined) {
+            transformed.transparency_bias = transformed.forge_data.transparency_bias;
+        }
         if (transformed.forge_data.append_uc !== undefined) {
             transformed.append_uc = transformed.forge_data.append_uc;
         }
@@ -4701,6 +4753,12 @@ function transformMetadataForEditor(metadata) {
         if (detectedModel !== 'unknown') {
             // Convert the detected model to the format expected by the form
             switch (detectedModel) {
+                case 'V5':
+                    transformed.model = 'v5';
+                    break;
+                case 'V5_CUR':
+                    transformed.model = 'v5_cur';
+                    break;
                 case 'V4_5':
                     transformed.model = 'v4_5';
                     break;
@@ -4752,7 +4810,7 @@ function transformMetadataForEditor(metadata) {
         }
     }
     
-    return transformed;
+    return normalizeFurryDatasetMetadataForEditor(transformed);
 }
 
 async function importUnifiedBlueprint(file) {
@@ -5669,8 +5727,9 @@ function populateVibeEncodingModelDropdown() {
     if (window.optionsData?.models) {
         const v4Models = Object.entries(window.optionsData?.models)
             .filter(([key, value]) => {
-                // Filter for V4+ models (kayra, v4, v4_5, etc.)
+                // V4+ vibe-capable models only; V5 has vibeTransfer false
                 const modelKey = key.toLowerCase();
+                if (modelKey === 'v5' || modelKey === 'v5_cur' || modelKey.startsWith('v5')) return false;
                 return modelKey.includes('v4') || modelKey.includes('kayra') || modelKey.includes('opus');
             })
             .sort((a, b) => {
@@ -6876,6 +6935,18 @@ function determineModelFromMetadata(metadata) {
     }
     
     const source = metadata.source;
+
+    // NovelAI Diffusion V5 models (sample Source: "NovelAI Diffusion V5 0ADF9AB7")
+    if (source.includes("NovelAI Diffusion V5")) {
+        switch (source) {
+            case "NovelAI Diffusion V5 0ADF9AB7":
+            case "NovelAI Diffusion V5 DB276663":
+                return "V5";
+            default:
+                if (source.includes("Curated") || source.includes("CUR")) return "V5_CUR";
+                return "V5";
+        }
+    }
     
     // NovelAI Diffusion V4/V4.5 models
     if (source.includes("NovelAI Diffusion V4")) {
@@ -6927,7 +6998,9 @@ function determineModelFromMetadata(metadata) {
 
 // Helper function to get model display name
 function getModelDisplayName(model) {
-    return model === "V4_5" ? "<span class='model-name'>NovelAI v4.5</span><span class='badge custom-dropdown-badge'>F</span>" : 
+    return model === "V5" ? "<span class='model-name'>NovelAI v5</span><span class='badge custom-dropdown-badge'>F</span>" :
+           model === "V5_CUR" ? "<span class='model-name'>NovelAI v5</span><span class='badge custom-dropdown-badge curated-badge'>C</span>" :
+           model === "V4_5" ? "<span class='model-name'>NovelAI v4.5</span><span class='badge custom-dropdown-badge'>F</span>" : 
            model === "V4_5_CUR" ? "<span class='model-name'>NovelAI v4.5</span><span class='badge custom-dropdown-badge curated-badge'>C</span>" : 
            model === "V4" ? "<span class='model-name'>NovelAI v4</span><span class='badge custom-dropdown-badge'>F</span>" : 
            model === "V4_CUR" ? "<span class='model-name'>NovelAI v4</span><span class='badge custom-dropdown-badge curated-badge'>C</span>" : 

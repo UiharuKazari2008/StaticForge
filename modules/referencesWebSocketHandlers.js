@@ -2758,6 +2758,10 @@ class ReferencesWebSocketHandlers {
 
                     // Map model names
                     const modelMapping = {
+                        'v5full': 'v5',
+                        'v5-full': 'v5',
+                        'v5curated': 'v5_cur',
+                        'v5-curated': 'v5_cur',
                         'v4full': 'v4',
                         'v4-5full': 'v4_5',
                         'v4curated': 'v4_cur',

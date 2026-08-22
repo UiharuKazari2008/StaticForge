@@ -1,32 +1,42 @@
 /**
- * Import NovelAI documentation from docs.novelai.net into offline wiki cache.
+ * Import NovelAI documentation and announcements into offline wiki cache.
+ *
+ * Supported sources:
+ *   - docs.novelai.net   (help docs)
+ *   - journal.novelai.net (announcements / journal posts)
+ *   - blog.novelai.net    (Medium blog; falls back to @novelai RSS when blocked)
  *
  * Usage:
  *   node scripts/import-novelai-docs.js --url https://docs.novelai.net/en/image/precisereference --group "Image Generation"
+ *   node scripts/import-novelai-docs.js --url https://journal.novelai.net/image-generation-novelai-diffusion-v5-is-here-c2df7c6b8d2d/ --group "Announcements"
  *   node scripts/import-novelai-docs.js --urls-file urls.txt --group "Image Generation" --follow-links
  *
  * Options:
  *   --url (repeatable)     Page URL(s) to import
  *   --urls-file            Text file with one URL per line
  *   --group (required)     Group label for new pages in site index
- *   --follow-links         BFS crawl internal docs.novelai.net links
+ *   --follow-links         BFS crawl internal supported-host links
  *   --site novelai         Site id (default: novelai)
- *   --lang en              Default language prefix for page ids (default: en)
+ *   --lang en              Default language prefix for docs page ids (default: en)
  */
 
 const fs = require('fs');
 const path = require('path');
-const https = require('https');
-const http = require('http');
 const { parse } = require('node-html-parser');
 const config = require('../config');
+const { browserRequest } = require('../modules/browserHttp');
 
 const DOCS_HOST = 'docs.novelai.net';
+const JOURNAL_HOST = 'journal.novelai.net';
+const BLOG_HOSTS = new Set(['blog.novelai.net', 'novelai.medium.com']);
+const BLOG_RSS_URL = 'https://medium.com/@novelai/feed';
 const RATE_MS = 250;
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000;
 
 const CACHE_ROOT = path.join(__dirname, '..', '.cache', 'wiki');
+
+let blogRssBySlug = null;
 
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -79,74 +89,103 @@ function parseArgs(argv) {
     return opts;
 }
 
-function fetchHtml(url, retries = 0) {
-    return new Promise((resolve, reject) => {
-        const urlObj = new URL(url);
-        const client = urlObj.protocol === 'https:' ? https : http;
-        const userAgent = config.userAgent || 'StaticForge/1.0';
+function isCloudflareBlock(html) {
+    const sample = String(html || '').slice(0, 4000).toLowerCase();
+    return sample.includes('attention required! | cloudflare')
+        || sample.includes('sorry, you have been blocked')
+        || sample.includes('cf-error-details');
+}
 
-        const req = client.request({
-            hostname: urlObj.hostname,
-            port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
-            path: urlObj.pathname + urlObj.search,
-            method: 'GET',
-            headers: {
-                'User-Agent': userAgent,
-                Accept: 'text/html,application/xhtml+xml'
-            },
-            timeout: 30000
-        }, (res) => {
-            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-                const next = new URL(res.headers.location, url).href;
-                res.resume();
-                resolve(fetchHtml(next, retries));
-                return;
-            }
-            if (res.statusCode !== 200) {
-                res.resume();
-                reject(new Error(`HTTP ${res.statusCode} for ${url}`));
-                return;
-            }
-            let data = '';
-            res.setEncoding('utf8');
-            res.on('data', (chunk) => { data += chunk; });
-            res.on('end', () => resolve(data));
+async function fetchHtml(url, retries = 0) {
+    try {
+        const res = await browserRequest(url, null, {
+            acceptResType: 'html',
+            timeoutMs: 30000,
+            extra: { 'user-agent': config.userAgent || undefined }
         });
 
-        req.on('error', reject);
-        req.on('timeout', () => {
-            req.destroy();
-            reject(new Error(`Timeout fetching ${url}`));
-        });
-        req.end();
-    }).catch(async (err) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            const next = new URL(res.headers.location, url).href;
+            return fetchHtml(next, retries);
+        }
+        if (res.statusCode !== 200) {
+            throw new Error(`HTTP ${res.statusCode} for ${url}`);
+        }
+        const html = res.body.toString('utf8');
+        if (isCloudflareBlock(html)) {
+            throw new Error(`Blocked by Cloudflare for ${url}`);
+        }
+        return html;
+    } catch (err) {
         if (retries < MAX_RETRIES) {
             await sleep(RETRY_DELAY);
             return fetchHtml(url, retries + 1);
         }
         throw err;
-    });
+    }
+}
+
+function slugFromPathname(pathname) {
+    return String(pathname || '')
+        .replace(/^\/+|\/+$/g, '')
+        .split('/')
+        .filter(Boolean)
+        .pop() || '';
+}
+
+function getSourceInfo(url, defaultLang) {
+    let u;
+    try {
+        u = new URL(url);
+    } catch {
+        return null;
+    }
+
+    if (u.hostname === DOCS_HOST) {
+        let pagePath = u.pathname.replace(/^\/+|\/+$/g, '');
+        if (!pagePath) {
+            pagePath = defaultLang;
+        }
+        return {
+            type: 'docs',
+            host: DOCS_HOST,
+            pageId: pagePath,
+            slug: slugFromPathname(u.pathname)
+        };
+    }
+
+    if (u.hostname === JOURNAL_HOST) {
+        const slug = slugFromPathname(u.pathname);
+        if (!slug) return null;
+        return {
+            type: 'journal',
+            host: JOURNAL_HOST,
+            pageId: `journal/${slug}`,
+            slug
+        };
+    }
+
+    if (BLOG_HOSTS.has(u.hostname)) {
+        const slug = slugFromPathname(u.pathname);
+        if (!slug) return null;
+        return {
+            type: 'blog',
+            host: u.hostname,
+            pageId: `blog/${slug}`,
+            slug
+        };
+    }
+
+    return null;
 }
 
 function pageIdFromUrl(url, defaultLang) {
-    const u = new URL(url);
-    if (u.hostname !== DOCS_HOST) {
-        return null;
-    }
-    let p = u.pathname.replace(/^\/+|\/+$/g, '');
-    if (!p) {
-        p = defaultLang;
-    }
-    return p;
+    const info = getSourceInfo(url, defaultLang);
+    return info ? info.pageId : null;
 }
 
-function isDocsUrl(url) {
-    try {
-        const u = new URL(url);
-        return u.hostname === DOCS_HOST;
-    } catch {
-        return false;
-    }
+function isSupportedUrl(url) {
+    return !!getSourceInfo(url, 'en');
 }
 
 function resolveUrl(baseUrl, href) {
@@ -167,36 +206,27 @@ function assetFileName(assetUrl) {
     return `${stem}-${hash}${ext || '.bin'}`;
 }
 
-function fetchBinary(url, retries = 0) {
-    return new Promise((resolve, reject) => {
-        const urlObj = new URL(url);
-        const client = urlObj.protocol === 'https:' ? https : http;
-        const req = client.get(url, {
-            headers: { 'User-Agent': config.userAgent || 'StaticForge/1.0' }
-        }, (res) => {
-            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-                const next = new URL(res.headers.location, url).href;
-                res.resume();
-                resolve(fetchBinary(next, retries));
-                return;
-            }
-            if (res.statusCode !== 200) {
-                res.resume();
-                reject(new Error(`HTTP ${res.statusCode} for ${url}`));
-                return;
-            }
-            const chunks = [];
-            res.on('data', (c) => chunks.push(c));
-            res.on('end', () => resolve(Buffer.concat(chunks)));
+async function fetchBinary(url, retries = 0) {
+    try {
+        const res = await browserRequest(url, null, {
+            acceptResType: 'image',
+            timeoutMs: 30000
         });
-        req.on('error', reject);
-    }).catch(async (err) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            const next = new URL(res.headers.location, url).href;
+            return fetchBinary(next, retries);
+        }
+        if (res.statusCode !== 200) {
+            throw new Error(`HTTP ${res.statusCode} for ${url}`);
+        }
+        return res.body;
+    } catch (err) {
         if (retries < MAX_RETRIES) {
             await sleep(RETRY_DELAY);
             return fetchBinary(url, retries + 1);
         }
         throw err;
-    });
+    }
 }
 
 async function downloadAsset(assetUrl, assetsDir) {
@@ -281,14 +311,12 @@ function processContentHtml(html, pageUrl, siteId, assetsDir, lang) {
         const abs = resolveUrl(pageUrl, href);
         if (!abs) return;
 
-        if (isDocsUrl(abs)) {
-            const pageId = pageIdFromUrl(abs, lang);
-            if (pageId) {
-                a.setAttribute('href', '#');
-                a.setAttribute('class', 'wiki-static-link');
-                a.setAttribute('data-wiki-site', siteId);
-                a.setAttribute('data-wiki-page', pageId);
-            }
+        const pageId = pageIdFromUrl(abs, lang);
+        if (pageId) {
+            a.setAttribute('href', '#');
+            a.setAttribute('class', 'wiki-static-link');
+            a.setAttribute('data-wiki-site', siteId);
+            a.setAttribute('data-wiki-page', pageId);
         } else {
             a.setAttribute('href', abs);
             a.setAttribute('target', '_blank');
@@ -304,10 +332,6 @@ function processContentHtml(html, pageUrl, siteId, assetsDir, lang) {
         if (!abs) continue;
         try {
             const fileName = assetFileName(abs);
-            const dest = path.join(assetsDir, fileName);
-            if (!fs.existsSync(dest)) {
-                /* downloaded in separate pass */
-            }
             img.setAttribute('src', `/private/wiki/${siteId}/assets/${fileName}`);
         } catch (err) {
             console.warn('Image rewrite skip:', abs, err.message);
@@ -337,7 +361,7 @@ async function collectAndDownloadImages(html, pageUrl, assetsDir) {
     }
 }
 
-function extractContentHtml(pageHtml) {
+function extractDocsContentHtml(pageHtml) {
     const doc = parse(pageHtml);
     const content = doc.querySelector('#content');
     if (!content) {
@@ -352,7 +376,125 @@ function extractContentHtml(pageHtml) {
     return root.toString().trim();
 }
 
+function extractJournalContentHtml(pageHtml) {
+    const doc = parse(pageHtml);
+    const article = doc.querySelector('article.post') || doc.querySelector('article');
+    if (!article) {
+        throw new Error('Missing journal article element');
+    }
+    const prose = article.querySelector('.prose') || article;
+    const root = parse(prose.innerHTML);
+    root.querySelectorAll('script, style, noscript').forEach((el) => el.remove());
+    return root.toString().trim();
+}
+
+function extractMediumContentHtml(pageHtml) {
+    const doc = parse(pageHtml);
+    const article = doc.querySelector('article')
+        || doc.querySelector('[data-testid="storyContent"]')
+        || doc.querySelector('.postArticle');
+    if (!article) {
+        throw new Error('Missing Medium article element');
+    }
+    const root = parse(article.innerHTML);
+    root.querySelectorAll('script, style, noscript').forEach((el) => el.remove());
+    return root.toString().trim();
+}
+
+function parseBlogRssItems(xml) {
+    const items = [...String(xml).matchAll(/<item>([\s\S]*?)<\/item>/g)].map((m) => m[1]);
+    const out = new Map();
+    for (const item of items) {
+        const title = (item.match(/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>/i) || [])[1]
+            || (item.match(/<title>([\s\S]*?)<\/title>/i) || [])[1]
+            || '';
+        const link = (item.match(/<link>([\s\S]*?)<\/link>/i) || [])[1] || '';
+        const content = (item.match(/<content:encoded><!\[CDATA\[([\s\S]*?)\]\]><\/content:encoded>/i) || [])[1]
+            || '';
+        const slug = slugFromPathname(new URL(link).pathname);
+        if (!slug || !content) continue;
+        out.set(slug, {
+            title: title.trim(),
+            content: content.trim(),
+            sourceUrl: link.trim()
+        });
+    }
+    return out;
+}
+
+async function getBlogRssBySlug() {
+    if (blogRssBySlug) {
+        return blogRssBySlug;
+    }
+    console.log('  loading blog RSS feed...');
+    await sleep(RATE_MS);
+    const xml = await fetchHtml(BLOG_RSS_URL);
+    blogRssBySlug = parseBlogRssItems(xml);
+    console.log(`  blog RSS entries: ${blogRssBySlug.size}`);
+    return blogRssBySlug;
+}
+
+async function fetchBlogFromRss(slug) {
+    const feed = await getBlogRssBySlug();
+    const entry = feed.get(slug);
+    if (!entry) {
+        throw new Error(`Blog post not found in RSS feed: ${slug}`);
+    }
+    return entry;
+}
+
+async function fetchPagePayload(url, lang) {
+    const info = getSourceInfo(url, lang);
+    if (!info) {
+        throw new Error(`Unsupported URL host: ${url}`);
+    }
+
+    if (info.type === 'blog') {
+        try {
+            await sleep(RATE_MS);
+            const pageHtml = await fetchHtml(url);
+            return {
+                info,
+                pageHtml,
+                rawContent: extractMediumContentHtml(pageHtml),
+                title: extractTitle(pageHtml, info.pageId),
+                sourceUrl: url
+            };
+        } catch (err) {
+            console.warn(`  direct blog fetch failed (${err.message}); trying RSS...`);
+            const rssEntry = await fetchBlogFromRss(info.slug);
+            return {
+                info,
+                pageHtml: null,
+                rawContent: rssEntry.content,
+                title: rssEntry.title,
+                sourceUrl: rssEntry.sourceUrl || url
+            };
+        }
+    }
+
+    await sleep(RATE_MS);
+    const pageHtml = await fetchHtml(url);
+    let rawContent;
+    if (info.type === 'docs') {
+        rawContent = extractDocsContentHtml(pageHtml);
+    } else {
+        rawContent = extractJournalContentHtml(pageHtml);
+    }
+    return {
+        info,
+        pageHtml,
+        rawContent,
+        title: extractTitle(pageHtml, info.pageId),
+        sourceUrl: url
+    };
+}
+
 function extractTitle(pageHtml, pageId) {
+    if (!pageHtml) {
+        const parts = pageId.split('/');
+        return parts[parts.length - 1] || pageId;
+    }
     const doc = parse(pageHtml);
     const h1 = doc.querySelector('h1');
     if (h1) {
@@ -373,9 +515,8 @@ function collectInternalLinks(html, pageUrl, lang) {
         const href = a.getAttribute('href');
         if (!href || href.startsWith('#')) return;
         const abs = resolveUrl(pageUrl, href);
-        if (abs && isDocsUrl(abs)) {
-            const id = pageIdFromUrl(abs, lang);
-            if (id) out.add(abs);
+        if (abs && isSupportedUrl(abs)) {
+            out.add(abs);
         }
     });
     return out;
@@ -452,7 +593,7 @@ function ensureSiteRegistry(siteId, siteName) {
 async function importPage(url, opts, siteDir, siteIndex, visited) {
     const pageId = pageIdFromUrl(url, opts.lang);
     if (!pageId) {
-        console.warn('Skip non-docs URL:', url);
+        console.warn('Skip unsupported URL:', url);
         return [];
     }
     if (visited.has(pageId)) {
@@ -466,12 +607,11 @@ async function importPage(url, opts, siteDir, siteIndex, visited) {
     ensureDir(assetsDir);
 
     console.log(`Fetching ${url} -> ${pageId}`);
-    await sleep(RATE_MS);
-    const pageHtml = await fetchHtml(url);
-    const rawContent = extractContentHtml(pageHtml);
-    await collectAndDownloadImages(rawContent, url, assetsDir);
-    let processed = processContentHtml(rawContent, url, opts.site, assetsDir, opts.lang);
-    const title = extractTitle(pageHtml, pageId);
+    const payload = await fetchPagePayload(url, opts.lang);
+    const { rawContent, title, sourceUrl } = payload;
+
+    await collectAndDownloadImages(rawContent, sourceUrl, assetsDir);
+    let processed = processContentHtml(rawContent, sourceUrl, opts.site, assetsDir, opts.lang);
     processed = normalizeWikiMarkup(processed, title);
 
     const pageFile = path.join(pagesDir, `${pageId}.html`);
@@ -482,14 +622,14 @@ async function importPage(url, opts, siteDir, siteIndex, visited) {
         id: pageId,
         title,
         group: opts.group,
-        sourceUrl: url
+        sourceUrl
     });
 
     console.log(`  saved: ${pageId} (${title})`);
 
     const discovered = [];
     if (opts.followLinks) {
-        const links = collectInternalLinks(rawContent, url, opts.lang);
+        const links = collectInternalLinks(rawContent, sourceUrl, opts.lang);
         for (const link of links) {
             discovered.push(link);
         }

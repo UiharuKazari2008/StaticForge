@@ -48,8 +48,8 @@ class ApiKeyManager {
                 requiresRestart: false
             },
             runpod: {
-                label: 'RunPod ESRGAN',
-                description: 'External ESRGAN upscaling workers',
+                label: 'RunPod',
+                description: 'GPU Pod start/stop and ESRGAN upscaling workers',
                 icon: 'fas fa-robot',
                 requiresRestart: false
             }

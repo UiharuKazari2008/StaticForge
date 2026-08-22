@@ -89,18 +89,64 @@ async function handleClipboardPaste(event) {
     }
 
     const clipboardItems = event.clipboardData?.items;
+    const imageFiles = [];
+
+    if (event.clipboardData && event.clipboardData.files) {
+        for (const file of event.clipboardData.files) {
+            if (file && file.type && file.type.startsWith('image/')) {
+                imageFiles.push(file);
+            }
+        }
+    }
+    if (clipboardItems) {
+        for (const item of clipboardItems) {
+            if (!item.type || !item.type.startsWith('image/')) continue;
+            const file = item.getAsFile();
+            if (file) imageFiles.push(file);
+        }
+    }
+    const html = event.clipboardData && event.clipboardData.getData
+        ? event.clipboardData.getData('text/html')
+        : '';
+    const htmlHasPacked = !!(html && html.includes('dreamscape-images'));
+    if (htmlHasPacked) {
+        // filesFromClipboardHtml: public/scripts/utils/dreamscapeClipboard.js
+        imageFiles.push(...filesFromClipboardHtml(html));
+    }
+
+    if (isAndroidClipboardBridgeActive() || htmlHasPacked || imageFiles.length > 0) {
+        if (imageFiles.length || htmlHasPacked) event.preventDefault();
+        try {
+            const result = await readClipboard();
+            // getAllImageFilesFromClipboardResult: public/scripts/utils/dreamscapeClipboard.js
+            imageFiles.push(...getAllImageFilesFromClipboardResult(result));
+        } catch (error) {
+            if (isAndroidClipboardBridgeActive()) {
+                console.warn('📱 Android clipboard paste failed:', error);
+            }
+        }
+    }
+
+    const uniqueFiles = [];
+    const seen = new Set();
+    for (const file of imageFiles) {
+        if (!file) continue;
+        const key = `${file.name}|${file.size}|${file.type}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        uniqueFiles.push(file);
+    }
+
+    if (uniqueFiles.length) {
+        event.preventDefault();
+        await uploadImages(uniqueFiles);
+        return;
+    }
+
     if ((!clipboardItems || clipboardItems.length === 0) && isAndroidClipboardBridgeActive()) {
         event.preventDefault();
         try {
             const result = await readClipboard();
-            if (result.empty) return;
-
-            const imageFile = getPrimaryImageFileFromClipboardResult(result);
-            if (imageFile) {
-                await uploadImages([imageFile]);
-                return;
-            }
-
             const text = getPrimaryTextFromClipboardResult(result);
             if (text) {
                 await handleClipboardBlueprintText(text);
@@ -113,26 +159,13 @@ async function handleClipboardPaste(event) {
 
     if (!clipboardItems) return;
 
-    // First check for text/JSON data (blueprint)
-    for (let item of clipboardItems) {
+    for (const item of clipboardItems) {
         if (item.type === 'text/plain') {
             event.preventDefault();
             item.getAsString(async (text) => {
                 await handleClipboardBlueprintText(text);
             });
             return;
-        }
-    }
-
-    // If no text data found, check for images
-    for (let item of clipboardItems) {
-        if (item.type.startsWith('image/')) {
-            event.preventDefault();
-            const file = item.getAsFile();
-            if (file) {
-                await uploadImages([file]);
-            }
-            break;
         }
     }
 }

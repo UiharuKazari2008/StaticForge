@@ -22,6 +22,7 @@ class PromptTextareaToolbar {
         this._fieldTokenCache = new WeakMap();
         this._groupTotals = { editablePrompt: 0, editableUc: 0, nePrompt: 0, neUc: 0 };
         this._groupTotalsReady = false;
+        this._tokenizerReadyRecountPending = false;
         this._bottomSummaryRaf = null;
         this._pendingBottomSummary = null;
         this.init();
@@ -349,7 +350,7 @@ class PromptTextareaToolbar {
         const ne = isUc ? this._groupTotals.neUc : this._groupTotals.nePrompt;
         const editableGroup = Math.max(0, isUc ? this._groupTotals.editableUc : this._groupTotals.editablePrompt);
         const groupTotal = editableGroup + Math.max(0, ne);
-        const maxTokens = 512;
+        const maxTokens = getPromptTokenLimit();
 
         list.forEach((textarea) => {
             const cached = this._fieldTokenCache.get(textarea);
@@ -367,7 +368,8 @@ class PromptTextareaToolbar {
     }
 
     updateTokenCountIncremental(changedTextarea) {
-        if (!t5Tokenizer || !changedTextarea) return;
+        const tokenizer = getPromptTokenizer();
+        if (!tokenizer || !changedTextarea) return;
         if (!this._fieldTokenCache.has(changedTextarea)) {
             this.updateAllTokenCounts();
             return;
@@ -375,7 +377,7 @@ class PromptTextareaToolbar {
 
         const isUc = this.isUcTextarea(changedTextarea);
         const stripped = this.stripTextForTokenCount(changedTextarea.value || '');
-        const newCount = t5Tokenizer.countTokens(stripped);
+        const newCount = tokenizer.countTokens(stripped);
         const prev = this._fieldTokenCache.get(changedTextarea) || { count: 0, expanderNe: 0 };
         const countDelta = newCount - prev.count;
 
@@ -392,19 +394,32 @@ class PromptTextareaToolbar {
         const editableGroup = isUc ? this._groupTotals.editableUc : this._groupTotals.editablePrompt;
         const groupTotal = editableGroup + ne;
 
-        this.updateToolbarDisplay(changedTextarea, newCount, ne, groupTotal, 512);
+        const maxTokens = getPromptTokenLimit();
+        this.updateToolbarDisplay(changedTextarea, newCount, ne, groupTotal, maxTokens);
         this.scheduleBottomSummaryUpdate(
             this._groupTotals.editablePrompt,
             this._groupTotals.editableUc,
             this._groupTotals.nePrompt,
             this._groupTotals.neUc,
-            512
+            maxTokens
         );
     }
 
     updateAllTokenCounts() {
-        if (!t5Tokenizer) {
-            console.warn('T5 Tokenizer not initialized yet');
+        const tokenizer = getPromptTokenizer();
+        if (!tokenizer) {
+            if (this._tokenizerReadyRecountPending) return;
+            this._tokenizerReadyRecountPending = true;
+            // ensurePromptTokenizerForModel: public/scripts/comp/utilities.js
+            ensurePromptTokenizerForModel().then(() => {
+                this._tokenizerReadyRecountPending = false;
+                if (getPromptTokenizer()) {
+                    this.updateAllTokenCounts();
+                }
+            }).catch((error) => {
+                this._tokenizerReadyRecountPending = false;
+                console.error('Failed to load prompt tokenizer:', error);
+            });
             return;
         }
 
@@ -415,8 +430,8 @@ class PromptTextareaToolbar {
         const promptTexts = promptTextareas.map((ta) => this.stripTextForTokenCount(ta.value || ''));
         const ucTexts = ucTextareas.map((ta) => this.stripTextForTokenCount(ta.value || ''));
 
-        const promptAnalysis = t5Tokenizer.analyzeTexts(promptTexts);
-        const ucAnalysis = t5Tokenizer.analyzeTexts(ucTexts);
+        const promptAnalysis = tokenizer.analyzeTexts(promptTexts);
+        const ucAnalysis = tokenizer.analyzeTexts(ucTexts);
 
         const editablePromptTotal = promptAnalysis.totalTokens;
         const editableUcTotal = ucAnalysis.totalTokens;
@@ -462,7 +477,7 @@ class PromptTextareaToolbar {
             });
         });
 
-        const maxTokens = 512;
+        const maxTokens = getPromptTokenLimit();
 
         // Update individual toolbars
         promptTextareas.forEach((textarea, index) => {
@@ -504,7 +519,7 @@ class PromptTextareaToolbar {
     }
 
     // Textareas outside the manual editor (bracket gen, expanders, etc.) — per-field counts only
-    updateStandaloneTextareaTokenCounts(editorTextareas, maxTokens = 512) {
+    updateStandaloneTextareaTokenCounts(editorTextareas, maxTokens = null) {
         document.querySelectorAll('.prompt-textarea, .character-prompt-textarea').forEach((textarea) => {
             if (editorTextareas.has(textarea)) return;
             const toolbar = this.getToolbarFromTextarea(textarea);
@@ -518,11 +533,15 @@ class PromptTextareaToolbar {
         if (!progressFill) return;
         const progressInner = progressFill.querySelector('.token-progress-inner');
         const innerNe = progressFill.querySelector('.token-progress-inner-ne');
+        if (!Number.isFinite(maxTokens) || maxTokens <= 0) {
+            progressFill.style.width = '0';
+            return;
+        }
 
         const safeGroup = Math.max(0, Number(groupTotal) || 0);
         const safeEditable = Math.max(0, Number(editableTokens) || 0);
         const safeNe = Math.max(0, Number(nonEditableTokens) || 0);
-        const cap = Math.max(1, Number(maxTokens) || 512);
+        const cap = Math.max(1, Number(maxTokens));
 
         const groupPercentage = safeGroup > 0 ? Math.min((safeGroup / cap) * 100, 100) : 0;
         progressFill.style.width = `${groupPercentage}%`;
@@ -580,8 +599,9 @@ class PromptTextareaToolbar {
 
     calculateTokenCount(text) {
         const cleanedText = this.stripTextForTokenCount(text);
-        if (t5Tokenizer) {
-            return t5Tokenizer.countTokens(cleanedText);
+        const tokenizer = getPromptTokenizer();
+        if (tokenizer) {
+            return tokenizer.countTokens(cleanedText);
         }
 
         // Fallback estimation
@@ -3352,7 +3372,8 @@ class PromptTextareaToolbar {
 
 // Initialize the toolbar manager when the DOM is ready
 window.wsClient.registerInitStep(37, 'Initializing Prompt Toolbar', async () => {
-    keepPromptNewlines = false;
+    // isV5Model: public/scripts/comp/utilities.js
+    keepPromptNewlines = isV5Model(manualSelectedModel);
     autoCharNumerize = true;
     autoFormatOnBlur = true;
     promptNormalize = true;

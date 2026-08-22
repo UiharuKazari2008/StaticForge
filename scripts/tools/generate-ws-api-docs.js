@@ -42,6 +42,7 @@ const OWNER_TO_DOC = {
     novel: 'notes.md',
     character_db: 'characterDb.md',
     autofillRanking: 'autofillRanking.md',
+    runpod: 'runpod.md',
 };
 
 function readText(filePath) {

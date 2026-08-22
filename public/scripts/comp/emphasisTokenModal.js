@@ -51,7 +51,8 @@ function escapeHtml(text) {
 
 // Open token display modal with highlighted tokens
 function openTokenDisplayModal(textarea) {
-    if (!textarea || !t5Tokenizer) {
+    const tokenizer = getPromptTokenizer();
+    if (!textarea || !tokenizer) {
         console.error('Cannot open token modal: missing textarea or tokenizer');
         return;
     }
@@ -79,7 +80,7 @@ function openTokenDisplayModal(textarea) {
     
     try {
         // Analyze after stage + managed-delim strip (matches toolbar count)
-        const analysis = t5Tokenizer.analyzeTexts([text], true);
+        const analysis = tokenizer.analyzeTexts([text], true);
         if (!analysis?.results?.[0]?.detailedTokens) {
             showGlassToast('error', 'Error', 'Failed to analyze tokens', false, 5000, '<i class="nai-cross"></i>');
             return;

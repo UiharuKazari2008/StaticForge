@@ -1055,10 +1055,11 @@ class SearchService {
             ? tagSearchDatabase.normalizeTagSearchQuery(query)
             : (query || '').trim().toLowerCase().replace(/\s+/g, ' ');
 
-        const makeTagRequest = async (apiModel) => {
-            let cachedResponse = this._lookupNovelAiTagCache(normalizedQuery, apiModel);
+        const makeTagRequest = async (apiModel, suggestTagsType = null) => {
+            const cacheModel = suggestTagsType ? `${apiModel}:${suggestTagsType}` : apiModel;
+            let cachedResponse = this._lookupNovelAiTagCache(normalizedQuery, cacheModel);
             if (isContinuation && (!cachedResponse || !cachedResponse.tags || cachedResponse.tags.length === 0)) {
-                const prefixHit = this._lookupNovelAiTagPrefixCache(normalizedQuery, apiModel);
+                const prefixHit = this._lookupNovelAiTagPrefixCache(normalizedQuery, cacheModel);
                 if (prefixHit && prefixHit.tags && prefixHit.tags.length > 0) {
                     const grewBy = normalizedQuery.length - (priorQuery || '').trim().length;
                     if (grewBy >= 0 && grewBy <= 4) {
@@ -1093,7 +1094,8 @@ class SearchService {
                 throw new Error('NovelAI is temporarily locked after repeated API errors. An admin must review the Service Key in the Security Center to unlock it.');
             }
 
-            const url = `https://image.novelai.net/ai/generate-image/suggest-tags?model=${apiModel}&prompt=${encodeURIComponent(normalizedQuery)}`;
+            const typeQuery = suggestTagsType ? `&type=${encodeURIComponent(suggestTagsType)}` : '';
+            const url = `https://image.novelai.net/ai/generate-image/suggest-tags?model=${apiModel}&prompt=${encodeURIComponent(normalizedQuery)}${typeQuery}`;
             // getBrowserHeaders / decompressIfNeeded: modules/browserHttp.js — keep https.request for abort support
             const headers = getBrowserHeaders({
                 acceptResType: 'any',
@@ -1240,16 +1242,26 @@ class SearchService {
             // Determine models to query
             // Map model string (e.g., 'v4_5') to API model name (e.g., 'nai-diffusion-4-5-full')
             const currentModel = this.globalResources.getNekoAiService('Model')[model.toUpperCase()] || 'nai-diffusion-4-5-full';
+            const modelCaps = this.globalResources.getModelFeaturesMap()?.[String(model || '').toLowerCase()] || null;
+            const isV5Suggest = !!(modelCaps?.suggestTagsTypeAnime || modelCaps?.suggestTagsTypeFurry);
+            const suggestTagsType = options.modelMode === 'furry'
+                ? modelCaps?.suggestTagsTypeFurry
+                : modelCaps?.suggestTagsTypeAnime;
 
             // Get models to query for API calls
             let models = [currentModel];
-            if (currentModel !== 'nai-diffusion-furry-3') {
+            if (!isV5Suggest && currentModel !== 'nai-diffusion-furry-3') {
                 models.push('nai-diffusion-furry-3');
             }
 
             const settings = options.autofillSettings || null;
             if (settings) {
                 models = models.filter((apiModel) => {
+                    if (isV5Suggest) {
+                        return options.modelMode === 'furry'
+                            ? settings.naiFurryTags !== false
+                            : settings.naiAnimeTags !== false;
+                    }
                     if (apiModel === 'nai-diffusion-furry-3') {
                         return settings.naiFurryTags !== false;
                     }
@@ -1296,7 +1308,8 @@ class SearchService {
 
             const processApiModel = async (apiModel, serviceOrder) => {
                 try {
-                    const cacheHit = !!this._lookupNovelAiTagCache(normalizedQuery, apiModel);
+                    const cacheModel = suggestTagsType ? `${apiModel}:${suggestTagsType}` : apiModel;
+                    const cacheHit = !!this._lookupNovelAiTagCache(normalizedQuery, cacheModel);
 
                     if (ws) {
                         this.sendSearchWs(ws, {
@@ -1306,7 +1319,7 @@ class SearchService {
                         });
                     }
 
-                    const response = await makeTagRequest(apiModel);
+                    const response = await makeTagRequest(apiModel, suggestTagsType);
                     const fromCache = !!response?.fromCache;
                     const processedTags = [];
 
@@ -1337,7 +1350,7 @@ class SearchService {
                         });
 
                         if (!fromCache && tagsToCache.length > 0) {
-                            this._persistNovelAiTagCache(normalizedQuery, apiModel, tagsToCache);
+                            this._persistNovelAiTagCache(normalizedQuery, cacheModel, tagsToCache);
                         }
                     }
 

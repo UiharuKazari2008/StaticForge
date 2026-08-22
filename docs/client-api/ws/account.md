@@ -28,7 +28,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 |---|---|---|
 | `account_data_health_updated` | Account health fields change (including after balance/subscription sync) | `public/scripts/ws/handlers/40-appCoreInbound.js` |
 
-Periodic **ping** payloads include `balance` and `accountHealth` — see [infrastructure.md](./infrastructure.md#ping-server-push-fields).
+Periodic **ping** payloads include `balance`, `opusUsage`, and `accountHealth` — see [infrastructure.md](./infrastructure.md#ping-server-push-fields).
 
 ---
 
@@ -68,6 +68,7 @@ Top-level `ok` is always `true` when the WS handler succeeds (app config loaded)
 |-------|------|-------------|
 | `user` | object | NovelAI account payload (see below) |
 | `balance` | object | Anlas summary (see below) |
+| `opusUsage` | object\|null | V5 Opus allowance `{ percent, isNegative, timeUntilNextPercent }` from `/user/subscription` |
 | `userDataValid` | boolean | Account health |
 | `userDataError` | string\|null | Account health |
 | `accountStanding` | string | Account health |

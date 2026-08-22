@@ -12,17 +12,25 @@
     <!-- Global desktop mode detection - set at the very top before any other scripts -->
     <script>
         // Check both viewport width and user preference from localStorage
+        const agentBrowserSession = new URLSearchParams(location.search).get('agent') === '1';
         let galleryWindowPreference = null; // 'windowed', 'maximized', or null for auto
 
-        galleryWindowPreference = localStorage.getItem('galleryWindowMode');
-        const isWideScreen = window.innerWidth >= 1200;
+        galleryWindowPreference = agentBrowserSession
+            ? 'windowed'
+            : localStorage.getItem('galleryWindowMode');
+        const isWideScreen = agentBrowserSession || innerWidth >= 1200;
         if (!galleryWindowPreference) {
             galleryWindowPreference = isWideScreen ? 'windowed' : 'maximized';
             try {
                 localStorage.setItem('galleryWindowMode', galleryWindowPreference);
             } catch (e) { /* ignore */ }
         }
-        window.isDesktop = isWideScreen && (galleryWindowPreference === 'windowed');
+        if (agentBrowserSession) {
+            try {
+                localStorage.setItem('galleryWindowMode', 'windowed');
+            } catch (e) { /* ignore */ }
+        }
+        globalThis.isDesktop = isWideScreen && (galleryWindowPreference === 'windowed');
 
         // Hover capability (html.can-hover / html.no-hover): applied in
         // fatalErrorBootstrap.js so service-worker updates deliver it even when
@@ -37,7 +45,7 @@
 
         // Sync developer mode to cookie so the server can serve source css/js when enabled
         try {
-            if (localStorage.getItem('staticforge_dev_mode') === 'true') {
+            if (agentBrowserSession || localStorage.getItem('staticforge_dev_mode') === 'true') {
                 document.cookie = 'staticforge_dev_mode=1; path=/; SameSite=Lax';
             } else {
                 document.cookie = 'staticforge_dev_mode=; path=/; Max-Age=0';
@@ -196,25 +204,25 @@
 
     <link rel="stylesheet" href="/css/fonts.css?sha=571ed5569b22ce33e63c389388b2fe88838d9da6e273e6028eb3763f7636cccc">
     <link rel="stylesheet" href="/dist/fontawesome/css/all.min.css">
-    <link rel="stylesheet" href="/css/app.css?sha=c8abc3918dafd1638625286732fc18761eb68a29ed84af647ca4cdbb941c8b79">
+    <link rel="stylesheet" href="/css/app.css?sha=355dc96c95ca26478b85a416099d77f44fd658178794bf28689719f0b1fc152e">
     <link rel="stylesheet" id="workspace-styles" href="/css/workspaces.css?sha=c4699f95f90578552b8cb880bea0d9ac7ca2f88fa814c84c5392067106c77cf2">
     <link rel="stylesheet" href="/css/custom-dropdown.css?sha=37c77e84993abb88cb49262872e6033f2e0130db1ca318ae6148bfb3f50dd8e2">
     <!-- Feature-scoped styles (split from app.css) -->
-    <link rel="stylesheet" href="/css/desktop-shell.css?sha=57886c8ec2287428e74487d0b325785d0ae6d50c817c1863f4244518fa1e9255">
+    <link rel="stylesheet" href="/css/desktop-shell.css?sha=7fca3b2454673b37b2a93e9131e43bb234c5bacfe993d0ba5c2e375a84415e0f">
     <link rel="stylesheet" href="/css/menu-chrome.css?sha=fd61ee6b08e1adcbbc7d5b698b8830ca718b0b7d0a147e76a6fa121e8785843b">
     <link rel="stylesheet" href="/css/desktop-settings.css?sha=b667dbf13f1d944dd935bc4542aaf08738104bc543c3dfb08e740d701d2d0c04">
     <link rel="stylesheet" href="/css/modal-dimensions.css?sha=0239a70559997ed5802a3a10c2dd0ddd8c675cebf4ff3d37af0058f6ec61438e">
     <link rel="stylesheet" href="/css/modal-theme-glass.css?sha=48da9ed40daa093366c6c56b9f88ecba638febebfe70b9c472cc78a8549420a0">
     <link rel="stylesheet" href="/css/modal-window-title-toolbar.css?sha=f32f41f9f2d0efe9537f255cfbc57f9e879af173b284591f26d7771439fd2829">
-    <link rel="stylesheet" href="/css/context-menu.css?sha=282446cd97bfbd6443f5c2220441ad96a74ed17c5b01404657b4ea4d0310699e">
-    <link rel="stylesheet" href="/css/gallery-toolbar.css?sha=dbff77f543fb4704e5eb5e3d1ade1cc637d6f37176f3d9f62feff76314a2742f">
+    <link rel="stylesheet" href="/css/context-menu.css?sha=7ec6ef834c24f2b76949919123154f1c4254c7421f2316febc60e970ca2ae16d">
+    <link rel="stylesheet" href="/css/gallery-toolbar.css?sha=5a67d8b80f19dfb184fa2d950d33e17e80ff9924bafc26b09b2ded7b804e8ebf">
     <link rel="stylesheet" href="/css/gallery-core.css?sha=021d589c575798a5c08eed28b28067e26b2c5df7143a37d7b7a3b17ec5d0d2b9">
     <link rel="stylesheet" href="/css/gallery-move.css?sha=21f3b582d166b379005161e58efac1f73f43e0f829a2a1a7f88112b5527e5591">
     <link rel="stylesheet" href="/css/lightbox.css?sha=35afc17c4275c4de0d30c90cbe8f1f55bf72a97dd08b32a83bc47b35109b58d8">
     <link rel="stylesheet" href="/css/manual-modal.css?sha=3fab90fce7b552b44a90258a347b2e9fa5efb08148e3788452f54d6a6cc10ad9">
-    <link rel="stylesheet" href="/css/manual-modal-prompt-form.css?sha=9e73d75e5675701b6c99dfdb77048a3d504a6d073ec237ca0ba11912132b7e70">
+    <link rel="stylesheet" href="/css/manual-modal-prompt-form.css?sha=758bb7ddda36416b5bab6930d5bad4a24eec42250682ef3deb8edefc5e7ef0c5">
     <link rel="stylesheet" href="/css/novel-tool.css?sha=42e4e83af79bae72c4c8960133e2dd99c24c687ab999a1aaf09a71cd0bc08e64">
-    <link rel="stylesheet" href="/css/manual-modal-preview-tools.css?sha=4f942cd5305aacd80868fb9bad3ba0955a841d2cdfe3fc22aa0f079a4a324571">
+    <link rel="stylesheet" href="/css/manual-modal-preview-tools.css?sha=a09df4f4aa1aab3edf2a156758687bc3ebf21b1c5361ee5fd372309f0bfe6f75">
     <link rel="stylesheet" href="/css/manual-modal-generate.css?sha=61f8c621bfe4051c6b1372792ace5fc3cb10a942ae6a6faa3e8da52b9d0cb402">
     <link rel="stylesheet" href="/css/manual-modal-viewer.css?sha=530f77c755674f36ecb0169f3ca44dbaf573a444c1a19f144f71c01516cf1baa">
     <link rel="stylesheet" href="/css/custom-scrollbar.css?sha=281a0566e03dc04e8d734afdaaf5459a41c98d253ca28c927e3055a49b6065a1">
@@ -249,6 +257,7 @@
     <link rel="stylesheet" href="/css/token-display.css?sha=f7549b664ca8164957e316328b61da0ee0f76848ce0949a0e24ab51dca632c22">
     <link rel="stylesheet" href="/css/grimoire-browser.css?sha=e26a52d8d4f034f357d20720ba2913cf1d22440f4e21d05eb5c94a55cd930ccb">
     <link rel="stylesheet" href="/css/emphasis-groups-tool.css?sha=8601349e668b62daeeb5d62991a1471f58948c6d031eee6439aab54edc211ef9">
+    <link rel="stylesheet" href="/css/character-position-tool.css?sha=e1ea1132fb7cdb215c4b855346e0fe73ab886c47098dd3d51282348bb75c1c07">
     <link rel="stylesheet" href="/css/emphasis-manager.css?sha=42db6953f33250e0a16b7410e43692ba8acae006d801f6a9f6526a3ddfd1301a">
     <link rel="stylesheet" href="/css/windows-classic-theme.css?sha=bffe5e53cd5300486322056e94eb3550259565fe02f1ca394e4b7c560473cee8">
     <link rel="stylesheet" href="/css/service-worker-tray.css?sha=b71d1e07077cf9a9c707945cca0effcc56b0bd0b54692ec105fcc42ee756c3b4">
@@ -1883,6 +1892,10 @@
                                     </button>
                                 </div>
                                 <div class="character-prompts-controls">
+                                    <button type="button" id="characterPositionsToolBtn" class="btn-secondary indicator hidden"
+                                        data-state="off" title="Character Positions">
+                                        <i class="fas fa-location-crosshairs"></i>
+                                    </button>
                                     <button type="button" id="autoPositionBtn" class="btn-secondary indicator hidden"
                                         data-state="on" title="Auto Position">
                                         <i class="fa-regular fa-arrows-up-down-left-right"></i> Auto
@@ -1906,6 +1919,9 @@
                                     <div id="manualGenCountDisplay" class="inset-badge gen-count-display hidden" style="height: 32px;" title="24h generation count">
                                         <div class="price-list-container">
                                             <span id="manualGenCount" class="price-list">-</span>
+                                            <div id="manualGenUsageSplit" class="price-list-container hidden">
+                                                <span id="manualGenUsagePercent" class="price-list">-</span>
+                                            </div>
                                         </div>
                                     </div>
                                     <div id="manualPriceDisplay" class="inset-badge price-display hidden"
@@ -2649,6 +2665,166 @@
                         <span>Confirm</span>
                         <i class="fas fa-check"></i>
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- V5 Character Positions Tool -->
+    <div id="characterPositionTool"
+        class="modal hidden transient tool-window resizeable-window character-position-tool"
+        data-window-identifier="character-positions-tool" data-parent-modal-id="manualModal"
+        data-window-min-width="360" data-window-min-height="420"
+        data-window-max-width="1100" data-window-max-height="1200"
+        data-window-default-width="560" data-window-default-height="680">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-location-crosshairs icon-fa"></i>
+                <span>Character Positions</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" id="characterPositionToolCloseBtn" class="btn-danger close-btn btn-small"
+                title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content dark character-position-tool-content">
+            <div class="character-position-stage-shell">
+                <div id="characterPositionStage" class="character-position-stage">
+                    <img id="characterPositionImage" class="character-position-image hidden"
+                        alt="Last generated image">
+                    <div id="characterPositionEmpty" class="character-position-empty">
+                        <i class="fas fa-image"></i>
+                        <span>No generated image yet. Using the current resolution shape.</span>
+                    </div>
+                </div>
+            </div>
+            <div class="character-position-footer">
+                <div class="modal-footer">
+                    <div class="modal-footer-left">
+                        <button type="button" id="characterPositionClearBtn" class="btn-secondary"
+                            title="Reset to AI placement and close">
+                            <span>Clear</span>
+                        </button>
+                        <button type="button" id="characterPositionRevertBtn" class="btn-secondary hidden"
+                            disabled title="Restore last generated centers">
+                            <span>Revert</span>
+                        </button>
+                        <span id="characterPositionReadout">Click the canvas or drag a center</span>
+                    </div>
+                    <div class="modal-footer-right">
+                        <button type="button" id="characterPositionSaveBtn" class="btn-secondary"
+                            title="Save centers without closing">
+                            <span>Save</span>
+                        </button>
+                        <button type="button" id="characterPositionApplyBtn" class="btn-primary"
+                            title="Save centers and close">
+                            <span>Apply</span>
+                            <i class="fas fa-check"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Studio Generation Usage Tool -->
+    <div id="generationUsageTool"
+        class="modal hidden transient tool-window resizeable-window"
+        data-window-identifier="generation-usage-tool" data-parent-modal-id="manualModal"
+        data-window-min-width="400" data-window-min-height="220"
+        data-window-max-width="580" data-window-max-height="360"
+        data-window-default-width="460" data-window-default-height="260">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-battery-bolt icon-fa"></i>
+                <span>Usage</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" id="generationUsageCloseBtn" class="btn-danger close-btn btn-small"
+                title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content dark">
+            <div class="modal-body">
+                <div class="form-section">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Usage</label>
+                            <span id="generationUsagePercent">—</span>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <div class="token-progress-bar">
+                                <div id="generationUsageFill" class="token-progress-fill"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>24h</label>
+                            <span id="generationUsageDayCount">—</span>
+                        </div>
+                        <div class="form-group">
+                            <label>Left</label>
+                            <span id="generationUsageRemaining">—</span>
+                        </div>
+                        <div class="form-group">
+                            <label>Refill</label>
+                            <span id="generationUsageRefill">—</span>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Last 24 hours</label>
+                            <span id="generationUsageDayComparison">—</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Studio staged generation results review -->
+    <div id="stageResultsReview"
+        class="modal hidden transient tool-window resizeable-window"
+        data-window-identifier="stage-results-review" data-parent-modal-id="manualModal"
+        data-window-min-width="560" data-window-min-height="420"
+        data-window-max-width="1800" data-window-max-height="1400"
+        data-window-default-width="1100" data-window-default-height="820">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-layer-group icon-fa"></i>
+                <span id="stageResultsReviewTitle">Stage Results</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" class="btn-secondary btn-small modal-work-area-maximize" title="Maximize">
+                <i class="fa-regular fa-window-maximize"></i>
+            </button>
+            <button type="button" id="stageResultsReviewCloseBtn" class="btn-danger close-btn btn-small"
+                title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content dark">
+            <div class="modal-body">
+                <div class="stage-results-scroll-shell scrollbar-padding" data-custom-scrollbar
+                    data-scrollable-wrapper-class="stage-results-scrollable">
+                    <div id="stageResultsGallery" class="gallery"></div>
                 </div>
             </div>
         </div>
@@ -7528,6 +7704,10 @@ Examples:
                     title="Replication">
                     <i class="fas fa-clone"></i>
                 </div>
+                <!-- Managed RunPod GPU pods -->
+                <div class="runpod-tray-icon taskbar-tray-icon hidden" id="runpodTrayIcon" title="RunPod">
+                    <i class="fas fa-server"></i>
+                </div>
                 <!-- Phasewalker pipeline data -->
                 <div class="phasewalker-tray-icon taskbar-tray-icon hidden" id="phasewalkerTrayIcon" title="Phasewalker">
                     <i class="fas fa-layer-group" id="phasewalkerTrayIconGlyph"></i>
@@ -7636,7 +7816,9 @@ Examples:
     <script src="scripts/comp/uploadHandlers.js"></script>
     <script src="scripts/comp/referenceManager.js"></script>
     <script src="scripts/comp/promptStageBlocks.js"></script>
+    <script src="protected/fflate.js"></script>
     <script src="protected/t5-tokenizer.js"></script>
+    <script src="protected/qwen-tokenizer.js"></script>
     <script src="scripts/comp/emphasisWeightMath.js"></script>
     <script src="scripts/comp/emphasisParse.js"></script>
     <script src="scripts/comp/emphasisGroupIdCodec.js"></script>
@@ -7677,6 +7859,7 @@ Examples:
     <script src="scripts/comp/fileSearch.js"></script>
     <script src="scripts/comp/director.js"></script>
     <script src="scripts/comp/utilities.js"></script>
+    <script src="scripts/comp/usageToolManager.js"></script>
     <script src="scripts/comp/manualDropdownManager.js"></script>
     <script src="scripts/comp/promptTextareaContextMenu.js"></script>
     <script src="scripts/comp/dynamicGenerationLockState.js"></script>
@@ -7693,10 +7876,12 @@ Examples:
     <script src="scripts/comp/randomPromptManager.js"></script>
     <script src="scripts/comp/directorLearningAdmin.js"></script>
     <script src="scripts/comp/characterPromptManager.js"></script>
+    <script src="scripts/comp/characterPositionToolManager.js"></script>
     <script src="scripts/comp/manualTabManager.js"></script>
     <script src="scripts/comp/textOverlayManager.js"></script>
     <script src="scripts/comp/pipelineStageControls.js"></script>
     <script src="scripts/comp/pipelineStageManager.js"></script>
+    <script src="scripts/comp/stageResultsReview.js"></script>
     <script src="scripts/comp/focusOverlayManager.js"></script>
     <script src="scripts/comp/mainMenuManager.js"></script>
     <script src="scripts/comp/novelAiAccountStatus.js"></script>
@@ -7704,6 +7889,7 @@ Examples:
     <script src="scripts/comp/compareViewManager.js"></script>
     <script src="scripts/comp/exitConfirmation.js"></script>
     <script src="scripts/comp/trayIndicators.js"></script>
+    <script src="scripts/comp/runpodTray.js"></script>
     <script src="scripts/comp/systemTrayManager.js"></script>
     <script src="scripts/comp/windowControlsOverlay.js"></script>
     <script src="scripts/comp/errorDisplay.js"></script>

@@ -200,10 +200,11 @@ function escapeHtmlAttribute(text) {
 }
 
 /**
- * Global options data storage
- * @type {object|null}
+ * App options live on window.optionsData (set by loadOptions / appBootstrap).
+ * Do not declare a parallel optionsData binding — it shadows the real object.
  */
-let optionsData = null;
+let qwenTokenizer = null;
+let qwenTokenizerPromise = null;
 
 /**
  * Current user balance storage
@@ -356,15 +357,17 @@ const modelGroups = [
     {
         group: 'Current Model',
         options: [
+            { value: 'v5', name: 'NovelAI v5', display: 'v5', display_full: 'v5', badge: 'F', badge_full: 'Full', badge_class: 'full-model-badge' },
+            { value: 'v5_cur', name: 'NovelAI v5 (Curated)', display: 'v5', display_full: 'v5', badge: 'C', badge_full: 'Cur', badge_class: 'curated-badge' },
             { value: 'v4_5', name: 'NovelAI v4.5', display: 'v4.5', display_full: 'v4.5', badge: 'F', badge_full: 'Full', badge_class: 'full-model-badge' },
-            { value: 'v4_5_cur', name: 'NovelAI v4.5 (Curated)', display: 'v4.5', display_full: 'v4.5', badge: 'C', badge_full: 'Cur', badge_class: 'curated-badge' },
-            { value: 'v4', name: 'NovelAI v4', display: 'v4', display_full: 'v4', badge: 'F', badge_full: 'Full', badge_class: 'full-model-badge' },
-            { value: 'v4_cur', name: 'NovelAI v4 (Curated)', display: 'v4', display_full: 'v4', badge: 'C', badge_full: 'Cur', badge_class: 'curated-badge' }
+            { value: 'v4_5_cur', name: 'NovelAI v4.5 (Curated)', display: 'v4.5', display_full: 'v4.5', badge: 'C', badge_full: 'Cur', badge_class: 'curated-badge' }
         ]
     },
     {
         group: 'Legacy Model',
         options: [
+            { value: 'v4', name: 'NovelAI v4', display: 'v4', display_full: 'v4', badge: 'F', badge_full: 'Full', badge_class: 'full-model-badge' },
+            { value: 'v4_cur', name: 'NovelAI v4 (Curated)', display: 'v4', display_full: 'v4', badge: 'C', badge_full: 'Cur', badge_class: 'curated-badge' },
             { value: 'v3', name: 'NovelAI v3 (Anime)', display: 'v3', display_full: 'v3 Anime', badge: 'L', badge_full: 'Legacy', badge_class: 'legacy-badge' },
             { value: 'v3_furry', name: 'NovelAI v3 (Furry)', display: 'v3', display_full: 'v3 Furry', badge: 'L', badge_full: 'Legacy', badge_class: 'legacy-furry-badge' }
         ]
@@ -667,6 +670,85 @@ function isV3Model(modelValue) {
 }
 
 /**
+ * Dreamscape forge model feature caps from get_app_options (config/model-features.json).
+ * @param {string} [modelValue]
+ * @returns {object|null}
+ */
+function getForgeModelFeatures(modelValue) {
+    const key = String(modelValue || getCurrentSelectedModel() || '').toLowerCase();
+    if (!key) return null;
+    const map = window.optionsData?.modelFeatures || null;
+    return map && map[key] ? map[key] : null;
+}
+
+function getPromptTokenizer(modelValue) {
+    const tokenizerType = getForgeModelFeatures(modelValue)?.tokenizer || 't5';
+    return tokenizerType === 'qwen' ? qwenTokenizer : t5Tokenizer;
+}
+
+function getPromptTokenLimit(modelValue) {
+    const limit = getForgeModelFeatures(modelValue)?.tokenLimit;
+    if (Number.isFinite(limit) && limit > 0) return limit;
+    // NovelAI d$(): V5 Full 1471, V5 Curated 703 (not unlimited — null hid the Studio badge)
+    const key = String(modelValue || getCurrentSelectedModel() || '').toLowerCase();
+    if (key === 'v5_cur' || key.startsWith('v5_cur')) return 703;
+    if (key === 'v5' || key.startsWith('v5_')) return 1471;
+    return null;
+}
+
+async function ensurePromptTokenizerForModel(modelValue) {
+    if (getForgeModelFeatures(modelValue)?.tokenizer !== 'qwen') {
+        return t5Tokenizer;
+    }
+    if (qwenTokenizer) return qwenTokenizer;
+    if (!qwenTokenizerPromise) {
+        qwenTokenizerPromise = (async () => {
+            const tokenizer = new QwenTokenizer();
+            await tokenizer.loadFromURL('/protected/qwen35_tokenizer.def');
+            qwenTokenizer = tokenizer;
+            return tokenizer;
+        })().catch((error) => {
+            qwenTokenizerPromise = null;
+            throw error;
+        });
+    }
+    return qwenTokenizerPromise;
+}
+
+function isV5Model(modelValue) {
+    const key = String(modelValue || getCurrentSelectedModel() || '').toLowerCase();
+    return key === 'v5' || key === 'v5_cur' || key.startsWith('v5_');
+}
+
+// UI values: 0 None, 1 Human Focus, 2 Light, 3 Heavy, 4 Curated, 5 Furry Focus
+const UC_PRESET_LEVEL_LABELS = ['None', 'Human Focus', 'Light', 'Heavy', 'Curated', 'Furry Focus'];
+
+const PRESET_TABLE_MODEL_FALLBACKS = {
+    v5: ['v4_5', 'v4_5_cur', 'v4'],
+    v5_cur: ['v4_5_cur', 'v4_5', 'v4_cur', 'v4'],
+    v4_5: ['v4_5_cur', 'v4'],
+    v4_5_cur: ['v4_5', 'v4_cur'],
+    v4: ['v4_cur', 'v4_5'],
+    v4_cur: ['v4', 'v4_5_cur']
+};
+
+/**
+ * Look up a per-model preset table entry (uc_presets / quality_presets).
+ * V5 keys were missing from older promptConfig tables; fall back to the closest family.
+ */
+function resolvePresetTableForModel(table, modelKey) {
+    if (!table) return null;
+    const key = String(modelKey || getCurrentSelectedModel() || '').toLowerCase();
+    if (!key) return null;
+    if (table[key] != null) return table[key];
+    const fallbacks = PRESET_TABLE_MODEL_FALLBACKS[key] || [];
+    for (let i = 0; i < fallbacks.length; i++) {
+        if (table[fallbacks[i]] != null) return table[fallbacks[i]];
+    }
+    return null;
+}
+
+/**
  * Helper function to get currently selected model
  * @returns {string}
  */
@@ -676,10 +758,12 @@ function getCurrentSelectedModel() {
 }
 
 /**
- * Helper function to update UI visibility based on V3 model selection
+ * Helper function to update UI visibility based on model selection (V3 datasets/chars; V5 vibe/precise caps).
  */
 function updateV3ModelVisibility() {
-    const isV3Selected = isV3Model(getCurrentSelectedModel());
+    const selected = getCurrentSelectedModel();
+    const isV3Selected = isV3Model(selected);
+    const caps = getForgeModelFeatures(selected);
 
     // Use window references to access DOM elements defined in app.js
     const datasetDropdownEl = window.datasetDropdown || datasetDropdown;
@@ -707,6 +791,26 @@ function updateV3ModelVisibility() {
             characterPromptsContainerEl.classList.add('hidden');
         } else {
             characterPromptsContainerEl.classList.remove('hidden');
+        }
+    }
+
+    // V5: hide vibe / precise reference surfaces when caps say so
+    const vibeSection = document.getElementById('vibeReferencesSection')
+        || document.getElementById('vibeTransferSection')
+        || document.querySelector('.vibe-references-section');
+    const directorSection = document.getElementById('directorReferenceSection');
+    if (vibeSection) {
+        if (caps && caps.vibeTransfer === false) {
+            vibeSection.classList.add('hidden');
+        } else if (!isV3Selected) {
+            vibeSection.classList.remove('hidden');
+        }
+    }
+    if (directorSection) {
+        if (caps && caps.preciseReference === false) {
+            directorSection.classList.add('hidden');
+        } else {
+            directorSection.classList.remove('hidden');
         }
     }
 
@@ -1010,6 +1114,9 @@ function calculatePriceUnified({
         .slice()
         .sort((a, b) => a.resolution - b.resolution);
     const freeEntry = limits.find(e => e.maxPrompts > 0 && area <= e.resolution);
+    const usageLimited = getForgeModelFeatures(model)?.opusUsageLimit === true;
+    const opusUsage = subscription.usage || window.optionsData?.opusUsage || null;
+    const usageEligible = !usageLimited || (!!opusUsage && opusUsage.isNegative !== true);
 
     // 2) Apply pricing formula with model-specific adjustments
     const _steps = Math.max(1, Math.min(50, steps || UTILS_CONFIG.DEFAULT_STEPS));
@@ -1049,7 +1156,8 @@ function calculatePriceUnified({
     // 3) Apply subscription discounts and calculate final costs
     const isFreeRequest = _steps <= UTILS_CONFIG.DEFAULT_STEPS &&
                          (freeEntry?.maxPrompts > 0) &&
-                         resolution <= (freeEntry?.resolution || 0);
+                         resolution <= (freeEntry?.resolution || 0) &&
+                         usageEligible;
 
     let persistanceCost = 0;
     const refCount = referenceCount > 0 ? referenceCount : (reference ? 1 : 0);
@@ -1073,6 +1181,8 @@ function calculatePriceUnified({
             smeaFactor: smeaFactor,
             strength: _strength,
             reference: reference,
+            usageLimited,
+            usageEligible,
             height: height,
             width: width
         }
@@ -1330,9 +1440,9 @@ function updateManualTokenFreeDisplay(groupTotals) {
 
     const tabButtons = document.querySelector('#manualModal #tab-buttons');
     const activeTab = tabButtons?.getAttribute('data-active') || 'prompt';
-    const maxTokens = 512;
+    const maxTokens = getPromptTokenLimit();
 
-    if (activeTab === 'creative') {
+    if (activeTab === 'creative' || maxTokens === null) {
         container.classList.add('hidden');
         return;
     }
@@ -1352,14 +1462,14 @@ function updateManualTokenFreeDisplay(groupTotals) {
         }
     }
 
-    // Allow negative when overcommitted past the 512 token budget
+    // Allow negative when overcommitted past the model token budget
     const free = maxTokens - total;
     freeEl.textContent = free;
     const tabLabel = activeTab === 'uc' ? 'UC' : 'Prompt';
     container.title = `${free} tokens free (${tabLabel}, ${total}/${maxTokens} used)`;
 
     const isCritical = free < 64;
-    const isWarning = !isCritical && total > 256;
+    const isWarning = !isCritical && total > maxTokens / 2;
     container.classList.toggle('token-free-warning', isWarning);
     container.classList.toggle('token-free-critical', isCritical);
     container.classList.remove('over-limit');
@@ -1391,6 +1501,8 @@ function updateManualGenCountDisplay() {
     if (container) {
         container.classList.remove('hidden');
     }
+    // usageToolManager: public/scripts/comp/usageToolManager.js
+    usageToolManager.sync();
 }
 
 /**
@@ -1803,7 +1915,7 @@ function getDatasetLeadIconClass(datasets) {
     const list = Array.isArray(datasets) ? datasets : [];
     for (let i = 0; i < list.length; i++) {
         const v = String(list[i] || '').toLowerCase().trim();
-        if (v === 'furry' || v === 'furry dataset' || v.startsWith('furry ')) {
+        if (v === 'furry' || v === 'fur dataset' || v === 'furry dataset' || v.startsWith('furry ')) {
             return 'nai-paw';
         }
     }
@@ -2370,9 +2482,8 @@ function updatePresetLoadSaveState() {
     const hasPresetName = manualPresetName.value.trim().length > 0;
     manualSaveBtn.disabled = !hasPresetName;
     if (hasPresetName) {
-        const optionsDataRef = window.optionsData || optionsData;
-        const isValidPreset = hasPresetName && optionsDataRef?.presets &&
-                             optionsDataRef.presets.filter(e => e.name === presetName).length > 0;
+        const isValidPreset = hasPresetName && window.optionsData?.presets &&
+                             window.optionsData.presets.filter(e => e.name === presetName).length > 0;
         manualLoadBtn.disabled = !isValidPreset;
         manualSaveBtn.classList.remove('disabled');
         if (isValidPreset) {

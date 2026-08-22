@@ -418,9 +418,34 @@ Unauthenticated clients hitting rate limit receive **429**:
 
 ## Development auth
 
-`createDevAuthMiddleware` in `modules/auth.js` validates `devLoginKey` (from secure config) when `enable_dev` is true. Accepts `Authorization: Bearer …` or `?auth=` matching the dev key, or an existing admin/dev_admin session.
+`createDevAuthMiddleware` in `modules/auth.js` requires the request's direct TCP
+peer (`req.socket.remoteAddress`) to be loopback, requires `enable_dev` to be
+true, and validates `devLoginKey` from secure config on every request. It accepts
+`Authorization: Bearer …` or `?auth=` matching the development key. Existing
+admin and `dev_admin` sessions do not bypass the key check.
 
-**Current deployment:** `globalResources.getDevAuthMiddleware()` is initialized but **not referenced by any route** in `web_server.js` or elsewhere in the repo. No HTTP endpoints use dev auth today. To expose dev-only routes, mount `globalResources.getDevAuthMiddleware()` explicitly on those paths.
+`GET /agent` mounts this middleware for loopback requests only. Successful auth
+persists the `dev_admin` session and redirects to `/app?agent=1`. The preferred
+client sends the key in an `Authorization` header and removes that header after
+the redirect; `?auth=` is a fallback for browser tools that cannot set headers.
+Agent mode unregisters existing service workers, clears Cache Storage, and skips
+service-worker registration and startup cache downloads.
+
+The loopback gate ignores `X-Forwarded-For`, `X-Real-IP`, and other forwarded
+headers. A remote peer cannot gain access by spoofing those headers or by using a
+stolen development key. SSH local forwarding to server-side
+`127.0.0.1:9220` remains supported because Dreamscape sees the tunnel's direct
+peer as loopback; development mode and key validation still apply.
+
+This path requires both `"enable_dev": true` in `config.json` and `devLoginKey`
+in `secure.config.json`. Never place the development key in source, docs, or
+committed configuration.
+
+All authentication values (`devLoginKey`, `loginKey`, `loginPin`,
+`readOnlyPin`, and `sessionSecret`) belong in gitignored `secure.config.json`.
+Only the non-secret `enable_dev` and `userPinLoginEnabled` switches belong in
+`config.json`. A missing development key returns
+`DEV_LOGIN_KEY_NOT_CONFIGURED` without logging or returning key material.
 
 ## Client implementation checklist
 

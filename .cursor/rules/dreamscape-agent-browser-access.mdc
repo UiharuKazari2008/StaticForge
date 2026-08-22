@@ -1,0 +1,75 @@
+---
+description: Open Dreamscape in browser agents with dev auth and cacheless startup
+alwaysApply: true
+---
+
+# Dreamscape Browser Agent Access
+
+Dreamscape runs at `http://127.0.0.1:9220`.
+
+## Required local configuration
+
+- Set `"enable_dev": true` in `config.json`, then restart the server.
+- Set `devLoginKey` in `secure.config.json`.
+- Never commit, quote, log, or paste the key into chat or rule files.
+
+The agent login route requires all three conditions on every request:
+
+- the direct TCP peer (`req.socket.remoteAddress`) is loopback;
+- `enable_dev` is true; and
+- the request supplies the valid `devLoginKey`.
+
+Forwarded headers such as `X-Forwarded-For` and `X-Real-IP` are never trusted for
+this gate. A remote request receives 403 even if it has a stolen development key
+or spoofs a loopback forwarded address. An existing admin or `dev_admin` session
+does not bypass the key requirement.
+
+SSH local forwarding remains supported. For example, forwarding a local port to
+server-side `127.0.0.1:9220` makes the connection's direct peer loopback on the
+Dreamscape host; the key and `enable_dev` checks still apply.
+
+## Preferred login flow
+
+1. Read `devLoginKey` locally from `secure.config.json` without printing it.
+2. Set the browser request header `Authorization: Bearer <devLoginKey>`.
+3. Navigate to `http://127.0.0.1:9220/agent`.
+4. The server creates a `dev_admin` session, removes old worker/cache state with
+   a no-store bootstrap page, and opens
+   `http://127.0.0.1:9220/app?agent=1`.
+5. Clear the temporary Authorization header after the redirect. The session
+   cookie handles subsequent HTTP and WebSocket authentication.
+
+For browser tooling that cannot set request headers, the loopback-only fallback
+is `http://127.0.0.1:9220/agent?auth=<URL-encoded-devLoginKey>`. Do not show or
+retain the completed URL in chat, screenshots, logs, or committed files.
+
+Run `/agent` at least once in each browser context, even if it already has a
+session, so an older worker cannot serve a cached app shell. After that cleanup,
+open `http://127.0.0.1:9220/app?agent=1` directly and keep `agent=1` on
+app-shell navigations.
+
+## Agent mode behavior
+
+`agent=1` is the cacheless browser-agent mode:
+
+- the `/agent` bootstrap removes existing Dreamscape worker registrations;
+- after navigation is no longer worker-controlled, Cache Storage entries are deleted;
+- a page already controlled by an old worker reloads once after cleanup;
+- no new service worker is registered;
+- startup skips service-worker manifest download and install waits;
+- later service-worker cache update requests are ignored for that page.
+- desktop mode is forced at boot and `galleryWindowMode` is set to `windowed`,
+  regardless of the browser agent viewport width.
+
+Static app assets already use server-side no-store headers. Do not wait for a
+service worker, install wizard, or offline-cache download in agent sessions.
+The successful `/agent` flow lands directly in the authenticated desktop shell;
+do not automate the PIN pad or open `/` first.
+
+## Troubleshooting
+
+- `403` from `/agent`: direct peer is not loopback, or the supplied key is invalid.
+- `404` from `/agent`: `enable_dev` is false.
+- `500` from `/agent`: `devLoginKey` is absent from `secure.config.json`.
+- `401` or `403`: the Authorization header/query key is missing or invalid.
+- Login page appears: authenticate through `/agent`; do not automate the PIN pad.

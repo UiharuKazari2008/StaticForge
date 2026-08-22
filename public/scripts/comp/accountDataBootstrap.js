@@ -74,7 +74,7 @@ function applyAccountDataDeferredPresentation() {
 
 function applyRetriedAccountData(retryResult) {
     if (!retryResult || !window.optionsData) return;
-    const fields = ['userDataValid', 'userDataError', 'accountStanding', 'banMessage', 'upstreamUnavailable', 'subscriptionRenewalFailed', 'accountSubscriptionLastRefreshAt'];
+    const fields = ['userDataValid', 'userDataError', 'accountStanding', 'banMessage', 'upstreamUnavailable', 'subscriptionRenewalFailed', 'accountSubscriptionLastRefreshAt', 'opusUsage'];
     fields.forEach((key) => {
         if (retryResult[key] !== undefined) {
             window.optionsData[key] = retryResult[key];
@@ -90,6 +90,8 @@ function applyRetriedAccountData(retryResult) {
     window.optionsData.accountDataDeferred = false;
     setAccountDataUiVisibility(true);
     updateBalanceDisplay(retryResult.balance || window.optionsData.balance);
+    // usageToolManager: public/scripts/comp/usageToolManager.js
+    usageToolManager.updateUsage(retryResult.opusUsage);
     applyNovelAiStatusFromOptions(window.optionsData);
 }
 

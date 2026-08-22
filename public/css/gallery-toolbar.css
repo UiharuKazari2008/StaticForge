@@ -504,7 +504,8 @@ span.dataset-button-text {
 }
 
 /* Show appropriate dots based on UC level */
-.prompt-status-icon.uc-enabled[data-uc-level="1"] .uc-level-dot:nth-child(1) {
+.prompt-status-icon.uc-enabled[data-uc-level="1"] .uc-level-dot:nth-child(1),
+.prompt-status-icon.uc-enabled[data-uc-level="5"] .uc-level-dot:nth-child(1) {
     opacity: 1;
 }
 

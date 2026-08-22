@@ -47,6 +47,7 @@ Sync helper: `syncAuthLocalStorageFromServer()` in `public/scripts/comp/connecti
 | Service worker | `public/sw.js` | `OPTIONS /` manifest hash compare |
 | SW manager | `public/scripts/comp/serviceWorkerManager.js` | POST `/` ping, fetch `/sw.js`, WS push `service_worker_cache_update` |
 | Runtime assets | Server `.cache/runtime-assets/` | Transparent `/css/`, `/scripts/` optimization |
+| Browser-agent mode | `/app?agent=1` | Skips worker registration and cache updates, clears Cache Storage after old-worker cleanup, forces source assets and desktop/windowed boot |
 
 Custom native clients typically **skip** service worker entirely; use direct HTTP for static assets.
 
@@ -90,7 +91,8 @@ Server-backed pieces use WS (`search_tag_wiki`, `resolve_grimoire_url`, etc.) bu
 | Generation orchestrator | `generationOrchestrator.js` | Sequences WS calls client-side |
 | Dynamic generation UI | `dynamicGenerationManager.js`, carousel | WS `compile_dynamic_generation`, progress pushes |
 | Credit cost dialog | `creditCostDialog.js` | Computes cost locally via `calculateUpscaleInfo()` in `utilities.js` using image dimensions + `window.optionsData.user.subscription` (Opus free tier). Does **not** fetch balance over WS/REST at dialog open; subscription data comes from server options loaded at init. |
-| Streaming step previews | `websocket.js` streaming session | Interprets `image_generation_progress` |
+| Streaming step previews | `websocket.js` streaming session | Interprets `image_generation_progress`; `stage_complete` swaps the editor preview to that stage's result without ending the run |
+| Staged results review | `stageResultsReview.js` | Opens a Studio tool window at staged-generate start with one gallery tile per expected saved stage; fills from `stage_complete` / `complete` / response `filenames[]`; click opens Lumen |
 
 ---
 

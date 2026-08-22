@@ -1,0 +1,154 @@
+/* V5 Character Positions tool — scripts/comp/characterPositionToolManager.js */
+#characterPositionTool {
+    width: 560px;
+    height: 680px;
+    box-sizing: border-box;
+    flex-direction: column;
+}
+
+.character-position-tool>.modal-content {
+    padding: 8px;
+    overflow: hidden;
+    min-height: 0;
+    height: auto;
+    max-height: none;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.character-position-stage-shell {
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.character-position-stage {
+    position: relative;
+    flex: 0 0 auto;
+    max-width: 100%;
+    max-height: 100%;
+    overflow: hidden;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--border-radius-sm);
+    touch-action: none;
+    user-select: none;
+}
+
+.character-position-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+    pointer-events: none;
+}
+
+.character-position-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 24px;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.character-position-empty i {
+    font-size: 2rem;
+}
+
+.character-position-pin {
+    --character-pin-color: var(--primary-color);
+    position: absolute;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+    padding: 0;
+    transform: translate(-50%, -50%);
+    border: 2px solid var(--text-primary);
+    border-radius: 50%;
+    background: var(--character-pin-color);
+    color: var(--text-primary);
+    box-shadow: 0 2px 8px var(--shadow-dark);
+    cursor: grab;
+    font-weight: 700;
+    touch-action: none;
+}
+
+.character-position-pin:active {
+    cursor: grabbing;
+}
+
+.character-position-pin.selected {
+    outline: 3px solid var(--primary-color);
+    outline-offset: 2px;
+    z-index: 3;
+}
+
+.character-position-pin-label {
+    position: absolute;
+    left: 50%;
+    top: calc(100% + 5px);
+    width: max-content;
+    max-width: 160px;
+    overflow: hidden;
+    padding: 2px 5px;
+    border-radius: var(--border-radius-sm);
+    background: var(--glass-layer-dark-4);
+    color: var(--text-primary);
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+.character-position-footer {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+}
+
+.character-position-footer .modal-footer {
+    padding-top: 0;
+    flex-wrap: wrap;
+}
+
+#characterPositionReadout {
+    color: var(--primary-color);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+#characterPositionsToolBtn.indicator[data-state="returned"]::after {
+    background: #7eff7e;
+    border: 1px solid #00cd00;
+    box-shadow: 0 0 15px 2px #00ff22;
+    animation: flashGreen 1s infinite;
+}
+
+@media (max-width: 600px) {
+    #characterPositionTool {
+        width: min(100%, 560px);
+        height: min(100%, 680px);
+    }
+}

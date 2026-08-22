@@ -59,6 +59,8 @@ function naxVibesFormatCacheAge(cachedAt) {
 /** Map nax.moe encoding model slug to StaticForge model key */
 function naxVibeNaxModelToForgeKey(naxModel) {
     const m = String(naxModel || '').toLowerCase().replace(/[-_\s]/g, '');
+    if (m === 'v5full' || m === 'v5f') return 'v5';
+    if (m === 'v5curated' || m === 'v5c') return 'v5_cur';
     if (m === 'v45full' || m === 'v45f') return 'v4_5';
     if (m === 'v45curated' || m === 'v45c') return 'v4_5_cur';
     if (m === 'v4full' || m === 'v4f') return 'v4';
@@ -1770,7 +1772,9 @@ function naxVibesDsapDriver(host) {
             vibes.forEach((v) => {
                 (v.encodings || []).forEach((enc) => {
                     const m = String(enc.model || '').toLowerCase().replace(/[-_\s]/g, '');
-                    enc.forgeKey = (m === 'v45full' || m === 'v45f') ? 'v4_5'
+                    enc.forgeKey = (m === 'v5full' || m === 'v5f') ? 'v5'
+                        : (m === 'v5curated' || m === 'v5c') ? 'v5_cur'
+                        : (m === 'v45full' || m === 'v45f') ? 'v4_5'
                         : (m === 'v45curated' || m === 'v45c') ? 'v4_5_cur'
                         : (m === 'v4full' || m === 'v4f') ? 'v4'
                         : (m === 'v4curated' || m === 'v4c') ? 'v4_cur'

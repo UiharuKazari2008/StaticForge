@@ -57,6 +57,18 @@ Errors use `type: "error"` via `sendError()` — see [websocket.md](../websocket
 
 ---
 
+---
+
+---
+
+---
+
+---
+
+---
+
+---
+
 ## Detailed packets
 
 ### `get_autofill_ranking`

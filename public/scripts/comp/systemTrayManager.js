@@ -11,6 +11,7 @@ function prepareSystemTrayBackground() {
     const trayIconIds = [
         'imageGenerationIndicator',
         'replicationTrayIndicator',
+        'runpodTrayIcon',
         'subscriptionRenewalIndicator',
         'fixedCreditsIndicator',
         'searchIndexingIndicator',
@@ -42,6 +43,8 @@ async function startBackgroundTrayServices() {
     updateWorkspaceTrayIcon({ reveal: false });
     updateSearchIndexingIndicator();
     setupServiceWorkerTrayContextMenu();
+    // initializeRunpodTray: public/scripts/comp/runpodTray.js
+    initializeRunpodTray();
     // initializeGenerationQuipsTray: public/scripts/comp/generationQuipsTray.js
     if (typeof initializeGenerationQuipsTray === 'function') {
         initializeGenerationQuipsTray();
@@ -92,6 +95,10 @@ async function startBackgroundTrayServices() {
         () => {
             revealTrayIconById('modemTrayIcon');
             return 'modemTrayIcon';
+        },
+        () => {
+            revealTrayIconById('runpodTrayIcon');
+            return 'runpodTrayIcon';
         },
         () => {
             if (window.naxtApplet && typeof window.naxtApplet.updateBagTrayChrome === 'function') {
@@ -215,6 +222,7 @@ function attachFixedCreditsTrayContextMenu(indicator) {
     indicator.dataset.contextMenu = contextMenuId;
 
     contextMenu.attachToElement(indicator, {
+        maxHeight: true,
         sections: [
             {
                 type: 'list',
@@ -251,6 +259,12 @@ function attachFixedCreditsTrayContextMenu(indicator) {
                                         <i class="fas fa-exclamation-triangle anlas-warning-icon hidden"></i>
                                         <span class="anlas-days-text">Loading...</span>
                                     </span>
+                                </div>
+                            </div>
+                            <div class="menu-item-row balance-list" id="contextAnlasOpusUsageRowTray">
+                                <i id="contextAnlasOpusUsageIconTray" class="fas fa-battery-three-quarters"></i>
+                                <div class="price-list-container">
+                                    <span class="anlas-subscription-value" id="contextAnlasOpusUsageTray">—</span>
                                 </div>
                             </div>
                         </div>
@@ -322,6 +336,9 @@ function attachFixedCreditsTrayContextMenu(indicator) {
                     } catch (error) {
                         console.error('Error updating subscription info in context menu:', error);
                     }
+
+                    // usageToolManager: public/scripts/comp/usageToolManager.js
+                    usageToolManager.fillAnlasMenuUsageRow('Tray');
                 }
             }
         ]

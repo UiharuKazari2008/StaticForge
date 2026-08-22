@@ -4,6 +4,7 @@
   "rules": [
     { "path": [], "type": "object", "label": "Application Config", "closed": true, "required": true },
     { "path": ["port"], "type": "number", "label": "HTTP Port", "restartRequired": true, "required": true, "description": "TCP port the HTTP server listens on" },
+    { "path": ["enable_dev"], "type": "boolean", "label": "Developer Access", "editMode": "inline", "restartRequired": true, "description": "Enable routes protected by the development login key" },
     { "path": ["defaultGrokModel"], "type": "string", "label": "Default Grok Model", "editorType": "input", "description": "Default model ID for Grok chat requests" },
     { "path": ["chat_streaming_enabled"], "type": "boolean", "label": "Chat Streaming", "editMode": "inline" },
     { "path": ["debugNovelAI"], "type": "boolean", "label": "Debug NovelAI", "editMode": "inline" },
@@ -113,11 +114,6 @@
     { "path": ["checkpoints", "grandfathering", "month", "max"], "type": "number", "label": "Month Tier Max", "required": true, "description": "Set 0 to disable month-tier storage" },
     { "path": ["checkpoints", "grandfathering", "month", "rollover"], "type": "string", "label": "Month Rollover Target", "required": false, "description": "null — oldest at month tier are deleted" },
     { "path": ["checkpoints", "overrides"], "type": "object", "label": "Per-Resource Overrides", "closed": true, "description": "Checkpoint retention overrides keyed by resource name (e.g. metadata, tag_wiki)" },
-    { "path": ["devLoginKey"], "type": "string", "secret": true },
-    { "path": ["loginKey"], "type": "string", "secret": true },
-    { "path": ["loginPin"], "type": "string", "secret": true, "label": "Admin PIN" },
-    { "path": ["readOnlyPin"], "type": "string", "secret": true, "label": "User PIN" },
-    { "path": ["userPinLoginEnabled"], "type": "boolean", "label": "User PIN Login Enabled" },
-    { "path": ["sessionSecret"], "type": "string", "secret": true, "required": true }
+    { "path": ["userPinLoginEnabled"], "type": "boolean", "label": "User PIN Login Enabled" }
   ]
 }

@@ -444,6 +444,8 @@ class ImagePromptInspector {
         const rawModel = String(this.metadata.model || '').toLowerCase();
         const modelAliases = {
             furry: 'v3_furry',
+            v5: 'v5',
+            v5_cur: 'v5_cur',
             v4_5_cur: 'v4_5_cur',
             v4_cur: 'v4_cur'
         };

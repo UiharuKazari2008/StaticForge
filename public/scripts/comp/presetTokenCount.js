@@ -3,8 +3,80 @@
  * public/scripts/comp/presetTokenCount.js
  */
 
+let qwenPresetTokenCountCache = null;
+
+function countPresetValue(tokenizer, text, withSeparator = false) {
+    const trimmed = typeof text === 'string' ? text.trim() : '';
+    if (!trimmed) return 0;
+    return tokenizer.countTokens(withSeparator && !trimmed.endsWith(', ') ? `${trimmed}, ` : trimmed);
+}
+
+function buildQwenPresetTokenCountMap(tokenizer) {
+    const source = window.optionsData || {};
+    const cache = { datasets: [], quality: {}, uc: {}, nsfw: {}, expanders: {} };
+    cache.datasets = (source.datasets || []).map((dataset) => ({
+        type: dataset.type || 'dataset',
+        value: dataset.value,
+        tokens: countPresetValue(tokenizer, dataset.value, true),
+        sub_toggles: (dataset.sub_toggles || []).map((toggle) => ({
+            id: toggle.id,
+            tokens: countPresetValue(tokenizer, toggle.value, true)
+        }))
+    }));
+    Object.entries(source.quality_presets || {}).forEach(([key, presets]) => {
+        if (typeof presets === 'string') {
+            cache.quality[key] = { tokens: countPresetValue(tokenizer, presets, true) };
+        } else if (Array.isArray(presets)) {
+            cache.quality[key] = presets.map((preset) => typeof preset === 'string'
+                ? { tokens: countPresetValue(tokenizer, preset, true) }
+                : {
+                    id: preset.id,
+                    name: preset.name,
+                    match: preset.match,
+                    tokens: countPresetValue(tokenizer, preset.value, true)
+                });
+        }
+    });
+    Object.entries(source.uc_presets || {}).forEach(([key, presets]) => {
+        cache.uc[key] = (presets || []).map((preset, index) => typeof preset === 'string'
+            ? { level: index + 1, tokens: countPresetValue(tokenizer, preset, true) }
+            : {
+                level: index + 1,
+                id: preset.id,
+                name: preset.name,
+                match: preset.match,
+                tokens: countPresetValue(tokenizer, preset.value, true)
+            });
+    });
+    Object.entries(source.nsfw_presets || {}).forEach(([key, preset]) => {
+        const prompt = [preset.add?.base_prefix, preset.add?.base].filter(Boolean).join(', ');
+        const uc = [preset.add?.uc_prefix, preset.add?.uc].filter(Boolean).join(', ');
+        cache.nsfw[key] = {
+            prompt: countPresetValue(tokenizer, prompt, true),
+            uc: countPresetValue(tokenizer, uc, true)
+        };
+    });
+    Object.entries(source.textReplacements || {}).forEach(([key, value]) => {
+        cache.expanders[key] = Array.isArray(value)
+            ? value.map((entry) => countPresetValue(tokenizer, String(entry)))
+            : countPresetValue(tokenizer, value);
+    });
+    return cache;
+}
+
 function getPresetTokenCountMap() {
-    return window.optionsData?.preset_token_counts || null;
+    const tokenizer = getPromptTokenizer();
+    if (getForgeModelFeatures()?.tokenizer !== 'qwen' || !tokenizer) {
+        return window.optionsData?.preset_token_counts || null;
+    }
+    if (!qwenPresetTokenCountCache || qwenPresetTokenCountCache.tokenizer !== tokenizer || qwenPresetTokenCountCache.source !== window.optionsData) {
+        qwenPresetTokenCountCache = {
+            tokenizer,
+            source: window.optionsData,
+            counts: buildQwenPresetTokenCountMap(tokenizer)
+        };
+    }
+    return qwenPresetTokenCountCache.counts;
 }
 
 function getModelKeyForTokenCount() {
@@ -14,12 +86,13 @@ function getModelKeyForTokenCount() {
 }
 
 function countTokensForText(text) {
-    if (!text || !t5Tokenizer) return 0;
+    const tokenizer = getPromptTokenizer();
+    if (!text || !tokenizer) return 0;
     // stripManagedEmphasisDelimitersForCounting: public/scripts/comp/emphasisGroupIdCodec.js
     const forCount = typeof stripManagedEmphasisDelimitersForCounting === 'function'
         ? stripManagedEmphasisDelimitersForCounting(text)
         : text;
-    return t5Tokenizer.countTokens(forCount);
+    return tokenizer.countTokens(forCount);
 }
 
 function maxFromExpanderEntry(entry) {
@@ -398,7 +471,7 @@ function getNonEditableTokenTotals(promptTexts, ucTexts, periodKey, model) {
 function computeRentanTokenDelta() {
     const result = { prompt: 0, uc: 0 };
     const tr = window.dynamicGenerationData?.compiled_prompt?.text_replacements;
-    if (!tr || !t5Tokenizer) return result;
+    if (!tr || !getPromptTokenizer()) return result;
 
     const sumArr = (arr) => {
         if (!Array.isArray(arr)) return 0;

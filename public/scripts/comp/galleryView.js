@@ -9848,38 +9848,43 @@ async function createDesktopShortcutFromImage(image) {
 }
 
 // Helper functions for context menu actions
+async function fetchGalleryImageBlobForClipboard(image) {
+    let imageUrl;
+    if (image.url) {
+        imageUrl = image.url;
+    } else {
+        // resolveGalleryFullImageUrl / localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+        imageUrl = resolveGalleryFullImageUrl(image)
+            || localGalleryImageUrl(image.upscaled || image.original);
+    }
+
+    // Prefer server restore of stealth origin Comment (strips forge_data from tEXt)
+    // Path is encodeURIComponent'd so literal `?` in filenames is `%3F`; only real query uses `?`.
+    const clipboardUrl = imageUrl.includes('?')
+        ? `${imageUrl}&clipboardOrigin=true`
+        : `${imageUrl}?clipboardOrigin=true`;
+
+    let response = await fetch(clipboardUrl, { cache: 'no-store' });
+    if (!response.ok) {
+        response = await fetch(imageUrl, { cache: 'no-store' });
+    }
+    const naiSigValid = response.headers.get('X-NovelAI-Signature-Valid');
+    const naiSigInvalid = naiSigValid !== null && naiSigValid.toLowerCase() !== 'true';
+    const blob = await response.blob();
+    const filename = image.filename || image.original || image.upscaled;
+    const name = filename ? String(filename).split('/').pop() : 'image.png';
+    // formatClipboardBlobSize: public/scripts/utils/dreamscapeClipboard.js
+    return { blob, name, naiSigInvalid, sizeText: formatClipboardBlobSize(blob) };
+}
+
 function copyImageToClipboard(image) {
     // copyBlobToClipboard: public/scripts/utils/dreamscapeClipboard.js
     (async () => {
         try {
-            let imageUrl;
-            if (image.url) {
-                imageUrl = image.url;
-            } else {
-                // resolveGalleryFullImageUrl / localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
-                imageUrl = resolveGalleryFullImageUrl(image)
-                    || localGalleryImageUrl(image.upscaled || image.original);
-            }
-
-            // Prefer server restore of stealth origin Comment (strips forge_data from tEXt)
-            // Path is encodeURIComponent'd so literal `?` in filenames is `%3F`; only real query uses `?`.
-            const clipboardUrl = imageUrl.includes('?')
-                ? `${imageUrl}&clipboardOrigin=true`
-                : `${imageUrl}?clipboardOrigin=true`;
-
-            let response = await fetch(clipboardUrl, { cache: 'no-store' });
-            if (!response.ok) {
-                response = await fetch(imageUrl, { cache: 'no-store' });
-            }
-            const naiSigValid = response.headers.get('X-NovelAI-Signature-Valid');
-            const naiSigInvalid = naiSigValid !== null && naiSigValid.toLowerCase() !== 'true';
-            const blob = await response.blob();
-            const filename = image.filename || image.original || image.upscaled;
-            const name = filename ? String(filename).split('/').pop() : 'image.png';
+            const { blob, name, naiSigInvalid, sizeText } = await fetchGalleryImageBlobForClipboard(image);
 
             await copyBlobToClipboard(blob, { name });
 
-            const sizeText = formatClipboardBlobSize(blob);
             if (showGlassToast) {
                 if (naiSigInvalid) {
                     showGlassToast(
@@ -10491,6 +10496,22 @@ function getBulkActionsContextMenuConfig() {
                 title: 'Bulk Actions',
                 items: [
                     {
+                        icon: 'fas fa-clipboard',
+                        text: 'Copy Image(s)',
+                        action: 'bulk-copy',
+                        loadfn: (menuItem) => {
+                            menuItem.disabled = getSelectedCount() === 0;
+                        }
+                    },
+                    {
+                        icon: 'fas fa-download',
+                        text: 'Download Image(s)',
+                        action: 'bulk-download',
+                        loadfn: (menuItem) => {
+                            menuItem.disabled = getSelectedCount() === 0;
+                        }
+                    },
+                    {
                         icon: 'fas fa-share',
                         text: 'Share to Sequenzia',
                         action: 'bulk-sequenzia',
@@ -10636,6 +10657,14 @@ function handleBulkActionsContextMenu(event) {
     if (!action.startsWith('bulk-')) return;
 
     switch (action) {
+        case 'bulk-copy':
+            // handleBulkCopy — public/scripts/comp/bulkOperationsManager.js
+            handleBulkCopy();
+            break;
+        case 'bulk-download':
+            // handleBulkDownload — public/scripts/comp/bulkOperationsManager.js
+            handleBulkDownload();
+            break;
         case 'bulk-sequenzia':
             handleBulkSequenzia();
             break;

@@ -2145,6 +2145,8 @@ class DesktopShortcutsManager {
                 use_coords: requestBody.use_coords,
                 dataset_config: requestBody.dataset_config,
                 append_quality: requestBody.append_quality,
+                append_transparency: requestBody.append_transparency,
+                transparency_bias: requestBody.transparency_bias,
                 append_uc: requestBody.append_uc,
                 quality_preset_bias: requestBody.quality_preset_bias,
                 vibe_transfer: requestBody.vibe_transfer,

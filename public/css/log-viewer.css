@@ -122,6 +122,12 @@
     align-content: flex-start;
     gap: 0.35em 0.6em;
     min-height: 1.75rem;
+    flex-shrink: 0;
+    border-top: 1px solid var(--glass-border-4);
+    font-size: 0.8rem;
+    color: var(--text-accent);
+    background: var(--glass-layer-2);
+    padding: 0.35rem var(--spacing-sm);
 }
 
 #logViewerModal .log-viewer-status-primary,

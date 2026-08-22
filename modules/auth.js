@@ -1,4 +1,5 @@
 const fs = require('fs');
+const crypto = require('crypto');
 const { isApplicationKeyFormat, isTempTokenFormat } = require('./applicationAuthManager');
 
 function applyAuthContext(req, context) {
@@ -80,7 +81,7 @@ function createAuthMiddleware(globalResources) {
             console.error('Application auth resolution error:', err.message);
         }
 
-        const loginKey = globalResources.getConfig({ path: 'loginKey' });
+        const loginKey = globalResources.getSecureConfig({ path: 'loginKey' });
         if (loginKey === null) {
             return next();
         }
@@ -128,6 +129,20 @@ function createApplicationAuthEarlyMiddleware(globalResources) {
     };
 }
 
+function isLoopbackAddress(address) {
+    return address === '::1'
+        || address?.startsWith('127.')
+        || address?.startsWith('::ffff:127.');
+}
+
+function credentialsMatch(received, expected) {
+    if (typeof received !== 'string' || typeof expected !== 'string') return false;
+    const receivedBuffer = Buffer.from(received);
+    const expectedBuffer = Buffer.from(expected);
+    return receivedBuffer.length === expectedBuffer.length
+        && crypto.timingSafeEqual(receivedBuffer, expectedBuffer);
+}
+
 function createDevAuthMiddleware(globalResources) {
     return (req, res, next) => {
         res.setHeader('Cache-Control', 'blocked, no-store, no-cache, must-revalidate, private, max-age=0');
@@ -136,6 +151,11 @@ function createDevAuthMiddleware(globalResources) {
         res.setHeader('Last-Modified', new Date().toUTCString());
         res.setHeader('ETag', `"${Date.now()}"`);
 
+        // Only the direct TCP peer is authoritative; forwarded headers are intentionally ignored.
+        if (!isLoopbackAddress(req.socket?.remoteAddress)) {
+            return res.status(403).json({ error: 'Development access is loopback-only' });
+        }
+
         const enableDev = globalResources.getConfig({ path: 'enable_dev' });
         if (!enableDev) {
             return res.status(404).json({ error: 'Development mode not enabled' });
@@ -143,31 +163,29 @@ function createDevAuthMiddleware(globalResources) {
 
         const devLoginKey = globalResources.getSecureConfig({ path: 'devLoginKey' });
         if (!devLoginKey) {
-            return res.status(500).json({ error: 'Development login key not configured' });
+            return res.status(500).json({
+                error: 'Development login key not configured',
+                code: 'DEV_LOGIN_KEY_NOT_CONFIGURED',
+                configPath: 'secure.config.json:devLoginKey'
+            });
         }
 
-        const authToken = req.query.auth || req.headers.authorization?.replace('Bearer ', '');
-        if (authToken) {
-            if (authToken !== devLoginKey) {
-                return res.status(403).json({ error: 'Invalid development authentication token' });
-            }
-            req.userType = 'dev_admin';
-            if (req.session) {
-                req.session.authenticated = true;
-                req.session.userType = 'dev_admin';
-            }
-            return next();
+        const authorizationMatch = req.headers.authorization?.match(/^Bearer ([^\s]+)$/i);
+        const authToken = req.query.auth || authorizationMatch?.[1];
+        if (!authToken) {
+            return res.status(401).json({ error: 'Development authentication required' });
+        }
+        if (!credentialsMatch(authToken, devLoginKey)) {
+            return res.status(403).json({ error: 'Invalid development authentication token' });
         }
 
-        if (req.session && req.session.authenticated) {
-            if (req.session.userType === 'admin' || req.session.userType === 'dev_admin') {
-                req.userType = req.session.userType;
-                req.sessionId = req.session.id;
-                return next();
-            }
+        req.userType = 'dev_admin';
+        req.authMethod = 'dev_login_key';
+        if (req.session) {
+            req.session.authenticated = true;
+            req.session.userType = 'dev_admin';
         }
-
-        return res.status(401).json({ error: 'Development authentication required' });
+        return next();
     };
 }
 
@@ -183,6 +201,7 @@ module.exports = {
     createAuthMiddleware,
     createApplicationAuthEarlyMiddleware,
     createDevAuthMiddleware,
+    isLoopbackAddress,
     isReadOnlyUser,
     isAdminUser,
     resolveApplicationAuth,

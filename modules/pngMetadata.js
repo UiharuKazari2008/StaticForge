@@ -1000,10 +1000,14 @@ class PngMetadata {
         // Add new metadata fields
         result.append_quality = detectedAppendQuality;
         result.append_uc = detectedAppendUc;
+        result.append_transparency = forgeData.append_transparency === true;
         result.append_quality_id = forgeData.append_quality_id || null;
         result.append_uc_id = forgeData.append_uc_id || null;
         if (forgeData.quality_preset_bias !== undefined) {
             result.quality_preset_bias = forgeData.quality_preset_bias;
+        }
+        if (forgeData.transparency_bias !== undefined) {
+            result.transparency_bias = forgeData.transparency_bias;
         }
         result.dataset_config = forgeData.dataset_config || { include: [] }; // Default to empty array
 
@@ -1138,6 +1142,18 @@ class PngMetadata {
         }
         
         const source = meta.source;
+
+        // NovelAI Diffusion V5 models (sample Source: "NovelAI Diffusion V5 0ADF9AB7")
+        if (source.includes("NovelAI Diffusion V5")) {
+            switch (source) {
+                case "NovelAI Diffusion V5 0ADF9AB7":
+                case "NovelAI Diffusion V5 DB276663":
+                    return "V5";
+                default:
+                    if (source.includes("Curated") || source.includes("CUR")) return "V5_CUR";
+                    return "V5";
+            }
+        }
         
         // NovelAI Diffusion V4/V4.5 models
         if (source.includes("NovelAI Diffusion V4") || source.includes("NovelAI Diffusion V4.5")) {
@@ -1189,7 +1205,7 @@ class PngMetadata {
 
     // Helper: Get model display name
     getModelDisplayName(model) {
-        return model === "V4_5" ? "V4.5" : model === "V4_5_CUR" ? "V4.5 (Curated)" : model === "V4" ? "V4" : model === "V4_CUR" ? "V4 (Curated)" : model === "V3" ? "V3" : "Unknown";
+        return model === "V5" ? "V5" : model === "V5_CUR" ? "V5 (Curated)" : model === "V4_5" ? "V4.5" : model === "V4_5_CUR" ? "V4.5 (Curated)" : model === "V4" ? "V4" : model === "V4_CUR" ? "V4 (Curated)" : model === "V3" ? "V3" : "Unknown";
     }
 
     // Helper: get base name for pairing

@@ -252,7 +252,13 @@ registerDomain({
 
 registerDomain({
   domain: 'docs.novelai.jp',
-  aliases: ['novelai.jp/docs'],
+  aliases: [
+    'novelai.jp/docs',
+    'docs.novelai.net',
+    'journal.novelai.net',
+    'blog.novelai.net',
+    'novelai.medium.com'
+  ],
   title: 'NovelAI Docs'
 });
 
