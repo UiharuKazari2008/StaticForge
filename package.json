@@ -96,7 +96,8 @@
     "acorn": "^8.17.0",
     "acorn-walk": "^8.3.5",
     "fantasticon": "^3.0.0",
-    "webfont": "^11.2.26"
+    "webfont": "^11.2.26",
+    "playwright": "^1.62.0"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -114,7 +115,8 @@
     "test:mcp-facade": "node scripts/test-mcp-agent-facade.js",
     "backfill:tag-search": "node scripts/backfill-tag-search-index.js",
     "flow-map": "node scripts/tools/flow-map.js",
-    "docs:ws-api": "node scripts/tools/generate-ws-api-docs.js --write"
+    "docs:ws-api": "node scripts/tools/generate-ws-api-docs.js --write",
+    "setup:nai-dump": "bash scripts/nai-webapp-watch/setup-dump-deps.sh"
   },
   "keywords": [],
   "author": "",
