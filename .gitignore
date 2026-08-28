@@ -30,3 +30,6 @@ danbooru_tagwiki_merged.json
 e621_wiki_fixed.json
 danbooru_tag_groups_hierarchy.json
 tools/
+# Chrome for Testing binaries (setup-dump-deps.sh --chrome-for-testing)
+.cache/chrome-for-testing/
+tools/chrome-for-testing/

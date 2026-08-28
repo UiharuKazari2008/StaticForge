@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
-# Headed Chrome under Xvfb + CDP dump. Extensions usually need a real display
-# (or xvfb); classic --headless cannot load them. Optional DUMP_HEADLESS=1 uses
-# --headless=new (experimental for extensions).
+# Chrome + CDP dump of novelai.net public assets (ResourcesSaverExt overlay).
+#
+# Prefer Chrome for Testing: DUMP_HEADLESS=1 + --headless=new works when Chrome
+# honors --load-extension (CFT 152.x). Branded google-chrome-stable 151.x
+# ignores --load-extension (Hangouts background_page; dump times out).
+#
+# Default (no DUMP_HEADLESS): headed Chrome under xvfb-run — still the
+# fallback if CFT is missing. Containers often need DUMP_CHROME_NO_SANDBOX=1.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -15,13 +20,14 @@ if [ ! -d "$EXT" ]; then
 fi
 
 if [ "${DUMP_HEADLESS:-}" = "1" ] || [ "${DUMP_HEADLESS:-}" = "true" ]; then
-  echo "[nai-webapp-dump] DUMP_HEADLESS set — skipping xvfb; extension inject may fail" >&2
+  echo "[nai-webapp-dump] DUMP_HEADLESS=1 — --headless=new (use Chrome for Testing; branded 151 ignores --load-extension)" >&2
   exec node scripts/nai-webapp-watch/dump-novelai-webapp.js --headless "$@"
 fi
 
 if ! command -v xvfb-run >/dev/null 2>&1; then
   echo "[nai-webapp-dump] xvfb-run not found. Install: sudo apt install xvfb" >&2
-  echo "[nai-webapp-dump] or set DUMP_HEADLESS=1 to try --headless=new (unsupported for most extensions)" >&2
+  echo "[nai-webapp-dump] or install CFT and set DUMP_HEADLESS=1:" >&2
+  echo "[nai-webapp-dump]   ./scripts/nai-webapp-watch/setup-dump-deps.sh --chrome-for-testing" >&2
   exit 1
 fi
 
