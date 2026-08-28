@@ -582,7 +582,8 @@ async function handleImportFandomWikiPage(handler, ws, message, clientInfo, wsSe
         });
     } catch (error) {
         console.error('import_fandom_wiki_page:', error);
-        handler.sendError(ws, 'Failed to import Fandom page', error.message, message.requestId);
+        const msg = error.message || 'Failed to import wiki page';
+        handler.sendError(ws, msg, msg, message.requestId);
     }
 }
 
@@ -658,12 +659,12 @@ async function handleUpdateWikiImport(handler, ws, message, clientInfo, wsServer
         const staticWiki = handler.globalResources.getStaticWiki();
         const siteIndex = staticWiki ? staticWiki.getSiteIndex(handler.globalResources, siteId) : null;
         const kind = siteIndex && siteIndex.kind ? siteIndex.kind : (siteId === 'novelai' ? 'novelai' : null);
-        if (kind === 'fandom' && fandomWiki) {
+        if ((kind === 'fandom' || kind === 'mediawiki') && fandomWiki) {
             const result = await fandomWiki.updateFandomSite(handler.globalResources, siteId, { onProgress });
             handler.sendToClient(ws, {
                 type: 'update_wiki_import_response',
                 requestId: message.requestId,
-                data: { success: true, kind: 'fandom', ...result },
+                data: { success: true, kind, ...result },
                 timestamp: new Date().toISOString()
             });
             return;

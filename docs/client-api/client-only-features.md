@@ -79,7 +79,7 @@ Only relevant when embedding the PWA in DreamScape Android WebView.
 | `grimoireCoreDomains.js` | Built-in wiki/search/home routes |
 | `*DsapApplet.js` | Lazy-loaded mini-apps |
 | Menma progress | Windowed DSAP at `menma.dyna.dreamscape.jp` (`menmaDsapApplet.js`). Start menu **Menma** / All Apps. Loads via WS `get_menma_state`; Open in Studio on breakfast thumbs. |
-| Wiki Manager DSAP (`fandomWikiManagerDsapApplet.js`, `dsap://wiki.dyna.dreamscape.jp`) | Lists cached Fandom / NovelAI / static wikis; import, pull/update, delete. Talks WS `get_fandom_wiki_manager`, `import_fandom_wiki_page`, `import_static_wiki`, `update_wiki_import`, `delete_fandom_wiki_import`. |
+| Wiki Manager DSAP (`fandomWikiManagerDsapApplet.js`, `dsap://wiki.dyna.dreamscape.jp`) | Lists cached Fandom / NovelAI / MediaWiki / static wikis; import, pull/update, delete. Talks WS `get_fandom_wiki_manager`, `import_fandom_wiki_page` (Fandom + generic MediaWiki `/api.php`), `import_static_wiki`, `update_wiki_import`, `delete_fandom_wiki_import`. Open uses `rdf://wiki.fandom.jp/…`, `docs.novelai.jp`, or `edtx://en.grimoire.jp/docs/<siteId>`. |
 
 Server-backed pieces use WS (`search_tag_wiki`, `resolve_grimoire_url`, etc.) but **routing, history, panes, standalone windows** are client-only.
 

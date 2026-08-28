@@ -1826,7 +1826,7 @@ class WikiDisplayBase {
 
         const skipHistory = !!(options && options.skipHistory);
         const liveFetch = !!(options && options.liveFetch)
-            || (this.currentStaticWiki && this.currentStaticWiki.kind === 'fandom');
+            || (this.currentStaticWiki && (this.currentStaticWiki.kind === 'fandom' || this.currentStaticWiki.kind === 'mediawiki'));
         const cacheKey = wikiPageCache.staticKey(siteId, pageId);
 
         // Instant path from global page cache (shared across windows)
@@ -1877,18 +1877,31 @@ class WikiDisplayBase {
                 const siteMeta = this.currentStaticWiki && this.currentStaticWiki.siteId === siteId
                     ? this.currentStaticWiki
                     : null;
-                let fandomHost = (siteMeta && siteMeta.fandomHost) || `${siteId}.fandom.com`;
-                let lang = siteMeta && siteMeta.lang ? String(siteMeta.lang) : '';
-                if (!siteMeta || !siteMeta.fandomHost) {
-                    const langTail = /[-]([a-z]{2}(?:-[a-z]{2,4})?)$/i.exec(siteId);
-                    if (langTail && !/\.fandom\.com$/i.test(siteId)) {
-                        fandomHost = `${siteId.slice(0, -langTail[0].length)}.fandom.com`;
-                        if (!lang) lang = langTail[1];
+                const kind = (siteMeta && siteMeta.kind) || null;
+                let url;
+                if (kind === 'mediawiki') {
+                    const origin = (siteMeta && siteMeta.origin) || '';
+                    const articlepath = (siteMeta && siteMeta.articlepath) || '/wiki/$1';
+                    if (!origin) throw err;
+                    const pathPart = String(articlepath).includes('$1')
+                        ? String(articlepath).replace('$1', urlPath)
+                        : `/wiki/${urlPath}`;
+                    url = `${String(origin).replace(/\/$/, '')}${pathPart.startsWith('/') ? pathPart : `/${pathPart}`}`;
+                    showLoading('Fetching from wiki…');
+                } else {
+                    let fandomHost = (siteMeta && siteMeta.fandomHost) || `${siteId}.fandom.com`;
+                    let lang = siteMeta && siteMeta.lang ? String(siteMeta.lang) : '';
+                    if (!siteMeta || !siteMeta.fandomHost) {
+                        const langTail = /[-]([a-z]{2}(?:-[a-z]{2,4})?)$/i.exec(siteId);
+                        if (langTail && !/\.fandom\.com$/i.test(siteId)) {
+                            fandomHost = `${siteId.slice(0, -langTail[0].length)}.fandom.com`;
+                            if (!lang) lang = langTail[1];
+                        }
                     }
+                    const langPrefix = lang ? `/${lang}` : '';
+                    url = `https://${fandomHost}${langPrefix}/wiki/${urlPath}`;
+                    showLoading('Fetching from Fandom…');
                 }
-                const langPrefix = lang ? `/${lang}` : '';
-                const url = `https://${fandomHost}${langPrefix}/wiki/${urlPath}`;
-                showLoading('Fetching from Fandom…');
                 // modules/fandomWiki.js — importFandomPage (this page only; do not spam import rows)
                 await wsClient.sendMessage('import_fandom_wiki_page', {
                     url,
@@ -1911,7 +1924,11 @@ class WikiDisplayBase {
                 displayUrl: data.displayUrl || null,
                 addressMode: data.addressMode || null,
                 fandomHost: data.fandomHost || null,
-                lang: data.lang || null
+                lang: data.lang || null,
+                origin: data.origin || null,
+                articlepath: data.articlepath || null,
+                scriptpath: data.scriptpath || null,
+                apiBase: data.apiBase || null
             };
             if (this.hasWikiPageContent(content)) {
                 wikiPageCache.set(cacheKey, content);
@@ -2107,7 +2124,11 @@ class WikiDisplayBase {
                 displayUrl: content.displayUrl || null,
                 kind: content.kind || null,
                 fandomHost: content.fandomHost || null,
-                lang: content.lang || null
+                lang: content.lang || null,
+                origin: content.origin || null,
+                articlepath: content.articlepath || null,
+                scriptpath: content.scriptpath || null,
+                apiBase: content.apiBase || null
             };
             this.currentSelectedTag = null;
             this.currentTagName = null;

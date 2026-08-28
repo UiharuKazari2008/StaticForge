@@ -1,6 +1,6 @@
 /**
  * Wiki Manager DSAP — wiki.dyna.dreamscape.jp
- * Import, list, pull, and update offline wikis (Fandom, NovelAI docs, static caches).
+ * Import, list, pull, and update offline wikis (Fandom, NovelAI docs, MediaWiki api.php, static caches).
  * Depends on: dsapRegistry.js, dsapSmfMarkup.js, dropdown.js, confirmationDialog.js
  */
 
@@ -35,6 +35,7 @@ function fandomWikiDsapDetectSource(url) {
         || text.includes('blog.novelai.net') || text.includes('novelai.medium.com')) {
         return 'novelai';
     }
+    if (/^https?:\/\//.test(text) || /^[\w.-]+\.[a-z]{2,}(?:[:/]|$)/.test(text)) return 'mediawiki';
     return 'unknown';
 }
 
@@ -48,7 +49,11 @@ function fandomWikiDsapOpenSite(host, site) {
         host.navigate('docs.novelai.jp');
         return;
     }
-    host.navigate(`docs.novelai.jp`);
+    if (host.shell && typeof host.shell.showStaticWikiSiteIndex === 'function') {
+        host.shell.showStaticWikiSiteIndex(site.id);
+        return;
+    }
+    host.navigate(`edtx://en.grimoire.jp/docs/${site.id}`);
 }
 
 function fandomWikiDsapActiveTab(host) {
@@ -78,7 +83,7 @@ ${dsapSmfBuildTabBar([
 
 <div id="fandomWikiImportPanel" class="fandom-wiki-dsap-panel${importHidden}">
     ${dsapSmfBuildSectionHdr('Import a wiki page')}
-    <p class="fandom-wiki-dsap-help">Paste a <code>*.fandom.com/wiki/…</code>, <code>docs.novelai.net</code>, <code>journal.novelai.net</code>, or NovelAI blog URL. Images are mirrored locally — nothing is hotlinked.</p>
+    <p class="fandom-wiki-dsap-help">Paste a <code>*.fandom.com/wiki/…</code>, NovelAI docs/journal/blog, or other MediaWiki URL (Wikipedia, Miraheze, wiki.gg, independently hosted — must expose <code>/api.php</code>). Images are mirrored locally — nothing is hotlinked. Follow-children defaults to this page only and is capped at 25 pages.</p>
     <div class="dsap-smf-toolbar">
         <label class="fandom-wiki-dsap-label" for="fandomWikiUrlInput">Page URL</label>
         <input type="text" id="fandomWikiUrlInput" placeholder="https://genshin-impact.fandom.com/wiki/Character/List">
@@ -116,8 +121,8 @@ ${dsapSmfBuildTabBar([
         </thead>
         <tbody id="fandomWikiSitesBody"></tbody>
     </table>
-    ${dsapSmfBuildSectionHdr('Fandom imports')}
-    <div id="fandomWikiLibraryEmpty" class="fandom-wiki-dsap-empty hidden">No Fandom imports yet.</div>
+    ${dsapSmfBuildSectionHdr('Page imports')}
+    <div id="fandomWikiLibraryEmpty" class="fandom-wiki-dsap-empty hidden">No page imports yet.</div>
     <table class="sec-data-table" id="fandomWikiLibraryTable" cellspacing="0" cellpadding="4" width="100%" border="1">
         <thead>
             <tr>
@@ -255,12 +260,12 @@ const fandomWikiDsapDriver = {
         const status = root.querySelector('#fandomWikiImportStatus');
         const btn = root.querySelector('#fandomWikiImportBtn');
         if (!url) {
-            if (host.showToast) host.showToast('error', 'Paste a Fandom or NovelAI wiki URL');
+            if (host.showToast) host.showToast('error', 'Paste a Fandom, NovelAI, or MediaWiki wiki URL');
             return;
         }
         const kind = fandomWikiDsapDetectSource(url);
         if (kind === 'unknown') {
-            if (host.showToast) host.showToast('error', 'URL must be *.fandom.com, docs.novelai.net, journal.novelai.net, or a NovelAI blog');
+            if (host.showToast) host.showToast('error', 'URL must be *.fandom.com, NovelAI docs/journal/blog, or a MediaWiki site with /api.php');
             return;
         }
         if (btn) btn.disabled = true;
@@ -271,7 +276,8 @@ const fandomWikiDsapDriver = {
                 url,
                 followLinks: follow,
                 maxPages: follow ? 25 : 1,
-                group: 'Imported'
+                group: 'Imported',
+                recordImport: true
             });
             const count = (result && result.pages && result.pages.length) || 0;
             if (status) status.textContent = `Imported ${count} page${count === 1 ? '' : 's'}.`;
@@ -281,6 +287,10 @@ const fandomWikiDsapDriver = {
                 host.navigate(`rdf://wiki.fandom.jp/${result.wikiId}/${result.rootPageId}`);
             } else if (kind === 'novelai' && result && result.rootPageId) {
                 host.navigate(`docs.novelai.jp/${result.rootPageId}`);
+            } else if (result && result.wikiId && result.rootPageId) {
+                host.navigate(`edtx://en.grimoire.jp/docs/${result.wikiId}/${result.rootPageId}`);
+            } else if (result && result.wikiId && host.shell && typeof host.shell.showStaticWikiSiteIndex === 'function') {
+                host.shell.showStaticWikiSiteIndex(result.wikiId);
             }
         } catch (err) {
             if (status) status.textContent = err.message || 'Import failed';

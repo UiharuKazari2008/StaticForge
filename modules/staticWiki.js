@@ -97,6 +97,10 @@ function getSiteIndex(globalResources, siteId) {
         kind: siteMeta && siteMeta.kind ? siteMeta.kind : (siteId === 'novelai' ? 'novelai' : null),
         fandomHost: siteMeta && siteMeta.fandomHost ? siteMeta.fandomHost : (siteMeta && siteMeta.kind === 'fandom' ? `${siteId}.fandom.com` : null),
         lang: siteMeta && siteMeta.lang ? siteMeta.lang : null,
+        origin: siteMeta && siteMeta.origin ? siteMeta.origin : null,
+        articlepath: siteMeta && siteMeta.articlepath ? siteMeta.articlepath : null,
+        scriptpath: siteMeta && siteMeta.scriptpath ? siteMeta.scriptpath : null,
+        apiBase: siteMeta && siteMeta.apiBase ? siteMeta.apiBase : null,
         groups
     };
 }
@@ -151,7 +155,10 @@ function getPageHtml(globalResources, siteId, pageId) {
     const kind = siteMeta && siteMeta.kind ? siteMeta.kind : (siteId === 'novelai' ? 'novelai' : null);
     const displayUrl = kind === 'fandom'
         ? `rdf://wiki.fandom.jp/${siteId}/${normalizedId}`
-        : null;
+        : (kind === 'novelai' || siteId === 'novelai')
+            ? `rdf://docs.novelai.jp/${normalizedId}`
+            : `edtx://en.grimoire.jp/docs/${siteId}/${normalizedId}`;
+    const addressMode = (kind === 'fandom' || kind === 'novelai' || siteId === 'novelai') ? 'rdf' : 'edtx';
 
     return {
         siteId,
@@ -161,9 +168,13 @@ function getPageHtml(globalResources, siteId, pageId) {
         siteIcon,
         kind,
         displayUrl,
-        addressMode: kind === 'fandom' ? 'rdf' : null,
+        addressMode,
         fandomHost: siteMeta && siteMeta.fandomHost ? siteMeta.fandomHost : null,
-        lang: siteMeta && siteMeta.lang ? siteMeta.lang : null
+        lang: siteMeta && siteMeta.lang ? siteMeta.lang : null,
+        origin: siteMeta && siteMeta.origin ? siteMeta.origin : null,
+        articlepath: siteMeta && siteMeta.articlepath ? siteMeta.articlepath : null,
+        scriptpath: siteMeta && siteMeta.scriptpath ? siteMeta.scriptpath : null,
+        apiBase: siteMeta && siteMeta.apiBase ? siteMeta.apiBase : null
     };
 }
 

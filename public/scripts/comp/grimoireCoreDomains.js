@@ -115,6 +115,26 @@
         return true;
       }
 
+      // Cached static / MediaWiki viewer: en.grimoire.jp/docs/<siteId>[/<pageId>]
+      const docsSrc = String(match.canonicalUrl || match.displayPath || urlForQuery || '');
+      const docsMatch = docsSrc.replace(/^(edtx|rdf|dsap):\/\//i, '').match(/en\.grimoire\.jp\/docs\/([^/?#]+)(?:\/([^?#]+))?/i);
+      if (docsMatch) {
+        let siteId = docsMatch[1];
+        let pageId = docsMatch[2] ? String(docsMatch[2]).replace(/\/+$/, '') : '';
+        try { siteId = decodeURIComponent(siteId); } catch (e) {}
+        if (pageId) {
+          try { pageId = decodeURIComponent(pageId); } catch (e) {}
+        }
+        if (pageId && typeof shell.openStaticWikiPage === 'function') {
+          shell.openStaticWikiPage(siteId, pageId);
+          return true;
+        }
+        if (typeof shell.showStaticWikiSiteIndex === 'function') {
+          shell.showStaticWikiSiteIndex(siteId);
+          return true;
+        }
+      }
+
       // Fallback for en.grimoire.jp/* → treat as home for now (future: tag landing etc.)
       if (typeof shell.setAddress === 'function') {
         shell.setAddress({ displayUrl: 'edtx://en.grimoire.jp/index.dtxt', mode: 'edtx' });

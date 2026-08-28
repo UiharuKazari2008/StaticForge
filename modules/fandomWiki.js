@@ -1,6 +1,7 @@
 /**
- * Fandom wiki offline cache: MediaWiki API import, local image mirroring,
+ * Fandom / generic MediaWiki offline cache: api.php import, local image mirroring,
  * and an import/page relationship graph for cascade delete.
+ * Generic (non-Fandom) sites are kind `mediawiki` and must expose /api.php.
  */
 
 const fs = require('fs');
@@ -19,6 +20,13 @@ const HARD_MAX_FOLLOW = 80;
 const FANDOM_IMAGE_HOST_RE = /(?:static|vignette)\.wikia\.nocookie\.net|(?:^|\.)fandom\.com/i;
 const SKIP_TITLE_RE = /^(?:File|Image|Special|Template|Module|Category|User|Talk|Help|MediaWiki|Forum|Thread|Message_Wall|User_blog):/i;
 const FANDOM_LANG_PATH_RE = /^\/([a-z]{2}(?:-[a-z]{2,4})?)\/wiki\//i;
+const MEDIAWIKI_HARD_MAX_FOLLOW = 25;
+const MEDIAWIKI_DEFAULT_MAX_FOLLOW = 25;
+const MEDIAWIKI_PROBE_TIMEOUT_MS = 8000;
+const WMF_HOST_RE = /(?:^|\.)(?:wikipedia|wikimedia|wiktionary|wikibooks|wikiquote|wikisource|wikinews|wikiversity|wikivoyage|mediawiki)\.org$/i;
+const MIRAHEZE_HOST_RE = /(?:^|\.)miraheze\.org$/i;
+const MEDIAWIKI_SKIP_TITLE_RE = /^(?:Wikipedia|Portal|Draft|TimedText|Project):/i;
+const REMOTE_IMG_RE = /^https?:\/\//i;
 
 const nhm = new NodeHtmlMarkdown({
     codeBlockStyle: 'fenced',
@@ -87,6 +95,109 @@ function fandomPageUrl(host, pageId, lang) {
     if (!pathId) return `https://${host}/`;
     if (lang) return `https://${host}/${lang}/wiki/${pathId}`;
     return `https://${host}/wiki/${pathId}`;
+}
+
+function mediaWikiPageUrl(origin, articlepath, pageId) {
+    const pathId = encodeWikiPath(pageId);
+    const originBase = String(origin || '').replace(/\/$/, '');
+    const tpl = String(articlepath || '/wiki/$1');
+    if (!pathId) return `${originBase}/`;
+    if (tpl.includes('$1')) {
+        const pathPart = tpl.replace('$1', pathId);
+        if (/^https?:\/\//i.test(pathPart)) return pathPart;
+        return `${originBase}${pathPart.startsWith('/') ? pathPart : `/${pathPart}`}`;
+    }
+    return `${originBase}/wiki/${pathId}`;
+}
+
+function pageSourceUrl(parsed, pageId) {
+    const id = pageId || (parsed && parsed.pageId);
+    if (parsed && parsed.kind === 'mediawiki') {
+        return mediaWikiPageUrl(parsed.origin, parsed.articlepath, id);
+    }
+    return fandomPageUrl(parsed.host, id, parsed && parsed.lang);
+}
+
+function isNovelAiHost(host) {
+    const h = String(host || '').toLowerCase();
+    return h === 'docs.novelai.net' || h === 'journal.novelai.net'
+        || h === 'blog.novelai.net' || h === 'novelai.medium.com';
+}
+
+function isRemoteAssetUrl(abs) {
+    if (!abs) return false;
+    if (FANDOM_IMAGE_HOST_RE.test(abs)) return true;
+    try {
+        const u = new URL(abs);
+        if (/(?:^|\.)wikimedia\.org$/i.test(u.hostname)) return true;
+        if (/\/(?:images|commons)\//i.test(u.pathname)) return true;
+        if (/Special:FilePath|Special:Redirect\/file/i.test(u.pathname)) return true;
+        if (/\.(?:png|jpe?g|gif|webp|svg|ico)(?:\?|$)/i.test(u.pathname)) return true;
+    } catch {
+        return /\/(?:images|commons)\//i.test(abs);
+    }
+    return false;
+}
+
+function absoluteHttpUrl(raw, origin) {
+    const s = String(raw || '').trim();
+    if (!s) return '';
+    if (s.startsWith('//')) return `https:${s}`;
+    if (/^https?:\/\//i.test(s)) return s;
+    if (s.startsWith('/') && origin) return `${String(origin).replace(/\/$/, '')}${s}`;
+    return s;
+}
+
+function extractPageIdFromArticlePath(u, articlepath) {
+    if (!u) return null;
+    const titleParam = u.searchParams && u.searchParams.get('title');
+    if (titleParam) return sanitizePageId(titleParam);
+    const tpl = String(articlepath || '/wiki/$1');
+    const marker = tpl.includes('$1') ? tpl.replace('$1', '') : '/wiki/';
+    const pathName = u.pathname || '';
+    if (marker && marker !== '/' && pathName.toLowerCase().startsWith(marker.toLowerCase())) {
+        return sanitizePageId(pathName.slice(marker.length));
+    }
+    if (marker === '/' && pathName.length > 1 && !/\/index\.php$/i.test(pathName)) {
+        return sanitizePageId(pathName.slice(1));
+    }
+    const wikiIdx = pathName.toLowerCase().indexOf('/wiki/');
+    if (wikiIdx >= 0) return sanitizePageId(pathName.slice(wikiIdx + 6));
+    const last = pathName.split('/').filter(Boolean).pop();
+    if (last && !/^index\.php$/i.test(last) && !/^api\.php$/i.test(last)) {
+        return sanitizePageId(last);
+    }
+    return null;
+}
+
+function apiCandidates(u) {
+    const origin = u.origin;
+    const pathname = u.pathname || '/';
+    const out = [];
+    const add = (p) => {
+        const href = /^https?:\/\//i.test(p) ? p : `${origin}${p.startsWith('/') ? p : `/${p}`}`;
+        if (href && !out.includes(href)) out.push(href);
+    };
+    if (/\/api\.php$/i.test(pathname)) {
+        add(pathname);
+        return out.slice(0, 4);
+    }
+    const prefixWiki = pathname.match(/^(.*?)\/wiki\//i);
+    const prefixW = pathname.match(/^(\/[^/]+)?\/w\//i);
+    if (WMF_HOST_RE.test(u.hostname) || MIRAHEZE_HOST_RE.test(u.hostname)) {
+        add('/w/api.php');
+        add('/api.php');
+        return out.slice(0, 4);
+    }
+    if (prefixW) add(`${prefixW[1] || ''}/w/api.php`);
+    if (prefixWiki && prefixWiki[1]) {
+        add(`${prefixWiki[1]}/api.php`);
+        add(`${prefixWiki[1]}/w/api.php`);
+    }
+    add('/w/api.php');
+    add('/api.php');
+    add('/wiki/api.php');
+    return out.slice(0, 4);
 }
 
 function parseJsonBody(body) {
@@ -212,6 +323,42 @@ function parseFandomUrl(raw) {
     };
 }
 
+async function fetchJsonProbe(url, host, retries = 0) {
+    try {
+        const res = await browserRequest(url, null, {
+            acceptResType: 'json',
+            timeoutMs: MEDIAWIKI_PROBE_TIMEOUT_MS,
+            extra: {
+                origin: `https://${host}`,
+                referer: `https://${host}/`
+            }
+        });
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && retries < 2) {
+            return fetchJsonProbe(new URL(res.headers.location, url).href, host, retries + 1);
+        }
+        if (isRetryableStatus(res.statusCode) && retries < 1) {
+            await sleep(retryDelayMs(res, retries));
+            return fetchJsonProbe(url, host, retries + 1);
+        }
+        if (res.statusCode !== 200) {
+            const err = new Error(`HTTP ${res.statusCode} for ${url}`);
+            err.statusCode = res.statusCode;
+            throw err;
+        }
+        const data = parseJsonBody(res.body);
+        if (!data || typeof data !== 'object') throw new Error('Not JSON');
+        return data;
+    } catch (err) {
+        const msg = String(err && err.message || '');
+        if (/HTTP 40[034]|HTTP 410|Not JSON|timeout/i.test(msg)) throw err;
+        if (retries < 1) {
+            await sleep(retryDelayMs(null, retries));
+            return fetchJsonProbe(url, host, retries + 1);
+        }
+        throw err;
+    }
+}
+
 async function fetchJson(url, host, retries = 0) {
     try {
         const res = await browserRequest(url, null, {
@@ -287,7 +434,44 @@ function apiUrl(apiBase, params) {
     return u.href;
 }
 
+function siteInfoFromGeneral(general, parsed) {
+    const g = general || {};
+    return {
+        name: g.sitename || (parsed && parsed.wikiId ? `${parsed.wikiId} Wiki` : (parsed && parsed.host) || 'Wiki'),
+        logo: g.logo || null,
+        articlepath: g.articlepath || '/wiki/$1',
+        scriptpath: g.scriptpath || '',
+        server: g.server || '',
+        lang: g.lang || null,
+        generator: g.generator || '',
+        mainpage: g.mainpage || 'Main Page',
+        wikiid: g.wikiid || null,
+        base: g.base || null
+    };
+}
+
+function isMediaWikiSiteInfo(info) {
+    if (!info) return false;
+    if (/mediawiki/i.test(String(info.generator || ''))) return true;
+    return !!(info.articlepath && info.name);
+}
+
+async function probeSiteInfo(apiBase, host) {
+    const data = await fetchJsonProbe(apiUrl(apiBase, {
+        action: 'query',
+        format: 'json',
+        meta: 'siteinfo',
+        siprop: 'general'
+    }), host);
+    const general = data && data.query && data.query.general;
+    if (!general) return null;
+    const info = siteInfoFromGeneral(general, { host, wikiId: host });
+    if (!isMediaWikiSiteInfo(info)) return null;
+    return info;
+}
+
 async function fetchSiteInfo(parsed) {
+    if (parsed && parsed.siteInfo) return parsed.siteInfo;
     const data = await fetchJson(apiUrl(parsed.apiBase, {
         action: 'query',
         format: 'json',
@@ -295,10 +479,113 @@ async function fetchSiteInfo(parsed) {
         siprop: 'general'
     }), parsed.host);
     const general = data?.query?.general || {};
+    return siteInfoFromGeneral(general, parsed);
+}
+
+async function detectMediaWikiSite(raw) {
+    const text = String(raw || '').trim();
+    if (!text) {
+        throw new Error('URL must be a *.fandom.com/wiki/… page or a MediaWiki site that exposes /api.php');
+    }
+    let u;
+    try {
+        u = new URL(text.includes('://') ? text : `https://${text}`);
+    } catch {
+        throw new Error('URL must be a *.fandom.com/wiki/… page or a MediaWiki site that exposes /api.php');
+    }
+    if (!/^https?:$/i.test(u.protocol)) {
+        throw new Error('Wiki URL must be http(s)');
+    }
+    const host = u.hostname.toLowerCase();
+    if (/\.fandom\.com$/i.test(host) || host === 'fandom.com') {
+        return null;
+    }
+    if (isNovelAiHost(host)) {
+        throw new Error('NovelAI URLs use import_static_wiki, not MediaWiki api.php');
+    }
+
+    const candidates = apiCandidates(u);
+    const results = await Promise.all(candidates.map(async (cand) => {
+        try {
+            const info = await probeSiteInfo(cand, host);
+            return info ? { cand, info } : null;
+        } catch {
+            return null;
+        }
+    }));
+    const hit = results.find(Boolean);
+    if (!hit) {
+        throw new Error(
+            `Not a MediaWiki site (no working /api.php). Tried: ${candidates.join(', ')}. `
+            + 'Only *.fandom.com, NovelAI docs/journal/blog, and MediaWiki wikis that expose api.php can be imported.'
+        );
+    }
+
+    const origin = `${u.protocol}//${u.host}`;
+    let pageId = extractPageIdFromArticlePath(u, hit.info.articlepath);
+    if (!pageId) {
+        pageId = sanitizePageId(String(hit.info.mainpage || 'Main Page'));
+    }
+    if (!pageId) {
+        throw new Error('Could not determine wiki page title from URL');
+    }
+    const wikiId = sanitizeWikiId(host.replace(/\./g, '-'));
+    if (!wikiId) throw new Error('Could not derive wiki id from host');
     return {
-        name: general.sitename || `${parsed.wikiId} Wiki`,
-        logo: general.logo || null
+        kind: 'mediawiki',
+        wikiId,
+        pageId,
+        lang: hit.info.lang || null,
+        host,
+        origin,
+        fandomHost: null,
+        sourceUrl: mediaWikiPageUrl(origin, hit.info.articlepath, pageId),
+        apiBase: hit.cand,
+        articlepath: hit.info.articlepath,
+        scriptpath: hit.info.scriptpath,
+        siteInfo: hit.info
     };
+}
+
+function parseMediaWikiArticleUrl(abs, ctx) {
+    if (!ctx || ctx.kind !== 'mediawiki' || !ctx.origin) return null;
+    let u;
+    try { u = new URL(abs); } catch { return null; }
+    let ctxHost;
+    try { ctxHost = new URL(ctx.origin).hostname.toLowerCase(); } catch { return null; }
+    if (u.hostname.toLowerCase() !== ctxHost) return null;
+    const pageId = extractPageIdFromArticlePath(u, ctx.articlepath || '/wiki/$1');
+    if (!pageId || SKIP_TITLE_RE.test(pageId) || MEDIAWIKI_SKIP_TITLE_RE.test(pageId)) return null;
+    return { wikiId: ctx.wikiId, pageId };
+}
+
+async function fetchImageInfoUrls(parsed, fileNames) {
+    const names = (fileNames || []).filter(Boolean).slice(0, 80);
+    if (!names.length || !parsed || !parsed.apiBase) return [];
+    const urls = [];
+    for (let i = 0; i < names.length; i += 40) {
+        const batch = names.slice(i, i + 40).map((n) => (/^File:/i.test(n) ? n : `File:${n}`));
+        await sleep(RATE_MS);
+        try {
+            const data = await fetchJson(apiUrl(parsed.apiBase, {
+                action: 'query',
+                format: 'json',
+                titles: batch.join('|'),
+                prop: 'imageinfo',
+                iiprop: 'url',
+                iiurlwidth: 1280
+            }), parsed.host);
+            const pages = (data && data.query && data.query.pages) || {};
+            for (const p of Object.values(pages)) {
+                const ii = p.imageinfo && p.imageinfo[0];
+                const url = (ii && (ii.thumburl || ii.url)) || null;
+                if (url) urls.push(url);
+            }
+        } catch (err) {
+            console.warn('[fandomWiki] imageinfo failed:', err.message);
+        }
+    }
+    return urls;
 }
 
 async function fetchParsedPage(parsed) {
@@ -401,8 +688,9 @@ function collectImageUrls(html, pageUrl) {
             const u = new URL(abs);
             const pathName = u.pathname || '';
             const isCdn = /(?:static|vignette)\.wikia\.nocookie\.net$/i.test(u.hostname)
-                || /\/images\//i.test(pathName)
-                || /Special:FilePath/i.test(pathName);
+                || /(?:^|\.)(?:wikimedia|wikipedia|wiktionary)\.org$/i.test(u.hostname)
+                || /\/(?:images|commons|static)\//i.test(pathName)
+                || /Special:FilePath|Special:Redirect\/file/i.test(pathName);
             const isWikiArticle = /\/wiki\//i.test(pathName) && !isCdn;
             if (isWikiArticle) return;
             if (!isCdn && !/\.(png|jpe?g|gif|webp|svg|ico)(\?|$)/i.test(pathName)) return;
@@ -462,7 +750,7 @@ function stripFandomChrome(html) {
     return root.toString();
 }
 
-function rewriteContent(html, pageUrl, siteId, pageMap) {
+function rewriteContent(html, pageUrl, siteId, pageMap, linkCtx) {
     const root = parse(html, { blockTextElements: { script: false, style: false } });
 
     root.querySelectorAll('a').forEach((a) => {
@@ -480,13 +768,17 @@ function rewriteContent(html, pageUrl, siteId, pageMap) {
         } catch {
             parsed = null;
         }
-        if (parsed && parsed.pageId && !SKIP_TITLE_RE.test(parsed.pageId)) {
+        const mwParsed = (!parsed && linkCtx) ? parseMediaWikiArticleUrl(abs, linkCtx) : null;
+        const article = (parsed && parsed.pageId && !SKIP_TITLE_RE.test(parsed.pageId))
+            ? parsed
+            : mwParsed;
+        if (article && article.pageId) {
             a.setAttribute('href', '#');
             a.setAttribute('class', 'wiki-static-link');
-            a.setAttribute('data-wiki-site', parsed.wikiId);
-            a.setAttribute('data-wiki-page', parsed.pageId);
-            if (pageMap && parsed.wikiId === siteId) pageMap.add(parsed.pageId);
-        } else if (FANDOM_IMAGE_HOST_RE.test(abs)) {
+            a.setAttribute('data-wiki-site', article.wikiId);
+            a.setAttribute('data-wiki-page', article.pageId);
+            if (pageMap && article.wikiId === siteId) pageMap.add(article.pageId);
+        } else if (FANDOM_IMAGE_HOST_RE.test(abs) || isRemoteAssetUrl(abs)) {
             const img = a.querySelector('img');
             const local = img && img.getAttribute('data-local-src');
             if (local) {
@@ -528,7 +820,7 @@ function rewriteContent(html, pageUrl, siteId, pageMap) {
 
     root.querySelectorAll('[style]').forEach((el) => {
         const style = el.getAttribute('style') || '';
-        if (/url\(\s*['"]?https?:/i.test(style) && FANDOM_IMAGE_HOST_RE.test(style)) {
+        if (/url\(\s*['"]?https?:/i.test(style) && (FANDOM_IMAGE_HOST_RE.test(style) || isRemoteAssetUrl(style))) {
             el.setAttribute('style', style.replace(/url\(\s*['"]?https?:[^)]+\)/gi, ''));
         }
     });
@@ -536,7 +828,8 @@ function rewriteContent(html, pageUrl, siteId, pageMap) {
     return root.toString();
 }
 
-function assertNoHotlinks(html) {
+function assertNoHotlinks(html, opts) {
+    const stripRemote = !!(opts && opts.stripRemote);
     const leftover = [];
     const root = parse(html);
     root.querySelectorAll('img').forEach((img) => {
@@ -556,9 +849,21 @@ function assertNoHotlinks(html) {
             if (!img.getAttribute('src')) img.remove();
         });
     });
+    if (stripRemote) {
+        root.querySelectorAll('img').forEach((img) => {
+            ['src', 'srcset', 'data-src', 'data-srcset', 'data-original'].forEach((attr) => {
+                const v = img.getAttribute(attr) || '';
+                if (REMOTE_IMG_RE.test(v) && !v.includes('/private/wiki/')) {
+                    img.removeAttribute(attr);
+                }
+            });
+            const src = img.getAttribute('src') || '';
+            if (!src || (REMOTE_IMG_RE.test(src) && !src.includes('/private/wiki/'))) img.remove();
+        });
+    }
     root.querySelectorAll('[style]').forEach((el) => {
         const style = el.getAttribute('style') || '';
-        if (/url\(\s*['"]?https?:/i.test(style) && FANDOM_IMAGE_HOST_RE.test(style)) {
+        if (/url\(\s*['"]?https?:/i.test(style) && (FANDOM_IMAGE_HOST_RE.test(style) || stripRemote)) {
             el.setAttribute('style', style.replace(/url\(\s*['"]?https?:[^)]+\)/gi, ''));
         }
     });
@@ -606,21 +911,30 @@ function upsertHomeSite(globalResources, siteId, siteName, iconUrl, extra = null
     if (!home.sites) home.sites = [];
     const existing = home.sites.find((s) => s.id === siteId);
     const meta = extra && typeof extra === 'object' ? extra : {};
+    const kind = meta.kind || 'fandom';
     if (!existing) {
         const row = {
             id: siteId,
             name: siteName,
-            kind: 'fandom'
+            kind
         };
         if (iconUrl) row.icon = iconUrl;
         if (meta.fandomHost) row.fandomHost = meta.fandomHost;
         if (meta.lang) row.lang = meta.lang;
+        if (meta.origin) row.origin = meta.origin;
+        if (meta.articlepath) row.articlepath = meta.articlepath;
+        if (meta.scriptpath) row.scriptpath = meta.scriptpath;
+        if (meta.apiBase) row.apiBase = meta.apiBase;
         home.sites.push(row);
     } else {
         existing.name = siteName || existing.name;
-        existing.kind = 'fandom';
+        existing.kind = kind || existing.kind || 'fandom';
         if (meta.fandomHost) existing.fandomHost = meta.fandomHost;
         if (meta.lang) existing.lang = meta.lang;
+        if (meta.origin) existing.origin = meta.origin;
+        if (meta.articlepath) existing.articlepath = meta.articlepath;
+        if (meta.scriptpath) existing.scriptpath = meta.scriptpath;
+        if (meta.apiBase) existing.apiBase = meta.apiBase;
         if (iconUrl) existing.icon = iconUrl;
         else if (existing.icon && /\/assets\/icon\.png$/.test(existing.icon)) {
             const abs = path.join(base, siteId, 'assets', 'icon.png');
@@ -670,15 +984,23 @@ async function ensureSiteIcon(globalResources, parsed, siteInfo) {
             }
         } catch (_) { /* try download */ }
     }
-    const logo = siteInfo && siteInfo.logo ? String(siteInfo.logo) : '';
-    const candidates = [
-        logo,
-        logo.replace('images.wikia.com', 'static.wikia.nocookie.net'),
-        `https://static.wikia.nocookie.net/${parsed.wikiId}/images/favicon.ico`,
-        `https://${parsed.host}/wiki/Special:FilePath/Site-logo.png`,
-        `https://${parsed.host}/wiki/Special:FilePath/Wiki.png`
-    ].filter((u, i, arr) => u && arr.indexOf(u) === i);
-    for (const url of candidates) {
+    const origin = parsed.origin || `https://${parsed.host}`;
+    const logo = absoluteHttpUrl(siteInfo && siteInfo.logo ? String(siteInfo.logo) : '', origin);
+    const candidates = parsed.kind === 'mediawiki'
+        ? [
+            logo,
+            `${origin}/favicon.ico`,
+            `${origin}/favicon.png`
+        ]
+        : [
+            logo,
+            logo.replace('images.wikia.com', 'static.wikia.nocookie.net'),
+            `https://static.wikia.nocookie.net/${parsed.wikiId}/images/favicon.ico`,
+            `https://${parsed.host}/wiki/Special:FilePath/Site-logo.png`,
+            `https://${parsed.host}/wiki/Special:FilePath/Wiki.png`
+        ];
+    const uniqueCandidates = candidates.filter((u, i, arr) => u && arr.indexOf(u) === i);
+    for (const url of uniqueCandidates) {
         try {
             await sleep(RATE_MS);
             const bin = await fetchBinary(url, parsed.host);
@@ -691,8 +1013,13 @@ async function ensureSiteIcon(globalResources, parsed, siteInfo) {
     return null;
 }
 
-async function downloadImages(html, pageUrl, siteId, assetsDir, host, onProgress) {
+async function downloadImages(html, pageUrl, siteId, assetsDir, host, onProgress, extraUrls) {
     const urls = collectImageUrls(html, pageUrl);
+    if (Array.isArray(extraUrls)) {
+        for (const extra of extraUrls) {
+            if (extra && !urls.includes(extra)) urls.push(extra);
+        }
+    }
     const map = new Map();
     let i = 0;
     for (const assetUrl of urls) {
@@ -826,13 +1153,18 @@ async function importOnePage(globalResources, parsed, opts, importId, role) {
     const parsedPage = await fetchParsedPage(parsed);
     const canonicalId = parsedPage.canonicalId || requestedId;
     parsed.pageId = canonicalId;
-    parsed.sourceUrl = fandomPageUrl(parsed.host, canonicalId, parsed.lang);
+    parsed.sourceUrl = pageSourceUrl(parsed, canonicalId);
 
     let html = stripFandomChrome(parsedPage.html);
-    html = await downloadImages(html, parsed.sourceUrl, siteId, assetsDir, parsed.host, opts.onProgress);
+    let extraImageUrls = [];
+    if (parsed.kind === 'mediawiki') {
+        extraImageUrls = await fetchImageInfoUrls(parsed, parsedPage.images);
+    }
+    html = await downloadImages(html, parsed.sourceUrl, siteId, assetsDir, parsed.host, opts.onProgress, extraImageUrls);
     const discovered = new Set();
-    html = rewriteContent(html, parsed.sourceUrl, siteId, discovered);
-    html = assertNoHotlinks(html);
+    const linkCtx = parsed.kind === 'mediawiki' ? parsed : null;
+    html = rewriteContent(html, parsed.sourceUrl, siteId, discovered, linkCtx);
+    html = assertNoHotlinks(html, { stripRemote: parsed.kind === 'mediawiki' });
     html = normalizeWikiMarkup(html);
 
     const origin = role === 'root' ? 'manual' : 'follow';
@@ -857,7 +1189,7 @@ async function importOnePage(globalResources, parsed, opts, importId, role) {
         writePageFiles(pagesDir, requestedId, html, {
             id: requestedId,
             title: parsedPage.title,
-            sourceUrl: fandomPageUrl(parsed.host, requestedId, parsed.lang),
+            sourceUrl: pageSourceUrl(parsed, requestedId),
             importedAt,
             origin,
             canonicalId
@@ -866,7 +1198,7 @@ async function importOnePage(globalResources, parsed, opts, importId, role) {
             id: requestedId,
             title: parsedPage.title,
             group: opts.group || 'Imported',
-            sourceUrl: fandomPageUrl(parsed.host, requestedId, parsed.lang),
+            sourceUrl: pageSourceUrl(parsed, requestedId),
             canonicalId
         });
     }
@@ -884,28 +1216,49 @@ async function importOnePage(globalResources, parsed, opts, importId, role) {
     });
 
     const children = (opts.followLinks ? parsedPage.links : [])
-        .filter((id) => id && id !== canonicalId && !SKIP_TITLE_RE.test(id));
+        .filter((id) => id && id !== canonicalId && !SKIP_TITLE_RE.test(id)
+            && !(parsed.kind === 'mediawiki' && MEDIAWIKI_SKIP_TITLE_RE.test(id)));
     return { title: parsedPage.title, children, pageId: canonicalId };
 }
 
 async function importFandomPage(globalResources, options) {
-    const parsed = parseFandomUrl(options.url);
+    let parsed = parseFandomUrl(options.url);
+    let kind = 'fandom';
     if (!parsed) {
-        throw new Error('URL must be a *.fandom.com/wiki/… page');
+        parsed = await detectMediaWikiSite(options.url);
+        kind = parsed && parsed.kind ? parsed.kind : 'mediawiki';
     }
+    if (!parsed) {
+        throw new Error('URL must be a *.fandom.com/wiki/… page, a NovelAI docs/journal/blog URL, or a MediaWiki site that exposes /api.php');
+    }
+    parsed.kind = parsed.kind || kind;
+    kind = parsed.kind;
     const followLinks = !!options.followLinks;
+    const hardMax = kind === 'mediawiki' ? MEDIAWIKI_HARD_MAX_FOLLOW : HARD_MAX_FOLLOW;
+    const defaultFollow = kind === 'mediawiki' ? MEDIAWIKI_DEFAULT_MAX_FOLLOW : DEFAULT_MAX_FOLLOW;
     const maxPages = Math.min(
-        HARD_MAX_FOLLOW,
-        Math.max(1, Number(options.maxPages) || (followLinks ? DEFAULT_MAX_FOLLOW : 1))
+        hardMax,
+        Math.max(1, Number(options.maxPages) || (followLinks ? defaultFollow : 1))
     );
     const onProgress = options.onProgress || null;
 
     await sleep(RATE_MS);
     const siteInfo = await fetchSiteInfo(parsed);
+    if (kind === 'mediawiki') {
+        parsed.articlepath = siteInfo.articlepath || parsed.articlepath || '/wiki/$1';
+        parsed.scriptpath = siteInfo.scriptpath || parsed.scriptpath || '';
+        if (!parsed.origin) parsed.origin = `${parsed.host ? 'https://' : ''}${parsed.host}`;
+        parsed.sourceUrl = pageSourceUrl(parsed, parsed.pageId);
+    }
     const iconUrl = await ensureSiteIcon(globalResources, parsed, siteInfo);
     upsertHomeSite(globalResources, parsed.wikiId, siteInfo.name, iconUrl, {
-        fandomHost: parsed.fandomHost || parsed.host,
-        lang: parsed.lang || null
+        kind,
+        fandomHost: parsed.fandomHost || (kind === 'fandom' ? parsed.host : null),
+        lang: parsed.lang || siteInfo.lang || null,
+        origin: parsed.origin || null,
+        articlepath: parsed.articlepath || null,
+        scriptpath: parsed.scriptpath || null,
+        apiBase: parsed.apiBase || null
     });
 
     const db = openGraph(globalResources);
@@ -967,7 +1320,7 @@ async function importFandomPage(globalResources, options) {
                         parsed: {
                             ...parsed,
                             pageId: childId,
-                            sourceUrl: fandomPageUrl(parsed.host, childId, parsed.lang)
+                            sourceUrl: pageSourceUrl(parsed, childId)
                         },
                         role: 'child'
                     });
@@ -989,6 +1342,9 @@ async function importFandomPage(globalResources, options) {
         wikiName: siteInfo.name,
         rootPageId: parsed.pageId,
         sourceUrl: parsed.sourceUrl,
+        kind,
+        origin: parsed.origin || null,
+        articlepath: parsed.articlepath || null,
         pages: imported
     };
 }
@@ -1146,6 +1502,10 @@ function listStoredSites(globalResources) {
             icon: s.icon || null,
             fandomHost: s.fandomHost || (s.kind === 'fandom' ? `${s.id}.fandom.com` : null),
             lang: s.lang || null,
+            origin: s.origin || null,
+            articlepath: s.articlepath || null,
+            scriptpath: s.scriptpath || null,
+            apiBase: s.apiBase || null,
             pageCount: pages.length,
             sourceUrls: pages.map((p) => p.sourceUrl).filter(Boolean).slice(0, 3)
         };
@@ -1239,8 +1599,10 @@ function closeGraph() {
 
 module.exports = {
     parseFandomUrl,
+    detectMediaWikiSite,
     fandomDisplayUrl,
     fandomPageUrl,
+    mediaWikiPageUrl,
     importFandomPage,
     getFandomIndex,
     getManagerState,

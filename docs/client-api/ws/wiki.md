@@ -15,7 +15,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `get_static_wiki_site_index` | `get_static_wiki_site_index_response` | session | Handler: handleGetStaticWikiSiteIndex |
 | `get_tag_wiki_page` | `get_tag_wiki_page_response` | session | Handler: handleGetTagWikiPage |
 | `get_wiki_home` | `get_wiki_home_response` | session | Handler: handleGetWikiHome |
-| `import_fandom_wiki_page` | `import_fandom_wiki_page_response` | admin/destructive | Handler: handleImportFandomWikiPage |
+| `import_fandom_wiki_page` | `import_fandom_wiki_page_response` | admin/destructive | Handler: handleImportFandomWikiPage (Fandom `*.fandom.com` or generic MediaWiki `/api.php`) |
 | `import_static_wiki` | `import_static_wiki_response` | admin/destructive | Handler: handleImportStaticWiki (NovelAI docs/journal/blog) |
 | `update_wiki_import` | `update_wiki_import_response` | admin/destructive | Handler: handleUpdateWikiImport (re-pull fandom import or cached site) |
 | `refresh_tag_wiki_page` | `refresh_tag_wiki_page_response` | session | Handler: handleRefreshTagWikiPage |
@@ -209,17 +209,21 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 | Field | Notes |
 |-------|-------|
 | `requestId` | Optional |
-| `url` | Fandom `*.fandom.com/wiki/…` URL (required) |
-| `followLinks` | Optional boolean |
-| `maxPages` | Optional cap (hard max 80) |
+| `url` | Fandom `*.fandom.com/wiki/…` **or** a MediaWiki article URL (Wikipedia, Miraheze, wiki.gg, independently hosted). Non-Fandom hosts are probed for `/api.php` (`/w/api.php`, `/wiki/api.php`, origin `/api.php`) via `action=query&meta=siteinfo`. Not MediaWiki → `type: "error"` with a clear message (no hang, no silent no-op). |
+| `followLinks` | Optional boolean. Default off (this page only). Wikipedia-scale follows would explode. |
+| `maxPages` | Optional cap. Fandom hard max 80; generic MediaWiki hard max **25** (also the follow default). |
 | `group` | Optional index group label |
-| `recordImport` | Optional; `false` skips creating a library import row (live click-through fetch) |
+| `recordImport` | Optional; `false` skips creating a library import row (live click-through fetch). Generic MediaWiki follows the same rule. |
 | `updateExisting` | Optional; reuse existing import row for the same wiki+root |
 | `updateImportId` | Optional numeric import id to refresh |
 
 **Success response:** `import_fandom_wiki_page_response`
 
-`get_fandom_wiki_manager` also returns `sites[]` (all cached wikis: Fandom, NovelAI, static) plus `imports[]`.
+`get_fandom_wiki_manager` also returns `sites[]` (all cached wikis: Fandom, NovelAI, MediaWiki `kind: "mediawiki"`, static) plus `imports[]`.
+
+Generic MediaWiki imports store `kind: "mediawiki"`, `origin`, `articlepath`, `scriptpath`, and `apiBase` on the site row. Images are mirrored under `/private/wiki/<siteId>/assets/` (no hotlink). Article paths come from siteinfo (`articlepath` / `scriptpath`); `/wiki/` is not assumed.
+
+Non-MediaWiki URLs fail immediately after the api.php probe (8s timeout per candidate, up to 4 candidates in parallel) with a client `error` packet whose `message` explains that only Fandom, NovelAI, and MediaWiki `/api.php` sites can be imported.
 
 Additional response/push types from handler:
 - `fandom_wiki_import_progress`
