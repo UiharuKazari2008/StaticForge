@@ -1,0 +1,42 @@
+---
+description: MUST drop a .agent-<id> lock in the repo root before any code edit, and delete it when done. Highest-priority busy signal so other agents and Menma can see the tree is live.
+alwaysApply: true
+---
+
+# Agent busy lock — `.agent-<id>`
+
+This rule always applies. It outranks convenience. If you are about to **modify code** (create, edit, or delete source, config, Cursor rules, or shipped docs), you MUST plant a lock file first. Read-only work must NOT create a lock.
+
+## Lock file
+
+- Path: **repository root**, filename `.agent-<id>`
+- `<id>` is a stable short name for you (examples: `menma`, `cursor-<session>`, your agent uuid prefix). One lock per agent. Never reuse someone else's id.
+- These files are **gitignored**. Do not `git add` them.
+
+Suggested contents (plain text):
+
+```
+agent: <id>
+started: <ISO-8601>
+intent: <one line>
+```
+
+## Lifecycle
+
+1. **Before the first edit:** create `.agent-<id>`.
+2. **While working:** leave it. `touch` it if the session runs long.
+3. **When done, or if you abort:** delete `.agent-<id>`. Always.
+4. If you restart and find **your own** stale lock, replace or delete it before editing again.
+5. **Never** delete another agent's lock.
+
+## Seeing other locks
+
+If any `.agent-*` other than yours exists, the tree is live. Do not start a conflicting edit. Wait, or only read and report.
+
+A lock whose mtime is older than ~3 hours may be leftover. Report it. Do not delete someone else's lock unless the user says to.
+
+## Do not lock for
+
+- Read-only exploration, graphify, review, explain
+- Image generation / gallery writes
+- Chat-only answers with no file edits

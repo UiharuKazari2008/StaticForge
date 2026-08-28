@@ -30,3 +30,5 @@ danbooru_tagwiki_merged.json
 e621_wiki_fixed.json
 danbooru_tag_groups_hierarchy.json
 tools/
+# Per-agent busy locks (never commit)
+.agent-*
