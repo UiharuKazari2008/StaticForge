@@ -112,6 +112,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | VFS file download | `GET /{vfsPathUuid}/files/:id` | `vfs_download_file` | `vfs_updated` | Explorer applet |
 | System cache binary download | `GET /{vfsPathUuid}/system/:encodedKey` | `vfs_download_system_file` | — | Explorer / System folder |
 | VFS CRUD | — | `vfs_*`, `desktop_*` | `vfs_updated`, `workspace_desktop_persisted` | Desktop shortcuts |
+| Studio change JSON | — | — (clipboard / desktop shortcut payload) | — | Client-only studio delta apply/export (`studioChangeJson.js`) |
 
 ---
 

@@ -24,6 +24,8 @@ async function handleImageUpload(event) {
 
 // Handle clipboard paste
 async function handleClipboardBlueprintText(text) {
+    // tryApplyStudioChangeJsonFromText: public/scripts/comp/studioChangeJson.js
+    if (await tryApplyStudioChangeJsonFromText(text)) return;
     try {
         const data = JSON.parse(text);
         const isNovelAI = data && (

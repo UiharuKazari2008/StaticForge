@@ -2286,7 +2286,8 @@ body.desktop-mode .desktop-icons {
 .desktop-shortcut[data-shortcut-type="folder"] .desktop-shortcut-icon,
 .desktop-shortcut[data-shortcut-type="wiki-page"] .desktop-shortcut-icon,
 .desktop-shortcut[data-shortcut-type="static-wiki-page"] .desktop-shortcut-icon,
-.desktop-shortcut[data-shortcut-type="bracket-generation"] .desktop-shortcut-icon {
+.desktop-shortcut[data-shortcut-type="bracket-generation"] .desktop-shortcut-icon,
+.desktop-shortcut[data-shortcut-type="studio-change"] .desktop-shortcut-icon {
     box-shadow: none;
     font-size: 2.5rem;
     color: var(--text-accent-tinted);

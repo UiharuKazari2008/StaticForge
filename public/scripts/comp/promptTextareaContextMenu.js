@@ -1109,6 +1109,10 @@ function handlePromptTextareaContextMenuAction(action, textarea, item) {
         case 'prompt-ctx-paste':
             promptCtxPasteIntoTextarea(textarea);
             break;
+        case 'prompt-ctx-copy-change-json':
+            // openStudioChangeExportDialog: public/scripts/comp/studioChangeJson.js
+            openStudioChangeExportDialog();
+            break;
         case 'prompt-ctx-select-all':
             textarea.focus();
             textarea.setSelectionRange(0, textarea.value.length);
@@ -1355,6 +1359,11 @@ function getPromptTextareaContextMenuConfig() {
                         loadfn: (icon, target) => {
                             promptCtxHideMenuItemForStandardPrompt(icon, target);
                         }
+                    },
+                    {
+                        icon: 'fas fa-brackets-curly',
+                        tooltip: 'Copy change JSON',
+                        action: 'prompt-ctx-copy-change-json'
                     }
                 ]
             },
@@ -1557,6 +1566,11 @@ function getPromptTextareaContextMenuConfig() {
                     }
                 },
                 items: [
+                    {
+                        icon: 'fas fa-brackets-curly',
+                        text: 'Copy Change JSON…',
+                        action: 'prompt-ctx-copy-change-json'
+                    },
                     {
                         icon: 'fas fa-book-atlas',
                         text: 'Quick Access',

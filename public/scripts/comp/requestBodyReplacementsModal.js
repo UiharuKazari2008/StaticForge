@@ -1523,13 +1523,7 @@ async function deleteRequestBodyReplacement(index) {
     }
 }
 
-// Utility function to escape HTML
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
+// escapeHtml: public/scripts/comp/utilities.js
 // Initialize when DOM is loaded
 window.wsClient.registerInitStep(460, 'Request body replacements listener scope', async () => {
     initRequestBodyReplacementsModalListenerScope();

@@ -284,3 +284,158 @@
     justify-content: flex-end;
 }
 
+/* Studio change JSON — public/scripts/comp/studioChangeJson.js */
+#confirmationDialog.studio-change-dialog-modal {
+    max-width: min(560px, calc(90vw - calc(2 * var(--spacing-md))));
+}
+
+#confirmationDialog.studio-change-dialog-modal .modal-content {
+    max-height: min(74vh, 720px);
+    overflow: hidden;
+}
+
+#confirmationDialog.studio-change-dialog-modal .confirmation-message {
+    text-align: left;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+#confirmationDialog.studio-change-dialog-modal .confirmation-controls {
+    flex-wrap: wrap;
+}
+
+.studio-change-dialog {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    min-height: 0;
+    flex: 1;
+    text-align: left;
+}
+
+.studio-change-lead {
+    margin: 0;
+    font-weight: 600;
+}
+
+.studio-change-hint {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    opacity: 0.9;
+}
+
+.studio-change-toolbar {
+    display: flex;
+    gap: var(--spacing-xs);
+    flex-wrap: wrap;
+}
+
+.studio-change-scroll-shell {
+    flex: 1;
+    min-height: 12rem;
+    max-height: min(48vh, 420px);
+    overflow: hidden;
+}
+
+.studio-change-scrollable {
+    height: 100%;
+    overflow: auto;
+    padding: 2px 4px 4px 0;
+}
+
+.studio-change-group + .studio-change-group {
+    margin-top: var(--spacing-sm);
+}
+
+.studio-change-group-title {
+    margin: 0 0 6px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    opacity: 0.8;
+}
+
+.studio-change-group-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.studio-change-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    width: 100%;
+    box-sizing: border-box;
+    text-align: left;
+    border: 1px solid var(--glass-border-2);
+    border-radius: var(--border-radius-md);
+    background: var(--glass-layer-2);
+    color: inherit;
+    padding: 6px 8px;
+    cursor: pointer;
+}
+
+.studio-change-row.is-on {
+    border-color: color-mix(in srgb, var(--accent-primary, #6cb4ff) 40%, var(--glass-border-2));
+}
+
+.studio-change-row.is-missing {
+    opacity: 0.7;
+}
+
+.studio-change-row-toggle {
+    flex: 0 0 auto;
+    width: 2rem;
+    min-width: 2rem;
+    padding: 0;
+    justify-content: center;
+}
+
+.studio-change-row-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.studio-change-row-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.studio-change-row-detail {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    word-break: break-word;
+}
+
+.studio-change-badge {
+    flex: 0 0 auto;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 1px 5px;
+    border-radius: var(--border-radius-sm);
+    background: var(--glass-layer-3, rgba(255, 255, 255, 0.08));
+}
+
+.studio-change-badge-add {
+    color: #8fd19e;
+}
+
+.studio-change-badge-remove {
+    color: #e8a0a0;
+}
+
+.studio-change-badge-replace,
+.studio-change-badge-set {
+    color: var(--text-accent, #e8b86d);
+}
+

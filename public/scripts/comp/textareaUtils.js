@@ -480,14 +480,4 @@ function handleDefaultToolbarAction(action, textarea, toolbar) {
     }
 }
 
-/**
- * Utility function to escape HTML
- * @param {string} text - The text to escape
- * @returns {string} Escaped HTML
- */
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
+// escapeHtml: public/scripts/comp/utilities.js (loads later; used only after boot)

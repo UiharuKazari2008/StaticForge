@@ -82,6 +82,11 @@ class DesktopShortcutsManager {
                 contextMenu: this.getPresetContextMenu,
                 onClick: this.handlePresetClick
             },
+            'studio-change': {
+                icon: this.createStudioChangeIcon,
+                contextMenu: this.getStudioChangeContextMenu,
+                onClick: this.handleStudioChangeClick
+            },
             'wiki-page': {
                 icon: this.createWikiPageIcon,
                 contextMenu: this.getWikiPageContextMenu,
@@ -2253,6 +2258,38 @@ class DesktopShortcutsManager {
         };
     }
 
+    createStudioChangeIcon() {
+        const icon = document.createElement('div');
+        icon.className = 'desktop-shortcut-icon desktop-shortcut-icon-studio-change';
+        const mark = document.createElement('i');
+        mark.className = 'fas fa-brackets-curly';
+        icon.appendChild(mark);
+        return icon;
+    }
+
+    async handleStudioChangeClick(shortcut) {
+        // handleStudioChangeShortcutClick: public/scripts/comp/studioChangeJson.js
+        await handleStudioChangeShortcutClick(shortcut);
+    }
+
+    getStudioChangeContextMenu(shortcut) {
+        return {
+            sections: [
+                {
+                    type: 'list',
+                    items: [
+                        {
+                            icon: 'fas fa-play',
+                            text: 'Apply to Studio',
+                            action: 'studio-change-apply'
+                        },
+                        ...this.getShortcutManagementMenuItems(true)
+                    ]
+                }
+            ]
+        };
+    }
+
     // Create wiki page icon
     createWikiPageIcon(shortcut) {
         // Just the icon, no wrapper or frame (like note/preset)
@@ -4138,6 +4175,13 @@ document.addEventListener('contextMenuAction', async (event) => {
                     console.error('Failed to copy URL:', error);
                     showGlassToast('error', null, 'Failed to copy URL', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
                 }
+            }
+            break;
+            
+        case 'studio-change-apply':
+            if (shortcut.type === 'studio-change') {
+                // handleStudioChangeShortcutClick: public/scripts/comp/studioChangeJson.js
+                await handleStudioChangeShortcutClick(shortcut);
             }
             break;
     }
