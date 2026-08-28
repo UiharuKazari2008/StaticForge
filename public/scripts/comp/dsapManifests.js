@@ -143,6 +143,7 @@ function registerDsapManifests() {
             imageIcon: 'secu.png',
             text: 'Security Center',
             appMenu: false,
+            startMenu: false,
             desktopOnly: true,
             adminOnly: true,
             launch() {
@@ -297,7 +298,8 @@ function registerDsapManifests() {
             text: 'Menma',
             fullName: 'Menma Progress',
             desktopOnly: true,
-            appMenu: true,
+            appMenu: false,
+            startMenu: false,
             launch() {
                 // openDsapInStandaloneWindow: public/scripts/comp/dsapRegistry.js
                 openDsapInStandaloneWindow(`dsap://${MENMA_DSAP_MANIFEST_URL}/status`);
@@ -323,6 +325,7 @@ function registerDsapManifests() {
             imageIcon: 'fandom.png',
             text: 'Wiki Manager',
             appMenu: false,
+            startMenu: false,
             startMenuIndex: 8,
             launch() {
                 openDsapInGrimoire(`dsap://${WIKI_DSAP_MANIFEST_URL}/`);

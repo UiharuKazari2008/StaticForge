@@ -62,11 +62,12 @@ function registerDreamscapeHomeDsap() {
             };
         },
         menuEntry: {
-            launchId: 'dreamscape-home',
-            icon: 'fas fa-house',
-            text: 'Dreamscape Home',
-            appMenu: false,
-            startMenu: false,
+            launchId: 'control-panel',
+            icon: 'fas fa-gauge',
+            text: 'Control Panel',
+            fullName: 'Dreamscape System Control Panel',
+            appMenu: true,
+            startMenu: true,
             startMenuIndex: 5,
             launch() {
                 openDsapInGrimoire(`dsap://${DREAMSCAPE_HOME_URL}/`);

@@ -169,6 +169,7 @@ function dsapSmfBuildDreamscapeHomeHtml() {
         { url: 'dsap://autofill.dreamscape.jp/', label: 'Autofill Ranking', icon: 'fas fa-arrow-down-wide-short', desc: 'Tune SmartText/autofill scoring weights, match tiers, and type priority', admin: true },
         { url: 'dsap://memories.dyna.dreamscape.jp/', label: 'Enshutsuka', icon: 'fas fa-lightbulb-on', desc: 'Director knowledge memories, static rules, and LinkXi persona' },
         { url: 'dsap://quips.dyna.dreamscape.jp/', label: 'Generation Quips', icon: 'fas fa-comment-heart', desc: 'Generation quips dashboard, phrase book, and workspace settings' },
+        { url: 'dsap://wiki.dyna.dreamscape.jp/', label: 'Wiki Manager', icon: 'fas fa-books', desc: 'Import and browse Fandom, NovelAI, and MediaWiki caches' },
         { url: 'dsap://menma.dyna.dreamscape.jp/status', label: 'Menma', icon: 'fas fa-cake-candles', desc: 'Cake ledger, work pile, and breakfast before/after' },
     ];
 
