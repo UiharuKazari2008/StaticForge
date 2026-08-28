@@ -80,6 +80,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Feature | REST | WS | Push | Client-only |
 |---------|------|-----|------|-------------|
 | Tag search | — | `search_tags`, `search_dataset_tags` | — | Autocomplete UI |
+| Model-aware tag suggest cutoffs | — | (applied inside `search_tags` / autofill) | — | V4.5 hides tags after 2025-05-29; V5 hides tags on/after 2026-08-01; wiki pages stay browsable (`modules/tagModelCutoff.js`) |
 | Autofill ranking config | — | `get_autofill_ranking`, `update_autofill_ranking`, `test_autofill_ranking` | `autofill_ranking_updated` | autofillConfigDsapApplet (admin) |
 | File search | — | `search_files` | `search_results_*` | File search modal |
 | Tag wiki / Grimoire | `GET /private/wiki/*` (cached pages) | `search_tag_wiki`, `get_tag_wiki_page`, `refresh_tag_wiki_page`, `resolve_grimoire_url` | — | DSAP router, panes |

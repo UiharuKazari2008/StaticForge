@@ -1701,7 +1701,7 @@ function createSchema(db) {
             n_count INTEGER,  -- NovelAI count (NULL if 0 or missing, filled from tag_search.db cache)
             n_rand BOOLEAN DEFAULT 0,
             is_locked BOOLEAN DEFAULT 0,
-            untrained BOOLEAN DEFAULT 0,  -- 1 if created after May 29, 2025 (v5+ suggest)
+            untrained BOOLEAN DEFAULT 0,  -- 1 if created after May 29, 2025 (V4.5 training cutoff; V5 uses created_at at suggest time)
             created_at TEXT
         );
     `);
@@ -1867,7 +1867,7 @@ function createSchema(db) {
             category INTEGER,
             created_at TEXT,
             updated_at TEXT,
-            untrained INTEGER DEFAULT 0,  -- 1 if created after May 29, 2025 (v5+ wiki flag; pages remain browsable)
+            untrained INTEGER DEFAULT 0,  -- 1 if created after May 29, 2025 (V4.5 flag; wiki pages remain browsable; V5 suggest uses created_at)
             FOREIGN KEY (danbooru_wiki_id) REFERENCES wikis(id) ON DELETE SET NULL,
             FOREIGN KEY (e621_wiki_id) REFERENCES wikis(id) ON DELETE SET NULL
         );
