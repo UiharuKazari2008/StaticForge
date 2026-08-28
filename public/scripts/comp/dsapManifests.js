@@ -316,6 +316,17 @@ function registerDsapManifests() {
         title: 'Wiki Manager',
         assets: {
             scripts: ['scripts/comp/fandomWikiManagerDsapApplet.js']
+        },
+        menuEntry: {
+            launchId: 'wiki-manager',
+            icon: 'fas fa-books',
+            imageIcon: 'fandom.png',
+            text: 'Wiki Manager',
+            appMenu: false,
+            startMenuIndex: 8,
+            launch() {
+                openDsapInGrimoire(`dsap://${WIKI_DSAP_MANIFEST_URL}/`);
+            }
         }
     });
 }
