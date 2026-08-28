@@ -2,17 +2,21 @@
 /**
  * Dump novelai.net public assets via patched ResourcesSaverExt.
  *
- * Launches system Chrome (CHROME_BIN / google-chrome-stable) with the unpacked
- * extension loaded, then drives it over CDP using a tiny built-in WebSocket
- * client — no Playwright, no bundled Chromium.
+ * Launches Chrome with the unpacked extension loaded, then drives it over CDP
+ * using a tiny built-in WebSocket client — no Playwright, no bundled Chromium.
  *
- * Extensions generally do not load under classic --headless. Default is headed
- * Chrome under xvfb-run (see dump-novelai-webapp.sh). Optional --headless=new
- * via --headless / DUMP_HEADLESS=1 only when you have verified extension load.
+ * Prefer Chrome for Testing (CHROME_BIN or .cache/chrome-for-testing). Branded
+ * google-chrome-stable 151.0.7922.169 ignores --load-extension (dry-check
+ * background_page is Hangouts; dump times out). CFT 152.0.7977.64 honors
+ * --load-extension (ResourcesSaverExt id oamocmhnmfbafhblidnbibinconkgked).
+ *
+ * DUMP_HEADLESS=1 / --headless uses --headless=new and works when Chrome
+ * honors --load-extension (CFT). xvfb headed (dump-novelai-webapp.sh default)
+ * remains the fallback if CFT is missing. Containers: DUMP_CHROME_NO_SANDBOX=1.
  *
  * Usage:
- *   ./scripts/nai-webapp-watch/setup-dump-deps.sh
- *   ./scripts/nai-webapp-watch/dump-novelai-webapp.sh
+ *   ./scripts/nai-webapp-watch/setup-dump-deps.sh --chrome-for-testing
+ *   DUMP_HEADLESS=1 DUMP_CHROME_NO_SANDBOX=1 ./scripts/nai-webapp-watch/dump-novelai-webapp.sh
  *   node scripts/nai-webapp-watch/dump-novelai-webapp.js --out tmp/nai-webapp-dumps
  *   node scripts/nai-webapp-watch/dump-novelai-webapp.js --dry-check
  */
@@ -22,7 +26,7 @@ const http = require('http');
 const net = require('net');
 const path = require('path');
 const crypto = require('crypto');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..', '..');
 const DEFAULT_EXT = path.join(ROOT, 'tools', 'ResourcesSaverExt', 'unpacked2x');
@@ -56,18 +60,144 @@ function parseArgs(argv) {
     return opts;
 }
 
+const CFT_CACHE_DIRS = [
+    process.env.DUMP_CFT_DIR ? path.resolve(process.env.DUMP_CFT_DIR) : null,
+    path.join(ROOT, '.cache', 'chrome-for-testing'),
+    path.join(ROOT, 'tools', 'chrome-for-testing')
+].filter(Boolean);
+const KNOWN_SAVER_EXT_ID = 'oamocmhnmfbafhblidnbibinconkgked';
+const BRANDED_151_NOTE =
+    'branded google-chrome-stable 151.0.7922.169 ignores --load-extension ' +
+    '(dry-check background_page is Hangouts; dump times out). ' +
+    'Chrome for Testing 152.0.7977.64 honors --load-extension ' +
+    '(ResourcesSaverExt id ' + KNOWN_SAVER_EXT_ID + ').';
+
+function cftInstallHint() {
+    return 'Install Chrome for Testing: ./scripts/nai-webapp-watch/setup-dump-deps.sh --chrome-for-testing';
+}
+
+function collectChromeBins(dir, hits, depth, maxDepth) {
+    if (depth > maxDepth) return;
+    let ents;
+    try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
+    for (const ent of ents) {
+        const p = path.join(dir, ent.name);
+        if (ent.isDirectory()) {
+            collectChromeBins(p, hits, depth + 1, maxDepth);
+            continue;
+        }
+        if (ent.name === 'chrome' || ent.name === 'chrome.exe' || ent.name === 'Google Chrome for Testing') {
+            hits.push(p);
+        }
+    }
+}
+
+function findChromeForTesting() {
+    const hits = [];
+    for (const root of CFT_CACHE_DIRS) {
+        if (fs.existsSync(root)) collectChromeBins(root, hits, 0, 6);
+    }
+    const preferred = hits.filter((bin) => {
+        const id = chromeIdentity(bin);
+        return id && id.forTesting;
+    });
+    return (preferred[0] || hits[0] || null);
+}
+
+function chromeIdentity(bin) {
+    try {
+        const r = spawnSync(bin, ['--version'], { encoding: 'utf8', timeout: 8000 });
+        const out = String((r.stdout || '') + (r.stderr || '')).trim();
+        const version = (out.match(/(\d+\.\d+\.\d+\.\d+)/) || [])[1] || null;
+        const forTesting = /Chrome for Testing/i.test(out);
+        const branded = /Google Chrome/i.test(out) && !forTesting;
+        const major = version ? Number(version.split('.')[0]) : null;
+        return { raw: out.split('\n')[0], version, major, forTesting, branded };
+    } catch (_) {
+        return { raw: null, version: null, major: null, forTesting: false, branded: false };
+    }
+}
+
 function resolveChrome() {
-    const candidates = [
-        process.env.CHROME_BIN,
+    const explicit = process.env.CHROME_BIN;
+    if (explicit && fs.existsSync(explicit)) {
+        return { bin: explicit, source: 'CHROME_BIN', identity: chromeIdentity(explicit) };
+    }
+    const cft = findChromeForTesting();
+    if (cft) {
+        return { bin: cft, source: 'chrome-for-testing', identity: chromeIdentity(cft) };
+    }
+    const branded = [
         '/usr/bin/google-chrome-stable',
         '/usr/bin/google-chrome',
         '/usr/bin/chromium',
         '/usr/bin/chromium-browser'
-    ].filter(Boolean);
-    for (const bin of candidates) {
-        if (fs.existsSync(bin)) return bin;
+    ];
+    for (const bin of branded) {
+        if (fs.existsSync(bin)) {
+            return { bin, source: 'branded', identity: chromeIdentity(bin) };
+        }
     }
     return null;
+}
+
+function warnIfBranded(resolved) {
+    if (!resolved) return;
+    const id = resolved.identity || {};
+    if (resolved.source === 'chrome-for-testing' || id.forTesting) return;
+    console.error('[nai-webapp-dump] using branded Chrome:', resolved.bin, id.raw || '');
+    console.error('[nai-webapp-dump]', BRANDED_151_NOTE);
+    console.error('[nai-webapp-dump]', cftInstallHint());
+    if (id.major === 151) {
+        console.error('[nai-webapp-dump] this binary is Chrome 151 — expect --load-extension to be ignored');
+    }
+}
+
+function analyzeExtensionTargets(list) {
+    const ext = [];
+    for (const t of list || []) {
+        const url = String(t.url || '');
+        if (!url.startsWith('chrome-extension://')) continue;
+        const id = url.slice('chrome-extension://'.length).split('/')[0];
+        ext.push({
+            type: t.type,
+            id,
+            title: t.title || '',
+            url
+        });
+    }
+    const saver = ext.filter((e) =>
+        e.id === KNOWN_SAVER_EXT_ID ||
+        /save all resources/i.test(e.title) ||
+        /resourcesaver/i.test(e.title)
+    );
+    const hangouts = ext.filter((e) => /hangouts/i.test(e.title) || /hangouts/i.test(e.url));
+    // MV3 ResourcesSaverExt is a service_worker. Path-based IDs vary; SW + no Hangouts
+    // is enough. Hangouts background_page is the branded-151 --load-extension failure.
+    const serviceWorkers = ext.filter((e) => e.type === 'service_worker');
+    const loaded = saver.length > 0 || (serviceWorkers.length > 0 && hangouts.length === 0);
+    return {
+        loaded,
+        saver,
+        hangouts,
+        serviceWorkers,
+        all: ext
+    };
+}
+
+function failExtensionNotLoaded(resolved, analysis) {
+    const id = (resolved && resolved.identity) || {};
+    console.error('[nai-webapp-dump] ResourcesSaverExt did not load (--load-extension ignored or overlay missing)');
+    if (analysis && analysis.hangouts.length) {
+        console.error('[nai-webapp-dump] CDP targets show Hangouts, not ResourcesSaverExt — branded Chrome is ignoring --load-extension');
+    }
+    if (analysis && analysis.all.length) {
+        console.error('[nai-webapp-dump] extension targets:', JSON.stringify(analysis.all));
+    }
+    console.error('[nai-webapp-dump]', BRANDED_151_NOTE);
+    if (id.raw) console.error('[nai-webapp-dump] current binary:', resolved.bin, id.raw);
+    console.error('[nai-webapp-dump]', cftInstallHint());
+    console.error('[nai-webapp-dump] then: export CHROME_BIN=... && DUMP_HEADLESS=1 DUMP_CHROME_NO_SANDBOX=1 ./scripts/nai-webapp-watch/dump-novelai-webapp.sh');
 }
 
 function sleep(ms) {
@@ -412,15 +542,18 @@ async function pickPageTarget(port) {
 
 async function runDryCheck(opts) {
     ensureExtension();
-    const chromeBin = resolveChrome();
-    if (!chromeBin) {
-        console.error('[nai-webapp-dump] google-chrome-stable not found (set CHROME_BIN)');
+    const resolved = resolveChrome();
+    if (!resolved) {
+        console.error('[nai-webapp-dump] Chrome not found. ' + cftInstallHint());
+        console.error('[nai-webapp-dump] or set CHROME_BIN to Chrome for Testing');
         process.exit(1);
     }
-    if (opts.headless) {
-        console.error('[nai-webapp-dump] note: --headless=new may fail to load extensions; prefer xvfb headed');
-    } else if (!process.env.DISPLAY) {
-        console.error('[nai-webapp-dump] WARNING: DISPLAY unset — use dump-novelai-webapp.sh (xvfb-run) for headed Chrome');
+    const chromeBin = resolved.bin;
+    warnIfBranded(resolved);
+    if (opts.headless && !(resolved.identity && resolved.identity.forTesting) && resolved.source !== 'chrome-for-testing') {
+        console.error('[nai-webapp-dump] --headless=new only works when Chrome honors --load-extension (use CFT)');
+    } else if (!opts.headless && !process.env.DISPLAY) {
+        console.error('[nai-webapp-dump] WARNING: DISPLAY unset — use dump-novelai-webapp.sh (xvfb-run) or DUMP_HEADLESS=1 with CFT');
     }
 
     fs.mkdirSync(opts.out, { recursive: true });
@@ -428,32 +561,49 @@ async function runDryCheck(opts) {
     fs.mkdirSync(profileDir, { recursive: true });
     const port = opts.port || await findFreePort();
     const args = buildBrowserArgs(opts, port, profileDir);
-    console.log('[nai-webapp-dump] dry-check launching', chromeBin);
+    console.log('[nai-webapp-dump] dry-check launching', chromeBin, '(' + resolved.source + ')');
+    if (resolved.identity && resolved.identity.raw) console.log('[nai-webapp-dump]', resolved.identity.raw);
     console.log('[nai-webapp-dump] extension', EXT_PATH);
     console.log('[nai-webapp-dump] mode', opts.headless ? 'headless=new' : 'headed');
 
     const child = await launchBrowser(chromeBin, args);
     try {
         const version = await waitForCdp(port, 20000);
+        await sleep(1500);
         const list = await httpGetJson('http://127.0.0.1:' + port + '/json/list');
         const types = {};
         for (const t of list || []) types[t.type] = (types[t.type] || 0) + 1;
+        const analysis = analyzeExtensionTargets(list);
+        const forTesting = !!(resolved.identity && resolved.identity.forTesting) || resolved.source === 'chrome-for-testing';
         const report = {
-            ok: true,
+            ok: analysis.loaded,
             dryCheck: true,
             chromeBin,
+            chromeSource: resolved.source,
+            chromeForTesting: forTesting,
+            chromeVersion: (resolved.identity && resolved.identity.version) || null,
             browser: version.Browser || version.browser || null,
             protocol: version['Protocol-Version'] || null,
             cdpPort: port,
             headless: !!opts.headless,
+            noSandbox: process.env.DUMP_CHROME_NO_SANDBOX === '1' || process.env.DUMP_CHROME_NO_SANDBOX === 'true',
             display: process.env.DISPLAY || null,
             extensionPath: EXT_PATH,
+            extensionLoaded: analysis.loaded,
+            resourcesSaverTargets: analysis.saver,
+            hangoutsTargets: analysis.hangouts,
             targetTypes: types,
-            note: opts.headless
-                ? 'headless=new launched; confirm extension content scripts actually inject before relying on it'
-                : 'headed Chrome + CDP ready (use xvfb-run when no real display)'
+            note: analysis.loaded
+                ? (opts.headless
+                    ? 'headless=new + extension loaded (CFT path)'
+                    : 'headed Chrome + CDP + extension loaded (xvfb fallback is fine)')
+                : BRANDED_151_NOTE + ' ' + cftInstallHint()
         };
         console.log('[nai-webapp-dump]', JSON.stringify(report));
+        if (!analysis.loaded) {
+            failExtensionNotLoaded(resolved, analysis);
+            process.exitCode = 3;
+        }
     } catch (err) {
         console.error('[nai-webapp-dump] dry-check failed:', err.message);
         if (child._stderrBuf) console.error(child._stderrBuf());
@@ -465,15 +615,20 @@ async function runDryCheck(opts) {
 
 async function runDump(opts) {
     ensureExtension();
-    const chromeBin = resolveChrome();
-    if (!chromeBin) {
-        console.error('[nai-webapp-dump] google-chrome-stable not found (set CHROME_BIN)');
+    const resolved = resolveChrome();
+    if (!resolved) {
+        console.error('[nai-webapp-dump] Chrome not found. ' + cftInstallHint());
+        console.error('[nai-webapp-dump] or set CHROME_BIN to Chrome for Testing');
         process.exit(1);
     }
+    const chromeBin = resolved.bin;
+    warnIfBranded(resolved);
     if (!opts.headless && !process.env.DISPLAY) {
-        console.error('[nai-webapp-dump] DISPLAY unset — run via dump-novelai-webapp.sh (xvfb-run)');
+        console.error('[nai-webapp-dump] DISPLAY unset — run via dump-novelai-webapp.sh (xvfb-run) or DUMP_HEADLESS=1 with CFT');
         process.exit(1);
     }
+    console.log('[nai-webapp-dump] launching', chromeBin, '(' + resolved.source + ')', opts.headless ? 'headless=new' : 'headed');
+    if (resolved.identity && resolved.identity.raw) console.log('[nai-webapp-dump]', resolved.identity.raw);
 
     fs.mkdirSync(opts.out, { recursive: true });
     const profileDir = path.join(opts.out, '.chrome-profile');
@@ -486,6 +641,13 @@ async function runDump(opts) {
     try {
         await waitForCdp(port, 20000);
         await sleep(1500);
+        const list = await httpGetJson('http://127.0.0.1:' + port + '/json/list');
+        const analysis = analyzeExtensionTargets(list);
+        if (!analysis.loaded) {
+            failExtensionNotLoaded(resolved, analysis);
+            process.exitCode = 3;
+            return;
+        }
         const target = await pickPageTarget(port);
         session = new CdpSession(target.webSocketDebuggerUrl);
         await session.connect();
@@ -582,7 +744,10 @@ async function runDump(opts) {
             savedPath,
             outDir: opts.out,
             headless: !!opts.headless,
-            note: 'Dump stays under tmp/ (gitignored). Never commit JWT/recaptcha captures. Prefer xvfb headed Chrome; --headless=new is experimental for extensions.'
+            chromeBin,
+            chromeSource: resolved.source,
+            chromeForTesting: !!(resolved.identity && resolved.identity.forTesting) || resolved.source === 'chrome-for-testing',
+            note: 'Dump stays under tmp/ (gitignored). Never commit JWT/recaptcha captures. Prefer CFT + DUMP_HEADLESS=1; xvfb headed is the fallback if CFT is missing. Containers: DUMP_CHROME_NO_SANDBOX=1.'
         };
         console.log('[nai-webapp-dump]', JSON.stringify(report));
         if (!report.ok) process.exitCode = 2;
@@ -609,12 +774,15 @@ async function main() {
         console.log('  --timeout MS    Overall timeout (default: 120000)');
         console.log('  --port N        CDP port (default: ephemeral)');
         console.log('  --dry-check     Launch browser+extension+CDP only; do not navigate/save');
-        console.log('  --headless      Use --headless=new (extensions may not inject; prefer xvfb)');
-        console.log('  --headed        Force headed mode (default; use dump-novelai-webapp.sh)');
+        console.log('  --headless      Use --headless=new (works with Chrome for Testing)');
+        console.log('  --headed        Force headed mode (xvfb fallback; dump-novelai-webapp.sh)');
         console.log('\nEnv:');
-        console.log('  CHROME_BIN, RESOURCES_SAVER_EXT_PATH, CHROME_EXTRA_ARGS');
-        console.log('  DUMP_HEADLESS=1, DUMP_CHROME_NO_SANDBOX=1, DUMP_CDP_PORT');
-        console.log('\nHeaded Chrome under xvfb-run — use dump-novelai-webapp.sh on Linux.');
+        console.log('  CHROME_BIN                 Chrome for Testing binary (preferred over branded)');
+        console.log('  DUMP_HEADLESS=1            --headless=new (works when Chrome honors --load-extension)');
+        console.log('  DUMP_CHROME_NO_SANDBOX=1   required in many containers');
+        console.log('  DUMP_CFT_DIR, RESOURCES_SAVER_EXT_PATH, CHROME_EXTRA_ARGS, DUMP_CDP_PORT');
+        console.log('\nInstall CFT: ./scripts/nai-webapp-watch/setup-dump-deps.sh --chrome-for-testing');
+        console.log('xvfb headed remains the fallback if CFT is missing.');
         process.exit(0);
     }
     if (opts.dryCheck) await runDryCheck(opts);

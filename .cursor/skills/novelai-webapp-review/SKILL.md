@@ -1,10 +1,11 @@
 ---
 name: novelai-webapp-review
 description: >
-  Monitor NovelAI public web-app assets with a cheap daily hash poll and headed Chrome dump
-  when contracts change. Use for batch2-webapp-watch, /loop 1d ticks, comparing dumps to
-  Dreamscape/NekoAI-JS contracts, and post-deploy API drift review. Never auth generate or
-  commit JWT/recaptcha/tmp captures.
+  Monitor NovelAI public web-app assets with a cheap daily hash poll and Chrome dump
+  when contracts change. Prefer Chrome for Testing + DUMP_HEADLESS=1. Use for
+  batch2-webapp-watch, /loop 1d ticks, comparing dumps to Dreamscape/NekoAI-JS
+  contracts, and post-deploy API drift review. Never auth generate or commit
+  JWT/recaptcha/tmp captures.
 ---
 
 # NovelAI web-app review
@@ -42,11 +43,13 @@ Or JSON for agents:
 node scripts/nai-webapp-watch/poll-hashes.js --json
 ```
 
-2. **If exit code 2** (hashes changed) → **headed dump**:
+2. **If exit code 2** (hashes changed) → **dump** (Chrome for Testing, headless):
 
 ```bash
-./scripts/nai-webapp-watch/dump-novelai-webapp.sh
+DUMP_HEADLESS=1 DUMP_CHROME_NO_SANDBOX=1 ./scripts/nai-webapp-watch/dump-novelai-webapp.sh
 ```
+
+xvfb headed (omit `DUMP_HEADLESS`) is the fallback if CFT is missing. Branded `google-chrome-stable` 151 ignores `--load-extension`.
 
 3. **Diff contracts** in the new zip under `tmp/nai-webapp-dumps/` (gitignored).
 
@@ -92,14 +95,17 @@ Reference captures (local only, **do not commit**): `tmp/v5Gen.txt`, `tmp/v5Sear
 ## ResourcesSaverExt dump method
 
 - Local (gitignored) after setup: `tools/ResourcesSaverExt/unpacked2x/`
-- Setup: `./scripts/nai-webapp-watch/setup-dump-deps.sh`
+- Setup: `./scripts/nai-webapp-watch/setup-dump-deps.sh --chrome-for-testing`
 - Overlay docs: `scripts/nai-webapp-watch/extension-automation/`
 - Upstream pin: `scripts/nai-webapp-watch/extension-automation/SOURCE.txt` (up209d/ResourcesSaverExt @ 2.0.6 / 2fa02b7, GPL-3.0+)
-- Launch: system Chrome (`CHROME_BIN` / google-chrome-stable) with `--load-extension` / `--disable-extensions-except`
+- Browser: **Chrome for Testing** (not branded Chrome). Helper: `install-chrome-for-testing.sh` → `.cache/chrome-for-testing/` (gitignored). Print/export `CHROME_BIN`. Pin major 152 (`DUMP_CFT_MAJOR=152`; verified 152.0.7977.64).
+- Launch: `CHROME_BIN` / cached CFT / last-resort branded Chrome, with `--load-extension` / `--disable-extensions-except`
 - Control: CDP over WebSocket (built into `dump-novelai-webapp.js`; no Playwright)
-- Display: headed + `xvfb-run` required for reliable extension load — not classic `--headless`; `--headless=new` only if verified
+- Headless: `DUMP_HEADLESS=1` uses `--headless=new` and **works** when Chrome honors `--load-extension` (CFT). Branded `google-chrome-stable` **151.0.7922.169 ignores `--load-extension`** (dry-check `background_page` is Hangouts; dump times out). Dry-check fails fast in that case.
+- Sandbox: containers need `DUMP_CHROME_NO_SANDBOX=1`
+- Fallback: xvfb headed (`dump-novelai-webapp.sh` without `DUMP_HEADLESS`) if CFT is missing
 - Automation message: `RESOURCES_SAVER_AUTOMATION_SAVE` / `RESOURCES_SAVER_AUTOMATION_SAVE_RESULT`
-- Dry-check: `./scripts/nai-webapp-watch/dump-novelai-webapp.sh --dry-check`
+- Dry-check: `DUMP_HEADLESS=1 DUMP_CHROME_NO_SANDBOX=1 ./scripts/nai-webapp-watch/dump-novelai-webapp.sh --dry-check`
 
 ## Agent rules
 
