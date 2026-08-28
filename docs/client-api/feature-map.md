@@ -12,7 +12,8 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Feature | REST | WS | Push | Client-only |
 |---------|------|-----|------|-------------|
 | PIN login | `POST /` login | — | — | Login UI, pin modal |
-| Browser-agent login | `GET /agent` → `/app?agent=1` | session-authenticated connection | — | Cacheless startup; service worker bypassed; desktop/windowed boot |
+| Browser-agent login | `GET /agent` → preload `GET /agent/assets.json` → `/app?agent=1`; optional `GET /agent/assets.zip` | session-authenticated connection | — | No service worker; HTTP preload of app-shell CSS/JS; desktop/windowed boot |
+| Agent client notice | `POST /agent/broadcast` | — | `agent_notice` | Toast (`showGlassToast`) or confirmation dialog |
 | Session check | `OPTIONS /app`, `POST /` ping | `connection` | — | localStorage sync |
 | Client performance telemetry | — | `report_client_perf`, `get_telemetry` | — | FPS/long-task/heap and UI-size sampling; Security Center details |
 | Logout | `POST /` logout | disconnect | — | Clear local state |
@@ -36,7 +37,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Reroll (Recast) | `GET /reroll/:filename` (admin) | `reroll_image` | generation pushes | — |
 | Upscale | — | `upscale_image` | `image_upscaling_response` | — |
 | Expand canvas | — | `expand_image`, `preview_expand_image_prompt`, `reroll_expanded_image` | expansion responses | Image bias UI |
-| Enhance / Max Enhance | — | `enhance_image`, `max_enhance_image` | enhance responses, `gallery_updated` | Image viewer one-shot size picker |
+| Enhance | — | `enhance_image` (`scale` 1 / 1.5 / 2 / `max`) | enhance responses, `gallery_updated` | Image viewer one-shot magnitude + upscale amount |
 | Cancel generation | — | `cancel_generation` | — | — |
 | Dynamic / Rentan | — | `resolve_dynamic_context`, `compile_dynamic_generation`, `apply_tendai_preview`, `dynamic_generation_progress` | `dynamic_generation_progress_update` | Carousel UI |
 | Text replacements preview | — | `resolve_text_replacements` | — | — |
@@ -51,7 +52,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Feature | REST | WS | Push | Client-only |
 |---------|------|-----|------|-------------|
 | List gallery | — | `request_gallery` | `gallery_updated` | Virtual scroll |
-| Image metadata | — | `request_image_metadata` | — | — |
+| Image metadata | — | `request_image_metadata`, `request_image_by_index` | — | Studio / viewer; `blurhash` on metadata + gallery rows |
 | Bulk delete | — | `delete_images_bulk` | `gallery_updated` | Selection UI |
 | Pin / scrap | — | `workspace_add_pinned`, `workspace_remove_pinned`, `workspace_*_scrap` | `workspace_updated` | — |
 | Move between workspaces | — | `workspace_move_files` | `workspace_image_added` | — |
@@ -83,6 +84,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | File search | — | `search_files` | `search_results_*` | File search modal |
 | Tag wiki / Grimoire | `GET /private/wiki/*` (cached pages) | `search_tag_wiki`, `get_tag_wiki_page`, `refresh_tag_wiki_page`, `resolve_grimoire_url` | — | DSAP router, panes |
 | Static NovelAI docs | — | `get_static_wiki_site_index`, `get_static_wiki_page` | — | — |
+| Fandom offline wikis | `GET /private/wiki/*` (mirrored assets) | `get_fandom_wiki_index`, `get_fandom_wiki_manager`, `import_fandom_wiki_page`, `delete_fandom_wiki_import`, `get_static_wiki_page` (missing Fandom pages import then serve) | `fandom_wiki_import_progress` | Grimoire Fandom index + Wiki Manager DSAP (`wiki.dyna.dreamscape.jp`); click-through live fetch |
 | Character search | — | `search_characters` | `search_results_update` | Autofill overlay |
 | Character database browser | — | `get_character_db`, `character_db_upsert`, `character_db_delete`, `character_db_rename_copyright`, `character_db_delete_copyright` | — | Tools applet (`characterDbApplet`); SQLite `.cache/characters.db`; import `scripts/import-characters-json.js` |
 | Search index admin | — | `search_index_*` | `search_indexing_status` | — |
@@ -198,7 +200,7 @@ Operational guide: [README-CHILD.md](../../README-CHILD.md).
 | Documented REST route groups | ~25 explicit + static |
 | WS request types (client → server) | **297** |
 | WS server push types (common) | **~50** |
-| Auth flows | **3** (PIN session, Bearer loginKey, dev key — dev middleware exists but is **not mounted** on any route; see [authentication.md](./authentication.md#development-auth)) |
+| Auth flows | **3** (PIN session, Bearer loginKey, loopback `devLoginKey` on `/agent`) |
 
 ---
 

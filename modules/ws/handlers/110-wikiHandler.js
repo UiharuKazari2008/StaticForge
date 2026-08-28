@@ -503,6 +503,108 @@ async function handleGetStaticWikiPage(handler, ws, message, clientInfo, wsServe
  * Returns canonical form, page type hint, and (when available) prebuilt content or instructions.
  * Client Grimoire browser (and future server-prebuilt flows) should prefer this over local string matching.
  */
+function getFandomWikiOrError(handler, ws, message, label) {
+    const fandomWiki = handler.globalResources.getFandomWiki();
+    if (!fandomWiki) {
+        handler.sendError(ws, 'Fandom wiki service not available', label, message.requestId);
+        return null;
+    }
+    return fandomWiki;
+}
+
+async function handleGetFandomWikiIndex(handler, ws, message, clientInfo, wsServer) {
+    try {
+        const fandomWiki = getFandomWikiOrError(handler, ws, message, 'get_fandom_wiki_index');
+        if (!fandomWiki) return;
+        const showAll = message.showAll === true || message.showAll === 'true';
+        const data = fandomWiki.getFandomIndex(handler.globalResources, { showAll });
+        handler.sendToClient(ws, {
+            type: 'get_fandom_wiki_index_response',
+            requestId: message.requestId,
+            data,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('get_fandom_wiki_index:', error);
+        handler.sendError(ws, 'Failed to load Fandom wiki index', error.message, message.requestId);
+    }
+}
+
+async function handleGetFandomWikiManager(handler, ws, message, clientInfo, wsServer) {
+    try {
+        const fandomWiki = getFandomWikiOrError(handler, ws, message, 'get_fandom_wiki_manager');
+        if (!fandomWiki) return;
+        const data = fandomWiki.getManagerState(handler.globalResources);
+        handler.sendToClient(ws, {
+            type: 'get_fandom_wiki_manager_response',
+            requestId: message.requestId,
+            data,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('get_fandom_wiki_manager:', error);
+        handler.sendError(ws, 'Failed to load Fandom wiki manager', error.message, message.requestId);
+    }
+}
+
+async function handleImportFandomWikiPage(handler, ws, message, clientInfo, wsServer) {
+    const { url, followLinks = false, maxPages, group } = message;
+    if (!url) {
+        handler.sendError(ws, 'Missing url parameter', 'import_fandom_wiki_page', message.requestId);
+        return;
+    }
+    try {
+        const fandomWiki = getFandomWikiOrError(handler, ws, message, 'import_fandom_wiki_page');
+        if (!fandomWiki) return;
+        const result = await fandomWiki.importFandomPage(handler.globalResources, {
+            url,
+            followLinks: followLinks === true || followLinks === 'true',
+            maxPages,
+            group,
+            onProgress: (progress) => {
+                handler.sendToClient(ws, {
+                    type: 'fandom_wiki_import_progress',
+                    requestId: message.requestId,
+                    data: progress,
+                    timestamp: new Date().toISOString()
+                });
+            }
+        });
+        handler.sendToClient(ws, {
+            type: 'import_fandom_wiki_page_response',
+            requestId: message.requestId,
+            data: { success: true, ...result },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('import_fandom_wiki_page:', error);
+        handler.sendError(ws, 'Failed to import Fandom page', error.message, message.requestId);
+    }
+}
+
+async function handleDeleteFandomWikiImport(handler, ws, message, clientInfo, wsServer) {
+    const importId = Number(message.importId);
+    if (!importId) {
+        handler.sendError(ws, 'Missing importId parameter', 'delete_fandom_wiki_import', message.requestId);
+        return;
+    }
+    try {
+        const fandomWiki = getFandomWikiOrError(handler, ws, message, 'delete_fandom_wiki_import');
+        if (!fandomWiki) return;
+        const removeChildren = message.removeChildren !== false && message.removeChildren !== 'false';
+        const data = fandomWiki.deleteImport(handler.globalResources, importId, { removeChildren });
+        handler.sendToClient(ws, {
+            type: 'delete_fandom_wiki_import_response',
+            requestId: message.requestId,
+            data: { success: true, ...data },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('delete_fandom_wiki_import:', error);
+        handler.sendError(ws, 'Failed to delete Fandom import', error.message, message.requestId);
+    }
+}
+
 async function handleResolveGrimoireUrl(handler, ws, message, clientInfo, wsServer) {
     const { url } = message;
     if (!url) {
@@ -606,6 +708,10 @@ function registerPackets(handlersCtx) {
     regFn('get_wiki_home', handleGetWikiHome);
     regFn('get_static_wiki_site_index', handleGetStaticWikiSiteIndex);
     regFn('get_static_wiki_page', handleGetStaticWikiPage);
+    regFn('get_fandom_wiki_index', handleGetFandomWikiIndex);
+    regFn('get_fandom_wiki_manager', handleGetFandomWikiManager);
+    regFn('import_fandom_wiki_page', handleImportFandomWikiPage);
+    regFn('delete_fandom_wiki_import', handleDeleteFandomWikiImport);
     regFn('resolve_grimoire_url', handleResolveGrimoireUrl);
 }
 
@@ -617,6 +723,10 @@ module.exports = {
     handleGetWikiHome,
     handleGetStaticWikiSiteIndex,
     handleGetStaticWikiPage,
+    handleGetFandomWikiIndex,
+    handleGetFandomWikiManager,
+    handleImportFandomWikiPage,
+    handleDeleteFandomWikiImport,
     handleResolveGrimoireUrl,
     convertWikiMarkupToHtml,
     postProcessWikiHtml

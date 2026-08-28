@@ -9,6 +9,7 @@ const TEMP_TOKEN_PREFIX = 'sftok_';
 const SCOPE_WS_PACKETS = {
     gallery: [
         'request_gallery', 'request_image_metadata', 'delete_images_bulk',
+        'delete_unupscaled_original',
         'gallery_position_hint', 'send_to_sequenzia_bulk', 'update_image_preset_bulk'
     ],
     generation: [

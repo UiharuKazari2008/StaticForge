@@ -11,6 +11,7 @@ const DSAP_SMF_BRANCH_DATA_MGMT = 'Data Management';
 const DSAP_SMF_BRANCH_IMAGE_GEN = 'Image Generation';
 const DSAP_SMF_BRANCH_DREAMSCAPE = 'Dreamscape';
 const DSAP_SMF_BRANCH_AUTOFILL = 'Autofill Ranking';
+const DSAP_SMF_BRANCH_WIKI = 'Wiki Manager';
 
 const DSAP_SMF_DEFAULT_LOGO = '/static_images/logo_icon.png';
 

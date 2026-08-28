@@ -681,6 +681,87 @@ function getForgeModelFeatures(modelValue) {
     return map && map[key] ? map[key] : null;
 }
 
+function collectImageModelCandidates(image) {
+    if (!image) return [];
+    const embedded = image.metadata || {};
+    const text = image.tEXt || embedded.tEXt || {};
+    const raw = [
+        image.model,
+        image.Model,
+        image.forge_data?.model,
+        embedded.model,
+        embedded.Model,
+        embedded.forge_data?.model,
+        image.source,
+        image.Source,
+        text.Source,
+        embedded.source,
+        embedded.Source
+    ];
+    const candidates = [];
+    for (const value of raw) {
+        if (typeof value !== 'string') continue;
+        const trimmed = value.trim();
+        if (!trimmed || trimmed.toLowerCase() === 'unknown') continue;
+        if (!candidates.includes(trimmed)) candidates.push(trimmed);
+    }
+    return candidates;
+}
+
+function resolveImageModelFeatures(image) {
+    if (!image) return null;
+    const candidates = collectImageModelCandidates(image);
+    const featureMap = globalThis.optionsData?.modelFeatures || {};
+
+    for (const model of candidates) {
+        const directFeatures = getForgeModelFeatures(model);
+        if (directFeatures) return directFeatures;
+
+        const apiFeatures = Object.values(featureMap).find((features) => features?.apiModel === model);
+        if (apiFeatures) return apiFeatures;
+
+        if (model.includes('NovelAI') || model.includes('Stable Diffusion')) {
+            // determineModelFromMetadata: public/scripts/comp/referenceManager.js
+            const detected = determineModelFromMetadata({ source: model });
+            if (detected && String(detected).toLowerCase() !== 'unknown') {
+                const fromSource = getForgeModelFeatures(detected);
+                if (fromSource) return fromSource;
+            }
+        }
+    }
+    return null;
+}
+
+function imageAlreadyMaxEnhanced(image) {
+    if (!image) return false;
+    return !!(image.max_enhance
+        || image.forge_data?.max_enhance
+        || image.metadata?.max_enhance
+        || image.metadata?.forge_data?.max_enhance);
+}
+
+function imageSupportsMaxEnhance(image) {
+    if (!image) return false;
+    const features = resolveImageModelFeatures(image);
+    // Hide only when the model is known not to support Max Enhance.
+    // Gallery tiles and some preview payloads have no model / Source — unknown must stay offered.
+    if (features && features.maxEnhance !== true) return false;
+
+    const embedded = image.metadata || {};
+    const width = Number(image.width || embedded.width || embedded.Width || embedded.actual_width);
+    const height = Number(image.height || embedded.height || embedded.Height || embedded.actual_height);
+    if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+        const area = width * height;
+        const minArea = Number(features?.maxEnhanceMinArea);
+        const maxArea = Number(features?.maxEnhanceMaxArea);
+        const effectiveMin = Number.isFinite(minArea) ? minArea : 1;
+        const effectiveMax = Number.isFinite(maxArea) ? maxArea : 2516582.4;
+        if (area < effectiveMin) return false;
+        if (area >= effectiveMax) return false;
+    }
+    return true;
+}
+
 function getPromptTokenizer(modelValue) {
     const tokenizerType = getForgeModelFeatures(modelValue)?.tokenizer || 't5';
     return tokenizerType === 'qwen' ? qwenTokenizer : t5Tokenizer;
@@ -1247,24 +1328,20 @@ function updatePercentageOverlays() {
  * @returns {number} returns.outputResolution.height - Output height in pixels
  * @returns {string|null} returns.reason - Reason if unavailable, null otherwise
  * @example
- * const upscaleInfo = calculateUpscaleInfo(512, 512, true);
+ * const upscaleInfo = calculateUpscaleInfo(512, 512);
  * if (upscaleInfo.available) {
  *     console.log(`Cost: ${upscaleInfo.cost} Anlas → ${upscaleInfo.outputResolution.width}×${upscaleInfo.outputResolution.height}`);
  * }
  */
 function calculateUpscaleInfo(width, height) {
-    // Constants from the codebase
-    const MAX_PIXELS = 1048576; // 1024 × 1024 maximum input
+    const MAX_PIXELS = 3145728; // Official tooLargeForUpscale / P.xM (3MP). Submit has no 1MP gate.
     const SCALE_FACTOR = 4; // Fixed 4x upscale
-    const OPUS_FREE_LIMIT = 409600; // 640 × 640 pixels
-    
-    // Pricing tiers: [maxPixels, cost]
+    // Official tY (module 61225): first matching tier, subscription unused (no Opus waiver)
     const PRICING_TIERS = [
-        [1048576, 7],  // Up to 1024×1024: 7 Anlas
-        [786432, 5],   // Up to ~886×886: 5 Anlas
-        [524288, 3],   // Up to ~724×724: 3 Anlas
-        [409600, 2],   // Up to 640×640: 2 Anlas
-        [262144, 1]    // Up to 512×512: 1 Anlas
+        [1048576, 1],
+        [1747627, 2],
+        [2446678, 3],
+        [3145728, 4]
     ];
     
     // Calculate total pixels
@@ -1276,24 +1353,17 @@ function calculateUpscaleInfo(width, height) {
             available: false,
             cost: 0,
             outputResolution: { width: 0, height: 0 },
-            reason: `Image too large. Maximum resolution is 1024×1024 pixels (${totalPixels.toLocaleString()} > ${MAX_PIXELS.toLocaleString()})`
+            reason: `Image too large. Maximum input is 3MP (${totalPixels.toLocaleString()} > ${MAX_PIXELS.toLocaleString()})`
         };
     }
     
-    // Calculate cost based on tier
-    let cost = -1; // Default if no tier matches (should never happen)
+    // Calculate cost based on tier (first match)
+    let cost = -1;
     for (const [maxPixels, tierCost] of PRICING_TIERS) {
         if (totalPixels <= maxPixels) {
             cost = tierCost;
+            break;
         }
-    }
-    
-    // Apply Opus free tier
-    // Whether the user has an Opus (Tier 3) subscription
-    if ((window.optionsData?.user?.subscription?.active && 
-        window.optionsData?.user?.subscription?.tier === 3) 
-        && totalPixels <= OPUS_FREE_LIMIT) {
-        cost = 0;
     }
     
     // Calculate output resolution
@@ -2396,13 +2466,15 @@ function applyFormattedText(textarea, lostFocus) {
     text = fixNewlinesMissingLeadingSpace(text);
     text = normalizePromptNewlines(text);
     // trimManagedEmphasisInnerEdges / trimClassicEmphasisInnerEdges /
-    // normalizeManagedEmphasisEditorText: public/scripts/comp/emphasisGroupIdCodec.js
+    // removeEmptyClassicEmphasisGroups / normalizeManagedEmphasisEditorText:
+    // public/scripts/comp/emphasisGroupIdCodec.js
     // Edge commas/spaces survive protectEmphasisSpansForCommaFormat (span is opaque).
     // Only on blur: while focused a trailing inner space may still start the next word.
     if (lostFocus) {
         text = trimClassicEmphasisInnerEdges(text);
+        text = removeEmptyClassicEmphasisGroups(text);
         text = trimManagedEmphasisInnerEdges(text);
-        // Unpaired closes → strip dead ZW → re-trim edges (orphan heal can leave trailing ", ")
+        // Unpaired closes → strip dead ZW → re-trim edges → drop empty ZWSP groups
         text = normalizeManagedEmphasisEditorText(text).text;
     }
     // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js

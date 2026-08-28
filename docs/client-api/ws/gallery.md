@@ -68,6 +68,8 @@ Errors use `type: "error"` via `sendError()` — see [websocket.md](../websocket
 
 ---
 
+---
+
 ## Detailed packets
 
 ### `delete_images_bulk`
@@ -160,6 +162,8 @@ Additional response/push types from handler:
 
 **Success response:** `request_gallery_response`
 
+Each `data.gallery[]` row is a slim list item. `blurhash` is a compact placeholder string (or `null`) from the `images.blurhash` / `gallery_workspace_items.blurhash` columns — used as the gallery cell backdrop before the preview loads.
+
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
 ### `request_image_by_index`
@@ -178,6 +182,8 @@ Additional response/push types from handler:
 
 **Success response:** `request_image_by_index_response`
 
+`data` is the slim gallery row (including `blurhash`) plus nested `metadata` from `extractRelevantFields`. Nested `metadata.blurhash` / `metadata.forge_data.blurhash` match the gallery row when the DB column is filled.
+
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
 ### `request_image_metadata`
@@ -195,6 +201,8 @@ Additional response/push types from handler:
 
 **Success response:** `request_image_metadata_response`
 
+`data` is the Studio-shaped metadata from `extractRelevantFields`. Includes top-level `blurhash` (and `forge_data.blurhash`) from the `images.blurhash` column, falling back to PNG `forge_data` when present. Backfill does not rewrite PNGs.
+
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
 ### `request_url_upload_metadata`
@@ -211,6 +219,8 @@ Additional response/push types from handler:
 | `filename` | Optional |
 
 **Success response:** `request_url_upload_metadata_response`
+
+`data.blurhash` is taken from PNG `forge_data` when present, otherwise encoded from the temp file. Also copied onto `data.metadata.forge_data.blurhash`.
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 

@@ -1143,18 +1143,6 @@ body.editor-open .gallery-container {
     height: 100%;
 }
 
-.gallery-item img {
-    opacity: 1;
-    transition: opacity 0.5s ease-in;
-}
-
-/* Placeholder images are hidden */
-
-.gallery-item.gallery-placeholder img.loading-image {
-    opacity: 0;
-}
-
-
 /* Standalone placeholder elements (for newly created placeholders before resolution) */
 .gallery-placeholder:not(.gallery-item) {
     position: relative;

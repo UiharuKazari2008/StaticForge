@@ -33,11 +33,13 @@ Dreamscape host; the key and `enable_dev` checks still apply.
 1. Read `devLoginKey` locally from `secure.config.json` without printing it.
 2. Set the browser request header `Authorization: Bearer <devLoginKey>`.
 3. Navigate to `http://127.0.0.1:9220/agent`.
-4. The server creates a `dev_admin` session, removes old worker/cache state with
-   a no-store bootstrap page, and opens
+4. The server creates a `dev_admin` session and returns a no-store bootstrap
+   page. That page unregisters existing workers, fetches
+   `GET /agent/assets.json` with the new session cookie, preloads the app-shell
+   CSS/JS URLs into the browser HTTP cache, then opens
    `http://127.0.0.1:9220/app?agent=1`.
 5. Clear the temporary Authorization header after the redirect. The session
-   cookie handles subsequent HTTP and WebSocket authentication.
+   cookie handles subsequent HTTP, WebSocket, and `/agent/assets.*` requests.
 
 For browser tooling that cannot set request headers, the loopback-only fallback
 is `http://127.0.0.1:9220/agent?auth=<URL-encoded-devLoginKey>`. Do not show or
@@ -61,10 +63,40 @@ app-shell navigations.
 - desktop mode is forced at boot and `galleryWindowMode` is set to `windowed`,
   regardless of the browser agent viewport width.
 
-Static app assets already use server-side no-store headers. Do not wait for a
-service worker, install wizard, or offline-cache download in agent sessions.
+Do not wait for a service worker, install wizard, or offline-cache download in
+agent sessions. `/agent` preloads app-shell CSS and JS into a 120-second
+private HTTP cache (`dev_admin` sessions only) so `/app?agent=1` does not
+refetch those files one-by-one. Optional `GET /agent/assets.zip` returns the
+same asset set as a single download for tools; the bootstrap does not unzip it
+because Cache Storage cannot satisfy `<script src>` without a worker.
+
 The successful `/agent` flow lands directly in the authenticated desktop shell;
 do not automate the PIN pad or open `/` first.
+
+`GET /agent` still requires the development key on every request. `GET
+/agent/assets.json` and `GET /agent/assets.zip` accept that key **or** the
+`dev_admin` session created by `/agent`, and remain loopback-only.
+
+## Warn connected users before a restart
+
+`POST /agent/broadcast` uses the same loopback + `enable_dev` + development-key
+gate as `GET /agent`. It pushes `agent_notice` to every WebSocket client as a
+toast or confirmation dialog. Call this before restarting the server or doing
+other work that would interrupt an active user.
+
+```bash
+# Read the key locally; do not print it.
+# display: toast (default) or dialog. level: info | warning | error | success.
+curl -sS -X POST 'http://127.0.0.1:9220/agent/broadcast' \
+  -H "Authorization: Bearer ${DEV_LOGIN_KEY}" \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"The server will restart in a few seconds.","display":"dialog","level":"warning"}'
+```
+
+JSON body: `message` (required, plain text), optional `title`, `display` /
+`mode` (`toast` or `dialog`), `level` / `type`, `timeout` (ms or `false`).
+Success returns `{ success, id, display, level, title, timeout, clients }`.
+Wait a moment after a dialog broadcast so users can see it before you restart.
 
 ## Troubleshooting
 
@@ -72,4 +104,7 @@ do not automate the PIN pad or open `/` first.
 - `404` from `/agent`: `enable_dev` is false.
 - `500` from `/agent`: `devLoginKey` is absent from `secure.config.json`.
 - `401` or `403`: the Authorization header/query key is missing or invalid.
+- `401` from `/agent/assets.json` during bootstrap: the `dev_admin` session
+  cookie was not stored; re-run `/agent` with the key rather than opening
+  `/app` first.
 - Login page appears: authenticate through `/agent`; do not automate the PIN pad.

@@ -79,6 +79,8 @@ Logs: Periscope source `runpod` (`logs/runpod.log`).
 
 ---
 
+---
+
 ## Detailed packets
 
 ### `runpod_pod_start`
@@ -92,7 +94,7 @@ Logs: Periscope source `runpod` (`logs/runpod.log`).
 | Field | Notes |
 |-------|-------|
 | `requestId` | Optional |
-| `podId` | Required |
+| `podId` | Optional |
 
 **Validation errors:**
 - podId is required
@@ -112,7 +114,7 @@ Logs: Periscope source `runpod` (`logs/runpod.log`).
 | Field | Notes |
 |-------|-------|
 | `requestId` | Optional |
-| `podId` | Required |
+| `podId` | Optional |
 
 **Validation errors:**
 - podId is required

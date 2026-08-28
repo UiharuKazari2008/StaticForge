@@ -735,6 +735,62 @@ textarea {
     color: var(--primary-color-light);
 }
 
+/* Filter/sort bar — sibling of the results overlay, not inside the scrolling list */
+.character-autocomplete-view-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: 4px 6px;
+    background: var(--glass-layer-dark-5);
+    border: 1px solid var(--glass-border-3);
+    border-radius: var(--border-radius-lg);
+    box-shadow: 0 8px 25px var(--shadow-secondary);
+    -webkit-backdrop-filter: var(--glass-blur-2, none);
+    backdrop-filter: var(--glass-blur-2, none);
+    z-index: calc(var(--z-dialog) + 1);
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.character-autocomplete-view-bar.hidden {
+    display: none;
+}
+
+.character-autocomplete-view-bar:not(.autofill-view-bar-detached) {
+    position: fixed;
+}
+
+.character-autofill-tool-shell > .character-autocomplete-view-bar,
+.character-autocomplete-view-bar.autofill-view-bar-detached {
+    position: relative;
+    left: auto;
+    top: auto;
+    width: auto;
+    flex: none;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    box-shadow: none;
+    z-index: auto;
+}
+
+.character-autocomplete-view-bar .custom-dropdown {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.character-autocomplete-view-bar .custom-dropdown-btn {
+    width: 100%;
+    min-height: 1.6em;
+    font-size: 0.7rem;
+}
+
+.character-autocomplete-view-bar .custom-dropdown.autofill-view-control-cycled .custom-dropdown-btn {
+    border-color: var(--primary-color);
+    color: var(--primary-color-light);
+}
+
 /* Alt+Y / Alt+U session filter & sort cycle HUD (inside overlay or tool window) */
 .autofill-cycle-hud {
     position: absolute;
@@ -797,6 +853,7 @@ textarea {
     justify-content: space-between;
     align-items: center;
     touch-action: manipulation;
+    cursor: pointer;
 }
 
 .character-autocomplete-item:hover:not(:disabled) {
@@ -1660,6 +1717,7 @@ textarea {
     padding: 8px;
     transition: var(--transition-tray-menu);
     touch-action: manipulation;
+    cursor: pointer;
 }
 
 .enhancer-group:hover:not(:disabled) {

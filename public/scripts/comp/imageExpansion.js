@@ -584,10 +584,11 @@ async function fetchExpansionCompiledPrompt(options = {}) {
             }
         }
         if (toastId) {
+            const reason = data.expansionReasonDisplay ? String(data.expansionReasonDisplay).trim() : '';
             updateGlassToastComplete(toastId, {
                 type: 'success',
                 title: 'Expansion ready',
-                message: data.expansionReasonDisplay ? String(data.expansionReasonDisplay) : 'Use the prompt button to edit before generating.',
+                message: reason || 'Use the prompt button to edit before generating.',
                 showProgress: false
             });
         }
@@ -809,6 +810,11 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
                         }
                     }
                 }
+            } else {
+                const sourceModel = String(metadata?.model || '').toLowerCase();
+                if (sourceModel && sourceModel !== 'unknown') {
+                    selectExpansionModel(sourceModel);
+                }
             }
             
             if (params.steps) document.getElementById('expansionStepsInput').value = params.steps;
@@ -859,8 +865,7 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
             expansionModalData.enableInset = true;
         }
         
-        // Clear advanced inputs
-        document.getElementById('expansionModelInput').value = '';
+        // Clear advanced inputs (model follows the source image when known)
         document.getElementById('expansionStepsInput').value = '';
         document.getElementById('expansionGuidanceInput').value = '';
         document.getElementById('expansionRescaleInput').value = '';
@@ -879,7 +884,13 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
         const modelSelected = document.getElementById('expansionModelSelected');
         const samplerSelected = document.getElementById('expansionSamplerSelected');
         const noiseSchedulerSelected = document.getElementById('expansionNoiseSchedulerSelected');
-        if (modelSelected) modelSelected.textContent = 'Select model...';
+        const sourceModel = String(metadata?.model || '').toLowerCase();
+        if (sourceModel && sourceModel !== 'unknown') {
+            selectExpansionModel(sourceModel);
+        } else {
+            document.getElementById('expansionModelInput').value = '';
+            if (modelSelected) modelSelected.textContent = 'Select model...';
+        }
         if (samplerSelected) samplerSelected.textContent = 'Select sampler...';
         if (noiseSchedulerSelected) noiseSchedulerSelected.textContent = 'Select scheduler...';
     }
@@ -912,7 +923,10 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
         return;
     }
 
-    const prepared = await fetchExpansionCompiledPrompt({ showToast: true, blockUI: true });
+    const prepared = await fetchExpansionCompiledPrompt({
+        showToast: expansionModalData.enableAI === true,
+        blockUI: true
+    });
     if (!prepared.ok) {
         if (prepared.error && !prepared.cancelled) {
             const msg = prepared.error.message || 'Could not compile expansion prompt';
@@ -931,33 +945,415 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
     }
 }
 
-async function openEnhanceModal(imageFilename, imageDimensions = null) {
+function getEnhanceSourceFilename(image) {
+    return image?.upscaled || image?.original || image?.filename || null;
+}
+
+function getEnhanceSourceDimensions(image) {
+    if (!image) return null;
+    const embedded = image.metadata || {};
+    const width = Number(image.width || embedded.width || embedded.Width || embedded.actual_width);
+    const height = Number(image.height || embedded.height || embedded.Height || embedded.actual_height);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+    return { width, height };
+}
+
+function getEnhanceMagnitudeOptions() {
+    // MAGNITUDE_PRESETS: public/scripts/comp/utilities.js
+    return Object.keys(MAGNITUDE_PRESETS)
+        .map((key) => Number(key))
+        .filter((value) => Number.isFinite(value))
+        .sort((a, b) => a - b)
+        .map((value) => ({
+            value: value.toFixed(1),
+            name: value.toFixed(1)
+        }));
+}
+
+function getEnhanceScaleOptions(image) {
+    const options = [
+        { value: '1', name: '1×' },
+        { value: '1.5', name: '1.5×' },
+        { value: '2', name: '2×' }
+    ];
+    // imageSupportsMaxEnhance / imageAlreadyMaxEnhanced: public/scripts/comp/utilities.js
+    if (imageSupportsMaxEnhance(image) && !imageAlreadyMaxEnhanced(image)) {
+        options.push({ value: 'max', name: 'Max' });
+    }
+    return options;
+}
+
+function resolveEnhanceStrengthNoise(magnitudeValue, strengthRaw, noiseRaw) {
+    const strength = strengthRaw === '' ? NaN : Number(strengthRaw);
+    const noise = noiseRaw === '' ? NaN : Number(noiseRaw);
+    if (Number.isFinite(strength) && Number.isFinite(noise)) {
+        return { strength, noise };
+    }
+    // MAGNITUDE_PRESETS: public/scripts/comp/utilities.js
+    const preset = MAGNITUDE_PRESETS[Number(magnitudeValue)];
+    return {
+        strength: Number.isFinite(strength) ? strength : (preset?.strength ?? 0.5),
+        noise: Number.isFinite(noise) ? noise : (preset?.noise ?? 0)
+    };
+}
+
+function collectEnhanceDialogValues(dialog) {
+    if (!dialog) return null;
+    const scale = dialog.querySelector('#enhanceScaleHidden')?.value || '2';
+    const magnitude = dialog.querySelector('#enhanceMagnitudeHidden')?.value || '3.0';
+    const strengthRaw = dialog.querySelector('#enhanceStrengthInput')?.value ?? '';
+    const noiseRaw = dialog.querySelector('#enhanceNoiseInput')?.value ?? '';
+    const { strength, noise } = resolveEnhanceStrengthNoise(magnitude, strengthRaw, noiseRaw);
+    const values = { scale, magnitude, strength, noise };
+    const optionalNumberFields = [
+        ['steps', '#enhanceStepsInput'],
+        ['guidance', '#enhanceGuidanceInput'],
+        ['rescale', '#enhanceRescaleInput'],
+        ['seed', '#enhanceSeedInput']
+    ];
+    for (const [key, selector] of optionalNumberFields) {
+        const raw = dialog.querySelector(selector)?.value;
+        if (raw === '' || raw == null) continue;
+        const parsed = Number(raw);
+        if (Number.isFinite(parsed)) values[key] = parsed;
+    }
+    const sampler = dialog.querySelector('#enhanceSamplerHidden')?.value;
+    if (sampler) values.sampler = sampler;
+    const noiseScheduler = dialog.querySelector('#enhanceNoiseSchedulerHidden')?.value;
+    if (noiseScheduler) values.noiseScheduler = noiseScheduler;
+    const model = dialog.querySelector('#enhanceModelHidden')?.value;
+    if (model) values.model = model;
+    return values;
+}
+
+function updateEnhanceScaleHint(scaleValue) {
+    const hint = document.getElementById('enhanceScaleHint');
+    if (!hint) return;
+    hint.textContent = scaleValue === 'max'
+        ? 'Max preserves the source width and height and creates a new gallery image.'
+        : 'Enhance reprocesses the image with its prompt and saves a new gallery image.';
+}
+
+function applyEnhanceMagnitudeOverlays(magnitudeValue) {
+    // MAGNITUDE_PRESETS: public/scripts/comp/utilities.js
+    const preset = MAGNITUDE_PRESETS[Number(magnitudeValue)] || MAGNITUDE_PRESETS[3] || MAGNITUDE_PRESETS['3.0'];
+    const strengthInput = document.getElementById('enhanceStrengthInput');
+    const noiseInput = document.getElementById('enhanceNoiseInput');
+    const strengthOverlay = document.getElementById('enhanceStrengthOverlay');
+    const noiseOverlay = document.getElementById('enhanceNoiseOverlay');
+    if (strengthInput?.value === '' && strengthOverlay && preset) {
+        strengthOverlay.textContent = `${(preset.strength * 100).toFixed(0)}%`;
+        strengthInput.parentElement?.classList.add('inherited');
+    }
+    if (noiseInput?.value === '' && noiseOverlay && preset) {
+        noiseOverlay.textContent = `${(preset.noise * 100).toFixed(0)}%`;
+        noiseInput.parentElement?.classList.add('inherited');
+    }
+}
+
+function wireEnhanceDialogDropdown(prefix, renderFn, getSelectedValue) {
+    const container = document.getElementById(`${prefix}Dropdown`);
+    const button = document.getElementById(`${prefix}DropdownBtn`);
+    const menu = document.getElementById(`${prefix}DropdownMenu`);
+    if (!container || !button || !menu) return;
+    setupDropdown(container, button, menu, renderFn, getSelectedValue, { preventFocusTransfer: true });
+}
+
+function wireEnhancePercentInput(inputId, overlayId) {
+    const input = document.getElementById(inputId);
+    const overlay = document.getElementById(overlayId);
+    if (!input || !overlay) return;
+    input.addEventListener('input', () => {
+        if (input.value === '') {
+            overlay.textContent = inputId === 'enhanceRescaleInput' ? '0%' : overlay.textContent;
+            return;
+        }
+        const value = Number(input.value);
+        if (!Number.isFinite(value)) return;
+        overlay.textContent = `${(value * 100).toFixed(0)}%`;
+        input.parentElement?.classList.remove('inherited');
+    });
+}
+
+function wireEnhanceDialog(dialog, scaleOptions, magnitudeOptions) {
+    const scaleHidden = document.getElementById('enhanceScaleHidden');
+    const scaleSelected = document.getElementById('enhanceScaleSelected');
+    const magnitudeHidden = document.getElementById('enhanceMagnitudeHidden');
+    const magnitudeSelected = document.getElementById('enhanceMagnitudeSelected');
+
+    const selectScale = (value) => {
+        if (scaleHidden) scaleHidden.value = value;
+        if (scaleSelected) {
+            scaleSelected.textContent = scaleOptions.find((option) => option.value === value)?.name || '2×';
+        }
+        updateEnhanceScaleHint(value);
+    };
+    const selectMagnitude = (value) => {
+        if (magnitudeHidden) magnitudeHidden.value = value;
+        if (magnitudeSelected) {
+            magnitudeSelected.textContent = magnitudeOptions.find((option) => option.value === value)?.name || '3.0';
+        }
+        applyEnhanceMagnitudeOverlays(value);
+    };
+
+    wireEnhanceDialogDropdown('enhanceScale', (selectedValue) => {
+        const menu = document.getElementById('enhanceScaleDropdownMenu');
+        const button = document.getElementById('enhanceScaleDropdownBtn');
+        if (!menu || !button) return;
+        renderSimpleDropdown(
+            menu,
+            scaleOptions,
+            'value',
+            'name',
+            selectScale,
+            () => closeDropdown(menu, button),
+            selectedValue
+        );
+    }, () => scaleHidden?.value || '2');
+
+    wireEnhanceDialogDropdown('enhanceMagnitude', (selectedValue) => {
+        const menu = document.getElementById('enhanceMagnitudeDropdownMenu');
+        const button = document.getElementById('enhanceMagnitudeDropdownBtn');
+        if (!menu || !button) return;
+        renderSimpleDropdown(
+            menu,
+            magnitudeOptions,
+            'value',
+            'name',
+            selectMagnitude,
+            () => closeDropdown(menu, button),
+            selectedValue
+        );
+    }, () => magnitudeHidden?.value || '3.0');
+
+    const selectModel = (value) => {
+        const hidden = document.getElementById('enhanceModelHidden');
+        const selected = document.getElementById('enhanceModelSelected');
+        if (hidden) hidden.value = value;
+        if (selected) {
+            let modelName = value;
+            for (const group of modelGroups) {
+                const model = group.options.find((opt) => opt.value === value);
+                if (model) {
+                    modelName = model.name;
+                    break;
+                }
+            }
+            selected.textContent = modelName || 'Inherited';
+        }
+    };
+    wireEnhanceDialogDropdown('enhanceModel', (selectedValue) => {
+        const menu = document.getElementById('enhanceModelDropdownMenu');
+        if (!menu) return;
+        renderGroupedDropdown(
+            menu,
+            modelGroups,
+            selectModel,
+            () => {
+                const button = document.getElementById('enhanceModelDropdownBtn');
+                closeDropdown(menu, button);
+            },
+            selectedValue,
+            (opt) => `<span>${opt.name}</span>`,
+            { preventFocusTransfer: true }
+        );
+    }, () => document.getElementById('enhanceModelHidden')?.value || '');
+
+    const selectSampler = (value) => {
+        const hidden = document.getElementById('enhanceSamplerHidden');
+        const selected = document.getElementById('enhanceSamplerSelected');
+        if (hidden) hidden.value = value;
+        if (selected) {
+            const sampler = SAMPLER_MAP.find((entry) => entry.meta === value);
+            selected.textContent = sampler ? sampler.display : (value || 'Inherited');
+        }
+    };
+    wireEnhanceDialogDropdown('enhanceSampler', (selectedValue) => {
+        const menu = document.getElementById('enhanceSamplerDropdownMenu');
+        const button = document.getElementById('enhanceSamplerDropdownBtn');
+        if (!menu || !button) return;
+        renderSimpleDropdown(
+            menu,
+            SAMPLER_MAP,
+            'meta',
+            'display',
+            selectSampler,
+            () => closeDropdown(menu, button),
+            selectedValue
+        );
+    }, () => document.getElementById('enhanceSamplerHidden')?.value || '');
+
+    const selectNoiseScheduler = (value) => {
+        const hidden = document.getElementById('enhanceNoiseSchedulerHidden');
+        const selected = document.getElementById('enhanceNoiseSchedulerSelected');
+        if (hidden) hidden.value = value;
+        if (selected) {
+            const noise = NOISE_MAP.find((entry) => entry.meta === value);
+            selected.textContent = noise ? noise.display : (value || 'Inherited');
+        }
+    };
+    wireEnhanceDialogDropdown('enhanceNoiseScheduler', (selectedValue) => {
+        const menu = document.getElementById('enhanceNoiseSchedulerDropdownMenu');
+        const button = document.getElementById('enhanceNoiseSchedulerDropdownBtn');
+        if (!menu || !button) return;
+        renderSimpleDropdown(
+            menu,
+            NOISE_MAP,
+            'meta',
+            'display',
+            selectNoiseScheduler,
+            () => closeDropdown(menu, button),
+            selectedValue
+        );
+    }, () => document.getElementById('enhanceNoiseSchedulerHidden')?.value || '');
+
+    wireEnhancePercentInput('enhanceStrengthInput', 'enhanceStrengthOverlay');
+    wireEnhancePercentInput('enhanceNoiseInput', 'enhanceNoiseOverlay');
+    wireEnhancePercentInput('enhanceRescaleInput', 'enhanceRescaleOverlay');
+
+    const advancedToggle = document.getElementById('enhanceAdvancedToggle');
+    const advancedSection = document.getElementById('enhanceAdvancedOptions');
+    if (advancedToggle && advancedSection) {
+        advancedToggle.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const isHidden = advancedSection.classList.contains('hidden');
+            advancedSection.classList.toggle('hidden', !isHidden);
+            advancedToggle.classList.toggle('active', isHidden);
+            // clampConfirmationDialogWithinViewportSync: public/scripts/comp/confirmationDialog.js
+            clampConfirmationDialogWithinViewportSync();
+        });
+    }
+
+    applyEnhanceMagnitudeOverlays(magnitudeHidden?.value || '3.0');
+    updateEnhanceScaleHint(scaleHidden?.value || '2');
+}
+
+function openEnhanceFromImage(image) {
+    const filename = getEnhanceSourceFilename(image);
+    if (!filename) {
+        showGlassToast('error', 'Enhance', 'No image filename provided', false, 5000, '<i class="nai-cross"></i>');
+        return;
+    }
+    return openEnhanceModal(filename, getEnhanceSourceDimensions(image), image);
+}
+
+async function openEnhanceModal(imageFilename, imageDimensions = null, image = null) {
     if (!imageFilename) {
         showGlassToast('error', 'Enhance', 'No image filename provided', false, 5000, '<i class="nai-cross"></i>');
         return;
     }
 
-    const scaleOptions = [
-        { value: '1', name: '1×' },
-        { value: '1.5', name: '1.5×' },
-        { value: '2', name: '2×' }
-    ];
-    let selectedEnhanceScale = 1.5;
+    const scaleOptions = getEnhanceScaleOptions(image);
+    const magnitudeOptions = getEnhanceMagnitudeOptions();
     const dimensionText = imageDimensions?.width && imageDimensions?.height
         ? `${imageDimensions.width} × ${imageDimensions.height}`
         : 'the source dimensions';
     const confirmation = showConfirmationDialog(
-        `<div class="form-group">
+        `<div class="enhance-dialog">
             <p>Enhance this image from ${dimensionText}?</p>
-            <label>Enhance size</label>
-            <div id="enhanceScaleDropdown" class="custom-dropdown dropup">
-                <button type="button" id="enhanceScaleDropdownBtn" class="custom-dropdown-btn hover-show colored">
-                    <span id="enhanceScaleSelected">1.5×</span>
-                </button>
-                <div id="enhanceScaleDropdownMenu" class="custom-dropdown-menu hidden"></div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Magnitude</label>
+                    <div id="enhanceMagnitudeDropdown" class="custom-dropdown dropup">
+                        <button type="button" id="enhanceMagnitudeDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                            <span id="enhanceMagnitudeSelected">3.0</span>
+                        </button>
+                        <div id="enhanceMagnitudeDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                    </div>
+                    <input type="hidden" id="enhanceMagnitudeHidden" value="3.0">
+                </div>
+                <div class="form-group">
+                    <label>Upscale amount</label>
+                    <div id="enhanceScaleDropdown" class="custom-dropdown dropup">
+                        <button type="button" id="enhanceScaleDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                            <span id="enhanceScaleSelected">2×</span>
+                        </button>
+                        <div id="enhanceScaleDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                    </div>
+                    <input type="hidden" id="enhanceScaleHidden" value="2">
+                </div>
+                <div class="form-group enhance-advanced-toggle-group">
+                    <label>&nbsp;</label>
+                    <button type="button" id="enhanceAdvancedToggle" class="btn-secondary" title="Toggle Advanced Controls">
+                        <i class="fas fa-wrench"></i>
+                    </button>
+                </div>
             </div>
-            <input type="hidden" id="enhanceScaleHidden" value="1.5">
-            <small>Enhance reprocesses the image with its prompt and saves a new gallery image.</small>
+            <div id="enhanceAdvancedOptions" class="stage-advanced-controls hidden">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Strength</label>
+                        <div class="percentage-input-container hover-show colored inherited">
+                            <span id="enhanceStrengthOverlay" class="percentage-input-overlay">50%</span>
+                            <input type="number" id="enhanceStrengthInput" class="form-control" min="0.00" max="1.00" step="0.01">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Noise</label>
+                        <div class="percentage-input-container hover-show colored inherited">
+                            <span id="enhanceNoiseOverlay" class="percentage-input-overlay">0%</span>
+                            <input type="number" id="enhanceNoiseInput" class="form-control" min="0.00" max="1.00" step="0.01">
+                        </div>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Steps</label>
+                        <input type="number" id="enhanceStepsInput" class="form-control hover-show colored" min="1" max="50" placeholder="Inherited">
+                    </div>
+                    <div class="form-group">
+                        <label>Guidance</label>
+                        <input type="number" id="enhanceGuidanceInput" class="form-control hover-show colored" min="0" max="10" step="0.1" placeholder="Inherited">
+                    </div>
+                    <div class="form-group">
+                        <label>Rescale</label>
+                        <div class="percentage-input-container hover-show colored">
+                            <span id="enhanceRescaleOverlay" class="percentage-input-overlay">0%</span>
+                            <input type="number" id="enhanceRescaleInput" class="form-control" min="0" max="1" step="0.01" placeholder="Inherited">
+                        </div>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Sampler</label>
+                        <div id="enhanceSamplerDropdown" class="custom-dropdown dropup">
+                            <button type="button" id="enhanceSamplerDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                <span id="enhanceSamplerSelected">Inherited</span>
+                            </button>
+                            <div id="enhanceSamplerDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                        </div>
+                        <input type="hidden" id="enhanceSamplerHidden" value="">
+                    </div>
+                    <div class="form-group">
+                        <label>Noise Scheduler</label>
+                        <div id="enhanceNoiseSchedulerDropdown" class="custom-dropdown dropup">
+                            <button type="button" id="enhanceNoiseSchedulerDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                <span id="enhanceNoiseSchedulerSelected">Inherited</span>
+                            </button>
+                            <div id="enhanceNoiseSchedulerDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                        </div>
+                        <input type="hidden" id="enhanceNoiseSchedulerHidden" value="">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Model</label>
+                        <div id="enhanceModelDropdown" class="custom-dropdown dropup">
+                            <button type="button" id="enhanceModelDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                <span id="enhanceModelSelected">Inherited</span>
+                            </button>
+                            <div id="enhanceModelDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                        </div>
+                        <input type="hidden" id="enhanceModelHidden" value="">
+                    </div>
+                    <div class="form-group">
+                        <label>Seed</label>
+                        <input type="number" id="enhanceSeedInput" class="form-control hover-show colored" placeholder="Random">
+                    </div>
+                </div>
+            </div>
+            <small id="enhanceScaleHint">Enhance reprocesses the image with its prompt and saves a new gallery image.</small>
         </div>`,
         [
             { text: 'Enhance', value: true, className: 'btn-primary', icon: 'fas fa-wand-magic-sparkles' },
@@ -967,55 +1363,45 @@ async function openEnhanceModal(imageFilename, imageDimensions = null) {
         {
             title: 'Enhance',
             icon: 'fas fa-wand-magic-sparkles',
-            width: 440
+            width: 520,
+            onDialogReady: (signal) => {
+                const dialogEl = document.getElementById('confirmationDialog');
+                if (!dialogEl) return;
+                dialogEl.classList.add('enhance-dialog-modal');
+                if (signal) {
+                    signal.addEventListener('abort', () => dialogEl.classList.remove('enhance-dialog-modal'), { once: true });
+                }
+                wireEnhanceDialog(dialogEl, scaleOptions, magnitudeOptions);
+            },
+            resolveValue: (value, dialogEl) => {
+                dialogEl?.classList.remove('enhance-dialog-modal');
+                if (!value) return false;
+                return collectEnhanceDialogValues(dialogEl);
+            }
         }
     );
-
-    setTimeout(() => {
-        const container = document.getElementById('enhanceScaleDropdown');
-        const button = document.getElementById('enhanceScaleDropdownBtn');
-        const menu = document.getElementById('enhanceScaleDropdownMenu');
-        const selected = document.getElementById('enhanceScaleSelected');
-        const hidden = document.getElementById('enhanceScaleHidden');
-        if (!container || !button || !menu || !selected || !hidden) return;
-
-        const selectScale = (value) => {
-            hidden.value = value;
-            selectedEnhanceScale = Number(value);
-            selected.textContent = scaleOptions.find((option) => option.value === value)?.name || '1.5×';
-        };
-        const renderScaleOptions = (value) => {
-            renderSimpleDropdown(
-                menu,
-                scaleOptions,
-                'value',
-                'name',
-                selectScale,
-                () => closeDropdown(menu, button),
-                value
-            );
-        };
-        setupDropdown(container, button, menu, renderScaleOptions, () => hidden.value);
-    }, 0);
 
     const confirmed = await confirmation;
     if (!confirmed) return;
 
-    const selectedScale = selectedEnhanceScale;
+    const enhanceOptions = confirmed;
+    const isMax = enhanceOptions.scale === 'max';
+    const scaleLabel = isMax ? 'Max' : `${enhanceOptions.scale}×`;
     const enhanceToastId = showGlassToast(
         'info',
-        'Enhancing',
-        `Enhancing image at ${selectedScale}×...`,
+        isMax ? 'Max Enhancing' : 'Enhancing',
+        isMax ? 'Enhancing image at its source dimensions...' : `Enhancing image at ${scaleLabel}...`,
         true,
         false,
         '<i class="fas fa-wand-magic-sparkles"></i>'
     );
 
     try {
-        const result = await wsClient.enhanceImage(imageFilename, selectedScale, activeWorkspace || null);
+        const { scale, ...rest } = enhanceOptions;
+        const result = await wsClient.enhanceImage(imageFilename, scale, activeWorkspace || null, rest);
         updateGlassToastComplete(enhanceToastId, {
             type: 'success',
-            title: 'Enhance Complete',
+            title: isMax ? 'Max Enhance Complete' : 'Enhance Complete',
             message: 'Enhanced image saved to the gallery.',
             customIcon: '<i class="fas fa-wand-magic-sparkles"></i>',
             showProgress: false
@@ -1035,75 +1421,7 @@ async function openEnhanceModal(imageFilename, imageDimensions = null) {
     } catch (error) {
         updateGlassToastComplete(enhanceToastId, {
             type: 'error',
-            title: 'Enhance Failed',
-            message: error.message || 'Failed to enhance image',
-            customIcon: '<i class="nai-cross"></i>',
-            showProgress: false
-        });
-    }
-}
-
-async function openMaxEnhanceModal(imageFilename, imageDimensions = null) {
-    if (!imageFilename) {
-        showGlassToast('error', 'Max Enhance', 'No image filename provided', false, 5000, '<i class="nai-cross"></i>');
-        return;
-    }
-
-    const dimensionText = imageDimensions?.width && imageDimensions?.height
-        ? `${imageDimensions.width} × ${imageDimensions.height}`
-        : 'the source dimensions';
-    const confirmed = await showConfirmationDialog(
-        `<div class="form-group">
-            <p>Enhance this image at ${dimensionText}?</p>
-            <small>Max Enhance preserves the source width and height and creates a new gallery image.</small>
-        </div>`,
-        [
-            { text: 'Max Enhance', value: true, className: 'btn-primary', icon: 'fas fa-wand-magic-sparkles' },
-            { text: 'Cancel', value: false, className: 'btn-secondary' }
-        ],
-        null,
-        {
-            title: 'Max Enhance',
-            icon: 'fas fa-wand-magic-sparkles',
-            width: 440
-        }
-    );
-    if (!confirmed) return;
-
-    const enhanceToastId = showGlassToast(
-        'info',
-        'Max Enhancing',
-        'Enhancing image at its source dimensions...',
-        true,
-        false,
-        '<i class="fas fa-wand-magic-sparkles"></i>'
-    );
-
-    try {
-        const result = await wsClient.maxEnhanceImage(imageFilename, activeWorkspace || null);
-        updateGlassToastComplete(enhanceToastId, {
-            type: 'success',
-            title: 'Max Enhance Complete',
-            message: 'Enhanced image saved to the gallery.',
-            customIcon: '<i class="fas fa-wand-magic-sparkles"></i>',
-            showProgress: false
-        });
-
-        const imageSrc = localGalleryImageUrl(result.filename);
-        const mockResponse = {
-            headers: {
-                get: (headerName) => {
-                    if (headerName === 'X-Generated-Filename') return result.filename;
-                    if (headerName === 'X-Seed') return result.seed;
-                    return null;
-                }
-            }
-        };
-        await handleImageResult(imageSrc, undefined, result.seed, mockResponse, result.metadata);
-    } catch (error) {
-        updateGlassToastComplete(enhanceToastId, {
-            type: 'error',
-            title: 'Max Enhance Failed',
+            title: isMax ? 'Max Enhance Failed' : 'Enhance Failed',
             message: error.message || 'Failed to enhance image',
             customIcon: '<i class="nai-cross"></i>',
             showProgress: false

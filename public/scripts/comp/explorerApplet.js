@@ -5,7 +5,9 @@ const EXPLORER_DEFAULT_VIEW_KEY = 'explorerDefaultViewMode';
 
 const EXPLORER_IMAGE_GALLERY_CONTEXT_ACTIONS = new Set([
     'toggle-favorite', 'reroll', 'download', 'copy', 'open-in-window', 'modify',
-    'expand-canvas', 'upscale', 'view-image-data', 'start-chat', 'publish-to-explorer',
+    'expand-canvas', 'enhance', 'upscale', 'view-image-data',
+    'copy-original', 'download-original', 'expand-canvas-original', 'delete-original',
+    'start-chat', 'publish-to-explorer',
     'set-wallpaper', 'jump-to-image', 'create-reference', 'create-desktop-shortcut',
     'scrap', 'delete', 'move-to-workspace'
 ]);
@@ -538,6 +540,7 @@ class ExplorerApplet {
                     { icon: 'fas fa-external-link-alt', text: 'Open in Window', action: 'open-in-window', hideOnBreakpoint: 'small-mobile' },
                     { icon: 'fas fa-compass-drafting', text: 'Edit in DreamStudio', action: 'modify', hideOnBreakpoint: 'small-mobile' },
                     { icon: 'mdi mdi-1-25 mdi-relative-scale', text: 'Expand Canvas', action: 'expand-canvas' },
+                    { icon: 'fas fa-wand-magic-sparkles', text: 'Enhance', action: 'enhance' },
                     {
                         icon: 'nai-upscale',
                         text: 'Upscale',
@@ -565,6 +568,7 @@ class ExplorerApplet {
                             }
                         }
                     },
+                    buildUnupscaledOriginalContextMenuItem(() => this._explorerContextGalleryImage() || image),
                     {
                         icon: 'fas fa-glasses-round',
                         text: 'Properties',
@@ -1330,8 +1334,17 @@ class ExplorerApplet {
             case 'expand-canvas':
                 expandCanvasFromGallery(image);
                 break;
+            case 'enhance':
+                openEnhanceFromImage(image);
+                break;
             case 'upscale':
                 if (!image.upscaled) upscaleImage(image, event);
+                break;
+            case 'copy-original':
+            case 'download-original':
+            case 'expand-canvas-original':
+            case 'delete-original':
+                handleUnupscaledOriginalContextAction(action, image, event);
                 break;
             case 'start-chat':
                 if (chatSystem) chatSystem.openChatModal(filename, image.characterName || null);

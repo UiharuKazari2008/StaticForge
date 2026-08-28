@@ -1,23 +1,12 @@
 /**
- * Download Missing Wiki Pages from Danbooru and e621
- * 
- * This script:
- * 1. Reads tags_missing_wikis.json
- * 2. Fetches wiki pages from Danbooru or e621 API
- * 3. Extracts raw DText body content
- * 4. Saves to JSON files that can be loaded into the database
- * 
- * Features:
- * - Rate limiting (250ms between requests)
- * - Progress logging
- * - Error handling and retry logic
- * - Skips already downloaded files
- * - Supports both Danbooru and e621 APIs
- * - Handles both tags and wiki pages
- * 
- * Output format:
- * - danbooru_missing_wikis.json - Array of wiki objects with title, body, created_at, updated_at
- * - e621_missing_wikis.json - Array of wiki objects with title, body, created_at, updated_at
+ * Download missing wiki pages and load them into the existing tag database.
+ * Does not recreate tag_wiki.db.
+ *
+ * Usage:
+ *   node scripts/download-missing-wikis.js
+ *
+ * Resume: already-saved JSON rows and wikis already in the DB are skipped.
+ * Progress is flushed every 20 downloads and on Ctrl+C.
  */
 
 const fs = require('fs');
@@ -29,18 +18,30 @@ const config = require('../config');
 // Configuration
 const MISSING_WIKIS_FILE = path.join(__dirname, '..', 'data', 'tags_missing_wikis.json');
 const OUTPUT_DIR = path.join(__dirname, '..', 'data');
+const DANBOORU_WIKIS_PATH = path.join(OUTPUT_DIR, 'danbooru_missing_wikis.json');
+const E621_WIKIS_PATH = path.join(OUTPUT_DIR, 'e621_missing_wikis.json');
+const DATABASE_PATH = path.join(__dirname, '..', '.cache', 'tag_wiki.db');
 const DANBOORU_API_BASE = 'https://danbooru.donmai.us';
 const E621_API_BASE = 'https://e621.net';
 const SOURCE_DANBOORU = 1;
 const SOURCE_E621 = 2;
+const DANBOORU_ALIAS_CSV = path.join(__dirname, '..', 'data', 'dumps', 'danbooru_tag_aliases.csv');
+const E621_ALIAS_CSV = path.join(__dirname, '..', 'data', 'dumps', 'e621_tag_aliases.csv');
+const FETCH_CONCURRENCY = 4;
+const SAVE_EVERY = 20;
 
 // Rate limiting: wait 250ms between requests
 const RATE_LIMIT_DELAY = 250;
 // Retry configuration
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000;
-// Consecutive failure limit
-const MAX_CONSECUTIVE_FAILURES = 10;
+
+const progress = {
+    danbooru: [],
+    e621: []
+};
+let shuttingDown = false;
+let progressReady = false;
 
 /**
  * Sleep for specified milliseconds
@@ -54,9 +55,160 @@ function sleep(ms) {
  */
 function normalizeTitleForUrl(title) {
     if (!title) return '';
-    let normalized = title.trim();
+    let normalized = decodeItemTitle(title);
     normalized = normalized.replace(/^(?:species|invalid):/i, '');
     return normalized.replace(/\s+/g, '_').trim();
+}
+
+function decodeItemTitle(title) {
+    let value = String(title || '').trim();
+    for (let i = 0; i < 2; i++) {
+        try {
+            const decoded = decodeURIComponent(value);
+            if (decoded === value) break;
+            value = decoded;
+        } catch (_) {
+            break;
+        }
+    }
+    return value;
+}
+
+function parseCsvLine(line) {
+    const fields = [];
+    let field = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (inQuotes) {
+            if (char === '"') {
+                if (line[i + 1] === '"') {
+                    field += '"';
+                    i++;
+                } else {
+                    inQuotes = false;
+                }
+            } else {
+                field += char;
+            }
+        } else if (char === '"') {
+            inQuotes = true;
+        } else if (char === ',') {
+            fields.push(field);
+            field = '';
+        } else {
+            field += char;
+        }
+    }
+    fields.push(field);
+    return fields;
+}
+
+function loadAliasMap(csvPath) {
+    const map = new Map();
+    if (!csvPath || !fs.existsSync(csvPath)) return map;
+    const lines = fs.readFileSync(csvPath, 'utf8').split(/\r?\n/);
+    if (!lines.length) return map;
+    const headers = parseCsvLine(lines[0]).map((h) => h.trim().toLowerCase());
+    const antecedentIdx = headers.includes('antecedent_name')
+        ? headers.indexOf('antecedent_name')
+        : headers.indexOf('alias');
+    const consequentIdx = headers.includes('consequent_name')
+        ? headers.indexOf('consequent_name')
+        : headers.indexOf('tag');
+    const statusIdx = headers.indexOf('status');
+    if (antecedentIdx < 0 || consequentIdx < 0) return map;
+    for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
+        const cols = parseCsvLine(lines[i]);
+        const status = (cols[statusIdx] || '').toLowerCase();
+        if (statusIdx >= 0 && status && status !== 'active' && status !== 't' && status !== 'true') {
+            continue;
+        }
+        const from = (cols[antecedentIdx] || '').trim().toLowerCase();
+        const to = (cols[consequentIdx] || '').trim();
+        if (from && to) map.set(from, to);
+    }
+    console.log(`   aliases: ${map.size} from ${path.basename(csvPath)}`);
+    return map;
+}
+
+function resolveAliasTitle(title, aliasMap) {
+    let key = normalizeTitleForUrl(title).toLowerCase();
+    if (!aliasMap || aliasMap.size === 0) return key;
+    for (let i = 0; i < 5; i++) {
+        const next = aliasMap.get(key);
+        if (!next) break;
+        const normalizedNext = String(next).replace(/\s+/g, '_').toLowerCase();
+        if (normalizedNext === key) break;
+        key = normalizedNext;
+    }
+    return key;
+}
+
+async function mapPool(items, limit, worker) {
+    let cursor = 0;
+    async function run() {
+        while (cursor < items.length && !shuttingDown) {
+            const index = cursor++;
+            await worker(items[index], index);
+        }
+    }
+    const n = Math.max(1, Math.min(limit, items.length));
+    await Promise.all(Array.from({ length: n }, run));
+}
+
+function titleKey(title) {
+    return normalizeTitleForUrl(title).toLowerCase();
+}
+
+function loadExistingWikis(filePath) {
+    if (!fs.existsSync(filePath)) return [];
+    try {
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        if (Array.isArray(data.wikis)) return data.wikis;
+        if (Array.isArray(data)) return data;
+        return [];
+    } catch (error) {
+        console.warn(`   ⚠ Could not parse ${path.basename(filePath)}: ${error.message}`);
+        return [];
+    }
+}
+
+function saveWikis(filePath, source, wikis) {
+    const tmp = filePath + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify({
+        _metadata: {
+            generated_at: new Date().toISOString(),
+            source,
+            total_wikis: wikis.length,
+            resumed: true,
+            source_file: path.basename(MISSING_WIKIS_FILE)
+        },
+        wikis
+    }));
+    fs.renameSync(tmp, filePath);
+}
+
+function persistProgress() {
+    if (!progressReady) return;
+    saveWikis(DANBOORU_WIKIS_PATH, 'danbooru', progress.danbooru);
+    saveWikis(E621_WIKIS_PATH, 'e621', progress.e621);
+}
+
+function loadDoneFromDb(source) {
+    if (!fs.existsSync(DATABASE_PATH)) return new Set();
+    const Database = require('better-sqlite3');
+    const db = new Database(DATABASE_PATH, { readonly: true });
+    try {
+        const rows = db.prepare('SELECT title FROM wikis WHERE source = ?').all(source);
+        return new Set(rows.map((row) => titleKey(row.title)));
+    } catch (error) {
+        console.warn(`   ⚠ Could not read existing DB wikis: ${error.message}`);
+        return new Set();
+    } finally {
+        db.close();
+    }
 }
 
 /**
@@ -139,108 +291,85 @@ function fetchJson(url, retries = 0) {
  * Fetch wiki page from Danbooru API by title
  * Handles both wiki pages and tag wikis (tags have wiki pages with same title)
  */
-async function fetchDanbooruWikiByTitle(title) {
-    // Danbooru API: search by exact title
-    const encodedTitle = encodeURIComponent(normalizeTitleForUrl(title));
-    const url = `${DANBOORU_API_BASE}/wiki_pages.json?search[title]=${encodedTitle}&limit=1`;
-    
+async function fetchDanbooruWikiByTitle(title, aliasMap) {
+    const urlTitle = resolveAliasTitle(title, aliasMap);
+    const encodedTitle = encodeURIComponent(urlTitle);
     try {
-        const results = await fetchJson(url);
+        const direct = await fetchJson(`${DANBOORU_API_BASE}/wiki_pages/${encodedTitle}.json`);
+        if (direct && !Array.isArray(direct) && (direct.body || direct.title)) {
+            return { wiki: direct, resolvedTitle: urlTitle };
+        }
+
+        const results = await fetchJson(`${DANBOORU_API_BASE}/wiki_pages.json?search[title]=${encodedTitle}&limit=1`);
         if (results && Array.isArray(results) && results.length > 0) {
-            // Find exact match (case-insensitive, handle spaces/underscores)
-            const normalizedSearch = title.toLowerCase().replace(/\s+/g, '_');
-            const exactMatch = results.find(w => {
+            const exactMatch = results.find((w) => {
                 if (!w.title) return false;
                 const normalizedWiki = w.title.toLowerCase().replace(/\s+/g, '_');
-                return normalizedWiki === normalizedSearch || 
-                       w.title.toLowerCase() === title.toLowerCase();
+                return normalizedWiki === urlTitle || w.title.toLowerCase() === urlTitle;
             });
-            if (exactMatch) {
-                return exactMatch;
-            }
-            // Return first result if no exact match
-            return results[0];
+            return { wiki: exactMatch || results[0], resolvedTitle: urlTitle };
         }
-        
-        // If not found as wiki page, check if it's a tag (tags can have wikis with same title)
-        // Try fetching tag to see if it exists and has a wiki_id
-        const tagUrl = `${DANBOORU_API_BASE}/tags.json?search[name]=${encodedTitle}&limit=1`;
-        const tagResults = await fetchJson(tagUrl);
-        if (tagResults && Array.isArray(tagResults) && tagResults.length > 0) {
-            const tag = tagResults[0];
-            // If tag has wiki_id, fetch the wiki directly
-            if (tag.wiki_page_id || tag.wiki_id) {
-                const wikiId = tag.wiki_page_id || tag.wiki_id;
-                const wikiUrl = `${DANBOORU_API_BASE}/wiki_pages/${wikiId}.json`;
-                const wikiResult = await fetchJson(wikiUrl);
-                if (wikiResult) {
-                    return wikiResult;
-                }
+        const aliases = await fetchJson(`${DANBOORU_API_BASE}/tag_aliases.json?search[antecedent_name]=${encodedTitle}&limit=1`);
+        const consequent = aliases && aliases[0] && aliases[0].consequent_name;
+        if (consequent) {
+            const aliasTitle = String(consequent).replace(/\s+/g, '_');
+            const aliasWiki = await fetchJson(`${DANBOORU_API_BASE}/wiki_pages/${encodeURIComponent(aliasTitle)}.json`);
+            if (aliasWiki && !Array.isArray(aliasWiki) && (aliasWiki.body || aliasWiki.title)) {
+                return { wiki: aliasWiki, resolvedTitle: aliasTitle.toLowerCase() };
             }
         }
-        
-        return null;
+        return { wiki: null, resolvedTitle: urlTitle };
     } catch (error) {
         console.error(`   ❌ Error fetching Danbooru wiki "${title}": ${error.message}`);
-        return null;
+        return { wiki: null, resolvedTitle: urlTitle };
     }
 }
 
-/**
- * Fetch wiki page from e621 API by title
- * Handles both wiki pages and tag wikis (tags have wiki pages with same title)
- */
-async function fetchE621WikiByTitle(title) {
-    // e621 API: search by exact title
-    const encodedTitle = encodeURIComponent(normalizeTitleForUrl(title));
-    const url = `${E621_API_BASE}/wiki_pages.json?search[title]=${encodedTitle}&limit=10`;
-    
+async function fetchE621WikiByTitle(title, aliasMap) {
+    const urlTitle = resolveAliasTitle(title, aliasMap);
+    const encodedTitle = encodeURIComponent(urlTitle);
     try {
-        const results = await fetchJson(url);
+        const direct = await fetchJson(`${E621_API_BASE}/wiki_pages/${encodedTitle}.json`);
+        if (direct && !Array.isArray(direct) && (direct.body || direct.title)) {
+            return { wiki: direct, resolvedTitle: urlTitle };
+        }
+
+        const results = await fetchJson(`${E621_API_BASE}/wiki_pages.json?search[title]=${encodedTitle}&limit=10`);
         if (results && Array.isArray(results) && results.length > 0) {
-            // Find exact match (case-insensitive, handle underscores/spaces)
-            const normalizedTitle = title.toLowerCase().replace(/\s+/g, '_');
-            const exactMatch = results.find(w => {
+            const exactMatch = results.find((w) => {
                 if (!w.title) return false;
                 const normalizedWikiTitle = w.title.toLowerCase().replace(/\s+/g, '_');
-                return normalizedWikiTitle === normalizedTitle || 
-                       w.title.toLowerCase() === title.toLowerCase();
+                return normalizedWikiTitle === urlTitle || w.title.toLowerCase() === urlTitle;
             });
-            if (exactMatch) {
-                return exactMatch;
+            return { wiki: exactMatch || results[0], resolvedTitle: urlTitle };
+        }
+        const aliases = await fetchJson(`${E621_API_BASE}/tag_aliases.json?search[antecedent_name]=${encodedTitle}&limit=1`);
+        const consequent = aliases && aliases[0] && aliases[0].consequent_name;
+        if (consequent) {
+            const aliasTitle = String(consequent).replace(/\s+/g, '_');
+            const aliasWiki = await fetchJson(`${E621_API_BASE}/wiki_pages/${encodeURIComponent(aliasTitle)}.json`);
+            if (aliasWiki && !Array.isArray(aliasWiki) && (aliasWiki.body || aliasWiki.title)) {
+                return { wiki: aliasWiki, resolvedTitle: aliasTitle.toLowerCase() };
             }
-            // Return first result if no exact match
-            return results[0];
         }
-        
-        // If not found as wiki page, check if it's a tag (tags can have wikis with same title)
-        // Try fetching tag to see if it exists and has wiki information
-        const tagUrl = `${E621_API_BASE}/tags.json?search[name]=${encodedTitle}&limit=1`;
-        const tagResults = await fetchJson(tagUrl);
-        if (tagResults && Array.isArray(tagResults) && tagResults.length > 0) {
-            const tag = tagResults[0];
-            // e621 tags don't have wiki_id directly, but wiki pages have same title as tag
-            // So we already tried that above - if not found, the tag doesn't have a wiki
-        }
-        
-        return null;
+        return { wiki: null, resolvedTitle: urlTitle };
     } catch (error) {
         console.error(`   ❌ Error fetching e621 wiki "${title}": ${error.message}`);
-        return null;
+        return { wiki: null, resolvedTitle: urlTitle };
     }
 }
 
 /**
  * Extract wiki data from API response
  */
-function extractWikiData(apiResult, source) {
+function extractWikiData(apiResult, source, requestedTitle) {
     if (!apiResult) return null;
     
     // Handle different API response formats
     // Danbooru uses 'body' field, e621 uses 'body' field
     // Both should contain raw DText
     const body = apiResult.body || apiResult.body_text || apiResult.body_html || '';
-    const title = apiResult.title || apiResult.name || apiResult.other_names?.[0] || '';
+    const title = decodeItemTitle(requestedTitle || apiResult.title || apiResult.name || apiResult.other_names?.[0] || '');
     
     // Handle date formats (ISO string, timestamp, etc.)
     let createdAt = null;
@@ -278,178 +407,179 @@ function extractWikiData(apiResult, source) {
 }
 
 /**
- * Download wikis for a specific source
+ * Download remaining wikis for a source, appending to existing JSON (resume-safe).
  */
-async function downloadWikisForSource(items, source, sourceName) {
+async function downloadWikisForSource(items, source, sourceName, aliasMap, existingWikis, outputPath) {
+    const done = new Set(existingWikis.map((wiki) => titleKey(wiki.title)));
+    const dbDone = loadDoneFromDb(source);
+    for (const key of dbDone) done.add(key);
+
+    const remaining = items.filter((item) => !done.has(titleKey(item)));
     console.log(`\n📥 Downloading ${sourceName} wikis...`);
-    console.log(`   Total items: ${items.length}`);
-    
-    const downloadedWikis = [];
+    console.log(`   Queue: ${items.length}  saved: ${existingWikis.length}  already in DB: ${dbDone.size}  remaining: ${remaining.length}`);
+
+    if (remaining.length === 0) {
+        console.log(`   ✓ Nothing left to download for ${sourceName}`);
+        return existingWikis;
+    }
+
     let successCount = 0;
     let notFoundCount = 0;
     let errorCount = 0;
-    let consecutiveFailures = 0;
-    
-    for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        const progress = `[${i + 1}/${items.length}]`;
-        
-        // Rate limiting
-        if (i > 0) {
-            await sleep(RATE_LIMIT_DELAY);
-        }
-        
+    let doneCount = 0;
+    let lastSaveCount = existingWikis.length;
+
+    await mapPool(remaining, FETCH_CONCURRENCY, async (item, index) => {
+        if (shuttingDown) return;
+        await sleep(RATE_LIMIT_DELAY);
+        const line = `[${index + 1}/${remaining.length}]`;
         try {
-            let wikiData = null;
-            
-            if (source === SOURCE_DANBOORU) {
-                wikiData = await fetchDanbooruWikiByTitle(item);
-            } else if (source === SOURCE_E621) {
-                wikiData = await fetchE621WikiByTitle(item);
-            }
-            
+            const fetched = source === SOURCE_DANBOORU
+                ? await fetchDanbooruWikiByTitle(item, aliasMap)
+                : await fetchE621WikiByTitle(item, aliasMap);
+            const wikiData = fetched && fetched.wiki;
+            const resolvedTitle = fetched && fetched.resolvedTitle;
             if (wikiData) {
-                const extracted = extractWikiData(wikiData, source);
+                const extracted = extractWikiData(wikiData, source, item);
                 if (extracted) {
-                    downloadedWikis.push(extracted);
+                    existingWikis.push(extracted);
+                    done.add(titleKey(item));
+                    done.add(titleKey(extracted.title));
                     successCount++;
-                    consecutiveFailures = 0;
-                    console.log(`   ${progress} ✓ ${item}`);
+                    const aliasNote = resolvedTitle && normalizeTitleForUrl(item).toLowerCase() !== resolvedTitle
+                        ? ` → ${resolvedTitle.replace(/_/g, ' ')}`
+                        : '';
+                    console.log(`   ${line} ✓ ${item}${aliasNote}`);
+                    if (existingWikis.length - lastSaveCount >= SAVE_EVERY) {
+                        lastSaveCount = existingWikis.length;
+                        saveWikis(outputPath, sourceName.toLowerCase(), existingWikis);
+                    }
                 } else {
                     notFoundCount++;
-                    consecutiveFailures++;
-                    console.log(`   ${progress} ⚠ ${item} (no body or empty)`);
                 }
             } else {
                 notFoundCount++;
-                consecutiveFailures++;
-                console.log(`   ${progress} ⚠ ${item} (not found)`);
-            }
-            
-            // Stop if too many consecutive failures
-            if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-                console.log(`\n   ⚠️  Stopping after ${MAX_CONSECUTIVE_FAILURES} consecutive failures`);
-                break;
-            }
-            
-            // Progress update every 10 items
-            if ((i + 1) % 10 === 0) {
-                console.log(`   Progress: ${successCount} downloaded, ${notFoundCount} not found, ${errorCount} errors`);
             }
         } catch (error) {
             errorCount++;
-            consecutiveFailures++;
-            console.error(`   ${progress} ❌ ${item}: ${error.message}`);
-            
-            // Stop if too many consecutive failures
-            if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-                console.log(`\n   ⚠️  Stopping after ${MAX_CONSECUTIVE_FAILURES} consecutive failures`);
-                break;
-            }
+            console.error(`   ${line} ❌ ${item}: ${error.message}`);
         }
-    }
-    
+        doneCount++;
+        if (doneCount % 50 === 0 || doneCount === remaining.length) {
+            console.log(`   Progress: ${successCount} downloaded, ${notFoundCount} not found, ${errorCount} errors (${doneCount}/${remaining.length})`);
+        }
+    });
+
+    saveWikis(outputPath, sourceName.toLowerCase(), existingWikis);
     console.log(`\n   ✓ ${sourceName} download complete:`);
-    console.log(`     - Downloaded: ${successCount}`);
+    console.log(`     - Downloaded this run: ${successCount}`);
     console.log(`     - Not found: ${notFoundCount}`);
     console.log(`     - Errors: ${errorCount}`);
-    
-    return downloadedWikis;
+    console.log(`     - Saved total: ${existingWikis.length}`);
+    return existingWikis;
+}
+
+async function loadIntoExistingDb() {
+    if (!fs.existsSync(DATABASE_PATH)) {
+        console.log('\n⚠ No tag_wiki.db yet — JSON is saved. Create the DB, then re-run this script to load.');
+        return;
+    }
+    console.log('\n📚 Loading downloaded wikis into the existing database...');
+    await require('./load-downloaded-wikis').main();
 }
 
 /**
- * Main function
+ * Download remaining missing wikis, then load them into the existing tag DB.
+ * Does not recreate tag_wiki.db. Re-run to resume.
+ *
+ *   node scripts/download-missing-wikis.js
+ *   node scripts/download-missing-wikis.js --load-only
  */
 async function main() {
-    console.log('🚀 Starting wiki page download...\n');
-    
-    // Check if missing wikis file exists
-    if (!fs.existsSync(MISSING_WIKIS_FILE)) {
-        console.error(`❌ Missing wikis file not found: ${path.basename(MISSING_WIKIS_FILE)}`);
-        console.error('   Please run create-tag-database.js first to generate the file.');
-        process.exit(1);
-    }
-    
-    // Load missing wikis data
-    console.log(`📂 Loading ${path.basename(MISSING_WIKIS_FILE)}...`);
-    const missingWikisData = JSON.parse(fs.readFileSync(MISSING_WIKIS_FILE, 'utf8'));
-    
-    const danbooruItems = missingWikisData.danbooru || [];
-    const e621Items = missingWikisData.e621 || [];
-    
-    console.log(`   ✓ Loaded ${danbooruItems.length} Danbooru items, ${e621Items.length} E621 items`);
-    
-    if (danbooruItems.length === 0 && e621Items.length === 0) {
-        console.log('\n✅ No missing wikis to download!');
+    const loadOnly = process.argv.includes('--load-only');
+    console.log('🚀 Wiki download + load (does not recreate the tag database)\n');
+
+    if (loadOnly) {
+        await loadIntoExistingDb();
         return;
     }
-    
-    // Ensure output directory exists
+
+    if (!fs.existsSync(MISSING_WIKIS_FILE)) {
+        console.error(`❌ Missing wikis file not found: ${path.basename(MISSING_WIKIS_FILE)}`);
+        console.error('   Run create-tag-database.js first to generate the file.');
+        process.exit(1);
+    }
+
+    console.log(`📂 Loading ${path.basename(MISSING_WIKIS_FILE)}...`);
+    const missingWikisData = JSON.parse(fs.readFileSync(MISSING_WIKIS_FILE, 'utf8'));
+    const danbooruItems = missingWikisData.danbooru || [];
+    const e621Items = missingWikisData.e621 || [];
+    console.log(`   ✓ Queue: ${danbooruItems.length} Danbooru, ${e621Items.length} E621`);
+
+    progress.danbooru = loadExistingWikis(DANBOORU_WIKIS_PATH);
+    progress.e621 = loadExistingWikis(E621_WIKIS_PATH);
+    progressReady = true;
+    if (progress.danbooru.length || progress.e621.length) {
+        console.log(`   Resume files: ${progress.danbooru.length} Danbooru, ${progress.e621.length} E621 already saved`);
+    }
+
+    const danbooruAliases = loadAliasMap(DANBOORU_ALIAS_CSV);
+    const e621Aliases = loadAliasMap(E621_ALIAS_CSV);
+
     if (!fs.existsSync(OUTPUT_DIR)) {
         fs.mkdirSync(OUTPUT_DIR, { recursive: true });
     }
-    
-    // Download Danbooru wikis
-    const danbooruWikis = [];
-    if (danbooruItems.length > 0) {
-        danbooruWikis.push(...await downloadWikisForSource(danbooruItems, SOURCE_DANBOORU, 'Danbooru'));
+
+    if (danbooruItems.length > 0 && !shuttingDown) {
+        await downloadWikisForSource(
+            danbooruItems,
+            SOURCE_DANBOORU,
+            'Danbooru',
+            danbooruAliases,
+            progress.danbooru,
+            DANBOORU_WIKIS_PATH
+        );
     }
-    
-    // Download e621 wikis
-    const e621Wikis = [];
-    if (e621Items.length > 0) {
-        e621Wikis.push(...await downloadWikisForSource(e621Items, SOURCE_E621, 'E621'));
+
+    if (e621Items.length > 0 && !shuttingDown) {
+        await downloadWikisForSource(
+            e621Items,
+            SOURCE_E621,
+            'E621',
+            e621Aliases,
+            progress.e621,
+            E621_WIKIS_PATH
+        );
     }
-    
-    // Save downloaded wikis to JSON files
-    if (danbooruWikis.length > 0) {
-        const danbooruOutputPath = path.join(OUTPUT_DIR, 'danbooru_missing_wikis.json');
-        const danbooruOutput = {
-            _metadata: {
-                generated_at: new Date().toISOString(),
-                source: 'danbooru',
-                total_wikis: danbooruWikis.length,
-                source_file: path.basename(MISSING_WIKIS_FILE)
-            },
-            wikis: danbooruWikis
-        };
-        
-        fs.writeFileSync(danbooruOutputPath, JSON.stringify(danbooruOutput, null, 2), 'utf8');
-        console.log(`\n💾 Saved ${danbooruWikis.length} Danbooru wikis to ${path.basename(danbooruOutputPath)}`);
-    }
-    
-    if (e621Wikis.length > 0) {
-        const e621OutputPath = path.join(OUTPUT_DIR, 'e621_missing_wikis.json');
-        const e621Output = {
-            _metadata: {
-                generated_at: new Date().toISOString(),
-                source: 'e621',
-                total_wikis: e621Wikis.length,
-                source_file: path.basename(MISSING_WIKIS_FILE)
-            },
-            wikis: e621Wikis
-        };
-        
-        fs.writeFileSync(e621OutputPath, JSON.stringify(e621Output, null, 2), 'utf8');
-        console.log(`\n💾 Saved ${e621Wikis.length} E621 wikis to ${path.basename(e621OutputPath)}`);
-    }
-    
-    console.log('\n✅ Wiki download complete!');
-    console.log(`\n📊 Summary:`);
-    console.log(`   Danbooru wikis downloaded: ${danbooruWikis.length}`);
-    console.log(`   E621 wikis downloaded: ${e621Wikis.length}`);
-    console.log(`   Total: ${danbooruWikis.length + e621Wikis.length}`);
-    
-    if (danbooruWikis.length > 0 || e621Wikis.length > 0) {
-        console.log(`\n   Next steps:`);
-        console.log(`   1. Review the downloaded wiki files in data/`);
-        console.log(`   2. Merge them into your existing datasets or load directly into the database`);
+
+    persistProgress();
+    console.log('\n💾 Progress saved');
+    console.log(`   Danbooru: ${progress.danbooru.length}  E621: ${progress.e621.length}`);
+
+    await loadIntoExistingDb();
+
+    if (shuttingDown) {
+        console.log('\n⏸ Stopped early. Re-run to resume remaining titles.');
+    } else {
+        console.log('\n✅ Wiki download + load complete.');
+        console.log('   Re-run this script to retry titles that were not found.');
     }
 }
 
-// Run if executed directly
+function requestStop() {
+    if (shuttingDown) {
+        persistProgress();
+        process.exit(1);
+    }
+    shuttingDown = true;
+    console.log('\n⏸ Stopping after in-flight requests — progress will be saved, then loaded into the DB.');
+}
+
 if (require.main === module) {
+    process.on('SIGINT', requestStop);
+    process.on('SIGTERM', requestStop);
     main().catch(error => {
+        persistProgress();
         console.error('\n❌ Download failed:', error);
         process.exit(1);
     });

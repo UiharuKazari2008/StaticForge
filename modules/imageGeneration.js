@@ -4,6 +4,11 @@ const crypto = require('crypto');
 const sharp = require('sharp');
 const { createCanvas, loadImage } = require('canvas');
 const { z } = require('zod');
+const {
+    matchCommaTextColon,
+    splitPromptAtTextColon,
+    insertBeforeTextColonOrFirstGroup
+} = require('./promptTextBoundary');
 let __runtimeGr = null;
 function bindRuntimeGlobalResources(globalResources) { __runtimeGr = globalResources; }
 
@@ -254,19 +259,12 @@ function applyNsfwProcessing(prompt, negativePrompt, characterPrompts, nsfwValue
         if (!addition) return text;
         if (!text) return addition;
 
-        // Split by ", Text:" to separate tags from text description
-        const textParts = text.split(', Text:');
-        if (textParts.length > 1) {
-            // Add to the end of tags part
-            const tagsPart = textParts[0];
-            const textPart = textParts.slice(1).join(', Text:');
-
+        const { tagsPart, index } = splitPromptAtTextColon(text);
+        if (index !== -1) {
             const processedTags = tagsPart ? `${tagsPart}, ${addition}` : addition;
-            return processedTags + ', Text:' + textPart;
-        } else {
-            // No ", Text:" separator, add to end
-            return `${text}, ${addition}`;
+            return processedTags + ', Text:' + text.substring(index + 5);
         }
+        return `${text}, ${addition}`;
     }
 
     // Helper function to remove strings from text
@@ -689,22 +687,7 @@ function applyAllInputPromptNegativeMerges(processedPrompt, processedPromptNegat
 function mergePromptNegativeFragmentIntoPrompt(processedPrompt, addition) {
     const block = (addition || '').trim();
     if (!block) return processedPrompt;
-
-    if (processedPrompt.includes('Text:')) {
-        const textIndex = processedPrompt.indexOf('Text:');
-        const beforeText = processedPrompt.substring(0, textIndex).trim();
-        const afterText = processedPrompt.substring(textIndex);
-        if (beforeText) {
-            return beforeText + ', ' + block + ', ' + afterText;
-        }
-        return block + ', ' + afterText;
-    }
-    const groups = processedPrompt.split('|').map(group => group.trim());
-    if (groups.length > 0) {
-        groups[0] = groups[0] ? groups[0] + ', ' + block : block;
-        return groups.join(' | ');
-    }
-    return processedPrompt ? processedPrompt + ', ' + block : block;
+    return insertBeforeTextColonOrFirstGroup(processedPrompt, block);
 }
 
 // Dynamic Generation Processing - Uses pre-compiled AI prompts from client
@@ -1767,22 +1750,8 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
         // Define marker for dynamic append-to-end operations (inserted before presets)
         const APPEND_MARKER = '__ENSHUTSUKA_APPEND_POINT__';
         
-        // Add marker to prompt before "Text:" if it exists, otherwise at the end of the prompt
-        if (processedPrompt.includes('Text:')) {
-            const textIndex = processedPrompt.indexOf('Text:');
-            const beforeText = processedPrompt.substring(0, textIndex).trim();
-            const afterText = processedPrompt.substring(textIndex);
-            processedPrompt = beforeText + (beforeText ? ', ' : '') + APPEND_MARKER + ', ' + afterText;
-        } else {
-            // Add to end of first group (before "|" if it exists)
-            const groups = processedPrompt.split('|').map(group => group.trim());
-            if (groups.length > 0) {
-                groups[0] = groups[0] + (groups[0] ? ', ' : '') + APPEND_MARKER;
-                processedPrompt = groups.join(' | ');
-            } else {
-                processedPrompt = processedPrompt + (processedPrompt ? ', ' : '') + APPEND_MARKER;
-            }
-        }
+        // Add marker to prompt before "Text:" (any case) if it exists, otherwise at the end of the prompt
+        processedPrompt = insertBeforeTextColonOrFirstGroup(processedPrompt, APPEND_MARKER);
         
         // Add marker to UC at the end
         processedNegativePrompt = processedNegativePrompt + (processedNegativePrompt ? ', ' : '') + APPEND_MARKER;
@@ -1934,11 +1903,10 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                         if (vibeMetadata.vibe_append_prompt && vibeMetadata.vibe_append_prompt.trim()) {
                             const vibePromptText = vibeMetadata.vibe_append_prompt.trim();
 
-                            if (processedPrompt.includes(', Text:')) {
-                                // Inject before ", Text:" as specified
-                                const textIndex = processedPrompt.indexOf(', Text:');
-                                const beforeText = processedPrompt.substring(0, textIndex).trim();
-                                processedPrompt = beforeText + ', ' + vibePromptText + ', Text:' + processedPrompt.substring(textIndex + 7);
+                            const commaText = matchCommaTextColon(processedPrompt);
+                            if (commaText) {
+                                const beforeText = processedPrompt.substring(0, commaText.index).trim();
+                                processedPrompt = beforeText + ', ' + vibePromptText + ', Text:' + processedPrompt.substring(commaText.index + commaText.length);
                                 console.log(`🎨 Injected vibe prompt text for ${vibeTransfer.id}`);
                             } else {
                                 // Normal prepend/append logic
@@ -2032,171 +2000,162 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
 
         // Handle dataset processing - datasets are prepended, preset-type datasets are appended (exclude for V3 models)
         const isV3Model = body.model === 'v3' || body.model === 'v3_furry';
-        if (!isV3Model && body.dataset_config && body.dataset_config.include && Array.isArray(body.dataset_config.include) && body.dataset_config.include.length > 0) {
-            // Build dataset mappings and config lookup dynamically from config
-            const datasetMappings = {};
-            const datasetConfigLookup = {};
-            if (currentPromptConfig.datasets) {
-                currentPromptConfig.datasets.forEach(dataset => {
-                    datasetMappings[dataset.value] = `${dataset.value}`;
-                    datasetConfigLookup[dataset.value] = dataset;
-                });
-            }
-            // modules/modelFeatures.js — V5 remaps "furry dataset" → "fur dataset" in the prompt text
-            const { getModelFeatures: getForgeModelFeatures } = require('./modelFeatures');
-            const datasetAliases = {
-                'furry dataset': 'fur dataset',
-                ...(getForgeModelFeatures(body.model, __runtimeGr.getModelFeaturesMap())?.datasetAliases || {})
-            };
-            const normalizedDatasetConfig = {
-                ...body.dataset_config,
-                include: [],
-                bias: {},
-                settings: {}
-            };
-            
-            const datasetPrepends = [];
-            const datasetAppends = [];
-            
-            body.dataset_config.include.forEach(rawDataset => {
-                const dataset = datasetAliases[rawDataset] || rawDataset;
-                const datasetConfig = datasetConfigLookup[dataset] || datasetConfigLookup[rawDataset];
-                const models = Array.isArray(datasetConfig?.models) ? datasetConfig.models.map((value) => String(value).toLowerCase()) : null;
-                const excluded = Array.isArray(datasetConfig?.excludeModels) ? datasetConfig.excludeModels.map((value) => String(value).toLowerCase()) : null;
-                const modelKey = String(body.model || '').toLowerCase();
-                const isAllowedForModel = (!models || models.includes(modelKey)) && (!excluded || !excluded.includes(modelKey));
-                if ((datasetMappings[dataset] || datasetAliases[rawDataset])
-                    && isAllowedForModel
-                    && !normalizedDatasetConfig.include.includes(dataset)) {
-                    let datasetText = datasetMappings[dataset] || dataset;
-                    normalizedDatasetConfig.include.push(dataset);
-                    
-                    // Determine if this is a preset-type dataset or regular dataset
-                    const isPresetType = datasetConfig?.type === 'preset';
-                    
-                    // Get bias value and apply negative if configured
-                    const configuredBias = body.dataset_config.bias?.[dataset] ?? body.dataset_config.bias?.[rawDataset];
-                    let biasValue = configuredBias !== undefined ?
-                        configuredBias :
-                        (datasetConfig?.default !== undefined ? datasetConfig.default : 1.0);
-                    if (configuredBias !== undefined) normalizedDatasetConfig.bias[dataset] = configuredBias;
-                    
-                    // Apply negative multiplier if configured
-                    if (datasetConfig?.negative === true) {
-                        biasValue = -1.0 * biasValue;
-                    }
-                    
-                    // Use applyBiasToText for bias application
-                    if (biasValue !== 1.0) {
-                        datasetText = applyBiasToText(datasetText, biasValue);
-                    }
-                    
-                    // Add to appropriate array based on type
-                    if (isPresetType) {
-                        datasetAppends.push(datasetText);
-                    } else {
-                        datasetPrepends.push(datasetText);
-                    }
-                    
-                    // Add sub-toggle values for the dataset if enabled (follow parent's rule)
-                    const datasetSettings = body.dataset_config.settings?.[dataset] || body.dataset_config.settings?.[rawDataset];
-                    if (datasetSettings) {
-                        normalizedDatasetConfig.settings[dataset] = datasetSettings;
-                        
-                        // Get sub_toggles config for this dataset
-                        const subTogglesConfig = datasetConfig?.sub_toggles || [];
-                        const subToggleConfigLookup = {};
-                        subTogglesConfig.forEach(st => {
-                            subToggleConfigLookup[st.id] = st;
-                        });
-                        
-                        Object.keys(datasetSettings).forEach(settingId => {
-                            const setting = datasetSettings[settingId];
-                            if (setting.enabled && setting.value) {
-                                const subToggleConfig = subToggleConfigLookup[settingId];
-                                
-                                // Get bias value and apply negative if configured
-                                let settingBiasValue = setting.bias !== undefined ? setting.bias : 
-                                    (subToggleConfig?.default !== undefined ? subToggleConfig.default : 1.0);
-                                
-                                // Apply negative multiplier if configured
-                                if (subToggleConfig?.negative === true) {
-                                    settingBiasValue = -1.0 * settingBiasValue;
-                                }
-                                
-                                // Use applyBiasToText for bias application
-                                let settingText = setting.value;
-                                if (settingBiasValue !== 1.0) {
-                                    settingText = applyBiasToText(settingText, settingBiasValue);
-                                }
-                                
-                                // Sub-toggles follow the same rule as their parent
-                                if (isPresetType) {
-                                    datasetAppends.push(settingText);
-                                } else {
-                                    datasetPrepends.push(settingText);
-                                }
-                            }
-                        });
-                    }
-                }
+        const { getModelFeatures: getForgeModelFeatures } = require('./modelFeatures');
+        const transparencyCaps = getForgeModelFeatures(body.model, __runtimeGr.getModelFeaturesMap());
+        const modelKey = String(body.model || '').toLowerCase();
+        const isConfigAllowedForModel = (config) => {
+            const models = Array.isArray(config?.models) ? config.models.map((value) => String(value).toLowerCase()) : null;
+            const excluded = Array.isArray(config?.excludeModels) ? config.excludeModels.map((value) => String(value).toLowerCase()) : null;
+            return (!models || models.includes(modelKey)) && (!excluded || !excluded.includes(modelKey));
+        };
+        const shouldSkipDatasetPromptValue = (datasetConfig, datasetText) => {
+            if (!datasetConfig) return !String(datasetText || '').trim();
+            if (datasetConfig.skipPromptValue || datasetConfig.isQualityPreset || datasetConfig.isTransparencyPreset) return true;
+            return !String(datasetText || '').trim();
+        };
+        const collectSubToggleTexts = (datasetConfig, datasetSettings) => {
+            const texts = [];
+            if (!datasetSettings || !datasetConfig) return texts;
+            const subToggleConfigLookup = {};
+            (datasetConfig.sub_toggles || []).forEach((st) => {
+                subToggleConfigLookup[st.id] = st;
             });
-            body.dataset_config = normalizedDatasetConfig;
-            
-            // Apply dataset prepends at the beginning
-            if (datasetPrepends.length > 0) {
-                const datasetString = datasetPrepends.join(', ');
-                processedPrompt = datasetString + ', ' + processedPrompt;
-                console.log(`🗂️ Applied dataset prepends: ${datasetString}`);
-                
-                // Track this modification
-                appliedPresetControls.prompt.push({
-                    action: 'dataset_prepend',
-                    text: datasetString
-                });
-            }
-            
-            // Apply dataset preset appends (before "Text:" if it exists, otherwise at the end)
-            if (datasetAppends.length > 0) {
-                const datasetAppendString = datasetAppends.join(', ');
-                
-                // Check if prompt contains "Text:" and handle accordingly
-                if (processedPrompt.includes('Text:')) {
-                    // Find the first instance of "Text:" and insert before it
-                    const textIndex = processedPrompt.indexOf('Text:');
-                    const beforeText = processedPrompt.substring(0, textIndex).trim();
-                    const afterText = processedPrompt.substring(textIndex);
-
-                    if (beforeText) {
-                        // If there's content before "Text:", add dataset appends with ", " separator
-                        processedPrompt = beforeText + ', ' + datasetAppendString + ', ' + afterText;
-                    } else {
-                        // If "Text:" is at the beginning, just add dataset appends before it
-                        processedPrompt = datasetAppendString + ', ' + afterText;
-                    }
-                } else {
-                    // Original logic for prompts without "Text:"
-                    // Split prompt by "|", add to end of first group, then rejoin with " | "
-                    const groups = processedPrompt.split('|').map(group => group.trim());
-                    if (groups.length > 0) {
-                        groups[0] = groups[0] + ', ' + datasetAppendString;
-                        processedPrompt = groups.join(' | ');
-                    } else {
-                        processedPrompt = processedPrompt + ', ' + datasetAppendString;
-                    }
+            Object.keys(datasetSettings).forEach((settingId) => {
+                const setting = datasetSettings[settingId];
+                if (!setting?.enabled || !setting.value) return;
+                const subToggleConfig = subToggleConfigLookup[settingId];
+                if (subToggleConfig && !isConfigAllowedForModel(subToggleConfig)) return;
+                let settingBiasValue = setting.bias !== undefined ? setting.bias :
+                    (subToggleConfig?.default !== undefined ? subToggleConfig.default : 1.0);
+                if (subToggleConfig?.negative === true) {
+                    settingBiasValue = -1.0 * settingBiasValue;
                 }
-                
-                __runtimeGr.getLogger().detailed(`🗂️ Dataset preset appends: ${datasetAppendString.substring(0, 100)}${datasetAppendString.length > 100 ? '...' : ''}`);
-                
-                // Track this modification
-                appliedPresetControls.prompt.push({
-                    action: 'dataset_preset_append',
-                    text: datasetAppendString
+                let settingText = setting.value;
+                if (settingBiasValue !== 1.0) {
+                    settingText = applyBiasToText(settingText, settingBiasValue);
+                }
+                texts.push(settingText);
+            });
+            return texts;
+        };
+        const pushDatasetTexts = (datasetConfig, texts, prepends, appends) => {
+            const target = datasetConfig?.isTransparencyPreset
+                ? prepends
+                : (datasetConfig?.type === 'preset' ? appends : prepends);
+            texts.forEach((text) => {
+                if (text && String(text).trim()) target.push(text);
+            });
+        };
+
+        if (!isV3Model) {
+            const hasInclude = body.dataset_config && Array.isArray(body.dataset_config.include) && body.dataset_config.include.length > 0;
+            const specialPresets = (currentPromptConfig.datasets || []).filter((dataset) =>
+                (dataset.isQualityPreset && body.append_quality) || (dataset.isTransparencyPreset && body.append_transparency)
+            );
+            if (hasInclude || specialPresets.length > 0) {
+                const datasetMappings = {};
+                const datasetConfigLookup = {};
+                if (currentPromptConfig.datasets) {
+                    currentPromptConfig.datasets.forEach(dataset => {
+                        datasetMappings[dataset.value] = `${dataset.value}`;
+                        datasetConfigLookup[dataset.value] = dataset;
+                    });
+                }
+                // modules/modelFeatures.js — V5 remaps "furry dataset" → "fur dataset" in the prompt text
+                const datasetAliases = {
+                    'furry dataset': 'fur dataset',
+                    ...(transparencyCaps?.datasetAliases || {})
+                };
+                const normalizedDatasetConfig = {
+                    ...(body.dataset_config || {}),
+                    include: [],
+                    bias: {},
+                    settings: {}
+                };
+
+                const datasetPrepends = [];
+                const datasetAppends = [];
+
+                (body.dataset_config?.include || []).forEach(rawDataset => {
+                    const dataset = datasetAliases[rawDataset] || rawDataset;
+                    const datasetConfig = datasetConfigLookup[dataset] || datasetConfigLookup[rawDataset];
+                    const isAllowedForModel = isConfigAllowedForModel(datasetConfig);
+                    if ((datasetMappings[dataset] || datasetAliases[rawDataset])
+                        && isAllowedForModel
+                        && !normalizedDatasetConfig.include.includes(dataset)) {
+                        let datasetText = datasetMappings[dataset] || dataset;
+                        normalizedDatasetConfig.include.push(dataset);
+
+                        const isPresetType = datasetConfig?.type === 'preset';
+                        const configuredBias = body.dataset_config.bias?.[dataset] ?? body.dataset_config.bias?.[rawDataset];
+                        let biasValue = configuredBias !== undefined ?
+                            configuredBias :
+                            (datasetConfig?.default !== undefined ? datasetConfig.default : 1.0);
+                        if (configuredBias !== undefined) normalizedDatasetConfig.bias[dataset] = configuredBias;
+
+                        if (datasetConfig?.negative === true) {
+                            biasValue = -1.0 * biasValue;
+                        }
+
+                        if (biasValue !== 1.0) {
+                            datasetText = applyBiasToText(datasetText, biasValue);
+                        }
+
+                        if (!shouldSkipDatasetPromptValue(datasetConfig, datasetText)) {
+                            if (isPresetType) {
+                                datasetAppends.push(datasetText);
+                            } else {
+                                datasetPrepends.push(datasetText);
+                            }
+                        }
+
+                        const datasetSettings = body.dataset_config.settings?.[dataset] || body.dataset_config.settings?.[rawDataset];
+                        if (datasetSettings) {
+                            normalizedDatasetConfig.settings[dataset] = datasetSettings;
+                            pushDatasetTexts(datasetConfig, collectSubToggleTexts(datasetConfig, datasetSettings), datasetPrepends, datasetAppends);
+                        }
+                    }
                 });
+
+                specialPresets.forEach((datasetConfig) => {
+                    if (normalizedDatasetConfig.include.includes(datasetConfig.value)) return;
+                    const datasetSettings = body.dataset_config?.settings?.[datasetConfig.value];
+                    if (datasetSettings) {
+                        normalizedDatasetConfig.settings[datasetConfig.value] = datasetSettings;
+                    }
+                    pushDatasetTexts(datasetConfig, collectSubToggleTexts(datasetConfig, datasetSettings), datasetPrepends, datasetAppends);
+                });
+
+                if (body.dataset_config) {
+                    body.dataset_config = normalizedDatasetConfig;
+                }
+
+                if (datasetPrepends.length > 0) {
+                    const datasetString = datasetPrepends.join(', ');
+                    processedPrompt = datasetString + ', ' + processedPrompt;
+                    console.log(`🗂️ Applied dataset prepends: ${datasetString}`);
+
+                    appliedPresetControls.prompt.push({
+                        action: 'dataset_prepend',
+                        text: datasetString
+                    });
+                }
+
+                if (datasetAppends.length > 0) {
+                    const datasetAppendString = datasetAppends.join(', ');
+
+                    processedPrompt = insertBeforeTextColonOrFirstGroup(processedPrompt, datasetAppendString);
+
+                    __runtimeGr.getLogger().detailed(`🗂️ Dataset preset appends: ${datasetAppendString.substring(0, 100)}${datasetAppendString.length > 100 ? '...' : ''}`);
+
+                    appliedPresetControls.prompt.push({
+                        action: 'dataset_preset_append',
+                        text: datasetAppendString
+                    });
+                }
             }
         }
 
-        const transparencyCaps = require('./modelFeatures').getModelFeatures(body.model, __runtimeGr.getModelFeaturesMap());
         const alreadyRequestsTransparency = /(?:transparent\s+background|has\s+alpha|alpha\s+transparency)/i.test(processedPrompt);
         if (body.append_transparency && transparencyCaps?.transparency === true && !alreadyRequestsTransparency) {
             const requestedBias = Number(body.transparency_bias ?? 1);
@@ -2227,31 +2186,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     qualityText = applyBiasToText(qualityText, body.quality_preset_bias);
                 }
 
-                // Check if prompt contains "Text:" and handle accordingly
-                if (processedPrompt.includes('Text:')) {
-                    // Find the first instance of "Text:" and insert quality before it
-                    const textIndex = processedPrompt.indexOf('Text:');
-                    const beforeText = processedPrompt.substring(0, textIndex).trim();
-                    const afterText = processedPrompt.substring(textIndex);
-
-                    if (beforeText) {
-                        // If there's content before "Text:", add quality with ", " separator
-                        processedPrompt = beforeText + ', ' + qualityText + ', ' + afterText;
-                    } else {
-                        // If "Text:" is at the beginning, just add quality before it
-                        processedPrompt = qualityText + ', ' + afterText;
-                    }
-                } else {
-                    // Original logic for prompts without "Text:"
-                    // Split prompt by "|", add quality to end of first group, then rejoin with " | "
-                    const groups = processedPrompt.split('|').map(group => group.trim());
-                    if (groups.length > 0) {
-                        groups[0] = groups[0] + ', ' + qualityText;
-                        processedPrompt = groups.join(' | ');
-                    } else {
-                        processedPrompt = processedPrompt + ', ' + qualityText;
-                    }
-                }
+                processedPrompt = insertBeforeTextColonOrFirstGroup(processedPrompt, qualityText);
                 selectedQualityId = selectedQuality.id;
                 __runtimeGr.getLogger().detailed(`🎨 Quality preset: ${qualityText.substring(0, 60)}${qualityText.length > 60 ? '...' : ''} (ID: ${selectedQuality.id})`);
                 
@@ -3600,6 +3535,9 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             if (forgeCaps.e2eUpscale === false) {
                 baseOptions.upscale = undefined;
             }
+            if (forgeCaps.noiseScheduleUi === false) {
+                baseOptions.noise_schedule = undefined;
+            }
             if (forgeCaps.paramsVersion != null && baseOptions.params_version == null) {
                 baseOptions.params_version = forgeCaps.paramsVersion;
             }
@@ -3653,7 +3591,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 const minArea = Number(forgeCaps?.maxEnhanceMinArea);
                 const maxArea = Number(forgeCaps?.maxEnhanceMaxArea);
                 if ((Number.isFinite(minArea) && enhanceArea < minArea)
-                    || (Number.isFinite(maxArea) && enhanceArea > maxArea)) {
+                    || (Number.isFinite(maxArea) && enhanceArea >= maxArea)) {
                     throw new Error(`Max Enhance requires an image area between ${minArea} and ${maxArea} pixels; received ${enhanceArea}.`);
                 }
             }
@@ -6286,7 +6224,11 @@ async function convertMetadataToRequestFormat(globalResources, metadata, allowPa
     const actualMetadata = metadata.metadata || metadata;
 
     // Use the existing extractRelevantFields function to get properly formatted metadata
-    const extractedMetadata = await __runtimeGr.getPngMetadata().extractRelevantFields(actualMetadata, metadata.filename);
+    const extractedMetadata = await __runtimeGr.getPngMetadata().extractRelevantFields(
+        actualMetadata,
+        metadata.filename,
+        metadata.blurhash
+    );
 
     if (!extractedMetadata) {
         throw new Error('Failed to extract relevant metadata fields');
@@ -7343,10 +7285,10 @@ CRITICAL: Preserve all artist/style references and environment tags from the ori
         expansionReasonDisplay = grokResponse.content?.reason_display || grokResponse.content?.reason || grokResponse.reason;
 
         if (originalPrompt) {
-            if (originalPrompt.includes(', Text:')) {
-                const textIndex = originalPrompt.indexOf(', Text:');
-                const beforeText = originalPrompt.substring(0, textIndex).trim();
-                expansionPrompt = beforeText + ', ' + additionalText + originalPrompt.substring(textIndex);
+            const commaText = matchCommaTextColon(originalPrompt);
+            if (commaText) {
+                const beforeText = originalPrompt.substring(0, commaText.index).trim();
+                expansionPrompt = beforeText + ', ' + additionalText + ', Text:' + originalPrompt.substring(commaText.index + commaText.length);
             } else {
                 expansionPrompt = originalPrompt + ', ' + additionalText;
             }
@@ -7372,7 +7314,7 @@ CRITICAL: Preserve all artist/style references and environment tags from the ori
         if (!enableAI) {
             console.log('🚫 AI processing disabled, using original prompt');
             expansionReason = 'AI processing disabled';
-            expansionReasonDisplay = 'No AI';
+            expansionReasonDisplay = '';
         } else {
             console.log('🚫 Skipping Grok expansion (no usable image buffer), using original prompt');
             expansionReason = 'Expansion AI skipped: invalid image buffer';
@@ -7461,6 +7403,43 @@ async function previewExpandImagePrompt(
     };
 }
 
+function resolveForgeModelFromPngBuffer(imageBuffer, fallback = 'v4_5') {
+    try {
+        const pngMetadata = __runtimeGr.getPngMetadata();
+        const raw = pngMetadata.readMetadata(imageBuffer);
+        const source = raw?.tEXt?.Source;
+        if (source) {
+            const determined = pngMetadata.determineModelFromMetadata({ source });
+            if (determined && String(determined).toLowerCase() !== 'unknown') {
+                return String(determined).toLowerCase();
+            }
+        }
+        if (raw?.tEXt?.Comment) {
+            const parsed = JSON.parse(raw.tEXt.Comment);
+            const slug = parsed?.model ? String(parsed.model).toLowerCase() : '';
+            if (slug) {
+                const { loadModelFeatures } = require('./modelFeatures');
+                const map = loadModelFeatures();
+                const fromKey = slug.replace(/_inp$/, '');
+                if (map[fromKey]) {
+                    return fromKey;
+                }
+                for (const [key, caps] of Object.entries(map)) {
+                    if (String(caps?.apiModel || '').toLowerCase() === slug) {
+                        return key;
+                    }
+                    if (String(caps?.inpaintApiModel || '').toLowerCase() === slug) {
+                        return key;
+                    }
+                }
+            }
+        }
+    } catch (_err) {
+        // Fall through to default
+    }
+    return fallback;
+}
+
 // Image expansion function - expands image to new resolution using AI-powered inpainting
 async function expandImage(globalResources, filename, resolution, imageBias, upscaleAfterComplete = false, overrideParams = {}, sessionId, workspaceId = null, streamingCallback = null, ws = null, handler = null, requestId = null, sourceFilename = null, enableAI = false, stepPreviewWidth = null, stepPreviewHeight = null) {
     bindRuntimeGlobalResources(globalResources);
@@ -7488,6 +7467,7 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         let originalPrompt = '';
         let originalUc = '';
         let originalCharacters = [];
+        const originalModel = resolveForgeModelFromPngBuffer(sourceImageBuffer, 'v4_5');
         try {
             const metadata = __runtimeGr.getPngMetadata().readMetadata(sourceImageBuffer);
             if (metadata?.tEXt?.Comment) {
@@ -7500,6 +7480,7 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         } catch (error) {
             console.warn('⚠️ Could not extract original metadata:', error.message);
         }
+        console.log(`🎨 Expansion source model: ${originalModel}`);
         
         // Get target dimensions from resolution
         const targetDims = getDimensionsFromResolution(resolution?.toLowerCase() || '');
@@ -7675,9 +7656,9 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
             ucForRequest = overrideParams.expansionUcOverride;
         }
 
-        // Get system defaults for generation
+        // Get system defaults for generation (model follows the source image, including V5)
         const defaultParams = {
-            model: 'v4_5',
+            model: originalModel,
             steps: 28,
             guidance: 4.9,
             rescale: 0.07,
@@ -7840,7 +7821,7 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
                 height: dbRow?.height ?? pngMeta.height,
                 actual_width: dbRow?.width ?? pngMeta.actual_width,
                 actual_height: dbRow?.height ?? pngMeta.actual_height
-            }, expandedFilename);
+            }, expandedFilename, dbRow?.blurhash || expandedPreviewResult?.blurhash);
         } catch (metadataError) {
             console.warn('⚠️ Failed to get metadata for expanded image:', metadataError);
         }
@@ -7897,6 +7878,7 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
         const originalPrompt = parsedMetadata.prompt || '';
         const originalUc = parsedMetadata.uc || '';
         const originalCharacters = parsedMetadata.characterPrompts || forgeData.allCharacters || [];
+        const originalModel = resolveForgeModelFromPngBuffer(imageBuffer, 'v4_5');
         
         console.log(`📋 Reusing expansion prompt: ${expansionPrompt.substring(0, 100)}${expansionPrompt.length > 100 ? '...' : ''}`);
         console.log(`🔗 Maintaining expansion source: ${expansion_source}`);
@@ -8035,15 +8017,16 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
         const compressedMaskBase64 = maskCanvas.toDataURL('image/png').split(',')[1];
         console.log(`🎭 Mask created and compressed: ${compressedMaskWidth}x${compressedMaskHeight}`);
         
-        // 4. Merge stored params with overrides
-        const defaultParams = forgeData.expansion_params || {
-            model: 'v4_5',
+        // 4. Merge stored params with overrides (source PNG model if none was saved)
+        const defaultParams = {
+            model: originalModel,
             steps: 28,
             guidance: 4.9,
             rescale: 0.07,
             sampler: 'k_euler_ancestral',
             noise_schedule: 'karras',
-            noise: 0
+            noise: 0,
+            ...(forgeData.expansion_params || {})
         };
         const genParams = { ...defaultParams, ...overrideParams };
         
@@ -8172,7 +8155,7 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
                 height: dbRow?.height ?? pngMeta.height,
                 actual_width: dbRow?.width ?? pngMeta.actual_width,
                 actual_height: dbRow?.height ?? pngMeta.actual_height
-            }, expandedFilename);
+            }, expandedFilename, dbRow?.blurhash || rerollPreviewResult?.blurhash);
         } catch (metadataError) {
             console.warn('⚠️ Failed to get metadata for rerolled expanded image:', metadataError);
         }
@@ -8442,8 +8425,26 @@ async function applyTendaiPreviewWebSocket(globalResources, body, ws, handler, w
     };
 }
 
-async function maxEnhanceImage(globalResources, filename, sessionId, workspaceId = null, streamingCallback = null, ws = null, handler = null, requestId = null) {
+function applyEnhanceOverrideNumber(requestBody, key, value) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) requestBody[key] = parsed;
+}
+
+function applyEnhanceOverrideString(requestBody, key, value) {
+    if (value == null) return;
+    const text = String(value).trim();
+    if (text) requestBody[key] = text;
+}
+
+async function enhanceImage(globalResources, filename, scale, sessionId, workspaceId = null, streamingCallback = null, ws = null, handler = null, requestId = null, enhanceOptions = {}) {
     bindRuntimeGlobalResources(globalResources);
+    const isMax = String(scale).toLowerCase() === 'max';
+    const allowedScales = new Set([1, 1.5, 2]);
+    const enhanceScale = isMax ? 1 : Number(scale);
+    if (!isMax && !allowedScales.has(enhanceScale)) {
+        throw new Error('Enhance scale must be 1, 1.5, 2, or max');
+    }
+
     const filePath = path.join(__runtimeGr.getPath('images'), filename);
     if (!filename || !fs.existsSync(filePath)) {
         throw new Error('Image not found');
@@ -8452,10 +8453,13 @@ async function maxEnhanceImage(globalResources, filename, sessionId, workspaceId
     const sourceBuffer = fs.readFileSync(filePath);
     const sourceMetadata = __runtimeGr.getPngMetadata().readMetadata(sourceBuffer);
     if (!sourceMetadata?.tEXt?.Comment) {
-        throw new Error('Max Enhance requires generation metadata');
+        throw new Error('Enhance requires generation metadata');
     }
 
     const parsedMetadata = JSON.parse(sourceMetadata.tEXt.Comment);
+    if (sourceMetadata.tEXt?.Source) {
+        parsedMetadata.source = sourceMetadata.tEXt.Source;
+    }
     const sourceDimensions = await getImageDimensions(sourceBuffer);
     const requestBody = await convertMetadataToRequestFormat(globalResources, {
         filename,
@@ -8464,35 +8468,79 @@ async function maxEnhanceImage(globalResources, filename, sessionId, workspaceId
     });
     const { getModelFeatures } = require('./modelFeatures');
     const modelFeatures = getModelFeatures(requestBody.model, __runtimeGr.getModelFeaturesMap());
-    if (!modelFeatures?.maxEnhance) {
+    if (!modelFeatures) {
+        throw new Error(`Enhance is not supported by model ${requestBody.model || 'unknown'}`);
+    }
+    if (isMax && !modelFeatures.maxEnhance) {
         throw new Error(`Max Enhance is not supported by model ${requestBody.model || 'unknown'}`);
     }
-
-    const area = sourceDimensions.width * sourceDimensions.height;
-    const minArea = Number(modelFeatures.maxEnhanceMinArea);
-    const maxArea = Number(modelFeatures.maxEnhanceMaxArea);
-    if ((Number.isFinite(minArea) && area < minArea)
-        || (Number.isFinite(maxArea) && area > maxArea)) {
-        throw new Error(`Max Enhance requires an image area between ${minArea} and ${maxArea} pixels; received ${area}.`);
+    if (isMax) {
+        const area = sourceDimensions.width * sourceDimensions.height;
+        const minArea = Number(modelFeatures.maxEnhanceMinArea);
+        const maxArea = Number(modelFeatures.maxEnhanceMaxArea);
+        if ((Number.isFinite(minArea) && area < minArea)
+            || (Number.isFinite(maxArea) && area >= maxArea)) {
+            throw new Error(`Max Enhance requires an image area between ${minArea} and ${maxArea} pixels; received ${area}.`);
+        }
     }
 
+    applyEnhanceOverrideString(requestBody, 'model', enhanceOptions.model);
+    applyEnhanceOverrideNumber(requestBody, 'steps', enhanceOptions.steps);
+    applyEnhanceOverrideNumber(requestBody, 'guidance', enhanceOptions.guidance);
+    applyEnhanceOverrideNumber(requestBody, 'rescale', enhanceOptions.rescale);
+    applyEnhanceOverrideString(requestBody, 'sampler', enhanceOptions.sampler);
+    applyEnhanceOverrideString(requestBody, 'noiseScheduler', enhanceOptions.noiseScheduler);
+
+    const strength = Number.isFinite(Number(enhanceOptions.strength)) ? Number(enhanceOptions.strength) : 0.5;
+    const noise = Number.isFinite(Number(enhanceOptions.noise)) ? Number(enhanceOptions.noise) : 0;
+    const seed = Number.isFinite(Number(enhanceOptions.seed))
+        ? Number(enhanceOptions.seed)
+        : crypto.randomInt(0, 4294967295);
+
     requestBody.image = `data:${sourceBuffer.toString('base64')}`;
-    requestBody.width = sourceDimensions.width;
-    requestBody.height = sourceDimensions.height;
-    requestBody.upscaled_enhance = true;
+    if (isMax) {
+        requestBody.width = sourceDimensions.width;
+        requestBody.height = sourceDimensions.height;
+        requestBody.upscaled_enhance = true;
+    } else {
+        requestBody.width = Math.max(1, Math.floor(sourceDimensions.width * enhanceScale));
+        requestBody.height = Math.max(1, Math.floor(sourceDimensions.height * enhanceScale));
+        requestBody.upscaled_enhance = false;
+    }
+    requestBody.strength = strength;
+    requestBody.noise = noise;
+    requestBody.seed = seed;
     requestBody.upscale = false;
     requestBody.no_save = false;
     requestBody.requestId = requestId;
     delete requestBody.resolution;
 
+    if (!isMax && modelFeatures.enhancePromptAdd && requestBody.prompt && !String(requestBody.prompt).includes('upscaled, blurry')) {
+        const addition = '-2::upscaled, blurry::';
+        const { tagsPart, index } = splitPromptAtTextColon(requestBody.prompt);
+        if (index !== -1) {
+            const processedTags = tagsPart ? `${tagsPart}, ${addition}` : addition;
+            requestBody.prompt = processedTags + ', Text:' + requestBody.prompt.substring(index + 5);
+        } else {
+            requestBody.prompt = `${requestBody.prompt}, ${addition}`;
+        }
+    }
+
     const opts = await buildOptions(globalResources, requestBody, null, {}, ws, handler);
     opts.action = __runtimeGr.getNekoAiService('Action').IMG2IMG;
-    opts.upscaled_enhance = true;
-    opts.upscale = undefined;
-    opts.max_enhance_source = filename;
+    opts.strength = strength;
+    opts.noise = noise;
     opts.image_source = filename;
     opts.original_filename = filename;
     opts.requestId = requestId;
+    if (isMax) {
+        opts.upscaled_enhance = true;
+        opts.upscale = undefined;
+        opts.max_enhance_source = filename;
+    } else {
+        opts.enhance_scale = enhanceScale;
+        opts.enhance_source = filename;
+    }
 
     const mockReq = { session: { id: sessionId } };
     return handleGeneration(
@@ -8509,70 +8557,18 @@ async function maxEnhanceImage(globalResources, filename, sessionId, workspaceId
     );
 }
 
-async function enhanceImage(globalResources, filename, scale, sessionId, workspaceId = null, streamingCallback = null, ws = null, handler = null, requestId = null) {
-    bindRuntimeGlobalResources(globalResources);
-    const allowedScales = new Set([1, 1.5, 2]);
-    const enhanceScale = Number(scale);
-    if (!allowedScales.has(enhanceScale)) {
-        throw new Error('Enhance scale must be 1, 1.5, or 2');
-    }
-
-    const filePath = path.join(__runtimeGr.getPath('images'), filename);
-    if (!filename || !fs.existsSync(filePath)) {
-        throw new Error('Image not found');
-    }
-
-    const sourceBuffer = fs.readFileSync(filePath);
-    const sourceMetadata = __runtimeGr.getPngMetadata().readMetadata(sourceBuffer);
-    if (!sourceMetadata?.tEXt?.Comment) {
-        throw new Error('Enhance requires generation metadata');
-    }
-
-    const parsedMetadata = JSON.parse(sourceMetadata.tEXt.Comment);
-    const sourceDimensions = await getImageDimensions(sourceBuffer);
-    const requestBody = await convertMetadataToRequestFormat(globalResources, {
-        filename,
-        workspace: workspaceId,
-        metadata: parsedMetadata
-    });
-    const { getModelFeatures } = require('./modelFeatures');
-    const modelFeatures = getModelFeatures(requestBody.model, __runtimeGr.getModelFeaturesMap());
-    if (!modelFeatures?.maxEnhance) {
-        throw new Error(`Enhance is not supported by model ${requestBody.model || 'unknown'}`);
-    }
-
-    requestBody.image = `data:${sourceBuffer.toString('base64')}`;
-    requestBody.width = Math.max(1, Math.round(sourceDimensions.width * enhanceScale));
-    requestBody.height = Math.max(1, Math.round(sourceDimensions.height * enhanceScale));
-    requestBody.strength = 0.7;
-    requestBody.noise = 0.1;
-    requestBody.seed = crypto.randomInt(0, 4294967295);
-    requestBody.upscaled_enhance = false;
-    requestBody.upscale = false;
-    requestBody.no_save = false;
-    requestBody.requestId = requestId;
-    delete requestBody.resolution;
-
-    const opts = await buildOptions(globalResources, requestBody, null, {}, ws, handler);
-    opts.action = __runtimeGr.getNekoAiService('Action').IMG2IMG;
-    opts.enhance_scale = enhanceScale;
-    opts.enhance_source = filename;
-    opts.image_source = filename;
-    opts.original_filename = filename;
-    opts.requestId = requestId;
-
-    const mockReq = { session: { id: sessionId } };
-    return handleGeneration(
+async function maxEnhanceImage(globalResources, filename, sessionId, workspaceId = null, streamingCallback = null, ws = null, handler = null, requestId = null, enhanceOptions = {}) {
+    return enhanceImage(
         globalResources,
-        opts,
-        true,
-        requestBody.preset || null,
+        filename,
+        'max',
+        sessionId,
         workspaceId,
-        mockReq,
         streamingCallback,
         ws,
         handler,
-        sourceMetadata
+        requestId,
+        enhanceOptions
     );
 }
 

@@ -184,6 +184,42 @@
     }
   });
 
+  // --- 2b. Fandom offline wikis ---
+  registerDsap({
+    url: 'wiki.fandom.jp',
+    aliases: [
+      'rdf://wiki.fandom.jp',
+      'fandom.grimoire.jp',
+      'en.grimoire.jp/fandom'
+    ],
+    title: 'Fandom Wikis',
+    type: 'core',
+    activate(shell, match) {
+      if (!shell) return false;
+      const raw = String(match.canonicalUrl || match.displayPath || '');
+      const stripped = raw.replace(/^(edtx|rdf|dsap):\/\//i, '');
+      const pathPart = stripped.replace(/^wiki\.fandom\.jp\/?/i, '').replace(/^fandom\.grimoire\.jp\/?/i, '').replace(/^en\.grimoire\.jp\/fandom\/?/i, '');
+      const [pathNoQuery, query = ''] = pathPart.split('?');
+      const showAll = /(?:^|&)all=1(?:&|$)/.test(query);
+      const segments = pathNoQuery.split('/').filter(Boolean);
+      if (segments.length >= 2 && typeof shell.openStaticWikiPage === 'function') {
+        const siteId = decodeURIComponent(segments[0]);
+        const pageId = segments.slice(1).map((s) => {
+          try { return decodeURIComponent(s); } catch (e) { return s; }
+        }).join('/');
+        shell.openStaticWikiPage(siteId, pageId, { liveFetch: true });
+        if (typeof shell.setAddress === 'function') {
+          shell.setAddress({ displayUrl: `rdf://wiki.fandom.jp/${siteId}/${pageId}`, mode: 'rdf' });
+        }
+        return true;
+      }
+      if (typeof shell.showFandomWikiIndex === 'function') {
+        shell.showFandomWikiIndex({ showAll, siteId: segments[0] || null });
+      }
+      return true;
+    }
+  });
+
   // --- 3. Static / offline documentation (NovelAI docs etc.) ---
   // Uses the rdf:// visual protocol but is registered under the docs host.
   registerDsap({

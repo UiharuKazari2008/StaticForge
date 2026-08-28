@@ -2,6 +2,7 @@ class GenerationUsageToolManager {
     constructor() {
         this.element = null;
         this.genCountWired = false;
+        this.extendedUsageToastShown = false;
     }
 
     init() {
@@ -53,22 +54,29 @@ class GenerationUsageToolManager {
     remainingPercent(usage) {
         if (!usage) return null;
         if (usage.isNegative) return 0;
-        return Math.min(100, Math.max(0, Number(usage.percent) || 0));
+        return Math.max(0, Number(usage.percent) || 0);
     }
 
     usedPercent(usage) {
         const remaining = this.remainingPercent(usage);
-        return remaining == null ? null : Math.round(100 - remaining);
+        return remaining == null ? null : Math.max(0, Math.round(100 - remaining));
     }
 
     remainingGens(usage) {
         const remaining = this.remainingPercent(usage);
-        return remaining == null ? null : Math.round(17.83 * remaining);
+        // NovelAI chunk 52 / module 42283: Math.round(17.3 * percent)
+        return remaining == null ? null : Math.round(17.3 * remaining);
     }
 
     refillPercentPerDay(usage) {
         const seconds = Number(usage?.timeUntilNextPercent);
         return seconds > 0 ? Math.round((86400 / seconds) * 10) / 10 : 0;
+    }
+
+    isRefillPaused(usage) {
+        const remaining = this.remainingPercent(usage);
+        const refill = this.refillPercentPerDay(usage);
+        return remaining != null && (remaining >= 100 || refill <= 0);
     }
 
     recentImageCount() {
@@ -87,8 +95,12 @@ class GenerationUsageToolManager {
             usage: null,
             percent: null,
             remaining: null,
+            remainingPercent: null,
             refillPercent: 0,
             refillGenerations: 0,
+            refillPaused: false,
+            extended: false,
+            extraPercent: 0,
             high: false,
             compactLabel: '—',
             title: '24h generation count',
@@ -119,23 +131,35 @@ class GenerationUsageToolManager {
             });
         }
         const percent = this.usedPercent(usage);
+        const remainingPercent = this.remainingPercent(usage);
         const remaining = this.remainingGens(usage);
         const refillPercent = this.refillPercentPerDay(usage);
-        const refillGenerations = Math.round(17.83 * refillPercent);
+        const refillPaused = this.isRefillPaused(usage);
+        const refillGenerations = Math.round(17.3 * refillPercent);
         const high = this.isHigh(usage);
+        const extended = remainingPercent > 100;
+        const extraPercent = extended ? Math.round(remainingPercent - 100) : 0;
+        const compactLabel = extended ? `+${extraPercent}%` : `${percent}%`;
+        const title = extended
+            ? `24h ${this.recentImageCount()} — Extended free usage (+${extraPercent}%, ${remainingPercent}% remaining, ~${remaining} left)`
+            : `24h ${this.recentImageCount()} — V5 usage ${percent}% (~${remaining} left)`;
         return {
             isOpus: true,
             usage,
             percent,
+            remainingPercent,
             remaining,
             refillPercent,
             refillGenerations,
+            refillPaused,
+            extended,
+            extraPercent,
             high,
-            compactLabel: `${percent}%`,
-            title: `24h ${this.recentImageCount()} — V5 usage ${percent}% (~${remaining} left)`,
-            iconClass: high ? 'fas fa-battery-empty' : 'fas fa-battery-three-quarters',
+            compactLabel,
+            title,
+            iconClass: high ? 'fas fa-battery-empty' : (extended ? 'fas fa-battery-full' : 'fas fa-battery-three-quarters'),
             showBar: true,
-            barPercent: percent
+            barPercent: extended ? 100 : Math.min(100, percent)
         };
     }
 
@@ -154,6 +178,34 @@ class GenerationUsageToolManager {
         if (usageEl) usageEl.textContent = snap.isOpus ? snap.compactLabel : '';
         this.render();
         this.updateExternalSurfaces();
+        this.notifyExtendedUsage();
+    }
+
+    /**
+     * One toast per session while remaining is over 100% (V5 launch +100% boost).
+     * @param {{ forceDisplay?: boolean }} [options]
+     */
+    notifyExtendedUsage(options = {}) {
+        const snap = this.getSnapshot();
+        if (!snap.isOpus || !snap.usage) return;
+        if (!snap.extended) {
+            this.extendedUsageToastShown = false;
+            return;
+        }
+        if (this.extendedUsageToastShown) return;
+        // shouldDeferTrayNotifications: public/scripts/comp/trayIndicators.js
+        if (!options.forceDisplay && shouldDeferTrayNotifications()) return;
+
+        this.extendedUsageToastShown = true;
+        showGlassToast(
+            'success',
+            'Extended Free Usage',
+            `Opus V5 got a one-time +100% usage boost for launch, which can go past the normal 100% cap.<br/>You have <strong>${snap.remainingPercent}%</strong> remaining (~${snap.remaining} free gens, +${snap.extraPercent}% extra). Refill stays paused until you drop below 100%.`,
+            false,
+            20000,
+            '<i class="fas fa-battery-full"></i>',
+            [{ text: 'Open', type: 'primary', closeOnClick: true, onClick: () => this.open() }]
+        );
     }
 
     /**
@@ -171,7 +223,9 @@ class GenerationUsageToolManager {
         if (!snap.isOpus) return;
 
         valueEl.textContent = snap.remaining != null
-            ? `${snap.compactLabel} (~${snap.remaining})`
+            ? (snap.extended
+                ? `Extended +${snap.extraPercent}% (~${snap.remaining})`
+                : `${snap.compactLabel} (~${snap.remaining})`)
             : snap.compactLabel;
         row.title = snap.title;
         row.classList.toggle('low-credits', snap.high);
@@ -196,11 +250,13 @@ class GenerationUsageToolManager {
 
         if (valueEl) {
             valueEl.textContent = snap.remaining != null
-                ? `${snap.compactLabel} (~${snap.remaining} left)`
+                ? (snap.extended
+                    ? `Extended free +${snap.extraPercent}% (~${snap.remaining} left)`
+                    : `${snap.compactLabel} (~${snap.remaining} left)`)
                 : snap.compactLabel;
         }
         if (fillEl) {
-            fillEl.style.width = snap.showBar ? `${snap.barPercent}%` : '0%';
+            fillEl.style.width = snap.showBar ? `${Math.min(100, snap.barPercent)}%` : '0%';
             fillEl.classList.toggle('low', snap.high);
         }
     }
@@ -213,6 +269,7 @@ class GenerationUsageToolManager {
         const remainingEl = document.getElementById('generationUsageRemaining');
         const refillEl = document.getElementById('generationUsageRefill');
         const valueEl = document.getElementById('generationUsagePercent');
+        const statusLabel = document.getElementById('generationUsageStatusLabel');
         const fillEl = document.getElementById('generationUsageFill');
         const comparisonEl = document.getElementById('generationUsageDayComparison');
         if (!valueEl || !fillEl) return;
@@ -220,6 +277,7 @@ class GenerationUsageToolManager {
         if (dayCountEl) dayCountEl.textContent = String(recentCount);
 
         if (!snap.isOpus || !snap.usage) {
+            if (statusLabel) statusLabel.textContent = 'Usage';
             if (remainingEl) remainingEl.textContent = '—';
             if (refillEl) refillEl.textContent = '—';
             valueEl.textContent = '—';
@@ -229,13 +287,30 @@ class GenerationUsageToolManager {
             return;
         }
 
-        if (remainingEl) remainingEl.textContent = `~${snap.remaining}`;
-        if (refillEl) refillEl.textContent = `${snap.refillPercent}% / day (~${snap.refillGenerations})`;
-        valueEl.textContent = snap.compactLabel;
-        fillEl.style.width = `${snap.barPercent}%`;
+        if (statusLabel) statusLabel.textContent = snap.extended ? 'Extended' : 'Usage';
+        if (remainingEl) {
+            remainingEl.textContent = snap.extended
+                ? `~${snap.remaining} (${snap.remainingPercent}%)`
+                : `~${snap.remaining}`;
+        }
+        if (refillEl) {
+            refillEl.textContent = snap.extended
+                ? 'Paused (full)'
+                : (snap.refillPaused
+                    ? 'Paused'
+                    : `${snap.refillPercent}% / day (~${snap.refillGenerations})`);
+        }
+        valueEl.textContent = snap.extended
+            ? `Free +${snap.extraPercent}%`
+            : snap.compactLabel;
+        fillEl.style.width = `${Math.min(100, snap.barPercent)}%`;
         fillEl.classList.toggle('low', snap.high);
         if (comparisonEl) {
-            comparisonEl.textContent = `${recentCount} generated / ~${snap.refillGenerations} refilled`;
+            comparisonEl.textContent = snap.extended
+                ? `${recentCount} generated / extended free`
+                : (snap.refillPaused
+                    ? `${recentCount} generated / refill paused`
+                    : `${recentCount} generated / ~${snap.refillGenerations} refilled`);
         }
     }
 

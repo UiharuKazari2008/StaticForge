@@ -588,7 +588,9 @@ function trimManagedEmphasisInnerEdges(text) {
         let trimmed;
         let outsideSuffix = '';
         if (abutsNextManaged) {
-            trimmed = inner.replace(/^[ \t,]+/g, '');
+            const strippedLead = inner.replace(/^[ \t,]+/g, '');
+            // Empty auto-term tails are inter-group separators — keep them for empty-block removal.
+            trimmed = strippedLead ? strippedLead : inner;
         } else {
             const resolved = resolveTrimmedEmphasisInner(inner, out, b.end);
             trimmed = resolved.trimmed;
@@ -616,10 +618,100 @@ function trimClassicEmphasisInnerEdges(text) {
     });
 }
 
+/** True when a group body has no visible tag text (only spaces, tabs, commas). */
+function isEmptyEmphasisInnerText(inner) {
+    return !String(inner || '').replace(/[ \t,]+/g, '');
+}
+
+/**
+ * Join left/right after deleting an empty emphasis span. Collapses duplicated
+ * commas/pipes and avoids gluing adjacent tags into one word.
+ */
+function joinAfterEmphasisBlockRemoval(left, right) {
+    const leftSpace = /[ \t]+$/.test(left);
+    const rightSpace = /^[ \t]+/.test(right);
+    const L = String(left || '').replace(/[ \t]+$/, '');
+    let R = String(right || '').replace(/^[ \t]+/, '');
+    if (!R.replace(/[ \t,|]+/g, '')) R = '';
+    const leftComma = /,$/.test(L);
+    const rightComma = /^,/.test(R);
+    const leftPipe = /\|$/.test(L);
+    const rightPipe = /^\|/.test(R);
+
+    if (leftComma && rightComma) {
+        R = R.replace(/^,\s*/, '');
+        return R ? `${L} ${R}` : L.replace(/,+$/, '');
+    }
+    if (leftPipe && rightPipe) {
+        R = R.replace(/^\|\s*/, '');
+        return R ? `${L} ${R}` : L.replace(/\|+$/, '');
+    }
+    if (leftComma && !R) return L.replace(/,+$/, '');
+    if (rightComma && !L) return R.replace(/^,+/, '').replace(/^[ \t]+/, '');
+    if (leftPipe && !R) return L.replace(/\|+$/, '');
+    if (rightPipe && !L) return R.replace(/^\|+/, '').replace(/^[ \t]+/, '');
+    if ((leftComma || leftPipe) && R) return `${L} ${R}`;
+
+    const lCh = L.slice(-1);
+    const rCh = R.charAt(0);
+    if (lCh && rCh && /[^\s,|]/.test(lCh) && /[^\s,|]/.test(rCh)) {
+        return `${L} ${R}`;
+    }
+    if ((leftSpace || rightSpace) && L && R && !/[\n,|]$/.test(L) && !/^[\n,|]/.test(R)) {
+        return `${L} ${R}`;
+    }
+    return L + R;
+}
+
+/**
+ * Drop closed/auto-term classic groups whose inner text is empty or comma/space only.
+ * listEmphasisBlocks: public/scripts/comp/emphasisParse.js
+ */
+function removeEmptyClassicEmphasisGroups(text) {
+    const value = String(text || '');
+    if (!value.includes('::')) return value;
+    let out = value;
+    for (let guard = 0; guard < 256; guard++) {
+        const empty = listEmphasisBlocks(out).filter((b) => isEmptyEmphasisInnerText(b.innerText));
+        if (!empty.length) break;
+        const b = empty[empty.length - 1];
+        const next = joinAfterEmphasisBlockRemoval(out.slice(0, b.start), out.slice(b.end));
+        if (next === out) break;
+        out = next;
+    }
+    return out;
+}
+
+/**
+ * Drop paired/auto-term managed ZWSP groups with no visible inner text.
+ * Invisible empty OPEN…CLOSE spans steal caret/selection even though they look blank.
+ */
+function removeEmptyManagedEmphasisBlocks(text) {
+    const value = String(text || '');
+    if (!value || !hasManagedEmphasisGroupIds(value)) {
+        return { text: value, removed: 0, removedIds: [] };
+    }
+    let out = value;
+    const removedIds = [];
+    for (let guard = 0; guard < 256; guard++) {
+        const empty = listManagedEmphasisBlocks(out).filter((b) => isEmptyEmphasisInnerText(b.innerText));
+        if (!empty.length) break;
+        const b = empty[empty.length - 1];
+        // Auto-term empty: drop only the open delimiter so an inner ", " stays between groups.
+        const to = b.needsTerminator ? b.end : b.openEnd;
+        const next = joinAfterEmphasisBlockRemoval(out.slice(0, b.start), out.slice(to));
+        if (next === out) break;
+        out = next;
+        removedIds.push(b.id);
+    }
+    removedIds.reverse();
+    return { text: out, removed: removedIds.length, removedIds };
+}
+
 /**
  * Blur/format settle for managed ZWSP: drop unpaired closes, strip dead invisibles,
- * then trim inner edge commas/spaces. Orphan closes must be removed before stripUnmanaged
- * (strip protects all listed closes, including unpaired ones).
+ * trim inner edge commas/spaces, then delete empty groups. Orphan closes must be
+ * removed before stripUnmanaged (strip protects all listed closes, including unpaired).
  */
 function normalizeManagedEmphasisEditorText(text) {
     const original = String(text || '');
@@ -628,11 +720,15 @@ function normalizeManagedEmphasisEditorText(text) {
     out = orphanHeal.text;
     out = stripUnmanagedEmphasisInvisibles(out);
     out = trimManagedEmphasisInnerEdges(out);
+    const emptyHeal = removeEmptyManagedEmphasisBlocks(out);
+    out = emptyHeal.text;
     return {
         text: out,
         changed: out !== original,
         orphanClosesRemoved: orphanHeal.removed,
-        orphanIds: orphanHeal.orphanIds
+        orphanIds: orphanHeal.orphanIds,
+        emptyBlocksRemoved: emptyHeal.removed,
+        emptyBlockIds: emptyHeal.removedIds
     };
 }
 
@@ -2227,6 +2323,7 @@ function importClassicEmphasisIntoManagedText(text, groupsById, mode) {
         : [];
     const classic = listAllEmphasisTargets(value)
         .filter((t) => t.type === 'group')
+        .filter((t) => !isEmptyEmphasisInnerText(t.innerText))
         .filter((t) => !managedSpans.some((s) => t.start >= s.start && t.end <= s.end))
         .sort((a, b) => a.start - b.start);
 
@@ -2566,8 +2663,8 @@ function reindexManagedEmphasisGroupIdsForTextarea(textarea) {
 /**
  * On blur / paste settle: migrate managed ids missing local weights from sibling
  * prompt bags (or the active drag session), drop unpaired managed closes, strip
- * dead ZW, trim edge commas/spaces, then convert classic N:: leftovers into the
- * field's current hidden|visible mode and write groupsById.
+ * dead ZW, trim edge commas/spaces, drop empty ZWSP/classic groups, then convert
+ * classic N:: leftovers into the field's current hidden|visible mode and write groupsById.
  */
 function importUnmanagedEmphasisGroupsForTextarea(textarea) {
     if (!textarea || !textarea.id) return null;
@@ -2596,8 +2693,10 @@ function importUnmanagedEmphasisGroupsForTextarea(textarea) {
         value = imported.text;
         groupsById = imported.groupsById;
     }
+    // Empty classic N:::: is not imported (would become invisible ZWSP); strip it here.
+    value = removeEmptyClassicEmphasisGroups(value);
 
-    // normalizeManagedEmphasisEditorText: unpaired closes → strip dead ZW → trim edges
+    // normalizeManagedEmphasisEditorText: unpaired closes → strip dead ZW → trim edges → drop empty groups
     const normalized = normalizeManagedEmphasisEditorText(value);
     orphanClosesRemoved = normalized.orphanClosesRemoved;
     orphanIds = normalized.orphanIds;
@@ -3339,7 +3438,9 @@ function debugVerifyManagedEmphasisCorrections() {
         listBlocks: typeof listManagedEmphasisBlocks === 'function',
         normalize: typeof normalizeManagedEmphasisEditorText === 'function',
         trimManaged: typeof trimManagedEmphasisInnerEdges === 'function',
-        stripUnmanaged: typeof stripUnmanagedEmphasisInvisibles === 'function'
+        stripUnmanaged: typeof stripUnmanagedEmphasisInvisibles === 'function',
+        removeEmptyManaged: typeof removeEmptyManagedEmphasisBlocks === 'function',
+        removeEmptyClassic: typeof removeEmptyClassicEmphasisGroups === 'function'
     };
     checks.push(pass('api.stripManaged', fn.strip));
     checks.push(pass('api.assertNoManaged', fn.assert));
@@ -3353,6 +3454,8 @@ function debugVerifyManagedEmphasisCorrections() {
     checks.push(pass('api.normalizeManagedEditor', fn.normalize));
     checks.push(pass('api.trimManagedInnerEdges', fn.trimManaged));
     checks.push(pass('api.stripUnmanagedInvisibles', fn.stripUnmanaged));
+    checks.push(pass('api.removeEmptyManagedBlocks', fn.removeEmptyManaged));
+    checks.push(pass('api.removeEmptyClassicGroups', fn.removeEmptyClassic));
 
     checks.push(pass(
         'src.stripUsesAssertLeftovers',
@@ -3363,8 +3466,9 @@ function debugVerifyManagedEmphasisCorrections() {
         'src.normalizeOrder',
         fn.normalize && srcIncludes(normalizeManagedEmphasisEditorText, 'removeUnpairedManagedEmphasisCloses')
             && srcIncludes(normalizeManagedEmphasisEditorText, 'stripUnmanagedEmphasisInvisibles')
-            && srcIncludes(normalizeManagedEmphasisEditorText, 'trimManagedEmphasisInnerEdges'),
-        'unpaired → strip dead ZW → trim edges'
+            && srcIncludes(normalizeManagedEmphasisEditorText, 'trimManagedEmphasisInnerEdges')
+            && srcIncludes(normalizeManagedEmphasisEditorText, 'removeEmptyManagedEmphasisBlocks'),
+        'unpaired → strip dead ZW → trim edges → drop empty groups'
     ));
     checks.push(pass(
         'src.caretShiftPassthrough',
@@ -3546,6 +3650,74 @@ function debugVerifyManagedEmphasisCorrections() {
             'fx.normalizeDigitKeepsInnerSpace',
             edgeDigitInner === '2025 ' && !/^[ \t]/.test(edgeDigitAfter),
             { inner: edgeDigitInner, after: edgeDigitAfter }
+        ));
+
+        const emptyHidden = `alpha, ${buildManagedEmphasisGroupText(11, '', { mode: 'hidden' })}, beta`;
+        const emptyHiddenNorm = normalizeManagedEmphasisEditorText(emptyHidden);
+        checks.push(pass(
+            'fx.normalizeEmptyHiddenRemoved',
+            emptyHiddenNorm.changed
+                && emptyHiddenNorm.emptyBlocksRemoved === 1
+                && emptyHiddenNorm.text === 'alpha, beta'
+                && countZW(emptyHiddenNorm.text).total === 0,
+            { in: emptyHidden, out: emptyHiddenNorm.text, emptyBlocksRemoved: emptyHiddenNorm.emptyBlocksRemoved }
+        ));
+
+        const emptyVisible = `gamma ${buildManagedEmphasisGroupText(12, '  ', { mode: 'visible', weight: 1.35 })} delta`;
+        const emptyVisibleNorm = normalizeManagedEmphasisEditorText(emptyVisible);
+        checks.push(pass(
+            'fx.normalizeEmptyVisibleRemoved',
+            emptyVisibleNorm.changed
+                && emptyVisibleNorm.emptyBlocksRemoved === 1
+                && emptyVisibleNorm.text === 'gamma delta'
+                && countZW(emptyVisibleNorm.text).total === 0
+                && !emptyVisibleNorm.text.includes('1.35'),
+            { out: emptyVisibleNorm.text, emptyBlocksRemoved: emptyVisibleNorm.emptyBlocksRemoved }
+        ));
+
+        const emptyKeep = `keep ${buildManagedEmphasisGroupText(13, 'horns', { mode: 'hidden' })} end`;
+        const emptyKeepNorm = normalizeManagedEmphasisEditorText(emptyKeep);
+        const emptyKeepBlocks = fn.listBlocks ? listManagedEmphasisBlocks(emptyKeepNorm.text) : [];
+        checks.push(pass(
+            'fx.normalizeNonEmptyKept',
+            emptyKeepBlocks.length === 1
+                && emptyKeepBlocks[0]?.innerText === 'horns'
+                && (emptyKeepNorm.emptyBlocksRemoved || 0) === 0,
+            { out: emptyKeepNorm.text, inner: emptyKeepBlocks[0]?.innerText }
+        ));
+
+        const classicEmpty = removeEmptyClassicEmphasisGroups('hello, 1.2::::, world');
+        checks.push(pass(
+            'fx.classicEmptyClosedRemoved',
+            classicEmpty === 'hello, world',
+            classicEmpty
+        ));
+
+        const emptyAuto = `${buildManagedEmphasisGroupText(14, '', { mode: 'hidden', omitClose: true })}${buildManagedEmphasisGroupText(15, 'kept', { mode: 'hidden' })}`;
+        const emptyAutoNorm = normalizeManagedEmphasisEditorText(emptyAuto);
+        const emptyAutoBlocks = fn.listBlocks ? listManagedEmphasisBlocks(emptyAutoNorm.text) : [];
+        checks.push(pass(
+            'fx.normalizeEmptyAutoTermRemoved',
+            emptyAutoNorm.emptyBlocksRemoved === 1
+                && emptyAutoBlocks.length === 1
+                && emptyAutoBlocks[0]?.innerText === 'kept'
+                && countZW(emptyAutoNorm.text).OPEN === 1,
+            { out: emptyAutoNorm.text, ids: emptyAutoBlocks.map((b) => b.id), emptyBlocksRemoved: emptyAutoNorm.emptyBlocksRemoved }
+        ));
+
+        const emptyAutoComma = `tag ${buildManagedEmphasisGroupText(16, ', ', { mode: 'hidden', omitClose: true })}${buildManagedEmphasisGroupText(17, 'kept', { mode: 'hidden' })}`;
+        const emptyAutoCommaNorm = normalizeManagedEmphasisEditorText(emptyAutoComma);
+        const emptyAutoCommaBlocks = fn.listBlocks ? listManagedEmphasisBlocks(emptyAutoCommaNorm.text) : [];
+        const emptyAutoCommaBefore = emptyAutoCommaBlocks[0]
+            ? emptyAutoCommaNorm.text.slice(0, emptyAutoCommaBlocks[0].start)
+            : '';
+        checks.push(pass(
+            'fx.normalizeEmptyAutoTermKeepsComma',
+            emptyAutoCommaNorm.emptyBlocksRemoved === 1
+                && emptyAutoCommaBlocks.length === 1
+                && emptyAutoCommaBlocks[0]?.innerText === 'kept'
+                && /tag,\s*$/.test(emptyAutoCommaBefore),
+            { out: emptyAutoCommaNorm.text, before: emptyAutoCommaBefore }
         ));
 
         const classicSpace = trimClassicEmphasisInnerEdges('1.2::alpha ::1.3::beta::');

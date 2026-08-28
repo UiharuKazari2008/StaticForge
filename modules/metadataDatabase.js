@@ -9,6 +9,7 @@ const { isImageLarge, getResolutionFromDimensions } = require('./imageTools');
 const SQLiteAsyncWrapper = require('./sqliteAsyncWrapper');
 const metadataWriteQueue = require('./metadataWriteQueue');
 const { parsePromptSegments } = require('./promptSegments');
+const { isTextColonPrefix, stripTextColonPrefix } = require('./promptTextBoundary');
 const omegasearchFilters = require('./omegasearchFilters');
 
 let db = null;
@@ -1364,7 +1365,7 @@ async function removeGalleryPinsForBases(bases) {
 /**
  * Remove metadata for deleted images and merge receipts
  */
-async function removeImageMetadata(filenames) {
+async function removeImageMetadata(filenames, options = {}) {
     if (!Array.isArray(filenames) || filenames.length === 0) {
         return 0;
     }
@@ -1374,7 +1375,9 @@ async function removeImageMetadata(filenames) {
         return 0;
     }
 
-    await removeGalleryPinsForBases(valid);
+    if (options.keepPins !== true) {
+        await removeGalleryPinsForBases(valid);
+    }
     const basesToSync = await collectOwnershipBasesForFilenames(valid);
 
     // For large batches, use batch deletion
@@ -1585,17 +1588,19 @@ async function getCachedMetadata(filename, includeReceipts = false) {
     const readDb = await getMetadataReadDatabase() || await getReadOnlyDatabase();
     const readHandle = readDb || db;
     const image = await readHandle.get(
-        `SELECT id, filename, metadata, width, height, upscaled, parent, size, mtime
+        `SELECT id, filename, metadata, width, height, upscaled, parent, size, mtime, blurhash
          FROM images WHERE filename = ?`,
         [filename]
     );
 
     if (!image) return null;
 
+    const parsedMetadata = image.metadata ? JSON.parse(image.metadata) : {};
     const result = {
         ...image,
-        metadata: image.metadata ? JSON.parse(image.metadata) : {},
-        upscaled: Boolean(image.upscaled)
+        metadata: parsedMetadata,
+        upscaled: Boolean(image.upscaled),
+        blurhash: image.blurhash || parsedMetadata?.forge_data?.blurhash || null
     };
 
     // Only load receipts if requested (for performance)
@@ -1742,6 +1747,8 @@ async function listWorkspaceGalleryImageRows(workspaceId, bucket = 'files') {
     return Array.from(byFilename.values()).sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
 }
 
+let galleryOwnershipEnsureChain = Promise.resolve();
+
 /**
  * Boot + drift: keep gallery_workspace_ownership aligned with workspace config.
  */
@@ -1750,19 +1757,25 @@ async function ensureGalleryOwnershipFromWorkspaces(workspaces) {
         return { reconciled: false };
     }
 
-    const row = await db.get(`SELECT COUNT(*) AS count FROM ${GALLERY_OWNERSHIP_TABLE}`);
-    const dbCount = row?.count || 0;
+    const run = async () => {
+        const row = await db.get(`SELECT COUNT(*) AS count FROM ${GALLERY_OWNERSHIP_TABLE}`);
+        const dbCount = row?.count || 0;
 
-    if (dbCount === 0) {
-        const result = await backfillGalleryOwnershipFromWorkspaces(workspaces, { truncateFirst: false });
-        console.log(`✓ Gallery workspace ownership seeded (${result.upserted || 0} rows)`);
+        if (dbCount === 0) {
+            const result = await backfillGalleryOwnershipFromWorkspaces(workspaces, { truncateFirst: false });
+            console.log(`✓ Gallery workspace ownership seeded (${result.upserted || 0} rows)`);
+            await ensureGalleryWorkspaceItemsFromOwnership();
+            return { reconciled: true, seeded: true, upserted: result.upserted || 0 };
+        }
+
+        // DB is authoritative once seeded — refresh materialized items only (do not reconcile from workspace.json).
         await ensureGalleryWorkspaceItemsFromOwnership();
-        return { reconciled: true, seeded: true, upserted: result.upserted || 0 };
-    }
+        return { reconciled: false, dbAuthoritative: true };
+    };
 
-    // DB is authoritative once seeded — refresh materialized items only (do not reconcile from workspace.json).
-    await ensureGalleryWorkspaceItemsFromOwnership();
-    return { reconciled: false, dbAuthoritative: true };
+    const wait = galleryOwnershipEnsureChain.then(run, run);
+    galleryOwnershipEnsureChain = wait.then(() => undefined, () => undefined);
+    return wait;
 }
 
 /**
@@ -2412,8 +2425,8 @@ function extractTagFromText(text, baseWeight, tags, fullTextEntries) {
 
     if (tag.length >= 2) {
         // Check if this is display text (starts with "Text:")
-        if (tag.startsWith('Text:')) {
-            const displayText = tag.substring(5).trim();
+        if (isTextColonPrefix(tag)) {
+            const displayText = stripTextColonPrefix(tag);
             if (displayText.length > 0) {
                 fullTextEntries.push({
                     text: displayText.toLowerCase(),
@@ -4779,6 +4792,43 @@ async function getGalleryWorkspaceImageCountsById(workspaceIds, viewType = 'imag
     return counts;
 }
 
+async function getGalleryWorkspaceStatsById(workspaceIds, viewType = 'images') {
+    const stats = new Map();
+    if (!Array.isArray(workspaceIds) || !workspaceIds.length || !dbInitialized || !db) {
+        return stats;
+    }
+
+    const uniqueIds = [...new Set(workspaceIds.filter(Boolean))];
+    if (!uniqueIds.length) {
+        return stats;
+    }
+
+    const bucket = viewTypeToGalleryBucket(viewType);
+    const placeholders = uniqueIds.map(() => '?').join(', ');
+    const query = `SELECT workspace_id,
+                COUNT(*) AS items,
+                COALESCE(SUM(size), 0) AS bytes
+         FROM ${GALLERY_ITEMS_TABLE}
+         WHERE bucket = ? AND workspace_id IN (${placeholders})
+         GROUP BY workspace_id`;
+    const params = [bucket, ...uniqueIds];
+    const readDb = await getReadOnlyDatabase();
+    const rows = readDb
+        ? await readDb.all(query, params)
+        : await db.all(query, params);
+
+    for (const row of rows || []) {
+        if (row?.workspace_id) {
+            stats.set(row.workspace_id, {
+                items: Number(row.items) || 0,
+                bytes: Number(row.bytes) || 0
+            });
+        }
+    }
+
+    return stats;
+}
+
 async function getGalleryWorkspaceIndexMeta(workspaceId, viewType = 'images') {
     if (!workspaceId || !dbInitialized || !db) {
         return null;
@@ -5095,7 +5145,9 @@ async function removeGalleryOwnership(filename, workspaceId, bucket = 'files') {
             [filename, workspaceId, bucket]
         );
         await syncGalleryWorkspaceItemOnOwnershipChange(filename, workspaceId, bucket);
-    }, `ownership:remove:${filename}`);
+    }, `ownership:remove:${filename}`, {
+        onFailure: () => metadataWriteQueue.unmarkGalleryOwnershipRemoved(filename, workspaceId, bucket)
+    });
 
     return true;
 }
@@ -7155,6 +7207,7 @@ module.exports = {
     findGalleryWorkspaceItemIndex,
     getGalleryWorkspaceIndexMeta,
     getGalleryWorkspaceImageCountsById,
+    getGalleryWorkspaceStatsById,
     getGalleryWorkspaceProbeMeta,
     GALLERY_BLOCK_SIZE,
     listGalleryWorkspacePinBases,

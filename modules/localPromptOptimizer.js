@@ -4,6 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { findTextColonIndex, TEXT_COLON_LEN } = require('./promptTextBoundary');
 
 class LocalPromptOptimizer {
     constructor(globalResources) {
@@ -1133,10 +1134,10 @@ class LocalPromptOptimizer {
         let textOverlay = null;
         let promptToAnalyze = prompt;
         
-        const textMatch = prompt.match(/Text:\s*(.+)$/i);
-        if (textMatch) {
-            textOverlay = textMatch[1].trim();
-            promptToAnalyze = prompt.substring(0, prompt.lastIndexOf('Text:')).trim();
+        const textIndex = findTextColonIndex(prompt);
+        if (textIndex !== -1) {
+            textOverlay = prompt.substring(textIndex + TEXT_COLON_LEN).trim();
+            promptToAnalyze = prompt.substring(0, textIndex).trim();
         }
 
         const lines = [];

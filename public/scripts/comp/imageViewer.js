@@ -778,15 +778,7 @@ class ImageViewer {
                 {
                     icon: 'fas fa-wand-magic-sparkles',
                     text: 'Enhance',
-                    action: 'image-viewer-enhance',
-                    hidden: () => !this.getMaxEnhanceFeatures()
-                },
-                {
-                    icon: 'fas fa-wand-magic-sparkles',
-                    text: 'Max Enhance',
-                    action: 'image-viewer-max-enhance',
-                    hidden: () => !this.getMaxEnhanceFeatures(),
-                    disabled: !!(this.metadata.max_enhance || this.metadata.forge_data?.max_enhance || this.metadata.metadata?.forge_data?.max_enhance)
+                    action: 'image-viewer-enhance'
                 },
                 {
                     icon: 'nai-upscale',
@@ -794,6 +786,7 @@ class ImageViewer {
                     action: 'image-viewer-upscale',
                     disabled: !!this.metadata.upscaled
                 },
+                buildUnupscaledOriginalContextMenuItem(() => this.metadata, 'image-viewer-'),
                 { separator: true },
                 {
                     icon: 'fas fa-person-to-portal',
@@ -900,8 +893,11 @@ class ImageViewer {
             case 'image-viewer-enhance':
                 this.enhance();
                 break;
-            case 'image-viewer-max-enhance':
-                this.maxEnhance();
+            case 'image-viewer-copy-original':
+            case 'image-viewer-download-original':
+            case 'image-viewer-expand-canvas-original':
+            case 'image-viewer-delete-original':
+                handleUnupscaledOriginalContextAction(action, this.metadata, event);
                 break;
             case 'image-viewer-upscale':
                 this.upscale();
@@ -1380,49 +1376,9 @@ class ImageViewer {
         }
     }
 
-    getMaxEnhanceFeatures() {
-        const embedded = this.metadata?.metadata || {};
-        const candidates = [
-            this.metadata?.model,
-            this.metadata?.Model,
-            this.metadata?.forge_data?.model,
-            embedded.model,
-            embedded.Model,
-            embedded.forge_data?.model
-        ].filter(Boolean);
-        const featureMap = globalThis.optionsData?.modelFeatures || {};
-
-        for (const model of candidates) {
-            const directFeatures = getForgeModelFeatures(model);
-            if (directFeatures?.maxEnhance) return directFeatures;
-
-            const apiFeatures = Object.values(featureMap).find((features) => features?.apiModel === model);
-            if (apiFeatures?.maxEnhance) return apiFeatures;
-        }
-        return null;
-    }
-
-    maxEnhance() {
-        const filename = this.metadata.upscaled || this.metadata.original || this.metadata.filename;
-        if (!filename || !this.getMaxEnhanceFeatures()) return;
-
-        const embedded = this.metadata?.metadata || {};
-        openMaxEnhanceModal(filename, {
-            width: this.metadata.width || embedded.width || embedded.Width,
-            height: this.metadata.height || embedded.height || embedded.Height
-        });
-    }
-
     enhance() {
-        const filename = this.metadata.upscaled || this.metadata.original || this.metadata.filename;
-        if (!filename || !this.getMaxEnhanceFeatures()) return;
-
-        const embedded = this.metadata?.metadata || {};
-        // openEnhanceModal: public/scripts/comp/imageExpansion.js
-        openEnhanceModal(filename, {
-            width: this.metadata.width || embedded.width || embedded.Width,
-            height: this.metadata.height || embedded.height || embedded.Height
-        });
+        // openEnhanceFromImage: public/scripts/comp/imageExpansion.js
+        openEnhanceFromImage(this.metadata);
     }
 
     upscale() {

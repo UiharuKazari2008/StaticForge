@@ -1,7 +1,8 @@
 const fs = require('fs');
 const path = require('path');
-const { normalizeAutofillSearchSettings } = require('./autofillSearchSettings');
+const { normalizeAutofillSearchSettings, parseAutofillArtistSearchPrefix } = require('./autofillSearchSettings');
 const { getBrowserHeaders, decompressIfNeeded } = require('./browserHttp');
+const { isTextColonPrefix, stripTextColonPrefix } = require('./promptTextBoundary');
 
 // Search functionality module
 class SearchService {
@@ -124,6 +125,12 @@ class SearchService {
             tagSearchDatabase.saveSearchResults(normalizedQuery, apiModel, tags);
         } catch (e) {
             console.warn('Failed to save cached tags:', e.message);
+        }
+        const tagLookup = this.globalResources.tagDatabase;
+        if (tagLookup && typeof tagLookup.fillMissingNovelCountsFromHints === 'function') {
+            tagLookup.fillMissingNovelCountsFromHints(tags).catch((error) => {
+                console.warn('Failed to fill missing n_count from NovelAI cache:', error.message);
+            });
         }
     }
 
@@ -483,8 +490,16 @@ class SearchService {
 
         const { query, model, ws, sessionId, requestId, autofillSessionId, spellCheckText, isContinuation, priorQuery, autofillSettings } = latestRequest;
         const settings = normalizeAutofillSearchSettings(autofillSettings);
-        const tagSearchQuery = this.truncateTagSearchQuery(query);
-        const spellCheckInput = (spellCheckText || query || '').trim();
+        const artistParsed = parseAutofillArtistSearchPrefix(query);
+        if (artistParsed.isArtistSearch) {
+            settings.artistSearch = true;
+            if (!settings.resultTypeFilter) {
+                settings.resultTypeFilter = 'tags';
+            }
+        }
+        const searchQuery = artistParsed.isArtistSearch ? artistParsed.remainder : query;
+        const tagSearchQuery = this.truncateTagSearchQuery(searchQuery);
+        const spellCheckInput = (spellCheckText || searchQuery || '').trim();
 
         this._searchPacketContext = {
             requestId: requestId || null,
@@ -504,10 +519,10 @@ class SearchService {
             const isTextReplacementSearch = query.startsWith('!');
 
             // Check if query starts with "Text:" - only perform spell correction in this case
-            const isTextPrefixSearch = query.startsWith('Text:');
+            const isTextPrefixSearch = isTextColonPrefix(query);
 
             // Handle PICK suffix stripping for search but preserve in inserted text
-            let searchQuery = query;
+            let expanderSearchQuery = query;
             let hasPickSuffix = false;
 
             if (query.startsWith('!')) {
@@ -515,12 +530,12 @@ class SearchService {
                     // Extract the name between ! and ~ or ~+
                     const match = query.match(/^!([^~+]+)[~+]/);
                     if (match) {
-                        searchQuery = match[1]; // Remove ! and suffix for searching
+                        expanderSearchQuery = match[1]; // Remove ! and suffix for searching
                         hasPickSuffix = true;
                     }
                 } else {
                     // Just remove the ! prefix for searching
-                    searchQuery = query.substring(1);
+                    expanderSearchQuery = query.substring(1);
                 }
             }
 
@@ -533,15 +548,17 @@ class SearchService {
                 }
 
                 const typeFilter = settings.resultTypeFilter || null;
-                const wantCharacters = !typeFilter || typeFilter === 'characters';
-                const wantTags = !typeFilter || typeFilter === 'tags';
-                const wantExpanders = !typeFilter || typeFilter === 'expanders';
-                const wantSpellSide = !typeFilter;
+                const artistSearch = settings.artistSearch === true;
+                const wantCharacters = !artistSearch && (!typeFilter || typeFilter === 'characters');
+                const wantTags = !typeFilter || typeFilter === 'tags' || typeFilter === 'novelai';
+                const wantExpanders = !artistSearch && (!typeFilter || typeFilter === 'expanders');
+                const wantSpellSide = !artistSearch && !typeFilter;
 
                 const tagOptions = {
                     isContinuation: isContinuation,
                     priorQuery: priorQuery || '',
-                    autofillSettings: settings
+                    autofillSettings: settings,
+                    suggestModel: model
                 };
 
                 const completeSkippedService = (serviceName, serviceOrder = 0) => {
@@ -606,7 +623,7 @@ class SearchService {
                     : Promise.resolve(null);
 
                 const runTextReplacements = wantExpanders
-                    ? this.performTextReplacementSearch(searchQuery, ws, hasPickSuffix, requestId).catch(error => {
+                    ? this.performTextReplacementSearch(expanderSearchQuery, ws, hasPickSuffix, requestId).catch(error => {
                         console.error('Text replacement search error:', error);
                         if (ws) {
                             this.sendSearchWs(ws, {
@@ -647,7 +664,7 @@ class SearchService {
                 }
             } else if (isTextReplacementSearch) {
                 // Only perform text replacement search when query starts with !
-                const textReplacementResults = await this.performTextReplacementSearch(searchQuery, ws, hasPickSuffix, requestId);
+                const textReplacementResults = await this.performTextReplacementSearch(expanderSearchQuery, ws, hasPickSuffix, requestId);
 
                 // Add text replacement results to search results
                 if (textReplacementResults && textReplacementResults.length > 0) {
@@ -657,7 +674,7 @@ class SearchService {
 
             // Handle "Text:" prefix - only perform spell checking
             if (isTextPrefixSearch) {
-                const textAfterPrefix = query.substring(5).trim(); // Remove "Text:" prefix
+                const textAfterPrefix = stripTextColonPrefix(query);
 
                 // Send initial status update for spellcheck service
                 if (ws) {
@@ -717,7 +734,7 @@ class SearchService {
 
             // For text replacement searches, strip the ! character from the search query
             if (isTextReplacementSearch) {
-                searchQuery = searchQuery.substring(1); // Remove the ! character
+                expanderSearchQuery = expanderSearchQuery.substring(1); // Remove the ! character
             }
 
             // Text replacements are now handled as an independent service above
@@ -1299,7 +1316,8 @@ class SearchService {
                 ? this.makeLocalDatasetTagRequests(normalizedQuery, currentModel, queryHash, ws, requestId, {
                     ...options,
                     includeDbAnime,
-                    includeDbFurry
+                    includeDbFurry,
+                    suggestModel: options.suggestModel || model
                 }).catch(error => {
                     console.error('❌ Local dataset tag search error:', error.message);
                     return [];
@@ -1488,7 +1506,12 @@ class SearchService {
                 throw new Error('Tag autofill search not available');
             }
 
-            const tags = await this.tagAutofillSearch.searchTags(query, { limit: maxResults });
+            const tags = await this.tagAutofillSearch.searchTags(query, {
+                limit: maxResults,
+                model: options.suggestModel || model,
+                artistSearch: settings?.artistSearch === true,
+                novelaiOnly: settings?.resultTypeFilter === 'novelai'
+            });
             const { anime, furry } = this.tagAutofillSearch.splitLocalServices(tags);
 
             if (includeDbAnime) {
@@ -1920,7 +1943,8 @@ class SearchService {
         await this.ensureServicesInitialized();
 
         try {
-            if (!query || query.trim().length < 2) {
+            const minLen = (tagOptions.autofillSettings && tagOptions.autofillSettings.artistSearch) ? 1 : 2;
+            if (!query || query.trim().length < minLen) {
                 return [];
             }
 

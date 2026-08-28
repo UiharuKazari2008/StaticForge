@@ -93,6 +93,8 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 
 ---
 
+---
+
 ## Detailed packets
 
 ### `add_api_key`

@@ -712,7 +712,16 @@
     object-fit: cover;
     object-position: center top;
     display: block;
-    /* background: linear-gradient(45deg, #ffffff, #b4b4b4); */
+    opacity: 1;
+    transition: opacity 0.5s ease-in;
+}
+
+.gallery-item img.loading-image {
+    opacity: 0;
+}
+
+.gallery-item.gallery-placeholder:not(.fade-in):not(.slide-in) {
+    opacity: 1;
 }
 
 .gallery-item .gallery-item-zoom-origin {

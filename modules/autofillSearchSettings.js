@@ -24,6 +24,27 @@ function pickPreset(value, presets, fallback) {
     return presets.includes(n) ? n : fallback;
 }
 
+const ARTIST_COLON_RE = /^artist:\s*/i;
+const ART_BY_RE = /^art\s+by\s+/i;
+
+function parseAutofillArtistSearchPrefix(query) {
+    const original = String(query || '');
+    const trimmed = original.trim();
+    if (ARTIST_COLON_RE.test(trimmed)) {
+        return {
+            isArtistSearch: true,
+            remainder: trimmed.replace(ARTIST_COLON_RE, '').trim()
+        };
+    }
+    if (ART_BY_RE.test(trimmed)) {
+        return {
+            isArtistSearch: true,
+            remainder: trimmed.replace(ART_BY_RE, '').trim()
+        };
+    }
+    return { isArtistSearch: false, remainder: trimmed };
+}
+
 function normalizeAutofillSearchSettings(raw) {
     const base = raw && typeof raw === 'object' ? raw : {};
     const typeFilter = base.resultTypeFilter;
@@ -39,9 +60,10 @@ function normalizeAutofillSearchSettings(raw) {
         searchDelayMs: pickPreset(base.searchDelayMs, AUTOFILL_SEARCH_DELAY_PRESETS, DEFAULT_AUTOFILL_SEARCH_SETTINGS.searchDelayMs),
         maxResults: pickPreset(base.maxResults, AUTOFILL_SEARCH_MAX_RESULTS_PRESETS, DEFAULT_AUTOFILL_SEARCH_SETTINGS.maxResults),
         resultTypeFilter: (typeFilter === 'characters' || typeFilter === 'tags'
-            || typeFilter === 'expanders' || typeFilter === 'dynamic')
+            || typeFilter === 'expanders' || typeFilter === 'dynamic' || typeFilter === 'novelai')
             ? typeFilter
-            : null
+            : null,
+        artistSearch: base.artistSearch === true
     };
 }
 
@@ -72,5 +94,6 @@ module.exports = {
     AUTOFILL_SEARCH_MAX_RESULTS_PRESETS,
     DEFAULT_AUTOFILL_SEARCH_SETTINGS,
     normalizeAutofillSearchSettings,
-    mergeAutofillSearchSettingsPatch
+    mergeAutofillSearchSettingsPatch,
+    parseAutofillArtistSearchPrefix
 };

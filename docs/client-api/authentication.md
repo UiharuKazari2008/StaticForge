@@ -424,12 +424,23 @@ true, and validates `devLoginKey` from secure config on every request. It accept
 `Authorization: Bearer …` or `?auth=` matching the development key. Existing
 admin and `dev_admin` sessions do not bypass the key check.
 
-`GET /agent` mounts this middleware for loopback requests only. Successful auth
-persists the `dev_admin` session and redirects to `/app?agent=1`. The preferred
-client sends the key in an `Authorization` header and removes that header after
-the redirect; `?auth=` is a fallback for browser tools that cannot set headers.
-Agent mode unregisters existing service workers, clears Cache Storage, and skips
-service-worker registration and startup cache downloads.
+`GET /agent` and `POST /agent/broadcast` mount this middleware for loopback
+requests only. Successful `GET /agent` auth persists the `dev_admin` session and
+returns a bootstrap page that unregisters workers, preloads app-shell CSS/JS,
+then opens `/app?agent=1`. The preferred client sends the key in an
+`Authorization` header and removes that header after the redirect; `?auth=` is a
+fallback for browser tools that cannot set headers. Agent mode unregisters
+existing service workers, clears Cache Storage, and skips service-worker
+registration and startup cache downloads. `POST /agent/broadcast` uses the same
+key-every-request gate and pushes `agent_notice` to all connected WebSocket
+clients. A successful call may persist a `dev_admin` session as a side effect of
+that middleware; the response is JSON, not a bootstrap page.
+
+`GET /agent/assets.json` and `GET /agent/assets.zip` keep the loopback and
+`enable_dev` gates but accept either the development key **or** an existing
+`dev_admin` session. That session exception exists so the `/agent` bootstrap can
+fetch the catalog without embedding the key in HTML. PIN `admin` sessions and
+forwarded client-address headers still do not qualify.
 
 The loopback gate ignores `X-Forwarded-For`, `X-Real-IP`, and other forwarded
 headers. A remote peer cannot gain access by spoofing those headers or by using a

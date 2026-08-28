@@ -282,6 +282,7 @@ function _isInAppOnlyToast(toastId) {
 function _shouldUseInAppToast(type, title, _message, buttons) {
     if (buttons && Array.isArray(buttons) && buttons.length > 0) return true;
     if (title === 'Critical Error' || title === 'User Data Error' || title === 'Read-Only Mode') return true;
+    if (title === 'Extended Free Usage') return true;
     if (type === 'warning' && title === 'Queue Blocked') return true;
     if (title === 'Disconnected' || title === 'Reconnecting') return true;
     return false;

@@ -80,6 +80,8 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 
 ---
 
+---
+
 ## Detailed packets
 
 ### `bulk_delete_vibe_images`

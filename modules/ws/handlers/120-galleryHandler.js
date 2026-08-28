@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
 const wsPacketRegistry = require('../wsPacketRegistry');
+const { encodeBlurhashFromFile } = require('../../blurhashUtils');
 const { isImageLarge, matchOriginalResolution } = require('../../imageTools');
 const replicationRemoteFetch = require('../../replicationRemoteFetch');
 const { isReplicationGalleryClient, canGalleryUseRemoteMaster } = require('../../replication/replicationContracts');
@@ -683,7 +684,11 @@ async function handleImageMetadataRequest(handlers, ws, message, clientInfo, wsS
 
         // Extract fields and ownership in parallel — ownership is indexed SQL, extract was doing full-file reads
         const [result, ownership] = await Promise.all([
-            handlers.globalResources.getPngMetadata().extractRelevantFields(metadata, filename),
+            handlers.globalResources.getPngMetadata().extractRelevantFields(
+                metadata,
+                filename,
+                cachedMetadata.blurhash
+            ),
             resolveImageWorkspaceOwnership(handlers, filename)
         ]);
         if (!result) {
@@ -769,7 +774,11 @@ async function handleImageByIndexRequest(handlers, ws, message, clientInfo, wsSe
                 }
 
                 if (cachedMetadata && cachedMetadata.metadata) {
-                    metadata = await handlers.globalResources.getPngMetadata().extractRelevantFields(cachedMetadata.metadata, image.original);
+                    metadata = await handlers.globalResources.getPngMetadata().extractRelevantFields(
+                        cachedMetadata.metadata,
+                        image.original,
+                        image.blurhash || cachedMetadata.blurhash
+                    );
                 }
             }
         } catch (metadataError) {
@@ -1081,6 +1090,96 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
     } catch (error) {
         console.error('Delete images bulk error:', error);
         handlers.sendError(ws, 'Failed to bulk delete images', error.message, message.requestId);
+    }
+}
+
+async function handleDeleteUnupscaledOriginal(handlers, ws, message, clientInfo, wsServer) {
+    try {
+        const filename = message.filename;
+        if (!filename || typeof filename !== 'string') {
+            handlers.sendError(ws, 'Filename is required', 'delete_unupscaled_original', message.requestId);
+            return;
+        }
+        if (filename.includes('_upscaled')) {
+            handlers.sendError(ws, 'Filename is not an original (un-upscaled) file', 'delete_unupscaled_original', message.requestId);
+            return;
+        }
+
+        const imagesDir = handlers.globalResources.getPath('images');
+        const originalPath = path.join(imagesDir, filename);
+        const upscaledFilename = filename.replace(/\.png$/i, '_upscaled.png');
+        const upscaledPath = path.join(imagesDir, upscaledFilename);
+
+        if (!fs.existsSync(originalPath)) {
+            handlers.sendError(ws, 'Original file not found', 'delete_unupscaled_original', message.requestId);
+            return;
+        }
+        if (!fs.existsSync(upscaledPath)) {
+            handlers.sendError(ws, 'No upscaled version exists; use Incinerate to delete the image', 'delete_unupscaled_original', message.requestId);
+            return;
+        }
+
+        const filesToDelete = [{ path: originalPath, type: 'original' }];
+        try {
+            const imageBuffer = fs.readFileSync(originalPath);
+            const metadata = handlers.globalResources.getPngMetadata().readMetadata(imageBuffer);
+            if (metadata?.tEXt?.Comment) {
+                const commentData = JSON.parse(metadata.tEXt.Comment);
+                const previewHash = commentData?.forge_data?.dynamic_generation?.compiled_prompt?.preview_image_hash;
+                if (previewHash) {
+                    const dynGenPreviewPath = path.join(
+                        handlers.globalResources.getPath('cache'),
+                        'dynGenPreview',
+                        `${previewHash}.png`
+                    );
+                    if (fs.existsSync(dynGenPreviewPath)) {
+                        filesToDelete.push({ path: dynGenPreviewPath, type: 'dynGenPreview' });
+                    }
+                }
+            }
+        } catch (metadataError) {
+            console.debug(`Could not extract metadata for original preview cleanup: ${metadataError.message}`);
+        }
+
+        for (const file of filesToDelete) {
+            try {
+                fs.unlinkSync(file.path);
+            } catch (error) {
+                console.error(`Failed to delete ${file.type}: ${path.basename(file.path)}`, error.message);
+            }
+        }
+
+        handlers.globalResources.getWorkspaceManager().removeFilesFromWorkspaces(
+            [filename],
+            { skipDestructiveBump: true }
+        );
+        handlers.globalResources.getReferenceMetadataDatabase().deleteMetadata(filename);
+        await handlers.globalResources.getMetadataDatabase().removeImageMetadata([filename], { keepPins: true });
+
+        handlers.sendToClient(ws, {
+            type: 'delete_unupscaled_original_response',
+            requestId: message.requestId,
+            data: {
+                success: true,
+                originalFilename: filename,
+                upscaledFilename
+            },
+            timestamp: new Date().toISOString()
+        });
+
+        wsServer.broadcast({
+            type: 'gallery_updated',
+            data: {
+                action: 'unupscaled_removed',
+                originalFilename: filename,
+                upscaledFilename,
+                viewType: 'images'
+            },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('Delete un-upscaled original error:', error);
+        handlers.sendError(ws, 'Failed to delete original file', error.message, message.requestId);
     }
 }
 
@@ -1398,10 +1497,17 @@ async function handleUrlUploadMetadataRequest(handlers, ws, message, clientInfo,
 
         // Return the raw metadata like handleImageMetadataRequest does
         // Don't transform it with extractRelevantFields - let the frontend handle that
+        const blurhash = pngMetadata?.forge_data?.blurhash
+            || await encodeBlurhashFromFile(filePath);
+        if (blurhash && pngMetadata) {
+            if (!pngMetadata.forge_data) pngMetadata.forge_data = {};
+            pngMetadata.forge_data.blurhash = blurhash;
+        }
         const result = {
             filename: filename,
             width: imageMetadata.width,
             height: imageMetadata.height,
+            blurhash: blurhash || null,
             metadata: pngMetadata
         };
 
@@ -1443,6 +1549,7 @@ function registerPackets(handlersCtx) {
     regFn('gallery_position_hint', handleGalleryPositionHint);
     regFn('set_gallery_show_shared', handleSetGalleryShowShared);
     regFn('delete_images_bulk', handleDeleteImagesBulk, GALLERY_DESTRUCTIVE);
+    regFn('delete_unupscaled_original', handleDeleteUnupscaledOriginal, GALLERY_DESTRUCTIVE);
     regFn('send_to_sequenzia_bulk', handleSendToSequenziaBulk);
     regFn('update_image_preset_bulk', handleUpdateImagePresetBulk, GALLERY_DESTRUCTIVE);
 }

@@ -37,12 +37,19 @@ class TagAutofillSearch {
     async searchTags(query, options = {}) {
         const limit = options.limit ?? DEFAULT_SEARCH_LIMIT;
         const trimmed = (query || '').trim();
-        if (trimmed.length < 2) {
+        const minLen = options.artistSearch ? 1 : 2;
+        if (trimmed.length < minLen) {
             return [];
         }
 
         const tagLookup = this.getTagLookup();
-        const rows = await tagLookup.searchTagsAutofill(trimmed, { limit, includeBreakdown: !!options.includeBreakdown });
+        const rows = await tagLookup.searchTagsAutofill(trimmed, {
+            limit,
+            includeBreakdown: !!options.includeBreakdown,
+            model: options.model || '',
+            artistOrNovelai: options.artistSearch === true,
+            novelaiOnly: options.novelaiOnly === true
+        });
 
         return rows.map((tag, index) => this.buildAutofillTag(tag, index));
     }

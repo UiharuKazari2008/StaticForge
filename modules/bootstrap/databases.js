@@ -4,6 +4,7 @@
  */
 
 const fs = require('fs');
+const path = require('path');
 const AnimeTagSearch = require('../animeTagSearch');
 const FurryTagSearch = require('../furryTagSearch');
 const FastTagSearch = require('../fastTagSearch');
@@ -175,6 +176,14 @@ function initializeTagSearchDatabase(gr) {
         gr.tagSearchDatabase = tagSearchDatabase;
         gr.initializationProgress.tagSearchDatabase = true;
         console.log('✓ Tag search database ready');
+
+        const wikiPath = path.join(gr.getPath('databases'), 'tag_wiki.db');
+        if (fs.existsSync(wikiPath)) {
+            const applied = tagSearchDatabase.applyCachedNovelCounts(wikiPath);
+            if (applied.filled > 0) {
+                console.log(`✓ Filled ${applied.filled} missing tag n_count values from NovelAI search cache`);
+            }
+        }
     } catch (error) {
         console.error('  ❌ Failed to load tag search database:', error);
         throw error;

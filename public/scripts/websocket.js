@@ -298,6 +298,7 @@ class BannerManager {
 
             // Bulk operations
             'delete_images_bulk': 'Delete Images',
+            'delete_unupscaled_original': 'Delete Original',
             'send_to_sequenzia_bulk': 'Send to Sequenzia',
             'update_image_preset_bulk': 'Update Image Presets',
 
@@ -5449,7 +5450,7 @@ class WebSocketClient {
         }
     }
 
-    async maxEnhanceImage(filename, workspace = null) {
+    async enhanceImage(filename, scale, workspace = null, enhanceOptions = null) {
         if (!this.isConnected()) {
             throw new Error('WebSocket not connected');
         }
@@ -5458,23 +5459,11 @@ class WebSocketClient {
         assertClientImageGenerationAllowed();
 
         try {
-            return await this.sendMessage('max_enhance_image', { filename, workspace });
-        } catch (error) {
-            console.error('Max Enhance image error:', error);
-            throw error;
-        }
-    }
-
-    async enhanceImage(filename, scale, workspace = null) {
-        if (!this.isConnected()) {
-            throw new Error('WebSocket not connected');
-        }
-
-        // assertClientImageGenerationAllowed: public/scripts/comp/novelAiAccountStatus.js
-        assertClientImageGenerationAllowed();
-
-        try {
-            return await this.sendMessage('enhance_image', { filename, scale, workspace });
+            const payload = { filename, scale, workspace };
+            if (enhanceOptions && typeof enhanceOptions === 'object') {
+                Object.assign(payload, enhanceOptions);
+            }
+            return await this.sendMessage('enhance_image', payload);
         } catch (error) {
             console.error('Enhance image error:', error);
             throw error;
@@ -6135,6 +6124,10 @@ class WebSocketClient {
 
     async deleteImagesBulk(filenames) {
         return this.sendMessage('delete_images_bulk', { filenames });
+    }
+
+    async deleteUnupscaledOriginal(filename) {
+        return this.sendMessage('delete_unupscaled_original', { filename });
     }
 
     async sendToSequenziaBulk(filenames) {
@@ -6804,6 +6797,8 @@ class WebSocketClient {
                 baseTimeout = 15000;
             } else if (message.type === 'upload_novelai_explore_image') {
                 baseTimeout = 120000;
+            } else if (message.type === 'import_fandom_wiki_page') {
+                baseTimeout = 15 * 60 * 1000;
             }
 
             // Calculate dynamic timeout based on RTT

@@ -65,6 +65,8 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 
 ---
 
+---
+
 ## Detailed packets
 
 ### `broadcast_resource_update`

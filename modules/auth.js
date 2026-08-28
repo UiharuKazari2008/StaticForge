@@ -189,6 +189,51 @@ function createDevAuthMiddleware(globalResources) {
     };
 }
 
+function createAgentAssetAuthMiddleware(globalResources) {
+    return (req, res, next) => {
+        res.setHeader('Cache-Control', 'blocked, no-store, no-cache, must-revalidate, private, max-age=0');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+
+        if (!isLoopbackAddress(req.socket?.remoteAddress)) {
+            return res.status(403).json({ error: 'Development access is loopback-only' });
+        }
+
+        const enableDev = globalResources.getConfig({ path: 'enable_dev' });
+        if (!enableDev) {
+            return res.status(404).json({ error: 'Development mode not enabled' });
+        }
+
+        if (req.session && req.session.authenticated && req.session.userType === 'dev_admin') {
+            req.userType = 'dev_admin';
+            req.authMethod = 'dev_admin_session';
+            return next();
+        }
+
+        const devLoginKey = globalResources.getSecureConfig({ path: 'devLoginKey' });
+        if (!devLoginKey) {
+            return res.status(500).json({
+                error: 'Development login key not configured',
+                code: 'DEV_LOGIN_KEY_NOT_CONFIGURED',
+                configPath: 'secure.config.json:devLoginKey'
+            });
+        }
+
+        const authorizationMatch = req.headers.authorization?.match(/^Bearer ([^\s]+)$/i);
+        const authToken = req.query.auth || authorizationMatch?.[1];
+        if (!authToken) {
+            return res.status(401).json({ error: 'Development authentication required' });
+        }
+        if (!credentialsMatch(authToken, devLoginKey)) {
+            return res.status(403).json({ error: 'Invalid development authentication token' });
+        }
+
+        req.userType = 'dev_admin';
+        req.authMethod = 'dev_login_key';
+        return next();
+    };
+}
+
 function isReadOnlyUser(req) {
     return req.userType === 'readonly';
 }
@@ -201,6 +246,7 @@ module.exports = {
     createAuthMiddleware,
     createApplicationAuthEarlyMiddleware,
     createDevAuthMiddleware,
+    createAgentAssetAuthMiddleware,
     isLoopbackAddress,
     isReadOnlyUser,
     isAdminUser,

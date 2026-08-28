@@ -81,7 +81,9 @@ function buildPresetTokenCountCache(promptConfig, tokenizer) {
             const entry = {
                 type: ds.type || 'dataset',
                 value: ds.value,
-                tokens: countPresetString(tokenizer, ds.value, true)
+                tokens: (ds.skipPromptValue || ds.isQualityPreset || ds.isTransparencyPreset)
+                    ? 0
+                    : countPresetString(tokenizer, ds.value, true)
             };
             if (Array.isArray(ds.sub_toggles) && ds.sub_toggles.length > 0) {
                 entry.sub_toggles = ds.sub_toggles.map((st) => ({

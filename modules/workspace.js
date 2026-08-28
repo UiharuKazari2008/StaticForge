@@ -288,6 +288,7 @@ class WorkspaceManager {
 
             await this.organizeOrphanedFiles();
             await this.pruneAllAbsentImageFilenamesOnBoot();
+            await metadataWriteQueue.drainAll();
         } catch (error) {
             console.error('Error syncing workspace files:', error.message || error);
             if (error && error.stack) {

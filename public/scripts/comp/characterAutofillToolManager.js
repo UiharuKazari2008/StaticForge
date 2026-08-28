@@ -313,11 +313,19 @@ class CharacterAutofillToolManager {
         if (!list || !keyguide || !listHost || !this.shellEl) return false;
 
         listHost.appendChild(list);
+        const viewBar = document.getElementById('characterAutocompleteViewBar');
+        if (viewBar) {
+            viewBar.classList.add('autofill-view-bar-detached');
+            viewBar.classList.remove('hidden');
+            this.shellEl.insertBefore(viewBar, listHost);
+        }
         this.shellEl.appendChild(keyguide);
         this.shellEl.classList.add('detached-tool-active');
         if (overlay) {
             overlay.classList.add('hidden');
         }
+        // syncAutofillViewBarPlacement: public/scripts/comp/autocompleteUtils.js
+        syncAutofillViewBarPlacement();
         return true;
     }
 
@@ -410,6 +418,12 @@ class CharacterAutofillToolManager {
 
         if (overlay && list && list.parentElement !== overlay) {
             overlay.insertBefore(list, overlay.firstChild || null);
+        }
+        const viewBar = document.getElementById('characterAutocompleteViewBar');
+        if (viewBar) {
+            viewBar.classList.remove('autofill-view-bar-detached');
+            document.body.appendChild(viewBar);
+            viewBar.classList.add('hidden');
         }
         if (overlay && keyguide && keyguide.parentElement !== overlay) {
             overlay.appendChild(keyguide);

@@ -260,6 +260,8 @@ These are **pushes** — handle asynchronously. Registered in `public/scripts/ws
 | `replication_progress` | Separation tar build, cargo pack/transfer/apply | `data.phase`, `current`, `total`, optional `path` |
 | `replication_sync_status` | Sync phase change (push, no `requestId`) | Same fields as `replication_sync_status_response` — DSAP sync panel |
 | `replication_sync_complete` | Full changelog sync finished | `data.success`, applied counts, `maxLsn` |
+| `fandom_wiki_import_progress` | Fandom page import progress | `data.phase`, `current`, `total`, optional `pageId`/`message`; Wiki Manager DSAP via `wsClient.on` |
+| `agent_notice` | Loopback `POST /agent/broadcast` | `data.id`, `message`, `title`, `display` (`toast` \| `dialog`), `level`, `timeout` (ms or `false`), `source: "agent"` — web client toast or confirmation dialog via `appWebSocketHandlers.js` |
 
 Director messages use prefix `director_` (handled in client before inbound registry).
 

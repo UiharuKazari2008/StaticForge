@@ -48,17 +48,19 @@ const upscaleWithNovelAI = async (imageBuffer, scale, width, height) => {
         throw new Error('NovelAI is temporarily locked after repeated API errors. An admin must review the Service Key in the Security Center to unlock it.');
     }
 
+    // Official /ai/upscale (dump 6750aa2 / 5ce3c4d): ImageBackendUrl + JSON-or-multipart body.
+    // Live default is multipart; JSON is still accepted via debugLegacyImageGenRequest.
+    // Scale is implicit 4x; width/height are inferred from the PNG. model is always nai-diffusion-5-curated.
     const payload = {
-        height,
         image: imageBuffer.toString('base64'),
-        scale: scale,
-        width
+        model: 'nai-diffusion-5-curated',
+        declared_blur_sigma: 0
     };
 
     const postData = JSON.stringify(payload);
     // browserRequest: modules/browserHttp.js
     const res = await browserRequest({
-        hostname: 'api.novelai.net',
+        hostname: 'image.novelai.net',
         port: 443,
         path: '/ai/upscale',
         method: 'POST',
@@ -68,35 +70,40 @@ const upscaleWithNovelAI = async (imageBuffer, scale, width, height) => {
             'x-initiated-at': new Date().toISOString(),
             'sec-gpc': '1'
         }
-    }, Buffer.from(postData), { acceptResType: 'json' });
+    }, Buffer.from(postData), { acceptResType: 'json', timeoutMs: 120000 });
 
     if (res.statusCode !== 200) {
+        const raw = res.body ? res.body.toString() : '';
+        let errorResponse = null;
         try {
-            const errorResponse = JSON.parse(res.body.toString());
-            apiKeyManager.recordApiFailure('novelai', res.statusCode, errorResponse.message || errorResponse.error);
-            throw new Error(`NovelAI Upscale API error: ${errorResponse.error || 'Unknown error'}`);
-        } catch (e) {
-            if (e.message && e.message.startsWith('NovelAI Upscale API error:')) throw e;
-            apiKeyManager.recordApiFailure('novelai', res.statusCode, `HTTP ${res.statusCode}`);
-            throw new Error(`NovelAI Upscale API error: HTTP ${res.statusCode}`);
+            errorResponse = JSON.parse(raw);
+        } catch (_) {
+            errorResponse = null;
         }
+        const detail = (errorResponse && (errorResponse.message || errorResponse.error))
+            || (raw && raw.slice(0, 300))
+            || 'Unknown error';
+        const code = (errorResponse && (errorResponse.statusCode || errorResponse.status)) || res.statusCode;
+        apiKeyManager.recordApiFailure('novelai', res.statusCode, detail);
+        throw new Error(`NovelAI Upscale API error: HTTP ${code} ${detail}`);
     }
 
     apiKeyManager.recordApiSuccess('novelai');
     const zipBuffer = res.body;
 
-    // Extract the first file from the ZIP
     const AdmZip = require('adm-zip');
     const zip = new AdmZip(zipBuffer);
     const zipEntries = zip.getEntries();
+    const pngEntry = zipEntries.find((entry) => {
+        const name = String(entry.entryName || '').split('/').pop();
+        return name.startsWith('image') && name.endsWith('.png');
+    }) || zipEntries[0];
 
-    if (zipEntries.length === 0) {
+    if (!pngEntry) {
         throw new Error('ZIP file is empty');
     }
 
-    // Get the first file (should be the upscaled PNG)
-    const firstEntry = zipEntries[0];
-    return firstEntry.getData();
+    return pngEntry.getData();
 };
 
 const upscaleWithESRGAN = async (imageBuffer, scale, width, height, upscaler, ws = null, handler = null, requestId = null) => {
@@ -359,7 +366,11 @@ async function upscaleImageWebSocket(globalResources, filename, workspaceId, use
             const metadataDatabase = __runtimeGr.getMetadataDatabase();
             responseMetadata = await metadataDatabase.getImageMetadata(upscaledFilename, __runtimeGr.getPath('images'));
             if (responseMetadata) {
-                responseMetadata = __runtimeGr.getPngMetadata().extractRelevantFields(responseMetadata, upscaledFilename);
+                responseMetadata = await __runtimeGr.getPngMetadata().extractRelevantFields(
+                    responseMetadata.metadata || responseMetadata,
+                    upscaledFilename,
+                    responseMetadata.blurhash
+                );
             }
         } catch (metadataError) {
             console.warn('⚠️ Failed to get metadata for upscaled image:', metadataError);

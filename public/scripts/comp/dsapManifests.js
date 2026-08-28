@@ -18,6 +18,7 @@ const OMEGASEARCH_DSAP_MANIFEST_URL = 'omegasearch.dyna.dreamscape.jp';
 const DATA_DSAP_MANIFEST_URL = 'data.dreamscape.jp';
 const AUTOFILL_DSAP_MANIFEST_URL = 'autofill.dreamscape.jp';
 const EXPLORE_DSAP_MANIFEST_URL = 'explore.novelai.net';
+const WIKI_DSAP_MANIFEST_URL = 'wiki.dyna.dreamscape.jp';
 
 function openDataManagementDsap(tabId) {
     let target;
@@ -273,6 +274,20 @@ function registerDsapManifests() {
                 // openDsapInGrimoire: public/scripts/comp/dsapRegistry.js
                 openDsapInGrimoire(`dsap://${EXPLORE_DSAP_MANIFEST_URL}/`);
             }
+        }
+    });
+
+    registerDsap({
+        url: WIKI_DSAP_MANIFEST_URL,
+        aliases: [
+            `dsap://${WIKI_DSAP_MANIFEST_URL}`,
+            'en.grimoire.jp/applets/wiki',
+            'applet.grimoire.jp/wiki'
+        ],
+        type: 'dsap',
+        title: 'Wiki Manager',
+        assets: {
+            scripts: ['scripts/comp/fandomWikiManagerDsapApplet.js']
         }
     });
 }

@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('./logger');
 const { attachLegacyDatabaseCheckpoint } = require('./legacyDatabaseCheckpoint');
+const { normalizeOfflineTagTitle } = require('./tagModelCutoff');
 
 let dbPath = null;
 let db = null;
@@ -279,6 +280,85 @@ function saveSearchResults(query, model, tags) {
 }
 
 /**
+ * Max NovelAI suggest-tags count per normalized tag name from cached_tags.
+ * Used to fill tags.n_count when the offline dump left it NULL.
+ */
+function getCachedTagNovelCounts() {
+    if (!ensureTagSearchDatabase()) {
+        return new Map();
+    }
+    try {
+        const rows = db.prepare(`
+            SELECT tag_name, MAX(tag_count) AS n_count
+            FROM cached_tags
+            WHERE tag_count > 0 AND tag_name IS NOT NULL AND TRIM(tag_name) != ''
+            GROUP BY tag_name
+        `).all();
+        const counts = new Map();
+        for (const row of rows) {
+            const key = normalizeOfflineTagTitle(row.tag_name);
+            if (!key) continue;
+            const nCount = Number(row.n_count) || 0;
+            if (nCount <= 0) continue;
+            const prev = counts.get(key) || 0;
+            if (nCount > prev) {
+                counts.set(key, nCount);
+            }
+        }
+        return counts;
+    } catch (error) {
+        console.warn('Failed to read NovelAI tag cache counts:', error.message);
+        return new Map();
+    }
+}
+
+/**
+ * Fill tags.n_count from the NovelAI suggest-tags cache where it is still NULL.
+ * @param {import('better-sqlite3').Database|string} tagDbOrPath
+ * @returns {{ filled: number, candidates: number }}
+ */
+function applyCachedNovelCounts(tagDbOrPath) {
+    const counts = getCachedTagNovelCounts();
+    if (!counts.size) {
+        return { filled: 0, candidates: 0 };
+    }
+
+    let tagDb = tagDbOrPath;
+    let opened = false;
+    if (typeof tagDbOrPath === 'string') {
+        if (!fs.existsSync(tagDbOrPath)) {
+            return { filled: 0, candidates: counts.size };
+        }
+        tagDb = new Database(tagDbOrPath);
+        opened = true;
+    }
+    if (!tagDb) {
+        return { filled: 0, candidates: counts.size };
+    }
+
+    try {
+        const update = tagDb.prepare(`
+            UPDATE tags SET n_count = ?
+            WHERE n_count IS NULL AND normalized_title = ?
+        `);
+        const apply = tagDb.transaction((entries) => {
+            let filled = 0;
+            for (const [normalizedTitle, nCount] of entries) {
+                const info = update.run(nCount, normalizedTitle);
+                filled += info.changes || 0;
+            }
+            return filled;
+        });
+        const filled = apply([...counts.entries()]);
+        return { filled, candidates: counts.size };
+    } finally {
+        if (opened) {
+            tagDb.close();
+        }
+    }
+}
+
+/**
  * Get cached processed search results
  * @param {string} query - The search query
  * @returns {Object|null} - Object with api and database arrays, or null if not found/expired
@@ -478,6 +558,8 @@ module.exports = {
     normalizeTagSearchQuery,
     closeTagSearchDatabase,
     getCachedTags,
+    getCachedTagNovelCounts,
+    applyCachedNovelCounts,
     saveSearchResults,
     cleanupOldCache,
     clearCacheForQuery,

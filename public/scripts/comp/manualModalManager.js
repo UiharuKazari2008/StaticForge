@@ -470,10 +470,16 @@ function createManualPreviewImageContextMenuConfig() {
                         action: 'expand-canvas'
                     },
                     {
+                        icon: 'fas fa-wand-magic-sparkles',
+                        text: 'Enhance',
+                        action: 'enhance'
+                    },
+                    {
                         icon: 'nai-upscale',
                         text: 'Upscale',
                         action: 'upscale'
                     },
+                    buildUnupscaledOriginalContextMenuItem(() => window.currentManualPreviewImage),
                     {
                         icon: 'fas fa-person-to-portal',
                         text: 'New Persona',
@@ -743,6 +749,21 @@ async function handleManualPreviewImageContextMenuAction(event) {
             } else {
                 showGlassToast('error', 'Expand Failed', 'No image available', false, undefined, '<i class="fas fa-image-slash"></i>');
             }
+            break;
+
+        case 'enhance':
+            if (window.currentManualPreviewImage) {
+                openEnhanceFromImage(window.currentManualPreviewImage);
+            } else {
+                showGlassToast('error', 'Enhance Failed', 'No image available', false, undefined, '<i class="fas fa-image-slash"></i>');
+            }
+            break;
+
+        case 'copy-original':
+        case 'download-original':
+        case 'expand-canvas-original':
+        case 'delete-original':
+            handleUnupscaledOriginalContextAction(action, window.currentManualPreviewImage, event);
             break;
 
         case 'create-desktop-shortcut':
@@ -1811,6 +1832,7 @@ function clearManualForm() {
     updateNsfwButtonDisplay();
     updateDatasetDisplay();
     renderDatasetDropdown();
+    updateSubTogglesButtonState();
 
     autoPositionBtn.setAttribute('data-state', 'on');
 
@@ -3668,7 +3690,6 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
 
         updateDatasetDisplay();
         renderDatasetDropdown();
-        updateSubTogglesButtonState();
 
         if (data.append_quality !== undefined) {
             appendQuality = !!data.append_quality;
@@ -3691,6 +3712,9 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
 
         // Re-render dataset dropdown to reflect loaded preset values
         renderDatasetDropdown();
+        // public/scripts/comp/manualDropdownManager.js
+        syncLoadedRatioGroupBiases();
+        updateSubTogglesButtonState();
 
         if (data.append_uc !== undefined) {
             selectedUcPreset = data.append_uc;
@@ -4942,10 +4966,18 @@ async function handleImageResult(imageSrc, clearContextFn, seed = null, response
             if (genFilename) {
                 window.lastGeneration.filename = genFilename;
             }
+            const isUpscaledName = !!(genFilename && String(genFilename).includes('_upscaled'));
+            const previous = window.currentManualPreviewImage;
+            const previousOriginal = previous && previous.original && !String(previous.original).includes('_upscaled')
+                ? previous.original
+                : null;
+            const derivedOriginal = isUpscaledName
+                ? String(genFilename).replace('_upscaled.png', '.png')
+                : genFilename;
             window.currentManualPreviewImage = {
                 filename: genFilename,
-                original: genFilename,
-                upscaled: null,
+                original: isUpscaledName ? (previousOriginal || derivedOriginal) : genFilename,
+                upscaled: isUpscaledName ? genFilename : null,
                 base: genFilename,
                 metadata
             };
@@ -6230,7 +6262,7 @@ async function saveRequestAsDesktopShortcut() {
         }
     } catch (error) {
         console.error('Failed to save request as desktop shortcut:', error);
-        showGlassToast('error', 'Error', 'Failed to save request shortcut', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        showGlassToast('error', 'Error', 'Failed to save request as desktop shortcut', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
     }
 }
 
@@ -6318,3 +6350,4 @@ window.wsClient.registerInitStep(470, 'Manual modal listener scope', async () =>
     initManualModalListenerScope();
     wireGenerateButtonContextMenus();
 });
+

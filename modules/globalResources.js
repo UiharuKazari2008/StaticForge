@@ -56,6 +56,7 @@ const LocalPromptOptimizer = require('./localPromptOptimizer');
 const ConfigEditorService = require('./configEditorService');
 const CheckpointManagementService = require('./checkpointManagementService');
 const staticWiki = require('./staticWiki');
+const fandomWiki = require('./fandomWiki');
 const grimoireDomainRegistry = require('./grimoireDomainRegistry');
 const { TagSuggestionsCache } = require('./cache');
 const { createAuthMiddleware, createDevAuthMiddleware } = require('./auth');
@@ -85,6 +86,7 @@ class GlobalResources {
         this.searchService = null; // Lazy-loaded to avoid circular dependency
         this.textReplacements = null; // Will be initialized after configs are loaded
         this.staticWiki = null;
+        this.fandomWiki = null;
         this.grimoireDomainRegistry = null;
         this.localPromptOptimizer = null;
         this.configEditorService = null;
@@ -725,6 +727,7 @@ class GlobalResources {
             // Initialize TextReplacements instance
             this.textReplacements = new TextReplacements(this);
             this.staticWiki = staticWiki;
+            this.fandomWiki = fandomWiki;
             this.grimoireDomainRegistry = grimoireDomainRegistry;
             this.configEditorService = new ConfigEditorService(this);
             this.checkpointManagementService = new CheckpointManagementService(this);
@@ -1699,6 +1702,17 @@ class GlobalResources {
             const workspaces = workspaceManager.getWorkspaces();
             const workspaceIds = Object.keys(workspaces);
             const workspaceList = [];
+
+            let galleryStats = new Map();
+            try {
+                const metadataDb = this.metadataDatabase;
+                if (metadataDb) {
+                    // modules/metadataDatabase.js — gallery membership lives in SQL after workspace.files strip
+                    galleryStats = await metadataDb.getGalleryWorkspaceStatsById(workspaceIds, 'images');
+                }
+            } catch (galleryError) {
+                console.warn('Failed to get gallery workspace stats:', galleryError);
+            }
             
             // Get reference counts for all workspaces at once (batch query)
             let referenceCounts = {};
@@ -1733,8 +1747,10 @@ class GlobalResources {
             let totalWorkspaceImagesSize = 0; // Track total for all workspaces
             
             for (const [workspaceId, workspace] of Object.entries(workspaces)) {
-                // Count images, references, notes for this workspace
-                const imageCount = workspace.files ? workspace.files.length : 0;
+                const galleryStat = galleryStats.get(workspaceId);
+                const imageCount = galleryStat
+                    ? galleryStat.items
+                    : (workspace.files ? workspace.files.length : 0);
                 
                 // Get references count from batch query
                 const referenceCount = referenceCounts[workspaceId] || 0;
@@ -1746,26 +1762,30 @@ class GlobalResources {
                 let diskUsage = '0 MB';
                 let diskUsageBytes = 0;
                 try {
-                    const imagesPath = this.getPath('images');
-                    let totalSize = 0;
-                    if (workspace.files && Array.isArray(workspace.files)) {
-                        for (const file of workspace.files) {
-                            try {
-                                const filePath = path.join(imagesPath, file);
-                                if (fs.existsSync(filePath)) {
-                                    const stats = fs.statSync(filePath);
-                                    totalSize += stats.size;
+                    if (galleryStat) {
+                        diskUsageBytes = galleryStat.bytes || 0;
+                    } else {
+                        const imagesPath = this.getPath('images');
+                        let totalSize = 0;
+                        if (workspace.files && Array.isArray(workspace.files)) {
+                            for (const file of workspace.files) {
+                                try {
+                                    const filePath = path.join(imagesPath, file);
+                                    if (fs.existsSync(filePath)) {
+                                        const stats = fs.statSync(filePath);
+                                        totalSize += stats.size;
+                                    }
+                                } catch (fileError) {
+                                    // Skip file if can't read
                                 }
-                            } catch (fileError) {
-                                // Skip file if can't read
                             }
                         }
+                        diskUsageBytes = totalSize;
                     }
-                    diskUsageBytes = totalSize;
-                    if (totalSize > 1024 * 1024 * 1024) {
-                        diskUsage = `${(totalSize / 1024 / 1024 / 1024).toFixed(2)} GB`;
+                    if (diskUsageBytes > 1024 * 1024 * 1024) {
+                        diskUsage = `${(diskUsageBytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
                     } else {
-                        diskUsage = `${(totalSize / 1024 / 1024).toFixed(2)} MB`;
+                        diskUsage = `${(diskUsageBytes / 1024 / 1024).toFixed(2)} MB`;
                     }
                 } catch (diskUsageError) {
                     // Disk usage calculation failed
@@ -2395,6 +2415,13 @@ class GlobalResources {
             throw new Error('StaticWiki not initialized - call initializeConfigs() first');
         }
         return this.staticWiki;
+    }
+
+    getFandomWiki() {
+        if (!this.fandomWiki) {
+            throw new Error('FandomWiki not initialized - call initializeConfigs() first');
+        }
+        return this.fandomWiki;
     }
 
     getGrimoireDomainRegistry() {

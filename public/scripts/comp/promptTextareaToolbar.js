@@ -865,7 +865,7 @@ class PromptTextareaToolbar {
         const value = textarea.value;
         if (!value) return;
 
-        const lowercased = value.split('Text:').map((part, index) => {
+        const lowercased = value.split(/\btext:/i).map((part, index) => {
             const lowerPart = part.toLowerCase();
             return index === 0 ? lowerPart : 'Text:' + lowerPart;
         }).join('');

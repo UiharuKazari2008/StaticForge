@@ -22,10 +22,11 @@ let lastScheduledCompletion = 0; // Timestamp of last scheduled request completi
 
 // Import modules
 const globalResources = require('./modules/globalResources');
-const { createApplicationAuthEarlyMiddleware } = require('./modules/auth');
+const { createApplicationAuthEarlyMiddleware, createAgentAssetAuthMiddleware } = require('./modules/auth');
 globalResources.prepare();
 const authMiddleware = globalResources.getAuthMiddleware();
 const devAuthMiddleware = globalResources.getDevAuthMiddleware();
+const agentAssetAuthMiddleware = createAgentAssetAuthMiddleware(globalResources);
 const { processDynamicImage } = require('./modules/imageTools');
 const { runCacheDirExpiry, CLEANUP_INTERVAL_MS, FIRST_RUN_DELAY_MS } = require('./modules/cacheDirExpiry');
 const { handleGeneration, buildOptions, handleRerollGeneration, handleStagedGeneration } = require('./modules/imageGeneration');
@@ -35,6 +36,7 @@ const { isAdminUser } = require('./modules/auth');
 const { streamLogFile } = require('./modules/logStreamService');
 const pm2Service = require('./modules/pm2Service');
 const runtimeAssetService = require('./modules/runtimeAssetService');
+const agentAssetBundle = require('./modules/agentAssetBundle');
 const workspaceCssService = require('./modules/workspaceCssService');
 const serverStartupStatus = require('./modules/serverStartupStatus');
 const { browserRequest } = require('./modules/browserHttp');
@@ -88,6 +90,89 @@ function broadcastRuntimeCompileComplete(result) {
     } catch (error) {
         console.error('Failed to broadcast runtime compile complete:', error.message);
     }
+}
+
+const AGENT_NOTICE_LEVELS = new Set(['info', 'warning', 'error', 'success']);
+const AGENT_NOTICE_MAX_MESSAGE = 2000;
+const AGENT_NOTICE_MAX_TITLE = 120;
+
+function parseAgentBroadcastBody(body) {
+    const payload = body && typeof body === 'object' ? body : {};
+    const message = typeof payload.message === 'string' ? payload.message.trim() : '';
+    if (!message) {
+        return { status: 400, error: 'message is required' };
+    }
+    if (message.length > AGENT_NOTICE_MAX_MESSAGE) {
+        return { status: 400, error: `message exceeds ${AGENT_NOTICE_MAX_MESSAGE} characters` };
+    }
+    if (/[<>]/.test(message)) {
+        return { status: 400, error: 'message must be plain text' };
+    }
+
+    let title = typeof payload.title === 'string' ? payload.title.trim() : 'Agent';
+    if (!title) title = 'Agent';
+    if (title.length > AGENT_NOTICE_MAX_TITLE) {
+        return { status: 400, error: `title exceeds ${AGENT_NOTICE_MAX_TITLE} characters` };
+    }
+    if (/[<>]/.test(title)) {
+        return { status: 400, error: 'title must be plain text' };
+    }
+
+    const rawDisplay = typeof (payload.display || payload.mode) === 'string'
+        ? String(payload.display || payload.mode).trim().toLowerCase()
+        : 'toast';
+    let display = 'toast';
+    if (rawDisplay === 'dialog' || rawDisplay === 'popup' || rawDisplay === 'window') {
+        display = 'dialog';
+    } else if (rawDisplay !== 'toast') {
+        return { status: 400, error: 'display must be toast or dialog' };
+    }
+
+    const rawLevel = typeof (payload.level || payload.type) === 'string'
+        ? String(payload.level || payload.type).trim().toLowerCase()
+        : 'warning';
+    if (!AGENT_NOTICE_LEVELS.has(rawLevel)) {
+        return { status: 400, error: 'level must be info, warning, error, or success' };
+    }
+
+    let timeout = payload.timeout;
+    if (timeout === false || timeout === 'false' || timeout === 'persist') {
+        timeout = false;
+    } else if (timeout == null || timeout === '') {
+        timeout = display === 'dialog' ? false : 10000;
+    } else if (typeof timeout === 'number' && Number.isFinite(timeout) && timeout >= 0) {
+        timeout = Math.min(Math.floor(timeout), 300000);
+    } else if (typeof timeout === 'string' && /^\d+$/.test(timeout)) {
+        timeout = Math.min(parseInt(timeout, 10), 300000);
+    } else {
+        return { status: 400, error: 'timeout must be milliseconds or false' };
+    }
+
+    return {
+        notice: {
+            id: crypto.randomUUID(),
+            message,
+            title,
+            display,
+            level: rawLevel,
+            timeout,
+            source: 'agent'
+        }
+    };
+}
+
+function broadcastAgentNotice(notice) {
+    const plumbing = globalResources.getDataPlumbing();
+    plumbing.publish('ws:broadcast:agentNotice', notice);
+    let clients = 0;
+    try {
+        const wsServer = globalResources.getWebSocketServer();
+        // getConnectionCount: modules/websocket.js
+        clients = wsServer.getConnectionCount();
+    } catch (_) {
+        // WebSocket server may not be ready during early boot
+    }
+    return clients;
 }
 
 function broadcastRuntimeCompileLogs(payload) {
@@ -679,6 +764,10 @@ async function initializeCacheData(force = false) {
         );
         const cacheData = globalResources.getGlobalCacheData();
         globalResources.logger.bootSubStep(`Cached ${cacheData.length} assets`);
+        agentAssetBundle.invalidate();
+        agentAssetBundle.warmZip().catch((error) => {
+            console.warn('Agent asset zip warm failed:', error.message);
+        });
     } catch (error) {
         globalResources.logger.error('Error initializing cache data:', error.message);
     }
@@ -739,6 +828,11 @@ function buildServiceWorkerCacheManifest() {
 
     return [...routeEntries, ...protectedRuntimeFiles, ...staticFiles];
 }
+
+agentAssetBundle.init({
+    projectRoot: __dirname,
+    getManifest: buildServiceWorkerCacheManifest
+});
 
 // Recompile runtime assets, refresh server hash cache, and broadcast manifest to clients
 async function refreshAndBroadcastServiceWorkerCache(options = {}) {
@@ -922,6 +1016,9 @@ const limiter = rateLimit({
             const allowedPaths = ['/', '/app', '/status'];
             return allowedPaths.includes(req.path);
         }
+        if (req.path === '/agent' || req.path.startsWith('/agent/')) {
+            return true;
+        }
         
         return false;
     },
@@ -960,6 +1057,9 @@ const speedLimiter = slowDown({
             const allowedPaths = ['/', '/app', '/status'];
             return allowedPaths.includes(req.path);
         }
+        if (req.path === '/agent' || req.path.startsWith('/agent/')) {
+            return true;
+        }
         
         return false;
     }
@@ -977,6 +1077,9 @@ app.use(compression({
         // SSE must not be compressed (buffers until connection closes)
         const accept = req.headers.accept || '';
         if (accept.includes('text/event-stream')) {
+            return false;
+        }
+        if (req.path === '/agent/assets.zip') {
             return false;
         }
         if (req.path && req.path.endsWith('/stream')) {
@@ -1817,20 +1920,45 @@ app.get('/agent', devAuthMiddleware, (req, res) => {
             console.error('Agent session save failed:', error.message);
             return res.status(500).json({ error: 'Failed to create agent session' });
         }
-        return res.type('html').send(`<!doctype html>
-<meta charset="utf-8">
-<meta name="referrer" content="no-referrer">
-<title>Preparing Dreamscape</title>
-<script>
-(async () => {
-    if ('serviceWorker' in navigator) {
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(registrations.map((registration) => registration.unregister()));
-    }
-    location.replace('/app?agent=1');
-})().catch(() => location.replace('/app?agent=1'));
-</script>`);
+        return res.type('html').send(agentAssetBundle.getBootstrapPageHtml());
     });
+});
+app.get('/agent/assets.json', agentAssetAuthMiddleware, (req, res) => {
+    res.json(agentAssetBundle.getAssetsCatalog());
+});
+app.get('/agent/assets.zip', agentAssetAuthMiddleware, async (req, res, next) => {
+    try {
+        const built = await agentAssetBundle.buildZipBuffer();
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', 'attachment; filename="dreamscape-assets.zip"');
+        res.setHeader('ETag', `"${built.hash}"`);
+        res.setHeader('X-Agent-Asset-Count', String(built.count));
+        res.send(built.buffer);
+    } catch (error) {
+        next(error);
+    }
+});
+app.post('/agent/broadcast', devAuthMiddleware, (req, res) => {
+    const parsed = parseAgentBroadcastBody(req.body);
+    if (parsed.error) {
+        return res.status(parsed.status).json({ success: false, error: parsed.error });
+    }
+    try {
+        const clients = broadcastAgentNotice(parsed.notice);
+        console.log(`📢 Agent notice (${parsed.notice.display}/${parsed.notice.level}) sent to ${clients} client(s)`);
+        return res.json({
+            success: true,
+            id: parsed.notice.id,
+            display: parsed.notice.display,
+            level: parsed.notice.level,
+            title: parsed.notice.title,
+            timeout: parsed.notice.timeout,
+            clients
+        });
+    } catch (error) {
+        console.error('Failed to broadcast agent notice:', error.message);
+        return res.status(500).json({ success: false, error: 'Failed to broadcast notice' });
+    }
 });
 app.get('/.login.jpg', (req, res) => {
     res.sendFile(path.join(cacheDir, 'login_array.jpg'));
@@ -3345,9 +3473,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
                 if (!fs.existsSync(servedPath)) {
                     return next();
                 }
-                res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
-                res.setHeader('Pragma', 'no-cache');
-                res.setHeader('Expires', '0');
+                agentAssetBundle.applyServedAssetCacheHeaders(req, res);
                 if (servedPath.includes(`${path.sep}.cache${path.sep}runtime-assets${path.sep}`)) {
                     res.setHeader('X-StaticForge-Runtime-Asset', 'optimized');
                 } else {
@@ -3366,10 +3492,8 @@ async function handleAdminUnixSocketMessage(message, socket) {
             maxAge: '10s', // Cache static assets for 10 seconds
             etag: true, // Enable ETags for cache validation
             lastModified: true, // Enable Last-Modified headers
-            setHeaders: (res, path) => {
-                res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
-                res.setHeader('Pragma', 'no-cache');
-                res.setHeader('Expires', '0');
+            setHeaders: (res, _filePath) => {
+                agentAssetBundle.applyServedAssetCacheHeaders(res.req, res);
             }
         }));
 

@@ -57,8 +57,10 @@ Multi-action JSON endpoint. Body: `{ "action": string, "data": object }`.
 these checks. Forwarded client-address headers are ignored.
 
 Creates a persisted `dev_admin` session and returns a no-store bootstrap page.
-The bootstrap unregisters existing workers and replaces the location with
-`/app?agent=1`; the fresh agent page then deletes Cache Storage. This ordering
+The bootstrap unregisters existing workers, fetches `GET /agent/assets.json`,
+preloads the app-shell CSS/JS URLs into the browser HTTP cache (parallel
+`fetch`, eight at a time, 45s cap), then replaces the location with
+`/app?agent=1`. The fresh agent page then deletes Cache Storage. This ordering
 also handles browsers still controlled by an older Dreamscape worker without
 deleting caches during its final navigation. Remote requests receive `403`, even
 with a valid key or a spoofed loopback `X-Forwarded-For`; missing development
@@ -73,7 +75,92 @@ SSH local forwarding to server-side `127.0.0.1:9220` remains compatible because
 the tunnel connection appears as a direct loopback peer on the Dreamscape host.
 
 The redirected app session disables service-worker registration and clears
-existing Cache Storage before normal application boot.
+existing Cache Storage before normal application boot. App-shell CSS/JS for
+that `dev_admin` session use `private, max-age=120` so the bootstrap preload
+can stick.
+
+### `GET /agent/assets.json`
+
+**Auth:** Loopback + `enable_dev`, then either a `dev_admin` session cookie
+(created by `GET /agent`) **or** the development key (`Authorization: Bearer`
+preferred, `?auth=` fallback). Existing PIN `admin` sessions do not qualify.
+`GET /agent` itself still requires the key on every request.
+
+**Success:** JSON catalog of the service-worker asset list plus app-shell boot
+URLs parsed from `public/app.html` (`<script src>` and `rel=stylesheet`).
+
+```json
+{
+  "success": true,
+  "hash": "<sha256 of url+hash rows>",
+  "count": 890,
+  "bootCount": 210,
+  "bytes": 12345678,
+  "boot": ["/css/app.css?sha=…", "/scripts/comp/fatalErrorBootstrap.js"],
+  "files": [{ "url": "/scripts/comp/foo.js", "hash": "…", "size": 1234, "boot": true }]
+}
+```
+
+`boot` is the exact URL list the `/agent` page preloads (including stylesheet
+`?sha=` query strings so HTTP cache keys match `app.html`).
+
+### `GET /agent/assets.zip`
+
+**Auth:** Same as `GET /agent/assets.json`.
+
+**Success:** `200 application/zip` named `dreamscape-assets.zip`. Entry paths are
+web paths without a leading slash (plus `agent-assets.json` mapping `path` →
+`url` / `hash`). Bytes are the files actually served (optimised runtime assets
+when compiled). `ETag` is the catalog hash. Intended for tools that want one
+download; the `/agent` bootstrap does **not** unzip this in the browser because
+Cache Storage cannot satisfy `<script src>` without a service worker.
+
+### `POST /agent/broadcast`
+
+**Auth:** Same as `GET /agent` — every request requires a direct loopback TCP
+peer, `enable_dev`, and the valid development key. Existing sessions do not
+bypass these checks. Forwarded client-address headers are ignored.
+
+Broadcasts a notice to every connected WebSocket client so a local agent can
+warn users before a restart or other disruptive action. Clients render it as a
+glass toast or a confirmation dialog.
+
+**Inputs:** JSON body.
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `message` | Yes | Plain-text body. Max 2000 characters. HTML (`<` / `>`) is rejected. |
+| `title` | No | Dialog/toast title. Default `Agent`. Max 120 characters. Plain text. |
+| `display` | No | `toast` (default) or `dialog`. Aliases: `mode`, and `popup` / `window` → dialog. |
+| `level` | No | `info`, `warning` (default), `error`, or `success`. Alias: `type`. |
+| `timeout` | No | Milliseconds, or `false` / `"persist"` to keep it until dismissed. Toast default `10000`. Dialog default stays until OK. Max 300000. |
+
+**Success:** `200`
+
+```json
+{
+  "success": true,
+  "id": "<uuid>",
+  "display": "dialog",
+  "level": "warning",
+  "title": "Agent",
+  "timeout": false,
+  "clients": 2
+}
+```
+
+`clients` is the current WebSocket connection count (0 if the socket server is
+not up yet). The push type is `agent_notice`.
+
+**Errors:** `400` validation (`{ "success": false, "error": "…" }`); `401` /
+`403` / `404` / `500` from development auth (same as `GET /agent`); `500`
+`{ "success": false, "error": "Failed to broadcast notice" }` if publish fails.
+
+**Client state after:** Connected web clients show a toast (`showGlassToast`) or
+an OK confirmation dialog (`showConfirmationDialog`).
+
+**Follow-up:** None. The notice is fire-and-forget; the HTTP response does not
+wait for users to dismiss the UI.
 
 ### `OPTIONS /app`
 
@@ -84,8 +171,10 @@ Response fields: `success`, `message`, `timestamp`, `serverVersion`, `versionMes
 ### `GET /app`
 
 Serves main app shell (`public/app.html`). **No auth on GET** (app bootstraps auth client-side).
-With `?agent=1`, the response also receives explicit no-store headers and the
-client starts in cacheless browser-agent mode.
+With `?agent=1`, the HTML response receives explicit no-store headers and the
+client starts in browser-agent mode (no service worker). CSS/JS requested
+during that `dev_admin` session may use a 120-second private HTTP cache after
+`/agent` preload.
 
 ---
 
@@ -662,6 +751,11 @@ Default port **9221** — `modules/replicationPeerServer.js`. Token auth; `REPL_
 Runtime assets may be transparently served from `.cache/runtime-assets/` at normal `/css/` and `/scripts/` URLs when not in dev mode.
 
 **Auth:** Static files generally **unauthenticated** except routes registered before static middleware with auth.
+
+**Cache-Control:** default is no-store. `dev_admin` sessions (`GET /agent`) receive
+`private, max-age=120` on those static CSS/JS/image responses so the `/agent`
+preload can populate the browser HTTP cache before `/app?agent=1` runs. The
+`/app` HTML document itself stays no-store when `?agent=1`.
 
 ---
 

@@ -92,6 +92,8 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 
 ---
 
+---
+
 ## Detailed packets
 
 ### `desktop_add_shortcut`

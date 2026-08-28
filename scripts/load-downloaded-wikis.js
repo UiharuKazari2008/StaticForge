@@ -28,6 +28,7 @@ const {
     extractWikiLinks,
     detectLinkRelationship
 } = require('./create-tag-database');
+const { isAfterV45Cutoff } = require('../modules/tagModelCutoff');
 
 // Configuration
 const DATABASE_PATH = path.join(__dirname, '..', '.cache', 'tag_wiki.db');
@@ -227,7 +228,6 @@ async function processWikis(db, wikis, source, insertWiki, getWikiId, getTagId, 
                 }
             } else {
                 skippedCount++;
-                console.log(`   ${progress} ⚠ Skipped: ${wiki.title} (already exists)`);
                 continue;
             }
             
@@ -274,7 +274,7 @@ async function processWikis(db, wikis, source, insertWiki, getWikiId, getTagId, 
                         null,
                         wiki.created_at || null,
                         wiki.updated_at || null,
-                        0 // untrained
+                        isAfterV45Cutoff(wiki.created_at) ? 1 : 0
                     );
                 } else if (source === SOURCE_E621) {
                     insertWikiPage.run(
@@ -283,7 +283,7 @@ async function processWikis(db, wikis, source, insertWiki, getWikiId, getTagId, 
                         wikiId,
                         wiki.created_at || null,
                         wiki.updated_at || null,
-                        0 // untrained
+                        isAfterV45Cutoff(wiki.created_at) ? 1 : 0
                     );
                 }
                 

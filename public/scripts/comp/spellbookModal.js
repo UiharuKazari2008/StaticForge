@@ -20,6 +20,7 @@ class SpellbookModalManager {
         this.confettiContainer = null;
         this.generatedWorkspace = null;
         this.generatedFilename = null;
+        this.generatedMetadata = null;
         this.dynamicGenerationActive = false;
 
         this.init();
@@ -353,7 +354,8 @@ class SpellbookModalManager {
             upscaled: null,
             workspace: this.generatedWorkspace,
             width: this.generatedWidth,
-            height: this.generatedHeight
+            height: this.generatedHeight,
+            metadata: this.generatedMetadata || null
         };
     }
 
@@ -409,6 +411,12 @@ class SpellbookModalManager {
                             icon: 'mdi mdi-1-25 mdi-relative-scale',
                             text: 'Expand Canvas',
                             action: 'spellcaster-expand',
+                            disabled: () => !hasImage()
+                        },
+                        {
+                            icon: 'fas fa-wand-magic-sparkles',
+                            text: 'Enhance',
+                            action: 'spellcaster-enhance',
                             disabled: () => !hasImage()
                         },
                         {
@@ -540,6 +548,9 @@ class SpellbookModalManager {
                 break;
             case 'spellcaster-expand':
                 void this.handleExpand();
+                break;
+            case 'spellcaster-enhance':
+                void this.handleEnhance();
                 break;
             case 'spellcaster-upscale':
                 void this.handleUpscale();
@@ -678,6 +689,7 @@ class SpellbookModalManager {
         this.generatedWorkspace = null;
         this.generatedWidth = null;
         this.generatedHeight = null;
+        this.generatedMetadata = null;
         this.generatedImage = null;
 
         if (this.blurBackground1) {
@@ -1319,6 +1331,14 @@ class SpellbookModalManager {
                 // Store dimensions for upscale calculation
                 this.generatedWidth = result.width || result.metadata?.width;
                 this.generatedHeight = result.height || result.metadata?.height;
+                this.generatedMetadata = result.metadata || null;
+                this.generatedImage = {
+                    filename,
+                    original: filename,
+                    width: this.generatedWidth,
+                    height: this.generatedHeight,
+                    metadata: this.generatedMetadata
+                };
 
                 this.updatePreviewActionButtons();
                 this.updateSpellbookBlurredBackground(imageUrl);
@@ -1787,6 +1807,17 @@ class SpellbookModalManager {
             console.error('Expand error:', error);
             showGlassToast('error', 'Error', error.message || 'Failed to open expansion modal', false, 5000, '<i class="nai-cross"></i>');
         }
+    }
+
+    handleEnhance() {
+        if (!this.generatedFilename) return;
+        openEnhanceFromImage(this.generatedImage || {
+            filename: this.generatedFilename,
+            original: this.generatedFilename,
+            width: this.generatedWidth,
+            height: this.generatedHeight,
+            metadata: this.generatedMetadata || null
+        });
     }
 
     // Animation and overlay methods (similar to manual modal)

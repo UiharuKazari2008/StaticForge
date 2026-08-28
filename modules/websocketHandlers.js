@@ -354,6 +354,7 @@ class WebSocketMessageHandlers {
             'workspace_update_settings',
             'workspace_reorder',
             'delete_images_bulk',
+            'delete_unupscaled_original',
             'delete_reference',
             'upload_reference',
             'upload_wallpaper',
@@ -479,6 +480,8 @@ class WebSocketMessageHandlers {
             'character_db_delete',
             'character_db_rename_copyright',
             'character_db_delete_copyright',
+            'import_fandom_wiki_page',
+            'delete_fandom_wiki_import',
             'runpod_pod_start',
             'runpod_pod_stop',
         ];

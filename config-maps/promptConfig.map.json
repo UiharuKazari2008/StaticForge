@@ -93,6 +93,7 @@
         "max": 5,
         "default": 1,
         "negative": false,
+        "sub_toggle_groups": [],
         "sub_toggles": []
       }
     },
@@ -106,6 +107,27 @@
     { "path": ["datasets", "*", "negative"], "type": "boolean", "label": "Negative Toggle", "editMode": "inline", "required": true },
     { "path": ["datasets", "*", "models"], "type": "array", "itemsType": "string", "label": "Allowed Models" },
     { "path": ["datasets", "*", "excludeModels"], "type": "array", "itemsType": "string", "label": "Excluded Models" },
+    { "path": ["datasets", "*", "isQualityPreset"], "type": "boolean", "label": "Quality Preset", "editMode": "inline" },
+    { "path": ["datasets", "*", "isTransparencyPreset"], "type": "boolean", "label": "Transparency Preset", "editMode": "inline" },
+    { "path": ["datasets", "*", "skipPromptValue"], "type": "boolean", "label": "Skip Prompt Value", "editMode": "inline" },
+    { "path": ["datasets", "*", "sub_toggle_groups"], "type": "array", "itemsType": "object", "label": "Sub Toggle Groups" },
+    {
+      "path": ["datasets", "*", "sub_toggle_groups", "*"],
+      "type": "object",
+      "label": "Sub Toggle Group",
+      "displayTemplate": "{index} - {name}",
+      "displayFields": ["name", "id", "mode"],
+      "defaultSkeleton": {
+        "id": "",
+        "name": "",
+        "mode": "multi",
+        "default": ""
+      }
+    },
+    { "path": ["datasets", "*", "sub_toggle_groups", "*", "id"], "type": "string", "label": "Group ID", "editorType": "input", "required": true },
+    { "path": ["datasets", "*", "sub_toggle_groups", "*", "name"], "type": "string", "label": "Name", "editorType": "input", "required": true },
+    { "path": ["datasets", "*", "sub_toggle_groups", "*", "mode"], "type": "string", "label": "Mode", "enum": ["multi", "ratio"], "required": true },
+    { "path": ["datasets", "*", "sub_toggle_groups", "*", "default"], "type": "string", "label": "Default Toggle ID", "editorType": "input" },
     { "path": ["datasets", "*", "sub_toggles"], "type": "array", "itemsType": "object", "label": "Sub Toggles", "required": true },
     {
       "path": ["datasets", "*", "sub_toggles", "*"],
@@ -124,7 +146,8 @@
         "max": 6,
         "default": 1,
         "negative": false,
-        "default_enabled": false
+        "default_enabled": false,
+        "group": ""
       }
     },
     { "path": ["datasets", "*", "sub_toggles", "*", "id"], "type": "string", "label": "Toggle ID", "editorType": "input", "required": true },
@@ -137,6 +160,9 @@
     { "path": ["datasets", "*", "sub_toggles", "*", "default"], "type": "number", "label": "Default Bias", "required": true },
     { "path": ["datasets", "*", "sub_toggles", "*", "negative"], "type": "boolean", "label": "Negative", "editMode": "inline", "required": true },
     { "path": ["datasets", "*", "sub_toggles", "*", "default_enabled"], "type": "boolean", "label": "Default Enabled", "editMode": "inline", "required": true },
+    { "path": ["datasets", "*", "sub_toggles", "*", "group"], "type": "string", "label": "Group ID", "editorType": "input" },
+    { "path": ["datasets", "*", "sub_toggles", "*", "models"], "type": "array", "itemsType": "string", "label": "Allowed Models" },
+    { "path": ["datasets", "*", "sub_toggles", "*", "excludeModels"], "type": "array", "itemsType": "string", "label": "Excluded Models" },
     { "path": ["nsfw_presets"], "type": "object", "label": "NSFW Presets", "valueType": "object", "allowAdd": true },
     { "path": ["nsfw_presets", "*"], "type": "object", "label": "NSFW Level", "closed": true,
       "displayTemplate": "Level {index}",

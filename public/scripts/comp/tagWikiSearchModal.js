@@ -531,7 +531,7 @@ class WikiDisplayBase {
         // Static docs (rdf://), search surfaces, and home pages cannot.
         if (this.currentStaticWiki) return false;
         const last = this.history && this.history[this.historyIndex];
-        if (last && (last.type === 'static-wiki-page' || last.type === 'static-wiki-index')) return false;
+        if (last && (last.type === 'static-wiki-page' || last.type === 'static-wiki-index' || last.type === 'fandom-wiki-index')) return false;
         if (this._searchPageMode) return false;
         const tag = this.getCurrentTagName();
         return Boolean(String(tag || '').trim());
@@ -663,7 +663,12 @@ class WikiDisplayBase {
                 const u = String(last.url);
                 return /^dsap:\/\//i.test(u) ? u : `dsap://${u}`;
             }
+            if (last.type === 'fandom-wiki-index') {
+                return last.showAll ? 'rdf://wiki.fandom.jp/?all=1' : 'rdf://wiki.fandom.jp/';
+            }
             if (last.type === 'static-wiki-page' && last.siteId && last.pageId) {
+                if (last.displayUrl) return last.displayUrl;
+                if (last.content && last.content.displayUrl) return last.content.displayUrl;
                 return `rdf://docs.novelai.jp/${last.pageId}`;
             }
             if (last.type === 'wiki' || last.tag) {
@@ -673,6 +678,7 @@ class WikiDisplayBase {
         }
         if (this.currentStaticWiki) {
             const sw = this.currentStaticWiki;
+            if (sw.displayUrl) return sw.displayUrl;
             return `rdf://docs.novelai.jp/${sw.pageId || ''}`;
         }
         const tag = this.getCurrentTagName();
@@ -1403,7 +1409,9 @@ class WikiDisplayBase {
                 staticWiki: true,
                 siteId: sw.siteId,
                 pageId: sw.pageId,
-                siteIcon: sw.siteIcon || null
+                siteIcon: sw.siteIcon || null,
+                kind: sw.kind || null,
+                displayUrl: sw.displayUrl || null
             };
         }
 
@@ -1427,7 +1435,9 @@ class WikiDisplayBase {
                 const siteId = link.getAttribute('data-wiki-site');
                 const pageId = link.getAttribute('data-wiki-page');
                 if (siteId && pageId) {
-                    this.openStaticWikiPage(siteId, pageId);
+                    const liveFetch = !!(container.querySelector && container.querySelector('.fandom-wiki-index'))
+                        || (container.classList && container.classList.contains('fandom-wiki-index'));
+                    this.openStaticWikiPage(siteId, pageId, liveFetch ? { liveFetch: true } : null);
                 }
             });
         });
@@ -1455,6 +1465,7 @@ class WikiDisplayBase {
 
             const frag = document.createDocumentFragment();
             sites.forEach((site) => {
+                if (site.kind === 'fandom') return;
                 let name = this.escapeHtml(site.name || site.id);
                 const id = site.id || '';
                 const safeId = this.escapeHtml(id);
@@ -1539,6 +1550,9 @@ class WikiDisplayBase {
             <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-dreamwiki-page="tag_group:index">
                 <i class="nai-paw"></i> e621 Tags
             </button>
+            <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-action="open-fandom-wiki">
+                ${this.fandomMarkImgHtml('dreamwiki-site-btn-icon')} Fandom
+            </button>
             <!-- Documentation site buttons (e.g. NovelAI) are appended here by loadStaticWikiHomeSites so they participate in the horizontal wrap flow -->
         </div>
     </div>
@@ -1581,6 +1595,13 @@ class WikiDisplayBase {
             });
         }
 
+        const fandomBtn = this.displayArea.querySelector('[data-action="open-fandom-wiki"]');
+        if (fandomBtn) {
+            fandomBtn.addEventListener('click', () => {
+                this.navigate('rdf://wiki.fandom.jp/');
+            });
+        }
+
         this.loadStaticWikiHomeSites();
 
         const list = this.displayArea.querySelector('.dreamwiki-recent-list');
@@ -1620,8 +1641,9 @@ class WikiDisplayBase {
             this.bindDreamWikiHomepageEvents();
             return;
         }
-        if (this.displayArea.querySelector('.static-wiki-index')) {
+        if (this.displayArea.querySelector('.static-wiki-index') || this.displayArea.querySelector('.fandom-wiki-index')) {
             this.setupStaticWikiIndexLinks(this.displayArea);
+            this.setupFandomWikiIndexControls(this.displayArea);
             if (typeof this._interceptAllLinks === 'function') {
                 this._interceptAllLinks();
             }
@@ -1650,7 +1672,7 @@ class WikiDisplayBase {
         try {
             const data = await wsClient.sendMessage('get_static_wiki_site_index', { siteId });
             const siteName = this.escapeHtml(data.name || siteId);
-            const headerHtml = this.staticWikiPageHeaderHtml(data.name || siteId, siteId, data.icon);
+            const headerHtml = this.staticWikiPageHeaderHtml(data.name || siteId, siteId, data.icon, data.kind);
             const groups = data.groups || [];
             let groupsHtml = '';
             if (!groups.length) {
@@ -1702,10 +1724,109 @@ class WikiDisplayBase {
         }
     }
 
+    setupFandomWikiIndexControls(container) {
+        if (!container) return;
+        container.querySelectorAll('[data-fandom-index-view]').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const showAll = btn.getAttribute('data-fandom-index-view') === 'all';
+                this.showFandomWikiIndex({ showAll });
+            });
+        });
+        const importBtn = container.querySelector('[data-action="open-fandom-wiki-import"]');
+        if (importBtn) {
+            importBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.navigate('dsap://wiki.dyna.dreamscape.jp/import');
+            });
+        }
+    }
+
+    async showFandomWikiIndex(options = null) {
+        if (!this.displayArea) return;
+        if (!wsClient || !wsClient.isConnected()) {
+            this.displayArea.innerHTML = '<div class="tag-wiki-error"><i class="fas fa-exclamation-circle"></i> WebSocket not connected</div>';
+            return;
+        }
+
+        const skipHistory = !!(options && options.skipHistory);
+        const showAll = !!(options && options.showAll);
+
+        this.currentSelectedTag = null;
+        this.currentTagName = null;
+        this.currentStaticWiki = null;
+
+        this.displayArea.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading...</div>';
+
+        try {
+            const data = await wsClient.sendMessage('get_fandom_wiki_index', { showAll });
+            const groups = data.groups || [];
+            const importsCls = showAll ? 'btn-secondary btn-small' : 'btn-primary btn-small';
+            const allCls = showAll ? 'btn-primary btn-small' : 'btn-secondary btn-small';
+            const toolbarHtml = `
+<div class="form-row fandom-wiki-index-toolbar">
+    <button type="button" class="${importsCls}" data-fandom-index-view="imports">Imports</button>
+    <button type="button" class="${allCls}" data-fandom-index-view="all">All pages</button>
+    <button type="button" class="btn-secondary btn-small" data-action="open-fandom-wiki-import">
+        <i class="fas fa-file-import"></i> Import
+    </button>
+</div>`;
+
+            let groupsHtml = '';
+            if (!groups.length || groups.every((g) => !(g.pages || []).length)) {
+                groupsHtml = `<p class="dreamwiki-recent-empty">No Fandom pages imported yet.</p>`;
+            } else {
+                groupsHtml = groups.map((group) => {
+                    const groupName = this.escapeHtml(group.name || group.siteId || 'Wiki');
+                    const pages = (group.pages || []).map((page) => {
+                        const title = this.escapeHtml(page.title || page.id);
+                        const encSite = this.escapeHtml(page.siteId || group.siteId);
+                        const encPage = this.escapeHtml(page.id);
+                        return `<li><a href="#" class="wiki-static-index-link" data-wiki-site="${encSite}" data-wiki-page="${encPage}">${title}</a></li>`;
+                    }).join('');
+                    if (!pages) return '';
+                    return `<h5 class="static-wiki-index-group-title">${groupName}</h5><ul class="tag-wiki-list static-wiki-index-page-list">${pages}</ul>`;
+                }).join('');
+            }
+
+            this.displayArea.innerHTML = `
+<div class="tag-wiki-page static-wiki-index fandom-wiki-index">
+    <div class="tag-wiki-page-title static-wiki-index-header"><span class="static-wiki-index-title-text">Fandom Wikis</span>${this.fandomMarkImgHtml('static-wiki-index-site-icon')}</div>
+    <div class="form-section-separator tag-wiki-page-header-sep"></div>
+    <div class="tag-wiki-body-content tag-wiki-page-content">
+        ${toolbarHtml}
+        ${groupsHtml}
+    </div>
+</div>`;
+
+            this.setupStaticWikiIndexLinks(this.displayArea);
+            this.setupFandomWikiIndexControls(this.displayArea);
+            if (typeof this._interceptAllLinks === 'function') {
+                this._interceptAllLinks();
+            }
+
+            if (!skipHistory) {
+                this.addToHistory({
+                    type: 'fandom-wiki-index',
+                    showAll,
+                    title: 'Fandom Wikis'
+                });
+            }
+
+            const display = showAll ? 'rdf://wiki.fandom.jp/?all=1' : 'rdf://wiki.fandom.jp/';
+            this.setAddress({ displayUrl: display, mode: 'rdf' });
+        } catch (err) {
+            console.error('showFandomWikiIndex:', err);
+            this.displayArea.innerHTML = `<div class="tag-wiki-error"><i class="fas fa-exclamation-circle"></i> ${this.escapeHtml(err.message || 'Failed to load Fandom index')}</div>`;
+        }
+    }
+
     async openStaticWikiPage(siteId, pageId, options = null) {
         if (!siteId || !pageId) return;
 
         const skipHistory = !!(options && options.skipHistory);
+        const liveFetch = !!(options && options.liveFetch)
+            || (this.currentStaticWiki && this.currentStaticWiki.kind === 'fandom');
         const cacheKey = wikiPageCache.staticKey(siteId, pageId);
 
         // Instant path from global page cache (shared across windows)
@@ -1736,12 +1857,30 @@ class WikiDisplayBase {
             return;
         }
 
-        if (this.displayArea) {
-            this.displayArea.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading...</div>';
-        }
+        const showLoading = (label) => {
+            if (this.displayArea) {
+                this.displayArea.innerHTML = `<div class="tag-wiki-loading"><i class="fas fa-spinner-third fa-spin"></i> ${this.escapeHtml(label)}</div>`;
+            }
+        };
+
+        showLoading('Loading...');
 
         try {
-            const data = await wsClient.sendMessage('get_static_wiki_page', { siteId, pageId });
+            let data;
+            try {
+                // modules/ws/handlers/110-wikiHandler.js
+                data = await wsClient.sendMessage('get_static_wiki_page', { siteId, pageId });
+            } catch (err) {
+                const missing = /not found/i.test(String(err && err.message || ''));
+                if (!missing || !liveFetch) throw err;
+                const urlPath = String(pageId).split('/').map((part) => encodeURIComponent(part.replace(/ /g, '_'))).join('/');
+                const url = `https://${siteId}.fandom.com/wiki/${urlPath}`;
+                showLoading('Fetching from Fandom…');
+                // modules/fandomWiki.js — importFandomPage (this page only, stored as its own root)
+                await wsClient.sendMessage('import_fandom_wiki_page', { url, followLinks: false, group: 'Live' });
+                wikiPageCache.invalidate(cacheKey);
+                data = await wsClient.sendMessage('get_static_wiki_page', { siteId, pageId });
+            }
             const content = {
                 title: data.title || pageId,
                 tagName: data.title || pageId,
@@ -1749,7 +1888,10 @@ class WikiDisplayBase {
                 staticWiki: true,
                 siteId,
                 pageId,
-                siteIcon: data.siteIcon || null
+                siteIcon: data.siteIcon || null,
+                kind: data.kind || null,
+                displayUrl: data.displayUrl || null,
+                addressMode: data.addressMode || null
             };
             if (this.hasWikiPageContent(content)) {
                 wikiPageCache.set(cacheKey, content);
@@ -1927,7 +2069,9 @@ class WikiDisplayBase {
             this.setAddress({ displayUrl: `edtx://wiki.danbooru.jp/tag/${enc}`, mode: 'edtx' });
         } else if (content.staticWiki && content.siteId && content.pageId) {
             const s = content.siteId;
-            if (s === 'novelai' || String(s).toLowerCase().includes('novelai')) {
+            if (content.displayUrl) {
+                this.setAddress({ displayUrl: content.displayUrl, mode: content.addressMode || 'rdf' });
+            } else if (s === 'novelai' || String(s).toLowerCase().includes('novelai')) {
                 this.setAddress({ displayUrl: `rdf://docs.novelai.jp/${content.pageId}`, mode: 'rdf' });
             } else {
                 this.setAddress({ displayUrl: `edtx://en.grimoire.jp/docs/${s}/${content.pageId}`, mode: 'edtx' });
@@ -1939,7 +2083,9 @@ class WikiDisplayBase {
                 siteId: content.siteId,
                 pageId: content.pageId,
                 title,
-                siteIcon: content.siteIcon || null
+                siteIcon: content.siteIcon || null,
+                displayUrl: content.displayUrl || null,
+                kind: content.kind || null
             };
             this.currentSelectedTag = null;
             this.currentTagName = null;
@@ -2017,7 +2163,7 @@ class WikiDisplayBase {
             : '';
         let titleHtml;
         if (content.staticWiki) {
-            titleHtml = this.staticWikiPageHeaderHtml(title, content.siteId, content.siteIcon);
+            titleHtml = this.staticWikiPageHeaderHtml(title, content.siteId, content.siteIcon, content.kind);
         } else {
             titleHtml = `<div class="tag-wiki-page-title">${this.escapeHtml(title)}${onlineIcon}</div>`;
         }
@@ -2058,6 +2204,7 @@ class WikiDisplayBase {
         
         // Setup collapsible sections
         this.setupCollapsibleSections();
+        this.setupStaticWikiSortableTables();
         
         // Link handlers + robust interception to prevent "exiting the app" (_interceptAllLinks calls setupLinkHandlers)
         if (typeof this._interceptAllLinks === 'function') {
@@ -2105,6 +2252,58 @@ class WikiDisplayBase {
                     }
                 }
             });
+        });
+    }
+
+    setupStaticWikiSortableTables() {
+        if (!this.displayArea) return;
+        this.displayArea.querySelectorAll('.wiki-static-doc table.sortable').forEach((table) => {
+            if (table.dataset.wikiSortWired) return;
+            table.dataset.wikiSortWired = '1';
+            const headerRow = (table.tHead && table.tHead.rows[0])
+                || [...table.querySelectorAll('tr')].find((row) => row.querySelector('th'));
+            if (!headerRow) return;
+            [...headerRow.children].forEach((th, colIdx) => {
+                if (th.tagName !== 'TH' || th.classList.contains('unsortable')) return;
+                th.addEventListener('click', () => this.sortStaticWikiTable(table, headerRow, colIdx));
+            });
+        });
+    }
+
+    sortStaticWikiTable(table, headerRow, colIdx) {
+        const th = headerRow.children[colIdx];
+        if (!th) return;
+        const current = th.getAttribute('aria-sort');
+        const dir = current === 'ascending' ? 'desc' : 'asc';
+        [...headerRow.children].forEach((cell) => cell.removeAttribute('aria-sort'));
+        th.setAttribute('aria-sort', dir === 'asc' ? 'ascending' : 'descending');
+
+        const cellValue = (row) => {
+            const cell = row.children[colIdx];
+            if (!cell) return '';
+            const explicit = cell.getAttribute('data-sort-value');
+            if (explicit != null && explicit !== '') return explicit;
+            const img = cell.querySelector('img[alt]');
+            if (img && img.getAttribute('alt')) return img.getAttribute('alt').trim();
+            return (cell.textContent || '').replace(/\s+/g, ' ').trim();
+        };
+        const compare = (a, b) => {
+            const sa = cellValue(a);
+            const sb = cellValue(b);
+            const na = Number(String(sa).replace(/,/g, ''));
+            const nb = Number(String(sb).replace(/,/g, ''));
+            const bothNum = Number.isFinite(na) && Number.isFinite(nb)
+                && sa !== '' && sb !== ''
+                && !/[a-z]/i.test(sa) && !/[a-z]/i.test(sb);
+            const cmp = bothNum ? na - nb : String(sa).localeCompare(String(sb), undefined, { numeric: true, sensitivity: 'base' });
+            return dir === 'asc' ? cmp : -cmp;
+        };
+
+        const bodies = table.tBodies.length ? [...table.tBodies] : [table];
+        bodies.forEach((body) => {
+            const rows = [...body.rows].filter((row) => row !== headerRow);
+            rows.sort(compare);
+            rows.forEach((row) => body.appendChild(row));
         });
     }
     
@@ -2388,7 +2587,7 @@ class WikiDisplayBase {
                 const siteId = link.dataset.wikiSite;
                 const pageId = link.dataset.wikiPage;
                 if (siteId && pageId) {
-                    this.openStaticWikiPage(siteId, pageId);
+                    this.openStaticWikiPage(siteId, pageId, { liveFetch: true });
                 }
             });
         });
@@ -2781,22 +2980,24 @@ class WikiDisplayBase {
         return div.innerHTML;
     }
 
-    staticWikiSiteIconUrl(siteId, iconFromApi) {
-        if (iconFromApi) {
-            return iconFromApi;
-        }
-        if (siteId) {
-            return `/private/wiki/${siteId}/assets/icon.png`;
-        }
-        return '';
+    fandomMarkImgHtml(className) {
+        const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#fa005a" d="M19.956.587a.404.404 0 00-.385.117L12 8.448 4.429.704a.404.404 0 00-.386-.117.404.404 0 00-.27.27L.587 12l3.186 11.143a.404.404 0 00.27.27.404.404 0 00.385-.117L12 15.552l7.571 7.744a.404.404 0 00.386.117.404.404 0 00.27-.27L23.413 12 20.227.857a.404.404 0 00-.27-.27zm-7.956 9.18l5.372 5.496-2.294 8.023-3.078-13.52zm-5.372 5.496L12 9.767 8.922 23.286l-2.294-8.023z"/></svg>';
+        return `<img src="data:image/svg+xml,${encodeURIComponent(svg)}" alt="" class="${className}" aria-hidden="true">`;
     }
 
-    staticWikiPageHeaderHtml(title, siteId, iconFromApi) {
+    staticWikiSiteIconUrl(siteId, iconFromApi) {
+        return iconFromApi || '';
+    }
+
+    staticWikiPageHeaderHtml(title, siteId, iconFromApi, kind) {
         const safeTitle = this.escapeHtml(title);
         const iconUrl = this.staticWikiSiteIconUrl(siteId, iconFromApi);
-        const iconHtml = iconUrl
-            ? `<img src="${this.escapeHtml(iconUrl)}" alt="" class="static-wiki-index-site-icon">`
-            : '';
+        let iconHtml = '';
+        if (iconUrl) {
+            iconHtml = `<img src="${this.escapeHtml(iconUrl)}" alt="" class="static-wiki-index-site-icon">`;
+        } else if (kind === 'fandom') {
+            iconHtml = this.fandomMarkImgHtml('static-wiki-index-site-icon');
+        }
         return `<div class="tag-wiki-page-title static-wiki-index-header"><span class="static-wiki-index-title-text">${safeTitle}</span>${iconHtml}</div><div class="form-section-separator tag-wiki-page-header-sep"></div>`;
     }
     
@@ -2816,6 +3017,9 @@ class WikiDisplayBase {
         if (entry.type === 'static-wiki-index') {
             return entry.siteName || entry.siteId || 'Documentation';
         }
+        if (entry.type === 'fandom-wiki-index') {
+            return 'Fandom Wikis';
+        }
         if (entry.type === 'static-wiki-page') {
             return entry.title || entry.pageId || `Doc ${index + 1}`;
         }
@@ -2834,6 +3038,7 @@ class WikiDisplayBase {
         if (entry.type === 'dsap') return 'fas fa-puzzle-piece';
         if (entry.type === 'nav-error') return 'fas fa-triangle-exclamation';
         if (entry.type === 'static-wiki-index') return 'fas fa-book';
+        if (entry.type === 'fandom-wiki-index') return 'fas fa-heart';
         if (entry.type === 'static-wiki-page') return 'fas fa-file-alt';
         if (entry.type === 'wiki') return 'fas fa-file-alt';
         return 'fas fa-search';
@@ -3022,6 +3227,12 @@ class GrimoireSplitPane extends WikiDisplayBase {
             this.currentSelectedTag = null;
             this.currentTagName = null;
             this.showStaticWikiSiteIndex(entry.siteId, { skipHistory: true });
+            return;
+        }
+        if (entry.type === 'fandom-wiki-index') {
+            this.currentSelectedTag = null;
+            this.currentTagName = null;
+            this.showFandomWikiIndex({ skipHistory: true, showAll: !!entry.showAll });
             return;
         }
         if (entry.type === 'static-wiki-page') {

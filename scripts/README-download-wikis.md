@@ -1,19 +1,31 @@
 # Downloading and Loading Missing Wiki Pages
 
-This guide explains how to download missing wiki pages and load them into the database.
+Missing wiki pages are downloaded and loaded by **one script**. It does **not** recreate `tag_wiki.db`. Re-run it to resume.
 
-## Overview
+```bash
+node scripts/download-missing-wikis.js
+```
 
-There are two scripts that work together:
+Load already-downloaded JSON without fetching:
 
-1. **`download-missing-wikis.js`** - Downloads wiki pages from Danbooru/e621 APIs
-2. **`load-downloaded-wikis.js`** - Loads downloaded wikis into the database
+```bash
+node scripts/download-missing-wikis.js --load-only
+```
+
+Official bulk dumps (tags + all wiki pages, including post–July 2026 pages) stay separate:
+
+```bash
+node scripts/download-tag-dumps.js
+node scripts/create-tag-database.js
+```
+
+Tag *suggestion* is gated by `created_at` (V4.5: through 2025-05-29; V5+: through end of July 2026). Wiki pages are always stored and stay browsable. Missing `n_count` values are filled from `.cache/tag_search.db` (NovelAI suggest-tags cache).
 
 ## Workflow
 
 ### Step 1: Generate Missing Wikis List
 
-First, run `create-tag-database.js` to generate `data/tags_missing_wikis.json`:
+Run `create-tag-database.js` to generate `data/tags_missing_wikis.json` (this rebuilds the tag DB):
 
 ```bash
 node scripts/create-tag-database.js
@@ -23,9 +35,7 @@ This creates a JSON file with all tags/wiki pages that need to be downloaded:
 - `danbooru`: Array of tag/wiki page names
 - `e621`: Array of tag/wiki page names
 
-### Step 2: Download Wiki Pages
-
-Run the download script to fetch wiki pages from the APIs:
+### Step 2: Download + load (resume-safe)
 
 ```bash
 node scripts/download-missing-wikis.js
@@ -33,94 +43,26 @@ node scripts/download-missing-wikis.js
 
 **What it does:**
 - Reads `data/tags_missing_wikis.json`
-- Fetches each wiki page from Danbooru or e621 API
-- Downloads raw DText body content
-- Saves to:
-  - `data/danbooru_missing_wikis.json`
-  - `data/e621_missing_wikis.json`
+- Skips titles already saved in JSON or already in `tag_wiki.db`
+- Fetches remaining wiki pages from Danbooru / e621 (follows tag aliases)
+- Flushes `data/danbooru_missing_wikis.json` and `data/e621_missing_wikis.json` every 20 downloads and on Ctrl+C
+- Loads new pages into the **existing** database (normalizes bodies, links tags, extracts sections, updates FTS5)
 
-**Features:**
-- Rate limiting (250ms between requests)
-- Automatic retry on failures
-- Progress logging
-- Skips pages that don't exist
-- Handles both tags and unlinked wiki pages
+`load-downloaded-wikis.js` still exists as the load-only module used by that script.
 
-### Step 3: Load into Database
+## Wiki images (Danbooru + e621)
 
-Run the loader script to insert downloaded wikis into the database:
+There is no separate e621 image script. Both sources are in:
 
 ```bash
-node scripts/load-downloaded-wikis.js
+node scripts/download-danbooru-images.js
 ```
 
-**What it does:**
-- Reads downloaded wiki JSON files
-- Normalizes wiki bodies (same as create-tag-database.js)
-- Inserts into `wikis` table
-- Links wikis to tags if tag exists
-- Extracts sections, content links, etc.
-- Updates FTS5 index
-
-**Features:**
-- Automatically links wikis to existing tags
-- Creates unlinked wiki pages for tag groups
-- Extracts all sections and links
-- Updates search indexes
-
-## API Endpoints Used
-
-### Danbooru
-- Wiki pages: `GET /wiki_pages.json?search[title]={title}`
-- Tags: `GET /tags.json?search[name]={name}`
-
-### e621
-- Wiki pages: `GET /wiki_pages.json?search[title]={title}`
-- Tags: `GET /tags.json?search[name]={name}`
-
-## Output Format
-
-### Downloaded Wikis JSON
-
-```json
-{
-  "_metadata": {
-    "generated_at": "2025-01-XX...",
-    "source": "danbooru",
-    "total_wikis": 123
-  },
-  "wikis": [
-    {
-      "title": "tag name",
-      "body": "raw DText content...",
-      "created_at": "2025-01-01T00:00:00Z",
-      "updated_at": "2025-01-02T00:00:00Z",
-      "is_locked": 0
-    }
-  ]
-}
-```
+It reads `data/wiki_post_thumb_refs.json`, downloads `source=1` (Danbooru) and `source=2` (e621) into `.cache/wiki_files/`, and skips files that already exist.
 
 ## Notes
 
-- Both scripts handle rate limiting and errors gracefully
-- The download script stops after 10 consecutive failures (to avoid wasting time)
-- The loader script skips wikis that already exist in the database
-- All normalization matches the format used in `create-tag-database.js`
-
-## Troubleshooting
-
-**Download script fails with 429 (Rate Limited):**
-- The script automatically retries with exponential backoff
-- If it keeps failing, you may need to wait longer between requests
-- Edit `RATE_LIMIT_DELAY` in the script (default: 250ms)
-
-**Loader script says wiki already exists:**
-- This is normal if you've already loaded the wiki
-- The script uses `INSERT OR IGNORE` to skip duplicates
-
-**API returns 404 for some wikis:**
-- Some tags/wiki pages don't exist on the source site
-- These are skipped and logged as "not found"
-- This is expected behavior
-
+- Ctrl+C waits for in-flight requests, saves JSON, then loads what was downloaded. Re-run to continue.
+- Titles that were “not found” are retried on the next run (alias lookups may succeed).
+- The loader skips wikis that already exist in the database.
+- All normalization matches `create-tag-database.js`.

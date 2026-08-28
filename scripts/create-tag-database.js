@@ -20,13 +20,17 @@ const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
 const { buildTitleSearchIndexData } = require('../modules/tagTitleIndex');
+const { isAfterV45Cutoff } = require('../modules/tagModelCutoff');
+const { initializeTagSearchDatabase, applyCachedNovelCounts } = require('../modules/tagSearchDatabase');
 
 // Configuration
 const WIKI_DATASET_PATH = path.join(__dirname, '..', 'danbooru_tagwiki.json');
 const COUNTS_DATASET_PATH = path.join(__dirname, '..', 'dataset_tags.json');
 const FURRY_DATASET_PATH = path.join(__dirname, '..', 'dataset_tags_furry.json');
 const E621_WIKI_CSV_PATH = path.join(__dirname, '..', 'wiki_pages-2025-11-21.csv');
+const DUMPS_DIR = path.join(__dirname, '..', 'data', 'dumps');
 const DATABASE_PATH = path.join(__dirname, '..', '.cache', 'tag_wiki.db');
+const DATABASE_BUILD_PATH = `${DATABASE_PATH}.building`;
 const DATASET_GROUPS_PATH = path.join(__dirname, '..', 'dataset_tag_groups.json');
 
 // Source identifiers (numeric: 0=memory, 1=danbooru, 2=e621)
@@ -50,31 +54,35 @@ function normalizeTitle(title) {
 }
 
 /**
- * Check if a date string is after May 29, 2025
- * Supports ISO 8601 format (YYYY-MM-DD) and timestamp formats
+ * Check if a date string is after May 29, 2025 (V4.5 training cutoff).
  * @param {string|null} dateStr - Date string to check
  * @returns {boolean} True if date is after May 29, 2025, false otherwise
  */
 function isUntrainedDate(dateStr) {
-    if (!dateStr) return false;
-    
-    const cutoffDate = new Date('2025-05-29T00:00:00Z');
-    let date;
-    
-    // Try parsing as ISO date string (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)
-    if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
-        date = new Date(dateStr);
-    } else {
-        // Try parsing as timestamp or other format
-        date = new Date(dateStr);
-    }
-    
-    // Check if date is valid
-    if (isNaN(date.getTime())) {
-        return false;
-    }
-    
-    return date > cutoffDate;
+    return isAfterV45Cutoff(dateStr);
+}
+
+function findNewestCsv(dir, matcher) {
+    if (!fs.existsSync(dir)) return null;
+    const files = fs.readdirSync(dir).filter((name) => matcher.test(name));
+    files.sort((a, b) => {
+        const aTime = fs.statSync(path.join(dir, a)).mtimeMs;
+        const bTime = fs.statSync(path.join(dir, b)).mtimeMs;
+        return bTime - aTime;
+    });
+    return files.length ? path.join(dir, files[0]) : null;
+}
+
+function resolveE621WikiCsvPath() {
+    return findNewestCsv(DUMPS_DIR, /^e621_wiki_pages.*\.csv$/i)
+        || findNewestCsv(path.join(__dirname, '..'), /^wiki_pages-.*\.csv$/i)
+        || (fs.existsSync(E621_WIKI_CSV_PATH) ? E621_WIKI_CSV_PATH : null);
+}
+
+function resolveDumpCsv(basenamePrefix) {
+    const exact = path.join(DUMPS_DIR, `${basenamePrefix}.csv`);
+    if (fs.existsSync(exact)) return exact;
+    return findNewestCsv(DUMPS_DIR, new RegExp(`^${basenamePrefix}.*\\.csv$`, 'i'));
 }
 
 /**
@@ -1521,72 +1529,127 @@ function loadJSON(filePath) {
     return data;
 }
 
+function utf8SolidEnd(buf) {
+    const n = buf.length;
+    if (n === 0) return 0;
+    let i = n - 1;
+    if (buf[i] < 0x80) return n;
+    while (i > 0 && (buf[i] & 0xc0) === 0x80) i--;
+    const lead = buf[i];
+    let need = 1;
+    if ((lead & 0xe0) === 0xc0) need = 2;
+    else if ((lead & 0xf0) === 0xe0) need = 3;
+    else if ((lead & 0xf8) === 0xf0) need = 4;
+    else return i;
+    return (n - i >= need) ? n : i;
+}
+
 /**
- * Parse CSV file with multi-line support
- * Simple CSV parser that handles quoted fields with newlines
+ * Stream CSV rows (quoted multiline fields allowed). Reuses one row object; copy if you store it.
  */
-function parseCSV(filePath) {
-    console.log(`📂 Loading ${path.basename(filePath)}...`);
-    const content = fs.readFileSync(filePath, 'utf8');
-    const lines = [];
+function forEachCsvRow(filePath, onRow) {
+    console.log(`📂 Streaming ${path.basename(filePath)}...`);
+    const fd = fs.openSync(filePath, 'r');
+    const chunk = Buffer.alloc(1024 * 1024);
+    let leftoverUtf = Buffer.alloc(0);
+    let pending = '';
+    let headers = null;
     let currentLine = [];
     let currentField = '';
     let inQuotes = false;
-    let i = 0;
-    
-    while (i < content.length) {
-        const char = content[i];
-        const nextChar = i + 1 < content.length ? content[i + 1] : '';
-        
-        if (char === '"') {
-            if (inQuotes && nextChar === '"') {
-                // Escaped quote
-                currentField += '"';
-                i += 2;
-            } else {
-                // Toggle quote state
-                inQuotes = !inQuotes;
-                i++;
+    let rowCount = 0;
+    const row = {};
+
+    const emitLine = (fields) => {
+        if (!headers) {
+            headers = fields;
+            if (headers[0] && headers[0].charCodeAt(0) === 0xFEFF) {
+                headers[0] = headers[0].slice(1);
             }
-        } else if (char === ',' && !inQuotes) {
-            // Field separator
-            currentLine.push(currentField);
-            currentField = '';
-            i++;
-        } else if ((char === '\n' || (char === '\r' && nextChar === '\n')) && !inQuotes) {
-            // Line separator
-            currentLine.push(currentField);
-            lines.push(currentLine);
-            currentLine = [];
-            currentField = '';
-            if (char === '\r' && nextChar === '\n') {
-                i += 2;
-            } else {
-                i++;
-            }
-        } else {
-            currentField += char;
-            i++;
+            return;
         }
+        for (let h = 0; h < headers.length; h++) {
+            row[headers[h]] = fields[h] || '';
+        }
+        onRow(row);
+        rowCount++;
+    };
+
+    const consume = (text, isLast) => {
+        let i = 0;
+        const len = text.length;
+        while (i < len) {
+            const char = text[i];
+            const hasNext = i + 1 < len;
+            if (!hasNext && !isLast && (char === '"' || char === '\r')) {
+                return text.slice(i);
+            }
+            const nextChar = hasNext ? text[i + 1] : '';
+            if (char === '"') {
+                if (inQuotes && nextChar === '"') {
+                    currentField += '"';
+                    i += 2;
+                } else {
+                    inQuotes = !inQuotes;
+                    i++;
+                }
+            } else if (char === ',' && !inQuotes) {
+                currentLine.push(currentField);
+                currentField = '';
+                i++;
+            } else if ((char === '\n' || (char === '\r' && nextChar === '\n')) && !inQuotes) {
+                currentLine.push(currentField);
+                emitLine(currentLine);
+                currentLine = [];
+                currentField = '';
+                i += (char === '\r' && nextChar === '\n') ? 2 : 1;
+            } else {
+                const start = i;
+                i++;
+                while (i < len) {
+                    const c = text[i];
+                    if (c === '"') break;
+                    if (!inQuotes && (c === ',' || c === '\n' || c === '\r')) break;
+                    i++;
+                }
+                currentField += text.slice(start, i);
+            }
+        }
+        return '';
+    };
+
+    try {
+        let n;
+        while ((n = fs.readSync(fd, chunk, 0, chunk.length, null)) > 0) {
+            const data = leftoverUtf.length
+                ? Buffer.concat([leftoverUtf, chunk.slice(0, n)])
+                : chunk.slice(0, n);
+            const solid = utf8SolidEnd(data);
+            leftoverUtf = solid < data.length ? Buffer.from(data.slice(solid)) : Buffer.alloc(0);
+            pending += data.toString('utf8', 0, solid);
+            pending = consume(pending, false);
+        }
+        pending = consume(pending, true);
+        if (currentField || currentLine.length > 0) {
+            currentLine.push(currentField);
+            emitLine(currentLine);
+        }
+    } finally {
+        fs.closeSync(fd);
     }
-    
-    // Add last line
-    if (currentField || currentLine.length > 0) {
-        currentLine.push(currentField);
-        lines.push(currentLine);
-    }
-    
-    // First line is headers
-    const headers = lines[0];
-    const rows = lines.slice(1).map(line => {
-        const obj = {};
-        headers.forEach((header, idx) => {
-            obj[header] = line[idx] || '';
-        });
-        return obj;
+    console.log(`   ✓ Streamed ${rowCount} rows`);
+    return rowCount;
+}
+
+/**
+ * Parse CSV file with multi-line support.
+ * Prefer forEachCsvRow for large dumps.
+ */
+function parseCSV(filePath) {
+    const rows = [];
+    forEachCsvRow(filePath, (row) => {
+        rows.push(Object.assign({}, row));
     });
-    
-    console.log(`   ✓ Loaded ${rows.length} rows`);
     return rows;
 }
 
@@ -1635,10 +1698,11 @@ function createSchema(db) {
             category INTEGER,  -- 0=General, 1=Artist, 3=Copyright, 4=Character, 5=Meta, 6=Species
             d_count INTEGER DEFAULT 0,  -- Danbooru count
             e_count INTEGER DEFAULT 0,  -- E621/Furry count
-            n_count INTEGER,  -- NovelAI count (NULL if 0 or missing, to be filled by another process)
+            n_count INTEGER,  -- NovelAI count (NULL if 0 or missing, filled from tag_search.db cache)
             n_rand BOOLEAN DEFAULT 0,
             is_locked BOOLEAN DEFAULT 0,
-            untrained BOOLEAN DEFAULT 0  -- 1 if tag exists in e621 wiki but not in furry JSON, 0 if in furry JSON
+            untrained BOOLEAN DEFAULT 0,  -- 1 if created after May 29, 2025 (v5+ suggest)
+            created_at TEXT
         );
     `);
     
@@ -1803,7 +1867,7 @@ function createSchema(db) {
             category INTEGER,
             created_at TEXT,
             updated_at TEXT,
-            untrained INTEGER DEFAULT 0,  -- 1 if created after May 29, 2025 (needs training)
+            untrained INTEGER DEFAULT 0,  -- 1 if created after May 29, 2025 (v5+ wiki flag; pages remain browsable)
             FOREIGN KEY (danbooru_wiki_id) REFERENCES wikis(id) ON DELETE SET NULL,
             FOREIGN KEY (e621_wiki_id) REFERENCES wikis(id) ON DELETE SET NULL
         );
@@ -2596,13 +2660,14 @@ function mergeAnimeDataset(wikiData, countsData) {
  * Returns merged object with tags and their wikis connected
  * Also returns unlinked wiki pages (from CSV that don't have tags in furry dataset)
  */
-function mergeFurryDataset(furryData, wikiCSVRows) {
+function mergeFurryDataset(furryData, wikiCsvSource, options = {}) {
     console.log('\n🔀 Merging furry dataset (dataset_tags_furry.json -> wiki_pages-*.csv)...');
     
-    if (!furryData || !wikiCSVRows || wikiCSVRows.length === 0) {
+    if (!furryData || !wikiCsvSource) {
         console.log('   ⚠️  No furry data to merge');
         return { tags: {}, unlinkedWikis: [] };
     }
+    const skipUnlinked = options.skipUnlinked === true;
     
     // Build furry data map
     const furryMap = new Map(); // normalized_title -> furry tag data
@@ -2617,16 +2682,17 @@ function mergeFurryDataset(furryData, wikiCSVRows) {
     // IMPORTANT: Preserve original title format from CSV (keep underscores as-is)
     // We only normalize for matching/lookup, but store the original format
     const wikiMap = new Map(); // normalized_title -> wiki data
-    for (const row of wikiCSVRows) {
+    const ingestWikiRow = (row) => {
         const originalTitle = (row.title || '').trim();
-        if (!originalTitle) continue;
+        if (!originalTitle) return;
         // Skip help: and e621: prefixed pages
         if (originalTitle.toLowerCase().startsWith('help:') || originalTitle.toLowerCase().startsWith('e621:')) {
-            continue;
+            return;
         }
         
         // Use original title for storage (preserve underscores), but normalize for matching
         const normalizedTitle = normalizeTitle(originalTitle);
+        if (skipUnlinked && !furryMap.has(normalizedTitle)) return;
         let body = row.body || null;
         if (body) {
             // Only normalize newlines here, full normalization happens during collection
@@ -2655,6 +2721,18 @@ function mergeFurryDataset(furryData, wikiCSVRows) {
             created_at: row.created_at || null,
             updated_at: row.updated_at || null
         });
+    };
+    if (typeof wikiCsvSource === 'string') {
+        if (!fs.existsSync(wikiCsvSource)) {
+            console.log('   ⚠️  No furry data to merge');
+            return { tags: {}, unlinkedWikis: [] };
+        }
+        forEachCsvRow(wikiCsvSource, ingestWikiRow);
+    } else if (Array.isArray(wikiCsvSource) && wikiCsvSource.length > 0) {
+        for (const row of wikiCsvSource) ingestWikiRow(row);
+    } else {
+        console.log('   ⚠️  No furry data to merge');
+        return { tags: {}, unlinkedWikis: [] };
     }
     
     // Merge furry tags with wikis (only include tags that exist in furry dataset)
@@ -2719,24 +2797,26 @@ function mergeFurryDataset(furryData, wikiCSVRows) {
     }
     
     // Collect unlinked wiki pages (from CSV that don't have tags in furry dataset)
-    // This includes tag groups - they're just wiki pages, no special handling needed
-    for (const [normalizedTitle, wikiData] of wikiMap.entries()) {
-        // Skip if already linked to a tag
-        if (processedWikiTitles.has(normalizedTitle)) continue;
-        
-        // Only add if it has a body and it's not a "does not exist" message
-        const trimmedBody = wikiData.body ? wikiData.body.trim() : '';
-        if (trimmedBody !== '' && 
-            trimmedBody !== "The wiki page does not exist." && 
-            !trimmedBody.startsWith("This wiki page does not exist.")) {
-            unlinkedWikis.push({
-                title: wikiData.title,
-                normalized_title: normalizedTitle,
-                body: wikiData.body,
-                created_at: wikiData.created_at,
-                updated_at: wikiData.updated_at,
-                source: SOURCE_E621
-            });
+    // Skip when the official wiki dump will insert these later.
+    if (!skipUnlinked) {
+        for (const [normalizedTitle, wikiData] of wikiMap.entries()) {
+            // Skip if already linked to a tag
+            if (processedWikiTitles.has(normalizedTitle)) continue;
+            
+            // Only add if it has a body and it's not a "does not exist" message
+            const trimmedBody = wikiData.body ? wikiData.body.trim() : '';
+            if (trimmedBody !== '' && 
+                trimmedBody !== "The wiki page does not exist." && 
+                !trimmedBody.startsWith("This wiki page does not exist.")) {
+                unlinkedWikis.push({
+                    title: wikiData.title,
+                    normalized_title: normalizedTitle,
+                    body: wikiData.body,
+                    created_at: wikiData.created_at,
+                    updated_at: wikiData.updated_at,
+                    source: SOURCE_E621
+                });
+            }
         }
     }
     
@@ -2855,30 +2935,136 @@ function mergeAnimeAndFurry(animeTags, furryTags) {
     return merged;
 }
 
+function parseDumpPostCount(row) {
+    const n = parseInt(row.post_count, 10);
+    return Number.isFinite(n) ? n : 0;
+}
+
+function parseDumpCategory(row) {
+    if (row.category === undefined || row.category === null || row.category === '') {
+        return null;
+    }
+    const raw = String(row.category).trim();
+    if (/^\d+$/.test(raw)) {
+        return parseInt(raw, 10);
+    }
+    return categoryStringToNumber(raw);
+}
+
+function isDumpTruthy(value) {
+    const raw = String(value || '').toLowerCase();
+    return raw === 't' || raw === 'true' || raw === '1';
+}
+
+function mergeOfficialTagDump(mergedTags, csvPath, source) {
+    if (!csvPath || !fs.existsSync(csvPath)) {
+        return { updated: 0, added: 0 };
+    }
+    console.log(`\n📥 Merging official tag dump (${path.basename(csvPath)})...`);
+    let updated = 0;
+    forEachCsvRow(csvPath, (row) => {
+        const rawName = row.name || row.tag_name || '';
+        if (!rawName) return;
+        if (isDumpTruthy(row.is_deleted)) return;
+        const title = String(rawName).replace(/_/g, ' ').trim();
+        const normalizedTitle = normalizeTitle(title);
+        if (!normalizedTitle) return;
+        const postCount = parseDumpPostCount(row);
+        const createdAt = row.created_at || null;
+        const existing = mergedTags[normalizedTitle];
+        if (existing) {
+            if (createdAt && (!existing.created_at || createdAt < existing.created_at)) {
+                existing.created_at = createdAt;
+            }
+            if (source === SOURCE_DANBOORU) {
+                existing.d_count = Math.max(existing.d_count || 0, postCount);
+            } else {
+                existing.e_count = Math.max(existing.e_count || 0, postCount);
+            }
+            if (!existing.category) {
+                const category = parseDumpCategory(row);
+                if (category !== null) existing.category = category;
+            }
+            updated++;
+            return;
+        }
+    });
+    console.log(`   ✓ Dump tags: ${updated} existing tags dated`);
+    return { updated, added: 0 };
+}
+
+function mergeOfficialWikiDump(allWikisMap, csvPath, source) {
+    if (!csvPath || !fs.existsSync(csvPath)) {
+        return 0;
+    }
+    console.log(`\n📥 Merging official wiki dump (${path.basename(csvPath)})...`);
+    let added = 0;
+    forEachCsvRow(csvPath, (row) => {
+        const originalTitle = (row.title || '').trim();
+        if (!originalTitle) return;
+        const lower = originalTitle.toLowerCase();
+        if (lower.startsWith('help:') || lower.startsWith('e621:')) return;
+        if (isDumpTruthy(row.is_deleted)) return;
+        let body = row.body || null;
+        if (body) {
+            body = body.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            if (body.trim() === '' || body === 'The wiki page does not exist.') {
+                body = null;
+            }
+        }
+        if (!body) return;
+        let title = originalTitle.replace(/_/g, ' ').trim();
+        if (title.toLowerCase().startsWith('tag group:') || title.toLowerCase().startsWith('tag_group:')) {
+            title = title.replace(/^tag\s+group:\s*/i, 'tag_group:');
+            title = title.replace(/^tag_group:\s+/i, 'tag_group:');
+        }
+        const wikiKey = `${title}|${source}`;
+        if (allWikisMap.has(wikiKey)) {
+            const existing = allWikisMap.get(wikiKey);
+            if (!existing.created_at && row.created_at) {
+                existing.created_at = row.created_at;
+            }
+            return;
+        }
+        const normalized = normalizeWikiBody(body, title, source);
+        allWikisMap.set(wikiKey, {
+            title,
+            body: normalized.body,
+            source,
+            created_at: row.created_at || null,
+            updated_at: row.updated_at || null
+        });
+        added++;
+    });
+    console.log(`   ✓ Dump wikis added: ${added}`);
+    return added;
+}
+
 /**
  * Main function to create database
  */
+function removeSqliteSidecars(dbPath) {
+    for (const suffix of ['', '-wal', '-shm', '-journal']) {
+        const sidecar = dbPath + suffix;
+        if (!fs.existsSync(sidecar)) continue;
+        try {
+            fs.unlinkSync(sidecar);
+            console.log(`🗑️  Deleted ${path.basename(sidecar)}`);
+        } catch (error) {
+            console.warn(`⚠️  Could not delete ${path.basename(sidecar)}: ${error.message}`);
+        }
+    }
+}
+
 function main() {
     console.log('🚀 Creating SQLite tag database...\n');
     
     try {
-        // Ensure data directory exists
-        const dataDir = path.dirname(DATABASE_PATH);
-        if (!fs.existsSync(dataDir)) {
-            fs.mkdirSync(dataDir, { recursive: true });
-        }
-        
-        // Ensure .cache directory exists
         const cacheDir = path.dirname(DATABASE_PATH);
         if (!fs.existsSync(cacheDir)) {
             fs.mkdirSync(cacheDir, { recursive: true });
         }
-        
-        // Delete existing database to start fresh
-        if (fs.existsSync(DATABASE_PATH)) {
-            fs.unlinkSync(DATABASE_PATH);
-            console.log(`🗑️  Deleted existing database: ${path.basename(DATABASE_PATH)}`);
-        }
+        removeSqliteSidecars(DATABASE_BUILD_PATH);
         
         // Step 1: Load datasets
         console.log('📂 Loading datasets...');
@@ -2893,14 +3079,17 @@ function main() {
             console.log(`\n⚠️  Furry dataset not found: ${path.basename(FURRY_DATASET_PATH)}`);
         }
         
-        // Load e621 wiki CSV (if available)
-        let wikiCSVRows = [];
-        if (fs.existsSync(E621_WIKI_CSV_PATH)) {
-            console.log('\n📚 Loading e621 wiki CSV...');
-            wikiCSVRows = parseCSV(E621_WIKI_CSV_PATH);
-            console.log(`   ✓ Loaded ${wikiCSVRows.length} wiki entries`);
+        const e621WikiCsvPath = resolveE621WikiCsvPath();
+        const e621WikiDumpPath = resolveDumpCsv('e621_wiki_pages');
+        const skipUnlinkedFurry = !!(
+            e621WikiCsvPath &&
+            e621WikiDumpPath &&
+            path.resolve(e621WikiCsvPath) === path.resolve(e621WikiDumpPath)
+        );
+        if (e621WikiCsvPath) {
+            console.log(`\n📚 e621 wiki CSV: ${path.basename(e621WikiCsvPath)}`);
         } else {
-            console.log(`\n⚠️  E621 wiki CSV not found: ${path.basename(E621_WIKI_CSV_PATH)}`);
+            console.log(`\n⚠️  E621 wiki CSV not found`);
         }
         
         // Step 2: Merge datasets
@@ -2908,14 +3097,16 @@ function main() {
         const animeTags = mergeAnimeDataset(wikiData, countsData);
         
         // Merge furry dataset (dataset_tags_furry.json -> wiki_pages-*.csv)
-        const furryResult = furryData && wikiCSVRows.length > 0 
-            ? mergeFurryDataset(furryData, wikiCSVRows)
+        const furryResult = furryData && e621WikiCsvPath
+            ? mergeFurryDataset(furryData, e621WikiCsvPath, { skipUnlinked: skipUnlinkedFurry })
             : { tags: {}, unlinkedWikis: [] };
         const furryTags = furryResult.tags;
         const unlinkedFurryWikis = furryResult.unlinkedWikis || [];
         
         // Merge anime and furry datasets
         const mergedTags = mergeAnimeAndFurry(animeTags, furryTags);
+        mergeOfficialTagDump(mergedTags, resolveDumpCsv('danbooru_tags'), SOURCE_DANBOORU);
+        mergeOfficialTagDump(mergedTags, resolveDumpCsv('e621_tags'), SOURCE_E621);
         
         // Initialize allWikisMap early so we can collect unlinked wikis as we go
         const allWikisMap = new Map(); // (title, source) -> { title, body, source, created_at, updated_at }
@@ -2925,9 +3116,9 @@ function main() {
         console.log(`\n✅ Dataset merging complete!`);
         console.log(`   Total merged tags: ${Object.keys(mergedTags).length}`);
         
-        // Open/create database
+        // Open a sidecar DB so a live tag_wiki.db connection cannot reuse a truncated WAL.
         console.log('💾 Opening database...');
-        const db = new Database(DATABASE_PATH);
+        const db = new Database(DATABASE_BUILD_PATH);
         
         // Enable optimizations for bulk insert workload
         db.pragma('journal_mode = WAL');
@@ -2970,8 +3161,8 @@ function main() {
         `);
         
         const insertTag = db.prepare(`
-            INSERT INTO tags (title, normalized_title, category, d_count, e_count, n_count, n_rand, is_locked, untrained)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO tags (title, normalized_title, category, d_count, e_count, n_count, n_rand, is_locked, untrained, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         
         const insertOtherName = db.prepare(`
@@ -3203,6 +3394,12 @@ function main() {
             unlinkedWikiKeys.add(wikiKey);
         }
         console.log(`   ✓ Collected ${unlinkedWikiKeys.size} unlinked wiki pages into wiki map`);
+        mergeOfficialWikiDump(allWikisMap, resolveDumpCsv('danbooru_wiki_pages'), SOURCE_DANBOORU);
+        mergeOfficialWikiDump(allWikisMap, resolveDumpCsv('e621_wiki_pages'), SOURCE_E621);
+        const e621WikiDump = resolveE621WikiCsvPath();
+        if (e621WikiDump && e621WikiDump !== resolveDumpCsv('e621_wiki_pages')) {
+            mergeOfficialWikiDump(allWikisMap, e621WikiDump, SOURCE_E621);
+        }
         
         if (allPostThumbRefs.length > 0) {
             console.log(`   ✓ Found ${allPostThumbRefs.length} post/thumb references to export`);
@@ -3375,7 +3572,8 @@ function main() {
                 nCount: tag.n_count,
                 nRand: tag.n_rand || 0,
                 isLocked: tag.is_locked || 0,
-                untrained: tag.source === SOURCE_E621 && !tag.d_count ? 1 : 0
+                untrained: isUntrainedDate(tag.created_at) ? 1 : 0,
+                createdAt: tag.created_at || null
             };
             tagsToInsert.push(tagData);
             
@@ -3480,8 +3678,8 @@ function main() {
         
         // Update insertTag to use explicit ID
         const insertTagWithId = db.prepare(`
-            INSERT INTO tags (id, title, normalized_title, category, d_count, e_count, n_count, n_rand, is_locked, untrained)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO tags (id, title, normalized_title, category, d_count, e_count, n_count, n_rand, is_locked, untrained, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         
         const insertTagsTransaction = db.transaction((tags) => {
@@ -3497,7 +3695,8 @@ function main() {
                         tagData.nCount,
                         tagData.nRand,
                         tagData.isLocked,
-                        tagData.untrained
+                        tagData.untrained,
+                        tagData.createdAt
                     );
                     insertedCount++;
                 } catch (e) {
@@ -4221,6 +4420,11 @@ function main() {
         console.log('\n📊 Analyzing tables...');
         db.exec('ANALYZE');
         console.log('   ✓ Analysis complete');
+
+        console.log('\n📥 Filling missing n_count from NovelAI tag search cache...');
+        initializeTagSearchDatabase(path.join(__dirname, '..', '.cache'));
+        const novelFill = applyCachedNovelCounts(db);
+        console.log(`   ✓ Filled ${novelFill.filled} missing n_count values (${novelFill.candidates} cache tags)`);
         
         // Get final statistics from database
         console.log('\n📊 Calculating final statistics...');
@@ -4684,8 +4888,16 @@ function main() {
         console.log(`   ✓ E621: ${e621All.length} items (${uniqueE621Tags.length} tags, ${uniqueE621WikiPages.length} wiki pages)`);
         console.log(`   ✓ Saved to ${path.basename(missingWikisPath)}`);
         
-        // Close database
+        try {
+            db.pragma('wal_checkpoint(TRUNCATE)');
+        } catch (_) {}
         db.close();
+        for (const suffix of ['-wal', '-shm', '-journal']) {
+            const sidecar = DATABASE_BUILD_PATH + suffix;
+            if (fs.existsSync(sidecar)) fs.unlinkSync(sidecar);
+        }
+        removeSqliteSidecars(DATABASE_PATH);
+        fs.renameSync(DATABASE_BUILD_PATH, DATABASE_PATH);
         
         const fileSize = (fs.statSync(DATABASE_PATH).size / 1024 / 1024).toFixed(2);
         console.log('\n✅ Database creation complete!');
@@ -4711,6 +4923,9 @@ function main() {
         
     } catch (error) {
         console.error('\n❌ Database creation failed:', error);
+        if (error && String(error.code || '').startsWith('SQLITE_IOERR')) {
+            console.error('   Stop Dreamscape (it still has tag_wiki.db open) and re-run this script.');
+        }
         process.exit(1);
     }
 }
@@ -4725,6 +4940,11 @@ module.exports = {
     normalizeTitle, 
     categoryStringToNumber,
     tokenizeTagTitleWithTerminators,
-    generateTagSequencesWithTerminators
+    generateTagSequencesWithTerminators,
+    normalizeWikiBody,
+    extractWikiSections,
+    extractWikiContentLinks,
+    extractWikiLinks,
+    detectLinkRelationship
 };
 

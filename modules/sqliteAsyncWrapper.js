@@ -86,6 +86,8 @@ class AsyncSQLiteDatabase {
         this.checkpointQueue = []; // Queue of promises waiting for checkpoint to complete
         this.wasUnloaded = false; // Track if database was unloaded due to idle timeout
         this.activeOperations = 0; // Track number of active database operations
+        this.closing = false;
+        this._closePromise = null;
         
         // Ensure directory exists
         const dbDir = path.dirname(dbPath);
@@ -101,12 +103,42 @@ class AsyncSQLiteDatabase {
         }
     }
     
+    isClosedHandleError(error) {
+        const msg = error?.message || String(error || '');
+        return msg.includes('SQLITE_MISUSE') || msg.includes('Database handle is closed');
+    }
+
+    async waitForCloseToFinish() {
+        while (this.closing || this._closePromise) {
+            await (this._closePromise || new Promise(resolve => setImmediate(resolve)));
+        }
+    }
+
+    /**
+     * Drop a dying sqlite handle so the next open() cannot reuse it.
+     * Native close may already be in flight from close().
+     */
+    async discardClosedHandle() {
+        const stale = this.db;
+        this.isOpen = false;
+        this.db = null;
+        if (stale) {
+            try {
+                await stale.close();
+            } catch (_err) {
+                // Already closed or closing.
+            }
+        }
+    }
+
     /**
      * Open database connection (lazy loading)
      * Waits if checkpoint is in progress
      * @returns {Promise<void>}
      */
     async open() {
+        await this.waitForCloseToFinish();
+
         // Wait for any in-progress checkpoint to complete
         if (this.isCheckpointing) {
             await this.waitForCheckpoint();
@@ -203,34 +235,50 @@ class AsyncSQLiteDatabase {
      * @returns {Promise<void>}
      */
     async close() {
+        if (this._closePromise) {
+            return this._closePromise;
+        }
+
+        this.closing = true;
+        this._closePromise = this._closeNativeHandle().finally(() => {
+            this.closing = false;
+            this._closePromise = null;
+        });
+        return this._closePromise;
+    }
+
+    async _closeNativeHandle() {
         if (this.idleTimer) {
             clearTimeout(this.idleTimer);
             this.idleTimer = null;
         }
-        
-        if (this.db) {
-            try {
-                await this.db.close();
-            } catch (error) {
-                // If we get SQLITE_BUSY, wait a bit and retry once
-                if (error.code === 'SQLITE_BUSY' || error.message?.includes('SQLITE_BUSY')) {
-                    console.warn(`⚠️ Database busy during close, retrying: ${path.basename(this.dbPath)}`);
-                    // Wait 100ms and try once more
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                    try {
-                        await this.db.close();
-                    } catch (retryError) {
-                        console.warn(`⚠️ Error closing database ${path.basename(this.dbPath)} after retry:`, retryError.message);
-                    }
-                } else {
-                    console.warn(`⚠️ Error closing database ${path.basename(this.dbPath)}:`, error.message);
-                }
-            }
-            this.db = null;
-        }
-        
+
+        // Invalidate wrapper state before awaiting native close. node-sqlite3 marks
+        // the handle closed immediately, so later run()/get() must not reuse it.
+        const handle = this.db;
+        this.db = null;
         this.isOpen = false;
         this.lastAccessTime = null;
+
+        if (!handle) {
+            return;
+        }
+
+        try {
+            await handle.close();
+        } catch (error) {
+            if (error.code === 'SQLITE_BUSY' || error.message?.includes('SQLITE_BUSY')) {
+                console.warn(`⚠️ Database busy during close, retrying: ${path.basename(this.dbPath)}`);
+                await new Promise(resolve => setTimeout(resolve, 100));
+                try {
+                    await handle.close();
+                } catch (retryError) {
+                    console.warn(`⚠️ Error closing database ${path.basename(this.dbPath)} after retry:`, retryError.message);
+                }
+            } else if (!this.isClosedHandleError(error)) {
+                console.warn(`⚠️ Error closing database ${path.basename(this.dbPath)}:`, error.message);
+            }
+        }
     }
     
     /**
@@ -366,8 +414,7 @@ class AsyncSQLiteDatabase {
             if (error.message?.includes('SQLITE_MISUSE') || error.message?.includes('Database handle is closed')) {
                 console.warn(`⚠️ Database handle closed during execution, reopening: ${path.basename(this.dbPath)}`);
                 // Reset state and reopen
-                this.isOpen = false;
-                this.db = null;
+                await this.discardClosedHandle();
                 await this.open();
                 // Retry the execution
                 const result = await this.db.run(sql, params);
@@ -412,8 +459,7 @@ class AsyncSQLiteDatabase {
             if (error.message?.includes('SQLITE_MISUSE') || error.message?.includes('Database handle is closed')) {
                 console.warn(`⚠️ Database handle closed during query, reopening: ${path.basename(this.dbPath)}`);
                 // Reset state and reopen
-                this.isOpen = false;
-                this.db = null;
+                await this.discardClosedHandle();
                 await this.open();
                 // Retry the query
                 return await this.db.get(sql, params);
@@ -443,8 +489,7 @@ class AsyncSQLiteDatabase {
             if (error.message?.includes('SQLITE_MISUSE') || error.message?.includes('Database handle is closed')) {
                 console.warn(`⚠️ Database handle closed during query, reopening: ${path.basename(this.dbPath)}`);
                 // Reset state and reopen
-                this.isOpen = false;
-                this.db = null;
+                await this.discardClosedHandle();
                 await this.open();
                 // Retry the query
                 return await this.db.all(sql, params);
@@ -481,8 +526,7 @@ class AsyncSQLiteDatabase {
             if (error.message?.includes('SQLITE_MISUSE') || error.message?.includes('Database handle is closed')) {
                 console.warn(`⚠️ Database handle closed during exec, reopening: ${path.basename(this.dbPath)}`);
                 // Reset state and reopen
-                this.isOpen = false;
-                this.db = null;
+                await this.discardClosedHandle();
                 await this.open();
                 const retrySignatureBefore = this.checkpointManager
                     ? this.checkpointManager.getDatabaseSignature()
@@ -521,8 +565,7 @@ class AsyncSQLiteDatabase {
             if (error.message?.includes('SQLITE_MISUSE') || error.message?.includes('Database handle is closed')) {
                 console.warn(`⚠️ Database handle closed during prepare, reopening: ${path.basename(this.dbPath)}`);
                 // Reset state and reopen
-                this.isOpen = false;
-                this.db = null;
+                await this.discardClosedHandle();
                 await this.open();
                 this.updateAccessTime();
                 // Retry the prepare
@@ -561,8 +604,7 @@ class AsyncSQLiteDatabase {
             if (error.message?.includes('SQLITE_MISUSE') || error.message?.includes('Database handle is closed')) {
                 console.warn(`⚠️ Database handle closed during pragma, reopening: ${path.basename(this.dbPath)}`);
                 // Reset state and reopen
-                this.isOpen = false;
-                this.db = null;
+                await this.discardClosedHandle();
                 await this.open();
                 this.updateAccessTime();
                 // Retry the pragma query
@@ -602,8 +644,7 @@ class AsyncSQLiteDatabase {
             if (error.message?.includes('SQLITE_MISUSE') || error.message?.includes('Database handle is closed')) {
                 console.warn(`⚠️ Database handle closed during setPragma, reopening: ${path.basename(this.dbPath)}`);
                 // Reset state and reopen
-                this.isOpen = false;
-                this.db = null;
+                await this.discardClosedHandle();
                 await this.open();
                 this.updateAccessTime();
                 // Retry the pragma set

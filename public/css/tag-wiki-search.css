@@ -776,6 +776,21 @@
     padding-left: var(--spacing-md);
 }
 
+.fandom-wiki-index-toolbar {
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+    flex-wrap: wrap;
+}
+
+.tag-wiki-page-content.wiki-static-doc {
+    overflow-x: auto;
+}
+
+.tag-wiki-page-content.wiki-static-doc table.sortable th:not(.unsortable) {
+    cursor: pointer;
+    user-select: none;
+}
+
 .tag-wiki-page-content .wiki-static-index-link {
     color: var(--wiki-link-color);
     text-decoration: none;

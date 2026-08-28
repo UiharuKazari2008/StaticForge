@@ -74,6 +74,8 @@ Implementation: `modules/ws/handlers/generationImpl.js`
 
 ---
 
+---
+
 ## Detailed packets
 
 ### `apply_tendai_preview`
@@ -157,9 +159,18 @@ Implementation: `modules/ws/handlers/generationImpl.js`
 | Field | Notes |
 |-------|-------|
 | `requestId` | Optional |
-| `filename` | Optional |
-| `scale` | Optional |
+| `filename` | Required |
+| `scale` | `1`, `1.5`, `2`, or `max` (Max keeps source WxH and sets `upscaled_enhance`) |
 | `workspace` | Optional |
+| `strength` | Optional img2img strength; default `0.5` (magnitude 3.0) |
+| `noise` | Optional img2img noise; default `0` |
+| `steps` | Optional override |
+| `guidance` | Optional override |
+| `rescale` | Optional override |
+| `sampler` | Optional override |
+| `noiseScheduler` | Optional override |
+| `seed` | Optional; random when omitted |
+| `model` | Optional override |
 
 **Success response:** `enhance_image_response`
 
@@ -206,15 +217,9 @@ Additional response/push types from handler:
 
 **Success response:** `image_generation_response`
 
-`data` includes `filename` (last saved image) and, for staged/pipeline runs, `filenames` (all saved stage files in order).
-
 Additional response/push types from handler:
-- `image_generation_progress` — streaming steps, `phase: "stage_complete"` after each earlier pipeline stage (filename or preview `imageData`), `phase: "complete"` only on the last stage
 - `image_generation_intermediate`
 - `image_generation_error`
-
-**Push side effects:**
-- `gallery_updated` `append_top` with every saved stage filename, not only the last image
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
@@ -224,13 +229,24 @@ Additional response/push types from handler:
 
 **Handler:** modules/ws/handlers/60-generationHandler.js → `handleMaxEnhanceImage`
 
+Compatibility alias for `enhance_image` with `scale: "max"`. Prefer `enhance_image`.
+
 **Request fields:**
 
 | Field | Notes |
 |-------|-------|
 | `requestId` | Optional |
-| `filename` | Optional |
+| `filename` | Required |
 | `workspace` | Optional |
+| `strength` | Optional; same as `enhance_image` |
+| `noise` | Optional |
+| `steps` | Optional |
+| `guidance` | Optional |
+| `rescale` | Optional |
+| `sampler` | Optional |
+| `noiseScheduler` | Optional |
+| `seed` | Optional |
+| `model` | Optional |
 
 **Success response:** `max_enhance_image_response`
 

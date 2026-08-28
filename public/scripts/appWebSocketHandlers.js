@@ -49,6 +49,44 @@ if (window.wsClient) {
         }
     });
 
+    wsClient.on('agent_notice', (data) => {
+        const notice = data && data.data ? data.data : {};
+        const message = typeof notice.message === 'string' ? notice.message : '';
+        if (!message) return;
+
+        const title = notice.title || 'Agent';
+        const level = notice.level || 'warning';
+        const timeout = notice.timeout === false ? false : (notice.timeout ?? 10000);
+        const noticeId = notice.id || `agent-notice-${Date.now()}`;
+        const dialogIcon = level === 'error'
+            ? 'fas fa-exclamation-circle'
+            : (level === 'success'
+                ? 'fas fa-check-circle'
+                : (level === 'info' ? 'fas fa-info-circle' : 'fas fa-exclamation-triangle'));
+
+        if (notice.display === 'dialog') {
+            // showConfirmationDialog: public/scripts/comp/confirmationDialog.js
+            showConfirmationDialog(message, [
+                { text: 'OK', value: true, className: 'btn-primary' }
+            ], null, { title, icon: dialogIcon });
+            const dialogEl = document.getElementById('confirmationDialog');
+            if (dialogEl) dialogEl.dataset.agentNoticeId = noticeId;
+            if (timeout !== false && timeout > 0) {
+                setTimeout(() => {
+                    const openDialog = document.getElementById('confirmationDialog');
+                    if (!openDialog || openDialog.dataset.agentNoticeId !== noticeId) return;
+                    if (openDialog.classList.contains('hidden')) return;
+                    // hideConfirmationDialog: public/scripts/comp/confirmationDialog.js
+                    hideConfirmationDialog();
+                }, timeout);
+            }
+            return;
+        }
+
+        // showGlassToast: public/scripts/comp/toastManager.js
+        showGlassToast(level, title, message, false, timeout);
+    });
+
     // Handle receipt notifications
     wsClient.on('receipt', (data) => {
         if (data.data && data.data.message) {

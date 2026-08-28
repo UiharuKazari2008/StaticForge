@@ -111,7 +111,7 @@ function appendNewGalleryItems(newItems) {
         newItem.addEventListener('animationend', function handler() {
             newItem.classList.remove('fade-in');
             newItem.classList.remove('gallery-placeholder');
-            if (!newItem.querySelector('img')) {
+            if (!galleryItemHasImageWork(newItem)) {
                 addImgToGalleryItemAsync(newItem, imageData);
             }
             newItem.classList.add('slide-in');
@@ -159,6 +159,11 @@ function applyGalleryRemovalByFilenames(filenames) {
 }
 
 function handleGalleryActionUpdate(data) {
+    if (data.action === 'unupscaled_removed') {
+        applyUnupscaledOriginalRemoved(data.originalFilename, data.upscaledFilename);
+        return;
+    }
+
     const currentView = currentGalleryView || 'images';
     if (data.viewType && data.viewType !== currentView) {
         return;

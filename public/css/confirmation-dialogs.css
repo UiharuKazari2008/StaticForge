@@ -38,6 +38,12 @@
     font-size: 0.85em;
 }
 
+.confirmation-message .form-group textarea.form-control {
+    width: 100%;
+    min-height: 8em;
+    resize: vertical;
+}
+
 .confirmation-message .meta-value {
     background: var(--glass-layer-2);
     border: 1px solid var(--glass-border-2);
@@ -57,6 +63,47 @@
 /* Publish to NovelAI Explore — galleryView.js openPublishToExplorerDialog */
 #confirmationDialog.explore-publish-dialog-modal {
     max-width: min(440px, calc(90vw - calc(2 * var(--spacing-md))));
+}
+
+/* One-shot Enhance — imageExpansion.js openEnhanceModal */
+#confirmationDialog.enhance-dialog-modal {
+    max-width: min(560px, calc(90vw - calc(2 * var(--spacing-md))));
+}
+
+#confirmationDialog.enhance-dialog-modal .modal-content {
+    max-height: min(70vh, 640px);
+    overflow: auto;
+}
+
+.enhance-dialog {
+    text-align: left;
+}
+
+.enhance-dialog > p {
+    text-align: center;
+    margin-top: 0;
+}
+
+.enhance-dialog .form-row {
+    align-items: flex-end;
+}
+
+.enhance-dialog .enhance-advanced-toggle-group {
+    flex: 0 0 auto;
+}
+
+.enhance-dialog .enhance-advanced-toggle-group .btn-secondary {
+    min-width: 2.25em;
+}
+
+.enhance-dialog .stage-advanced-controls {
+    margin-top: var(--spacing-sm);
+}
+
+.enhance-dialog #enhanceScaleHint {
+    display: block;
+    margin-top: var(--spacing-sm);
+    color: var(--text-secondary);
 }
 
 .explore-publish-dialog {

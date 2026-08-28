@@ -737,6 +737,7 @@ function selectManualModel(value, group, preventPropagation = false) {
     // Update UI visibility based on model selection
     updateV3ModelVisibility();
     renderDatasetDropdown();
+    updateSubTogglesButtonState();
     renderUcPresetsDropdown();
     if (selectedUcPreset > 0) {
         selectUcPreset(selectedUcPreset);
@@ -958,6 +959,147 @@ async function handleTransformationTypeChange(requestType) {
 }
 
 
+function getCurrentDatasetModelKey() {
+    return String(manualSelectedModel || manualModelHidden?.value || '').toLowerCase();
+}
+
+function datasetAllowedForModel(config, modelKey = getCurrentDatasetModelKey()) {
+    if (!config) return false;
+    const models = Array.isArray(config.models) ? config.models.map((model) => String(model).toLowerCase()) : null;
+    const excluded = Array.isArray(config.excludeModels) ? config.excludeModels.map((model) => String(model).toLowerCase()) : null;
+    return (!models || models.includes(modelKey)) && (!excluded || !excluded.includes(modelKey));
+}
+
+function getVisibleSubToggles(dataset, modelKey = getCurrentDatasetModelKey()) {
+    return (dataset?.sub_toggles || []).filter((subToggle) => datasetAllowedForModel(subToggle, modelKey));
+}
+
+function getSubToggleGroup(dataset, groupId) {
+    return (dataset?.sub_toggle_groups || []).find((group) => group.id === groupId) || null;
+}
+
+function getSubToggleDefaultBias(subToggle) {
+    return subToggle.default !== undefined ? subToggle.default :
+        (subToggle.default_bias !== undefined ? subToggle.default_bias : 1.0);
+}
+
+function writeSubToggleSetting(datasetValue, subToggle, enabled) {
+    if (!window.datasetSettings) window.datasetSettings = {};
+    if (!window.datasetSettings[datasetValue]) window.datasetSettings[datasetValue] = {};
+    const existing = window.datasetSettings[datasetValue][subToggle.id];
+    window.datasetSettings[datasetValue][subToggle.id] = {
+        enabled,
+        bias: existing?.bias !== undefined ? existing.bias : getSubToggleDefaultBias(subToggle),
+        value: subToggle.value
+    };
+}
+
+function getRatioGroupSiblings(datasetConfig, groupId) {
+    if (!datasetConfig || !groupId) return [];
+    return getVisibleSubToggles(datasetConfig).filter((subToggle) => subToggle.group === groupId);
+}
+
+function getRatioGroupSharedBias(datasetValue, datasetConfig, groupId) {
+    const siblings = getRatioGroupSiblings(datasetConfig, groupId);
+    const settings = window.datasetSettings?.[datasetValue] || {};
+    const enabledSibling = siblings.find((subToggle) => settings[subToggle.id]?.enabled && settings[subToggle.id]?.bias !== undefined);
+    if (enabledSibling) return settings[enabledSibling.id].bias;
+    const storedSibling = siblings.find((subToggle) => settings[subToggle.id]?.bias !== undefined);
+    if (storedSibling) return settings[storedSibling.id].bias;
+    const group = getSubToggleGroup(datasetConfig, groupId);
+    const defaultSibling = siblings.find((subToggle) => subToggle.id === group?.default) || siblings[0];
+    return defaultSibling ? getSubToggleDefaultBias(defaultSibling) : 1.0;
+}
+
+function applyRatioGroupBias(datasetValue, datasetConfig, groupId, bias) {
+    getRatioGroupSiblings(datasetConfig, groupId).forEach((subToggle) => {
+        writeSubToggleSetting(datasetValue, subToggle, isSubToggleEnabled(datasetValue, subToggle));
+        window.datasetSettings[datasetValue][subToggle.id].bias = bias;
+    });
+}
+
+function syncRatioGroupBias(datasetValue, datasetConfig, groupId) {
+    const group = getSubToggleGroup(datasetConfig, groupId);
+    if (!group || group.mode !== 'ratio') return;
+    applyRatioGroupBias(datasetValue, datasetConfig, groupId, getRatioGroupSharedBias(datasetValue, datasetConfig, groupId));
+}
+
+function syncAllRatioGroupBiases(datasetConfig) {
+    if (!datasetConfig) return;
+    (datasetConfig.sub_toggle_groups || []).forEach((group) => {
+        if (group.mode === 'ratio') {
+            syncRatioGroupBias(datasetConfig.value, datasetConfig, group.id);
+        }
+    });
+}
+
+function syncLoadedRatioGroupBiases() {
+    (window.optionsData?.datasets || []).forEach((dataset) => {
+        if (window.datasetSettings?.[dataset.value]) {
+            syncAllRatioGroupBiases(dataset);
+        }
+    });
+}
+
+function isSubToggleEnabled(datasetValue, subToggle) {
+    const setting = window.datasetSettings?.[datasetValue]?.[subToggle.id];
+    if (setting) return !!setting.enabled;
+    return !!subToggle.default_enabled;
+}
+
+function initSubTogglesForDataset(dataset) {
+    if (!dataset) return;
+    const modelKey = getCurrentDatasetModelKey();
+    const toggles = getVisibleSubToggles(dataset, modelKey);
+    const ratioDefaults = {};
+    (dataset.sub_toggle_groups || []).forEach((group) => {
+        if (group.mode === 'ratio') {
+            ratioDefaults[group.id] = group.default || '';
+        }
+    });
+    toggles.forEach((subToggle) => {
+        const group = subToggle.group ? getSubToggleGroup(dataset, subToggle.group) : null;
+        const enabled = group && group.mode === 'ratio'
+            ? ratioDefaults[subToggle.group] === subToggle.id
+            : !!subToggle.default_enabled;
+        writeSubToggleSetting(dataset.value, subToggle, enabled);
+    });
+    syncAllRatioGroupBiases(dataset);
+}
+
+function clearSubTogglesForDataset(datasetValue) {
+    if (window.datasetSettings && window.datasetSettings[datasetValue]) {
+        delete window.datasetSettings[datasetValue];
+    }
+}
+
+function isSpecialPresetActive(dataset) {
+    if (dataset?.isQualityPreset) return !!appendQuality;
+    if (dataset?.isTransparencyPreset) return !!appendTransparency;
+    return selectedDatasets.includes(dataset.value);
+}
+
+function getActiveSubToggleDatasets() {
+    const modelKey = getCurrentDatasetModelKey();
+    return (window.optionsData?.datasets || []).filter((dataset) => {
+        if (!datasetAllowedForModel(dataset, modelKey)) return false;
+        if (!isSpecialPresetActive(dataset)) return false;
+        return getVisibleSubToggles(dataset, modelKey).length > 0;
+    });
+}
+
+function findDatasetConfig(datasetValue) {
+    return (window.optionsData?.datasets || []).find((dataset) => dataset.value === datasetValue) || null;
+}
+
+function ensureActiveSubTogglesInitialized() {
+    getActiveSubToggleDatasets().forEach((dataset) => {
+        if (!window.datasetSettings?.[dataset.value]) {
+            initSubTogglesForDataset(dataset);
+        }
+    });
+}
+
 /**
  * Render dataset dropdown options
  * @function
@@ -969,34 +1111,31 @@ async function handleTransformationTypeChange(requestType) {
 function renderDatasetDropdown() {
     datasetDropdownMenu.innerHTML = '';
     
-    const modelKey = String(manualSelectedModel || manualModelHidden?.value || '').toLowerCase();
+    const modelKey = getCurrentDatasetModelKey();
     const modelCaps = getForgeModelFeatures(modelKey);
     const configuredDatasets = window.optionsData?.datasets || [
         { value: 'anime dataset', display: 'Anime', icon: 'nai-sakura', type: 'dataset', min: -3, max: 5, default: 1.0, negative: false, sub_toggles: [] },
         { value: 'fur dataset', display: 'Furry', icon: 'nai-paw', type: 'dataset', min: -3, max: 5, default: 1.0, negative: false, sub_toggles: [] },
         { value: 'background dataset', display: 'Backgrounds', icon: 'fas fa-tree', type: 'dataset', min: -3, max: 5, default: 0.75, negative: false, sub_toggles: [] }
     ];
-    const datasets = configuredDatasets.filter((dataset) => {
-        const models = Array.isArray(dataset.models) ? dataset.models.map((model) => String(model).toLowerCase()) : null;
-        const excluded = Array.isArray(dataset.excludeModels) ? dataset.excludeModels.map((model) => String(model).toLowerCase()) : null;
-        return (!models || models.includes(modelKey)) && (!excluded || !excluded.includes(modelKey));
-    });
-
-    // Add quality preset as a special preset type item
-    const qualityPreset = {
+    const allowedDatasets = configuredDatasets.filter((dataset) => datasetAllowedForModel(dataset, modelKey));
+    const qualityPreset = allowedDatasets.find((dataset) => dataset.isQualityPreset) || {
         value: '__quality__',
         display: 'Quality',
         icon: 'fa-crown fas',
         type: 'preset',
         isQualityPreset: true
     };
-    const transparencyPreset = modelCaps?.transparency === true ? {
-        value: '__transparency__',
-        display: 'Transparency',
-        icon: 'fas fa-chess-board',
-        type: 'preset',
-        isTransparencyPreset: true
-    } : null;
+    const transparencyPreset = modelCaps?.transparency === true
+        ? (allowedDatasets.find((dataset) => dataset.isTransparencyPreset) || {
+            value: '__transparency__',
+            display: 'Transparency',
+            icon: 'fas fa-chess-board',
+            type: 'preset',
+            isTransparencyPreset: true
+        })
+        : null;
+    const datasets = allowedDatasets.filter((dataset) => !dataset.isQualityPreset && !dataset.isTransparencyPreset);
 
     // Combine quality with datasets
     const allItems = [...datasets, qualityPreset, ...(transparencyPreset ? [transparencyPreset] : [])];
@@ -1069,11 +1208,22 @@ function renderDatasetDropdown() {
                     e.stopPropagation();
                     if (isTransparency) {
                         appendTransparency = !appendTransparency;
+                        if (appendTransparency) {
+                            initSubTogglesForDataset(dataset);
+                        } else {
+                            clearSubTogglesForDataset(dataset.value);
+                        }
                     } else {
                         appendQuality = !appendQuality;
+                        if (appendQuality) {
+                            initSubTogglesForDataset(dataset);
+                        } else {
+                            clearSubTogglesForDataset(dataset.value);
+                        }
                     }
                     updatePromptStatusIcons();
                     renderDatasetDropdown();
+                    updateSubTogglesButtonState();
                 });
 
                 // Add click handlers for quality bias controls (only if selected)
@@ -1233,23 +1383,9 @@ function toggleDataset(value, datasetConfig) {
             datasetBias[value] = datasetConfig.default;
         }
         
-        // Initialize default enabled sub_toggles
-        if (datasetConfig && datasetConfig.sub_toggles && datasetConfig.sub_toggles.length > 0) {
-            if (!window.datasetSettings) window.datasetSettings = {};
-            if (!window.datasetSettings[value]) window.datasetSettings[value] = {};
-            
-            datasetConfig.sub_toggles.forEach(subToggle => {
-                if (subToggle.default_enabled) {
-                    const defaultBias = subToggle.default !== undefined ? subToggle.default : 
-                                      (subToggle.default_bias !== undefined ? subToggle.default_bias : 1.0);
-                    
-                    window.datasetSettings[value][subToggle.id] = {
-                        enabled: true,
-                        bias: defaultBias,
-                        value: subToggle.value
-                    };
-                }
-            });
+        // Initialize default enabled sub_toggles and ratio-group defaults
+        if (datasetConfig && getVisibleSubToggles(datasetConfig).length > 0) {
+            initSubTogglesForDataset(datasetConfig);
         }
     }
 
@@ -1375,16 +1511,15 @@ function adjustDatasetBias(dataset, delta, datasetConfig) {
  */
 function renderSubTogglesDropdown() {
     subTogglesDropdownMenu.innerHTML = '';
-    
-    const datasets = window.optionsData?.datasets || [];
-    
-    const selectedDatasetsWithToggles = datasets.filter(dataset => 
-        selectedDatasets.includes(dataset.value) && dataset.sub_toggles && dataset.sub_toggles.length > 0
-    );
+    ensureActiveSubTogglesInitialized();
+
+    const selectedDatasetsWithToggles = getActiveSubToggleDatasets();
 
     if (selectedDatasetsWithToggles.length === 0) {
         return;
     }
+
+    const modelKey = getCurrentDatasetModelKey();
 
     // Helper function to create a toggle option element
     const createToggleOption = (dataset, subToggle) => {
@@ -1393,18 +1528,13 @@ function renderSubTogglesDropdown() {
         toggleOption.dataset.dataset = dataset.value;
         toggleOption.dataset.toggle = subToggle.id;
 
-        // Check if this toggle is enabled
-        const isEnabled = window.datasetSettings && 
-                        window.datasetSettings[dataset.value] && 
-                        window.datasetSettings[dataset.value][subToggle.id] ?
-                        window.datasetSettings[dataset.value][subToggle.id].enabled :
-                        (subToggle.default_enabled || false);
+        const isEnabled = isSubToggleEnabled(dataset.value, subToggle);
 
         if (isEnabled) {
             toggleOption.classList.add('selected');
         }
 
-        const defaultBias = subToggle.default !== undefined ? subToggle.default : (subToggle.default_bias !== undefined ? subToggle.default_bias : 1.0);
+        const defaultBias = getSubToggleDefaultBias(subToggle);
         const biasValue = (window.datasetSettings && 
                          window.datasetSettings[dataset.value] && 
                          window.datasetSettings[dataset.value][subToggle.id]) ?
@@ -1486,13 +1616,52 @@ function renderSubTogglesDropdown() {
     // Group all toggles by type across all datasets
     const togglesByType = { dataset: [], preset: [] };
     selectedDatasetsWithToggles.forEach(dataset => {
-        dataset.sub_toggles.forEach(subToggle => {
+        getVisibleSubToggles(dataset, modelKey).forEach(subToggle => {
             const type = subToggle.type || 'preset';
             if (togglesByType[type]) {
                 togglesByType[type].push({ dataset, subToggle });
             }
         });
     });
+
+    const appendTogglesWithGroups = (datasetGroup, dataset, toggles) => {
+        const groupDefs = dataset.sub_toggle_groups || [];
+        const grouped = {};
+        const ungrouped = [];
+        toggles.forEach((subToggle) => {
+            if (subToggle.group) {
+                if (!grouped[subToggle.group]) grouped[subToggle.group] = [];
+                grouped[subToggle.group].push(subToggle);
+            } else {
+                ungrouped.push(subToggle);
+            }
+        });
+        ungrouped.forEach((subToggle) => {
+            datasetGroup.appendChild(createToggleOption(dataset, subToggle));
+        });
+        const remainingGroups = new Set(Object.keys(grouped));
+        groupDefs.forEach((group) => {
+            const items = grouped[group.id];
+            if (!items || items.length === 0) return;
+            remainingGroups.delete(group.id);
+            const groupHeader = document.createElement('div');
+            groupHeader.className = 'custom-dropdown-group';
+            groupHeader.textContent = group.name || group.id;
+            datasetGroup.appendChild(groupHeader);
+            items.forEach((subToggle) => {
+                datasetGroup.appendChild(createToggleOption(dataset, subToggle));
+            });
+        });
+        remainingGroups.forEach((groupId) => {
+            const groupHeader = document.createElement('div');
+            groupHeader.className = 'custom-dropdown-group';
+            groupHeader.textContent = groupId;
+            datasetGroup.appendChild(groupHeader);
+            grouped[groupId].forEach((subToggle) => {
+                datasetGroup.appendChild(createToggleOption(dataset, subToggle));
+            });
+        });
+    };
 
     // Render dataset-type toggles first, then preset-type toggles
     const typeOrder = ['dataset', 'preset'];
@@ -1530,11 +1699,7 @@ function renderSubTogglesDropdown() {
             datasetHeader.textContent = dataset.display;
             datasetGroup.appendChild(datasetHeader);
 
-            // Add all toggles for this dataset and type
-            toggles.forEach(subToggle => {
-                const toggleOption = createToggleOption(dataset, subToggle);
-                datasetGroup.appendChild(toggleOption);
-            });
+            appendTogglesWithGroups(datasetGroup, dataset, toggles);
 
             subTogglesDropdownMenu.appendChild(datasetGroup);
         });
@@ -1558,29 +1723,32 @@ function renderSubTogglesDropdown() {
  * toggleSubToggle('furry', 'cute', subToggleConfigObj); // Toggles the 'cute' sub-toggle for furry dataset
  */
 function toggleSubToggle(dataset, subToggleId, subToggleConfig) {
-    // Initialize window.datasetSettings if needed
-                    if (!window.datasetSettings) window.datasetSettings = {};
-                    if (!window.datasetSettings[dataset]) window.datasetSettings[dataset] = {};
-    
-    const subToggle = subToggleConfig || window.optionsData?.datasets?.find(d => d.value === dataset)?.sub_toggles?.find(t => t.id === subToggleId);
+    if (!window.datasetSettings) window.datasetSettings = {};
+    if (!window.datasetSettings[dataset]) window.datasetSettings[dataset] = {};
+
+    const datasetConfig = findDatasetConfig(dataset);
+    const subToggle = subToggleConfig || datasetConfig?.sub_toggles?.find(t => t.id === subToggleId);
     if (!subToggle) return;
 
-    // Get default bias value (check 'default' first, then 'default_bias', then fallback to 1.0)
-    const defaultBias = subToggle.default !== undefined ? subToggle.default : (subToggle.default_bias !== undefined ? subToggle.default_bias : 1.0);
+    const group = subToggle.group ? getSubToggleGroup(datasetConfig, subToggle.group) : null;
+    const currentlyEnabled = isSubToggleEnabled(dataset, subToggle);
 
-    // If the setting doesn't exist, create it with the opposite of default_enabled
-    // This ensures the first click toggles from the default state to the opposite
-    if (!window.datasetSettings[dataset][subToggleId]) {
-        const newEnabledState = !(subToggle.default_enabled || false);
-        window.datasetSettings[dataset][subToggleId] = {
-            enabled: newEnabledState,
-            bias: defaultBias,
-                            value: subToggle.value
-                        };
+    if (group && group.mode === 'ratio') {
+        const sharedBias = getRatioGroupSharedBias(dataset, datasetConfig, subToggle.group);
+        getVisibleSubToggles(datasetConfig).forEach((sibling) => {
+            if (sibling.group === subToggle.group) {
+                writeSubToggleSetting(dataset, sibling, false);
+            }
+        });
+        if (!currentlyEnabled) {
+            writeSubToggleSetting(dataset, subToggle, true);
+        }
+        applyRatioGroupBias(dataset, datasetConfig, subToggle.group, sharedBias);
+    } else if (!window.datasetSettings[dataset][subToggleId]) {
+        writeSubToggleSetting(dataset, subToggle, !(subToggle.default_enabled || false));
     } else {
-        // If it exists, just toggle the current state
-        const currentState = window.datasetSettings[dataset][subToggleId].enabled;
-        window.datasetSettings[dataset][subToggleId].enabled = !currentState;
+        window.datasetSettings[dataset][subToggleId].enabled = !currentlyEnabled;
+        window.datasetSettings[dataset][subToggleId].value = subToggle.value;
     }
 
     renderSubTogglesDropdown();
@@ -1603,25 +1771,36 @@ function adjustSubToggleBias(dataset, subToggleId, delta, subToggleConfig) {
                     if (!window.datasetSettings) window.datasetSettings = {};
                     if (!window.datasetSettings[dataset]) window.datasetSettings[dataset] = {};
     
-    const subToggle = subToggleConfig || window.optionsData?.datasets?.find(d => d.value === dataset)?.sub_toggles?.find(t => t.id === subToggleId);
+    const datasetConfig = findDatasetConfig(dataset);
+    const subToggle = subToggleConfig || datasetConfig?.sub_toggles?.find(t => t.id === subToggleId);
     if (!subToggle) return;
 
     // Get min/max from config or use defaults
     const min = subToggle?.min !== undefined ? subToggle.min : -3;
     const max = subToggle?.max !== undefined ? subToggle.max : 5;
-    const defaultBias = subToggle.default !== undefined ? subToggle.default : (subToggle.default_bias !== undefined ? subToggle.default_bias : 1.0);
+    const defaultBias = getSubToggleDefaultBias(subToggle);
+    const group = subToggle.group ? getSubToggleGroup(datasetConfig, subToggle.group) : null;
+    const currentBias = group && group.mode === 'ratio'
+        ? getRatioGroupSharedBias(dataset, datasetConfig, subToggle.group)
+        : (window.datasetSettings[dataset][subToggleId]?.bias !== undefined
+            ? window.datasetSettings[dataset][subToggleId].bias
+            : defaultBias);
 
     if (!window.datasetSettings[dataset][subToggleId]) {
         window.datasetSettings[dataset][subToggleId] = {
             enabled: true, // If user is adjusting bias, they want it enabled
-            bias: defaultBias,
+            bias: currentBias,
                             value: subToggle.value
                         };
                     }
 
-    const currentBias = window.datasetSettings[dataset][subToggleId].bias;
     const newBias = Math.max(min, Math.min(max, currentBias + delta));
-    window.datasetSettings[dataset][subToggleId].bias = Math.round(newBias * 10) / 10; // Round to 1 decimal place
+    const roundedBias = Math.round(newBias * 10) / 10; // Round to 1 decimal place
+    if (group && group.mode === 'ratio') {
+        applyRatioGroupBias(dataset, datasetConfig, subToggle.group, roundedBias);
+    } else {
+        window.datasetSettings[dataset][subToggleId].bias = roundedBias;
+    }
 
     renderSubTogglesDropdown();
     updateSubTogglesButtonState();
@@ -1638,43 +1817,22 @@ function adjustSubToggleBias(dataset, subToggleId, delta, subToggleConfig) {
 function updateSubTogglesButtonState() {
     if (!subTogglesBtn) return;
 
-    const datasets = window.optionsData?.datasets || [];
-    
-    const hasSubToggles = datasets.some(dataset => 
-        selectedDatasets.includes(dataset.value) && 
-        dataset.sub_toggles && 
-        dataset.sub_toggles.length > 0
+    ensureActiveSubTogglesInitialized();
+    const activeDatasets = getActiveSubToggleDatasets();
+    const hasSubToggles = activeDatasets.length > 0;
+
+    const hasEnabledToggles = activeDatasets.some((dataset) =>
+        getVisibleSubToggles(dataset).some((subToggle) => isSubToggleEnabled(dataset.value, subToggle))
     );
 
-    const hasEnabledToggles = datasets.some(dataset => 
-        selectedDatasets.includes(dataset.value) && 
-        dataset.sub_toggles && 
-        dataset.sub_toggles.some(subToggle => 
-            window.datasetSettings && 
-            window.datasetSettings[dataset.value] && 
-            window.datasetSettings[dataset.value][subToggle.id] &&
-            window.datasetSettings[dataset.value][subToggle.id].enabled
-        )
-    );
-
-    // Check if any enabled sub toggles have extreme bias values (over 1.5 or under 1.0)
-    const hasExtremeBias = datasets.some(dataset => 
-        selectedDatasets.includes(dataset.value) && 
-        dataset.sub_toggles && 
-        dataset.sub_toggles.some(subToggle => {
-            if (!window.datasetSettings || 
-                !window.datasetSettings[dataset.value] || 
-                !window.datasetSettings[dataset.value][subToggle.id] ||
-                !window.datasetSettings[dataset.value][subToggle.id].enabled) {
-                return false;
-            }
-            
-            const bias = window.datasetSettings[dataset.value][subToggle.id].bias;
+    const hasExtremeBias = activeDatasets.some((dataset) =>
+        getVisibleSubToggles(dataset).some((subToggle) => {
+            if (!isSubToggleEnabled(dataset.value, subToggle)) return false;
+            const bias = window.datasetSettings?.[dataset.value]?.[subToggle.id]?.bias;
             return bias > 1.5 || bias < 1.0;
         })
     );
 
-    // Set button state based on conditions
     let buttonState = 'off';
     if (hasEnabledToggles) {
         buttonState = hasExtremeBias ? 'onhigh' : 'on';
@@ -1682,8 +1840,7 @@ function updateSubTogglesButtonState() {
 
     subTogglesBtn.setAttribute('data-state', buttonState);
     subTogglesDropdown.classList.toggle('hidden', !hasSubToggles);
-    
-    // If the button is now visible, render the dropdown content
+
     if (hasSubToggles && !subTogglesBtn.classList.contains('hidden')) {
         renderSubTogglesDropdown();
     }
@@ -2385,9 +2542,11 @@ function addQualityPresetContents() {
 
     // Disable quality preset
     appendQuality = false;
+    clearSubTogglesForDataset('__quality__');
 
     // Re-render dropdown to update quality preset state
     renderDatasetDropdown();
+    updateSubTogglesButtonState();
     
     // Update prompt status icons
     if (typeof updatePromptStatusIcons === 'function') {
@@ -2427,6 +2586,7 @@ function resetDatasets() {
     
     // Enable quality preset
     appendQuality = true;
+    initSubTogglesForDataset(findDatasetConfig('__quality__'));
 
     // Update displays
     updateDatasetDisplay();
@@ -3179,4 +3339,3 @@ if (typeof wsClient !== 'undefined' && wsClient) {
         wireManualDropdownSetup();
     });
 }
-

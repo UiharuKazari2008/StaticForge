@@ -628,7 +628,8 @@ class PngMetadata {
                     'deduplicate_tags',
                     'emphasis_normalization',
                     'novel_note_id',
-                    'novel_story_cursor_line'
+                    'novel_story_cursor_line',
+                    'blurhash'
                 ];
                 
                 const filteredForgeData = {};
@@ -659,7 +660,8 @@ class PngMetadata {
     }
 
     // Helper: Extract relevant fields from metadata
-    async extractRelevantFields(meta, filename) {
+    // blurhashFromDb: images.blurhash column (backfill is DB-only — not rewritten into PNG)
+    async extractRelevantFields(meta, filename, blurhashFromDb) {
         if (!meta) return null;
         
         const model = this.determineModelFromMetadata(meta);
@@ -1130,6 +1132,11 @@ class PngMetadata {
         
         // Include forge_data in result
         result.forge_data = forgeData;
+        const hash = blurhashFromDb || forgeData.blurhash || null;
+        result.blurhash = hash;
+        if (hash) {
+            result.forge_data.blurhash = hash;
+        }
 
         return result;
     }
@@ -1325,7 +1332,7 @@ class PngMetadata {
             }
             
             // Calculate if upscaling is available for this image
-            const MAX_UPSCALE_PIXELS = 1048576; // 1024 × 1024 maximum for upscaling
+            const MAX_UPSCALE_PIXELS = 3145728; // Official tooLargeForUpscale / P.xM (3MP)
             const totalPixels = actualWidth * actualHeight;
             condensedMetadata.canUpscale = totalPixels <= MAX_UPSCALE_PIXELS;
         }

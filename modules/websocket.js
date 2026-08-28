@@ -140,6 +140,22 @@ class WebSocketServer {
                     timestamp: new Date().toISOString()
                 });
             });
+
+            plumbing.subscribe('ws:broadcast:agentNotice', (data) => {
+                this.broadcast({
+                    type: 'agent_notice',
+                    data: {
+                        id: data.id || null,
+                        message: data.message || '',
+                        title: data.title || 'Agent',
+                        display: data.display === 'dialog' ? 'dialog' : 'toast',
+                        level: data.level || 'warning',
+                        timeout: data.timeout === false ? false : (data.timeout ?? 10000),
+                        source: data.source || 'agent'
+                    },
+                    timestamp: new Date().toISOString()
+                });
+            });
         } catch (error) {
             console.error('❌ Failed to set up WebSocket plumbing subscriptions:', error);
             // Retry after a short delay

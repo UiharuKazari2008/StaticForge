@@ -1356,6 +1356,9 @@ let placeholderResolutionFrameCount = 0; // Frame counter for adaptive delay
 
 let lastObserverResolutionTime = 0; // Track last observer resolution time for throttling
 let observerResolutionThrottleMs = 16; // Throttle observer resolutions to ~60fps
+let galleryBlurhashPaintQueue = [];
+let galleryBlurhashPaintFrame = 0;
+const pendingGalleryItemImages = new WeakMap();
 
 // RTT-based multiplexing control
 let lastRttCheckTime = 0; // Timestamp of last RTT measurement
@@ -1561,7 +1564,7 @@ function processNextPlaceholders() {
                     itemBottom = rect.bottom + window.pageYOffset;
                 }
                 if (itemBottom <= viewportTop || itemTop >= viewportBottom) continue;
-                if (el.querySelector('img')) continue;
+                if (el.querySelector('img') || pendingGalleryItemImages.has(el)) continue;
                 const fileIndex = parseInt(el.dataset.fileIndex, 10);
                 const image = allImages && Number.isFinite(fileIndex) ? allImages[fileIndex] : null;
                 if (!image) continue;
@@ -1776,7 +1779,7 @@ function processNextPlaceholders() {
             // Just remove placeholder class and ensure img element exists
             if (placeholderData.element.classList.contains('gallery-item')) {
                 placeholderData.element.classList.remove('gallery-placeholder');
-                if (!placeholderData.element.querySelector('img')) {
+                if (!galleryItemHasImageWork(placeholderData.element)) {
                     const fileIndex = parseInt(placeholderData.element.dataset.fileIndex);
                     const image = allImages[fileIndex];
                     if (image) {
@@ -1957,6 +1960,119 @@ function setActiveGalleryList(newGallery, options = {}) {
     return allImages;
 }
 
+function galleryUnupscaledOriginalFilename(image) {
+    if (!image) return null;
+    const original = image.original;
+    const upscaled = image.upscaled;
+    if (!original || !upscaled || original === upscaled) return null;
+    if (String(original).includes('_upscaled')) return null;
+    return original;
+}
+
+function galleryImageAsUnupscaledOriginal(image) {
+    const original = galleryUnupscaledOriginalFilename(image);
+    if (!original) return null;
+    return {
+        filename: original,
+        original,
+        upscaled: null,
+        storage: image.storage,
+        hasFullImage: image.hasFullImage,
+        metadata: image.metadata
+    };
+}
+
+function buildUnupscaledOriginalContextMenuItem(getImage, actionPrefix) {
+    const prefix = actionPrefix || '';
+    return {
+        icon: 'fas fa-file-image',
+        text: 'Original',
+        hidden: () => !galleryUnupscaledOriginalFilename(getImage()),
+        submenu: [
+            { icon: 'fas fa-clipboard', text: 'Copy', action: `${prefix}copy-original` },
+            { icon: 'fas fa-download', text: 'Download', action: `${prefix}download-original` },
+            { icon: 'mdi mdi-1-25 mdi-relative-scale', text: 'Expand Canvas', action: `${prefix}expand-canvas-original` },
+            { icon: 'fas fa-fire', text: 'Incinerate', action: `${prefix}delete-original` }
+        ]
+    };
+}
+
+function applyUnupscaledOriginalRemoved(originalFilename, upscaledFilename) {
+    const patch = (img) => {
+        if (!img) return;
+        const keys = [img.filename, img.original, img.upscaled].filter(Boolean);
+        if (!keys.includes(originalFilename) && !(upscaledFilename && keys.includes(upscaledFilename))) {
+            return;
+        }
+        img.original = null;
+        if (upscaledFilename) {
+            img.upscaled = upscaledFilename;
+            img.filename = upscaledFilename;
+        }
+    };
+    if (Array.isArray(allImages)) allImages.forEach(patch);
+    if (window.originalAllImages && Array.isArray(window.originalAllImages)) {
+        window.originalAllImages.forEach(patch);
+    }
+    patch(window.currentManualPreviewImage);
+    if (imageViewerManager && imageViewerManager.viewers) {
+        imageViewerManager.viewers.forEach((viewer) => patch(viewer.metadata));
+    }
+}
+
+function handleUnupscaledOriginalContextAction(action, image, event) {
+    const key = String(action || '').replace(/^image-viewer-/, '');
+    const originalImage = galleryImageAsUnupscaledOriginal(image);
+    if (!originalImage) return false;
+    switch (key) {
+        case 'copy-original':
+            copyImageToClipboard(originalImage);
+            return true;
+        case 'download-original':
+            downloadImage(originalImage);
+            return true;
+        case 'expand-canvas-original':
+            expandCanvasFromGallery(originalImage);
+            return true;
+        case 'delete-original':
+            deleteUnupscaledOriginal(image, event);
+            return true;
+        default:
+            return false;
+    }
+}
+
+async function deleteUnupscaledOriginal(image, event = null) {
+    const originalFilename = galleryUnupscaledOriginalFilename(image);
+    if (!originalFilename) {
+        showGlassToast('warning', 'Original', 'No un-upscaled file to delete', false, 3000, '<i class="fas fa-file-image"></i>');
+        return;
+    }
+
+    const confirmed = await showConfirmationDialog(
+        'Delete the original (un-upscaled) file? The upscaled version will be kept.',
+        [
+            { text: 'Delete Original', value: true, className: 'btn-danger' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ],
+        event
+    );
+    if (!confirmed) return;
+
+    try {
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+        const result = await window.wsClient.deleteUnupscaledOriginal(originalFilename);
+        const upscaledFilename = (result && result.upscaledFilename) || image.upscaled;
+        applyUnupscaledOriginalRemoved(originalFilename, upscaledFilename);
+        showGlassToast('success', null, 'Original deleted', false, 4000, '<i class="fas fa-trash"></i>');
+    } catch (error) {
+        console.error('Delete original error:', error);
+        showError('Failed to delete original: ' + error.message);
+    }
+}
+
 /** Display file for a gallery tile (upscaled preferred). */
 function galleryListItemDisplayKey(img) {
     if (!img) return null;
@@ -2062,8 +2178,9 @@ function updateGalleryItemElementFromData(el, imageData) {
     if (imageData.mtime != null) {
         el.dataset.time = imageData.mtime || 0;
     }
+    paintGalleryItemBlurhash(el, imageData.blurhash);
     // Refresh preview — display file may have changed (original → upscaled)
-    if (el.querySelector('img')) {
+    if (galleryItemHasImageWork(el)) {
         removeImgFromGalleryItem(el);
     }
     if (!el.classList.contains('gallery-placeholder')) {
@@ -2368,6 +2485,7 @@ function disposeGalleryItemElement(item) {
     if (intersectionObserver) {
         intersectionObserver.unobserve(item);
     }
+    abortPendingGalleryItemImage(item);
     const img = item.querySelector('img');
     if (img) {
         releaseGalleryItemImage(img);
@@ -2378,6 +2496,7 @@ function disposeGalleryItemElement(item) {
         item.style.backgroundPosition = '';
         item.style.backgroundRepeat = '';
     }
+    delete item.dataset.blurhash;
 }
 
 function purgePlaceholderResolutionQueue() {
@@ -2395,6 +2514,11 @@ function purgePlaceholderResolutionQueue() {
         }
     }
     placeholderResolutionQueue = [];
+    galleryBlurhashPaintQueue.length = 0;
+    if (galleryBlurhashPaintFrame) {
+        cancelAnimationFrame(galleryBlurhashPaintFrame);
+        galleryBlurhashPaintFrame = 0;
+    }
 }
 
 function disposeGalleryContents() {
@@ -2426,8 +2550,24 @@ function applyGalleryItemImage(img, image, options = {}) {
     img.decoding = 'async';
     img.classList.add('loading-image');
 
-    const finish = () => {
-        img.classList.remove('loading-image');
+    const host = options.hostEl;
+    if (host) {
+        pendingGalleryItemImages.set(host, { img, onComplete: options.onComplete });
+    }
+
+    const finish = (didLoad) => {
+        const pending = host ? pendingGalleryItemImages.get(host) : null;
+        const isCurrent = !host || (pending && pending.img === img);
+        if (pending && pending.img === img) {
+            pendingGalleryItemImages.delete(host);
+        }
+        if (!isCurrent) return;
+        if (didLoad) {
+            insertGalleryItemImage(host, img);
+            requestAnimationFrame(() => {
+                img.classList.remove('loading-image');
+            });
+        }
         if (typeof options.onComplete === 'function') options.onComplete();
     };
 
@@ -2435,7 +2575,7 @@ function applyGalleryItemImage(img, image, options = {}) {
         if (candidateIndex >= candidates.length) {
             img.onload = null;
             img.onerror = null;
-            finish();
+            finish(false);
             return;
         }
         img.src = candidates[candidateIndex++];
@@ -2444,7 +2584,7 @@ function applyGalleryItemImage(img, image, options = {}) {
     img.onload = function () {
         img.onload = null;
         img.onerror = null;
-        finish();
+        finish(true);
     };
 
     img.onerror = function () {
@@ -2454,7 +2594,8 @@ function applyGalleryItemImage(img, image, options = {}) {
             previewRetryCount++;
             const baseSrc = failedSrc.split('?')[0];
             setTimeout(() => {
-                if (img.isConnected) {
+                const stillPending = host && pendingGalleryItemImages.get(host)?.img === img;
+                if (img.isConnected || stillPending) {
                     img.src = `${baseSrc}?galleryRetry=${previewRetryCount}`;
                 }
             }, 350 * previewRetryCount);
@@ -2464,6 +2605,68 @@ function applyGalleryItemImage(img, image, options = {}) {
     };
 
     loadCandidate();
+}
+
+// Decode onto the cell itself so the hash is visible while the <img> is still off-DOM.
+// applyBlurhashPlaceholder: public/scripts/comp/blurhashUtil.js
+function paintGalleryItemBlurhash(el, hash) {
+    if (!el || !hash) return false;
+    if (el.dataset.blurhash === hash && el.style.backgroundImage) return true;
+    if (!applyBlurhashPlaceholder(el, hash)) return false;
+    el.dataset.blurhash = hash;
+    return true;
+}
+
+function ensureGalleryItemBlurhash(el, image) {
+    if (!el || !image || !image.blurhash) return;
+    paintGalleryItemBlurhash(el, image.blurhash);
+}
+
+function scheduleGalleryItemBlurhash(el, image) {
+    if (!el || !image || !image.blurhash) return;
+    if (el.dataset.blurhash === image.blurhash && el.style.backgroundImage) return;
+    galleryBlurhashPaintQueue.push({ el, hash: image.blurhash });
+    if (galleryBlurhashPaintFrame) return;
+    galleryBlurhashPaintFrame = requestAnimationFrame(flushGalleryBlurhashPaintQueue);
+}
+
+function flushGalleryBlurhashPaintQueue() {
+    galleryBlurhashPaintFrame = 0;
+    let painted = 0;
+    while (painted < 8 && galleryBlurhashPaintQueue.length) {
+        const job = galleryBlurhashPaintQueue.shift();
+        paintGalleryItemBlurhash(job.el, job.hash);
+        painted++;
+    }
+    if (galleryBlurhashPaintQueue.length) {
+        galleryBlurhashPaintFrame = requestAnimationFrame(flushGalleryBlurhashPaintQueue);
+    }
+}
+
+function galleryItemHasImageWork(item) {
+    return !!(item && (item.querySelector('img') || pendingGalleryItemImages.has(item)));
+}
+
+function abortPendingGalleryItemImage(item) {
+    const pending = pendingGalleryItemImages.get(item);
+    if (!pending) return;
+    pendingGalleryItemImages.delete(item);
+    if (pending.img) {
+        pending.img.onload = null;
+        pending.img.onerror = null;
+        releaseGalleryItemImage(pending.img);
+    }
+    if (typeof pending.onComplete === 'function') pending.onComplete();
+}
+
+function insertGalleryItemImage(host, img) {
+    if (!host || !img || img.isConnected) return;
+    const overlay = host.querySelector('.gallery-item-overlay');
+    if (overlay) {
+        host.insertBefore(img, overlay);
+    } else {
+        host.appendChild(img);
+    }
 }
 
 function buildGalleryJumpIndexEntries(minTimeMs, maxGroupImages) {
@@ -4034,6 +4237,8 @@ function offsetGalleryItemIndexes(shiftAmount = 1, options = {}) {
         placeholder.dataset.filename = image
             ? (image.filename || image.original || image.upscaled || `__ph_${leadIndex}`)
             : `__ph_${leadIndex}`;
+        // public/scripts/comp/blurhashUtil.js
+        paintGalleryItemBlurhash(placeholder, image && image.blurhash);
         gallery.insertBefore(placeholder, gallery.firstChild);
     }
 
@@ -4152,7 +4357,7 @@ async function addNewGalleryItemAfterGeneration(newImage) {
     });
     // Remove placeholder class and show image, slide in
     newItem.classList.remove('gallery-placeholder');
-    if (!newItem.querySelector('img')) {
+    if (!galleryItemHasImageWork(newItem)) {
         addImgToGalleryItemAsync(newItem, newImage);
     }
     newItem.classList.add('slide-in');
@@ -4479,11 +4684,7 @@ function replaceGalleryRerollPlaceholder(placeholderEl, image) {
     disposeGalleryItemElement(placeholderEl);
     placeholderEl.remove();
     const newItem = createGalleryItem(image, 0, true);
-    const img = document.createElement('img');
-    applyGalleryItemImage(img, image, { eager: true });
-    const overlay = newItem.querySelector('.gallery-item-overlay');
-    if (overlay) newItem.insertBefore(img, overlay);
-    else newItem.appendChild(img);
+    bindGalleryItemImage(newItem, image);
     newItem.classList.add('fade-in');
     parent.insertBefore(newItem, nextSibling);
     newItem.addEventListener('animationend', function handler() {
@@ -4850,13 +5051,17 @@ function getOrCreateGalleryItem(image, index, skipImgElement = false) {
         }
 
         // Handle img element based on skipImgElement parameter
-        const hasImg = existingItem.querySelector('img');
-        if (skipImgElement && hasImg) {
-            // Remove img element if we don't want it (converting to placeholder)
-            removeImgFromGalleryItem(existingItem);
-        } else if (!skipImgElement && !hasImg) {
-            // Add img element if we need it (resolving from placeholder)
-            addImgToGalleryItemAsync(existingItem, image);
+        if (skipImgElement) {
+            if (galleryItemHasImageWork(existingItem)) {
+                removeImgFromGalleryItem(existingItem);
+            }
+            existingItem.classList.remove('fade-in');
+            scheduleGalleryItemBlurhash(existingItem, image);
+        } else {
+            ensureGalleryItemBlurhash(existingItem, image);
+            if (!galleryItemHasImageWork(existingItem)) {
+                addImgToGalleryItemAsync(existingItem, image);
+            }
         }
 
         return existingItem;
@@ -4867,7 +5072,7 @@ function getOrCreateGalleryItem(image, index, skipImgElement = false) {
 
 function createGalleryItem(image, index, skipImgElement = false) {
     const item = document.createElement('div');
-    item.className = 'gallery-item fade-in';
+    item.className = skipImgElement ? 'gallery-item' : 'gallery-item fade-in';
     const filename = image.filename || image.original || image.upscaled;
     item.dataset.filename = filename;
     item.dataset.time = image.mtime || 0;
@@ -5003,13 +5208,11 @@ function createGalleryItem(image, index, skipImgElement = false) {
     });
 
 
-    // Only create img element if not skipping (for placeholders)
-    let img = null;
-    if (!skipImgElement) {
-        // public/scripts/comp/blurhashUtil.js
-        applyBlurhashPlaceholder(item, image.blurhash);
-        img = document.createElement('img');
-        applyGalleryItemImage(img, image);
+    // Virtual-scroll placeholders paint BlurHash after insert (batch create must stay cheap)
+    if (skipImgElement) {
+        scheduleGalleryItemBlurhash(item, image);
+    } else {
+        ensureGalleryItemBlurhash(item, image);
     }
 
     const overlay = document.createElement('div');
@@ -5073,10 +5276,10 @@ function createGalleryItem(image, index, skipImgElement = false) {
     overlay.appendChild(actionsDiv);
 
     item.appendChild(checkbox);
-    if (img) {
-        item.appendChild(img);
-    }
     item.appendChild(overlay);
+    if (!skipImgElement) {
+        bindGalleryItemImage(item, image);
+    }
 
     // Add context menu to gallery item
     if (contextMenu) {
@@ -5165,6 +5368,11 @@ function createGalleryItem(image, index, skipImgElement = false) {
                             action: 'expand-canvas'
                         },
                         {
+                            icon: 'fas fa-wand-magic-sparkles',
+                            text: 'Enhance',
+                            action: 'enhance'
+                        },
+                        {
                             icon: 'nai-upscale',
                             text: 'Upscale',
                             action: 'upscale',
@@ -5198,6 +5406,10 @@ function createGalleryItem(image, index, skipImgElement = false) {
                                 }
                             }
                         },
+                        buildUnupscaledOriginalContextMenuItem(() => {
+                            const fileIndex = parseInt(item.dataset.fileIndex, 10);
+                            return (allImages && allImages[fileIndex]) || image;
+                        }),
                         {
                             icon: 'fas fa-glasses-round',
                             text: 'Properties',
@@ -5319,57 +5531,43 @@ function createGalleryItem(image, index, skipImgElement = false) {
     });
 
     // Remove fade-in class after animation completes
-    item.addEventListener('animationend', function handler(e) {
-        if (e.animationName === 'galleryFadeIn') {
-            item.classList.remove('fade-in');
-            item.removeEventListener('animationend', handler);
-        }
-    });
+    if (!skipImgElement) {
+        item.addEventListener('animationend', function handler(e) {
+            if (e.animationName === 'galleryFadeIn') {
+                item.classList.remove('fade-in');
+                item.removeEventListener('animationend', handler);
+            }
+        });
+    }
 
     return item;
 }
 
-// Add img element to a placeholder item when resolving it
-function addImgToGalleryItem(item, image) {
-    // Don't add if img already exists
-    if (item.querySelector('img')) {
+function bindGalleryItemImage(item, image, onComplete) {
+    if (!item || !image) {
+        if (typeof onComplete === 'function') onComplete();
         return;
     }
-
-    // Create img element (same logic as in createGalleryItem)
-    const img = document.createElement('img');
-    const previewUrl = getGalleryPreviewUrl(image.preview);
-    img.alt = image.base;
-    img.classList.add('loading-image');
-    img.loading = 'lazy';
-
-    img.onload = function () {
-        // Image loaded successfully - CSS transition will handle showing it
-        img.classList.remove('loading-image');
-    };
-
-    img.src = `/previews/${encodeURIComponent(previewUrl)}`;
-
-    // BlurHash placeholder behind thumb while loading (public/scripts/comp/blurhashUtil.js)
-    applyBlurhashPlaceholder(item, image.blurhash);
-
-    img.onerror = function () {
-        // Keep image hidden when it fails to load
-        this.onerror = null; // Prevent infinite loop
-    };
-
-    // Insert img element before the overlay (same position as in createGalleryItem)
-    const overlay = item.querySelector('.gallery-item-overlay');
-    if (overlay) {
-        item.insertBefore(img, overlay);
-    } else {
-        // Fallback: append to item
-        item.appendChild(img);
+    if (galleryItemHasImageWork(item)) {
+        if (typeof onComplete === 'function') onComplete();
+        return;
     }
+    ensureGalleryItemBlurhash(item, image);
+    const img = document.createElement('img');
+    applyGalleryItemImage(img, image, {
+        hostEl: item,
+        eager: true,
+        onComplete
+    });
 }
 
-// Remove img element from a gallery item when converting to placeholder
+// Add img element to a placeholder item when resolving it
+function addImgToGalleryItem(item, image) {
+    bindGalleryItemImage(item, image);
+}
+
 function removeImgFromGalleryItem(item) {
+    abortPendingGalleryItemImage(item);
     const img = item.querySelector('img');
     if (img) {
         releaseGalleryItemImage(img);
@@ -5591,29 +5789,7 @@ function calculateMultiplexingLevel() {
 
 // Async version of addImgToGalleryItem with completion callback for multiplexing
 function addImgToGalleryItemAsync(item, image, onComplete) {
-    // Don't add if img already exists
-    if (item.querySelector('img')) {
-        if (typeof onComplete === 'function') {
-            onComplete();
-        }
-        return;
-    }
-
-    // public/scripts/comp/blurhashUtil.js — placeholder behind thumb while loading
-    applyBlurhashPlaceholder(item, image.blurhash);
-
-    const img = document.createElement('img');
-    applyGalleryItemImage(img, image, {
-        onComplete: onComplete
-    });
-
-    // Insert img element before the overlay (same position as in createGalleryItem)
-    const overlay = item.querySelector('.gallery-item-overlay');
-    if (overlay) {
-        item.insertBefore(img, overlay);
-    } else {
-        item.appendChild(img);
-    }
+    bindGalleryItemImage(item, image, onComplete);
 }
 
 // Extremely fast batch placeholder creation and addition
@@ -5640,6 +5816,7 @@ function batchCreatePlaceholders(indices, position = 'append') {
         if (!existingByIndex && !existingByFilename) {
             const item = getOrCreateGalleryItem(image, idx, true); // Skip img element for placeholders
             item.classList.add('gallery-placeholder');
+            item.classList.remove('fade-in');
             fragment.appendChild(item);
             itemsToObserve.push(item);
         }
@@ -6961,8 +7138,11 @@ function updateVirtualScrollInternal() {
             // Don't convert items created during jump operations (they should stay as real items)
             if (isGalleryItem && !hasPlaceholderClass) {
                 el.classList.add('gallery-placeholder');
+                el.classList.remove('fade-in');
                 // Remove the img element to save memory (placeholders don't need img elements)
                 removeImgFromGalleryItem(el);
+                const fileIndex = parseInt(el.dataset.fileIndex, 10);
+                scheduleGalleryItemBlurhash(el, allImages[fileIndex]);
             }
         } else {
             // Items near viewport - remove placeholder class and resolve
@@ -6999,7 +7179,7 @@ function updateVirtualScrollInternal() {
                 if (isItemVisible && immediateVisibleResolved < immediateVisibleResolveBudget) {
                     const fileIndex = parseInt(el.dataset.fileIndex, 10);
                     const image = allImages[fileIndex];
-                    if (image && !el.querySelector('img')) {
+                    if (image && !galleryItemHasImageWork(el)) {
                         el.classList.remove('gallery-placeholder');
                         addImgToGalleryItemAsync(el, image);
                         immediateVisibleResolved++;
@@ -7012,8 +7192,7 @@ function updateVirtualScrollInternal() {
                     if (now - lastObserverResolutionTime >= observerResolutionThrottleMs) {
                         lastObserverResolutionTime = now;
                         el.classList.remove('gallery-placeholder');
-                        // Add img element if it doesn't exist (placeholders don't have img elements)
-                        if (!el.querySelector('img')) {
+                        if (!galleryItemHasImageWork(el)) {
                             const fileIndex = parseInt(el.dataset.fileIndex);
                             const image = allImages[fileIndex];
                             if (image) {
@@ -7200,7 +7379,7 @@ function updateVirtualScrollInternal() {
             if (!el.classList.contains('gallery-placeholder')) continue;
             const idx = parseInt(el.dataset.index || '-1', 10);
             if (isNaN(idx) || idx < checkTop || idx > checkBottom) continue;
-            if (!el.querySelector('img')) unresolvedNearViewportCount++;
+            if (!galleryItemHasImageWork(el)) unresolvedNearViewportCount++;
         }
     }
     const shouldHoldAboveForResolve = scrollVelocity < 0 && unresolvedNearViewportCount >= Math.max(realGalleryColumns, 6);
@@ -7432,7 +7611,7 @@ function updateVirtualScrollInternal() {
                 if (el.classList.contains('gallery-item')) {
                     el.classList.remove('gallery-placeholder');
                     // Add img element if it doesn't exist (placeholders don't have img elements)
-                    if (!el.querySelector('img')) {
+                    if (!galleryItemHasImageWork(el)) {
                         const fileIndex = parseInt(el.dataset.fileIndex);
                         const image = allImages[fileIndex];
                         if (image) {
@@ -9688,6 +9867,17 @@ function handleGalleryContextMenuAction(event) {
             expandCanvasFromGallery(image);
             break;
 
+        case 'enhance':
+            openEnhanceFromImage(image);
+            break;
+
+        case 'copy-original':
+        case 'download-original':
+        case 'expand-canvas-original':
+        case 'delete-original':
+            handleUnupscaledOriginalContextAction(action, image, event);
+            break;
+
         case 'create-reference':
             // Create reference from image
             createReferenceFromImage(image);
@@ -11215,6 +11405,27 @@ function syncServiceWorkerImageCacheRules() {
     }, 300);
 }
 
+function overlayListBlurhashOnMetadata(filename, metadata) {
+    if (!metadata || !filename) return metadata;
+    const existing = metadata.blurhash || metadata.forge_data?.blurhash || null;
+    if (existing) {
+        metadata.blurhash = existing;
+        if (!metadata.forge_data) metadata.forge_data = {};
+        metadata.forge_data.blurhash = existing;
+        return metadata;
+    }
+    // findImageByFilename: public/scripts/comp/galleryView.js
+    const match = findImageByFilename(filename)
+        || (allImages && allImages.find((img) =>
+            img.filename === filename || img.original === filename || img.upscaled === filename));
+    const hash = match && match.blurhash;
+    if (!hash) return metadata;
+    metadata.blurhash = hash;
+    if (!metadata.forge_data) metadata.forge_data = {};
+    metadata.forge_data.blurhash = hash;
+    return metadata;
+}
+
 // Get image metadata via WebSocket with optional IndexedDB cache (never block editor on gallery DB init)
 async function getImageMetadata(filename) {
     try {
@@ -11224,7 +11435,7 @@ async function getImageMetadata(filename) {
                 || previewImage.upscaled === filename
                 || previewImage.original === filename;
             if (matches) {
-                return previewImage.metadata;
+                return overlayListBlurhashOnMetadata(filename, previewImage.metadata);
             }
         }
 
@@ -11235,10 +11446,10 @@ async function getImageMetadata(filename) {
                 || lastGen.original === filename;
             if (matches) {
                 if (lastGen.metadata) {
-                    return lastGen.metadata;
+                    return overlayListBlurhashOnMetadata(filename, lastGen.metadata);
                 }
                 if (previewImage && previewImage.metadata) {
-                    return previewImage.metadata;
+                    return overlayListBlurhashOnMetadata(filename, previewImage.metadata);
                 }
             }
         }
@@ -11255,7 +11466,7 @@ async function getImageMetadata(filename) {
                     if (cached) {
                         const { base: _base, cachedAt: _cachedAt, ...metadata } = cached;
                         if (Object.keys(metadata).length > 0) {
-                            return metadata;
+                            return overlayListBlurhashOnMetadata(filename, metadata);
                         }
                     }
                 }
@@ -11268,7 +11479,10 @@ async function getImageMetadata(filename) {
             throw new Error('WebSocket not connected');
         }
 
-        const metadata = await window.wsClient.requestImageMetadata(filename);
+        const metadata = overlayListBlurhashOnMetadata(
+            filename,
+            await window.wsClient.requestImageMetadata(filename)
+        );
 
         if (galleryMetadataCache && metadata && cacheBase) {
             void galleryMetadataCache.setMetadata(cacheBase, metadata);

@@ -17,6 +17,27 @@ function readJsonSafe(filePath, fallback) {
     }
 }
 
+function resolveExistingSiteIcon(base, siteId, iconFromMeta) {
+    if (!siteId) return null;
+    const names = [];
+    const meta = String(iconFromMeta || '');
+    const named = /\/assets\/([^/?#]+)$/.exec(meta);
+    if (named) names.push(named[1]);
+    names.push('icon.png', 'icon.webp', 'icon.jpg', 'icon.ico', 'icon.svg');
+    const seen = new Set();
+    for (const name of names) {
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        const abs = path.join(base, siteId, 'assets', name);
+        try {
+            if (fs.existsSync(abs) && fs.statSync(abs).size > 600) {
+                return `/private/wiki/${siteId}/assets/${name}`;
+            }
+        } catch (_) { /* skip */ }
+    }
+    return null;
+}
+
 function resolveRegisteredSite(globalResources, siteId) {
     if (!siteId || typeof siteId !== 'string') {
         return null;
@@ -40,7 +61,8 @@ function getWikiHomeData(globalResources) {
     const sites = (index.sites || []).map((s) => ({
         id: s.id,
         name: s.name,
-        icon: s.icon || null
+        icon: resolveExistingSiteIcon(base, s.id, s.icon),
+        kind: s.kind || null
     }));
     return { sites };
 }
@@ -71,7 +93,8 @@ function getSiteIndex(globalResources, siteId) {
     return {
         siteId,
         name: siteMeta ? siteMeta.name : siteId,
-        icon: siteMeta ? siteMeta.icon : null,
+        icon: resolveExistingSiteIcon(site.base, siteId, siteMeta && siteMeta.icon),
+        kind: siteMeta && siteMeta.kind ? siteMeta.kind : null,
         groups
     };
 }
@@ -101,16 +124,22 @@ function getPageHtml(globalResources, siteId, pageId) {
 
     const siteIndex = readJsonSafe(path.join(siteDir, 'index.json'), { pages: [] });
     const pageMeta = (siteIndex.pages || []).find((p) => p.id === normalizedId);
-    const siteIcon = siteMeta && siteMeta.icon
-        ? siteMeta.icon
-        : (siteId ? `/private/wiki/${siteId}/assets/icon.png` : null);
+    const siteIcon = resolveExistingSiteIcon(site.base, siteId, siteMeta && siteMeta.icon);
+
+    const kind = siteMeta && siteMeta.kind ? siteMeta.kind : null;
+    const displayUrl = kind === 'fandom'
+        ? `rdf://wiki.fandom.jp/${siteId}/${normalizedId}`
+        : null;
 
     return {
         siteId,
         pageId: normalizedId,
         title: pageMeta ? (pageMeta.title || normalizedId) : normalizedId,
         html: fs.readFileSync(resolved, 'utf8'),
-        siteIcon
+        siteIcon,
+        kind,
+        displayUrl,
+        addressMode: kind === 'fandom' ? 'rdf' : null
     };
 }
 

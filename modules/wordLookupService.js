@@ -1,5 +1,6 @@
 const natural = require('natural');
 const moby = require('moby');
+const { isTextColonPrefix } = require('./promptTextBoundary');
 
 const MAX_DEFINITIONS = 5;
 const MAX_SYNONYMS = 20;
@@ -65,7 +66,7 @@ class WordLookupService {
         }
 
         const trimmed = query.trim();
-        if (!trimmed || trimmed.startsWith('!') || trimmed.startsWith('Text:')) {
+        if (!trimmed || trimmed.startsWith('!') || isTextColonPrefix(trimmed)) {
             return null;
         }
 

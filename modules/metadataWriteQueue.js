@@ -14,6 +14,7 @@ const metadataWriteQueue = {
     queue: [],
     backgroundQueue: [],
     draining: false,
+    drainPromise: null,
     hotImages: new Map(),
     hotGalleryOwnership: new Map(),
     removedGalleryOwnership: new Set(),
@@ -177,6 +178,11 @@ const metadataWriteQueue = {
         this.removedGalleryOwnership.add(key);
     },
 
+    unmarkGalleryOwnershipRemoved(filename, workspaceId, bucket = 'files') {
+        if (!filename || !workspaceId) return;
+        this.removedGalleryOwnership.delete(this.galleryKey(filename, workspaceId, bucket));
+    },
+
     removeHotGalleryOwnershipForFilename(filename) {
         if (!filename) return;
         for (const [key, entry] of this.hotGalleryOwnership.entries()) {
@@ -224,7 +230,8 @@ const metadataWriteQueue = {
         this.queue.push({
             taskFn,
             label: label || 'task',
-            onSuccess: hooks.onSuccess || null
+            onSuccess: hooks.onSuccess || null,
+            onFailure: hooks.onFailure || null
         });
         this.scheduleDrain();
     },
@@ -236,15 +243,23 @@ const metadataWriteQueue = {
         this.backgroundQueue.push({
             taskFn,
             label: label || 'background',
-            onSuccess: hooks.onSuccess || null
+            onSuccess: hooks.onSuccess || null,
+            onFailure: hooks.onFailure || null
         });
         this.scheduleDrain();
     },
 
     scheduleDrain() {
-        if (this.draining) return;
+        if (this.drainPromise) return this.drainPromise;
         this.draining = true;
-        setImmediate(() => this.drainLoop());
+        this.drainPromise = this.drainLoop().finally(() => {
+            this.draining = false;
+            this.drainPromise = null;
+            if (this.queue.length > 0 || this.backgroundQueue.length > 0) {
+                this.scheduleDrain();
+            }
+        });
+        return this.drainPromise;
     },
 
     takeNextJob() {
@@ -257,35 +272,49 @@ const metadataWriteQueue = {
         return null;
     },
 
+    isClosedHandleError(err) {
+        const msg = err?.message || String(err || '');
+        return msg.includes('SQLITE_MISUSE') || msg.includes('Database handle is closed');
+    },
+
     async drainLoop() {
-        try {
-            let job = this.takeNextJob();
-            while (job) {
-                const { taskFn, label, onSuccess } = job;
+        let job = this.takeNextJob();
+        while (job) {
+            const { taskFn, label, onSuccess, onFailure } = job;
+            let lastError = null;
+            for (let attempt = 0; attempt < 3; attempt++) {
                 try {
                     await taskFn();
+                    lastError = null;
                     if (onSuccess) {
                         onSuccess();
                     }
+                    break;
                 } catch (err) {
-                    console.error(`Metadata write queue failed (${label}):`, err.message || err);
+                    lastError = err;
+                    if (this.isClosedHandleError(err) && attempt < 2) {
+                        await new Promise(resolve => setTimeout(resolve, 25 * (attempt + 1)));
+                        continue;
+                    }
+                    break;
                 }
-                job = this.takeNextJob();
             }
-        } finally {
-            this.draining = false;
-            if (this.queue.length > 0 || this.backgroundQueue.length > 0) {
-                this.scheduleDrain();
+            if (lastError) {
+                if (onFailure) {
+                    onFailure(lastError);
+                }
+                console.error(`Metadata write queue failed (${label}):`, lastError.message || lastError);
             }
+            job = this.takeNextJob();
         }
     },
 
     async drainAll() {
-        while (this.queue.length > 0 || this.backgroundQueue.length > 0 || this.draining) {
-            await this.drainLoop();
-            if (this.queue.length > 0 || this.backgroundQueue.length > 0) continue;
-            if (this.draining) {
-                await new Promise(resolve => setImmediate(resolve));
+        this.scheduleDrain();
+        while (this.queue.length > 0 || this.backgroundQueue.length > 0 || this.drainPromise) {
+            await (this.drainPromise || new Promise(resolve => setImmediate(resolve)));
+            if (!this.drainPromise && (this.queue.length > 0 || this.backgroundQueue.length > 0)) {
+                this.scheduleDrain();
             }
         }
     },

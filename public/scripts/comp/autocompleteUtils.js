@@ -17,6 +17,49 @@ const AUTOFILL_SEARCH_DEBOUNCE_MS = 120;
 const AUTOFILL_SEARCH_CONTINUATION_DEBOUNCE_MS = 40;
 let _mainPromptAutocompleteScrollWired = false;
 
+const TEXT_COLON_LEN = 5;
+
+function findTextColonIndex(text) {
+    if (typeof text !== 'string' || !text) return -1;
+    const m = /\btext:/i.exec(text);
+    return m ? m.index : -1;
+}
+
+function findLastTextColonIndex(text) {
+    if (typeof text !== 'string' || !text) return -1;
+    const re = /\btext:/ig;
+    let last = -1;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+        last = m.index;
+    }
+    return last;
+}
+
+function isTextColonPrefix(query) {
+    return typeof query === 'string' && /^\s*text:/i.test(query);
+}
+
+function stripTextColonPrefix(query) {
+    return String(query || '').replace(/^\s*text:/i, '').trim();
+}
+
+function splitPromptAtTextColon(text) {
+    const p = text == null ? '' : String(text);
+    const idx = findTextColonIndex(p);
+    if (idx === -1) {
+        return { tagsPart: p, textSuffix: '', index: -1 };
+    }
+    let splitAt = idx;
+    while (splitAt > 0 && /[ \t]/.test(p.charAt(splitAt - 1))) splitAt--;
+    if (splitAt > 0 && p.charAt(splitAt - 1) === ',') splitAt--;
+    return {
+        tagsPart: p.slice(0, splitAt),
+        textSuffix: p.slice(splitAt),
+        index: idx
+    };
+}
+
 // Spell check navigation state
 let spellCheckNavigationMode = false;
 let selectedSpellCheckWordIndex = -1;
@@ -1067,6 +1110,53 @@ function isAutofillTagsOnlyMode(config) {
     return config.tags && !config.characters && !config.expanders && !config.spellcheck && !config.thesaurus && !config.dynamicPlaceholders;
 }
 
+const AUTOFILL_ARTIST_COLON_RE = /^artist:\s*/i;
+const AUTOFILL_ART_BY_RE = /^art\s+by\s+/i;
+
+function parseAutofillArtistSearchPrefix(query) {
+    const original = String(query || '');
+    const trimmed = original.trim();
+    if (AUTOFILL_ARTIST_COLON_RE.test(trimmed)) {
+        return {
+            isArtistSearch: true,
+            prefixKind: 'artist:',
+            remainder: trimmed.replace(AUTOFILL_ARTIST_COLON_RE, '').trim(),
+            original: original
+        };
+    }
+    if (AUTOFILL_ART_BY_RE.test(trimmed)) {
+        return {
+            isArtistSearch: true,
+            prefixKind: 'art by ',
+            remainder: trimmed.replace(AUTOFILL_ART_BY_RE, '').trim(),
+            original: original
+        };
+    }
+    return {
+        isArtistSearch: false,
+        prefixKind: '',
+        remainder: trimmed,
+        original: original
+    };
+}
+
+function getActiveAutofillArtistSearch() {
+    return parseAutofillArtistSearchPrefix(currentSearchQuery || lastSearchQuery || '');
+}
+
+function isArtistTagResult(result) {
+    if (!isTagResult(result)) return false;
+    return getTagCategorySlug(result) === 'artist';
+}
+
+function isNovelaiTagResult(result) {
+    if (!isTagResult(result)) return false;
+    if (getTagNCount(result) > 0) return true;
+    if (Array.isArray(result.datasets) && result.datasets.includes('novelai')) return true;
+    if (isApiTagResult(result)) return true;
+    return getAutofillTagSourceType(result) === 'tagNovelai';
+}
+
 function filterAutofillDisplayResults(results, config) {
     return results.filter(function (result) {
         if (!result) return false;
@@ -1079,11 +1169,20 @@ function filterAutofillDisplayResults(results, config) {
     });
 }
 
+function applyAutofillArtistPrefixFilter(results) {
+    if (!results || !results.length) return results || [];
+    if (!getActiveAutofillArtistSearch().isArtistSearch) return results;
+    return results.filter(function (result) {
+        return isArtistTagResult(result) || isNovelaiTagResult(result);
+    });
+}
+
 /** Session-only view controls (Alt+Y type / Alt+U sort) — reset when overlay/window closes. */
 const AUTOFILL_TYPE_FILTER_OPTIONS = [
     { id: 'all', label: 'All types' },
     { id: 'characters', label: 'Characters' },
     { id: 'tags', label: 'Tags' },
+    { id: 'novelai', label: 'NovelAI' },
     { id: 'expanders', label: 'Expanders' },
     { id: 'dynamic', label: 'Dynamic' }
 ];
@@ -1106,6 +1205,15 @@ function resetAutofillSessionViewControls() {
     autofillSessionTypeFilter = 'all';
     autofillSessionSortMode = 'default';
     hideAutofillCycleHud();
+    syncAutofillViewBarLabels();
+}
+
+function getAutofillSessionTypeFilter() {
+    return autofillSessionTypeFilter || 'all';
+}
+
+function getAutofillSessionSortMode() {
+    return autofillSessionSortMode || 'default';
 }
 
 function getAutofillTypeFilterOptionIndex() {
@@ -1119,7 +1227,8 @@ function getAutofillSortOptionIndex() {
 }
 
 function shouldShowAutofillSideSections() {
-    return autofillSessionTypeFilter === 'all';
+    if (autofillSessionTypeFilter !== 'all') return false;
+    return !getActiveAutofillArtistSearch().isArtistSearch;
 }
 
 function applyAutofillSessionTypeFilter(results) {
@@ -1129,6 +1238,7 @@ function applyAutofillSessionTypeFilter(results) {
     return results.filter(function (result) {
         if (autofillSessionTypeFilter === 'characters') return isCharacterResult(result);
         if (autofillSessionTypeFilter === 'tags') return isTagResult(result);
+        if (autofillSessionTypeFilter === 'novelai') return isNovelaiTagResult(result);
         if (autofillSessionTypeFilter === 'expanders') return result.type === 'textReplacement';
         if (autofillSessionTypeFilter === 'dynamic') return result.type === 'dynamicPlaceholder';
         return true;
@@ -1207,8 +1317,12 @@ function applyAutofillSessionSort(results, query) {
 function getAutofillVisibleResults(results, target) {
     const config = target ? getAutofillConfig(target) : DEFAULT_AUTOFILL_CONFIG;
     let displayResults = filterAutofillDisplayResults(results, config);
+    displayResults = applyAutofillArtistPrefixFilter(displayResults);
     displayResults = applyAutofillSessionTypeFilter(displayResults);
-    const query = currentSearchQuery || lastSearchQuery || '';
+    const artistSearch = getActiveAutofillArtistSearch();
+    const query = artistSearch.isArtistSearch
+        ? artistSearch.remainder
+        : (currentSearchQuery || lastSearchQuery || '');
     return applyAutofillSessionSort(displayResults, query);
 }
 
@@ -1216,77 +1330,254 @@ function getAutofillViewControlHashKey() {
     return `:tf=${autofillSessionTypeFilter}:sm=${autofillSessionSortMode}`;
 }
 
+function getAutofillViewBarEl() {
+    return document.getElementById('characterAutocompleteViewBar');
+}
+
+function isAutofillViewBarVisible() {
+    const bar = getAutofillViewBarEl();
+    return !!(bar && !bar.classList.contains('hidden'));
+}
+
+function isAutofillViewControlsAvailable() {
+    if (isAutofillDetachedMode()) return true;
+    if (isCharacterAutocompleteOverlayOpen()) return true;
+    return isAutofillViewBarVisible();
+}
+
+function getAutofillTypeFilterLabel() {
+    const opt = AUTOFILL_TYPE_FILTER_OPTIONS[getAutofillTypeFilterOptionIndex()];
+    return opt ? opt.label : 'All types';
+}
+
+function getAutofillSortLabel() {
+    const opt = AUTOFILL_SORT_OPTIONS[getAutofillSortOptionIndex()];
+    return opt ? opt.label : 'Default ranking';
+}
+
+function syncAutofillViewBarLabels() {
+    const typeEl = document.getElementById('autofillTypeFilterSelected');
+    const sortEl = document.getElementById('autofillSortSelected');
+    if (typeEl) typeEl.textContent = getAutofillTypeFilterLabel();
+    if (sortEl) sortEl.textContent = getAutofillSortLabel();
+}
+
 function hideAutofillCycleHud() {
     if (autofillCycleHudHideTimer) {
         clearTimeout(autofillCycleHudHideTimer);
         autofillCycleHudHideTimer = null;
     }
-    const panelRoot = getAutofillPanelRoot();
-    if (!panelRoot) return;
-    panelRoot.querySelectorAll('.autofill-cycle-hud').forEach(function (el) {
+    document.querySelectorAll('.autofill-cycle-hud').forEach(function (el) {
         el.remove();
     });
 }
 
 function showAutofillCycleHud(kind) {
-    const panelRoot = getAutofillPanelRoot();
-    if (!panelRoot) return;
-
-    const options = kind === 'sort' ? AUTOFILL_SORT_OPTIONS : AUTOFILL_TYPE_FILTER_OPTIONS;
-    const activeId = kind === 'sort' ? autofillSessionSortMode : autofillSessionTypeFilter;
-    const title = kind === 'sort' ? 'Sort' : 'Filter';
-
-    hideAutofillCycleHud();
-
-    const hud = document.createElement('div');
-    hud.className = 'autofill-cycle-hud';
-    hud.setAttribute('data-kind', kind);
-    hud.setAttribute('aria-live', 'polite');
-
-    const titleEl = document.createElement('div');
-    titleEl.className = 'autofill-cycle-hud-title';
-    titleEl.textContent = title;
-    hud.appendChild(titleEl);
-
-    const listEl = document.createElement('div');
-    listEl.className = 'autofill-cycle-hud-options';
-    options.forEach(function (opt) {
-        const row = document.createElement('div');
-        row.className = 'autofill-cycle-hud-option'
-            + (opt.id === activeId ? ' selected' : '');
-        row.textContent = opt.label;
-        listEl.appendChild(row);
-    });
-    hud.appendChild(listEl);
-    panelRoot.appendChild(hud);
-
-    const selectedRow = listEl.querySelector('.autofill-cycle-hud-option.selected');
-    if (selectedRow && selectedRow.scrollIntoView) {
-        selectedRow.scrollIntoView({ block: 'nearest' });
-    }
-
+    syncAutofillViewBarLabels();
+    const bar = getAutofillViewBarEl();
+    if (!bar || bar.classList.contains('hidden')) return;
+    const dropdown = kind === 'sort'
+        ? document.getElementById('autofillSortDropdown')
+        : document.getElementById('autofillTypeFilterDropdown');
+    if (!dropdown) return;
+    dropdown.classList.add('autofill-view-control-cycled');
+    if (autofillCycleHudHideTimer) clearTimeout(autofillCycleHudHideTimer);
     autofillCycleHudHideTimer = setTimeout(function () {
         autofillCycleHudHideTimer = null;
-        hud.remove();
-    }, 1600);
+        dropdown.classList.remove('autofill-view-control-cycled');
+    }, 700);
+}
+
+function placeAutofillViewBar() {
+    const bar = getAutofillViewBarEl();
+    if (!bar) return;
+
+    if (isAutofillDetachedMode()) {
+        const shell = characterAutofillToolManager?.getShellElement?.()
+            || document.querySelector('.character-autofill-tool-shell');
+        if (!shell) return;
+        bar.classList.add('autofill-view-bar-detached');
+        bar.classList.remove('hidden');
+        const listShell = characterAutofillToolManager?.listShellEl
+            || shell.querySelector('.character-autofill-tool-list-shell');
+        if (bar.parentElement !== shell) {
+            if (listShell && listShell.parentElement === shell) {
+                shell.insertBefore(bar, listShell);
+            } else {
+                shell.insertBefore(bar, shell.firstChild || null);
+            }
+        } else if (listShell && listShell.parentElement === shell && bar.nextElementSibling !== listShell) {
+            shell.insertBefore(bar, listShell);
+        }
+        bar.style.left = '';
+        bar.style.top = '';
+        bar.style.width = '';
+        return;
+    }
+
+    bar.classList.remove('autofill-view-bar-detached');
+    if (bar.parentElement !== document.body) {
+        document.body.appendChild(bar);
+    }
+}
+
+function hideAutofillViewBar() {
+    const bar = getAutofillViewBarEl();
+    if (!bar) return;
+    hideAutofillCycleHud();
+    if (isAutofillDetachedMode()) return;
+    bar.classList.add('hidden');
+    bar.classList.remove('autofill-view-bar-detached');
+    bar.style.left = '';
+    bar.style.top = '';
+    bar.style.width = '';
+}
+
+function syncAutofillViewBarPlacement() {
+    const bar = getAutofillViewBarEl();
+    if (!bar) return;
+    placeAutofillViewBar();
+    syncAutofillViewBarLabels();
+    ensureAutofillViewBarWired();
+
+    if (isAutofillDetachedMode()) {
+        bar.classList.remove('hidden');
+        return;
+    }
+
+    if (!characterAutocompleteOverlay || characterAutocompleteOverlay.classList.contains('hidden')) {
+        hideAutofillViewBar();
+        return;
+    }
+
+    bar.classList.remove('hidden');
+    const overlayRect = characterAutocompleteOverlay.getBoundingClientRect();
+    const barHeight = bar.offsetHeight || 32;
+    bar.style.left = overlayRect.left + 'px';
+    bar.style.width = overlayRect.width + 'px';
+    bar.style.top = Math.max(0, overlayRect.top - barHeight - 4) + 'px';
+}
+
+function applyCharacterAutocompleteOverlayBox(target) {
+    if (!characterAutocompleteOverlay || !target) return null;
+    const bar = getAutofillViewBarEl();
+    if (bar && !isAutofillDetachedMode()) {
+        bar.classList.remove('hidden', 'autofill-view-bar-detached');
+        if (bar.parentElement !== document.body) {
+            document.body.appendChild(bar);
+        }
+    }
+    const rect = target.getBoundingClientRect();
+    const barH = bar && !isAutofillDetachedMode() ? (bar.offsetHeight || 32) : 0;
+    const gap = 5;
+    const spaceBelow = window.innerHeight - rect.bottom - gap - barH - 4;
+    const maxHeight = Math.min(400, Math.max(80, spaceBelow), window.innerHeight * 0.6);
+    const box = {
+        left: rect.left + 'px',
+        top: (rect.bottom + gap + barH + 4) + 'px',
+        width: rect.width + 'px',
+        maxHeight: maxHeight + 'px'
+    };
+    characterAutocompleteOverlay.style.left = box.left;
+    characterAutocompleteOverlay.style.top = box.top;
+    characterAutocompleteOverlay.style.width = box.width;
+    characterAutocompleteOverlay.style.maxHeight = box.maxHeight;
+    return box;
+}
+
+function ensureAutofillViewBarWired() {
+    const typeContainer = document.getElementById('autofillTypeFilterDropdown');
+    const typeBtn = document.getElementById('autofillTypeFilterBtn');
+    const typeMenu = document.getElementById('autofillTypeFilterMenu');
+    const sortContainer = document.getElementById('autofillSortDropdown');
+    const sortBtn = document.getElementById('autofillSortBtn');
+    const sortMenu = document.getElementById('autofillSortMenu');
+    if (!typeContainer || !typeBtn || !typeMenu || !sortContainer || !sortBtn || !sortMenu) return;
+    // setupDropdown: public/scripts/comp/dropdown.js
+
+    if (typeContainer.getAttribute('data-dropdown-initialized') !== 'true') {
+        setupDropdown(
+            typeContainer,
+            typeBtn,
+            typeMenu,
+            function (selectedValue) {
+                // renderSimpleDropdown: public/scripts/comp/manualDropdownManager.js
+                renderSimpleDropdown(
+                    typeMenu,
+                    AUTOFILL_TYPE_FILTER_OPTIONS,
+                    'id',
+                    'label',
+                    setAutofillSessionTypeFilter,
+                    function () { closeDropdown(typeMenu, typeBtn); },
+                    selectedValue,
+                    { preventFocusTransfer: true }
+                );
+            },
+            function () { return autofillSessionTypeFilter; },
+            { preventFocusTransfer: true }
+        );
+    }
+
+    if (sortContainer.getAttribute('data-dropdown-initialized') !== 'true') {
+        setupDropdown(
+            sortContainer,
+            sortBtn,
+            sortMenu,
+            function (selectedValue) {
+                // renderSimpleDropdown: public/scripts/comp/manualDropdownManager.js
+                renderSimpleDropdown(
+                    sortMenu,
+                    AUTOFILL_SORT_OPTIONS,
+                    'id',
+                    'label',
+                    setAutofillSessionSortMode,
+                    function () { closeDropdown(sortMenu, sortBtn); },
+                    selectedValue,
+                    { preventFocusTransfer: true }
+                );
+            },
+            function () { return autofillSessionSortMode; },
+            { preventFocusTransfer: true }
+        );
+    }
 }
 
 function refreshAutofillDisplayAfterViewControlChange() {
     lastAutocompleteDisplayHash = null;
     selectedCharacterAutocompleteIndex = -1;
     autocompleteNavigationMode = false;
+    syncAutofillViewBarLabels();
     if (window.allAutocompleteResults && currentCharacterAutocompleteTarget
         && shouldApplyAutocompleteUI(currentCharacterAutocompleteTarget)) {
         showCharacterAutocompleteSuggestions(
             window.allAutocompleteResults,
             currentCharacterAutocompleteTarget
         );
+    } else if (currentCharacterAutocompleteTarget
+        && shouldApplyAutocompleteUI(currentCharacterAutocompleteTarget)) {
+        showCharacterAutocompleteSuggestions([], currentCharacterAutocompleteTarget);
     }
     updateAutofillKeyguide();
+    syncAutofillViewBarPlacement();
+}
+
+function setAutofillSessionTypeFilter(id) {
+    const match = AUTOFILL_TYPE_FILTER_OPTIONS.find(function (opt) { return opt.id === id; });
+    autofillSessionTypeFilter = match ? match.id : 'all';
+    syncAutofillViewBarLabels();
+    refreshAutofillDisplayAfterViewControlChange();
+    retriggerAutofillSearchForViewFilter();
+}
+
+function setAutofillSessionSortMode(id) {
+    const match = AUTOFILL_SORT_OPTIONS.find(function (opt) { return opt.id === id; });
+    autofillSessionSortMode = match ? match.id : 'default';
+    syncAutofillViewBarLabels();
+    refreshAutofillDisplayAfterViewControlChange();
 }
 
 function cycleAutofillSessionTypeFilter() {
-    if (!isCharacterAutocompleteOverlayOpen()) return;
+    if (!isAutofillViewControlsAvailable()) return;
     const next = (getAutofillTypeFilterOptionIndex() + 1) % AUTOFILL_TYPE_FILTER_OPTIONS.length;
     autofillSessionTypeFilter = AUTOFILL_TYPE_FILTER_OPTIONS[next].id;
     showAutofillCycleHud('type');
@@ -1295,7 +1586,7 @@ function cycleAutofillSessionTypeFilter() {
 }
 
 function cycleAutofillSessionSortMode() {
-    if (!isCharacterAutocompleteOverlayOpen()) return;
+    if (!isAutofillViewControlsAvailable()) return;
     const next = (getAutofillSortOptionIndex() + 1) % AUTOFILL_SORT_OPTIONS.length;
     autofillSessionSortMode = AUTOFILL_SORT_OPTIONS[next].id;
     showAutofillCycleHud('sort');
@@ -1313,7 +1604,10 @@ function retriggerAutofillSearchForViewFilter() {
         query = bounds && typeof bounds.query === 'string' ? bounds.query.trim() : '';
     }
     if (!query) return;
-    if (!query.startsWith('<') && !query.startsWith('!') && !query.startsWith('Text:') && query.length < 2) {
+    const artistSearch = parseAutofillArtistSearchPrefix(query);
+    const lengthSource = artistSearch.isArtistSearch ? artistSearch.remainder : query;
+    if (!query.startsWith('<') && !query.startsWith('!') && !isTextColonPrefix(query)
+        && lengthSource.length < (artistSearch.isArtistSearch ? 1 : 2)) {
         return;
     }
 
@@ -1328,6 +1622,13 @@ function getAutofillSearchSettingsForRequest() {
         : {};
     if (autofillSessionTypeFilter && autofillSessionTypeFilter !== 'all') {
         base.resultTypeFilter = autofillSessionTypeFilter;
+    }
+    const artistSearch = getActiveAutofillArtistSearch();
+    if (artistSearch.isArtistSearch) {
+        base.artistSearch = true;
+        if (!base.resultTypeFilter || base.resultTypeFilter === 'all') {
+            base.resultTypeFilter = 'tags';
+        }
     }
     return base;
 }
@@ -1416,16 +1717,62 @@ function handleAutocompleteOverlayWheel(e) {
     }
 }
 
+function wireAutofillPointerActivate(el, handler) {
+    let done = false;
+    const activate = (e) => {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        if (done) return;
+        done = true;
+        handler(e);
+    };
+    el.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        activate(e);
+    });
+    el.addEventListener('click', activate);
+    return activate;
+}
+
+function isAutofillOverlayInteractiveMouseTarget(target) {
+    if (!target || !target.closest) return false;
+    return !!target.closest([
+        '.character-autocomplete-item',
+        '.enhancer-group',
+        '.suggestion-btn',
+        '.close-character-detail',
+        '.spell-check-word',
+        '.word-lookup-word-row',
+        '.character-autocomplete-view-bar',
+        '.custom-dropdown',
+        'button',
+        'input',
+        'textarea',
+        'a'
+    ].join(','));
+}
+
+function preventAutofillOverlayFocusSteal(e) {
+    if (e.target && e.target.closest && e.target.closest('input, textarea')) return;
+    e.preventDefault();
+}
+
 // Wire up UX handlers for the popup overlay.
 if (characterAutocompleteOverlay) {
-    characterAutocompleteOverlay.addEventListener('mousedown', (e) => {
-        // Keep the prompt textarea focused when interacting with the overlay (clicks still fire).
-        e.preventDefault();
-    });
+    characterAutocompleteOverlay.addEventListener('mousedown', preventAutofillOverlayFocusSteal);
     characterAutocompleteOverlay.addEventListener('mouseleave', () => {
         autocompleteWheelAccumulator = 0;
     });
 }
+
+const characterAutocompleteViewBarEl = getAutofillViewBarEl();
+if (characterAutocompleteViewBarEl) {
+    characterAutocompleteViewBarEl.addEventListener('mousedown', preventAutofillOverlayFocusSteal);
+}
+
+ensureAutofillViewBarWired();
 
 
 function getAutofillItemContextMenuConfig() {
@@ -2024,6 +2371,28 @@ function getEffectiveAutofillConfigForSession(target) {
             dynamicPlaceholders: true
         };
     }
+    if (autofillSessionTypeFilter === 'novelai') {
+        return {
+            ...config,
+            characters: false,
+            tags: true,
+            expanders: false,
+            spellcheck: false,
+            thesaurus: false,
+            dynamicPlaceholders: false
+        };
+    }
+    if (getActiveAutofillArtistSearch().isArtistSearch) {
+        return {
+            ...config,
+            characters: false,
+            tags: true,
+            expanders: false,
+            spellcheck: false,
+            thesaurus: false,
+            dynamicPlaceholders: false
+        };
+    }
     return config;
 }
 
@@ -2181,16 +2550,17 @@ function hasAutofillResultsInCache() {
 
 function canShowAutofillOverlay(target) {
     if (!hasActiveAutofillSessionForTarget(target)) return false;
-    if (isAutofillDetachedMode()) {
-        if (!currentSearchRequestId) return false;
-        if (autofillSessionPacketRequestId === currentSearchRequestId) return true;
-        if (isSearching || hasSearchServicesInFlight()) return true;
-        return hasAutofillResultsInCache();
-    }
     if (!currentSearchRequestId) return false;
     if (autofillSessionPacketRequestId === currentSearchRequestId) return true;
     if (isSearching || hasSearchServicesInFlight()) return true;
-    return hasAutofillResultsInCache();
+    if (hasAutofillResultsInCache()) return true;
+    // Keep overlay + filter/sort bar available after an empty search.
+    return !!(
+        currentSearchQuery
+        || getAutofillSessionTypeFilter() !== 'all'
+        || getAutofillSessionSortMode() !== 'default'
+        || getActiveAutofillArtistSearch().isArtistSearch
+    );
 }
 
 function clearAutofillSessionState() {
@@ -2209,44 +2579,55 @@ function showAutofillLoadingShell(target) {
         isAutocompleteVisible = true;
         syncAutofillSearchHighlight(target);
         requestAutofillWikiPreviewsForSession();
+        syncAutofillViewBarPlacement();
         return;
     }
 
     if (!characterAutocompleteOverlay) return;
 
-    const rect = target.getBoundingClientRect();
-    const spaceBelow = window.innerHeight - rect.bottom - 5;
-    const maxHeight = Math.min(400, spaceBelow, window.innerHeight * 0.6);
-
-    characterAutocompleteOverlay.style.left = rect.left + 'px';
-    characterAutocompleteOverlay.style.top = (rect.bottom + 5) + 'px';
-    characterAutocompleteOverlay.style.width = rect.width + 'px';
-    characterAutocompleteOverlay.style.maxHeight = maxHeight + 'px';
+    applyCharacterAutocompleteOverlayBox(target);
     characterAutocompleteOverlay.classList.remove('hidden');
     isAutocompleteVisible = true;
+    syncAutofillViewBarPlacement();
     syncAutofillSearchHighlight(target);
     requestAutofillWikiPreviewsForSession();
 }
 
+function isAutofillDismissSafeNode(node) {
+    if (!node || node.nodeType !== 1) return false;
+    if (characterAutocompleteOverlay && (node === characterAutocompleteOverlay || characterAutocompleteOverlay.contains(node))) {
+        return true;
+    }
+    const viewBar = getAutofillViewBarEl();
+    if (viewBar && (node === viewBar || viewBar.contains(node))) {
+        return true;
+    }
+    if (characterAutofillToolManager?.element
+        && (node === characterAutofillToolManager.element || characterAutofillToolManager.element.contains(node))) {
+        return true;
+    }
+    if (isAutofillTarget(node)) return true;
+    if (node.closest && (
+        node.closest('#characterAutocompleteOverlay')
+        || node.closest('#characterAutocompleteViewBar')
+        || node.closest('#characterAutofillTool')
+        || node.closest('.custom-dropdown-menu')
+    )) {
+        return true;
+    }
+    return false;
+}
+
 function shouldDismissAutofillFromClick(event) {
     if (!event || !event.target) return true;
-    const target = event.target;
-    if (characterAutocompleteOverlay && characterAutocompleteOverlay.contains(target)) {
-        return false;
+    const path = typeof event.composedPath === 'function' ? event.composedPath() : null;
+    if (path && path.length) {
+        for (let i = 0; i < path.length; i++) {
+            if (isAutofillDismissSafeNode(path[i])) return false;
+        }
+        return true;
     }
-    if (characterAutofillToolManager?.element?.contains(target)) {
-        return false;
-    }
-    if (isAutofillTarget(target)) {
-        return false;
-    }
-    if (target.closest && target.closest('#characterAutocompleteOverlay')) {
-        return false;
-    }
-    if (target.closest && target.closest('#characterAutofillTool')) {
-        return false;
-    }
-    return true;
+    return !isAutofillDismissSafeNode(event.target);
 }
 
 function getAutofillWikiPreviewTagId(result) {
@@ -2561,9 +2942,9 @@ function getAutocompleteSearchBounds(target) {
 
     const textBeforeCursor = value.substring(0, safeCursor);
 
-    const textPrefixIndex = textBeforeCursor.lastIndexOf('Text:');
+    const textPrefixIndex = findLastTextColonIndex(textBeforeCursor);
     if (textPrefixIndex >= 0) {
-        const tokenStart = textPrefixIndex + 5;
+        const tokenStart = textPrefixIndex + TEXT_COLON_LEN;
         const spellCheckText = value.substring(tokenStart, value.length).trim();
         const bounds = {
             tokenStart,
@@ -3472,6 +3853,7 @@ function resetStaleAutofillSessionForNewInput() {
         characterAutocompleteOverlay.classList.add('hidden');
         characterAutocompleteOverlay.classList.remove('expanded');
     }
+    hideAutofillViewBar();
     isAutocompleteVisible = false;
     markAutofillOverlayClosedFromInput();
     spellCheckNavigationMode = false;
@@ -4451,14 +4833,13 @@ function applyTagResultToAutocompleteItem(item, result) {
     `;
 
     const onSelect = (e) => {
-        e.preventDefault();
         selectTag(insertName, categorySlug);
     };
-    item.addEventListener('click', onSelect);
+    const activate = wireAutofillPointerActivate(item, onSelect);
     item.addEventListener('touchend', (e) => {
         const maxDelta = touchSlopUtils.finalizeTouchSlop(item, e);
         if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
-        onSelect(e);
+        activate(e);
     }, { passive: false });
 }
 
@@ -4495,15 +4876,14 @@ function applyCharacterResultToAutocompleteItem(item, result) {
         tagCategory: item.dataset.category || ''
     } : {};
 
-    const onSelect = (e) => {
-        e.preventDefault();
+    const onSelect = () => {
         selectCharacterItem(character, detailOptions);
     };
-    item.addEventListener('click', onSelect);
+    const activate = wireAutofillPointerActivate(item, onSelect);
     item.addEventListener('touchend', (e) => {
         const maxDelta = touchSlopUtils.finalizeTouchSlop(item, e);
         if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
-        onSelect(e);
+        activate(e);
     }, { passive: false });
 }
 
@@ -5766,10 +6146,9 @@ function processCharacterAutocompleteInputCore(e) {
     const textBeforeCursor = value.substring(0, cursorPosition);
 
     // Special handling for "Text:" prefix - check for it first
-    const textPrefixIndex = textBeforeCursor.lastIndexOf('Text:');
+    const textPrefixIndex = findLastTextColonIndex(textBeforeCursor);
     if (textPrefixIndex >= 0) {
-        // Extract the text after "Text:" for spell checking
-        const textAfterPrefix = textBeforeCursor.substring(textPrefixIndex + 5).trim();
+        const textAfterPrefix = textBeforeCursor.substring(textPrefixIndex + TEXT_COLON_LEN).trim();
 
         // Handle backspace - if actively navigating, start normal search delay
         if (e.inputType === 'deleteContentBackward') {
@@ -6463,10 +6842,13 @@ function getSpellCheckWordCount(section) {
     return rows ? rows.length : 0;
 }
 
+function getWordLookupWordRows(section) {
+    if (!section) return [];
+    return section.querySelectorAll(':scope > .word-lookup-word-list > .word-lookup-word-row');
+}
+
 function getWordLookupWordCount(section) {
-    if (!section) return 0;
-    const rows = section.querySelectorAll('.word-lookup-word-row');
-    return rows ? rows.length : 0;
+    return getWordLookupWordRows(section).length;
 }
 
 function spellCheckSectionHasSuggestions(section) {
@@ -6639,8 +7021,8 @@ function getSelectedWordLookupSuggestionButton() {
     const wordLookupSection = getWordLookupSection();
     if (!wordLookupSection) return null;
 
-    const wordSections = wordLookupSection.querySelectorAll('.word-lookup-word-row');
-    if (!wordSections || selectedWordLookupWordIndex < 0 || selectedWordLookupWordIndex >= wordSections.length) {
+    const wordSections = getWordLookupWordRows(wordLookupSection);
+    if (!wordSections.length || selectedWordLookupWordIndex < 0 || selectedWordLookupWordIndex >= wordSections.length) {
         return null;
     }
 
@@ -7711,6 +8093,8 @@ async function searchCharacters(query, target, forceRefresh, options) {
 
         // Update current search query
         currentSearchQuery = query;
+        const artistParsed = parseAutofillArtistSearchPrefix(query);
+        const wsQuery = artistParsed.isArtistSearch ? artistParsed.remainder : query;
         syncAutofillToolSearchInput();
 
         // Generate UUID for this search request
@@ -7775,7 +8159,7 @@ async function searchCharacters(query, target, forceRefresh, options) {
 
         // Check if query starts with ! - only return text replacements in this case
         const isTextReplacementSearch = query.startsWith('!');
-        const isTextPrefixSearch = query.startsWith('Text:');
+        const isTextPrefixSearch = isTextColonPrefix(query);
         const autofillConfig = getEffectiveAutofillConfigForSession(target);
 
         if (!autofillConfig.expanders && isTextReplacementSearch) {
@@ -7806,7 +8190,7 @@ async function searchCharacters(query, target, forceRefresh, options) {
             if (window.wsClient && window.wsClient.isConnected()) {
                 try {
                     // Send ack-less search request (responses handled by global handler)
-                    await window.wsClient.searchCharacters(query, manualModel.value, {
+                    await window.wsClient.searchCharacters(wsQuery, manualModel.value, {
                         requestId: currentSearchRequestId,
                         autofillSessionId: autofillSessionId,
                         spellCheckText: spellCheckText,
@@ -7861,7 +8245,7 @@ async function searchCharacters(query, target, forceRefresh, options) {
             // Perform text replacement search via WebSocket
             if (window.wsClient && window.wsClient.isConnected()) {
                 try {
-                    await window.wsClient.searchCharacters(query, manualModel.value, {
+                    await window.wsClient.searchCharacters(wsQuery, manualModel.value, {
                         requestId: currentSearchRequestId,
                         autofillSessionId: autofillSessionId,
                         spellCheckText: spellCheckText,
@@ -7890,7 +8274,7 @@ async function searchCharacters(query, target, forceRefresh, options) {
         // The server will send status updates for the textReplacements service
         // For "Text:" searches, extract the text after the prefix for spell checking
         if (isTextPrefixSearch) {
-            searchQuery = searchQuery.substring(5).trim(); // Remove "Text:" prefix
+            searchQuery = stripTextColonPrefix(searchQuery);
 
             // Initialize spellcheck service as stalled, then mark as searching
             searchServices.set('spellcheck', 'stalled');
@@ -7905,7 +8289,7 @@ async function searchCharacters(query, target, forceRefresh, options) {
             if (window.wsClient && window.wsClient.isConnected()) {
                 try {
                     // Send ack-less search request - spell check results will come via real-time updates
-                    await window.wsClient.searchCharacters(query, manualModel.value, {
+                    await window.wsClient.searchCharacters(wsQuery, manualModel.value, {
                         requestId: currentSearchRequestId,
                         autofillSessionId: autofillSessionId,
                         spellCheckText: spellCheckText,
@@ -8026,15 +8410,13 @@ function createAutocompleteItem(result) {
             </div>
         `;
 
-        item.addEventListener('click', (e) => {
-            e.preventDefault();
+        const activate = wireAutofillPointerActivate(item, () => {
             selectTextReplacement(result.placeholder);
         });
         item.addEventListener('touchend', (e) => {
             const maxDelta = touchSlopUtils.finalizeTouchSlop(item, e);
             if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
-            e.preventDefault();
-            selectTextReplacement(result.placeholder);
+            activate(e);
         }, { passive: false });
     } else if (result.type === 'dynamicPlaceholder') {
         // Handle dynamic generation placeholder results
@@ -8053,15 +8435,13 @@ function createAutocompleteItem(result) {
             </div>
         `;
 
-        item.addEventListener('click', (e) => {
-            e.preventDefault();
+        const activate = wireAutofillPointerActivate(item, () => {
             selectDynamicPlaceholder(result.placeholder);
         });
         item.addEventListener('touchend', (e) => {
             const maxDelta = touchSlopUtils.finalizeTouchSlop(item, e);
             if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
-            e.preventDefault();
-            selectDynamicPlaceholder(result.placeholder);
+            activate(e);
         }, { passive: false });
     } else if (isCharacterResult(result) && result.character) {
         applyCharacterResultToAutocompleteItem(item, result);
@@ -8236,18 +8616,12 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
 
     // Position overlay relative to viewport (skip when detached — tool window owns the panel)
     if (!isAutofillDetachedMode()) {
-        const rect = target.getBoundingClientRect();
-        const spaceBelow = window.innerHeight - rect.bottom - 5;
-        const maxHeight = Math.min(400, spaceBelow, window.innerHeight * 0.6);
-
-        characterAutocompleteOverlay.style.left = rect.left + 'px';
-        characterAutocompleteOverlay.style.top = (rect.bottom + 5) + 'px';
-        characterAutocompleteOverlay.style.width = rect.width + 'px';
-        characterAutocompleteOverlay.style.maxHeight = maxHeight + 'px';
+        applyCharacterAutocompleteOverlayBox(target);
 
         if (canShowAutofillOverlay(target)) {
             characterAutocompleteOverlay.classList.remove('hidden');
             isAutocompleteVisible = true;
+            syncAutofillViewBarPlacement();
         }
     } else if (characterAutocompleteOverlay) {
         characterAutocompleteOverlay.classList.add('hidden');
@@ -8255,6 +8629,7 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
         if (characterAutofillToolManager) {
             characterAutofillToolManager.updateTitle(target);
         }
+        syncAutofillViewBarPlacement();
     }
 
     // Auto-select first item only when entering list navigation with no prior selection
@@ -8368,16 +8743,13 @@ function updateAutocompleteDisplayImmediate(results, target) {
     // Ensure overlay is positioned and visible (only with active session + server packet)
     if (!isAutofillDetachedMode()) {
         if (!isAutocompleteVisible && canShowAutofillOverlay(target)) {
-            const rect = target.getBoundingClientRect();
-            const spaceBelow = window.innerHeight - rect.bottom - 5;
-            const maxHeight = Math.min(400, spaceBelow, window.innerHeight * 0.6);
-
-            characterAutocompleteOverlay.style.left = rect.left + 'px';
-            characterAutocompleteOverlay.style.top = (rect.bottom + 5) + 'px';
-            characterAutocompleteOverlay.style.width = rect.width + 'px';
-            characterAutocompleteOverlay.style.maxHeight = maxHeight + 'px';
+            applyCharacterAutocompleteOverlayBox(target);
             characterAutocompleteOverlay.classList.remove('hidden');
             isAutocompleteVisible = true;
+            syncAutofillViewBarPlacement();
+        } else if (isAutocompleteVisible) {
+            applyCharacterAutocompleteOverlayBox(target);
+            syncAutofillViewBarPlacement();
         }
     } else {
         if (characterAutocompleteOverlay) {
@@ -8387,6 +8759,7 @@ function updateAutocompleteDisplayImmediate(results, target) {
         if (characterAutofillToolManager) {
             characterAutofillToolManager.updateTitle(target);
         }
+        syncAutofillViewBarPlacement();
     }
 
     // Auto-select first item only when entering list navigation with no prior selection
@@ -9164,16 +9537,30 @@ function computeCenteredAutofillScrollTop(scrollEl, optionElement) {
     const scrollHeight = scrollEl.scrollHeight;
     if (scrollHeight <= clientHeight) return null;
 
-    let optionTop = 0;
-    let node = optionElement;
-    while (node && node !== scrollEl) {
-        optionTop += node.offsetTop;
-        node = node.parentElement;
-    }
-
-    const centered = optionTop - (clientHeight / 2) + (optionElement.offsetHeight / 2);
+    const elRect = optionElement.getBoundingClientRect();
+    const scRect = scrollEl.getBoundingClientRect();
+    const optionTop = (elRect.top - scRect.top) + scrollEl.scrollTop;
     const maxScroll = Math.max(0, scrollHeight - clientHeight);
+    // Expanded thesaurus/spell rows can be taller than the list; pin to the top
+    // of the target so later synonyms stay reachable when navigating down.
+    if (elRect.height >= clientHeight) {
+        return Math.max(0, Math.min(optionTop, maxScroll));
+    }
+    const centered = optionTop - (clientHeight / 2) + (elRect.height / 2);
     return Math.max(0, Math.min(centered, maxScroll));
+}
+
+function scheduleScrollToAutocompleteOption(optionElement) {
+    if (!optionElement) return;
+    pendingSelectionScrollItem = optionElement;
+    if (pendingSelectionScrollRaf) return;
+    pendingSelectionScrollRaf = requestAnimationFrame(() => {
+        pendingSelectionScrollRaf = 0;
+        if (pendingSelectionScrollItem) {
+            scrollToAutocompleteOption(pendingSelectionScrollItem);
+        }
+        pendingSelectionScrollItem = null;
+    });
 }
 
 // Scroll to keep the selected row centered until the list hits top/bottom.
@@ -9241,16 +9628,7 @@ function updateCharacterAutocompleteSelection() {
     if (newIndex >= 0 && items[newIndex]) {
         const selectedItem = items[newIndex];
         selectedItem.classList.add('selected');
-        pendingSelectionScrollItem = selectedItem;
-        if (!pendingSelectionScrollRaf) {
-            pendingSelectionScrollRaf = requestAnimationFrame(() => {
-                pendingSelectionScrollRaf = 0;
-                if (pendingSelectionScrollItem) {
-                    scrollToAutocompleteOption(pendingSelectionScrollItem);
-                }
-                pendingSelectionScrollItem = null;
-            });
-        }
+        scheduleScrollToAutocompleteOption(selectedItem);
         if (!userActivelyNavigating) {
             scheduleAutofillWikiPreviewReveal(selectedItem, newIndex);
         } else {
@@ -9772,6 +10150,26 @@ function selectCharacterWithoutEnhancers(character) {
     }
 }
 
+function applyCharacterDetailGroupAction(group) {
+    if (!group) return;
+    if (group.getAttribute('data-action') === 'tag-only') {
+        const tagName = JSON.parse(group.getAttribute('data-tag-name'));
+        const tagCategory = JSON.parse(group.getAttribute('data-tag-category') || '""');
+        selectTagOnlyFromDetail(tagName, tagCategory);
+        return;
+    }
+    const enhancerGroupData = group.getAttribute('data-enhancer-group');
+    const characterData = group.getAttribute('data-character');
+    if (!enhancerGroupData || !characterData) return;
+    try {
+        const enhancerGroup = enhancerGroupData === 'null' ? null : JSON.parse(enhancerGroupData);
+        const char = JSON.parse(characterData);
+        selectEnhancerGroupFromDetail(enhancerGroup, char);
+    } catch (err) {
+        console.error('Error parsing enhancer group data:', err);
+    }
+}
+
 function showCharacterDetail(character, detailOptions = {}) {
     try {
         // Reset selected enhancer group index
@@ -9792,8 +10190,7 @@ function showCharacterDetail(character, detailOptions = {}) {
         enhancersHTML += `
             <div class="enhancer-group" 
                  data-enhancer-group="null" 
-                 data-character='${JSON.stringify(character)}'
-                 onclick="selectEnhancerGroupFromDetail(null, ${JSON.stringify(character).replace(/"/g, '&quot;')})">
+                 data-character='${JSON.stringify(character)}'>
                 <div class="enhancer-group-header">
                     <span class="enhancer-group-name">None</span>
                     <span class="enhancer-group-count">0</span>
@@ -9821,8 +10218,7 @@ function showCharacterDetail(character, detailOptions = {}) {
                 enhancersHTML += `
                     <div class="enhancer-group" 
                          data-enhancer-group='${JSON.stringify(processedGroup)}'
-                         data-character='${JSON.stringify(character)}'
-                         onclick="selectEnhancerGroupFromDetail(${JSON.stringify(processedGroup).replace(/"/g, '&quot;')}, ${JSON.stringify(character).replace(/"/g, '&quot;')})">
+                         data-character='${JSON.stringify(character)}'>
                         <div class="enhancer-group-header">
                             <span class="enhancer-group-name">Group ${groupIndex + 1}</span>
                             <span class="enhancer-group-count">${processedGroup.length}</span>
@@ -9853,8 +10249,7 @@ function showCharacterDetail(character, detailOptions = {}) {
                 <div class="enhancer-group tag-only-option" 
                      data-action="tag-only"
                      data-tag-name='${JSON.stringify(tagInsertName)}'
-                     data-tag-category='${JSON.stringify(tagCategory)}'
-                     onclick="selectTagOnlyFromDetail(${JSON.stringify(tagInsertName).replace(/"/g, '&quot;')}, ${JSON.stringify(tagCategory).replace(/"/g, '&quot;')})">
+                     data-tag-category='${JSON.stringify(tagCategory)}'>
                     <div class="enhancer-group-header">
                         <span class="enhancer-group-name">Tag only</span>
                     </div>
@@ -9873,7 +10268,7 @@ function showCharacterDetail(character, detailOptions = {}) {
                         <span class="character-name">${character.name || 'Unknown Character'}</span>
                         <span class="character-copyright">${character.copyright || ''}</span>
                     </div>
-                    <button class="close-character-detail" onclick="hideCharacterDetail()">&times;</button>
+                    <button type="button" class="close-character-detail">&times;</button>
                 </div>
                 <div class="character-detail-body">
                     <div class="character-prompt">
@@ -9908,37 +10303,25 @@ function showCharacterDetail(character, detailOptions = {}) {
             }
             enhancerGroups.forEach((group) => {
                 touchSlopUtils.registerTouchSlopTracking(group);
+                const activate = wireAutofillPointerActivate(group, () => {
+                    applyCharacterDetailGroupAction(group);
+                });
                 group.addEventListener('touchend', (e) => {
                     const maxDelta = touchSlopUtils.finalizeTouchSlop(group, e);
                     if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
-                    e.preventDefault();
-                    if (group.getAttribute('data-action') === 'tag-only') {
-                        const tagName = JSON.parse(group.getAttribute('data-tag-name'));
-                        const tagCategory = JSON.parse(group.getAttribute('data-tag-category') || '""');
-                        selectTagOnlyFromDetail(tagName, tagCategory);
-                        return;
-                    }
-                    const enhancerGroupData = group.getAttribute('data-enhancer-group');
-                    const characterData = group.getAttribute('data-character');
-                    if (enhancerGroupData && characterData) {
-                        try {
-                            const enhancerGroup = enhancerGroupData === 'null' ? null : JSON.parse(enhancerGroupData);
-                            const char = JSON.parse(characterData);
-                            selectEnhancerGroupFromDetail(enhancerGroup, char);
-                        } catch (err) {
-                            console.error('Error parsing enhancer group data:', err);
-                        }
-                    }
+                    activate(e);
                 }, { passive: false });
             });
             const closeBtn = document.querySelector('.character-detail-content .close-character-detail');
             if (closeBtn) {
                 touchSlopUtils.registerTouchSlopTracking(closeBtn);
+                const activateClose = wireAutofillPointerActivate(closeBtn, () => {
+                    hideCharacterDetail();
+                });
                 closeBtn.addEventListener('touchend', (e) => {
                     const maxDelta = touchSlopUtils.finalizeTouchSlop(closeBtn, e);
                     if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
-                    e.preventDefault();
-                    hideCharacterDetail();
+                    activateClose(e);
                 }, { passive: false });
             }
         }, 0);
@@ -10077,6 +10460,10 @@ function findAutocompleteTermStart(textBeforeCursor) {
         if (textBeforeCursor[i] !== ':') continue;
         if (i > 0 && textBeforeCursor[i - 1] === ':') continue;
         if (i + 1 < textBeforeCursor.length && textBeforeCursor[i + 1] === ':') continue;
+        const beforeColon = textBeforeCursor.substring(0, i);
+        if (/(?:^|[,|{}\[\]%\s])artist$/i.test(beforeColon) || /^artist$/i.test(beforeColon.trim())) {
+            continue;
+        }
         consider(i);
         break;
     }
@@ -10403,6 +10790,10 @@ function handlePromptTextareaAutofillBlur(textarea) {
             && characterAutocompleteOverlay.contains(active)) {
             return;
         }
+        const viewBar = getAutofillViewBarEl();
+        if (viewBar && viewBar.contains(active)) {
+            return;
+        }
         if (characterAutofillToolManager?.element?.contains(active)) {
             return;
         }
@@ -10429,6 +10820,7 @@ function hideCharacterAutocomplete(options) {
         characterAutocompleteOverlay.classList.add('hidden');
         characterAutocompleteOverlay.classList.remove('expanded');
     }
+    hideAutofillViewBar();
 
     if (isAutofillDetachedMode() && characterAutofillToolManager && userClose) {
         characterAutofillToolManager.reattach();
@@ -10585,33 +10977,14 @@ function updateAutocompletePositionsImmediate() {
             hideCharacterAutocomplete();
             return;
         }
-        const rect = currentCharacterAutocompleteTarget.getBoundingClientRect();
-        const spaceBelow = window.innerHeight - rect.bottom - 5;
-        const maxHeight = Math.min(400, spaceBelow, window.innerHeight * 0.6);
-
-        // Create position object for comparison
-        const newPosition = {
-            left: Math.round(rect.left),
-            top: Math.round(rect.bottom + 5),
-            width: Math.round(rect.width),
-            maxHeight: Math.round(maxHeight)
+        applyCharacterAutocompleteOverlayBox(currentCharacterAutocompleteTarget);
+        syncAutofillViewBarPlacement();
+        lastCharacterAutocompletePosition = {
+            left: Math.round(parseFloat(characterAutocompleteOverlay.style.left) || 0),
+            top: Math.round(parseFloat(characterAutocompleteOverlay.style.top) || 0),
+            width: Math.round(parseFloat(characterAutocompleteOverlay.style.width) || 0),
+            maxHeight: Math.round(parseFloat(characterAutocompleteOverlay.style.maxHeight) || 0)
         };
-
-        // Only update if position actually changed
-        if (!lastCharacterAutocompletePosition ||
-            lastCharacterAutocompletePosition.left !== newPosition.left ||
-            lastCharacterAutocompletePosition.top !== newPosition.top ||
-            lastCharacterAutocompletePosition.width !== newPosition.width ||
-            lastCharacterAutocompletePosition.maxHeight !== newPosition.maxHeight) {
-
-            characterAutocompleteOverlay.style.left = newPosition.left + 'px';
-            characterAutocompleteOverlay.style.top = newPosition.top + 'px';
-            characterAutocompleteOverlay.style.width = newPosition.width + 'px';
-            characterAutocompleteOverlay.style.maxHeight = newPosition.maxHeight + 'px';
-
-            // Store the new position
-            lastCharacterAutocompletePosition = newPosition;
-        }
     }
 
     // Update preset autocomplete position
@@ -10749,15 +11122,17 @@ function updateSpellCheckSelection() {
         if (wordSections && selectedSpellCheckWordIndex < wordSections.length) {
             const selectedWordSection = wordSections[selectedSpellCheckWordIndex];
             selectedWordSection.classList.add('selected');
-            scrollToAutocompleteOption(selectedWordSection);
             markAutofillListNavigationActivity();
 
+            let scrollTarget = selectedWordSection;
             if (selectedSpellCheckSuggestionIndex >= 0) {
                 const suggestionBtns = selectedWordSection.querySelectorAll('.spell-check-row-expanded .suggestion-btn');
                 if (suggestionBtns && selectedSpellCheckSuggestionIndex < suggestionBtns.length) {
                     suggestionBtns[selectedSpellCheckSuggestionIndex].classList.add('selected');
+                    scrollTarget = suggestionBtns[selectedSpellCheckSuggestionIndex];
                 }
             }
+            scheduleScrollToAutocompleteOption(scrollTarget);
         }
     } else {
         spellCheckSection.querySelectorAll('.spell-check-word').forEach(row => {
@@ -10784,19 +11159,21 @@ function updateWordLookupSelection() {
     if (wordLookupNavigationMode && selectedWordLookupWordIndex >= 0) {
         applyWordLookupWordDisplay(wordLookupSection, selectedWordLookupWordIndex);
 
-        const wordSections = wordLookupSection.querySelectorAll('.word-lookup-word-row');
-        if (wordSections && selectedWordLookupWordIndex < wordSections.length) {
+        const wordSections = getWordLookupWordRows(wordLookupSection);
+        if (wordSections.length && selectedWordLookupWordIndex < wordSections.length) {
             const selectedWordSection = wordSections[selectedWordLookupWordIndex];
             selectedWordSection.classList.add('selected');
-            scrollToAutocompleteOption(selectedWordSection);
             markAutofillListNavigationActivity();
 
+            let scrollTarget = selectedWordSection;
             if (selectedWordLookupSuggestionIndex >= 0) {
                 const suggestionBtns = selectedWordSection.querySelectorAll('.word-lookup-row-expanded .suggestion-btn');
                 if (suggestionBtns && selectedWordLookupSuggestionIndex < suggestionBtns.length) {
                     suggestionBtns[selectedWordLookupSuggestionIndex].classList.add('selected');
+                    scrollTarget = suggestionBtns[selectedWordLookupSuggestionIndex];
                 }
             }
+            scheduleScrollToAutocompleteOption(scrollTarget);
         }
     } else {
         wordLookupSection.querySelectorAll('.word-lookup-word-row').forEach(row => {

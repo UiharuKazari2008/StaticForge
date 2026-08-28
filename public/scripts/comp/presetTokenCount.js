@@ -17,7 +17,9 @@ function buildQwenPresetTokenCountMap(tokenizer) {
     cache.datasets = (source.datasets || []).map((dataset) => ({
         type: dataset.type || 'dataset',
         value: dataset.value,
-        tokens: countPresetValue(tokenizer, dataset.value, true),
+        tokens: (dataset.skipPromptValue || dataset.isQualityPreset || dataset.isTransparencyPreset)
+            ? 0
+            : countPresetValue(tokenizer, dataset.value, true),
         sub_toggles: (dataset.sub_toggles || []).map((toggle) => ({
             id: toggle.id,
             tokens: countPresetValue(tokenizer, toggle.value, true)
@@ -376,27 +378,35 @@ function getActivePresetTokenDelta(combinedPromptText) {
     const datasetSettings = window.datasetSettings || {};
     const isV3 = modelKey === 'v3' || modelKey === 'v3_furry';
 
-    if (!isV3 && Array.isArray(map.datasets) && Array.isArray(datasets)) {
-        datasets.forEach((dsValue) => {
-            const entry = map.datasets.find((d) => d.value === dsValue);
-            if (!entry) return;
-            result.prompt += entry.tokens || 0;
-            const settings = datasetSettings[dsValue];
-            if (settings && Array.isArray(entry.sub_toggles)) {
-                entry.sub_toggles.forEach((st) => {
-                    const setting = settings[st.id];
-                    if (setting && setting.enabled) {
-                        let tokens = st.tokens || 0;
-                        if (typeof applyBiasToText === 'function' && setting.bias !== undefined && setting.bias !== 1.0) {
-                            const raw = window.optionsData?.datasets?.find((d) => d.value === dsValue)
-                                ?.sub_toggles?.find((t) => t.id === st.id)?.value;
-                            if (raw) tokens = countTokensForText(applyBiasToText(raw, setting.bias) + ', ');
-                        }
-                        result.prompt += tokens;
+    const addDatasetSubToggleTokens = (dsValue, includeParentTokens) => {
+        const entry = map.datasets.find((d) => d.value === dsValue);
+        if (!entry) return;
+        if (includeParentTokens) result.prompt += entry.tokens || 0;
+        const settings = datasetSettings[dsValue];
+        if (settings && Array.isArray(entry.sub_toggles)) {
+            entry.sub_toggles.forEach((st) => {
+                const setting = settings[st.id];
+                if (setting && setting.enabled) {
+                    let tokens = st.tokens || 0;
+                    if (typeof applyBiasToText === 'function' && setting.bias !== undefined && setting.bias !== 1.0) {
+                        const raw = window.optionsData?.datasets?.find((d) => d.value === dsValue)
+                            ?.sub_toggles?.find((t) => t.id === st.id)?.value;
+                        if (raw) tokens = countTokensForText(applyBiasToText(raw, setting.bias) + ', ');
                     }
-                });
-            }
-        });
+                    result.prompt += tokens;
+                }
+            });
+        }
+    };
+
+    if (!isV3 && Array.isArray(map.datasets) && Array.isArray(datasets)) {
+        datasets.forEach((dsValue) => addDatasetSubToggleTokens(dsValue, true));
+        if (typeof appendQuality !== 'undefined' ? appendQuality : true) {
+            addDatasetSubToggleTokens('__quality__', false);
+        }
+        if (typeof appendTransparency !== 'undefined' && appendTransparency) {
+            addDatasetSubToggleTokens('__transparency__', false);
+        }
     }
 
     const appendQ = typeof appendQuality !== 'undefined' ? appendQuality : true;

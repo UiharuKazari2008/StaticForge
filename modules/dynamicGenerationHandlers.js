@@ -14,6 +14,7 @@ const { determineTimePeriod, getSunriseSunset } = require('./dynamicGenerationHa
 const { createDynamicGenerationResponseSchema, getZodSchemaKeyCount } = require('./dynamicGenerationSchema');
 const ClothingDatabase = require('./clothingDatabase');
 const { stripPromptBlocksForEffectivePrompt } = require('./promptStageBlocks');
+const { matchCommaTextColon } = require('./promptTextBoundary');
 
 let __runtimeGr = null;
 function bindRuntimeGlobalResources(globalResources) {
@@ -4120,7 +4121,8 @@ function applyDynamicReplacements(globalResources, originalContent, replacements
         // Only "Spelling" and "Text Overlay" categories can modify text after ", Text:"
         // All other replacements must stay BEFORE the ", Text:" boundary
         const canModifyAfterTextBoundary = replacement_category === 'Spelling' || replacement_category === 'Text Overlay';
-        const textBoundaryIndex = result.indexOf(', Text:');
+        const commaText = matchCommaTextColon(result);
+        const textBoundaryIndex = commaText ? commaText.index : -1;
         
         // If there's a ", Text:" boundary and this replacement can't modify after it,
         // we need to restrict the search/replacement to only the text before the boundary
@@ -4737,7 +4739,8 @@ function applyDynamicReplacements(globalResources, originalContent, replacements
         // Only "Spelling" and "Text Overlay" categories can modify text after ", Text:"
         // All other replacements must stay BEFORE the ", Text:" boundary
         const canModifyAfterTextBoundary = replacement_category === 'Spelling' || replacement_category === 'Text Overlay';
-        const textBoundaryIndex = result.indexOf(', Text:');
+        const commaText = matchCommaTextColon(result);
+        const textBoundaryIndex = commaText ? commaText.index : -1;
         
         // If there's a ", Text:" boundary and this replacement can't modify after it,
         // we need to restrict the search/replacement to only the text before the boundary

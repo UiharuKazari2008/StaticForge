@@ -74,9 +74,12 @@ function naxtGalleryBucketLabel(slug, galleries) {
 /** Split tag portion from ", Text:" narrative suffix (manual prompt convention). */
 function naxtSplitPromptTagsAndText(prompt) {
     const p = prompt == null ? '' : String(prompt);
-    const idx = p.indexOf(', Text:');
-    if (idx === -1) return { tagsPart: p, textSuffix: '' };
-    return { tagsPart: p.slice(0, idx), textSuffix: p.slice(idx) };
+    const m = /\btext:/i.exec(p);
+    if (!m) return { tagsPart: p, textSuffix: '' };
+    let splitAt = m.index;
+    while (splitAt > 0 && /[ \t]/.test(p.charAt(splitAt - 1))) splitAt--;
+    if (splitAt > 0 && p.charAt(splitAt - 1) === ',') splitAt--;
+    return { tagsPart: p.slice(0, splitAt), textSuffix: p.slice(splitAt) };
 }
 
 /**

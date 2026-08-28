@@ -18,6 +18,7 @@ const execAsync = promisify(exec);
 const Database = require('better-sqlite3');
 const { buildTitleSearchIndexData } = require('./tagTitleIndex');
 const { normalizeAutofillRanking } = require('./autofillRankingSettings');
+const { isTagSuggestable, getTagSuggestCutoffMs, normalizeOfflineTagTitle } = require('./tagModelCutoff');
 
 const AUTOFILL_SEARCH_CACHE_MAX = 500;
 const AUTOFILL_SEARCH_CACHE_TTL_MS = 120000;
@@ -70,6 +71,32 @@ class TagLookup {
 
     clearAutofillSearchCache() {
         this._autofillSearchCache.clear();
+    }
+
+    isSuggestableTagRow(row, model) {
+        return isTagSuggestable(row && row.created_at, model);
+    }
+
+    /**
+     * Fill tags.n_count from NovelAI suggest-tags cache hits (only when still NULL).
+     * @param {Array<{tag?: string, name?: string, count?: number}>} tags
+     */
+    async fillMissingNovelCountsFromHints(tags) {
+        if (!this.db || !Array.isArray(tags) || tags.length === 0) {
+            return 0;
+        }
+        let filled = 0;
+        for (const tag of tags) {
+            const name = tag.tag || tag.name || tag.tag_name || '';
+            const count = Number(tag.count ?? tag.n_count ?? tag.tag_count) || 0;
+            if (!name || count <= 0) continue;
+            const result = await this.db.run(
+                `UPDATE tags SET n_count = ? WHERE n_count IS NULL AND normalized_title = ?`,
+                [count, normalizeOfflineTagTitle(name)]
+            );
+            filled += result?.changes || 0;
+        }
+        return filled;
     }
 
 /**
@@ -129,6 +156,27 @@ class TagLookup {
             await this.db.run(`ALTER TABLE wikis ADD COLUMN fetched_online INTEGER DEFAULT 0`);
         } catch (error) {
             // Column already exists, ignore
+        }
+
+        try {
+            await this.db.run(`ALTER TABLE tags ADD COLUMN created_at TEXT`);
+        } catch (error) {
+            // Column already exists, ignore
+        }
+        try {
+            await this.db.run(`
+                UPDATE tags SET created_at = (
+                    SELECT MIN(w.created_at)
+                    FROM tag_wikis tw
+                    JOIN wikis w ON w.id = tw.wiki_id
+                    WHERE tw.tag_id = tags.id
+                      AND w.created_at IS NOT NULL
+                      AND TRIM(w.created_at) != ''
+                )
+                WHERE created_at IS NULL
+            `);
+        } catch (error) {
+            console.warn('Tag created_at backfill skipped:', error.message);
         }
         
         // Clear expired failed fetches on startup
@@ -1819,7 +1867,10 @@ class TagLookup {
         limit = 35,
         // DSAP-SMF Autofill Ranking Test tab only (public/scripts/comp/autofillConfigDsapApplet.js) —
         // attaches tag.rankingBreakdown with per-stage server score components.
-        includeBreakdown = false
+        includeBreakdown = false,
+        model = '',
+        artistOrNovelai = false,
+        novelaiOnly = false
     } = options;
 
     const query = searchTerm.trim();
@@ -1828,7 +1879,7 @@ class TagLookup {
     const rankingCfg = this.getRankingConfig();
     const normalized = this.normalizeTagName(query);
     const sanitizedLimit = Math.max(limit, 1);
-    const cacheKey = `${normalized}\x00${sanitizedLimit}\x00${category ?? ''}\x00${minUseCount ?? ''}\x00${rankingCfg.rankingVersion}\x00${includeBreakdown ? 1 : 0}`;
+    const cacheKey = `${normalized}\x00${sanitizedLimit}\x00${category ?? ''}\x00${minUseCount ?? ''}\x00${rankingCfg.rankingVersion}\x00${includeBreakdown ? 1 : 0}\x00${getTagSuggestCutoffMs(model)}\x00${artistOrNovelai ? 1 : 0}\x00${novelaiOnly ? 1 : 0}`;
     const cached = this.getAutofillSearchCacheEntry(cacheKey);
     if (cached) {
         return cached;
@@ -1917,7 +1968,7 @@ class TagLookup {
 
     const rankedIds = [...candidateScores.entries()]
         .sort((a, b) => b[1] - a[1])
-        .slice(0, sanitizedLimit * 4)
+        .slice(0, (artistOrNovelai || novelaiOnly) ? sanitizedLimit * 12 : sanitizedLimit * 4)
         .map(([id]) => id);
 
     const rows = this.fetchTagsByIdsSync(rankedIds);
@@ -1948,9 +1999,22 @@ class TagLookup {
     if (category !== undefined) {
         results = results.filter(entry => entry.row.category === category);
     }
+    if (artistOrNovelai) {
+        results = results.filter(entry => {
+            const row = entry.row;
+            if (this.getNovelTrainingCount(row) > 0) return true;
+            const cat = row.category;
+            if (cat === 1 || cat === '1') return true;
+            return typeof cat === 'string' && cat.toLowerCase() === 'artist';
+        });
+    }
+    if (novelaiOnly) {
+        results = results.filter(entry => this.getNovelTrainingCount(entry.row) > 0);
+    }
     if (minUseCount) {
         results = results.filter(entry => this.getUsageCount(entry.row) >= minUseCount);
     }
+    results = results.filter(entry => this.isSuggestableTagRow(entry.row, model));
 
     results.sort((a, b) => {
         const tierA = this.getQueryMatchTier(query, a.row.title || '');
@@ -3086,7 +3150,8 @@ class TagLookup {
     const {
         category,
         minUseCount,
-        limit = 10
+        limit = 10,
+        model = ''
     } = options;
 
     const query = searchTerm.trim();
@@ -3240,6 +3305,7 @@ class TagLookup {
     if (minUseCount) {
         results = results.filter(entry => this.getUsageCount(entry.row) >= minUseCount);
     }
+    results = results.filter(entry => this.isSuggestableTagRow(entry.row, model));
 
     results.sort((a, b) => {
         const tierA = this.getQueryMatchTier(query, a.row.title || '');
@@ -3277,7 +3343,8 @@ class TagLookup {
     const {
         category,
         minUseCount,
-        limit = 10
+        limit = 10,
+        model = ''
     } = options;
 
     const query = searchTerm.trim();
@@ -3434,6 +3501,7 @@ class TagLookup {
     if (minUseCount) {
         results = results.filter(entry => this.getUsageCount(entry.row) >= minUseCount);
     }
+    results = results.filter(entry => this.isSuggestableTagRow(entry.row, model));
 
     results.sort((a, b) => {
         const tierA = this.getQueryMatchTier(query, a.row.title || '');

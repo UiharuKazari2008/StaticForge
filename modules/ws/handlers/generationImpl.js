@@ -506,7 +506,18 @@ async function handleMaxEnhanceImage(handlers, ws, message, clientInfo, wsServer
             null,
             ws,
             handlers,
-            requestId
+            requestId,
+            {
+                strength: message.strength,
+                noise: message.noise,
+                steps: message.steps,
+                guidance: message.guidance,
+                rescale: message.rescale,
+                sampler: message.sampler,
+                noiseScheduler: message.noiseScheduler,
+                seed: message.seed,
+                model: message.model
+            }
         );
 
         handlers.stopKeepAliveInterval(requestId);
@@ -565,7 +576,18 @@ async function handleEnhanceImage(handlers, ws, message, clientInfo, wsServer) {
             null,
             ws,
             handlers,
-            requestId
+            requestId,
+            {
+                strength: message.strength,
+                noise: message.noise,
+                steps: message.steps,
+                guidance: message.guidance,
+                rescale: message.rescale,
+                sampler: message.sampler,
+                noiseScheduler: message.noiseScheduler,
+                seed: message.seed,
+                model: message.model
+            }
         );
 
         handlers.stopKeepAliveInterval(requestId);

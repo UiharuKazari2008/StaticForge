@@ -8,10 +8,14 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 
 | Request type | Typical response | Auth | Notes |
 |---|---|---|---|
+| `delete_fandom_wiki_import` | `delete_fandom_wiki_import_response` | admin/destructive | Handler: handleDeleteFandomWikiImport |
+| `get_fandom_wiki_index` | `get_fandom_wiki_index_response` | session | Handler: handleGetFandomWikiIndex |
+| `get_fandom_wiki_manager` | `get_fandom_wiki_manager_response` | session | Handler: handleGetFandomWikiManager |
 | `get_static_wiki_page` | `get_static_wiki_page_response` | session | Handler: handleGetStaticWikiPage |
 | `get_static_wiki_site_index` | `get_static_wiki_site_index_response` | session | Handler: handleGetStaticWikiSiteIndex |
 | `get_tag_wiki_page` | `get_tag_wiki_page_response` | session | Handler: handleGetTagWikiPage |
 | `get_wiki_home` | `get_wiki_home_response` | session | Handler: handleGetWikiHome |
+| `import_fandom_wiki_page` | `import_fandom_wiki_page_response` | admin/destructive | Handler: handleImportFandomWikiPage |
 | `refresh_tag_wiki_page` | `refresh_tag_wiki_page_response` | session | Handler: handleRefreshTagWikiPage |
 | `resolve_grimoire_url` | `resolve_grimoire_url_response` | session | Handler: handleResolveGrimoireUrl |
 | `search_tag_wiki` | `search_tag_wiki_response` | session | Handler: handleSearchTagWiki |
@@ -65,7 +69,60 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 
 ---
 
+---
+
 ## Detailed packets
+
+### `delete_fandom_wiki_import`
+
+**Auth:** Session required. Admin only (destructive — blocked for readonly)
+
+**Handler:** modules/ws/handlers/110-wikiHandler.js → `handleDeleteFandomWikiImport`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `importId` | Optional |
+| `removeChildren` | Optional |
+
+**Success response:** `delete_fandom_wiki_import_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `get_fandom_wiki_index`
+
+**Auth:** Session required
+
+**Handler:** modules/ws/handlers/110-wikiHandler.js → `handleGetFandomWikiIndex`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `showAll` | Optional |
+
+**Success response:** `get_fandom_wiki_index_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `get_fandom_wiki_manager`
+
+**Auth:** Session required
+
+**Handler:** modules/ws/handlers/110-wikiHandler.js → `handleGetFandomWikiManager`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+
+**Success response:** `get_fandom_wiki_manager_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
 ### `get_static_wiki_page`
 
@@ -136,6 +193,29 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 | `requestId` | Optional |
 
 **Success response:** `get_wiki_home_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `import_fandom_wiki_page`
+
+**Auth:** Session required. Admin only (destructive — blocked for readonly)
+
+**Handler:** modules/ws/handlers/110-wikiHandler.js → `handleImportFandomWikiPage`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `url` | Optional |
+| `followLinks` | Optional |
+| `maxPages` | Optional |
+| `group` | Optional |
+
+**Success response:** `import_fandom_wiki_page_response`
+
+Additional response/push types from handler:
+- `fandom_wiki_import_progress`
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 

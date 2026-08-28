@@ -251,6 +251,26 @@ registerDomain({
 });
 
 registerDomain({
+  domain: 'wiki.fandom.jp',
+  aliases: [
+    'rdf://wiki.fandom.jp',
+    'fandom.grimoire.jp',
+    'en.grimoire.jp/fandom'
+  ],
+  title: 'Fandom Wikis'
+});
+
+registerDomain({
+  domain: 'wiki.dyna.dreamscape.jp',
+  aliases: [
+    'dsap://wiki.dyna.dreamscape.jp',
+    'en.grimoire.jp/applets/wiki',
+    'applet.grimoire.jp/wiki'
+  ],
+  title: 'Wiki Manager'
+});
+
+registerDomain({
   domain: 'docs.novelai.jp',
   aliases: [
     'novelai.jp/docs',

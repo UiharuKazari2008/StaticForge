@@ -81,6 +81,8 @@ async function checkFixedTrainingSteps(options = {}) {
 async function flushDeferredAccountTrayNotifications() {
     await checkSubscriptionExpiration({ forceDisplay: true });
     await checkFixedTrainingSteps({ forceDisplay: true });
+    // usageToolManager: public/scripts/comp/usageToolManager.js
+    usageToolManager.notifyExtendedUsage({ forceDisplay: true });
 }
 
 function flushDeferredNetworkTrayNotifications() {
@@ -145,6 +147,8 @@ function isUserSubscriptionDataReady() {
 async function updateSubscriptionNotifications() {
     await checkSubscriptionExpiration();
     await checkFixedTrainingSteps();
+    // usageToolManager: public/scripts/comp/usageToolManager.js
+    usageToolManager.notifyExtendedUsage();
 
     // Update subscription renewal indicator
     updateSubscriptionRenewalIndicator();

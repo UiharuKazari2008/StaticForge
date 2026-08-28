@@ -3,6 +3,8 @@
  * public/scripts/comp/contextMenu.js
  * public/scripts/comp/promptTextareaToolbar.js
  * public/scripts/comp/autocompleteUtils.js
+ * public/scripts/comp/requestBodyReplacementsModal.js
+ * public/scripts/comp/confirmationDialog.js
  * Emphasis: emphasisParse.js, emphasisEditing.js, emphasisHighlight.js, emphasisSyntaxToggles.js
  */
 
@@ -366,6 +368,190 @@ function promptCtxShowTextExpanderDialog(selectedText) {
             }
         });
     });
+}
+
+function promptCtxNormalizeExpanderPrefix(raw) {
+    let value = String(raw || '').trim();
+    if (value.charAt(0) === '!') value = value.slice(1);
+    return value.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
+}
+
+function promptCtxFormatExpanderPrefix(name) {
+    const prefix = promptCtxNormalizeExpanderPrefix(name);
+    return prefix ? '!' + prefix : '';
+}
+
+function promptCtxGetEmbeddedExpanders() {
+    return typeof requestBodyReplacements !== 'undefined' && Array.isArray(requestBodyReplacements)
+        ? requestBodyReplacements
+        : [];
+}
+
+function promptCtxNotifyPromptTextareaChanged(textarea) {
+    if (!textarea) return;
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    if (updateEmphasisHighlighting) updateEmphasisHighlighting(textarea);
+    if (window.promptTextareaToolbar) window.promptTextareaToolbar.updateTokenCount(textarea);
+}
+
+function promptCtxApplyExpanderPrefixToTextarea(textarea, prefix, rangeStart, rangeEnd, replaceRange) {
+    const token = promptCtxFormatExpanderPrefix(prefix);
+    if (!textarea || !token) return;
+    const value = textarea.value || '';
+    const start = Math.max(0, Math.min(Number(rangeStart) || 0, value.length));
+    const end = Math.max(start, Math.min(Number(rangeEnd) || start, value.length));
+    if (replaceRange) {
+        // replaceTextareaRangePreservingUndo: public/scripts/comp/textareaUtils.js
+        replaceTextareaRangePreservingUndo(textarea, start, end, token);
+        const pos = start + token.length;
+        textarea.setSelectionRange(pos, pos);
+    } else {
+        const insertAt = end;
+        replaceTextareaRangePreservingUndo(textarea, insertAt, insertAt, token);
+        const pos = insertAt + token.length;
+        textarea.setSelectionRange(pos, pos);
+    }
+    textarea.focus();
+    promptCtxNotifyPromptTextareaChanged(textarea);
+}
+
+function promptCtxSaveEmbeddedExpander(name, value) {
+    if (typeof requestBodyReplacements === 'undefined') {
+        showGlassToast('error', null, 'Request expanders are unavailable', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+        return false;
+    }
+    requestBodyReplacements.push({
+        name: name,
+        value: value,
+        extend: false
+    });
+    // renderRequestBodyReplacementsList: public/scripts/comp/requestBodyReplacementsModal.js
+    if (renderRequestBodyReplacementsList) renderRequestBodyReplacementsList();
+    showGlassToast('success', null, `Added request expander "!${name}"`, false, 3000, '<i class="fas fa-book-font"></i>');
+    return true;
+}
+
+function promptCtxWireEmbeddedExpanderDialog(defaultPrefix, defaultValue) {
+    const dialog = document.getElementById('confirmationDialog');
+    if (!dialog) return;
+    const prefixInput = dialog.querySelector('#promptCtxExpanderPrefix');
+    const valueInput = dialog.querySelector('#promptCtxExpanderValue');
+    const saveBtn = dialog.querySelector('#confirmationControls [data-dialog-primary="1"]');
+    if (prefixInput) {
+        prefixInput.value = defaultPrefix || '';
+        prefixInput.addEventListener('input', (e) => {
+            e.target.value = promptCtxNormalizeExpanderPrefix(e.target.value);
+        });
+        prefixInput.focus();
+        prefixInput.select();
+        setTimeout(() => {
+            prefixInput.focus();
+            prefixInput.select();
+        }, 80);
+    }
+    if (valueInput) {
+        valueInput.value = defaultValue || '';
+    }
+    const cancelBtn = dialog.querySelector('#confirmationControls button:not([data-dialog-primary])');
+    if (cancelBtn) cancelBtn.style.display = 'none';
+    if (saveBtn) {
+        saveBtn.addEventListener('click', (e) => {
+            const name = promptCtxNormalizeExpanderPrefix(prefixInput ? prefixInput.value : '');
+            const text = valueInput ? String(valueInput.value || '').trim() : '';
+            if (!name) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                showGlassToast('error', null, 'Please enter a prefix', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+                if (prefixInput) prefixInput.focus();
+                return;
+            }
+            if (!text) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                showGlassToast('error', null, 'Please enter expander text', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+                if (valueInput) valueInput.focus();
+            }
+        }, true);
+    }
+}
+
+async function promptCtxShowEmbeddedExpanderDialog(textarea, convert) {
+    if (!textarea) return false;
+    const start = typeof textarea.selectionStart === 'number' ? textarea.selectionStart : 0;
+    const end = typeof textarea.selectionEnd === 'number' ? textarea.selectionEnd : start;
+    const rangeStart = Math.min(start, end);
+    const rangeEnd = Math.max(start, end);
+    const selectedText = convert ? textarea.value.substring(rangeStart, rangeEnd) : '';
+    const defaultPrefix = selectedText ? extractFirstTag(selectedText) : '';
+
+    const html = `
+        <div class="form-group">
+            <label for="promptCtxExpanderPrefix">Prefix</label>
+            <input type="text" id="promptCtxExpanderPrefix" class="form-control" placeholder="name" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="form-group">
+            <label for="promptCtxExpanderValue">Text</label>
+            <textarea id="promptCtxExpanderValue" class="form-control" rows="6" placeholder="Expander text"></textarea>
+        </div>
+    `;
+
+    // showConfirmationDialog: public/scripts/comp/confirmationDialog.js
+    // Hidden Cancel option so the window close button resolves as cancel.
+    const dialogPromise = showConfirmationDialog(html, [
+        { text: 'Save', value: 'ok', className: 'btn-primary', icon: 'fas fa-save', primary: true },
+        { text: 'Cancel', value: null, className: 'btn-secondary' }
+    ], null, {
+        title: convert ? 'Convert Selection' : 'Create Text Expander',
+        icon: 'fas fa-book-font',
+        width: 480,
+        showCloseButton: true,
+        resolveValue: (value, dialog) => {
+            if (value !== 'ok') return null;
+            return {
+                prefix: promptCtxNormalizeExpanderPrefix(dialog.querySelector('#promptCtxExpanderPrefix')?.value),
+                text: String(dialog.querySelector('#promptCtxExpanderValue')?.value || '').trim()
+            };
+        }
+    });
+    setTimeout(() => promptCtxWireEmbeddedExpanderDialog(defaultPrefix, selectedText), 0);
+
+    const result = await dialogPromise;
+    if (!result || !result.prefix || !result.text) return false;
+    if (!promptCtxSaveEmbeddedExpander(result.prefix, result.text)) return false;
+    promptCtxApplyExpanderPrefixToTextarea(textarea, result.prefix, rangeStart, rangeEnd, convert);
+    return true;
+}
+
+function buildTextExpandersSubmenuItems(textarea) {
+    const items = [{
+        text: 'Create New',
+        icon: 'fas fa-plus',
+        action: 'prompt-ctx-expander-create'
+    }];
+    const state = getPromptTextareaMenuState(textarea);
+    if (state.hasSelection && state.selectedText.trim()) {
+        items.push({
+            text: 'Convert Selection',
+            icon: 'fas fa-arrow-right-arrow-left',
+            action: 'prompt-ctx-expander-convert'
+        });
+    }
+
+    const expanders = promptCtxGetEmbeddedExpanders();
+    if (expanders.length > 0) {
+        items.push({ separator: true, text: 'Embedded' });
+        expanders.forEach((exp) => {
+            const name = exp && exp.name ? String(exp.name) : '';
+            if (!name) return;
+            items.push({
+                text: '!' + name,
+                icon: 'fas fa-book-font',
+                action: 'prompt-ctx-expander-insert',
+                data: { insertText: '!' + name }
+            });
+        });
+    }
+    return items;
 }
 
 function getPromptTextareaMenuState(textarea) {
@@ -1076,6 +1262,19 @@ function handlePromptTextareaContextMenuAction(action, textarea, item) {
                 promptCtxShowTextExpanderDialog('');
             }
             break;
+        case 'prompt-ctx-expander-create':
+            void promptCtxShowEmbeddedExpanderDialog(textarea, false);
+            break;
+        case 'prompt-ctx-expander-convert':
+            if (!promptCtxHasMeaningfulSelection(textarea)) break;
+            void promptCtxShowEmbeddedExpanderDialog(textarea, true);
+            break;
+        case 'prompt-ctx-expander-insert': {
+            const data = item && item.data;
+            if (!data || !data.insertText) break;
+            insertTextAtPromptSelection(textarea, data.insertText);
+            break;
+        }
         case 'prompt-ctx-thesaurus-apply': {
             const data = item && item.data;
             if (data && applyWordLookupInsert) {
@@ -1413,6 +1612,15 @@ function getPromptTextareaContextMenuConfig() {
                         text: 'Favorites',
                         openOnHover: true,
                         optionsfn: (target) => buildFavoritesSubmenuItems(target),
+                        handlerfn: (subItem, target) => {
+                            handlePromptTextareaContextMenuAction(subItem.action, target, subItem);
+                        }
+                    },
+                    {
+                        icon: 'fas fa-book-font',
+                        text: 'Text Expanders',
+                        openOnHover: true,
+                        optionsfn: (target) => buildTextExpandersSubmenuItems(target),
                         handlerfn: (subItem, target) => {
                             handlePromptTextareaContextMenuAction(subItem.action, target, subItem);
                         }

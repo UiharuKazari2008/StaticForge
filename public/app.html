@@ -216,7 +216,7 @@
     <link rel="stylesheet" href="/css/modal-window-title-toolbar.css?sha=f32f41f9f2d0efe9537f255cfbc57f9e879af173b284591f26d7771439fd2829">
     <link rel="stylesheet" href="/css/context-menu.css?sha=7ec6ef834c24f2b76949919123154f1c4254c7421f2316febc60e970ca2ae16d">
     <link rel="stylesheet" href="/css/gallery-toolbar.css?sha=5a67d8b80f19dfb184fa2d950d33e17e80ff9924bafc26b09b2ded7b804e8ebf">
-    <link rel="stylesheet" href="/css/gallery-core.css?sha=021d589c575798a5c08eed28b28067e26b2c5df7143a37d7b7a3b17ec5d0d2b9">
+    <link rel="stylesheet" href="/css/gallery-core.css?sha=dffd7beaa485363c21e6e1a3ee639b4869b985d8becbf74aa970387f5003e51d">
     <link rel="stylesheet" href="/css/gallery-move.css?sha=21f3b582d166b379005161e58efac1f73f43e0f829a2a1a7f88112b5527e5591">
     <link rel="stylesheet" href="/css/lightbox.css?sha=35afc17c4275c4de0d30c90cbe8f1f55bf72a97dd08b32a83bc47b35109b58d8">
     <link rel="stylesheet" href="/css/manual-modal.css?sha=3fab90fce7b552b44a90258a347b2e9fa5efb08148e3788452f54d6a6cc10ad9">
@@ -233,12 +233,12 @@
     <link rel="stylesheet" href="/css/weather-lcd.css?sha=159685dcf123c29b0f063410b63164f84a295323e7ea8c9b30392fa913c30f76">
     <link rel="stylesheet" href="/css/director.css?sha=e66042522041eb4c50d86c0b3af57955db67ec222aa8cf78cbf2dca80a7560bf">
     <link rel="stylesheet" href="/css/vibe-manager.css?sha=1cb36bb5fe767c28ddfc5ae0444807cc969bded38c1ba1490363539e925b2f6d">
-    <link rel="stylesheet" href="/css/mask-editor.css?sha=85988bdcbdf3c87d367cc2603487cb267348e08d6a0bf482b3bd36f147a4ab34">
+    <link rel="stylesheet" href="/css/mask-editor.css?sha=c2bfa743d1e977fdc0255fdd321da2761b8a63050cf2dfac79b5f9a939ad71da">
     <link rel="stylesheet" href="/css/cache-browser.css?sha=9cf1ef1c37086d52d18e1f53a8b4e923b4f2d4014959636c1ab15cc592479f45">
     <link rel="stylesheet" href="/css/unified-upload.css?sha=ddecb2a54184e914087c54e680824720010423b541a6ec52eea6603e1cc55487">
     <link rel="stylesheet" href="/css/genso-manager.css?sha=6b7471690d4769a7865ab12cee90f5fdbed8dd73b003001167f81dfb4846dce3">
     <link rel="stylesheet" href="/css/shared-text-replacement.css?sha=338a72452596afc982b6c022831951847b6a44684f31c033df19368ac207db5f">
-    <link rel="stylesheet" href="/css/autocomplete.css?sha=b321b2897dfcab460245841e10094bd274168c1d58f14375200484a9b890be74">
+    <link rel="stylesheet" href="/css/autocomplete.css?sha=ad743a85258f366afa707fa7aab556f14987fc5c95e5233937f7f0e6e0d0cd5b">
     <link rel="stylesheet" href="/css/spell-check.css?sha=4e85b07d63d64b182e0086b69d84313c88f80b2a9ac626d7e9bb82efdde831a1">
     <link rel="stylesheet" href="/css/toasts.css?sha=b695a9ead3444935ba4e7e8c59a957d99586ca9e0aa7cc2f11bf91c90b6090e9">
     <link rel="stylesheet" href="/css/memoriesDsap.css?sha=f7fef1417518b3269946a74bc7bf9c946082b4233fc230077f22985b70748228">
@@ -246,7 +246,7 @@
     <link rel="stylesheet" href="/css/fatal-error.css?sha=aff5cffbe53e37b93e97d716dcc5126e1866b887fab7067026da213474003443">
     <link rel="stylesheet" href="/css/keyboard-shortcuts.css?sha=b6b6e4670fd4b55ef44ad62a46b886bfe5e50cd4b6cf11bfe0495e92612690d0">
     <link rel="stylesheet" href="/css/window-switcher.css?sha=5dc87b66f31e32e0bb3db64e8c5caed12396e7495be7b7875c17e1240ffcdf54">
-    <link rel="stylesheet" href="/css/confirmation-dialogs.css?sha=d484bbe7195d1df209d141fcd55d0e932174c1600a175093c0d0624052437782">
+    <link rel="stylesheet" href="/css/confirmation-dialogs.css?sha=72b52516ea7640dda0b250d56bc031c19029837e1925fe8d8c9af6a154e36077">
     <link rel="stylesheet" href="/css/about-melaton.css?sha=ec91fe61da672f1e723a25d8dc68aadd22464f87866f4abbc555fdab4d113909">
     <link rel="stylesheet" href="/css/desktop-boot.css?sha=2195457d00de5e315a0de2c2591b16afc4a7908bf80fdfb5dd875e5ed66ad44d">
     <link rel="stylesheet" href="/css/connection-dial.css?sha=d78b021b710e9ba005f3a4141a0477a50f73b2ea9ad85b01f9bd38404aaa1b44">
@@ -404,6 +404,21 @@
         <div class="character-autocomplete-list"><!-- Character suggestions will be populated here --></div>
         <!-- Key guide: populated by updateAutofillKeyguide() in autocompleteUtils.js -->
         <div id="characterAutocompleteKeyguide" class="character-autocomplete-keyguide" aria-hidden="true"></div>
+    </div>
+    <!-- Filter/sort live outside the results list so they stay usable when the list is empty -->
+    <div id="characterAutocompleteViewBar" class="character-autocomplete-view-bar hidden">
+        <div id="autofillTypeFilterDropdown" class="custom-dropdown dark">
+            <button type="button" id="autofillTypeFilterBtn" class="custom-dropdown-btn hover-show colored">
+                <span id="autofillTypeFilterSelected">All types</span>
+            </button>
+            <div id="autofillTypeFilterMenu" class="custom-dropdown-menu hidden"></div>
+        </div>
+        <div id="autofillSortDropdown" class="custom-dropdown dark">
+            <button type="button" id="autofillSortBtn" class="custom-dropdown-btn hover-show colored">
+                <span id="autofillSortSelected">Default ranking</span>
+            </button>
+            <div id="autofillSortMenu" class="custom-dropdown-menu hidden"></div>
+        </div>
     </div>
 
     <!-- Character Autofill Tool Window (detached autofill panel) -->
@@ -2759,7 +2774,7 @@
                 <div class="form-section">
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Usage</label>
+                            <label id="generationUsageStatusLabel">Usage</label>
                             <span id="generationUsagePercent">—</span>
                         </div>
                     </div>
