@@ -3531,9 +3531,11 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
 
         if (document.getElementById('varietyBtn')) {
             const varietyBtn = document.getElementById('varietyBtn');
+            const caps = typeof getForgeModelFeatures === 'function' ? getForgeModelFeatures() : null;
+            const gated = !!(caps && caps.varietyPlus === false);
             // Handle both preset (variety) and metadata (skip_cfg_above_sigma) formats
-            const isVarietyEnabled = data.variety !== null && data.variety !== undefined ? data.variety :
-                (data.skip_cfg_above_sigma !== null && data.skip_cfg_above_sigma !== undefined);
+            const isVarietyEnabled = gated ? false : (data.variety !== null && data.variety !== undefined ? data.variety :
+                (data.skip_cfg_above_sigma !== null && data.skip_cfg_above_sigma !== undefined));
             varietyBtn.setAttribute('data-state', isVarietyEnabled ? 'on' : 'off');
             // Update the global varietyEnabled variable used for generation requests
             varietyEnabled = isVarietyEnabled;

@@ -839,7 +839,7 @@ function getCurrentSelectedModel() {
 }
 
 /**
- * Helper function to update UI visibility based on model selection (V3 datasets/chars; V5 vibe/precise caps).
+ * Helper function to update UI visibility based on model selection (V3 datasets/chars; V5 vibe/precise/variety caps).
  */
 function updateV3ModelVisibility() {
     const selected = getCurrentSelectedModel();
@@ -893,6 +893,21 @@ function updateV3ModelVisibility() {
         } else {
             directorSection.classList.remove('hidden');
         }
+    }
+
+    // Variety+ is V4.5-only (skip_cfg_above_sigma). Hide on V5 unless a gen proves it.
+    const varietyOn = !(caps && caps.varietyPlus === false);
+    document.querySelectorAll('#varietyBtn, button.toggle_variety, [id$="_varietyBtn"]').forEach((btn) => {
+        if (!btn) return;
+        if (varietyOn) {
+            btn.classList.remove('hidden');
+        } else {
+            btn.classList.add('hidden');
+            btn.setAttribute('data-state', 'off');
+        }
+    });
+    if (!varietyOn && typeof varietyEnabled !== 'undefined') {
+        varietyEnabled = false;
     }
 
     // Store the V3 state for later use (use window reference if available)

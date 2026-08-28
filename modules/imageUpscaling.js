@@ -11,6 +11,20 @@ const {
 } = require('./imageTools');
 const { generateMobilePreviews } = require('./previewUtils');
 
+async function resolveUpscaleRatio(upscaledBuffer, srcWidth, requestedScale, upscaler) {
+    const requested = requestedScale === true ? 4 : (Number(requestedScale) || 4);
+    const fallback = (upscaler === 'esrgan') ? requested : 2;
+    try {
+        const { width: outW } = await getImageDimensions(upscaledBuffer);
+        if (srcWidth > 0 && outW > 0) {
+            const r = outW / srcWidth;
+            if (Math.abs(r - 2) < 0.2) return 2;
+            if (Math.abs(r - 4) < 0.2) return 4;
+            return Math.round(r * 100) / 100;
+        }
+    } catch (_) {}
+    return fallback;
+}
 
 const upscaleImageCore = async (globalResources, imageBuffer, scale = 4, width, height, upscaler = 'novelai', ws = null, handler = null, requestId = null) => {
     bindRuntimeGlobalResources(globalResources);
@@ -48,9 +62,9 @@ const upscaleWithNovelAI = async (imageBuffer, scale, width, height) => {
         throw new Error('NovelAI is temporarily locked after repeated API errors. An admin must review the Service Key in the Security Center to unlock it.');
     }
 
-    // Official /ai/upscale (dump 6750aa2 / 5ce3c4d): ImageBackendUrl + JSON-or-multipart body.
-    // Live default is multipart; JSON is still accepted via debugLegacyImageGenRequest.
-    // Scale is implicit 4x; width/height are inferred from the PNG. model is always nai-diffusion-5-curated.
+    // Official /ai/upscale: image.novelai.net/ai/upscale, model nai-diffusion-5-curated, declared_blur_sigma 0.
+    // Do not send scale; do not retarget api.novelai.net. Live contract scale is 2 (2026-08-28 quality scaler).
+    // Width/height are inferred from the PNG.
     const payload = {
         image: imageBuffer.toString('base64'),
         model: 'nai-diffusion-5-curated',
@@ -262,14 +276,15 @@ async function upscaleImage(globalResources, filename, workspaceId, req, res, up
         // Upscale the image
         const upscaledBuffer = await upscaleImageCore(globalResources, imageBuffer, scale, width, height, upscaler);
 
-        // Copy metadata from original image and add upscaling information
+        // Copy origin Comment onto the upscaled PNG (copyMetadataToImage was previously unbound here).
+        const ratio = await resolveUpscaleRatio(upscaledBuffer, width, scale, upscaler);
         const upscaledForgeData = {
-            upscale_ratio: scale,
+            upscale_ratio: ratio,
             upscaled_at: Date.now(),
             generation_type: 'upscaled',
             upscaler_provider: upscaler
         };
-        const updatedUpscaledBuffer = copyMetadataToImage(imageBuffer, upscaledBuffer, upscaledForgeData);
+        const updatedUpscaledBuffer = __runtimeGr.getPngMetadata().copyMetadataToImage(imageBuffer, upscaledBuffer, upscaledForgeData);
 
         // Save upscaled image
         const upscaledFilename = filename.replace('.png', '_upscaled.png');
@@ -328,14 +343,15 @@ async function upscaleImageWebSocket(globalResources, filename, workspaceId, use
         // Upscale the image (pass ws, handler, requestId for keep-alive)
         const upscaledBuffer = await upscaleImageCore(globalResources, imageBuffer, scale, width, height, upscaler, ws, handler, requestId);
 
-        // Copy metadata from original image and add upscaling information
+        // Copy origin Comment/signed_hash onto the upscaled PNG instead of overwriting via updateMetadata.
+        const ratio = await resolveUpscaleRatio(upscaledBuffer, width, scale, upscaler);
         const upscaledForgeData = {
-            upscale_ratio: scale,
+            upscale_ratio: ratio,
             upscaled_at: Date.now(),
             generation_type: 'upscaled',
             upscaler_provider: upscaler
         };
-        const updatedUpscaledBuffer = __runtimeGr.getPngMetadata().updateMetadata(upscaledBuffer, upscaledForgeData);
+        const updatedUpscaledBuffer = __runtimeGr.getPngMetadata().copyMetadataToImage(imageBuffer, upscaledBuffer, upscaledForgeData);
         
         // Save upscaled image
         const upscaledFilename = filename.replace('.png', '_upscaled.png');
@@ -394,5 +410,6 @@ async function upscaleImageWebSocket(globalResources, filename, workspaceId, use
 module.exports = {
     upscaleImage,
     upscaleImageWebSocket,
-    upscaleImageCore
+    upscaleImageCore,
+    resolveUpscaleRatio
 };

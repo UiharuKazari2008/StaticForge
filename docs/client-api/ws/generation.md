@@ -365,6 +365,8 @@ Additional response/push types from handler:
 
 **Handler:** modules/ws/handlers/60-generationHandler.js → `handleImageUpscaling`
 
+NovelAI upscale POSTs to `image.novelai.net/ai/upscale` with `nai-diffusion-5-curated` (no `scale` field; live contract is 2x). `forge_data.upscale_ratio` is the measured output/input ratio (not a hardcoded 4). Origin PNG Comment is copied onto the result via `copyMetadataToImage` (WS used to overwrite Comment/`signed_hash` with `updateMetadata`).
+
 **Request fields:**
 
 | Field | Notes |

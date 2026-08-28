@@ -778,6 +778,14 @@ function migrateManualParamsForModelChange(previousModel, nextModel) {
         const vibeContainer = document.getElementById('vibeReferencesContainer');
         if (vibeContainer) vibeContainer.innerHTML = '';
     }
+    if (caps.varietyPlus === false) {
+        if (typeof varietyEnabled !== 'undefined') varietyEnabled = false;
+        const varietyBtn = document.getElementById('varietyBtn');
+        if (varietyBtn) varietyBtn.setAttribute('data-state', 'off');
+        document.querySelectorAll('button.toggle_variety, [id$="_varietyBtn"]').forEach((btn) => {
+            btn.setAttribute('data-state', 'off');
+        });
+    }
     if (caps.preciseReference === false) {
         // public/scripts/comp/manualModalManager.js — directorReferenceData
         if (typeof clearDirectorReference === 'function') {

@@ -320,7 +320,7 @@ Generates from preset UUID (resolved via text replacement / preset registry).
 | `guidance` | float | Override guidance |
 | `rescale` | float | Override rescale |
 | `seed` | int | Override seed |
-| `variety` | bool | `true`/`false` |
+| `variety` | bool | V4.5 Variety+ only (`skip_cfg_above_sigma`). Ignored when `model-features.json` `varietyPlus` is false (V5 Full/Curated). |
 | `upscale` | bool or float | Upscale setting |
 | `num` | int | For staged/pipeline results — index into `filenames[]` |
 

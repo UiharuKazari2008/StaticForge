@@ -1,0 +1,15 @@
+{
+  "updated_at": "2026-08-28T19:16:38.807442+00:00",
+  "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
+  "last_breakfast_at": "2026-08-28T19:16:38.807442+00:00",
+  "open": [
+    {
+      "id": "nai-upscale-post-cutoff-watch",
+      "from": "Hoshino",
+      "added": "2026-08-28T18:30:54.893023+00:00",
+      "summary": "After 19:00 UTC RealESRGAN cutoff, ping Hoshino only if live /ai/upscale POST changes (host/path/model/scale). Stay quiet if unchanged. Do not spend Anlas. Do not patch dirty tree.",
+      "cake": "watch"
+    }
+  ],
+  "done_since_breakfast": []
+}

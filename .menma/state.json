@@ -7,13 +7,13 @@
     "locked": true
   },
   "baseline_kg": 54.0,
-  "current_kg": 54.44,
-  "slices_eaten_total": 5,
+  "current_kg": 55.4,
+  "slices_eaten_total": 13,
   "overtime_hours_total": 0.0,
   "pending_slices": 0,
   "pending_overtime_hours": 0,
-  "last_before": "1787924693627_generated_934046303.png",
-  "last_after": "1787924743202_generated_3735700057.png",
+  "last_before": "1787944313024_generated_4150781323.png",
+  "last_after": "1787944464968_generated_665855917.png",
   "history": [
     {
       "at": "2026-08-28T05:35:08.356710+00:00",
@@ -47,6 +47,18 @@
       "landscape": false,
       "before": "1787924693627_generated_934046303.png",
       "after": "1787924743202_generated_3735700057.png"
+    },
+    {
+      "at": "2026-08-28T19:13:07.526718+00:00",
+      "slices": 8,
+      "stacks": 1,
+      "overtime_hours": 0.0,
+      "gained_kg": 0.96,
+      "kg": 55.4,
+      "chair": "gaming",
+      "landscape": false,
+      "before": "1787944313024_generated_4150781323.png",
+      "after": "1787944464968_generated_665855917.png"
     }
   ],
   "last_look": "1787895908094_generated_3772933719.png",
@@ -62,10 +74,15 @@
       "n": 1,
       "sum": 4.2,
       "avg": 4.2
+    },
+    "matcha roll": {
+      "n": 1,
+      "sum": 3.7,
+      "avg": 3.7
     }
   },
   "favorite_cake": null,
-  "cake_rotation_index": 2,
+  "cake_rotation_index": 3,
   "pending_bloat_bytes": 0,
-  "_cake_type": "dark chocolate ganache"
+  "_cake_type": "matcha roll"
 }

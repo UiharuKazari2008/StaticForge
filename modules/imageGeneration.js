@@ -116,7 +116,7 @@ const {
 } = require('./imageTools');
 const { generateMobilePreviews } = require('./previewUtils');
 const { encodeBlurhashFromBuffer } = require('./blurhashUtils');
-const { upscaleImageCore } = require('./imageUpscaling');
+const { upscaleImageCore, resolveUpscaleRatio } = require('./imageUpscaling');
 
 async function ensureForgeDataBlurhash(forgeData, imageBuffer) {
     if (!forgeData || forgeData.blurhash || !imageBuffer) return forgeData;
@@ -3491,7 +3491,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             steps: parseInt(stepsValue),
             scale: parseFloat(guidanceValue.toString()),
             cfg_rescale: parseFloat(rescaleValue.toString()),
-            skip_cfg_above_sigma: varietyValue ? 59.04722600415217 : undefined,
+            skip_cfg_above_sigma: (varietyValue && forgeCaps?.varietyPlus !== false) ? 59.04722600415217 : undefined,
             sampler: body.sampler ? __runtimeGr.getNekoAiService('Sampler')[body.sampler.toUpperCase()] : (preset?.sampler ? __runtimeGr.getNekoAiService('Sampler')[preset.sampler.toUpperCase()] : __runtimeGr.getNekoAiService('Sampler').EULER_ANC),
             noise_schedule: body.noiseScheduler ? __runtimeGr.getNekoAiService('Noise')[body.noiseScheduler.toUpperCase()] : (preset?.noiseScheduler ? __runtimeGr.getNekoAiService('Noise')[preset.noiseScheduler.toUpperCase()] : __runtimeGr.getNekoAiService('Noise').KARRAS),
             no_save: body.no_save !== undefined ? body.no_save : preset?.no_save,
@@ -3527,10 +3527,13 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             emphasis_normalization: body.emphasis_normalization !== undefined ? body.emphasis_normalization : (preset && preset.emphasis_normalization ? preset.emphasis_normalization : undefined),
         };
 
-        // Hard gate unsupported V5 capabilities (vibe / precise reference / e2e upscale)
+        // Hard gate unsupported V5 capabilities (vibe / precise reference / e2e upscale / Variety+)
         if (forgeCaps) {
             if (forgeCaps.vibeTransfer === false) {
                 baseOptions.vibe_transfer = undefined;
+            }
+            if (forgeCaps.varietyPlus === false) {
+                baseOptions.skip_cfg_above_sigma = undefined;
             }
             if (forgeCaps.e2eUpscale === false) {
                 baseOptions.upscale = undefined;
@@ -4866,14 +4869,15 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 console.log(`💰 Upscaling Cost: ${upscaleCreditUsage.totalUsage} ${upscaleCreditUsage.usageType === 'paid' ? 'paid' : 'fixed'}`);
             }
             
-            // Update upscaled buffer with additional forge metadata
+            // Copy origin Comment onto the upscaled PNG; record measured ratio (NAI live 2x, not the old implicit 4).
+            const ratio = await resolveUpscaleRatio(scaledBuffer, upscaleWidth, scale, 'novelai');
             const upscaledForgeData = {
-                upscale_ratio: scale,
+                upscale_ratio: ratio,
                 upscaled_at: Date.now(),
                 generation_type: 'upscaled'
             };
             await ensureForgeDataBlurhash(upscaledForgeData, scaledBuffer);
-            const updatedScaledBuffer = __runtimeGr.getPngMetadata().updateMetadata(scaledBuffer, upscaledForgeData);
+            const updatedScaledBuffer = __runtimeGr.getPngMetadata().copyMetadataToImage(finalBuffer, scaledBuffer, upscaledForgeData);
             const upscaledName = name.replace('.png', '_upscaled.png');
 
             if (shouldSave) {

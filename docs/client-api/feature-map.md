@@ -35,7 +35,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Preset webhook | `GET /preset/:uuid` | — | `gallery_updated` (other clients) | — |
 | Queued preset | `GET /pending/preset/:uuid`, `GET /pending/retrieval/:id` | — | — | — |
 | Reroll (Recast) | `GET /reroll/:filename` (admin) | `reroll_image` | generation pushes | — |
-| Upscale | — | `upscale_image` | `image_upscaling_response` | — |
+| Upscale | — | `upscale_image` | `image_upscaling_response` | NAI 2x (`image.novelai.net`); `upscale_ratio` measured; origin Comment copied |
 | Expand canvas | — | `expand_image`, `preview_expand_image_prompt`, `reroll_expanded_image` | expansion responses | Image bias UI |
 | Enhance | — | `enhance_image` (`scale` 1 / 1.5 / 2 / `max`) | enhance responses, `gallery_updated` | Image viewer one-shot magnitude + upscale amount |
 | Cancel generation | — | `cancel_generation` | — | — |
