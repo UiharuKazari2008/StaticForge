@@ -5,11 +5,11 @@
  *
  * Usage:
  *   node scripts/rotate-important-db-backup.js
- *   node scripts/rotate-important-db-backup.js --keep 3
+ *   node scripts/rotate-important-db-backup.js --keep 2
  *   node scripts/rotate-important-db-backup.js --include-large
  *
  * Destination: .cache/db-backups/<UTC-stamp>/
- * Keeps the newest --keep stamp dirs (default 3).
+ * Keeps the newest --keep stamp dirs (default 2).
  */
 
 const fs = require('fs');
@@ -42,10 +42,10 @@ const LARGE_OPTIONAL = [
 ];
 
 function parseArgs(argv) {
-    let keep = 3;
+    let keep = 2;
     let includeLarge = false;
     for (let i = 2; i < argv.length; i++) {
-        if (argv[i] === '--keep' && argv[i + 1]) keep = Math.max(1, Number(argv[++i]) || 3);
+        if (argv[i] === '--keep' && argv[i + 1]) keep = Math.max(1, Number(argv[++i]) || 2);
         else if (argv[i] === '--include-large') includeLarge = true;
         else if (argv[i] === '--help' || argv[i] === '-h') {
             console.log('Usage: node scripts/rotate-important-db-backup.js [--keep N] [--include-large]');
