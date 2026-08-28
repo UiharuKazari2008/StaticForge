@@ -7,31 +7,39 @@
  * public/scripts/comp/characterPromptManager.js
  * public/scripts/comp/textareaUtils.js
  * public/scripts/comp/promptTextareaToolbar.js
- * public/scripts/utils/dreamscapeClipboard.js
+ * public/scripts/comp/requestBodyReplacementsModal.js
+ * docs/studio-change-json.md — Grok/web AI prompt (source you paste).
+ * STUDIO_CHANGE_AI_SPEC — compact copy for in-app Copy AI spec / agentic use.
+ * When rules change, update the MD first, then this constant.
  */
 
 const STUDIO_CHANGE_KIND = 'change';
 const STUDIO_CHANGE_VERSION = 1;
 const STUDIO_CHANGE_DIALOG_CLASS = 'studio-change-dialog-modal';
 
-const STUDIO_CHANGE_AI_SPEC = `Dreamscape studio change JSON. Paste into Studio (or a prompt field) to apply. Reply with JSON only — no markdown unless fenced as json.
+const STUDIO_CHANGE_AI_SPEC = `Dreamscape studio change JSON. Paste into Studio to apply. Reply with JSON only — no markdown unless fenced as json.
 
 {"dreamscape":"change","v":1,"title":"short name",
- "params":{"steps":28,"guidance":5,"rescale":0,"sampler":"k_euler_ancestral","noiseScheduler":"karras","model":"v5","seed":"","resolution":"normal_portrait","width":832,"height":1216,"variety":false,"upscale":false,"strength":0.8,"noise":0.1,"append_quality":true,"append_uc":3},
+ "params":{"steps":28,"guidance":5,"sampler":"k_euler_ancestral","noiseScheduler":"karras","model":"v5","resolution":"normal_portrait","append_uc":3},
+ "expanders":[{"prefix":"alice_base","value":"long shared appearance, hair, body"}],
  "fields":[
-   {"id":"prompt","action":"add","chunks":[{"name":"Lighting","text":"sunset, golden hour"}]},
-   {"id":"uc","action":"remove","chunks":[{"name":"Unwanted","text":"blurry"}]},
-   {"id":"prompt","action":"replace","text":"optional full-field replace"},
-   {"id":"character:0:prompt","action":"add","chunks":[{"name":"Outfit","text":"school uniform","from":"optional old span"}]}
+   {"id":"prompt","action":"replace","chunks":[
+     {"name":"Subject","text":"1girl, looking at viewer"},
+     {"name":"Lighting","text":"sunset, golden hour"}
+   ]},
+   {"id":"uc","action":"replace","chunks":[{"name":"Quality","text":"blurry, lowres"}]}
  ],
  "characters":[
-   {"action":"add","name":"Alice","prompt":"...","uc":"..."},
-   {"index":0,"action":"remove"}
+   {"index":0,"action":"replace","name":"Alice","prompt":"!alice_base, school uniform, smile","uc":"nude"},
+   {"index":1,"action":"replace","name":"Bob","prompt":"bob prompt","uc":"alice (name)"}
  ]}
 
-Field ids: prompt | uc | promptNegative | character:N:prompt | character:N:uc | character:N:promptNegative
-Field/chunk action: add | remove | replace. Chunk {name,text,action?,from?} — from+text replaces that span.
-Omit unused keys. Only include params you want to change. Named chunks are shown as checkable rows on apply.`;
+Rules:
+- characters: ALWAYS replace + index. NEVER add. index 0 = first slot, index 1 = second. add+index is illegal (treated as replace). Do not copy slot 0 into slot 1.
+- fields = prompt | uc | promptNegative only. Always replace. Named chunks are your groups, not comma-splits. Never character:N:... ids.
+- expanders: if present, DELETE all request expanders and install only this list. In text use !prefix. Do not repeat expander values.
+- Default action is replace. remove = delete a span or slot. Omit unused keys. Only include params you want to change.
+- Named resolution preset (e.g. normal_portrait): omit width/height. Custom size: resolution "custom" plus width and height.`;
 
 const STUDIO_CHANGE_PARAM_DEFS = [
     { id: 'steps', label: 'Steps' },
@@ -166,24 +174,6 @@ function studioChangeChunkName(text, fallback) {
     return studioChangeTruncate(first || t, 40);
 }
 
-function splitPromptIntoChunks(text) {
-    const src = String(text || '');
-    if (!src.trim()) return [];
-    const parts = src.split(',');
-    const merged = [];
-    let buf = '';
-    parts.forEach((part, index) => {
-        buf = buf ? `${buf},${part}` : part;
-        const delimCount = (buf.match(/::/g) || []).length;
-        if (delimCount % 2 === 0 || index === parts.length - 1) {
-            const trimmed = buf.trim();
-            if (trimmed) merged.push(trimmed);
-            buf = '';
-        }
-    });
-    return merged;
-}
-
 function joinPromptChunks(chunks) {
     return chunks
         .map((c) => String(c || '').trim())
@@ -220,6 +210,24 @@ function replacePromptSpan(current, from, to) {
     return appendPromptChunk(src, put);
 }
 
+function resolveStudioChangeResolutionPreset(value) {
+    if (value == null || value === '') return null;
+    const raw = String(value).trim();
+    if (!raw) return null;
+    const lower = raw.toLowerCase();
+    if (lower === 'custom') return null;
+    // RESOLUTION_CACHE / RESOLUTIONS: public/scripts/comp/utilities.js
+    const byValue = RESOLUTION_CACHE.get(lower) || RESOLUTION_CACHE.get(lower.replace(/[\s-]+/g, '_'));
+    if (byValue) return byValue;
+    return RESOLUTIONS.find((r) => r.display.toLowerCase() === lower) || null;
+}
+
+function studioChangeShouldSkipSizeParams(params) {
+    if (!params || typeof params !== 'object') return false;
+    if (!Object.prototype.hasOwnProperty.call(params, 'resolution')) return false;
+    return Boolean(resolveStudioChangeResolutionPreset(params.resolution));
+}
+
 function studioChangeFormatValue(id, value) {
     if (value === undefined || value === null || value === '') return '—';
     if (id === 'append_uc') {
@@ -228,6 +236,10 @@ function studioChangeFormatValue(id, value) {
     }
     if (id === 'variety' || id === 'upscale' || id === 'append_quality') {
         return value ? 'On' : 'Off';
+    }
+    if (id === 'resolution') {
+        const preset = resolveStudioChangeResolutionPreset(value);
+        if (preset) return preset.display;
     }
     return String(value);
 }
@@ -346,14 +358,14 @@ function normalizeChunkEntry(entry, fallbackAction) {
         return {
             name: studioChangeChunkName(text),
             text,
-            action: fallbackAction || 'add'
+            action: fallbackAction || 'replace'
         };
     }
     if (typeof entry !== 'object') return null;
     const text = String(entry.text || entry.replace || entry.value || '').trim();
     const from = String(entry.from || entry.select || entry.select_text || '').trim();
     if (!text && !from && entry.action !== 'remove') return null;
-    const action = (entry.action || fallbackAction || (from ? 'replace' : 'add')).toLowerCase();
+    const action = (entry.action || fallbackAction || 'replace').toLowerCase();
     return {
         name: entry.name || studioChangeChunkName(text || from),
         text: text || from,
@@ -368,11 +380,11 @@ function normalizeFieldSpec(spec, fallbackAction) {
         return { action: 'replace', text: spec, chunks: [] };
     }
     if (Array.isArray(spec)) {
-        const chunks = spec.map((c) => normalizeChunkEntry(c, fallbackAction || 'add')).filter(Boolean);
-        return { action: fallbackAction || 'add', text: '', chunks };
+        const chunks = spec.map((c) => normalizeChunkEntry(c, fallbackAction || 'replace')).filter(Boolean);
+        return { action: fallbackAction || 'replace', text: '', chunks };
     }
     if (typeof spec !== 'object') return null;
-    const action = (spec.action || fallbackAction || (spec.replace || spec.text ? 'replace' : 'add')).toLowerCase();
+    const action = (spec.action || fallbackAction || 'replace').toLowerCase();
     const chunks = [];
     const pushList = (list, listAction) => {
         if (!list) return;
@@ -397,25 +409,91 @@ function normalizeFieldSpec(spec, fallbackAction) {
     return { action, text, chunks };
 }
 
+function studioChangeNormalizeExpanderPrefix(raw) {
+    let value = String(raw || '').trim();
+    if (value.charAt(0) === '!') value = value.slice(1);
+    return value.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
+}
+
+function resolveStudioChangeCharacterAction(entry) {
+    const explicit = entry && entry.action ? String(entry.action).toLowerCase() : '';
+    if (explicit === 'remove') return 'remove';
+    return 'replace';
+}
+
+function resolveStudioChangeCharIndex(entry, action, index) {
+    if (entry && entry.index != null && entry.index !== '') return Number(entry.index);
+    return Number(index);
+}
+
+function studioChangeCharacterPartRaw(entry, part) {
+    if (part === 'promptNegative') {
+        return entry.promptNegative != null ? entry.promptNegative : entry.input_prompt_negative;
+    }
+    return entry[part];
+}
+
+function collectStudioChangeExpanderList(payload) {
+    if (!payload) return null;
+    if (Object.prototype.hasOwnProperty.call(payload, 'expanders')) {
+        return Array.isArray(payload.expanders) ? payload.expanders : [];
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'text_replacements')) {
+        return Array.isArray(payload.text_replacements) ? payload.text_replacements : [];
+    }
+    return null;
+}
+
+function normalizeStudioChangeExpander(entry) {
+    if (!entry || typeof entry !== 'object') return null;
+    const prefix = studioChangeNormalizeExpanderPrefix(entry.prefix || entry.name || entry.key || '');
+    const value = entry.value != null ? entry.value : entry.text;
+    if (!prefix || value == null || value === '') return null;
+    return {
+        prefix,
+        value,
+        extend: Boolean(entry.extend)
+    };
+}
+
+function buildStudioChangeExpanderOps(payload) {
+    const list = collectStudioChangeExpanderList(payload);
+    if (list == null) return [];
+    const ops = [{
+        key: 'expanders:policy',
+        group: 'Text expanders',
+        kind: 'expanders-policy',
+        action: 'replace',
+        label: 'Replace all request expanders',
+        enabled: true
+    }];
+    list.forEach((entry, index) => {
+        const expander = normalizeStudioChangeExpander(entry);
+        if (!expander) return;
+        ops.push({
+            key: `expander:${expander.prefix}:${index}`,
+            group: 'Text expanders',
+            kind: 'expander',
+            action: 'set',
+            prefix: expander.prefix,
+            value: expander.value,
+            extend: expander.extend,
+            name: `!${expander.prefix}`,
+            enabled: true
+        });
+    });
+    return ops;
+}
+
 function expandFieldChunks(fieldId, spec) {
     if (!spec) return [];
     let chunks = spec.chunks.slice();
     if (!chunks.length && spec.text) {
-        if (spec.action === 'replace' || spec.action === 'add' || spec.action === 'remove') {
-            chunks = splitPromptIntoChunks(spec.text).map((text) => ({
-                name: studioChangeChunkName(text),
-                text,
-                from: '',
-                action: spec.action
-            }));
-        }
-    }
-    if (!chunks.length && spec.text && spec.action === 'replace') {
         chunks = [{
-            name: 'Full text',
+            name: spec.action === 'remove' ? studioChangeChunkName(spec.text) : 'Full text',
             text: spec.text,
             from: '',
-            action: 'replace'
+            action: spec.action || 'replace'
         }];
     }
     return chunks.map((chunk, index) => ({
@@ -440,10 +518,16 @@ function buildOpsFromPayload(payload) {
     const currentParams = getStudioParamSnapshot();
     const params = payload.params && typeof payload.params === 'object' ? payload.params : {};
 
+    const skipSize = studioChangeShouldSkipSizeParams(params);
     STUDIO_CHANGE_PARAM_DEFS.forEach((def) => {
         if (!Object.prototype.hasOwnProperty.call(params, def.id)) return;
-        const next = params[def.id];
+        if (skipSize && (def.id === 'width' || def.id === 'height')) return;
+        let next = params[def.id];
         if (next === undefined) return;
+        if (def.id === 'resolution') {
+            const preset = resolveStudioChangeResolutionPreset(next);
+            if (preset) next = preset.value;
+        }
         const current = currentParams[def.id];
         ops.push({
             key: `param:${def.id}`,
@@ -473,15 +557,32 @@ function buildOpsFromPayload(payload) {
         if (spec) fieldSpecs.push({ id, spec });
     });
 
+    const characters = Array.isArray(payload.characters) ? payload.characters : [];
+    const coveredCharacterFields = new Set();
+    characters.forEach((entry, index) => {
+        if (!entry || typeof entry !== 'object') return;
+        const action = resolveStudioChangeCharacterAction(entry);
+        if (action !== 'add' && action !== 'replace') return;
+        const charIndex = resolveStudioChangeCharIndex(entry, action, index);
+        const slots = action === 'add' ? [`add:${index}`] : [String(charIndex)];
+        ['prompt', 'uc', 'promptNegative'].forEach((part) => {
+            if (studioChangeCharacterPartRaw(entry, part) == null) return;
+            slots.forEach((slot) => coveredCharacterFields.add(`character:${slot}:${part}`));
+            if (charIndex >= 0) coveredCharacterFields.add(`character:${charIndex}:${part}`);
+        });
+    });
+
     fieldSpecs.forEach(({ id, spec }) => {
+        if (coveredCharacterFields.has(id)) return;
         expandFieldChunks(id, spec).forEach((op) => ops.push(op));
     });
 
-    const characters = Array.isArray(payload.characters) ? payload.characters : [];
+    buildStudioChangeExpanderOps(payload).forEach((op) => ops.push(op));
+
     characters.forEach((entry, index) => {
         if (!entry || typeof entry !== 'object') return;
-        const action = (entry.action || (entry.index == null ? 'add' : 'replace')).toLowerCase();
-        const charIndex = entry.index != null ? Number(entry.index) : (action === 'add' ? -1 : index);
+        const action = resolveStudioChangeCharacterAction(entry);
+        const charIndex = resolveStudioChangeCharIndex(entry, action, index);
         const name = entry.name || entry.chara_name || '';
         if (action === 'remove') {
             ops.push({
@@ -490,31 +591,44 @@ function buildOpsFromPayload(payload) {
                 kind: 'character',
                 action: 'remove',
                 charIndex,
+                payloadIndex: index,
                 name: name || getStudioFieldLabel(`character:${charIndex}:prompt`),
                 enabled: true
             });
             return;
         }
         if (action === 'add' || action === 'replace') {
+            const promptText = typeof entry.prompt === 'string' ? entry.prompt : '';
+            const ucText = typeof entry.uc === 'string' ? entry.uc : '';
+            const promptNegativeRaw = studioChangeCharacterPartRaw(entry, 'promptNegative');
+            const promptNegativeText = typeof promptNegativeRaw === 'string' ? promptNegativeRaw : '';
             ops.push({
                 key: `character:${action}:${charIndex}:${index}`,
                 group: 'Characters',
                 kind: 'character',
                 action,
                 charIndex,
+                payloadIndex: index,
                 name: name || (action === 'add' ? 'New character' : `Character ${charIndex + 1}`),
-                prompt: entry.prompt || '',
-                uc: entry.uc || '',
-                promptNegative: entry.promptNegative || entry.input_prompt_negative || '',
+                prompt: promptText,
+                uc: ucText,
+                promptNegative: promptNegativeText,
                 enabled: true
             });
             ['prompt', 'uc', 'promptNegative'].forEach((part) => {
-                const spec = entry[part] != null ? normalizeFieldSpec(entry[part]) : null;
+                const raw = studioChangeCharacterPartRaw(entry, part);
+                if (raw == null || typeof raw === 'string') return;
+                const spec = normalizeFieldSpec(raw);
                 if (!spec) return;
-                const fieldId = `character:${charIndex < 0 ? 'new' : charIndex}:${part}`;
+                const fieldId = action === 'add'
+                    ? `character:add:${index}:${part}`
+                    : `character:${charIndex}:${part}`;
+                const groupName = `${name || (action === 'add' ? 'New character' : `Character ${charIndex + 1}`)} ${part === 'uc' ? 'UC' : (part === 'promptNegative' ? 'negative' : 'prompt')}`;
                 expandFieldChunks(fieldId, spec).forEach((op) => {
                     op.charIndex = charIndex;
-                    op.pendingCharacter = action === 'add' && charIndex < 0;
+                    op.payloadIndex = index;
+                    op.pendingCharacter = action === 'add';
+                    op.group = groupName;
                     ops.push(op);
                 });
             });
@@ -534,10 +648,23 @@ function buildPayloadFromOps(ops, title) {
     const params = {};
     const fieldMap = new Map();
     const characters = [];
+    const expanders = [];
+    const characterChunkMap = new Map();
+    let replaceExpanders = false;
 
     ops.filter((op) => op.enabled !== false).forEach((op) => {
         if (op.kind === 'param') {
             params[op.paramId] = op.toValue;
+            return;
+        }
+        if (op.kind === 'expanders-policy') {
+            replaceExpanders = true;
+            return;
+        }
+        if (op.kind === 'expander') {
+            const entry = { prefix: op.prefix, value: op.value };
+            if (op.extend) entry.extend = true;
+            expanders.push(entry);
             return;
         }
         if (op.kind === 'character') {
@@ -551,19 +678,53 @@ function buildPayloadFromOps(ops, title) {
             return;
         }
         if (op.kind === 'chunk') {
+            const charField = /^character:(?:add:)?(\d+):(prompt|uc|promptNegative)$/.exec(op.fieldId)
+                || /^character:(new|-1):(prompt|uc|promptNegative)$/.exec(op.fieldId);
+            const chunk = { name: op.name, text: op.text, action: op.action };
+            if (op.from) chunk.from = op.from;
+            if (charField) {
+                const slotKey = `${charField[1]}:${charField[2]}`;
+                if (!characterChunkMap.has(slotKey)) characterChunkMap.set(slotKey, []);
+                characterChunkMap.get(slotKey).push(chunk);
+                return;
+            }
             if (!fieldMap.has(op.fieldId)) {
                 fieldMap.set(op.fieldId, { id: op.fieldId, chunks: [] });
             }
             const field = fieldMap.get(op.fieldId);
-            const chunk = { name: op.name, text: op.text, action: op.action };
-            if (op.from) chunk.from = op.from;
             field.chunks.push(chunk);
             const actions = new Set(field.chunks.map((c) => c.action));
-            field.action = actions.size === 1 ? [...actions][0] : 'add';
+            field.action = actions.size === 1 ? [...actions][0] : 'replace';
         }
     });
 
+    characterChunkMap.forEach((chunks, slotKey) => {
+        const match = /^(\d+|new|-1):(prompt|uc|promptNegative)$/.exec(slotKey);
+        if (!match) return;
+        const part = match[2];
+        let entry = null;
+        if (match[1] === 'new' || match[1] === '-1') {
+            entry = characters.find((item) => item.action === 'add' && item.index == null) || characters.find((item) => item.action === 'add');
+        } else {
+            const idx = Number(match[1]);
+            entry = characters.find((item) => item.index === idx);
+            if (!entry) {
+                entry = { action: 'replace', index: idx };
+                characters.push(entry);
+            }
+        }
+        if (!entry) return;
+        if (typeof entry[part] === 'string' && entry[part]) return;
+        const actions = new Set(chunks.map((c) => c.action));
+        entry[part] = { action: actions.size === 1 ? [...actions][0] : 'replace', chunks };
+    });
+
+    if (studioChangeShouldSkipSizeParams(params)) {
+        delete params.width;
+        delete params.height;
+    }
     if (Object.keys(params).length) payload.params = params;
+    if (replaceExpanders) payload.expanders = expanders;
     if (fieldMap.size) payload.fields = Array.from(fieldMap.values());
     if (characters.length) payload.characters = characters;
     return payload;
@@ -572,9 +733,11 @@ function buildPayloadFromOps(ops, title) {
 function buildExportOpsFromStudio() {
     const ops = [];
     const params = getStudioParamSnapshot();
+    const skipSize = studioChangeShouldSkipSizeParams(params);
     STUDIO_CHANGE_PARAM_DEFS.forEach((def) => {
         const value = params[def.id];
         if (value === undefined || value === null || value === '') return;
+        if (skipSize && (def.id === 'width' || def.id === 'height')) return;
         ops.push({
             key: `param:${def.id}`,
             group: 'Parameters',
@@ -584,36 +747,75 @@ function buildExportOpsFromStudio() {
             label: def.label,
             fromValue: value,
             toValue: value,
-            enabled: false,
+            enabled: true,
             unchanged: true
         });
     });
 
-    const fieldIds = STUDIO_CHANGE_FIELD_DEFS.map((d) => d.id);
-    getStudioCharacterItems().forEach((item, index) => {
-        fieldIds.push(`character:${index}:prompt`, `character:${index}:uc`, `character:${index}:promptNegative`);
-    });
-
-    fieldIds.forEach((fieldId) => {
-        const value = getStudioFieldValue(fieldId);
+    STUDIO_CHANGE_FIELD_DEFS.forEach((def) => {
+        const value = getStudioFieldValue(def.id);
         if (!value || !String(value).trim()) return;
-        const chunks = splitPromptIntoChunks(value);
-        const source = chunks.length ? chunks : [value.trim()];
-        source.forEach((text, index) => {
-            ops.push({
-                key: `field:${fieldId}:${index}:replace`,
-                group: getStudioFieldLabel(fieldId),
-                kind: 'chunk',
-                action: 'replace',
-                fieldId,
-                name: studioChangeChunkName(text),
-                text,
-                from: '',
-                enabled: true,
-                found: true
-            });
+        ops.push({
+            key: `field:${def.id}:0:replace`,
+            group: def.label,
+            kind: 'chunk',
+            action: 'replace',
+            fieldId: def.id,
+            name: def.label,
+            text: value,
+            from: '',
+            enabled: true,
+            found: true
         });
     });
+
+    getStudioCharacterItems().forEach((item, index) => {
+        const name = (item.dataset.charaName || (item.querySelector('.character-name-input') && item.querySelector('.character-name-input').value) || `Character ${index + 1}`).trim();
+        const prompt = getStudioFieldValue(`character:${index}:prompt`);
+        const uc = getStudioFieldValue(`character:${index}:uc`);
+        const promptNegative = getStudioFieldValue(`character:${index}:promptNegative`);
+        if (!name && !prompt && !uc && !promptNegative) return;
+        ops.push({
+            key: `character:replace:${index}`,
+            group: 'Characters',
+            kind: 'character',
+            action: 'replace',
+            charIndex: index,
+            payloadIndex: index,
+            name: name || `Character ${index + 1}`,
+            prompt,
+            uc,
+            promptNegative,
+            enabled: true
+        });
+    });
+
+    // requestBodyReplacements: public/scripts/comp/requestBodyReplacementsModal.js
+    if (requestBodyReplacements.length) {
+        ops.push({
+            key: 'expanders:policy',
+            group: 'Text expanders',
+            kind: 'expanders-policy',
+            action: 'replace',
+            label: 'Replace all request expanders',
+            enabled: true
+        });
+        requestBodyReplacements.forEach((entry, index) => {
+            const expander = normalizeStudioChangeExpander(entry);
+            if (!expander) return;
+            ops.push({
+                key: `expander:${expander.prefix}:${index}`,
+                group: 'Text expanders',
+                kind: 'expander',
+                action: 'set',
+                prefix: expander.prefix,
+                value: expander.value,
+                extend: expander.extend,
+                name: `!${expander.prefix}`,
+                enabled: true
+            });
+        });
+    }
 
     return ops;
 }
@@ -643,6 +845,12 @@ function renderStudioChangeOpRow(op) {
         detail = op.action === 'remove'
             ? 'Remove this character slot'
             : (op.prompt || op.uc ? studioChangeTruncate(op.prompt || op.uc, 90) : 'Add character slot');
+    } else if (op.kind === 'expanders-policy') {
+        title = op.label || 'Replace all request expanders';
+        detail = 'Clears current request expanders, then installs the prefixes below';
+    } else if (op.kind === 'expander') {
+        title = op.name || `!${op.prefix}`;
+        detail = studioChangeTruncate(Array.isArray(op.value) ? op.value.join(' | ') : op.value, 110);
     } else {
         title = op.name || 'Chunk';
         detail = studioChangeTruncate(op.from && op.action === 'replace'
@@ -725,11 +933,55 @@ function setStudioChangeRowState(row, on) {
     if (icon) icon.className = on ? 'fas fa-check' : 'far fa-square';
 }
 
-function wireStudioChangeDialog(dialog, ops, signal) {
+function cleanupStudioChangeWindowControls(dialog) {
+    if (!dialog) return;
+    dialog.querySelectorAll('.studio-change-window-btn').forEach((el) => el.remove());
+    dialog.classList.remove(STUDIO_CHANGE_DIALOG_CLASS);
+}
+
+function wireStudioChangeWindowControls(dialog, ops, signal, options) {
+    cleanupStudioChangeWindowControls(dialog);
     dialog.classList.add(STUDIO_CHANGE_DIALOG_CLASS);
+    const controls = dialog.querySelector('.modal-window-controls');
+    const closeBtn = controls && controls.querySelector('.close-btn');
+    if (!controls || !closeBtn) return;
+
+    const desktopBtn = document.createElement('button');
+    desktopBtn.type = 'button';
+    desktopBtn.className = 'btn-secondary btn-small studio-change-window-btn';
+    desktopBtn.title = 'Add to Desktop';
+    desktopBtn.innerHTML = '<i class="fas fa-arrow-down-left"></i>';
+
+    const minBtn = document.createElement('button');
+    minBtn.type = 'button';
+    minBtn.className = 'btn-secondary minimize-btn btn-small studio-change-window-btn';
+    minBtn.title = 'Minimize';
+    minBtn.innerHTML = '<i class="fa-regular fa-window-minimize"></i>';
+
+    controls.insertBefore(desktopBtn, closeBtn);
+    controls.insertBefore(minBtn, closeBtn);
+
+    const opts = signal ? { signal } : undefined;
+    desktopBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const current = readStudioChangeOpsFromDialog(dialog, ops);
+        const enabledOps = current.filter((op) => op.enabled !== false);
+        if (!enabledOps.length) {
+            showGlassToast('info', 'Studio change', 'Nothing selected', false, 2500, '<i class="fas fa-info-circle"></i>');
+            return;
+        }
+        const payload = buildPayloadFromOps(enabledOps, options && options.saveTitle);
+        void saveStudioChangeToDesktop(payload, options && options.saveTitle);
+    }, opts);
+
     if (signal) {
-        signal.addEventListener('abort', () => dialog.classList.remove(STUDIO_CHANGE_DIALOG_CLASS), { once: true });
+        signal.addEventListener('abort', () => cleanupStudioChangeWindowControls(dialog), { once: true });
     }
+}
+
+function wireStudioChangeDialog(dialog, ops, signal, options) {
+    wireStudioChangeWindowControls(dialog, ops, signal, options || {});
     const opts = signal ? { signal } : undefined;
     dialog.querySelectorAll('.studio-change-row[data-op-key]').forEach((row) => {
         row.addEventListener('click', (e) => {
@@ -844,10 +1096,12 @@ async function applyStudioParam(paramId, value) {
                 ping(seedEl);
             }
             break;
-        case 'resolution':
+        case 'resolution': {
+            const preset = resolveStudioChangeResolutionPreset(value);
             // selectManualResolution: public/scripts/comp/manualDropdownManager.js
-            await selectManualResolution(String(value).toLowerCase());
+            await selectManualResolution(preset ? preset.value : String(value).toLowerCase());
             break;
+        }
         case 'width':
             if (widthEl) {
                 widthEl.value = parseInt(value, 10) || '';
@@ -901,13 +1155,28 @@ async function applyStudioParam(paramId, value) {
 
 async function applyStudioChangeOps(ops) {
     const enabled = ops.filter((op) => op.enabled !== false);
+    const hasResolutionPreset = enabled.some((op) => (
+        op.kind === 'param' && op.paramId === 'resolution' && resolveStudioChangeResolutionPreset(op.toValue)
+    ));
     const hasCustomSize = enabled.some((op) => op.kind === 'param' && (op.paramId === 'width' || op.paramId === 'height'));
     const hasResolution = enabled.some((op) => op.kind === 'param' && op.paramId === 'resolution');
-    if (hasCustomSize && !hasResolution) {
+    if (hasCustomSize && !hasResolution && !hasResolutionPreset) {
         await applyStudioParam('resolution', 'custom');
     }
     for (const op of enabled.filter((item) => item.kind === 'param')) {
+        if (hasResolutionPreset && (op.paramId === 'width' || op.paramId === 'height')) continue;
         await applyStudioParam(op.paramId, op.toValue);
+    }
+
+    if (enabled.some((op) => op.kind === 'expanders-policy')) {
+        const nextExpanders = enabled.filter((op) => op.kind === 'expander').map((op) => ({
+            name: op.prefix,
+            value: op.value,
+            extend: Boolean(op.extend)
+        }));
+        // requestBodyReplacements / renderRequestBodyReplacementsList: public/scripts/comp/requestBodyReplacementsModal.js
+        requestBodyReplacements = nextExpanders;
+        renderRequestBodyReplacementsList();
     }
 
     enabled.filter((op) => op.kind === 'character' && op.action === 'remove').sort((a, b) => b.charIndex - a.charIndex).forEach((op) => {
@@ -918,33 +1187,60 @@ async function applyStudioChangeOps(ops) {
         }
     });
 
-    const addedIndexes = [];
+    const addedByPayloadIndex = new Map();
+    const writtenCharacterFields = new Set();
     enabled.filter((op) => op.kind === 'character' && op.action === 'add').forEach((op) => {
         const before = getStudioCharacterItems().length;
         addCharacterPrompt();
         const newIndex = before;
-        addedIndexes.push(newIndex);
+        addedByPayloadIndex.set(op.payloadIndex != null ? op.payloadIndex : newIndex, newIndex);
         if (op.name) setStudioCharacterName(newIndex, op.name);
-        if (op.prompt) writeStudioFieldValue(`character:${newIndex}:prompt`, op.prompt);
-        if (op.uc) writeStudioFieldValue(`character:${newIndex}:uc`, op.uc);
-        if (op.promptNegative) writeStudioFieldValue(`character:${newIndex}:promptNegative`, op.promptNegative);
+        if (op.prompt) {
+            writeStudioFieldValue(`character:${newIndex}:prompt`, op.prompt);
+            writtenCharacterFields.add(`character:${newIndex}:prompt`);
+        }
+        if (op.uc) {
+            writeStudioFieldValue(`character:${newIndex}:uc`, op.uc);
+            writtenCharacterFields.add(`character:${newIndex}:uc`);
+        }
+        if (op.promptNegative) {
+            writeStudioFieldValue(`character:${newIndex}:promptNegative`, op.promptNegative);
+            writtenCharacterFields.add(`character:${newIndex}:promptNegative`);
+        }
         op.createdIndex = newIndex;
     });
 
     enabled.filter((op) => op.kind === 'character' && op.action === 'replace').forEach((op) => {
         ensureStudioCharacterCount(op.charIndex + 1);
         if (op.name) setStudioCharacterName(op.charIndex, op.name);
-        if (op.prompt) writeStudioFieldValue(`character:${op.charIndex}:prompt`, op.prompt);
-        if (op.uc) writeStudioFieldValue(`character:${op.charIndex}:uc`, op.uc);
-        if (op.promptNegative) writeStudioFieldValue(`character:${op.charIndex}:promptNegative`, op.promptNegative);
+        if (op.prompt) {
+            writeStudioFieldValue(`character:${op.charIndex}:prompt`, op.prompt);
+            writtenCharacterFields.add(`character:${op.charIndex}:prompt`);
+        }
+        if (op.uc) {
+            writeStudioFieldValue(`character:${op.charIndex}:uc`, op.uc);
+            writtenCharacterFields.add(`character:${op.charIndex}:uc`);
+        }
+        if (op.promptNegative) {
+            writeStudioFieldValue(`character:${op.charIndex}:promptNegative`, op.promptNegative);
+            writtenCharacterFields.add(`character:${op.charIndex}:promptNegative`);
+        }
     });
 
-    const newCharIndex = addedIndexes.length ? addedIndexes[addedIndexes.length - 1] : null;
     const chunkOps = enabled.filter((op) => op.kind === 'chunk').map((op) => {
-        if (newCharIndex == null || !/^character:(new|-1):/.test(op.fieldId)) return op;
-        return Object.assign({}, op, {
-            fieldId: op.fieldId.replace(/^character:(new|-1):/, `character:${newCharIndex}:`)
-        });
+        const addMatch = /^character:add:(\d+):(prompt|uc|promptNegative)$/.exec(op.fieldId);
+        if (addMatch) {
+            const created = addedByPayloadIndex.get(Number(addMatch[1]));
+            if (created == null) return op;
+            return Object.assign({}, op, { fieldId: `character:${created}:${addMatch[2]}` });
+        }
+        const legacyMatch = /^character:(new|-1):(prompt|uc|promptNegative)$/.exec(op.fieldId);
+        if (legacyMatch && op.payloadIndex != null && addedByPayloadIndex.has(op.payloadIndex)) {
+            return Object.assign({}, op, {
+                fieldId: `character:${addedByPayloadIndex.get(op.payloadIndex)}:${legacyMatch[2]}`
+            });
+        }
+        return op;
     });
     const maxChar = chunkOps.reduce((max, op) => {
         const match = /^character:(\d+):/.exec(op.fieldId);
@@ -959,6 +1255,7 @@ async function applyStudioChangeOps(ops) {
         byField.get(op.fieldId).push(op);
     });
     byField.forEach((fieldOps, fieldId) => {
+        if (writtenCharacterFields.has(fieldId)) return;
         const allReplace = fieldOps.every((op) => op.action === 'replace' && !op.from);
         let next = getStudioFieldValue(fieldId);
         if (allReplace) {
@@ -979,26 +1276,14 @@ async function applyStudioChangeOps(ops) {
 
 async function saveStudioChangeToDesktop(payload, suggestedName) {
     // desktopShortcuts: public/scripts/comp/desktopShortcuts.js
-    const name = await showInputDialog(
-        'Shortcut name',
-        suggestedName || payload.title || 'Studio Change',
-        'Enter shortcut name',
-        [
-            { text: 'Save', value: 'ok', className: 'btn-primary', icon: 'fas fa-floppy-disk', primary: true },
-            { text: 'Cancel', value: null, className: 'btn-secondary' }
-        ],
-        null,
-        { title: 'Save to Desktop', icon: 'fas fa-desktop' }
-    );
-    if (name == null) return false;
-    const title = String(name).trim() || payload.title || 'Studio Change';
+    const title = String(suggestedName || payload.title || 'Studio Change').trim() || 'Studio Change';
     payload.title = title;
     await desktopShortcuts.addShortcut({
         type: 'studio-change',
         name: title,
         data: { payload }
     });
-    showGlassToast('success', 'Desktop', `Saved “${title}”`, false, 2500, '<i class="fas fa-desktop"></i>');
+    showGlassToast('success', 'Desktop', `Saved “${title}”`, false, 2500, '<i class="fas fa-arrow-down-left"></i>');
     return true;
 }
 
@@ -1021,7 +1306,6 @@ async function showStudioChangeDialog(ops, options) {
     }
     const buttons = options.buttons || [
         { text: 'Apply', value: 'apply', className: 'btn-primary', icon: 'fas fa-check', primary: true },
-        { text: 'Save to Desktop', value: 'save', className: 'btn-secondary', icon: 'fas fa-desktop' },
         { text: 'Cancel', value: null, className: 'btn-secondary' }
     ];
     const result = await showConfirmationDialog(
@@ -1032,12 +1316,13 @@ async function showStudioChangeDialog(ops, options) {
             title: options.dialogTitle || 'Apply studio change',
             icon: options.icon || 'fas fa-brackets-curly',
             width: 560,
+            showCloseButton: true,
             onDialogReady: (signal) => {
                 const dialog = document.getElementById('confirmationDialog');
-                if (dialog) wireStudioChangeDialog(dialog, ops, signal);
+                if (dialog) wireStudioChangeDialog(dialog, ops, signal, options);
             },
             resolveValue: (value, dialog) => {
-                dialog?.classList.remove(STUDIO_CHANGE_DIALOG_CLASS);
+                cleanupStudioChangeWindowControls(dialog);
                 if (value == null || value === false) return null;
                 return {
                     action: value,
@@ -1058,18 +1343,13 @@ async function applyStudioChangePayload(payload, options) {
         const result = await showStudioChangeDialog(ops, {
             dialogTitle: payload.title ? `Apply: ${payload.title}` : 'Apply studio change',
             title: payload.title || '',
-            hint: 'Uncheck anything you do not want applied. Prompt chunks can be included or skipped individually.',
+            saveTitle: payload.title || '',
             emptyMessage: 'This change JSON has nothing to apply.'
         });
         if (!result) return false;
         const enabledOps = result.ops.filter((op) => op.enabled !== false);
         if (!enabledOps.length) {
             showGlassToast('info', 'Studio change', 'Nothing selected', false, 2500, '<i class="fas fa-info-circle"></i>');
-            return false;
-        }
-        const filtered = buildPayloadFromOps(enabledOps, payload.title);
-        if (result.action === 'save') {
-            await saveStudioChangeToDesktop(filtered, payload.title);
             return false;
         }
         const count = await applyStudioChangeOps(enabledOps);
@@ -1132,13 +1412,12 @@ async function openStudioChangeExportDialog() {
         const ops = buildExportOpsFromStudio();
         const result = await showStudioChangeDialog(ops, {
             dialogTitle: 'Copy change JSON',
-            hint: 'Choose parameters and prompt chunks to include. Unchecked prompt pieces are omitted from the JSON.',
+            saveTitle: 'Studio Change',
             emptyMessage: 'Studio has nothing to export yet.',
             icon: 'fas fa-brackets-curly',
             buttons: [
                 { text: 'Copy JSON', value: 'copy', className: 'btn-primary', icon: 'fa-regular fa-clipboard', primary: true },
                 { text: 'Copy AI spec', value: 'spec', className: 'btn-secondary', icon: 'fas fa-robot' },
-                { text: 'Save to Desktop', value: 'save', className: 'btn-secondary', icon: 'fas fa-desktop' },
                 { text: 'Cancel', value: null, className: 'btn-secondary' }
             ]
         });
@@ -1147,14 +1426,6 @@ async function openStudioChangeExportDialog() {
         const payload = buildPayloadFromOps(enabledOps, '');
         if (result.action === 'spec') {
             await copyStudioChangeText(STUDIO_CHANGE_AI_SPEC, 'AI format spec copied');
-            return;
-        }
-        if (result.action === 'save') {
-            if (!enabledOps.length) {
-                showGlassToast('info', 'Studio change', 'Nothing selected', false, 2500, '<i class="fas fa-info-circle"></i>');
-                return;
-            }
-            await saveStudioChangeToDesktop(payload, payload.title);
             return;
         }
         if (!enabledOps.length) {

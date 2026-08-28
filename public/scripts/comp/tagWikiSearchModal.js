@@ -2263,7 +2263,7 @@ class WikiDisplayBase {
             const headerRow = (table.tHead && table.tHead.rows[0])
                 || [...table.querySelectorAll('tr')].find((row) => row.querySelector('th'));
             if (!headerRow) return;
-            [...headerRow.children].forEach((th, colIdx) => {
+            [...headerRow.cells].forEach((th, colIdx) => {
                 if (th.tagName !== 'TH' || th.classList.contains('unsortable')) return;
                 th.addEventListener('click', () => this.sortStaticWikiTable(table, headerRow, colIdx));
             });
@@ -2271,37 +2271,122 @@ class WikiDisplayBase {
     }
 
     sortStaticWikiTable(table, headerRow, colIdx) {
-        const th = headerRow.children[colIdx];
+        const th = headerRow.cells[colIdx] || headerRow.children[colIdx];
         if (!th) return;
         const current = th.getAttribute('aria-sort');
         const dir = current === 'ascending' ? 'desc' : 'asc';
-        [...headerRow.children].forEach((cell) => cell.removeAttribute('aria-sort'));
+        [...headerRow.cells].forEach((cell) => cell.removeAttribute('aria-sort'));
         th.setAttribute('aria-sort', dir === 'asc' ? 'ascending' : 'descending');
 
-        const cellValue = (row) => {
-            const cell = row.children[colIdx];
-            if (!cell) return '';
-            const explicit = cell.getAttribute('data-sort-value');
-            if (explicit != null && explicit !== '') return explicit;
-            const img = cell.querySelector('img[alt]');
-            if (img && img.getAttribute('alt')) return img.getAttribute('alt').trim();
-            return (cell.textContent || '').replace(/\s+/g, ' ').trim();
+        const parseWikiDateMs = (raw) => {
+            const s = String(raw || '').replace(/&#44;/g, ',').trim();
+            if (!s) return null;
+            const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+            if (iso) {
+                return Date.UTC(
+                    Number(iso[1]),
+                    Number(iso[2]) - 1,
+                    Number(iso[3]),
+                    Number(iso[4] || 0),
+                    Number(iso[5] || 0),
+                    Number(iso[6] || 0)
+                );
+            }
+            const named = Date.parse(s.replace(/,/g, ' ').replace(/\s+/g, ' '));
+            return Number.isFinite(named) ? named : null;
         };
-        const compare = (a, b) => {
-            const sa = cellValue(a);
-            const sb = cellValue(b);
-            const na = Number(String(sa).replace(/,/g, ''));
-            const nb = Number(String(sb).replace(/,/g, ''));
-            const bothNum = Number.isFinite(na) && Number.isFinite(nb)
-                && sa !== '' && sb !== ''
-                && !/[a-z]/i.test(sa) && !/[a-z]/i.test(sb);
-            const cmp = bothNum ? na - nb : String(sa).localeCompare(String(sb), undefined, { numeric: true, sensitivity: 'base' });
+        const parseWikiNumber = (raw) => {
+            const m = String(raw || '').replace(/,/g, '').match(/-?\d+(?:\.\d+)?/);
+            return m ? Number(m[0]) : null;
+        };
+        const parseWikiVersion = (raw) => {
+            const s = String(raw || '').trim();
+            const m = s.match(/^(\d+)(?:\.(\d+))?(?:\.(\d+))?$/);
+            if (!m) return null;
+            return [Number(m[1]), Number(m[2] || 0), Number(m[3] || 0)];
+        };
+        const cellRaw = (row) => {
+            const cell = row.cells[colIdx] || row.children[colIdx];
+            if (!cell) return '';
+            const attrs = ['data-sort-value', 'data-release', 'data-version', 'data-name'];
+            for (let i = 0; i < attrs.length; i++) {
+                const v = cell.getAttribute(attrs[i]);
+                if (v != null && String(v).trim() !== '') return String(v).trim();
+            }
+            const img = cell.querySelector('img[alt]');
+            if (img) {
+                const alt = (img.getAttribute('alt') || '').trim();
+                if (alt) return alt;
+            }
+            return String(cell.textContent || '').replace(/&#44;/g, ',').replace(/\s+/g, ' ').trim();
+        };
+        const headerLabel = String(th.textContent || '').replace(/\s+/g, ' ').trim();
+        let mode = /date/i.test(headerLabel) ? 'date'
+            : /version/i.test(headerLabel) ? 'version'
+            : /quality|stars|rarity/i.test(headerLabel) ? 'number'
+            : '';
+        if (!mode) {
+            const sample = [];
+            const bodies = table.tBodies.length ? [...table.tBodies] : [table];
+            bodies.forEach((body) => {
+                [...body.rows].forEach((row) => {
+                    if (row === headerRow || sample.length >= 12) return;
+                    const v = cellRaw(row);
+                    if (v) sample.push(v);
+                });
+            });
+            if (sample.length && sample.filter((v) => parseWikiDateMs(v) != null).length >= Math.ceil(sample.length / 2)) {
+                mode = 'date';
+            } else if (sample.length && sample.filter((v) => parseWikiVersion(v)).length >= Math.ceil(sample.length / 2)) {
+                mode = 'version';
+            } else if (sample.length && sample.filter((v) => parseWikiNumber(v) != null && /star/i.test(v)).length >= Math.ceil(sample.length / 2)) {
+                mode = 'number';
+            }
+        }
+        const compare = (rowA, rowB) => {
+            const sa = cellRaw(rowA);
+            const sb = cellRaw(rowB);
+            const emptyA = sa === '';
+            const emptyB = sb === '';
+            if (emptyA !== emptyB) return emptyA ? 1 : -1;
+            let cmp = 0;
+            if (mode === 'date') {
+                const da = parseWikiDateMs(sa);
+                const db = parseWikiDateMs(sb);
+                if (da != null && db != null) cmp = da - db;
+                else if (da != null) cmp = -1;
+                else if (db != null) cmp = 1;
+                else cmp = sa.localeCompare(sb, undefined, { numeric: true, sensitivity: 'base' });
+            } else if (mode === 'version') {
+                const va = parseWikiVersion(sa);
+                const vb = parseWikiVersion(sb);
+                if (va && vb) {
+                    cmp = va[0] - vb[0] || va[1] - vb[1] || va[2] - vb[2];
+                } else if (va) cmp = -1;
+                else if (vb) cmp = 1;
+                else cmp = sa.localeCompare(sb, undefined, { numeric: true, sensitivity: 'base' });
+            } else if (mode === 'number') {
+                const na = parseWikiNumber(sa);
+                const nb = parseWikiNumber(sb);
+                if (na != null && nb != null) cmp = na - nb;
+                else cmp = sa.localeCompare(sb, undefined, { numeric: true, sensitivity: 'base' });
+            } else {
+                const da = parseWikiDateMs(sa);
+                const db = parseWikiDateMs(sb);
+                const na = parseWikiNumber(sa);
+                const nb = parseWikiNumber(sb);
+                const saNum = na != null && !/[a-z]/i.test(sa);
+                const sbNum = nb != null && !/[a-z]/i.test(sb);
+                if (da != null && db != null) cmp = da - db;
+                else if (saNum && sbNum) cmp = na - nb;
+                else cmp = sa.localeCompare(sb, undefined, { numeric: true, sensitivity: 'base' });
+            }
             return dir === 'asc' ? cmp : -cmp;
         };
 
         const bodies = table.tBodies.length ? [...table.tBodies] : [table];
         bodies.forEach((body) => {
-            const rows = [...body.rows].filter((row) => row !== headerRow);
+            const rows = [...body.rows].filter((row) => row !== headerRow && !row.querySelector('th'));
             rows.sort(compare);
             rows.forEach((row) => body.appendChild(row));
         });
@@ -2981,8 +3066,7 @@ class WikiDisplayBase {
     }
 
     fandomMarkImgHtml(className) {
-        const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#fa005a" d="M19.956.587a.404.404 0 00-.385.117L12 8.448 4.429.704a.404.404 0 00-.386-.117.404.404 0 00-.27.27L.587 12l3.186 11.143a.404.404 0 00.27.27.404.404 0 00.385-.117L12 15.552l7.571 7.744a.404.404 0 00.386.117.404.404 0 00.27-.27L23.413 12 20.227.857a.404.404 0 00-.27-.27zm-7.956 9.18l5.372 5.496-2.294 8.023-3.078-13.52zm-5.372 5.496L12 9.767 8.922 23.286l-2.294-8.023z"/></svg>';
-        return `<img src="data:image/svg+xml,${encodeURIComponent(svg)}" alt="" class="${className}" aria-hidden="true">`;
+        return `<img src="/static_images/fandom.png" alt="" class="${className}" aria-hidden="true">`;
     }
 
     staticWikiSiteIconUrl(siteId, iconFromApi) {
