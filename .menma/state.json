@@ -7,13 +7,13 @@
     "locked": true
   },
   "baseline_kg": 54.0,
-  "current_kg": 54.32,
-  "slices_eaten_total": 4,
+  "current_kg": 54.44,
+  "slices_eaten_total": 5,
   "overtime_hours_total": 0.0,
   "pending_slices": 0,
   "pending_overtime_hours": 0,
-  "last_before": "1787905232691_generated_1450044352.png",
-  "last_after": "1787905273177_generated_254652887.png",
+  "last_before": "1787924693627_generated_934046303.png",
+  "last_after": "1787924743202_generated_3735700057.png",
   "history": [
     {
       "at": "2026-08-28T05:35:08.356710+00:00",
@@ -35,6 +35,18 @@
       "landscape": false,
       "before": "1787905232691_generated_1450044352.png",
       "after": "1787905273177_generated_254652887.png"
+    },
+    {
+      "at": "2026-08-28T13:46:17.344165+00:00",
+      "slices": 1,
+      "stacks": 1,
+      "overtime_hours": 0.0,
+      "gained_kg": 0.12,
+      "kg": 54.44,
+      "chair": "gaming",
+      "landscape": false,
+      "before": "1787924693627_generated_934046303.png",
+      "after": "1787924743202_generated_3735700057.png"
     }
   ],
   "last_look": "1787895908094_generated_3772933719.png",
@@ -45,9 +57,15 @@
   "max_cake_stacks": 5,
   "slices_per_cake": 12,
   "cake_diameter_in": 8,
-  "cake_ratings": {},
+  "cake_ratings": {
+    "dark chocolate ganache": {
+      "n": 1,
+      "sum": 4.2,
+      "avg": 4.2
+    }
+  },
   "favorite_cake": null,
-  "cake_rotation_index": 1,
+  "cake_rotation_index": 2,
   "pending_bloat_bytes": 0,
-  "_cake_type": "strawberry shortcake"
+  "_cake_type": "dark chocolate ganache"
 }
