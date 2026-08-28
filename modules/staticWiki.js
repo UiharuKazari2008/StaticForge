@@ -94,9 +94,36 @@ function getSiteIndex(globalResources, siteId) {
         siteId,
         name: siteMeta ? siteMeta.name : siteId,
         icon: resolveExistingSiteIcon(site.base, siteId, siteMeta && siteMeta.icon),
-        kind: siteMeta && siteMeta.kind ? siteMeta.kind : null,
+        kind: siteMeta && siteMeta.kind ? siteMeta.kind : (siteId === 'novelai' ? 'novelai' : null),
+        fandomHost: siteMeta && siteMeta.fandomHost ? siteMeta.fandomHost : (siteMeta && siteMeta.kind === 'fandom' ? `${siteId}.fandom.com` : null),
+        lang: siteMeta && siteMeta.lang ? siteMeta.lang : null,
         groups
     };
+}
+
+function normalizePageId(pageId) {
+    let id = String(pageId || '').trim();
+    try { id = decodeURIComponent(id); } catch (_) { /* keep */ }
+    id = id.replace(/\.\./g, '').replace(/^\/+/, '');
+    return id;
+}
+
+function resolvePageFile(pagesDir, pageId) {
+    const candidates = [];
+    const normalizedId = normalizePageId(pageId);
+    if (!normalizedId) return null;
+    candidates.push(normalizedId);
+    if (normalizedId.includes(' ')) candidates.push(normalizedId.replace(/ /g, '_'));
+    if (normalizedId.includes('_')) candidates.push(normalizedId.replace(/_/g, ' '));
+    const seen = new Set();
+    for (const id of candidates) {
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        const pagePath = path.resolve(pagesDir, `${id}.html`);
+        if (!pagePath.startsWith(pagesDir + path.sep)) continue;
+        if (fs.existsSync(pagePath)) return { resolved: pagePath, normalizedId: id };
+    }
+    return null;
 }
 
 function getPageHtml(globalResources, siteId, pageId) {
@@ -110,23 +137,18 @@ function getPageHtml(globalResources, siteId, pageId) {
     }
     const { siteDir, siteMeta } = site;
 
-    const normalizedId = String(pageId).replace(/\.\./g, '').replace(/^\/+/, '');
     const pagesDir = path.resolve(siteDir, 'pages');
-    const pagePath = path.resolve(pagesDir, `${normalizedId}.html`);
-    if (!pagePath.startsWith(pagesDir + path.sep)) {
+    const found = resolvePageFile(pagesDir, pageId);
+    if (!found) {
         return null;
     }
-    const resolved = pagePath;
-
-    if (!fs.existsSync(resolved)) {
-        return null;
-    }
+    const { resolved, normalizedId } = found;
 
     const siteIndex = readJsonSafe(path.join(siteDir, 'index.json'), { pages: [] });
     const pageMeta = (siteIndex.pages || []).find((p) => p.id === normalizedId);
     const siteIcon = resolveExistingSiteIcon(site.base, siteId, siteMeta && siteMeta.icon);
 
-    const kind = siteMeta && siteMeta.kind ? siteMeta.kind : null;
+    const kind = siteMeta && siteMeta.kind ? siteMeta.kind : (siteId === 'novelai' ? 'novelai' : null);
     const displayUrl = kind === 'fandom'
         ? `rdf://wiki.fandom.jp/${siteId}/${normalizedId}`
         : null;
@@ -139,7 +161,9 @@ function getPageHtml(globalResources, siteId, pageId) {
         siteIcon,
         kind,
         displayUrl,
-        addressMode: kind === 'fandom' ? 'rdf' : null
+        addressMode: kind === 'fandom' ? 'rdf' : null,
+        fandomHost: siteMeta && siteMeta.fandomHost ? siteMeta.fandomHost : null,
+        lang: siteMeta && siteMeta.lang ? siteMeta.lang : null
     };
 }
 

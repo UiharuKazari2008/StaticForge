@@ -69,7 +69,7 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | Presets | [ws/presets.md](./ws/presets.md) | 11 |
 | Workspaces | [ws/workspace.md](./ws/workspace.md) | 34 |
 | Search & tags | [ws/search.md](./ws/search.md) | 12 |
-| Grimoire / Wiki | [ws/wiki.md](./ws/wiki.md) | 7 |
+| Grimoire / Wiki | [ws/wiki.md](./ws/wiki.md) | 13 |
 | Chat | [ws/chat.md](./ws/chat.md) | 9 |
 | Director | [ws/director.md](./ws/director.md) | 12 |
 | Notes (+ novels) | [ws/notes.md](./ws/notes.md) | 14 |

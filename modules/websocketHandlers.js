@@ -481,6 +481,8 @@ class WebSocketMessageHandlers {
             'character_db_rename_copyright',
             'character_db_delete_copyright',
             'import_fandom_wiki_page',
+            'import_static_wiki',
+            'update_wiki_import',
             'delete_fandom_wiki_import',
             'runpod_pod_start',
             'runpod_pod_stop',

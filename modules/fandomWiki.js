@@ -18,6 +18,7 @@ const DEFAULT_MAX_FOLLOW = 25;
 const HARD_MAX_FOLLOW = 80;
 const FANDOM_IMAGE_HOST_RE = /(?:static|vignette)\.wikia\.nocookie\.net|(?:^|\.)fandom\.com/i;
 const SKIP_TITLE_RE = /^(?:File|Image|Special|Template|Module|Category|User|Talk|Help|MediaWiki|Forum|Thread|Message_Wall|User_blog):/i;
+const FANDOM_LANG_PATH_RE = /^\/([a-z]{2}(?:-[a-z]{2,4})?)\/wiki\//i;
 
 const nhm = new NodeHtmlMarkdown({
     codeBlockStyle: 'fenced',
@@ -75,6 +76,49 @@ function sanitizePageId(raw) {
     id = id.replace(/ /g, '_');
     if (!id || id.includes('\0')) return null;
     return id;
+}
+
+function encodeWikiPath(pageId) {
+    return String(pageId || '').split('/').filter(Boolean).map((part) => encodeURIComponent(part)).join('/');
+}
+
+function fandomPageUrl(host, pageId, lang) {
+    const pathId = encodeWikiPath(pageId);
+    if (!pathId) return `https://${host}/`;
+    if (lang) return `https://${host}/${lang}/wiki/${pathId}`;
+    return `https://${host}/wiki/${pathId}`;
+}
+
+function parseJsonBody(body) {
+    if (body && typeof body === 'object' && !Buffer.isBuffer(body) && !(body instanceof Uint8Array)) {
+        return body;
+    }
+    let text = Buffer.isBuffer(body) ? body.toString('utf8') : String(body == null ? '' : body);
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+    return JSON.parse(text);
+}
+
+function retryDelayMs(res, retries) {
+    const headers = (res && res.headers) || {};
+    const raw = headers['retry-after'] || headers['Retry-After'];
+    const ra = parseInt(raw, 10);
+    if (Number.isFinite(ra) && ra >= 0) return Math.min(Math.max(ra, 1) * 1000, 30000);
+    return Math.min(RETRY_DELAY * (2 ** retries), 15000);
+}
+
+function isRetryableStatus(code) {
+    return code === 429 || code === 503 || code === 502;
+}
+
+function assetPathKey(assetUrl) {
+    try {
+        const u = new URL(assetUrl);
+        const parts = u.pathname.split('/').filter(Boolean);
+        const revIdx = parts.findIndex((p) => p === 'revision');
+        return revIdx > 0 ? parts.slice(0, revIdx).join('/') : u.pathname;
+    } catch {
+        return null;
+    }
 }
 
 function fandomDisplayUrl(siteId, pageId) {
@@ -142,8 +186,10 @@ function parseFandomUrl(raw) {
     const host = u.hostname.toLowerCase();
     const m = host.match(/^([a-z0-9-]+)\.fandom\.com$/i);
     if (!m) return null;
-    const wikiId = sanitizeWikiId(m[1]);
-    if (!wikiId) return null;
+    const subdomain = sanitizeWikiId(m[1]);
+    if (!subdomain) return null;
+    const langMatch = FANDOM_LANG_PATH_RE.exec(u.pathname);
+    const lang = langMatch ? langMatch[1].toLowerCase() : null;
     let pageId = '';
     const wikiIdx = u.pathname.toLowerCase().indexOf('/wiki/');
     if (wikiIdx >= 0) {
@@ -152,12 +198,17 @@ function parseFandomUrl(raw) {
         pageId = sanitizePageId(u.pathname);
     }
     if (!pageId) return null;
+    const wikiId = lang ? sanitizeWikiId(`${subdomain}-${lang}`) : subdomain;
+    const fandomHost = `${subdomain}.fandom.com`;
     return {
         wikiId,
         pageId,
-        host: `${wikiId}.fandom.com`,
-        sourceUrl: `https://${wikiId}.fandom.com/wiki/${pageId}`,
-        apiBase: `https://${wikiId}.fandom.com/api.php`
+        lang,
+        subdomain,
+        fandomHost,
+        host: fandomHost,
+        sourceUrl: fandomPageUrl(fandomHost, pageId, lang),
+        apiBase: lang ? `https://${fandomHost}/${lang}/api.php` : `https://${fandomHost}/api.php`
     };
 }
 
@@ -174,13 +225,19 @@ async function fetchJson(url, host, retries = 0) {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
             return fetchJson(new URL(res.headers.location, url).href, host, retries);
         }
+        if (isRetryableStatus(res.statusCode) && retries < MAX_RETRIES) {
+            await sleep(retryDelayMs(res, retries));
+            return fetchJson(url, host, retries + 1);
+        }
         if (res.statusCode !== 200) {
             throw new Error(`HTTP ${res.statusCode} for ${url}`);
         }
-        return JSON.parse(res.body.toString('utf8'));
+        return parseJsonBody(res.body);
     } catch (err) {
+        const msg = String(err && err.message || '');
+        if (/HTTP 404|HTTP 410/.test(msg)) throw err;
         if (retries < MAX_RETRIES) {
-            await sleep(RETRY_DELAY);
+            await sleep(retryDelayMs(null, retries));
             return fetchJson(url, host, retries + 1);
         }
         throw err;
@@ -203,6 +260,10 @@ async function fetchBinary(url, host, retries = 0) {
         if (res.statusCode === 404 || res.statusCode === 410) {
             throw new Error(`HTTP ${res.statusCode} for ${url}`);
         }
+        if (isRetryableStatus(res.statusCode) && retries < MAX_RETRIES) {
+            await sleep(retryDelayMs(res, retries));
+            return fetchBinary(url, host, retries + 1);
+        }
         if (res.statusCode !== 200) {
             throw new Error(`HTTP ${res.statusCode} for ${url}`);
         }
@@ -211,7 +272,7 @@ async function fetchBinary(url, host, retries = 0) {
         const msg = String(err && err.message || '');
         if (/HTTP 404|HTTP 410/.test(msg)) throw err;
         if (retries < MAX_RETRIES) {
-            await sleep(RETRY_DELAY);
+            await sleep(retryDelayMs(null, retries));
             return fetchBinary(url, host, retries + 1);
         }
         throw err;
@@ -244,8 +305,9 @@ async function fetchParsedPage(parsed) {
     const data = await fetchJson(apiUrl(parsed.apiBase, {
         action: 'parse',
         format: 'json',
+        utf8: 1,
         page: parsed.pageId.replace(/_/g, ' '),
-        prop: 'text|displaytitle|images|links|categories',
+        prop: 'text|displaytitle|images|links|categories|revid',
         disablelimitreport: 1,
         disableeditsection: 1,
         redirects: 1
@@ -254,16 +316,18 @@ async function fetchParsedPage(parsed) {
         throw new Error(data.error.info || data.error.code || 'MediaWiki parse failed');
     }
     const p = data.parse || {};
-    const html = p.text?.['*'] || '';
-    if (!html) throw new Error(`Empty parse for ${parsed.pageId}`);
+    const html = (p.text && (p.text['*'] || p.text)) || '';
+    if (!html || typeof html !== 'string') throw new Error(`Empty parse for ${parsed.pageId}`);
+    const canonicalId = sanitizePageId(String(p.title || parsed.pageId).replace(/<[^>]+>/g, '')) || parsed.pageId;
     const title = String(p.displaytitle || p.title || parsed.pageId)
         .replace(/<[^>]+>/g, '')
         .trim();
     const links = (p.links || [])
-        .filter((l) => l.ns === 0 && l['*'])
-        .map((l) => sanitizePageId(l['*']))
+        .filter((l) => (l.ns === 0 || l.ns === '0') && (l['*'] || l.title))
+        .map((l) => sanitizePageId(l['*'] || l.title))
         .filter(Boolean);
-    return { html, title, links, images: p.images || [] };
+    const redirects = Array.isArray(p.redirects) ? p.redirects : [];
+    return { html, title, links, images: p.images || [], canonicalId, redirects };
 }
 
 function resolveUrl(baseUrl, href) {
@@ -329,6 +393,8 @@ function collectImageUrls(html, pageUrl) {
     const urls = new Set();
     const add = (raw) => {
         if (!raw || raw.startsWith('data:')) return;
+        // data-image-key is a filename, not a URL
+        if (!/^[a-z][a-z0-9+.-]*:/i.test(raw) && !raw.startsWith('/') && !raw.startsWith('.') && !raw.includes('/')) return;
         const abs = resolveUrl(pageUrl, raw);
         if (!abs || !/^https?:\/\//i.test(abs)) return;
         try {
@@ -353,6 +419,15 @@ function collectImageUrls(html, pageUrl) {
     root.querySelectorAll('source').forEach((el) => {
         const srcset = el.getAttribute('srcset') || '';
         srcset.split(',').forEach((part) => add(part.trim().split(/\s+/)[0]));
+    });
+    root.querySelectorAll('[style]').forEach((el) => {
+        const style = el.getAttribute('style') || '';
+        for (const m of style.matchAll(/url\(\s*['"]?([^'")\s]+)['"]?\s*\)/gi)) {
+            add(m[1]);
+        }
+    });
+    root.querySelectorAll('.pi-image img, .portable-infobox img, .infobox img, figure img').forEach((img) => {
+        ['src', 'data-src', 'data-original'].forEach((attr) => add(img.getAttribute(attr)));
     });
     const byFile = new Map();
     for (const url of urls) {
@@ -405,12 +480,12 @@ function rewriteContent(html, pageUrl, siteId, pageMap) {
         } catch {
             parsed = null;
         }
-        if (parsed && parsed.wikiId === siteId && parsed.pageId && !SKIP_TITLE_RE.test(parsed.pageId)) {
+        if (parsed && parsed.pageId && !SKIP_TITLE_RE.test(parsed.pageId)) {
             a.setAttribute('href', '#');
             a.setAttribute('class', 'wiki-static-link');
-            a.setAttribute('data-wiki-site', siteId);
+            a.setAttribute('data-wiki-site', parsed.wikiId);
             a.setAttribute('data-wiki-page', parsed.pageId);
-            if (pageMap) pageMap.add(parsed.pageId);
+            if (pageMap && parsed.wikiId === siteId) pageMap.add(parsed.pageId);
         } else if (FANDOM_IMAGE_HOST_RE.test(abs)) {
             const img = a.querySelector('img');
             const local = img && img.getAttribute('data-local-src');
@@ -481,6 +556,12 @@ function assertNoHotlinks(html) {
             if (!img.getAttribute('src')) img.remove();
         });
     });
+    root.querySelectorAll('[style]').forEach((el) => {
+        const style = el.getAttribute('style') || '';
+        if (/url\(\s*['"]?https?:/i.test(style) && FANDOM_IMAGE_HOST_RE.test(style)) {
+            el.setAttribute('style', style.replace(/url\(\s*['"]?https?:[^)]+\)/gi, ''));
+        }
+    });
     return root.toString();
 }
 
@@ -518,12 +599,13 @@ function normalizeWikiMarkup(html) {
     return root.toString();
 }
 
-function upsertHomeSite(globalResources, siteId, siteName, iconUrl) {
+function upsertHomeSite(globalResources, siteId, siteName, iconUrl, extra = null) {
     const base = getWikiBasePath(globalResources);
     const homePath = path.join(base, 'index.json');
     const home = readJsonSafe(homePath, { sites: [] });
     if (!home.sites) home.sites = [];
     const existing = home.sites.find((s) => s.id === siteId);
+    const meta = extra && typeof extra === 'object' ? extra : {};
     if (!existing) {
         const row = {
             id: siteId,
@@ -531,10 +613,14 @@ function upsertHomeSite(globalResources, siteId, siteName, iconUrl) {
             kind: 'fandom'
         };
         if (iconUrl) row.icon = iconUrl;
+        if (meta.fandomHost) row.fandomHost = meta.fandomHost;
+        if (meta.lang) row.lang = meta.lang;
         home.sites.push(row);
     } else {
         existing.name = siteName || existing.name;
         existing.kind = 'fandom';
+        if (meta.fandomHost) existing.fandomHost = meta.fandomHost;
+        if (meta.lang) existing.lang = meta.lang;
         if (iconUrl) existing.icon = iconUrl;
         else if (existing.icon && /\/assets\/icon\.png$/.test(existing.icon)) {
             const abs = path.join(base, siteId, 'assets', 'icon.png');
@@ -641,14 +727,19 @@ async function downloadImages(html, pageUrl, siteId, assetsDir, host, onProgress
         }
         const localPath = `/private/wiki/${siteId}/assets/${fileName}`;
         map.set(assetUrl, localPath);
-        try {
-            const u = new URL(assetUrl);
-            const parts = u.pathname.split('/').filter(Boolean);
-            const revIdx = parts.findIndex((p) => p === 'revision');
-            const key = revIdx > 0 ? parts.slice(0, revIdx).join('/') : u.pathname;
-            if (key && !map.has(key)) map.set(key, localPath);
-        } catch (_) { /* ignore */ }
+        const key = assetPathKey(assetUrl);
+        if (key && !map.has(key)) map.set(key, localPath);
     }
+
+    function localFor(raw) {
+        if (!raw || raw.startsWith('data:')) return null;
+        const abs = resolveUrl(pageUrl, raw);
+        if (!abs) return null;
+        if (map.has(abs)) return map.get(abs);
+        const key = assetPathKey(abs);
+        return key && map.has(key) ? map.get(key) : null;
+    }
+
     const root = parse(html);
     root.querySelectorAll('img').forEach((img) => {
         const candidates = [
@@ -660,25 +751,19 @@ async function downloadImages(html, pageUrl, siteId, assetsDir, host, onProgress
         srcset.split(',').forEach((part) => candidates.push(part.trim().split(/\s+/)[0]));
         let local = null;
         for (const raw of candidates) {
-            if (!raw || raw.startsWith('data:')) continue;
-            const abs = resolveUrl(pageUrl, raw);
-            if (!abs) continue;
-            if (map.has(abs)) {
-                local = map.get(abs);
-                break;
-            }
-            try {
-                const u = new URL(abs);
-                const parts = u.pathname.split('/').filter(Boolean);
-                const revIdx = parts.findIndex((p) => p === 'revision');
-                const key = revIdx > 0 ? parts.slice(0, revIdx).join('/') : u.pathname;
-                if (map.has(key)) {
-                    local = map.get(key);
-                    break;
-                }
-            } catch (_) { /* ignore */ }
+            local = localFor(raw);
+            if (local) break;
         }
         if (local) img.setAttribute('data-local-src', local);
+    });
+    root.querySelectorAll('[style]').forEach((el) => {
+        const style = el.getAttribute('style') || '';
+        if (!/url\(/i.test(style)) return;
+        const next = style.replace(/url\(\s*['"]?([^'")\s]+)['"]?\s*\)/gi, (all, raw) => {
+            const local = localFor(raw);
+            return local ? `url('${local}')` : all;
+        });
+        el.setAttribute('style', next);
     });
     return root.toString();
 }
@@ -715,6 +800,16 @@ function recordPageGraph(db, { wikiId, pageId, title, sourceUrl, origin, importI
     }
 }
 
+function writePageFiles(pagesDir, pageId, html, meta) {
+    const pageFile = path.join(pagesDir, `${pageId}.html`);
+    ensureDir(path.dirname(pageFile));
+    fs.writeFileSync(pageFile, html, 'utf8');
+    let markdown = '';
+    try { markdown = nhm.translate(html) || ''; } catch (_) { markdown = ''; }
+    if (markdown) fs.writeFileSync(pageFile.replace(/\.html$/, '.md'), markdown, 'utf8');
+    writeJson(pageFile.replace(/\.html$/, '.json'), meta);
+}
+
 async function importOnePage(globalResources, parsed, opts, importId, role) {
     const siteId = parsed.wikiId;
     const siteDir = path.join(getWikiBasePath(globalResources), siteId);
@@ -723,11 +818,16 @@ async function importOnePage(globalResources, parsed, opts, importId, role) {
     ensureDir(pagesDir);
     ensureDir(assetsDir);
 
+    const requestedId = parsed.pageId;
     if (opts.onProgress) {
-        opts.onProgress({ phase: 'parse', pageId: parsed.pageId, message: parsed.sourceUrl });
+        opts.onProgress({ phase: 'parse', pageId: requestedId, message: parsed.sourceUrl });
     }
     await sleep(RATE_MS);
     const parsedPage = await fetchParsedPage(parsed);
+    const canonicalId = parsedPage.canonicalId || requestedId;
+    parsed.pageId = canonicalId;
+    parsed.sourceUrl = fandomPageUrl(parsed.host, canonicalId, parsed.lang);
+
     let html = stripFandomChrome(parsedPage.html);
     html = await downloadImages(html, parsed.sourceUrl, siteId, assetsDir, parsed.host, opts.onProgress);
     const discovered = new Set();
@@ -735,43 +835,57 @@ async function importOnePage(globalResources, parsed, opts, importId, role) {
     html = assertNoHotlinks(html);
     html = normalizeWikiMarkup(html);
 
-    const pageFile = path.join(pagesDir, `${parsed.pageId}.html`);
-    ensureDir(path.dirname(pageFile));
-    fs.writeFileSync(pageFile, html, 'utf8');
-
-    let markdown = '';
-    try { markdown = nhm.translate(html) || ''; } catch (_) { markdown = ''; }
-    if (markdown) fs.writeFileSync(pageFile.replace(/\.html$/, '.md'), markdown, 'utf8');
-    writeJson(pageFile.replace(/\.html$/, '.json'), {
-        id: parsed.pageId,
+    const origin = role === 'root' ? 'manual' : 'follow';
+    const importedAt = new Date().toISOString();
+    writePageFiles(pagesDir, canonicalId, html, {
+        id: canonicalId,
         title: parsedPage.title,
         sourceUrl: parsed.sourceUrl,
-        importedAt: new Date().toISOString(),
-        origin: role === 'root' ? 'manual' : 'follow'
+        importedAt,
+        origin,
+        requestedId: requestedId !== canonicalId ? requestedId : undefined
     });
 
     upsertSitePage(globalResources, siteId, {
-        id: parsed.pageId,
+        id: canonicalId,
         title: parsedPage.title,
         group: opts.group || 'Imported',
         sourceUrl: parsed.sourceUrl
     });
 
+    if (requestedId && requestedId !== canonicalId) {
+        writePageFiles(pagesDir, requestedId, html, {
+            id: requestedId,
+            title: parsedPage.title,
+            sourceUrl: fandomPageUrl(parsed.host, requestedId, parsed.lang),
+            importedAt,
+            origin,
+            canonicalId
+        });
+        upsertSitePage(globalResources, siteId, {
+            id: requestedId,
+            title: parsedPage.title,
+            group: opts.group || 'Imported',
+            sourceUrl: fandomPageUrl(parsed.host, requestedId, parsed.lang),
+            canonicalId
+        });
+    }
+
     const db = openGraph(globalResources);
     recordPageGraph(db, {
         wikiId: siteId,
-        pageId: parsed.pageId,
+        pageId: canonicalId,
         title: parsedPage.title,
         sourceUrl: parsed.sourceUrl,
-        origin: role === 'root' ? 'manual' : 'follow',
+        origin,
         importId,
         role,
         childPageIds: [...discovered]
     });
 
     const children = (opts.followLinks ? parsedPage.links : [])
-        .filter((id) => id && id !== parsed.pageId && !SKIP_TITLE_RE.test(id));
-    return { title: parsedPage.title, children };
+        .filter((id) => id && id !== canonicalId && !SKIP_TITLE_RE.test(id));
+    return { title: parsedPage.title, children, pageId: canonicalId };
 }
 
 async function importFandomPage(globalResources, options) {
@@ -789,15 +903,32 @@ async function importFandomPage(globalResources, options) {
     await sleep(RATE_MS);
     const siteInfo = await fetchSiteInfo(parsed);
     const iconUrl = await ensureSiteIcon(globalResources, parsed, siteInfo);
-    upsertHomeSite(globalResources, parsed.wikiId, siteInfo.name, iconUrl);
+    upsertHomeSite(globalResources, parsed.wikiId, siteInfo.name, iconUrl, {
+        fandomHost: parsed.fandomHost || parsed.host,
+        lang: parsed.lang || null
+    });
 
     const db = openGraph(globalResources);
-    const createdAt = new Date().toISOString();
-    const importInfo = db.prepare(`
-        INSERT INTO imports (wiki_id, root_page_id, source_url, group_name, follow_links, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-    `).run(parsed.wikiId, parsed.pageId, parsed.sourceUrl, options.group || 'Imported', followLinks ? 1 : 0, createdAt);
-    const importId = Number(importInfo.lastInsertRowid);
+    const recordImport = options.recordImport !== false && options.recordImport !== 'false';
+    let importId = Number(options.updateImportId) || 0;
+    if (recordImport && !importId) {
+        const existing = db.prepare(
+            'SELECT id FROM imports WHERE wiki_id = ? AND root_page_id = ? ORDER BY id DESC LIMIT 1'
+        ).get(parsed.wikiId, parsed.pageId);
+        if (existing && (options.updateExisting === true || options.updateExisting === 'true')) {
+            importId = Number(existing.id);
+        }
+    }
+    if (recordImport && !importId) {
+        const createdAt = new Date().toISOString();
+        const importInfo = db.prepare(`
+            INSERT INTO imports (wiki_id, root_page_id, source_url, group_name, follow_links, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `).run(parsed.wikiId, parsed.pageId, parsed.sourceUrl, options.group || 'Imported', followLinks ? 1 : 0, createdAt);
+        importId = Number(importInfo.lastInsertRowid);
+    } else if (!recordImport) {
+        importId = null;
+    }
 
     const queue = [{ parsed, role: 'root' }];
     const visited = new Set();
@@ -824,7 +955,7 @@ async function importFandomPage(globalResources, options) {
             }, importId, item.role);
             imported.push({
                 wikiId: item.parsed.wikiId,
-                pageId: item.parsed.pageId,
+                pageId: result.pageId || item.parsed.pageId,
                 title: result.title,
                 role: item.role
             });
@@ -836,7 +967,7 @@ async function importFandomPage(globalResources, options) {
                         parsed: {
                             ...parsed,
                             pageId: childId,
-                            sourceUrl: `https://${parsed.host}/wiki/${childId}`
+                            sourceUrl: fandomPageUrl(parsed.host, childId, parsed.lang)
                         },
                         role: 'child'
                     });
@@ -996,10 +1127,36 @@ function getFandomIndex(globalResources, { showAll = false } = {}) {
     };
 }
 
+function inferSiteKind(site) {
+    if (site && site.kind) return site.kind;
+    if (site && site.id === 'novelai') return 'novelai';
+    return 'static';
+}
+
+function listStoredSites(globalResources) {
+    const base = getWikiBasePath(globalResources);
+    const home = readJsonSafe(path.join(base, 'index.json'), { sites: [] });
+    return (home.sites || []).map((s) => {
+        const siteIndex = readJsonSafe(path.join(base, s.id, 'index.json'), { pages: [] });
+        const pages = siteIndex.pages || [];
+        return {
+            id: s.id,
+            name: s.name || s.id,
+            kind: inferSiteKind(s),
+            icon: s.icon || null,
+            fandomHost: s.fandomHost || (s.kind === 'fandom' ? `${s.id}.fandom.com` : null),
+            lang: s.lang || null,
+            pageCount: pages.length,
+            sourceUrls: pages.map((p) => p.sourceUrl).filter(Boolean).slice(0, 3)
+        };
+    });
+}
+
 function getManagerState(globalResources) {
     const db = openGraph(globalResources);
     const base = getWikiBasePath(globalResources);
     const home = readJsonSafe(path.join(base, 'index.json'), { sites: [] });
+    const sites = listStoredSites(globalResources);
     const siteNames = Object.fromEntries((home.sites || []).map((s) => [s.id, s.name]));
     const imports = db.prepare('SELECT * FROM imports ORDER BY created_at DESC').all().map((imp) => {
         const page = db.prepare('SELECT title FROM pages WHERE wiki_id = ? AND page_id = ?').get(imp.wiki_id, imp.root_page_id);
@@ -1022,14 +1179,55 @@ function getManagerState(globalResources) {
             preview
         };
     });
+    const staticPageCount = sites.reduce((n, s) => n + (s.pageCount || 0), 0);
     return {
         imports,
+        sites,
         stats: {
-            wikis: (home.sites || []).filter((s) => s.kind === 'fandom').length,
-            pages: db.prepare('SELECT COUNT(*) AS n FROM pages').get().n,
+            wikis: sites.length,
+            fandomWikis: sites.filter((s) => s.kind === 'fandom').length,
+            pages: Math.max(db.prepare('SELECT COUNT(*) AS n FROM pages').get().n, staticPageCount),
             imports: imports.length
         }
     };
+}
+
+async function updateImport(globalResources, importId, options = {}) {
+    const db = openGraph(globalResources);
+    const imp = db.prepare('SELECT * FROM imports WHERE id = ?').get(importId);
+    if (!imp) throw new Error('Import not found');
+    return importFandomPage(globalResources, {
+        url: imp.source_url,
+        followLinks: !!imp.follow_links,
+        group: imp.group_name || 'Imported',
+        updateImportId: importId,
+        onProgress: options.onProgress || null
+    });
+}
+
+async function updateFandomSite(globalResources, siteId, options = {}) {
+    const base = getWikiBasePath(globalResources);
+    const siteIndex = readJsonSafe(path.join(base, siteId, 'index.json'), { pages: [] });
+    const urls = (siteIndex.pages || []).map((p) => p.sourceUrl).filter(Boolean);
+    if (!urls.length) {
+        throw new Error('No source URLs stored for this wiki; re-import from a page URL');
+    }
+    const onProgress = options.onProgress || null;
+    const imported = [];
+    let i = 0;
+    for (const url of urls) {
+        i += 1;
+        if (onProgress) onProgress({ phase: 'page', current: i, total: urls.length, pageId: url });
+        const result = await importFandomPage(globalResources, {
+            url,
+            followLinks: false,
+            recordImport: false,
+            group: options.group || 'Imported',
+            onProgress
+        });
+        imported.push(...(result.pages || []));
+    }
+    return { siteId, pages: imported };
 }
 
 function closeGraph() {
@@ -1042,11 +1240,15 @@ function closeGraph() {
 module.exports = {
     parseFandomUrl,
     fandomDisplayUrl,
+    fandomPageUrl,
     importFandomPage,
     getFandomIndex,
     getManagerState,
+    listStoredSites,
     previewDeleteImport,
     deleteImport,
+    updateImport,
+    updateFandomSite,
     closeGraph,
     getWikiBasePath
 };

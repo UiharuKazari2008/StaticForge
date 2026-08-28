@@ -1,6 +1,6 @@
 /**
  * Wiki Manager DSAP — wiki.dyna.dreamscape.jp
- * Import and manage offline Fandom wiki copies.
+ * Import, list, pull, and update offline wikis (Fandom, NovelAI docs, static caches).
  * Depends on: dsapRegistry.js, dsapSmfMarkup.js, dropdown.js, confirmationDialog.js
  */
 
@@ -25,6 +25,30 @@ function fandomWikiDsapEscapeHtml(text) {
 function fandomWikiDsapEscapeAttr(text) {
     if (typeof dsapSmfEscapeAttr === 'function') return dsapSmfEscapeAttr(text);
     return String(text || '').replace(/"/g, '&quot;');
+}
+
+function fandomWikiDsapDetectSource(url) {
+    const text = String(url || '').trim().toLowerCase();
+    if (!text) return 'unknown';
+    if (text.includes('.fandom.com')) return 'fandom';
+    if (text.includes('docs.novelai.net') || text.includes('journal.novelai.net')
+        || text.includes('blog.novelai.net') || text.includes('novelai.medium.com')) {
+        return 'novelai';
+    }
+    return 'unknown';
+}
+
+function fandomWikiDsapOpenSite(host, site) {
+    if (!site) return;
+    if (site.kind === 'fandom') {
+        host.navigate(`rdf://wiki.fandom.jp/${site.id}`);
+        return;
+    }
+    if (site.kind === 'novelai' || site.id === 'novelai') {
+        host.navigate('docs.novelai.jp');
+        return;
+    }
+    host.navigate(`docs.novelai.jp`);
 }
 
 function fandomWikiDsapActiveTab(host) {
@@ -53,8 +77,8 @@ ${dsapSmfBuildTabBar([
 ], activeTab, { tabBarId: 'fandomWikiTabBar', dataAttr: 'data-fandom-wiki-tab' })}
 
 <div id="fandomWikiImportPanel" class="fandom-wiki-dsap-panel${importHidden}">
-    ${dsapSmfBuildSectionHdr('Import a Fandom page')}
-    <p class="fandom-wiki-dsap-help">Paste a <code>*.fandom.com/wiki/…</code> URL. Images are downloaded locally — nothing is hotlinked.</p>
+    ${dsapSmfBuildSectionHdr('Import a wiki page')}
+    <p class="fandom-wiki-dsap-help">Paste a <code>*.fandom.com/wiki/…</code>, <code>docs.novelai.net</code>, <code>journal.novelai.net</code>, or NovelAI blog URL. Images are mirrored locally — nothing is hotlinked.</p>
     <div class="dsap-smf-toolbar">
         <label class="fandom-wiki-dsap-label" for="fandomWikiUrlInput">Page URL</label>
         <input type="text" id="fandomWikiUrlInput" placeholder="https://genshin-impact.fandom.com/wiki/Character/List">
@@ -74,13 +98,26 @@ ${dsapSmfBuildTabBar([
 </div>
 
 <div id="fandomWikiLibraryPanel" class="fandom-wiki-dsap-panel${libraryHidden}">
-    ${dsapSmfBuildSectionHdr('Stored imports')}
+    ${dsapSmfBuildSectionHdr('Cached wikis')}
     ${dsapSmfBuildStatsTable([
         { label: 'Wikis', valueHtml: '<span id="fandomWikiStatWikis">0</span>' },
         { label: 'Pages', valueHtml: '<span id="fandomWikiStatPages">0</span>' },
         { label: 'Imports', valueHtml: '<span id="fandomWikiStatImports">0</span>' }
     ], 'fandomWikiStats')}
-    <div id="fandomWikiLibraryEmpty" class="fandom-wiki-dsap-empty hidden">No imports yet.</div>
+    <div id="fandomWikiSitesEmpty" class="fandom-wiki-dsap-empty hidden">No cached wikis yet.</div>
+    <table class="sec-data-table" id="fandomWikiSitesTable" cellspacing="0" cellpadding="4" width="100%" border="1">
+        <thead>
+            <tr>
+                <th align="left">Wiki</th>
+                <th align="left">Kind</th>
+                <th align="right">Pages</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody id="fandomWikiSitesBody"></tbody>
+    </table>
+    ${dsapSmfBuildSectionHdr('Fandom imports')}
+    <div id="fandomWikiLibraryEmpty" class="fandom-wiki-dsap-empty hidden">No Fandom imports yet.</div>
     <table class="sec-data-table" id="fandomWikiLibraryTable" cellspacing="0" cellpadding="4" width="100%" border="1">
         <thead>
             <tr>
@@ -218,13 +255,19 @@ const fandomWikiDsapDriver = {
         const status = root.querySelector('#fandomWikiImportStatus');
         const btn = root.querySelector('#fandomWikiImportBtn');
         if (!url) {
-            if (host.showToast) host.showToast('error', 'Paste a Fandom wiki URL');
+            if (host.showToast) host.showToast('error', 'Paste a Fandom or NovelAI wiki URL');
+            return;
+        }
+        const kind = fandomWikiDsapDetectSource(url);
+        if (kind === 'unknown') {
+            if (host.showToast) host.showToast('error', 'URL must be *.fandom.com, docs.novelai.net, journal.novelai.net, or a NovelAI blog');
             return;
         }
         if (btn) btn.disabled = true;
         if (status) status.textContent = 'Starting import…';
         try {
-            const result = await wsClient.sendMessage('import_fandom_wiki_page', {
+            const packet = kind === 'novelai' ? 'import_static_wiki' : 'import_fandom_wiki_page';
+            const result = await wsClient.sendMessage(packet, {
                 url,
                 followLinks: follow,
                 maxPages: follow ? 25 : 1,
@@ -234,8 +277,10 @@ const fandomWikiDsapDriver = {
             if (status) status.textContent = `Imported ${count} page${count === 1 ? '' : 's'}.`;
             if (host.showToast) host.showToast('success', `Imported ${count} page${count === 1 ? '' : 's'}`);
             await this._loadLibrary(host, root);
-            if (result && result.wikiId && result.rootPageId) {
+            if (kind === 'fandom' && result && result.wikiId && result.rootPageId) {
                 host.navigate(`rdf://wiki.fandom.jp/${result.wikiId}/${result.rootPageId}`);
+            } else if (kind === 'novelai' && result && result.rootPageId) {
+                host.navigate(`docs.novelai.jp/${result.rootPageId}`);
             }
         } catch (err) {
             if (status) status.textContent = err.message || 'Import failed';
@@ -256,6 +301,38 @@ const fandomWikiDsapDriver = {
             setText('#fandomWikiStatWikis', stats.wikis);
             setText('#fandomWikiStatPages', stats.pages);
             setText('#fandomWikiStatImports', stats.imports);
+            const sites = data.sites || [];
+            const sitesBody = root.querySelector('#fandomWikiSitesBody');
+            const sitesEmpty = root.querySelector('#fandomWikiSitesEmpty');
+            const sitesTable = root.querySelector('#fandomWikiSitesTable');
+            if (sitesEmpty) sitesEmpty.classList.toggle('hidden', sites.length > 0);
+            if (sitesTable) sitesTable.classList.toggle('hidden', sites.length === 0);
+            if (sitesBody) {
+                sitesBody.innerHTML = sites.map((site) => {
+                    return `<tr data-site-id="${fandomWikiDsapEscapeAttr(site.id)}" data-site-kind="${fandomWikiDsapEscapeAttr(site.kind || '')}">
+                        <td><a href="#" class="fandom-wiki-dsap-site" data-site-id="${fandomWikiDsapEscapeAttr(site.id)}" data-site-kind="${fandomWikiDsapEscapeAttr(site.kind || '')}">${fandomWikiDsapEscapeHtml(site.name)}</a></td>
+                        <td>${fandomWikiDsapEscapeHtml(site.kind || 'static')}</td>
+                        <td align="right">${site.pageCount || 0}</td>
+                        <td align="right">
+                            <button type="button" class="dsap-smf-btn fandom-wiki-dsap-update-site" data-site-id="${fandomWikiDsapEscapeAttr(site.id)}">Update</button>
+                        </td>
+                    </tr>`;
+                }).join('');
+                sitesBody.querySelectorAll('.fandom-wiki-dsap-site').forEach((a) => {
+                    a.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        fandomWikiDsapOpenSite(host, {
+                            id: a.getAttribute('data-site-id'),
+                            kind: a.getAttribute('data-site-kind')
+                        });
+                    });
+                });
+                sitesBody.querySelectorAll('.fandom-wiki-dsap-update-site').forEach((btn) => {
+                    btn.addEventListener('click', () => {
+                        this._updateSite(host, root, btn.getAttribute('data-site-id'));
+                    });
+                });
+            }
             const body = root.querySelector('#fandomWikiLibraryBody');
             const empty = root.querySelector('#fandomWikiLibraryEmpty');
             const table = root.querySelector('#fandomWikiLibraryTable');
@@ -271,13 +348,21 @@ const fandomWikiDsapDriver = {
                     <td align="right">${imp.pageCount || 0}</td>
                     <td align="right">${imp.exclusiveChildCount || 0}</td>
                     <td>${fandomWikiDsapEscapeHtml(created)}</td>
-                    <td align="right"><button type="button" class="dsap-smf-btn fandom-wiki-dsap-delete" data-import-id="${fandomWikiDsapEscapeAttr(imp.id)}">Delete</button></td>
+                    <td align="right">
+                        <button type="button" class="dsap-smf-btn fandom-wiki-dsap-update" data-import-id="${fandomWikiDsapEscapeAttr(imp.id)}">Update</button>
+                        <button type="button" class="dsap-smf-btn fandom-wiki-dsap-delete" data-import-id="${fandomWikiDsapEscapeAttr(imp.id)}">Delete</button>
+                    </td>
                 </tr>`;
             }).join('');
             body.querySelectorAll('.fandom-wiki-dsap-root').forEach((a) => {
                 a.addEventListener('click', (e) => {
                     e.preventDefault();
                     host.navigate(`rdf://wiki.fandom.jp/${a.getAttribute('data-wiki-id')}/${a.getAttribute('data-page-id')}`);
+                });
+            });
+            body.querySelectorAll('.fandom-wiki-dsap-update').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    this._updateImport(host, root, Number(btn.getAttribute('data-import-id')));
                 });
             });
             body.querySelectorAll('.fandom-wiki-dsap-delete').forEach((btn) => {
@@ -287,6 +372,32 @@ const fandomWikiDsapDriver = {
             });
         } catch (err) {
             if (host.showToast) host.showToast('error', err.message || 'Failed to load library');
+        }
+    },
+
+    async _updateImport(host, root, importId) {
+        if (!importId) return;
+        const status = root.querySelector('#fandomWikiImportStatus');
+        if (status) status.textContent = 'Updating import…';
+        try {
+            const result = await wsClient.sendMessage('update_wiki_import', { importId });
+            const count = (result && result.pages && result.pages.length) || 0;
+            if (host.showToast) host.showToast('success', `Updated ${count} page${count === 1 ? '' : 's'}`);
+            await this._loadLibrary(host, root);
+        } catch (err) {
+            if (host.showToast) host.showToast('error', err.message || 'Update failed');
+        }
+    },
+
+    async _updateSite(host, root, siteId) {
+        if (!siteId) return;
+        try {
+            const result = await wsClient.sendMessage('update_wiki_import', { siteId });
+            const count = (result && result.pages && result.pages.length) || 0;
+            if (host.showToast) host.showToast('success', `Pulled ${count} page${count === 1 ? '' : 's'}`);
+            await this._loadLibrary(host, root);
+        } catch (err) {
+            if (host.showToast) host.showToast('error', err.message || 'Update failed');
         }
     },
 

@@ -34,7 +34,16 @@ const RATE_MS = 250;
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000;
 
-const CACHE_ROOT = path.join(__dirname, '..', '.cache', 'wiki');
+const DEFAULT_CACHE_ROOT = path.join(__dirname, '..', '.cache', 'wiki');
+let CACHE_ROOT = DEFAULT_CACHE_ROOT;
+
+function setCacheRoot(root) {
+    if (root) CACHE_ROOT = root;
+}
+
+function getCacheRoot() {
+    return CACHE_ROOT;
+}
 
 let blogRssBySlug = null;
 
@@ -581,11 +590,13 @@ function ensureSiteRegistry(siteId, siteName) {
         home.sites.push({
             id: siteId,
             name: siteName || 'NovelAI Documentation',
-            icon
+            icon,
+            kind: 'novelai'
         });
     } else {
         existing.name = siteName || existing.name;
         existing.icon = icon;
+        existing.kind = existing.kind || 'novelai';
     }
     writeJson(path.join(CACHE_ROOT, 'index.json'), home);
 }
@@ -637,6 +648,78 @@ async function importPage(url, opts, siteDir, siteIndex, visited) {
     return discovered;
 }
 
+async function importNovelaiDocs(options = {}) {
+    const prevRoot = CACHE_ROOT;
+    if (options.cacheRoot) setCacheRoot(options.cacheRoot);
+    try {
+        const opts = {
+            urls: [...(options.urls || [])],
+            group: options.group || 'Imported',
+            followLinks: !!options.followLinks,
+            site: options.site || 'novelai',
+            lang: options.lang || 'en'
+        };
+        if (!opts.urls.length) {
+            throw new Error('Provide at least one NovelAI docs/journal/blog URL');
+        }
+        const maxPages = Math.min(80, Math.max(1, Number(options.maxPages) || (opts.followLinks ? 25 : 1)));
+        const onProgress = options.onProgress || null;
+        const siteDir = path.join(CACHE_ROOT, opts.site);
+        ensureDir(siteDir);
+        await ensureSiteIcon(siteDir, opts.site);
+        ensureSiteRegistry(opts.site, 'NovelAI Documentation');
+
+        let siteIndex = readSiteIndex(siteDir);
+        if (!siteIndex.pages) siteIndex.pages = [];
+
+        const queue = [...opts.urls];
+        const visited = new Set();
+        const imported = [];
+
+        while (queue.length > 0 && imported.length < maxPages) {
+            const url = queue.shift();
+            try {
+                if (onProgress) {
+                    onProgress({
+                        phase: 'page',
+                        current: imported.length + 1,
+                        total: Math.min(maxPages, imported.length + 1 + queue.length),
+                        pageId: pageIdFromUrl(url, opts.lang) || url
+                    });
+                }
+                const more = await importPage(url, opts, siteDir, siteIndex, visited);
+                imported.push({
+                    siteId: opts.site,
+                    pageId: pageIdFromUrl(url, opts.lang),
+                    sourceUrl: url
+                });
+                if (opts.followLinks) {
+                    for (const nextUrl of more) {
+                        if (!visited.has(pageIdFromUrl(nextUrl, opts.lang)) && imported.length + queue.length < maxPages) {
+                            queue.push(nextUrl);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error(`Failed ${url}:`, err.message);
+                if (imported.length === 0 && queue.length === 0) throw err;
+            }
+        }
+
+        writeJson(path.join(siteDir, 'index.json'), siteIndex);
+        if (onProgress) onProgress({ phase: 'done', current: imported.length, total: imported.length });
+        return {
+            siteId: opts.site,
+            wikiId: opts.site,
+            wikiName: 'NovelAI Documentation',
+            rootPageId: imported[0] && imported[0].pageId,
+            pages: imported
+        };
+    } finally {
+        setCacheRoot(prevRoot);
+    }
+}
+
 async function main() {
     const opts = parseArgs(process.argv);
     if (!opts.urls.length) {
@@ -647,39 +730,20 @@ async function main() {
         console.error('--group is required for new pages');
         process.exit(1);
     }
-
-    const siteDir = path.join(CACHE_ROOT, opts.site);
-    ensureDir(siteDir);
-    await ensureSiteIcon(siteDir, opts.site);
-    ensureSiteRegistry(opts.site, 'NovelAI Documentation');
-
-    let siteIndex = readSiteIndex(siteDir);
-    if (!siteIndex.pages) siteIndex.pages = [];
-
-    const queue = [...opts.urls];
-    const visited = new Set();
-
-    while (queue.length > 0) {
-        const url = queue.shift();
-        try {
-            const more = await importPage(url, opts, siteDir, siteIndex, visited);
-            if (opts.followLinks) {
-                for (const nextUrl of more) {
-                    if (!visited.has(pageIdFromUrl(nextUrl, opts.lang))) {
-                        queue.push(nextUrl);
-                    }
-                }
-            }
-        } catch (err) {
-            console.error(`Failed ${url}:`, err.message);
-        }
-    }
-
-    writeJson(path.join(siteDir, 'index.json'), siteIndex);
-    console.log(`Done. ${siteIndex.pages.length} pages in ${opts.site} index.`);
+    await importNovelaiDocs(opts);
 }
 
-main().catch((err) => {
-    console.error(err);
-    process.exit(1);
-});
+if (require.main === module) {
+    main().catch((err) => {
+        console.error(err);
+        process.exit(1);
+    });
+}
+
+module.exports = {
+    importNovelaiDocs,
+    isSupportedUrl,
+    getSourceInfo,
+    setCacheRoot,
+    getCacheRoot
+};

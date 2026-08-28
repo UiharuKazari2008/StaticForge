@@ -1874,10 +1874,28 @@ class WikiDisplayBase {
                 const missing = /not found/i.test(String(err && err.message || ''));
                 if (!missing || !liveFetch) throw err;
                 const urlPath = String(pageId).split('/').map((part) => encodeURIComponent(part.replace(/ /g, '_'))).join('/');
-                const url = `https://${siteId}.fandom.com/wiki/${urlPath}`;
+                const siteMeta = this.currentStaticWiki && this.currentStaticWiki.siteId === siteId
+                    ? this.currentStaticWiki
+                    : null;
+                let fandomHost = (siteMeta && siteMeta.fandomHost) || `${siteId}.fandom.com`;
+                let lang = siteMeta && siteMeta.lang ? String(siteMeta.lang) : '';
+                if (!siteMeta || !siteMeta.fandomHost) {
+                    const langTail = /[-]([a-z]{2}(?:-[a-z]{2,4})?)$/i.exec(siteId);
+                    if (langTail && !/\.fandom\.com$/i.test(siteId)) {
+                        fandomHost = `${siteId.slice(0, -langTail[0].length)}.fandom.com`;
+                        if (!lang) lang = langTail[1];
+                    }
+                }
+                const langPrefix = lang ? `/${lang}` : '';
+                const url = `https://${fandomHost}${langPrefix}/wiki/${urlPath}`;
                 showLoading('Fetching from Fandom…');
-                // modules/fandomWiki.js — importFandomPage (this page only, stored as its own root)
-                await wsClient.sendMessage('import_fandom_wiki_page', { url, followLinks: false, group: 'Live' });
+                // modules/fandomWiki.js — importFandomPage (this page only; do not spam import rows)
+                await wsClient.sendMessage('import_fandom_wiki_page', {
+                    url,
+                    followLinks: false,
+                    group: 'Live',
+                    recordImport: false
+                });
                 wikiPageCache.invalidate(cacheKey);
                 data = await wsClient.sendMessage('get_static_wiki_page', { siteId, pageId });
             }
@@ -1891,7 +1909,9 @@ class WikiDisplayBase {
                 siteIcon: data.siteIcon || null,
                 kind: data.kind || null,
                 displayUrl: data.displayUrl || null,
-                addressMode: data.addressMode || null
+                addressMode: data.addressMode || null,
+                fandomHost: data.fandomHost || null,
+                lang: data.lang || null
             };
             if (this.hasWikiPageContent(content)) {
                 wikiPageCache.set(cacheKey, content);
@@ -2085,7 +2105,9 @@ class WikiDisplayBase {
                 title,
                 siteIcon: content.siteIcon || null,
                 displayUrl: content.displayUrl || null,
-                kind: content.kind || null
+                kind: content.kind || null,
+                fandomHost: content.fandomHost || null,
+                lang: content.lang || null
             };
             this.currentSelectedTag = null;
             this.currentTagName = null;

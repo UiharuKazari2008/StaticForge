@@ -16,6 +16,8 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `get_tag_wiki_page` | `get_tag_wiki_page_response` | session | Handler: handleGetTagWikiPage |
 | `get_wiki_home` | `get_wiki_home_response` | session | Handler: handleGetWikiHome |
 | `import_fandom_wiki_page` | `import_fandom_wiki_page_response` | admin/destructive | Handler: handleImportFandomWikiPage |
+| `import_static_wiki` | `import_static_wiki_response` | admin/destructive | Handler: handleImportStaticWiki (NovelAI docs/journal/blog) |
+| `update_wiki_import` | `update_wiki_import_response` | admin/destructive | Handler: handleUpdateWikiImport (re-pull fandom import or cached site) |
 | `refresh_tag_wiki_page` | `refresh_tag_wiki_page_response` | session | Handler: handleRefreshTagWikiPage |
 | `resolve_grimoire_url` | `resolve_grimoire_url_response` | session | Handler: handleResolveGrimoireUrl |
 | `search_tag_wiki` | `search_tag_wiki_response` | session | Handler: handleSearchTagWiki |
@@ -207,12 +209,63 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 | Field | Notes |
 |-------|-------|
 | `requestId` | Optional |
-| `url` | Optional |
+| `url` | Fandom `*.fandom.com/wiki/…` URL (required) |
+| `followLinks` | Optional boolean |
+| `maxPages` | Optional cap (hard max 80) |
+| `group` | Optional index group label |
+| `recordImport` | Optional; `false` skips creating a library import row (live click-through fetch) |
+| `updateExisting` | Optional; reuse existing import row for the same wiki+root |
+| `updateImportId` | Optional numeric import id to refresh |
+
+**Success response:** `import_fandom_wiki_page_response`
+
+`get_fandom_wiki_manager` also returns `sites[]` (all cached wikis: Fandom, NovelAI, static) plus `imports[]`.
+
+Additional response/push types from handler:
+- `fandom_wiki_import_progress`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `import_static_wiki`
+
+**Auth:** Session required. Admin only (destructive — blocked for readonly)
+
+**Handler:** modules/ws/handlers/110-wikiHandler.js → `handleImportStaticWiki`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `url` | docs.novelai.net / journal.novelai.net / NovelAI blog URL |
 | `followLinks` | Optional |
 | `maxPages` | Optional |
 | `group` | Optional |
+| `site` | Optional site id (default `novelai`) |
+| `lang` | Optional docs language prefix (default `en`) |
 
-**Success response:** `import_fandom_wiki_page_response`
+**Success response:** `import_static_wiki_response`
+
+Additional response/push types from handler:
+- `fandom_wiki_import_progress`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `update_wiki_import`
+
+**Auth:** Session required. Admin only (destructive — blocked for readonly)
+
+**Handler:** modules/ws/handlers/110-wikiHandler.js → `handleUpdateWikiImport`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `importId` | Fandom import row to re-pull |
+| `siteId` | Cached wiki site to re-pull (pages with stored `sourceUrl`) |
+
+**Success response:** `update_wiki_import_response`
 
 Additional response/push types from handler:
 - `fandom_wiki_import_progress`

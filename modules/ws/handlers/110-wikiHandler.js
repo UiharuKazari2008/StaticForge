@@ -1,3 +1,4 @@
+const path = require('path');
 const wsPacketRegistry = require('../wsPacketRegistry');
 
 async function handleSearchTagWiki(handler, ws, message, clientInfo, wsServer) {
@@ -561,6 +562,9 @@ async function handleImportFandomWikiPage(handler, ws, message, clientInfo, wsSe
             followLinks: followLinks === true || followLinks === 'true',
             maxPages,
             group,
+            recordImport: message.recordImport !== false && message.recordImport !== 'false',
+            updateExisting: message.updateExisting === true || message.updateExisting === 'true',
+            updateImportId: message.updateImportId,
             onProgress: (progress) => {
                 handler.sendToClient(ws, {
                     type: 'fandom_wiki_import_progress',
@@ -579,6 +583,123 @@ async function handleImportFandomWikiPage(handler, ws, message, clientInfo, wsSe
     } catch (error) {
         console.error('import_fandom_wiki_page:', error);
         handler.sendError(ws, 'Failed to import Fandom page', error.message, message.requestId);
+    }
+}
+
+function wikiProgress(handler, ws, requestId, progress, type = 'fandom_wiki_import_progress') {
+    handler.sendToClient(ws, {
+        type,
+        requestId,
+        data: progress,
+        timestamp: new Date().toISOString()
+    });
+}
+
+function getWikiCacheRoot(handler) {
+    return path.join(handler.globalResources.getPath('cache'), 'wiki');
+}
+
+async function handleImportStaticWiki(handler, ws, message, clientInfo, wsServer) {
+    const { url, followLinks = false, maxPages, group, site, lang } = message;
+    if (!url) {
+        handler.sendError(ws, 'Missing url parameter', 'import_static_wiki', message.requestId);
+        return;
+    }
+    try {
+        const importer = require('../../../scripts/import-novelai-docs');
+        if (!importer.isSupportedUrl(url)) {
+            handler.sendError(ws, 'URL must be docs.novelai.net, journal.novelai.net, or a NovelAI blog post', 'import_static_wiki', message.requestId);
+            return;
+        }
+        const result = await importer.importNovelaiDocs({
+            urls: [url],
+            followLinks: followLinks === true || followLinks === 'true',
+            maxPages,
+            group: group || 'Imported',
+            site: site || 'novelai',
+            lang: lang || 'en',
+            cacheRoot: getWikiCacheRoot(handler),
+            onProgress: (progress) => wikiProgress(handler, ws, message.requestId, progress, 'fandom_wiki_import_progress')
+        });
+        handler.sendToClient(ws, {
+            type: 'import_static_wiki_response',
+            requestId: message.requestId,
+            data: { success: true, kind: 'novelai', ...result },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('import_static_wiki:', error);
+        handler.sendError(ws, 'Failed to import static wiki page', error.message, message.requestId);
+    }
+}
+
+async function handleUpdateWikiImport(handler, ws, message, clientInfo, wsServer) {
+    const importId = Number(message.importId) || 0;
+    const siteId = message.siteId ? String(message.siteId) : '';
+    if (!importId && !siteId) {
+        handler.sendError(ws, 'Missing importId or siteId parameter', 'update_wiki_import', message.requestId);
+        return;
+    }
+    try {
+        const onProgress = (progress) => wikiProgress(handler, ws, message.requestId, progress);
+        if (importId) {
+            const fandomWiki = getFandomWikiOrError(handler, ws, message, 'update_wiki_import');
+            if (!fandomWiki) return;
+            const result = await fandomWiki.updateImport(handler.globalResources, importId, { onProgress });
+            handler.sendToClient(ws, {
+                type: 'update_wiki_import_response',
+                requestId: message.requestId,
+                data: { success: true, kind: 'fandom', ...result },
+                timestamp: new Date().toISOString()
+            });
+            return;
+        }
+        const fandomWiki = handler.globalResources.getFandomWiki();
+        const staticWiki = handler.globalResources.getStaticWiki();
+        const siteIndex = staticWiki ? staticWiki.getSiteIndex(handler.globalResources, siteId) : null;
+        const kind = siteIndex && siteIndex.kind ? siteIndex.kind : (siteId === 'novelai' ? 'novelai' : null);
+        if (kind === 'fandom' && fandomWiki) {
+            const result = await fandomWiki.updateFandomSite(handler.globalResources, siteId, { onProgress });
+            handler.sendToClient(ws, {
+                type: 'update_wiki_import_response',
+                requestId: message.requestId,
+                data: { success: true, kind: 'fandom', ...result },
+                timestamp: new Date().toISOString()
+            });
+            return;
+        }
+        const importer = require('../../../scripts/import-novelai-docs');
+        const pages = (siteIndex && siteIndex.groups || []).flatMap((g) => g.pages || []);
+        // source URLs live on disk index, not the grouped projection
+        const siteDir = path.join(getWikiCacheRoot(handler), siteId);
+        const fs = require('fs');
+        let urls = [];
+        try {
+            const raw = JSON.parse(fs.readFileSync(path.join(siteDir, 'index.json'), 'utf8'));
+            urls = (raw.pages || []).map((pg) => pg.sourceUrl).filter(Boolean);
+        } catch (_) { /* none */ }
+        if (!urls.length) {
+            handler.sendError(ws, 'No stored source URLs to pull for this wiki', 'update_wiki_import', message.requestId);
+            return;
+        }
+        const result = await importer.importNovelaiDocs({
+            urls,
+            followLinks: false,
+            maxPages: urls.length,
+            group: message.group || 'Imported',
+            site: siteId,
+            cacheRoot: getWikiCacheRoot(handler),
+            onProgress
+        });
+        handler.sendToClient(ws, {
+            type: 'update_wiki_import_response',
+            requestId: message.requestId,
+            data: { success: true, kind: kind || 'static', ...result },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('update_wiki_import:', error);
+        handler.sendError(ws, 'Failed to update wiki', error.message, message.requestId);
     }
 }
 
@@ -711,6 +832,8 @@ function registerPackets(handlersCtx) {
     regFn('get_fandom_wiki_index', handleGetFandomWikiIndex);
     regFn('get_fandom_wiki_manager', handleGetFandomWikiManager);
     regFn('import_fandom_wiki_page', handleImportFandomWikiPage);
+    regFn('import_static_wiki', handleImportStaticWiki);
+    regFn('update_wiki_import', handleUpdateWikiImport);
     regFn('delete_fandom_wiki_import', handleDeleteFandomWikiImport);
     regFn('resolve_grimoire_url', handleResolveGrimoireUrl);
 }
@@ -726,6 +849,8 @@ module.exports = {
     handleGetFandomWikiIndex,
     handleGetFandomWikiManager,
     handleImportFandomWikiPage,
+    handleImportStaticWiki,
+    handleUpdateWikiImport,
     handleDeleteFandomWikiImport,
     handleResolveGrimoireUrl,
     convertWikiMarkupToHtml,
