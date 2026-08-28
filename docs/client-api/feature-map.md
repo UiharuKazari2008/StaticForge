@@ -113,7 +113,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | System cache binary download | `GET /{vfsPathUuid}/system/:encodedKey` | `vfs_download_system_file` | — | Explorer / System folder |
 | VFS CRUD | — | `vfs_*`, `desktop_*` | `vfs_updated`, `workspace_desktop_persisted` | Desktop shortcuts |
 | Studio change JSON | — | — (clipboard / desktop shortcut payload) | — | Client-only studio delta apply/export (`studioChangeJson.js`) |
-| Menma progress | `GET /menma/state` | — | — | Menma DSAP (`menma.dyna.dreamscape.jp`) windowed applet; Open in Studio uses `openManualModalWithContent` |
+| Menma progress | — | `get_menma_state` | — | Menma DSAP (`menma.dyna.dreamscape.jp`) windowed applet; Open in Studio uses `openManualModalWithContent` |
 
 ---
 

@@ -27,6 +27,7 @@ const OWNER_TO_DOC = {
     textReplacements: 'textReplacements.md',
     favorites: 'favorites.md',
     quips: 'quips.md',
+    menma: 'menma.md',
     knowledge: 'knowledge.md',
     persona: 'persona.md',
     userSettings: 'userSettings.md',

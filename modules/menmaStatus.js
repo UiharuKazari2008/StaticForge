@@ -139,19 +139,6 @@ function buildMenmaStatus() {
     };
 }
 
-function registerMenmaStatusRoutes(app, authMiddleware) {
-    app.get('/menma/state', authMiddleware, (req, res) => {
-        try {
-            res.setHeader('Cache-Control', 'no-store');
-            res.json(buildMenmaStatus());
-        } catch (err) {
-            console.error('GET /menma/state failed:', err && err.message);
-            res.status(500).json({ success: false, error: 'Failed to load Menma state' });
-        }
-    });
-}
-
 module.exports = {
-    buildMenmaStatus,
-    registerMenmaStatusRoutes
+    buildMenmaStatus
 };

@@ -2,7 +2,7 @@
  * Menma progress DSAP — cake ledger, day's work, breakfast images.
  * Domain: menma.dyna.dreamscape.jp
  * Depends on: dsapRegistry.js, dsapSmfMarkup.js, assetUrlResolver.js, manualModalManager.js
- * Server: GET /menma/state (auth session)
+ * Server: WS get_menma_state (session)
  */
 
 const MENMA_DSAP_URL = 'menma.dyna.dreamscape.jp';
@@ -315,14 +315,17 @@ const menmaDsapDriver = {
         if (!state) return;
         const quiet = options && options.quiet;
         try {
-            const res = await fetch('/menma/state', { credentials: 'same-origin', cache: 'no-store' });
-            if (res.status === 404) {
-                state.data = { success: false, missingRoute: true };
-            } else if (!res.ok) {
-                throw new Error(`HTTP ${res.status}`);
-            } else {
-                state.data = await res.json();
+            if (!window.wsClient || typeof window.wsClient.sendMessage !== 'function') {
+                throw new Error('WebSocket client is not available');
             }
+            if (typeof window.wsClient.isConnected === 'function' && !window.wsClient.isConnected()) {
+                throw new Error('WebSocket not connected');
+            }
+            const result = await window.wsClient.sendMessage('get_menma_state', {}, false);
+            if (!result) {
+                throw new Error('Empty Menma state response');
+            }
+            state.data = result;
         } catch (err) {
             state.data = { success: false, error: err && err.message ? err.message : 'load failed' };
             if (!quiet && typeof console !== 'undefined') {
@@ -342,11 +345,6 @@ const menmaDsapDriver = {
         const data = state.data;
         if (!data) {
             view.innerHTML = dsapSmfBuildStatusBox('Loading Menma state…');
-            return;
-        }
-        if (data.missingRoute) {
-            view.innerHTML = dsapSmfBuildStatusBox('GET /menma/state is not live yet. Ask Menma to restart PM2 12 after deploy — client UI is already here.');
-            if (stamp) stamp.textContent = '';
             return;
         }
         if (data.success === false) {

@@ -37,7 +37,6 @@ const { streamLogFile } = require('./modules/logStreamService');
 const pm2Service = require('./modules/pm2Service');
 const runtimeAssetService = require('./modules/runtimeAssetService');
 const agentAssetBundle = require('./modules/agentAssetBundle');
-const { registerMenmaStatusRoutes } = require('./modules/menmaStatus');
 const workspaceCssService = require('./modules/workspaceCssService');
 const serverStartupStatus = require('./modules/serverStartupStatus');
 const { browserRequest } = require('./modules/browserHttp');
@@ -2191,7 +2190,6 @@ app.get('/android/background-notification', serverReadinessMiddleware, authMiddl
     }
 });
 
-registerMenmaStatusRoutes(app, authMiddleware);
 
 // Traces viewer page
 app.get('/traces', authMiddleware, (req, res) => {
