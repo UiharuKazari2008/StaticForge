@@ -24,6 +24,7 @@ HTTP routes defined in `web_server.js` and static middleware. Default base: `htt
 12. [Miscellaneous](#miscellaneous)
 13. [Replication](#replication)
 14. [Static files (public/)](#static-files-public)
+15. [Menma](#menma)
 
 ---
 
@@ -514,6 +515,37 @@ Lists scheduled/pending preset generation requests.
 ### `GET /traces/files/*`
 
 **Auth required.** Static attachments from traces directory.
+
+---
+
+## Menma
+
+Ledger / breakfast state from `.menma/` (cake log, work pile). Does **not** expose `secure.config`, PIN, or keys.
+
+### `GET /menma/state`
+
+**Auth required** (`authMiddleware` — session cookie or `Authorization: Bearer <loginKey>`).
+
+```json
+{
+  "success": true,
+  "updated_at": "ISO-8601",
+  "available": true,
+  "character_name": "Menma",
+  "current_kg": 55.4,
+  "baseline_kg": 54.0,
+  "slices_eaten_total": 13,
+  "pending_slices": 0,
+  "cake_type": "matcha roll",
+  "last_before": "….png",
+  "last_after": "….png",
+  "last_meal": { "at": "ISO-8601", "slices": 8, "cake_type": "matcha roll", "before": "….png", "after": "….png" },
+  "work_pile": { "open": [], "done_since_breakfast": [], "last_breakfast_at": "ISO-8601" },
+  "cake_log": [ { "at": "ISO-8601", "loop": "3pm-meal", "slices": 8, "named_for": [] } ]
+}
+```
+
+Breakfast images themselves remain `GET /images/:filename` (existing gallery auth).
 
 ---
 

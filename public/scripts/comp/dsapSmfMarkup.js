@@ -12,6 +12,7 @@ const DSAP_SMF_BRANCH_IMAGE_GEN = 'Image Generation';
 const DSAP_SMF_BRANCH_DREAMSCAPE = 'Dreamscape';
 const DSAP_SMF_BRANCH_AUTOFILL = 'Autofill Ranking';
 const DSAP_SMF_BRANCH_WIKI = 'Wiki Manager';
+const DSAP_SMF_BRANCH_MENMA = 'Menma';
 
 const DSAP_SMF_DEFAULT_LOGO = '/static_images/logo_icon.png';
 
@@ -168,6 +169,7 @@ function dsapSmfBuildDreamscapeHomeHtml() {
         { url: 'dsap://autofill.dreamscape.jp/', label: 'Autofill Ranking', icon: 'fas fa-arrow-down-wide-short', desc: 'Tune SmartText/autofill scoring weights, match tiers, and type priority', admin: true },
         { url: 'dsap://memories.dyna.dreamscape.jp/', label: 'Enshutsuka', icon: 'fas fa-lightbulb-on', desc: 'Director knowledge memories, static rules, and LinkXi persona' },
         { url: 'dsap://quips.dyna.dreamscape.jp/', label: 'Generation Quips', icon: 'fas fa-comment-heart', desc: 'Generation quips dashboard, phrase book, and workspace settings' },
+        { url: 'dsap://menma.dyna.dreamscape.jp/status', label: 'Menma', icon: 'fas fa-cake-candles', desc: 'Cake ledger, work pile, and breakfast before/after' },
     ];
 
     const rows = links.map((link) => {

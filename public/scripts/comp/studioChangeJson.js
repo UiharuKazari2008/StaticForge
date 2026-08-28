@@ -8,7 +8,7 @@
  * public/scripts/comp/textareaUtils.js
  * public/scripts/comp/promptTextareaToolbar.js
  * public/scripts/comp/requestBodyReplacementsModal.js
- * docs/studio-change-json.md — Grok/web AI prompt (source you paste).
+ * docs/studio-change-json.md — bot-facing contract (Hoshino/other agents emit this blob).
  * STUDIO_CHANGE_AI_SPEC — compact copy for in-app Copy AI spec / agentic use.
  * When rules change, update the MD first, then this constant.
  */
@@ -32,12 +32,14 @@ const STUDIO_CHANGE_AI_SPEC = `Dreamscape studio change JSON. Paste into Studio 
  "characters":[
    {"index":0,"action":"replace","name":"Alice","prompt":"!alice_base, school uniform, smile","uc":"nude"},
    {"index":1,"action":"replace","name":"Bob","prompt":"bob prompt","uc":"alice (name)"}
- ]}
+ ],
+ "vibes":[{"id":"vibe-id","ie":"v4full","strength":0.7,"inject_text":true}]}
 
 Rules:
 - characters: ALWAYS replace + index. NEVER add. index 0 = first slot, index 1 = second. add+index is illegal (treated as replace). Do not copy slot 0 into slot 1.
 - fields = prompt | uc | promptNegative only. Always replace. Named chunks are your groups, not comma-splits. Never character:N:... ids.
 - expanders: if present, DELETE all request expanders and install only this list. In text use !prefix. Do not repeat expander values.
+- vibes: if present, REPLACE current vibe transfers with this id list (ids Studio already has). Omit to leave vibes unchanged. No image uploads.
 - Default action is replace. remove = delete a span or slot. Omit unused keys. Only include params you want to change.
 - Named resolution preset (e.g. normal_portrait): omit width/height. Custom size: resolution "custom" plus width and height.`;
 
@@ -444,6 +446,55 @@ function collectStudioChangeExpanderList(payload) {
     return null;
 }
 
+function collectStudioChangeVibeList(payload) {
+    if (!payload || !Object.prototype.hasOwnProperty.call(payload, 'vibes')) return null;
+    return Array.isArray(payload.vibes) ? payload.vibes : [];
+}
+
+function normalizeStudioChangeVibe(entry) {
+    if (!entry || typeof entry !== 'object') return null;
+    const id = String(entry.id || entry.vibe_id || entry.vibeId || '').trim();
+    if (!id) return null;
+    const strengthRaw = entry.strength != null ? entry.strength : entry.ie_strength;
+    const strength = Number(strengthRaw);
+    return {
+        id,
+        ie: entry.ie != null ? String(entry.ie) : '',
+        strength: Number.isFinite(strength) ? strength : 0.7,
+        inject_text: entry.inject_text !== false
+    };
+}
+
+function buildStudioChangeVibeOps(payload) {
+    const list = collectStudioChangeVibeList(payload);
+    if (list == null) return [];
+    const ops = [{
+        key: 'vibes:policy',
+        group: 'Vibes',
+        kind: 'vibes-policy',
+        action: 'replace',
+        label: 'Replace all vibe transfers',
+        enabled: true
+    }];
+    list.forEach((entry, index) => {
+        const vibe = normalizeStudioChangeVibe(entry);
+        if (!vibe) return;
+        ops.push({
+            key: `vibe:${vibe.id}:${index}`,
+            group: 'Vibes',
+            kind: 'vibe',
+            action: 'set',
+            vibeId: vibe.id,
+            ie: vibe.ie,
+            strength: vibe.strength,
+            inject_text: vibe.inject_text,
+            name: vibe.id,
+            enabled: true
+        });
+    });
+    return ops;
+}
+
 function normalizeStudioChangeExpander(entry) {
     if (!entry || typeof entry !== 'object') return null;
     const prefix = studioChangeNormalizeExpanderPrefix(entry.prefix || entry.name || entry.key || '');
@@ -578,6 +629,7 @@ function buildOpsFromPayload(payload) {
     });
 
     buildStudioChangeExpanderOps(payload).forEach((op) => ops.push(op));
+    buildStudioChangeVibeOps(payload).forEach((op) => ops.push(op));
 
     characters.forEach((entry, index) => {
         if (!entry || typeof entry !== 'object') return;
@@ -649,8 +701,10 @@ function buildPayloadFromOps(ops, title) {
     const fieldMap = new Map();
     const characters = [];
     const expanders = [];
+    const vibes = [];
     const characterChunkMap = new Map();
     let replaceExpanders = false;
+    let replaceVibes = false;
 
     ops.filter((op) => op.enabled !== false).forEach((op) => {
         if (op.kind === 'param') {
@@ -665,6 +719,18 @@ function buildPayloadFromOps(ops, title) {
             const entry = { prefix: op.prefix, value: op.value };
             if (op.extend) entry.extend = true;
             expanders.push(entry);
+            return;
+        }
+        if (op.kind === 'vibes-policy') {
+            replaceVibes = true;
+            return;
+        }
+        if (op.kind === 'vibe') {
+            const entry = { id: op.vibeId };
+            if (op.ie) entry.ie = op.ie;
+            if (op.strength != null) entry.strength = op.strength;
+            if (op.inject_text === false) entry.inject_text = false;
+            vibes.push(entry);
             return;
         }
         if (op.kind === 'character') {
@@ -725,6 +791,7 @@ function buildPayloadFromOps(ops, title) {
     }
     if (Object.keys(params).length) payload.params = params;
     if (replaceExpanders) payload.expanders = expanders;
+    if (replaceVibes) payload.vibes = vibes;
     if (fieldMap.size) payload.fields = Array.from(fieldMap.values());
     if (characters.length) payload.characters = characters;
     return payload;
@@ -790,6 +857,37 @@ function buildExportOpsFromStudio() {
         });
     });
 
+    // collectVibeTransferData: public/scripts/comp/manualModalManager.js
+    if (typeof collectVibeTransferData === 'function') {
+        const currentVibes = collectVibeTransferData() || [];
+        if (currentVibes.length) {
+            ops.push({
+                key: 'vibes:policy',
+                group: 'Vibes',
+                kind: 'vibes-policy',
+                action: 'replace',
+                label: 'Replace all vibe transfers',
+                enabled: true
+            });
+            currentVibes.forEach((entry, index) => {
+                const vibe = normalizeStudioChangeVibe(entry);
+                if (!vibe) return;
+                ops.push({
+                    key: `vibe:${vibe.id}:${index}`,
+                    group: 'Vibes',
+                    kind: 'vibe',
+                    action: 'set',
+                    vibeId: vibe.id,
+                    ie: vibe.ie,
+                    strength: vibe.strength,
+                    inject_text: vibe.inject_text,
+                    name: vibe.id,
+                    enabled: true
+                });
+            });
+        }
+    }
+
     // requestBodyReplacements: public/scripts/comp/requestBodyReplacementsModal.js
     if (requestBodyReplacements.length) {
         ops.push({
@@ -851,6 +949,12 @@ function renderStudioChangeOpRow(op) {
     } else if (op.kind === 'expander') {
         title = op.name || `!${op.prefix}`;
         detail = studioChangeTruncate(Array.isArray(op.value) ? op.value.join(' | ') : op.value, 110);
+    } else if (op.kind === 'vibes-policy') {
+        title = op.label || 'Replace all vibe transfers';
+        detail = 'Clears current vibe transfers, then installs the ids below';
+    } else if (op.kind === 'vibe') {
+        title = op.name || op.vibeId || 'Vibe';
+        detail = studioChangeTruncate(`${op.ie || 'ie?'} · strength ${op.strength}${op.inject_text === false ? ' · no text' : ''}`, 110);
     } else {
         title = op.name || 'Chunk';
         detail = studioChangeTruncate(op.from && op.action === 'replace'
@@ -1179,6 +1283,17 @@ async function applyStudioChangeOps(ops) {
         renderRequestBodyReplacementsList();
     }
 
+    if (enabled.some((op) => op.kind === 'vibes-policy')) {
+        // clearAllVibeReferenceItems / addVibeReferenceToContainer: public/scripts/comp/referenceManager.js
+        if (typeof clearAllVibeReferenceItems === 'function') clearAllVibeReferenceItems();
+        const nextVibes = enabled.filter((op) => op.kind === 'vibe');
+        for (const op of nextVibes) {
+            if (typeof addVibeReferenceToContainer !== 'function') break;
+            const textState = op.inject_text === false ? 'off' : 'on';
+            await addVibeReferenceToContainer(op.vibeId, op.ie || null, op.strength, textState);
+        }
+    }
+
     enabled.filter((op) => op.kind === 'character' && op.action === 'remove').sort((a, b) => b.charIndex - a.charIndex).forEach((op) => {
         const item = getStudioCharacterItems()[op.charIndex];
         if (item) {
@@ -1451,6 +1566,7 @@ document.addEventListener('paste', handleStudioChangePaste, true);
 
 if (typeof window !== 'undefined') {
     window.tryApplyStudioChangeJsonFromText = tryApplyStudioChangeJsonFromText;
+    window.extractStudioChangeJson = extractStudioChangeJson;
     window.openStudioChangeExportDialog = openStudioChangeExportDialog;
     window.handleStudioChangeShortcutClick = handleStudioChangeShortcutClick;
     window.STUDIO_CHANGE_AI_SPEC = STUDIO_CHANGE_AI_SPEC;

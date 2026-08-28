@@ -78,6 +78,7 @@ Only relevant when embedding the PWA in DreamScape Android WebView.
 | `dsapRegistry.js` | Pseudo-URL routing (`edtx://`, `en.grimoire.jp`, …) |
 | `grimoireCoreDomains.js` | Built-in wiki/search/home routes |
 | `*DsapApplet.js` | Lazy-loaded mini-apps |
+| Menma progress | Windowed DSAP at `menma.dyna.dreamscape.jp` (`menmaDsapApplet.js`). Start menu **Menma** / All Apps. Fetches `GET /menma/state`; Open in Studio on breakfast thumbs. |
 
 Server-backed pieces use WS (`search_tag_wiki`, `resolve_grimoire_url`, etc.) but **routing, history, panes, standalone windows** are client-only.
 
@@ -93,7 +94,7 @@ Server-backed pieces use WS (`search_tag_wiki`, `resolve_grimoire_url`, etc.) bu
 | Credit cost dialog | `creditCostDialog.js` | Computes cost locally via `calculateUpscaleInfo()` in `utilities.js` using image dimensions + `window.optionsData.user.subscription` (Opus free tier). Does **not** fetch balance over WS/REST at dialog open; subscription data comes from server options loaded at init. |
 | Streaming step previews | `websocket.js` streaming session | Interprets `image_generation_progress`; `stage_complete` swaps the editor preview to that stage's result without ending the run |
 | Staged results review | `stageResultsReview.js` | Opens a Studio tool window at staged-generate start with one gallery tile per expected saved stage; fills from `stage_complete` / `complete` / response `filenames[]`; click opens Lumen |
-| Studio change JSON | `studioChangeJson.js` (+ desktop shortcut type `studio-change`, prompt context menu, clipboard paste) | Client-only compact studio delta: export/copy/paste/apply params, prompt/UC chunks, characters, and request-level text expanders (`expanders` replaces the whole request expander list). AI spec: `window.STUDIO_CHANGE_AI_SPEC` and `docs/studio-change-json.md`. No dedicated WS packet. |
+| Studio change JSON | `studioChangeJson.js` (+ desktop shortcut type `studio-change`, prompt context menu, clipboard paste) | Client-only compact studio delta (`v:1`, `dreamscape:"change"`): export/copy/paste/apply params, prompt/UC chunks, characters, request expanders, optional vibe ids. Contract: `docs/studio-change-json.md`. Helpers: `window.tryApplyStudioChangeJsonFromText`, `window.openStudioChangeExportDialog`, `window.STUDIO_CHANGE_AI_SPEC`. No dedicated WS packet. |
 
 ---
 

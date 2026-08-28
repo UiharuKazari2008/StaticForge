@@ -277,6 +277,34 @@ function registerDsapManifests() {
         }
     });
 
+
+    const MENMA_DSAP_MANIFEST_URL = 'menma.dyna.dreamscape.jp';
+    registerDsap({
+        url: MENMA_DSAP_MANIFEST_URL,
+        aliases: [
+            `dsap://${MENMA_DSAP_MANIFEST_URL}`,
+            'en.grimoire.jp/applets/menma',
+            'applet.grimoire.jp/menma'
+        ],
+        type: 'dsap',
+        title: 'Menma',
+        assets: {
+            scripts: ['scripts/comp/menmaDsapApplet.js']
+        },
+        menuEntry: {
+            launchId: 'menma',
+            icon: 'fas fa-cake-candles',
+            text: 'Menma',
+            fullName: 'Menma Progress',
+            desktopOnly: true,
+            appMenu: true,
+            launch() {
+                // openDsapInStandaloneWindow: public/scripts/comp/dsapRegistry.js
+                openDsapInStandaloneWindow(`dsap://${MENMA_DSAP_MANIFEST_URL}/status`);
+            }
+        }
+    });
+
     registerDsap({
         url: WIKI_DSAP_MANIFEST_URL,
         aliases: [
