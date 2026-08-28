@@ -1,0 +1,53 @@
+{
+  "character": {
+    "name": "Menma",
+    "age_band": "late 20s adult",
+    "identity": "adult woman, late 20s, unkempt programmer girl, thick hips, messy long white hair, bangs falling in her face, round glasses, tired brown eyes, faint dark circles, wrinkled cream oversized hoodie, white socks, black and blue gaming chair, high-angle view of a cluttered lived-in night coding desk with four monitors showing code, warm lamp light, bookshelves, papers and empty mugs scattered",
+    "look": "adult woman, late 20s, unkempt programmer girl, thick hips, messy long white hair, bangs falling in her face, round glasses, tired brown eyes, faint dark circles, wrinkled cream oversized hoodie, white socks, black and blue gaming chair, high-angle view of a cluttered lived-in night coding desk with four monitors showing code, warm lamp light, bookshelves, papers and empty mugs scattered",
+    "locked": true
+  },
+  "baseline_kg": 54.0,
+  "current_kg": 54.32,
+  "slices_eaten_total": 4,
+  "overtime_hours_total": 0.0,
+  "pending_slices": 0,
+  "pending_overtime_hours": 0,
+  "last_before": "1787905232691_generated_1450044352.png",
+  "last_after": "1787905273177_generated_254652887.png",
+  "history": [
+    {
+      "at": "2026-08-28T05:35:08.356710+00:00",
+      "slices": 2,
+      "overtime_hours": 0.0,
+      "gained_kg": 0.08,
+      "kg": 54.08,
+      "before": "1787895001506_generated_807865027.png",
+      "after": "1787895249000_generated_1850443478.png"
+    },
+    {
+      "at": "2026-08-28T08:21:47.282374+00:00",
+      "slices": 2,
+      "stacks": 1,
+      "overtime_hours": 0.0,
+      "gained_kg": 0.24,
+      "kg": 54.32,
+      "chair": "gaming",
+      "landscape": false,
+      "before": "1787905232691_generated_1450044352.png",
+      "after": "1787905273177_generated_254652887.png"
+    }
+  ],
+  "last_look": "1787895908094_generated_3772933719.png",
+  "milestones": {
+    "chair": "gaming"
+  },
+  "max_weight": null,
+  "max_cake_stacks": 5,
+  "slices_per_cake": 12,
+  "cake_diameter_in": 8,
+  "cake_ratings": {},
+  "favorite_cake": null,
+  "cake_rotation_index": 1,
+  "pending_bloat_bytes": 0,
+  "_cake_type": "strawberry shortcake"
+}
