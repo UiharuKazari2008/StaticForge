@@ -69,6 +69,43 @@ assert.strictEqual(stripped.autoApply, undefined);
 assert.strictEqual(stripped.autoGenerate, undefined);
 assert.strictEqual(_test.studioChangePayloadWithoutFlags({ prompt: 'hi' }), null);
 
+function expectFlagError(body, message) {
+    let threwNested = false;
+    try {
+        _test.resolveStudioAutoFlags(body);
+    } catch (err) {
+        threwNested = true;
+        assert.strictEqual(err.status, 400);
+        assert.strictEqual(err.message, message);
+    }
+    assert.strictEqual(threwNested, true);
+}
+
+expectFlagError(
+    { change: { dreamscape: 'change', v: 1, autoApply: false, autoGenerate: true } },
+    'autoGenerate requires autoApply'
+);
+expectFlagError(
+    { change: { dreamscape: 'change', v: 1, autoApply: true, autoGenerate: true } },
+    'autoApply/autoGenerate must be siblings of change, not inside change'
+);
+expectFlagError(
+    { change: { dreamscape: 'change', v: 1, autoApply: false } },
+    'autoApply/autoGenerate must be siblings of change, not inside change'
+);
+assert.deepStrictEqual(
+    _test.resolveStudioAutoFlags({
+        change: { dreamscape: 'change', v: 1, autoApply: true },
+        autoApply: true,
+        autoGenerate: false
+    }),
+    { autoApply: true, autoGenerate: false }
+);
+const cleaned = _test.stripStudioAutoFlags({ dreamscape: 'change', autoApply: false, autoGenerate: true, v: 1 });
+assert.strictEqual(cleaned.dreamscape, 'change');
+assert.strictEqual(cleaned.autoApply, undefined);
+assert.strictEqual(cleaned.autoGenerate, undefined);
+
 _test.shareCodes.set('EXPIRED', { clientId: 'abc', expiresAt: Date.now() - 10 });
 _test.shareCodes.set('LIVEONE', { clientId: 'def', expiresAt: Date.now() + 60000 });
 _test.pruneShareCodes();

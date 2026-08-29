@@ -19,7 +19,9 @@ not fields inside Change-JSON.
 | `autoApply` | `true` | Bound tab awaits `applyStudioChangePayload`, then returns. Do not fire-and-forget `tryApplyStudioChangeJsonFromText`. `false` means do not apply. |
 | `autoGenerate` | `false` | After a **successful apply**, click the bound tab's existing Generate button (`#manualGenerateBtn` → `handleManualGeneration` / `generate_image`). Use Yukimi's bound session. No server-side generate. No new generate API or chrome. |
 
-`autoGenerate: true` with `autoApply: false` is `400` (`autoGenerate requires autoApply`).
+`autoGenerate: true` with `autoApply: false` is `400` (`autoGenerate requires autoApply`), whether those flags sit at top level or inside `change`.
+
+If `autoApply` / `autoGenerate` appear **inside** `change` and not as siblings of `change`, `400` (`autoApply/autoGenerate must be siblings of change, not inside change`).
 
 Do not add a second apply-wait. The `#16` await is `applyStudioChangePayload` itself; fold that wait into `autoApply: true`.
 

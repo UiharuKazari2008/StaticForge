@@ -45,23 +45,57 @@ function readBoolFlag(value, defaultValue) {
     return defaultValue;
 }
 
-function resolveStudioAutoFlags(body) {
-    const autoApply = readBoolFlag(body && body.autoApply, true);
-    const autoGenerate = readBoolFlag(body && body.autoGenerate, false);
+function objectHasOwn(obj, key) {
+    return !!(obj && typeof obj === 'object' && !Array.isArray(obj) && Object.prototype.hasOwnProperty.call(obj, key));
+}
+
+function rejectIllegalAutoCombo(autoApply, autoGenerate) {
     if (!autoApply && autoGenerate) {
         const err = new Error('autoGenerate requires autoApply');
         err.status = 400;
         throw err;
     }
+}
+
+function resolveStudioAutoFlags(body) {
+    const change = (body && body.change && typeof body.change === 'object' && !Array.isArray(body.change))
+        ? body.change
+        : null;
+    const siblingApply = objectHasOwn(body, 'autoApply');
+    const siblingGen = objectHasOwn(body, 'autoGenerate');
+    const nestedApply = objectHasOwn(change, 'autoApply');
+    const nestedGen = objectHasOwn(change, 'autoGenerate');
+
+    const autoApply = readBoolFlag(body && body.autoApply, true);
+    const autoGenerate = readBoolFlag(body && body.autoGenerate, false);
+    rejectIllegalAutoCombo(autoApply, autoGenerate);
+
+    if (nestedApply || nestedGen) {
+        const nestedAutoApply = readBoolFlag(nestedApply ? change.autoApply : undefined, true);
+        const nestedAutoGenerate = readBoolFlag(nestedGen ? change.autoGenerate : undefined, false);
+        rejectIllegalAutoCombo(nestedAutoApply, nestedAutoGenerate);
+        if (!siblingApply && !siblingGen) {
+            const err = new Error('autoApply/autoGenerate must be siblings of change, not inside change');
+            err.status = 400;
+            throw err;
+        }
+    }
+
     return { autoApply, autoGenerate };
+}
+
+function stripStudioAutoFlags(obj) {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj || null;
+    if (!objectHasOwn(obj, 'autoApply') && !objectHasOwn(obj, 'autoGenerate')) return obj;
+    const clean = { ...obj };
+    delete clean.autoApply;
+    delete clean.autoGenerate;
+    return clean;
 }
 
 function studioChangePayloadWithoutFlags(body) {
     if (!isStudioChangePayload(body)) return null;
-    const payload = { ...body };
-    delete payload.autoApply;
-    delete payload.autoGenerate;
-    return payload;
+    return stripStudioAutoFlags(body);
 }
 
 function getWsServer(globalResources) {
@@ -335,7 +369,7 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
             }
             const { autoApply, autoGenerate } = resolveStudioAutoFlags(body);
             const data = await sendBoundCommand(globalResources, 'apply_studio', {
-                change: body.change || null,
+                change: stripStudioAutoFlags(body.change) || null,
                 prompt: body.prompt,
                 uc: body.uc,
                 payload: studioChangePayloadWithoutFlags(body),
@@ -408,6 +442,8 @@ module.exports = {
         readBoolFlag,
         resolveStudioAutoFlags,
         studioChangePayloadWithoutFlags,
+        stripStudioAutoFlags,
+        objectHasOwn,
         SHARE_TTL_MS,
         SHARE_ALPHABET
     }

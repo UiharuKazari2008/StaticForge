@@ -259,7 +259,9 @@ studio change payload, plus two **sibling** bools (not inside Change-JSON):
 | `autoGenerate` | no | Default `false`. After a successful apply, click the bound tab's existing Generate button (`#manualGenerateBtn`). Uses Yukimi's bound session. Not a server-side generate. HTTP does not wait for generation. |
 
 `autoGenerate: true` with `autoApply: false` is `400`
-(`autoGenerate requires autoApply`).
+(`autoGenerate requires autoApply`) at top level or inside `change`.
+Flags inside `change` that are not siblings of `change` are `400`
+(`autoApply/autoGenerate must be siblings of change, not inside change`).
 
 **Success:** `200` `{ "success": true, "ok": true, "applied": true, "autoApply": true, "autoGenerate": false }` — plus `generateStarted` when `autoGenerate` was true.
 

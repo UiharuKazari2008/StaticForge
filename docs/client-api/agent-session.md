@@ -41,7 +41,7 @@ The bound tab replies with `agent_session_result` using the same `requestId`.
 | `autoApply` | `true` | `true`: await `applyStudioChangePayload` on the bound tab, then return. Do not fire-and-forget `tryApplyStudioChangeJsonFromText`. `false`: do not apply. |
 | `autoGenerate` | `false` | After a **successful apply**, click the bound tab's existing Generate button (`#manualGenerateBtn` → form submit → `handleManualGeneration` / `generate_image`). Uses Yukimi's bound session, not a server-side generate. The HTTP response does not wait for generation to finish. |
 
-`autoGenerate: true` with `autoApply: false` is `400` (`autoGenerate requires autoApply`). It is not a silent no-op.
+`autoGenerate: true` with `autoApply: false` is `400` (`autoGenerate requires autoApply`), at top level or inside `change`. It is not a silent no-op. Flags inside `change` that are not siblings of `change` are `400` (`autoApply/autoGenerate must be siblings of change, not inside change`).
 
 When `autoApply` is true, `POST /agent/session/studio` resolves after the bound editor apply (`applyStudioChangePayload`) completes, success or error.
 
