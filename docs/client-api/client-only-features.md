@@ -80,7 +80,7 @@ Only relevant when embedding the PWA in DreamScape Android WebView.
 | `*DsapApplet.js` | Lazy-loaded mini-apps |
 | Menma progress | Windowed DSAP at `menma.dyna.dreamscape.jp` (`menmaDsapApplet.js`). Open from Control Panel (`dsap://dreamscape.jp/`), not the Start menu. Loads via WS `get_menma_state`; Open in Studio on breakfast thumbs. |
 | Wiki Manager DSAP (`fandomWikiManagerDsapApplet.js`, `dsap://wiki.dyna.dreamscape.jp`) | Lists cached Fandom / NovelAI / MediaWiki / static wikis; import, pull/update, delete. Talks WS `get_fandom_wiki_manager`, `import_fandom_wiki_page` (Fandom + generic MediaWiki `/api.php`), `import_static_wiki`, `update_wiki_import`, `delete_fandom_wiki_import`. Open uses `rdf://wiki.fandom.jp/…`, `docs.novelai.jp`, or `edtx://en.grimoire.jp/docs/<siteId>`. |
-| Similar Images DSAP (`similarImageDsapApplet.js`, `dsap://similar.dyna.dreamscape.jp`, alias `review.dyna.dreamscape.jp`) | Control Panel only (`startMenu: false`). Lists consecutive-seed / refine groups; Keep parks a group in localStorage `similarImageReviewedGroups` (no delete); Scrap selected / scrap-all-but-one calls WS `scrap_similar_images`. Open in Studio uses `openManualModalWithContent`. |
+| Zanzou DSAP (`similarImageDsapApplet.js`, `dsap://zanzou.dyna.dreamscape.jp`, aliases `similar` / `review`) | Control Panel only (`startMenu: false`). Afterimage / near-dupe review. Keep parks a group in localStorage `similarImageReviewedGroups` (no delete); Scrap selected / scrap-all-but-one calls WS `scrap_similar_images`. Open in Studio uses `openManualModalWithContent`. |
 
 Server-backed pieces use WS (`search_tag_wiki`, `resolve_grimoire_url`, etc.) but **routing, history, panes, standalone windows** are client-only.
 

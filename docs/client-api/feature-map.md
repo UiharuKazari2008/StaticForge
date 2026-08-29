@@ -54,7 +54,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | List gallery | — | `request_gallery` | `gallery_updated` | Virtual scroll |
 | Image metadata | — | `request_image_metadata`, `request_image_by_index` | — | Studio / viewer; `blurhash` on metadata + gallery rows |
 | Bulk delete | — | `delete_images_bulk` | `gallery_updated` | Selection UI |
-| Similar-image keep/scrap | — | `get_similar_image_groups`, `scrap_similar_images` (wraps `delete_images_bulk`) | `gallery_updated` (on scrap) | Similar Images DSAP (`similar.dyna.dreamscape.jp`); Control Panel only |
+| Zanzou (afterimage keep/scrap) | — | `get_similar_image_groups`, `scrap_similar_images` (wraps `delete_images_bulk`) | `gallery_updated` (on scrap) | Zanzou DSAP (`zanzou.dyna.dreamscape.jp`); Control Panel only |
 | Pin / scrap | — | `workspace_add_pinned`, `workspace_remove_pinned`, `workspace_*_scrap` | `workspace_updated` | — |
 | Move between workspaces | — | `workspace_move_files` | `workspace_image_added` | — |
 | Workspace CRUD | — | `workspace_list`, `workspace_create`, … | `workspace_updated`, `workspace_activated` | Color/fonts/wallpaper UI |

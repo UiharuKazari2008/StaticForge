@@ -333,26 +333,28 @@ function registerDsapManifests() {
         }
     });
 
-    const SIMILAR_DSAP_MANIFEST_URL = 'similar.dyna.dreamscape.jp';
+    const SIMILAR_DSAP_MANIFEST_URL = 'zanzou.dyna.dreamscape.jp';
     registerDsap({
         url: SIMILAR_DSAP_MANIFEST_URL,
         aliases: [
             `dsap://${SIMILAR_DSAP_MANIFEST_URL}`,
+            'similar.dyna.dreamscape.jp',
+            'dsap://similar.dyna.dreamscape.jp',
             'review.dyna.dreamscape.jp',
             'dsap://review.dyna.dreamscape.jp',
             'en.grimoire.jp/applets/similar',
             'applet.grimoire.jp/similar'
         ],
         type: 'dsap',
-        title: 'Similar Images',
+        title: 'Zanzou',
         assets: {
             scripts: ['scripts/comp/similarImageDsapApplet.js']
         },
         menuEntry: {
-            launchId: 'similar-images',
+            launchId: 'zanzou',
             icon: 'fas fa-clone',
-            text: 'Similar Images',
-            fullName: 'Similar Image Review',
+            text: 'Zanzou',
+            fullName: 'Zanzou — afterimage review',
             appMenu: false,
             startMenu: false,
             launch() {

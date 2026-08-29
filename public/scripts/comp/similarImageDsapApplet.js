@@ -1,12 +1,12 @@
 /**
  * Similar-image keep/scrap DSAP — review consecutive-seed (and refine) groups.
- * Domain: similar.dyna.dreamscape.jp
+ * Domain: zanzou.dyna.dreamscape.jp (aliases similar / review)
  * Depends on: dsapRegistry.js, dsapSmfMarkup.js, assetUrlResolver.js,
  *             manualModalManager.js, confirmationDialog.js, contextMenu.js
  * Server: WS get_similar_image_groups, scrap_similar_images (wraps delete_images_bulk)
  */
 
-const SIMILAR_DSAP_URL = 'similar.dyna.dreamscape.jp';
+const SIMILAR_DSAP_URL = 'zanzou.dyna.dreamscape.jp';
 const SIMILAR_DSAP_ID = 'similar-images';
 const SIMILAR_REVIEWED_KEY = 'similarImageReviewedGroups';
 
@@ -138,7 +138,7 @@ function similarDsapShellHtml(tabId, workspaceLabel) {
     ];
     return `${dsapSmfBuildRootOpen(SIMILAR_DSAP_ID)}
 ${dsapSmfBuildHeader({
-    branchTitle: typeof DSAP_SMF_BRANCH_SIMILAR === 'string' ? DSAP_SMF_BRANCH_SIMILAR : 'Similar Images',
+    branchTitle: typeof DSAP_SMF_BRANCH_SIMILAR === 'string' ? DSAP_SMF_BRANCH_SIMILAR : 'Zanzou',
     toolTitle: SIMILAR_TAB_LABELS[tabId] || 'Groups'
 })}
 ${dsapSmfBuildTabBar(tabs, tabId, { tabBarId: 'similarDsapTabBar', dataAttr: 'data-similar-tab' })}

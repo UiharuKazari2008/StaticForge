@@ -1,4 +1,4 @@
-# WebSocket: Similar-image review
+# Zanzou (similar-image keep/scrap)
 
 Server handler: `modules/ws/handlers/125-similarImageHandler.js`
 
@@ -6,7 +6,7 @@ Group query: `modules/metadataDatabase.js` → `listSimilarImageGroupsForWorkspa
 
 See [WebSocket protocol](../websocket.md) for envelope format, auth, and error handling.
 
-Ivory's similar-image keep/scrap applet (`public/scripts/comp/similarImageDsapApplet.js`) lists near-duplicate groups already tagged on `image_search_facets` (`consecutive_seed_group_id`, optionally `refine_group_id`). It does **not** run a perceptual-hash or full-gallery scan. Thumbs use existing `GET /previews` (fallback `GET /images`). Scrap delegates to `delete_images_bulk`.
+Zanzou (`public/scripts/comp/similarImageDsapApplet.js`, `dsap://zanzou.dyna.dreamscape.jp`) lists near-duplicate afterimage groups already tagged on `image_search_facets` (`consecutive_seed_group_id`, optionally `refine_group_id`). It does **not** run a perceptual-hash or full-gallery scan. Thumbs use existing `GET /previews` (fallback `GET /images`). Scrap delegates to `delete_images_bulk`.
 
 The web applet calls `window.wsClient.sendMessage('get_similar_image_groups', { workspaceId })` and `sendMessage('scrap_similar_images', { workspaceId, groupId, groupKind, filenames })`. Keep is client-only (localStorage `similarImageReviewedGroups`) — images stay on disk.
 
