@@ -210,7 +210,7 @@ time; a new bind unbinds the previous tab (`agent_session_unbound`).
 | Field | Required | Description |
 |-------|----------|-------------|
 | `clientId` | one of | Id from `GET /agent/clients` |
-| `code` | one of | 6-character share code from Control Panel → Share session |
+| `code` | one of | 6-character share code from `session_share_start` / `session_share_code_response` (console or agent; no UI) |
 
 **Success:** `200` `{ "success": true, "clientId", "bound": true, "userType", "workspaceId" }`
 

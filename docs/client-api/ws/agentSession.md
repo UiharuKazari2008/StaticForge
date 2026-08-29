@@ -4,17 +4,17 @@ Server handler: `modules/ws/handlers/168-agentClientHandler.js`
 
 Registry: `modules/agentClientBridge.js`
 
-Client: `public/scripts/comp/agentClientBridge.js`
+Client: `public/scripts/comp/agentClientBridge.js` (inbound handler only; no applet)
 
 See [agent-session.md](../agent-session.md) for the localhost REST surface. Ivory / Menma should use loopback + Bearer, not the PIN pad. Share codes and keys are never logged.
 
-These packets are **not** gallery / workspace list APIs.
+These packets are **not** gallery / workspace list APIs. No share-code chrome is shipped; mint from console via `window.agentSessionShareStart()` or `session_share_start`.
 
 ## Packet index
 
 | Request type | Typical response | Auth | Notes |
 |---|---|---|---|
-| `session_share_start` | `session_share_start_response` | session | Mint a 6-character share code (~5 min). Optional `userAgent` snippet. |
+| `session_share_start` | `session_share_code_response` | session | Mint a 6-character share code (~5 min). Optional `userAgent` snippet. |
 | `agent_session_result` | (none) | session | Client reply to `agent_session_command`. Fire-and-forget. |
 
 ## Server-initiated
@@ -39,7 +39,7 @@ These packets are **not** gallery / workspace list APIs.
 |-------|----------|-------------|
 | `userAgent` | No | Short UA snippet stored on the connection for `GET /agent/clients` |
 
-**Success response:** `session_share_start_response`
+**Success response:** `session_share_code_response`
 
 ```json
 {
@@ -50,7 +50,7 @@ These packets are **not** gallery / workspace list APIs.
 }
 ```
 
-Do not log `code`. Control Panel → Share session shows it in a dialog.
+Do not log `code`. No dialog is shown; the requesting console / agent receives the payload.
 
 ### `agent_session_result`
 
@@ -60,7 +60,7 @@ Do not log `code`. Control Panel → Share session shows it in a dialog.
 
 **Request fields:** standard envelope `requestId` plus `data` snapshot / `{ ok, error }`.
 
-Ignored when no matching pending command, the sender is not the bound client, or the client is not bound.
+Ignored when no matching pending command or the sender is not the bound client.
 
 **Errors:** none (no response packet).
 

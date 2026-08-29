@@ -14,7 +14,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | PIN login | `POST /` login | — | — | Login UI, pin modal |
 | Browser-agent login | `GET /agent` → preload `GET /agent/assets.json` → `/app?agent=1`; optional `GET /agent/assets.zip` | session-authenticated connection | — | No service worker; HTTP preload of app-shell CSS/JS; desktop/windowed boot |
 | Agent client notice | `POST /agent/broadcast` | — | `agent_notice` | Toast (`showGlassToast`) or confirmation dialog |
-| Agent session bind | `GET /agent/clients`, `POST /agent/bind` | `session_share_start` | `agent_session_bound`, `agent_session_unbound` | Control Panel → Share session code dialog; loopback + Bearer only |
+| Agent session bind | `GET /agent/clients`, `POST /agent/bind` | `session_share_start` | `agent_session_bound`, `agent_session_unbound` | No chrome. Bind by `clientId` or a console-minted share code; loopback + Bearer only |
 | Agent session drive | `POST /agent/session/open-image`, `POST /agent/session/studio`, `GET /agent/session/state` | `agent_session_result` | `agent_session_command` | Opens Studio / applies change JSON / small snapshot on the bound tab |
 | Session check | `OPTIONS /app`, `POST /` ping | `connection` | — | localStorage sync |
 | Client performance telemetry | — | `report_client_perf`, `get_telemetry` | — | FPS/long-task/heap and UI-size sampling; Security Center details |

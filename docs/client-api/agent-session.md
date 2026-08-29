@@ -10,15 +10,17 @@ This is not a browser view. I/O is REST against the bound client's running edito
 
 Out of scope: `workspace_list` / `workspace_move_files` / `request_gallery` / the `:9220` gallery websocket.
 
+No new chrome shipped with this API. Share-code UX is waiting on a Yukimi preview — mint a code from the console or have the agent bind by `clientId`.
+
 See also [rest-api.md](./rest-api.md) (Agent section) and [ws/agentSession.md](./ws/agentSession.md).
 
 ## Bind
 
 1. `GET /agent/clients` — list connected websocket clients (`clientId`, `userType`, `workspaceId`, `connectedAt`, `userAgent` snippet, `bound`).
 2. `POST /agent/bind` `{ "clientId": "…" }` — pick one from the list.
-3. Or the user clicks **Share session** on Control Panel (`dsap://dreamscape.jp/`). The tab sends `session_share_start` and shows a 6-character code (~5 minutes). Then `POST /agent/bind` `{ "code": "ABC234" }` claims it.
+3. Or mint a short code from the bound tab (no UI): `await window.agentSessionShareStart()` or `wsClient.sendMessage('session_share_start', {})`. Response type is `session_share_code_response` (`code`, `clientId`, `expiresInSec` ~300). Then `POST /agent/bind` `{ "code": "ABC234" }` claims it. Codes expire in ~5 minutes and are single-use.
 
-Only one client is bound at a time. Binding another unbinds the previous. Share codes are never logged.
+Only one client is bound at a time. Binding another unbinds the previous. Share codes and keys are never logged.
 
 ## Drive
 
@@ -27,16 +29,16 @@ All three require a live bind (`404` if none).
 | Route | Body | Effect |
 |-------|------|--------|
 | `POST /agent/session/open-image` | `{ "filename" }` | WS `agent_session_command` `open_image` → `openManualModalWithContent({ type: "image", image })` |
-| `POST /agent/session/studio` | change JSON or `{ prompt, uc }` | Apply via existing studio change helper (`dreamscape:"change"`, `v:1`; characters always replace+index) |
+| `POST /agent/session/studio` | change JSON or `{ prompt, uc }` | Apply via `window.tryApplyStudioChangeJsonFromText` (`dreamscape:"change"`, `v:1`) |
 | `GET /agent/session/state` | — | Small snapshot: `workspaceId`, open `filename` if any, `model`, bound `clientId` |
 
-The bound client ignores commands until it receives `agent_session_bound`, and ignores `agent_session_result` request ids that do not match.
+The bound tab replies with `agent_session_result` using the same `requestId`.
 
 ## WebSocket packets
 
 | Direction | Type | Notes |
 |-----------|------|--------|
-| Client → server | `session_share_start` | Returns `session_share_start_response` with `code`, `clientId`, `expiresInSec` |
+| Client → server | `session_share_start` | Returns `session_share_code_response` with `code`, `clientId`, `expiresInSec` |
 | Server → bound client | `agent_session_command` | `{ command, … }` + `requestId` |
-| Bound client → server | `agent_session_result` | Correlates `requestId`; ignored if unbound / wrong id |
+| Bound client → server | `agent_session_result` | Correlates `requestId` |
 | Server → client | `agent_session_bound` / `agent_session_unbound` | Bind flag for the tab |
