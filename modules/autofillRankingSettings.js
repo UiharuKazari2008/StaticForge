@@ -95,7 +95,7 @@ const DEFAULT_AUTOFILL_RANKING = {
         }
     },
 
-    // public/scripts/comp/autocompleteUtils.js calculateComprehensiveRanking() — tag branch
+    // public/scripts/comp/autocompleteRanking.js calculateComprehensiveRanking() — tag branch
     clientTierBonus: {
         tier4: 1200,
         tier3: 700,
@@ -113,7 +113,7 @@ const DEFAULT_AUTOFILL_RANKING = {
         frequencyCap: 8
     },
 
-    // public/scripts/comp/autocompleteUtils.js calculateComprehensiveRanking() — non-tag branch
+    // public/scripts/comp/autocompleteRanking.js calculateComprehensiveRanking() — non-tag branch
     clientNonTag: {
         exactMatchBonus: 1000,
         prefixMatchBonus: 500,

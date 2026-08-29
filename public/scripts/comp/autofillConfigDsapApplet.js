@@ -3,7 +3,8 @@
  * DSAP-SMF admin applet for the global (shared) autofill/SmartText ranking config
  * (config.autofillRanking, modules/autofillRankingSettings.js). Tunes the numbers used by:
  *   - modules/tag-lookup.js searchTagsAutofill (server ranking)
- *   - public/scripts/comp/autocompleteUtils.js calculateComprehensiveRanking + sort comparator (client ranking)
+ *   - public/scripts/comp/autocompleteRanking.js calculateComprehensiveRanking (client ranking)
+ *   - public/scripts/comp/autocompleteUtils.js sort comparator (client ranking)
  * Depends on: dsapRegistry.js, dsapSmfMarkup.js, websocket.js, autofillRankingConfig.js
  * escapeHtml / escapeHtmlAttribute: public/scripts/comp/utilities.js
  */
@@ -31,7 +32,7 @@ const AUTOFILL_DSAP_SCORING_GROUPS = [
 // modules/autofillRankingSettings.js DEFAULT_AUTOFILL_RANKING. Behavior reference:
 //   - modules/tag-lookup.js searchTagsAutofill, getUsageCount, getNovelTrainingCount, getCategoryAdjustment,
 //     getQueryMatchTier, getQueryTokenCoverageScore, getTokenMatchScore, collectScoredFuzzyWordRows
-//   - public/scripts/comp/autocompleteUtils.js calculateComprehensiveRanking
+//   - public/scripts/comp/autocompleteRanking.js calculateComprehensiveRanking
 const AUTOFILL_DSAP_FIELD_DESCRIPTIONS = {
     serverBase: {
         exactTitle: 'Points awarded when the query exactly matches a tag\u2019s title \u2014 the highest-confidence server match.',

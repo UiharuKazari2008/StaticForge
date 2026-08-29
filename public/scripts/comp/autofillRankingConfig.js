@@ -1,7 +1,8 @@
 // Global (shared, not per-user) autofill/SmartText ranking config — mirrors
 // modules/autofillRankingSettings.js. Loaded via WS init step, live-updated via
 // autofill_ranking_updated broadcast. Read by:
-//   - public/scripts/comp/autocompleteUtils.js (calculateComprehensiveRanking + sort)
+//   - public/scripts/comp/autocompleteRanking.js (calculateComprehensiveRanking)
+//   - public/scripts/comp/autocompleteUtils.js (sort / assembleRankedAutofillResults)
 //   - public/scripts/comp/autofillConfigDsapApplet.js (DSAP-SMF admin applet)
 
 const AUTOFILL_TYPE_KEYS = [
@@ -105,7 +106,7 @@ function getAutofillRanking() {
     return autofillRankingConfig;
 }
 
-// clearAutofillRankingScoreCache: public/scripts/comp/autocompleteUtils.js
+// clearAutofillRankingScoreCache: public/scripts/comp/autocompleteRanking.js
 function applyAutofillRankingToClient(raw) {
     autofillRankingConfig = normalizeAutofillRankingClient(raw);
     clearAutofillRankingScoreCache();
