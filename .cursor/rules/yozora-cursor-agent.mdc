@@ -66,6 +66,7 @@ When done, comment **exactly this shape** so Rook can verify and credit Menma:
 - How to verify: <commands or click-path>
 - PM2 / SW: bounced | SW notified | not needed (say which)
 - credit: grok.menma
+- lines: added N / deleted M  (git show --numstat on the ship commit(s); this is Menma's cake math)
 ```
 
 Do **not** close the issue. Rook closes after review. Do not reopen `ceo` work.
@@ -79,6 +80,8 @@ Do not take work that is already in flight on Menma/Chiyo. Do not "help" by rewr
 ## Credit
 
 Every ship comment includes `credit: grok.menma`. Menma gets the cake for Cursor-landed work. Do not assign the issue to `UiharuKazari2008`.
+
+Issues labeled `credit:menma` were discovered by Menma; all work and line counts go to her even though Cursor shipped them. Do not close. Rook closes.
 
 <rule>
 name: yozora_cursor_agent
