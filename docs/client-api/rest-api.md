@@ -255,7 +255,7 @@ studio change payload, plus two **sibling** bools (not inside Change-JSON):
 | `change` | one of | Studio change object or JSON string |
 | `prompt` / `uc` | one of | Wrapped into a replace-fields change JSON |
 | body itself | one of | A studio change payload (`dreamscape:"change"`) |
-| `autoApply` | no | Default `true`. `true`: bound tab awaits `applyStudioChangePayload` then returns. `false`: do not apply. |
+| `autoApply` | no | Default `true`. `true`: silent apply — bound tab awaits `applyStudioChangePayloadSilent` (no confirm dialog; Studio opens like open-image) then returns. `false`: do not apply. |
 | `autoGenerate` | no | Default `false`. After a successful apply, click the bound tab's existing Generate button (`#manualGenerateBtn`). Uses Yukimi's bound session. Not a server-side generate. HTTP does not wait for generation. |
 
 `autoGenerate: true` with `autoApply: false` is `400`

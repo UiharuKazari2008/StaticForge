@@ -67,7 +67,8 @@ snapshot; no image required).
 `apply_studio` command `data` includes `change` / `prompt` / `uc` / `payload`
 plus `autoApply` (default `true`) and `autoGenerate` (default `false`). Those
 two bools are siblings of `change`, not Change-JSON fields. `autoApply: true`
-awaits `applyStudioChangePayload` on the bound tab. After a successful apply,
+awaits silent `applyStudioChangePayloadSilent` on the bound tab (Studio opens
+like open-image; no confirm dialog). After a successful apply,
 `autoGenerate: true` clicks `#manualGenerateBtn` (existing Studio Generate
 path / `generate_image`) on Yukimi's bound session. The client reply does not
 wait for generation. `autoGenerate` without `autoApply` is rejected at REST

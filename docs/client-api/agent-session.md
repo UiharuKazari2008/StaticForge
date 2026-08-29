@@ -29,7 +29,7 @@ All three require a live bind (`404` if none).
 | Route | Body | Effect |
 |-------|------|--------|
 | `POST /agent/session/open-image` | `{ "filename" }` | WS `agent_session_command` `open_image` → `openManualModalWithContent({ type: "image", image })` |
-| `POST /agent/session/studio` | change JSON or `{ prompt, uc }` plus sibling `autoApply` / `autoGenerate` | Apply via `applyStudioChangePayload` when `autoApply` is true; after a successful apply, `autoGenerate` clicks Studio Generate on the bound tab |
+| `POST /agent/session/studio` | change JSON or `{ prompt, uc }` plus sibling `autoApply` / `autoGenerate` | Silent apply via `applyStudioChangePayloadSilent` / `applyStudioChangeOps` when `autoApply` is true (no confirm dialog); Studio opens like open-image / `openManualModalWithContent` before apply. After a successful apply, `autoGenerate` clicks Studio Generate on the bound tab |
 | `GET /agent/session/state` | — | Snapshot: `workspaceId`, open `filename` (null if ungenerated / no image), `model`, bound `clientId`, plus `change` (Studio editor as Change-JSON v1). No image required. Ivory rewrites `change` and `POST /agent/session/studio`. |
 
 The bound tab replies with `agent_session_result` using the same `requestId`.
@@ -38,12 +38,12 @@ The bound tab replies with `agent_session_result` using the same `requestId`.
 
 | Flag | Default | Effect |
 |------|---------|--------|
-| `autoApply` | `true` | `true`: await `applyStudioChangePayload` on the bound tab, then return. Do not fire-and-forget `tryApplyStudioChangeJsonFromText`. `false`: do not apply. |
+| `autoApply` | `true` | `true`: silent apply — await `applyStudioChangePayloadSilent` / `applyStudioChangeOps` (no `showStudioChangeDialog`). Studio opens like open-image (`openManualModalWithContent`; empty editor is valid when filename is null). Do not fire-and-forget `tryApplyStudioChangeJsonFromText`. `false`: do not apply. Human paste/dialog still uses `applyStudioChangePayload`. |
 | `autoGenerate` | `false` | After a **successful apply**, click the bound tab's existing Generate button (`#manualGenerateBtn` → form submit → `handleManualGeneration` / `generate_image`). Uses Yukimi's bound session, not a server-side generate. The HTTP response does not wait for generation to finish. |
 
 `autoGenerate: true` with `autoApply: false` is `400` (`autoGenerate requires autoApply`), at top level or inside `change`. It is not a silent no-op. Flags inside `change` that are not siblings of `change` are `400` (`autoApply/autoGenerate must be siblings of change, not inside change`).
 
-When `autoApply` is true, `POST /agent/session/studio` resolves after the bound editor apply (`applyStudioChangePayload`) completes, success or error.
+When `autoApply` is true, `POST /agent/session/studio` resolves after the silent bound-editor apply (`applyStudioChangePayloadSilent`) completes, success or error. Studio is opened like open-image before ops are written.
 
 `change` is the shared NovelAI/studio Change-JSON v1 (`dreamscape:"change"`, replace+index, no add). Same schema as `POST /agent/session/studio` and [studio-change-json.md](../studio-change-json.md). An empty Studio is still a valid snapshot (`fields` always includes `prompt` and `uc`, even when blank). Filename is not required.
 

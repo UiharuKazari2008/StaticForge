@@ -1117,12 +1117,23 @@ function wireStudioChangeDialog(dialog, ops, signal, options) {
 }
 
 async function ensureStudioOpenForChange() {
+    if (typeof openManualModalWithContent !== 'function') return;
     const modal = document.getElementById('manualModal');
-    if (!modal) return;
-    if (!modal.classList.contains('hidden')) return;
-    // openModal / setActiveWindow: public/scripts/comp/modalUtils.js
-    openModal(modal);
-    setActiveWindow(modal);
+    if (modal && !modal.classList.contains('hidden')) return;
+    // Same path as open-image / openManualModalWithContent (manualModalManager.js).
+    // Empty editor is valid when filename is null.
+    const imageLike = window.currentManualPreviewImage || window.currentEditImage;
+    const filename = imageLike && (
+        imageLike.filename || imageLike.original || imageLike.upscaled || imageLike.sourceFilename
+    );
+    if (filename) {
+        const image = (typeof findImageByFilename === 'function' && findImageByFilename(filename))
+            || imageLike
+            || { filename };
+        await openManualModalWithContent({ type: 'image', image }, null);
+        return;
+    }
+    await openManualModalWithContent();
 }
 
 function ensureStudioCharacterCount(minCount) {
@@ -1475,6 +1486,21 @@ async function applyStudioChangePayload(payload, options) {
     }
 }
 
+async function applyStudioChangePayloadSilent(payload) {
+    if (studioChangeDialogBusy) return false;
+    studioChangeDialogBusy = true;
+    try {
+        await ensureStudioOpenForChange();
+        const ops = buildOpsFromPayload(payload);
+        const enabledOps = ops.filter((op) => op.enabled !== false);
+        if (!enabledOps.length) return false;
+        await applyStudioChangeOps(enabledOps);
+        return true;
+    } finally {
+        studioChangeDialogBusy = false;
+    }
+}
+
 async function tryApplyStudioChangeJsonFromText(text) {
     const payload = extractStudioChangeJson(text);
     if (!payload) return false;
@@ -1644,6 +1670,7 @@ function buildStudioChangeSnapshot() {
 if (typeof window !== 'undefined') {
     window.tryApplyStudioChangeJsonFromText = tryApplyStudioChangeJsonFromText;
     window.applyStudioChangePayload = applyStudioChangePayload;
+    window.applyStudioChangePayloadSilent = applyStudioChangePayloadSilent;
     window.extractStudioChangeJson = extractStudioChangeJson;
     window.openStudioChangeExportDialog = openStudioChangeExportDialog;
     window.handleStudioChangeShortcutClick = handleStudioChangeShortcutClick;

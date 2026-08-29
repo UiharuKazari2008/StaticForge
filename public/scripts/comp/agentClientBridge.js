@@ -118,7 +118,7 @@
         if (!autoApply) {
             return { ok: true, applied: false, autoApply: false, autoGenerate: false };
         }
-        if (typeof window.applyStudioChangePayload !== 'function' || typeof window.extractStudioChangeJson !== 'function') {
+        if (typeof window.applyStudioChangePayloadSilent !== 'function' || typeof window.extractStudioChangeJson !== 'function') {
             return { ok: false, error: 'Studio change helper is not available' };
         }
         const payload = window.extractStudioChangeJson(text);
@@ -127,7 +127,7 @@
         }
         let applied = false;
         try {
-            applied = !!await window.applyStudioChangePayload(payload);
+            applied = !!await window.applyStudioChangePayloadSilent(payload);
         } catch (err) {
             return {
                 ok: false,
