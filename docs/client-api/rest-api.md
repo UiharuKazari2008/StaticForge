@@ -226,6 +226,53 @@ code; development-auth errors as `GET /agent`.
 **Client state after:** Bound tab receives `agent_session_bound`. Previous bound
 tab receives `agent_session_unbound`.
 
+### `GET /agent/scopes`
+
+**Auth:** Same as `GET /agent`. No bind required.
+
+Returns the named-scope catalog and the current key's scopes. Development-key
+auth is treated as `universal`. When the key has `vfs` or `universal`, also
+returns `vfsPathUuid` for `/{vfsPathUuid}/…` REST.
+
+**Success:** `200`
+
+```json
+{
+  "success": true,
+  "scopes": ["gallery", "workspace", "search", "infrastructure", "generation", "vfs", "autofill"],
+  "catalog": [{ "id": "autofill", "label": "Autofill / Grimoire", "description": "…" }],
+  "vfsPathUuid": "6f418b0a-b8b5-4dcf-8565-c455d81ed7e9"
+}
+```
+
+Do not log the application key. `autofill` is ranking + Grimoire / tag wiki, not `search`.
+
+### `POST /agent/packet`
+
+**Auth:** Same as `GET /agent`. No bind required.
+
+Dispatches a registered WebSocket packet through the same server handlers as a
+Yukimi session. App keys may only call packets listed on a scope they hold
+(`generation`, `vfs`, `autofill`, `search`, …). Unscoped packets require
+`universal`. Not a silent universal grant.
+
+**Inputs:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `type` | yes | WS packet name (`get_autofill_ranking`, `search_tag_wiki`, `generate_image`, `vfs_list`, …) |
+| `data` | no | Fields merged onto the packet (same as WS body) |
+| other keys | no | Treated as packet fields (same as WS) |
+
+**Success:** `200` `{ "success": true, "type": "<response type>", "data", "reply", "replies", "requestId" }`
+
+**Errors:** `400` missing `type`; `403` `INSUFFICIENT_SCOPE` / `READONLY_RESTRICTED`;
+`404` unknown packet; `503` handlers not ready; development-auth errors as
+`GET /agent`.
+
+**Follow-up:** Ranking / wiki / generate / VFS use this. VFS blobs stay on
+`GET /{vfsPathUuid}/files/:fileId` when the key has `vfs`.
+
 ### `POST /agent/session/open-image`
 
 **Auth:** Same as `GET /agent`. Requires a live bind.
@@ -341,8 +388,9 @@ editor** as Change-JSON v1 in `change` so Ivory can rewrite it and
 (empty text when the editor is blank). Characters are replace+index (no add).
 Optional per-character `position` (`{x,y}` and/or `cell` A1–E5) is echoed when
 the Studio slot has stored coords. Same contract as
-[studio-change-json.md](../studio-change-json.md). Do not log live prompt/uc
-text.
+[studio-change-json.md](../studio-change-json.md). Also echoes `scopes` (the
+app key's named scopes; development key is `["universal"]`) and `vfsPathUuid`
+when the key has `vfs`. Do not log live prompt/uc text.
 
 If the tab does not reply in time, the server still returns `200` with
 `partial: true` and the server-known `workspaceId` / `clientId` (`filename`,

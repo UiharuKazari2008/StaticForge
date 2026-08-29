@@ -10,6 +10,9 @@ stored in `config.autofillRanking` (`modules/autofillRankingSettings.js`). Appli
 
 Admin UI: DSAP-SMF applet at `dsap://autofill.dreamscape.jp/` (`public/scripts/comp/autofillConfigDsapApplet.js`).
 
+Application-key scope: `autofill` (ranking + Grimoire / tag wiki). Not `search`.
+Loopback HTTP: `POST /agent/packet` with `type` `get_autofill_ranking` / `test_autofill_ranking` / `update_autofill_ranking`.
+
 See [WebSocket protocol](../websocket.md) for envelope format, auth, and error handling.
 
 ## Packet index

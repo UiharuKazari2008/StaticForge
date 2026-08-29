@@ -58,7 +58,7 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | [rest-api.md](./rest-api.md) | Every HTTP route: methods, auth, inputs, responses, errors |
 | [client-only-features.md](./client-only-features.md) | Web-only UI, localStorage, service worker, Android bridges |
 | [feature-map.md](./feature-map.md) | UI feature → REST/WS matrix |
-| [agent-session.md](./agent-session.md) | Localhost `/agent` bind + drive one Studio tab (Ivory/Menma; loopback + Bearer, not PIN pad) |
+| [agent-session.md](./agent-session.md) | Localhost `/agent` bind + drive one Studio tab, plus named-scope `GET /agent/scopes` and `POST /agent/packet` (Ivory/Menma; loopback + Bearer, not PIN pad) |
 | [README-CHILD.md](../README-CHILD.md) | Child/ephemeral replication deployment (master pairing, bootstrap, daily ops) |
 
 ### WebSocket domains (290 request types)

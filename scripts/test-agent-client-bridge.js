@@ -175,4 +175,27 @@ _test.shareCodes.delete('LIVEONE');
 
 
 assert.strictEqual(_test.UPDATE_COMMAND_TIMEOUT_MS, 20000);
+
+const packet = _test.resolveAgentPacketMessage({
+    type: 'get_autofill_ranking',
+    data: { extra: 1 }
+});
+assert.strictEqual(packet.type, 'get_autofill_ranking');
+assert.strictEqual(packet.extra, 1);
+assert.ok(String(packet.requestId).startsWith('agent-'));
+assert.strictEqual(_test.resolveAgentPacketMessage({}), null);
+assert.strictEqual(_test.agentHasNamedScope(['autofill'], 'vfs'), false);
+assert.strictEqual(_test.agentHasNamedScope(['universal'], 'vfs'), true);
+assert.deepStrictEqual(
+    _test.resolveAgentAuthScopes({ authMethod: 'dev_login_key', userType: 'dev_admin' }),
+    ['universal']
+);
+assert.deepStrictEqual(
+    _test.resolveAgentAuthScopes({
+        authMethod: 'application_key',
+        applicationAuth: { applicationScopes: ['generation', 'vfs', 'autofill'] }
+    }),
+    ['generation', 'vfs', 'autofill']
+);
+
 console.log('test-agent-client-bridge: ok');

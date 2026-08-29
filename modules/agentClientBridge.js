@@ -5,6 +5,11 @@
 
 const crypto = require('crypto');
 const WebSocket = require('ws');
+const {
+    AVAILABLE_SCOPES,
+    scopesAllowPacket
+} = require('./applicationAuthManager');
+const { getWsPacketEntry } = require('./ws/wsPacketRegistry');
 
 const SHARE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const SHARE_TTL_MS = 5 * 60 * 1000;
@@ -408,7 +413,153 @@ function handleRouteError(res, error, fallback) {
     return res.status(status).json({ success: false, error: message });
 }
 
+function resolveAgentAuthScopes(req) {
+    if (req.authMethod === 'dev_login_key' || req.userType === 'dev_admin') {
+        return ['universal'];
+    }
+    const scopes = req.applicationAuth && req.applicationAuth.applicationScopes;
+    return Array.isArray(scopes) ? scopes : [];
+}
+
+function agentHasNamedScope(scopes, scopeId) {
+    if (!scopeId) return true;
+    if (!Array.isArray(scopes) || scopes.length === 0) return false;
+    if (scopes.includes('universal')) return true;
+    return scopes.includes(scopeId);
+}
+
+function buildAgentScopePayload(req, globalResources) {
+    const scopes = resolveAgentAuthScopes(req);
+    const payload = {
+        scopes,
+        catalog: AVAILABLE_SCOPES.map((item) => ({ ...item }))
+    };
+    if (agentHasNamedScope(scopes, 'vfs')) {
+        payload.vfsPathUuid = globalResources.getVfsPathUuid();
+    }
+    return payload;
+}
+
+function resolveAgentPacketMessage(body) {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+    const type = String(body.type || body.packet || '').trim();
+    if (!type) return null;
+    const message = { ...body, type };
+    delete message.packet;
+    if (body.data && typeof body.data === 'object' && !Array.isArray(body.data)) {
+        Object.assign(message, body.data);
+    }
+    if (!message.requestId) {
+        message.requestId = `agent-${crypto.randomBytes(6).toString('hex')}`;
+    }
+    return message;
+}
+
+function createAgentPacketSink() {
+    const replies = [];
+    const ws = {
+        readyState: 1,
+        send(raw) {
+            try {
+                replies.push(typeof raw === 'string' ? JSON.parse(raw) : raw);
+            } catch (_err) {
+                replies.push({ type: 'error', message: 'Invalid handler payload' });
+            }
+        }
+    };
+    const wsServer = {
+        clients: new Map(),
+        sendToClient(_ws, payload) {
+            if (payload) replies.push(payload);
+        },
+        broadcastToAll() {}
+    };
+    return { ws, wsServer, replies };
+}
+
+async function dispatchAgentPacket(globalResources, req, message) {
+    const scopes = resolveAgentAuthScopes(req);
+    if (!scopesAllowPacket(scopes, message.type)) {
+        const err = new Error('Application key does not have scope for this operation');
+        err.status = 403;
+        err.code = 'INSUFFICIENT_SCOPE';
+        throw err;
+    }
+    const entry = getWsPacketEntry(message.type);
+    if (!entry || typeof entry.handler !== 'function') {
+        const err = new Error(`Unknown message type: ${message.type}`);
+        err.status = 404;
+        throw err;
+    }
+    const handlers = globalResources.getWebSocketMessageHandlers();
+    if (!handlers) {
+        const err = new Error('WebSocket handlers are not ready');
+        err.status = 503;
+        throw err;
+    }
+    if (req.userType === 'readonly' && handlers.isDestructiveOperation(message.type)) {
+        const err = new Error('Non-Administrator Login: This operation is not allowed for read-only users');
+        err.status = 403;
+        err.code = 'READONLY_RESTRICTED';
+        throw err;
+    }
+    const sink = createAgentPacketSink();
+    const clientInfo = {
+        authenticated: true,
+        userType: req.userType || 'admin',
+        authMethod: req.authMethod || 'application_key',
+        applicationScopes: scopes,
+        sessionId: req.sessionId || (req.applicationAuth && req.applicationAuth.sessionId) || null,
+        userAgent: snippetUserAgent(req.headers && req.headers['user-agent'])
+    };
+    await entry.handler({
+        ws: sink.ws,
+        message,
+        clientInfo,
+        wsServer: sink.wsServer,
+        handlers
+    });
+    return sink.replies;
+}
+
 function registerRoutes(app, { devAuthMiddleware, globalResources }) {
+    app.get('/agent/scopes', devAuthMiddleware, (req, res) => {
+        try {
+            return res.json({
+                success: true,
+                ...buildAgentScopePayload(req, globalResources)
+            });
+        } catch (error) {
+            return handleRouteError(res, error, 'Failed to list agent scopes');
+        }
+    });
+
+    app.post('/agent/packet', devAuthMiddleware, async (req, res) => {
+        try {
+            const message = resolveAgentPacketMessage(req.body || {});
+            if (!message) {
+                return res.status(400).json({ success: false, error: 'type is required' });
+            }
+            const replies = await dispatchAgentPacket(globalResources, req, message);
+            const first = replies[0] || null;
+            return res.json({
+                success: !(first && first.type === 'error'),
+                type: first && first.type ? first.type : null,
+                requestId: message.requestId,
+                data: first && first.data !== undefined ? first.data : null,
+                reply: first,
+                replies
+            });
+        } catch (error) {
+            const status = error && error.status ? error.status : 500;
+            return res.status(status).json({
+                success: false,
+                error: status >= 500 ? 'Failed to dispatch agent packet' : (error.message || 'Failed to dispatch agent packet'),
+                code: error && error.code ? error.code : undefined
+            });
+        }
+    });
+
     app.get('/agent/clients', devAuthMiddleware, (req, res) => {
         try {
             return res.json({
@@ -483,13 +634,16 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
             if (!bound) {
                 return res.status(404).json({ success: false, error: 'No Studio client is bound' });
             }
+            const scopePayload = buildAgentScopePayload(req, globalResources);
             const fallback = {
                 workspaceId: resolveWorkspaceId(globalResources, bound.info),
                 filename: null,
                 model: null,
                 clientId: boundClientId,
-                change: null
+                change: null,
+                scopes: scopePayload.scopes
             };
+            if (scopePayload.vfsPathUuid) fallback.vfsPathUuid = scopePayload.vfsPathUuid;
             try {
                 const data = await sendBoundCommand(globalResources, 'get_state', {}, 8000);
                 const change = (data && data.change && typeof data.change === 'object' && !Array.isArray(data.change))
@@ -502,7 +656,9 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
                     model: data.model || null,
                     clientId: boundClientId,
                     bound: true,
-                    change
+                    change,
+                    scopes: scopePayload.scopes,
+                    ...(scopePayload.vfsPathUuid ? { vfsPathUuid: scopePayload.vfsPathUuid } : {})
                 });
             } catch (error) {
                 if (error.status === 504) {
@@ -543,6 +699,10 @@ module.exports = {
         objectHasOwn,
         SHARE_TTL_MS,
         SHARE_ALPHABET,
-        UPDATE_COMMAND_TIMEOUT_MS
+        UPDATE_COMMAND_TIMEOUT_MS,
+        resolveAgentAuthScopes,
+        resolveAgentPacketMessage,
+        agentHasNamedScope,
+        buildAgentScopePayload
     }
 };

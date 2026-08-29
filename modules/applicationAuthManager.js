@@ -54,6 +54,12 @@ const SCOPE_WS_PACKETS = {
         'search_tag_wiki', 'get_tag_wiki_page', 'refresh_tag_wiki_page',
         'get_static_wiki_site_index', 'get_static_wiki_page', 'resolve_grimoire_url'
     ],
+    autofill: [
+        'get_autofill_ranking', 'test_autofill_ranking', 'update_autofill_ranking',
+        'fetch_autofill_wiki_previews',
+        'search_tag_wiki', 'get_tag_wiki_page', 'refresh_tag_wiki_page',
+        'get_static_wiki_site_index', 'get_static_wiki_page', 'resolve_grimoire_url'
+    ],
     infrastructure: ['ping', 'pong', 'server_status', 'check_updates', 'version_check']
 };
 
@@ -68,6 +74,7 @@ const AVAILABLE_SCOPES = [
     { id: 'chat', label: 'Chat', description: 'Director and persona chat' },
     { id: 'references', label: 'References', description: 'Reference images and vibes' },
     { id: 'wiki', label: 'Wiki / Grimoire', description: 'Tag wiki and documentation' },
+    { id: 'autofill', label: 'Autofill / Grimoire', description: 'Autofill ranking and tag wiki / Grimoire (not search)' },
     { id: 'infrastructure', label: 'Infrastructure', description: 'Ping, status, version checks' }
 ];
 
@@ -132,6 +139,24 @@ function normalizeScopes(scopes) {
         return ['universal'];
     }
     return normalized.filter((s) => AVAILABLE_SCOPES.some((a) => a.id === s));
+}
+
+function getPacketScopes(packetType) {
+    const type = String(packetType || '').trim();
+    if (!type) return [];
+    const out = [];
+    for (const [scopeId, packets] of Object.entries(SCOPE_WS_PACKETS)) {
+        if (packets.includes(type)) out.push(scopeId);
+    }
+    return out;
+}
+
+function scopesAllowPacket(scopes, packetType) {
+    if (!Array.isArray(scopes) || scopes.length === 0) return false;
+    if (scopes.includes('universal')) return true;
+    const required = getPacketScopes(packetType);
+    if (!required.length) return false;
+    return required.some((scopeId) => scopes.includes(scopeId));
 }
 
 function rowToKeySummary(row, includeExpired = false) {
@@ -304,26 +329,18 @@ class ApplicationAuthManager {
     }
 
     getPacketScope(packetType) {
-        for (const [scopeId, packets] of Object.entries(SCOPE_WS_PACKETS)) {
-            if (packets.includes(packetType)) {
-                return scopeId;
-            }
-        }
-        return null;
+        return getPacketScopes(packetType)[0] || null;
+    }
+
+    getPacketScopes(packetType) {
+        return getPacketScopes(packetType);
     }
 
     canAccessWsPacket(scopes, packetType, userType) {
         if (this.isApplicationAuthPacket(packetType)) {
             return true;
         }
-        if (scopes.includes('universal')) {
-            return true;
-        }
-        const requiredScope = this.getPacketScope(packetType);
-        if (!requiredScope) {
-            return scopes.includes('universal');
-        }
-        return this.hasScope(scopes, requiredScope);
+        return scopesAllowPacket(scopes, packetType);
     }
 
     async createApplicationKey({
@@ -678,6 +695,11 @@ module.exports = {
     ApplicationAuthManager,
     APP_KEY_PREFIX,
     TEMP_TOKEN_PREFIX,
+    AVAILABLE_SCOPES,
+    SCOPE_WS_PACKETS,
+    normalizeScopes,
+    getPacketScopes,
+    scopesAllowPacket,
     isApplicationKeyFormat,
     isTempTokenFormat,
     OMEGASEARCH_QUERY_PACKET_SCHEMA

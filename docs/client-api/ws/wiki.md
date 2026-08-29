@@ -2,6 +2,8 @@
 
 Server handler: `modules/ws/handlers/110-wikiHandler.js`
 
+Application-key scopes: `wiki` or `autofill` (Ivory's ranking+Grimoire key uses `autofill`, not `search`). Loopback HTTP: `POST /agent/packet`.
+
 See [WebSocket protocol](../websocket.md) for envelope format, auth, and error handling.
 
 ## Packet index

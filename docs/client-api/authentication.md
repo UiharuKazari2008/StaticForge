@@ -165,6 +165,7 @@ Use on REST only via `X-StaticForge-App-Token: sftok_…` (no UA check). Tokens 
 | `chat` | Director/persona chat |
 | `references` | References and vibes |
 | `wiki` | Tag wiki / Grimoire |
+| `autofill` | Autofill ranking + tag wiki / Grimoire (not stuffed under `search`) |
 | `infrastructure` | ping, status, version |
 
 List via WS `get_application_auth_scopes` (admin).

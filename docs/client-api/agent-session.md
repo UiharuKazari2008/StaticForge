@@ -6,9 +6,9 @@ Localhost-only API so Ivory / Menma can drive **one connected Dreamscape Studio 
 
 Loopback application-key checks skip User-Agent match and allow a past `refreshBeforeAt` so a bot UA or an overdue refresh does not 403. Public / gallery auth stays strict. Ivory and Menma must use **loopback + app key or Bearer**, not the public PIN pad. These routes are never exposed on the public UI.
 
-This is not a browser view. I/O is REST against the bound client's running editor (open image, apply studio change JSON, state snapshot including the ungenerated editor as Change-JSON, push that tab to check/apply client updates then restart).
+This is not a browser view. I/O is REST against the bound client's running editor (open image, apply studio change JSON, state snapshot including the ungenerated editor as Change-JSON, push that tab to check/apply client updates then restart), plus named-scope packet dispatch that does **not** need a bind.
 
-Out of scope: `workspace_list` / `workspace_move_files` / `request_gallery` / the `:9220` gallery websocket.
+Out of scope: silent `universal`. Named scopes only (`generation`, `vfs`, `autofill`, plus whatever the key already has). No new chrome.
 
 No new chrome shipped with this API. Share-code UX is waiting on a Yukimi preview — mint a code from the console or have the agent bind by `clientId`.
 
@@ -22,6 +22,17 @@ See also [rest-api.md](./rest-api.md) (Agent section) and [ws/agentSession.md](.
 
 Only one client is bound at a time. Binding another unbinds the previous. Share codes and keys are never logged.
 
+## Named scopes (no bind)
+
+Loopback `/agent` honors the application key's named scopes. `GET /agent/scopes` returns the catalog plus the key's scopes. `GET /agent/session/state` echoes `scopes` and, when the key has `vfs` or `universal`, `vfsPathUuid` for the existing UUID VFS REST paths.
+
+`POST /agent/packet` dispatches a registered WS packet through the same handlers Yukimi's session uses. Body is `{ "type": "<packet>", ...fields }` or `{ "type", "data": { ... } }`. No bind required. App keys are limited to packets listed on a scope they hold. `autofill` is Autofill Ranking + Grimoire / tag wiki — not `search`. `generation` and `vfs` are the named generate/VFS packets. `universal` is not granted here.
+
+| Route | Body | Effect |
+|-------|------|--------|
+| `GET /agent/scopes` | — | `{ scopes, catalog, vfsPathUuid? }` |
+| `POST /agent/packet` | `{ type, data? }` | Same handler as WS `type`; returns `{ type, data, reply, replies }` |
+
 ## Drive
 
 All four require a live bind (`404` if none).
@@ -31,7 +42,7 @@ All four require a live bind (`404` if none).
 | `POST /agent/session/open-image` | `{ "filename" }` | WS `agent_session_command` `open_image` → `openManualModalWithContent({ type: "image", image })` |
 | `POST /agent/session/studio` | change JSON or `{ prompt, uc }` plus sibling `autoApply` / `autoGenerate` | Silent apply via `applyStudioChangePayloadSilent` / `applyStudioChangeOps` when `autoApply` is true (no confirm dialog); Studio opens like open-image / `openManualModalWithContent` before apply. After a successful apply, `autoGenerate` clicks Studio Generate on the bound tab |
 | `POST /agent/session/update` | — | WS `agent_session_command` `client_update` → mandatory Client Update dialog on the bound tab (15s countdown). Cancel aborts (no apply, no restart). No input at 0 checks for client updates, applies them, then restarts **that client**. Not a server restart. HTTP waits until Cancel or countdown 0. |
-| `GET /agent/session/state` | — | Snapshot: `workspaceId`, open `filename` (null if ungenerated / no image), `model`, bound `clientId`, plus `change` (Studio editor as Change-JSON v1). No image required. Ivory rewrites `change` and `POST /agent/session/studio`. |
+| `GET /agent/session/state` | — | Snapshot: `workspaceId`, open `filename` (null if ungenerated / no image), `model`, bound `clientId`, plus `change` (Studio editor as Change-JSON v1), `scopes`, and `vfsPathUuid` when the key has `vfs`. No image required. Ivory rewrites `change` and `POST /agent/session/studio`. |
 
 The bound tab replies with `agent_session_result` using the same `requestId`.
 
