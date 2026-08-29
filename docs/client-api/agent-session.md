@@ -33,6 +33,7 @@ All three require a live bind (`404` if none).
 | `GET /agent/session/state` | — | Snapshot: `workspaceId`, open `filename` (null if ungenerated / no image), `model`, bound `clientId`, plus `change` (Studio editor as Change-JSON v1). No image required. Ivory rewrites `change` and `POST /agent/session/studio`. |
 
 The bound tab replies with `agent_session_result` using the same `requestId`.
+`POST /agent/session/studio` resolves after the bound editor apply (`applyStudioChangePayload`) completes, success or error.
 
 `change` is the shared NovelAI/studio Change-JSON v1 (`dreamscape:"change"`, replace+index, no add). Same schema as `POST /agent/session/studio` and [studio-change-json.md](../studio-change-json.md). An empty Studio is still a valid snapshot (`fields` always includes `prompt` and `uc`, even when blank). Filename is not required.
 

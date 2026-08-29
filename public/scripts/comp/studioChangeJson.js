@@ -1478,11 +1478,13 @@ async function applyStudioChangePayload(payload, options) {
 async function tryApplyStudioChangeJsonFromText(text) {
     const payload = extractStudioChangeJson(text);
     if (!payload) return false;
-    void applyStudioChangePayload(payload).catch((err) => {
+    try {
+        return await applyStudioChangePayload(payload);
+    } catch (err) {
         console.error('Studio change apply failed', err);
         showGlassToast('error', 'Studio change', err.message || 'Failed to apply', false, 4000, '<i class="fas fa-exclamation-triangle"></i>');
-    });
-    return true;
+        return false;
+    }
 }
 
 function studioChangePasteTargetAllowed(target) {
