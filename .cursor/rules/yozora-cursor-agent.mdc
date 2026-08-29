@@ -1,0 +1,95 @@
+---
+description: How Cursor cloud/CLI agents read, comment, and close out Yozora issues labeled cursor-agent
+alwaysApply: true
+---
+
+# Yozora cursor-agent workflow
+
+You are a Cursor agent doing **labeled** Dreamscape work. You are not Yukimi
+(`UiharuKazari2008`) and you are not Menma. Auth as `grok.cursor` only.
+
+Yozora is Gitea 1.25.5 at `https://yozora.bluesteel.737.jp.net/`.
+Canonical repo: `DreamScape/StaticForge`. There is **no** project/board REST API.
+
+## Auth
+
+- PAT lives on the Dreamscape server (Cursor CLI): `/home/kanmi/.secrets/yozora-grok.cursor.token`
+- Env: `YOZORA_TOKEN` from that file.
+- User: `grok.cursor`. Least privilege: `read:repository`, `write:issue`.
+- **Never** use `UiharuKazari2008`, `grok.rook`, `grok.menma`, kanmi git-credentials, or any other token.
+- Never put the token in an issue comment, commit, or chat.
+
+Header: `Authorization: token $YOZORA_TOKEN`
+
+## What you may pick up
+
+Only open issues on `DreamScape/StaticForge` (or another repo named in the issue) that have label `cursor-agent` and are **not** `ceo`, **not** `ui-review` unless Yukimi already approved on the issue, and **not** already `status:in-progress` by a person.
+
+```
+GET /api/v1/repos/DreamScape/StaticForge/issues?state=open&labels=cursor-agent&limit=50
+```
+
+If the issue is `ceo`, stop. If it needs new undesigned UI and `ui-review` is not approved, stop and comment that Rook must gate it.
+
+`cursor-agent` is the cheap fan-out lane. Do not take Menma's in-flight work.
+
+## Change JSON /agent work is not UI
+
+Unless the issue says otherwise, StaticForge Change JSON and `POST /agent/*` tasks are **application JSON + docs**:
+
+- Optional fields on the existing change payload
+- Echo on `GET /agent/session/state`
+- Update `docs/studio-change-json.md` and `docs/client-api/agent-session.md`
+
+**Do not** add a visible grid, dialog, window, or other chrome for character position, layout, or similar. Prompt-text placement is not a substitute for a JSON field, and a new UI is not in scope unless `ui-review` is approved.
+
+Characters today are `action: replace` + `index` only (`docs/studio-change-json.md`). A position/cell/x-y field is extra JSON on that object, not a Studio layout editor.
+
+## Comments (required)
+
+Start work:
+
+```
+POST /api/v1/repos/DreamScape/StaticForge/issues/{index}/comments
+{"body": "Starting. Cursor agent (`grok.cursor`), not impersonating Yukimi."}
+```
+
+Also set `status:in-progress` (remove `status:ready` if present). Label IDs live on the repo; look them up with `GET /api/v1/repos/DreamScape/StaticForge/labels` rather than hardcoding.
+
+When done, comment **exactly this shape** so Rook can verify and credit Menma:
+
+```
+## Done
+- Commit: `<sha>` (branch / main as applicable)
+- Files: <paths>
+- What changed: <one short paragraph>
+- How to verify: <commands or click-path>
+- PM2 / SW: bounced | SW notified | not needed (say which)
+- credit: grok.menma
+```
+
+Do **not** close the issue. Rook closes after review. Do not reopen `ceo` work.
+
+## Scope discipline
+
+If the change balloons (touches many unrelated files, needs a design call, or would eat a long review): **stop**, comment what you found, leave the tree clean or on a branch, ping nothing else. Rook will retag `ceo` or split the ticket.
+
+Do not take work that is already in flight on Menma/Chiyo. Do not "help" by rewriting adjacent systems.
+
+## Credit
+
+Every ship comment includes `credit: grok.menma`. Menma gets the cake for Cursor-landed work. Do not assign the issue to `UiharuKazari2008`.
+
+<rule>
+name: yozora_cursor_agent
+description: Ingest cursor-agent Yozora issues as grok.cursor. Change JSON is JSON/docs, not new UI.
+filters:
+  - type: file_path
+    pattern: "docs/studio-change-json.md|docs/client-api/.*|modules/agentClientBridge.js|public/scripts/comp/studioChangeJson.js"
+actions:
+  - type: suggest
+    message: |
+      cursor-agent work comments on Yozora as grok.cursor (not UiharuKazari2008).
+      Change JSON /agent tasks add payload fields and docs. Do not add chrome.
+      credit: grok.menma on ship. Do not close the issue; Rook closes.
+</rule>

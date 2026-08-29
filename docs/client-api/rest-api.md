@@ -339,8 +339,10 @@ editor** as Change-JSON v1 in `change` so Ivory can rewrite it and
 `change` keys (omit unused): `dreamscape`, `v`, `title`, `params`, `fields`,
 `characters`, `expanders`, `vibes`. `fields` always includes `prompt` and `uc`
 (empty text when the editor is blank). Characters are replace+index (no add).
-Same contract as [studio-change-json.md](../studio-change-json.md). Do not log
-live prompt/uc text.
+Optional per-character `position` (`{x,y}` and/or `cell` A1–E5) is echoed when
+the Studio slot has stored coords. Same contract as
+[studio-change-json.md](../studio-change-json.md). Do not log live prompt/uc
+text.
 
 If the tab does not reply in time, the server still returns `200` with
 `partial: true` and the server-known `workspaceId` / `clientId` (`filename`,

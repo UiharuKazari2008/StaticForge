@@ -22,13 +22,14 @@ function isAccountDataDeferred() {
 function buildAccountDataUnavailableDetail(options) {
     const parts = [];
     if (options?.userDataError) {
-        parts.push(`<p>${escapeHtmlForAccountDialog(options.userDataError)}</p>`);
+        // escapeHtml: public/scripts/comp/utilities.js
+        parts.push(`<p>${escapeHtml(options.userDataError)}</p>`);
     }
     if (options?.banMessage && options.banMessage !== options.userDataError) {
-        parts.push(`<p>${escapeHtmlForAccountDialog(options.banMessage)}</p>`);
+        parts.push(`<p>${escapeHtml(options.banMessage)}</p>`);
     }
     if (options?.accountStanding && options.accountStanding !== 'ok') {
-        parts.push(`<p><strong>Standing:</strong> ${escapeHtmlForAccountDialog(options.accountStanding)}</p>`);
+        parts.push(`<p><strong>Standing:</strong> ${escapeHtml(options.accountStanding)}</p>`);
     }
     if (options?.upstreamUnavailable) {
         parts.push('<p>The upstream NovelAI API could not be reached or is not configured.</p>');
@@ -37,14 +38,6 @@ function buildAccountDataUnavailableDetail(options) {
         parts.push('<p>Account subscription and entitlement data are missing or incomplete.</p>');
     }
     return parts.join('');
-}
-
-function escapeHtmlForAccountDialog(text) {
-    return String(text)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
 }
 
 function setAccountDataUiVisibility(visible) {

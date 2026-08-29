@@ -50,6 +50,8 @@ When `autoApply` is true, `POST /agent/session/studio` resolves after the silent
 
 `change` is the shared NovelAI/studio Change-JSON v1 (`dreamscape:"change"`, replace+index, no add). Same schema as `POST /agent/session/studio` and [studio-change-json.md](../studio-change-json.md). An empty Studio is still a valid snapshot (`fields` always includes `prompt` and `uc`, even when blank). Filename is not required.
 
+Optional per-character `position` (`{x,y}` and/or `cell` A1–E5) is a sibling of `index` / `name` / `prompt` / `uc` on each `characters[]` entry. It maps to the existing Studio slot dataset (position dialog / V5 freeform centers). `GET /agent/session/state` echoes it when the slot has stored coords. Do not add chrome.
+
 ## WebSocket packets
 
 | Direction | Type | Notes |

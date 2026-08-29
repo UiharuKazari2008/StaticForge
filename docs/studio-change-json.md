@@ -96,11 +96,23 @@ Never copy character 0's prompt/uc/name into character 1.
   "action": "replace",
   "name": "Alice",
   "prompt": "!alice_base, school uniform, smile",
-  "uc": "ganyu (genshin impact), goat horns"
+  "uc": "ganyu (genshin impact), goat horns",
+  "position": { "x": 0.3, "y": 0.1, "cell": "B1" }
 }
 ```
 
 Optional `promptNegative` on a character. `"action": "remove"` plus `index` deletes that slot.
+
+Optional `position` maps to the existing Studio slot dataset (`positionX` / `positionY` / `positionCell`) used by the A1–E5 position dialog and the V5 freeform centers tool. No new chrome.
+
+| Shape | Notes |
+|-------|--------|
+| `{ "x": 0.3, "y": 0.1 }` | Normalized center (same as NovelAI `center`). |
+| `{ "cell": "B1" }` | Grid cell A1–E5 (x/y derived). |
+| `"B1"` | Same as `{ "cell": "B1" }`. |
+| `{ "x": 0.3, "y": 0.1, "cell": "B1" }` | x/y win; `cell` is a label when it matches the 5×5 grid. |
+
+`center: { x, y }` is accepted as an alias. Omit `position` to leave the slot’s current placement alone. `GET /agent/session/state` echoes `position` when the slot has stored coords. Applying a position turns Auto Position off so generate uses those centers.
 
 ### `expanders` — request-level `!prefix` text replacements
 
@@ -164,7 +176,8 @@ If present, Studio **replaces** the current vibe list with this one. Each entry 
       "action": "replace",
       "name": "Alice",
       "prompt": "!alice_base, school uniform, smile",
-      "uc": "ganyu (genshin impact), goat horns"
+      "uc": "ganyu (genshin impact), goat horns",
+      "position": { "x": 0.3, "y": 0.1, "cell": "B1" }
     },
     {
       "index": 1,
@@ -212,13 +225,14 @@ Dreamscape studio change JSON. Paste into Studio to apply. Reply with JSON only 
    {"id":"uc","action":"replace","chunks":[{"name":"Quality","text":"blurry, lowres"}]}
  ],
  "characters":[
-   {"index":0,"action":"replace","name":"Alice","prompt":"!alice_base, school uniform, smile","uc":"nude"},
+   {"index":0,"action":"replace","name":"Alice","prompt":"!alice_base, school uniform, smile","uc":"nude","position":{"x":0.3,"y":0.1,"cell":"B1"}},
    {"index":1,"action":"replace","name":"Bob","prompt":"bob prompt","uc":"alice (name)"}
  ],
  "vibes":[{"id":"vibe-id","ie":"v4full","strength":0.7,"inject_text":true}]}
 
 Rules:
 - characters: ALWAYS replace + index. NEVER add. index 0 = first slot, index 1 = second. add+index is illegal (treated as replace). Do not copy slot 0 into slot 1.
+- Optional per-character position: {x,y} and/or cell A1–E5 (maps to Studio slot dataset / existing position dialog / V5 freeform tool). Echoed by GET /agent/session/state. Omit if unused. No new chrome.
 - fields = prompt | uc | promptNegative only. Always replace. Named chunks are your groups, not comma-splits. Never character:N:... ids.
 - expanders: if present, DELETE all request expanders and install only this list. In text use !prefix. Do not repeat expander values.
 - vibes: if present, REPLACE current vibe transfers with this id list (ids Studio already has). Omit to leave vibes unchanged. No image uploads.

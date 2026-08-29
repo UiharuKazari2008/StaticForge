@@ -30,13 +30,14 @@ const STUDIO_CHANGE_AI_SPEC = `Dreamscape studio change JSON. Paste into Studio 
    {"id":"uc","action":"replace","chunks":[{"name":"Quality","text":"blurry, lowres"}]}
  ],
  "characters":[
-   {"index":0,"action":"replace","name":"Alice","prompt":"!alice_base, school uniform, smile","uc":"nude"},
+   {"index":0,"action":"replace","name":"Alice","prompt":"!alice_base, school uniform, smile","uc":"nude","position":{"x":0.3,"y":0.1,"cell":"B1"}},
    {"index":1,"action":"replace","name":"Bob","prompt":"bob prompt","uc":"alice (name)"}
  ],
  "vibes":[{"id":"vibe-id","ie":"v4full","strength":0.7,"inject_text":true}]}
 
 Rules:
 - characters: ALWAYS replace + index. NEVER add. index 0 = first slot, index 1 = second. add+index is illegal (treated as replace). Do not copy slot 0 into slot 1.
+- Optional per-character position: {x,y} and/or cell A1–E5 (maps to Studio slot dataset / existing position dialog / V5 freeform tool). Echoed by GET /agent/session/state. Omit if unused. No new chrome.
 - fields = prompt | uc | promptNegative only. Always replace. Named chunks are your groups, not comma-splits. Never character:N:... ids.
 - expanders: if present, DELETE all request expanders and install only this list. In text use !prefix. Do not repeat expander values.
 - vibes: if present, REPLACE current vibe transfers with this id list (ids Studio already has). Omit to leave vibes unchanged. No image uploads.
@@ -428,6 +429,60 @@ function resolveStudioChangeCharIndex(entry, action, index) {
     return Number(index);
 }
 
+function studioChangeCellToCoords(cell) {
+    const label = String(cell || '').trim().toUpperCase();
+    if (!/^[A-E][1-5]$/.test(label)) return null;
+    const col = label.charCodeAt(0) - 65;
+    const row = Number(label.slice(1)) - 1;
+    return { x: 0.1 + col * 0.2, y: 0.1 + row * 0.2, cell: label };
+}
+
+function resolveStudioChangeCharacterPosition(raw) {
+    if (raw == null || raw === false) return null;
+    if (typeof raw === 'string') return studioChangeCellToCoords(raw);
+    if (typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const nested = raw.center && typeof raw.center === 'object' ? raw.center : raw;
+    const fromCell = studioChangeCellToCoords(nested.cell || raw.cell || raw.position);
+    const x = Number(nested.x != null ? nested.x : nested.centerX);
+    const y = Number(nested.y != null ? nested.y : nested.centerY);
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+        // getCellLabelFromCoords: public/scripts/comp/characterPromptManager.js
+        const cell = getCellLabelFromCoords(x, y) || (fromCell && fromCell.cell) || undefined;
+        const out = { x, y };
+        if (cell) out.cell = cell;
+        return out;
+    }
+    return fromCell;
+}
+
+function readStudioCharacterPosition(item) {
+    if (!item || !item.dataset) return null;
+    const x = Number.parseFloat(item.dataset.positionX);
+    const y = Number.parseFloat(item.dataset.positionY);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    const cell = item.dataset.positionCell || getCellLabelFromCoords(x, y);
+    const out = { x, y };
+    if (cell) out.cell = cell;
+    return out;
+}
+
+function applyStudioCharacterPosition(index, position) {
+    const resolved = resolveStudioChangeCharacterPosition(position);
+    if (!resolved) return false;
+    const item = getStudioCharacterItems()[index];
+    if (!item) return false;
+    // setCharacterPromptPosition: public/scripts/comp/characterPromptManager.js
+    setCharacterPromptPosition(item.id, resolved.x, resolved.y, resolved.cell || null);
+    return true;
+}
+
+function studioChangeReadCharacterPosition(entry) {
+    if (!entry || typeof entry !== 'object') return null;
+    if (entry.position != null) return resolveStudioChangeCharacterPosition(entry.position);
+    if (entry.center != null) return resolveStudioChangeCharacterPosition(entry.center);
+    return null;
+}
+
 function studioChangeCharacterPartRaw(entry, part) {
     if (part === 'promptNegative') {
         return entry.promptNegative != null ? entry.promptNegative : entry.input_prompt_negative;
@@ -654,6 +709,7 @@ function buildOpsFromPayload(payload) {
             const ucText = typeof entry.uc === 'string' ? entry.uc : '';
             const promptNegativeRaw = studioChangeCharacterPartRaw(entry, 'promptNegative');
             const promptNegativeText = typeof promptNegativeRaw === 'string' ? promptNegativeRaw : '';
+            const position = studioChangeReadCharacterPosition(entry);
             ops.push({
                 key: `character:${action}:${charIndex}:${index}`,
                 group: 'Characters',
@@ -665,6 +721,7 @@ function buildOpsFromPayload(payload) {
                 prompt: promptText,
                 uc: ucText,
                 promptNegative: promptNegativeText,
+                position: position || undefined,
                 enabled: true
             });
             ['prompt', 'uc', 'promptNegative'].forEach((part) => {
@@ -740,6 +797,7 @@ function buildPayloadFromOps(ops, title) {
             if (op.prompt) entry.prompt = op.prompt;
             if (op.uc) entry.uc = op.uc;
             if (op.promptNegative) entry.promptNegative = op.promptNegative;
+            if (op.position) entry.position = op.position;
             characters.push(entry);
             return;
         }
@@ -841,7 +899,8 @@ function buildExportOpsFromStudio() {
         const prompt = getStudioFieldValue(`character:${index}:prompt`);
         const uc = getStudioFieldValue(`character:${index}:uc`);
         const promptNegative = getStudioFieldValue(`character:${index}:promptNegative`);
-        if (!name && !prompt && !uc && !promptNegative) return;
+        const position = readStudioCharacterPosition(item);
+        if (!name && !prompt && !uc && !promptNegative && !position) return;
         ops.push({
             key: `character:replace:${index}`,
             group: 'Characters',
@@ -853,6 +912,7 @@ function buildExportOpsFromStudio() {
             prompt,
             uc,
             promptNegative,
+            position: position || undefined,
             enabled: true
         });
     });
@@ -943,6 +1003,10 @@ function renderStudioChangeOpRow(op) {
         detail = op.action === 'remove'
             ? 'Remove this character slot'
             : (op.prompt || op.uc ? studioChangeTruncate(op.prompt || op.uc, 90) : 'Add character slot');
+        if (op.position && op.action !== 'remove') {
+            const posLabel = op.position.cell || `${op.position.x}, ${op.position.y}`;
+            detail = detail === 'Add character slot' ? `Position ${posLabel}` : `${detail} · ${posLabel}`;
+        }
     } else if (op.kind === 'expanders-policy') {
         title = op.label || 'Replace all request expanders';
         detail = 'Clears current request expanders, then installs the prefixes below';
@@ -1333,6 +1397,7 @@ async function applyStudioChangeOps(ops) {
             writeStudioFieldValue(`character:${newIndex}:promptNegative`, op.promptNegative);
             writtenCharacterFields.add(`character:${newIndex}:promptNegative`);
         }
+        if (op.position) applyStudioCharacterPosition(newIndex, op.position);
         op.createdIndex = newIndex;
     });
 
@@ -1351,7 +1416,15 @@ async function applyStudioChangeOps(ops) {
             writeStudioFieldValue(`character:${op.charIndex}:promptNegative`, op.promptNegative);
             writtenCharacterFields.add(`character:${op.charIndex}:promptNegative`);
         }
+        if (op.position) applyStudioCharacterPosition(op.charIndex, op.position);
     });
+
+    if (enabled.some((op) => op.kind === 'character' && op.position && op.action !== 'remove')) {
+        const autoPositionBtn = document.getElementById('autoPositionBtn');
+        if (autoPositionBtn) autoPositionBtn.setAttribute('data-state', 'off');
+        // updateAutoPositionToggle: public/scripts/comp/characterPromptManager.js
+        updateAutoPositionToggle();
+    }
 
     const chunkOps = enabled.filter((op) => op.kind === 'chunk').map((op) => {
         const addMatch = /^character:add:(\d+):(prompt|uc|promptNegative)$/.exec(op.fieldId);
@@ -1649,14 +1722,21 @@ function buildStudioChangeSnapshot() {
         if (items.length) {
             const characters = Array.isArray(payload.characters) ? payload.characters.slice() : [];
             items.forEach((item, index) => {
-                if (characters.some((entry) => entry && entry.index === index)) return;
-                characters.push({
+                const existing = characters.find((entry) => entry && entry.index === index);
+                const position = readStudioCharacterPosition(item);
+                if (existing) {
+                    if (position && !existing.position) existing.position = position;
+                    return;
+                }
+                const entry = {
                     index,
                     action: 'replace',
                     name: readStudioCharacterName(item, index),
                     prompt: getStudioFieldValue(`character:${index}:prompt`) || '',
                     uc: getStudioFieldValue(`character:${index}:uc`) || ''
-                });
+                };
+                if (position) entry.position = position;
+                characters.push(entry);
             });
             if (characters.length) payload.characters = characters;
         }

@@ -6,6 +6,7 @@
  * public/scripts/comp/contextMenu.js (contextMenu.attachToElement)
  * public/scripts/comp/modalUtils.js (openModal, closeModal)
  * public/scripts/comp/textareaUtils.js (setTextareaValuePreservingUndo)
+ * public/scripts/comp/utilities.js (escapeHtml, escapeHtmlAttribute)
  */
 
 class CharacterDbApplet {
@@ -98,13 +99,6 @@ class CharacterDbApplet {
 
     setStatus(text) {
         if (this.statusEl) this.statusEl.textContent = text || '';
-    }
-
-    escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
     }
 
     isManualEditorOpen() {
@@ -318,8 +312,8 @@ class CharacterDbApplet {
         }
         this.copyrightListEl.innerHTML = list.map((item) => `
             <div class="character-db-row${item.name === this.selectedCopyright ? ' active' : ''}"
-                data-kind="copyright" data-copyright="${this.escapeHtml(item.name)}">
-                <div class="character-db-row-label">${this.escapeHtml(item.name)}</div>
+                data-kind="copyright" data-copyright="${escapeHtmlAttribute(item.name)}">
+                <div class="character-db-row-label">${escapeHtml(item.name)}</div>
                 <span class="character-db-row-count">${item.count}</span>
             </div>
         `).join('');
@@ -344,8 +338,8 @@ class CharacterDbApplet {
         }
         this.characterListEl.innerHTML = list.map((ch) => `
             <div class="character-db-row${ch.name === this.selectedCharacterName ? ' active' : ''}"
-                data-kind="character" data-name="${this.escapeHtml(ch.name)}">
-                <div class="character-db-row-label">${this.escapeHtml(ch.name)}</div>
+                data-kind="character" data-name="${escapeHtmlAttribute(ch.name)}">
+                <div class="character-db-row-label">${escapeHtml(ch.name)}</div>
             </div>
         `).join('');
         this.characterListEl.querySelectorAll('.character-db-row').forEach((row) => {
@@ -364,10 +358,10 @@ class CharacterDbApplet {
 
         const rows = [];
         rows.push(`
-            <div class="character-db-row" data-kind="base-prompt" data-name="${this.escapeHtml(ch.name)}">
+            <div class="character-db-row" data-kind="base-prompt" data-name="${escapeHtmlAttribute(ch.name)}">
                 <div class="character-db-row-label">
                     <span class="character-db-row-meta">Base prompt</span>
-                    ${this.escapeHtml(ch.prompt || '') || '<span class="muted">(empty)</span>'}
+                    ${escapeHtml(ch.prompt || '') || '<span class="muted">(empty)</span>'}
                 </div>
                 <button type="button" class="btn-secondary btn-small character-db-copy-btn" title="Copy base prompt" data-copy="base">
                     <i class="fas fa-copy"></i>
@@ -379,10 +373,10 @@ class CharacterDbApplet {
         enhancers.forEach((group, index) => {
             const label = Array.isArray(group) ? group.join(', ') : '';
             rows.push(`
-                <div class="character-db-row" data-kind="overload" data-name="${this.escapeHtml(ch.name)}" data-index="${index}">
+                <div class="character-db-row" data-kind="overload" data-name="${escapeHtmlAttribute(ch.name)}" data-index="${index}">
                     <div class="character-db-row-label">
                         <span class="character-db-row-meta">Overload ${index + 1}</span>
-                        ${this.escapeHtml(label)}
+                        ${escapeHtml(label)}
                     </div>
                     <button type="button" class="btn-secondary btn-small character-db-copy-btn" title="Copy joined prompt" data-copy="overload" data-index="${index}">
                         <i class="fas fa-copy"></i>
@@ -496,9 +490,9 @@ class CharacterDbApplet {
         }
         this.searchHitsEl.classList.remove('hidden');
         this.searchHitsEl.innerHTML = this.searchHits.map((ch) => `
-            <div class="character-db-search-hit" data-name="${this.escapeHtml(ch.name)}">
-                <div class="character-db-search-hit-name">${this.escapeHtml(ch.name)}</div>
-                <div class="character-db-search-hit-meta">${this.escapeHtml(ch.copyright || 'Original')}</div>
+            <div class="character-db-search-hit" data-name="${escapeHtmlAttribute(ch.name)}">
+                <div class="character-db-search-hit-name">${escapeHtml(ch.name)}</div>
+                <div class="character-db-search-hit-meta">${escapeHtml(ch.copyright || 'Original')}</div>
             </div>
         `).join('');
         this.searchHitsEl.querySelectorAll('.character-db-search-hit').forEach((el) => {
@@ -857,7 +851,7 @@ class CharacterDbApplet {
         const html = `
             <div class="character-db-form-stack">
                 <label>Copyright
-                    <input type="text" class="form-control" id="cdbFieldCopyright" value="${this.escapeHtml(copyright)}" />
+                    <input type="text" class="form-control" id="cdbFieldCopyright" value="${escapeHtmlAttribute(copyright)}" />
                 </label>
                 <label>Character name
                     <input type="text" class="form-control" id="cdbFieldName" value="" />
@@ -929,7 +923,7 @@ class CharacterDbApplet {
         if (!this.selectedCopyright) return;
         const count = this.getCharactersForCopyright(this.selectedCopyright).length;
         const confirmed = await showConfirmationDialog(
-            `Delete copyright <strong>${this.escapeHtml(this.selectedCopyright)}</strong> and its ${count} character(s)?`,
+            `Delete copyright <strong>${escapeHtml(this.selectedCopyright)}</strong> and its ${count} character(s)?`,
             [
                 { text: 'Delete', value: 'delete', className: 'btn-danger', icon: 'fas fa-trash', primary: true },
                 { text: 'Cancel', value: null, className: 'btn-secondary' }
@@ -952,13 +946,13 @@ class CharacterDbApplet {
         const html = `
             <div class="character-db-form-stack">
                 <label>Copyright
-                    <input type="text" class="form-control" id="cdbFieldCopyright" value="${this.escapeHtml(ch.copyright || '')}" />
+                    <input type="text" class="form-control" id="cdbFieldCopyright" value="${escapeHtmlAttribute(ch.copyright || '')}" />
                 </label>
                 <label>Character name
-                    <input type="text" class="form-control" id="cdbFieldName" value="${this.escapeHtml(ch.name)}" />
+                    <input type="text" class="form-control" id="cdbFieldName" value="${escapeHtmlAttribute(ch.name)}" />
                 </label>
                 <label>Base prompt
-                    <textarea class="form-control" id="cdbFieldPrompt" rows="4">${this.escapeHtml(ch.prompt || '')}</textarea>
+                    <textarea class="form-control" id="cdbFieldPrompt" rows="4">${escapeHtml(ch.prompt || '')}</textarea>
                 </label>
             </div>
         `;
@@ -995,7 +989,7 @@ class CharacterDbApplet {
         const ch = this.getSelectedCharacter();
         if (!ch) return;
         const confirmed = await showConfirmationDialog(
-            `Delete character <strong>${this.escapeHtml(ch.name)}</strong>?`,
+            `Delete character <strong>${escapeHtml(ch.name)}</strong>?`,
             [
                 { text: 'Delete', value: 'delete', className: 'btn-danger', icon: 'fas fa-trash', primary: true },
                 { text: 'Cancel', value: null, className: 'btn-secondary' }

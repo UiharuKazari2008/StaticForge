@@ -3,14 +3,8 @@
  * public/scripts/comp/modalUtils.js (openModal, closeModal)
  * public/scripts/app.js (addPipelineStage, pipeline stage helpers)
  * public/scripts/comp/requestBodyReplacementsModal.js (requestBodyReplacements)
+ * public/scripts/comp/utilities.js (escapeHtml, escapeHtmlAttribute)
  */
-
-function bracketGenEscapeHtml(s) {
-    return String(s)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/"/g, '&quot;');
-}
 
 function bracketGenIsEditorOpen() {
     const manualModal = document.getElementById('manualModal');
@@ -941,7 +935,8 @@ class BracketGenerationApplet {
                 const opt = document.createElement('div');
                 opt.className = 'custom-dropdown-option' + (kw === selected ? ' selected' : '');
                 opt.dataset.value = kw;
-                opt.innerHTML = `<i class="fas fa-tag"></i> ${bracketGenEscapeHtml(kw)}`;
+                // escapeHtml: public/scripts/comp/utilities.js
+                opt.innerHTML = `<i class="fas fa-tag"></i> ${escapeHtml(kw)}`;
                 opt.addEventListener('click', () => {
                     this.saveStepTextareasToState();
                     this.state.activeKeyword = kw;
@@ -1705,7 +1700,8 @@ class BracketGenerationApplet {
             item.dataset.stepIndex = String(index);
 
             const value = step[field] || '';
-            const stepLabel = bracketGenEscapeHtml(this.getStepDisplayName(index));
+            // escapeHtml: public/scripts/comp/utilities.js
+            const stepLabel = escapeHtml(this.getStepDisplayName(index));
             const stepHex = this.getBracketStepHexId(index);
 
             item.innerHTML = `
@@ -1725,7 +1721,7 @@ class BracketGenerationApplet {
                             <button type="button" class="btn-secondary btn-small toggle-btn bracket-gen-compare-source-btn${this.isCompareSourceStepDisabled(index) ? ' disabled' : ''}" data-step-index="${index}" data-state="${!this.isCompareSourceStepDisabled(index) && this.state.compareSourceStepIndex === index ? 'on' : 'off'}" title="${this.isCompareSourceStepDisabled(index) ? 'Last stage cannot be a comparison source' : 'Use this stage as comparison source when generating later stages'}"${this.isCompareSourceStepDisabled(index) ? ' disabled' : ''}>
                                 <i class="fas fa-eye-dropper"></i>
                             </button>
-                            <button type="button" class="btn-danger btn-small bracket-gen-delete-step" data-step-id="${bracketGenEscapeHtml(step.id)}" title="Remove step">
+                            <button type="button" class="btn-danger btn-small bracket-gen-delete-step" data-step-id="${escapeHtmlAttribute(step.id)}" title="Remove step">
                                 <i class="fas fa-trash-alt"></i>
                             </button>
                         </div>

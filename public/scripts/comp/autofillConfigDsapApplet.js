@@ -5,6 +5,7 @@
  *   - modules/tag-lookup.js searchTagsAutofill (server ranking)
  *   - public/scripts/comp/autocompleteUtils.js calculateComprehensiveRanking + sort comparator (client ranking)
  * Depends on: dsapRegistry.js, dsapSmfMarkup.js, websocket.js, autofillRankingConfig.js
+ * escapeHtml / escapeHtmlAttribute: public/scripts/comp/utilities.js
  */
 
 const AUTOFILL_DSAP_URL = 'autofill.dreamscape.jp';
@@ -156,17 +157,6 @@ const AUTOFILL_DSAP_BREAKDOWN_INFO_LABELS = {
     matchCoverage: 'match cov'
 };
 
-function autofillDsapEscapeHtml(text) {
-    if (text == null) return '';
-    const div = document.createElement('div');
-    div.textContent = String(text);
-    return div.innerHTML;
-}
-
-function autofillDsapEscapeAttr(text) {
-    return String(text == null ? '' : text).replace(/"/g, '&quot;');
-}
-
 function autofillDsapIsPlainObject(value) {
     return !!value && typeof value === 'object' && !Array.isArray(value);
 }
@@ -194,12 +184,12 @@ function autofillDsapSetPath(target, path, value) {
 
 function autofillDsapBuildFieldRow(path, label, value, description) {
     const descRow = description
-        ? `<tr class="autofill-dsap-field-desc-row"><td colspan="2" class="autofill-dsap-field-desc">${autofillDsapEscapeHtml(description)}</td></tr>`
+        ? `<tr class="autofill-dsap-field-desc-row"><td colspan="2" class="autofill-dsap-field-desc">${escapeHtml(description)}</td></tr>`
         : '';
     return `<tr class="autofill-dsap-field-row">
-    <td class="autofill-dsap-field-label">${autofillDsapEscapeHtml(label)}</td>
+    <td class="autofill-dsap-field-label">${escapeHtml(label)}</td>
     <td class="autofill-dsap-field-control">
-      <input type="number" step="any" class="dsap-smf-input autofill-dsap-field-input" data-autofill-field="${autofillDsapEscapeAttr(path)}" value="${autofillDsapEscapeAttr(value)}">
+      <input type="number" step="any" class="dsap-smf-input autofill-dsap-field-input" data-autofill-field="${escapeHtmlAttribute(path)}" value="${escapeHtmlAttribute(value)}">
     </td>
   </tr>${descRow}`;
 }
@@ -236,13 +226,13 @@ function autofillDsapBuildScoringHtml(ranking) {
 function autofillDsapBuildTypeOrderHtml(ranking) {
     const weights = ranking.typeWeights || {};
     const rows = (ranking.typeOrder || []).map((typeKey) => `
-    <tr class="autofill-dsap-type-row data-mgmt-ws-row" data-type-key="${autofillDsapEscapeAttr(typeKey)}">
+    <tr class="autofill-dsap-type-row data-mgmt-ws-row" data-type-key="${escapeHtmlAttribute(typeKey)}">
       <td align="center" class="autofill-dsap-type-drag-cell data-mgmt-ws-drag-cell">
         <span class="autofill-dsap-type-drag-handle data-mgmt-ws-drag-handle" title="Drag to reorder"><i class="fas fa-grip-vertical"></i></span>
       </td>
-      <td class="autofill-dsap-type-name-cell">${autofillDsapEscapeHtml(autofillDsapTypeLabel(typeKey))}</td>
+      <td class="autofill-dsap-type-name-cell">${escapeHtml(autofillDsapTypeLabel(typeKey))}</td>
       <td align="center" class="autofill-dsap-type-weight-cell">
-        <input type="number" step="any" class="dsap-smf-input autofill-dsap-field-input" data-autofill-weight-field="${autofillDsapEscapeAttr(typeKey)}" value="${autofillDsapEscapeAttr(weights[typeKey] ?? 0)}">
+        <input type="number" step="any" class="dsap-smf-input autofill-dsap-field-input" data-autofill-weight-field="${escapeHtmlAttribute(typeKey)}" value="${escapeHtmlAttribute(weights[typeKey] ?? 0)}">
       </td>
     </tr>`).join('');
 
@@ -519,14 +509,14 @@ const autofillDsapDriver = {
         Object.entries(AUTOFILL_DSAP_BREAKDOWN_LABELS).forEach(([key, label]) => {
             const val = breakdown[key];
             if (typeof val === 'number' && val !== 0) {
-                parts.push(`<span class="autofill-dsap-test-bd-part">${autofillDsapEscapeHtml(label)} <b>${fmt(val)}</b></span>`);
+                parts.push(`<span class="autofill-dsap-test-bd-part">${escapeHtml(label)} <b>${fmt(val)}</b></span>`);
             }
         });
         const info = [];
         Object.entries(AUTOFILL_DSAP_BREAKDOWN_INFO_LABELS).forEach(([key, label]) => {
             const val = breakdown[key];
             if (typeof val === 'number') {
-                info.push(`${autofillDsapEscapeHtml(label)} ${fmt(val)}`);
+                info.push(`${escapeHtml(label)} ${fmt(val)}`);
             }
         });
         if (!parts.length && !info.length) return '<span class="autofill-dsap-test-bd-empty">type weight only</span>';
@@ -543,8 +533,8 @@ const autofillDsapDriver = {
         const topTier = result._isTopTier ? ' autofill-dsap-test-toptier' : '';
         return `<tr class="${topTier.trim()}">
       <td>${idx + 1}</td>
-      <td>${autofillDsapEscapeHtml(autofillDsapTypeLabel(typeKey))}</td>
-      <td class="autofill-dsap-test-name">${autofillDsapEscapeHtml(this._testResultLabel(result))}</td>
+      <td>${escapeHtml(autofillDsapTypeLabel(typeKey))}</td>
+      <td class="autofill-dsap-test-name">${escapeHtml(this._testResultLabel(result))}</td>
       <td><b>${Math.round(total * 10) / 10}</b></td>
       <td>${Math.round(typeWeight * 10) / 10}</td>
       <td class="autofill-dsap-test-breakdown">${this._buildTestBreakdownCell(breakdown)}</td>
