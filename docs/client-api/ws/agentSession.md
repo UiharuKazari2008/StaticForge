@@ -21,7 +21,7 @@ These packets are **not** gallery / workspace list APIs. No share-code chrome is
 
 | Type | When | Data |
 |------|------|------|
-| `agent_session_command` | Loopback REST drive of the bound tab | `requestId` + `data.command` (`open_image` / `apply_studio` / `get_state`) |
+| `agent_session_command` | Loopback REST drive of the bound tab | `requestId` + `data.command` (`open_image` / `apply_studio` / `get_state` / `get_editor`) |
 | `agent_session_bound` | After `POST /agent/bind` | `data.clientId` |
 | `agent_session_unbound` | Previous bind replaced | `data.clientId` |
 
@@ -59,6 +59,11 @@ Do not log `code`. No dialog is shown; the requesting console / agent receives t
 **Handler:** modules/ws/handlers/168-agentClientHandler.js → `handleAgentSessionResult`
 
 **Request fields:** standard envelope `requestId` plus `data` snapshot / `{ ok, error }`.
+
+`get_state` / `get_editor` reply `data` includes `ok`, `workspaceId`, `filename`
+(null if ungenerated), `model`, `clientId`, and `change` (Change-JSON v1 editor
+snapshot; no image required).
+
 
 Ignored when no matching pending command or the sender is not the bound client.
 

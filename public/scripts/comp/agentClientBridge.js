@@ -108,6 +108,17 @@
         return { ok: true, filename };
     }
 
+    function readStudioChangeSnapshot() {
+        if (typeof window.buildStudioChangeSnapshot === 'function') {
+            try {
+                return window.buildStudioChangeSnapshot();
+            } catch (_err) {
+                // fall through to empty editor
+            }
+        }
+        return { dreamscape: 'change', v: 1 };
+    }
+
     async function handleAgentSessionCommand(message) {
         const requestId = message && message.requestId;
         const data = (message && message.data) || {};
@@ -116,13 +127,14 @@
         if (data.clientId) sessionClientId = data.clientId;
         const command = data.command;
         try {
-            if (command === 'get_state') {
+            if (command === 'get_state' || command === 'get_editor') {
                 replyAgentSessionResult(requestId, {
                     ok: true,
                     workspaceId: readWorkspaceId(),
                     filename: readOpenFilename(),
                     model: readModel(),
-                    clientId: sessionClientId
+                    clientId: sessionClientId,
+                    change: readStudioChangeSnapshot()
                 });
                 return;
             }

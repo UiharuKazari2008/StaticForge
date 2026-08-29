@@ -6,7 +6,7 @@ Localhost-only API so Ivory / Menma can drive **one connected Dreamscape Studio 
 
 Loopback application-key checks skip User-Agent match and allow a past `refreshBeforeAt` so a bot UA or an overdue refresh does not 403. Public / gallery auth stays strict. Ivory and Menma must use **loopback + app key or Bearer**, not the public PIN pad. These routes are never exposed on the public UI.
 
-This is not a browser view. I/O is REST against the bound client's running editor (open image, apply studio change JSON, small state snapshot).
+This is not a browser view. I/O is REST against the bound client's running editor (open image, apply studio change JSON, state snapshot including the ungenerated editor as Change-JSON).
 
 Out of scope: `workspace_list` / `workspace_move_files` / `request_gallery` / the `:9220` gallery websocket.
 
@@ -30,9 +30,11 @@ All three require a live bind (`404` if none).
 |-------|------|--------|
 | `POST /agent/session/open-image` | `{ "filename" }` | WS `agent_session_command` `open_image` → `openManualModalWithContent({ type: "image", image })` |
 | `POST /agent/session/studio` | change JSON or `{ prompt, uc }` | Apply via `window.tryApplyStudioChangeJsonFromText` (`dreamscape:"change"`, `v:1`) |
-| `GET /agent/session/state` | — | Small snapshot: `workspaceId`, open `filename` (editor preview / loaded image, else variation/upload source), `model`, bound `clientId` |
+| `GET /agent/session/state` | — | Snapshot: `workspaceId`, open `filename` (null if ungenerated / no image), `model`, bound `clientId`, plus `change` (Studio editor as Change-JSON v1). No image required. Ivory rewrites `change` and `POST /agent/session/studio`. |
 
 The bound tab replies with `agent_session_result` using the same `requestId`.
+
+`change` is the shared NovelAI/studio Change-JSON v1 (`dreamscape:"change"`, replace+index, no add). Same schema as `POST /agent/session/studio` and [studio-change-json.md](../studio-change-json.md). An empty Studio is still a valid snapshot (`fields` always includes `prompt` and `uc`, even when blank). Filename is not required.
 
 ## WebSocket packets
 

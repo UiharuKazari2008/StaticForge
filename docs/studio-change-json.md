@@ -187,7 +187,12 @@ If present, Studio **replaces** the current vibe list with this one. Each entry 
 
 To snapshot the current Studio as JSON: Studio context / **Copy change JSON**. That blob is the same schema, so bots can round-trip.
 
-Helpers in the page: `window.tryApplyStudioChangeJsonFromText(text)`, `window.openStudioChangeExportDialog()`, `window.STUDIO_CHANGE_AI_SPEC`.
+Helpers in the page: `window.tryApplyStudioChangeJsonFromText(text)`, `window.openStudioChangeExportDialog()`, `window.buildStudioChangeSnapshot()`, `window.STUDIO_CHANGE_AI_SPEC`.
+
+Loopback agents: `GET /agent/session/state` returns the current editor as this
+same JSON in `change` (ungenerated / no open image is valid). Rewrite `change`
+and `POST /agent/session/studio`. See [client-api/agent-session.md](./client-api/agent-session.md).
+
 
 ---
 

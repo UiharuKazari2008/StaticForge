@@ -328,17 +328,22 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
                 workspaceId: resolveWorkspaceId(globalResources, bound.info),
                 filename: null,
                 model: null,
-                clientId: boundClientId
+                clientId: boundClientId,
+                change: null
             };
             try {
                 const data = await sendBoundCommand(globalResources, 'get_state', {}, 8000);
+                const change = (data && data.change && typeof data.change === 'object' && !Array.isArray(data.change))
+                    ? data.change
+                    : null;
                 return res.json({
                     success: true,
                     workspaceId: data.workspaceId || fallback.workspaceId,
                     filename: data.filename || null,
                     model: data.model || null,
                     clientId: boundClientId,
-                    bound: true
+                    bound: true,
+                    change
                 });
             } catch (error) {
                 if (error.status === 504) {

@@ -1565,10 +1565,85 @@ async function handleStudioChangeShortcutClick(shortcut) {
 document.addEventListener('paste', handleStudioChangePaste, true);
 
 
+function emptyStudioChangePayload() {
+    return {
+        dreamscape: STUDIO_CHANGE_KIND,
+        v: STUDIO_CHANGE_VERSION
+    };
+}
+
+function ensureStudioChangeField(fields, fieldId, label) {
+    if (fields.some((field) => field && field.id === fieldId)) return;
+    let text = '';
+    try {
+        text = getStudioFieldValue(fieldId) || '';
+    } catch (_err) {
+        text = '';
+    }
+    fields.push({
+        id: fieldId,
+        action: 'replace',
+        chunks: [{ name: label, text }]
+    });
+}
+
+function readStudioCharacterName(item, index) {
+    if (!item) return `Character ${index + 1}`;
+    const input = item.querySelector && item.querySelector('.character-name-input');
+    const name = (item.dataset && item.dataset.charaName) || (input && input.value) || `Character ${index + 1}`;
+    return String(name).trim() || `Character ${index + 1}`;
+}
+
+/**
+ * Snapshot the current Studio editor as Change-JSON v1.
+ * Empty / ungenerated Studio (no open image) is valid — no filename required.
+ */
+function buildStudioChangeSnapshot() {
+    let payload;
+    try {
+        payload = buildPayloadFromOps(buildExportOpsFromStudio(), '');
+    } catch (_err) {
+        payload = emptyStudioChangePayload();
+    }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        payload = emptyStudioChangePayload();
+    }
+    if (!payload.dreamscape) payload.dreamscape = STUDIO_CHANGE_KIND;
+    if (!payload.v) payload.v = STUDIO_CHANGE_VERSION;
+
+    const fields = Array.isArray(payload.fields) ? payload.fields.slice() : [];
+    ensureStudioChangeField(fields, 'prompt', 'Prompt');
+    ensureStudioChangeField(fields, 'uc', 'UC');
+    payload.fields = fields;
+
+    try {
+        const items = getStudioCharacterItems();
+        if (items.length) {
+            const characters = Array.isArray(payload.characters) ? payload.characters.slice() : [];
+            items.forEach((item, index) => {
+                if (characters.some((entry) => entry && entry.index === index)) return;
+                characters.push({
+                    index,
+                    action: 'replace',
+                    name: readStudioCharacterName(item, index),
+                    prompt: getStudioFieldValue(`character:${index}:prompt`) || '',
+                    uc: getStudioFieldValue(`character:${index}:uc`) || ''
+                });
+            });
+            if (characters.length) payload.characters = characters;
+        }
+    } catch (_err) {
+        // keep export-produced slots
+    }
+
+    return payload;
+}
+
 if (typeof window !== 'undefined') {
     window.tryApplyStudioChangeJsonFromText = tryApplyStudioChangeJsonFromText;
     window.extractStudioChangeJson = extractStudioChangeJson;
     window.openStudioChangeExportDialog = openStudioChangeExportDialog;
     window.handleStudioChangeShortcutClick = handleStudioChangeShortcutClick;
+    window.buildStudioChangeSnapshot = buildStudioChangeSnapshot;
     window.STUDIO_CHANGE_AI_SPEC = STUDIO_CHANGE_AI_SPEC;
 }

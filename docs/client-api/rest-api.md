@@ -264,7 +264,9 @@ development-auth errors as `GET /agent`.
 
 **Auth:** Same as `GET /agent`. Requires a live bind.
 
-Asks the bound client for a **small** snapshot (not a full Studio dump).
+Asks the bound client for a session snapshot. Includes the **ungenerated Studio
+editor** as Change-JSON v1 in `change` so Ivory can rewrite it and
+`POST /agent/session/studio`. No open image / filename is required.
 
 **Success:** `200`
 
@@ -272,20 +274,36 @@ Asks the bound client for a **small** snapshot (not a full Studio dump).
 {
   "success": true,
   "workspaceId": "default",
-  "filename": "example.png",
+  "filename": null,
   "model": "v5",
   "clientId": "a1b2c3d4e5f6",
-  "bound": true
+  "bound": true,
+  "change": {
+    "dreamscape": "change",
+    "v": 1,
+    "params": {},
+    "fields": [
+      { "id": "prompt", "action": "replace", "chunks": [{ "name": "Prompt", "text": "" }] },
+      { "id": "uc", "action": "replace", "chunks": [{ "name": "UC", "text": "" }] }
+    ]
+  }
 }
 ```
 
+`change` keys (omit unused): `dreamscape`, `v`, `title`, `params`, `fields`,
+`characters`, `expanders`, `vibes`. `fields` always includes `prompt` and `uc`
+(empty text when the editor is blank). Characters are replace+index (no add).
+Same contract as [studio-change-json.md](../studio-change-json.md). Do not log
+live prompt/uc text.
+
 If the tab does not reply in time, the server still returns `200` with
-`partial: true` and the server-known `workspaceId` / `clientId` (`filename` and
-`model` may be null).
+`partial: true` and the server-known `workspaceId` / `clientId` (`filename`,
+`model`, and `change` may be null).
 
 **Errors:** `404` unbound; development-auth errors as `GET /agent`.
 
-**Follow-up:** None. See [agent-session.md](./agent-session.md).
+**Follow-up:** Rewrite `change` and `POST /agent/session/studio`. See
+[agent-session.md](./agent-session.md).
 
 ### `OPTIONS /app`
 
