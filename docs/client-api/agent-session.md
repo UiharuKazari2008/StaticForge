@@ -30,7 +30,7 @@ All three require a live bind (`404` if none).
 |-------|------|--------|
 | `POST /agent/session/open-image` | `{ "filename" }` | WS `agent_session_command` `open_image` → `openManualModalWithContent({ type: "image", image })` |
 | `POST /agent/session/studio` | change JSON or `{ prompt, uc }` | Apply via `window.tryApplyStudioChangeJsonFromText` (`dreamscape:"change"`, `v:1`) |
-| `GET /agent/session/state` | — | Small snapshot: `workspaceId`, open `filename` if any, `model`, bound `clientId` |
+| `GET /agent/session/state` | — | Small snapshot: `workspaceId`, open `filename` (editor preview / loaded image, else variation/upload source), `model`, bound `clientId` |
 
 The bound tab replies with `agent_session_result` using the same `requestId`.
 

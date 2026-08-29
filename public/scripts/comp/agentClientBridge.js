@@ -20,7 +20,18 @@
         }
     }
 
+    function filenameFromImageLike(img) {
+        if (!img || typeof img !== 'object') return null;
+        return img.filename || img.original || img.upscaled || img.sourceFilename || null;
+    }
+
     function readOpenFilename() {
+        // Preview is what the editor is actually showing. currentEditMetadata /
+        // uploadedImageData are variation/img2img sources and often have no filename.
+        const showing = filenameFromImageLike(window.currentManualPreviewImage);
+        if (showing) return showing;
+        const loaded = filenameFromImageLike(window.currentEditImage);
+        if (loaded) return loaded;
         const meta = window.currentEditMetadata;
         if (meta) {
             if (meta.sourceFilename) return meta.sourceFilename;
