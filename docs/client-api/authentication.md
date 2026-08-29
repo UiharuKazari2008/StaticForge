@@ -419,10 +419,16 @@ Unauthenticated clients hitting rate limit receive **429**:
 ## Development auth
 
 `createDevAuthMiddleware` in `modules/auth.js` requires the request's direct TCP
-peer (`req.socket.remoteAddress`) to be loopback, requires `enable_dev` to be
-true, and validates `devLoginKey` from secure config on every request. It accepts
-`Authorization: Bearer …` or `?auth=` matching the development key. Existing
-admin and `dev_admin` sessions do not bypass the key check.
+peer (`req.socket.remoteAddress`) to be loopback and requires `enable_dev` to be
+true. On that loopback path it first accepts an application key via
+`X-StaticForge-App-Key: sfapp_...` or `Authorization: Bearer sfapp_...` (same
+`extractAuthFromRequest` parsing as public auth). Loopback validation uses
+`{ allowRefreshOverdue: true, skipUserAgent: true }` so a bot User-Agent or a
+past `refreshBeforeAt` does not 403. Public `createAuthMiddleware` stays
+strict. If no application key is present it validates `devLoginKey` from
+secure config (`Authorization: Bearer …` or `?auth=`). Existing admin and
+`dev_admin` sessions do not bypass the key check. No `loginKey` is required
+on `/agent/*`.
 
 `GET /agent` and `POST /agent/broadcast` mount this middleware for loopback
 requests only. Successful `GET /agent` auth persists the `dev_admin` session and

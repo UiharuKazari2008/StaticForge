@@ -51,10 +51,13 @@ Multi-action JSON endpoint. Body: `{ "action": string, "data": object }`.
 
 ### `GET /agent`
 
-**Auth:** Development auth (`Authorization: Bearer <devLoginKey>` preferred,
-`?auth=` fallback). Every request requires a direct loopback TCP peer,
-`enable_dev`, and the valid development key. Existing sessions do not bypass
-these checks. Forwarded client-address headers are ignored.
+**Auth:** Development auth. Every request requires a direct loopback TCP peer
+and `enable_dev`. Accepts an application key (`X-StaticForge-App-Key: sfapp_...`
+or `Authorization: Bearer sfapp_...`) **or** `Authorization: Bearer <devLoginKey>`
+(`?auth=` fallback). No `loginKey` is required. Loopback application-key
+validation skips User-Agent match and allows a past `refreshBeforeAt`.
+Existing PIN sessions do not bypass these checks. Forwarded client-address
+headers are ignored. Remote peers still receive `403`.
 
 Creates a persisted `dev_admin` session and returns a no-store bootstrap page.
 The bootstrap unregisters existing workers, fetches `GET /agent/assets.json`,
@@ -117,9 +120,10 @@ Cache Storage cannot satisfy `<script src>` without a service worker.
 
 ### `POST /agent/broadcast`
 
-**Auth:** Same as `GET /agent` — every request requires a direct loopback TCP
-peer, `enable_dev`, and the valid development key. Existing sessions do not
-bypass these checks. Forwarded client-address headers are ignored.
+**Auth:** Same as `GET /agent` — loopback + `enable_dev`, then application
+key (`X-StaticForge-App-Key` / Bearer `sfapp_`) or `devLoginKey`. Existing
+PIN sessions do not bypass these checks. Forwarded client-address headers are
+ignored.
 
 Broadcasts a notice to every connected WebSocket client so a local agent can
 warn users before a restart or other disruptive action. Clients render it as a
@@ -165,11 +169,13 @@ wait for users to dismiss the UI.
 ### `GET /agent/clients`
 
 **Auth:** Same as `GET /agent` — direct loopback TCP peer, `enable_dev`, and
-`Authorization: Bearer <devLoginKey>` (`?auth=` fallback). Existing PIN sessions
-do not qualify. Forwarded address headers are ignored.
+either `X-StaticForge-App-Key: sfapp_...` / Bearer `sfapp_` or
+`Authorization: Bearer <devLoginKey>` (`?auth=` fallback). No `loginKey`
+required. Existing PIN sessions do not qualify. Forwarded address headers are
+ignored.
 
 Lists currently connected WebSocket clients so a localhost agent can pick
-Yukimi's Studio tab. Ivory / Menma should use loopback + Bearer, not the PIN
+Yukimi's Studio tab. Ivory / Menma should use loopback + application key or Bearer, not the PIN
 pad. This is not a public UI route.
 
 **Success:** `200`

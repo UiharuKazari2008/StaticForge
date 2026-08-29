@@ -13,7 +13,7 @@ function applyAuthContext(req, context) {
     }
 }
 
-async function resolveApplicationAuth(req, globalResources) {
+async function resolveApplicationAuth(req, globalResources, options = {}) {
     let manager = null;
     try {
         manager = globalResources.getApplicationAuthManager();
@@ -26,6 +26,10 @@ async function resolveApplicationAuth(req, globalResources) {
     if (!extracted) return null;
 
     const userAgent = req.headers['user-agent'] || '';
+    const keyValidateOptions = {
+        allowRefreshOverdue: options.allowRefreshOverdue === true,
+        skipUserAgent: options.skipUserAgent === true
+    };
 
     if (extracted.type === 'temp_token') {
         const result = await manager.validateTempToken(extracted.token);
@@ -43,7 +47,7 @@ async function resolveApplicationAuth(req, globalResources) {
     }
 
     if (extracted.type === 'application_key') {
-        const result = await manager.validateApplicationKey(extracted.token, userAgent);
+        const result = await manager.validateApplicationKey(extracted.token, userAgent, keyValidateOptions);
         if (!result.valid) {
             return { rejected: true, status: 403, body: { error: result.message, code: result.code } };
         }
@@ -144,7 +148,7 @@ function credentialsMatch(received, expected) {
 }
 
 function createDevAuthMiddleware(globalResources) {
-    return (req, res, next) => {
+    return async (req, res, next) => {
         res.setHeader('Cache-Control', 'blocked, no-store, no-cache, must-revalidate, private, max-age=0');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');
@@ -159,6 +163,22 @@ function createDevAuthMiddleware(globalResources) {
         const enableDev = globalResources.getConfig({ path: 'enable_dev' });
         if (!enableDev) {
             return res.status(404).json({ error: 'Development mode not enabled' });
+        }
+
+        try {
+            const appAuth = await resolveApplicationAuth(req, globalResources, {
+                allowRefreshOverdue: true,
+                skipUserAgent: true
+            });
+            if (appAuth && appAuth.rejected) {
+                return res.status(appAuth.status).json(appAuth.body);
+            }
+            if (appAuth && !appAuth.rejected) {
+                applyAuthContext(req, appAuth);
+                return next();
+            }
+        } catch (err) {
+            console.error('Development application auth resolution error:', err.message);
         }
 
         const devLoginKey = globalResources.getSecureConfig({ path: 'devLoginKey' });

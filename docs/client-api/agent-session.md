@@ -2,9 +2,9 @@
 
 Localhost-only API so Ivory / Menma can drive **one connected Dreamscape Studio tab** (Yukimi's session), not the server gallery.
 
-**Auth:** same as `GET /agent` — direct loopback TCP peer, `enable_dev`, and `Authorization: Bearer <devLoginKey>` (`?auth=` fallback). Existing PIN sessions do **not** qualify. Forwarded address headers are ignored. Remote requests receive `403` even with a valid key.
+**Auth:** same as `GET /agent` — direct loopback TCP peer and `enable_dev`, then either an application key or the development key. Ivory / agents on loopback may send `X-StaticForge-App-Key: sfapp_...` or `Authorization: Bearer sfapp_...`. No `loginKey` is required. `Authorization: Bearer <devLoginKey>` (`?auth=` fallback) still works. Existing PIN sessions do **not** qualify. Forwarded address headers are ignored. Remote requests receive `403` even with a valid key.
 
-Ivory and Menma must use **loopback + Bearer**, not the public PIN pad. These routes are never exposed on the public UI.
+Loopback application-key checks skip User-Agent match and allow a past `refreshBeforeAt` so a bot UA or an overdue refresh does not 403. Public / gallery auth stays strict. Ivory and Menma must use **loopback + app key or Bearer**, not the public PIN pad. These routes are never exposed on the public UI.
 
 This is not a browser view. I/O is REST against the bound client's running editor (open image, apply studio change JSON, small state snapshot).
 

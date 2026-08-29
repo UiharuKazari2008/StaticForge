@@ -198,7 +198,7 @@ class ApplicationAuthManager {
         return String(expected).trim() === String(actual).trim();
     }
 
-    async validateApplicationKey(rawKey, userAgent, { allowRefreshOverdue = false } = {}) {
+    async validateApplicationKey(rawKey, userAgent, { allowRefreshOverdue = false, skipUserAgent = false } = {}) {
         if (!isApplicationKeyFormat(rawKey)) {
             return { valid: false, code: 'INVALID_KEY_FORMAT', message: 'Invalid application key format' };
         }
@@ -213,7 +213,7 @@ class ApplicationAuthManager {
             return { valid: false, code: 'INVALID_KEY', message: 'Invalid or revoked application key' };
         }
 
-        if (!this.validateUserAgent(row.user_agent, userAgent)) {
+        if (!skipUserAgent && !this.validateUserAgent(row.user_agent, userAgent)) {
             return { valid: false, code: 'USER_AGENT_MISMATCH', message: 'User-Agent does not match registered application' };
         }
 
