@@ -162,6 +162,125 @@ an OK confirmation dialog (`showConfirmationDialog`).
 **Follow-up:** None. The notice is fire-and-forget; the HTTP response does not
 wait for users to dismiss the UI.
 
+### `GET /agent/clients`
+
+**Auth:** Same as `GET /agent` — direct loopback TCP peer, `enable_dev`, and
+`Authorization: Bearer <devLoginKey>` (`?auth=` fallback). Existing PIN sessions
+do not qualify. Forwarded address headers are ignored.
+
+Lists currently connected WebSocket clients so a localhost agent can pick
+Yukimi's Studio tab. Ivory / Menma should use loopback + Bearer, not the PIN
+pad. This is not a public UI route.
+
+**Success:** `200`
+
+```json
+{
+  "success": true,
+  "boundClientId": "a1b2c3d4e5f6",
+  "clients": [
+    {
+      "clientId": "a1b2c3d4e5f6",
+      "userType": "admin",
+      "workspaceId": "default",
+      "connectedAt": "2026-08-29T08:00:00.000Z",
+      "userAgent": "Mozilla/5.0 ...",
+      "bound": true,
+      "authenticated": true
+    }
+  ]
+}
+```
+
+`boundClientId` is `null` when nothing is bound. Share codes are never returned
+or logged.
+
+**Errors:** `401` / `403` / `404` / `500` from development auth (same as
+`GET /agent`).
+
+### `POST /agent/bind`
+
+**Auth:** Same as `GET /agent`.
+
+Binds the localhost agent to one connected Studio client. Only one bind at a
+time; a new bind unbinds the previous tab (`agent_session_unbound`).
+
+**Inputs:** JSON body — one of:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `clientId` | one of | Id from `GET /agent/clients` |
+| `code` | one of | 6-character share code from Control Panel → Share session |
+
+**Success:** `200` `{ "success": true, "clientId", "bound": true, "userType", "workspaceId" }`
+
+**Errors:** `400` missing `clientId`/`code`; `404` unknown client or expired
+code; development-auth errors as `GET /agent`.
+
+**Client state after:** Bound tab receives `agent_session_bound`. Previous bound
+tab receives `agent_session_unbound`.
+
+### `POST /agent/session/open-image`
+
+**Auth:** Same as `GET /agent`. Requires a live bind.
+
+**Inputs:** `{ "filename": "<gallery filename>" }`
+
+Sends `agent_session_command` `open_image` to the bound client. The tab opens
+Studio via `openManualModalWithContent({ type: "image", image })`.
+
+**Success:** `200` `{ "success": true, "ok": true, "filename" }`
+
+**Errors:** `400` missing filename; `404` no bound client; `504` client did not
+reply; development-auth errors as `GET /agent`.
+
+### `POST /agent/session/studio`
+
+**Auth:** Same as `GET /agent`. Requires a live bind.
+
+Applies a studio change on the bound tab using the existing change helper
+(`dreamscape:"change"`, `v:1`; characters always replace+index).
+
+**Inputs:** JSON body — one of:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `change` | one of | Studio change object or JSON string |
+| `prompt` / `uc` | one of | Wrapped into a replace-fields change JSON |
+| body itself | one of | A studio change payload (`dreamscape:"change"`) |
+
+**Success:** `200` `{ "success": true, "ok": true, "count" }`
+
+**Errors:** `400` no change/prompt/uc; `404` unbound; `504` no reply;
+development-auth errors as `GET /agent`.
+
+### `GET /agent/session/state`
+
+**Auth:** Same as `GET /agent`. Requires a live bind.
+
+Asks the bound client for a **small** snapshot (not a full Studio dump).
+
+**Success:** `200`
+
+```json
+{
+  "success": true,
+  "workspaceId": "default",
+  "filename": "example.png",
+  "model": "v5",
+  "clientId": "a1b2c3d4e5f6",
+  "bound": true
+}
+```
+
+If the tab does not reply in time, the server still returns `200` with
+`partial: true` and the server-known `workspaceId` / `clientId` (`filename` and
+`model` may be null).
+
+**Errors:** `404` unbound; development-auth errors as `GET /agent`.
+
+**Follow-up:** None. See [agent-session.md](./agent-session.md).
+
 ### `OPTIONS /app`
 
 Session validation + server version. **Auth required.**

@@ -37,6 +37,7 @@ const { streamLogFile } = require('./modules/logStreamService');
 const pm2Service = require('./modules/pm2Service');
 const runtimeAssetService = require('./modules/runtimeAssetService');
 const agentAssetBundle = require('./modules/agentAssetBundle');
+const agentClientBridge = require('./modules/agentClientBridge');
 const workspaceCssService = require('./modules/workspaceCssService');
 const serverStartupStatus = require('./modules/serverStartupStatus');
 const { browserRequest } = require('./modules/browserHttp');
@@ -1960,6 +1961,7 @@ app.post('/agent/broadcast', devAuthMiddleware, (req, res) => {
         return res.status(500).json({ success: false, error: 'Failed to broadcast notice' });
     }
 });
+agentClientBridge.registerRoutes(app, { devAuthMiddleware, globalResources });
 app.get('/.login.jpg', (req, res) => {
     res.sendFile(path.join(cacheDir, 'login_array.jpg'));
 });

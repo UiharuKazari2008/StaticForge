@@ -1564,8 +1564,34 @@ async function handleStudioChangeShortcutClick(shortcut) {
 
 document.addEventListener('paste', handleStudioChangePaste, true);
 
+async function applyStudioChangePayloadSilent(payloadOrText) {
+    const payload = typeof payloadOrText === 'string'
+        ? extractStudioChangeJson(payloadOrText)
+        : (isStudioChangePayload(payloadOrText) ? payloadOrText : null);
+    if (!payload) {
+        return { ok: false, error: 'Not a studio change JSON' };
+    }
+    if (studioChangeDialogBusy) {
+        return { ok: false, error: 'Studio change already in progress' };
+    }
+    studioChangeDialogBusy = true;
+    try {
+        await ensureStudioOpenForChange();
+        const ops = buildOpsFromPayload(payload);
+        const enabledOps = ops.filter((op) => op.enabled !== false);
+        if (!enabledOps.length) {
+            return { ok: true, count: 0 };
+        }
+        const count = await applyStudioChangeOps(enabledOps);
+        return { ok: true, count };
+    } finally {
+        studioChangeDialogBusy = false;
+    }
+}
+
 if (typeof window !== 'undefined') {
     window.tryApplyStudioChangeJsonFromText = tryApplyStudioChangeJsonFromText;
+    window.applyStudioChangePayloadSilent = applyStudioChangePayloadSilent;
     window.extractStudioChangeJson = extractStudioChangeJson;
     window.openStudioChangeExportDialog = openStudioChangeExportDialog;
     window.handleStudioChangeShortcutClick = handleStudioChangeShortcutClick;

@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const WebSocket = require('ws');
 const { PromptIndexService } = require('./promptIndexService');
 
@@ -185,6 +186,8 @@ class WebSocketServer {
                 authenticated: !!(sessionResult && sessionResult.session),
                 userType: sessionResult?.userType || null,
                 clientIP: clientIP,
+                clientId: crypto.randomBytes(6).toString('hex'),
+                userAgent: String(req.headers['user-agent'] || '').replace(/\s+/g, ' ').trim().slice(0, 80),
                 connectedAt: new Date(),
                 lastActivity: new Date()
             };

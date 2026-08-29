@@ -173,10 +173,21 @@ function dsapSmfBuildDreamscapeHomeHtml() {
         { url: 'dsap://wiki.dyna.dreamscape.jp/', label: 'Wiki Manager', icon: 'fas fa-books', desc: 'Import and browse Fandom, NovelAI, and MediaWiki caches' },
         { url: 'dsap://menma.dyna.dreamscape.jp/status', label: 'Menma', icon: 'fas fa-cake-candles', desc: 'Cake ledger, work pile, and breakfast before/after' },
         { url: 'dsap://zanzou.dyna.dreamscape.jp/', label: 'Zanzou', icon: 'fas fa-clone', desc: 'Afterimages. Keep the shot, scrap the ghosts.' },
+        { action: 'share-session', label: 'Share session', icon: 'fas fa-share-nodes', desc: 'Reveal a short code so a localhost agent can bind this Studio tab' },
     ];
 
     const rows = links.map((link) => {
         const adminBadge = link.admin ? ' <span class="dsap-smf-home-admin">Admin</span>' : '';
+        if (link.action === 'share-session') {
+            return `<tr>
+  <td class="dsap-smf-home-link-cell">
+    <a href="#" class="dsap-smf-home-link" data-agent-share-session="1">
+      <i class="${dsapSmfEscapeAttr(link.icon)}"></i> <strong>${dsapSmfEscapeHtml(link.label)}</strong>
+    </a>
+    <div class="dsap-smf-home-desc">${dsapSmfEscapeHtml(link.desc)}</div>
+  </td>
+</tr>`;
+        }
         return `<tr>
   <td class="dsap-smf-home-link-cell">
     <a href="${dsapSmfEscapeAttr(link.url)}" class="dsap-smf-home-link" data-dsap-smf-home-link="${dsapSmfEscapeAttr(link.url)}">

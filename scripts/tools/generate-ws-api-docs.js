@@ -28,6 +28,7 @@ const OWNER_TO_DOC = {
     favorites: 'favorites.md',
     quips: 'quips.md',
     menma: 'menma.md',
+    agentSession: 'agentSession.md',
     similarImages: 'similarImages.md',
     knowledge: 'knowledge.md',
     persona: 'persona.md',

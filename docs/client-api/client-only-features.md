@@ -47,7 +47,7 @@ Sync helper: `syncAuthLocalStorageFromServer()` in `public/scripts/comp/connecti
 | Service worker | `public/sw.js` | `OPTIONS /` manifest hash compare |
 | SW manager | `public/scripts/comp/serviceWorkerManager.js` | POST `/` ping, fetch `/sw.js`, WS push `service_worker_cache_update` |
 | Runtime assets | Server `.cache/runtime-assets/` | Transparent `/css/`, `/scripts/` optimization |
-| Browser-agent mode | `/app?agent=1` | Skips worker registration and cache updates, clears Cache Storage after old-worker cleanup, forces desktop/windowed boot. `/agent` preloads app-shell CSS/JS into a 120s private HTTP cache for `dev_admin` sessions; optional `GET /agent/assets.zip`. Loopback `POST /agent/broadcast` shows a toast or confirmation dialog on all connected clients. |
+| Browser-agent mode | `/app?agent=1` | Skips worker registration and cache updates, clears Cache Storage after old-worker cleanup, forces desktop/windowed boot. `/agent` preloads app-shell CSS/JS into a 120s private HTTP cache for `dev_admin` sessions; optional `GET /agent/assets.zip`. Loopback `POST /agent/broadcast` shows a toast or confirmation dialog on all connected clients. Localhost `/agent/clients` + `/agent/bind` + `/agent/session/*` drive one bound Studio tab (Ivory/Menma: loopback + Bearer, not the PIN pad). |
 
 Custom native clients typically **skip** service worker entirely; use direct HTTP for static assets.
 
@@ -96,7 +96,8 @@ Server-backed pieces use WS (`search_tag_wiki`, `resolve_grimoire_url`, etc.) bu
 | Credit cost dialog | `creditCostDialog.js` | Computes cost locally via `calculateUpscaleInfo()` in `utilities.js` using image dimensions + `window.optionsData.user.subscription` (Opus free tier). Does **not** fetch balance over WS/REST at dialog open; subscription data comes from server options loaded at init. |
 | Streaming step previews | `websocket.js` streaming session | Interprets `image_generation_progress`; `stage_complete` swaps the editor preview to that stage's result without ending the run |
 | Staged results review | `stageResultsReview.js` | Opens a Studio tool window at staged-generate start with one gallery tile per expected saved stage; fills from `stage_complete` / `complete` / response `filenames[]`; click opens Lumen |
-| Studio change JSON | `studioChangeJson.js` (+ desktop shortcut type `studio-change`, prompt context menu, clipboard paste) | Client-only compact studio delta (`v:1`, `dreamscape:"change"`): export/copy/paste/apply params, prompt/UC chunks, characters, request expanders, optional vibe ids. Contract: `docs/studio-change-json.md`. Helpers: `window.tryApplyStudioChangeJsonFromText`, `window.openStudioChangeExportDialog`, `window.STUDIO_CHANGE_AI_SPEC`. No dedicated WS packet. |
+| Studio change JSON | `studioChangeJson.js` (+ desktop shortcut type `studio-change`, prompt context menu, clipboard paste) | Client-only compact studio delta (`v:1`, `dreamscape:"change"`): export/copy/paste/apply params, prompt/UC chunks, characters, request expanders, optional vibe ids. Contract: `docs/studio-change-json.md`. Helpers: `window.tryApplyStudioChangeJsonFromText`, `window.applyStudioChangePayloadSilent`, `window.openStudioChangeExportDialog`, `window.STUDIO_CHANGE_AI_SPEC`. Loopback `/agent/session/studio` reuses the silent helper on the bound tab. |
+| Share session | Control Panel row (`dsap://dreamscape.jp/`) | `window.showAgentSessionShareDialog` — mint a 6-character code via `session_share_start` so a localhost agent can `POST /agent/bind`. Not on the Start menu. |
 
 ---
 

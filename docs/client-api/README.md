@@ -58,9 +58,10 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | [rest-api.md](./rest-api.md) | Every HTTP route: methods, auth, inputs, responses, errors |
 | [client-only-features.md](./client-only-features.md) | Web-only UI, localStorage, service worker, Android bridges |
 | [feature-map.md](./feature-map.md) | UI feature → REST/WS matrix |
+| [agent-session.md](./agent-session.md) | Localhost `/agent` bind + drive one Studio tab (Ivory/Menma; loopback + Bearer, not PIN pad) |
 | [README-CHILD.md](../README-CHILD.md) | Child/ephemeral replication deployment (master pairing, bootstrap, daily ops) |
 
-### WebSocket domains (288 request types)
+### WebSocket domains (290 request types)
 
 | Domain | File | Packets |
 |--------|------|---------|
@@ -80,6 +81,7 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | Account & app bootstrap | [ws/account.md](./ws/account.md) | 2 |
 | Generation quips | [ws/quips.md](./ws/quips.md) | 4 |
 | Menma progress | [ws/menma.md](./ws/menma.md) | 1 |
+| Agent session | [ws/agentSession.md](./ws/agentSession.md) | 2 |
 | Similar-image review | [ws/similarImages.md](./ws/similarImages.md) | 2 |
 | Character database | [ws/characterDb.md](./ws/characterDb.md) | 5 |
 | Knowledge / memories | [ws/knowledge.md](./ws/knowledge.md) | 7 |
