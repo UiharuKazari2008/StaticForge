@@ -1,7 +1,7 @@
 /**
  * Client side of the localhost agent session bridge.
- * Handles inbound agent_session_command, share-code UI, and a small Studio snapshot.
- * Depends on: wsInboundRegistry, studioChangeJson, manualModalManager, confirmationDialog
+ * Invisible inbound handler only — no applet, no Control Panel row, no share dialog.
+ * Depends on: wsInboundRegistry, studioChangeJson, openManualModalWithContent
  */
 
 (function initAgentClientBridge() {
@@ -16,7 +16,7 @@
                 data: data || {}
             });
         } catch (_err) {
-            // ignore send failures; the HTTP side will time out
+            // HTTP side times out if the reply never arrives
         }
     }
 
@@ -42,54 +42,48 @@
         return window.currentWorkspace || null;
     }
 
-    function resolveStudioPayload(data) {
+    function buildPromptUcChange(data) {
+        const fields = [];
+        if (data.prompt != null) {
+            fields.push({
+                id: 'prompt',
+                action: 'replace',
+                chunks: [{ name: 'Prompt', text: String(data.prompt) }]
+            });
+        }
+        if (data.uc != null) {
+            fields.push({
+                id: 'uc',
+                action: 'replace',
+                chunks: [{ name: 'UC', text: String(data.uc) }]
+            });
+        }
+        if (!fields.length) return null;
+        return { dreamscape: 'change', v: 1, fields };
+    }
+
+    function resolveStudioText(data) {
         if (!data || typeof data !== 'object') return null;
-        if (data.payload && typeof window.extractStudioChangeJson === 'function') {
-            const fromPayload = typeof data.payload === 'string'
-                ? window.extractStudioChangeJson(data.payload)
-                : (data.payload.dreamscape || data.payload.type || data.payload.kind ? data.payload : null);
-            if (fromPayload) return fromPayload;
+        if (typeof data.change === 'string') return data.change;
+        if (data.change && typeof data.change === 'object') return JSON.stringify(data.change);
+        if (data.payload) {
+            if (typeof data.payload === 'string') return data.payload;
+            if (typeof data.payload === 'object') return JSON.stringify(data.payload);
         }
-        if (data.change) {
-            if (typeof data.change === 'string' && typeof window.extractStudioChangeJson === 'function') {
-                return window.extractStudioChangeJson(data.change);
-            }
-            if (typeof data.change === 'object') return data.change;
-        }
-        if (data.prompt != null || data.uc != null) {
-            const fields = [];
-            if (data.prompt != null) {
-                fields.push({
-                    id: 'prompt',
-                    action: 'replace',
-                    chunks: [{ name: 'Prompt', text: String(data.prompt) }]
-                });
-            }
-            if (data.uc != null) {
-                fields.push({
-                    id: 'uc',
-                    action: 'replace',
-                    chunks: [{ name: 'UC', text: String(data.uc) }]
-                });
-            }
-            return { dreamscape: 'change', v: 1, fields };
-        }
-        return null;
+        const built = buildPromptUcChange(data);
+        return built ? JSON.stringify(built) : null;
     }
 
     async function applyStudioFromCommand(data) {
-        const payload = resolveStudioPayload(data);
-        if (!payload) {
+        const text = resolveStudioText(data);
+        if (!text) {
             return { ok: false, error: 'change JSON or prompt/uc fields are required' };
         }
-        if (typeof window.applyStudioChangePayloadSilent === 'function') {
-            return window.applyStudioChangePayloadSilent(payload);
+        if (typeof window.tryApplyStudioChangeJsonFromText !== 'function') {
+            return { ok: false, error: 'Studio change helper is not available' };
         }
-        if (typeof window.tryApplyStudioChangeJsonFromText === 'function') {
-            const accepted = window.tryApplyStudioChangeJsonFromText(JSON.stringify(payload));
-            return { ok: !!accepted, dialog: true };
-        }
-        return { ok: false, error: 'Studio change helper is not available' };
+        const accepted = await window.tryApplyStudioChangeJsonFromText(text);
+        return { ok: !!accepted };
     }
 
     async function openImageFromCommand(filename) {
@@ -106,10 +100,9 @@
     async function handleAgentSessionCommand(message) {
         const requestId = message && message.requestId;
         const data = (message && message.data) || {};
-        if (!sessionBound) {
-            replyAgentSessionResult(requestId, { ok: false, error: 'Client is not bound' });
-            return;
-        }
+        // Commands are only sent to the bound socket; treat arrival as bind confirmation.
+        sessionBound = true;
+        if (data.clientId) sessionClientId = data.clientId;
         const command = data.command;
         try {
             if (command === 'get_state') {
@@ -141,46 +134,19 @@
         }
     }
 
-    async function showAgentSessionShareDialog() {
+    /**
+     * Console / agent helper. Mints a short share code (no UI, never logs the code).
+     * Usage: const { code, clientId, expiresInSec } = await window.agentSessionShareStart();
+     */
+    async function agentSessionShareStart() {
         if (!window.wsClient || typeof window.wsClient.sendMessage !== 'function' || !window.wsClient.isConnected()) {
-            if (typeof showGlassToast === 'function') {
-                showGlassToast('error', 'Share session', 'WebSocket is not connected', false, 4000, '<i class="fas fa-share-nodes"></i>');
-            }
-            return;
+            throw new Error('WebSocket is not connected');
         }
-        try {
-            const data = await window.wsClient.sendMessage('session_share_start', {
-                userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : ''
-            }, false);
-            if (data && data.clientId) sessionClientId = data.clientId;
-            const code = data && data.code ? String(data.code) : '';
-            const expiresInSec = data && data.expiresInSec ? data.expiresInSec : 300;
-            if (!code) {
-                throw new Error('No share code returned');
-            }
-            const body = `Give this code to a localhost agent (loopback + Bearer, not the PIN pad). It expires in ${expiresInSec} seconds.<br><br><strong style="letter-spacing:0.18em;font-size:1.35em">${typeof escapeHtml === "function" ? escapeHtml(code) : code}</strong>`;
-            if (typeof showConfirmationDialog === 'function') {
-                await showConfirmationDialog(body, [
-                    { text: 'OK', value: true, className: 'btn-standard primary' }
-                ], null, { title: 'Share session' });
-            } else if (typeof showGlassToast === 'function') {
-                showGlassToast('info', 'Share session', code, false, 20000, '<i class="fas fa-share-nodes"></i>');
-            }
-        } catch (err) {
-            if (typeof showGlassToast === 'function') {
-                showGlassToast('error', 'Share session', (err && err.message) || 'Failed to start share', false, 4000, '<i class="fas fa-share-nodes"></i>');
-            }
-        }
-    }
-
-    function wireShareSessionClicks() {
-        document.addEventListener('click', (event) => {
-            const trigger = event.target && event.target.closest && event.target.closest('[data-agent-share-session]');
-            if (!trigger) return;
-            event.preventDefault();
-            event.stopPropagation();
-            void showAgentSessionShareDialog();
-        });
+        const data = await window.wsClient.sendMessage('session_share_start', {
+            userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : ''
+        }, false);
+        if (data && data.clientId) sessionClientId = data.clientId;
+        return data;
     }
 
     if (typeof registerWsInboundHandler === 'function') {
@@ -213,9 +179,7 @@
         });
     }
 
-    wireShareSessionClicks();
-
     if (typeof window !== 'undefined') {
-        window.showAgentSessionShareDialog = showAgentSessionShareDialog;
+        window.agentSessionShareStart = agentSessionShareStart;
     }
 })();

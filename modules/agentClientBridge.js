@@ -167,11 +167,11 @@ function bindClient(globalResources, { clientId, code }) {
     };
 }
 
-function handleSessionShareStart(handlersCtx, ws, message) {
+function handleSessionShareStart(handlersCtx, ws, message, clientInfo) {
     const wsServer = handlersCtx && handlersCtx.globalResources
         ? getWsServer(handlersCtx.globalResources)
         : null;
-    const info = wsServer && wsServer.clients ? wsServer.clients.get(ws) : null;
+    const info = clientInfo || (wsServer && wsServer.clients ? wsServer.clients.get(ws) : null);
     if (!info) {
         handlersCtx.sendError(ws, 'Unknown client', 'session_share_start', message.requestId);
         return;
@@ -195,7 +195,7 @@ function handleSessionShareStart(handlersCtx, ws, message) {
         expiresAt: Date.now() + SHARE_TTL_MS
     });
     handlersCtx.sendToClient(ws, {
-        type: 'session_share_start_response',
+        type: 'session_share_code_response',
         requestId: message.requestId,
         data: {
             success: true,

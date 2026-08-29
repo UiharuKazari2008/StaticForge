@@ -1,9 +1,9 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
 const agentClientBridge = require('../../agentClientBridge');
 
-async function handleSessionShareStart(handlers, ws, message) {
+async function handleSessionShareStart(handlers, ws, message, clientInfo) {
     try {
-        agentClientBridge.handleSessionShareStart(handlers, ws, message);
+        agentClientBridge.handleSessionShareStart(handlers, ws, message, clientInfo);
     } catch (_error) {
         handlers.sendError(ws, 'Failed to start session share', 'session_share_start', message.requestId);
     }
