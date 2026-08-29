@@ -63,6 +63,8 @@ When `autoApply` is true, `POST /agent/session/studio` resolves after the silent
 
 Optional per-character `position` (`{x,y}` and/or `cell` A1–E5) is a sibling of `index` / `name` / `prompt` / `uc` on each `characters[]` entry. It maps to the existing Studio slot dataset (position dialog / V5 freeform centers). `GET /agent/session/state` echoes it when the slot has stored coords. Do not add chrome.
 
+`params.seed` is the **actual seed that was used** (or the specific seed to set). `params.seedLock` is whether the existing Studio sprout lock is on. `seed: "last"` or `seedLock: true` reuses the last seed without scraping `_generated_<seed>.png`. `seedLock: false` unlocks so the next generate rolls a new variation. Copy change JSON echoes the same pair. No new chrome.
+
 ## WebSocket packets
 
 | Direction | Type | Notes |

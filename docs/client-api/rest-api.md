@@ -387,7 +387,11 @@ editor** as Change-JSON v1 in `change` so Ivory can rewrite it and
 `characters`, `expanders`, `vibes`. `fields` always includes `prompt` and `uc`
 (empty text when the editor is blank). Characters are replace+index (no add).
 Optional per-character `position` (`{x,y}` and/or `cell` A1–E5) is echoed when
-the Studio slot has stored coords. Same contract as
+the Studio slot has stored coords. `params.seed` is the actual seed that was
+used; `params.seedLock` is the existing Studio sprout lock (`true` = reuse last
+seed, `false` = roll a new variation). `seed: "last"` is the same as
+`seedLock: true`. Filename `_generated_<seed>.png` is not a contract. Same
+contract as
 [studio-change-json.md](../studio-change-json.md). Also echoes `scopes` (the
 app key's named scopes; development key is `["universal"]`) and `vfsPathUuid`
 when the key has `vfs`. Do not log live prompt/uc text.

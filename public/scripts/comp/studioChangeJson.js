@@ -42,7 +42,8 @@ Rules:
 - expanders: if present, DELETE all request expanders and install only this list. In text use !prefix. Do not repeat expander values.
 - vibes: if present, REPLACE current vibe transfers with this id list (ids Studio already has). Omit to leave vibes unchanged. No image uploads.
 - Default action is replace. remove = delete a span or slot. Omit unused keys. Only include params you want to change.
-- Named resolution preset (e.g. normal_portrait): omit width/height. Custom size: resolution "custom" plus width and height.`;
+- Named resolution preset (e.g. normal_portrait): omit width/height. Custom size: resolution "custom" plus width and height.
+- params.seed: specific seed (number). params.seedLock: true locks the last used seed (existing Studio sprout). seed: "last" is the same as seedLock: true. Unlock (seedLock: false) rolls a new variation. Copy change JSON and GET /agent/session/state echo the actual seed used plus seedLock. Filename is not a contract.`;
 
 const STUDIO_CHANGE_PARAM_DEFS = [
     { id: 'steps', label: 'Steps' },
@@ -52,6 +53,7 @@ const STUDIO_CHANGE_PARAM_DEFS = [
     { id: 'noiseScheduler', label: 'Noise scheduler' },
     { id: 'model', label: 'Model' },
     { id: 'seed', label: 'Seed' },
+    { id: 'seedLock', label: 'Seed lock' },
     { id: 'resolution', label: 'Resolution' },
     { id: 'width', label: 'Width' },
     { id: 'height', label: 'Height' },
@@ -237,7 +239,7 @@ function studioChangeFormatValue(id, value) {
         const n = Number(value);
         return STUDIO_CHANGE_UC_PRESET_NAMES[n] || String(value);
     }
-    if (id === 'variety' || id === 'upscale' || id === 'append_quality') {
+    if (id === 'variety' || id === 'upscale' || id === 'append_quality' || id === 'seedLock') {
         return value ? 'On' : 'Off';
     }
     if (id === 'resolution') {
@@ -248,10 +250,10 @@ function studioChangeFormatValue(id, value) {
 }
 
 function studioChangeValuesEqual(id, a, b) {
-    if (id === 'variety' || id === 'upscale' || id === 'append_quality') {
+    if (id === 'variety' || id === 'upscale' || id === 'append_quality' || id === 'seedLock') {
         return Boolean(a) === Boolean(b);
     }
-    if (id === 'steps' || id === 'width' || id === 'height' || id === 'append_uc') {
+    if (id === 'steps' || id === 'width' || id === 'height' || id === 'append_uc' || id === 'seed') {
         return Number(a) === Number(b);
     }
     if (id === 'guidance' || id === 'rescale' || id === 'strength' || id === 'noise') {
@@ -324,10 +326,61 @@ function writeStudioFieldValue(fieldId, next) {
     return true;
 }
 
+function isStudioChangeLastSeedToken(value) {
+    return typeof value === 'string' && value.trim().toLowerCase() === 'last';
+}
+
+function studioChangeFlagOn(value) {
+    if (value === true || value === 1 || value === '1') return true;
+    if (value === false || value === 0 || value === '0' || value == null || value === '') return false;
+    if (typeof value === 'string') {
+        const token = value.trim().toLowerCase();
+        if (token === 'true' || token === 'on' || token === 'yes') return true;
+        if (token === 'false' || token === 'off' || token === 'no') return false;
+    }
+    return Boolean(value);
+}
+
+function coerceStudioChangeSeed(value) {
+    if (value == null || value === '') return '';
+    if (isStudioChangeLastSeedToken(value)) return 'last';
+    const raw = typeof value === 'string' ? value.trim() : value;
+    const n = parseInt(raw, 10);
+    if (Number.isFinite(n) && String(n) === String(raw)) return n;
+    const asNumber = Number(raw);
+    return Number.isFinite(asNumber) ? asNumber : String(raw);
+}
+
+function resolveStudioActualSeed() {
+    const seedEl = document.getElementById('manualSeed');
+    const input = seedEl ? seedEl.value.trim() : '';
+    if (input) return coerceStudioChangeSeed(input);
+    const last = (window.lastGeneratedSeed != null && window.lastGeneratedSeed !== '')
+        ? window.lastGeneratedSeed
+        : window.lastLoadedSeed;
+    if (last != null && last !== '') return coerceStudioChangeSeed(last);
+    return '';
+}
+
+function resolveStudioSeedLock() {
+    const btn = document.getElementById('sproutSeedBtn');
+    return Boolean(btn && btn.getAttribute('data-state') === 'on');
+}
+
+function attachStudioSeedEcho(payload) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+    if (!payload.params || typeof payload.params !== 'object' || Array.isArray(payload.params)) {
+        payload.params = {};
+    }
+    const seed = resolveStudioActualSeed();
+    if (seed !== '' && seed != null) payload.params.seed = seed;
+    payload.params.seedLock = resolveStudioSeedLock();
+    return payload;
+}
+
 function getStudioParamSnapshot() {
     // collectManualFormValues: public/scripts/comp/manualModalManager.js
     const values = collectManualFormValues();
-    const seedEl = document.getElementById('manualSeed');
     const widthEl = document.getElementById('manualWidth');
     const heightEl = document.getElementById('manualHeight');
     const strengthEl = document.getElementById('manualStrengthValue');
@@ -340,7 +393,8 @@ function getStudioParamSnapshot() {
         sampler: values.sampler,
         noiseScheduler: values.noiseScheduler,
         model: values.model,
-        seed: seedEl ? seedEl.value.trim() : '',
+        seed: resolveStudioActualSeed(),
+        seedLock: resolveStudioSeedLock(),
         resolution: values.resolutionValue,
         width: values.width || (widthEl ? parseInt(widthEl.value, 10) : undefined),
         height: values.height || (heightEl ? parseInt(heightEl.value, 10) : undefined),
@@ -625,6 +679,7 @@ function buildOpsFromPayload(payload) {
     const params = payload.params && typeof payload.params === 'object' ? payload.params : {};
 
     const skipSize = studioChangeShouldSkipSizeParams(params);
+    const wantsLastSeed = isStudioChangeLastSeedToken(params.seed);
     STUDIO_CHANGE_PARAM_DEFS.forEach((def) => {
         if (!Object.prototype.hasOwnProperty.call(params, def.id)) return;
         if (skipSize && (def.id === 'width' || def.id === 'height')) return;
@@ -634,6 +689,15 @@ function buildOpsFromPayload(payload) {
             const preset = resolveStudioChangeResolutionPreset(next);
             if (preset) next = preset.value;
         }
+        if (def.id === 'seed') {
+            if (wantsLastSeed) {
+                next = resolveStudioActualSeed();
+                if (next === '' || next == null) return;
+            } else {
+                next = coerceStudioChangeSeed(next);
+            }
+        }
+        if (def.id === 'seedLock') next = studioChangeFlagOn(next);
         const current = currentParams[def.id];
         ops.push({
             key: `param:${def.id}`,
@@ -648,6 +712,20 @@ function buildOpsFromPayload(payload) {
             unchanged: studioChangeValuesEqual(def.id, current, next)
         });
     });
+    if (wantsLastSeed && !Object.prototype.hasOwnProperty.call(params, 'seedLock')) {
+        ops.push({
+            key: 'param:seedLock',
+            group: 'Parameters',
+            kind: 'param',
+            action: 'set',
+            paramId: 'seedLock',
+            label: 'Seed lock',
+            fromValue: currentParams.seedLock,
+            toValue: true,
+            enabled: true,
+            unchanged: studioChangeValuesEqual('seedLock', currentParams.seedLock, true)
+        });
+    }
 
     const fieldSpecs = [];
     if (Array.isArray(payload.fields)) {
@@ -1269,12 +1347,26 @@ async function applyStudioParam(paramId, value) {
             // selectManualModel: public/scripts/comp/manualDropdownManager.js
             selectManualModel(value, '', true);
             break;
-        case 'seed':
+        case 'seed': {
+            if (isStudioChangeLastSeedToken(value)) {
+                value = resolveStudioActualSeed();
+            }
+            if (value === '' || value == null) break;
+            const coerced = coerceStudioChangeSeed(value);
+            if (coerced === '' || coerced === 'last') break;
             if (seedEl) {
-                seedEl.value = value == null ? '' : String(value);
+                seedEl.value = String(coerced);
                 ping(seedEl);
             }
+            window.lastLoadedSeed = coerced;
             break;
+        }
+        case 'seedLock': {
+            const hint = resolveStudioActualSeed();
+            // setSproutSeedLocked: public/scripts/comp/seedSproutManager.js
+            setSproutSeedLocked(studioChangeFlagOn(value), hint);
+            break;
+        }
         case 'resolution': {
             const preset = resolveStudioChangeResolutionPreset(value);
             // selectManualResolution: public/scripts/comp/manualDropdownManager.js
@@ -1639,7 +1731,7 @@ async function openStudioChangeExportDialog() {
         });
         if (!result) return;
         const enabledOps = result.ops.filter((op) => op.enabled !== false);
-        const payload = buildPayloadFromOps(enabledOps, '');
+        const payload = attachStudioSeedEcho(buildPayloadFromOps(enabledOps, ''));
         if (result.action === 'spec') {
             await copyStudioChangeText(STUDIO_CHANGE_AI_SPEC, 'AI format spec copied');
             return;
@@ -1744,7 +1836,7 @@ function buildStudioChangeSnapshot() {
         // keep export-produced slots
     }
 
-    return payload;
+    return attachStudioSeedEcho(payload);
 }
 
 if (typeof window !== 'undefined') {

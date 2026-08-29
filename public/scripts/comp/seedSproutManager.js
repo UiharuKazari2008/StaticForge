@@ -240,3 +240,45 @@ async function toggleSproutSeed() {
     manualSeed.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
+/**
+ * Drive the existing Studio sprout seed lock without the expander/Tendai dialog.
+ * Change JSON / GET /agent/session/state only — seed-only, no new chrome.
+ * Called from public/scripts/comp/studioChangeJson.js
+ */
+function setSproutSeedLocked(locked, seedValue) {
+    const seedEl = document.getElementById('manualSeed');
+    const resolved = (seedValue != null && seedValue !== '')
+        ? seedValue
+        : (window.lastGeneratedSeed != null && window.lastGeneratedSeed !== ''
+            ? window.lastGeneratedSeed
+            : window.lastLoadedSeed);
+    if (resolved != null && resolved !== '') {
+        window.lastLoadedSeed = resolved;
+    }
+
+    if (locked) {
+        if (resolved == null || resolved === '') return;
+        if (sproutSeedBtn) {
+            sproutSeedBtn.setAttribute('data-state', 'on');
+            sproutSeedBtn.classList.remove('hidden');
+        }
+        if (seedEl) {
+            seedEl.value = String(resolved);
+            seedEl.disabled = true;
+            seedEl.placeholder = String(resolved);
+            seedEl.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        return;
+    }
+
+    if (sproutSeedBtn) {
+        sproutSeedBtn.setAttribute('data-state', 'off');
+    }
+    if (seedEl) {
+        seedEl.value = '';
+        seedEl.disabled = false;
+        seedEl.placeholder = (window.lastLoadedSeed || window.lastGeneratedSeed || 'Randomize').toString();
+        seedEl.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+}
+

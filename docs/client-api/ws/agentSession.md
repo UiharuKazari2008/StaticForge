@@ -62,7 +62,8 @@ Do not log `code`. No dialog is shown; the requesting console / agent receives t
 
 `get_state` / `get_editor` reply `data` includes `ok`, `workspaceId`, `filename`
 (null if ungenerated), `model`, `clientId`, and `change` (Change-JSON v1 editor
-snapshot; no image required).
+snapshot; no image required). `change.params.seed` is the actual seed used;
+`change.params.seedLock` is the existing Studio sprout lock.
 
 `apply_studio` command `data` includes `change` / `prompt` / `uc` / `payload`
 plus `autoApply` (default `true`) and `autoGenerate` (default `false`). Those

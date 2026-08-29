@@ -51,7 +51,8 @@ Do **not** invent keys Studio cannot apply. Unknown keys are ignored. Director i
 | `sampler` | string | e.g. `"k_euler_ancestral"` |
 | `noiseScheduler` | string | e.g. `"karras"` |
 | `model` | string | e.g. `"v5"` |
-| `seed` | string or number | |
+| `seed` | string or number | Specific seed, or `"last"` to lock the last used seed (same as `seedLock: true`). Copy / `GET /agent/session/state` echo the **actual seed that was used**, not a filename. |
+| `seedLock` | boolean | `true` locks the last used seed via the existing Studio sprout control (Ivory A/B). `false` unlocks so the next generate rolls a new variation. Omit to leave lock state alone. No new chrome. |
 | `resolution` | string | Named preset (`normal_portrait`, `normal_landscape`, …). **Omit `width`/`height` when using a named preset.** Custom size: `"custom"` plus `width` and `height`. |
 | `width` | number | Only with `"resolution": "custom"` |
 | `height` | number | Only with `"resolution": "custom"` |
@@ -238,4 +239,5 @@ Rules:
 - vibes: if present, REPLACE current vibe transfers with this id list (ids Studio already has). Omit to leave vibes unchanged. No image uploads.
 - Default action is replace. remove = delete a span or slot. Omit unused keys. Only include params you want to change.
 - Named resolution preset (e.g. normal_portrait): omit width/height. Custom size: resolution "custom" plus width and height.
+- params.seed: specific seed (number). params.seedLock: true locks the last used seed (existing Studio sprout). seed: "last" is the same as seedLock: true. Unlock (seedLock: false) rolls a new variation. Copy change JSON and GET /agent/session/state echo the actual seed used plus seedLock. Filename is not a contract.
 ```
