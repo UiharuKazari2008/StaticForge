@@ -60,7 +60,7 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | [feature-map.md](./feature-map.md) | UI feature → REST/WS matrix |
 | [README-CHILD.md](../README-CHILD.md) | Child/ephemeral replication deployment (master pairing, bootstrap, daily ops) |
 
-### WebSocket domains (286 request types)
+### WebSocket domains (288 request types)
 
 | Domain | File | Packets |
 |--------|------|---------|
@@ -80,6 +80,7 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | Account & app bootstrap | [ws/account.md](./ws/account.md) | 2 |
 | Generation quips | [ws/quips.md](./ws/quips.md) | 4 |
 | Menma progress | [ws/menma.md](./ws/menma.md) | 1 |
+| Similar-image review | [ws/similarImages.md](./ws/similarImages.md) | 2 |
 | Character database | [ws/characterDb.md](./ws/characterDb.md) | 5 |
 | Knowledge / memories | [ws/knowledge.md](./ws/knowledge.md) | 7 |
 | Persona | [ws/persona.md](./ws/persona.md) | 2 |

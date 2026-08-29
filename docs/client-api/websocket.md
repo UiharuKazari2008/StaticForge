@@ -307,7 +307,7 @@ Custom callbacks: `setRequestCallback(requestId, fn)` for multi-phase responses.
 
 ## Domain documentation
 
-Full packet lists: [ws/](./ws/) directory (286 request types). Replication: [ws/replication.md](./ws/replication.md).
+Full packet lists: [ws/](./ws/) directory (288 request types). Replication: [ws/replication.md](./ws/replication.md).
 
 ## Implementation references
 

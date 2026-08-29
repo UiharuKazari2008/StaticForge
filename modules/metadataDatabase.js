@@ -7187,6 +7187,195 @@ async function findLatestImageFilenameByNovelNoteId(noteId) {
     }
 }
 
+function similarImagePreviewUrl(filename) {
+    const base = String(filename || '')
+        .replace(/\.(png|jpg|jpeg)$/i, '')
+        .replace(/_upscaled$/i, '');
+    if (!base) return '';
+    return `/previews/${encodeURIComponent(`${base}.webp`)}`;
+}
+
+function similarImageFullUrl(filename) {
+    if (!filename) return '';
+    return `/images/${encodeURIComponent(filename)}`;
+}
+
+function clampSimilarLimit(value, fallback, min, max) {
+    const n = parseInt(value, 10);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(max, Math.max(min, n));
+}
+
+/**
+ * List consecutive-seed (and optional refine) similar-image groups for a workspace.
+ * Uses indexed facet + ownership columns only — does not scan metadata JSON.
+ * Groups with fewer than 2 members are omitted. Caps groups and items per group.
+ */
+async function listSimilarImageGroupsForWorkspace(workspaceId, options = {}) {
+    if (!dbInitialized || !db) {
+        throw new Error('Database not initialized');
+    }
+
+    const wsId = workspaceId || 'default';
+    const includeRefine = options.includeRefine !== false;
+    const groupLimit = clampSimilarLimit(options.groupLimit, 50, 1, 100);
+    const itemLimit = clampSimilarLimit(options.itemLimit, 24, 2, 48);
+
+    const seedRows = await db.all(`
+        SELECT f.consecutive_seed_group_id AS group_id,
+               COUNT(*) AS item_count,
+               MAX(COALESCE(f.mtime, 0)) AS latest_mtime,
+               MIN(f.seed) AS seed
+        FROM image_search_facets f
+        INNER JOIN ${GALLERY_OWNERSHIP_TABLE} o
+            ON o.filename = f.filename
+        WHERE o.workspace_id = ?
+          AND o.bucket = 'files'
+          AND f.consecutive_seed_group_id IS NOT NULL
+        GROUP BY f.consecutive_seed_group_id
+        HAVING COUNT(*) >= 2
+        ORDER BY latest_mtime DESC
+        LIMIT ?
+    `, [wsId, groupLimit]);
+
+    const combined = (seedRows || []).map((row) => ({
+        groupId: row.group_id,
+        kind: 'consecutive_seed',
+        seed: row.seed != null ? String(row.seed) : null,
+        count: Number(row.item_count) || 0,
+        latestMtime: Number(row.latest_mtime) || 0
+    }));
+
+    if (includeRefine && combined.length < groupLimit) {
+        const remaining = groupLimit - combined.length;
+        const refineRows = await db.all(`
+            SELECT f.refine_group_id AS group_id,
+                   COUNT(*) AS item_count,
+                   MAX(COALESCE(f.mtime, 0)) AS latest_mtime,
+                   MIN(f.seed) AS seed
+            FROM image_search_facets f
+            INNER JOIN ${GALLERY_OWNERSHIP_TABLE} o
+                ON o.filename = f.filename
+            WHERE o.workspace_id = ?
+              AND o.bucket = 'files'
+              AND f.refine_group_id IS NOT NULL
+            GROUP BY f.refine_group_id
+            HAVING COUNT(*) >= 2
+            ORDER BY latest_mtime DESC
+            LIMIT ?
+        `, [wsId, remaining]);
+        const seen = new Set(combined.map((row) => row.groupId));
+        for (const row of refineRows || []) {
+            if (!row.group_id || seen.has(row.group_id)) continue;
+            seen.add(row.group_id);
+            combined.push({
+                groupId: row.group_id,
+                kind: 'refine',
+                seed: row.seed != null ? String(row.seed) : null,
+                count: Number(row.item_count) || 0,
+                latestMtime: Number(row.latest_mtime) || 0
+            });
+        }
+    }
+
+    const groups = [];
+    for (const row of combined) {
+        const items = row.kind === 'refine'
+            ? await db.all(`
+                SELECT f.filename, f.seed, f.mtime, f.width, f.height
+                FROM image_search_facets f
+                INNER JOIN ${GALLERY_OWNERSHIP_TABLE} o
+                    ON o.filename = f.filename
+                WHERE o.workspace_id = ?
+                  AND o.bucket = 'files'
+                  AND f.refine_group_id = ?
+                ORDER BY COALESCE(f.mtime, 0) DESC, f.filename ASC
+                LIMIT ?
+            `, [wsId, row.groupId, itemLimit])
+            : await db.all(`
+                SELECT f.filename, f.seed, f.mtime, f.width, f.height
+                FROM image_search_facets f
+                INNER JOIN ${GALLERY_OWNERSHIP_TABLE} o
+                    ON o.filename = f.filename
+                WHERE o.workspace_id = ?
+                  AND o.bucket = 'files'
+                  AND f.consecutive_seed_group_id = ?
+                ORDER BY COALESCE(f.mtime, 0) DESC, f.filename ASC
+                LIMIT ?
+            `, [wsId, row.groupId, itemLimit]);
+
+        groups.push({
+            groupId: row.groupId,
+            kind: row.kind,
+            seed: row.seed,
+            count: row.count,
+            latestMtime: row.latestMtime,
+            truncated: row.count > (items || []).length,
+            items: (items || []).map((item) => ({
+                filename: item.filename,
+                seed: item.seed != null ? String(item.seed) : null,
+                previewUrl: similarImagePreviewUrl(item.filename),
+                imageUrl: similarImageFullUrl(item.filename),
+                mtime: item.mtime || 0,
+                width: item.width || null,
+                height: item.height || null
+            }))
+        });
+    }
+
+    const seedIndex = await db.get(`
+        SELECT COUNT(*) AS n
+        FROM image_search_facets
+        WHERE consecutive_seed_group_id IS NOT NULL
+    `);
+    const refineIndex = await db.get(`
+        SELECT COUNT(*) AS n
+        FROM image_search_facets
+        WHERE refine_group_id IS NOT NULL
+    `);
+
+    return {
+        workspaceId: wsId,
+        groups,
+        groupCount: groups.length,
+        capped: (seedRows || []).length >= groupLimit,
+        indexImages: {
+            consecutiveSeed: Number(seedIndex && seedIndex.n) || 0,
+            refine: Number(refineIndex && refineIndex.n) || 0
+        }
+    };
+}
+
+/**
+ * Filenames in one similar group that also belong to the workspace files bucket.
+ */
+async function listSimilarGroupMemberFilenames(workspaceId, groupId, kind = 'consecutive_seed') {
+    if (!dbInitialized || !db || !groupId) {
+        return [];
+    }
+    const wsId = workspaceId || 'default';
+    const rows = kind === 'refine'
+        ? await db.all(`
+            SELECT f.filename
+            FROM image_search_facets f
+            INNER JOIN ${GALLERY_OWNERSHIP_TABLE} o
+                ON o.filename = f.filename
+            WHERE o.workspace_id = ?
+              AND o.bucket = 'files'
+              AND f.refine_group_id = ?
+        `, [wsId, groupId])
+        : await db.all(`
+            SELECT f.filename
+            FROM image_search_facets f
+            INNER JOIN ${GALLERY_OWNERSHIP_TABLE} o
+                ON o.filename = f.filename
+            WHERE o.workspace_id = ?
+              AND o.bucket = 'files'
+              AND f.consecutive_seed_group_id = ?
+        `, [wsId, groupId]);
+    return (rows || []).map((row) => row.filename).filter(Boolean);
+}
+
 module.exports = {
     initializeDatabase,
     closeDatabase,
@@ -7260,6 +7449,8 @@ module.exports = {
     getGalleryOwnershipForFilename,
     backfillGalleryOwnershipFromWorkspaces,
     buildFilenameScopeClause,
+    listSimilarImageGroupsForWorkspace,
+    listSimilarGroupMemberFilenames,
     countWorkspaceCorpusFiles,
     rebuildSearchIndexes,
     setIndexingPaused,
