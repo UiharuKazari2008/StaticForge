@@ -1643,6 +1643,7 @@ function buildStudioChangeSnapshot() {
 
 if (typeof window !== 'undefined') {
     window.tryApplyStudioChangeJsonFromText = tryApplyStudioChangeJsonFromText;
+    window.applyStudioChangePayload = applyStudioChangePayload;
     window.extractStudioChangeJson = extractStudioChangeJson;
     window.openStudioChangeExportDialog = openStudioChangeExportDialog;
     window.handleStudioChangeShortcutClick = handleStudioChangeShortcutClick;

@@ -85,16 +85,66 @@
         return built ? JSON.stringify(built) : null;
     }
 
+    function readBoolFlag(value, defaultValue) {
+        if (value === undefined || value === null) return defaultValue;
+        if (typeof value === 'boolean') return value;
+        if (value === 1 || value === '1' || value === 'true') return true;
+        if (value === 0 || value === '0' || value === 'false') return false;
+        return defaultValue;
+    }
+
+    function fireBoundTabGenerate() {
+        const btn = document.getElementById('manualGenerateBtn');
+        if (!btn) {
+            return { generateStarted: false, generateError: 'Generate button is not available' };
+        }
+        if (btn.disabled) {
+            return { generateStarted: false, generateError: 'Generate button is disabled' };
+        }
+        btn.click();
+        return { generateStarted: true };
+    }
+
     async function applyStudioFromCommand(data) {
+        const autoApply = readBoolFlag(data && data.autoApply, true);
+        const autoGenerate = readBoolFlag(data && data.autoGenerate, false);
+        if (!autoApply && autoGenerate) {
+            return { ok: false, error: 'autoGenerate requires autoApply' };
+        }
         const text = resolveStudioText(data);
         if (!text) {
             return { ok: false, error: 'change JSON or prompt/uc fields are required' };
         }
-        if (typeof window.tryApplyStudioChangeJsonFromText !== 'function') {
+        if (!autoApply) {
+            return { ok: true, applied: false, autoApply: false, autoGenerate: false };
+        }
+        if (typeof window.applyStudioChangePayload !== 'function' || typeof window.extractStudioChangeJson !== 'function') {
             return { ok: false, error: 'Studio change helper is not available' };
         }
-        const accepted = await window.tryApplyStudioChangeJsonFromText(text);
-        return { ok: !!accepted };
+        const payload = window.extractStudioChangeJson(text);
+        if (!payload) {
+            return { ok: false, error: 'change JSON is not valid' };
+        }
+        let applied = false;
+        try {
+            applied = !!await window.applyStudioChangePayload(payload);
+        } catch (err) {
+            return {
+                ok: false,
+                applied: false,
+                autoApply: true,
+                autoGenerate,
+                error: (err && err.message) || 'Failed to apply studio change'
+            };
+        }
+        if (!applied) {
+            return { ok: false, applied: false, autoApply: true, autoGenerate, error: 'Studio change was not applied' };
+        }
+        if (!autoGenerate) {
+            return { ok: true, applied: true, autoApply: true, autoGenerate: false };
+        }
+        const gen = fireBoundTabGenerate();
+        return { ok: true, applied: true, autoApply: true, autoGenerate: true, ...gen };
     }
 
     async function openImageFromCommand(filename) {

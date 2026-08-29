@@ -247,18 +247,24 @@ reply; development-auth errors as `GET /agent`.
 Applies a studio change on the bound tab using the existing change helper
 (`dreamscape:"change"`, `v:1`; characters always replace+index).
 
-**Inputs:** JSON body — one of:
+**Inputs:** JSON body — one of `change` / `prompt`+`uc` / the body itself as a
+studio change payload, plus two **sibling** bools (not inside Change-JSON):
 
 | Field | Required | Description |
 |-------|----------|-------------|
 | `change` | one of | Studio change object or JSON string |
 | `prompt` / `uc` | one of | Wrapped into a replace-fields change JSON |
 | body itself | one of | A studio change payload (`dreamscape:"change"`) |
+| `autoApply` | no | Default `true`. `true`: bound tab awaits `applyStudioChangePayload` then returns. `false`: do not apply. |
+| `autoGenerate` | no | Default `false`. After a successful apply, click the bound tab's existing Generate button (`#manualGenerateBtn`). Uses Yukimi's bound session. Not a server-side generate. HTTP does not wait for generation. |
 
-**Success:** `200` `{ "success": true, "ok": true, "count" }`
+`autoGenerate: true` with `autoApply: false` is `400`
+(`autoGenerate requires autoApply`).
 
-**Errors:** `400` no change/prompt/uc; `404` unbound; `504` no reply;
-development-auth errors as `GET /agent`.
+**Success:** `200` `{ "success": true, "ok": true, "applied": true, "autoApply": true, "autoGenerate": false }` — plus `generateStarted` when `autoGenerate` was true.
+
+**Errors:** `400` no change/prompt/uc, or `autoGenerate` without `autoApply`;
+`404` unbound; `504` no reply; development-auth errors as `GET /agent`.
 
 ### `GET /agent/session/state`
 

@@ -30,6 +30,45 @@ assert.strictEqual(_test.isStudioChangePayload({ dreamscape: 'change', v: 1 }), 
 assert.strictEqual(_test.isStudioChangePayload({ type: 'dreamscape-change' }), true);
 assert.strictEqual(_test.isStudioChangePayload({ prompt: 'hi' }), false);
 
+assert.strictEqual(_test.readBoolFlag(undefined, true), true);
+assert.strictEqual(_test.readBoolFlag(undefined, false), false);
+assert.strictEqual(_test.readBoolFlag(null, true), true);
+assert.strictEqual(_test.readBoolFlag(true, false), true);
+assert.strictEqual(_test.readBoolFlag(false, true), false);
+assert.strictEqual(_test.readBoolFlag('true', false), true);
+assert.strictEqual(_test.readBoolFlag('false', true), false);
+assert.strictEqual(_test.readBoolFlag(1, false), true);
+assert.strictEqual(_test.readBoolFlag(0, true), false);
+assert.strictEqual(_test.readBoolFlag('nope', true), true);
+
+assert.deepStrictEqual(_test.resolveStudioAutoFlags({}), { autoApply: true, autoGenerate: false });
+assert.deepStrictEqual(_test.resolveStudioAutoFlags({ autoApply: false }), { autoApply: false, autoGenerate: false });
+assert.deepStrictEqual(
+    _test.resolveStudioAutoFlags({ autoApply: true, autoGenerate: true }),
+    { autoApply: true, autoGenerate: true }
+);
+let threw = false;
+try {
+    _test.resolveStudioAutoFlags({ autoApply: false, autoGenerate: true });
+} catch (err) {
+    threw = true;
+    assert.strictEqual(err.status, 400);
+    assert.strictEqual(err.message, 'autoGenerate requires autoApply');
+}
+assert.strictEqual(threw, true);
+
+const stripped = _test.studioChangePayloadWithoutFlags({
+    dreamscape: 'change',
+    v: 1,
+    autoApply: false,
+    autoGenerate: true,
+    fields: []
+});
+assert.strictEqual(stripped.dreamscape, 'change');
+assert.strictEqual(stripped.autoApply, undefined);
+assert.strictEqual(stripped.autoGenerate, undefined);
+assert.strictEqual(_test.studioChangePayloadWithoutFlags({ prompt: 'hi' }), null);
+
 _test.shareCodes.set('EXPIRED', { clientId: 'abc', expiresAt: Date.now() - 10 });
 _test.shareCodes.set('LIVEONE', { clientId: 'def', expiresAt: Date.now() + 60000 });
 _test.pruneShareCodes();

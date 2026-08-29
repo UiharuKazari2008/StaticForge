@@ -37,6 +37,33 @@ function isStudioChangePayload(obj) {
     return kind === 'change' || kind === 'dreamscape-change' || kind === 'studio-change';
 }
 
+function readBoolFlag(value, defaultValue) {
+    if (value === undefined || value === null) return defaultValue;
+    if (typeof value === 'boolean') return value;
+    if (value === 1 || value === '1' || value === 'true') return true;
+    if (value === 0 || value === '0' || value === 'false') return false;
+    return defaultValue;
+}
+
+function resolveStudioAutoFlags(body) {
+    const autoApply = readBoolFlag(body && body.autoApply, true);
+    const autoGenerate = readBoolFlag(body && body.autoGenerate, false);
+    if (!autoApply && autoGenerate) {
+        const err = new Error('autoGenerate requires autoApply');
+        err.status = 400;
+        throw err;
+    }
+    return { autoApply, autoGenerate };
+}
+
+function studioChangePayloadWithoutFlags(body) {
+    if (!isStudioChangePayload(body)) return null;
+    const payload = { ...body };
+    delete payload.autoApply;
+    delete payload.autoGenerate;
+    return payload;
+}
+
 function getWsServer(globalResources) {
     try {
         return globalResources.getWebSocketServer();
@@ -306,11 +333,14 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
             if (!body.change && body.prompt == null && body.uc == null && !isStudioChangePayload(body)) {
                 return res.status(400).json({ success: false, error: 'change JSON or prompt/uc fields are required' });
             }
+            const { autoApply, autoGenerate } = resolveStudioAutoFlags(body);
             const data = await sendBoundCommand(globalResources, 'apply_studio', {
                 change: body.change || null,
                 prompt: body.prompt,
                 uc: body.uc,
-                payload: isStudioChangePayload(body) ? body : null
+                payload: studioChangePayloadWithoutFlags(body),
+                autoApply,
+                autoGenerate
             });
             return res.json({ success: true, ...data });
         } catch (error) {
@@ -375,6 +405,9 @@ module.exports = {
         shareCodes,
         snippetUserAgent,
         isStudioChangePayload,
+        readBoolFlag,
+        resolveStudioAutoFlags,
+        studioChangePayloadWithoutFlags,
         SHARE_TTL_MS,
         SHARE_ALPHABET
     }

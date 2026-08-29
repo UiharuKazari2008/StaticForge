@@ -262,7 +262,7 @@ These are **pushes** — handle asynchronously. Registered in `public/scripts/ws
 | `replication_sync_complete` | Full changelog sync finished | `data.success`, applied counts, `maxLsn` |
 | `fandom_wiki_import_progress` | Fandom page import progress | `data.phase`, `current`, `total`, optional `pageId`/`message`; Wiki Manager DSAP via `wsClient.on` |
 | `agent_notice` | Loopback `POST /agent/broadcast` | `data.id`, `message`, `title`, `display` (`toast` \| `dialog`), `level`, `timeout` (ms or `false`), `source: "agent"` — web client toast or confirmation dialog via `appWebSocketHandlers.js` |
-| `agent_session_command` | Loopback `/agent/session/*` to the bound Studio tab | `requestId` + `data.command` (`open_image` / `apply_studio` / `get_state`) — `public/scripts/comp/agentClientBridge.js` |
+| `agent_session_command` | Loopback `/agent/session/*` to the bound Studio tab | `requestId` + `data.command` (`open_image` / `apply_studio` / `get_state`) — `public/scripts/comp/agentClientBridge.js`. `apply_studio` includes sibling `autoApply` (default true) and `autoGenerate` (default false). |
 | `agent_session_bound` | After `POST /agent/bind` | `data.clientId` |
 | `agent_session_unbound` | Previous bind replaced | `data.clientId` |
 
