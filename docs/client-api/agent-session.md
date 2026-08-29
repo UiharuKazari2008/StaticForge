@@ -41,7 +41,7 @@ The bound tab replies with `agent_session_result` using the same `requestId`.
 | `autoApply` | `true` | `true`: silent apply — await `applyStudioChangePayloadSilent` / `applyStudioChangeOps` (no `showStudioChangeDialog`). Studio opens like open-image (`openManualModalWithContent`; empty editor is valid when filename is null). Do not fire-and-forget `tryApplyStudioChangeJsonFromText`. `false`: do not apply. Human paste/dialog still uses `applyStudioChangePayload`. |
 | `autoGenerate` | `false` | After a **successful apply**, click the bound tab's existing Generate button (`#manualGenerateBtn` → form submit → `handleManualGeneration` / `generate_image`). Uses Yukimi's bound session, not a server-side generate. The HTTP response does not wait for generation to finish. |
 
-`autoGenerate: true` with `autoApply: false` is `400` (`autoGenerate requires autoApply`), at top level or inside `change`. It is not a silent no-op. Flags inside `change` that are not siblings of `change` are `400` (`autoApply/autoGenerate must be siblings of change, not inside change`).
+`autoGenerate: true` with `autoApply: false` is `400` (`autoGenerate requires autoApply`), at top level or inside `change` (object or parsed JSON string; on `change` or `change.fields`). It is not a silent no-op. Flags inside `change` that are not siblings of `change` are `400` (`autoApply/autoGenerate must be siblings of change, not inside change`) **before** the bound-client apply — no 504.
 
 When `autoApply` is true, `POST /agent/session/studio` resolves after the silent bound-editor apply (`applyStudioChangePayloadSilent`) completes, success or error. Studio is opened like open-image before ops are written.
 

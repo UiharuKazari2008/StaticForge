@@ -57,28 +57,89 @@ function rejectIllegalAutoCombo(autoApply, autoGenerate) {
     }
 }
 
+function coerceStudioChangeObject(change) {
+    if (change && typeof change === 'object' && !Array.isArray(change)) return change;
+    if (typeof change !== 'string') return null;
+    const raw = change.trim();
+    if (!raw) return null;
+    try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    } catch (_err) {
+        return null;
+    }
+    return null;
+}
+
+function readArrayFieldFlag(fields, key) {
+    if (!Array.isArray(fields)) return { present: false, value: undefined };
+    const item = fields.find((entry) => {
+        if (!entry || typeof entry !== 'object') return false;
+        const id = entry.id || entry.name || entry.key;
+        return id === key;
+    });
+    if (!item) return { present: false, value: undefined };
+    if (item.value !== undefined) return { present: true, value: item.value };
+    if (item.text !== undefined) return { present: true, value: item.text };
+    const chunk = Array.isArray(item.chunks) && item.chunks[0];
+    if (chunk && chunk.text !== undefined) return { present: true, value: chunk.text };
+    return { present: true, value: true };
+}
+
+function readNestedFlagHost(host) {
+    if (!host || typeof host !== 'object') {
+        return { applyPresent: false, genPresent: false, autoApply: true, autoGenerate: false };
+    }
+    if (Array.isArray(host)) {
+        const applyField = readArrayFieldFlag(host, 'autoApply');
+        const genField = readArrayFieldFlag(host, 'autoGenerate');
+        return {
+            applyPresent: applyField.present,
+            genPresent: genField.present,
+            autoApply: readBoolFlag(applyField.present ? applyField.value : undefined, true),
+            autoGenerate: readBoolFlag(genField.present ? genField.value : undefined, false)
+        };
+    }
+    const applyPresent = objectHasOwn(host, 'autoApply');
+    const genPresent = objectHasOwn(host, 'autoGenerate');
+    return {
+        applyPresent,
+        genPresent,
+        autoApply: readBoolFlag(applyPresent ? host.autoApply : undefined, true),
+        autoGenerate: readBoolFlag(genPresent ? host.autoGenerate : undefined, false)
+    };
+}
+
+function collectNestedFlagHosts(change) {
+    const hosts = [];
+    if (!change) return hosts;
+    hosts.push(change);
+    if (change.fields != null) hosts.push(change.fields);
+    return hosts;
+}
+
 function resolveStudioAutoFlags(body) {
-    const change = (body && body.change && typeof body.change === 'object' && !Array.isArray(body.change))
-        ? body.change
-        : null;
+    const change = coerceStudioChangeObject(body && body.change);
     const siblingApply = objectHasOwn(body, 'autoApply');
     const siblingGen = objectHasOwn(body, 'autoGenerate');
-    const nestedApply = objectHasOwn(change, 'autoApply');
-    const nestedGen = objectHasOwn(change, 'autoGenerate');
 
     const autoApply = readBoolFlag(body && body.autoApply, true);
     const autoGenerate = readBoolFlag(body && body.autoGenerate, false);
     rejectIllegalAutoCombo(autoApply, autoGenerate);
 
-    if (nestedApply || nestedGen) {
-        const nestedAutoApply = readBoolFlag(nestedApply ? change.autoApply : undefined, true);
-        const nestedAutoGenerate = readBoolFlag(nestedGen ? change.autoGenerate : undefined, false);
-        rejectIllegalAutoCombo(nestedAutoApply, nestedAutoGenerate);
-        if (!siblingApply && !siblingGen) {
-            const err = new Error('autoApply/autoGenerate must be siblings of change, not inside change');
-            err.status = 400;
-            throw err;
+    let nestedPresent = false;
+    for (const host of collectNestedFlagHosts(change)) {
+        const flags = readNestedFlagHost(host);
+        if (flags.applyPresent || flags.genPresent) {
+            rejectIllegalAutoCombo(flags.autoApply, flags.autoGenerate);
+            nestedPresent = true;
         }
+    }
+
+    if (nestedPresent && !siblingApply && !siblingGen) {
+        const err = new Error('autoApply/autoGenerate must be siblings of change, not inside change');
+        err.status = 400;
+        throw err;
     }
 
     return { autoApply, autoGenerate };
@@ -93,9 +154,32 @@ function stripStudioAutoFlags(obj) {
     return clean;
 }
 
+function stripStudioAutoFlagsDeep(obj) {
+    const clean = stripStudioAutoFlags(obj);
+    if (!clean || typeof clean !== 'object' || Array.isArray(clean)) return clean;
+    if (clean.fields && typeof clean.fields === 'object' && !Array.isArray(clean.fields)) {
+        const fieldsClean = stripStudioAutoFlags(clean.fields);
+        if (fieldsClean !== clean.fields) {
+            return { ...clean, fields: fieldsClean };
+        }
+        return clean;
+    }
+    if (Array.isArray(clean.fields)) {
+        const next = clean.fields.filter((item) => {
+            if (!item || typeof item !== 'object') return true;
+            const id = item.id || item.name || item.key;
+            return id !== 'autoApply' && id !== 'autoGenerate';
+        });
+        if (next.length !== clean.fields.length) {
+            return { ...clean, fields: next };
+        }
+    }
+    return clean;
+}
+
 function studioChangePayloadWithoutFlags(body) {
     if (!isStudioChangePayload(body)) return null;
-    return stripStudioAutoFlags(body);
+    return stripStudioAutoFlagsDeep(body);
 }
 
 function getWsServer(globalResources) {
@@ -368,8 +452,9 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
                 return res.status(400).json({ success: false, error: 'change JSON or prompt/uc fields are required' });
             }
             const { autoApply, autoGenerate } = resolveStudioAutoFlags(body);
+            const changeSource = coerceStudioChangeObject(body.change) || body.change;
             const data = await sendBoundCommand(globalResources, 'apply_studio', {
-                change: stripStudioAutoFlags(body.change) || null,
+                change: stripStudioAutoFlagsDeep(changeSource) || null,
                 prompt: body.prompt,
                 uc: body.uc,
                 payload: studioChangePayloadWithoutFlags(body),
@@ -443,6 +528,8 @@ module.exports = {
         resolveStudioAutoFlags,
         studioChangePayloadWithoutFlags,
         stripStudioAutoFlags,
+        stripStudioAutoFlagsDeep,
+        coerceStudioChangeObject,
         objectHasOwn,
         SHARE_TTL_MS,
         SHARE_ALPHABET

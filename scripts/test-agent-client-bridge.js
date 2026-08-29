@@ -106,6 +106,66 @@ assert.strictEqual(cleaned.dreamscape, 'change');
 assert.strictEqual(cleaned.autoApply, undefined);
 assert.strictEqual(cleaned.autoGenerate, undefined);
 
+expectFlagError(
+    { change: JSON.stringify({ dreamscape: 'change', v: 1, autoApply: true, autoGenerate: true }) },
+    'autoApply/autoGenerate must be siblings of change, not inside change'
+);
+expectFlagError(
+    { change: JSON.stringify({ dreamscape: 'change', v: 1, autoApply: false, autoGenerate: true }) },
+    'autoGenerate requires autoApply'
+);
+expectFlagError(
+    { change: { dreamscape: 'change', v: 1, fields: { autoApply: true, autoGenerate: true, prompt: 'hi' } } },
+    'autoApply/autoGenerate must be siblings of change, not inside change'
+);
+expectFlagError(
+    { change: { dreamscape: 'change', v: 1, fields: { autoApply: false, autoGenerate: true } } },
+    'autoGenerate requires autoApply'
+);
+expectFlagError(
+    {
+        change: {
+            dreamscape: 'change',
+            v: 1,
+            fields: [
+                { id: 'autoApply', value: false },
+                { id: 'autoGenerate', value: true },
+                { id: 'prompt', action: 'replace', chunks: [{ name: 'Prompt', text: 'hi' }] }
+            ]
+        }
+    },
+    'autoGenerate requires autoApply'
+);
+expectFlagError(
+    {
+        change: JSON.stringify({
+            dreamscape: 'change',
+            v: 1,
+            fields: { autoApply: true, prompt: 'hi' }
+        })
+    },
+    'autoApply/autoGenerate must be siblings of change, not inside change'
+);
+assert.deepStrictEqual(
+    _test.resolveStudioAutoFlags({
+        change: JSON.stringify({ dreamscape: 'change', v: 1, autoApply: true }),
+        autoApply: true,
+        autoGenerate: false
+    }),
+    { autoApply: true, autoGenerate: false }
+);
+const parsed = _test.coerceStudioChangeObject('{"dreamscape":"change","v":1,"autoApply":true}');
+assert.strictEqual(parsed.dreamscape, 'change');
+assert.strictEqual(parsed.autoApply, true);
+const deep = _test.stripStudioAutoFlagsDeep({
+    dreamscape: 'change',
+    v: 1,
+    fields: { autoApply: true, autoGenerate: false, prompt: 'hi' }
+});
+assert.strictEqual(deep.fields.prompt, 'hi');
+assert.strictEqual(deep.fields.autoApply, undefined);
+assert.strictEqual(deep.fields.autoGenerate, undefined);
+
 _test.shareCodes.set('EXPIRED', { clientId: 'abc', expiresAt: Date.now() - 10 });
 _test.shareCodes.set('LIVEONE', { clientId: 'def', expiresAt: Date.now() + 60000 });
 _test.pruneShareCodes();
