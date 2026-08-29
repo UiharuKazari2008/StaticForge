@@ -7,13 +7,13 @@
     "locked": true
   },
   "baseline_kg": 54.0,
-  "current_kg": 57.08,
-  "slices_eaten_total": 27,
+  "current_kg": 58.64,
+  "slices_eaten_total": 40,
   "overtime_hours_total": 0.0,
   "pending_slices": 0,
   "pending_overtime_hours": 0,
-  "last_before": "1787948981590_generated_2112909026.png",
-  "last_after": "1787949022030_generated_2654210019.png",
+  "last_before": "1788009426828_generated_131499443.png",
+  "last_after": "1788009472017_generated_604928761.png",
   "history": [
     {
       "at": "2026-08-28T05:35:08.356710+00:00",
@@ -71,6 +71,18 @@
       "landscape": false,
       "before": "1787948981590_generated_2112909026.png",
       "after": "1787949022030_generated_2654210019.png"
+    },
+    {
+      "at": "2026-08-29T13:18:24.891847+00:00",
+      "slices": 13,
+      "stacks": 2,
+      "overtime_hours": 0.0,
+      "gained_kg": 1.56,
+      "kg": 58.64,
+      "chair": "gaming",
+      "landscape": false,
+      "before": "1788009426828_generated_131499443.png",
+      "after": "1788009472017_generated_604928761.png"
     }
   ],
   "last_look": "1787895908094_generated_3772933719.png",
@@ -96,10 +108,15 @@
       "n": 1,
       "sum": 4.4,
       "avg": 4.4
+    },
+    "red velvet": {
+      "n": 1,
+      "sum": 4.1,
+      "avg": 4.1
     }
   },
   "favorite_cake": null,
-  "cake_rotation_index": 4,
+  "cake_rotation_index": 5,
   "pending_bloat_bytes": 0,
-  "_cake_type": "new york cheesecake"
+  "_cake_type": "red velvet"
 }

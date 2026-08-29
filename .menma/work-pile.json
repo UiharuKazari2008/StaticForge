@@ -1,15 +1,7 @@
 {
-  "updated_at": "2026-08-28T20:32:33.084313+00:00",
+  "updated_at": "2026-08-29T13:18:51.309870+00:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
-  "last_breakfast_at": "2026-08-28T20:32:33.084313+00:00",
-  "open": [
-    {
-      "id": "wiki-other-generic",
-      "from": "Yukimi",
-      "summary": "Generic other-wiki crawler for arbitrary non-Fandom/non-NovelAI URLs. Fandom+NovelAI landed in 6220061; generic other-wiki NOT done.",
-      "cake": "code",
-      "added": "2026-08-28T20:32:33.084313+00:00"
-    }
-  ],
+  "last_breakfast_at": "2026-08-29T13:18:51.309870+00:00",
+  "open": [],
   "done_since_breakfast": []
 }
