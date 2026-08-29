@@ -311,37 +311,37 @@
     async function applyClientUpdatesAndRestart() {
         const sw = window.serviceWorkerManager;
         try {
-            if (sw && typeof sw.getFilesNeedingUpdate === function) {
-                const response = await fetch(/, {
-                    method: OPTIONS,
+            if (sw && typeof sw.getFilesNeedingUpdate === 'function') {
+                const response = await fetch('/', {
+                    method: 'OPTIONS',
                     headers: {
-                        X-Service-Worker-Version: 2.0,
-                        X-Requested-With: ServiceWorker
+                        'X-Service-Worker-Version': '2.0',
+                        'X-Requested-With': 'ServiceWorker'
                     }
                 });
                 if (response.ok) {
                     const files = await response.json();
                     const filesToUpdate = await sw.getFilesNeedingUpdate(files);
-                    if (filesToUpdate.length && typeof sw.attachToDownloadProgress === function) {
+                    if (filesToUpdate.length && typeof sw.attachToDownloadProgress === 'function') {
                         await sw.attachToDownloadProgress({
                             files: filesToUpdate,
                             allowSkip: false
                         });
-                    } else if (typeof sw.updateStaticCache === function) {
+                    } else if (typeof sw.updateStaticCache === 'function') {
                         await sw.updateStaticCache(files, true);
                     }
                 }
-            } else if (sw && typeof sw.checkStaticFileUpdates === function) {
+            } else if (sw && typeof sw.checkStaticFileUpdates === 'function') {
                 await sw.checkStaticFileUpdates(true);
             }
         } catch (_err) {
             // Still restart — the push is apply-then-restart, not check-or-bail.
         }
-        if (sw && typeof sw.forceRestart === function) {
+        if (sw && typeof sw.forceRestart === 'function') {
             sw.forceRestart();
             return;
         }
-        if (typeof bypassConfirmation !== undefined) {
+        if (typeof bypassConfirmation !== 'undefined') {
             bypassConfirmation = true;
         }
         try {
