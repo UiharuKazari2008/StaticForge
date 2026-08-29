@@ -21,7 +21,7 @@ These packets are **not** gallery / workspace list APIs. No share-code chrome is
 
 | Type | When | Data |
 |------|------|------|
-| `agent_session_command` | Loopback REST drive of the bound tab | `requestId` + `data.command` (`open_image` / `apply_studio` / `get_state` / `get_editor`). `apply_studio` also carries sibling `autoApply` (default true) and `autoGenerate` (default false). |
+| `agent_session_command` | Loopback REST drive of the bound tab | `requestId` + `data.command` (`open_image` / `apply_studio` / `get_state` / `get_editor` / `client_update`). `apply_studio` also carries sibling `autoApply` (default true) and `autoGenerate` (default false). `client_update` shows the mandatory 15s Client Update dialog; Cancel aborts, 0 applies then restarts that tab. |
 | `agent_session_bound` | After `POST /agent/bind` | `data.clientId` |
 | `agent_session_unbound` | Previous bind replaced | `data.clientId` |
 

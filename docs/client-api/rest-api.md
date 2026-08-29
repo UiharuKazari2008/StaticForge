@@ -270,6 +270,42 @@ before `sendBoundCommand` (no client apply, no 504).
 **Errors:** `400` no change/prompt/uc, or `autoGenerate` without `autoApply`;
 `404` unbound; `504` no reply; development-auth errors as `GET /agent`.
 
+### `POST /agent/session/update`
+
+**Auth:** Same as `GET /agent`. Requires a live bind.
+
+Pushes the **bound Dreamscape tab** to check for client/app updates, apply them, then restart **that client**. Not a server-side restart. Not `POST /agent/broadcast` (that is a notice to every connected socket).
+
+The bound tab shows a mandatory Client Update dialog (classic confirmation / System Update chrome): 15 second countdown, Cancel aborts (no apply, no restart), no input at 0 applies then restarts. Close stays disabled.
+
+**Inputs:** empty JSON body (`{}`) is fine.
+
+**Success:** `200`
+
+```json
+{ "success": true, "ok": true, "cancelled": false, "applying": true, "applied": true, "restart": true }
+```
+
+Cancel before 0:
+
+```json
+{ "success": true, "ok": true, "cancelled": true, "applied": false, "restart": false }
+```
+
+A second push while the dialog is already counting or applying:
+
+```json
+{ "success": true, "ok": true, "alreadyShowing": true, "cancelled": false, "applying": false }
+```
+
+The HTTP response waits until Cancel or countdown 0 (about 20s). Apply+restart starts after the bound tab replies.
+
+**Errors:** `404` unbound; `504` no reply; development-auth errors as `GET /agent`.
+
+**Client state after:** Bound tab shows the dialog. On apply, that tab checks the service-worker manifest, downloads, and reloads.
+
+**Follow-up:** None. Consume from loopback with the existing app key.
+
 ### `GET /agent/session/state`
 
 **Auth:** Same as `GET /agent`. Requires a live bind.

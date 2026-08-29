@@ -173,4 +173,6 @@ assert.strictEqual(_test.shareCodes.has('EXPIRED'), false);
 assert.strictEqual(_test.shareCodes.has('LIVEONE'), true);
 _test.shareCodes.delete('LIVEONE');
 
+
+assert.strictEqual(_test.UPDATE_COMMAND_TIMEOUT_MS, 20000);
 console.log('test-agent-client-bridge: ok');

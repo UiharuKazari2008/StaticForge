@@ -457,3 +457,146 @@
     color: var(--text-accent, #e8b86d);
 }
 
+/* Bound-client update+restart dialog (#18) — confirmation / System Update chrome */
+
+#agentClientUpdateDialog {
+    --dsap-smf-context-bg: #336699;
+    --dsap-smf-context-fg: #ffffff;
+    --dsap-smf-header-border: #000033;
+    --dsap-smf-status-bg: #ffffee;
+    --dsap-smf-status-error-bg: #ffeeee;
+    --dsap-smf-status-ok-bg: #eeffee;
+    --dsap-smf-border: #666666;
+    --dsap-smf-fg: #000000;
+}
+
+#agentClientUpdateDialog.modal {
+    width: 475px;
+    max-width: min(475px, calc(90vw - calc(2 * var(--spacing-md, 12px))));
+}
+
+#agentClientUpdateDialog .modal-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#agentClientUpdateDialog .dsap-smf-contextbar {
+    margin: 0 0 2px;
+    font-size: 11px;
+}
+
+#agentClientUpdateDialog .agent-client-update-row {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+#agentClientUpdateDialog .agent-client-update-well {
+    flex: 0 0 92px;
+    width: 92px;
+    height: 92px;
+    background: #000033;
+    border: 1px solid #000033;
+    box-shadow:
+        inset 1px 1px 0 #000,
+        inset -1px -1px 0 #669;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+#agentClientUpdateDialog .agent-client-update-well.aborted {
+    background: #330000;
+    border-color: #330000;
+}
+
+#agentClientUpdateDialog .agent-client-update-well.applying {
+    background: #003300;
+    border-color: #003300;
+}
+
+#agentClientUpdateDialog .agent-client-update-num {
+    font-size: 36px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -1px;
+    color: #ff8c00;
+}
+
+#agentClientUpdateDialog .agent-client-update-well.aborted .agent-client-update-num {
+    color: #ffaaaa;
+}
+
+#agentClientUpdateDialog .agent-client-update-num.struck {
+    text-decoration: line-through;
+}
+
+#agentClientUpdateDialog .agent-client-update-well.applying .agent-client-update-num {
+    color: #a8ffb0;
+}
+
+#agentClientUpdateDialog .agent-client-update-unit {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    margin-top: 4px;
+    color: #cfe4ff;
+}
+
+#agentClientUpdateDialog .agent-client-update-copy {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+}
+
+#agentClientUpdateDialog .agent-client-update-copy h2 {
+    margin: 0 0 5px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+#agentClientUpdateDialog .agent-client-update-copy p {
+    margin: 0 0 6px;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+#agentClientUpdateDialog .agent-client-update-hint {
+    color: #333;
+}
+
+#agentClientUpdateDialog .dsap-smf-statusbox {
+    margin: 4px 0 0;
+    min-height: 0;
+    font-size: 11px;
+}
+
+#agentClientUpdateDialog [role=progressbar] {
+    margin: 2px 0 0;
+}
+
+#agentClientUpdateDialog #agentClientUpdateBar.agent-client-update-bar-stripe {
+    background-image: repeating-linear-gradient(
+        -45deg,
+        rgb(10, 36, 106) 0 6px,
+        rgb(166, 202, 240) 6px 12px
+    );
+}
+
+#agentClientUpdateDialog .confirmation-controls {
+    margin-top: 4px;
+    padding-top: 8px;
+    border-top: 1px solid var(--ButtonShadow, #808080);
+}
+
+#agentClientUpdateDialog .dsap-smf-statusbox.dsap-smf-status-error {
+    background: var(--dsap-smf-status-error-bg);
+}
+
+#agentClientUpdateDialog .dsap-smf-statusbox.dsap-smf-status-ok {
+    background: var(--dsap-smf-status-ok-bg);
+}

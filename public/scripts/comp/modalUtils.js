@@ -17,7 +17,8 @@ const TASKBAR_SYSTEM_MODAL_IDS = new Set([
     'desktopPreStartupModal',
     'dreamscapeOsInstallWizardModal',
     'confirmationDialog',
-    'creditCostDialog'
+    'creditCostDialog',
+    'agentClientUpdateDialog'
 ]);
 
 function shouldShowInTaskbar(modal) {

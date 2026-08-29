@@ -9,6 +9,7 @@ const WebSocket = require('ws');
 const SHARE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const SHARE_TTL_MS = 5 * 60 * 1000;
 const COMMAND_TIMEOUT_MS = 12000;
+const UPDATE_COMMAND_TIMEOUT_MS = 20000;
 
 const shareCodes = new Map(); // code -> { clientId, expiresAt }
 const pendingResults = new Map(); // requestId -> { resolve, reject, timer, clientId }
@@ -467,6 +468,15 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
         }
     });
 
+    app.post('/agent/session/update', devAuthMiddleware, async (req, res) => {
+        try {
+            const data = await sendBoundCommand(globalResources, 'client_update', {}, UPDATE_COMMAND_TIMEOUT_MS);
+            return res.json({ success: true, ...data });
+        } catch (error) {
+            return handleRouteError(res, error, 'Failed to push update+restart on bound client');
+        }
+    });
+
     app.get('/agent/session/state', devAuthMiddleware, async (req, res) => {
         try {
             const bound = getBoundRecord(globalResources);
@@ -532,6 +542,7 @@ module.exports = {
         coerceStudioChangeObject,
         objectHasOwn,
         SHARE_TTL_MS,
-        SHARE_ALPHABET
+        SHARE_ALPHABET,
+        UPDATE_COMMAND_TIMEOUT_MS
     }
 };

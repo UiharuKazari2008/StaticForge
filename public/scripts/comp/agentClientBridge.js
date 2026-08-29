@@ -198,6 +198,15 @@
                 replyAgentSessionResult(requestId, result);
                 return;
             }
+            if (command === 'client_update') {
+                if (typeof window.showAgentClientUpdateDialog !== 'function') {
+                    replyAgentSessionResult(requestId, { ok: false, error: 'Client update dialog is not available' });
+                    return;
+                }
+                const result = await window.showAgentClientUpdateDialog();
+                replyAgentSessionResult(requestId, result);
+                return;
+            }
             replyAgentSessionResult(requestId, { ok: false, error: 'Unknown command' });
         } catch (err) {
             replyAgentSessionResult(requestId, {

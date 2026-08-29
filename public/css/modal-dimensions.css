@@ -36,7 +36,8 @@
     width: 400px;
 }
 
-#windowsUpdateModal {
+#windowsUpdateModal,
+#agentClientUpdateDialog {
     width: 475px;
 }
 
