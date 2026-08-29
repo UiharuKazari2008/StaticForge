@@ -38,6 +38,7 @@ User-facing applet and tool names follow a **Dreamscape** style: short, tangible
 | `security-center` | Security Center |
 | `dynamic-quips` | Dynamic Quips |
 | `desktop-settings` | Personalize (modal title) |
+| `zanzou` | **Zanzou** (Afterimage / similar-image keep-scrap, Control Panel) |
 
 ## Reserved for later
 

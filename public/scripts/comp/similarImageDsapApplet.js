@@ -17,10 +17,24 @@ const SIMILAR_TAB_LABELS = {
 
 const similarDsapScopedCss = `
 [data-dsap="similar-images"] .similar-view { padding: 8px 10px 16px; }
-[data-dsap="similar-images"] .similar-muted { color: #556; font-size: 11px; }
-[data-dsap="similar-images"] .similar-empty { padding: 10px 4px; color: #556; }
+[data-dsap="similar-images"] .similar-muted {
+    color: #333;
+    font-size: var(--dsap-smf-font-size-sm);
+}
+[data-dsap="similar-images"] .similar-empty {
+    padding: 16px;
+    text-align: center;
+    color: #444;
+    font-size: var(--dsap-smf-font-size-sm);
+    border: 1px dashed var(--dsap-smf-border-light);
+    background: #fafafa;
+    margin: 6px 0;
+}
 [data-dsap="similar-images"] .similar-group {
-    border: 1px solid #9ab; background: #f7f7f4; margin: 0 0 10px; padding: 6px 8px;
+    border: 1px solid var(--dsap-smf-border);
+    background: #ffffff;
+    margin: 0 0 10px;
+    padding: 6px 8px;
 }
 [data-dsap="similar-images"] .similar-group-head {
     display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; margin-bottom: 6px;
@@ -30,18 +44,34 @@ const similarDsapScopedCss = `
     display: flex; flex-wrap: wrap; gap: 8px;
 }
 [data-dsap="similar-images"] .similar-card {
-    width: 140px; max-width: 100%; background: #fff; border: 2px solid #8aa; cursor: pointer;
+    width: 140px;
+    max-width: 100%;
+    background: #ffffff;
+    border: 2px solid var(--dsap-smf-border);
+    cursor: pointer;
 }
-[data-dsap="similar-images"] .similar-card.selected { border-color: #c44; background: #fff4f4; }
+[data-dsap="similar-images"] .similar-card.selected {
+    border-color: var(--dsap-smf-tab-accent);
+    background: var(--dsap-smf-status-error-bg);
+}
 [data-dsap="similar-images"] .similar-card img {
-    width: 100%; height: 140px; object-fit: cover; display: block; background: #dde;
+    width: 100%;
+    height: 140px;
+    object-fit: cover;
+    display: block;
+    background: var(--dsap-smf-toolbar-bg);
 }
 [data-dsap="similar-images"] .similar-card-cap {
-    padding: 3px 5px; font-size: 10px; line-height: 1.3;
+    padding: 3px 5px;
+    font-size: var(--dsap-smf-font-size-xs);
+    line-height: 1.3;
 }
 [data-dsap="similar-images"] .similar-actions { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
-[data-dsap="similar-images"] .similar-help { margin: 0 0 8px; font-size: 12px; }
-`;
+[data-dsap="similar-images"] .similar-help {
+    margin: 0 0 8px;
+    font-size: var(--dsap-smf-font-size-sm);
+}
+`
 
 function similarDsapEscape(text) {
     return typeof dsapSmfEscapeHtml === 'function' ? dsapSmfEscapeHtml(text) : String(text == null ? '' : text);
