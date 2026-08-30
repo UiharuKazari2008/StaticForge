@@ -12,7 +12,7 @@ Out of scope: silent `universal`. Named scopes only (`generation`, `vfs`, `autof
 
 No new chrome shipped with this API. Share-code UX is waiting on a Yukimi preview — mint a code from the console or have the agent bind by `clientId`.
 
-See also [rest-api.md](./rest-api.md) (Agent section) and [ws/agentSession.md](./ws/agentSession.md).
+See also [rest-api.md](./rest-api.md) (Agent section), [ws/agentSession.md](./ws/agentSession.md), and the public Grok facade [mcp-connector.md](./mcp-connector.md) (`/{mcpPathUuid}`, not this loopback stack).
 
 ## Bind
 

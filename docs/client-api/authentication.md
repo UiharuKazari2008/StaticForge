@@ -455,6 +455,14 @@ stolen development key. SSH local forwarding to server-side
 `127.0.0.1:9220` remains supported because Dreamscape sees the tunnel's direct
 peer as loopback; development mode and key validation still apply.
 
+Public MCP (`/{mcpPathUuid}`, [mcp-connector.md](./mcp-connector.md)) uses
+`createMcpAuthMiddleware`, not this loopback stack. It requires a per-agent
+`sfapp_` key, does **not** skip rate limits, and does **not** accept
+`devLoginKey`, PIN, or query-string auth. Exact registered User-Agent is
+preferred; an unknown UA is captured in `application_user_agents_seen` and
+**bypassed** (Bearer + scopes still apply). Public gallery auth stays
+strict exact-UA.
+
 This path requires both `"enable_dev": true` in `config.json` and `devLoginKey`
 in `secure.config.json`. Never place the development key in source, docs, or
 committed configuration.

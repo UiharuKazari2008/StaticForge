@@ -677,12 +677,29 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
     });
 }
 
+function getBoundClientId() {
+    return boundClientId;
+}
+
 module.exports = {
     registerRoutes,
     handleSessionShareStart,
     handleAgentSessionResult,
     listClients,
     bindClient,
+    getBoundRecord,
+    getBoundClientId,
+    dispatchAgentPacket,
+    sendBoundCommand,
+    resolveStudioAutoFlags,
+    coerceStudioChangeObject,
+    stripStudioAutoFlagsDeep,
+    studioChangePayloadWithoutFlags,
+    isStudioChangePayload,
+    resolveAgentPacketMessage,
+    resolveAgentAuthScopes,
+    agentHasNamedScope,
+    buildAgentScopePayload,
     _test: {
         generateShareCode,
         generateClientId,

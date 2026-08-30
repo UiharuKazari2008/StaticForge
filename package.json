@@ -111,6 +111,7 @@
     "setup:docker": "bash scripts/setup.sh --mode docker",
     "docker:test": "docker compose -f docker-compose.test.yml up --build",
     "test:agent-auth": "node scripts/test-agent-auth.js",
+    "test:mcp-facade": "node scripts/test-mcp-agent-facade.js",
     "backfill:tag-search": "node scripts/backfill-tag-search-index.js",
     "flow-map": "node scripts/tools/flow-map.js",
     "docs:ws-api": "node scripts/tools/generate-ws-api-docs.js --write"

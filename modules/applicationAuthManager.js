@@ -223,7 +223,58 @@ class ApplicationAuthManager {
         return String(expected).trim() === String(actual).trim();
     }
 
-    async validateApplicationKey(rawKey, userAgent, { allowRefreshOverdue = false, skipUserAgent = false } = {}) {
+    async recordSeenUserAgent({ userAgent, applicationKeyId, matched, source = 'mcp' }) {
+        const ua = String(userAgent || '').trim();
+        const keyId = String(applicationKeyId || '').trim();
+        if (!keyId) return;
+        const nowSec = Math.floor(Date.now() / 1000);
+        const matchedInt = matched ? 1 : 0;
+        const existing = await getDb().get(
+            `SELECT user_agent FROM application_user_agents_seen
+             WHERE user_agent = ? AND application_key_id = ? AND source = ?`,
+            [ua, keyId, source]
+        );
+        if (existing) {
+            await getDb().run(
+                `UPDATE application_user_agents_seen
+                 SET last_seen_at = ?, seen_count = seen_count + 1, matched = ?
+                 WHERE user_agent = ? AND application_key_id = ? AND source = ?`,
+                [nowSec, matchedInt, ua, keyId, source]
+            );
+            return;
+        }
+        await getDb().run(
+            `INSERT INTO application_user_agents_seen
+             (user_agent, application_key_id, source, matched, first_seen_at, last_seen_at, seen_count)
+             VALUES (?, ?, ?, ?, ?, ?, 1)`,
+            [ua, keyId, source, matchedInt, nowSec, nowSec]
+        );
+    }
+
+    async listSeenUserAgents({ applicationKeyId = null, source = 'mcp' } = {}) {
+        if (applicationKeyId) {
+            return getDb().all(
+                `SELECT user_agent, application_key_id, source, matched, first_seen_at, last_seen_at, seen_count
+                 FROM application_user_agents_seen
+                 WHERE application_key_id = ? AND source = ?
+                 ORDER BY last_seen_at DESC`,
+                [applicationKeyId, source]
+            );
+        }
+        return getDb().all(
+            `SELECT user_agent, application_key_id, source, matched, first_seen_at, last_seen_at, seen_count
+             FROM application_user_agents_seen
+             WHERE source = ?
+             ORDER BY last_seen_at DESC`,
+            [source]
+        );
+    }
+
+    async validateApplicationKey(rawKey, userAgent, {
+        allowRefreshOverdue = false,
+        skipUserAgent = false,
+        unknownUserAgentBypass = false
+    } = {}) {
         if (!isApplicationKeyFormat(rawKey)) {
             return { valid: false, code: 'INVALID_KEY_FORMAT', message: 'Invalid application key format' };
         }
@@ -238,8 +289,19 @@ class ApplicationAuthManager {
             return { valid: false, code: 'INVALID_KEY', message: 'Invalid or revoked application key' };
         }
 
-        if (!skipUserAgent && !this.validateUserAgent(row.user_agent, userAgent)) {
-            return { valid: false, code: 'USER_AGENT_MISMATCH', message: 'User-Agent does not match registered application' };
+        const uaMatched = this.validateUserAgent(row.user_agent, userAgent);
+        if (unknownUserAgentBypass) {
+            await this.recordSeenUserAgent({
+                userAgent,
+                applicationKeyId: row.id,
+                matched: uaMatched,
+                source: 'mcp'
+            });
+        }
+        if (!skipUserAgent && !uaMatched) {
+            if (!unknownUserAgentBypass) {
+                return { valid: false, code: 'USER_AGENT_MISMATCH', message: 'User-Agent does not match registered application' };
+            }
         }
 
         const nowSec = Math.floor(Date.now() / 1000);
@@ -267,7 +329,9 @@ class ApplicationAuthManager {
             applicationKeyId: row.id,
             expiresAt: row.expires_at != null ? row.expires_at * 1000 : null,
             refreshBeforeAt: row.refresh_before_at * 1000,
-            originalExpiresAt: row.original_expires_at != null ? row.original_expires_at * 1000 : null
+            originalExpiresAt: row.original_expires_at != null ? row.original_expires_at * 1000 : null,
+            userAgentMatched: uaMatched,
+            userAgentBypassed: !!(unknownUserAgentBypass && !uaMatched)
         };
     }
 

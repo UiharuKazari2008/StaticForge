@@ -30,6 +30,9 @@ async function resolveApplicationAuth(req, globalResources, options = {}) {
         allowRefreshOverdue: options.allowRefreshOverdue === true,
         skipUserAgent: options.skipUserAgent === true
     };
+    if (options.unknownUserAgentBypass === true) {
+        keyValidateOptions.unknownUserAgentBypass = true;
+    }
 
     if (extracted.type === 'temp_token') {
         const result = await manager.validateTempToken(extracted.token);
@@ -57,7 +60,9 @@ async function resolveApplicationAuth(req, globalResources, options = {}) {
             applicationKeyId: result.applicationKeyId,
             applicationScopes: result.scopes,
             applicationUserAgent: userAgent,
-            sessionId: `appkey:${result.applicationKeyId}`
+            sessionId: `appkey:${result.applicationKeyId}`,
+            userAgentMatched: result.userAgentMatched === true,
+            userAgentBypassed: result.userAgentBypassed === true
         };
     }
 
@@ -145,6 +150,43 @@ function credentialsMatch(received, expected) {
     const expectedBuffer = Buffer.from(expected);
     return receivedBuffer.length === expectedBuffer.length
         && crypto.timingSafeEqual(receivedBuffer, expectedBuffer);
+}
+
+function createMcpAuthMiddleware(globalResources) {
+    return async (req, res, next) => {
+        res.setHeader('Cache-Control', 'blocked, no-store, no-cache, must-revalidate, private, max-age=0');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+
+        if (req.query.auth != null || req.query.loginKey != null) {
+            return res.status(400).json({
+                error: 'Do not put credentials in the query string',
+                code: 'QUERY_AUTH_FORBIDDEN'
+            });
+        }
+
+        try {
+            const appAuth = await resolveApplicationAuth(req, globalResources, {
+                allowRefreshOverdue: false,
+                skipUserAgent: false,
+                unknownUserAgentBypass: true
+            });
+            if (appAuth && appAuth.rejected) {
+                return res.status(appAuth.status).json(appAuth.body);
+            }
+            if (appAuth && !appAuth.rejected && appAuth.authMethod === 'application_key') {
+                applyAuthContext(req, appAuth);
+                return next();
+            }
+        } catch (err) {
+            console.error('MCP application auth resolution error:', err.message);
+        }
+
+        return res.status(401).json({
+            error: 'Application key required',
+            code: 'APP_KEY_REQUIRED'
+        });
+    };
 }
 
 function createDevAuthMiddleware(globalResources) {
@@ -265,6 +307,7 @@ function isAdminUser(req) {
 module.exports = {
     createAuthMiddleware,
     createApplicationAuthEarlyMiddleware,
+    createMcpAuthMiddleware,
     createDevAuthMiddleware,
     createAgentAssetAuthMiddleware,
     isLoopbackAddress,

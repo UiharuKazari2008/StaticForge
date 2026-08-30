@@ -19,11 +19,12 @@ HTTP routes defined in `web_server.js` and static middleware. Default base: `htt
 7. [Admin: pending queue](#admin-pending-queue)
 8. [Traces](#traces)
 9. [Admin log viewer (UUID path)](#admin-log-viewer-uuid-path)
-10. [VFS (UUID path)](#vfs-uuid-path)
-11. [Android background notification](#android-background-notification)
-12. [Miscellaneous](#miscellaneous)
-13. [Replication](#replication)
-14. [Static files (public/)](#static-files-public)
+10. [Public MCP / Grok connector (UUID path)](#public-mcp--grok-connector-uuid-path)
+11. [VFS (UUID path)](#vfs-uuid-path)
+12. [Android background notification](#android-background-notification)
+13. [Miscellaneous](#miscellaneous)
+14. [Replication](#replication)
+15. [Static files (public/)](#static-files-public)
 
 ---
 
@@ -787,6 +788,25 @@ All routes: **authMiddleware + adminOnlyMiddleware**
 ```
 
 **SSE `/stream`:** `Content-Type: text/event-stream` — not compressed.
+
+---
+
+## Public MCP / Grok connector (UUID path)
+
+Base path: `/{mcpPathUuid}` from `secure.config.json` (auto-generated on first boot). Unlisted. Not `vfsPathUuid` or `logViewerPathUuid`. Not `/mcp` on the public root.
+
+Full contract: [mcp-connector.md](./mcp-connector.md).
+
+**Auth:** `createMcpAuthMiddleware` — per-agent `sfapp_` Bearer / `X-StaticForge-App-Key`, exact UA preferred, **unknown UA bypass + capture** in `application_user_agents_seen`. No PIN / `loginKey` / query auth. Dedicated rate limit. CORS locked.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/{uuid}` | Streamable HTTP JSON-RPC (`initialize`, `tools/list`, `tools/call`) |
+| POST | `/{uuid}/mcp` | Same handler |
+| OPTIONS | same | CORS preflight |
+| GET | same | `405` |
+
+Tools wrap existing `/agent/packet`, `/agent/clients`, `/agent/bind`, `/agent/session/studio`. Named scopes. No parallel generate API.
 
 ---
 

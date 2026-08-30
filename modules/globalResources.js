@@ -754,6 +754,7 @@ class GlobalResources {
             // Log viewer path UUID (secure config, needed before route registration)
             this.ensureLogViewerPathUuid();
             this.ensureVfsPathUuid();
+            this.ensureMcpPathUuid();
             // Image attestation keys (Ed25519) — auto-create if missing
             // ensureForgeSigningKeys: modules/forgeSigning.js
             this.ensureForgeSigningKeys();
@@ -2527,6 +2528,23 @@ class GlobalResources {
         const uuid = this.getSecureConfig({ path: 'logViewerPathUuid' });
         if (!uuid || typeof uuid !== 'string') {
             return this.ensureLogViewerPathUuid();
+        }
+        return uuid;
+    }
+
+    ensureMcpPathUuid() {
+        let uuid = this.getSecureConfig({ path: 'mcpPathUuid' });
+        if (!uuid || typeof uuid !== 'string') {
+            uuid = crypto.randomUUID();
+            this.modifyConfig('secureConfig').assign('mcpPathUuid', uuid);
+        }
+        return uuid;
+    }
+
+    getMcpPathUuid() {
+        const uuid = this.getSecureConfig({ path: 'mcpPathUuid' });
+        if (!uuid || typeof uuid !== 'string') {
+            return this.ensureMcpPathUuid();
         }
         return uuid;
     }

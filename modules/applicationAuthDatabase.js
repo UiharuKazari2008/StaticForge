@@ -96,6 +96,21 @@ async function createApplicationAuthTables() {
     } catch (error) {
         // Column already exists
     }
+
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS application_user_agents_seen (
+            user_agent TEXT NOT NULL,
+            application_key_id TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'mcp',
+            matched INTEGER NOT NULL DEFAULT 0,
+            first_seen_at INTEGER NOT NULL,
+            last_seen_at INTEGER NOT NULL,
+            seen_count INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY (user_agent, application_key_id, source)
+        )
+    `);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_app_ua_seen_key ON application_user_agents_seen (application_key_id)`);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_app_ua_seen_matched ON application_user_agents_seen (matched)`);
 }
 
 function getDb() {
