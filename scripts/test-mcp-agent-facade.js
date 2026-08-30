@@ -58,7 +58,52 @@ assert.ok(!autofillOnly.some((t) => t.name === 'generate_image'));
 const wikiOnly = _test.listToolsForScopes(['wiki']);
 assert.ok(wikiOnly.some((t) => t.name === 'search_wiki'));
 assert.ok(wikiOnly.some((t) => t.name === 'get_wiki_page'));
+assert.ok(wikiOnly.some((t) => t.name === 'list_static_wiki_sites'));
+assert.ok(wikiOnly.some((t) => t.name === 'search_static_wiki'));
+assert.ok(wikiOnly.some((t) => t.name === 'get_static_wiki_page'));
 assert.ok(!wikiOnly.some((t) => t.name === 'search_autofill'));
+
+const presetsOnly = _test.listToolsForScopes(['presets']);
+assert.ok(presetsOnly.some((t) => t.name === 'list_presets'));
+assert.ok(presetsOnly.some((t) => t.name === 'save_preset'));
+assert.ok(presetsOnly.some((t) => t.name === 'apply_preset_to_studio'));
+assert.ok(!presetsOnly.some((t) => t.name === 'generate_preset'));
+
+const generationTools = _test.listToolsForScopes(['generation']);
+assert.ok(generationTools.some((t) => t.name === 'generate_preset'));
+
+const refsOnly = _test.listToolsForScopes(['references']);
+assert.ok(refsOnly.some((t) => t.name === 'list_references'));
+assert.ok(refsOnly.some((t) => t.name === 'upload_reference'));
+
+const searchOnly = _test.listToolsForScopes(['search']);
+assert.ok(searchOnly.some((t) => t.name === 'omegasearch'));
+assert.ok(!searchOnly.some((t) => t.name === 'search_autofill'));
+
+const notesOnly = _test.listToolsForScopes(['notes']);
+assert.ok(notesOnly.some((t) => t.name === 'list_notes'));
+assert.ok(notesOnly.some((t) => t.name === 'create_note'));
+assert.ok(notesOnly.some((t) => t.name === 'save_note_content'));
+assert.ok(!notesOnly.some((t) => t.name === 'omegasearch'));
+
+assert.deepStrictEqual(_test.collectOmegasearchBlocks({ query: '1girl sunset' }), ['1girl sunset']);
+assert.deepStrictEqual(
+    _test.collectOmegasearchBlocks({ terms: ['asuka', 'rei'] }),
+    [{ terms: ['asuka', 'rei'], matchMode: 'substring', orWithinBlock: true }]
+);
+assert.deepStrictEqual(_test.collectOmegasearchBlocks({ blocks: ['keep'] }), ['keep']);
+
+const presetChange = _test.studioChangeFromPreset({
+    preset_name: 'test-spell',
+    prompt: '1girl',
+    negative_prompt: 'blurry',
+    model: 'v5',
+    steps: 28
+});
+assert.strictEqual(presetChange.dreamscape, 'change');
+assert.strictEqual(presetChange.params.model, 'v5');
+assert.ok(presetChange.fields.some((f) => f.id === 'prompt' && f.chunks[0].text === '1girl'));
+assert.ok(presetChange.fields.some((f) => f.id === 'uc' && f.chunks[0].text === 'blurry'));
 
 assert.deepStrictEqual(_test.collectAutofillTerms({ query: '  asuka  ' }), ['asuka']);
 assert.deepStrictEqual(_test.collectAutofillTerms({ terms: ['rei', 'asuka', 'rei', ''] }), ['rei', 'asuka']);
@@ -236,6 +281,7 @@ async function main() {
     assert.ok(protectedMeta.authorization_servers.includes('https://staticforge.737.jp.net'));
     assert.ok(Array.isArray(protectedMeta.scopes_supported));
     assert.ok(protectedMeta.scopes_supported.includes('generation'));
+    assert.ok(protectedMeta.scopes_supported.includes('notes'));
 
     const asMeta = oauthProvider.getAuthorizationServerMetadata();
     assert.strictEqual(asMeta.issuer, 'https://staticforge.737.jp.net');

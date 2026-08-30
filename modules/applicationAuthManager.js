@@ -52,13 +52,19 @@ const SCOPE_WS_PACKETS = {
     ],
     wiki: [
         'search_tag_wiki', 'get_tag_wiki_page', 'refresh_tag_wiki_page',
-        'get_static_wiki_site_index', 'get_static_wiki_page', 'resolve_grimoire_url'
+        'get_static_wiki_site_index', 'get_static_wiki_page', 'get_wiki_home',
+        'resolve_grimoire_url'
     ],
     autofill: [
         'get_autofill_ranking', 'test_autofill_ranking', 'update_autofill_ranking',
         'fetch_autofill_wiki_previews',
         'search_tag_wiki', 'get_tag_wiki_page', 'refresh_tag_wiki_page',
-        'get_static_wiki_site_index', 'get_static_wiki_page', 'resolve_grimoire_url'
+        'get_static_wiki_site_index', 'get_static_wiki_page', 'get_wiki_home',
+        'resolve_grimoire_url'
+    ],
+    notes: [
+        'notes_create', 'notes_get', 'notes_get_by_workspace', 'notes_get_all',
+        'notes_get_all_metadata', 'notes_update', 'notes_save_content', 'notes_delete'
     ],
     infrastructure: ['ping', 'pong', 'server_status', 'check_updates', 'version_check']
 };
@@ -75,6 +81,7 @@ const AVAILABLE_SCOPES = [
     { id: 'references', label: 'References', description: 'Reference images and vibes' },
     { id: 'wiki', label: 'Wiki / Grimoire', description: 'Tag wiki and documentation' },
     { id: 'autofill', label: 'Autofill / Grimoire', description: 'Autofill ranking and tag wiki / Grimoire (not search)' },
+    { id: 'notes', label: 'Notes', description: 'Notepad create, read, and update' },
     { id: 'infrastructure', label: 'Infrastructure', description: 'Ping, status, version checks' }
 ];
 

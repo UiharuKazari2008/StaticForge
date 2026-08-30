@@ -6,6 +6,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const { createMcpAuthMiddleware } = require('./auth');
 const { McpOAuthProvider } = require('./mcpOAuthProvider');
@@ -192,10 +193,297 @@ const TOOL_DEFS = [
                 format: { type: 'string', description: 'html (default) or markdown' }
             }
         }
+    },
+    {
+        name: 'list_static_wiki_sites',
+        description: 'List cached static / Grimoire wiki sites. Same data as get_wiki_home.',
+        scope: 'wiki',
+        packet: 'get_wiki_home',
+        inputSchema: { type: 'object', additionalProperties: false, properties: {} }
+    },
+    {
+        name: 'list_static_wiki_pages',
+        description: 'List pages in a static wiki site (grouped). Wraps get_static_wiki_site_index.',
+        scope: 'wiki',
+        packet: 'get_static_wiki_site_index',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            required: ['siteId'],
+            properties: {
+                siteId: { type: 'string', description: 'Site id from list_static_wiki_sites' }
+            }
+        }
+    },
+    {
+        name: 'search_static_wiki',
+        description: 'Substring search of static wiki page titles/ids from existing site indexes. Optional siteId limits to one site.',
+        scope: 'wiki',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['query'],
+            properties: {
+                query: { type: 'string' },
+                siteId: { type: 'string' },
+                limit: { type: 'number', description: 'Default 50, max 200' }
+            }
+        }
+    },
+    {
+        name: 'get_static_wiki_page',
+        description: 'Read a static / Grimoire wiki page HTML. Wraps get_static_wiki_page.',
+        scope: 'wiki',
+        packet: 'get_static_wiki_page',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            required: ['siteId', 'pageId'],
+            properties: {
+                siteId: { type: 'string' },
+                pageId: { type: 'string' }
+            }
+        }
+    },
+    {
+        name: 'list_presets',
+        description: 'List saved presets (paginated). Wraps get_presets.',
+        scope: 'presets',
+        packet: 'get_presets',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                page: { type: 'number' },
+                itemsPerPage: { type: 'number' },
+                searchTerm: { type: 'string' }
+            }
+        }
+    },
+    {
+        name: 'search_presets',
+        description: 'Search presets by name/prompt. Wraps search_presets.',
+        scope: 'presets',
+        packet: 'search_presets',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            required: ['query'],
+            properties: { query: { type: 'string' } }
+        }
+    },
+    {
+        name: 'get_preset',
+        description: 'Load one preset by name or uuid. Wraps load_preset.',
+        scope: 'presets',
+        packet: 'load_preset',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                presetName: { type: 'string' },
+                presetUuid: { type: 'string' }
+            }
+        }
+    },
+    {
+        name: 'save_preset',
+        description: 'Create or overwrite a preset. Wraps save_preset. Requires name, prompt, and model on config.',
+        scope: 'presets',
+        packet: 'save_preset',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            required: ['presetName', 'config'],
+            properties: {
+                presetName: { type: 'string' },
+                config: { type: 'object' }
+            }
+        }
+    },
+    {
+        name: 'apply_preset_to_studio',
+        description: 'Load a preset and apply it as Change-JSON on the bound Studio tab. Same apply_studio path as apply_studio_changes. Bind required.',
+        scope: 'presets',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                presetName: { type: 'string' },
+                presetUuid: { type: 'string' },
+                autoApply: { type: 'boolean' },
+                autoGenerate: { type: 'boolean' }
+            }
+        }
+    },
+    {
+        name: 'generate_preset',
+        description: 'Generate an image from a saved preset (server generate_preset, not bound-tab Generate). Requires generation scope.',
+        scope: 'generation',
+        packet: 'generate_preset',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            required: ['presetName'],
+            properties: {
+                presetName: { type: 'string' },
+                workspace: { type: 'string' },
+                allow_paid: { type: 'boolean' }
+            }
+        }
+    },
+    {
+        name: 'list_references',
+        description: 'List reference images. Wraps get_references.',
+        scope: 'references',
+        packet: 'get_references',
+        inputSchema: { type: 'object', additionalProperties: true, properties: {} }
+    },
+    {
+        name: 'get_references_by_ids',
+        description: 'Read specific references by id. Wraps get_references_by_ids.',
+        scope: 'references',
+        packet: 'get_references_by_ids',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            required: ['references'],
+            properties: {
+                references: { type: 'array', items: { type: ['string', 'object'] } }
+            }
+        }
+    },
+    {
+        name: 'list_workspace_references',
+        description: 'List references in a workspace. Wraps get_workspace_references.',
+        scope: 'references',
+        packet: 'get_workspace_references',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: { workspaceId: { type: 'string' } }
+        }
+    },
+    {
+        name: 'upload_reference',
+        description: 'Upload a reference image. Wraps upload_reference.',
+        scope: 'references',
+        packet: 'upload_reference',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                imageData: { type: 'string' },
+                workspaceId: { type: 'string' },
+                tags: { type: 'array', items: { type: 'string' } }
+            }
+        }
+    },
+    {
+        name: 'omegasearch',
+        description: 'Gallery / prompt OmegaSearch. Wraps omegasearch_query. Send query, terms, or blocks.',
+        scope: 'search',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                query: { type: 'string', description: 'Plain text; coerced to one search block' },
+                terms: { type: 'array', items: { type: 'string' }, description: 'OR terms in one block' },
+                blocks: { type: 'array' },
+                workspaceId: { type: ['string', 'null'] },
+                viewType: { type: 'string' },
+                offset: { type: 'number' },
+                limit: { type: 'number' },
+                filters: { type: 'object' }
+            }
+        }
+    },
+    {
+        name: 'list_notes',
+        description: 'List notepad metadata (id, name, workspace). Wraps notes_get_all_metadata.',
+        scope: 'notes',
+        packet: 'notes_get_all_metadata',
+        inputSchema: { type: 'object', additionalProperties: false, properties: {} }
+    },
+    {
+        name: 'list_notes_by_workspace',
+        description: 'List notes in one workspace. Wraps notes_get_by_workspace.',
+        scope: 'notes',
+        packet: 'notes_get_by_workspace',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            required: ['workspaceId'],
+            properties: { workspaceId: { type: 'string' } }
+        }
+    },
+    {
+        name: 'get_note',
+        description: 'Read one note including content. Wraps notes_get.',
+        scope: 'notes',
+        packet: 'notes_get',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            required: ['noteId'],
+            properties: { noteId: { type: 'string' } }
+        }
+    },
+    {
+        name: 'create_note',
+        description: 'Create a notepad note. Wraps notes_create. Mints id when omitted. workspaceId required unless a Studio tab is bound.',
+        scope: 'notes',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            required: ['name'],
+            properties: {
+                name: { type: 'string' },
+                content: { type: 'string' },
+                workspaceId: { type: 'string' },
+                id: { type: 'string' },
+                icon: { type: 'string' },
+                color: { type: 'string' }
+            }
+        }
+    },
+    {
+        name: 'update_note',
+        description: 'Update note metadata (name, icon, color, workspace). Wraps notes_update.',
+        scope: 'notes',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            required: ['noteId'],
+            properties: {
+                noteId: { type: 'string' },
+                updates: { type: 'object' },
+                name: { type: 'string' },
+                icon: { type: 'string' },
+                color: { type: 'string' },
+                workspaceId: { type: 'string' }
+            }
+        }
+    },
+    {
+        name: 'save_note_content',
+        description: 'Replace or append note body. Wraps notes_save_content (append does notes_get first). Use this for "write the story so far" / "note what we did differently".',
+        scope: 'notes',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            required: ['noteId', 'content'],
+            properties: {
+                noteId: { type: 'string' },
+                content: { type: 'string' },
+                append: { type: 'boolean', description: 'If true, append after existing body' }
+            }
+        }
     }
 ];
 
 const AUTOFILL_TERM_MAX = 20;
+const STATIC_WIKI_SEARCH_MAX = 200;
 
 function isAbsentOrigin(origin) {
     return origin == null || origin === '' || String(origin).toLowerCase() === 'null';
@@ -428,6 +716,21 @@ async function callTool(globalResources, req, name, args) {
     if (name === 'get_wiki_page' && !input.tagName) {
         input.tagName = input.name || input.title || input.tag;
     }
+    if (name === 'list_static_wiki_pages' || name === 'get_static_wiki_page' || name === 'search_static_wiki') {
+        input.siteId = input.siteId || input.site;
+    }
+    if (name === 'get_static_wiki_page') {
+        input.pageId = input.pageId || input.page || input.pageName;
+    }
+    if (name === 'get_preset' || name === 'save_preset' || name === 'apply_preset_to_studio' || name === 'generate_preset') {
+        input.presetName = input.presetName || input.name;
+    }
+    if (name === 'list_notes_by_workspace' || name === 'create_note') {
+        input.workspaceId = input.workspaceId || input.workspace;
+    }
+    if (name === 'get_note' || name === 'update_note' || name === 'save_note_content') {
+        input.noteId = input.noteId || input.id;
+    }
 
     if (name === 'search_autofill') {
         const terms = collectAutofillTerms(input);
@@ -449,6 +752,80 @@ async function callTool(globalResources, req, name, args) {
             });
         }
         return mcpTextResult({ success: true, results: batches });
+    }
+
+    if (name === 'search_static_wiki') {
+        return mcpTextResult(searchStaticWikiPages(globalResources, input));
+    }
+
+    if (name === 'apply_preset_to_studio') {
+        const loaded = await dispatchPacketTool(globalResources, req, 'load_preset', {
+            presetName: input.presetName,
+            presetUuid: input.presetUuid
+        });
+        if (!loaded.success || !loaded.data) {
+            return mcpTextResult(loaded, true);
+        }
+        const change = studioChangeFromPreset(loaded.data);
+        const applied = await applyStudioChanges(globalResources, {
+            change,
+            autoApply: input.autoApply,
+            autoGenerate: input.autoGenerate
+        });
+        return mcpTextResult({
+            success: true,
+            presetName: loaded.data.preset_name || input.presetName,
+            change,
+            ...applied
+        });
+    }
+
+    if (name === 'omegasearch') {
+        input.blocks = collectOmegasearchBlocks(input);
+        if (!input.blocks.length) {
+            const err = new Error('query, terms, or blocks is required');
+            err.status = 400;
+            throw err;
+        }
+        return mcpTextResult(await dispatchPacketTool(globalResources, req, 'omegasearch_query', input));
+    }
+
+    if (name === 'create_note') {
+        input.id = input.id || crypto.randomUUID();
+        input.workspaceId = resolveNoteWorkspaceId(globalResources, input);
+        if (!input.workspaceId) {
+            const err = new Error('workspaceId is required (or bind a Studio tab)');
+            err.status = 400;
+            throw err;
+        }
+        return mcpTextResult(await dispatchPacketTool(globalResources, req, 'notes_create', input));
+    }
+
+    if (name === 'update_note') {
+        const updates = input.updates && typeof input.updates === 'object' ? { ...input.updates } : {};
+        if (input.name != null) updates.name = input.name;
+        if (input.icon != null) updates.icon = input.icon;
+        if (input.color != null) updates.color = input.color;
+        if (input.workspaceId != null) updates.workspaceId = input.workspaceId;
+        return mcpTextResult(await dispatchPacketTool(globalResources, req, 'notes_update', {
+            noteId: input.noteId,
+            updates
+        }));
+    }
+
+    if (name === 'save_note_content') {
+        let content = input.content;
+        if (input.append) {
+            const existing = await dispatchPacketTool(globalResources, req, 'notes_get', { noteId: input.noteId });
+            const prior = existing.data && existing.data.note && existing.data.note.content
+                ? String(existing.data.note.content)
+                : '';
+            content = prior ? `${prior}\n\n${content}` : content;
+        }
+        return mcpTextResult(await dispatchPacketTool(globalResources, req, 'notes_save_content', {
+            noteId: input.noteId,
+            content
+        }));
     }
 
     if (def.packet && name !== 'get_generated_image') {
@@ -498,6 +875,129 @@ async function callTool(globalResources, req, name, args) {
     const err = new Error(`Unknown tool: ${name}`);
     err.status = 404;
     throw err;
+}
+
+function collectOmegasearchBlocks(input) {
+    if (Array.isArray(input.blocks) && input.blocks.length) {
+        return input.blocks;
+    }
+    const blocks = [];
+    if (Array.isArray(input.terms)) {
+        const terms = input.terms.map((term) => String(term || '').trim()).filter(Boolean);
+        if (terms.length) {
+            blocks.push({ terms, matchMode: 'substring', orWithinBlock: true });
+        }
+    }
+    if (input.query) {
+        const query = String(input.query).trim();
+        if (query) blocks.push(query);
+    }
+    return blocks;
+}
+
+function searchStaticWikiPages(globalResources, input) {
+    const query = String(input.query || '').trim().toLowerCase();
+    if (!query) {
+        const err = new Error('query is required');
+        err.status = 400;
+        throw err;
+    }
+    const staticWiki = globalResources.getStaticWiki();
+    const home = staticWiki.getWikiHomeData(globalResources);
+    const sites = Array.isArray(home && home.sites) ? home.sites : [];
+    const wantedSite = input.siteId ? String(input.siteId) : '';
+    const limit = Math.min(Math.max(Number(input.limit) || 50, 1), STATIC_WIKI_SEARCH_MAX);
+    const results = [];
+    for (const site of sites) {
+        if (wantedSite && site.id !== wantedSite) continue;
+        const index = staticWiki.getSiteIndex(globalResources, site.id);
+        if (!index || !Array.isArray(index.groups)) continue;
+        for (const group of index.groups) {
+            for (const page of group.pages || []) {
+                const hay = `${page.id} ${page.title || ''} ${group.name || ''}`.toLowerCase();
+                if (!hay.includes(query)) continue;
+                results.push({
+                    siteId: site.id,
+                    siteName: index.name || site.name,
+                    group: group.name,
+                    pageId: page.id,
+                    title: page.title || page.id
+                });
+                if (results.length >= limit) {
+                    return { success: true, results };
+                }
+            }
+        }
+    }
+    return { success: true, results };
+}
+
+function studioChangeFromPreset(preset) {
+    const data = preset && typeof preset === 'object' ? preset : {};
+    const params = {};
+    if (data.model) params.model = data.model;
+    if (data.steps != null) params.steps = data.steps;
+    if (data.guidance != null) params.guidance = data.guidance;
+    if (data.rescale != null) params.rescale = data.rescale;
+    if (data.sampler) params.sampler = data.sampler;
+    if (data.noiseScheduler || data.noise_schedule) {
+        params.noiseScheduler = data.noiseScheduler || data.noise_schedule;
+    }
+    if (data.resolution) params.resolution = data.resolution;
+    if (data.width != null) params.width = data.width;
+    if (data.height != null) params.height = data.height;
+    if (data.seed != null && data.seed !== '') params.seed = data.seed;
+    if (data.request_upscale != null) params.upscale = !!data.request_upscale;
+    if (data.append_quality != null) params.append_quality = !!data.append_quality;
+    if (data.append_uc != null) params.append_uc = data.append_uc;
+
+    const fields = [];
+    if (data.prompt != null) {
+        fields.push({
+            id: 'prompt',
+            action: 'replace',
+            chunks: [{ name: 'Prompt', text: String(data.prompt) }]
+        });
+    }
+    const uc = data.uc != null ? data.uc : data.negative_prompt;
+    if (uc != null) {
+        fields.push({
+            id: 'uc',
+            action: 'replace',
+            chunks: [{ name: 'UC', text: String(uc) }]
+        });
+    }
+
+    const change = {
+        dreamscape: 'change',
+        v: 1,
+        title: data.preset_name || data.name || 'preset',
+        params,
+        fields
+    };
+
+    if (Array.isArray(data.characterPrompts) && data.characterPrompts.length) {
+        change.characters = data.characterPrompts.map((char, index) => ({
+            index,
+            action: 'replace',
+            name: char && (char.name || char.promptName)
+                ? String(char.name || char.promptName)
+                : `Character ${index + 1}`,
+            prompt: char && char.prompt != null ? String(char.prompt) : '',
+            uc: char && char.uc != null
+                ? String(char.uc)
+                : (char && char.negative_prompt != null ? String(char.negative_prompt) : '')
+        }));
+    }
+    return change;
+}
+
+function resolveNoteWorkspaceId(globalResources, input) {
+    if (input.workspaceId) return String(input.workspaceId);
+    const bound = getBoundRecord(globalResources);
+    if (!bound || !bound.info || !bound.info.sessionId) return null;
+    const workspaceManager = globalResources.getWorkspaceManager();
+    return workspaceManager.getActiveWorkspace(bound.info.sessionId) || null;
 }
 
 function collectAutofillTerms(input) {
@@ -740,6 +1240,9 @@ module.exports = {
         listToolsForScopes,
         toolAllowedForScopes,
         collectAutofillTerms,
+        collectOmegasearchBlocks,
+        studioChangeFromPreset,
+        searchStaticWikiPages,
         handleJsonRpc,
         applyStudioChanges,
         getBoundRecord

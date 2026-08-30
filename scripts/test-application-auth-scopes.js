@@ -9,6 +9,7 @@ const {
 assert.ok(AVAILABLE_SCOPES.some((s) => s.id === 'autofill'));
 assert.ok(AVAILABLE_SCOPES.some((s) => s.id === 'generation'));
 assert.ok(AVAILABLE_SCOPES.some((s) => s.id === 'vfs'));
+assert.ok(AVAILABLE_SCOPES.some((s) => s.id === 'notes'));
 assert.ok(!AVAILABLE_SCOPES.some((s) => s.id === 'wiki' && s.id === 'autofill'));
 
 assert.deepStrictEqual(
@@ -26,6 +27,9 @@ assert.ok(getPacketScopes('search_tags').includes('search'));
 assert.ok(!getPacketScopes('search_tags').includes('autofill'));
 assert.ok(getPacketScopes('generate_image').includes('generation'));
 assert.ok(getPacketScopes('vfs_list').includes('vfs'));
+assert.ok(getPacketScopes('notes_create').includes('notes'));
+assert.ok(getPacketScopes('get_wiki_home').includes('wiki'));
+assert.ok(getPacketScopes('get_wiki_home').includes('autofill'));
 
 const ivory = ['gallery', 'workspace', 'search', 'infrastructure', 'generation', 'vfs', 'autofill'];
 assert.strictEqual(scopesAllowPacket(ivory, 'get_autofill_ranking'), true);
@@ -42,6 +46,9 @@ assert.strictEqual(scopesAllowPacket(['wiki'], 'search_tag_wiki'), true);
 assert.strictEqual(scopesAllowPacket(['autofill'], 'search_tag_wiki'), true);
 assert.strictEqual(scopesAllowPacket(['autofill'], 'search_tags'), false);
 assert.strictEqual(scopesAllowPacket(['generation'], 'vfs_list'), false);
+assert.strictEqual(scopesAllowPacket(['notes'], 'notes_create'), true);
+assert.strictEqual(scopesAllowPacket(['notes'], 'notes_save_content'), true);
+assert.strictEqual(scopesAllowPacket(['wiki'], 'notes_create'), false);
 assert.strictEqual(scopesAllowPacket(['universal'], 'get_autofill_ranking'), true);
 assert.strictEqual(scopesAllowPacket([], 'generate_image'), false);
 

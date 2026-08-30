@@ -130,7 +130,7 @@ class McpOAuthProvider {
             authorization_servers: [baseUrl],
             scopes_supported: [
                 'generation', 'gallery', 'workspace', 'search',
-                'vfs', 'presets', 'chat', 'references', 'wiki', 'autofill'
+                'vfs', 'presets', 'chat', 'references', 'wiki', 'autofill', 'notes'
             ],
             bearer_methods_supported: ['header'],
             resource_name: 'Dreamscape MCP Server'
@@ -151,7 +151,7 @@ class McpOAuthProvider {
             code_challenge_methods_supported: ['S256'],
             scopes_supported: [
                 'generation', 'gallery', 'workspace', 'search',
-                'vfs', 'presets', 'chat', 'references', 'wiki', 'autofill'
+                'vfs', 'presets', 'chat', 'references', 'wiki', 'autofill', 'notes'
             ],
             service_documentation: `${baseUrl}/docs/client-api/mcp-connector.md`
         };

@@ -145,7 +145,7 @@ Copy the `client_id` from the response and paste it into the Grok form. On the c
    - `response_type=code`
    - `client_id=mcp_...`
    - `redirect_uri=...`
-   - `scope=generation gallery autofill wiki`
+   - `scope=generation gallery autofill wiki presets references search notes`
    - `state=...`
    - `code_challenge=...` (SHA256 hash of verifier, base64url)
    - `code_challenge_method=S256`
@@ -218,8 +218,19 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 | `search_autofill` | `test_autofill_ranking` once per term (max 20). Same live autocomplete pipeline. Accepts `terms: string[]` and/or `query` | `autofill` | no |
 | `search_wiki` | `search_tag_wiki` | `wiki` (also listed for `autofill` keys) | no |
 | `get_wiki_page` | `get_tag_wiki_page` (`tagName`, optional `source`, `format`) | `wiki` (also listed for `autofill` keys) | no |
+| `list_static_wiki_sites` | `get_wiki_home` | `wiki` / `autofill` | no |
+| `list_static_wiki_pages` | `get_static_wiki_site_index` | `wiki` / `autofill` | no |
+| `search_static_wiki` | substring filter over existing site indexes (`query`, optional `siteId`) | `wiki` / `autofill` | no |
+| `get_static_wiki_page` | `get_static_wiki_page` | `wiki` / `autofill` | no |
+| `list_presets` / `search_presets` / `get_preset` / `save_preset` | `get_presets` / `search_presets` / `load_preset` / `save_preset` | `presets` | no |
+| `apply_preset_to_studio` | `load_preset` then bound `apply_studio` Change-JSON | `presets` | yes |
+| `generate_preset` | `generate_preset` (server generate, not bound-tab click) | `generation` | no |
+| `list_references` / `get_references_by_ids` / `list_workspace_references` / `upload_reference` | matching reference packets | `references` | no |
+| `omegasearch` | `omegasearch_query` (`query` / `terms` coerced to `blocks`) | `search` | no |
+| `list_notes` / `list_notes_by_workspace` / `get_note` | `notes_get_all_metadata` / `notes_get_by_workspace` / `notes_get` | `notes` | no |
+| `create_note` / `update_note` / `save_note_content` | `notes_create` / `notes_update` / `notes_save_content` (`append` does `notes_get` first) | `notes` | no |
 
-`search_autofill` returns `{ success, results: [{ term, success, results, spellCheck }] }`. That is the existing ranking-test search, not a new search API. `get_wiki_page` reads tag wiki HTML/markdown (danbooru / e621). Static / Grimoire / Fandom pages are not in this wrap.
+`search_autofill` returns `{ success, results: [{ term, success, results, spellCheck }] }`. That is the existing ranking-test search, not a new search API. `get_wiki_page` is tag wiki (danbooru / e621). Static / Grimoire pages use `list_static_wiki_*` / `search_static_wiki` / `get_static_wiki_page`. Notes use the existing notepad packets — request the `notes` scope on consent.
 
 `autoApply` (default true) and `autoGenerate` (default false) stay **siblings of `change`**. `autoGenerate` clicks the bound tab's existing Generate button after a successful apply. That is not a second generate API.
 
@@ -247,7 +258,7 @@ For grok.com Custom Connector UI that requires OAuth:
    - **Authorization Endpoint**: `https://<host>/{mcpPathUuid}/oauth/authorize`
    - **Token Endpoint**: `https://<host>/{mcpPathUuid}/oauth/token`
    - **Client ID**: Your `mcp_...` client ID from registration
-   - **Scopes**: `generation gallery workspace autofill wiki` (or subset)
+   - **Scopes**: `generation gallery workspace autofill wiki presets references search notes` (or subset)
    - **Token Auth Method**: `none (PKCE only, recommended)`
 3. Click Save & Connect. You'll see the consent page.
 4. Approve. Grok gets an access token bound to your app key's scopes.
