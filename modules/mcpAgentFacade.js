@@ -518,13 +518,14 @@ function registerRoutes(app, { globalResources }) {
     const oauthPrefix = `${prefix}/oauth`;
     const bodyParser = require('express').json();
     const urlEncodedParser = require('express').urlencoded({ extended: true });
+    const cookieParser = require('cookie-parser');
 
     app.options(`${oauthPrefix}/register`, mcpMiddleware);
     app.post(`${oauthPrefix}/register`, mcpMiddleware, bodyParser, oauthRoutes.handleRegister);
 
     app.options(`${oauthPrefix}/authorize`, mcpMiddleware);
-    app.get(`${oauthPrefix}/authorize`, mcpMiddleware, oauthRoutes.handleAuthorizeGet);
-    app.post(`${oauthPrefix}/authorize`, mcpMiddleware, urlEncodedParser, oauthRoutes.handleAuthorizePost);
+    app.get(`${oauthPrefix}/authorize`, mcpMiddleware, cookieParser(), oauthRoutes.handleAuthorizeGet);
+    app.post(`${oauthPrefix}/authorize`, mcpMiddleware, cookieParser(), urlEncodedParser, oauthRoutes.handleAuthorizePost);
 
     app.options(`${oauthPrefix}/token`, mcpMiddleware);
     app.post(`${oauthPrefix}/token`, mcpMiddleware, urlEncodedParser, oauthRoutes.handleToken);

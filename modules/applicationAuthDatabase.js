@@ -116,7 +116,7 @@ async function createApplicationAuthTables() {
     await db.exec(`
         CREATE TABLE IF NOT EXISTS oauth_clients (
             client_id TEXT PRIMARY KEY,
-            application_key_id TEXT NOT NULL,
+            application_key_id TEXT,
             client_name TEXT NOT NULL,
             redirect_uris TEXT NOT NULL DEFAULT '[]',
             grant_types TEXT NOT NULL DEFAULT '["authorization_code","refresh_token"]',
@@ -126,6 +126,17 @@ async function createApplicationAuthTables() {
             FOREIGN KEY (application_key_id) REFERENCES application_keys(id)
         )
     `);
+
+    // Consent PIN rate limiting (persists across restarts)
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS consent_pin_attempts (
+            ip_address TEXT PRIMARY KEY,
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            last_attempt_at INTEGER NOT NULL,
+            locked_until INTEGER
+        )
+    `);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_consent_pin_locked ON consent_pin_attempts (locked_until)`);
 
     await db.exec(`
         CREATE TABLE IF NOT EXISTS oauth_authorization_codes (
