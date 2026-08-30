@@ -37,7 +37,29 @@ assert.strictEqual(_test.isCheapMcpRequest({ body: { method: 'tools/list' } }), 
 assert.strictEqual(_test.isCheapMcpRequest({ body: { method: 'ping' } }), true);
 assert.strictEqual(_test.isCheapMcpRequest({ body: { method: 'initialize' } }), true);
 assert.strictEqual(_test.isCheapMcpRequest({ body: { method: 'tools/call' } }), false);
-assert.ok(_test.MCP_RATE_MAX >= 600);
+assert.strictEqual(_test.rateGroupForTool('get_workspaces'), 'free');
+assert.strictEqual(_test.rateGroupForTool('get_generated_image'), 'gallery');
+assert.strictEqual(_test.rateGroupForTool('generate_image'), 'generate');
+assert.strictEqual(_test.rateGroupForTool('get_studio_state'), 'studio');
+assert.strictEqual(_test.MCP_RATE_GROUP_LIMITS.free.max, 0);
+assert.ok(_test.MCP_RATE_GROUP_LIMITS.generate.max < _test.MCP_RATE_GROUP_LIMITS.gallery.max);
+_test.TOOL_DEFS.forEach((tool) => {
+    assert.ok(_test.TOOL_RATE_GROUPS[tool.name], `missing rate group for ${tool.name}`);
+});
+_test.resetRateGroupHits();
+const first = _test.consumeRateGroup('test-key', 'generate');
+assert.strictEqual(first.ok, true);
+_test.resetRateGroupHits();
+const genLimit = _test.MCP_RATE_GROUP_LIMITS.generate.max;
+for (let i = 0; i < genLimit; i += 1) {
+    assert.strictEqual(_test.consumeRateGroup('test-key', 'generate').ok, true);
+}
+const denied = _test.consumeRateGroup('test-key', 'generate');
+assert.strictEqual(denied.ok, false);
+assert.strictEqual(denied.group, 'generate');
+assert.ok(denied.retryAfterSec >= 1);
+assert.strictEqual(_test.consumeRateGroup('test-key', 'free').ok, true);
+_test.resetRateGroupHits();
 
 const generatedImageTool = _test.TOOL_DEFS.find((t) => t.name === 'get_generated_image');
 assert.ok(generatedImageTool.description.includes('Grok-sized webp'));
@@ -84,6 +106,7 @@ const generationTools = _test.listToolsForScopes(['generation']);
 assert.ok(generationTools.some((t) => t.name === 'generate_preset'));
 assert.ok(generationTools.some((t) => t.name === 'upscale_image'));
 assert.ok(generationTools.some((t) => t.name === 'expand_image'));
+assert.ok(generationTools.some((t) => t.name === 'get_studio_state'));
 
 const refsOnly = _test.listToolsForScopes(['references']);
 assert.ok(refsOnly.some((t) => t.name === 'list_references'));

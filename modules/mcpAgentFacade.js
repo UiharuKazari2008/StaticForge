@@ -32,7 +32,6 @@ const {
 
 const MCP_PROTOCOL_VERSION = '2024-11-05';
 const MCP_RATE_WINDOW_MS = 15 * 60 * 1000;
-const MCP_RATE_MAX = 600;
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 const GROK_IMAGE_MAX_EDGE = 1280;
 const GROK_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
@@ -127,6 +126,12 @@ const TOOL_DEFS = [
                 code: { type: 'string' }
             }
         }
+    },
+    {
+        name: 'get_studio_state',
+        description: 'Snapshot the bound Studio tab (same as GET /agent/session/state): current change JSON, open filename, model, workspace. Bind first. Do not page the gallery for the open prompt.',
+        scope: 'generation',
+        inputSchema: { type: 'object', properties: {} }
     },
     {
         name: 'apply_studio_changes',
@@ -603,26 +608,142 @@ function isCheapMcpRequest(req) {
         || method.startsWith('notifications/');
 }
 
-function createMcpRateLimiter() {
-    return rateLimit({
-        windowMs: MCP_RATE_WINDOW_MS,
-        max: MCP_RATE_MAX,
-        skipSuccessfulRequests: false,
-        skip: isCheapMcpRequest,
-        keyGenerator: (req) => {
-            const keyId = req.applicationAuth && req.applicationAuth.applicationKeyId;
-            return keyId ? `mcp-key:${keyId}` : `mcp-ip:${req.ip || req.socket?.remoteAddress || 'unknown'}`;
-        },
-        handler: (req, res) => {
-            res.status(429).json({
-                success: false,
-                error: 'Too many requests',
-                code: 'RATE_LIMIT_EXCEEDED'
-            });
-        },
-        standardHeaders: true,
-        legacyHeaders: false
+const MCP_RATE_GROUP_LIMITS = {
+    free: { max: 0, windowMs: MCP_RATE_WINDOW_MS },
+    search: { max: 240, windowMs: MCP_RATE_WINDOW_MS },
+    gallery: { max: 90, windowMs: MCP_RATE_WINDOW_MS },
+    write: { max: 60, windowMs: MCP_RATE_WINDOW_MS },
+    studio: { max: 60, windowMs: MCP_RATE_WINDOW_MS },
+    generate: { max: 20, windowMs: MCP_RATE_WINDOW_MS },
+    rpc: { max: 300, windowMs: MCP_RATE_WINDOW_MS }
+};
+
+const TOOL_RATE_GROUPS = {
+    get_workspaces: 'free',
+    list_clients: 'free',
+    bind_session: 'free',
+    list_notes: 'free',
+    list_notes_by_workspace: 'free',
+    get_note: 'free',
+    list_presets: 'free',
+    search_presets: 'free',
+    get_preset: 'free',
+    list_static_wiki_sites: 'free',
+    list_static_wiki_pages: 'free',
+    list_references: 'free',
+    list_workspace_references: 'free',
+    get_references_by_ids: 'free',
+    search_autofill: 'search',
+    search_wiki: 'search',
+    get_wiki_page: 'search',
+    search_static_wiki: 'search',
+    get_static_wiki_page: 'search',
+    omegasearch: 'search',
+    get_images: 'gallery',
+    get_generated_image: 'gallery',
+    create_note: 'write',
+    update_note: 'write',
+    save_note_content: 'write',
+    save_preset: 'write',
+    upload_reference: 'write',
+    get_studio_state: 'studio',
+    apply_studio_changes: 'studio',
+    apply_preset_to_studio: 'studio',
+    generate_image: 'generate',
+    generate_preset: 'generate',
+    upscale_image: 'generate',
+    expand_image: 'generate'
+};
+
+const rateGroupHits = new Map();
+
+function rateGroupForTool(name) {
+    return TOOL_RATE_GROUPS[name] || 'rpc';
+}
+
+function consumeRateGroup(keyId, groupId, now = Date.now()) {
+    const spec = MCP_RATE_GROUP_LIMITS[groupId] || MCP_RATE_GROUP_LIMITS.rpc;
+    if (!spec.max) {
+        return { ok: true, group: groupId, unlimited: true };
+    }
+    const mapKey = `${keyId}:${groupId}`;
+    let row = rateGroupHits.get(mapKey);
+    if (!row || row.resetAt <= now) {
+        row = { count: 0, resetAt: now + spec.windowMs };
+    }
+    if (row.count >= spec.max) {
+        const retryAfterSec = Math.max(1, Math.ceil((row.resetAt - now) / 1000));
+        return {
+            ok: false,
+            group: groupId,
+            retryAfterSec,
+            retryAfterMs: retryAfterSec * 1000,
+            limit: spec.max,
+            windowMs: spec.windowMs
+        };
+    }
+    row.count += 1;
+    rateGroupHits.set(mapKey, row);
+    return {
+        ok: true,
+        group: groupId,
+        remaining: spec.max - row.count,
+        retryAfterSec: Math.max(1, Math.ceil((row.resetAt - now) / 1000)),
+        limit: spec.max,
+        windowMs: spec.windowMs
+    };
+}
+
+function resetRateGroupHits() {
+    rateGroupHits.clear();
+}
+
+function rateLimitPrincipal(req) {
+    const keyId = req.applicationAuth && req.applicationAuth.applicationKeyId;
+    if (keyId) return `mcp-key:${keyId}`;
+    return `mcp-ip:${req.ip || req.socket?.remoteAddress || 'unknown'}`;
+}
+
+function sendRateLimitResponse(req, res, denied) {
+    const retryAfterSec = denied.retryAfterSec;
+    res.setHeader('Retry-After', String(retryAfterSec));
+    res.setHeader('X-RateLimit-Group', denied.group);
+    res.setHeader('X-RateLimit-Limit', String(denied.limit));
+    res.setHeader('X-RateLimit-Remaining', '0');
+    const id = req.body && !Array.isArray(req.body) && Object.prototype.hasOwnProperty.call(req.body, 'id')
+        ? req.body.id
+        : null;
+    return res.status(429).json({
+        jsonrpc: '2.0',
+        id,
+        error: {
+            code: -32000,
+            message: `Rate limited (${denied.group}). Retry in ${retryAfterSec} seconds.`,
+            data: {
+                code: 'RATE_LIMIT_EXCEEDED',
+                group: denied.group,
+                retryAfter: retryAfterSec,
+                retryAfterMs: denied.retryAfterMs,
+                limit: denied.limit,
+                windowMs: denied.windowMs
+            }
+        }
     });
+}
+
+function createMcpRateLimiter() {
+    return function mcpGroupedRateLimit(req, res, next) {
+        if (isCheapMcpRequest(req)) return next();
+        const method = mcpMethodFromReq(req);
+        let groupId = 'rpc';
+        if (method === 'tools/call') {
+            const name = req.body && req.body.params ? String(req.body.params.name || '').trim() : '';
+            groupId = rateGroupForTool(name);
+        }
+        const denied = consumeRateGroup(rateLimitPrincipal(req), groupId);
+        if (denied.ok) return next();
+        return sendRateLimitResponse(req, res, denied);
+    };
 }
 
 function sanitizeGalleryFilename(filename) {
@@ -981,6 +1102,48 @@ async function callTool(globalResources, req, name, args) {
             boundClientId: getBoundClientId(),
             clients: listClients(globalResources)
         });
+    }
+
+    if (name === 'get_studio_state') {
+        const bound = getBoundRecord(globalResources);
+        if (!bound) {
+            return mcpTextResult({
+                success: false,
+                error: 'No Studio client is bound. Call list_clients then bind_session.'
+            }, true);
+        }
+        const scopePayload = buildAgentScopePayload(req, globalResources);
+        try {
+            const data = await sendBoundCommand(globalResources, 'get_state', {}, 8000);
+            const change = (data && data.change && typeof data.change === 'object' && !Array.isArray(data.change))
+                ? data.change
+                : null;
+            return mcpTextResult({
+                success: true,
+                bound: true,
+                workspaceId: data.workspaceId || null,
+                filename: data.filename || null,
+                model: data.model || null,
+                clientId: getBoundClientId(),
+                change,
+                scopes: scopePayload.scopes
+            });
+        } catch (error) {
+            if (error.status === 504) {
+                return mcpTextResult({
+                    success: true,
+                    bound: true,
+                    partial: true,
+                    filename: null,
+                    model: null,
+                    clientId: getBoundClientId(),
+                    change: null,
+                    scopes: scopePayload.scopes,
+                    error: 'Bound tab did not answer in time'
+                });
+            }
+            throw error;
+        }
     }
 
     if (name === 'bind_session') {
@@ -1363,7 +1526,11 @@ module.exports = {
         isCheapMcpRequest,
         resizeImageForGrok,
         GROK_IMAGE_MAX_EDGE,
-        MCP_RATE_MAX,
+        rateGroupForTool,
+        consumeRateGroup,
+        resetRateGroupHits,
+        MCP_RATE_GROUP_LIMITS,
+        TOOL_RATE_GROUPS,
         listToolsForScopes,
         toolAllowedForScopes,
         collectAutofillTerms,

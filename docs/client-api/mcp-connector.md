@@ -6,7 +6,7 @@ Unlisted Streamable HTTP MCP on `/{mcpPathUuid}` so Grok Bot / Grok CLI / xAI Re
 
 **Not in this surface:** Studio chrome, `/mcp` on the public root, reuse of `vfsPathUuid` / `logViewerPathUuid`, reuse of loopback `devAuthMiddleware` (that stack skips UA and rate limits).
 
-See [agent-session.md](./agent-session.md) for the loopback bind/drive API this wraps.
+See [agent-session.md](./agent-session.md) for the loopback bind/drive API this wraps. Grok recipes (Studio compare, rewrite last image): [mcp-tool-flow.md](./mcp-tool-flow.md).
 
 ## Mount
 
@@ -34,7 +34,7 @@ Wrong UUID is `404` (no route). Do not mount `/mcp` or public `/agent`.
 | UA unknown / mismatch | **bypass**; request continues; UA captured (`matched=0`) |
 | OAuth access token | validated against `oauth_access_tokens` table; inherits scopes from bound app key |
 | Scopes | `hasScope` / `scopesAllowPacket` per tool; `tools/list` filtered |
-| Rate limit | dedicated limiter, **does not** skip app keys (600 / 15 min per key or IP). `initialize` / `ping` / `tools/list` / notifications do not count. |
+| Rate limit | Per **tool group** (`free` / `search` / `gallery` / `write` / `studio` / `generate`). `free` and handshake (`initialize` / `ping` / `tools/list`) are unlimited. 429 includes `group`, `retryAfter` seconds, and `Retry-After`. See [mcp-tool-flow.md](./mcp-tool-flow.md). |
 | CORS | MCP tools locked to `https://grok.com`, `https://www.grok.com`, `https://x.ai`, `https://console.x.ai`; missing Origin allowed (CLI / xAI server). OAuth register/authorize/token also allow the issuer origin (consent form), `Origin: null` / same-origin document navigations, loopback, and `https://cursor.com` / `https://www.cursor.com`. |
 
 Captured rows live in the existing application-auth SQLite DB (not a new store). UA is not a credential. Keys are never stored or logged with the UA list.
@@ -214,6 +214,7 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 | `get_workspaces` | `workspace_list` | `workspace` | no |
 | `list_clients` | `GET /agent/clients` | `generation` | no |
 | `bind_session` | `POST /agent/bind` `{ clientId }` or `{ code }` | `generation` | — |
+| `get_studio_state` | Bound `get_state` (same snapshot as `GET /agent/session/state`) | `generation` | yes |
 | `apply_studio_changes` | `POST /agent/session/studio` | `generation` | yes |
 | `search_autofill` | `test_autofill_ranking` once per term (max 20). Same live autocomplete pipeline. Accepts `terms: string[]` and/or `query` | `autofill` | no |
 | `search_wiki` | `search_tag_wiki` | `wiki` (also listed for `autofill` keys) | no |
@@ -278,6 +279,6 @@ For grok.com Custom Connector UI that requires OAuth:
 | 403 | `INSUFFICIENT_SCOPE` | Tool not on this key |
 | 403 | `CORS_LOCKED` | Browser Origin not on the allowlist |
 | 403 | `access_denied` | OAuth: user denied authorization |
-| 429 | `RATE_LIMIT_EXCEEDED` | MCP limiter |
+| 429 | `RATE_LIMIT_EXCEEDED` | Tool-group limiter. Body `error.data.group` + `retryAfter` (seconds). Header `Retry-After`. |
 | 404 | — | Wrong UUID, unknown packet, no bound client |
 | 405 | `METHOD_NOT_ALLOWED` | GET on the MCP endpoint |
