@@ -71,6 +71,8 @@ assert.ok(!presetsOnly.some((t) => t.name === 'generate_preset'));
 
 const generationTools = _test.listToolsForScopes(['generation']);
 assert.ok(generationTools.some((t) => t.name === 'generate_preset'));
+assert.ok(generationTools.some((t) => t.name === 'upscale_image'));
+assert.ok(generationTools.some((t) => t.name === 'expand_image'));
 
 const refsOnly = _test.listToolsForScopes(['references']);
 assert.ok(refsOnly.some((t) => t.name === 'list_references'));

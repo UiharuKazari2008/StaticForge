@@ -333,6 +333,44 @@ const TOOL_DEFS = [
         }
     },
     {
+        name: 'upscale_image',
+        description: 'NovelAI 2x upscale of a gallery image. Wraps upscale_image. Pass filename from get_images / generate_image.',
+        scope: 'generation',
+        packet: 'upscale_image',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            required: ['filename'],
+            properties: {
+                filename: { type: 'string' },
+                workspace: { type: 'string' },
+                upscaler: { type: 'string', description: 'Default novelai' },
+                scale: { type: 'number', description: 'Passed through; live NAI contract is 2x' }
+            }
+        }
+    },
+    {
+        name: 'expand_image',
+        description: 'Expand canvas (letterbox + generate into the new area). Wraps expand_image. Requires filename, target resolution, and imageBias 0–4 (0=start edge, 2=center, 4=end edge).',
+        scope: 'generation',
+        packet: 'expand_image',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            required: ['filename', 'resolution', 'imageBias'],
+            properties: {
+                filename: { type: 'string' },
+                resolution: { type: 'string', description: 'Named Studio resolution (e.g. large_landscape)' },
+                imageBias: { type: 'number', description: '0–4 placement of the original in the new canvas' },
+                workspace: { type: 'string' },
+                upscaleAfterComplete: { type: 'boolean' },
+                enableAI: { type: 'boolean', description: 'Let the server write the expansion prompt' },
+                inset: { type: 'boolean' },
+                sourceFilename: { type: 'string' }
+            }
+        }
+    },
+    {
         name: 'list_references',
         description: 'List reference images. Wraps get_references.',
         scope: 'references',
@@ -730,6 +768,12 @@ async function callTool(globalResources, req, name, args) {
     }
     if (name === 'get_note' || name === 'update_note' || name === 'save_note_content') {
         input.noteId = input.noteId || input.id;
+    }
+    if (name === 'upscale_image' || name === 'expand_image') {
+        input.filename = input.filename || input.image;
+    }
+    if (name === 'expand_image' && (input.imageBias === undefined || input.imageBias === null)) {
+        input.imageBias = input.image_bias != null ? input.image_bias : input.bias;
     }
 
     if (name === 'search_autofill') {

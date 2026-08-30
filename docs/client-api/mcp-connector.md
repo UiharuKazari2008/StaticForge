@@ -225,6 +225,8 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 | `list_presets` / `search_presets` / `get_preset` / `save_preset` | `get_presets` / `search_presets` / `load_preset` / `save_preset` | `presets` | no |
 | `apply_preset_to_studio` | `load_preset` then bound `apply_studio` Change-JSON | `presets` | yes |
 | `generate_preset` | `generate_preset` (server generate, not bound-tab click) | `generation` | no |
+| `upscale_image` | `upscale_image` (`filename`, optional `workspace`) | `generation` | no |
+| `expand_image` | `expand_image` (`filename`, `resolution`, `imageBias` 0–4) | `generation` | no |
 | `list_references` / `get_references_by_ids` / `list_workspace_references` / `upload_reference` | matching reference packets | `references` | no |
 | `omegasearch` | `omegasearch_query` (`query` / `terms` coerced to `blocks`) | `search` | no |
 | `list_notes` / `list_notes_by_workspace` / `get_note` | `notes_get_all_metadata` / `notes_get_by_workspace` / `notes_get` | `notes` | no |
