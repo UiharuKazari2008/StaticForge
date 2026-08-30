@@ -33,6 +33,17 @@ assert.strictEqual(_test.sanitizeGalleryFilename('  shot.png  '), 'shot.png');
 assert.strictEqual(_test.sanitizeGalleryFilename('../etc/passwd'), null);
 assert.strictEqual(_test.sanitizeGalleryFilename('a/b.png'), null);
 assert.strictEqual(_test.sanitizeGalleryFilename(''), null);
+assert.strictEqual(_test.isCheapMcpRequest({ body: { method: 'tools/list' } }), true);
+assert.strictEqual(_test.isCheapMcpRequest({ body: { method: 'ping' } }), true);
+assert.strictEqual(_test.isCheapMcpRequest({ body: { method: 'initialize' } }), true);
+assert.strictEqual(_test.isCheapMcpRequest({ body: { method: 'tools/call' } }), false);
+assert.ok(_test.MCP_RATE_MAX >= 600);
+
+const generatedImageTool = _test.TOOL_DEFS.find((t) => t.name === 'get_generated_image');
+assert.ok(generatedImageTool.description.includes('Grok-sized webp'));
+assert.ok(generatedImageTool.description.includes('Do not page get_images'));
+const listImagesTool = _test.TOOL_DEFS.find((t) => t.name === 'get_images');
+assert.ok(listImagesTool.description.includes('get_generated_image'));
 
 const genOnly = _test.listToolsForScopes(['generation']);
 assert.ok(genOnly.some((t) => t.name === 'generate_image'));
@@ -293,6 +304,19 @@ async function main() {
     assert.deepStrictEqual(asMeta.response_types_supported, ['code']);
     assert.deepStrictEqual(asMeta.code_challenge_methods_supported, ['S256']);
     assert.deepStrictEqual(asMeta.token_endpoint_auth_methods_supported, ['none']);
+
+    const sharp = require('sharp');
+    const source = await sharp({
+        create: { width: 2000, height: 1000, channels: 3, background: '#334455' }
+    }).png().toBuffer();
+    const resized = await _test.resizeImageForGrok(source);
+    assert.ok(resized);
+    assert.strictEqual(resized.mimeType, 'image/webp');
+    assert.ok(resized.bytes.length < source.length);
+    const resizedMeta = await sharp(resized.bytes).metadata();
+    assert.ok(resizedMeta.width <= _test.GROK_IMAGE_MAX_EDGE);
+    assert.ok(resizedMeta.height <= _test.GROK_IMAGE_MAX_EDGE);
+    assert.strictEqual(resizedMeta.format, 'webp');
 
     console.log('test-mcp-agent-facade: ok');
 }

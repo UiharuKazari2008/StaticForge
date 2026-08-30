@@ -32,8 +32,10 @@ const {
 
 const MCP_PROTOCOL_VERSION = '2024-11-05';
 const MCP_RATE_WINDOW_MS = 15 * 60 * 1000;
-const MCP_RATE_MAX = 120;
+const MCP_RATE_MAX = 600;
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
+const GROK_IMAGE_MAX_EDGE = 1280;
+const GROK_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
 
 const MCP_CORS_ORIGINS = new Set([
     'https://grok.com',
@@ -72,20 +74,21 @@ const TOOL_DEFS = [
     },
     {
         name: 'get_generated_image',
-        description: 'Gallery metadata (request_image_metadata) plus bytes from the existing GET /images/:filename file. Basename only.',
+        description: 'Known gallery filename → NovelAI metadata plus a Grok-sized webp (fit-inside resize of the original, never the full PNG). Pass filename only. Do not page get_images. Set full=true only if you need the original bytes.',
         scope: 'gallery',
         packet: 'request_image_metadata',
         inputSchema: {
             type: 'object',
             required: ['filename'],
             properties: {
-                filename: { type: 'string', description: 'Gallery filename basename' }
+                filename: { type: 'string', description: 'Gallery filename basename' },
+                full: { type: 'boolean', description: 'Return original PNG when under the MCP size cap. Default false (always resize for Grok).' }
             }
         }
     },
     {
         name: 'get_images',
-        description: 'List gallery images via existing request_gallery packet.',
+        description: 'Paged gallery list via request_gallery. Do not use this to find a known filename — call get_generated_image with that basename.',
         scope: 'gallery',
         packet: 'request_gallery',
         inputSchema: {
@@ -586,11 +589,26 @@ function applyOAuthCors(req, res, provider) {
     applyCorsHeaders(req, res, isAllowedOAuthOrigin(req.headers.origin, req, provider));
 }
 
+function mcpMethodFromReq(req) {
+    const body = req && req.body;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return '';
+    return String(body.method || '');
+}
+
+function isCheapMcpRequest(req) {
+    const method = mcpMethodFromReq(req);
+    return method === 'ping'
+        || method === 'initialize'
+        || method === 'tools/list'
+        || method.startsWith('notifications/');
+}
+
 function createMcpRateLimiter() {
     return rateLimit({
         windowMs: MCP_RATE_WINDOW_MS,
         max: MCP_RATE_MAX,
         skipSuccessfulRequests: false,
+        skip: isCheapMcpRequest,
         keyGenerator: (req) => {
             const keyId = req.applicationAuth && req.applicationAuth.applicationKeyId;
             return keyId ? `mcp-key:${keyId}` : `mcp-ip:${req.ip || req.socket?.remoteAddress || 'unknown'}`;
@@ -616,7 +634,7 @@ function sanitizeGalleryFilename(filename) {
     return path.basename(raw);
 }
 
-function readGalleryImage(globalResources, filename) {
+function resolveGalleryImagePath(globalResources, filename) {
     const safe = sanitizeGalleryFilename(filename);
     if (!safe) {
         const err = new Error('filename must be a gallery basename');
@@ -635,6 +653,38 @@ function readGalleryImage(globalResources, filename) {
         err.status = 404;
         throw err;
     }
+    return { safe, filePath };
+}
+
+async function resizeImageForGrok(source) {
+    const sharp = require('sharp');
+    let edge = GROK_IMAGE_MAX_EDGE;
+    let quality = 72;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+        const bytes = await sharp(source, {
+            failOnError: false,
+            unlimited: true,
+            sequentialRead: true
+        })
+            .rotate()
+            .resize(edge, edge, {
+                fit: 'inside',
+                withoutEnlargement: true,
+                kernel: sharp.kernel.lanczos3
+            })
+            .webp({ quality, effort: 4 })
+            .toBuffer();
+        if (bytes.length <= GROK_IMAGE_MAX_BYTES && bytes.length <= MAX_IMAGE_BYTES) {
+            return { mimeType: 'image/webp', bytes, kind: 'grok' };
+        }
+        edge = Math.max(512, Math.round(edge * 0.75));
+        quality = Math.max(48, quality - 10);
+    }
+    return null;
+}
+
+function readGalleryImage(globalResources, filename) {
+    const { safe, filePath } = resolveGalleryImagePath(globalResources, filename);
     const stat = fs.statSync(filePath);
     if (stat.size > MAX_IMAGE_BYTES) {
         const err = new Error('Image exceeds MCP size limit; use GET /images/:filename with the same app key');
@@ -883,17 +933,46 @@ async function callTool(globalResources, req, name, args) {
             err.status = 400;
             throw err;
         }
+        const wantFull = input.full === true;
         const packet = await dispatchPacketTool(globalResources, req, 'request_image_metadata', { filename });
         let image = null;
-        try {
-            image = readGalleryImage(globalResources, filename);
-        } catch (error) {
-            if (error.status === 404) {
-                return mcpTextResult({ ...packet, filename, image: null, error: 'Image file not found' }, !packet.success);
+        let imageKind = null;
+        if (wantFull) {
+            try {
+                image = readGalleryImage(globalResources, filename);
+                imageKind = 'full';
+            } catch (error) {
+                if (error.status === 404) {
+                    return mcpTextResult({ ...packet, filename, image: null, error: 'Image file not found' }, !packet.success);
+                }
+                if (error.status !== 413) throw error;
             }
-            throw error;
         }
-        return mcpImageResult({ ...packet, filename }, image);
+        if (!image) {
+            try {
+                const resolved = resolveGalleryImagePath(globalResources, filename);
+                image = await resizeImageForGrok(resolved.filePath);
+                if (image) {
+                    image.filename = filename;
+                    imageKind = 'grok';
+                }
+            } catch (error) {
+                if (error.status === 404) {
+                    return mcpTextResult({ ...packet, filename, image: null, error: 'Image file not found' }, !packet.success);
+                }
+                throw error;
+            }
+        }
+        if (!image) {
+            return mcpTextResult({
+                ...packet,
+                filename,
+                image: null,
+                imageKind: null,
+                error: 'Could not resize image for Grok'
+            }, !packet.success);
+        }
+        return mcpImageResult({ ...packet, filename, imageKind }, image);
     }
 
     if (name === 'list_clients') {
@@ -1281,6 +1360,10 @@ module.exports = {
         isAllowedOAuthOrigin,
         isAbsentOrigin,
         sanitizeGalleryFilename,
+        isCheapMcpRequest,
+        resizeImageForGrok,
+        GROK_IMAGE_MAX_EDGE,
+        MCP_RATE_MAX,
         listToolsForScopes,
         toolAllowedForScopes,
         collectAutofillTerms,
