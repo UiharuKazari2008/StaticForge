@@ -1,54 +1,9 @@
 {
-  "updated_at": "2026-08-30T10:21:02.687145+00:00",
+  "updated_at": "2026-08-30T11:17:18.481838+00:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
-  "last_breakfast_at": "2026-08-29T13:18:51.309870+00:00",
+  "last_breakfast_at": "2026-08-30T11:17:18.481838+00:00",
   "open": [],
   "done_since_breakfast": [
-    {
-      "id": "sf-4",
-      "title": "#4 commonize escapeHtml clones",
-      "from": "grok.cursor",
-      "credit": "grok.menma",
-      "labels": [
-        "cursor-agent",
-        "credit:menma"
-      ],
-      "commit": "d89eb9b",
-      "closed_at": "2026-08-29T19:42:36.986983+00:00",
-      "slices_hint": 1,
-      "lines_added": 244,
-      "lines_deleted": 78,
-      "note": "Closed on grok.cursor Done. Cake to Menma.",
-      "files_changed": 11
-    },
-    {
-      "id": "sf-20",
-      "title": "#20 cursor-agent ingest rule grok.cursor",
-      "from": "grok.cursor",
-      "credit": "grok.menma",
-      "labels": [
-        "cursor-agent",
-        "credit:menma"
-      ],
-      "commit": "d89eb9b",
-      "closed_at": "2026-08-29T19:42:36.986983+00:00",
-      "slices_hint": 1,
-      "note": "Closed on grok.cursor Done. Cake to Menma."
-    },
-    {
-      "id": "sf-21",
-      "title": "#21 Change JSON character position",
-      "from": "grok.cursor",
-      "credit": "grok.menma",
-      "labels": [
-        "cursor-agent",
-        "credit:menma"
-      ],
-      "commit": "d89eb9b",
-      "closed_at": "2026-08-29T19:42:36.986983+00:00",
-      "slices_hint": 1,
-      "note": "Closed on grok.cursor Done. Cake to Menma."
-    },
     {
       "id": "sf-22",
       "title": "#22 split autocompleteUtils.js (Jules PR 45 spellCheck+wordLookup)",
@@ -70,5 +25,5 @@
       "multiplier": 1.25
     }
   ],
-  "cake_note": "Jules PR 45 #22 land ef472e8: 1 ship + cleanup 16 (1111 deleted, cap 16) x1.25 Lead = 21.25 slices (pending_slices=21). Prior cursor-agent #4 #20 #21 still in pile. Eat at 8:30. Do not gen images in this land. Do not triple-count lines."
+  "cake_note": "Jules 21 still pending for 8:30; Cursor #4/#20/#21 eaten at 7am (5 slices tres leches, 58.64->59.24 kg). Do not re-eat Cursor ships. #37 credit-only, no slices."
 }
