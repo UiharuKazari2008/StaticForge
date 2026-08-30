@@ -93,7 +93,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Character search | — | `search_characters` | `search_results_update` | Autofill overlay |
 | Character database browser | — | `get_character_db`, `character_db_upsert`, `character_db_delete`, `character_db_rename_copyright`, `character_db_delete_copyright` | — | Tools applet (`characterDbApplet`); SQLite `.cache/characters.db`; import `scripts/import-characters-json.js` |
 | Search index admin | — | `search_index_*` | `search_indexing_status` | — |
-| Spellcheck custom word | — | `spellcheck_add_word` | — | — |
+| Spellcheck custom word | — | `spellcheck_add_word` | — | `autofill/spellCheck.js` overlay |
 | NAX tags | `GET /naxCache/...` | `get_nax_*`, `set_nax_*`, `generate_nax_custom_tag` | — | NAX applets |
 
 ---

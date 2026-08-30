@@ -130,6 +130,8 @@ Operational guide: [README-CHILD.md](../../README-CHILD.md).
 
 `fileSearch.js`, `autocompleteUtils.js` debounce and cache WS `search_files` / `search_tags` results locally.
 
+Spell-check overlay UI lives in `public/scripts/comp/autofill/spellCheck.js`. Word-lookup overlay UI lives in `public/scripts/comp/autofill/wordLookup.js`. Both were split out of `autocompleteUtils.js` (#22). Debounce/cache of `search_tags` stays in `autocompleteUtils.js`.
+
 ---
 
 ## Novel manager UI
