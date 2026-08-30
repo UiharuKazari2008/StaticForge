@@ -1008,6 +1008,9 @@ let placeholderResolutionFrameCount = 0; // Frame counter for adaptive delay
 
 let lastObserverResolutionTime = 0; // Track last observer resolution time for throttling
 let observerResolutionThrottleMs = 16; // Throttle observer resolutions to ~60fps
+let lastIdlePlaceholderResolveTime = 0;
+const PLACEHOLDER_WATCHER_WAIT_MS = 32;
+const IDLE_PLACEHOLDER_RESOLVE_THROTTLE_MS = 250;
 let galleryBlurhashPaintQueue = [];
 let galleryBlurhashPaintFrame = 0;
 const pendingGalleryItemImages = new WeakMap();
@@ -1279,7 +1282,7 @@ function processNextPlaceholders() {
     // Apply adaptive delay
     placeholderResolutionFrameCount++;
     if (placeholderResolutionFrameCount <= placeholderResolutionDelay) {
-        placeholderWatcherFrameId = setTimeout(processNextPlaceholders, 0);
+        placeholderWatcherFrameId = setTimeout(processNextPlaceholders, PLACEHOLDER_WATCHER_WAIT_MS);
         return;
     }
     placeholderResolutionFrameCount = 0;
@@ -1308,8 +1311,8 @@ function processNextPlaceholders() {
     // Check if we can start a new batch (don't exceed total concurrent limit)
     const availableSlots = maxTotalConcurrent - activeResolutions;
     if (availableSlots < currentMultiplexingLevel) {
-        // Not enough slots for a full batch, wait for some to complete
-        placeholderWatcherFrameId = setTimeout(processNextPlaceholders, 0);
+        // Not enough slots for a full batch — yield so this is not a setTimeout(0) busy-wait
+        placeholderWatcherFrameId = setTimeout(processNextPlaceholders, PLACEHOLDER_WATCHER_WAIT_MS);
         return;
     }
 
@@ -1319,7 +1322,7 @@ function processNextPlaceholders() {
     if (itemsToStart === 0) {
         // No items to process
         if (activeResolutions > 0) {
-            placeholderWatcherFrameId = setTimeout(processNextPlaceholders, 0);
+            placeholderWatcherFrameId = setTimeout(processNextPlaceholders, PLACEHOLDER_WATCHER_WAIT_MS);
         }
         return;
     }
@@ -1483,7 +1486,7 @@ function processNextPlaceholders() {
 
     // If queue is empty but we have active resolutions, keep checking for completion
     if (activeResolutions > 0) {
-        placeholderWatcherFrameId = setTimeout(processNextPlaceholders, 0);
+        placeholderWatcherFrameId = setTimeout(processNextPlaceholders, PLACEHOLDER_WATCHER_WAIT_MS);
     }
     } finally {
         updateGalleryCatchupBusyLine();
@@ -1897,6 +1900,7 @@ window.prependToActiveGalleryList = prependToActiveGalleryList;
 // getGalleryJumpIndexSelectedThresholdMs/MaxGroupImages, getGalleryImageAtFilteredIndex:
 // public/scripts/comp/galleryJumpIndex.js
 
+
 function getGalleryImageSrcCandidates(image) {
     if (!image) return [];
     const candidates = [];
@@ -2144,8 +2148,9 @@ function insertGalleryItemImage(host, img) {
     }
 }
 
-// buildGalleryJumpIndexEntries ... jumpToNextGalleryTimeBoundary / openGalleryJumpIndexToolWindow:
+// buildGalleryJumpIndexEntries … jumpToNextGalleryTimeBoundary / openGalleryJumpIndexToolWindow:
 // public/scripts/comp/galleryJumpIndex.js
+
 
 /** Filtered index of first cell in the same grid row (keeps placeholders / infinite scroll row-aligned). */
 function snapGalleryFilteredIndexToRowStart(filteredIndex, cols, effectiveLength) {
@@ -5984,7 +5989,18 @@ function initIntersectionObserver() {
         });
 
         if (needsUpdate) {
-            updateVirtualScroll();
+            // Scroll already runs updateVirtualScroll via handleInfiniteScroll.
+            // Idle intersection flicker (image decode, glass, modal) must not refill
+            // the two-page placeholder buffer — that was the P90 long-task source.
+            if (isScrolling || isFastScrolling) {
+                updateVirtualScroll();
+            } else {
+                const now = Date.now();
+                if (now - lastIdlePlaceholderResolveTime >= IDLE_PLACEHOLDER_RESOLVE_THROTTLE_MS) {
+                    lastIdlePlaceholderResolveTime = now;
+                    resolveVisiblePlaceholders();
+                }
+            }
         }
     }, {
         root: isContainerScroll ? galleryContainer : null, // Use container as root for scrolling
@@ -6041,6 +6057,7 @@ function updateVirtualScrollInternal() {
     // Detect fast scrolling and adjust buffer size accordingly
     const isRapidScrolling = Math.abs(scrollVelocity) > 3; // Increased threshold for rapid scrolling
     const isVeryFastScrolling = Math.abs(scrollVelocity) > 6; // Threshold for very fast scrolling
+    const galleryIdle = !isScrolling && !isFastScrolling && !isRapidScrolling;
 
     const rowsPerPage = galleryRows
     const visibleIndices = Array.from(visibleItems);
@@ -6154,8 +6171,9 @@ function updateVirtualScrollInternal() {
             // Items near viewport - remove placeholder class and resolve
             const isItemVisible = visibleItems.has(itemIndex);
 
-            // Check for predictive loading: items near viewport but not fully visible
-            let isItemNearViewport = isItemVisible;
+            // Check for predictive loading: items near viewport but not fully visible.
+            // At idle, resolve the whole keep-strip so overscan does not sit as placeholders.
+            let isItemNearViewport = isItemVisible || galleryIdle;
             if (!isItemNearViewport && hasPlaceholderClass) {
                 // Hoisted viewport + strip math (or one GBCR fallback) — no per-item querySelector/getComputedStyle
                 const cellHeight = (galleryStripGeometryPass && galleryStripGeometryPass.itemHeight) || itemHeight || (window.innerHeight / 5);

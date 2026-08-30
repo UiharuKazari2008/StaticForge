@@ -794,6 +794,7 @@ function getDetachedAutofillRenderedResultCount() {
 }
 
 function ensureDetachedAutofillListComplete() {
+    if (isAutofillListChunkPending()) return;
     if (!isAutofillDetachedMode()) return;
     if (!window.allAutocompleteResults || !currentCharacterAutocompleteTarget) return;
     if (!shouldApplyAutocompleteUI(currentCharacterAutocompleteTarget)) return;
@@ -8476,6 +8477,47 @@ function createAutocompleteItem(result) {
     return item;
 }
 
+const AUTOFILL_LIST_CHUNK_SIZE = 32;
+let autofillListChunkRaf = 0;
+let autofillListChunkQueue = null;
+
+function cancelAutofillListChunks() {
+    if (autofillListChunkRaf) {
+        cancelAnimationFrame(autofillListChunkRaf);
+        autofillListChunkRaf = 0;
+    }
+    autofillListChunkQueue = null;
+}
+
+function isAutofillListChunkPending() {
+    return !!(autofillListChunkQueue || autofillListChunkRaf);
+}
+
+function appendAutocompleteResultItems(limitedResults, startIndex, onComplete) {
+    if (!characterAutocompleteList || !limitedResults) {
+        if (onComplete) onComplete();
+        return;
+    }
+    const end = Math.min(limitedResults.length, startIndex + AUTOFILL_LIST_CHUNK_SIZE);
+    const fragment = document.createDocumentFragment();
+    for (let i = startIndex; i < end; i++) {
+        fragment.appendChild(createAutocompleteItem(limitedResults[i]));
+    }
+    characterAutocompleteList.appendChild(fragment);
+    if (end < limitedResults.length) {
+        autofillListChunkQueue = { results: limitedResults, index: end, onComplete };
+        autofillListChunkRaf = requestAnimationFrame(() => {
+            autofillListChunkRaf = 0;
+            const queued = autofillListChunkQueue;
+            if (!queued) return;
+            appendAutocompleteResultItems(queued.results, queued.index, queued.onComplete);
+        });
+        return;
+    }
+    autofillListChunkQueue = null;
+    if (onComplete) onComplete();
+}
+
 function showCharacterAutocompleteSuggestions(results, target, spellCheckData = null) {
     if (!characterAutocompleteList || !characterAutocompleteOverlay) {
         console.error('Character autocomplete elements not found');
@@ -8531,6 +8573,7 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
 
     // Clear only the results section, not the entire list
     // This preserves the search status display
+    cancelAutofillListChunks();
     const existingResults = characterAutocompleteList.querySelectorAll('.character-autocomplete-item, .spell-check-section, .word-lookup-section, .no-results, .more-indicator, .character-detail-content');
     invalidateAutofillResultsCache();
     removeAutocompleteResultNodes(existingResults);
@@ -8592,12 +8635,10 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
         `;
         characterAutocompleteList.appendChild(noResultsItem);
     } else if (displayResults.length > 0) {
-        limitedResults.forEach((result, index) => {
-            const item = createAutocompleteItem(result);
-            characterAutocompleteList.appendChild(item);
+        cancelAutofillListChunks();
+        appendAutocompleteResultItems(limitedResults, 0, () => {
+            appendAutofillResultsFooterBanner(displayResults);
         });
-
-        appendAutofillResultsFooterBanner(displayResults);
 
         if (preserveSelection) {
             restoreSelection(displayResults);
@@ -8847,6 +8888,7 @@ function rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckRe
 
     // Clear only the results section, not the entire list
     // This preserves the search status display
+    cancelAutofillListChunks();
     const existingResults = characterAutocompleteList.querySelectorAll('.character-autocomplete-item, .spell-check-section, .word-lookup-section, .no-results, .more-indicator, .character-detail-content');
     invalidateAutofillResultsCache();
     removeAutocompleteResultNodes(existingResults);
@@ -8908,12 +8950,10 @@ function rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckRe
         `;
         characterAutocompleteList.appendChild(noResultsItem);
     } else if (displayResults.length > 0) {
-        limitedResults.forEach((result, index) => {
-            const item = createAutocompleteItem(result);
-            characterAutocompleteList.appendChild(item);
+        cancelAutofillListChunks();
+        appendAutocompleteResultItems(limitedResults, 0, () => {
+            appendAutofillResultsFooterBanner(displayResults);
         });
-
-        appendAutofillResultsFooterBanner(displayResults);
 
         if (preserveSelection) {
             restoreSelection(displayResults);
@@ -10841,6 +10881,7 @@ function hideCharacterAutocomplete(options) {
     resetAutofillWikiPreviewSessionState();
     clearAutofillSearchWatchdog();
 
+    cancelAutofillListChunks();
     if (rebuildDisplayRaf) {
         cancelAnimationFrame(rebuildDisplayRaf);
         rebuildDisplayRaf = 0;

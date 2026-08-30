@@ -1,7 +1,54 @@
 {
-  "updated_at": "2026-08-29T13:18:51.309870+00:00",
+  "updated_at": "2026-08-29T19:42:36.986983+00:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
   "last_breakfast_at": "2026-08-29T13:18:51.309870+00:00",
   "open": [],
-  "done_since_breakfast": []
+  "done_since_breakfast": [
+    {
+      "id": "sf-4",
+      "title": "#4 commonize escapeHtml clones",
+      "from": "grok.cursor",
+      "credit": "grok.menma",
+      "labels": [
+        "cursor-agent",
+        "credit:menma"
+      ],
+      "commit": "d89eb9b",
+      "closed_at": "2026-08-29T19:42:36.986983+00:00",
+      "slices_hint": 1,
+      "lines_added": 244,
+      "lines_deleted": 78,
+      "note": "Closed on grok.cursor Done. Cake to Menma.",
+      "files_changed": 11
+    },
+    {
+      "id": "sf-20",
+      "title": "#20 cursor-agent ingest rule grok.cursor",
+      "from": "grok.cursor",
+      "credit": "grok.menma",
+      "labels": [
+        "cursor-agent",
+        "credit:menma"
+      ],
+      "commit": "d89eb9b",
+      "closed_at": "2026-08-29T19:42:36.986983+00:00",
+      "slices_hint": 1,
+      "note": "Closed on grok.cursor Done. Cake to Menma."
+    },
+    {
+      "id": "sf-21",
+      "title": "#21 Change JSON character position",
+      "from": "grok.cursor",
+      "credit": "grok.menma",
+      "labels": [
+        "cursor-agent",
+        "credit:menma"
+      ],
+      "commit": "d89eb9b",
+      "closed_at": "2026-08-29T19:42:36.986983+00:00",
+      "slices_hint": 1,
+      "note": "Closed on grok.cursor Done. Cake to Menma."
+    }
+  ],
+  "cake_note": "credit:menma Cursor ships #4 #20 #21 on d89eb9b: 3 task slices + slices_for_cleanup(78 deleted). Eat at next meal. Do not triple-count lines."
 }
