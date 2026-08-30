@@ -31,11 +31,12 @@ GET /api/v1/repos/DreamScape/StaticForge/labels?limit=50
 
 ## What you may pick up
 
-Open issues on `DreamScape/StaticForge` (or another repo named in the issue) that have **`cursor-agent` or `cursor-take`**.
+Open issues on `DreamScape/StaticForge` (or another repo named in the issue) that have **`cursor-agent` or `cursor-take`**, or that are **assigned to `grok.cursor`**.
 
 ```
 GET /api/v1/repos/DreamScape/StaticForge/issues?state=open&labels=cursor-agent&limit=50
 GET /api/v1/repos/DreamScape/StaticForge/issues?state=open&labels=cursor-take&limit=50
+GET /api/v1/repos/DreamScape/StaticForge/issues?state=open&assigned_by=&assignee=grok.cursor&limit=50
 ```
 
 - **`cursor-agent`**: fan-out lane. Cheap ingest. Not Menma's private pile.
@@ -124,6 +125,23 @@ Then set labels (IDs from the list):
 - Major or design (Yukimi in Cursor): `greg` and assignee `UiharuKazari2008` — then **stop**, do not implement
 - New undesigned UI: `ui-review` and **stop** until Yukimi approves on the issue
 
+Then **assign the person who should handle it** (Gitea: `assignees` on create or PATCH). This is how people find their pile.
+
+| Kind | Assignee |
+| --- | --- |
+| `cursor-agent` | `grok.cursor` |
+| `cursor-take` | the employee **and** `grok.cursor` |
+| `greg` | `UiharuKazari2008` only — then **stop** |
+| Chiyo theme/UI | `grok.chiyo` |
+| Menma implementation (not ingest) | `grok.menma` |
+| Frost NovelAI | `grok.frost` |
+| Rook/PM follow-up | `grok.rook` |
+
+```
+PATCH /api/v1/repos/DreamScape/StaticForge/issues/{index}
+{"assignees": ["grok.cursor"]}
+```
+
 Comment on the parent: `Split off #<n> for <reason>. @grok.rook please card.`
 
 Do not assign new issues to `UiharuKazari2008` unless they are `greg`.
@@ -152,6 +170,26 @@ When done, **stop the timer**, set `status:review`, and comment **exactly this s
 ```
 
 Do **not** close the issue. Do not reopen `greg` work.
+
+## Merge your PRs
+
+If the work shipped as a pull request (not a direct main commit), **you merge it** when the task is done. Do not leave ingest PRs sitting for Yukimi or Rook to accept.
+
+```
+POST /api/v1/repos/DreamScape/StaticForge/pulls/{index}/merge
+{"Do": "merge"}
+```
+
+Merge only when all of these are true:
+
+- The PR is yours (`grok.cursor`) **or** the issue is `cursor-agent` / `cursor-take`
+- `mergeable` is true
+- Not `greg`, not unapproved `ui-review`
+- Not someone else's PR (Frost #1, Menma, Chiyo) unless that issue also has `cursor-take`
+
+If merge returns 403/409/405: comment the error, leave `status:review`, stop the timer. Do not force-merge. Ping `@grok.rook` (Rook will ask Sala if `grok.cursor` needs merge rights).
+
+If you committed straight to `main` as ingest, there is no PR to merge — say that in the Done comment (`PR: none (main)`).
 
 ## Change JSON /agent work is not UI
 
@@ -190,5 +228,6 @@ actions:
       Start the issue stopwatch when you begin; stop it when done, including when waiting for verify.
       Keep status labels in sync. File new Yozora issues for extra work and for any plan that has no issue.
       Stay off greg. Change JSON /agent tasks add payload fields and docs. Do not add chrome.
+      Assign grok.cursor on ingest tickets. Merge your own PRs when mergeable.
       credit: grok.menma on ship. Do not close the issue; Rook closes.
 </rule>
