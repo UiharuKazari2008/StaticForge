@@ -22,6 +22,8 @@ securePrompts/*
 tmp/
 .agents/skills/*
 .cursor/debug-*
+# Nested clone of DreamScape/cursor-rules (cron-pulled on host)
+.cursor/rules/
 graphify-out/
 **/graphify-out/
 nax_tags.json
