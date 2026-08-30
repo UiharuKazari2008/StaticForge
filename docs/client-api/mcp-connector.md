@@ -85,7 +85,7 @@ When using grok.com → New Connector → Custom, fill in:
 
 ### Client registration (RFC 7591 DCR)
 
-Register an OAuth client before using the flow. `application_key` is **optional** — if omitted, `oauth_clients.application_key_id` stays null and the `sfapp_` key is bound onto that row at consent approve. Posted `application_key_id` on authorize is ignored; only a validated `sfapp_` secret or an already-bound client row counts.
+Register an OAuth client before using the flow. `application_key` is **optional** on register. If omitted, `oauth_clients.application_key_id` stays null until consent: PIN, then pick or create a key. Authorize does not accept a pasted `sfapp_` secret.
 
 **Option A: Pre-mint with app key binding (recommended for CLI)**
 
@@ -125,7 +125,7 @@ Response (both options):
 }
 ```
 
-Use the returned `client_id` in the Grok form. If registered without an app key, the consent page will prompt for one.
+Use the returned `client_id` in the Grok form. If registered without an app key, the consent page asks for your PIN and a key pick/create.
 
 ### Pre-minted client_id for Grok manual form
 
@@ -137,7 +137,7 @@ curl -X POST "https://<host>/{mcpPathUuid}/oauth/register" \
   -d '{"client_name":"Grok","redirect_uris":["https://grok.com/oauth/callback"]}'
 ```
 
-Copy the `client_id` from the response and paste it into the Grok form. The `sfapp_` key will be entered on the consent page during authorization.
+Copy the `client_id` from the response and paste it into the Grok form. On the consent page, sign in with your Dreamscape PIN and pick or create a key.
 
 ### Authorization flow
 
@@ -151,9 +151,11 @@ Copy the `client_id` from the response and paste it into the Grok form. The `sfa
    - `code_challenge_method=S256`
    - `resource=https://<host>/{mcpPathUuid}` (optional)
 
-2. User sees consent page (ui-review flag) showing client name and requested scopes.
-   - If the client was registered **without** an `application_key`, the consent page shows a password field to enter the `sfapp_` key. Approve validates that secret and writes `application_key_id` on the client row.
-   - If the client was registered **with** an `application_key`, no input is needed — the key is already bound.
+2. User sees consent page (ui-review) showing client name and requested scopes.
+   - Enter the **Dreamscape PIN** (same admin / user PIN as the login pad). PIN is only accepted on UUID `/oauth/authorize`. It is not MCP auth.
+   - After PIN: pick an existing `sfapp_` key that matches the requested scopes, or **create a new** key (requested named scopes only, never `universal`). Raw keys are not shown or pasted.
+   - If the client was already bound, PIN still gates Approve; no picker.
+   - Consent session is a 5-minute HttpOnly cookie + CSRF field. Wrong PIN is rate-limited and lockouts after 5 failures.
 
 3. On approve, redirect to `redirect_uri` with `code` and `state`.
 

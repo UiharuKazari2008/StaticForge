@@ -522,9 +522,21 @@ function registerRoutes(app, { globalResources }) {
     app.options(`${oauthPrefix}/register`, mcpMiddleware);
     app.post(`${oauthPrefix}/register`, mcpMiddleware, bodyParser, oauthRoutes.handleRegister);
 
+    const consentPinLimiter = rateLimit({
+        windowMs: 15 * 60 * 1000,
+        max: 20,
+        skipSuccessfulRequests: true,
+        keyGenerator: (req) => `mcp-consent-pin:${req.ip || req.socket?.remoteAddress || 'unknown'}`,
+        handler: (req, res) => {
+            res.status(429).send('Too many PIN attempts. Try again later.');
+        },
+        standardHeaders: true,
+        legacyHeaders: false
+    });
+
     app.options(`${oauthPrefix}/authorize`, mcpMiddleware);
     app.get(`${oauthPrefix}/authorize`, mcpMiddleware, oauthRoutes.handleAuthorizeGet);
-    app.post(`${oauthPrefix}/authorize`, mcpMiddleware, urlEncodedParser, oauthRoutes.handleAuthorizePost);
+    app.post(`${oauthPrefix}/authorize`, mcpMiddleware, consentPinLimiter, urlEncodedParser, oauthRoutes.handleAuthorizePost);
 
     app.options(`${oauthPrefix}/token`, mcpMiddleware);
     app.post(`${oauthPrefix}/token`, mcpMiddleware, urlEncodedParser, oauthRoutes.handleToken);

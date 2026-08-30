@@ -118,7 +118,7 @@ const renderedXss = renderConsentPage({
 assert.ok(!renderedXss.includes('<script>'));
 assert.ok(renderedXss.includes('&lt;script&gt;'));
 
-console.log('Testing consent page with no applicationKeyId (consent-bind flow)...');
+console.log('Testing consent PIN step (no raw sfapp_ paste)...');
 const renderedNoKey = renderConsentPage({
     clientName: 'Grok Connector',
     clientId: 'mcp_grok123',
@@ -128,15 +128,38 @@ const renderedNoKey = renderConsentPage({
     codeChallenge: 'challenge123',
     codeChallengeMethod: 'S256',
     formAction: '/test-uuid/oauth/authorize',
-    applicationKeyId: null
+    step: 'pin'
 });
-assert.ok(renderedNoKey.includes('Your Application Key (sfapp_...)'));
-assert.ok(renderedNoKey.includes('name="application_key"'));
+assert.ok(renderedNoKey.includes('Your Dreamscape PIN'));
+assert.ok(renderedNoKey.includes('name="pin"'));
 assert.ok(renderedNoKey.includes('type="password"'));
-assert.ok(renderedNoKey.includes('required'));
-assert.ok(!renderedNoKey.includes('name="application_key_id"'));
+assert.ok(!renderedNoKey.includes('name="application_key"'));
+assert.ok(!renderedNoKey.includes('sfapp_'));
 
-console.log('Testing consent page with pre-bound applicationKeyId...');
+console.log('Testing consent key-picker step...');
+const renderedPick = renderConsentPage({
+    clientName: 'Grok Connector',
+    clientId: 'mcp_grok123',
+    redirectUri: 'https://grok.com/callback',
+    state: 'state123',
+    scope: 'generation gallery',
+    codeChallenge: 'challenge123',
+    codeChallengeMethod: 'S256',
+    formAction: '/test-uuid/oauth/authorize',
+    step: 'pick',
+    csrf: 'csrf-token-1',
+    keys: [{ id: 'key-1', appName: 'Studio', keyPrefix: 'sfapp_abcd', scopes: ['generation'] }],
+    selectedKeyId: 'key-1',
+    generatedName: 'MCP Grok Connector'
+});
+assert.ok(renderedPick.includes('name="csrf"'));
+assert.ok(renderedPick.includes('name="selected_key_id"'));
+assert.ok(renderedPick.includes('Create new key'));
+assert.ok(renderedPick.includes('Studio'));
+assert.ok(!renderedPick.includes('name="application_key"'));
+assert.ok(!renderedPick.includes('name="pin"'));
+
+console.log('Testing consent page with pre-bound key...');
 const renderedWithKey = renderConsentPage({
     clientName: 'Pre-bound Client',
     clientId: 'mcp_prebound',
@@ -146,12 +169,15 @@ const renderedWithKey = renderConsentPage({
     codeChallenge: 'challenge456',
     codeChallengeMethod: 'S256',
     formAction: '/test-uuid/oauth/authorize',
-    applicationKeyId: 'key-abc-123'
+    step: 'pick',
+    csrf: 'csrf-token-2',
+    keys: [],
+    boundKeyLabel: 'Studio · sfapp_abcd…'
 });
-assert.ok(!renderedWithKey.includes('Your Application Key (sfapp_...)'));
+assert.ok(renderedWithKey.includes('already bound'));
+assert.ok(renderedWithKey.includes('Studio'));
+assert.ok(!renderedWithKey.includes('name="selected_key_id"'));
 assert.ok(!renderedWithKey.includes('name="application_key"'));
-assert.ok(renderedWithKey.includes('name="application_key_id"'));
-assert.ok(renderedWithKey.includes('value="key-abc-123"'));
 
 console.log('Testing McpOAuthProvider metadata...');
 const { McpOAuthProvider } = require('../modules/mcpOAuthProvider');
