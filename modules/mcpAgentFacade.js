@@ -35,6 +35,13 @@ const MCP_RATE_WINDOW_MS = 15 * 60 * 1000;
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 const GROK_IMAGE_MAX_EDGE = 1280;
 const GROK_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
+const MCP_INSTRUCTIONS = [
+    'Known or last gallery image: call get_generated_image. Pass filename, seed, or omit filename for the latest image in the workspace (default workspace if omitted). It returns NovelAI metadata plus a small webp. Never page get_images to find a file.',
+    'Studio prompt / compare / edit: call get_studio_state (auto-binds if exactly one tab is connected), then get_generated_image with state.filename. Write back with apply_studio_changes Change-JSON. autoGenerate clicks the bound Studio Generate button.',
+    'generate_image is a server-side generate and returns the new filename plus a small webp. Do not page the gallery afterward.',
+    'get_images is a directory listing only. omegasearch finds names; then call get_generated_image.',
+    'If a tool is rate limited, wait retryAfter seconds for that group (free/search/gallery/write/studio/generate).'
+].join(' ');
 
 const MCP_CORS_ORIGINS = new Set([
     'https://grok.com',
@@ -52,7 +59,7 @@ const OAUTH_CORS_ORIGINS = new Set([
 const TOOL_DEFS = [
     {
         name: 'generate_image',
-        description: 'Server-side generate via existing WS generate_image (POST /agent/packet). Not the bound-tab Generate button.',
+        description: 'Generate on the server and return the new filename plus a Grok-sized webp and metadata. Not the Studio Generate button (use apply_studio_changes autoGenerate for that). Do not page get_images after this.',
         scope: 'generation',
         packet: 'generate_image',
         inputSchema: {
@@ -73,26 +80,42 @@ const TOOL_DEFS = [
     },
     {
         name: 'get_generated_image',
-        description: 'Known gallery filename → NovelAI metadata plus a Grok-sized webp (fit-inside resize of the original, never the full PNG). Pass filename only. Do not page get_images. Set full=true only if you need the original bytes.',
+        description: 'Get one gallery image as NovelAI metadata plus a Grok-sized webp. Pass filename, seed, or omit filename for the latest image. workspace default is "default". Do not page get_images.',
         scope: 'gallery',
         packet: 'request_image_metadata',
         inputSchema: {
             type: 'object',
-            required: ['filename'],
+            additionalProperties: false,
             properties: {
-                filename: { type: 'string', description: 'Gallery filename basename' },
-                full: { type: 'boolean', description: 'Return original PNG when under the MCP size cap. Default false (always resize for Grok).' }
+                filename: { type: 'string', description: 'Basename, partial name, or omit for latest' },
+                seed: { type: ['string', 'number'], description: 'Find by seed when filename is unknown' },
+                workspace: { type: 'string', description: 'Workspace id or "default"' },
+                workspaceId: { type: 'string' },
+                full: { type: 'boolean', description: 'Original PNG only if under the size cap. Default false.' }
+            }
+        }
+    },
+    {
+        name: 'get_latest_image',
+        description: 'Newest image in a workspace (default workspace if omitted) as metadata plus a Grok-sized webp. Same as get_generated_image with no filename.',
+        scope: 'gallery',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                workspace: { type: 'string' },
+                workspaceId: { type: 'string' }
             }
         }
     },
     {
         name: 'get_images',
-        description: 'Paged gallery list via request_gallery. Do not use this to find a known filename — call get_generated_image with that basename.',
+        description: 'Directory listing of the gallery (paged). Not for a known or last file — use get_generated_image or get_latest_image.',
         scope: 'gallery',
         packet: 'request_gallery',
         inputSchema: {
             type: 'object',
-            additionalProperties: true,
+            additionalProperties: false,
             properties: {
                 workspaceId: { type: 'string' },
                 offset: { type: 'number' },
@@ -104,20 +127,20 @@ const TOOL_DEFS = [
     },
     {
         name: 'get_workspaces',
-        description: 'List workspaces via existing workspace_list packet.',
+        description: 'List workspaces. The default workspace id is "default".',
         scope: 'workspace',
         packet: 'workspace_list',
         inputSchema: { type: 'object', properties: {} }
     },
     {
         name: 'list_clients',
-        description: 'List connected Studio websocket clients (same as GET /agent/clients). Needed before public bind.',
+        description: 'List open Studio tabs. Only needed when more than one tab is connected; get_studio_state auto-binds a single tab.',
         scope: 'generation',
         inputSchema: { type: 'object', properties: {} }
     },
     {
         name: 'bind_session',
-        description: 'Bind one connected Studio tab (same as POST /agent/bind). clientId or share code.',
+        description: 'Pick which Studio tab to drive when more than one is connected. clientId from list_clients, or a share code.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -129,13 +152,13 @@ const TOOL_DEFS = [
     },
     {
         name: 'get_studio_state',
-        description: 'Snapshot the bound Studio tab (same as GET /agent/session/state): current change JSON, open filename, model, workspace. Bind first. Do not page the gallery for the open prompt.',
+        description: 'Current Studio prompt, UC, characters, params, and open filename. Auto-binds if exactly one tab is connected. Then use get_generated_image on filename to see the picture.',
         scope: 'generation',
         inputSchema: { type: 'object', properties: {} }
     },
     {
         name: 'apply_studio_changes',
-        description: 'Apply Change-JSON on the bound tab (same as POST /agent/session/studio). autoApply/autoGenerate are siblings of change. autoGenerate clicks the existing Studio Generate button after a successful apply.',
+        description: 'Write Change-JSON into the bound Studio tab. Auto-binds if one tab is connected. autoGenerate (default false) clicks Studio Generate after apply. Characters must be action replace + index.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -427,7 +450,7 @@ const TOOL_DEFS = [
     },
     {
         name: 'omegasearch',
-        description: 'Gallery / prompt OmegaSearch. Wraps omegasearch_query. Send query, terms, or blocks.',
+        description: 'Search gallery prompts/tags. An exact filename query returns that row — then call get_generated_image. Do not use this to download pixels.',
         scope: 'search',
         inputSchema: {
             type: 'object',
@@ -641,6 +664,7 @@ const TOOL_RATE_GROUPS = {
     omegasearch: 'search',
     get_images: 'gallery',
     get_generated_image: 'gallery',
+    get_latest_image: 'gallery',
     create_note: 'write',
     update_note: 'write',
     save_note_content: 'write',
@@ -742,6 +766,29 @@ function createMcpRateLimiter() {
         }
         const denied = consumeRateGroup(rateLimitPrincipal(req), groupId);
         if (denied.ok) return next();
+        if (method === 'tools/call') {
+            const retryAfterSec = denied.retryAfterSec;
+            res.setHeader('Retry-After', String(retryAfterSec));
+            res.setHeader('X-RateLimit-Group', denied.group);
+            res.setHeader('X-RateLimit-Limit', String(denied.limit));
+            const id = req.body && !Array.isArray(req.body) && Object.prototype.hasOwnProperty.call(req.body, 'id')
+                ? req.body.id
+                : null;
+            return res.status(200).json({
+                jsonrpc: '2.0',
+                id,
+                result: mcpTextResult({
+                    success: false,
+                    error: `Rate limited (${denied.group}). Retry in ${retryAfterSec} seconds.`,
+                    code: 'RATE_LIMIT_EXCEEDED',
+                    group: denied.group,
+                    retryAfter: retryAfterSec,
+                    retryAfterMs: denied.retryAfterMs,
+                    limit: denied.limit,
+                    windowMs: denied.windowMs
+                }, true)
+            });
+        }
         return sendRateLimitResponse(req, res, denied);
     };
 }
@@ -753,6 +800,108 @@ function sanitizeGalleryFilename(filename) {
         return null;
     }
     return path.basename(raw);
+}
+
+function resolveWorkspaceId(value) {
+    const raw = String(value == null ? '' : value).trim();
+    if (!raw || raw.toLowerCase() === 'default') return 'default';
+    return raw;
+}
+
+function flattenPacket(packet) {
+    const data = packet && packet.data && typeof packet.data === 'object' && !Array.isArray(packet.data)
+        ? packet.data
+        : {};
+    const skip = new Set(['image', 'buffer', 'reply', 'replies', 'preview']);
+    const out = { success: !!(packet && packet.success) };
+    Object.keys(data).forEach((key) => {
+        if (skip.has(key)) return;
+        const value = data[key];
+        if (typeof value === 'string' && value.length > 200000) return;
+        out[key] = value;
+    });
+    if (packet && packet.type) out.packetType = packet.type;
+    if (!out.success) {
+        out.error = data.error || data.message || data.error_description || 'request failed';
+    }
+    return out;
+}
+
+function galleryFileExists(globalResources, filename) {
+    const safe = sanitizeGalleryFilename(filename);
+    if (!safe) return null;
+    try {
+        resolveGalleryImagePath(globalResources, safe);
+        return safe;
+    } catch (_) {
+        return null;
+    }
+}
+
+function autoBindIfNeeded(globalResources) {
+    if (getBoundRecord(globalResources)) {
+        return { bound: true, auto: false, clientId: getBoundClientId() };
+    }
+    const clients = listClients(globalResources);
+    if (clients.length === 1 && clients[0].clientId) {
+        bindClient(globalResources, { clientId: clients[0].clientId });
+        return { bound: true, auto: true, clientId: clients[0].clientId };
+    }
+    return { bound: false, auto: false, clients };
+}
+
+async function lookupFilenameViaSearch(globalResources, req, query, workspaceId) {
+    const q = String(query || '').trim();
+    if (!q) return null;
+    const packet = await dispatchPacketTool(globalResources, req, 'omegasearch_query', {
+        blocks: [q],
+        workspaceId,
+        viewType: 'images',
+        offset: 0,
+        limit: 8
+    });
+    const rows = packet.data && Array.isArray(packet.data.results) ? packet.data.results : [];
+    const exact = rows.find((row) => row && (row.filename === q || row.filename === path.basename(q)));
+    if (exact && exact.filename) return exact.filename;
+    if (rows.length === 1 && rows[0].filename) return rows[0].filename;
+    return null;
+}
+
+async function latestGalleryFilename(globalResources, req, workspaceId) {
+    const packet = await dispatchPacketTool(globalResources, req, 'request_gallery', {
+        workspaceId,
+        offset: 0,
+        limit: 1,
+        viewType: 'images'
+    });
+    const gallery = packet.data && Array.isArray(packet.data.gallery) ? packet.data.gallery : [];
+    const row = gallery[0];
+    return row && row.filename ? row.filename : null;
+}
+
+async function resolveGalleryFilename(globalResources, req, input) {
+    const workspaceId = resolveWorkspaceId(input.workspaceId || input.workspace);
+    const seed = input.seed != null ? String(input.seed).trim() : '';
+    let name = sanitizeGalleryFilename(input.filename || input.image || '');
+    if (name) {
+        const existing = galleryFileExists(globalResources, name);
+        if (existing) return { filename: existing, workspaceId };
+        if (!path.extname(name)) {
+            const withPng = galleryFileExists(globalResources, `${name}.png`);
+            if (withPng) return { filename: withPng, workspaceId };
+        }
+        const found = await lookupFilenameViaSearch(globalResources, req, name, workspaceId);
+        if (found) return { filename: found, workspaceId };
+    }
+    if (seed) {
+        const found = await lookupFilenameViaSearch(globalResources, req, seed, workspaceId);
+        if (found) return { filename: found, workspaceId };
+    }
+    if (!name && !seed) {
+        const latest = await latestGalleryFilename(globalResources, req, workspaceId);
+        if (latest) return { filename: latest, workspaceId, latest: true };
+    }
+    return { filename: null, workspaceId };
 }
 
 function resolveGalleryImagePath(globalResources, filename) {
@@ -974,6 +1123,16 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (name === 'apply_preset_to_studio') {
+        const bind = autoBindIfNeeded(globalResources);
+        if (!getBoundRecord(globalResources)) {
+            return mcpTextResult({
+                success: false,
+                error: bind.clients && bind.clients.length > 1
+                    ? 'Several Studio tabs are connected. Call bind_session with one clientId.'
+                    : 'No Studio client is connected.',
+                clients: bind.clients || []
+            }, true);
+        }
         const loaded = await dispatchPacketTool(globalResources, req, 'load_preset', {
             presetName: input.presetName,
             presetUuid: input.presetUuid
@@ -996,13 +1155,29 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (name === 'omegasearch') {
+        input.workspaceId = resolveWorkspaceId(input.workspaceId || input.workspace);
         input.blocks = collectOmegasearchBlocks(input);
+        if (!input.blocks.length && input.filename) {
+            input.blocks = [String(input.filename).trim()];
+        }
         if (!input.blocks.length) {
             const err = new Error('query, terms, or blocks is required');
             err.status = 400;
             throw err;
         }
-        return mcpTextResult(await dispatchPacketTool(globalResources, req, 'omegasearch_query', input));
+        const packet = await dispatchPacketTool(globalResources, req, 'omegasearch_query', input);
+        const flat = flattenPacket(packet);
+        const q = String(input.query || input.filename || '').trim();
+        const results = Array.isArray(flat.results) ? flat.results : [];
+        const exact = results.find((row) => row && (row.filename === q || row.filename === path.basename(q)));
+        if (exact && exact.filename) {
+            flat.filename = exact.filename;
+            flat.next = 'Call get_generated_image with this filename. Do not page get_images.';
+        } else if (results.length === 1 && results[0].filename) {
+            flat.filename = results[0].filename;
+            flat.next = 'Call get_generated_image with this filename. Do not page get_images.';
+        }
+        return mcpTextResult(flat, !flat.success);
     }
 
     if (name === 'create_note') {
@@ -1043,19 +1218,53 @@ async function callTool(globalResources, req, name, args) {
         }));
     }
 
-    if (def.packet && name !== 'get_generated_image') {
-        return mcpTextResult(await dispatchPacketTool(globalResources, req, def.packet, input));
+    const generateNames = ['generate_image', 'generate_preset', 'upscale_image', 'expand_image'];
+    if (generateNames.includes(name)) {
+        if (input.workspace || input.workspaceId) {
+            input.workspace = resolveWorkspaceId(input.workspace || input.workspaceId);
+        }
+        const packet = await dispatchPacketTool(globalResources, req, def.packet, input);
+        const flat = flattenPacket(packet);
+        const filename = sanitizeGalleryFilename(
+            flat.filename || (Array.isArray(flat.filenames) ? flat.filenames[0] : '')
+        );
+        if (filename && packet.success) {
+            try {
+                const resolved = resolveGalleryImagePath(globalResources, filename);
+                const image = await resizeImageForGrok(resolved.filePath);
+                if (image) {
+                    image.filename = filename;
+                    return mcpImageResult({ ...flat, filename, imageKind: 'grok' }, image);
+                }
+            } catch (_) { /* metadata-only fallback */ }
+        }
+        return mcpTextResult({ ...flat, filename: filename || null }, !flat.success);
     }
 
-    if (name === 'get_generated_image') {
-        const filename = sanitizeGalleryFilename(input.filename);
+    if (def.packet && name !== 'get_generated_image') {
+        if (input.workspaceId || input.workspace) {
+            input.workspaceId = resolveWorkspaceId(input.workspaceId || input.workspace);
+            input.workspace = input.workspaceId;
+        }
+        const packet = await dispatchPacketTool(globalResources, req, def.packet, input);
+        return mcpTextResult(flattenPacket(packet), !packet.success);
+    }
+
+    if (name === 'get_generated_image' || name === 'get_latest_image') {
+        const lookedUp = await resolveGalleryFilename(globalResources, req, name === 'get_latest_image'
+            ? { workspace: input.workspace, workspaceId: input.workspaceId }
+            : input);
+        const filename = lookedUp.filename;
         if (!filename) {
-            const err = new Error('filename is required');
-            err.status = 400;
-            throw err;
+            return mcpTextResult({
+                success: false,
+                error: 'No gallery image matched. Pass filename, seed, or use get_latest_image.',
+                workspaceId: lookedUp.workspaceId
+            }, true);
         }
         const wantFull = input.full === true;
         const packet = await dispatchPacketTool(globalResources, req, 'request_image_metadata', { filename });
+        const meta = flattenPacket(packet);
         let image = null;
         let imageKind = null;
         if (wantFull) {
@@ -1064,7 +1273,7 @@ async function callTool(globalResources, req, name, args) {
                 imageKind = 'full';
             } catch (error) {
                 if (error.status === 404) {
-                    return mcpTextResult({ ...packet, filename, image: null, error: 'Image file not found' }, !packet.success);
+                    return mcpTextResult({ ...meta, filename, image: null, error: 'Image file not found' }, !packet.success);
                 }
                 if (error.status !== 413) throw error;
             }
@@ -1079,21 +1288,27 @@ async function callTool(globalResources, req, name, args) {
                 }
             } catch (error) {
                 if (error.status === 404) {
-                    return mcpTextResult({ ...packet, filename, image: null, error: 'Image file not found' }, !packet.success);
+                    return mcpTextResult({ ...meta, filename, image: null, error: 'Image file not found' }, !packet.success);
                 }
                 throw error;
             }
         }
         if (!image) {
             return mcpTextResult({
-                ...packet,
+                ...meta,
                 filename,
                 image: null,
                 imageKind: null,
                 error: 'Could not resize image for Grok'
             }, !packet.success);
         }
-        return mcpImageResult({ ...packet, filename, imageKind }, image);
+        return mcpImageResult({
+            ...meta,
+            filename,
+            imageKind,
+            workspaceId: lookedUp.workspaceId,
+            latest: !!lookedUp.latest
+        }, image);
     }
 
     if (name === 'list_clients') {
@@ -1105,11 +1320,15 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (name === 'get_studio_state') {
+        const bind = autoBindIfNeeded(globalResources);
         const bound = getBoundRecord(globalResources);
         if (!bound) {
             return mcpTextResult({
                 success: false,
-                error: 'No Studio client is bound. Call list_clients then bind_session.'
+                error: bind.clients && bind.clients.length > 1
+                    ? 'Several Studio tabs are connected. Call bind_session with one clientId from list_clients.'
+                    : 'No Studio client is connected. Open Studio in the browser, then retry.',
+                clients: bind.clients || []
             }, true);
         }
         const scopePayload = buildAgentScopePayload(req, globalResources);
@@ -1121,6 +1340,7 @@ async function callTool(globalResources, req, name, args) {
             return mcpTextResult({
                 success: true,
                 bound: true,
+                autoBound: !!bind.auto,
                 workspaceId: data.workspaceId || null,
                 filename: data.filename || null,
                 model: data.model || null,
@@ -1154,8 +1374,18 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (name === 'apply_studio_changes') {
+        const bind = autoBindIfNeeded(globalResources);
+        if (!getBoundRecord(globalResources)) {
+            return mcpTextResult({
+                success: false,
+                error: bind.clients && bind.clients.length > 1
+                    ? 'Several Studio tabs are connected. Call bind_session with one clientId.'
+                    : 'No Studio client is connected.',
+                clients: bind.clients || []
+            }, true);
+        }
         const data = await applyStudioChanges(globalResources, input);
-        return mcpTextResult({ success: true, ...data });
+        return mcpTextResult({ success: true, autoBound: !!bind.auto, ...data });
     }
 
     const err = new Error(`Unknown tool: ${name}`);
@@ -1327,7 +1557,8 @@ async function handleJsonRpc(globalResources, req, message) {
                 result: {
                     protocolVersion: MCP_PROTOCOL_VERSION,
                     capabilities: { tools: { listChanged: false } },
-                    serverInfo: { name: 'dreamscape', version: '1.0.0' }
+                    serverInfo: { name: 'dreamscape', version: '1.0.0' },
+                    instructions: MCP_INSTRUCTIONS
                 }
             }
         };
@@ -1531,6 +1762,9 @@ module.exports = {
         resetRateGroupHits,
         MCP_RATE_GROUP_LIMITS,
         TOOL_RATE_GROUPS,
+        MCP_INSTRUCTIONS,
+        resolveWorkspaceId,
+        flattenPacket,
         listToolsForScopes,
         toolAllowedForScopes,
         collectAutofillTerms,

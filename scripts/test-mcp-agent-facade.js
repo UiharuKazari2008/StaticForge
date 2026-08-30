@@ -64,6 +64,21 @@ _test.resetRateGroupHits();
 const generatedImageTool = _test.TOOL_DEFS.find((t) => t.name === 'get_generated_image');
 assert.ok(generatedImageTool.description.includes('Grok-sized webp'));
 assert.ok(generatedImageTool.description.includes('Do not page get_images'));
+assert.ok(_test.TOOL_DEFS.some((t) => t.name === 'get_latest_image'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('get_generated_image'));
+assert.strictEqual(_test.resolveWorkspaceId(''), 'default');
+assert.strictEqual(_test.resolveWorkspaceId('default'), 'default');
+assert.strictEqual(_test.resolveWorkspaceId('other'), 'other');
+assert.strictEqual(_test.flattenPacket({
+    success: true,
+    type: 'image_generation_response',
+    data: { filename: 'a.png', image: 'HUGE', seed: 1 }
+}).image, undefined);
+assert.strictEqual(_test.flattenPacket({
+    success: true,
+    type: 'image_generation_response',
+    data: { filename: 'a.png', image: 'HUGE', seed: 1 }
+}).filename, 'a.png');
 const listImagesTool = _test.TOOL_DEFS.find((t) => t.name === 'get_images');
 assert.ok(listImagesTool.description.includes('get_generated_image'));
 
@@ -318,6 +333,9 @@ async function main() {
     assert.ok(Array.isArray(protectedMeta.scopes_supported));
     assert.ok(protectedMeta.scopes_supported.includes('generation'));
     assert.ok(protectedMeta.scopes_supported.includes('notes'));
+    assert.ok(Array.isArray(protectedMeta.recommended_scopes));
+    assert.ok(protectedMeta.recommended_scopes.includes('notes'));
+    assert.ok(protectedMeta.recommended_scopes.includes('generation'));
 
     const asMeta = oauthProvider.getAuthorizationServerMetadata();
     assert.strictEqual(asMeta.issuer, 'https://staticforge.737.jp.net');

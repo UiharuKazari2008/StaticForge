@@ -11,8 +11,8 @@ const CONSENT_COOKIE_NAME = 'mcp_oauth_consent';
 const CONSENT_SESSION_TTL_MS = 5 * 60 * 1000;
 const CONSENT_PIN_MAX_FAILS = 5;
 const CONSENT_PIN_LOCKOUT_MS = 15 * 60 * 1000;
-const DEFAULT_CREATE_SCOPES = ['generation', 'gallery', 'workspace'];
-const NAMED_SCOPE_IDS = AVAILABLE_SCOPES.map((s) => s.id).filter((id) => id !== 'universal');
+const NAMED_SCOPE_IDS = AVAILABLE_SCOPES.map((s) => s.id).filter((id) => id !== 'universal' && id !== 'infrastructure');
+const DEFAULT_CREATE_SCOPES = NAMED_SCOPE_IDS.slice();
 const TIMING_PAD = crypto.randomBytes(32).toString('hex');
 
 const sessions = new Map();
@@ -178,6 +178,7 @@ module.exports = {
     CONSENT_PIN_MAX_FAILS,
     CONSENT_PIN_LOCKOUT_MS,
     DEFAULT_CREATE_SCOPES,
+    NAMED_SCOPE_IDS,
     credentialsMatch,
     clientIp,
     namedScopesForCreate,

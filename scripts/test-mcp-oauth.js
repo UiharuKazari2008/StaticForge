@@ -209,6 +209,8 @@ assert.ok(Array.isArray(protectedMeta.authorization_servers));
 assert.ok(protectedMeta.authorization_servers.includes('https://staticforge.737.jp.net'));
 assert.ok(Array.isArray(protectedMeta.scopes_supported));
 assert.ok(protectedMeta.scopes_supported.includes('generation'));
+assert.ok(Array.isArray(protectedMeta.recommended_scopes));
+assert.ok(protectedMeta.recommended_scopes.includes('notes'));
 
 const asMeta = oauthProvider.getAuthorizationServerMetadata();
 assert.strictEqual(asMeta.issuer, 'https://staticforge.737.jp.net');

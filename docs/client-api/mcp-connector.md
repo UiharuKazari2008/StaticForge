@@ -34,7 +34,7 @@ Wrong UUID is `404` (no route). Do not mount `/mcp` or public `/agent`.
 | UA unknown / mismatch | **bypass**; request continues; UA captured (`matched=0`) |
 | OAuth access token | validated against `oauth_access_tokens` table; inherits scopes from bound app key |
 | Scopes | `hasScope` / `scopesAllowPacket` per tool; `tools/list` filtered |
-| Rate limit | Per **tool group** (`free` / `search` / `gallery` / `write` / `studio` / `generate`). `free` and handshake (`initialize` / `ping` / `tools/list`) are unlimited. 429 includes `group`, `retryAfter` seconds, and `Retry-After`. See [mcp-tool-flow.md](./mcp-tool-flow.md). |
+| Rate limit | Per **tool group**. Handshake unlimited. `tools/call` over-limit returns MCP `isError` with `group` + `retryAfter` (and `Retry-After`). Other methods still HTTP 429. See [mcp-tool-flow.md](./mcp-tool-flow.md). |
 | CORS | MCP tools locked to `https://grok.com`, `https://www.grok.com`, `https://x.ai`, `https://console.x.ai`; missing Origin allowed (CLI / xAI server). OAuth register/authorize/token also allow the issuer origin (consent form), `Origin: null` / same-origin document navigations, loopback, and `https://cursor.com` / `https://www.cursor.com`. |
 
 Captured rows live in the existing application-auth SQLite DB (not a new store). UA is not a credential. Keys are never stored or logged with the UA list.
@@ -208,9 +208,10 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 
 | Tool | Wrap | Scope | Bind? |
 |------|------|-------|-------|
-| `generate_image` | `POST /agent/packet` `{ type: "generate_image" }` | `generation` | no |
-| `get_generated_image` | `request_image_metadata` + a Grok-sized webp (sharp fit-inside, max 1280px, never the full PNG). Optional `full=true` for original bytes when under the MCP cap. Known filename only — do not page `get_images`. | `gallery` | no |
-| `get_images` | `request_gallery` (paged list). Not for a known filename. | `gallery` | no |
+| `generate_image` | Server generate; waits and returns filename + Grok webp (full PNG bytes stripped) | `generation` | no |
+| `get_generated_image` | Metadata + Grok webp. Filename, seed, or omit for latest. `workspace` default is `default`. | `gallery` | no |
+| `get_latest_image` | Same as `get_generated_image` with no filename. | `gallery` | no |
+| `get_images` | Paged directory listing only. | `gallery` | no |
 | `get_workspaces` | `workspace_list` | `workspace` | no |
 | `list_clients` | `GET /agent/clients` | `generation` | no |
 | `bind_session` | `POST /agent/bind` `{ clientId }` or `{ code }` | `generation` | — |

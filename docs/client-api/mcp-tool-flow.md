@@ -2,7 +2,7 @@
 
 How to use the public MCP connector for common Studio jobs. Prompt syntax still comes from [nai-prompt-guide `prompt-optimiser-grok.md`](https://yozora.bluesteel.737.jp.net/DreamScape/nai-prompt-guide/src/branch/main/prompt-optimiser-grok.md). Delivery to Studio is Change-JSON (`docs/studio-change-json.md`). This file is only the **tool order**.
 
-Do **not** page `get_images` to find a known filename. Do **not** download the original PNG. `get_generated_image` always returns metadata plus a Grok-sized webp.
+The MCP `initialize` result also sends these rules as `instructions`. Do **not** page `get_images` to find a known filename. Do **not** download the original PNG. `get_generated_image` always returns metadata plus a Grok-sized webp. Omit filename (or call `get_latest_image`) for the newest file. `workspace` / `default` is the default workspace.
 
 If a tool 429s, read `error.data.group` and `error.data.retryAfter` (seconds). Wait that long. Handshake (`initialize` / `ping` / `tools/list`) is unlimited.
 
@@ -17,20 +17,15 @@ If a tool 429s, read `error.data.group` and `error.data.retryAfter` (seconds). W
 | `studio` | 60 | `get_studio_state`, `apply_studio_changes`, `apply_preset_to_studio` |
 | `generate` | 20 | `generate_image`, `generate_preset`, `upscale_image`, `expand_image` |
 
-## Always: bind before Studio
+## Studio bind
 
-1. `list_clients`
-2. `bind_session` with that `clientId` (or a share code)
-3. Then `get_studio_state` / `apply_studio_changes`
-
-Without a bind, Studio tools fail. Server-side `generate_image` does not need a bind.
+`get_studio_state` and `apply_studio_changes` auto-bind when exactly one Studio tab is connected. Only call `list_clients` + `bind_session` when several tabs are open. Server-side `generate_image` does not need a bind.
 
 ## Recipe: current Studio prompt vs the generated image
 
 User: *take a look at my current prompt in the studio and compare the generated image for prompt cohesion*
 
-1. `list_clients` → `bind_session`
-2. `get_studio_state` — read `change` (prompt / UC / characters / params) and `filename`
+1. `get_studio_state` (auto-binds a single tab) — read `change` and `filename`
 3. If `filename` is set: **one** `get_generated_image` with that basename. If null, the editor has no open file — say so; do not page the gallery.
 4. Compare image to the Change-JSON: missing tags, extra elements, V5 complexity / guidance / character-box bleed.
 5. Reply with a Change-JSON rewrite (or `apply_studio_changes` if they asked you to put it in Studio). Do not invent unsolved V5 body recipes.
@@ -41,9 +36,8 @@ User: *can you update the last image to be shorter and younger*
 
 Age-down that reads as under 18 is **refuse** (see the Grok optimiser). Adult-presenting shorter / younger is tag work in the **character box**, not a new generate API.
 
-1. `list_clients` → `bind_session`
-2. `get_studio_state`
-3. Filename: use `state.filename`. If null, `get_images` once (`limit` small, default workspace) and take the newest row — do not binary-search offsets.
+1. `get_studio_state`
+2. Filename: use `state.filename`. If null, `get_latest_image` (or `get_generated_image` with no filename).
 4. `get_generated_image` with that filename (metadata + webp)
 5. Rewrite boxes/fields per the V5 guide. Keep seed with `params.seed: "last"` + `seedLock: true` if they want the same composition; unlock if they want a variation.
 6. `apply_studio_changes` with the Change-JSON. Set `autoGenerate: true` only if they asked to generate now.

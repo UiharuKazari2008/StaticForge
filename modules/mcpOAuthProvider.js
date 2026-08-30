@@ -132,6 +132,7 @@ class McpOAuthProvider {
                 'generation', 'gallery', 'workspace', 'search',
                 'vfs', 'presets', 'chat', 'references', 'wiki', 'autofill', 'notes'
             ],
+            recommended_scopes: require('./mcpOAuthConsent').DEFAULT_CREATE_SCOPES.slice(),
             bearer_methods_supported: ['header'],
             resource_name: 'Dreamscape MCP Server'
         };
@@ -153,6 +154,7 @@ class McpOAuthProvider {
                 'generation', 'gallery', 'workspace', 'search',
                 'vfs', 'presets', 'chat', 'references', 'wiki', 'autofill', 'notes'
             ],
+            recommended_scopes: require('./mcpOAuthConsent').DEFAULT_CREATE_SCOPES.slice(),
             service_documentation: `${baseUrl}/docs/client-api/mcp-connector.md`
         };
     }
@@ -200,7 +202,8 @@ class McpOAuthProvider {
             redirect_uris: redirectUris,
             token_endpoint_auth_method: 'none',
             grant_types: ['authorization_code', 'refresh_token'],
-            response_types: ['code']
+            response_types: ['code'],
+            scope: require('./mcpOAuthConsent').DEFAULT_CREATE_SCOPES.join(' ')
         };
     }
 
