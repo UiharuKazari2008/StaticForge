@@ -83,9 +83,11 @@ When using grok.com → New Connector → Custom, fill in:
 | **Scopes** | `generation gallery workspace` (or subset) |
 | **Token Auth Method** | `none (PKCE only, recommended)` |
 
-### Client registration (one-time setup)
+### Client registration (RFC 7591 DCR)
 
-Before using OAuth, register a client. This binds an OAuth client to your `sfapp_` application key:
+Register an OAuth client before using the flow. `application_key` is **optional** — if omitted, the `sfapp_` key is bound at consent approve time instead.
+
+**Option A: Pre-mint with app key binding (recommended for CLI)**
 
 ```bash
 curl -X POST "https://<host>/{mcpPathUuid}/oauth/register" \
@@ -97,20 +99,45 @@ curl -X POST "https://<host>/{mcpPathUuid}/oauth/register" \
   }'
 ```
 
-Response:
+**Option B: Public client (for Grok discovery+DCR)**
+
+Grok.com Custom Connector performs RFC 7591 DCR automatically. It cannot POST an `sfapp_` key, so register without one:
+
+```bash
+curl -X POST "https://<host>/{mcpPathUuid}/oauth/register" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "client_name": "Grok Connector",
+    "redirect_uris": ["https://grok.com/oauth/callback"]
+  }'
+```
+
+Response (both options):
 ```json
 {
   "success": true,
   "client_id": "mcp_...",
   "client_name": "Grok Connector",
-  "redirect_uris": ["https://grok.com/oauth/callback", "http://127.0.0.1:39123/callback"],
+  "redirect_uris": ["https://grok.com/oauth/callback"],
   "token_endpoint_auth_method": "none",
   "grant_types": ["authorization_code", "refresh_token"],
   "response_types": ["code"]
 }
 ```
 
-Use the returned `client_id` in the Grok form. The client inherits scopes from the bound `sfapp_` key.
+Use the returned `client_id` in the Grok form. If registered without an app key, the consent page will prompt for one.
+
+### Pre-minted client_id for Grok manual form
+
+If Grok shows the manual form (Client ID / endpoints) instead of auto-discovery, pre-mint a client_id once:
+
+```bash
+curl -X POST "https://<host>/{mcpPathUuid}/oauth/register" \
+  -H "Content-Type: application/json" \
+  -d '{"client_name":"Grok","redirect_uris":["https://grok.com/oauth/callback"]}'
+```
+
+Copy the `client_id` from the response and paste it into the Grok form. The `sfapp_` key will be entered on the consent page during authorization.
 
 ### Authorization flow
 
@@ -125,6 +152,8 @@ Use the returned `client_id` in the Grok form. The client inherits scopes from t
    - `resource=https://<host>/{mcpPathUuid}` (optional)
 
 2. User sees consent page (ui-review flag) showing client name and requested scopes.
+   - If the client was registered **without** an `application_key`, the consent page shows a password field to enter the `sfapp_` key. This binds the authorization to that key's scopes.
+   - If the client was registered **with** an `application_key`, no input is needed — the key is already bound.
 
 3. On approve, redirect to `redirect_uri` with `code` and `state`.
 

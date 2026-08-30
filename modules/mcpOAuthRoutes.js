@@ -132,18 +132,13 @@ function createOAuthRoutes(globalResources) {
     const provider = new McpOAuthProvider(globalResources);
 
     async function handleRegister(req, res) {
+        // RFC 7591 DCR: application_key is optional (public client, PKCE).
+        // If omitted, app key is bound at consent approve time.
         try {
             const { client_name, redirect_uris, application_key } = req.body || {};
 
-            if (!application_key || !isApplicationKeyFormat(application_key)) {
-                return res.status(400).json({
-                    error: 'invalid_request',
-                    error_description: 'application_key (sfapp_...) required for client registration'
-                });
-            }
-
             const result = await provider.registerClient({
-                applicationKey: application_key,
+                applicationKey: application_key || null,
                 clientName: client_name,
                 redirectUris: redirect_uris
             });

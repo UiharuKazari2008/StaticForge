@@ -118,4 +118,66 @@ const renderedXss = renderConsentPage({
 assert.ok(!renderedXss.includes('<script>'));
 assert.ok(renderedXss.includes('&lt;script&gt;'));
 
+console.log('Testing consent page with no applicationKeyId (consent-bind flow)...');
+const renderedNoKey = renderConsentPage({
+    clientName: 'Grok Connector',
+    clientId: 'mcp_grok123',
+    redirectUri: 'https://grok.com/callback',
+    state: 'state123',
+    scope: 'generation gallery',
+    codeChallenge: 'challenge123',
+    codeChallengeMethod: 'S256',
+    formAction: '/test-uuid/oauth/authorize',
+    applicationKeyId: null
+});
+assert.ok(renderedNoKey.includes('Your Application Key (sfapp_...)'));
+assert.ok(renderedNoKey.includes('name="application_key"'));
+assert.ok(renderedNoKey.includes('type="password"'));
+assert.ok(renderedNoKey.includes('required'));
+assert.ok(!renderedNoKey.includes('name="application_key_id"'));
+
+console.log('Testing consent page with pre-bound applicationKeyId...');
+const renderedWithKey = renderConsentPage({
+    clientName: 'Pre-bound Client',
+    clientId: 'mcp_prebound',
+    redirectUri: 'https://grok.com/callback',
+    state: 'state456',
+    scope: 'generation',
+    codeChallenge: 'challenge456',
+    codeChallengeMethod: 'S256',
+    formAction: '/test-uuid/oauth/authorize',
+    applicationKeyId: 'key-abc-123'
+});
+assert.ok(!renderedWithKey.includes('Your Application Key (sfapp_...)'));
+assert.ok(!renderedWithKey.includes('name="application_key"'));
+assert.ok(renderedWithKey.includes('name="application_key_id"'));
+assert.ok(renderedWithKey.includes('value="key-abc-123"'));
+
+console.log('Testing McpOAuthProvider metadata...');
+const { McpOAuthProvider } = require('../modules/mcpOAuthProvider');
+const mockGlobalResources = {
+    getMcpPathUuid: () => 'test-uuid-1234',
+    getConfig: ({ path }) => path === 'public_hostname' ? 'staticforge.737.jp.net' : null,
+    getApplicationAuthManager: () => ({
+        validateApplicationKey: async () => ({ valid: true, applicationKeyId: 'key-1', scopes: ['generation', 'gallery'] })
+    })
+};
+const oauthProvider = new McpOAuthProvider(mockGlobalResources);
+
+const protectedMeta = oauthProvider.getProtectedResourceMetadata();
+assert.strictEqual(protectedMeta.resource, 'https://staticforge.737.jp.net/test-uuid-1234');
+assert.ok(Array.isArray(protectedMeta.authorization_servers));
+assert.ok(protectedMeta.authorization_servers.includes('https://staticforge.737.jp.net'));
+assert.ok(Array.isArray(protectedMeta.scopes_supported));
+assert.ok(protectedMeta.scopes_supported.includes('generation'));
+
+const asMeta = oauthProvider.getAuthorizationServerMetadata();
+assert.strictEqual(asMeta.issuer, 'https://staticforge.737.jp.net');
+assert.strictEqual(asMeta.authorization_endpoint, 'https://staticforge.737.jp.net/test-uuid-1234/oauth/authorize');
+assert.strictEqual(asMeta.token_endpoint, 'https://staticforge.737.jp.net/test-uuid-1234/oauth/token');
+assert.strictEqual(asMeta.registration_endpoint, 'https://staticforge.737.jp.net/test-uuid-1234/oauth/register');
+assert.deepStrictEqual(asMeta.response_types_supported, ['code']);
+assert.deepStrictEqual(asMeta.code_challenge_methods_supported, ['S256']);
+assert.deepStrictEqual(asMeta.token_endpoint_auth_methods_supported, ['none']);
+
 console.log('test-mcp-oauth: ok');

@@ -156,13 +156,19 @@ class McpOAuthProvider {
     }
 
     async registerClient({ applicationKey, clientName, redirectUris }) {
-        const manager = this.globalResources.getApplicationAuthManager();
-        const validation = await manager.validateApplicationKey(applicationKey, '', {
-            allowRefreshOverdue: false,
-            skipUserAgent: true
-        });
-        if (!validation.valid) {
-            return { success: false, error: validation.message, code: validation.code };
+        // RFC 7591 DCR: application_key is optional.
+        // If provided, validate and bind now. Otherwise, bind at consent approve time.
+        let applicationKeyId = null;
+        if (applicationKey && isApplicationKeyFormat(applicationKey)) {
+            const manager = this.globalResources.getApplicationAuthManager();
+            const validation = await manager.validateApplicationKey(applicationKey, '', {
+                allowRefreshOverdue: false,
+                skipUserAgent: true
+            });
+            if (!validation.valid) {
+                return { success: false, error: validation.message, code: validation.code };
+            }
+            applicationKeyId = validation.applicationKeyId;
         }
 
         if (!Array.isArray(redirectUris) || redirectUris.length === 0) {
@@ -182,7 +188,7 @@ class McpOAuthProvider {
             `INSERT INTO oauth_clients
              (client_id, application_key_id, client_name, redirect_uris, created_at)
              VALUES (?, ?, ?, ?, ?)`,
-            [clientId, validation.applicationKeyId, clientName || 'MCP Client', JSON.stringify(redirectUris), nowSec]
+            [clientId, applicationKeyId, clientName || 'MCP Client', JSON.stringify(redirectUris), nowSec]
         );
 
         return {
