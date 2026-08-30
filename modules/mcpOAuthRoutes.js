@@ -103,51 +103,58 @@ ${hiddenOAuthFields(params)}
 </form>`;
 }
 
-function renderKeyOptions(keys, selectedKeyId) {
+function renderKeyOptions(keys, selectedKeyId, requestedScopes) {
     if (!keys.length) {
-        return '<p class="note">No matching keys yet. Create one below.</p>';
+        return '<p class="note">No keys yet. Create one below.</p>';
     }
     return keys.map((key) => {
-        const label = `${key.appName} · ${key.keyPrefix}… · ${(key.scopes || []).join(', ')}`;
+        const missing = consent.scopesMissingFromKey(key.scopes, requestedScopes);
+        const upgrade = missing.length ? ` · upgrade +${missing.join(', ')}` : '';
+        const label = `${key.appName} · ${key.keyPrefix}… · ${(key.scopes || []).join(', ')}${upgrade}`;
         const selected = key.id === selectedKeyId ? ' data-selected="1"' : '';
         return `<button type="button" class="key-option" data-value="${escapeHtml(key.id)}"${selected}>${escapeHtml(label)}</button>`;
     }).join('\n');
 }
 
 function renderPickStep(params) {
-    const selected = params.keys.find((k) => k.id === params.selectedKeyId);
+    const requestedScopes = parseScopes(params.scope);
+    const selected = (params.keys || []).find((k) => k.id === params.selectedKeyId);
+    const selectedMissing = selected
+        ? consent.scopesMissingFromKey(selected.scopes, requestedScopes)
+        : [];
     const selectedLabel = selected
-        ? `${selected.appName} · ${selected.keyPrefix}…`
-        : (params.keys.length ? 'Select a key' : 'Create a key first');
+        ? `${selected.appName} · ${selected.keyPrefix}…${selectedMissing.length ? ` · upgrade +${selectedMissing.join(', ')}` : ''}`
+        : ((params.keys || []).length ? 'Select a key' : 'Create a key first');
     const boundBlock = params.boundKeyLabel
-        ? `<div class="bound-note">This client is already bound to <strong>${escapeHtml(params.boundKeyLabel)}</strong></div>`
-        : `<div class="field">
+        ? `<div class="bound-note">This client is already bound to <strong>${escapeHtml(params.boundKeyLabel)}</strong>. Approve adds any newly requested named scopes to the selected key.</div>`
+        : '';
+
+    return `<form method="POST" action="${escapeHtml(params.formAction)}" autocomplete="off">
+${hiddenOAuthFields(params)}
+<input type="hidden" name="csrf" value="${escapeHtml(params.csrf)}">
+${boundBlock}
+<div class="field">
 <label>Application key</label>
 <div class="custom-dropdown">
 <button type="button" class="custom-dropdown-btn" id="keyDropdownBtn">
 <span id="keyDropdownSelected">${escapeHtml(selectedLabel)}</span>
 </button>
 <div id="keyDropdownMenu" class="custom-dropdown-menu hidden">
-${renderKeyOptions(params.keys, params.selectedKeyId)}
+${renderKeyOptions(params.keys || [], params.selectedKeyId, requestedScopes)}
 </div>
 </div>
 <input type="hidden" name="selected_key_id" id="selectedKeyId" value="${escapeHtml(params.selectedKeyId || '')}">
-<p class="note">Only keys for your PIN that cover the requested scopes.</p>
+<p class="note">Keys for your PIN. Approve adds missing requested named scopes to the selected key. Never universal.</p>
+</div>
+<div class="buttons">
+<button type="submit" name="action" value="approve" class="approve">Approve</button>
+<button type="submit" name="action" value="deny" class="deny">Deny</button>
 </div>
 <div class="field">
 <label for="new_key_name">Or create a new key</label>
 <input type="text" id="new_key_name" name="new_key_name" maxlength="80" placeholder="${escapeHtml(params.generatedName)}" autocomplete="off">
 </div>
-<button type="submit" name="action" value="create_key" class="create">Create new key</button>`;
-
-    return `<form method="POST" action="${escapeHtml(params.formAction)}" autocomplete="off">
-${hiddenOAuthFields(params)}
-<input type="hidden" name="csrf" value="${escapeHtml(params.csrf)}">
-${boundBlock}
-<div class="buttons">
-<button type="submit" name="action" value="approve" class="approve">Approve</button>
-<button type="submit" name="action" value="deny" class="deny">Deny</button>
-</div>
+<button type="submit" name="action" value="create_key" class="create">Create new key</button>
 </form>`;
 }
 
@@ -190,7 +197,7 @@ function renderConsentPage(params) {
     const stepBody = step === 'pick'
         ? renderPickStep(params)
         : renderPinStep(params);
-    const stepScript = step === 'pick' && !params.boundKeyLabel
+    const stepScript = step === 'pick'
         ? renderPickScript(true)
         : '';
 
@@ -239,13 +246,21 @@ function createOAuthRoutes(globalResources) {
         }, extras || {});
     }
 
-    async function loadPickKeys(userType, requestedScopes) {
+    async function loadPickKeys(userType, requestedScopes, boundKeyId) {
         const manager = globalResources.getApplicationAuthManager();
-        const keys = await manager.listApplicationKeys({
-            includeExpired: false,
-            userType
-        });
-        return consent.filterKeysForConsent(keys, requestedScopes);
+        const keys = consent.filterKeysForConsent(
+            await manager.listApplicationKeys({
+                includeExpired: false,
+                userType
+            }),
+            requestedScopes
+        );
+        if (boundKeyId && !keys.some((k) => k.id === boundKeyId)) {
+            const all = await manager.listApplicationKeys({ includeExpired: true, userType });
+            const bound = all.find((k) => k.id === boundKeyId);
+            if (bound) keys.unshift(bound);
+        }
+        return keys;
     }
 
     async function boundKeyLabel(applicationKeyId) {
@@ -265,21 +280,18 @@ function createOAuthRoutes(globalResources) {
             })), status);
         }
         const requestedScopes = parseScopes(page.scope);
-        if (page.applicationKeyId) {
-            return sendConsentHtml(res, renderConsentPage(consentPageParams(page, {
-                step: 'pick',
-                csrf: session.csrf,
-                keys: [],
-                boundKeyLabel: await boundKeyLabel(page.applicationKeyId),
-                error
-            })), status);
-        }
-        const keys = await loadPickKeys(session.userType, requestedScopes);
+        const keys = await loadPickKeys(session.userType, requestedScopes, page.applicationKeyId);
         return sendConsentHtml(res, renderConsentPage(consentPageParams(page, {
             step: 'pick',
             csrf: session.csrf,
             keys,
-            selectedKeyId: selectedKeyId || (keys[0] && keys[0].id) || '',
+            selectedKeyId: selectedKeyId
+                || page.applicationKeyId
+                || (keys[0] && keys[0].id)
+                || '',
+            boundKeyLabel: page.applicationKeyId
+                ? await boundKeyLabel(page.applicationKeyId)
+                : '',
             error
         })), status);
     }
@@ -503,18 +515,31 @@ function createOAuthRoutes(globalResources) {
             }
 
             if (action === 'approve') {
-                let applicationKeyId = client.applicationKeyId || null;
+                const requestedScopes = parseScopes(scope);
+                const keys = await loadPickKeys(session.userType, requestedScopes, client.applicationKeyId);
+                const picked = keys.find((k) => k.id === selected_key_id);
+                let applicationKeyId = picked
+                    ? picked.id
+                    : (client.applicationKeyId || null);
                 if (!applicationKeyId) {
-                    const requestedScopes = parseScopes(scope);
-                    const keys = await loadPickKeys(session.userType, requestedScopes);
-                    const picked = keys.find((k) => k.id === selected_key_id);
-                    if (!picked) {
-                        return renderAuthorizedStep(req, res, page, {
-                            error: 'Select a key to approve',
-                            status: 400
-                        });
-                    }
-                    applicationKeyId = picked.id;
+                    return renderAuthorizedStep(req, res, page, {
+                        error: 'Select a key to approve',
+                        status: 400
+                    });
+                }
+                const manager = globalResources.getApplicationAuthManager();
+                const merged = await manager.mergeNamedScopes(applicationKeyId, requestedScopes, {
+                    userType: session.userType
+                });
+                if (!merged.success) {
+                    const mergeError = merged.error === 'USER_TYPE_MISMATCH'
+                        ? 'That key belongs to a different PIN'
+                        : 'Could not upgrade that key';
+                    return renderAuthorizedStep(req, res, page, {
+                        error: mergeError,
+                        selectedKeyId: applicationKeyId,
+                        status: 400
+                    });
                 }
                 consent.destroyConsentSession(session.sessionId);
                 consent.clearConsentCookie(res, cookiePath);

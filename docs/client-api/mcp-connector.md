@@ -153,8 +153,8 @@ Copy the `client_id` from the response and paste it into the Grok form. On the c
 
 2. User sees consent page (ui-review) showing client name and requested scopes.
    - Enter the **Dreamscape PIN** (same admin / user PIN as the login pad). PIN is only accepted on UUID `/oauth/authorize`. It is not MCP auth.
-   - After PIN: pick an existing `sfapp_` key that matches the requested scopes, or **create a new** key (requested named scopes only, never `universal`). Raw keys are not shown or pasted.
-   - If the client was already bound, PIN still gates Approve; no picker.
+   - After PIN: pick an existing `sfapp_` key for that PIN, or **create a new** key (requested named scopes only, never `universal`). Partial matches stay in the list and are labeled `upgrade +notes, wiki` when Approve will add scopes. Raw keys are not shown or pasted.
+   - If the client was already bound, the picker still lists that key (pre-selected) plus other active keys. Approve merges **requested named scopes only** onto the selected key. Never `universal`.
    - Consent session is a 5-minute HttpOnly cookie + CSRF field. Wrong PIN is rate-limited and lockouts after 5 failures.
 
 3. On approve, redirect to `redirect_uri` with `code` and `state`.
@@ -263,7 +263,7 @@ For grok.com Custom Connector UI that requires OAuth:
    - **Scopes**: `generation gallery workspace autofill wiki presets references search notes` (or subset)
    - **Token Auth Method**: `none (PKCE only, recommended)`
 3. Click Save & Connect. You'll see the consent page.
-4. Approve. Grok gets an access token bound to your app key's scopes.
+4. Approve. Missing requested named scopes are added to the selected key. Grok gets an access token bound to that key's scopes.
 
 ## Errors
 

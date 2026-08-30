@@ -45,6 +45,13 @@ function keyMatchesRequestedScopes(keyScopes, requestedScopes) {
     return requested.every((scope) => keyScopes.includes(scope));
 }
 
+function scopesMissingFromKey(keyScopes, requestedScopes) {
+    if (!Array.isArray(keyScopes) || keyScopes.includes('universal')) return [];
+    return (requestedScopes || [])
+        .map((s) => String(s).trim())
+        .filter((s) => NAMED_SCOPE_IDS.includes(s) && !keyScopes.includes(s));
+}
+
 function pruneExpiredSessions(now = Date.now()) {
     for (const [id, session] of sessions) {
         if (session.expiresAt <= now) sessions.delete(id);
@@ -151,10 +158,13 @@ function csrfMatches(session, posted) {
 }
 
 function filterKeysForConsent(keys, requestedScopes) {
-    return (keys || []).filter((key) => {
-        if (!key || key.status !== 'active') return false;
-        return keyMatchesRequestedScopes(key.scopes, requestedScopes);
-    });
+    return (keys || [])
+        .filter((key) => key && key.status === 'active')
+        .sort((a, b) => {
+            const aMatch = keyMatchesRequestedScopes(a.scopes, requestedScopes) ? 0 : 1;
+            const bMatch = keyMatchesRequestedScopes(b.scopes, requestedScopes) ? 0 : 1;
+            return aMatch - bMatch;
+        });
 }
 
 function generatedKeyName(clientName) {
@@ -172,6 +182,7 @@ module.exports = {
     clientIp,
     namedScopesForCreate,
     keyMatchesRequestedScopes,
+    scopesMissingFromKey,
     isPinLocked,
     recordPinFailure,
     clearPinFailures,

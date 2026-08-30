@@ -513,6 +513,42 @@ class ApplicationAuthManager {
         return { success: (result?.changes || 0) > 0 };
     }
 
+    async mergeNamedScopes(keyId, requestedScopes, { userType = null } = {}) {
+        if (!keyId) return { success: false, error: 'KEY_NOT_FOUND' };
+        const row = await getDb().get('SELECT * FROM application_keys WHERE id = ?', [keyId]);
+        if (!row) return { success: false, error: 'KEY_NOT_FOUND' };
+        if (userType && row.user_type && row.user_type !== userType) {
+            return { success: false, error: 'USER_TYPE_MISMATCH' };
+        }
+        const nowSec = Math.floor(Date.now() / 1000);
+        if (row.status !== 'active' || row.revoked_at) {
+            return { success: false, error: 'NOT_ACTIVE' };
+        }
+        if (row.expires_at != null && row.expires_at <= nowSec) {
+            return { success: false, error: 'NOT_ACTIVE' };
+        }
+        const current = parseScopesJson(row.scopes);
+        if (current.includes('universal')) {
+            return { success: true, added: [], scopes: ['universal'], unchanged: true };
+        }
+        const allowed = new Set(AVAILABLE_SCOPES.map((s) => s.id).filter((id) => id !== 'universal'));
+        const added = (requestedScopes || [])
+            .map((s) => String(s).trim())
+            .filter((s) => allowed.has(s) && !current.includes(s));
+        if (!added.length) {
+            return { success: true, added: [], scopes: current, unchanged: true };
+        }
+        const next = current.concat(added);
+        if (!next.length || next.includes('universal')) {
+            return { success: false, error: 'EMPTY_SCOPES' };
+        }
+        await getDb().run(
+            `UPDATE application_keys SET scopes = ? WHERE id = ? AND revoked_at IS NULL AND status = 'active'`,
+            [JSON.stringify(next), keyId]
+        );
+        return { success: true, added, scopes: next };
+    }
+
     async listApplicationKeys({ includeExpired = true, userType = null } = {}) {
         const rows = userType
             ? await getDb().all(

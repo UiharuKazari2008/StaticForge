@@ -2,6 +2,7 @@ const assert = require('assert');
 const {
     namedScopesForCreate,
     keyMatchesRequestedScopes,
+    scopesMissingFromKey,
     verifyConsentPin,
     isPinLocked,
     recordPinFailure,
@@ -64,13 +65,22 @@ assert.strictEqual(csrfMatches(session, null), false);
 destroyConsentSession(session.sessionId);
 assert.strictEqual(getConsentSession(session.sessionId), null);
 
-console.log('Testing key list filter...');
+console.log('Testing scopesMissingFromKey...');
+assert.deepStrictEqual(scopesMissingFromKey(['generation'], ['generation', 'notes', 'wiki']), ['notes', 'wiki']);
+assert.deepStrictEqual(scopesMissingFromKey(['universal'], ['notes']), []);
+assert.deepStrictEqual(scopesMissingFromKey(['generation'], ['universal', 'notes']), ['notes']);
+assert.ok(!scopesMissingFromKey(['generation'], ['universal', 'notes']).includes('universal'));
+assert.deepStrictEqual(scopesMissingFromKey(['generation', 'notes'], ['generation']), []);
+assert.deepStrictEqual(scopesMissingFromKey(['generation'], []), []);
+
+console.log('Testing key list filter shows partial matches for upgrade...');
 const filtered = filterKeysForConsent([
     { id: '1', status: 'active', scopes: ['generation'] },
     { id: '2', status: 'revoked', scopes: ['generation'] },
     { id: '3', status: 'active', scopes: ['gallery'] }
 ], ['generation']);
-assert.deepStrictEqual(filtered.map((k) => k.id), ['1']);
+assert.deepStrictEqual(filtered.map((k) => k.id), ['1', '3']);
+assert.strictEqual(keyMatchesRequestedScopes(filtered[0].scopes, ['generation']), true);
 
 assert.strictEqual(generatedKeyName('Grok'), 'MCP Grok');
 assert.strictEqual(generatedKeyName(''), 'MCP Connector');

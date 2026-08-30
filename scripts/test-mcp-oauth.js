@@ -163,6 +163,7 @@ assert.ok(renderedPick.includes('name="csrf"'));
 assert.ok(renderedPick.includes('name="selected_key_id"'));
 assert.ok(renderedPick.includes('Create new key'));
 assert.ok(renderedPick.includes('Studio'));
+assert.ok(renderedPick.includes('upgrade +gallery'));
 assert.ok(!renderedPick.includes('name="application_key"'));
 assert.ok(!renderedPick.includes('name="pin"'));
 
@@ -172,21 +173,23 @@ const renderedWithKey = renderConsentPage({
     clientId: 'mcp_prebound',
     redirectUri: 'https://grok.com/callback',
     state: 'state456',
-    scope: 'generation',
+    scope: 'generation notes',
     codeChallenge: 'challenge456',
     codeChallengeMethod: 'S256',
     formAction: '/test-uuid/oauth/authorize',
     step: 'pick',
     csrf: 'csrf-token-2',
-    keys: [],
+    keys: [{ id: 'key-1', appName: 'Studio', keyPrefix: 'sfapp_abcd', scopes: ['generation'] }],
+    selectedKeyId: 'key-1',
     boundKeyLabel: 'Studio · sfapp_abcd…'
 });
 assert.ok(renderedWithKey.includes('already bound'));
 assert.ok(renderedWithKey.includes('Studio'));
+assert.ok(renderedWithKey.includes('name="selected_key_id"'));
+assert.ok(renderedWithKey.includes('upgrade +notes'));
 const boundForm = renderedWithKey.match(/<form[\s\S]*?<\/form>/)[0];
 const firstBoundSubmit = boundForm.match(/<button[^>]*type="submit"[^>]*value="([^"]+)"/);
 assert.strictEqual(firstBoundSubmit[1], 'approve', 'Enter on bound consent must Approve, not Deny');
-assert.ok(!renderedWithKey.includes('name="selected_key_id"'));
 assert.ok(!renderedWithKey.includes('name="application_key"'));
 
 console.log('Testing McpOAuthProvider metadata...');
