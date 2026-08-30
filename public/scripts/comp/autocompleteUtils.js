@@ -60,16 +60,7 @@ function splitPromptAtTextColon(text) {
     };
 }
 
-// Spell check navigation state
-let spellCheckNavigationMode = false;
-let selectedSpellCheckWordIndex = -1;
-let selectedSpellCheckSuggestionIndex = -1;
 
-// Dictionary / thesaurus navigation state
-let wordLookupNavigationMode = false;
-let selectedWordLookupWordIndex = -1;
-let selectedWordLookupSuggestionIndex = -1;
-let activeWordLookupWordIndex = 0;
 
 // Hover/wheel UX state (for popup overlay interaction)
 let autocompleteWheelAccumulator = 0;
@@ -2257,8 +2248,6 @@ let currentSearchTimeout = null;
 let currentSearchSessionBounds = null;
 
 // Persistent results storage for stable autocomplete
-let persistentSpellCheckData = null; // Current spell check data
-let persistentWordLookupData = null; // Current dictionary / thesaurus data
 let isAutocompleteVisible = false; // Track if autocomplete is currently visible
 /** Detached window: keyboard browse dismissed (Left/Esc) until user typing starts a new search — mirrors overlay hide. */
 let autofillDetachedKeyboardDismissed = false;
@@ -3094,60 +3083,9 @@ function resolveTypedInputReplaceRange(value, bounds, cursorPosition, options) {
 }
 
 /** Literal spell-check input slice captured from the textarea when results were bound. */
-function getSpellCheckInputSlice(spellMeta, value, spellOffset) {
-    if (!spellMeta || !value) return null;
-    const inputStart = spellMeta.inputStart != null ? spellMeta.inputStart : spellOffset;
-    let inputEnd = spellMeta.inputEnd;
-    if (inputEnd == null && spellMeta.originalText) {
-        inputEnd = inputStart + spellMeta.originalText.length;
-    }
-    if (inputEnd == null || inputStart < 0 || inputEnd > value.length || inputStart >= inputEnd) {
-        return null;
-    }
-    return {
-        start: inputStart,
-        end: inputEnd,
-        text: value.substring(inputStart, inputEnd)
-    };
-}
 
 /** Resolve autofill term bounds for spell correction (prefer stored spell-check bounds when still valid). */
-function resolveSpellCheckTermBounds(target, spellMeta, liveBounds) {
-    const cursorPos = typeof target.selectionStart === 'number' ? target.selectionStart : 0;
-    if (spellMeta && spellMeta.termStart != null && spellMeta.termEnd != null) {
-        const termStart = spellMeta.termStart;
-        const termEnd = Math.max(spellMeta.termEnd, termStart);
-        if (cursorPos >= termStart && cursorPos <= termEnd) {
-            return {
-                termStart: termStart,
-                termEnd: termEnd,
-                spellOffset: spellMeta.spellCheckTermOffset != null ? spellMeta.spellCheckTermOffset : termStart
-            };
-        }
-    }
-    if (liveBounds) {
-        return {
-            termStart: liveBounds.tokenStart,
-            termEnd: liveBounds.tokenEnd,
-            spellOffset: liveBounds.spellCheckTermOffset != null ? liveBounds.spellCheckTermOffset : liveBounds.tokenStart
-        };
-    }
-    return {
-        termStart: 0,
-        termEnd: target && target.value ? target.value.length : 0,
-        spellOffset: 0
-    };
-}
 
-function isSpellCheckMetaAligned(spellMeta, value, spellOffset) {
-    const slice = getSpellCheckInputSlice(spellMeta, value, spellOffset);
-    if (!slice) return false;
-    const original = spellMeta && spellMeta.originalText;
-    if (typeof original === 'string') {
-        return slice.text === original;
-    }
-    return typeof spellMeta.inputText === 'string' && slice.text === spellMeta.inputText;
-}
 
 function pickReplaceRangeClosestToCursor(ranges, cursorPos) {
     if (!ranges || !ranges.length) {
@@ -3191,219 +3129,15 @@ function getMisspelledWordOccurrenceIndex(spellMeta, originalWord, rowIndex) {
 }
 
 /** Resolve replace range for a spell-check correction inside the active autofill term. */
-function findSpellCheckWordReplaceRange(value, cursorPos, originalWord, termStart, termEnd, spellOffset, spellMeta, misspelledRowIndex) {
-    if (!originalWord || termStart == null || termEnd == null) {
-        return null;
-    }
-
-    const origLower = originalWord.toLowerCase();
-    const occIndex = getMisspelledWordOccurrenceIndex(spellMeta, originalWord, misspelledRowIndex);
-
-    const inputSlice = getSpellCheckInputSlice(spellMeta, value, spellOffset);
-    if (!inputSlice) {
-        return null;
-    }
-
-    if (spellMeta && Array.isArray(spellMeta.wordPositions) && isSpellCheckMetaAligned(spellMeta, value, spellOffset)) {
-        const matching = spellMeta.wordPositions.filter(function (wp) {
-            return wp && wp.word && wp.word.toLowerCase() === origLower;
-        });
-        if (occIndex >= 0 && occIndex < matching.length) {
-            const wp = matching[occIndex];
-            const start = spellOffset + wp.start;
-            const end = spellOffset + wp.end;
-            if (start >= inputSlice.start && end <= inputSlice.end && start < end) {
-                return { start: start, end: end };
-            }
-        }
-        const candidates = matching.map(function (wp) {
-            return {
-                start: spellOffset + wp.start,
-                end: spellOffset + wp.end
-            };
-        }).filter(function (r) {
-            return r.start >= inputSlice.start && r.end <= inputSlice.end && r.start < r.end;
-        });
-        const picked = pickReplaceRangeClosestToCursor(candidates, cursorPos);
-        if (picked) {
-            return picked;
-        }
-    }
-
-    return findMisspelledWordInInputSlice(value, cursorPos, originalWord, inputSlice.start, inputSlice.end);
-}
 
 /** Find exact misspelled word within a literal input slice (not tokenized term matching). */
-function findMisspelledWordInInputSlice(value, cursorPos, originalWord, sliceStart, sliceEnd) {
-    if (!originalWord || sliceStart == null || sliceEnd == null) {
-        return null;
-    }
-    const inputText = value.substring(sliceStart, sliceEnd);
-    const localCursor = Math.max(0, Math.min(cursorPos - sliceStart, inputText.length));
-    const origLower = originalWord.toLowerCase();
-    const ranges = getWordRangesInSpan(inputText);
-    const matching = ranges.filter(function (r) {
-        return r.word.toLowerCase() === origLower;
-    });
 
-    if (matching.length === 0) {
-        return null;
-    }
-
-    for (let i = 0; i < matching.length; i++) {
-        const r = matching[i];
-        if (localCursor >= r.start && localCursor <= r.end) {
-            return { start: sliceStart + r.start, end: sliceStart + r.end };
-        }
-    }
-
-    const trimmedEnd = inputText.trimEnd().length;
-    if (localCursor >= trimmedEnd) {
-        const last = matching[matching.length - 1];
-        return { start: sliceStart + last.start, end: sliceStart + last.end };
-    }
-
-    return pickReplaceRangeClosestToCursor(matching.map(function (r) {
-        return { start: sliceStart + r.start, end: sliceStart + r.end };
-    }), cursorPos);
-}
-
-function attachSpellCheckTermBounds(spellData, target) {
-    if (!spellData || !target) {
-        return spellData;
-    }
-    const bounds = getAutocompleteSearchBounds(target);
-    if (!bounds) {
-        return spellData;
-    }
-    const value = target.value || '';
-    const spellOffset = bounds.spellCheckTermOffset != null ? bounds.spellCheckTermOffset : bounds.tokenStart;
-    const originalText = spellData.originalText != null ? String(spellData.originalText) : (bounds.spellCheckText || '');
-    const inputEnd = Math.min(spellOffset + originalText.length, value.length);
-    const inputText = value.substring(spellOffset, inputEnd);
-    return Object.assign({}, spellData, {
-        termStart: bounds.tokenStart,
-        termEnd: bounds.tokenEnd,
-        spellCheckTermOffset: spellOffset,
-        inputStart: spellOffset,
-        inputEnd: inputEnd,
-        inputText: inputText
-    });
-}
 
 /** Remove no-op spell rows where every suggestion matches the typed word (already correct). */
-function normalizeSpellCheckData(spellData) {
-    if (!spellData || typeof spellData !== 'object') {
-        return spellData;
-    }
 
-    const misspelled = Array.isArray(spellData.misspelled) ? spellData.misspelled : [];
-    const rawSuggestions = spellData.suggestions && typeof spellData.suggestions === 'object'
-        ? spellData.suggestions
-        : {};
-    const filteredMisspelled = [];
-    const filteredSuggestions = {};
-
-    for (const word of misspelled) {
-        const actionable = filterSpellCheckSuggestionsForWord(word, rawSuggestions[word]);
-        if (!actionable.length) {
-            continue;
-        }
-        filteredMisspelled.push(word);
-        filteredSuggestions[word] = actionable;
-    }
-
-    return Object.assign({}, spellData, {
-        misspelled: filteredMisspelled,
-        suggestions: filteredSuggestions,
-        hasErrors: filteredMisspelled.length > 0
-    });
-}
-
-function filterSpellCheckSuggestionsForWord(word, suggestions) {
-    if (!Array.isArray(suggestions)) return [];
-    const wordLower = String(word).toLowerCase();
-    const seen = new Set();
-    const out = [];
-    for (const suggestion of suggestions) {
-        if (suggestion == null) continue;
-        const key = String(suggestion).toLowerCase();
-        if (key === wordLower || seen.has(key)) continue;
-        seen.add(key);
-        out.push(suggestion);
-    }
-    return out;
-}
 
 /** Capture textarea slice for thesaurus replace (not spell-check metadata). */
-function attachWordLookupTermBounds(wordLookupData, target, lookupQuery) {
-    if (!wordLookupData || !target) {
-        return wordLookupData;
-    }
-    const value = target.value || '';
-    const query = String(lookupQuery != null ? lookupQuery : currentSearchQuery || '').trim();
-    const cursorPos = typeof target.selectionStart === 'number' ? target.selectionStart : 0;
-    const bounds = getAutocompleteSearchBounds(target) || currentSearchSessionBounds;
 
-    let inputStart = null;
-    let inputEnd = null;
-
-    const selStart = target.selectionStart;
-    const selEnd = target.selectionEnd;
-    if (selStart !== selEnd) {
-        inputStart = Math.min(selStart, selEnd);
-        inputEnd = Math.max(selStart, selEnd);
-    } else if (isAutofillProseMode(target)) {
-        const prose = getProseWordBoundsAtCursor(value, cursorPos);
-        if (prose.end > prose.start) {
-            inputStart = prose.start;
-            inputEnd = prose.end;
-        }
-    } else if (query && bounds) {
-        const typedRange = resolveTypedInputReplaceRange(value, bounds, cursorPos, { queryText: query });
-        if (typedRange) {
-            inputStart = typedRange.start;
-            inputEnd = typedRange.end;
-        }
-    }
-
-    if (inputStart == null && query) {
-        const found = findMisspelledWordInInputSlice(value, cursorPos, query, 0, value.length);
-        if (found) {
-            inputStart = found.start;
-            inputEnd = found.end;
-        }
-    }
-
-    const termStart = bounds ? bounds.tokenStart : 0;
-    const termEnd = bounds ? bounds.tokenEnd : value.length;
-
-    return Object.assign({}, wordLookupData, {
-        termStart,
-        termEnd,
-        inputStart,
-        inputEnd,
-        inputText: inputStart != null ? value.substring(inputStart, inputEnd) : '',
-        lookupQuery: query
-    });
-}
-
-function getWordLookupWordOccurrenceIndex(wordLookupData, originalWord, wordRowIndex) {
-    if (!wordLookupData || !Array.isArray(wordLookupData.words) || wordRowIndex < 0) {
-        return -1;
-    }
-    const origLower = String(originalWord || '').toLowerCase();
-    if (String(wordLookupData.words[wordRowIndex]?.word || '').toLowerCase() !== origLower) {
-        return -1;
-    }
-    let occ = 0;
-    for (let i = 0; i < wordRowIndex; i++) {
-        if (String(wordLookupData.words[i]?.word || '').toLowerCase() === origLower) {
-            occ++;
-        }
-    }
-    return occ;
-}
 
 function findWordInSpanByOccurrence(value, sliceStart, sliceEnd, originalWord, occurrenceIndex) {
     if (!originalWord || sliceStart == null || sliceEnd == null) {
@@ -3425,94 +3159,7 @@ function findWordInSpanByOccurrence(value, sliceStart, sliceEnd, originalWord, o
     return { start: sliceStart + r.start, end: sliceStart + r.end };
 }
 
-function findWordLookupReplaceRange(target, originalWord, wordRowIndex) {
-    if (!target || !originalWord) {
-        return null;
-    }
-    const value = target.value || '';
-    const cursorPos = typeof target.selectionStart === 'number' ? target.selectionStart : 0;
-    const origLower = String(originalWord).toLowerCase();
-    const wlMeta = persistentWordLookupData || {};
-    let rowIndex = typeof wordRowIndex === 'number' && wordRowIndex >= 0 ? wordRowIndex : -1;
-    if (rowIndex < 0 && wordLookupNavigationMode && selectedWordLookupWordIndex >= 0) {
-        rowIndex = selectedWordLookupWordIndex;
-    }
 
-    const selStart = target.selectionStart;
-    const selEnd = target.selectionEnd;
-    if (selStart !== selEnd) {
-        const a = Math.min(selStart, selEnd);
-        const b = Math.max(selStart, selEnd);
-        const sel = value.substring(a, b);
-        if (sel.trim().toLowerCase() === origLower || sel.toLowerCase() === origLower) {
-            return { start: a, end: b };
-        }
-    }
-
-    const occIndex = getWordLookupWordOccurrenceIndex(wlMeta, originalWord, rowIndex);
-
-    if (wlMeta.inputStart != null && wlMeta.inputEnd != null && wlMeta.inputText) {
-        const sliceText = value.substring(wlMeta.inputStart, wlMeta.inputEnd);
-        if (sliceText === wlMeta.inputText) {
-            if (sliceText.toLowerCase() === origLower) {
-                return { start: wlMeta.inputStart, end: wlMeta.inputEnd };
-            }
-            const inStored = findWordInSpanByOccurrence(value, wlMeta.inputStart, wlMeta.inputEnd, originalWord, occIndex);
-            if (inStored) {
-                return inStored;
-            }
-        }
-    }
-
-    const liveBounds = getAutocompleteSearchBounds(target);
-    const bounds = currentSearchSessionBounds || liveBounds;
-    if (bounds) {
-        const termStart = bounds.tokenStart;
-        const termEnd = bounds.termEnd;
-        const typedRange = resolveTypedInputReplaceRange(value, bounds, cursorPos, { queryText: originalWord });
-        if (typedRange) {
-            const t = value.substring(typedRange.start, typedRange.end);
-            if (t.toLowerCase() === origLower) {
-                return { start: typedRange.start, end: typedRange.end };
-            }
-        }
-        const inTerm = findWordInSpanByOccurrence(value, termStart, termEnd, originalWord, occIndex);
-        if (inTerm) {
-            return inTerm;
-        }
-        return findMisspelledWordInInputSlice(value, cursorPos, originalWord, termStart, termEnd);
-    }
-
-    if (isAutofillProseMode(target)) {
-        const prose = getProseWordBoundsAtCursor(value, cursorPos);
-        if (prose.word.toLowerCase() === origLower) {
-            return { start: prose.start, end: prose.end };
-        }
-    }
-
-    const sliceStart = wlMeta.termStart != null ? wlMeta.termStart : 0;
-    const sliceEnd = wlMeta.termEnd != null ? wlMeta.termEnd : value.length;
-    const inSlice = findWordInSpanByOccurrence(value, sliceStart, sliceEnd, originalWord, occIndex);
-    if (inSlice) {
-        return inSlice;
-    }
-
-    return findMisspelledWordInInputSlice(value, cursorPos, originalWord, 0, value.length);
-}
-
-function primeWordLookupReplaceContext(target, lookupQuery, boundData) {
-    if (boundData) {
-        persistentWordLookupData = boundData;
-        return boundData;
-    }
-    if (!target) {
-        return null;
-    }
-    const query = String(lookupQuery || getWikiTermFromPromptTextareaForKeyboard(target) || currentSearchQuery || '').trim();
-    const base = getActiveWordLookupData() || { hasData: true, words: [] };
-    persistentWordLookupData = attachWordLookupTermBounds(base, target, query);
-    return persistentWordLookupData;
-}
 
 function scheduleAutofillSearchDebounced(target, searchText, runSearch) {
     if (characterAutocompleteTimeout) {
@@ -3642,85 +3289,6 @@ function rerunAutofillSearchAfterSpellCorrection(target) {
     updateAutofillKeyguide();
 }
 
-function applySpellCorrectionReplace(target, replaceStart, replaceEnd, suggestion, cursorPos, options) {
-    const keepOpenAndRerun = !!(options && options.keepOpenAndRerun);
-
-    if (!shouldAutofillAcceptReplace(target)) {
-        if (!keepOpenAndRerun) {
-            insertTextAtPromptCursor(target, suggestion);
-            hideCharacterAutocompleteAfterAccept();
-            return true;
-        }
-        clearSpellCheckNavigationState();
-        persistentSpellCheckData = null;
-        markAutofillOverlayClosedFromInput();
-        // Suppress insertTextAtPromptCursor's input while accept may be in-flight; rerun below.
-        const wasInFlight = autofillOverlayAcceptInFlight;
-        autofillOverlayAcceptInFlight = true;
-        try {
-            insertTextAtPromptCursor(target, suggestion);
-        } finally {
-            autofillOverlayAcceptInFlight = wasInFlight;
-        }
-        setTimeout(function () {
-            rerunAutofillSearchAfterSpellCorrection(target);
-        }, 0);
-        return true;
-    }
-
-    const currentValue = target.value;
-    const newValue = currentValue.substring(0, replaceStart) + suggestion + currentValue.substring(replaceEnd);
-    const newCursorPos = cursorAfterTextReplace(cursorPos, replaceStart, replaceEnd, suggestion.length);
-    if (keepOpenAndRerun) {
-        clearSpellCheckNavigationState();
-        persistentSpellCheckData = null;
-        markAutofillOverlayClosedFromInput();
-    } else {
-        hideCharacterAutocompleteAfterAccept();
-    }
-    setTextareaValuePreservingUndo(target, newValue);
-    if (keepOpenAndRerun) {
-        // Keep session span aligned with post-replace text so caret-leave dismiss stays accurate.
-        currentCharacterAutocompleteTarget = target;
-        autofillSessionTarget = target;
-        if (!autofillSessionId) {
-            autofillSessionId = 'af_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-            autofillSessionPacketRequestId = null;
-        }
-        target.setSelectionRange(newCursorPos, newCursorPos);
-        currentSearchSessionBounds = getAutocompleteSearchBounds(target);
-    }
-    setTimeout(function () {
-        if (!keepOpenAndRerun) {
-            target.setSelectionRange(newCursorPos, newCursorPos);
-            target.focus();
-            return;
-        }
-        // Do not yank the caret back if the user already moved it / dismissed.
-        if (document.activeElement !== target
-            || !autofillSessionId
-            || autofillSessionTarget !== target
-            || shouldAbortAutocompleteSearchSession()) {
-            return;
-        }
-        if (typeof target.selectionStart === 'number' && target.selectionStart !== newCursorPos) {
-            // Caret moved after replace — honor it; only refresh if still in the search token.
-            if (!isCaretInActiveAutofillSearchArea(target) || shouldAbortAutocompleteSearchSession()) {
-                abortAutofillFromCaretLeave(target);
-                return;
-            }
-            rerunAutofillSearchAfterSpellCorrection(target);
-            return;
-        }
-        target.setSelectionRange(newCursorPos, newCursorPos);
-        target.focus({ preventScroll: true });
-        rerunAutofillSearchAfterSpellCorrection(target);
-    }, 0);
-    if (!keepOpenAndRerun) {
-        target.dispatchEvent(new CustomEvent('input', { bubbles: true, detail: { skipAutofill: true } }));
-    }
-    return true;
-}
 
 /** Word-aligned replace range fallback when literal typed input match is unavailable. */
 function computeTagOverlayReplaceRange(value, tokenStart, tokenEnd, insertText, cursorPosition) {
@@ -6728,15 +6296,7 @@ function isAutofillAltEnterInsertKey(e) {
     return !!(e && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && isAutocompleteEnterKey(e));
 }
 
-function collapsedSpellCheckInsertAvailable() {
-    const section = characterAutocompleteList?.querySelector('.spell-check-section');
-    return !!(section && spellCheckSectionHasSuggestions(section));
-}
 
-function collapsedWordLookupInsertAvailable() {
-    const section = getWordLookupSection();
-    return !!(section && getFirstWordLookupSuggestionButton(section));
-}
 
 function isAutofillSideSectionInsertAvailable() {
     if (spellCheckNavigationMode || wordLookupNavigationMode) return true;
@@ -6785,19 +6345,8 @@ function isAutofillKeyboardNavActive() {
     return spellCheckNavigationMode || wordLookupNavigationMode || selectedCharacterAutocompleteIndex >= 0;
 }
 
-function getWordLookupSection() {
-    return characterAutocompleteList?.querySelector('.word-lookup-section');
-}
 
-function removeSpellCheckSection() {
-    const section = characterAutocompleteList?.querySelector('.spell-check-section');
-    if (section) section.remove();
-}
 
-function removeWordLookupSection() {
-    const section = getWordLookupSection();
-    if (section) section.remove();
-}
 
 function insertSideSectionAtTop(section) {
     if (!characterAutocompleteList || !section) return;
@@ -6837,20 +6386,8 @@ function refreshAutofillSideSections(target) {
     updateAutofillKeyguide();
 }
 
-function getSpellCheckWordCount(section) {
-    if (!section) return 0;
-    const rows = section.querySelectorAll('.spell-check-word');
-    return rows ? rows.length : 0;
-}
 
-function getWordLookupWordRows(section) {
-    if (!section) return [];
-    return section.querySelectorAll(':scope > .word-lookup-word-list > .word-lookup-word-row');
-}
 
-function getWordLookupWordCount(section) {
-    return getWordLookupWordRows(section).length;
-}
 
 function spellCheckSectionHasSuggestions(section) {
     if (!section) return false;
@@ -6863,19 +6400,7 @@ function spellCheckSectionHasSuggestions(section) {
     return false;
 }
 
-function clearWordLookupNavigationState() {
-    wordLookupNavigationMode = false;
-    selectedWordLookupWordIndex = -1;
-    selectedWordLookupSuggestionIndex = -1;
-    updateWordLookupSelection();
-}
 
-function clearSpellCheckNavigationState() {
-    spellCheckNavigationMode = false;
-    selectedSpellCheckWordIndex = -1;
-    selectedSpellCheckSuggestionIndex = -1;
-    updateSpellCheckSelection();
-}
 
 function clearMainAutocompleteSelection() {
     markAutofillOverlayClosedFromInput();
@@ -6898,15 +6423,7 @@ function hasAutocompleteResultItemsForNavigation() {
     return getAutocompleteResultItems().length > 0;
 }
 
-function canSpellCheckNavigationEnter() {
-    const spellCheckSection = characterAutocompleteList?.querySelector('.spell-check-section');
-    return spellCheckSectionHasSuggestions(spellCheckSection);
-}
 
-function canWordLookupNavigationEnter() {
-    const wordLookupSection = getWordLookupSection();
-    return !!(wordLookupSection && getWordLookupWordCount(wordLookupSection) > 0);
-}
 
 function shouldAutocompleteConsumeVerticalArrow() {
     if (isAutofillDetachedMode() && autofillDetachedKeyboardDismissed) {
@@ -6976,117 +6493,13 @@ function dismissAutocompleteForTextareaNavigation(e) {
     hideCharacterAutocomplete();
 }
 
-function enterSpellCheckNavigation(preferLastWord = false) {
-    const spellCheckSection = characterAutocompleteList?.querySelector('.spell-check-section');
-    if (!spellCheckSectionHasSuggestions(spellCheckSection)) {
-        return false;
-    }
 
-    clearWordLookupNavigationState();
-    clearMainAutocompleteSelection();
-    spellCheckNavigationMode = true;
-    autocompleteNavigationMode = true;
-    userActivelyNavigating = true;
 
-    const wordSections = spellCheckSection.querySelectorAll('.spell-check-word');
-    selectedSpellCheckWordIndex = preferLastWord ? wordSections.length - 1 : 0;
-    selectedSpellCheckSuggestionIndex = 0;
-    updateSpellCheckSelection();
-    engageAutofillNavigation();
-    return true;
-}
 
-function enterWordLookupNavigation(preferLastWord = false) {
-    const wordLookupSection = getWordLookupSection();
-    if (!wordLookupSection || getWordLookupWordCount(wordLookupSection) === 0) {
-        return false;
-    }
 
-    clearSpellCheckNavigationState();
-    clearMainAutocompleteSelection();
-    wordLookupNavigationMode = true;
-    autocompleteNavigationMode = true;
-    userActivelyNavigating = true;
 
-    const wordCount = getWordLookupWordCount(wordLookupSection);
-    selectedWordLookupWordIndex = preferLastWord ? wordCount - 1 : 0;
-    selectedWordLookupSuggestionIndex = 0;
-    updateWordLookupSelection();
-    engageAutofillNavigation();
-    return true;
-}
 
-function getSelectedWordLookupSuggestionButton() {
-    if (!wordLookupNavigationMode) return null;
 
-    const wordLookupSection = getWordLookupSection();
-    if (!wordLookupSection) return null;
-
-    const wordSections = getWordLookupWordRows(wordLookupSection);
-    if (!wordSections.length || selectedWordLookupWordIndex < 0 || selectedWordLookupWordIndex >= wordSections.length) {
-        return null;
-    }
-
-    const currentWordSection = wordSections[selectedWordLookupWordIndex];
-    const suggestionBtns = currentWordSection.querySelectorAll('.word-lookup-row-expanded .suggestion-btn');
-    if (!suggestionBtns || selectedWordLookupSuggestionIndex < 0 || selectedWordLookupSuggestionIndex >= suggestionBtns.length) {
-        return null;
-    }
-
-    return suggestionBtns[selectedWordLookupSuggestionIndex];
-}
-
-function tryApplySelectedWordLookupSuggestion(target) {
-    const selectedBtn = getSelectedWordLookupSuggestionButton();
-    if (!selectedBtn || !target) return false;
-    const row = selectedBtn.closest('.word-lookup-word-row');
-    const wordRowIndex = row ? parseInt(row.dataset.wordIndex, 10) : -1;
-    return applyWordLookupInsert(target, selectedBtn.dataset.original, selectedBtn.dataset.suggestion, wordRowIndex);
-}
-
-function getSelectedSpellCheckSuggestionButton() {
-    if (!spellCheckNavigationMode) return null;
-
-    const spellCheckSection = characterAutocompleteList?.querySelector('.spell-check-section');
-    if (!spellCheckSection) return null;
-
-    const wordSections = spellCheckSection.querySelectorAll('.spell-check-word');
-    if (!wordSections || selectedSpellCheckWordIndex < 0 || selectedSpellCheckWordIndex >= wordSections.length) {
-        return null;
-    }
-
-    const currentWordSection = wordSections[selectedSpellCheckWordIndex];
-    const suggestionBtns = currentWordSection.querySelectorAll('.spell-check-row-expanded .suggestion-btn');
-    if (!suggestionBtns || selectedSpellCheckSuggestionIndex < 0 || selectedSpellCheckSuggestionIndex >= suggestionBtns.length) {
-        return null;
-    }
-
-    return suggestionBtns[selectedSpellCheckSuggestionIndex];
-}
-
-function tryApplySelectedSpellCheckSuggestion(target) {
-    const selectedBtn = getSelectedSpellCheckSuggestionButton();
-    if (!selectedBtn || !target) return false;
-    const rowIndex = spellCheckNavigationMode && selectedSpellCheckWordIndex >= 0
-        ? selectedSpellCheckWordIndex
-        : getSpellCheckRowIndexFromButton(selectedBtn);
-    return applySpellCorrection(target, selectedBtn.dataset.original, selectedBtn.dataset.suggestion, rowIndex);
-}
-
-function getFirstSpellCheckSuggestionButton(spellCheckSection) {
-    const firstWordSection = spellCheckSection?.querySelector('.spell-check-word');
-    if (!firstWordSection) return null;
-    return firstWordSection.querySelector('.spell-check-row-compact .suggestion-btn')
-        || firstWordSection.querySelector('.spell-check-row-expanded .suggestion-btn');
-}
-
-function getFirstWordLookupSuggestionButton(wordLookupSection) {
-    // Enter/click only — never used for Tab Replace (thesaurus excluded while collapsed; see resolveTabAutofillAcceptTarget).
-    const firstRow = wordLookupSection?.querySelector('.word-lookup-word-row');
-    if (!firstRow) return null;
-    return firstRow.querySelector('.word-lookup-row-compact .suggestion-btn')
-        || firstRow.querySelector('.word-lookup-row-expanded .suggestion-btn');
-}
 
 function applyAutocompleteItemElement(item) {
     if (!item) return false;
@@ -8982,445 +8395,23 @@ function rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckRe
     }
 }
 
-function applySpellCheckWordDisplay(section, activeIndex) {
-    if (!section) {
-        section = characterAutocompleteList?.querySelector('.spell-check-section');
-    }
-    if (!section) return;
 
-    if (typeof activeIndex !== 'number' || activeIndex < 0) {
-        activeIndex = 0;
-    }
 
-    section.querySelectorAll('.spell-check-word').forEach(row => {
-        const rowIndex = parseInt(row.dataset.wordIndex, 10);
-        row.classList.toggle('expanded', rowIndex === activeIndex);
-    });
-}
 
-function getSpellCheckRowIndexFromButton(btn) {
-    if (!btn || !btn.closest) return -1;
-    const row = btn.closest('.spell-check-word');
-    if (!row) return -1;
-    const fromBtn = parseInt(btn.dataset.wordIndex, 10);
-    if (Number.isFinite(fromBtn) && fromBtn >= 0) {
-        return fromBtn;
-    }
-    const fromRow = parseInt(row.dataset.wordIndex, 10);
-    return Number.isFinite(fromRow) ? fromRow : -1;
-}
 
-function wireSpellCheckSuggestionButtons(container, target) {
-    if (!container) return;
-    container.querySelectorAll('.suggestion-btn').forEach((btn, suggestionIndex) => {
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            applySpellCorrection(target, btn.dataset.original, btn.dataset.suggestion, getSpellCheckRowIndexFromButton(btn));
-        });
-        touchSlopUtils.registerTouchSlopTracking(btn);
-        btn.addEventListener('touchend', (e) => {
-            const maxDelta = touchSlopUtils.finalizeTouchSlop(btn, e);
-            if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
-            e.preventDefault();
-            applySpellCorrection(target, btn.dataset.original, btn.dataset.suggestion, getSpellCheckRowIndexFromButton(btn));
-        }, { passive: false });
-    });
-}
 
-function buildSpellCheckSuggestionButtons(word, suggestions, wordIndex) {
-    const actionable = filterSpellCheckSuggestionsForWord(word, suggestions);
-    if (!actionable.length) return '';
-    const rowIndexAttr = typeof wordIndex === 'number' && wordIndex >= 0 ? ` data-word-index="${wordIndex}"` : '';
-    return actionable.map(function (suggestion) {
-        return `
-        <button class="suggestion-btn" data-original="${word}" data-suggestion="${suggestion}"${rowIndexAttr}>
-            ${suggestion}
-        </button>
-    `;
-    }).join('');
-}
 
-function wireSpellCheckAddWordButton(container, word) {
-    const addWordBtn = container?.querySelector('.add-word-btn');
-    if (!addWordBtn) return;
-    addWordBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        addWordToDictionary(word);
-    });
-    touchSlopUtils.registerTouchSlopTracking(addWordBtn);
-    addWordBtn.addEventListener('touchend', (e) => {
-        const maxDelta = touchSlopUtils.finalizeTouchSlop(addWordBtn, e);
-        if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
-        e.preventDefault();
-        addWordToDictionary(word);
-    }, { passive: false });
-}
 
-function selectSpellCheckRow(wordIndex) {
-    const section = characterAutocompleteList?.querySelector('.spell-check-section');
-    if (!section) return;
-    selectedSpellCheckWordIndex = wordIndex;
-    selectedSpellCheckSuggestionIndex = 0;
-    spellCheckNavigationMode = true;
-    autocompleteNavigationMode = true;
-    clearWordLookupNavigationState();
-    clearMainAutocompleteSelection();
-    applySpellCheckWordDisplay(section, wordIndex);
-    updateSpellCheckSelection();
-}
 
-function createSpellCheckWordRow(word, suggestions, target, wordIndex) {
-    const suggestionButtonsHtml = buildSpellCheckSuggestionButtons(word, suggestions, wordIndex);
 
-    const row = document.createElement('div');
-    row.className = 'spell-check-word';
-    row.dataset.wordIndex = String(wordIndex);
 
-    const compact = document.createElement('div');
-    compact.className = 'spell-check-row-compact';
-    compact.innerHTML = `
-        <span class="spell-check-term-inline">"${word}"</span>
-        ${suggestionButtonsHtml ? `<div class="suggestions-list spell-check-inline-synonyms">${suggestionButtonsHtml}</div>` : ''}
-    `;
-    compact.addEventListener('click', (e) => {
-        if (e.target.closest('.suggestion-btn')) return;
-        e.preventDefault();
-        selectSpellCheckRow(wordIndex);
-    });
-    touchSlopUtils.registerTouchSlopTracking(compact);
-    compact.addEventListener('touchend', (e) => {
-        if (e.target.closest('.suggestion-btn')) return;
-        const maxDelta = touchSlopUtils.finalizeTouchSlop(compact, e);
-        if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
-        e.preventDefault();
-        selectSpellCheckRow(wordIndex);
-    }, { passive: false });
-    row.appendChild(compact);
-    wireSpellCheckSuggestionButtons(compact, target);
 
-    const expanded = document.createElement('div');
-    expanded.className = 'spell-check-row-expanded';
-    expanded.innerHTML = `
-        <div class="misspelled-word">"${word}"</div>
-        ${suggestionButtonsHtml ? `
-            <div class="spell-check-suggestions-label">Suggestions</div>
-            <div class="suggestions-list">${suggestionButtonsHtml}</div>
-        ` : ''}
-        <button class="add-word-btn" data-word="${word}">
-            <i class="fas fa-plus"></i> Add
-        </button>
-    `;
-    row.appendChild(expanded);
-    wireSpellCheckSuggestionButtons(expanded, target);
-    wireSpellCheckAddWordButton(expanded, word);
-    wireAutofillItemContextMenu(row);
 
-    return row;
-}
 
-function showSpellCheckSuggestions(spellCheckData, target) {
-    spellCheckData = normalizeSpellCheckData(spellCheckData);
-    if (!spellCheckData || !spellCheckData.hasErrors || !spellCheckData.misspelled || spellCheckData.misspelled.length === 0) {
-        removeSpellCheckSection();
-        return;
-    }
 
-    removeSpellCheckSection();
 
-    const spellCheckSection = document.createElement('div');
-    spellCheckSection.className = 'spell-check-section';
-    spellCheckSection.innerHTML = `
-        <div class="spell-check-header">
-            <i class="fas fa-spell-check"></i>
-            <span>Spell Check</span>
-            ${spellCheckData.originalText ? `<div class="original-text">"${spellCheckData.originalText}"</div>` : ''}
-        </div>
-    `;
 
-    const wordList = document.createElement('div');
-    wordList.className = 'spell-check-word-list';
 
-    spellCheckData.misspelled.forEach((word, wordIndex) => {
-        const suggestions = spellCheckData.suggestions[word] || [];
-        wordList.appendChild(createSpellCheckWordRow(word, suggestions, target, wordIndex));
-    });
-
-    spellCheckSection.appendChild(wordList);
-    insertSideSectionAtTop(spellCheckSection);
-
-    if (spellCheckNavigationMode) {
-        const wordSections = spellCheckSection.querySelectorAll('.spell-check-word');
-        if (!wordSections || wordSections.length === 0) {
-            selectedSpellCheckWordIndex = -1;
-            selectedSpellCheckSuggestionIndex = -1;
-            spellCheckNavigationMode = false;
-            return;
-        }
-
-        if (selectedSpellCheckWordIndex < 0) {
-            selectedSpellCheckWordIndex = 0;
-        } else if (selectedSpellCheckWordIndex >= wordSections.length) {
-            selectedSpellCheckWordIndex = wordSections.length - 1;
-        }
-
-        applySpellCheckWordDisplay(spellCheckSection, selectedSpellCheckWordIndex);
-
-        const selectedWordSection = wordSections[selectedSpellCheckWordIndex];
-        const suggestionBtns = selectedWordSection.querySelectorAll('.spell-check-row-expanded .suggestion-btn');
-        if (!suggestionBtns || suggestionBtns.length === 0) {
-            selectedSpellCheckSuggestionIndex = -1;
-        } else if (selectedSpellCheckSuggestionIndex < 0) {
-            selectedSpellCheckSuggestionIndex = 0;
-        } else if (selectedSpellCheckSuggestionIndex >= suggestionBtns.length) {
-            selectedSpellCheckSuggestionIndex = suggestionBtns.length - 1;
-        }
-
-        updateSpellCheckSelection();
-    } else {
-        spellCheckSection.querySelectorAll('.spell-check-word').forEach(row => {
-            row.classList.remove('expanded');
-        });
-    }
-}
-
-function getBestWordLookupResult() {
-    for (const [, results] of serviceResults) {
-        if (!results || !Array.isArray(results)) continue;
-        const wordLookupResult = results.find(result => result.type === 'wordLookup');
-        if (wordLookupResult && wordLookupResult.data && wordLookupResult.data.hasData) {
-            return wordLookupResult;
-        }
-    }
-    return null;
-}
-
-function getActiveWordLookupData() {
-    const wordLookupResult = getBestWordLookupResult();
-    const target = currentCharacterAutocompleteTarget;
-    if (wordLookupResult && wordLookupResult.data && wordLookupResult.data.hasData) {
-        persistentWordLookupData = target
-            ? attachWordLookupTermBounds(wordLookupResult.data, target, currentSearchQuery)
-            : wordLookupResult.data;
-        return persistentWordLookupData;
-    }
-    if (persistentWordLookupData && persistentWordLookupData.hasData) {
-        return persistentWordLookupData;
-    }
-    persistentWordLookupData = null;
-    return null;
-}
-
-function applyWordLookupWordDisplay(section, activeIndex) {
-    if (!section) {
-        section = getWordLookupSection();
-    }
-    if (!section) return;
-
-    if (typeof activeIndex !== 'number' || activeIndex < 0) {
-        activeIndex = 0;
-    }
-    activeWordLookupWordIndex = activeIndex;
-
-    section.querySelectorAll('.word-lookup-word-row').forEach(row => {
-        const rowIndex = parseInt(row.dataset.wordIndex, 10);
-        const isActive = rowIndex === activeIndex;
-        row.classList.toggle('expanded', isActive);
-    });
-}
-
-function wireWordLookupSuggestionButtons(container, target) {
-    if (!container) return;
-    container.querySelectorAll('.suggestion-btn').forEach((btn, suggestionIndex) => {
-        const wordRowIndex = parseInt(btn.closest('.word-lookup-word-row')?.dataset.wordIndex, 10);
-        const rowIndex = Number.isFinite(wordRowIndex) ? wordRowIndex : -1;
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            applyWordLookupInsert(target, btn.dataset.original, btn.dataset.suggestion, rowIndex);
-        });
-        touchSlopUtils.registerTouchSlopTracking(btn);
-        btn.addEventListener('touchend', (e) => {
-            const maxDelta = touchSlopUtils.finalizeTouchSlop(btn, e);
-            if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
-            e.preventDefault();
-            applyWordLookupInsert(target, btn.dataset.original, btn.dataset.suggestion, rowIndex);
-        }, { passive: false });
-    });
-}
-
-function buildWordLookupSynonymButtons(entry) {
-    const synonyms = entry.synonyms || [];
-    if (synonyms.length === 0) return '';
-    return synonyms.map(synonym => `
-        <button class="suggestion-btn" data-original="${entry.word}" data-suggestion="${synonym}">
-            ${synonym}
-        </button>
-    `).join('');
-}
-
-function buildWordLookupDefinitionsHtml(definitions) {
-    if (!definitions || definitions.length === 0) return '';
-    return definitions.map(definition => {
-        const posLabel = definition.pos ? `<span class="word-lookup-pos">${definition.pos}.</span> ` : '';
-        return `<div class="word-lookup-definition">${posLabel}${definition.gloss}</div>`;
-    }).join('');
-}
-
-function selectWordLookupRow(wordIndex) {
-    const section = getWordLookupSection();
-    if (!section) return;
-    activeWordLookupWordIndex = wordIndex;
-    selectedWordLookupWordIndex = wordIndex;
-    selectedWordLookupSuggestionIndex = 0;
-    wordLookupNavigationMode = true;
-    autocompleteNavigationMode = true;
-    clearMainAutocompleteSelection();
-    applyWordLookupWordDisplay(section, wordIndex);
-    updateWordLookupSelection();
-}
-
-function createWordLookupWordRow(entry, target, wordIndex) {
-    const definitions = entry.definitions || [];
-    const synonymButtonsHtml = buildWordLookupSynonymButtons(entry);
-    const definitionsHtml = buildWordLookupDefinitionsHtml(definitions);
-
-    const lookupHint = entry.lookupWord && entry.lookupWord.toLowerCase() !== String(entry.word).toLowerCase()
-        ? `<div class="word-lookup-lookup-hint">via "${entry.lookupWord}"</div>`
-        : '';
-
-    const row = document.createElement('div');
-    row.className = 'word-lookup-word-row';
-    row.dataset.wordIndex = String(wordIndex);
-
-    const compact = document.createElement('div');
-    compact.className = 'word-lookup-row-compact';
-    compact.innerHTML = `
-        <span class="word-lookup-term-inline">"${entry.word}"</span>
-        ${synonymButtonsHtml ? `<div class="suggestions-list word-lookup-inline-synonyms">${synonymButtonsHtml}</div>` : ''}
-    `;
-    compact.addEventListener('click', (e) => {
-        if (e.target.closest('.suggestion-btn')) return;
-        e.preventDefault();
-        selectWordLookupRow(wordIndex);
-    });
-    touchSlopUtils.registerTouchSlopTracking(compact);
-    compact.addEventListener('touchend', (e) => {
-        if (e.target.closest('.suggestion-btn')) return;
-        const maxDelta = touchSlopUtils.finalizeTouchSlop(compact, e);
-        if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
-        e.preventDefault();
-        selectWordLookupRow(wordIndex);
-    }, { passive: false });
-    row.appendChild(compact);
-    wireWordLookupSuggestionButtons(compact, target);
-
-    const expanded = document.createElement('div');
-    expanded.className = 'word-lookup-row-expanded';
-    expanded.innerHTML = `
-        <div class="word-lookup-term">"${entry.word}"</div>
-        ${lookupHint}
-        ${definitionsHtml ? `<div class="word-lookup-definitions-panel">${definitionsHtml}</div>` : ''}
-        ${synonymButtonsHtml ? `
-            <div class="word-lookup-synonyms-label">Synonyms</div>
-            <div class="suggestions-list">${synonymButtonsHtml}</div>
-        ` : ''}
-    `;
-    row.appendChild(expanded);
-    wireWordLookupSuggestionButtons(expanded, target);
-    wireAutofillItemContextMenu(row);
-
-    return row;
-}
-
-function showWordLookupSection(wordLookupData, target) {
-    if (!wordLookupData || !wordLookupData.hasData || !Array.isArray(wordLookupData.words)) {
-        removeWordLookupSection();
-        return;
-    }
-
-    const wordsWithData = wordLookupData.words.filter(entry =>
-        (entry.synonyms && entry.synonyms.length > 0) ||
-        (entry.definitions && entry.definitions.length > 0)
-    );
-    if (wordsWithData.length === 0) {
-        removeWordLookupSection();
-        return;
-    }
-
-    if (activeWordLookupWordIndex >= wordsWithData.length) {
-        activeWordLookupWordIndex = 0;
-    }
-
-    removeWordLookupSection();
-
-    const hasSynonyms = wordsWithData.some(entry => entry.synonyms && entry.synonyms.length > 0);
-    const sectionTitle = hasSynonyms ? 'Thesaurus' : 'Dictionary';
-
-    const wordLookupSection = document.createElement('div');
-    wordLookupSection.className = 'word-lookup-section';
-
-    const header = document.createElement('div');
-    header.className = 'word-lookup-header';
-    header.innerHTML = `<i class="fas fa-book"></i><span>${sectionTitle}</span>`;
-    wordLookupSection.appendChild(header);
-
-    const wordList = document.createElement('div');
-    wordList.className = 'word-lookup-word-list';
-
-    wordsWithData.forEach((entry, wordIndex) => {
-        wordList.appendChild(createWordLookupWordRow(entry, target, wordIndex));
-    });
-
-    wordLookupSection.appendChild(wordList);
-
-    const spellCheckSection = characterAutocompleteList?.querySelector('.spell-check-section');
-    if (spellCheckSection) {
-        spellCheckSection.insertAdjacentElement('afterend', wordLookupSection);
-    } else {
-        insertSideSectionAtTop(wordLookupSection);
-    }
-
-    let displayIndex = activeWordLookupWordIndex;
-    if (wordLookupNavigationMode && selectedWordLookupWordIndex >= 0) {
-        displayIndex = selectedWordLookupWordIndex;
-    } else if (displayIndex >= wordsWithData.length) {
-        displayIndex = 0;
-    }
-    activeWordLookupWordIndex = displayIndex;
-    if (wordLookupNavigationMode) {
-        selectedWordLookupWordIndex = displayIndex;
-        applyWordLookupWordDisplay(wordLookupSection, displayIndex);
-
-        const activeRow = wordLookupSection.querySelector(`.word-lookup-word-row[data-word-index="${displayIndex}"]`);
-        const suggestionBtns = activeRow?.querySelectorAll('.word-lookup-row-expanded .suggestion-btn');
-        if (!suggestionBtns || suggestionBtns.length === 0) {
-            selectedWordLookupSuggestionIndex = -1;
-        } else if (selectedWordLookupSuggestionIndex < 0) {
-            selectedWordLookupSuggestionIndex = 0;
-        } else if (selectedWordLookupSuggestionIndex >= suggestionBtns.length) {
-            selectedWordLookupSuggestionIndex = suggestionBtns.length - 1;
-        }
-        updateWordLookupSelection();
-    } else {
-        wordLookupSection.querySelectorAll('.word-lookup-word-row').forEach(row => {
-            row.classList.remove('expanded');
-        });
-    }
-}
-
-function applyWordLookupInsert(target, originalWord, synonym, wordRowIndex) {
-    if (!target || !originalWord || synonym == null) {
-        return false;
-    }
-    const cursorPos = target.selectionStart;
-    const wordRange = findWordLookupReplaceRange(target, originalWord, wordRowIndex);
-    if (wordRange) {
-        return applySpellCorrectionReplace(target, wordRange.start, wordRange.end, synonym, cursorPos);
-    }
-    if (typeof showGlassToast === 'function') {
-        showGlassToast('error', null, `Could not find "${originalWord}" to replace`, false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
-    }
-    return false;
-}
 
 function applySpellCorrection(target, originalWord, suggestion, misspelledRowIndex) {
     const currentValue = target.value;
@@ -11142,87 +10133,7 @@ function expandAutocompleteToShowAll() {
     showCharacterAutocompleteSuggestions(window.allAutocompleteResults, currentCharacterAutocompleteTarget);
 }
 
-function updateSpellCheckSelection() {
-    const spellCheckSection = characterAutocompleteList?.querySelector('.spell-check-section');
-    if (!spellCheckSection) return;
 
-    const wordCount = getSpellCheckWordCount(spellCheckSection);
-    spellCheckSection.classList.toggle('nav-active', spellCheckNavigationMode && wordCount > 1);
-
-    spellCheckSection.querySelectorAll('.spell-check-word').forEach(wordSection => {
-        wordSection.classList.remove('selected');
-        wordSection.querySelectorAll('.suggestion-btn').forEach(btn => {
-            btn.classList.remove('selected');
-        });
-    });
-
-    if (spellCheckNavigationMode && selectedSpellCheckWordIndex >= 0) {
-        applySpellCheckWordDisplay(spellCheckSection, selectedSpellCheckWordIndex);
-
-        const wordSections = spellCheckSection.querySelectorAll('.spell-check-word');
-        if (wordSections && selectedSpellCheckWordIndex < wordSections.length) {
-            const selectedWordSection = wordSections[selectedSpellCheckWordIndex];
-            selectedWordSection.classList.add('selected');
-            markAutofillListNavigationActivity();
-
-            let scrollTarget = selectedWordSection;
-            if (selectedSpellCheckSuggestionIndex >= 0) {
-                const suggestionBtns = selectedWordSection.querySelectorAll('.spell-check-row-expanded .suggestion-btn');
-                if (suggestionBtns && selectedSpellCheckSuggestionIndex < suggestionBtns.length) {
-                    suggestionBtns[selectedSpellCheckSuggestionIndex].classList.add('selected');
-                    scrollTarget = suggestionBtns[selectedSpellCheckSuggestionIndex];
-                }
-            }
-            scheduleScrollToAutocompleteOption(scrollTarget);
-        }
-    } else {
-        spellCheckSection.querySelectorAll('.spell-check-word').forEach(row => {
-            row.classList.remove('expanded');
-        });
-    }
-    scheduleAutofillKeyguideUpdate();
-}
-
-function updateWordLookupSelection() {
-    const wordLookupSection = getWordLookupSection();
-    if (!wordLookupSection) return;
-
-    const wordCount = getWordLookupWordCount(wordLookupSection);
-    wordLookupSection.classList.toggle('nav-active', wordLookupNavigationMode && wordCount > 1);
-
-    wordLookupSection.querySelectorAll('.suggestion-btn').forEach(btn => {
-        btn.classList.remove('selected');
-    });
-    wordLookupSection.querySelectorAll('.word-lookup-word-row').forEach(row => {
-        row.classList.remove('selected');
-    });
-
-    if (wordLookupNavigationMode && selectedWordLookupWordIndex >= 0) {
-        applyWordLookupWordDisplay(wordLookupSection, selectedWordLookupWordIndex);
-
-        const wordSections = getWordLookupWordRows(wordLookupSection);
-        if (wordSections.length && selectedWordLookupWordIndex < wordSections.length) {
-            const selectedWordSection = wordSections[selectedWordLookupWordIndex];
-            selectedWordSection.classList.add('selected');
-            markAutofillListNavigationActivity();
-
-            let scrollTarget = selectedWordSection;
-            if (selectedWordLookupSuggestionIndex >= 0) {
-                const suggestionBtns = selectedWordSection.querySelectorAll('.word-lookup-row-expanded .suggestion-btn');
-                if (suggestionBtns && selectedWordLookupSuggestionIndex < suggestionBtns.length) {
-                    suggestionBtns[selectedWordLookupSuggestionIndex].classList.add('selected');
-                    scrollTarget = suggestionBtns[selectedWordLookupSuggestionIndex];
-                }
-            }
-            scheduleScrollToAutocompleteOption(scrollTarget);
-        }
-    } else {
-        wordLookupSection.querySelectorAll('.word-lookup-word-row').forEach(row => {
-            row.classList.remove('expanded');
-        });
-    }
-    scheduleAutofillKeyguideUpdate();
-}
 
 // Helper function to determine if a model is an anime model
 function isAnimeModel(model) {
@@ -11313,28 +10224,6 @@ function getPreferredLocalResult(result1, result2) {
 }
 
 // Get the best spell check result from all services
-function getBestSpellCheckResult() {
-    let bestSpellCheckResult = null;
-    let bestScore = 0;
-
-    for (const [, results] of serviceResults) {
-        if (!results || !Array.isArray(results)) continue;
-        const spellCheckResult = results.find(result => result.type === 'spellcheck');
-        if (!spellCheckResult || !spellCheckResult.data || !spellCheckResult.data.hasErrors) continue;
-
-        const misspelledCount = spellCheckResult.data.misspelled.length;
-        const totalSuggestions = Object.values(spellCheckResult.data.suggestions || {})
-            .reduce((sum, suggestions) => sum + suggestions.length, 0);
-        const score = misspelledCount * 10 + totalSuggestions;
-
-        if (score > bestScore) {
-            bestScore = score;
-            bestSpellCheckResult = spellCheckResult;
-        }
-    }
-
-    return bestSpellCheckResult;
-}
 
 // Get all text replacement results from all services
 function getAllTextReplacementResults() {
