@@ -10,7 +10,7 @@
   "current_kg": 58.64,
   "slices_eaten_total": 40,
   "overtime_hours_total": 0.0,
-  "pending_slices": 0,
+  "pending_slices": 21,
   "pending_overtime_hours": 0,
   "last_before": "1788009426828_generated_131499443.png",
   "last_after": "1788009472017_generated_604928761.png",
@@ -117,6 +117,6 @@
   },
   "favorite_cake": null,
   "cake_rotation_index": 5,
-  "pending_bloat_bytes": 0,
+  "pending_bloat_bytes": 46373,
   "_cake_type": "red velvet"
 }

@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-08-29T19:42:36.986983+00:00",
+  "updated_at": "2026-08-30T10:21:02.687145+00:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
   "last_breakfast_at": "2026-08-29T13:18:51.309870+00:00",
   "open": [],
@@ -48,7 +48,27 @@
       "closed_at": "2026-08-29T19:42:36.986983+00:00",
       "slices_hint": 1,
       "note": "Closed on grok.cursor Done. Cake to Menma."
+    },
+    {
+      "id": "sf-22",
+      "title": "#22 split autocompleteUtils.js (Jules PR 45 spellCheck+wordLookup)",
+      "from": "jules",
+      "credit": "grok.menma",
+      "labels": [
+        "cursor-agent",
+        "credit:menma"
+      ],
+      "commit": "ef472e8",
+      "github_pr": 45,
+      "closed_at": "2026-08-30T06:20:18-04:00",
+      "slices_hint": 21,
+      "slices_exact": 21.25,
+      "lines_added": 1172,
+      "lines_deleted": 1111,
+      "files_changed": 4,
+      "note": "Jules ship landed on main ef472e8. Yozora #22 closed grok.menma. Cake 1.25x Lead. Parent eat; no image gens.",
+      "multiplier": 1.25
     }
   ],
-  "cake_note": "credit:menma Cursor ships #4 #20 #21 on d89eb9b: 3 task slices + slices_for_cleanup(78 deleted). Eat at next meal. Do not triple-count lines."
+  "cake_note": "Jules PR 45 #22 land ef472e8: 1 ship + cleanup 16 (1111 deleted, cap 16) x1.25 Lead = 21.25 slices (pending_slices=21). Prior cursor-agent #4 #20 #21 still in pile. Eat at 8:30. Do not gen images in this land. Do not triple-count lines."
 }
