@@ -206,35 +206,41 @@ Use `grant_type=refresh_token` to get a new access token before expiry.
 
 Each tool wraps an existing `/agent` function or WS packet. No parallel generate API.
 
+`tools/list` advertises the **core** set plus `advanced_tools`. Hidden tools stay on the server; Grok finds and runs them with `advanced_tools` (`query`, then `name` + `arguments`). Direct `tools/call` of a hidden name still works for CLI.
+
+### Core (`tools/list`)
+
 | Tool | Wrap | Scope | Bind? |
 |------|------|-------|-------|
 | `generate_image` | Server generate; waits and returns filename + Grok webp (full PNG bytes stripped) | `generation` | no |
 | `get_generated_image` | Metadata + Grok webp. Filename, seed, or omit for latest. `workspace` default is `default`. | `gallery` | no |
-| `get_latest_image` | Same as `get_generated_image` with no filename. | `gallery` | no |
-| `get_images` | Paged directory listing only. | `gallery` | no |
-| `get_workspaces` | `workspace_list` | `workspace` | no |
-| `list_clients` | `GET /agent/clients` | `generation` | no |
-| `bind_session` | `POST /agent/bind` `{ clientId }` or `{ code }` | `generation` | — |
+| `get_workspaces` | `workspace_list` — use the id on `get_generated_image` / `omegasearch` | `workspace` | no |
 | `get_studio_state` | Bound `get_state` (same snapshot as `GET /agent/session/state`) | `generation` | yes |
 | `apply_studio_changes` | `POST /agent/session/studio` | `generation` | yes |
 | `search_autofill` | `test_autofill_ranking` once per term (max 20). Same live autocomplete pipeline. Accepts `terms: string[]` and/or `query` | `autofill` | no |
 | `search_wiki` | `search_tag_wiki` | `wiki` (also listed for `autofill` keys) | no |
 | `get_wiki_page` | `get_tag_wiki_page` (`tagName`, optional `source`, `format`) | `wiki` (also listed for `autofill` keys) | no |
-| `list_static_wiki_sites` | `get_wiki_home` | `wiki` / `autofill` | no |
-| `list_static_wiki_pages` | `get_static_wiki_site_index` | `wiki` / `autofill` | no |
-| `search_static_wiki` | substring filter over existing site indexes (`query`, optional `siteId`) | `wiki` / `autofill` | no |
-| `get_static_wiki_page` | `get_static_wiki_page` | `wiki` / `autofill` | no |
-| `list_presets` / `search_presets` / `get_preset` / `save_preset` | `get_presets` / `search_presets` / `load_preset` / `save_preset` | `presets` | no |
+| `save_preset` | `save_preset` — `presetName` + `config` (`name`, `prompt`, `model`) | `presets` | no |
 | `apply_preset_to_studio` | `load_preset` then bound `apply_studio` Change-JSON | `presets` | yes |
-| `generate_preset` | `generate_preset` (server generate, not bound-tab click) | `generation` | no |
 | `upscale_image` | `upscale_image` (`filename`, optional `workspace`) | `generation` | no |
 | `expand_image` | `expand_image` (`filename`, `resolution`, `imageBias` 0–4) | `generation` | no |
-| `list_references` / `get_references_by_ids` / `list_workspace_references` / `upload_reference` | matching reference packets | `references` | no |
-| `omegasearch` | `omegasearch_query` (`query` / `terms` coerced to `blocks`) | `search` | no |
-| `list_notes` / `list_notes_by_workspace` / `get_note` | `notes_get_all_metadata` / `notes_get_by_workspace` / `notes_get` | `notes` | no |
-| `create_note` / `update_note` / `save_note_content` | `notes_create` / `notes_update` / `notes_save_content` (`append` does `notes_get` first) | `notes` | no |
+| `omegasearch` | `omegasearch_query` (`query` / `terms` coerced to `blocks`; optional `workspace`) | `search` | no |
+| `list_notes` / `get_note` / `save_note_content` | `notes_get_all_metadata` / `notes_get` / `notes_save_content` | `notes` | no |
+| `advanced_tools` | Discover or run a hidden tool (`query`, or `name` + `arguments`) | any | — |
 
-`search_autofill` returns `{ success, results: [{ term, success, results, spellCheck }] }`. That is the existing ranking-test search, not a new search API. `get_wiki_page` is tag wiki (danbooru / e621). Static / Grimoire pages use `list_static_wiki_*` / `search_static_wiki` / `get_static_wiki_page`. Notes use the existing notepad packets — request the `notes` scope on consent.
+### Hidden (via `advanced_tools`)
+
+| Tool | Wrap | Scope |
+|------|------|-------|
+| `get_latest_image` | Same as `get_generated_image` with no filename | `gallery` |
+| `get_images` | Paged directory listing only | `gallery` |
+| `list_clients` / `bind_session` | `GET /agent/clients` / `POST /agent/bind` | `generation` |
+| `list_static_wiki_sites` / `list_static_wiki_pages` / `search_static_wiki` / `get_static_wiki_page` | Grimoire / static wiki | `wiki` / `autofill` |
+| `list_presets` / `search_presets` / `get_preset` / `generate_preset` | extra preset list/load/server-generate | `presets` / `generation` |
+| `list_references` / `get_references_by_ids` / `list_workspace_references` / `upload_reference` | reference packets | `references` |
+| `list_notes_by_workspace` / `create_note` / `update_note` | extra notepad CRUD | `notes` |
+
+`search_autofill` returns `{ success, results: [{ term, success, results, spellCheck }] }`. That is the existing ranking-test search, not a new search API. `get_wiki_page` is tag wiki (danbooru / e621). Static / Grimoire pages use hidden `list_static_wiki_*` / `search_static_wiki` / `get_static_wiki_page`. Notes use the existing notepad packets — request the `notes` scope on consent.
 
 `autoApply` (default true) and `autoGenerate` (default false) stay **siblings of `change`**. `autoGenerate` clicks the bound tab's existing Generate button after a successful apply. That is not a second generate API.
 

@@ -36,10 +36,13 @@ const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 const GROK_IMAGE_MAX_EDGE = 1280;
 const GROK_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
 const MCP_INSTRUCTIONS = [
-    'Known or last gallery image: call get_generated_image. Pass filename, seed, or omit filename for the latest image in the workspace (default workspace if omitted). It returns NovelAI metadata plus a small webp. Never page get_images to find a file.',
+    'Known or last gallery image: call get_generated_image. Pass filename, seed, or omit filename for the latest image in that workspace (default workspace if omitted). It returns NovelAI metadata plus a small webp. Never page a directory listing to find a file.',
+    'A specific workspace: get_workspaces for the id, then pass workspace on get_generated_image or omegasearch.',
+    'Make a preset from this image or Studio tab: get_generated_image or get_studio_state, then save_preset with presetName and config (name, prompt, model).',
     'Studio prompt / compare / edit: call get_studio_state (auto-binds if exactly one tab is connected), then get_generated_image with state.filename. Write back with apply_studio_changes Change-JSON. autoGenerate clicks the bound Studio Generate button.',
     'generate_image is a server-side generate and returns the new filename plus a small webp. Do not page the gallery afterward.',
-    'get_images is a directory listing only. omegasearch finds names; then call get_generated_image.',
+    'omegasearch finds names; then call get_generated_image.',
+    'If you cannot do the job with the listed tools, call advanced_tools with a query. To run a hidden tool, call advanced_tools again with that name and arguments.',
     'If a tool is rate limited, wait retryAfter seconds for that group (free/search/gallery/write/studio/generate).'
 ].join(' ');
 
@@ -59,6 +62,7 @@ const OAUTH_CORS_ORIGINS = new Set([
 const TOOL_DEFS = [
     {
         name: 'generate_image',
+        core: true,
         description: 'Generate on the server and return the new filename plus a Grok-sized webp and metadata. Not the Studio Generate button (use apply_studio_changes autoGenerate for that). Do not page get_images after this.',
         scope: 'generation',
         packet: 'generate_image',
@@ -80,6 +84,7 @@ const TOOL_DEFS = [
     },
     {
         name: 'get_generated_image',
+        core: true,
         description: 'Get one gallery image as NovelAI metadata plus a Grok-sized webp. Pass filename, seed, or omit filename for the latest image. workspace default is "default". Do not page get_images.',
         scope: 'gallery',
         packet: 'request_image_metadata',
@@ -127,7 +132,8 @@ const TOOL_DEFS = [
     },
     {
         name: 'get_workspaces',
-        description: 'List workspaces. The default workspace id is "default".',
+        core: true,
+        description: 'List workspaces. The default workspace id is "default". Use the id as workspace on get_generated_image or omegasearch.',
         scope: 'workspace',
         packet: 'workspace_list',
         inputSchema: { type: 'object', properties: {} }
@@ -152,12 +158,14 @@ const TOOL_DEFS = [
     },
     {
         name: 'get_studio_state',
+        core: true,
         description: 'Current Studio prompt, UC, characters, params, and open filename. Auto-binds if exactly one tab is connected. Then use get_generated_image on filename to see the picture.',
         scope: 'generation',
         inputSchema: { type: 'object', properties: {} }
     },
     {
         name: 'apply_studio_changes',
+        core: true,
         description: 'Write Change-JSON into the bound Studio tab. Auto-binds if one tab is connected. autoGenerate (default false) clicks Studio Generate after apply. Characters must be action replace + index.',
         scope: 'generation',
         inputSchema: {
@@ -174,6 +182,7 @@ const TOOL_DEFS = [
     },
     {
         name: 'search_autofill',
+        core: true,
         description: 'Run the live autocomplete / SmartText search for one query or a set of terms. Wraps test_autofill_ranking (same searchCharacters pipeline). Returns characters, tags, text replacements, and spellcheck per term.',
         scope: 'autofill',
         inputSchema: {
@@ -192,6 +201,7 @@ const TOOL_DEFS = [
     },
     {
         name: 'search_wiki',
+        core: true,
         description: 'Search tag wiki titles (local, optional online). Wraps search_tag_wiki.',
         scope: 'wiki',
         packet: 'search_tag_wiki',
@@ -211,6 +221,7 @@ const TOOL_DEFS = [
     },
     {
         name: 'get_wiki_page',
+        core: true,
         description: 'Read a tag wiki page (HTML or markdown). Wraps get_tag_wiki_page. Pass tagName from search_wiki.',
         scope: 'wiki',
         packet: 'get_tag_wiki_page',
@@ -319,7 +330,8 @@ const TOOL_DEFS = [
     },
     {
         name: 'save_preset',
-        description: 'Create or overwrite a preset. Wraps save_preset. Requires name, prompt, and model on config.',
+        core: true,
+        description: 'Save this image or Studio state as a preset. Requires presetName and config with name, prompt, and model (from get_generated_image metadata or get_studio_state).',
         scope: 'presets',
         packet: 'save_preset',
         inputSchema: {
@@ -334,6 +346,7 @@ const TOOL_DEFS = [
     },
     {
         name: 'apply_preset_to_studio',
+        core: true,
         description: 'Load a preset and apply it as Change-JSON on the bound Studio tab. Same apply_studio path as apply_studio_changes. Bind required.',
         scope: 'presets',
         inputSchema: {
@@ -365,7 +378,8 @@ const TOOL_DEFS = [
     },
     {
         name: 'upscale_image',
-        description: 'NovelAI 2x upscale of a gallery image. Wraps upscale_image. Pass filename from get_images / generate_image.',
+        core: true,
+        description: 'NovelAI 2x upscale of a gallery image. Wraps upscale_image. Pass filename from get_generated_image / generate_image.',
         scope: 'generation',
         packet: 'upscale_image',
         inputSchema: {
@@ -382,6 +396,7 @@ const TOOL_DEFS = [
     },
     {
         name: 'expand_image',
+        core: true,
         description: 'Expand canvas (letterbox + generate into the new area). Wraps expand_image. Requires filename, target resolution, and imageBias 0–4 (0=start edge, 2=center, 4=end edge).',
         scope: 'generation',
         packet: 'expand_image',
@@ -450,7 +465,8 @@ const TOOL_DEFS = [
     },
     {
         name: 'omegasearch',
-        description: 'Search gallery prompts/tags. An exact filename query returns that row — then call get_generated_image. Do not use this to download pixels.',
+        core: true,
+        description: 'Search gallery prompts/tags. An exact filename query returns that row — then call get_generated_image. Pass workspace to stay in one folder. Do not use this to download pixels.',
         scope: 'search',
         inputSchema: {
             type: 'object',
@@ -469,6 +485,7 @@ const TOOL_DEFS = [
     },
     {
         name: 'list_notes',
+        core: true,
         description: 'List notepad metadata (id, name, workspace). Wraps notes_get_all_metadata.',
         scope: 'notes',
         packet: 'notes_get_all_metadata',
@@ -488,6 +505,7 @@ const TOOL_DEFS = [
     },
     {
         name: 'get_note',
+        core: true,
         description: 'Read one note including content. Wraps notes_get.',
         scope: 'notes',
         packet: 'notes_get',
@@ -536,6 +554,7 @@ const TOOL_DEFS = [
     },
     {
         name: 'save_note_content',
+        core: true,
         description: 'Replace or append note body. Wraps notes_save_content (append does notes_get first). Use this for "write the story so far" / "note what we did differently".',
         scope: 'notes',
         inputSchema: {
@@ -550,6 +569,21 @@ const TOOL_DEFS = [
         }
     }
 ];
+
+const ADVANCED_TOOL_NAME = 'advanced_tools';
+const ADVANCED_TOOL_DEF = {
+    name: ADVANCED_TOOL_NAME,
+    description: 'Find or run tools that are not in the main list (bind a second Studio tab, page the gallery, static wiki, references, extra note/preset actions). Pass query to search. Pass name + arguments to run one.',
+    inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+            query: { type: 'string', description: 'Find hidden tools by job or name (e.g. bind tab, static wiki, references, new note)' },
+            name: { type: 'string', description: 'Hidden tool to run, from a previous advanced_tools query' },
+            arguments: { type: 'object', description: 'Arguments for that hidden tool' }
+        }
+    }
+};
 
 const AUTOFILL_TERM_MAX = 20;
 const STATIC_WIKI_SEARCH_MAX = 200;
@@ -642,6 +676,7 @@ const MCP_RATE_GROUP_LIMITS = {
 };
 
 const TOOL_RATE_GROUPS = {
+    advanced_tools: 'free',
     get_workspaces: 'free',
     list_clients: 'free',
     bind_session: 'free',
@@ -683,6 +718,18 @@ const rateGroupHits = new Map();
 
 function rateGroupForTool(name) {
     return TOOL_RATE_GROUPS[name] || 'rpc';
+}
+
+function rateGroupForCall(name, args) {
+    if (name === ADVANCED_TOOL_NAME) {
+        const target = args && (args.name || args.tool);
+        const runName = String(target || '').trim();
+        if (runName && runName !== ADVANCED_TOOL_NAME) {
+            return rateGroupForTool(runName);
+        }
+        return 'free';
+    }
+    return rateGroupForTool(name);
 }
 
 function consumeRateGroup(keyId, groupId, now = Date.now()) {
@@ -761,8 +808,10 @@ function createMcpRateLimiter() {
         const method = mcpMethodFromReq(req);
         let groupId = 'rpc';
         if (method === 'tools/call') {
-            const name = req.body && req.body.params ? String(req.body.params.name || '').trim() : '';
-            groupId = rateGroupForTool(name);
+            const params = req.body && req.body.params ? req.body.params : {};
+            const name = String(params.name || '').trim();
+            const args = params.arguments && typeof params.arguments === 'object' ? params.arguments : {};
+            groupId = rateGroupForCall(name, args);
         }
         const denied = consumeRateGroup(rateLimitPrincipal(req), groupId);
         if (denied.ok) return next();
@@ -977,12 +1026,37 @@ function toolAllowedForScopes(scopes, tool) {
     return false;
 }
 
-function listToolsForScopes(scopes) {
-    return TOOL_DEFS.filter((tool) => toolAllowedForScopes(scopes, tool)).map((tool) => ({
+function serializeListedTool(tool) {
+    return {
         name: tool.name,
         description: tool.description,
         inputSchema: tool.inputSchema
+    };
+}
+
+function listAdvancedToolDefs(scopes, query) {
+    const q = String(query || '').trim().toLowerCase();
+    const words = q ? q.split(/\s+/).filter(Boolean) : [];
+    return TOOL_DEFS.filter((tool) => {
+        if (tool.core) return false;
+        if (!toolAllowedForScopes(scopes, tool)) return false;
+        if (!words.length) return true;
+        const hay = `${tool.name} ${tool.description} ${tool.scope}`.toLowerCase();
+        return hay.includes(q) || words.every((word) => hay.includes(word));
+    }).map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        scope: tool.scope,
+        inputSchema: tool.inputSchema
     }));
+}
+
+function listToolsForScopes(scopes) {
+    const core = TOOL_DEFS
+        .filter((tool) => tool.core && toolAllowedForScopes(scopes, tool))
+        .map(serializeListedTool);
+    core.push(serializeListedTool(ADVANCED_TOOL_DEF));
+    return core;
 }
 
 function requireToolScope(scopes, tool) {
@@ -1060,7 +1134,44 @@ function mcpImageResult(meta, image) {
     return { content, isError: false };
 }
 
+async function handleAdvancedTools(globalResources, req, input) {
+    const scopes = resolveAgentAuthScopes(req);
+    const runName = String(input.name || input.tool || '').trim();
+    if (runName) {
+        if (runName === ADVANCED_TOOL_NAME) {
+            return mcpTextResult({ success: false, error: 'Cannot nest advanced_tools' }, true);
+        }
+        const def = TOOL_DEFS.find((tool) => tool.name === runName);
+        if (!def) {
+            return mcpTextResult({ success: false, error: `Unknown tool: ${runName}` }, true);
+        }
+        if (def.core) {
+            return mcpTextResult({
+                success: false,
+                error: `${runName} is a core tool. Call it directly, not through advanced_tools.`
+            }, true);
+        }
+        const runArgs = input.arguments && typeof input.arguments === 'object' && !Array.isArray(input.arguments)
+            ? input.arguments
+            : (input.args && typeof input.args === 'object' && !Array.isArray(input.args) ? input.args : {});
+        return callTool(globalResources, req, runName, runArgs);
+    }
+    const tools = listAdvancedToolDefs(scopes, input.query);
+    return mcpTextResult({
+        success: true,
+        tools,
+        count: tools.length,
+        next: tools.length
+            ? 'Call advanced_tools again with name and arguments to run one of these.'
+            : 'No hidden tools matched. Try a shorter query, or use the core tools (get_generated_image, get_studio_state, save_preset, omegasearch).'
+    });
+}
+
 async function callTool(globalResources, req, name, args) {
+    if (name === ADVANCED_TOOL_NAME) {
+        const input = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
+        return handleAdvancedTools(globalResources, req, input);
+    }
     const scopes = resolveAgentAuthScopes(req);
     const def = TOOL_DEFS.find((tool) => tool.name === name);
     if (!def) {
@@ -1128,7 +1239,7 @@ async function callTool(globalResources, req, name, args) {
             return mcpTextResult({
                 success: false,
                 error: bind.clients && bind.clients.length > 1
-                    ? 'Several Studio tabs are connected. Call bind_session with one clientId.'
+                    ? 'Several Studio tabs are connected. Call advanced_tools with query "bind", then run bind_session with one clientId.'
                     : 'No Studio client is connected.',
                 clients: bind.clients || []
             }, true);
@@ -1326,7 +1437,7 @@ async function callTool(globalResources, req, name, args) {
             return mcpTextResult({
                 success: false,
                 error: bind.clients && bind.clients.length > 1
-                    ? 'Several Studio tabs are connected. Call bind_session with one clientId from list_clients.'
+                    ? 'Several Studio tabs are connected. Call advanced_tools with query "bind", then run bind_session with one clientId.'
                     : 'No Studio client is connected. Open Studio in the browser, then retry.',
                 clients: bind.clients || []
             }, true);
@@ -1379,7 +1490,7 @@ async function callTool(globalResources, req, name, args) {
             return mcpTextResult({
                 success: false,
                 error: bind.clients && bind.clients.length > 1
-                    ? 'Several Studio tabs are connected. Call bind_session with one clientId.'
+                    ? 'Several Studio tabs are connected. Call advanced_tools with query "bind", then run bind_session with one clientId.'
                     : 'No Studio client is connected.',
                 clients: bind.clients || []
             }, true);
@@ -1758,6 +1869,12 @@ module.exports = {
         resizeImageForGrok,
         GROK_IMAGE_MAX_EDGE,
         rateGroupForTool,
+        rateGroupForCall,
+        ADVANCED_TOOL_NAME,
+        ADVANCED_TOOL_DEF,
+        listAdvancedToolDefs,
+        handleAdvancedTools,
+        callTool,
         consumeRateGroup,
         resetRateGroupHits,
         MCP_RATE_GROUP_LIMITS,

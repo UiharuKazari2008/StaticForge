@@ -41,6 +41,11 @@ assert.strictEqual(_test.rateGroupForTool('get_workspaces'), 'free');
 assert.strictEqual(_test.rateGroupForTool('get_generated_image'), 'gallery');
 assert.strictEqual(_test.rateGroupForTool('generate_image'), 'generate');
 assert.strictEqual(_test.rateGroupForTool('get_studio_state'), 'studio');
+assert.strictEqual(_test.rateGroupForTool('advanced_tools'), 'free');
+assert.strictEqual(_test.rateGroupForCall('advanced_tools', { query: 'bind' }), 'free');
+assert.strictEqual(_test.rateGroupForCall('advanced_tools', { name: 'generate_preset' }), 'generate');
+assert.strictEqual(_test.rateGroupForCall('advanced_tools', { name: 'get_images' }), 'gallery');
+assert.strictEqual(_test.rateGroupForCall('generate_image', {}), 'generate');
 assert.strictEqual(_test.MCP_RATE_GROUP_LIMITS.free.max, 0);
 assert.ok(_test.MCP_RATE_GROUP_LIMITS.generate.max < _test.MCP_RATE_GROUP_LIMITS.gallery.max);
 _test.TOOL_DEFS.forEach((tool) => {
@@ -66,6 +71,8 @@ assert.ok(generatedImageTool.description.includes('Grok-sized webp'));
 assert.ok(generatedImageTool.description.includes('Do not page get_images'));
 assert.ok(_test.TOOL_DEFS.some((t) => t.name === 'get_latest_image'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('get_generated_image'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('advanced_tools'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('save_preset'));
 assert.strictEqual(_test.resolveWorkspaceId(''), 'default');
 assert.strictEqual(_test.resolveWorkspaceId('default'), 'default');
 assert.strictEqual(_test.resolveWorkspaceId('other'), 'other');
@@ -85,57 +92,84 @@ assert.ok(listImagesTool.description.includes('get_generated_image'));
 const genOnly = _test.listToolsForScopes(['generation']);
 assert.ok(genOnly.some((t) => t.name === 'generate_image'));
 assert.ok(genOnly.some((t) => t.name === 'apply_studio_changes'));
-assert.ok(genOnly.some((t) => t.name === 'bind_session'));
+assert.ok(genOnly.some((t) => t.name === 'advanced_tools'));
+assert.ok(!genOnly.some((t) => t.name === 'bind_session'));
 assert.ok(!genOnly.some((t) => t.name === 'get_images'));
+assert.ok(!genOnly.some((t) => t.name === 'generate_preset'));
 
 const galleryOnly = _test.listToolsForScopes(['gallery']);
-assert.ok(galleryOnly.some((t) => t.name === 'get_images'));
 assert.ok(galleryOnly.some((t) => t.name === 'get_generated_image'));
+assert.ok(galleryOnly.some((t) => t.name === 'advanced_tools'));
+assert.ok(!galleryOnly.some((t) => t.name === 'get_images'));
+assert.ok(!galleryOnly.some((t) => t.name === 'get_latest_image'));
 assert.ok(!galleryOnly.some((t) => t.name === 'generate_image'));
 
 const workspaceOnly = _test.listToolsForScopes(['workspace']);
 assert.ok(workspaceOnly.some((t) => t.name === 'get_workspaces'));
+assert.ok(workspaceOnly.some((t) => t.name === 'advanced_tools'));
 assert.ok(!workspaceOnly.some((t) => t.name === 'generate_image'));
 
 const autofillOnly = _test.listToolsForScopes(['autofill']);
 assert.ok(autofillOnly.some((t) => t.name === 'search_autofill'));
 assert.ok(autofillOnly.some((t) => t.name === 'search_wiki'), 'autofill keys already include wiki packets');
 assert.ok(autofillOnly.some((t) => t.name === 'get_wiki_page'));
+assert.ok(autofillOnly.some((t) => t.name === 'advanced_tools'));
 assert.ok(!autofillOnly.some((t) => t.name === 'generate_image'));
+assert.ok(!autofillOnly.some((t) => t.name === 'list_static_wiki_sites'));
 
 const wikiOnly = _test.listToolsForScopes(['wiki']);
 assert.ok(wikiOnly.some((t) => t.name === 'search_wiki'));
 assert.ok(wikiOnly.some((t) => t.name === 'get_wiki_page'));
-assert.ok(wikiOnly.some((t) => t.name === 'list_static_wiki_sites'));
-assert.ok(wikiOnly.some((t) => t.name === 'search_static_wiki'));
-assert.ok(wikiOnly.some((t) => t.name === 'get_static_wiki_page'));
+assert.ok(wikiOnly.some((t) => t.name === 'advanced_tools'));
+assert.ok(!wikiOnly.some((t) => t.name === 'list_static_wiki_sites'));
+assert.ok(!wikiOnly.some((t) => t.name === 'search_static_wiki'));
+assert.ok(!wikiOnly.some((t) => t.name === 'get_static_wiki_page'));
 assert.ok(!wikiOnly.some((t) => t.name === 'search_autofill'));
 
 const presetsOnly = _test.listToolsForScopes(['presets']);
-assert.ok(presetsOnly.some((t) => t.name === 'list_presets'));
 assert.ok(presetsOnly.some((t) => t.name === 'save_preset'));
 assert.ok(presetsOnly.some((t) => t.name === 'apply_preset_to_studio'));
+assert.ok(presetsOnly.some((t) => t.name === 'advanced_tools'));
+assert.ok(!presetsOnly.some((t) => t.name === 'list_presets'));
 assert.ok(!presetsOnly.some((t) => t.name === 'generate_preset'));
 
 const generationTools = _test.listToolsForScopes(['generation']);
-assert.ok(generationTools.some((t) => t.name === 'generate_preset'));
 assert.ok(generationTools.some((t) => t.name === 'upscale_image'));
 assert.ok(generationTools.some((t) => t.name === 'expand_image'));
 assert.ok(generationTools.some((t) => t.name === 'get_studio_state'));
+assert.ok(!generationTools.some((t) => t.name === 'generate_preset'));
 
 const refsOnly = _test.listToolsForScopes(['references']);
-assert.ok(refsOnly.some((t) => t.name === 'list_references'));
-assert.ok(refsOnly.some((t) => t.name === 'upload_reference'));
+assert.deepStrictEqual(refsOnly.map((t) => t.name), ['advanced_tools']);
 
 const searchOnly = _test.listToolsForScopes(['search']);
 assert.ok(searchOnly.some((t) => t.name === 'omegasearch'));
+assert.ok(searchOnly.some((t) => t.name === 'advanced_tools'));
 assert.ok(!searchOnly.some((t) => t.name === 'search_autofill'));
 
 const notesOnly = _test.listToolsForScopes(['notes']);
 assert.ok(notesOnly.some((t) => t.name === 'list_notes'));
-assert.ok(notesOnly.some((t) => t.name === 'create_note'));
+assert.ok(notesOnly.some((t) => t.name === 'get_note'));
 assert.ok(notesOnly.some((t) => t.name === 'save_note_content'));
+assert.ok(notesOnly.some((t) => t.name === 'advanced_tools'));
+assert.ok(!notesOnly.some((t) => t.name === 'create_note'));
 assert.ok(!notesOnly.some((t) => t.name === 'omegasearch'));
+
+const hiddenBind = _test.listAdvancedToolDefs(['generation'], 'bind');
+assert.ok(hiddenBind.some((t) => t.name === 'bind_session'));
+assert.ok(hiddenBind.some((t) => t.name === 'list_clients'));
+assert.ok(!hiddenBind.some((t) => t.name === 'generate_image'));
+
+const hiddenPreset = _test.listAdvancedToolDefs(['presets', 'generation'], 'preset');
+assert.ok(hiddenPreset.some((t) => t.name === 'list_presets'));
+assert.ok(hiddenPreset.some((t) => t.name === 'generate_preset'));
+assert.ok(!hiddenPreset.some((t) => t.name === 'save_preset'));
+
+const coreNames = _test.TOOL_DEFS.filter((t) => t.core).map((t) => t.name);
+assert.ok(coreNames.includes('get_workspaces'));
+assert.ok(coreNames.includes('save_preset'));
+assert.ok(coreNames.includes('get_generated_image'));
+assert.strictEqual(coreNames.length, 16);
 
 assert.deepStrictEqual(_test.collectOmegasearchBlocks({ query: '1girl sunset' }), ['1girl sunset']);
 assert.deepStrictEqual(
@@ -278,7 +312,9 @@ async function main() {
         { jsonrpc: '2.0', id: 2, method: 'tools/list' }
     );
     const names = listed.body.result.tools.map((t) => t.name);
-    assert.ok(names.includes('get_images'));
+    assert.ok(names.includes('get_generated_image'));
+    assert.ok(names.includes('advanced_tools'));
+    assert.ok(!names.includes('get_images'));
     assert.ok(!names.includes('generate_image'));
 
     const autofillListed = await _test.handleJsonRpc(
@@ -289,7 +325,39 @@ async function main() {
     const autofillNames = autofillListed.body.result.tools.map((t) => t.name);
     assert.ok(autofillNames.includes('search_autofill'));
     assert.ok(autofillNames.includes('get_wiki_page'));
+    assert.ok(autofillNames.includes('advanced_tools'));
     assert.ok(!autofillNames.includes('generate_image'));
+    assert.ok(!autofillNames.includes('list_static_wiki_sites'));
+
+    const advancedListed = await _test.handleJsonRpc(
+        {},
+        { applicationAuth: { applicationScopes: ['generation'] }, authMethod: 'application_key' },
+        {
+            jsonrpc: '2.0',
+            id: 4,
+            method: 'tools/call',
+            params: { name: 'advanced_tools', arguments: { query: 'bind' } }
+        }
+    );
+    const advancedPayload = JSON.parse(advancedListed.body.result.content[0].text);
+    assert.strictEqual(advancedPayload.success, true);
+    assert.ok(advancedPayload.tools.some((t) => t.name === 'bind_session'));
+    assert.ok(advancedPayload.next.includes('name and arguments'));
+
+    const advancedCoreReject = await _test.handleJsonRpc(
+        {},
+        { applicationAuth: { applicationScopes: ['generation'] }, authMethod: 'application_key' },
+        {
+            jsonrpc: '2.0',
+            id: 5,
+            method: 'tools/call',
+            params: { name: 'advanced_tools', arguments: { name: 'generate_image', arguments: {} } }
+        }
+    );
+    const coreRejectPayload = JSON.parse(advancedCoreReject.body.result.content[0].text);
+    assert.strictEqual(coreRejectPayload.success, false);
+    assert.ok(coreRejectPayload.error.includes('core tool'));
+    assert.strictEqual(advancedCoreReject.body.result.isError, true);
 
     // OAuth 2.1 tests
     // modules/mcpOAuthProvider.js
