@@ -1,13 +1,15 @@
 /**
  * Public MCP facade for Grok connectors.
  * Streamable HTTP on /{mcpPathUuid}. Wraps existing /agent + WS only.
- * Auth is createMcpAuthMiddleware (per-agent sfapp_ + exact UA) — not loopback /agent.
+ * Auth is createMcpAuthMiddleware (per-agent sfapp_ + exact UA + OAuth 2.1) — not loopback /agent.
  */
 
 const fs = require('fs');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
 const { createMcpAuthMiddleware } = require('./auth');
+const { McpOAuthProvider } = require('./mcpOAuthProvider');
+const { createOAuthRoutes } = require('./mcpOAuthRoutes');
 const { scopesAllowPacket } = require('./applicationAuthManager');
 const {
     dispatchAgentPacket,
@@ -449,10 +451,15 @@ function sendMcpResponse(req, res, status, body) {
 
 function registerRoutes(app, { globalResources }) {
     const prefix = `/${globalResources.getMcpPathUuid()}`;
-    const mcpAuth = createMcpAuthMiddleware(globalResources);
+    const oauthProvider = new McpOAuthProvider(globalResources);
+    const oauthRoutes = createOAuthRoutes(globalResources);
+
+    const resourceMetadataUrl = `${oauthProvider.getMcpBaseUrl()}/.well-known/oauth-protected-resource`;
+    const mcpAuth = createMcpAuthMiddleware(globalResources, { resourceMetadataUrl });
     const mcpLimiter = createMcpRateLimiter();
 
     function mcpMiddleware(req, res, next) {
+        req.mcpOAuthProvider = oauthProvider;
         applyMcpCors(req, res);
         if (req.method === 'OPTIONS') {
             if (req.headers.origin && !isAllowedMcpOrigin(req.headers.origin)) {
@@ -493,6 +500,36 @@ function registerRoutes(app, { globalResources }) {
         return res.status(405).json({ error: 'Use POST for Streamable HTTP MCP', code: 'METHOD_NOT_ALLOWED' });
     }
 
+    // OAuth 2.1 well-known endpoints at domain root (RFC 8414, RFC 9728)
+    // These point at the actual endpoints under /{mcpPathUuid}/oauth/*
+    app.get('/.well-known/oauth-protected-resource', (req, res) => {
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        res.json(oauthProvider.getProtectedResourceMetadata());
+    });
+
+    app.get('/.well-known/oauth-authorization-server', (req, res) => {
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        res.json(oauthProvider.getAuthorizationServerMetadata());
+    });
+
+    // OAuth routes under /{mcpPathUuid}/oauth/*
+    const oauthPrefix = `${prefix}/oauth`;
+    const bodyParser = require('express').json();
+    const urlEncodedParser = require('express').urlencoded({ extended: true });
+
+    app.options(`${oauthPrefix}/register`, mcpMiddleware);
+    app.post(`${oauthPrefix}/register`, mcpMiddleware, bodyParser, oauthRoutes.handleRegister);
+
+    app.options(`${oauthPrefix}/authorize`, mcpMiddleware);
+    app.get(`${oauthPrefix}/authorize`, mcpMiddleware, oauthRoutes.handleAuthorizeGet);
+    app.post(`${oauthPrefix}/authorize`, mcpMiddleware, urlEncodedParser, oauthRoutes.handleAuthorizePost);
+
+    app.options(`${oauthPrefix}/token`, mcpMiddleware);
+    app.post(`${oauthPrefix}/token`, mcpMiddleware, urlEncodedParser, oauthRoutes.handleToken);
+
+    // MCP JSON-RPC endpoints
     const stack = [mcpMiddleware, mcpAuth, mcpLimiter];
     app.options(prefix, mcpMiddleware);
     app.options(`${prefix}/mcp`, mcpMiddleware);
@@ -504,6 +541,7 @@ function registerRoutes(app, { globalResources }) {
 
 module.exports = {
     registerRoutes,
+    McpOAuthProvider,
     _test: {
         TOOL_DEFS,
         MCP_CORS_ORIGINS,

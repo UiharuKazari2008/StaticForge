@@ -1,6 +1,8 @@
 const assert = require('assert');
+const crypto = require('crypto');
 const { createMcpAuthMiddleware } = require('../modules/auth');
-const { _test } = require('../modules/mcpAgentFacade');
+const { _test, McpOAuthProvider } = require('../modules/mcpAgentFacade');
+const { validateRedirectUri, verifyPkceChallenge, parseScopes, ALLOWED_REDIRECT_URI_HOSTS } = require('../modules/mcpOAuthProvider');
 
 assert.strictEqual(_test.isAllowedMcpOrigin(undefined), true);
 assert.strictEqual(_test.isAllowedMcpOrigin(''), true);
@@ -147,6 +149,56 @@ async function main() {
     const names = listed.body.result.tools.map((t) => t.name);
     assert.ok(names.includes('get_images'));
     assert.ok(!names.includes('generate_image'));
+
+    // OAuth 2.1 tests
+    // modules/mcpOAuthProvider.js
+    assert.ok(ALLOWED_REDIRECT_URI_HOSTS.has('grok.com'));
+    assert.ok(ALLOWED_REDIRECT_URI_HOSTS.has('x.ai'));
+    assert.ok(ALLOWED_REDIRECT_URI_HOSTS.has('127.0.0.1'));
+    assert.ok(ALLOWED_REDIRECT_URI_HOSTS.has('localhost'));
+
+    assert.deepStrictEqual(validateRedirectUri('https://grok.com/callback'), { valid: true });
+    assert.deepStrictEqual(validateRedirectUri('https://x.ai/oauth'), { valid: true });
+    assert.deepStrictEqual(validateRedirectUri('http://127.0.0.1:39123/callback'), { valid: true });
+    assert.deepStrictEqual(validateRedirectUri('http://localhost:8080/cb'), { valid: true });
+    assert.strictEqual(validateRedirectUri('https://evil.example/cb').valid, false);
+    assert.strictEqual(validateRedirectUri('http://grok.com/cb').valid, false);
+    assert.strictEqual(validateRedirectUri('ftp://grok.com/cb').valid, false);
+
+    const verifier = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
+    const challenge = crypto.createHash('sha256').update(verifier, 'ascii').digest('base64url');
+    assert.strictEqual(verifyPkceChallenge(verifier, challenge), true);
+    assert.strictEqual(verifyPkceChallenge('wrongverifier', challenge), false);
+
+    assert.deepStrictEqual(parseScopes('generation gallery'), ['generation', 'gallery']);
+    assert.deepStrictEqual(parseScopes('  generation   gallery  workspace '), ['generation', 'gallery', 'workspace']);
+    assert.deepStrictEqual(parseScopes(''), []);
+    assert.deepStrictEqual(parseScopes(null), []);
+
+    const mockGlobalResources = {
+        getMcpPathUuid: () => 'test-uuid-1234',
+        getConfig: ({ path }) => path === 'public_hostname' ? 'staticforge.737.jp.net' : null,
+        getApplicationAuthManager: () => ({
+            validateApplicationKey: async () => ({ valid: true, applicationKeyId: 'key-1', scopes: ['generation', 'gallery'] })
+        })
+    };
+    const oauthProvider = new McpOAuthProvider(mockGlobalResources);
+
+    const protectedMeta = oauthProvider.getProtectedResourceMetadata();
+    assert.strictEqual(protectedMeta.resource, 'https://staticforge.737.jp.net/test-uuid-1234');
+    assert.ok(Array.isArray(protectedMeta.authorization_servers));
+    assert.ok(protectedMeta.authorization_servers.includes('https://staticforge.737.jp.net'));
+    assert.ok(Array.isArray(protectedMeta.scopes_supported));
+    assert.ok(protectedMeta.scopes_supported.includes('generation'));
+
+    const asMeta = oauthProvider.getAuthorizationServerMetadata();
+    assert.strictEqual(asMeta.issuer, 'https://staticforge.737.jp.net');
+    assert.strictEqual(asMeta.authorization_endpoint, 'https://staticforge.737.jp.net/test-uuid-1234/oauth/authorize');
+    assert.strictEqual(asMeta.token_endpoint, 'https://staticforge.737.jp.net/test-uuid-1234/oauth/token');
+    assert.strictEqual(asMeta.registration_endpoint, 'https://staticforge.737.jp.net/test-uuid-1234/oauth/register');
+    assert.deepStrictEqual(asMeta.response_types_supported, ['code']);
+    assert.deepStrictEqual(asMeta.code_challenge_methods_supported, ['S256']);
+    assert.deepStrictEqual(asMeta.token_endpoint_auth_methods_supported, ['none']);
 
     console.log('test-mcp-agent-facade: ok');
 }

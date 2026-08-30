@@ -111,6 +111,62 @@ async function createApplicationAuthTables() {
     `);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_app_ua_seen_key ON application_user_agents_seen (application_key_id)`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_app_ua_seen_matched ON application_user_agents_seen (matched)`);
+
+    // OAuth 2.1 tables for MCP PKCE flow
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS oauth_clients (
+            client_id TEXT PRIMARY KEY,
+            application_key_id TEXT NOT NULL,
+            client_name TEXT NOT NULL,
+            redirect_uris TEXT NOT NULL DEFAULT '[]',
+            grant_types TEXT NOT NULL DEFAULT '["authorization_code","refresh_token"]',
+            response_types TEXT NOT NULL DEFAULT '["code"]',
+            token_endpoint_auth_method TEXT NOT NULL DEFAULT 'none',
+            created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+            FOREIGN KEY (application_key_id) REFERENCES application_keys(id)
+        )
+    `);
+
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS oauth_authorization_codes (
+            code_hash TEXT PRIMARY KEY,
+            client_id TEXT NOT NULL,
+            application_key_id TEXT NOT NULL,
+            redirect_uri TEXT NOT NULL,
+            scopes TEXT NOT NULL DEFAULT '[]',
+            code_challenge TEXT NOT NULL,
+            code_challenge_method TEXT NOT NULL DEFAULT 'S256',
+            resource TEXT,
+            expires_at INTEGER NOT NULL,
+            used_at INTEGER,
+            created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+            FOREIGN KEY (client_id) REFERENCES oauth_clients(client_id),
+            FOREIGN KEY (application_key_id) REFERENCES application_keys(id)
+        )
+    `);
+
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS oauth_access_tokens (
+            token_hash TEXT PRIMARY KEY,
+            client_id TEXT NOT NULL,
+            application_key_id TEXT NOT NULL,
+            scopes TEXT NOT NULL DEFAULT '[]',
+            resource TEXT,
+            expires_at INTEGER NOT NULL,
+            refresh_token_hash TEXT,
+            revoked_at INTEGER,
+            created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+            FOREIGN KEY (client_id) REFERENCES oauth_clients(client_id),
+            FOREIGN KEY (application_key_id) REFERENCES application_keys(id)
+        )
+    `);
+
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_oauth_clients_key ON oauth_clients (application_key_id)`);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_oauth_codes_client ON oauth_authorization_codes (client_id)`);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_oauth_codes_expires ON oauth_authorization_codes (expires_at)`);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_oauth_tokens_client ON oauth_access_tokens (client_id)`);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_oauth_tokens_expires ON oauth_access_tokens (expires_at)`);
+    await db.exec(`CREATE INDEX IF NOT EXISTS idx_oauth_tokens_refresh ON oauth_access_tokens (refresh_token_hash)`);
 }
 
 function getDb() {

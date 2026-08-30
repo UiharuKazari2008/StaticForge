@@ -1,6 +1,7 @@
 const fs = require('fs');
 const crypto = require('crypto');
 const { isApplicationKeyFormat, isTempTokenFormat } = require('./applicationAuthManager');
+const { isOAuthAccessTokenFormat } = require('./mcpOAuthProvider');
 
 function applyAuthContext(req, context) {
     req.userType = context.userType;
@@ -152,7 +153,9 @@ function credentialsMatch(received, expected) {
         && crypto.timingSafeEqual(receivedBuffer, expectedBuffer);
 }
 
-function createMcpAuthMiddleware(globalResources) {
+function createMcpAuthMiddleware(globalResources, options = {}) {
+    const { resourceMetadataUrl } = options;
+
     return async (req, res, next) => {
         res.setHeader('Cache-Control', 'blocked, no-store, no-cache, must-revalidate, private, max-age=0');
         res.setHeader('Pragma', 'no-cache');
@@ -182,6 +185,38 @@ function createMcpAuthMiddleware(globalResources) {
             console.error('MCP application auth resolution error:', err.message);
         }
 
+        // OAuth 2.1 access token validation
+        // modules/mcpOAuthProvider.js
+        try {
+            const authHeader = req.headers.authorization;
+            if (authHeader && authHeader.startsWith('Bearer ')) {
+                const token = authHeader.slice(7).trim();
+                if (isOAuthAccessTokenFormat(token)) {
+                    const oauthProvider = req.mcpOAuthProvider || globalResources.getMcpOAuthProvider?.();
+                    if (oauthProvider) {
+                        const validation = await oauthProvider.validateAccessToken(token);
+                        if (validation.valid) {
+                            applyAuthContext(req, {
+                                userType: validation.userType,
+                                authMethod: 'oauth_access_token',
+                                applicationKeyId: validation.applicationKeyId,
+                                applicationScopes: validation.scopes,
+                                oauthClientId: validation.clientId,
+                                oauthResource: validation.resource,
+                                sessionId: `oauth:${validation.applicationKeyId}`
+                            });
+                            return next();
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('MCP OAuth auth resolution error:', err.message);
+        }
+
+        if (resourceMetadataUrl) {
+            res.setHeader('WWW-Authenticate', `Bearer resource_metadata="${resourceMetadataUrl}"`);
+        }
         return res.status(401).json({
             error: 'Application key required',
             code: 'APP_KEY_REQUIRED'
