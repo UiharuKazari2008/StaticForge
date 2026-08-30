@@ -1,29 +1,20 @@
 {
-  "updated_at": "2026-08-30T11:17:18.481838+00:00",
+  "updated_at": "2026-08-30T11:38:07.082822+00:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
-  "last_breakfast_at": "2026-08-30T11:17:18.481838+00:00",
+  "last_breakfast_at": "2026-08-30T11:38:07.082822+00:00",
   "open": [],
-  "done_since_breakfast": [
+  "done_since_breakfast": [],
+  "eaten": [
     {
       "id": "sf-22",
       "title": "#22 split autocompleteUtils.js (Jules PR 45 spellCheck+wordLookup)",
       "from": "jules",
       "credit": "grok.menma",
-      "labels": [
-        "cursor-agent",
-        "credit:menma"
-      ],
-      "commit": "ef472e8",
-      "github_pr": 45,
-      "closed_at": "2026-08-30T06:20:18-04:00",
-      "slices_hint": 21,
-      "slices_exact": 21.25,
-      "lines_added": 1172,
-      "lines_deleted": 1111,
-      "files_changed": 4,
-      "note": "Jules ship landed on main ef472e8. Yozora #22 closed grok.menma. Cake 1.25x Lead. Parent eat; no image gens.",
-      "multiplier": 1.25
+      "eaten_at": "2026-08-30T11:38:07.082822+00:00",
+      "slices": 21,
+      "multiplier": 1.25,
+      "note": "Eaten as separate Jules feast after Rook promotion gift. Do not re-eat."
     }
   ],
-  "cake_note": "Jules 21 still pending for 8:30; Cursor #4/#20/#21 eaten at 7am (5 slices tres leches, 58.64->59.24 kg). Do not re-eat Cursor ships. #37 credit-only, no slices."
+  "cake_note": "Rook promotion gift 48 lemon meringue 59.24->65.00 (creaking) then Jules #22 21 black forest 65.00->67.52 (chair broke heavy_duty). pending_slices=0. Do not restore 21. QA looked; unused leftover-cake gens deleted."
 }
