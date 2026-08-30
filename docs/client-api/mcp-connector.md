@@ -35,7 +35,7 @@ Wrong UUID is `404` (no route). Do not mount `/mcp` or public `/agent`.
 | OAuth access token | validated against `oauth_access_tokens` table; inherits scopes from bound app key |
 | Scopes | `hasScope` / `scopesAllowPacket` per tool; `tools/list` filtered |
 | Rate limit | dedicated limiter, **does not** skip app keys (120 / 15 min per key or IP) |
-| CORS | locked to `https://grok.com`, `https://www.grok.com`, `https://x.ai`, `https://console.x.ai`; missing Origin allowed (CLI / xAI server) |
+| CORS | MCP tools locked to `https://grok.com`, `https://www.grok.com`, `https://x.ai`, `https://console.x.ai`; missing Origin allowed (CLI / xAI server). OAuth register/authorize/token also allow the issuer origin (consent form), `Origin: null` / same-origin document navigations, loopback, and `https://cursor.com` / `https://www.cursor.com`. |
 
 Captured rows live in the existing application-auth SQLite DB (not a new store). UA is not a credential. Keys are never stored or logged with the UA list.
 
@@ -189,6 +189,7 @@ Copy the `client_id` from the response and paste it into the Grok form. On the c
 Only these hosts are allowed:
 - `https://grok.com`, `https://www.grok.com`
 - `https://x.ai`, `https://console.x.ai`
+- `https://cursor.com`, `https://www.cursor.com`
 - `http://127.0.0.1:*`, `http://localhost:*` (for CLI/dev)
 
 ### Token lifetime

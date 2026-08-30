@@ -9,6 +9,24 @@ assert.strictEqual(_test.isAllowedMcpOrigin(''), true);
 assert.strictEqual(_test.isAllowedMcpOrigin('https://grok.com'), true);
 assert.strictEqual(_test.isAllowedMcpOrigin('https://console.x.ai'), true);
 assert.strictEqual(_test.isAllowedMcpOrigin('https://evil.example'), false);
+assert.strictEqual(_test.isAllowedMcpOrigin('https://cursor.com'), false);
+assert.strictEqual(_test.isAllowedMcpOrigin('https://staticforge.737.jp.net'), false);
+
+const oauthReq = { protocol: 'https', get: (name) => name === 'host' ? 'staticforge.737.jp.net' : undefined };
+const oauthProviderForCors = { getMcpBaseUrl: () => 'https://staticforge.737.jp.net' };
+assert.strictEqual(_test.isAllowedOAuthOrigin(undefined), true);
+assert.strictEqual(_test.isAllowedOAuthOrigin('https://grok.com', oauthReq, oauthProviderForCors), true);
+assert.strictEqual(_test.isAllowedOAuthOrigin('https://cursor.com', oauthReq, oauthProviderForCors), true);
+assert.strictEqual(_test.isAllowedOAuthOrigin('https://staticforge.737.jp.net', oauthReq, oauthProviderForCors), true);
+assert.strictEqual(_test.isAllowedOAuthOrigin('http://127.0.0.1:9220', oauthReq, oauthProviderForCors), true);
+assert.strictEqual(_test.isAllowedOAuthOrigin('https://evil.example', oauthReq, oauthProviderForCors), false);
+assert.strictEqual(_test.isAllowedOAuthOrigin('null', oauthReq, oauthProviderForCors), true);
+assert.strictEqual(_test.isAbsentOrigin('null'), true);
+assert.strictEqual(_test.isAllowedOAuthOrigin('https://evil.example', {
+    protocol: 'https',
+    get: () => 'staticforge.737.jp.net',
+    headers: { 'sec-fetch-dest': 'document', 'sec-fetch-mode': 'navigate', 'sec-fetch-site': 'same-origin' }
+}, oauthProviderForCors), true);
 
 assert.strictEqual(_test.sanitizeGalleryFilename('shot.png'), 'shot.png');
 assert.strictEqual(_test.sanitizeGalleryFilename('  shot.png  '), 'shot.png');
@@ -156,6 +174,7 @@ async function main() {
     assert.ok(ALLOWED_REDIRECT_URI_HOSTS.has('x.ai'));
     assert.ok(ALLOWED_REDIRECT_URI_HOSTS.has('127.0.0.1'));
     assert.ok(ALLOWED_REDIRECT_URI_HOSTS.has('localhost'));
+    assert.ok(ALLOWED_REDIRECT_URI_HOSTS.has('cursor.com'));
 
     assert.deepStrictEqual(validateRedirectUri('https://grok.com/callback'), { valid: true });
     assert.deepStrictEqual(validateRedirectUri('https://x.ai/oauth'), { valid: true });

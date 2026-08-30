@@ -39,6 +39,8 @@ const ALLOWED_REDIRECT_URI_HOSTS = new Set([
     'www.grok.com',
     'x.ai',
     'console.x.ai',
+    'cursor.com',
+    'www.cursor.com',
     '127.0.0.1',
     'localhost'
 ]);

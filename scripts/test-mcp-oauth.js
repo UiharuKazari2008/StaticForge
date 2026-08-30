@@ -24,6 +24,8 @@ assert.ok(ALLOWED_REDIRECT_URI_HOSTS.has('x.ai'));
 assert.ok(ALLOWED_REDIRECT_URI_HOSTS.has('console.x.ai'));
 assert.ok(ALLOWED_REDIRECT_URI_HOSTS.has('127.0.0.1'));
 assert.ok(ALLOWED_REDIRECT_URI_HOSTS.has('localhost'));
+assert.ok(ALLOWED_REDIRECT_URI_HOSTS.has('cursor.com'));
+assert.ok(ALLOWED_REDIRECT_URI_HOSTS.has('www.cursor.com'));
 
 assert.deepStrictEqual(validateRedirectUri('https://grok.com/callback'), { valid: true });
 assert.deepStrictEqual(validateRedirectUri('https://www.grok.com/oauth/cb'), { valid: true });
@@ -31,6 +33,8 @@ assert.deepStrictEqual(validateRedirectUri('https://x.ai/oauth'), { valid: true 
 assert.deepStrictEqual(validateRedirectUri('https://console.x.ai/callback'), { valid: true });
 assert.deepStrictEqual(validateRedirectUri('http://127.0.0.1:39123/callback'), { valid: true });
 assert.deepStrictEqual(validateRedirectUri('http://localhost:8080/cb'), { valid: true });
+assert.deepStrictEqual(validateRedirectUri('https://cursor.com/oauth/callback'), { valid: true });
+assert.deepStrictEqual(validateRedirectUri('https://www.cursor.com/login-success'), { valid: true });
 
 assert.strictEqual(validateRedirectUri('https://evil.example/cb').valid, false);
 assert.strictEqual(validateRedirectUri('http://grok.com/cb').valid, false);
