@@ -26,7 +26,7 @@ h1{font-size:1.5rem;margin-bottom:8px;color:#fff}
 .scope-list{list-style:none}
 .scope-list li{padding:8px 12px;background:#1a1a2e;border-radius:6px;margin-bottom:6px;display:flex;align-items:center}
 .scope-list li::before{content:"✓";color:#4ade80;margin-right:10px;font-weight:bold}
-.buttons{display:flex;gap:12px;flex-wrap:wrap}
+.buttons{display:flex;flex-direction:row-reverse;gap:12px;flex-wrap:wrap}
 button{flex:1;padding:14px;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer}
 .approve{background:#8b8bff;color:#fff}
 .deny{background:#3a3a5c;color:#e0e0e0}
@@ -97,8 +97,8 @@ ${hiddenOAuthFields(params)}
 <p class="note">Same PIN you use to sign in. Keys stay on the server — you will pick one next.</p>
 </div>
 <div class="buttons">
-<button type="submit" name="action" value="deny" class="deny" formnovalidate>Deny</button>
 <button type="submit" name="action" value="pin" class="approve">Continue</button>
+<button type="submit" name="action" value="deny" class="deny" formnovalidate>Deny</button>
 </div>
 </form>`;
 }
@@ -145,8 +145,8 @@ ${hiddenOAuthFields(params)}
 <input type="hidden" name="csrf" value="${escapeHtml(params.csrf)}">
 ${boundBlock}
 <div class="buttons">
-<button type="submit" name="action" value="deny" class="deny">Deny</button>
 <button type="submit" name="action" value="approve" class="approve">Approve</button>
+<button type="submit" name="action" value="deny" class="deny">Deny</button>
 </div>
 </form>`;
 }

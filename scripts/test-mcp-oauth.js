@@ -92,6 +92,9 @@ assert.ok(rendered.includes('generation'));
 assert.ok(rendered.includes('gallery'));
 assert.ok(rendered.includes('testchallenge'));
 assert.ok(rendered.includes('S256'));
+const pinForm = rendered.match(/<form[\s\S]*?<\/form>/)[0];
+const firstSubmit = pinForm.match(/<button[^>]*type="submit"[^>]*value="([^"]+)"/);
+assert.strictEqual(firstSubmit[1], 'pin', 'Enter must submit Continue, not Deny');
 assert.ok(!rendered.includes('{{CLIENT_NAME}}'));
 assert.ok(!rendered.includes('{{SCOPE_LIST}}'));
 
@@ -180,6 +183,9 @@ const renderedWithKey = renderConsentPage({
 });
 assert.ok(renderedWithKey.includes('already bound'));
 assert.ok(renderedWithKey.includes('Studio'));
+const boundForm = renderedWithKey.match(/<form[\s\S]*?<\/form>/)[0];
+const firstBoundSubmit = boundForm.match(/<button[^>]*type="submit"[^>]*value="([^"]+)"/);
+assert.strictEqual(firstBoundSubmit[1], 'approve', 'Enter on bound consent must Approve, not Deny');
 assert.ok(!renderedWithKey.includes('name="selected_key_id"'));
 assert.ok(!renderedWithKey.includes('name="application_key"'));
 
