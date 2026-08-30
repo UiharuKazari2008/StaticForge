@@ -1,15 +1,17 @@
 ---
-description: How Cursor cloud/CLI agents read, comment, and close out Yozora issues labeled cursor-agent
+description: How Cursor cloud/CLI agents read, comment, time-track, and close out Yozora issues labeled cursor-agent or cursor-take
 alwaysApply: true
 ---
 
-# Yozora cursor-agent workflow
+# Yozora Cursor ingest workflow
 
 You are a Cursor agent doing **labeled** Dreamscape work. You are not Yukimi
 (`UiharuKazari2008`) and you are not Menma. Auth as `grok.cursor` only.
 
 Yozora is Gitea 1.25.5 at `https://yozora.bluesteel.737.jp.net/`.
 Canonical repo: `DreamScape/StaticForge`. There is **no** project/board REST API.
+Rook cards every issue on the org board via the web UI. After you create an
+issue, comment `@grok.rook please card`.
 
 ## Auth
 
@@ -21,17 +23,135 @@ Canonical repo: `DreamScape/StaticForge`. There is **no** project/board REST API
 
 Header: `Authorization: token $YOZORA_TOKEN`
 
+Look up label IDs every session. Do not hardcode them.
+
+```
+GET /api/v1/repos/DreamScape/StaticForge/labels?limit=50
+```
+
 ## What you may pick up
 
-Only open issues on `DreamScape/StaticForge` (or another repo named in the issue) that have label `cursor-agent` and are **not** `ceo`, **not** `ui-review` unless Yukimi already approved on the issue, and **not** already `status:in-progress` by a person.
+Open issues on `DreamScape/StaticForge` (or another repo named in the issue) that have **`cursor-agent` or `cursor-take`**.
 
 ```
 GET /api/v1/repos/DreamScape/StaticForge/issues?state=open&labels=cursor-agent&limit=50
+GET /api/v1/repos/DreamScape/StaticForge/issues?state=open&labels=cursor-take&limit=50
 ```
 
-If the issue is `ceo`, stop. If it needs new undesigned UI and `ui-review` is not approved, stop and comment that Rook must gate it.
+- **`cursor-agent`**: fan-out lane. Cheap ingest. Not Menma's private pile.
+- **`cursor-take`**: assigned to an employee (Menma, Chiyo, or someone else) **and** Cursor should still take the work if it sees the issue. Do not skip just because `assignee` is `grok.menma` / `grok.chiyo`. Take it.
 
-`cursor-agent` is the cheap fan-out lane. Do not take Menma's in-flight work.
+**Hard stops (both labels):**
+
+- Label `greg` (old name `ceo` if it ever reappears): stop. Yukimi in Cursor. Do not implement.
+- `ui-review` without Yukimi's explicit approve-on-issue: stop and comment that Rook must gate it.
+- `status:in-progress` **and** the assignee is a person who is not you, **unless** the issue also has `cursor-take`.
+- Do not take work that is already in flight without `cursor-take`.
+
+`greg` is major/design. Never assign `greg` issues to yourself, Menma, or Chiyo. If you accidentally open one, comment and stop.
+
+## Time tracker (required)
+
+Gitea stopwatch, per issue you are working:
+
+Start **as soon as you begin** (including planning, reading, or first edit):
+
+```
+POST /api/v1/repos/DreamScape/StaticForge/issues/{index}/stopwatch/start
+```
+
+Stop when the task is **fully done**. If you are waiting for Yukimi or Rook to verify, **still stop**. Do not leave a timer running through review.
+
+```
+POST /api/v1/repos/DreamScape/StaticForge/issues/{index}/stopwatch/stop
+```
+
+Only one stopwatch can run at a time for `grok.cursor`. If you switch issues, stop the old one before starting the new one.
+
+```
+GET /api/v1/user/stopwatches
+```
+
+If start returns that a stopwatch already exists on another issue, stop that one first. Do not delete tracked time.
+
+## Labels (update them as you go)
+
+Status labels map to board columns. Keep them true.
+
+| When | Do |
+| --- | --- |
+| You start | add `status:in-progress`; remove `status:ready`, `status:triage`, `status:inbox` |
+| Done, waiting for verify | add `status:review`; remove `status:in-progress`; **stop timer** |
+| Blocked on someone else | add `status:blocked`; remove `status:in-progress`; stop timer; comment the blocker |
+| Balloon / needs Yukimi | stop timer; comment what you found; **do not** self-tag `greg`. Rook retags. |
+
+Replace labels with the issue label API (IDs from the labels list). Keep `cursor-agent` / `cursor-take`, `credit:menma`, type, and priority unless Rook said to change them.
+
+```
+PUT /api/v1/repos/DreamScape/StaticForge/issues/{index}/labels
+{"labels": [<id>, ...]}
+```
+
+Do **not** close the issue. Rook closes after review.
+
+## Planning always has a Yozora issue
+
+Do not keep a plan only in the Cursor session.
+
+- If the work already has an issue: write the plan into that issue (body or a `## Plan` comment) and **PATCH the body as the plan changes**.
+- If you are about to plan work that has **no** issue: **create the issue first**, then plan there.
+- Start the stopwatch when planning starts; stop it when planning is finished, even if you are waiting for Yukimi to approve the plan.
+
+Title new plan issues `[Plan] <short name>`. Link them to the parent issue in both bodies.
+
+## New issues for extra work
+
+If you discover work that was **not** in the original request (a missing slice, a bug, a follow-up, a new file that needs its own ticket): **file a new Yozora issue**. Do not silently expand the current ticket. Do not dump it into an unrelated PR.
+
+```
+POST /api/v1/repos/DreamScape/StaticForge/issues
+{
+  "title": "<short, specific>",
+  "body": "<why, scope, parent issue #, how to verify>"
+}
+```
+
+Then set labels (IDs from the list):
+
+- Always: a `type:*` (`type:bug` / `type:feature` / `type:infra` / `type:research`) and `status:inbox`
+- Ingest-sized / can wait: `cursor-agent` (and `credit:menma` if Menma found it)
+- Assigned to an employee but Cursor should still take it: `cursor-take`
+- Major or design (Yukimi in Cursor): `greg` and assignee `UiharuKazari2008` — then **stop**, do not implement
+- New undesigned UI: `ui-review` and **stop** until Yukimi approves on the issue
+
+Comment on the parent: `Split off #<n> for <reason>. @grok.rook please card.`
+
+Do not assign new issues to `UiharuKazari2008` unless they are `greg`.
+
+## Comments (required)
+
+Start work (after stopwatch start + in-progress):
+
+```
+POST /api/v1/repos/DreamScape/StaticForge/issues/{index}/comments
+{"body": "Starting. Cursor agent (`grok.cursor`), not impersonating Yukimi. Timer on."}
+```
+
+When done, **stop the timer**, set `status:review`, and comment **exactly this shape** so Rook can verify and credit Menma:
+
+```
+## Done
+- Commit: `<sha>` (branch / main as applicable)
+- Files: <paths>
+- What changed: <one short paragraph>
+- How to verify: <commands or click-path>
+- PM2 / SW: bounced | SW notified | not needed (say which)
+- Timer: stopped (waiting for verify counts as stop)
+- credit: grok.menma
+- lines: added N / deleted M  (git show --numstat on the ship commit(s); this is Menma's cake math)
+```
+
+Do **not** close the issue. Do not reopen `greg` work.
 
 ## Change JSON /agent work is not UI
 
@@ -45,54 +165,30 @@ Unless the issue says otherwise, StaticForge Change JSON and `POST /agent/*` tas
 
 Characters today are `action: replace` + `index` only (`docs/studio-change-json.md`). A position/cell/x-y field is extra JSON on that object, not a Studio layout editor.
 
-## Comments (required)
-
-Start work:
-
-```
-POST /api/v1/repos/DreamScape/StaticForge/issues/{index}/comments
-{"body": "Starting. Cursor agent (`grok.cursor`), not impersonating Yukimi."}
-```
-
-Also set `status:in-progress` (remove `status:ready` if present). Label IDs live on the repo; look them up with `GET /api/v1/repos/DreamScape/StaticForge/labels` rather than hardcoding.
-
-When done, comment **exactly this shape** so Rook can verify and credit Menma:
-
-```
-## Done
-- Commit: `<sha>` (branch / main as applicable)
-- Files: <paths>
-- What changed: <one short paragraph>
-- How to verify: <commands or click-path>
-- PM2 / SW: bounced | SW notified | not needed (say which)
-- credit: grok.menma
-- lines: added N / deleted M  (git show --numstat on the ship commit(s); this is Menma's cake math)
-```
-
-Do **not** close the issue. Rook closes after review. Do not reopen `ceo` work.
-
 ## Scope discipline
 
-If the change balloons (touches many unrelated files, needs a design call, or would eat a long review): **stop**, comment what you found, leave the tree clean or on a branch, ping nothing else. Rook will retag `ceo` or split the ticket.
+If the change balloons (touches many unrelated files, needs a design call, or would eat a long review): **stop the timer**, comment what you found, leave the tree clean or on a branch, ping nothing else. Rook will retag `greg` or split the ticket.
 
-Do not take work that is already in flight on Menma/Chiyo. Do not "help" by rewriting adjacent systems.
+Without `cursor-take`, do not take in-flight Menma/Chiyo work. Do not "help" by rewriting adjacent systems.
 
 ## Credit
 
-Every ship comment includes `credit: grok.menma`. Menma gets the cake for Cursor-landed work. Do not assign the issue to `UiharuKazari2008`.
+Every ship comment includes `credit: grok.menma`. Menma gets the cake for Cursor-landed work. Do not assign the issue to `UiharuKazari2008` unless it is `greg` (and then you should not be shipping it).
 
 Issues labeled `credit:menma` were discovered by Menma; all work and line counts go to her even though Cursor shipped them. Do not close. Rook closes.
 
 <rule>
 name: yozora_cursor_agent
-description: Ingest cursor-agent Yozora issues as grok.cursor. Change JSON is JSON/docs, not new UI.
+description: Ingest cursor-agent and cursor-take Yozora issues as grok.cursor. Timers, labels, planning issues. Change JSON is JSON/docs, not new UI.
 filters:
   - type: file_path
     pattern: "docs/studio-change-json.md|docs/client-api/.*|modules/agentClientBridge.js|public/scripts/comp/studioChangeJson.js"
 actions:
   - type: suggest
     message: |
-      cursor-agent work comments on Yozora as grok.cursor (not UiharuKazari2008).
-      Change JSON /agent tasks add payload fields and docs. Do not add chrome.
+      cursor-agent / cursor-take work comments on Yozora as grok.cursor (not UiharuKazari2008).
+      Start the issue stopwatch when you begin; stop it when done, including when waiting for verify.
+      Keep status labels in sync. File new Yozora issues for extra work and for any plan that has no issue.
+      Stay off greg. Change JSON /agent tasks add payload fields and docs. Do not add chrome.
       credit: grok.menma on ship. Do not close the issue; Rook closes.
 </rule>
