@@ -1,31 +1,32 @@
 {
   "version": 1,
-  "capturedAt": "2026-08-21T03:16:12.267Z",
+  "capturedAt": "2026-08-30T08:41:33.906Z",
   "policy": "Public endpoints only. No JWT, recaptcha, cookies, or generate APIs.",
   "sources": {
     "home": {
       "url": "https://novelai.net/",
       "status": 200,
-      "bytes": 195582,
-      "chunkCount": 7,
-      "chunkPathsSha256": "f03e49c1d3421d269e793dadabeb14a762d4dc577b3dc82afdc20a0e6d5a52be",
+      "bytes": 196159,
+      "chunkCount": 10,
+      "chunkPathsSha256": "733cdfacd9f47f6b3b865fd8b68f723593b616fa13d3475f4f9db97823b65f7b",
       "chunkPathsSample": [
         "/_next/static/chunks/473-fb905fc5ea13ac66.js",
         "/_next/static/chunks/7311-5eb2760447762c74.js",
         "/_next/static/chunks/9349-fac95c97052448b0.js",
-        "/_next/static/chunks/9730-a928c6eeabf9027a.js",
+        "/_next/static/chunks/9730-9747e71f09eace79.js",
         "/_next/static/chunks/framework-7e74bf61ca06990a.js",
-        "/_next/static/chunks/main-fd2eb16f9613dd4b.js",
-        "/_next/static/chunks/webpack-bb779c1944358e38.js"
+        "/_next/static/chunks/main-c61b782a85a9763f.js",
+        "/_next/static/chunks/pages/_app-d4b965a7fb59e75a.js",
+        "/_next/static/chunks/pages/lp/legacy-edbd69d341705cc2.js"
       ]
     },
     "updateReload": {
       "url": "https://novelai.net/updateReload.json",
       "status": 200,
-      "bytes": 525,
-      "etag": "\"39ee640a99b09dbf8bca91d481c02e1c\"",
+      "bytes": 578,
+      "etag": "\"8ae73894cf1093d73f124bf4487be70d\"",
       "lastModified": null,
-      "sha256": "2472048644dd52437a7274461149b9dae0a19558cf79d8e43bed415a71775bc0"
+      "sha256": "dc7eab76aeba663ecede94bfaac5097abae85838e967ffb12093161b4f350815"
     },
     "tokenizerQwen": {
       "url": "https://novelai.net/tokenizer/compressed/qwen35_tokenizer.def?v=2&static=true",
@@ -37,19 +38,18 @@
     "journalV5": {
       "url": "https://journal.novelai.net/image-generation-novelai-diffusion-v5-is-here-c2df7c6b8d2d/",
       "status": 200,
-      "bytes": 35104,
+      "bytes": 36711,
       "etag": null,
       "lastModified": null,
-      "sha256": "41cb0d170078e450d7e16f6f3be2d1e8b5f3eb3076bc69ed10d565947de5178f"
+      "sha256": "e672b8f71510a5cd5a4c76b5281504ed4206462732c7c2e9a5669bd587a3b528"
     },
     "blogUsage": {
       "url": "https://blog.novelai.net/subscription-updates-usage-limits-2025-88a208d5d9c5",
-      "status": 403,
-      "bytes": 5371,
+      "status": 307,
+      "bytes": 171,
       "etag": null,
       "lastModified": null,
-      "sha256": "c39910e53c77382ba322e6852f95b214c6f92a820007fdc5b6e7cc58ffdcf0b6",
-      "error": "HTTP 403"
+      "sha256": "c08a7c0e8b31a3acfcd26f4d76ae3941440b1c381e506ca1b5558a17473d89f5"
     }
   }
 }
