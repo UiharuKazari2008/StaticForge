@@ -484,9 +484,17 @@ function normalizeBadPath(url) {
 }
 
 // Paths that are almost always scanner probes, not user typos
+function isMcpOAuthWellKnownPath(url) {
+    const path = normalizeBadPath(url);
+    return path === '/.well-known/oauth-authorization-server'
+        || path === '/.well-known/oauth-protected-resource';
+}
+
 function isSuspiciousProbePath(url) {
     const path = normalizeBadPath(url);
     if (!path || path === '/') return false;
+    // MCP OAuth discovery must be public (Grok auto-DCR). Do not treat as /. probe.
+    if (isMcpOAuthWellKnownPath(path)) return false;
     return (
         /^\/\./.test(path) ||
         /\.env/i.test(path) ||
@@ -658,6 +666,11 @@ function securityMiddleware(req, res, next) {
     // Skip IP blocking checks for private IP addresses
     if (!isPrivateIP(ip)) {
         const normalizedPath = normalizeBadPath(url);
+
+        // Public MCP OAuth discovery — never instant-block these paths
+        if (isMcpOAuthWellKnownPath(normalizedPath)) {
+            return next();
+        }
 
         // Known probe URL — instant block for new scrapers
         if (globalResources.isKnownBadPath(normalizedPath)) {
