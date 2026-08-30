@@ -139,8 +139,63 @@ const TOOL_DEFS = [
                 autoGenerate: { type: 'boolean', description: 'Default false. After apply, click bound-tab Generate.' }
             }
         }
+    },
+    {
+        name: 'search_autofill',
+        description: 'Run the live autocomplete / SmartText search for one query or a set of terms. Wraps test_autofill_ranking (same searchCharacters pipeline). Returns characters, tags, text replacements, and spellcheck per term.',
+        scope: 'autofill',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                terms: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Search terms to run (max 20). Prefer this when Grok has a list.'
+                },
+                query: { type: 'string', description: 'Single term; merged with terms if both sent' },
+                model: { type: 'string', description: 'Optional model hint, default v4_5' }
+            }
+        }
+    },
+    {
+        name: 'search_wiki',
+        description: 'Search tag wiki titles (local, optional online). Wraps search_tag_wiki.',
+        scope: 'wiki',
+        packet: 'search_tag_wiki',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            required: ['query'],
+            properties: {
+                query: { type: 'string' },
+                category: { type: ['string', 'number'] },
+                searchType: { type: 'string', description: 'name (default) or description' },
+                source: { type: 'string', description: 'both | danbooru | e621' },
+                includeOnline: { type: 'boolean' },
+                limit: { type: 'number' }
+            }
+        }
+    },
+    {
+        name: 'get_wiki_page',
+        description: 'Read a tag wiki page (HTML or markdown). Wraps get_tag_wiki_page. Pass tagName from search_wiki.',
+        scope: 'wiki',
+        packet: 'get_tag_wiki_page',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            required: ['tagName'],
+            properties: {
+                tagName: { type: 'string' },
+                source: { type: 'string', description: 'danbooru | e621 | both' },
+                format: { type: 'string', description: 'html (default) or markdown' }
+            }
+        }
     }
 ];
+
+const AUTOFILL_TERM_MAX = 20;
 
 function isAbsentOrigin(origin) {
     return origin == null || origin === '' || String(origin).toLowerCase() === 'null';
@@ -269,16 +324,23 @@ function readGalleryImage(globalResources, filename) {
     };
 }
 
+function toolAllowedForScopes(scopes, tool) {
+    if (agentHasNamedScope(scopes, tool.scope)) return true;
+    // modules/applicationAuthManager.js — autofill already includes wiki packets
+    if (tool.scope === 'wiki' && agentHasNamedScope(scopes, 'autofill')) return true;
+    return false;
+}
+
 function listToolsForScopes(scopes) {
-    return TOOL_DEFS.filter((tool) => agentHasNamedScope(scopes, tool.scope)).map((tool) => ({
+    return TOOL_DEFS.filter((tool) => toolAllowedForScopes(scopes, tool)).map((tool) => ({
         name: tool.name,
         description: tool.description,
         inputSchema: tool.inputSchema
     }));
 }
 
-function requireToolScope(scopes, scopeId) {
-    if (agentHasNamedScope(scopes, scopeId)) return;
+function requireToolScope(scopes, tool) {
+    if (toolAllowedForScopes(scopes, tool)) return;
     const err = new Error('Application key does not have scope for this operation');
     err.status = 403;
     err.code = 'INSUFFICIENT_SCOPE';
@@ -360,8 +422,34 @@ async function callTool(globalResources, req, name, args) {
         err.status = 404;
         throw err;
     }
-    requireToolScope(scopes, def.scope);
+    requireToolScope(scopes, def);
     const input = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
+
+    if (name === 'get_wiki_page' && !input.tagName) {
+        input.tagName = input.name || input.title || input.tag;
+    }
+
+    if (name === 'search_autofill') {
+        const terms = collectAutofillTerms(input);
+        if (!terms.length) {
+            return mcpTextResult({ success: true, results: [] });
+        }
+        const batches = [];
+        for (const term of terms) {
+            const packet = await dispatchPacketTool(globalResources, req, 'test_autofill_ranking', {
+                query: term,
+                model: input.model
+            });
+            const data = packet.data && typeof packet.data === 'object' ? packet.data : {};
+            batches.push({
+                term,
+                success: packet.success,
+                results: Array.isArray(data.results) ? data.results : [],
+                spellCheck: data.spellCheck || null
+            });
+        }
+        return mcpTextResult({ success: true, results: batches });
+    }
 
     if (def.packet && name !== 'get_generated_image') {
         return mcpTextResult(await dispatchPacketTool(globalResources, req, def.packet, input));
@@ -410,6 +498,22 @@ async function callTool(globalResources, req, name, args) {
     const err = new Error(`Unknown tool: ${name}`);
     err.status = 404;
     throw err;
+}
+
+function collectAutofillTerms(input) {
+    const terms = [];
+    const seen = new Set();
+    const push = (value) => {
+        const term = String(value || '').trim();
+        if (!term || seen.has(term)) return;
+        seen.add(term);
+        terms.push(term);
+    };
+    if (Array.isArray(input.terms)) {
+        input.terms.forEach(push);
+    }
+    push(input.query);
+    return terms.slice(0, AUTOFILL_TERM_MAX);
 }
 
 function jsonRpcError(id, code, message, status) {
@@ -634,6 +738,8 @@ module.exports = {
         isAbsentOrigin,
         sanitizeGalleryFilename,
         listToolsForScopes,
+        toolAllowedForScopes,
+        collectAutofillTerms,
         handleJsonRpc,
         applyStudioChanges,
         getBoundRecord

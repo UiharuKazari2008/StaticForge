@@ -145,7 +145,7 @@ Copy the `client_id` from the response and paste it into the Grok form. On the c
    - `response_type=code`
    - `client_id=mcp_...`
    - `redirect_uri=...`
-   - `scope=generation gallery`
+   - `scope=generation gallery autofill wiki`
    - `state=...`
    - `code_challenge=...` (SHA256 hash of verifier, base64url)
    - `code_challenge_method=S256`
@@ -215,6 +215,11 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 | `list_clients` | `GET /agent/clients` | `generation` | no |
 | `bind_session` | `POST /agent/bind` `{ clientId }` or `{ code }` | `generation` | — |
 | `apply_studio_changes` | `POST /agent/session/studio` | `generation` | yes |
+| `search_autofill` | `test_autofill_ranking` once per term (max 20). Same live autocomplete pipeline. Accepts `terms: string[]` and/or `query` | `autofill` | no |
+| `search_wiki` | `search_tag_wiki` | `wiki` (also listed for `autofill` keys) | no |
+| `get_wiki_page` | `get_tag_wiki_page` (`tagName`, optional `source`, `format`) | `wiki` (also listed for `autofill` keys) | no |
+
+`search_autofill` returns `{ success, results: [{ term, success, results, spellCheck }] }`. That is the existing ranking-test search, not a new search API. `get_wiki_page` reads tag wiki HTML/markdown (danbooru / e621). Static / Grimoire / Fandom pages are not in this wrap.
 
 `autoApply` (default true) and `autoGenerate` (default false) stay **siblings of `change`**. `autoGenerate` clicks the bound tab's existing Generate button after a successful apply. That is not a second generate API.
 
@@ -242,7 +247,7 @@ For grok.com Custom Connector UI that requires OAuth:
    - **Authorization Endpoint**: `https://<host>/{mcpPathUuid}/oauth/authorize`
    - **Token Endpoint**: `https://<host>/{mcpPathUuid}/oauth/token`
    - **Client ID**: Your `mcp_...` client ID from registration
-   - **Scopes**: `generation gallery workspace` (or subset)
+   - **Scopes**: `generation gallery workspace autofill wiki` (or subset)
    - **Token Auth Method**: `none (PKCE only, recommended)`
 3. Click Save & Connect. You'll see the consent page.
 4. Approve. Grok gets an access token bound to your app key's scopes.

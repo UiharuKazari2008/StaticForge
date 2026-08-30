@@ -49,6 +49,23 @@ const workspaceOnly = _test.listToolsForScopes(['workspace']);
 assert.ok(workspaceOnly.some((t) => t.name === 'get_workspaces'));
 assert.ok(!workspaceOnly.some((t) => t.name === 'generate_image'));
 
+const autofillOnly = _test.listToolsForScopes(['autofill']);
+assert.ok(autofillOnly.some((t) => t.name === 'search_autofill'));
+assert.ok(autofillOnly.some((t) => t.name === 'search_wiki'), 'autofill keys already include wiki packets');
+assert.ok(autofillOnly.some((t) => t.name === 'get_wiki_page'));
+assert.ok(!autofillOnly.some((t) => t.name === 'generate_image'));
+
+const wikiOnly = _test.listToolsForScopes(['wiki']);
+assert.ok(wikiOnly.some((t) => t.name === 'search_wiki'));
+assert.ok(wikiOnly.some((t) => t.name === 'get_wiki_page'));
+assert.ok(!wikiOnly.some((t) => t.name === 'search_autofill'));
+
+assert.deepStrictEqual(_test.collectAutofillTerms({ query: '  asuka  ' }), ['asuka']);
+assert.deepStrictEqual(_test.collectAutofillTerms({ terms: ['rei', 'asuka', 'rei', ''] }), ['rei', 'asuka']);
+assert.deepStrictEqual(_test.collectAutofillTerms({ terms: ['rei'], query: 'asuka' }), ['rei', 'asuka']);
+assert.strictEqual(_test.collectAutofillTerms({ terms: Array.from({ length: 30 }, (_, i) => `t${i}`) }).length, 20);
+assert.deepStrictEqual(_test.collectAutofillTerms({}), []);
+
 assert.ok(_test.TOOL_DEFS.every((t) => t.scope !== 'universal'));
 
 async function runMcpAuth(options) {
@@ -167,6 +184,16 @@ async function main() {
     const names = listed.body.result.tools.map((t) => t.name);
     assert.ok(names.includes('get_images'));
     assert.ok(!names.includes('generate_image'));
+
+    const autofillListed = await _test.handleJsonRpc(
+        {},
+        { applicationAuth: { applicationScopes: ['autofill'] }, authMethod: 'application_key' },
+        { jsonrpc: '2.0', id: 3, method: 'tools/list' }
+    );
+    const autofillNames = autofillListed.body.result.tools.map((t) => t.name);
+    assert.ok(autofillNames.includes('search_autofill'));
+    assert.ok(autofillNames.includes('get_wiki_page'));
+    assert.ok(!autofillNames.includes('generate_image'));
 
     // OAuth 2.1 tests
     // modules/mcpOAuthProvider.js
