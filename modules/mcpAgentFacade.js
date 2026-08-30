@@ -41,6 +41,12 @@ const MCP_CORS_ORIGINS = new Set([
     'https://console.x.ai'
 ]);
 
+const OAUTH_CORS_ORIGINS = new Set([
+    ...MCP_CORS_ORIGINS,
+    'https://cursor.com',
+    'https://www.cursor.com'
+]);
+
 const TOOL_DEFS = [
     {
         name: 'generate_image',
@@ -136,20 +142,67 @@ const TOOL_DEFS = [
     }
 ];
 
+function isAbsentOrigin(origin) {
+    return origin == null || origin === '' || String(origin).toLowerCase() === 'null';
+}
+
 function isAllowedMcpOrigin(origin) {
     if (origin == null || origin === '') return true;
     return MCP_CORS_ORIGINS.has(String(origin));
 }
 
-function applyMcpCors(req, res) {
+function isLoopbackBrowserOrigin(origin) {
+    try {
+        const parsed = new URL(origin);
+        return (parsed.protocol === 'http:' || parsed.protocol === 'https:')
+            && (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost');
+    } catch (_) {
+        return false;
+    }
+}
+
+function requestSelfOrigin(req) {
+    const host = typeof req.get === 'function' ? req.get('host') : req.headers?.host;
+    if (!host) return null;
+    const proto = req.protocol || 'http';
+    return `${proto}://${host}`;
+}
+
+function isSameOriginDocumentPost(req) {
+    const dest = String(req?.headers?.['sec-fetch-dest'] || '');
+    const mode = String(req?.headers?.['sec-fetch-mode'] || '');
+    const site = String(req?.headers?.['sec-fetch-site'] || '');
+    return dest === 'document' && mode === 'navigate' && (site === 'same-origin' || site === 'none');
+}
+
+function isAllowedOAuthOrigin(origin, req, provider) {
+    if (isAbsentOrigin(origin)) return true;
+    if (req && isSameOriginDocumentPost(req)) return true;
+    const value = String(origin);
+    if (MCP_CORS_ORIGINS.has(value) || OAUTH_CORS_ORIGINS.has(value)) return true;
+    if (isLoopbackBrowserOrigin(value)) return true;
+    if (provider && value === provider.getMcpBaseUrl()) return true;
+    const selfOrigin = req ? requestSelfOrigin(req) : null;
+    return !!(selfOrigin && value === selfOrigin);
+}
+
+function applyCorsHeaders(req, res, allowed) {
     const origin = req.headers.origin;
-    if (origin && MCP_CORS_ORIGINS.has(origin)) {
+    if (origin && allowed) {
         res.setHeader('Access-Control-Allow-Origin', origin);
         res.setHeader('Vary', 'Origin');
         res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, Accept, X-StaticForge-App-Key, Mcp-Session-Id');
         res.setHeader('Access-Control-Max-Age', '600');
     }
+}
+
+function applyMcpCors(req, res) {
+    applyCorsHeaders(req, res, isAllowedMcpOrigin(req.headers.origin));
+}
+
+function applyOAuthCors(req, res, provider) {
+    applyCorsHeaders(req, res, isAllowedOAuthOrigin(req.headers.origin, req, provider));
 }
 
 function createMcpRateLimiter() {
@@ -473,6 +526,21 @@ function registerRoutes(app, { globalResources }) {
         return next();
     }
 
+    function oauthMiddleware(req, res, next) {
+        req.mcpOAuthProvider = oauthProvider;
+        applyOAuthCors(req, res, oauthProvider);
+        if (req.method === 'OPTIONS') {
+            if (req.headers.origin && !isAllowedOAuthOrigin(req.headers.origin, req, oauthProvider)) {
+                return res.status(403).json({ error: 'Origin not allowed', code: 'CORS_LOCKED' });
+            }
+            return res.status(204).end();
+        }
+        if (req.headers.origin && !isAllowedOAuthOrigin(req.headers.origin, req, oauthProvider)) {
+            return res.status(403).json({ error: 'Origin not allowed', code: 'CORS_LOCKED' });
+        }
+        return next();
+    }
+
     async function handleMcpPost(req, res) {
         try {
             const body = req.body;
@@ -505,12 +573,14 @@ function registerRoutes(app, { globalResources }) {
     app.get('/.well-known/oauth-protected-resource', (req, res) => {
         res.setHeader('Content-Type', 'application/json');
         res.setHeader('Cache-Control', 'public, max-age=3600');
+        res.setHeader('Access-Control-Allow-Origin', '*');
         res.json(oauthProvider.getProtectedResourceMetadata());
     });
 
     app.get('/.well-known/oauth-authorization-server', (req, res) => {
         res.setHeader('Content-Type', 'application/json');
         res.setHeader('Cache-Control', 'public, max-age=3600');
+        res.setHeader('Access-Control-Allow-Origin', '*');
         res.json(oauthProvider.getAuthorizationServerMetadata());
     });
 
@@ -519,15 +589,27 @@ function registerRoutes(app, { globalResources }) {
     const bodyParser = require('express').json();
     const urlEncodedParser = require('express').urlencoded({ extended: true });
 
-    app.options(`${oauthPrefix}/register`, mcpMiddleware);
-    app.post(`${oauthPrefix}/register`, mcpMiddleware, bodyParser, oauthRoutes.handleRegister);
+    app.options(`${oauthPrefix}/register`, oauthMiddleware);
+    app.post(`${oauthPrefix}/register`, oauthMiddleware, bodyParser, oauthRoutes.handleRegister);
 
-    app.options(`${oauthPrefix}/authorize`, mcpMiddleware);
-    app.get(`${oauthPrefix}/authorize`, mcpMiddleware, oauthRoutes.handleAuthorizeGet);
-    app.post(`${oauthPrefix}/authorize`, mcpMiddleware, urlEncodedParser, oauthRoutes.handleAuthorizePost);
+    const consentPinLimiter = rateLimit({
+        windowMs: 15 * 60 * 1000,
+        max: 20,
+        skipSuccessfulRequests: true,
+        keyGenerator: (req) => `mcp-consent-pin:${req.ip || req.socket?.remoteAddress || 'unknown'}`,
+        handler: (req, res) => {
+            res.status(429).send('Too many PIN attempts. Try again later.');
+        },
+        standardHeaders: true,
+        legacyHeaders: false
+    });
 
-    app.options(`${oauthPrefix}/token`, mcpMiddleware);
-    app.post(`${oauthPrefix}/token`, mcpMiddleware, urlEncodedParser, oauthRoutes.handleToken);
+    app.options(`${oauthPrefix}/authorize`, oauthMiddleware);
+    app.get(`${oauthPrefix}/authorize`, oauthMiddleware, oauthRoutes.handleAuthorizeGet);
+    app.post(`${oauthPrefix}/authorize`, oauthMiddleware, consentPinLimiter, urlEncodedParser, oauthRoutes.handleAuthorizePost);
+
+    app.options(`${oauthPrefix}/token`, oauthMiddleware);
+    app.post(`${oauthPrefix}/token`, oauthMiddleware, urlEncodedParser, oauthRoutes.handleToken);
 
     // MCP JSON-RPC endpoints
     const stack = [mcpMiddleware, mcpAuth, mcpLimiter];
@@ -545,8 +627,11 @@ module.exports = {
     _test: {
         TOOL_DEFS,
         MCP_CORS_ORIGINS,
+        OAUTH_CORS_ORIGINS,
         MCP_PROTOCOL_VERSION,
         isAllowedMcpOrigin,
+        isAllowedOAuthOrigin,
+        isAbsentOrigin,
         sanitizeGalleryFilename,
         listToolsForScopes,
         handleJsonRpc,

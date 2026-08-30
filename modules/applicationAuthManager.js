@@ -506,10 +506,15 @@ class ApplicationAuthManager {
         return { success: (result?.changes || 0) > 0 };
     }
 
-    async listApplicationKeys({ includeExpired = true } = {}) {
-        const rows = await getDb().all(
-            'SELECT * FROM application_keys ORDER BY created_at DESC'
-        );
+    async listApplicationKeys({ includeExpired = true, userType = null } = {}) {
+        const rows = userType
+            ? await getDb().all(
+                `SELECT * FROM application_keys WHERE user_type = ? ORDER BY created_at DESC`,
+                [userType]
+            )
+            : await getDb().all(
+                'SELECT * FROM application_keys ORDER BY created_at DESC'
+            );
         return rows
             .map((row) => rowToKeySummary(row, includeExpired))
             .filter(Boolean);

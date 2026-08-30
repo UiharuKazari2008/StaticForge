@@ -24,6 +24,8 @@ assert.ok(ALLOWED_REDIRECT_URI_HOSTS.has('x.ai'));
 assert.ok(ALLOWED_REDIRECT_URI_HOSTS.has('console.x.ai'));
 assert.ok(ALLOWED_REDIRECT_URI_HOSTS.has('127.0.0.1'));
 assert.ok(ALLOWED_REDIRECT_URI_HOSTS.has('localhost'));
+assert.ok(ALLOWED_REDIRECT_URI_HOSTS.has('cursor.com'));
+assert.ok(ALLOWED_REDIRECT_URI_HOSTS.has('www.cursor.com'));
 
 assert.deepStrictEqual(validateRedirectUri('https://grok.com/callback'), { valid: true });
 assert.deepStrictEqual(validateRedirectUri('https://www.grok.com/oauth/cb'), { valid: true });
@@ -31,6 +33,8 @@ assert.deepStrictEqual(validateRedirectUri('https://x.ai/oauth'), { valid: true 
 assert.deepStrictEqual(validateRedirectUri('https://console.x.ai/callback'), { valid: true });
 assert.deepStrictEqual(validateRedirectUri('http://127.0.0.1:39123/callback'), { valid: true });
 assert.deepStrictEqual(validateRedirectUri('http://localhost:8080/cb'), { valid: true });
+assert.deepStrictEqual(validateRedirectUri('https://cursor.com/oauth/callback'), { valid: true });
+assert.deepStrictEqual(validateRedirectUri('https://www.cursor.com/login-success'), { valid: true });
 
 assert.strictEqual(validateRedirectUri('https://evil.example/cb').valid, false);
 assert.strictEqual(validateRedirectUri('http://grok.com/cb').valid, false);
@@ -118,7 +122,7 @@ const renderedXss = renderConsentPage({
 assert.ok(!renderedXss.includes('<script>'));
 assert.ok(renderedXss.includes('&lt;script&gt;'));
 
-console.log('Testing consent page with no applicationKeyId (consent-bind flow)...');
+console.log('Testing consent PIN step (no raw sfapp_ paste)...');
 const renderedNoKey = renderConsentPage({
     clientName: 'Grok Connector',
     clientId: 'mcp_grok123',
@@ -128,15 +132,38 @@ const renderedNoKey = renderConsentPage({
     codeChallenge: 'challenge123',
     codeChallengeMethod: 'S256',
     formAction: '/test-uuid/oauth/authorize',
-    applicationKeyId: null
+    step: 'pin'
 });
-assert.ok(renderedNoKey.includes('Your Application Key (sfapp_...)'));
-assert.ok(renderedNoKey.includes('name="application_key"'));
+assert.ok(renderedNoKey.includes('Your Dreamscape PIN'));
+assert.ok(renderedNoKey.includes('name="pin"'));
 assert.ok(renderedNoKey.includes('type="password"'));
-assert.ok(renderedNoKey.includes('required'));
-assert.ok(!renderedNoKey.includes('name="application_key_id"'));
+assert.ok(!renderedNoKey.includes('name="application_key"'));
+assert.ok(!renderedNoKey.includes('sfapp_'));
 
-console.log('Testing consent page with pre-bound applicationKeyId...');
+console.log('Testing consent key-picker step...');
+const renderedPick = renderConsentPage({
+    clientName: 'Grok Connector',
+    clientId: 'mcp_grok123',
+    redirectUri: 'https://grok.com/callback',
+    state: 'state123',
+    scope: 'generation gallery',
+    codeChallenge: 'challenge123',
+    codeChallengeMethod: 'S256',
+    formAction: '/test-uuid/oauth/authorize',
+    step: 'pick',
+    csrf: 'csrf-token-1',
+    keys: [{ id: 'key-1', appName: 'Studio', keyPrefix: 'sfapp_abcd', scopes: ['generation'] }],
+    selectedKeyId: 'key-1',
+    generatedName: 'MCP Grok Connector'
+});
+assert.ok(renderedPick.includes('name="csrf"'));
+assert.ok(renderedPick.includes('name="selected_key_id"'));
+assert.ok(renderedPick.includes('Create new key'));
+assert.ok(renderedPick.includes('Studio'));
+assert.ok(!renderedPick.includes('name="application_key"'));
+assert.ok(!renderedPick.includes('name="pin"'));
+
+console.log('Testing consent page with pre-bound key...');
 const renderedWithKey = renderConsentPage({
     clientName: 'Pre-bound Client',
     clientId: 'mcp_prebound',
@@ -146,12 +173,15 @@ const renderedWithKey = renderConsentPage({
     codeChallenge: 'challenge456',
     codeChallengeMethod: 'S256',
     formAction: '/test-uuid/oauth/authorize',
-    applicationKeyId: 'key-abc-123'
+    step: 'pick',
+    csrf: 'csrf-token-2',
+    keys: [],
+    boundKeyLabel: 'Studio · sfapp_abcd…'
 });
-assert.ok(!renderedWithKey.includes('Your Application Key (sfapp_...)'));
+assert.ok(renderedWithKey.includes('already bound'));
+assert.ok(renderedWithKey.includes('Studio'));
+assert.ok(!renderedWithKey.includes('name="selected_key_id"'));
 assert.ok(!renderedWithKey.includes('name="application_key"'));
-assert.ok(renderedWithKey.includes('name="application_key_id"'));
-assert.ok(renderedWithKey.includes('value="key-abc-123"'));
 
 console.log('Testing McpOAuthProvider metadata...');
 const { McpOAuthProvider } = require('../modules/mcpOAuthProvider');
