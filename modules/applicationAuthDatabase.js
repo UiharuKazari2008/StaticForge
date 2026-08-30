@@ -112,11 +112,12 @@ async function createApplicationAuthTables() {
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_app_ua_seen_key ON application_user_agents_seen (application_key_id)`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_app_ua_seen_matched ON application_user_agents_seen (matched)`);
 
-    // OAuth 2.1 tables for MCP PKCE flow
+    // OAuth 2.1 tables for MCP PKCE flow.
+    // application_key_id is nullable: RFC 7591 DCR binds the sfapp_ key at consent.
     await db.exec(`
         CREATE TABLE IF NOT EXISTS oauth_clients (
             client_id TEXT PRIMARY KEY,
-            application_key_id TEXT NOT NULL,
+            application_key_id TEXT,
             client_name TEXT NOT NULL,
             redirect_uris TEXT NOT NULL DEFAULT '[]',
             grant_types TEXT NOT NULL DEFAULT '["authorization_code","refresh_token"]',
@@ -167,6 +168,53 @@ async function createApplicationAuthTables() {
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_oauth_tokens_client ON oauth_access_tokens (client_id)`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_oauth_tokens_expires ON oauth_access_tokens (expires_at)`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_oauth_tokens_refresh ON oauth_access_tokens (refresh_token_hash)`);
+
+    await ensureOAuthClientsApplicationKeyIdNullable(db);
+}
+
+async function ensureOAuthClientsApplicationKeyIdNullable(database) {
+    const cols = await database.all('PRAGMA table_info(oauth_clients)');
+    if (!Array.isArray(cols) || cols.length === 0) return false;
+    const appKeyCol = cols.find((col) => col.name === 'application_key_id');
+    if (!appKeyCol || appKeyCol.notnull !== 1) return false;
+
+    await database.exec('PRAGMA foreign_keys = OFF');
+    try {
+        await database.exec('BEGIN');
+        await database.exec(`
+            CREATE TABLE oauth_clients_new (
+                client_id TEXT PRIMARY KEY,
+                application_key_id TEXT,
+                client_name TEXT NOT NULL,
+                redirect_uris TEXT NOT NULL DEFAULT '[]',
+                grant_types TEXT NOT NULL DEFAULT '["authorization_code","refresh_token"]',
+                response_types TEXT NOT NULL DEFAULT '["code"]',
+                token_endpoint_auth_method TEXT NOT NULL DEFAULT 'none',
+                created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+                FOREIGN KEY (application_key_id) REFERENCES application_keys(id)
+            )
+        `);
+        await database.exec(`
+            INSERT INTO oauth_clients_new
+                (client_id, application_key_id, client_name, redirect_uris, grant_types, response_types, token_endpoint_auth_method, created_at)
+            SELECT client_id, application_key_id, client_name, redirect_uris, grant_types, response_types, token_endpoint_auth_method, created_at
+            FROM oauth_clients
+        `);
+        await database.exec('DROP TABLE oauth_clients');
+        await database.exec('ALTER TABLE oauth_clients_new RENAME TO oauth_clients');
+        await database.exec('CREATE INDEX IF NOT EXISTS idx_oauth_clients_key ON oauth_clients (application_key_id)');
+        await database.exec('COMMIT');
+    } catch (error) {
+        try {
+            await database.exec('ROLLBACK');
+        } catch (_) {
+            // already rolled back or no transaction
+        }
+        throw error;
+    } finally {
+        await database.exec('PRAGMA foreign_keys = ON');
+    }
+    return true;
 }
 
 function getDb() {
@@ -183,5 +231,6 @@ function getCheckpointManager() {
 module.exports = {
     initializeApplicationAuthDatabase,
     getDb,
-    getCheckpointManager
+    getCheckpointManager,
+    ensureOAuthClientsApplicationKeyIdNullable
 };

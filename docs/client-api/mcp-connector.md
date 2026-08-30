@@ -85,7 +85,7 @@ When using grok.com → New Connector → Custom, fill in:
 
 ### Client registration (RFC 7591 DCR)
 
-Register an OAuth client before using the flow. `application_key` is **optional** — if omitted, the `sfapp_` key is bound at consent approve time instead.
+Register an OAuth client before using the flow. `application_key` is **optional** — if omitted, `oauth_clients.application_key_id` stays null and the `sfapp_` key is bound onto that row at consent approve. Posted `application_key_id` on authorize is ignored; only a validated `sfapp_` secret or an already-bound client row counts.
 
 **Option A: Pre-mint with app key binding (recommended for CLI)**
 
@@ -152,7 +152,7 @@ Copy the `client_id` from the response and paste it into the Grok form. The `sfa
    - `resource=https://<host>/{mcpPathUuid}` (optional)
 
 2. User sees consent page (ui-review flag) showing client name and requested scopes.
-   - If the client was registered **without** an `application_key`, the consent page shows a password field to enter the `sfapp_` key. This binds the authorization to that key's scopes.
+   - If the client was registered **without** an `application_key`, the consent page shows a password field to enter the `sfapp_` key. Approve validates that secret and writes `application_key_id` on the client row.
    - If the client was registered **with** an `application_key`, no input is needed — the key is already bound.
 
 3. On approve, redirect to `redirect_uri` with `code` and `state`.

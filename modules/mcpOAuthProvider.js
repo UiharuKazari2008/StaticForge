@@ -230,6 +230,17 @@ class McpOAuthProvider {
         };
     }
 
+    async bindClientApplicationKey(clientId, applicationKeyId) {
+        if (!clientId || !applicationKeyId) return false;
+        const result = await getDb().run(
+            `UPDATE oauth_clients
+             SET application_key_id = ?
+             WHERE client_id = ? AND application_key_id IS NULL`,
+            [applicationKeyId, clientId]
+        );
+        return (result?.changes || 0) > 0;
+    }
+
     async getAppKeyScopes(applicationKeyId) {
         const row = await getDb().get(
             `SELECT scopes FROM application_keys WHERE id = ? AND status = 'active' AND revoked_at IS NULL`,

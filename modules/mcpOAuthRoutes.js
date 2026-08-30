@@ -221,7 +221,7 @@ function createOAuthRoutes(globalResources) {
             const {
                 action, client_id, redirect_uri, state, scope,
                 code_challenge, code_challenge_method, resource,
-                application_key, application_key_id
+                application_key
             } = req.body || {};
 
             if (!redirect_uri) {
@@ -252,8 +252,9 @@ function createOAuthRoutes(globalResources) {
                 return res.status(400).send('redirect_uri not registered for this client');
             }
 
-            let applicationKeyId = application_key_id || client.applicationKeyId;
-            if (application_key && isApplicationKeyFormat(application_key)) {
+            // Never trust posted application_key_id — bind from DB or a validated sfapp_ secret.
+            let applicationKeyId = client.applicationKeyId || null;
+            if (!applicationKeyId && application_key && isApplicationKeyFormat(application_key)) {
                 const manager = globalResources.getApplicationAuthManager();
                 const validation = await manager.validateApplicationKey(application_key, '', {
                     allowRefreshOverdue: false,
@@ -277,6 +278,7 @@ function createOAuthRoutes(globalResources) {
                     return res.status(400).send(html);
                 }
                 applicationKeyId = validation.applicationKeyId;
+                await provider.bindClientApplicationKey(client_id, applicationKeyId);
             }
 
             if (!applicationKeyId) {
