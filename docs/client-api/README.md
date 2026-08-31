@@ -53,13 +53,13 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 
 | Document | Contents |
 |----------|----------|
-| [authentication.md](./authentication.md) | Login, logout, sessions, cookies, Bearer token, PIN lockout, headers |
+| [authentication.md](./authentication.md) | Login, logout, sessions, cookies, Bearer/app/OAuth tokens, PIN lockout, headers |
 | [websocket.md](./websocket.md) | WS URL, handshake, protocol, server push events, reconnection, heartbeats |
 | [rest-api.md](./rest-api.md) | Every HTTP route: methods, auth, inputs, responses, errors |
 | [client-only-features.md](./client-only-features.md) | Web-only UI, localStorage, service worker, Android bridges |
 | [feature-map.md](./feature-map.md) | UI feature → REST/WS matrix |
 | [agent-session.md](./agent-session.md) | Localhost `/agent` bind + drive one Studio tab, plus named-scope `GET /agent/scopes` and `POST /agent/packet` (Ivory/Menma; loopback + Bearer, not PIN pad) |
-| [mcp-connector.md](./mcp-connector.md) | Public MCP / Grok connector on `/{mcpPathUuid}` — Streamable HTTP wrap of `/agent` + WS; Bearer `sfapp_`; unknown UA bypass + capture |
+| [mcp-connector.md](./mcp-connector.md) | Public MCP / Grok connector on `/{mcpPathUuid}` — Streamable HTTP wrap of `/agent` + WS; Bearer `sfapp_` or OAuth PKCE `mcoat_`; unknown UA bypass + capture |
 | [README-CHILD.md](../README-CHILD.md) | Child/ephemeral replication deployment (master pairing, bootstrap, daily ops) |
 
 ### WebSocket domains

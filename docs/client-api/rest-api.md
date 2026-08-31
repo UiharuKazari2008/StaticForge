@@ -797,7 +797,25 @@ Base path: `/{mcpPathUuid}` from `secure.config.json` (auto-generated on first b
 
 Full contract: [mcp-connector.md](./mcp-connector.md).
 
-**Auth:** `createMcpAuthMiddleware` — per-agent `sfapp_` Bearer / `X-StaticForge-App-Key`, exact UA preferred, **unknown UA bypass + capture** in `application_user_agents_seen`. No PIN / `loginKey` / query auth. Dedicated rate limit. CORS locked.
+**Auth:** `createMcpAuthMiddleware` — per-agent `sfapp_` Bearer /
+`X-StaticForge-App-Key` **or** OAuth `Bearer mcoat_…`. Exact UA is preferred
+for static app keys; unknown UA is **bypassed + captured** in
+`application_user_agents_seen`. No PIN / `loginKey` / `devLoginKey` / temp
+`sftok_…` / query auth for MCP calls. Dedicated rate limit. CORS locked.
+
+OAuth discovery lives at the domain root and points back to UUID-prefixed
+authorization endpoints:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/.well-known/oauth-protected-resource` | Protected resource metadata (`resource`, `authorization_servers`, supported/recommended scopes) |
+| GET | `/.well-known/oauth-authorization-server` | Authorization server metadata (`issuer`, authorize/token/register endpoints, `S256` PKCE) |
+
+The MCP endpoint's 401 response includes:
+
+```http
+WWW-Authenticate: Bearer resource_metadata="https://<host>/.well-known/oauth-protected-resource"
+```
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -805,6 +823,15 @@ Full contract: [mcp-connector.md](./mcp-connector.md).
 | POST | `/{uuid}/mcp` | Same handler |
 | OPTIONS | same | CORS preflight |
 | GET | same | `405` |
+
+OAuth endpoints:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/{uuid}/oauth/register` | Dynamic client registration; optional `application_key` binding |
+| GET | `/{uuid}/oauth/authorize` | Consent page; requires `response_type=code`, `client_id`, registered `redirect_uri`, and `code_challenge` |
+| POST | `/{uuid}/oauth/authorize` | PIN gate, key pick/create, approve/deny |
+| POST | `/{uuid}/oauth/token` | `authorization_code` + PKCE exchange or `refresh_token` grant |
 
 Tools wrap existing `/agent/packet`, `/agent/clients`, `/agent/bind`, `/agent/session/studio`. Named scopes. No parallel generate API.
 

@@ -43,7 +43,10 @@ Application keys let desktop tools, scripts, and integrations authenticate **wit
 | `X-StaticForge-App-Token` | Temporary access token (no UA check) |
 | `User-Agent` | Must match registered UA when using application key |
 
-**Bearer alternative:** `Authorization: Bearer sfapp_…` or `Bearer sftok_…` (application/temp tokens only — legacy `loginKey` uses plain Bearer without `sfapp_` prefix).
+**Bearer alternative:** `Authorization: Bearer sfapp_…` or `Bearer sftok_…`
+(application/temp tokens only — legacy `loginKey` uses plain Bearer without
+`sfapp_` prefix). Public MCP additionally accepts OAuth `Bearer mcoat_…`;
+normal REST routes do not.
 
 **Example:**
 
@@ -151,6 +154,33 @@ For wget, browser image open, or other contexts where the app cannot set its reg
 
 Use on REST only via `X-StaticForge-App-Token: sftok_…` (no UA check). Tokens inherit parent key expiration and scope limits.
 
+### OAuth access tokens (MCP Custom Connector)
+
+Public MCP (`/{mcpPathUuid}`, [mcp-connector.md](./mcp-connector.md)) can
+authenticate Grok Custom Connectors with OAuth 2.1 + PKCE:
+
+| Token | Format | Lifetime | Use |
+|-------|--------|----------|-----|
+| Authorization code | opaque code | 5 minutes | One-time exchange at `/{mcpPathUuid}/oauth/token` |
+| Access token | `mcoat_…` | 1 hour | MCP `Authorization: Bearer mcoat_…` |
+| Refresh token | `mcort_…` | 30 days | `grant_type=refresh_token` at the token endpoint |
+
+OAuth tokens are **bound to an existing `sfapp_` application key** and inherit
+that key's `userType` and named scopes. They are not a separate principal and
+do not bypass MCP rate limits. The MCP middleware validates `mcoat_…` access
+tokens after checking for a static `sfapp_` key.
+
+Consent is PIN-gated HTML at `/{mcpPathUuid}/oauth/authorize` only. The PIN is
+not accepted as MCP request authentication. MCP calls do not accept `loginKey`,
+`devLoginKey`, temp `sftok_…`, or query-string credentials. Dynamic client
+registration may include `application_key`, but Grok's public-client flow can
+omit it; the app key is then picked or created during consent. Approving
+consent merges requested named scopes onto the selected key and never grants
+`universal`.
+
+Storage lives in the existing application-auth SQLite database:
+`oauth_clients`, `oauth_authorization_codes`, and `oauth_access_tokens`.
+
 ### Available scopes
 
 | Scope | Access |
@@ -166,6 +196,7 @@ Use on REST only via `X-StaticForge-App-Token: sftok_…` (no UA check). Tokens 
 | `references` | References and vibes |
 | `wiki` | Tag wiki / Grimoire |
 | `autofill` | Autofill ranking + tag wiki / Grimoire (not stuffed under `search`) |
+| `notes` | Notepad create, read, update, and delete |
 | `infrastructure` | ping, status, version |
 
 List via WS `get_application_auth_scopes` (admin).
@@ -456,10 +487,11 @@ stolen development key. SSH local forwarding to server-side
 peer as loopback; development mode and key validation still apply.
 
 Public MCP (`/{mcpPathUuid}`, [mcp-connector.md](./mcp-connector.md)) uses
-`createMcpAuthMiddleware`, not this loopback stack. It requires a per-agent
-`sfapp_` key, does **not** skip rate limits, and does **not** accept
-`devLoginKey`, PIN, or query-string auth. Exact registered User-Agent is
-preferred; an unknown UA is captured in `application_user_agents_seen` and
+`createMcpAuthMiddleware`, not this loopback stack. It accepts a per-agent
+`sfapp_` key or OAuth `mcoat_…` access token, does **not** skip rate limits,
+and does **not** accept `devLoginKey`, PIN, or query-string auth. Exact
+registered User-Agent is preferred; an unknown UA is captured in
+`application_user_agents_seen` and
 **bypassed** (Bearer + scopes still apply). Public gallery auth stays
 strict exact-UA.
 
@@ -494,11 +526,19 @@ Only the non-secret `enable_dev` and `userPinLoginEnabled` switches belong in
 5. REST: set `X-StaticForge-App-Key` + matching `User-Agent` on every request
 6. For browser/wget downloads: `request_temp_access_token` → `X-StaticForge-App-Token`
 7. Handle `INSUFFICIENT_SCOPE` and `READONLY_RESTRICTED`
+8. For Grok Custom Connector MCP, use the OAuth flow in
+   [mcp-connector.md](./mcp-connector.md) instead of sharing raw app keys.
 
-## No CSRF token
+## CSRF handling
 
-The app does **not** use a separate CSRF token. Session cookie + sameSite strict is the primary CSRF mitigation. Cross-origin clients must handle cookies explicitly.
+The general app login/session flow does **not** use a separate CSRF token.
+Session cookie + sameSite strict is the primary CSRF mitigation. Cross-origin
+clients must handle cookies explicitly. MCP OAuth consent is the exception: it
+uses a short-lived HttpOnly consent cookie plus a CSRF field on the key-pick
+step.
 
 ## Storage
 
-Application keys are stored in SQLite: `.cache/databases/application_auth.db` (hashed at rest; plaintext shown once at create/claim/refresh).
+Application keys and MCP OAuth records are stored in SQLite:
+`.cache/databases/application_auth.db` (secrets hashed at rest; plaintext keys
+and tokens are shown only at create/claim/exchange/refresh time).
