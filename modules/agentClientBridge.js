@@ -10,6 +10,7 @@ const {
     scopesAllowPacket
 } = require('./applicationAuthManager');
 const { getWsPacketEntry } = require('./ws/wsPacketRegistry');
+const { buildStudioSettingsCatalog } = require('./studioSettingsCatalog');
 
 const SHARE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const SHARE_TTL_MS = 5 * 60 * 1000;
@@ -186,6 +187,153 @@ function stripStudioAutoFlagsDeep(obj) {
 function studioChangePayloadWithoutFlags(body) {
     if (!isStudioChangePayload(body)) return null;
     return stripStudioAutoFlagsDeep(body);
+}
+
+const STUDIO_CHANGE_PARAM_KEYS = [
+    'steps', 'guidance', 'rescale', 'sampler', 'noiseScheduler', 'model',
+    'seed', 'seedLock', 'resolution', 'width', 'height', 'variety', 'upscale',
+    'strength', 'noise', 'append_quality', 'append_uc'
+];
+
+function studioChangeFieldFromText(id, text) {
+    const label = id === 'uc' ? 'UC' : (id === 'promptNegative' ? 'Prompt negative' : 'Prompt');
+    return {
+        id,
+        action: 'replace',
+        chunks: [{ name: label, text: String(text) }]
+    };
+}
+
+function upsertStudioChangeField(fields, id, text) {
+    if (text == null) return;
+    const next = studioChangeFieldFromText(id, text);
+    const index = fields.findIndex((entry) => entry && entry.id === id);
+    if (index >= 0) fields[index] = next;
+    else fields.push(next);
+}
+
+function assembleStudioChangeFromToolArgs(body) {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+    let base = coerceStudioChangeObject(body.change);
+    if (!base && isStudioChangePayload(body)) {
+        base = stripStudioAutoFlagsDeep(body);
+    }
+    const out = base && typeof base === 'object' && !Array.isArray(base) ? { ...base } : {};
+    if (base && base.params && typeof base.params === 'object' && !Array.isArray(base.params)) {
+        out.params = { ...base.params };
+    }
+    if (Array.isArray(base && base.fields)) out.fields = base.fields.slice();
+    if (Array.isArray(base && base.characters)) out.characters = base.characters.slice();
+    if (Array.isArray(base && base.expanders)) out.expanders = base.expanders.slice();
+    if (Array.isArray(base && base.vibes)) out.vibes = base.vibes.slice();
+
+    out.dreamscape = out.dreamscape || 'change';
+    out.v = out.v || 1;
+    if (body.title && !out.title) out.title = body.title;
+
+    const params = { ...(out.params || {}) };
+    if (body.params && typeof body.params === 'object' && !Array.isArray(body.params)) {
+        Object.assign(params, body.params);
+    }
+    STUDIO_CHANGE_PARAM_KEYS.forEach((key) => {
+        if (body[key] !== undefined && params[key] === undefined) {
+            params[key] = body[key];
+        }
+    });
+    if (Object.keys(params).length) out.params = params;
+
+    const fields = Array.isArray(out.fields) ? out.fields.slice() : [];
+    if (Array.isArray(body.fields) && !(base && Array.isArray(base.fields))) {
+        body.fields.forEach((entry) => fields.push(entry));
+    }
+    upsertStudioChangeField(fields, 'prompt', body.prompt);
+    upsertStudioChangeField(fields, 'uc', body.uc);
+    const promptNegative = body.promptNegative != null ? body.promptNegative : body.input_prompt_negative;
+    upsertStudioChangeField(fields, 'promptNegative', promptNegative);
+    if (fields.length) out.fields = fields;
+
+    if (Array.isArray(body.characters) && !out.characters) out.characters = body.characters;
+    if (out.expanders === undefined && Array.isArray(body.expanders)) out.expanders = body.expanders;
+    if (out.expanders === undefined && Array.isArray(body.text_replacements)) out.expanders = body.text_replacements;
+    if (out.vibes === undefined && Array.isArray(body.vibes)) out.vibes = body.vibes;
+    if (out.vibes === undefined && Array.isArray(body.vibe_transfer)) out.vibes = body.vibe_transfer;
+
+    const hasContent = !!(
+        (out.params && Object.keys(out.params).length)
+        || (Array.isArray(out.fields) && out.fields.length)
+        || (Array.isArray(out.characters) && out.characters.length)
+        || Array.isArray(out.expanders)
+        || Array.isArray(out.vibes)
+    );
+    if (!hasContent) return null;
+    return stripStudioAutoFlagsDeep(out);
+}
+
+function mapStudioCharactersToGeneratePrompts(characters) {
+    if (!Array.isArray(characters)) return undefined;
+    return characters.map((ch, index) => {
+        if (!ch || typeof ch !== 'object') {
+            return { prompt: '', uc: '', enabled: true, chara_name: `Character ${index + 1}`, center: null };
+        }
+        const pos = ch.center || ch.position;
+        let center = null;
+        if (pos && typeof pos === 'object' && pos.x != null && pos.y != null) {
+            center = { x: Number(pos.x), y: Number(pos.y) };
+        }
+        return {
+            prompt: ch.prompt || '',
+            uc: ch.uc || '',
+            input_prompt_negative: ch.input_prompt_negative || ch.promptNegative || '',
+            center,
+            enabled: ch.enabled !== false,
+            chara_name: ch.chara_name || ch.name || `Character ${index + 1}`
+        };
+    });
+}
+
+function flattenGenerateToolArgs(input) {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return {};
+    const out = { ...input };
+    if (input.params && typeof input.params === 'object' && !Array.isArray(input.params)) {
+        Object.keys(input.params).forEach((key) => {
+            if (out[key] === undefined) out[key] = input.params[key];
+        });
+    }
+    delete out.params;
+    delete out.change;
+    delete out.autoApply;
+    delete out.autoGenerate;
+    if (out.promptNegative != null && out.input_prompt_negative == null) {
+        out.input_prompt_negative = out.promptNegative;
+    }
+    if (!Array.isArray(out.allCharacterPrompts) && Array.isArray(out.characters)) {
+        out.allCharacterPrompts = mapStudioCharactersToGeneratePrompts(out.characters);
+    }
+    if (Array.isArray(out.allCharacterPrompts) && out.use_coords == null) {
+        out.use_coords = out.allCharacterPrompts.some((ch) => ch && ch.center && ch.center.x != null && ch.center.y != null);
+    }
+    if (!Array.isArray(out.vibe_transfer) && Array.isArray(out.vibes)) {
+        out.vibe_transfer = out.vibes;
+    }
+    if (!Array.isArray(out.text_replacements) && Array.isArray(out.expanders)) {
+        out.text_replacements = out.expanders;
+    }
+    return out;
+}
+
+function mergeExpansionOverrideParams(input) {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return input;
+    const override = (input.overrideParams && typeof input.overrideParams === 'object' && !Array.isArray(input.overrideParams))
+        ? { ...input.overrideParams }
+        : {};
+    ['model', 'steps', 'guidance', 'rescale', 'sampler', 'noiseScheduler', 'noise_schedule', 'noise', 'seed'].forEach((key) => {
+        if (input[key] !== undefined && override[key] === undefined) override[key] = input[key];
+    });
+    if (input.noiseScheduler && override.noise_schedule === undefined) {
+        override.noise_schedule = input.noiseScheduler;
+    }
+    if (Object.keys(override).length) input.overrideParams = override;
+    return input;
 }
 
 function getWsServer(globalResources) {
@@ -612,16 +760,15 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
     app.post('/agent/session/studio', devAuthMiddleware, async (req, res) => {
         try {
             const body = req.body || {};
-            if (!body.change && body.prompt == null && body.uc == null && !isStudioChangePayload(body)) {
-                return res.status(400).json({ success: false, error: 'change JSON or prompt/uc fields are required' });
-            }
             const { autoApply, autoGenerate } = resolveStudioAutoFlags(body);
-            const changeSource = coerceStudioChangeObject(body.change) || body.change;
+            const assembled = assembleStudioChangeFromToolArgs(body);
+            if (!assembled) {
+                return res.status(400).json({ success: false, error: 'change JSON or prompt/uc/params fields are required' });
+            }
             const data = await sendBoundCommand(globalResources, 'apply_studio', {
-                change: stripStudioAutoFlagsDeep(changeSource) || null,
+                change: assembled,
                 prompt: body.prompt,
                 uc: body.uc,
-                payload: studioChangePayloadWithoutFlags(body),
                 autoApply,
                 autoGenerate
             });
@@ -653,6 +800,7 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
                 model: null,
                 clientId: boundClientId,
                 change: null,
+                settings: buildStudioSettingsCatalog(globalResources),
                 scopes: scopePayload.scopes
             };
             if (scopePayload.vfsPathUuid) fallback.vfsPathUuid = scopePayload.vfsPathUuid;
@@ -669,6 +817,7 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
                     clientId: boundClientId,
                     bound: true,
                     change,
+                    settings: buildStudioSettingsCatalog(globalResources, data.model),
                     scopes: scopePayload.scopes,
                     ...(scopePayload.vfsPathUuid ? { vfsPathUuid: scopePayload.vfsPathUuid } : {})
                 });
@@ -705,6 +854,9 @@ module.exports = {
     sendBoundCommand,
     resolveStudioAutoFlags,
     coerceStudioChangeObject,
+    assembleStudioChangeFromToolArgs,
+    flattenGenerateToolArgs,
+    mergeExpansionOverrideParams,
     stripStudioAutoFlagsDeep,
     studioChangePayloadWithoutFlags,
     isStudioChangePayload,
@@ -725,6 +877,11 @@ module.exports = {
         stripStudioAutoFlags,
         stripStudioAutoFlagsDeep,
         coerceStudioChangeObject,
+        assembleStudioChangeFromToolArgs,
+        flattenGenerateToolArgs,
+        mergeExpansionOverrideParams,
+        mapStudioCharactersToGeneratePrompts,
+        STUDIO_CHANGE_PARAM_KEYS,
         objectHasOwn,
         SHARE_TTL_MS,
         SHARE_ALPHABET,

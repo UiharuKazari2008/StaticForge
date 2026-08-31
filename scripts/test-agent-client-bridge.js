@@ -30,6 +30,54 @@ assert.strictEqual(_test.isStudioChangePayload({ dreamscape: 'change', v: 1 }), 
 assert.strictEqual(_test.isStudioChangePayload({ type: 'dreamscape-change' }), true);
 assert.strictEqual(_test.isStudioChangePayload({ prompt: 'hi' }), false);
 
+const assembled = _test.assembleStudioChangeFromToolArgs({
+    prompt: '1girl',
+    uc: 'lowres',
+    steps: 28,
+    sampler: 'k_euler_ancestral',
+    characters: [{ index: 0, action: 'replace', prompt: 'alice', uc: '' }]
+});
+assert.strictEqual(assembled.dreamscape, 'change');
+assert.strictEqual(assembled.params.steps, 28);
+assert.strictEqual(assembled.params.sampler, 'k_euler_ancestral');
+assert.ok(assembled.fields.some((f) => f.id === 'prompt' && f.chunks[0].text === '1girl'));
+assert.ok(assembled.fields.some((f) => f.id === 'uc'));
+assert.strictEqual(assembled.characters.length, 1);
+assert.strictEqual(_test.assembleStudioChangeFromToolArgs({ autoApply: true }), null);
+assert.strictEqual(_test.assembleStudioChangeFromToolArgs({ params: { guidance: 5 } }).params.guidance, 5);
+
+const nested = _test.assembleStudioChangeFromToolArgs({
+    change: { dreamscape: 'change', v: 1, params: { steps: 23 } },
+    guidance: 6
+});
+assert.strictEqual(nested.params.steps, 23);
+assert.strictEqual(nested.params.guidance, 6);
+
+const flatGen = _test.flattenGenerateToolArgs({
+    prompt: '1girl',
+    params: { steps: 28, rescale: 0.3 },
+    characters: [{ prompt: 'alice', uc: 'lowres', name: 'Alice', position: { x: 0.3, y: 0.1 } }]
+});
+assert.strictEqual(flatGen.steps, 28);
+assert.strictEqual(flatGen.rescale, 0.3);
+assert.strictEqual(flatGen.params, undefined);
+assert.strictEqual(flatGen.allCharacterPrompts[0].chara_name, 'Alice');
+assert.strictEqual(flatGen.allCharacterPrompts[0].center.x, 0.3);
+assert.strictEqual(flatGen.use_coords, true);
+
+const expandMerged = _test.mergeExpansionOverrideParams({
+    filename: 'a.png',
+    resolution: 'large_landscape',
+    imageBias: 2,
+    steps: 28,
+    sampler: 'k_euler_ancestral',
+    overrideParams: { guidance: 5 }
+});
+assert.strictEqual(expandMerged.overrideParams.guidance, 5);
+assert.strictEqual(expandMerged.overrideParams.steps, 28);
+assert.strictEqual(expandMerged.overrideParams.sampler, 'k_euler_ancestral');
+
+
 assert.strictEqual(_test.readBoolFlag(undefined, true), true);
 assert.strictEqual(_test.readBoolFlag(undefined, false), false);
 assert.strictEqual(_test.readBoolFlag(null, true), true);

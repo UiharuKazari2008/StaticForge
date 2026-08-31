@@ -182,6 +182,30 @@ assert.ok(coreNames.includes('vfs_list'));
 assert.ok(coreNames.includes('vfs_read'));
 assert.strictEqual(coreNames.length, 25);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.pipeline);
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.rescale);
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.noiseScheduler);
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.characters);
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.params);
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.append_uc);
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.params);
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.characters);
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.steps);
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'expand_image').inputSchema.properties.overrideParams);
+assert.ok(_test.MCP_INSTRUCTIONS.includes('top-level prompt/uc/params'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('append_quality / append_uc'));
+const listedGen = _test.listToolsForScopes(['generation'], {
+    getPromptConfig: () => ({
+        quality_presets: { v5: 'very aesthetic, masterpiece, no text' },
+        uc_presets: { v5: ['human-focus-uc', 'light-uc', 'heavy-uc'] },
+        nsfw_presets: { 3: { add: { base: 'nsfw, nude' } } }
+    })
+}).find((t) => t.name === 'generate_image');
+assert.ok(listedGen.inputSchema.properties.append_quality.description.includes('very aesthetic, masterpiece, no text'));
+assert.ok(listedGen.inputSchema.properties.append_uc.description.includes('heavy-uc'));
+assert.ok(listedGen.inputSchema.properties.sampler.enum.includes('k_euler_ancestral'));
+assert.ok(listedGen.inputSchema.properties.dataset_config.properties.nsfw.description.includes('Nude'));
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'get_studio_state').description.includes('settings'));
+
 assert.deepStrictEqual(_test.collectFilenames({ filename: 'a.png', filenames: ['b.png', '../x'] }), ['b.png', 'a.png']);
 assert.strictEqual(_test.rateGroupForTool('delete_images'), 'write');
 assert.strictEqual(_test.rateGroupForTool('compare_images'), 'gallery');

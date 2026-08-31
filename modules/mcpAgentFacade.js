@@ -20,10 +20,9 @@ const {
     getBoundClientId,
     getBoundRecord,
     resolveStudioAutoFlags,
-    coerceStudioChangeObject,
-    stripStudioAutoFlagsDeep,
-    studioChangePayloadWithoutFlags,
-    isStudioChangePayload,
+    assembleStudioChangeFromToolArgs,
+    flattenGenerateToolArgs,
+    mergeExpansionOverrideParams,
     resolveAgentPacketMessage,
     resolveAgentAuthScopes,
     agentHasNamedScope,
@@ -31,6 +30,7 @@ const {
 } = require('./agentClientBridge');
 const { isGenerateTool, summarizeArgs, summarizeResult, recordActivity } = require('./mcpActivity');
 const { compareImageFiles, evaluateThemeRows } = require('./mcpInsights');
+const { buildStudioSettingsCatalog, applyCatalogToListedTool } = require('./studioSettingsCatalog');
 
 const MCP_PROTOCOL_VERSION = '2024-11-05';
 const MCP_RATE_WINDOW_MS = 15 * 60 * 1000;
@@ -43,8 +43,9 @@ const MCP_INSTRUCTIONS = [
     'Make a preset from this image or Studio tab: get_generated_image or get_studio_state, then save_preset with presetName and config (name, prompt, model).',
     'Delivery priority: apply_studio_changes is the default (autoApply true; autoGenerate if they asked to generate now). Else generate_image (no Studio tab / server-side run). Else emit Change-JSON. Else the prompt-text block. Do not dump Positive/UC when Studio MCP works.',
     'On every Studio edit: get_studio_state first. Compare to the last state you saw this chat. Keep their intervening edits; apply only this message\'s delta.',
-    'Studio prompt / compare / edit: call get_studio_state (auto-binds if exactly one tab is connected), then get_generated_image with state.filename. Write back with apply_studio_changes Change-JSON. autoGenerate clicks the bound Studio Generate button.',
-    'generate_image is a server-side generate and returns the new filename plus a small webp. Pass pipeline for staged generation. Do not page the gallery afterward. The open gallery updates itself.',
+    'Studio prompt / compare / edit: call get_studio_state (auto-binds if exactly one tab is connected), then get_generated_image with state.filename. Write back with apply_studio_changes. Full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes all apply. autoGenerate clicks the bound Studio Generate button.',
+    'generate_image is a server-side generate and returns the new filename plus a small webp. Pass the same Studio settings as the editor (steps, guidance, rescale, sampler, noiseScheduler, seed, resolution, characters, vibes, pipeline, …) as top-level keys or inside params. Do not page the gallery afterward. The matching-workspace gallery updates itself.',
+    'Quality and UC presets: set append_quality / append_uc. Do not paste those live strings into prompt or uc (the server prepends them). NSFW: set dataset_config.nsfw, do not paste that level\'s add/remove tags. tools/list and get_studio_state.settings list each preset id, name, and true value from prompt.config.',
     'Gallery actions: delete_images, scrap_images, toggle_favorite, open_in_lumen (one image), open_in_glancewell (a group).',
     'compare_images diffs two same-seed files. evaluate_workspace_themes counts overused characters/tags in a folder.',
     'VFS: vfs_list path (use @desktop for the workspace desktop), vfs_read, or advanced_tools for write/delete/stat.',
@@ -66,31 +67,88 @@ const OAUTH_CORS_ORIGINS = new Set([
     'https://www.cursor.com'
 ]);
 
+const STUDIO_PARAM_SCHEMA = {
+    steps: { type: 'number', description: 'Sampler steps (typical 23–28)' },
+    guidance: { type: 'number', description: 'CFG / prompt guidance (typical 5)' },
+    rescale: { type: 'number', description: 'CFG rescale 0–1' },
+    sampler: { type: 'string', description: 'k_euler_ancestral (Euler Ancestral), k_dpmpp_sde (DPM++ SDE), k_dpmpp_2m (DPM++ 2M), k_dpmpp_2m_sde (DPM++ 2M SDE), k_euler (Euler), k_dpmpp_2s_ancestral (DPM++ 2S Ancestral)', enum: ['k_euler_ancestral', 'k_dpmpp_sde', 'k_dpmpp_2m', 'k_dpmpp_2m_sde', 'k_euler', 'k_dpmpp_2s_ancestral'] },
+    noiseScheduler: { type: 'string', description: 'karras, exponential, or polyexponential', enum: ['karras', 'exponential', 'polyexponential'] },
+    model: { type: 'string', description: 'e.g. v5, v5_cur, v4_5, v4_5_cur, v4, v4_cur, v3, furry. Live ids are on tools/list and get_studio_state.settings.models' },
+    seed: { type: ['string', 'number'], description: 'Specific seed, or "last" to lock last used' },
+    seedLock: { type: 'boolean', description: 'true locks last used seed (Studio sprout). false rolls a new variation' },
+    resolution: { type: 'string', description: 'Named size (normal_portrait=832x1216, normal_landscape=1216x832, normal_square=1024x1024, large_*, xlarge_*, wallpaper_*, small_*) or custom plus width/height. Live px sizes are on tools/list and get_studio_state.settings.resolutions' },
+    width: { type: 'number', description: 'Only with resolution custom' },
+    height: { type: 'number', description: 'Only with resolution custom' },
+    variety: { type: 'boolean', description: 'Variety+ (model-dependent)' },
+    upscale: { type: 'boolean', description: 'Request 2x upscale after generate' },
+    strength: { type: 'number', description: 'img2img strength 0–1 (only in a strength-capable mode)' },
+    noise: { type: 'number', description: 'img2img noise 0–1' },
+    append_quality: { type: 'boolean', description: 'If true, server prepends the live quality string for the model from prompt.config. Prefer this over pasting quality tags. Do not also put that text in prompt. tools/list and get_studio_state.settings list the true strings per model.' },
+    append_uc: { type: 'number', description: '0 None, 1 Human Focus, 2 Light, 3 Heavy, 4 Curated, 5 Furry Focus. Server prepends the live UC string from prompt.config. Prefer this over pasting those tags. Do not also paste them into uc. tools/list and get_studio_state.settings list the true strings per model.' },
+    append_transparency: { type: 'boolean', description: 'If true, server prepends "transparent background". Do not also add that tag by hand.' }
+};
+
+const GENERATE_IMAGE_PROPERTIES = {
+    prompt: { type: 'string', description: 'Positive prompt. If append_quality is true, do not also paste the quality preset string — the server prepends it.' },
+    uc: { type: 'string', description: 'Undesired content. If append_uc > 0, do not also paste that UC preset string — the server prepends it.' },
+    promptNegative: { type: 'string' },
+    input_prompt_negative: { type: 'string' },
+    workspace: { type: 'string' },
+    pipeline: {
+        type: 'array',
+        description: 'Staged generation stages (same payload as Studio pipeline). Omit for a single image.'
+    },
+    params: {
+        type: 'object',
+        additionalProperties: true,
+        description: 'Same keys as Studio params (also accepted top-level)',
+        properties: STUDIO_PARAM_SCHEMA
+    },
+    characters: {
+        type: 'array',
+        description: 'Character slots (prompt, uc, name, position/center). Mapped to allCharacterPrompts.'
+    },
+    allCharacterPrompts: { type: 'array' },
+    use_coords: { type: 'boolean' },
+    expanders: { type: 'array', description: 'Request !prefix text replacements' },
+    text_replacements: { type: 'array' },
+    vibes: { type: 'array', description: 'Vibe transfer ids Studio already knows' },
+    vibe_transfer: { type: 'array' },
+    normalize_vibes: { type: 'boolean' },
+    dataset_config: {
+        type: 'object',
+        description: 'dataset_config.nsfw: 3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Clense. Set the level; do not paste that level\'s add/remove tags. Live strings are on tools/list and get_studio_state.settings.nsfw.',
+        properties: {
+            nsfw: { type: 'number', description: '3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Clense' },
+            include: { type: 'array', items: { type: 'string' } },
+            bias: { type: 'object' },
+            settings: { type: 'object' }
+        }
+    },
+    auto_clean_uc: { type: 'boolean' },
+    keep_newlines: { type: 'boolean' },
+    auto_char_numerize: { type: 'boolean' },
+    prompt_normalize: { type: 'boolean' },
+    deduplicate_tags: { type: 'boolean' },
+    save_base_output: { type: 'boolean' },
+    skip_pipeline_stages: { type: 'boolean' },
+    append_transparency: { type: 'boolean', description: 'If true, server prepends "transparent background". Do not also add that tag by hand.' },
+    image: { type: 'string', description: 'img2img source: file:filename or omitted if Studio already has one' },
+    image_bias: { type: 'number' },
+    ...STUDIO_PARAM_SCHEMA
+};
+
 const TOOL_DEFS = [
     {
         name: 'generate_image',
         core: true,
-        description: 'Generate on the server and return the new filename plus a Grok-sized webp and metadata. Optional pipeline for staged generation. Tags the file as MCP-generated. The open gallery updates itself. Not the Studio Generate button (use apply_studio_changes autoGenerate for that).',
+        description: 'Generate on the server and return the new filename plus a Grok-sized webp and metadata. Accepts the full Studio settings set (steps, guidance, rescale, sampler, noiseScheduler, seed, resolution, characters, vibes, pipeline, …) as top-level keys or inside params. Tags the file as MCP-generated. Matching-workspace galleries update themselves. Not the Studio Generate button (use apply_studio_changes autoGenerate for that).',
         scope: 'generation',
         packet: 'generate_image',
         inputSchema: {
             type: 'object',
             additionalProperties: true,
-            properties: {
-                prompt: { type: 'string' },
-                uc: { type: 'string' },
-                model: { type: 'string' },
-                resolution: { type: 'string' },
-                steps: { type: 'number' },
-                guidance: { type: 'number' },
-                sampler: { type: 'string' },
-                workspace: { type: 'string' },
-                seed: { type: ['string', 'number'] },
-                pipeline: {
-                    type: 'array',
-                    description: 'Staged generation stages (same payload as Studio pipeline). Omit for a single image.'
-                }
-            }
+            properties: GENERATE_IMAGE_PROPERTIES
         }
     },
     {
@@ -170,24 +228,40 @@ const TOOL_DEFS = [
     {
         name: 'get_studio_state',
         core: true,
-        description: 'Current Studio prompt, UC, characters, params, and open filename. Auto-binds if exactly one tab is connected. Then use get_generated_image on filename to see the picture.',
+        description: 'Current Studio prompt, UC, characters, params, and open filename. Also returns settings: live sampler/resolution/model enums plus quality, UC, and NSFW preset id, name, and true prompt.config strings so you can enable append_quality / append_uc instead of pasting those tags. Auto-binds if exactly one tab is connected. Then use get_generated_image on filename to see the picture.',
         scope: 'generation',
         inputSchema: { type: 'object', properties: {} }
     },
     {
         name: 'apply_studio_changes',
         core: true,
-        description: 'Write Change-JSON into the bound Studio tab. Auto-binds if one tab is connected. autoGenerate (default false) clicks Studio Generate after apply. Characters must be action replace + index.',
+        description: 'Write Change-JSON into the bound Studio tab. Auto-binds if one tab is connected. Accepts full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes (same keys as Studio). autoGenerate (default false) clicks Studio Generate after apply. Characters must be action replace + index.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
             additionalProperties: true,
             properties: {
-                change: { type: ['object', 'string'] },
-                prompt: { type: 'string' },
-                uc: { type: 'string' },
+                change: { type: ['object', 'string'], description: 'Change-JSON v1 object or string' },
+                prompt: { type: 'string', description: 'Positive prompt. If append_quality is true, do not also paste the quality preset string.' },
+                uc: { type: 'string', description: 'Undesired content. If append_uc > 0, do not also paste that UC preset string.' },
+                promptNegative: { type: 'string' },
+                params: {
+                    type: 'object',
+                    additionalProperties: true,
+                    description: 'Studio params to change. Same keys also accepted top-level.',
+                    properties: STUDIO_PARAM_SCHEMA
+                },
+                characters: {
+                    type: 'array',
+                    description: 'Existing slots only. Always action replace + index.'
+                },
+                expanders: { type: 'array', description: '!prefix text replacements (replaces current list if sent)' },
+                text_replacements: { type: 'array' },
+                vibes: { type: 'array' },
+                fields: { type: 'array' },
                 autoApply: { type: 'boolean', description: 'Default true. Silent apply on the bound tab.' },
-                autoGenerate: { type: 'boolean', description: 'Default false. After apply, click bound-tab Generate.' }
+                autoGenerate: { type: 'boolean', description: 'Default false. After apply, click bound-tab Generate.' },
+                ...STUDIO_PARAM_SCHEMA
             }
         }
     },
@@ -383,7 +457,13 @@ const TOOL_DEFS = [
             properties: {
                 presetName: { type: 'string' },
                 workspace: { type: 'string' },
-                allow_paid: { type: 'boolean' }
+                allow_paid: { type: 'boolean' },
+                params: {
+                    type: 'object',
+                    additionalProperties: true,
+                    properties: STUDIO_PARAM_SCHEMA
+                },
+                ...STUDIO_PARAM_SCHEMA
             }
         }
     },
@@ -408,7 +488,7 @@ const TOOL_DEFS = [
     {
         name: 'expand_image',
         core: true,
-        description: 'Expand canvas (letterbox + generate into the new area). Wraps expand_image. Requires filename, target resolution, and imageBias 0–4 (0=start edge, 2=center, 4=end edge).',
+        description: 'Expand canvas (letterbox + generate into the new area). Wraps expand_image. Requires filename, target resolution, and imageBias 0–4 (0=start edge, 2=center, 4=end edge). Optional Studio param overrides (model, steps, guidance, rescale, sampler, noiseScheduler, noise, seed) as overrideParams or top-level.',
         scope: 'generation',
         packet: 'expand_image',
         inputSchema: {
@@ -423,7 +503,31 @@ const TOOL_DEFS = [
                 upscaleAfterComplete: { type: 'boolean' },
                 enableAI: { type: 'boolean', description: 'Let the server write the expansion prompt' },
                 inset: { type: 'boolean' },
-                sourceFilename: { type: 'string' }
+                sourceFilename: { type: 'string' },
+                overrideParams: {
+                    type: 'object',
+                    additionalProperties: true,
+                    description: 'Model/steps/guidance/rescale/sampler/noiseScheduler/noise/seed overrides',
+                    properties: {
+                        model: { type: 'string' },
+                        steps: { type: 'number' },
+                        guidance: { type: 'number' },
+                        rescale: { type: 'number' },
+                        sampler: { type: 'string' },
+                        noiseScheduler: { type: 'string' },
+                        noise_schedule: { type: 'string' },
+                        noise: { type: 'number' },
+                        seed: { type: ['string', 'number'] }
+                    }
+                },
+                model: { type: 'string' },
+                steps: { type: 'number' },
+                guidance: { type: 'number' },
+                rescale: { type: 'number' },
+                sampler: { type: 'string' },
+                noiseScheduler: { type: 'string' },
+                noise: { type: 'number' },
+                seed: { type: ['string', 'number'] }
             }
         }
     },
@@ -1300,15 +1404,23 @@ function toolAllowedForScopes(scopes, tool) {
     return false;
 }
 
-function serializeListedTool(tool) {
-    return {
+function serializeListedTool(tool, catalog) {
+    const listed = applyCatalogToListedTool({
         name: tool.name,
         description: tool.description,
-        inputSchema: tool.inputSchema
+        inputSchema: tool.inputSchema,
+        scope: tool.scope
+    }, catalog);
+    if (listed.scope && !tool.core) return listed;
+    return {
+        name: listed.name,
+        description: listed.description,
+        inputSchema: listed.inputSchema
     };
 }
 
-function listAdvancedToolDefs(scopes, query) {
+function listAdvancedToolDefs(scopes, query, globalResources) {
+    const catalog = buildStudioSettingsCatalog(globalResources);
     const q = String(query || '').trim().toLowerCase();
     const words = q ? q.split(/\s+/).filter(Boolean) : [];
     return TOOL_DEFS.filter((tool) => {
@@ -1317,19 +1429,23 @@ function listAdvancedToolDefs(scopes, query) {
         if (!words.length) return true;
         const hay = `${tool.name} ${tool.description} ${tool.scope}`.toLowerCase();
         return hay.includes(q) || words.every((word) => hay.includes(word));
-    }).map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        scope: tool.scope,
-        inputSchema: tool.inputSchema
-    }));
+    }).map((tool) => {
+        const listed = applyCatalogToListedTool(tool, catalog);
+        return {
+            name: listed.name,
+            description: listed.description,
+            scope: tool.scope,
+            inputSchema: listed.inputSchema
+        };
+    });
 }
 
-function listToolsForScopes(scopes) {
+function listToolsForScopes(scopes, globalResources) {
+    const catalog = buildStudioSettingsCatalog(globalResources);
     const core = TOOL_DEFS
         .filter((tool) => tool.core && toolAllowedForScopes(scopes, tool))
-        .map(serializeListedTool);
-    core.push(serializeListedTool(ADVANCED_TOOL_DEF));
+        .map((tool) => serializeListedTool(tool, catalog));
+    core.push(serializeListedTool(ADVANCED_TOOL_DEF, catalog));
     return core;
 }
 
@@ -1368,22 +1484,21 @@ async function dispatchPacketTool(globalResources, req, type, args) {
 
 async function applyStudioChanges(globalResources, body) {
     if (!body || typeof body !== 'object') {
-        const err = new Error('change JSON or prompt/uc fields are required');
-        err.status = 400;
-        throw err;
-    }
-    if (!body.change && body.prompt == null && body.uc == null && !isStudioChangePayload(body)) {
-        const err = new Error('change JSON or prompt/uc fields are required');
+        const err = new Error('change JSON or prompt/uc/params fields are required');
         err.status = 400;
         throw err;
     }
     const { autoApply, autoGenerate } = resolveStudioAutoFlags(body);
-    const changeSource = coerceStudioChangeObject(body.change) || body.change;
+    const assembled = assembleStudioChangeFromToolArgs(body);
+    if (!assembled) {
+        const err = new Error('change JSON or prompt/uc/params fields are required');
+        err.status = 400;
+        throw err;
+    }
     return sendBoundCommand(globalResources, 'apply_studio', {
-        change: stripStudioAutoFlagsDeep(changeSource) || null,
+        change: assembled,
         prompt: body.prompt,
         uc: body.uc,
-        payload: studioChangePayloadWithoutFlags(body),
         autoApply,
         autoGenerate
     });
@@ -1430,7 +1545,7 @@ async function handleAdvancedTools(globalResources, req, input) {
             : (input.args && typeof input.args === 'object' && !Array.isArray(input.args) ? input.args : {});
         return callTool(globalResources, req, runName, runArgs);
     }
-    const tools = listAdvancedToolDefs(scopes, input.query);
+        const tools = listAdvancedToolDefs(scopes, input.query, globalResources);
     return mcpTextResult({
         success: true,
         tools,
@@ -1759,11 +1874,15 @@ async function callTool(globalResources, req, name, args) {
 
     const generateNames = ['generate_image', 'generate_preset', 'upscale_image', 'expand_image'];
     if (generateNames.includes(name)) {
-        if (input.workspace || input.workspaceId) {
-            input.workspace = resolveWorkspaceId(input.workspace || input.workspaceId);
+        let payload = flattenGenerateToolArgs(input);
+        if (name === 'expand_image') {
+            payload = mergeExpansionOverrideParams(payload);
         }
-        input.mcp_generated = true;
-        const packet = await dispatchPacketTool(globalResources, req, def.packet, input);
+        if (payload.workspace || payload.workspaceId) {
+            payload.workspace = resolveWorkspaceId(payload.workspace || payload.workspaceId);
+        }
+        payload.mcp_generated = true;
+        const packet = await dispatchPacketTool(globalResources, req, def.packet, payload);
         const flat = flattenPacket(packet);
         const filename = sanitizeGalleryFilename(
             flat.filename || (Array.isArray(flat.filenames) ? flat.filenames[0] : '')
@@ -1877,6 +1996,7 @@ async function callTool(globalResources, req, name, args) {
             const change = (data && data.change && typeof data.change === 'object' && !Array.isArray(data.change))
                 ? data.change
                 : null;
+            const settings = buildStudioSettingsCatalog(globalResources, data.model);
             return mcpTextResult({
                 success: true,
                 bound: true,
@@ -1886,6 +2006,7 @@ async function callTool(globalResources, req, name, args) {
                 model: data.model || null,
                 clientId: getBoundClientId(),
                 change,
+                settings,
                 scopes: scopePayload.scopes
             });
         } catch (error) {
@@ -1898,6 +2019,7 @@ async function callTool(globalResources, req, name, args) {
                     model: null,
                     clientId: getBoundClientId(),
                     change: null,
+                    settings: buildStudioSettingsCatalog(globalResources),
                     scopes: scopePayload.scopes,
                     error: 'Bound tab did not answer in time'
                 });
@@ -2115,7 +2237,7 @@ async function handleJsonRpc(globalResources, req, message) {
             body: {
                 jsonrpc: '2.0',
                 id,
-                result: { tools: listToolsForScopes(scopes) }
+                result: { tools: listToolsForScopes(scopes, globalResources) }
             }
         };
     }

@@ -212,11 +212,11 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 
 | Tool | Wrap | Scope | Bind? |
 |------|------|-------|-------|
-| `generate_image` | Server generate; waits and returns filename + Grok webp. Optional `pipeline` for staged runs. Writes `forge_data.mcp_generated`. Open gallery gets `gallery_updated`. | `generation` | no |
+| `generate_image` | Server generate; waits and returns filename + Grok webp. Full Studio settings (steps, guidance, rescale, sampler, noiseScheduler, seed, resolution, characters, vibes, pipeline, …) as top-level keys or `params`. `tools/list` injects live `prompt.config` quality/UC/NSFW strings onto `append_quality` / `append_uc` / `dataset_config.nsfw` — enable those flags; do not also paste the same tags. Writes `forge_data.mcp_generated`. Matching-workspace galleries get `gallery_updated`. | `generation` | no |
 | `get_generated_image` | Metadata + Grok webp. Filename, seed, or omit for latest. `workspace` default is `default`. | `gallery` | no |
 | `get_workspaces` | `workspace_list` — use the id on `get_generated_image` / `omegasearch` | `workspace` | no |
-| `get_studio_state` | Bound `get_state` (same snapshot as `GET /agent/session/state`) | `generation` | yes |
-| `apply_studio_changes` | `POST /agent/session/studio` | `generation` | yes |
+| `get_studio_state` | Bound `get_state` (same snapshot as `GET /agent/session/state`) plus `settings` (live sampler/resolution enums and quality/UC/NSFW id, name, true `prompt.config` strings) | `generation` | yes |
+| `apply_studio_changes` | `POST /agent/session/studio`. Full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes (same keys as Studio). | `generation` | yes |
 | `search_autofill` | `test_autofill_ranking` once per term (max 20). Same live autocomplete pipeline. Accepts `terms: string[]` and/or `query` | `autofill` | no |
 | `search_wiki` | `search_tag_wiki` | `wiki` (also listed for `autofill` keys) | no |
 | `get_wiki_page` | `get_tag_wiki_page` (`tagName`, optional `source`, `format`) | `wiki` (also listed for `autofill` keys) | no |

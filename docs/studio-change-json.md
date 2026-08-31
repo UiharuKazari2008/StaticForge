@@ -45,23 +45,23 @@ Do **not** invent keys Studio cannot apply. Unknown keys are ignored. Director i
 
 | Key | Type | Notes |
 |-----|------|--------|
-| `steps` | number | |
-| `guidance` | number | |
-| `rescale` | number | |
-| `sampler` | string | e.g. `"k_euler_ancestral"` |
-| `noiseScheduler` | string | e.g. `"karras"` |
-| `model` | string | e.g. `"v5"` |
+| `steps` | number | Typical 23–28 |
+| `guidance` | number | CFG / prompt guidance, typical 5 |
+| `rescale` | number | CFG rescale 0–1 |
+| `sampler` | string | `k_euler_ancestral` (Euler Ancestral), `k_dpmpp_sde`, `k_dpmpp_2m`, `k_dpmpp_2m_sde`, `k_euler`, `k_dpmpp_2s_ancestral` |
+| `noiseScheduler` | string | `karras`, `exponential`, `polyexponential` |
+| `model` | string | e.g. `"v5"`. Live ids: MCP `get_studio_state.settings.models` |
 | `seed` | string or number | Specific seed, or `"last"` to lock the last used seed (same as `seedLock: true`). Copy / `GET /agent/session/state` echo the **actual seed that was used**, not a filename. |
 | `seedLock` | boolean | `true` locks the last used seed via the existing Studio sprout control (Ivory A/B). `false` unlocks so the next generate rolls a new variation. Omit to leave lock state alone. No new chrome. |
-| `resolution` | string | Named preset (`normal_portrait`, `normal_landscape`, …). **Omit `width`/`height` when using a named preset.** Custom size: `"custom"` plus `width` and `height`. |
+| `resolution` | string | Named preset (`normal_portrait`=832×1216, `normal_landscape`=1216×832, `normal_square`=1024×1024, `small_*`, `large_*`, `xlarge_*`, `wallpaper_*`). **Omit `width`/`height` when using a named preset.** Custom size: `"custom"` plus `width` and `height`. Live px sizes: `settings.resolutions`. |
 | `width` | number | Only with `"resolution": "custom"` |
 | `height` | number | Only with `"resolution": "custom"` |
-| `variety` | boolean | |
-| `upscale` | boolean | |
-| `strength` | number | img2img strength (only if Studio is already in a strength-capable mode) |
-| `noise` | number | img2img noise |
-| `append_quality` | boolean | Quality preset on/off |
-| `append_uc` | number | `0` None, `1` Human Focus, `2` Light, `3` Heavy, `4` Curated, `5` Furry Focus |
+| `variety` | boolean | Variety+ (model-dependent) |
+| `upscale` | boolean | Request 2× upscale after generate |
+| `strength` | number | img2img strength 0–1 (only if Studio is already in a strength-capable mode) |
+| `noise` | number | img2img noise 0–1 |
+| `append_quality` | boolean | Quality preset on/off. **Do not also paste the quality string into `prompt`.** Live text (per model) is in MCP `get_studio_state.settings.quality` / `tools/list`. Prefer the flag. |
+| `append_uc` | number | `0` None, `1` Human Focus, `2` Light, `3` Heavy, `4` Curated, `5` Furry Focus. **Do not also paste that UC string into `uc`.** Live text is in `settings.uc`. Prefer the id. |
 
 ### `fields` — base prompt / UC only
 
@@ -205,7 +205,7 @@ Helpers in the page: `window.tryApplyStudioChangeJsonFromText(text)`, `window.op
 
 Loopback agents: `GET /agent/session/state` returns the current editor as this
 same JSON in `change` (ungenerated / no open image is valid). Rewrite `change`
-and `POST /agent/session/studio`. See [client-api/agent-session.md](./client-api/agent-session.md).
+and `POST /agent/session/studio`. MCP `apply_studio_changes` / `generate_image` accept the same keys **top-level** or inside `params` / `change` — they are assembled into this object before apply. See [client-api/agent-session.md](./client-api/agent-session.md).
 
 
 ---
