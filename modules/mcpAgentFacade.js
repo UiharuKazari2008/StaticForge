@@ -19,6 +19,8 @@ const {
     bindClient,
     getBoundClientId,
     getBoundRecord,
+    resolveBindKey,
+    getClientPhysics,
     resolveStudioAutoFlags,
     assembleStudioChangeFromToolArgs,
     flattenGenerateToolArgs,
@@ -44,8 +46,11 @@ const MCP_INSTRUCTIONS = [
     'Make a preset from this image or Studio tab: get_generated_image or get_studio_state, then save_preset with presetName and config (name, prompt, model).',
     'Delivery priority: apply_studio_changes is the default (autoApply true; autoGenerate if they asked to generate now). Else generate_image (no Studio tab / server-side run). Else emit Change-JSON. Else the prompt-text block. Do not dump Positive/UC when Studio MCP works.',
     'On every Studio edit: get_studio_state first. Compare to the last state you saw this chat. Keep their intervening edits; apply only this message\'s delta.',
-    'Studio prompt / compare / edit: call get_studio_state (auto-binds if exactly one tab is connected), then get_generated_image with state.filename. Write back with apply_studio_changes. Full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes all apply. autoGenerate clicks the bound Studio Generate button.',
-    'generate_image is a server-side generate and returns the new filename plus a small webp. Pass the same Studio settings as the editor (steps, guidance, rescale, sampler, noiseScheduler, seed, resolution, characters, vibes, pipeline, …) as top-level keys or inside params. Do not page the gallery afterward. The matching-workspace gallery updates itself.',
+    'Studio prompt / compare / edit: call get_studio_state first. It binds this application key to the tab and stays bound until the user unbinds or 15 minutes with no studio calls. One tab auto-binds. Several tabs: the tool returns clients (most recently used first) with needsClientChoice — ask the user which clientId, then bind_session. Then get_generated_image with state.filename. Write back with apply_studio_changes. Full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes/dynamicGeneration/director all apply. autoGenerate clicks the bound Studio Generate button. get_client_physics returns that tab\'s location, tod, date, weather, and season (same subset as dynamic generation).',
+    'Enshutsuka modes (user says these on grok.com): analyse / analyze my prompt — get_studio_state + get_generated_image, compare prompt to pixels, apply_studio_changes. create — invent from text; no image required. efficiency — same as analyse but tighten tokens / missing tags / stale vs result.',
+    'If get_studio_state or get_generated_image includes dynamicGeneration / dynamic_generation or director / director_session_id / a director prompt, you MUST integrate and act on that data. Enable or change dynamic generation with apply_studio_changes dynamicGeneration (enabled, directive, tod, weather, season, location, cacheLocked, contextLocked) or generate_image dynamic_generation. Do not ignore an attached director prompt.',
+    'LinkXi persona (account): get_linkxi_persona / save_linkxi_persona (user_name, backstory, default_verbosity 1–5). Use it when the user talks as themselves in Enshutsuka / Director chat.',
+    'generate_image waits on the shared generation FIFO (Studio Generate uses the same stack; 8–20s gap after each job) and returns the new filename plus a small webp. Pass the same Studio settings as the editor (steps, guidance, rescale, sampler, noiseScheduler, seed, resolution, characters, vibes, pipeline, n, …) as top-level keys or inside params. n is print count 2–8 (omit or 1 for a single image); the server runs that many copies and the result includes filenames[]. async true returns jobId immediately — then get_generation_job to poll or await_generation_job to wait for the same image payload. Do not page the gallery afterward. The matching-workspace gallery updates itself.',
     'Quality and UC presets: set append_quality / append_uc. Do not paste those live strings into prompt or uc (the server prepends them). If you must change a tag inside a preset, turn that preset off and put the edited string in prompt/uc — never leave the preset on and also paste a variant. NSFW: set dataset_config.nsfw, do not paste that level\'s add/remove tags. In-image text: keep append_quality on and set dataset_config.settings.__quality__.no_text.enabled false (default on). tools/list and get_studio_state.settings list each preset id, name, and true value from prompt.config.',
     'Gallery actions: delete_images, scrap_images, toggle_favorite, open_in_lumen (one image), open_in_glancewell (a group).',
     'compare_images diffs two same-seed files. evaluate_workspace_themes counts overused characters/tags in a folder.',
@@ -54,6 +59,42 @@ const MCP_INSTRUCTIONS = [
     'If you cannot do the job with the listed tools, call advanced_tools with a query. To run a hidden tool, call advanced_tools again with that name and arguments.',
     'If a tool is rate limited, wait retryAfter seconds for that group (free/search/gallery/write/studio/generate).'
 ].join(' ');
+
+function collectEnshutsukaMustAct(input) {
+    const src = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+    const forge = src.forge_data && typeof src.forge_data === 'object' ? src.forge_data : {};
+    const dyn = src.dynamicGeneration || src.dynamic_generation || forge.dynamic_generation;
+    const director = src.director;
+    const sessionId = src.director_session_id || forge.director_session_id
+        || (director && (director.sessionId || director.session_id));
+    const messageId = src.director_message_id || forge.director_message_id
+        || (director && (director.messageId || director.message_id));
+    const prompt = director && (director.prompt || director.directive);
+    const reasons = [];
+    if (dyn && typeof dyn === 'object') reasons.push('dynamicGeneration');
+    else if (dyn === true) reasons.push('dynamicGeneration');
+    if (sessionId || messageId || prompt
+        || (director && typeof director === 'object' && !Array.isArray(director))) {
+        reasons.push('director');
+    }
+    if (!reasons.length) return null;
+    return {
+        required: true,
+        reasons,
+        next: 'Integrate dynamicGeneration and/or the attached director prompt. Apply with apply_studio_changes or generate_image. Do not ignore this data.'
+    };
+}
+
+function sanitizeLinkXiPersona(settings) {
+    const src = settings && typeof settings === 'object' && !Array.isArray(settings) ? settings : {};
+    return {
+        user_name: src.user_name || '',
+        backstory: src.backstory || '',
+        default_verbosity: src.default_verbosity == null ? 3 : src.default_verbosity,
+        hasPhoto: !!(src.profile_photo_base64),
+        updated_at: src.updated_at || null
+    };
+}
 
 const MCP_CORS_ORIGINS = new Set([
     'https://grok.com',
@@ -116,6 +157,15 @@ const GENERATE_IMAGE_PROPERTIES = {
     vibes: { type: 'array', description: 'Vibe transfer ids Studio already knows' },
     vibe_transfer: { type: 'array' },
     normalize_vibes: { type: 'boolean' },
+    dynamicGeneration: {
+        type: 'object',
+        description: 'Enable/configure dynamic generation on this generate (same object as Studio / apply_studio_changes). If an image or Studio snapshot already has this, integrate it.'
+    },
+    dynamic_generation: { type: 'object' },
+    director: {
+        type: 'object',
+        description: 'Attached director prompt / session ids to store on the generate (sessionId, messageId, prompt).'
+    },
     dataset_config: {
         type: 'object',
         description: 'dataset_config.nsfw: 3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Clense. Set the level; do not paste that level\'s add/remove tags. Live strings are on tools/list and get_studio_state.settings.nsfw.',
@@ -133,6 +183,14 @@ const GENERATE_IMAGE_PROPERTIES = {
     deduplicate_tags: { type: 'boolean' },
     save_base_output: { type: 'boolean' },
     skip_pipeline_stages: { type: 'boolean' },
+    n: {
+        type: 'number',
+        description: 'Print count 1–8. Greater than 1 runs that many copies (same settings; locked seed increments). Omit or 1 for a single image. Result includes filenames[]. Not a Change-JSON / apply_studio_changes field.'
+    },
+    async: {
+        type: 'boolean',
+        description: 'Default false: stall this call until the file and Grok webp are ready. true: enqueue on the shared generation FIFO and return jobId now. Then get_generation_job or await_generation_job.'
+    },
     append_transparency: { type: 'boolean', description: 'If true, server prepends "transparent background". Do not also add that tag by hand.' },
     image: { type: 'string', description: 'img2img source: file:filename or omitted if Studio already has one' },
     image_bias: { type: 'number' },
@@ -143,13 +201,41 @@ const TOOL_DEFS = [
     {
         name: 'generate_image',
         core: true,
-        description: 'Generate on the server and return the new filename plus a Grok-sized webp and metadata. Accepts the full Studio settings set (steps, guidance, rescale, sampler, noiseScheduler, seed, resolution, characters, vibes, pipeline, …) as top-level keys or inside params. Tags the file as MCP-generated. Matching-workspace galleries update themselves. Not the Studio Generate button (use apply_studio_changes autoGenerate for that).',
+        description: 'Generate on the server. Default waits on the shared generation FIFO (Studio uses the same stack; 8–20s gap after each job) and returns filename plus a Grok-sized webp. async true returns jobId immediately — then get_generation_job or await_generation_job. Full Studio settings (steps, guidance, rescale, sampler, noiseScheduler, seed, resolution, characters, vibes, pipeline, n, …) as top-level keys or inside params. n (2–8) is print copies. Not the Studio Generate button (use apply_studio_changes autoGenerate).',
         scope: 'generation',
         packet: 'generate_image',
         inputSchema: {
             type: 'object',
             additionalProperties: true,
             properties: GENERATE_IMAGE_PROPERTIES
+        }
+    },
+    {
+        name: 'get_generation_job',
+        core: true,
+        description: 'Poll a generate_image / generate_preset job from async true. Pass jobId. If complete, returns the same filename + Grok webp as generate_image. If still queued or running, returns status and position.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                jobId: { type: 'string', description: 'Token from generate_image async true' }
+            },
+            required: ['jobId']
+        }
+    },
+    {
+        name: 'await_generation_job',
+        core: true,
+        description: 'Block until a generate_image / generate_preset job finishes, then return filename + Grok webp. Pass jobId from async true.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                jobId: { type: 'string', description: 'Token from generate_image async true' }
+            },
+            required: ['jobId']
         }
     },
     {
@@ -210,13 +296,15 @@ const TOOL_DEFS = [
     },
     {
         name: 'list_clients',
-        description: 'List open Studio tabs. Only needed when more than one tab is connected; get_studio_state auto-binds a single tab.',
+        core: true,
+        description: 'List open Studio tabs for this application key. Most recently used first. get_studio_state already returns this list when more than one tab is connected.',
         scope: 'generation',
         inputSchema: { type: 'object', properties: {} }
     },
     {
         name: 'bind_session',
-        description: 'Pick which Studio tab to drive when more than one is connected. clientId from list_clients, or a share code.',
+        core: true,
+        description: 'Bind this application key to one Studio tab. Required only when get_studio_state returned needsClientChoice. Pass clientId from that list, or a share code. The bind stays on this key until the user unbinds from the tray or 15 minutes with no studio calls.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -229,14 +317,21 @@ const TOOL_DEFS = [
     {
         name: 'get_studio_state',
         core: true,
-        description: 'Current Studio prompt, UC, characters, params, and open filename. Also returns settings: live sampler/resolution/model enums plus quality, UC, and NSFW preset id, name, and true prompt.config strings so you can enable append_quality / append_uc instead of pasting those tags. Auto-binds if exactly one tab is connected. Then use get_generated_image on filename to see the picture.',
+        description: 'Current Studio prompt, UC, characters, params, open filename, dynamicGeneration, and attached director prompt for this application key. Auto-binds the single connected tab. If several tabs are open, returns needsClientChoice and clients (most recently used first) — ask the user which clientId, then bind_session. Also returns settings: live sampler/resolution/model enums plus quality, UC, and NSFW preset id, name, and true prompt.config strings. Then use get_generated_image on filename to see the picture. If dynamicGeneration or director is present you must integrate it.',
+        scope: 'generation',
+        inputSchema: { type: 'object', properties: {} }
+    },
+    {
+        name: 'get_client_physics',
+        core: true,
+        description: 'Location, time of day, date, weather, and season for the bound Studio tab (same subset as dynamic generation). Auto-binds one tab; if several tabs, returns needsClientChoice like get_studio_state. Use this when writing a dynamic-generation prompt from Grok.',
         scope: 'generation',
         inputSchema: { type: 'object', properties: {} }
     },
     {
         name: 'apply_studio_changes',
         core: true,
-        description: 'Write Change-JSON into the bound Studio tab. Auto-binds if one tab is connected. Accepts full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes (same keys as Studio). autoGenerate (default false) clicks Studio Generate after apply. Characters must be action replace + index.',
+        description: 'Write Change-JSON into the bound Studio tab. Auto-binds if one tab is connected. Accepts full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes/dynamicGeneration/director (same keys as Studio). autoGenerate (default false) clicks Studio Generate after apply. Characters must be action replace + index.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -260,9 +355,43 @@ const TOOL_DEFS = [
                 text_replacements: { type: 'array' },
                 vibes: { type: 'array' },
                 fields: { type: 'array' },
+                dynamicGeneration: {
+                    type: 'object',
+                    description: 'Enable/configure Studio dynamic generation (existing Enshutsuka toggle). If you see this on get_studio_state, you must integrate it.'
+                },
+                dynamic_generation: { type: 'object' },
+                director: {
+                    type: 'object',
+                    description: 'Attached director prompt / session (sessionId, messageId, prompt). Must-act if present on a read.'
+                },
                 autoApply: { type: 'boolean', description: 'Default true. Silent apply on the bound tab.' },
                 autoGenerate: { type: 'boolean', description: 'Default false. After apply, click bound-tab Generate.' },
                 ...STUDIO_PARAM_SCHEMA
+            }
+        }
+    },
+    {
+        name: 'get_linkxi_persona',
+        core: true,
+        description: 'Read the account LinkXi persona (user_name, backstory, default_verbosity 1–5, hasPhoto). Wraps get_persona_settings. Use when the user speaks as themselves in Enshutsuka.',
+        scope: 'generation',
+        packet: 'get_persona_settings',
+        inputSchema: { type: 'object', properties: {} }
+    },
+    {
+        name: 'save_linkxi_persona',
+        core: true,
+        description: 'Save the account LinkXi persona. Wraps save_persona_settings. Pass user_name, backstory, default_verbosity (1–5). Do not send a profile photo unless the user asked.',
+        scope: 'generation',
+        packet: 'save_persona_settings',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                user_name: { type: 'string' },
+                backstory: { type: 'string' },
+                default_verbosity: { type: 'number', description: '1 Brief … 5 Poetic. Default 3.' },
+                settings: { type: 'object', description: 'Alternate wrapper { user_name, backstory, default_verbosity }' }
             }
         }
     },
@@ -459,6 +588,14 @@ const TOOL_DEFS = [
                 presetName: { type: 'string' },
                 workspace: { type: 'string' },
                 allow_paid: { type: 'boolean' },
+                n: {
+                    type: 'number',
+                    description: 'Print count 1–8. Greater than 1 runs that many copies. Omit or 1 for a single image.'
+                },
+                async: {
+                    type: 'boolean',
+                    description: 'Default false waits for the image. true returns jobId for get_generation_job / await_generation_job.'
+                },
                 params: {
                     type: 'object',
                     additionalProperties: true,
@@ -1038,9 +1175,14 @@ const TOOL_RATE_GROUPS = {
     save_preset: 'write',
     upload_reference: 'write',
     get_studio_state: 'studio',
+    get_client_physics: 'studio',
     apply_studio_changes: 'studio',
     apply_preset_to_studio: 'studio',
+    get_linkxi_persona: 'free',
+    save_linkxi_persona: 'write',
     generate_image: 'generate',
+    get_generation_job: 'free',
+    await_generation_job: 'free',
     generate_preset: 'generate',
     upscale_image: 'generate',
     expand_image: 'generate',
@@ -1223,15 +1365,16 @@ function liveBroadcast(globalResources, payload) {
     return true;
 }
 
-async function openViewerFromMcp(globalResources, input, target) {
+async function openViewerFromMcp(globalResources, input, target, req) {
     const filenames = collectFilenames(input);
     if (!filenames.length) {
         return mcpTextResult({ success: false, error: 'filename or filenames is required' }, true);
     }
     const payload = { target, filenames };
-    if (getBoundRecord(globalResources)) {
+    const bindKey = resolveBindKey(req);
+    if (getBoundRecord(globalResources, bindKey)) {
         try {
-            const data = await sendBoundCommand(globalResources, 'open_viewer', payload, 8000);
+            const data = await sendBoundCommand(globalResources, 'open_viewer', payload, 8000, bindKey);
             return mcpTextResult({ success: true, bound: true, target, filenames, ...data });
         } catch (_err) { /* fall through to broadcast */ }
     }
@@ -1282,16 +1425,40 @@ function galleryFileExists(globalResources, filename) {
     }
 }
 
-function autoBindIfNeeded(globalResources) {
-    if (getBoundRecord(globalResources)) {
-        return { bound: true, auto: false, clientId: getBoundClientId() };
+function autoBindIfNeeded(globalResources, req) {
+    const bindKey = resolveBindKey(req);
+    if (getBoundRecord(globalResources, bindKey)) {
+        return { bound: true, auto: false, clientId: getBoundClientId(bindKey), bindKey };
     }
-    const clients = listClients(globalResources);
+    const clients = listClients(globalResources, bindKey);
     if (clients.length === 1 && clients[0].clientId) {
-        bindClient(globalResources, { clientId: clients[0].clientId });
-        return { bound: true, auto: true, clientId: clients[0].clientId };
+        bindClient(globalResources, { clientId: clients[0].clientId, bindKey });
+        return { bound: true, auto: true, clientId: clients[0].clientId, bindKey };
     }
-    return { bound: false, auto: false, clients };
+    return {
+        bound: false,
+        auto: false,
+        bindKey,
+        needsClientChoice: clients.length > 1,
+        clients
+    };
+}
+
+function mcpBindChoiceResult(bind) {
+    if (bind && bind.needsClientChoice) {
+        return mcpTextResult({
+            success: false,
+            needsClientChoice: true,
+            message: 'Several Studio tabs are connected. Ask the user which client to use, then call bind_session with that clientId. Clients are listed most recently used first.',
+            recommendedClientId: bind.clients[0] && bind.clients[0].clientId,
+            clients: bind.clients || []
+        }, true);
+    }
+    return mcpTextResult({
+        success: false,
+        error: 'No Studio client is connected. Open Studio in the browser, then retry.',
+        clients: (bind && bind.clients) || []
+    }, true);
 }
 
 async function lookupFilenameViaSearch(globalResources, req, query, workspaceId) {
@@ -1518,7 +1685,7 @@ async function applyStudioChanges(globalResources, body) {
         uc: body.uc,
         autoApply,
         autoGenerate
-    });
+    }, undefined, body.bindKey);
 }
 
 function mcpTextResult(obj, isError) {
@@ -1538,6 +1705,39 @@ function mcpImageResult(meta, image) {
         });
     }
     return { content, isError: false };
+}
+
+async function mcpResultFromGenerateFlat(globalResources, flat, success) {
+    const filename = sanitizeGalleryFilename(
+        (flat && flat.filename) || (flat && Array.isArray(flat.filenames) ? flat.filenames[0] : '')
+    );
+    const body = { ...(flat || {}), filename: filename || null };
+    if (filename && success) {
+        try {
+            const resolved = resolveGalleryImagePath(globalResources, filename);
+            const image = await resizeImageForGrok(resolved.filePath);
+            if (image) {
+                image.filename = filename;
+                return mcpImageResult({ ...body, imageKind: 'grok' }, image);
+            }
+        } catch (_) { /* metadata-only fallback */ }
+    }
+    return mcpTextResult(body, !success);
+}
+
+async function mcpResultFromGenerationJob(globalResources, job, queue) {
+    const snap = queue.snapshot(job);
+    if (job.status !== 'completed') {
+        return mcpTextResult({
+            ...snap,
+            next: job.status === 'failed'
+                ? null
+                : 'Call await_generation_job to wait, or get_generation_job again to poll.'
+        }, job.status === 'failed');
+    }
+    const result = job.result && typeof job.result === 'object' ? job.result : {};
+    const flat = result.flat && typeof result.flat === 'object' ? result.flat : {};
+    return mcpResultFromGenerateFlat(globalResources, { ...snap, ...flat }, result.success !== false);
 }
 
 async function handleAdvancedTools(globalResources, req, input) {
@@ -1640,15 +1840,9 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (name === 'apply_preset_to_studio') {
-        const bind = autoBindIfNeeded(globalResources);
-        if (!getBoundRecord(globalResources)) {
-            return mcpTextResult({
-                success: false,
-                error: bind.clients && bind.clients.length > 1
-                    ? 'Several Studio tabs are connected. Call advanced_tools with query "bind", then run bind_session with one clientId.'
-                    : 'No Studio client is connected.',
-                clients: bind.clients || []
-            }, true);
+        const bind = autoBindIfNeeded(globalResources, req);
+        if (!getBoundRecord(globalResources, bind.bindKey)) {
+            return mcpBindChoiceResult(bind);
         }
         const loaded = await dispatchPacketTool(globalResources, req, 'load_preset', {
             presetName: input.presetName,
@@ -1660,6 +1854,7 @@ async function callTool(globalResources, req, name, args) {
         const change = studioChangeFromPreset(loaded.data);
         const applied = await applyStudioChanges(globalResources, {
             change,
+            bindKey: bind.bindKey,
             autoApply: input.autoApply,
             autoGenerate: input.autoGenerate
         });
@@ -1699,7 +1894,7 @@ async function callTool(globalResources, req, name, args) {
 
     if (name === 'create_note') {
         input.id = input.id || crypto.randomUUID();
-        input.workspaceId = resolveNoteWorkspaceId(globalResources, input);
+        input.workspaceId = resolveNoteWorkspaceId(globalResources, input, req);
         if (!input.workspaceId) {
             const err = new Error('workspaceId is required (or bind a Studio tab)');
             err.status = 400;
@@ -1796,10 +1991,10 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (name === 'open_in_lumen') {
-        return openViewerFromMcp(globalResources, input, 'lumen');
+        return openViewerFromMcp(globalResources, input, 'lumen', req);
     }
     if (name === 'open_in_glancewell') {
-        return openViewerFromMcp(globalResources, input, 'glancewell');
+        return openViewerFromMcp(globalResources, input, 'glancewell', req);
     }
 
     if (name === 'compare_images') {
@@ -1889,6 +2084,34 @@ async function callTool(globalResources, req, name, args) {
         input.path = '/';
     }
 
+    if (name === 'get_generation_job' || name === 'await_generation_job') {
+        const jobId = String(input.jobId || input.id || '').trim();
+        if (!jobId) {
+            const err = new Error('jobId is required');
+            err.status = 400;
+            throw err;
+        }
+        const queue = globalResources.getGenerationJobQueue();
+        const job = queue.get(jobId);
+        if (!job) {
+            const err = new Error('Unknown generation jobId');
+            err.status = 404;
+            err.code = 'GENERATION_JOB_NOT_FOUND';
+            throw err;
+        }
+        if (name === 'await_generation_job' && job.status !== 'completed' && job.status !== 'failed' && job.status !== 'cancelled') {
+            try {
+                await queue.wait(jobId);
+            } catch (err) {
+                if (err && err.code === 'GENERATION_JOB_TIMEOUT') throw err;
+                const again = queue.get(jobId);
+                if (again) return mcpResultFromGenerationJob(globalResources, again, queue);
+                throw err;
+            }
+        }
+        return mcpResultFromGenerationJob(globalResources, queue.get(jobId) || job, queue);
+    }
+
     const generateNames = ['generate_image', 'generate_preset', 'upscale_image', 'expand_image'];
     if (generateNames.includes(name)) {
         let payload = flattenGenerateToolArgs(input);
@@ -1899,31 +2122,80 @@ async function callTool(globalResources, req, name, args) {
             payload.workspace = resolveWorkspaceId(payload.workspace || payload.workspaceId);
         }
         payload.mcp_generated = true;
-        const packet = await dispatchPacketTool(globalResources, req, def.packet, payload);
-        const flat = flattenPacket(packet);
-        const filename = sanitizeGalleryFilename(
-            flat.filename || (Array.isArray(flat.filenames) ? flat.filenames[0] : '')
-        );
-        if (filename && packet.success) {
-            try {
-                const resolved = resolveGalleryImagePath(globalResources, filename);
-                const image = await resizeImageForGrok(resolved.filePath);
-                if (image) {
-                    image.filename = filename;
-                    return mcpImageResult({ ...flat, filename, imageKind: 'grok' }, image);
+        const wantAsync = payload.async === true || payload.async === 'true';
+        delete payload.async;
+        delete payload.skipGenerationQueue;
+
+        if (wantAsync && (name === 'generate_image' || name === 'generate_preset')) {
+            const queue = globalResources.getGenerationJobQueue();
+            const job = queue.submit({
+                type: name,
+                source: 'mcp',
+                run: async () => {
+                    const packet = await dispatchPacketTool(globalResources, req, def.packet, {
+                        ...payload,
+                        skipGenerationQueue: true
+                    });
+                    return { success: packet.success, flat: flattenPacket(packet) };
                 }
-            } catch (_) { /* metadata-only fallback */ }
+            });
+            return mcpTextResult({
+                success: true,
+                async: true,
+                jobId: job.id,
+                status: job.status,
+                position: job.position,
+                delayMs: job.estimatedDelayMs,
+                next: 'Call await_generation_job with this jobId to wait for the image, or get_generation_job to poll.'
+            });
         }
-        return mcpTextResult({ ...flat, filename: filename || null }, !flat.success);
+
+        const packet = await dispatchPacketTool(globalResources, req, def.packet, payload);
+        return mcpResultFromGenerateFlat(globalResources, flattenPacket(packet), packet.success);
     }
 
-    if (def.packet && name !== 'get_generated_image') {
+    if (def.packet && name !== 'get_generated_image' && name !== 'get_linkxi_persona' && name !== 'save_linkxi_persona') {
         if (input.workspaceId || input.workspace) {
             input.workspaceId = resolveWorkspaceId(input.workspaceId || input.workspace);
             input.workspace = input.workspaceId;
         }
         const packet = await dispatchPacketTool(globalResources, req, def.packet, input);
         return mcpTextResult(flattenPacket(packet), !packet.success);
+    }
+
+    if (name === 'get_linkxi_persona') {
+        const packet = await dispatchPacketTool(globalResources, req, 'get_persona_settings', {});
+        const data = packet.data && typeof packet.data === 'object' ? packet.data : {};
+        return mcpTextResult({
+            success: !!packet.success,
+            ...sanitizeLinkXiPersona(data.settings),
+            error: packet.success ? undefined : (data.error || data.message || 'Failed to read LinkXi persona')
+        }, !packet.success);
+    }
+
+    if (name === 'save_linkxi_persona') {
+        const incoming = input.settings && typeof input.settings === 'object' && !Array.isArray(input.settings)
+            ? input.settings
+            : input;
+        const current = await dispatchPacketTool(globalResources, req, 'get_persona_settings', {});
+        const existing = current.data && current.data.settings && typeof current.data.settings === 'object'
+            ? current.data.settings
+            : {};
+        const settings = {
+            user_name: incoming.user_name != null ? incoming.user_name : existing.user_name,
+            backstory: incoming.backstory != null ? incoming.backstory : existing.backstory,
+            default_verbosity: incoming.default_verbosity != null
+                ? incoming.default_verbosity
+                : existing.default_verbosity,
+            profile_photo_base64: incoming.profile_photo_base64 != null
+                ? incoming.profile_photo_base64
+                : existing.profile_photo_base64
+        };
+        const packet = await dispatchPacketTool(globalResources, req, 'save_persona_settings', { settings });
+        return mcpTextResult({
+            ...flattenPacket(packet),
+            persona: sanitizeLinkXiPersona(settings)
+        }, !packet.success);
     }
 
     if (name === 'get_generated_image' || name === 'get_latest_image') {
@@ -1978,42 +2250,41 @@ async function callTool(globalResources, req, name, args) {
                 error: 'Could not resize image for Grok'
             }, !packet.success);
         }
+        const mustAct = collectEnshutsukaMustAct(meta);
         return mcpImageResult({
             ...meta,
             filename,
             imageKind,
             workspaceId: lookedUp.workspaceId,
-            latest: !!lookedUp.latest
+            latest: !!lookedUp.latest,
+            mustAct
         }, image);
     }
 
     if (name === 'list_clients') {
+        const bindKey = resolveBindKey(req);
         return mcpTextResult({
             success: true,
-            boundClientId: getBoundClientId(),
-            clients: listClients(globalResources)
+            boundClientId: getBoundClientId(bindKey),
+            clients: listClients(globalResources, bindKey)
         });
     }
 
     if (name === 'get_studio_state') {
-        const bind = autoBindIfNeeded(globalResources);
-        const bound = getBoundRecord(globalResources);
+        const bind = autoBindIfNeeded(globalResources, req);
+        const bound = getBoundRecord(globalResources, bind.bindKey);
         if (!bound) {
-            return mcpTextResult({
-                success: false,
-                error: bind.clients && bind.clients.length > 1
-                    ? 'Several Studio tabs are connected. Call advanced_tools with query "bind", then run bind_session with one clientId.'
-                    : 'No Studio client is connected. Open Studio in the browser, then retry.',
-                clients: bind.clients || []
-            }, true);
+            return mcpBindChoiceResult(bind);
         }
         const scopePayload = buildAgentScopePayload(req, globalResources);
         try {
-            const data = await sendBoundCommand(globalResources, 'get_state', {}, 8000);
+            const data = await sendBoundCommand(globalResources, 'get_state', {}, 8000, bind.bindKey);
             const change = (data && data.change && typeof data.change === 'object' && !Array.isArray(data.change))
                 ? data.change
                 : null;
             const settings = buildStudioSettingsCatalog(globalResources, data.model);
+            const dynamicGeneration = data.dynamicGeneration || (change && change.dynamicGeneration) || null;
+            const director = data.director || (change && change.director) || null;
             return mcpTextResult({
                 success: true,
                 bound: true,
@@ -2021,8 +2292,11 @@ async function callTool(globalResources, req, name, args) {
                 workspaceId: data.workspaceId || null,
                 filename: data.filename || null,
                 model: data.model || null,
-                clientId: getBoundClientId(),
+                clientId: getBoundClientId(bind.bindKey),
                 change,
+                dynamicGeneration,
+                director,
+                mustAct: collectEnshutsukaMustAct({ dynamicGeneration, director }),
                 settings,
                 scopes: scopePayload.scopes
             });
@@ -2034,7 +2308,7 @@ async function callTool(globalResources, req, name, args) {
                     partial: true,
                     filename: null,
                     model: null,
-                    clientId: getBoundClientId(),
+                    clientId: getBoundClientId(bind.bindKey),
                     change: null,
                     settings: buildStudioSettingsCatalog(globalResources),
                     scopes: scopePayload.scopes,
@@ -2045,25 +2319,29 @@ async function callTool(globalResources, req, name, args) {
         }
     }
 
+    if (name === 'get_client_physics') {
+        const bind = autoBindIfNeeded(globalResources, req);
+        if (!getBoundRecord(globalResources, bind.bindKey)) {
+            return mcpBindChoiceResult(bind);
+        }
+        const data = await getClientPhysics(globalResources, bind.bindKey);
+        return mcpTextResult({ success: true, autoBound: !!bind.auto, ...data });
+    }
+
     if (name === 'bind_session') {
         return mcpTextResult(bindClient(globalResources, {
             clientId: input.clientId || input.client_id,
-            code: input.code
+            code: input.code,
+            bindKey: resolveBindKey(req)
         }));
     }
 
     if (name === 'apply_studio_changes') {
-        const bind = autoBindIfNeeded(globalResources);
-        if (!getBoundRecord(globalResources)) {
-            return mcpTextResult({
-                success: false,
-                error: bind.clients && bind.clients.length > 1
-                    ? 'Several Studio tabs are connected. Call advanced_tools with query "bind", then run bind_session with one clientId.'
-                    : 'No Studio client is connected.',
-                clients: bind.clients || []
-            }, true);
+        const bind = autoBindIfNeeded(globalResources, req);
+        if (!getBoundRecord(globalResources, bind.bindKey)) {
+            return mcpBindChoiceResult(bind);
         }
-        const data = await applyStudioChanges(globalResources, input);
+        const data = await applyStudioChanges(globalResources, { ...input, bindKey: bind.bindKey });
         return mcpTextResult({ success: true, autoBound: !!bind.auto, ...data });
     }
 
@@ -2187,9 +2465,9 @@ function studioChangeFromPreset(preset) {
     return change;
 }
 
-function resolveNoteWorkspaceId(globalResources, input) {
+function resolveNoteWorkspaceId(globalResources, input, req) {
     if (input.workspaceId) return String(input.workspaceId);
-    const bound = getBoundRecord(globalResources);
+    const bound = getBoundRecord(globalResources, resolveBindKey(req));
     if (!bound || !bound.info || !bound.info.sessionId) return null;
     const workspaceManager = globalResources.getWorkspaceManager();
     return workspaceManager.getActiveWorkspace(bound.info.sessionId) || null;
@@ -2475,6 +2753,8 @@ module.exports = {
         MCP_RATE_GROUP_LIMITS,
         TOOL_RATE_GROUPS,
         MCP_INSTRUCTIONS,
+        collectEnshutsukaMustAct,
+        sanitizeLinkXiPersona,
         resolveWorkspaceId,
         flattenPacket,
         listToolsForScopes,

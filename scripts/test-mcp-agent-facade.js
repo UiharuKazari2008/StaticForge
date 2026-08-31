@@ -93,9 +93,20 @@ assert.ok(listImagesTool.description.includes('get_generated_image'));
 
 const genOnly = _test.listToolsForScopes(['generation']);
 assert.ok(genOnly.some((t) => t.name === 'generate_image'));
+assert.ok(genOnly.some((t) => t.name === 'get_generation_job'));
+assert.ok(genOnly.some((t) => t.name === 'await_generation_job'));
 assert.ok(genOnly.some((t) => t.name === 'apply_studio_changes'));
+const generateImageTool = _test.TOOL_DEFS.find((t) => t.name === 'generate_image');
+assert.ok(generateImageTool.inputSchema.properties.async);
+assert.ok(_test.MCP_INSTRUCTIONS.includes('await_generation_job'));
+assert.strictEqual(_test.rateGroupForTool('get_generation_job'), 'free');
+assert.strictEqual(_test.rateGroupForTool('await_generation_job'), 'free');
 assert.ok(genOnly.some((t) => t.name === 'advanced_tools'));
-assert.ok(!genOnly.some((t) => t.name === 'bind_session'));
+assert.ok(genOnly.some((t) => t.name === 'bind_session'));
+assert.ok(genOnly.some((t) => t.name === 'list_clients'));
+assert.ok(genOnly.some((t) => t.name === 'get_client_physics'));
+assert.ok(genOnly.some((t) => t.name === 'get_linkxi_persona'));
+assert.ok(genOnly.some((t) => t.name === 'save_linkxi_persona'));
 assert.ok(!genOnly.some((t) => t.name === 'get_images'));
 assert.ok(!genOnly.some((t) => t.name === 'generate_preset'));
 
@@ -139,6 +150,7 @@ const generationTools = _test.listToolsForScopes(['generation']);
 assert.ok(generationTools.some((t) => t.name === 'upscale_image'));
 assert.ok(generationTools.some((t) => t.name === 'expand_image'));
 assert.ok(generationTools.some((t) => t.name === 'get_studio_state'));
+assert.ok(generationTools.some((t) => t.name === 'get_client_physics'));
 assert.ok(!generationTools.some((t) => t.name === 'generate_preset'));
 
 const refsOnly = _test.listToolsForScopes(['references']);
@@ -158,9 +170,12 @@ assert.ok(!notesOnly.some((t) => t.name === 'create_note'));
 assert.ok(!notesOnly.some((t) => t.name === 'omegasearch'));
 
 const hiddenBind = _test.listAdvancedToolDefs(['generation'], 'bind');
-assert.ok(hiddenBind.some((t) => t.name === 'bind_session'));
-assert.ok(hiddenBind.some((t) => t.name === 'list_clients'));
+assert.ok(!hiddenBind.some((t) => t.name === 'bind_session'));
+assert.ok(!hiddenBind.some((t) => t.name === 'list_clients'));
 assert.ok(!hiddenBind.some((t) => t.name === 'generate_image'));
+assert.strictEqual(_test.rateGroupForTool('get_client_physics'), 'studio');
+assert.ok(_test.MCP_INSTRUCTIONS.includes('needsClientChoice'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('get_client_physics'));
 
 const hiddenPreset = _test.listAdvancedToolDefs(['presets', 'generation'], 'preset');
 assert.ok(hiddenPreset.some((t) => t.name === 'list_presets'));
@@ -180,7 +195,14 @@ assert.ok(coreNames.includes('compare_images'));
 assert.ok(coreNames.includes('evaluate_workspace_themes'));
 assert.ok(coreNames.includes('vfs_list'));
 assert.ok(coreNames.includes('vfs_read'));
-assert.strictEqual(coreNames.length, 25);
+assert.ok(coreNames.includes('bind_session'));
+assert.ok(coreNames.includes('list_clients'));
+assert.ok(coreNames.includes('get_client_physics'));
+assert.ok(coreNames.includes('get_linkxi_persona'));
+assert.ok(coreNames.includes('save_linkxi_persona'));
+assert.ok(coreNames.includes('get_generation_job'));
+assert.ok(coreNames.includes('await_generation_job'));
+assert.strictEqual(coreNames.length, 32);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.pipeline);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.rescale);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.noiseScheduler);
@@ -195,6 +217,34 @@ assert.ok(_test.MCP_INSTRUCTIONS.includes('top-level prompt/uc/params'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('append_quality / append_uc'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('turn that preset off'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('no_text'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('Enshutsuka modes'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('MUST integrate and act'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('get_linkxi_persona'));
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.dynamicGeneration);
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.director);
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.dynamicGeneration);
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.director);
+assert.strictEqual(_test.rateGroupForTool('get_linkxi_persona'), 'free');
+assert.strictEqual(_test.rateGroupForTool('save_linkxi_persona'), 'write');
+assert.deepStrictEqual(
+    _test.collectEnshutsukaMustAct({ dynamicGeneration: { enabled: true } }).reasons,
+    ['dynamicGeneration']
+);
+assert.deepStrictEqual(
+    _test.collectEnshutsukaMustAct({ director_session_id: 'sess-1' }).reasons,
+    ['director']
+);
+assert.strictEqual(_test.collectEnshutsukaMustAct({}), null);
+assert.strictEqual(_test.sanitizeLinkXiPersona({
+    user_name: 'Yukimi',
+    backstory: 'x',
+    default_verbosity: 4,
+    profile_photo_base64: 'HUGE'
+}).hasPhoto, true);
+assert.ok(!_test.sanitizeLinkXiPersona({
+    user_name: 'Yukimi',
+    profile_photo_base64: 'HUGE'
+}).profile_photo_base64);
 const listedGen = _test.listToolsForScopes(['generation'], {
     getPromptConfig: () => ({
         quality_presets: { v5: 'very aesthetic, masterpiece, no text' },
@@ -379,11 +429,44 @@ async function main() {
         'https://staticforge.737.jp.net/static_images/apple-touch-icon.png'
     );
 
-    const { hashMcpToolsRevision } = require('../modules/mcpServerInfo');
+    const { hashMcpToolsRevision, buildMcpConnectorGrimPage, ENSHUTSUKA_GROK_PROJECT_INSTRUCTIONS } = require('../modules/mcpServerInfo');
+    const grimPage = buildMcpConnectorGrimPage({
+        getConfig: ({ path }) => (path === 'public_hostname' ? 'staticforge.737.jp.net' : null),
+        getMcpPathUuid: () => 'mcp-test-uuid'
+    });
+    assert.strictEqual(grimPage.data.connectorUrl, 'https://staticforge.737.jp.net/mcp-test-uuid');
+    assert.strictEqual(grimPage.data.mcpUrl, 'https://staticforge.737.jp.net/mcp-test-uuid/mcp');
+    assert.ok(grimPage.data.oauthAuthorize.includes('/oauth/authorize'));
+    assert.ok(grimPage.data.projectInstructions.includes('MUST integrate and act'));
+    assert.ok(ENSHUTSUKA_GROK_PROJECT_INSTRUCTIONS.includes('get_linkxi_persona'));
     assert.notStrictEqual(
         hashMcpToolsRevision([{ name: 'a', description: 'one' }]),
         hashMcpToolsRevision([{ name: 'a', description: 'two' }])
     );
+
+    const { createGenerationJobQueue } = require('../modules/generationJobQueue');
+    const jobQueue = createGenerationJobQueue({ delayMinMs: 0, delayMaxMs: 0 });
+    const submitted = jobQueue.submit({
+        type: 'generate_image',
+        source: 'test',
+        run: async () => ({ success: true, flat: { filename: null, seed: 7 } })
+    });
+    await submitted.promise;
+    const jobPoll = await _test.handleJsonRpc(
+        { getGenerationJobQueue: () => jobQueue },
+        { applicationAuth: { applicationScopes: ['generation'] }, authMethod: 'application_key' },
+        {
+            jsonrpc: '2.0',
+            id: 21,
+            method: 'tools/call',
+            params: { name: 'get_generation_job', arguments: { jobId: submitted.id } }
+        }
+    );
+    assert.strictEqual(jobPoll.status, 200);
+    const jobMeta = JSON.parse(jobPoll.body.result.content[0].text);
+    assert.strictEqual(jobMeta.jobId, submitted.id);
+    assert.strictEqual(jobMeta.status, 'completed');
+    assert.strictEqual(jobMeta.seed, 7);
 
     const listed = await _test.handleJsonRpc(
         {},
@@ -415,12 +498,12 @@ async function main() {
             jsonrpc: '2.0',
             id: 4,
             method: 'tools/call',
-            params: { name: 'advanced_tools', arguments: { query: 'bind' } }
+            params: { name: 'advanced_tools', arguments: { query: 'preset' } }
         }
     );
     const advancedPayload = JSON.parse(advancedListed.body.result.content[0].text);
     assert.strictEqual(advancedPayload.success, true);
-    assert.ok(advancedPayload.tools.some((t) => t.name === 'bind_session'));
+    assert.ok(advancedPayload.tools.some((t) => t.name === 'generate_preset'));
     assert.ok(advancedPayload.next.includes('name and arguments'));
 
     const advancedCoreReject = await _test.handleJsonRpc(

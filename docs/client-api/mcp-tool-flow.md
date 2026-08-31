@@ -16,14 +16,16 @@ If a tool 429s, read `error.data.group` and `error.data.retryAfter` (seconds). W
 
 | Group | Limit / 15 min | Tools |
 |---|---|---|
-| `free` | none | lists, bind, note/preset/wiki index reads |
+| `free` | none | lists, bind, note/preset/wiki index reads, `get_linkxi_persona` |
 | `search` | 240 | autofill, wiki pages, OmegaSearch, `evaluate_workspace_themes` |
 | `gallery` | 90 | `get_generated_image`, `compare_images`, `vfs_read` (and hidden `get_images` / `get_latest_image`) |
-| `write` | 60 | save note/preset, upload reference, `delete_images`, `scrap_images`, `toggle_favorite` |
-| `studio` | 60 | `get_studio_state`, `apply_studio_changes`, `apply_preset_to_studio` |
+| `write` | 60 | save note/preset, upload reference, `delete_images`, `scrap_images`, `toggle_favorite`, `save_linkxi_persona` |
+| `studio` | 60 | `get_studio_state`, `get_client_physics`, `apply_studio_changes`, `apply_preset_to_studio` |
 | `generate` | 20 | `generate_image`, `generate_preset`, `upscale_image`, `expand_image` |
 
-`generate_image` and `apply_studio_changes` accept the **full Studio settings set** (`docs/studio-change-json.md` `params`, plus characters / expanders / vibes / pipeline). Send them as top-level keys or inside `params`. `generate_image` also maps `characters` to `allCharacterPrompts`. **Quality / UC / NSFW:** set `append_quality` / `append_uc` / `dataset_config.nsfw` and do **not** paste those live strings into prompt/uc — the server prepends them. **If you need to change a tag inside a preset, turn that preset off and put the edited string in prompt/uc.** Never leave the preset on and also paste a variant. In-image text: keep quality on and set `dataset_config.settings.__quality__.no_text.enabled` false (that sub-toggle is default on). `tools/list` and `get_studio_state.settings` list each preset id, name, and true value from `prompt.config`. MCP server-side generate writes `forge_data.mcp_generated` (Properties badge **MCP**), pushes `gallery_updated` `append_top` **only to clients whose active workspace matches the generate workspace**, and lights the generation tray while it runs. `expand_image` takes the same sampler overrides as `overrideParams` or top-level (`steps`, `guidance`, `rescale`, `sampler`, `noiseScheduler`, `noise`, `seed`, `model`).
+`generate_image` waits on the shared generation FIFO (Studio uses the same stack). Omit `async` to stall until the webp is ready. `async: true` returns `jobId` — then `await_generation_job` or `get_generation_job`. `generate_image` and `apply_studio_changes` accept the **full Studio settings set** (`docs/studio-change-json.md` `params`, plus characters / expanders / vibes / pipeline / `dynamicGeneration` / `director`). Send them as top-level keys or inside `params`. `generate_image` also maps `characters` to `allCharacterPrompts`, `dynamicGeneration` to `dynamic_generation`, and `director` session/message ids onto the generate body. `n` (2–8) is print copies on `generate_image` / `generate_preset` only — not Change-JSON / `apply_studio_changes`. The result lists `filenames[]` when `n` > 1. **Quality / UC / NSFW:** set `append_quality` / `append_uc` / `dataset_config.nsfw` and do **not** paste those live strings into prompt/uc — the server prepends them. **If you need to change a tag inside a preset, turn that preset off and put the edited string in prompt/uc.** Never leave the preset on and also paste a variant. In-image text: keep quality on and set `dataset_config.settings.__quality__.no_text.enabled` false (that sub-toggle is default on). `tools/list` and `get_studio_state.settings` list each preset id, name, and true value from `prompt.config`. MCP server-side generate writes `forge_data.mcp_generated` (Properties badge **MCP**), pushes `gallery_updated` `append_top` **only to clients whose active workspace matches the generate workspace**, and lights the generation tray while it runs. `expand_image` takes the same sampler overrides as `overrideParams` or top-level (`steps`, `guidance`, `rescale`, `sampler`, `noiseScheduler`, `noise`, `seed`, `model`).
+
+If `get_studio_state` or `get_generated_image` includes `dynamicGeneration` / `dynamic_generation` or `director` / `director_session_id` (or `mustAct`), you **must integrate and act**. Enable or change dynagen from the client or from Grok with `apply_studio_changes` / `generate_image`. Honor an attached director prompt. LinkXi: `get_linkxi_persona` / `save_linkxi_persona`. Image chaining is out of scope. Grim setup page: `dsap://mcp.dreamscape.jp/`.
 
 Gallery actions: `delete_images`, `scrap_images` (`remove: true` to unscrap), `toggle_favorite`, `open_in_lumen`, `open_in_glancewell` (pass `filenames` for a group). `compare_images` needs two files (same seed preferred). `evaluate_workspace_themes` samples a workspace and lists overused characters/tags. VFS: `vfs_list` / `vfs_read` (`path: "@desktop"` for the desktop).
 
@@ -31,7 +33,11 @@ Each `tools/call` also pushes `mcp_activity` (tool, summarized args/result, opti
 
 ## Studio bind
 
-`get_studio_state` and `apply_studio_changes` auto-bind when exactly one Studio tab is connected. Several tabs: `advanced_tools` `{ "query": "bind" }` then run `bind_session`. Server-side `generate_image` does not need a bind.
+The bind is stored on **this application key**, not the whole server. `get_studio_state` (and apply / physics) auto-bind when exactly one Studio tab is connected. That bind stays until the user Unbinds from the MCP tray or 15 minutes pass with no studio commands.
+
+Several tabs: `get_studio_state` returns `needsClientChoice` and `clients` (most recently used first). Ask the user which tab, then `bind_session` `{ "clientId": "…" }`. `list_clients` is also a core tool. Server-side `generate_image` does not need a bind.
+
+`get_client_physics` returns location, tod, date, weather, and season for the bound tab (same subset as dynamic generation). The physics tray icon lights on that tab.
 
 ## Recipe: image in a specific workspace
 
@@ -90,6 +96,19 @@ Example Change-JSON (shape only — fill from the snapshot):
 ```
 
 Characters are always `action: replace` + `index`. Never `add`.
+
+## Recipe: Enshutsuka on grok.com (analyse / create / efficiency)
+
+User: *analyse my prompt* / *create* / *efficiency*
+
+1. `get_studio_state` — read `change`, `dynamicGeneration`, `director`, `mustAct`, `filename`.
+2. Analyse / efficiency: `get_generated_image` on `filename` (or latest). If `mustAct` or image `dynamic_generation` / `director_session_id` is set, integrate that data into the rewrite.
+3. Create: no image required. Invent from the user text + Studio state.
+4. If they asked to enable or retune dynamic generation, `apply_studio_changes` with `dynamicGeneration` (or `generate_image` `dynamic_generation`). Same for `director`.
+5. Push the rewrite with `apply_studio_changes`. `autoGenerate` if they asked to generate now.
+6. Persona as themselves: `get_linkxi_persona` (and `save_linkxi_persona` if they asked to update it).
+
+Connector URLs and this paste-block: Grim `dsap://mcp.dreamscape.jp/`.
 
 ## Recipe: known gallery filename (no Studio)
 

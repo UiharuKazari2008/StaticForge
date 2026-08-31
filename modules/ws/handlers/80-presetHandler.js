@@ -1,6 +1,7 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
 const { generateImageWebSocket } = require('../../imageGeneration');
 const { broadcastGalleryMutation } = require('./120-galleryHandler');
+const { notifyGenerationQueued } = require('../../generationJobQueue');
 
 const PRESET_DESTRUCTIVE = { destructive: true };
 
@@ -497,7 +498,7 @@ async function handleDeletePreset(handlers, ws, message, clientInfo, wsServer) {
     }
 }
 
-async function handleGeneratePreset(handlers, ws, message, clientInfo, wsServer) {
+async function handleGeneratePresetWork(handlers, ws, message, clientInfo, wsServer) {
     const { presetName, allow_paid, workspace, enableStreaming } = message;
     const requestId = message.requestId || 'unknown';
 
@@ -579,6 +580,23 @@ async function handleGeneratePreset(handlers, ws, message, clientInfo, wsServer)
         handlers.unregisterActiveGeneration(ws, requestId);
         handlers.clearGenerationCancelled(requestId);
     }
+}
+
+async function handleGeneratePreset(handlers, ws, message, clientInfo, wsServer) {
+    if (message && message.skipGenerationQueue) {
+        delete message.skipGenerationQueue;
+        return handleGeneratePresetWork(handlers, ws, message, clientInfo, wsServer);
+    }
+    const requestId = message.requestId || 'unknown';
+    handlers.startKeepAliveInterval(ws, requestId, 15000);
+    const job = handlers.globalResources.getGenerationJobQueue().submit({
+        type: 'generate_preset',
+        source: 'ws',
+        requestId,
+        run: () => handleGeneratePresetWork(handlers, ws, message, clientInfo, wsServer)
+    });
+    notifyGenerationQueued(handlers, ws, requestId, job);
+    return job.promise;
 }
 
 /**

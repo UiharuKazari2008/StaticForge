@@ -2,6 +2,29 @@ const { generateImageWebSocket, handleRerollGeneration, expandImage, rerollExpan
 const { upscaleImageWebSocket } = require('../../imageUpscaling');
 const { resolveDynamicContext } = require('../../dynamicGenerationHandlers');
 const { broadcastGalleryMutation } = require('./120-galleryHandler');
+const { notifyGenerationQueued } = require('../../generationJobQueue');
+
+function takeSkipGenerationQueue(message) {
+    if (!message || !message.skipGenerationQueue) return false;
+    delete message.skipGenerationQueue;
+    return true;
+}
+
+async function runOnGenerationFifo(handlers, ws, message, type, workFn) {
+    if (takeSkipGenerationQueue(message)) {
+        return workFn();
+    }
+    const requestId = message.requestId || 'unknown';
+    handlers.startKeepAliveInterval(ws, requestId, 15000);
+    const job = handlers.globalResources.getGenerationJobQueue().submit({
+        type,
+        source: 'ws',
+        requestId,
+        run: workFn
+    });
+    notifyGenerationQueued(handlers, ws, requestId, job);
+    return job.promise;
+}
 
 function collectSavedGenerationFilenames(result) {
     const names = [];
@@ -72,7 +95,7 @@ function normalizeExpansionOverrideParams(data) {
     return merged;
 }
 
-async function handleImageGeneration(handlers, ws, message, clientInfo, wsServer) {
+async function handleImageGenerationWork(handlers, ws, message, clientInfo, wsServer) {
     const requestId = message.requestId || 'unknown';
 
     try {
@@ -209,7 +232,13 @@ async function handleImageGeneration(handlers, ws, message, clientInfo, wsServer
     }
 }
 
-async function handleImageReroll(handlers, ws, message, clientInfo, wsServer) {
+async function handleImageGeneration(handlers, ws, message, clientInfo, wsServer) {
+    return runOnGenerationFifo(handlers, ws, message, 'generate_image', () => (
+        handleImageGenerationWork(handlers, ws, message, clientInfo, wsServer)
+    ));
+}
+
+async function handleImageRerollWork(handlers, ws, message, clientInfo, wsServer) {
     const requestId = message.requestId;
     try {
         const { filename, workspace, allow_paid } = message;
@@ -270,6 +299,12 @@ async function handleImageReroll(handlers, ws, message, clientInfo, wsServer) {
         handlers.unregisterActiveGeneration(ws, requestId);
         handlers.clearGenerationCancelled(requestId);
     }
+}
+
+async function handleImageReroll(handlers, ws, message, clientInfo, wsServer) {
+    return runOnGenerationFifo(handlers, ws, message, 'reroll_image', () => (
+        handleImageRerollWork(handlers, ws, message, clientInfo, wsServer)
+    ));
 }
 
 async function handleImageUpscaling(handlers, ws, message, clientInfo, wsServer) {
@@ -705,10 +740,12 @@ async function handleCancelGeneration(handlers, ws, message, clientInfo, wsServe
     try {
         const ids = message.cancelledRequestIds || message.data?.cancelledRequestIds;
         if (Array.isArray(ids)) {
+            const queue = handlers.globalResources.getGenerationJobQueue();
             for (const id of ids) {
                 if (typeof id === 'string') {
                     handlers.markGenerationCancelled(id);
                     handlers.stopKeepAliveInterval(id);
+                    queue.cancelByRequestId(id);
                 }
             }
         }

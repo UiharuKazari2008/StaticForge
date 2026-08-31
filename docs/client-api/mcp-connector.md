@@ -230,11 +230,17 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 
 | Tool | Wrap | Scope | Bind? |
 |------|------|-------|-------|
-| `generate_image` | Server generate; waits and returns filename + Grok webp. Full Studio settings (steps, guidance, rescale, sampler, noiseScheduler, seed, resolution, characters, vibes, pipeline, …) as top-level keys or `params`. `tools/list` injects live `prompt.config` quality/UC/NSFW strings onto `append_quality` / `append_uc` / `dataset_config.nsfw` — enable those flags; do not also paste the same tags. If you must edit tags inside a preset, turn it off and paste the edited string. In-image text: disable `__quality__.no_text`, keep quality on. Writes `forge_data.mcp_generated`. Matching-workspace galleries get `gallery_updated`. | `generation` | no |
+| `generate_image` | Server generate on the **shared generation FIFO** (Studio Generate / preset / reroll use the same stack; 8–20s gap after each job). Default stalls until filename + Grok webp. `async: true` returns `jobId` immediately. Full Studio settings as top-level keys or `params`. `n` is print count 2–8. Writes `forge_data.mcp_generated`. | `generation` | no |
+| `get_generation_job` | Poll `jobId` from `async` generate. Status/position while queued; same image payload when done. | `generation` | no |
+| `await_generation_job` | Block on `jobId` until complete, then return filename + Grok webp. | `generation` | no |
 | `get_generated_image` | Metadata + Grok webp. Filename, seed, or omit for latest. `workspace` default is `default`. | `gallery` | no |
 | `get_workspaces` | `workspace_list` — use the id on `get_generated_image` / `omegasearch` | `workspace` | no |
-| `get_studio_state` | Bound `get_state` (same snapshot as `GET /agent/session/state`) plus `settings` (live sampler/resolution enums and quality/UC/NSFW id, name, true `prompt.config` strings) | `generation` | yes |
-| `apply_studio_changes` | `POST /agent/session/studio`. Full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes (same keys as Studio). | `generation` | yes |
+| `get_studio_state` | Bound `get_state` for **this application key** (stays bound 15 min / until tray Unbind). One tab auto-binds. Several tabs: `needsClientChoice` + clients most recently used first — ask, then `bind_session`. Plus `settings`, `dynamicGeneration`, `director`, and `mustAct` when those fields are present. | `generation` | yes |
+| `get_client_physics` | Bound tab location / tod / date / weather / season (dynamic-generation carousel subset). Lights `#mcpPhysicsIndicator`. | `generation` | yes |
+| `list_clients` / `bind_session` | List tabs (this key's `bound` flag) / bind this key to a `clientId` | `generation` | bind |
+| `apply_studio_changes` | `POST /agent/session/studio`. Full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes/dynamicGeneration/director (same keys as Studio). Silent apply skips the autofill popup. | `generation` | yes |
+| `get_linkxi_persona` | `get_persona_settings` without the photo blob (`hasPhoto` only). | `generation` | no |
+| `save_linkxi_persona` | `save_persona_settings` (`user_name`, `backstory`, `default_verbosity` 1–5). Preserves an existing photo unless one is sent. | `generation` | no |
 | `search_autofill` | `test_autofill_ranking` once per term (max 20). Same live autocomplete pipeline. Accepts `terms: string[]` and/or `query` | `autofill` | no |
 | `search_wiki` | `search_tag_wiki` | `wiki` (also listed for `autofill` keys) | no |
 | `get_wiki_page` | `get_tag_wiki_page` (`tagName`, optional `source`, `format`) | `wiki` (also listed for `autofill` keys) | no |
@@ -259,7 +265,6 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 |------|------|-------|
 | `get_latest_image` | Same as `get_generated_image` with no filename | `gallery` |
 | `get_images` | Paged directory listing only | `gallery` |
-| `list_clients` / `bind_session` | `GET /agent/clients` / `POST /agent/bind` | `generation` |
 | `list_static_wiki_sites` / `list_static_wiki_pages` / `search_static_wiki` / `get_static_wiki_page` | Grimoire / static wiki | `wiki` / `autofill` |
 | `list_presets` / `search_presets` / `get_preset` / `generate_preset` | extra preset list/load/server-generate | `presets` / `generation` |
 | `list_references` / `get_references_by_ids` / `list_workspace_references` / `upload_reference` | reference packets | `references` |
@@ -294,7 +299,7 @@ For grok.com Custom Connector UI that requires OAuth:
    - **Authorization Endpoint**: `https://<host>/{mcpPathUuid}/oauth/authorize`
    - **Token Endpoint**: `https://<host>/{mcpPathUuid}/oauth/token`
    - **Client ID**: Your `mcp_...` client ID from registration
-   - **Scopes**: `generation gallery workspace autofill wiki presets references search notes` (or subset)
+   - **Scopes**: `generation gallery workspace autofill wiki presets references search notes chat` (or subset). Enshutsuka minimum: `generation gallery workspace chat`. Live URLs and a project paste-block live on Grim `dsap://mcp.dreamscape.jp/`.
    - **Token Auth Method**: `none (PKCE only, recommended)`
 3. Click Save & Connect. You'll see the consent page.
 4. Approve. Missing requested named scopes are added to the selected key. Grok gets an access token bound to that key's scopes.

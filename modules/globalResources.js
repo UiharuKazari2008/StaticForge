@@ -2346,6 +2346,17 @@ class GlobalResources {
     }
 
     /**
+     * Global generation FIFO (Studio + MCP). modules/generationJobQueue.js
+     */
+    getGenerationJobQueue() {
+        if (!this.generationJobQueue) {
+            const { getSharedGenerationJobQueue } = require('./generationJobQueue');
+            this.generationJobQueue = getSharedGenerationJobQueue();
+        }
+        return this.generationJobQueue;
+    }
+
+    /**
      * Get Metadata Database instance
      */
     getMetadataDatabase() {

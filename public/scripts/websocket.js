@@ -5245,12 +5245,13 @@ class WebSocketClient {
                 let statusMessage = typeof getGenerationStatusMessage === 'function'
                     ? getGenerationStatusMessage(data)
                     : 'Processing...';
-                if (data.phase === 'stage_delay' && data.delayMs && !progressState.delayTimer) {
+                if ((data.phase === 'stage_delay' || data.phase === 'queued') && data.delayMs && !progressState.delayTimer) {
                     let remainingSeconds = Math.ceil(data.delayMs / 1000);
+                    const delayLabel = data.phase === 'queued' ? 'Queued' : 'Stage delay';
                     progressState.delayTimer = setInterval(() => {
                         remainingSeconds--;
                         if (remainingSeconds > 0) {
-                            updateGlassToastMessage(progressToastId, `Stage delay: ${remainingSeconds}s remaining`);
+                            updateGlassToastMessage(progressToastId, `${delayLabel}: ${remainingSeconds}s remaining`);
                         } else {
                             clearInterval(progressState.delayTimer);
                             progressState.delayTimer = null;

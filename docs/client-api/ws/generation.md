@@ -76,6 +76,8 @@ Implementation: `modules/ws/handlers/generationImpl.js`
 
 ---
 
+---
+
 ## Detailed packets
 
 ### `apply_tendai_preview`
@@ -159,18 +161,18 @@ Implementation: `modules/ws/handlers/generationImpl.js`
 | Field | Notes |
 |-------|-------|
 | `requestId` | Optional |
-| `filename` | Required |
-| `scale` | `1`, `1.5`, `2`, or `max` (Max keeps source WxH and sets `upscaled_enhance`) |
+| `filename` | Optional |
+| `scale` | Optional |
 | `workspace` | Optional |
-| `strength` | Optional img2img strength; default `0.5` (magnitude 3.0) |
-| `noise` | Optional img2img noise; default `0` |
-| `steps` | Optional override |
-| `guidance` | Optional override |
-| `rescale` | Optional override |
-| `sampler` | Optional override |
-| `noiseScheduler` | Optional override |
-| `seed` | Optional; random when omitted |
-| `model` | Optional override |
+| `strength` | Optional |
+| `noise` | Optional |
+| `steps` | Optional |
+| `guidance` | Optional |
+| `rescale` | Optional |
+| `sampler` | Optional |
+| `noiseScheduler` | Optional |
+| `seed` | Optional |
+| `model` | Optional |
 
 **Success response:** `enhance_image_response`
 
@@ -207,12 +209,15 @@ Additional response/push types from handler:
 
 **Handler:** modules/ws/handlers/60-generationHandler.js → `handleImageGeneration`
 
+Studio `generate_image`, `generate_preset`, and `reroll_image` enqueue on the same **global generation FIFO** as MCP (`modules/generationJobQueue.js`). One NovelAI generate at a time. After a job finishes, the next waits a semi-random 8–20s gap. While waiting, the handler pushes `image_generation_progress` with `phase: "queued"`, `jobId`, `position`, and `delayMs` (existing toast; no new chrome). `skipGenerationQueue` is set only when MCP already submitted the job (`async: true`).
+
 **Request fields:**
 
 | Field | Notes |
 |-------|-------|
 | `requestId` | Optional |
 | `enableStreaming` | Optional |
+| `n` | Optional print count (2–8). Server runs the existing generate path that many times and emits print-level `stage_complete` / `complete`. Omitted or `1` is a single generate |
 | `...data` | Optional |
 
 **Success response:** `image_generation_response`
@@ -229,16 +234,14 @@ Additional response/push types from handler:
 
 **Handler:** modules/ws/handlers/60-generationHandler.js → `handleMaxEnhanceImage`
 
-Compatibility alias for `enhance_image` with `scale: "max"`. Prefer `enhance_image`.
-
 **Request fields:**
 
 | Field | Notes |
 |-------|-------|
 | `requestId` | Optional |
-| `filename` | Required |
+| `filename` | Optional |
 | `workspace` | Optional |
-| `strength` | Optional; same as `enhance_image` |
+| `strength` | Optional |
 | `noise` | Optional |
 | `steps` | Optional |
 | `guidance` | Optional |
@@ -364,8 +367,6 @@ Additional response/push types from handler:
 **Auth:** Session required. Admin only (destructive — blocked for readonly)
 
 **Handler:** modules/ws/handlers/60-generationHandler.js → `handleImageUpscaling`
-
-NovelAI upscale POSTs to `image.novelai.net/ai/upscale` with `nai-diffusion-5-curated` (no `scale` field; live contract is 2x). `forge_data.upscale_ratio` is the measured output/input ratio (not a hardcoded 4). Origin PNG Comment is copied onto the result via `copyMetadataToImage` (WS used to overwrite Comment/`signed_hash` with `updateMetadata`).
 
 **Request fields:**
 

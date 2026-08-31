@@ -19,6 +19,9 @@ function calculateGenerationProgress(progressData) {
                 }
                 return Math.min(stageProgress, 95);
 
+            case 'queued':
+                return 0;
+
             case 'stage_delay':
                 // During delay, show progress for current stage
                 return (currentStage / totalStages) * 100;
@@ -64,6 +67,9 @@ function calculateGenerationProgress(progressData) {
             case 'complete':
                 // 100%: Complete
                 return 100;
+
+            case 'queued':
+                return 0;
 
             default:
                 return 15; // Default to 15% for non-Rentan
@@ -138,6 +144,13 @@ function getGenerationStatusMessage(progressData) {
                 return `Step ${d.currentStep}/${d.totalSteps}`;
             }
             return 'Generating image...';
+        case 'queued':
+            if (d.position > 0) {
+                return d.delayMs
+                    ? `Queued (#${d.position + 1}): ${Math.ceil(d.delayMs / 1000)}s`
+                    : `Queued (#${d.position + 1})`;
+            }
+            return d.delayMs ? `Queued: ${Math.ceil(d.delayMs / 1000)}s` : 'Queued...';
         case 'stage_delay':
             return d.delayMs ? `Stage delay: ${Math.ceil(d.delayMs / 1000)}s remaining` : 'Stage delay...';
         case 'upscaling':
