@@ -46,13 +46,13 @@ const MCP_INSTRUCTIONS = [
     'Make a preset from this image or Studio tab: get_generated_image or get_studio_state, then save_preset with presetName and config (name, prompt, model).',
     'Delivery priority: apply_studio_changes is the default (autoApply true; autoGenerate if they asked to generate now). Else generate_image (no Studio tab / server-side run). Else emit Change-JSON. Else the prompt-text block. Do not dump Positive/UC when Studio MCP works.',
     'On every Studio edit: get_studio_state first. Compare to the last state you saw this chat. Keep their intervening edits; apply only this message\'s delta.',
-    'Studio prompt / compare / edit: call get_studio_state first. It binds this application key to the tab and stays bound until the user unbinds or 15 minutes with no studio calls. One tab auto-binds. Several tabs: the tool returns clients (most recently used first) with needsClientChoice — ask the user which clientId, then bind_session. Then get_generated_image with state.filename. Write back with apply_studio_changes. Full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes/dynamicGeneration/director all apply. autoGenerate clicks the bound Studio Generate button. get_client_physics returns that tab\'s location, tod, date, weather, and season (same subset as dynamic generation).',
+    'Studio prompt / compare / edit: call get_studio_state first. It binds this application key to the tab and stays bound until the user unbinds or 15 minutes with no studio calls. One tab auto-binds. Several tabs: the tool returns clients (most recently used first) with needsClientChoice — ask the user which clientId, then bind_session. Then get_generated_image with state.filename. Write back with apply_studio_changes. Full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes/dynamicGeneration/director all apply. autoGenerate clicks the bound Studio Generate button. get_client_physics returns that tab\'s location, tod, date, weather, and season (same subset as dynamic generation). What they are looking at: get_open_windows (Lumen/Glancewell current file, Grimoire page text, gallery selected filenames). Then get_generated_image or gallery/wiki tools.',
     'Enshutsuka modes (user says these on grok.com): analyse / analyze my prompt — get_studio_state + get_generated_image, compare prompt to pixels, apply_studio_changes. create — invent from text; no image required. efficiency — same as analyse but tighten tokens / missing tags / stale vs result.',
     'If get_studio_state or get_generated_image includes dynamicGeneration / dynamic_generation or director / director_session_id / a director prompt, you MUST integrate and act on that data. Enable or change dynamic generation with apply_studio_changes dynamicGeneration (enabled, directive, tod, weather, season, location, cacheLocked, contextLocked) or generate_image dynamic_generation. Do not ignore an attached director prompt.',
     'LinkXi persona (account): get_linkxi_persona / save_linkxi_persona (user_name, backstory, default_verbosity 1–5). Use it when the user talks as themselves in Enshutsuka / Director chat.',
     'generate_image waits on the shared generation FIFO (Studio Generate uses the same stack; 8–20s gap after each job) and returns the new filename plus a small webp. Pass the same Studio settings as the editor (steps, guidance, rescale, sampler, noiseScheduler, seed, resolution, characters, vibes, pipeline, n, …) as top-level keys or inside params. n is print count 2–8 (omit or 1 for a single image); the server runs that many copies and the result includes filenames[]. async true returns jobId immediately — then get_generation_job to poll or await_generation_job to wait for the same image payload. Do not page the gallery afterward. The matching-workspace gallery updates itself.',
     'Quality and UC presets: set append_quality / append_uc. Do not paste those live strings into prompt or uc (the server prepends them). If you must change a tag inside a preset, turn that preset off and put the edited string in prompt/uc — never leave the preset on and also paste a variant. NSFW: set dataset_config.nsfw, do not paste that level\'s add/remove tags. In-image text: keep append_quality on and set dataset_config.settings.__quality__.no_text.enabled false (default on). tools/list and get_studio_state.settings list each preset id, name, and true value from prompt.config.',
-    'Gallery actions: delete_images, scrap_images, toggle_favorite, open_in_lumen (one image), open_in_glancewell (a group).',
+    'Gallery actions: delete_images, scrap_images, toggle_favorite, open_in_lumen (one image), open_in_glancewell (a group). get_open_windows gallery window data.selected is the current selection.',
     'compare_images diffs two same-seed files. evaluate_workspace_themes counts overused characters/tags in a folder.',
     'VFS: vfs_list path (use @desktop for the workspace desktop), vfs_read, or advanced_tools for write/delete/stat.',
     'omegasearch finds names; then call get_generated_image.',
@@ -317,9 +317,25 @@ const TOOL_DEFS = [
     {
         name: 'get_studio_state',
         core: true,
-        description: 'Current Studio prompt, UC, characters, params, open filename, dynamicGeneration, and attached director prompt for this application key. Auto-binds the single connected tab. If several tabs are open, returns needsClientChoice and clients (most recently used first) — ask the user which clientId, then bind_session. Also returns settings: live sampler/resolution/model enums plus quality, UC, and NSFW preset id, name, and true prompt.config strings. Then use get_generated_image on filename to see the picture. If dynamicGeneration or director is present you must integrate it.',
+        description: 'Current Studio prompt, UC, characters, params, open filename, dynamicGeneration, and attached director prompt for this application key. Auto-binds the single connected tab. If several tabs are open, returns needsClientChoice and clients (most recently used first) — ask the user which clientId, then bind_session. Also returns settings: live sampler/resolution/model enums plus quality, UC, and NSFW preset id, name, and true prompt.config strings. Then use get_generated_image on filename to see the picture. If dynamicGeneration or director is present you must integrate it. For other open windows (Lumen, Glancewell, Grimoire, gallery selection) call get_open_windows.',
         scope: 'generation',
         inputSchema: { type: 'object', properties: {} }
+    },
+    {
+        name: 'get_open_windows',
+        core: true,
+        description: 'List open windows on the bound Dreamscape tab and their current data. Lumen: filename. Glancewell: current filename plus nearby files. Grimoire: address + page text. Gallery: selected filenames. Studio: open filename/model. Auto-binds like get_studio_state. includeImage (default true) attaches one Grok webp for the focused file. Then get_generated_image for metadata, or gallery tools on selected.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                includeImage: {
+                    type: 'boolean',
+                    description: 'Attach a Grok-sized webp for the focused image (active Lumen/Glancewell/gallery selection). Default true.'
+                }
+            }
+        }
     },
     {
         name: 'get_client_physics',
@@ -1175,6 +1191,7 @@ const TOOL_RATE_GROUPS = {
     save_preset: 'write',
     upload_reference: 'write',
     get_studio_state: 'studio',
+    get_open_windows: 'studio',
     get_client_physics: 'studio',
     apply_studio_changes: 'studio',
     apply_preset_to_studio: 'studio',
@@ -1705,6 +1722,17 @@ function mcpImageResult(meta, image) {
         });
     }
     return { content, isError: false };
+}
+
+function pickFocusedWindowFilename(windows) {
+    const list = Array.isArray(windows) ? windows : [];
+    const active = list.find((row) => row && row.active) || list[0];
+    const data = active && active.data && typeof active.data === 'object' ? active.data : {};
+    return sanitizeGalleryFilename(
+        data.filename
+        || (Array.isArray(data.selected) ? data.selected[0] : '')
+        || (Array.isArray(data.filenames) ? data.filenames[0] : '')
+    );
 }
 
 async function mcpResultFromGenerateFlat(globalResources, flat, success) {
@@ -2319,6 +2347,40 @@ async function callTool(globalResources, req, name, args) {
         }
     }
 
+    if (name === 'get_open_windows') {
+        const bind = autoBindIfNeeded(globalResources, req);
+        if (!getBoundRecord(globalResources, bind.bindKey)) {
+            return mcpBindChoiceResult(bind);
+        }
+        const data = await sendBoundCommand(globalResources, 'get_windows', {}, 8000, bind.bindKey);
+        const windows = Array.isArray(data.windows) ? data.windows : [];
+        const focusedFilename = pickFocusedWindowFilename(windows);
+        const wantImage = input.includeImage !== false && input.includeImage !== 'false';
+        const body = {
+            success: true,
+            bound: true,
+            autoBound: !!bind.auto,
+            workspaceId: data.workspaceId || null,
+            activeWindowId: data.activeWindowId || null,
+            windows,
+            focusedFilename,
+            next: focusedFilename
+                ? 'Focused file is this result\'s webp (unless includeImage false). Call get_generated_image for NovelAI metadata. Gallery selected: delete_images / scrap_images / toggle_favorite. Grimoire text is windows[].data.text.'
+                : 'No focused image. Read windows[].data (gallery selected, Grimoire text, Lumen/Glancewell filename).'
+        };
+        if (wantImage && focusedFilename) {
+            try {
+                const resolved = resolveGalleryImagePath(globalResources, focusedFilename);
+                const image = await resizeImageForGrok(resolved.filePath);
+                if (image) {
+                    image.filename = focusedFilename;
+                    return mcpImageResult({ ...body, filename: focusedFilename, imageKind: 'grok' }, image);
+                }
+            } catch (_) { /* metadata-only fallback */ }
+        }
+        return mcpTextResult(body);
+    }
+
     if (name === 'get_client_physics') {
         const bind = autoBindIfNeeded(globalResources, req);
         if (!getBoundRecord(globalResources, bind.bindKey)) {
@@ -2766,6 +2828,7 @@ module.exports = {
         handleJsonRpc,
         applyStudioChanges,
         getBoundRecord,
+        pickFocusedWindowFilename,
         currentMcpToolsRevision,
         buildMcpServerInfo
     }

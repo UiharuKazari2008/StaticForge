@@ -235,7 +235,8 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 | `await_generation_job` | Block on `jobId` until complete, then return filename + Grok webp. | `generation` | no |
 | `get_generated_image` | Metadata + Grok webp. Filename, seed, or omit for latest. `workspace` default is `default`. | `gallery` | no |
 | `get_workspaces` | `workspace_list` — use the id on `get_generated_image` / `omegasearch` | `workspace` | no |
-| `get_studio_state` | Bound `get_state` for **this application key** (stays bound 15 min / until tray Unbind). One tab auto-binds. Several tabs: `needsClientChoice` + clients most recently used first — ask, then `bind_session`. Plus `settings`, `dynamicGeneration`, `director`, and `mustAct` when those fields are present. | `generation` | yes |
+| `get_studio_state` | Bound `get_state` for **this application key** (stays bound 15 min / until tray Unbind). One tab auto-binds. Several tabs: `needsClientChoice` + clients most recently used first — ask, then `bind_session`. Plus `settings`, `dynamicGeneration`, `director`, and `mustAct` when those fields are present. Other open windows: `get_open_windows`. | `generation` | yes |
+| `get_open_windows` | Bound `get_windows`. Open Lumen / Glancewell / Grimoire / gallery / Studio with current data (filename, selected[], page text). `includeImage` default true attaches one Grok webp for the focused file. | `generation` | yes |
 | `get_client_physics` | Bound tab location / tod / date / weather / season (dynamic-generation carousel subset). Lights `#mcpPhysicsIndicator`. | `generation` | yes |
 | `list_clients` / `bind_session` | List tabs (this key's `bound` flag) / bind this key to a `clientId` | `generation` | bind |
 | `apply_studio_changes` | `POST /agent/session/studio`. Full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes/dynamicGeneration/director (same keys as Studio). Silent apply skips the autofill popup. | `generation` | yes |

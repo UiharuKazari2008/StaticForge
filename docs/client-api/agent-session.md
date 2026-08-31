@@ -16,11 +16,14 @@ See also [rest-api.md](./rest-api.md) (Agent section), [ws/agentSession.md](./ws
 
 ## Bind
 
-1. `GET /agent/clients` — list connected websocket clients (`clientId`, `userType`, `workspaceId`, `connectedAt`, `userAgent` snippet, `bound`).
-2. `POST /agent/bind` `{ "clientId": "…" }` — pick one from the list.
-3. Or mint a short code from the bound tab (no UI): `await window.agentSessionShareStart()` or `wsClient.sendMessage('session_share_start', {})`. Response type is `session_share_code_response` (`code`, `clientId`, `expiresInSec` ~300). Then `POST /agent/bind` `{ "code": "ABC234" }` claims it. Codes expire in ~5 minutes and are single-use.
+Bind is **per application key** (the `sfapp_` / OAuth-bound key that authenticated), not server-wide. Two keys can drive two different tabs at once.
 
-Only one client is bound at a time. Binding another unbinds the previous. Share codes and keys are never logged.
+1. `GET /agent/clients` — list connected websocket clients (`clientId`, `userType`, `workspaceId`, `connectedAt`, `lastActivity`, `userAgent` snippet, `bound` for **this key**). Most recently used first.
+2. `POST /agent/bind` `{ "clientId": "…" }` — bind **this key** to one tab.
+3. Or mint a short code from the tab (no UI): `await window.agentSessionShareStart()` or `wsClient.sendMessage('session_share_start', {})`. Response type is `session_share_code_response` (`code`, `clientId`, `expiresInSec` ~300). Then `POST /agent/bind` `{ "code": "ABC234" }` claims it. Codes expire in ~5 minutes and are single-use.
+4. `POST /agent/unbind` — release this key's bind. The bound tab can also send `agent_session_unbind` (MCP tray Unbind) to release every key bound to that tab.
+
+The bind stays until: this key rebinds, the user Unbinds from the MCP tray, or **15 minutes** pass with no session commands (`get_state` / `get_windows` / `apply_studio` / `open_image` / `get_physics` / `client_update`). Share codes and keys are never logged.
 
 ## Named scopes (no bind)
 
@@ -35,19 +38,21 @@ Loopback `/agent` honors the application key's named scopes. `GET /agent/scopes`
 
 ## Drive
 
-All four require a live bind (`404` if none).
+All drive routes require a live bind **for this key** (`404` if none).
 
 | Route | Body | Effect |
 |-------|------|--------|
 | `POST /agent/session/open-image` | `{ "filename" }` | WS `agent_session_command` `open_image` → `openManualModalWithContent({ type: "image", image })` |
 | MCP `open_in_lumen` / `open_in_glancewell` | `{ "target", "filenames" }` | Bound `open_viewer` or push `mcp_open_viewer` → Lumen / Glancewell |
-| `POST /agent/session/studio` | change JSON or `{ prompt, uc }` plus sibling `autoApply` / `autoGenerate` | Silent apply via `applyStudioChangePayloadSilent` / `applyStudioChangeOps` when `autoApply` is true (no confirm dialog); Studio opens like open-image / `openManualModalWithContent` before apply. After a successful apply, `autoGenerate` clicks Studio Generate on the bound tab |
+| `POST /agent/session/studio` | change JSON or `{ prompt, uc }` plus sibling `autoApply` / `autoGenerate` | Silent apply via `applyStudioChangePayloadSilent` / `applyStudioChangeOps` when `autoApply` is true (no confirm dialog); Studio opens like open-image / `openManualModalWithContent` before apply. After a successful apply, `autoGenerate` clicks Studio Generate on the bound tab. Programmatic field writes set `skipAutofill` so the character autofill popup does not open. |
 | `POST /agent/session/update` | — | WS `agent_session_command` `client_update` → mandatory Client Update dialog on the bound tab (15s countdown). Cancel aborts (no apply, no restart). No input at 0 checks for client updates, applies them, then restarts **that client**. Not a server restart. HTTP waits until Cancel or countdown 0. `POST /agent/broadcast` `restart: true` reuses this same dialog on every connected tab (fire-and-forget; countdown from `timeout`, default 15s). |
-| `GET /agent/session/state` | — | Snapshot: `workspaceId`, open `filename` (null if ungenerated / no image), `model`, bound `clientId`, plus `change` (Studio editor as Change-JSON v1), `scopes`, and `vfsPathUuid` when the key has `vfs`. No image required. Ivory rewrites `change` and `POST /agent/session/studio`. |
+| `GET /agent/session/state` | — | Snapshot: `workspaceId`, open `filename` (null if ungenerated / no image), `model`, bound `clientId`, plus `change` (Studio editor as Change-JSON v1), `dynamicGeneration`, `director`, `scopes`, and `vfsPathUuid` when the key has `vfs`. No image required. Ivory rewrites `change` and `POST /agent/session/studio`. |
+| MCP `get_open_windows` | Bound `get_windows` | Open windows on that tab: Lumen filename, Glancewell current + nearby files, Grimoire address + page text, gallery selected filenames, Studio filename/model. |
+| `GET /agent/session/physics` | — | Dynamic-generation physics for the bound tab: `location`, `tod`, `time`, `date`, `weather`, `season` (carousel subset). Lights `#mcpPhysicsIndicator`. |
 
 The bound tab replies with `agent_session_result` using the same `requestId`.
 
-`POST /agent/session/studio` and MCP `apply_studio_changes` accept a Change-JSON object **or** the same keys top-level (`prompt`, `uc`, `params`, `characters`, `expanders`, `vibes`, plus each `params` key such as `steps` / `sampler`). The server assembles those into Change-JSON v1 before the bound tab apply. `GET /agent/session/state` and MCP `get_studio_state` also return `settings` (live sampler/resolution enums plus quality/UC/nsfw preset id, name, and true `prompt.config` strings). Enable `append_quality` / `append_uc` instead of copying those strings into prompt/uc. If you need to change a tag inside a preset, turn that preset off and put the edited string in prompt/uc — do not leave the preset on and also paste a variant. In-image text: keep quality on and disable `dataset_config.settings.__quality__.no_text`.
+`POST /agent/session/studio` and MCP `apply_studio_changes` accept a Change-JSON object **or** the same keys top-level (`prompt`, `uc`, `params`, `characters`, `expanders`, `vibes`, `dynamicGeneration`, `director`, plus each `params` key such as `steps` / `sampler`). The server assembles those into Change-JSON v1 before the bound tab apply. `GET /agent/session/state` and MCP `get_studio_state` also return `settings` (live sampler/resolution enums plus quality/UC/nsfw preset id, name, and true `prompt.config` strings) plus top-level `dynamicGeneration` and `director`. If either is present, integrate and act — enable/configure dynagen or honor the attached director prompt. Enable `append_quality` / `append_uc` instead of copying those strings into prompt/uc. If you need to change a tag inside a preset, turn that preset off and put the edited string in prompt/uc — do not leave the preset on and also paste a variant. In-image text: keep quality on and disable `dataset_config.settings.__quality__.no_text`.
 
 `autoApply` and `autoGenerate` are **siblings of `change`**, not fields inside Change-JSON.
 
@@ -68,6 +73,8 @@ When `autoApply` is true, `POST /agent/session/studio` resolves after the silent
 
 Optional per-character `position` (`{x,y}` and/or `cell` A1–E5) is a sibling of `index` / `name` / `prompt` / `uc` on each `characters[]` entry. It maps to the existing Studio slot dataset (position dialog / V5 freeform centers). `GET /agent/session/state` echoes it when the slot has stored coords. Do not add chrome.
 
+Optional `dynamicGeneration` and `director` are siblings of `change` on the state response (and may also sit on `change` itself). Apply them with `POST /agent/session/studio` / MCP `apply_studio_changes`. `generate_image` maps `dynamicGeneration` → `dynamic_generation` and director ids onto `director_session_id` / `director_message_id`. No new Studio chrome.
+
 `params.seed` is the **actual seed that was used** (or the specific seed to set). `params.seedLock` is whether the existing Studio sprout lock is on. `seed: "last"` or `seedLock: true` reuses the last seed without scraping `_generated_<seed>.png`. `seedLock: false` unlocks so the next generate rolls a new variation. Copy change JSON echoes the same pair. No new chrome.
 
 ## WebSocket packets
@@ -78,3 +85,5 @@ Optional per-character `position` (`{x,y}` and/or `cell` A1–E5) is a sibling o
 | Server → bound client | `agent_session_command` | `{ command, … }` + `requestId` |
 | Bound client → server | `agent_session_result` | Correlates `requestId` |
 | Server → client | `agent_session_bound` / `agent_session_unbound` | Bind flag for the tab |
+| Server → client | `agent_session_notice` | Tray popup / physics icon (`action`: `physics`) |
+| Client → server | `agent_session_unbind` | Tray Unbind — release every key bound to this tab |

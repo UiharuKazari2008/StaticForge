@@ -88,6 +88,13 @@ assert.strictEqual(_test.flattenPacket({
     type: 'image_generation_response',
     data: { filename: 'a.png', image: 'HUGE', seed: 1 }
 }).filename, 'a.png');
+assert.strictEqual(_test.pickFocusedWindowFilename([
+    { active: false, data: { filename: 'other.png' } },
+    { active: true, data: { selected: ['focus.png', 'b.png'] } }
+]), 'focus.png');
+assert.strictEqual(_test.pickFocusedWindowFilename([
+    { active: true, data: { filename: 'lumen.png' } }
+]), 'lumen.png');
 const listImagesTool = _test.TOOL_DEFS.find((t) => t.name === 'get_images');
 assert.ok(listImagesTool.description.includes('get_generated_image'));
 
@@ -95,10 +102,13 @@ const genOnly = _test.listToolsForScopes(['generation']);
 assert.ok(genOnly.some((t) => t.name === 'generate_image'));
 assert.ok(genOnly.some((t) => t.name === 'get_generation_job'));
 assert.ok(genOnly.some((t) => t.name === 'await_generation_job'));
+assert.ok(genOnly.some((t) => t.name === 'get_open_windows'));
 assert.ok(genOnly.some((t) => t.name === 'apply_studio_changes'));
 const generateImageTool = _test.TOOL_DEFS.find((t) => t.name === 'generate_image');
 assert.ok(generateImageTool.inputSchema.properties.async);
 assert.ok(_test.MCP_INSTRUCTIONS.includes('await_generation_job'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('get_open_windows'));
+assert.strictEqual(_test.rateGroupForTool('get_open_windows'), 'studio');
 assert.strictEqual(_test.rateGroupForTool('get_generation_job'), 'free');
 assert.strictEqual(_test.rateGroupForTool('await_generation_job'), 'free');
 assert.ok(genOnly.some((t) => t.name === 'advanced_tools'));
@@ -202,7 +212,8 @@ assert.ok(coreNames.includes('get_linkxi_persona'));
 assert.ok(coreNames.includes('save_linkxi_persona'));
 assert.ok(coreNames.includes('get_generation_job'));
 assert.ok(coreNames.includes('await_generation_job'));
-assert.strictEqual(coreNames.length, 32);
+assert.ok(coreNames.includes('get_open_windows'));
+assert.strictEqual(coreNames.length, 33);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.pipeline);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.rescale);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.noiseScheduler);

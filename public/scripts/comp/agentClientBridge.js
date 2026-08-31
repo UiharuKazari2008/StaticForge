@@ -53,6 +53,146 @@
         return window.currentWorkspace || null;
     }
 
+    const WINDOW_TEXT_CAP = 12000;
+    const WINDOW_FILE_CAP = 60;
+
+    function capText(value) {
+        const text = String(value == null ? '' : value);
+        if (text.length <= WINDOW_TEXT_CAP) return text;
+        return `${text.slice(0, WINDOW_TEXT_CAP)}\n…[truncated ${text.length - WINDOW_TEXT_CAP} chars]`;
+    }
+
+    function capFilenames(list) {
+        const names = [];
+        const seen = new Set();
+        (list || []).forEach((name) => {
+            if (!name || seen.has(name) || names.length >= WINDOW_FILE_CAP) return;
+            seen.add(name);
+            names.push(name);
+        });
+        return names;
+    }
+
+    function classifyOpenWindowKind(modal) {
+        const id = modal && modal.id ? String(modal.id) : '';
+        if (id === 'galleryWindow') return 'gallery';
+        if (id === 'manualModal') return 'studio';
+        if (id === 'tagWikiSearchModal') return 'grimoire';
+        if (id === 'photoSwipeWindow') return 'glancewell';
+        if (id.indexOf('imageViewer_') === 0) return 'lumen';
+        const ident = modal && modal.dataset ? String(modal.dataset.windowIdentifier || '') : '';
+        if (ident.indexOf('imageViewer:') === 0) return 'lumen';
+        if (ident === 'grimoire') return 'grimoire';
+        if (/^dsap:\/\//i.test(ident) || id.indexOf('dsap') === 0) return 'dsap';
+        return 'window';
+    }
+
+    function collectGlancewellWindowData() {
+        // getActivePhotoSwipe: public/scripts/comp/lightbox.js
+        const pswp = getActivePhotoSwipe();
+        if (!pswp || !pswp.isOpen) return null;
+        const current = pswp.currSlide && pswp.currSlide.data;
+        const currentFilename = filenameFromImageLike(current);
+        const source = pswp.options && pswp.options.dataSource;
+        const names = [];
+        const n = pswp.numItems || (Array.isArray(source) ? source.length : 0);
+        for (let i = 0; i < n && names.length < WINDOW_FILE_CAP; i += 1) {
+            const data = Array.isArray(source) ? source[i] : null;
+            const name = filenameFromImageLike(data);
+            if (name) names.push(name);
+        }
+        return {
+            filename: currentFilename,
+            filenames: capFilenames(names.length ? names : (currentFilename ? [currentFilename] : [])),
+            index: pswp.currIndex,
+            count: n
+        };
+    }
+
+    function collectLumenWindowData(modal) {
+        // imageViewerManager: public/scripts/comp/imageViewer.js
+        const viewer = imageViewerManager.viewers.get(modal.id);
+        const filename = viewer ? viewer.getImageFilename() : null;
+        return { filename };
+    }
+
+    function collectGalleryWindowData() {
+        // getSelectedFilenames: public/scripts/comp/galleryView.js
+        const selected = capFilenames(getSelectedFilenames());
+        return {
+            selected,
+            selectedCount: selected.length,
+            workspaceId: activeWorkspace || readWorkspaceId()
+        };
+    }
+
+    function collectGrimoireWindowData() {
+        // tagWikiSearchModal.getDisplayText: public/scripts/comp/tagWikiSearchModal.js
+        const pathEl = document.getElementById('grimoireAddressPath');
+        const url = pathEl ? String(pathEl.textContent || '').trim() : '';
+        return {
+            url,
+            text: capText(tagWikiSearchModal.getDisplayText())
+        };
+    }
+
+    function collectStudioWindowData() {
+        return {
+            filename: readOpenFilename(),
+            model: readModel()
+        };
+    }
+
+    function collectWindowData(kind, modal) {
+        if (kind === 'gallery') return collectGalleryWindowData();
+        if (kind === 'studio') return collectStudioWindowData();
+        if (kind === 'grimoire') return collectGrimoireWindowData();
+        if (kind === 'glancewell') return collectGlancewellWindowData() || {};
+        if (kind === 'lumen') return collectLumenWindowData(modal);
+        return {};
+    }
+
+    function collectOpenWindowsSnapshot() {
+        // getOpenTaskbarModals / getModalTitle / currentActiveWindowId: public/scripts/comp/modalUtils.js
+        const seen = new Set();
+        const modals = getOpenTaskbarModals().slice();
+        const pswpShell = document.getElementById('photoSwipeWindow');
+        if (pswpShell && !pswpShell.classList.contains('hidden') && !seen.has(pswpShell.id)) {
+            if (!modals.some((modal) => modal.id === pswpShell.id)) modals.push(pswpShell);
+        }
+        // imageViewerManager: public/scripts/comp/imageViewer.js
+        imageViewerManager.viewers.forEach((_viewer, id) => {
+            const el = document.getElementById(id);
+            if (el && !el.classList.contains('hidden') && !modals.some((modal) => modal.id === id)) {
+                modals.push(el);
+            }
+        });
+        const windows = [];
+        modals.forEach((modal) => {
+            if (!modal || !modal.id || seen.has(modal.id)) return;
+            if (modal.classList.contains('hidden') || modal.classList.contains('closing')) return;
+            seen.add(modal.id);
+            const kind = classifyOpenWindowKind(modal);
+            windows.push({
+                id: modal.id,
+                kind,
+                title: getModalTitle(modal) || modal.id,
+                active: modal.id === currentActiveWindowId,
+                minimised: modal.classList.contains('minimised'),
+                data: collectWindowData(kind, modal)
+            });
+        });
+        windows.sort((a, b) => {
+            if (a.active !== b.active) return a.active ? -1 : 1;
+            return 0;
+        });
+        return {
+            workspaceId: readWorkspaceId(),
+            activeWindowId: currentActiveWindowId || null,
+            windows
+        };
+    }
+
     function buildPromptUcChange(data) {
         const fields = [];
         if (data.prompt != null) {
@@ -125,6 +265,8 @@
         if (!payload) {
             return { ok: false, error: 'change JSON is not valid' };
         }
+        const modal = document.getElementById('manualModal');
+        const studioWasClosed = !modal || modal.classList.contains('hidden');
         let applied = false;
         try {
             applied = !!await window.applyStudioChangePayloadSilent(payload);
@@ -140,11 +282,16 @@
         if (!applied) {
             return { ok: false, applied: false, autoApply: true, autoGenerate, error: 'Studio change was not applied' };
         }
+        // showAgentSessionTrayNotice: public/scripts/comp/mcpActivityClient.js
+        showAgentSessionTrayNotice(
+            studioWasClosed ? 'open' : 'update',
+            studioWasClosed ? 'An external AI opened and updated Studio' : 'An external AI updated Studio'
+        );
         if (!autoGenerate) {
-            return { ok: true, applied: true, autoApply: true, autoGenerate: false };
+            return { ok: true, applied: true, autoApply: true, autoGenerate: false, opened: studioWasClosed };
         }
         const gen = fireBoundTabGenerate();
-        return { ok: true, applied: true, autoApply: true, autoGenerate: true, ...gen };
+        return { ok: true, applied: true, autoApply: true, autoGenerate: true, opened: studioWasClosed, ...gen };
     }
 
     async function openImageFromCommand(filename) {
@@ -155,7 +302,23 @@
         const image = (typeof findImageByFilename === 'function' && findImageByFilename(filename))
             || { filename };
         await openManualModalWithContent({ type: 'image', image }, null);
+        // showAgentSessionTrayNotice: public/scripts/comp/mcpActivityClient.js
+        showAgentSessionTrayNotice('open', 'An external AI opened Studio');
         return { ok: true, filename };
+    }
+
+    function readDynamicPhysicsConfig() {
+        const todBtn = document.getElementById('todBtn');
+        const weatherBtn = document.getElementById('weatherBtn');
+        const seasonBtn = document.getElementById('seasonBtn');
+        const config = {};
+        // collectDynamicButtonState: public/scripts/comp/dynamicGenerationOverrides.js
+        config.tod = collectDynamicButtonState(todBtn);
+        config.weather = collectDynamicButtonState(weatherBtn);
+        config.season = collectDynamicButtonState(seasonBtn);
+        const loc = weatherBtn && weatherBtn.getAttribute('data-location');
+        if (loc) config.location = loc;
+        return config;
     }
 
     function readStudioChangeSnapshot() {
@@ -178,13 +341,40 @@
         const command = data.command;
         try {
             if (command === 'get_state' || command === 'get_editor') {
+                // showAgentSessionTrayNotice: public/scripts/comp/mcpActivityClient.js
+                showAgentSessionTrayNotice('read', 'An external AI read Studio');
                 replyAgentSessionResult(requestId, {
                     ok: true,
                     workspaceId: readWorkspaceId(),
                     filename: readOpenFilename(),
                     model: readModel(),
                     clientId: sessionClientId,
-                    change: readStudioChangeSnapshot()
+                    change: readStudioChangeSnapshot(),
+                    // readDynamicGenerationSnapshot / readDirectorAttachSnapshot: public/scripts/comp/dynamicGenerationLockState.js
+                    dynamicGeneration: typeof readDynamicGenerationSnapshot === 'function'
+                        ? readDynamicGenerationSnapshot()
+                        : null,
+                    director: typeof readDirectorAttachSnapshot === 'function'
+                        ? readDirectorAttachSnapshot()
+                        : null
+                });
+                return;
+            }
+            if (command === 'get_windows') {
+                // showAgentSessionTrayNotice: public/scripts/comp/mcpActivityClient.js
+                showAgentSessionTrayNotice('read', 'An external AI read open windows');
+                replyAgentSessionResult(requestId, {
+                    ok: true,
+                    clientId: sessionClientId,
+                    ...collectOpenWindowsSnapshot()
+                });
+                return;
+            }
+            if (command === 'get_physics') {
+                replyAgentSessionResult(requestId, {
+                    ok: true,
+                    clientId: sessionClientId,
+                    dynamicConfig: readDynamicPhysicsConfig()
                 });
                 return;
             }
@@ -229,6 +419,13 @@
      * Console / agent helper. Mints a short share code (no UI, never logs the code).
      * Usage: const { code, clientId, expiresInSec } = await window.agentSessionShareStart();
      */
+    async function agentSessionUnbindRequest() {
+        if (!window.wsClient || typeof window.wsClient.sendMessage !== 'function' || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket is not connected');
+        }
+        return window.wsClient.sendMessage('agent_session_unbind', {}, false);
+    }
+
     async function agentSessionShareStart() {
         if (!window.wsClient || typeof window.wsClient.sendMessage !== 'function' || !window.wsClient.isConnected()) {
             throw new Error('WebSocket is not connected');
@@ -258,6 +455,8 @@
                 if (message && message.data && message.data.clientId) {
                     sessionClientId = message.data.clientId;
                 }
+                // showAgentSessionTrayNotice: public/scripts/comp/mcpActivityClient.js
+                showAgentSessionTrayNotice('bound', 'An external AI bound to this tab');
             }
         });
         registerWsInboundHandler({
@@ -266,11 +465,27 @@
             phase: 'only',
             handler() {
                 sessionBound = false;
+                // markAgentSessionUnbound: public/scripts/comp/mcpActivityClient.js
+                markAgentSessionUnbound();
+            }
+        });
+        registerWsInboundHandler({
+            id: 'agent.session_notice',
+            type: 'agent_session_notice',
+            phase: 'only',
+            handler(message) {
+                const action = message && message.data && message.data.action;
+                if (action === 'physics') {
+                    // markMcpPhysicsUsed: public/scripts/comp/mcpActivityClient.js
+                    markMcpPhysicsUsed();
+                }
             }
         });
     }
 
     if (typeof window !== 'undefined') {
         window.agentSessionShareStart = agentSessionShareStart;
+        window.agentSessionUnbindRequest = agentSessionUnbindRequest;
+        window.isAgentSessionBound = () => sessionBound;
     }
 })();

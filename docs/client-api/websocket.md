@@ -262,11 +262,12 @@ These are **pushes** — handle asynchronously. Registered in `public/scripts/ws
 | `replication_sync_complete` | Full changelog sync finished | `data.success`, applied counts, `maxLsn` |
 | `fandom_wiki_import_progress` | Fandom page import progress | `data.phase`, `current`, `total`, optional `pageId`/`message`; Wiki Manager DSAP via `wsClient.on` |
 | `agent_notice` | Loopback `POST /agent/broadcast` | `data.id`, `message`, `title`, `display` (`toast` \| `dialog`), `level`, `timeout` (ms or `false`), `restart` (bool), `source: "agent"` — toast or confirmation dialog; `restart: true` reuses `#agentClientUpdateDialog` then apply+restart via `appWebSocketHandlers.js` |
-| `agent_session_command` | Loopback `/agent/session/*` to the bound Studio tab | `requestId` + `data.command` (`open_image` / `open_viewer` / `apply_studio` / `get_state`) — `public/scripts/comp/agentClientBridge.js`. `open_viewer` takes `target` (`lumen` \| `glancewell`) and `filenames`. `apply_studio` includes sibling `autoApply` (default true) and `autoGenerate` (default false). |
-| `mcp_activity` | After each public MCP `tools/call` | `data.tool`, `data.args` (summarized), `data.result` (summarized), `data.success`, `data.generating` (`true` at generate start, `false` at end), `data.at` — tray `#mcpActivityIndicator` (2 min; click opens Periscope `client:mcp-activity`) + generation tray when `generating` |
+| `agent_session_command` | Loopback `/agent/session/*` or MCP to **this key's** bound Studio tab | `requestId` + `data.command` (`open_image` / `open_viewer` / `apply_studio` / `get_state` / `get_windows` / `get_physics`) — `public/scripts/comp/agentClientBridge.js`. `get_windows` lists open Lumen / Glancewell / Grimoire / gallery / Studio with current data. `open_viewer` takes `target` (`lumen` \| `glancewell`) and `filenames`. `apply_studio` includes sibling `autoApply` (default true) and `autoGenerate` (default false). Silent apply skips autofill. |
+| `mcp_activity` | After each public MCP `tools/call` | `data.tool`, `data.args` (summarized), `data.result` (summarized), `data.success`, `data.generating` (`true` at generate start, `false` at end), `data.at` — tray `#mcpActivityIndicator` (bound or 2 min; right-click Unbind; click opens Periscope `client:mcp-activity`) + generation tray when `generating` |
 | `mcp_open_viewer` | MCP `open_in_lumen` / `open_in_glancewell` when no bind | `data.target`, `data.filenames[]` — `public/scripts/comp/mcpActivityClient.js` |
-| `agent_session_bound` | After `POST /agent/bind` | `data.clientId` |
-| `agent_session_unbound` | Previous bind replaced | `data.clientId` |
+| `agent_session_bound` | After this application key binds the tab | `data.clientId` — tray popup |
+| `agent_session_unbound` | Key rebound / idle 15 min / tray Unbind | `data.clientId`, `data.reason` |
+| `agent_session_notice` | Physics compiled for the bound tab | `data.action` (`physics`) — `#mcpPhysicsIndicator` |
 
 Director messages use prefix `director_` (handled in client before inbound registry).
 

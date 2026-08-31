@@ -16,14 +16,16 @@ These packets are **not** gallery / workspace list APIs. No share-code chrome is
 |---|---|---|---|
 | `session_share_start` | `session_share_code_response` | session | Mint a 6-character share code (~5 min). Optional `userAgent` snippet. |
 | `agent_session_result` | (none) | session | Client reply to `agent_session_command`. Fire-and-forget. |
+| `agent_session_unbind` | `agent_session_unbind_response` | session | Tray Unbind. Releases every application-key bind on this tab. |
 
 ## Server-initiated
 
 | Type | When | Data |
 |------|------|------|
-| `agent_session_command` | Loopback REST drive of the bound tab | `requestId` + `data.command` (`open_image` / `apply_studio` / `get_state` / `get_editor` / `client_update`). `apply_studio` also carries sibling `autoApply` (default true) and `autoGenerate` (default false). `client_update` shows the mandatory 15s Client Update dialog; Cancel aborts, 0 applies then restarts that tab. |
-| `agent_session_bound` | After `POST /agent/bind` | `data.clientId` |
-| `agent_session_unbound` | Previous bind replaced | `data.clientId` |
+| `agent_session_command` | Loopback REST / MCP drive of this key's bound tab | `requestId` + `data.command` (`open_image` / `apply_studio` / `get_state` / `get_windows` / `get_editor` / `get_physics` / `client_update`). `get_windows` returns open Lumen / Glancewell / Grimoire / gallery / Studio with current data. `apply_studio` also carries sibling `autoApply` (default true) and `autoGenerate` (default false). Silent apply sets `skipAutofill` on field writes. `get_physics` returns the tab's dynamic-button config; the server compiles location/tod/date/weather/season. `client_update` shows the mandatory 15s Client Update dialog; Cancel aborts, 0 applies then restarts that tab. `POST /agent/broadcast` `restart: true` reuses that same dialog on every connected tab (not this bound command). |
+| `agent_session_bound` | After this key binds the tab | `data.clientId` — tray popup |
+| `agent_session_unbound` | This key rebound / idle 15 min / tray Unbind and no other key remains | `data.clientId`, `data.reason` |
+| `agent_session_notice` | Physics used (and similar tray cues) | `data.action` (`physics`) |
 
 ## Detailed packets
 
@@ -80,6 +82,17 @@ Ignored when no matching pending command or the sender is not the bound client.
 
 **Errors:** none (no response packet).
 
+### `agent_session_unbind`
+
+**Auth:** Session required
+
+**Handler:** modules/ws/handlers/168-agentClientHandler.js → `handleAgentSessionUnbind`
+
+Tray Unbind. Releases every application-key bind on this tab and pushes
+`agent_session_unbound` `{ reason: "tray" }`.
+
+**Success response:** `agent_session_unbind_response` `{ success, unbound, clientId }`
+
 ## Read-only restrictions
 
-Neither packet is destructive.
+None of these packets are destructive.
