@@ -27,6 +27,8 @@ assert.ok(getPacketScopes('search_tags').includes('search'));
 assert.ok(!getPacketScopes('search_tags').includes('autofill'));
 assert.ok(getPacketScopes('generate_image').includes('generation'));
 assert.ok(getPacketScopes('vfs_list').includes('vfs'));
+assert.ok(getPacketScopes('vfs_list_directory').includes('vfs'));
+assert.ok(getPacketScopes('workspace_bulk_add_scrap').includes('workspace'));
 assert.ok(getPacketScopes('notes_create').includes('notes'));
 assert.ok(getPacketScopes('get_wiki_home').includes('wiki'));
 assert.ok(getPacketScopes('get_wiki_home').includes('autofill'));

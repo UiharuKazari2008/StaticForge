@@ -39,13 +39,14 @@ function attachStagedGenerationResponseFields(responseData, result) {
     }
 }
 
-async function broadcastSavedGenerationFilenames(handlers, wsServer, clientInfo, result) {
+async function broadcastSavedGenerationFilenames(handlers, wsServer, clientInfo, result, workspaceId) {
     const filenames = collectSavedGenerationFilenames(result);
     if (filenames.length === 0) return;
     await broadcastGalleryMutation(handlers, wsServer, clientInfo, {
         viewType: 'images',
         action: 'append_top',
-        filenames
+        filenames,
+        workspaceId: workspaceId || result?.workspace || null
     });
 }
 
@@ -176,7 +177,7 @@ async function handleImageGeneration(handlers, ws, message, clientInfo, wsServer
             });
         }
 
-        await broadcastSavedGenerationFilenames(handlers, wsServer, clientInfo, result);
+        await broadcastSavedGenerationFilenames(handlers, wsServer, clientInfo, result, data.workspace);
 
         handlers.stopKeepAliveInterval(requestId);
     } catch (error) {

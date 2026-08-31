@@ -40,8 +40,9 @@ All four require a live bind (`404` if none).
 | Route | Body | Effect |
 |-------|------|--------|
 | `POST /agent/session/open-image` | `{ "filename" }` | WS `agent_session_command` `open_image` → `openManualModalWithContent({ type: "image", image })` |
+| MCP `open_in_lumen` / `open_in_glancewell` | `{ "target", "filenames" }` | Bound `open_viewer` or push `mcp_open_viewer` → Lumen / Glancewell |
 | `POST /agent/session/studio` | change JSON or `{ prompt, uc }` plus sibling `autoApply` / `autoGenerate` | Silent apply via `applyStudioChangePayloadSilent` / `applyStudioChangeOps` when `autoApply` is true (no confirm dialog); Studio opens like open-image / `openManualModalWithContent` before apply. After a successful apply, `autoGenerate` clicks Studio Generate on the bound tab |
-| `POST /agent/session/update` | — | WS `agent_session_command` `client_update` → mandatory Client Update dialog on the bound tab (15s countdown). Cancel aborts (no apply, no restart). No input at 0 checks for client updates, applies them, then restarts **that client**. Not a server restart. HTTP waits until Cancel or countdown 0. |
+| `POST /agent/session/update` | — | WS `agent_session_command` `client_update` → mandatory Client Update dialog on the bound tab (15s countdown). Cancel aborts (no apply, no restart). No input at 0 checks for client updates, applies them, then restarts **that client**. Not a server restart. HTTP waits until Cancel or countdown 0. `POST /agent/broadcast` `restart: true` reuses this same dialog on every connected tab (fire-and-forget; countdown from `timeout`, default 15s). |
 | `GET /agent/session/state` | — | Snapshot: `workspaceId`, open `filename` (null if ungenerated / no image), `model`, bound `clientId`, plus `change` (Studio editor as Change-JSON v1), `scopes`, and `vfsPathUuid` when the key has `vfs`. No image required. Ivory rewrites `change` and `POST /agent/session/studio`. |
 
 The bound tab replies with `agent_session_result` using the same `requestId`.
@@ -58,6 +59,8 @@ The bound tab replies with `agent_session_result` using the same `requestId`.
 When `autoApply` is true, `POST /agent/session/studio` resolves after the silent bound-editor apply (`applyStudioChangePayloadSilent`) completes, success or error. Studio is opened like open-image before ops are written.
 
 `POST /agent/session/update` shows the approved Client Update dialog (classic confirmation / System Update chrome + SMF context/status). The bound tab replies when the user cancels or the countdown hits 0; apply+restart starts after that reply. A second push while the dialog is already counting or applying returns `alreadyShowing` without resetting the countdown.
+
+`POST /agent/broadcast` with `restart: true` (or `display: "restart"`) reuses this same dialog on every connected tab. Countdown comes from `timeout` (default 15000 ms). Cancel still aborts that tab. The HTTP broadcast response does not wait.
 
 `change` is the shared NovelAI/studio Change-JSON v1 (`dreamscape:"change"`, replace+index, no add). Same schema as `POST /agent/session/studio` and [studio-change-json.md](../studio-change-json.md). An empty Studio is still a valid snapshot (`fields` always includes `prompt` and `uc`, even when blank). Filename is not required.
 

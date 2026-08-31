@@ -422,7 +422,8 @@ function updateImageGenerationIndicator(options = {}) {
     const reveal = options.reveal !== false && !isDesktopTrayBootPending();
     const isManualGenerating = typeof isGenerating !== 'undefined' && isGenerating;
     const isSpellbookGenerating = window.spellbookModalManager?.isGenerating || false;
-    const isAnyGenerating = isManualGenerating || isSpellbookGenerating;
+    const isMcpGenerating = !!window.mcpRemoteGenerating;
+    const isAnyGenerating = isManualGenerating || isSpellbookGenerating || isMcpGenerating;
 
     if (isAnyGenerating && reveal) {
         indicator.classList.remove('hidden');

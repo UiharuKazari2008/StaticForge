@@ -6294,6 +6294,7 @@ Examples:
             </div>
             <div class="dreamscape-app-error-list-scroll form-section-scroll">
                 <div id="dreamscapeAppErrorList" class="dreamscape-app-error-list"></div>
+                <div id="dreamscapeMcpActivityList" class="dreamscape-app-error-list"></div>
             </div>
         </div>
     </div>
@@ -7714,6 +7715,9 @@ Examples:
                     title="Image generation in progress">
                     <i class="fas fa-sparkles"></i>
                 </div>
+                <div class="taskbar-tray-icon hidden" id="mcpActivityIndicator" title="MCP">
+                    <i class="fas fa-plug"></i>
+                </div>
                 <!-- Replication operation indicator -->
                 <div class="replication-tray-indicator taskbar-tray-icon hidden" id="replicationTrayIndicator"
                     title="Replication">
@@ -7912,6 +7916,7 @@ Examples:
     <script src="scripts/comp/compareViewManager.js"></script>
     <script src="scripts/comp/exitConfirmation.js"></script>
     <script src="scripts/comp/trayIndicators.js"></script>
+    <script src="scripts/comp/mcpActivityClient.js"></script>
     <script src="scripts/comp/runpodTray.js"></script>
     <script src="scripts/comp/systemTrayManager.js"></script>
     <script src="scripts/comp/windowControlsOverlay.js"></script>

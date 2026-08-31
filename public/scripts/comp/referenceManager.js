@@ -7351,6 +7351,9 @@ function buildBlueprintInfoHtml(metadata) {
         if (metadata.forge_data.vibe_transfer !== undefined && metadata.forge_data.vibe_transfer.length > 0) {
             infoBadges.push(`<div class="forgedata-badge"><i class="nai-vibe-transfer"></i><span>${metadata.forge_data.vibe_transfer.length > 1 ? metadata.forge_data.vibe_transfer.length + ' Encodings' : 'Vibe Encoding'}</span></div>`);
         }
+        if (metadata.forge_data.mcp_generated) {
+            infoBadges.push(`<div class="forgedata-badge"><i class="fa-light fa-plug"></i><span>MCP</span></div>`);
+        }
         if (metadata.forge_data.date_generated) {
             const date = new Date(metadata.forge_data.date_generated);
             infoRows[0].push(`<div class="form-group auto-width"><label class="justify-end" for="modelName">Date</label><div class="meta-value justify-end">${date.toLocaleDateString()}</div></div>`);

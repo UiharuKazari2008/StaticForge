@@ -29,6 +29,8 @@ const {
     agentHasNamedScope,
     buildAgentScopePayload
 } = require('./agentClientBridge');
+const { isGenerateTool, summarizeArgs, summarizeResult, recordActivity } = require('./mcpActivity');
+const { compareImageFiles, evaluateThemeRows } = require('./mcpInsights');
 
 const MCP_PROTOCOL_VERSION = '2024-11-05';
 const MCP_RATE_WINDOW_MS = 15 * 60 * 1000;
@@ -39,8 +41,13 @@ const MCP_INSTRUCTIONS = [
     'Known or last gallery image: call get_generated_image. Pass filename, seed, or omit filename for the latest image in that workspace (default workspace if omitted). It returns NovelAI metadata plus a small webp. Never page a directory listing to find a file.',
     'A specific workspace: get_workspaces for the id, then pass workspace on get_generated_image or omegasearch.',
     'Make a preset from this image or Studio tab: get_generated_image or get_studio_state, then save_preset with presetName and config (name, prompt, model).',
+    'Delivery priority: apply_studio_changes is the default (autoApply true; autoGenerate if they asked to generate now). Else generate_image (no Studio tab / server-side run). Else emit Change-JSON. Else the prompt-text block. Do not dump Positive/UC when Studio MCP works.',
+    'On every Studio edit: get_studio_state first. Compare to the last state you saw this chat. Keep their intervening edits; apply only this message\'s delta.',
     'Studio prompt / compare / edit: call get_studio_state (auto-binds if exactly one tab is connected), then get_generated_image with state.filename. Write back with apply_studio_changes Change-JSON. autoGenerate clicks the bound Studio Generate button.',
-    'generate_image is a server-side generate and returns the new filename plus a small webp. Do not page the gallery afterward.',
+    'generate_image is a server-side generate and returns the new filename plus a small webp. Pass pipeline for staged generation. Do not page the gallery afterward. The open gallery updates itself.',
+    'Gallery actions: delete_images, scrap_images, toggle_favorite, open_in_lumen (one image), open_in_glancewell (a group).',
+    'compare_images diffs two same-seed files. evaluate_workspace_themes counts overused characters/tags in a folder.',
+    'VFS: vfs_list path (use @desktop for the workspace desktop), vfs_read, or advanced_tools for write/delete/stat.',
     'omegasearch finds names; then call get_generated_image.',
     'If you cannot do the job with the listed tools, call advanced_tools with a query. To run a hidden tool, call advanced_tools again with that name and arguments.',
     'If a tool is rate limited, wait retryAfter seconds for that group (free/search/gallery/write/studio/generate).'
@@ -63,7 +70,7 @@ const TOOL_DEFS = [
     {
         name: 'generate_image',
         core: true,
-        description: 'Generate on the server and return the new filename plus a Grok-sized webp and metadata. Not the Studio Generate button (use apply_studio_changes autoGenerate for that). Do not page get_images after this.',
+        description: 'Generate on the server and return the new filename plus a Grok-sized webp and metadata. Optional pipeline for staged generation. Tags the file as MCP-generated. The open gallery updates itself. Not the Studio Generate button (use apply_studio_changes autoGenerate for that).',
         scope: 'generation',
         packet: 'generate_image',
         inputSchema: {
@@ -78,7 +85,11 @@ const TOOL_DEFS = [
                 guidance: { type: 'number' },
                 sampler: { type: 'string' },
                 workspace: { type: 'string' },
-                seed: { type: ['string', 'number'] }
+                seed: { type: ['string', 'number'] },
+                pipeline: {
+                    type: 'array',
+                    description: 'Staged generation stages (same payload as Studio pipeline). Omit for a single image.'
+                }
             }
         }
     },
@@ -567,6 +578,206 @@ const TOOL_DEFS = [
                 append: { type: 'boolean', description: 'If true, append after existing body' }
             }
         }
+    },
+    {
+        name: 'delete_images',
+        core: true,
+        description: 'Permanently delete one or more gallery images. Pass filename or filenames. Wraps delete_images_bulk.',
+        scope: 'gallery',
+        packet: 'delete_images_bulk',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                filename: { type: 'string' },
+                filenames: { type: 'array', items: { type: 'string' } },
+                workspace: { type: 'string' }
+            }
+        }
+    },
+    {
+        name: 'scrap_images',
+        core: true,
+        description: 'Move images to workspace scraps (or unscrap). Pass filename or filenames and workspace (default workspace if omitted).',
+        scope: 'workspace',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                filename: { type: 'string' },
+                filenames: { type: 'array', items: { type: 'string' } },
+                workspace: { type: 'string' },
+                workspaceId: { type: 'string' },
+                remove: { type: 'boolean', description: 'If true, take them out of scraps' }
+            }
+        }
+    },
+    {
+        name: 'toggle_favorite',
+        core: true,
+        description: 'Pin or unpin gallery images (Studio favorite). Pass filename or filenames and workspace.',
+        scope: 'workspace',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                filename: { type: 'string' },
+                filenames: { type: 'array', items: { type: 'string' } },
+                workspace: { type: 'string' },
+                workspaceId: { type: 'string' },
+                pinned: { type: 'boolean', description: 'Force pin (true) or unpin (false). Omit to toggle.' }
+            }
+        }
+    },
+    {
+        name: 'open_in_lumen',
+        core: true,
+        description: 'Open one gallery image in Lumen (the single-image viewer) on a connected client.',
+        scope: 'gallery',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                filename: { type: 'string' },
+                filenames: { type: 'array', items: { type: 'string' } },
+                workspace: { type: 'string' }
+            }
+        }
+    },
+    {
+        name: 'open_in_glancewell',
+        core: true,
+        description: 'Open one image or a group in Glancewell (lightbox). Pass filenames for a swipeable set.',
+        scope: 'gallery',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                filename: { type: 'string' },
+                filenames: { type: 'array', items: { type: 'string' } },
+                workspace: { type: 'string' }
+            }
+        }
+    },
+    {
+        name: 'compare_images',
+        core: true,
+        description: 'Pixel-diff two gallery images (same seed preferred). Returns change stats plus a magenta difference webp.',
+        scope: 'gallery',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                filenameA: { type: 'string' },
+                filenameB: { type: 'string' },
+                a: { type: 'string' },
+                b: { type: 'string' },
+                workspace: { type: 'string' },
+                workspaceId: { type: 'string' }
+            }
+        }
+    },
+    {
+        name: 'evaluate_workspace_themes',
+        core: true,
+        description: 'Count overused characters and tags in a workspace so you can suggest new subjects, scenes, or kinks. Does not generate.',
+        scope: 'gallery',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                workspace: { type: 'string' },
+                workspaceId: { type: 'string' },
+                limit: { type: 'number', description: 'Sample size, default 80, max 120' }
+            }
+        }
+    },
+    {
+        name: 'vfs_list',
+        core: true,
+        description: 'List a VFS directory. Path default is /. Use @desktop for the workspace desktop. Wraps vfs_list_directory.',
+        scope: 'vfs',
+        packet: 'vfs_list_directory',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                path: { type: 'string' },
+                offset: { type: 'number' },
+                limit: { type: 'number' },
+                search: { type: 'string' }
+            }
+        }
+    },
+    {
+        name: 'vfs_read',
+        core: true,
+        description: 'Read a VFS system file or download a user file. Pass path / systemFileKey / fileId.',
+        scope: 'vfs',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                path: { type: 'string' },
+                systemFileKey: { type: 'string' },
+                fileId: { type: 'string' }
+            }
+        }
+    },
+    {
+        name: 'vfs_stat',
+        description: 'Path stats for a VFS entry. Wraps vfs_get_path_stats.',
+        scope: 'vfs',
+        packet: 'vfs_get_path_stats',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: { path: { type: 'string' } }
+        }
+    },
+    {
+        name: 'vfs_write',
+        description: 'Upload a VFS user file. Wraps vfs_upload_file. Pass path, fileData (base64), mimeType.',
+        scope: 'vfs',
+        packet: 'vfs_upload_file',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                path: { type: 'string' },
+                fileData: { type: 'string' },
+                mimeType: { type: 'string' },
+                name: { type: 'string' }
+            }
+        }
+    },
+    {
+        name: 'vfs_delete',
+        description: 'Delete a VFS entry. Wraps vfs_delete_entry. Pass id or path.',
+        scope: 'vfs',
+        packet: 'vfs_delete_entry',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                id: { type: 'string' },
+                path: { type: 'string' }
+            }
+        }
+    },
+    {
+        name: 'list_desktop_items',
+        description: 'List desktop shortcuts for a workspace. Wraps desktop_get_shortcuts. Also try vfs_list path @desktop.',
+        scope: 'vfs',
+        packet: 'desktop_get_shortcuts',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                workspace: { type: 'string' },
+                workspaceId: { type: 'string' }
+            }
+        }
     }
 ];
 
@@ -711,7 +922,20 @@ const TOOL_RATE_GROUPS = {
     generate_image: 'generate',
     generate_preset: 'generate',
     upscale_image: 'generate',
-    expand_image: 'generate'
+    expand_image: 'generate',
+    delete_images: 'write',
+    scrap_images: 'write',
+    toggle_favorite: 'write',
+    open_in_lumen: 'free',
+    open_in_glancewell: 'free',
+    compare_images: 'gallery',
+    evaluate_workspace_themes: 'search',
+    vfs_list: 'free',
+    vfs_read: 'gallery',
+    vfs_stat: 'free',
+    vfs_write: 'write',
+    vfs_delete: 'write',
+    list_desktop_items: 'free'
 };
 
 const rateGroupHits = new Map();
@@ -849,6 +1073,56 @@ function sanitizeGalleryFilename(filename) {
         return null;
     }
     return path.basename(raw);
+}
+
+function collectFilenames(input) {
+    const names = [];
+    const push = (value) => {
+        const safe = sanitizeGalleryFilename(typeof value === 'string' ? value : value && value.filename);
+        if (safe && !names.includes(safe)) names.push(safe);
+    };
+    if (!input || typeof input !== 'object') return names;
+    if (Array.isArray(input.filenames)) input.filenames.forEach(push);
+    if (input.filename) push(input.filename);
+    if (Array.isArray(input.images)) input.images.forEach(push);
+    return names;
+}
+
+function workspaceRecord(globalResources, workspaceId) {
+    const manager = globalResources.getWorkspaceManager && globalResources.getWorkspaceManager();
+    if (!manager || typeof manager.getWorkspaces !== 'function') return null;
+    const all = manager.getWorkspaces() || {};
+    return all[workspaceId] || all.default || null;
+}
+
+function liveBroadcast(globalResources, payload) {
+    const wsServer = globalResources.getWebSocketServer && globalResources.getWebSocketServer();
+    if (!wsServer || typeof wsServer.broadcast !== 'function') return false;
+    wsServer.broadcast(payload);
+    return true;
+}
+
+async function openViewerFromMcp(globalResources, input, target) {
+    const filenames = collectFilenames(input);
+    if (!filenames.length) {
+        return mcpTextResult({ success: false, error: 'filename or filenames is required' }, true);
+    }
+    const payload = { target, filenames };
+    if (getBoundRecord(globalResources)) {
+        try {
+            const data = await sendBoundCommand(globalResources, 'open_viewer', payload, 8000);
+            return mcpTextResult({ success: true, bound: true, target, filenames, ...data });
+        } catch (_err) { /* fall through to broadcast */ }
+    }
+    const sent = liveBroadcast(globalResources, {
+        type: 'mcp_open_viewer',
+        data: payload,
+        timestamp: new Date().toISOString()
+    });
+    if (!sent) {
+        return mcpTextResult({ success: false, error: 'No Studio client is connected.' }, true);
+    }
+    return mcpTextResult({ success: true, broadcast: true, target, filenames });
 }
 
 function resolveWorkspaceId(value) {
@@ -1329,11 +1603,166 @@ async function callTool(globalResources, req, name, args) {
         }));
     }
 
+    if (name === 'delete_images') {
+        const filenames = collectFilenames(input);
+        if (!filenames.length) {
+            return mcpTextResult({ success: false, error: 'filename or filenames is required' }, true);
+        }
+        return mcpTextResult(flattenPacket(await dispatchPacketTool(globalResources, req, 'delete_images_bulk', { filenames })));
+    }
+
+    if (name === 'scrap_images') {
+        const filenames = collectFilenames(input);
+        if (!filenames.length) {
+            return mcpTextResult({ success: false, error: 'filename or filenames is required' }, true);
+        }
+        const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId);
+        if (input.remove === true) {
+            const results = [];
+            for (const filename of filenames) {
+                results.push(flattenPacket(await dispatchPacketTool(globalResources, req, 'workspace_remove_scrap', {
+                    id: workspaceId,
+                    filename
+                })));
+            }
+            return mcpTextResult({ success: results.every((row) => row.success), workspaceId, filenames, results });
+        }
+        return mcpTextResult(flattenPacket(await dispatchPacketTool(globalResources, req, 'workspace_bulk_add_scrap', {
+            id: workspaceId,
+            filenames
+        })));
+    }
+
+    if (name === 'toggle_favorite') {
+        const filenames = collectFilenames(input);
+        if (!filenames.length) {
+            return mcpTextResult({ success: false, error: 'filename or filenames is required' }, true);
+        }
+        const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId);
+        const record = workspaceRecord(globalResources, workspaceId) || {};
+        const pinned = Array.isArray(record.pinned) ? record.pinned : [];
+        const results = [];
+        for (const filename of filenames) {
+            const isPinned = pinned.includes(filename);
+            const wantPinned = input.pinned === undefined ? !isPinned : !!input.pinned;
+            const packetName = wantPinned ? 'workspace_add_pinned' : 'workspace_remove_pinned';
+            if (wantPinned === isPinned) {
+                results.push({ filename, pinned: isPinned, unchanged: true, success: true });
+                continue;
+            }
+            const packet = await dispatchPacketTool(globalResources, req, packetName, {
+                id: workspaceId,
+                filename
+            });
+            results.push({ filename, pinned: wantPinned, ...flattenPacket(packet) });
+        }
+        return mcpTextResult({
+            success: results.every((row) => row.success),
+            workspaceId,
+            results
+        });
+    }
+
+    if (name === 'open_in_lumen') {
+        return openViewerFromMcp(globalResources, input, 'lumen');
+    }
+    if (name === 'open_in_glancewell') {
+        return openViewerFromMcp(globalResources, input, 'glancewell');
+    }
+
+    if (name === 'compare_images') {
+        const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId);
+        const lookedA = await resolveGalleryFilename(globalResources, req, {
+            filename: input.filenameA || input.a || input.filename,
+            workspace: workspaceId
+        });
+        const lookedB = await resolveGalleryFilename(globalResources, req, {
+            filename: input.filenameB || input.b,
+            workspace: workspaceId
+        });
+        if (!lookedA.filename || !lookedB.filename) {
+            return mcpTextResult({
+                success: false,
+                error: 'Two gallery filenames are required (filenameA and filenameB).'
+            }, true);
+        }
+        if (lookedA.filename === lookedB.filename) {
+            return mcpTextResult({ success: false, error: 'Pick two different files to compare.' }, true);
+        }
+        const pathA = resolveGalleryImagePath(globalResources, lookedA.filename);
+        const pathB = resolveGalleryImagePath(globalResources, lookedB.filename);
+        const metaA = flattenPacket(await dispatchPacketTool(globalResources, req, 'request_image_metadata', {
+            filename: lookedA.filename
+        }));
+        const metaB = flattenPacket(await dispatchPacketTool(globalResources, req, 'request_image_metadata', {
+            filename: lookedB.filename
+        }));
+        const seedA = metaA.seed != null ? String(metaA.seed) : null;
+        const seedB = metaB.seed != null ? String(metaB.seed) : null;
+        const diff = await compareImageFiles(pathA.filePath, pathB.filePath);
+        return mcpImageResult({
+            success: true,
+            filenameA: lookedA.filename,
+            filenameB: lookedB.filename,
+            seedA,
+            seedB,
+            sameSeed: !!(seedA && seedB && seedA === seedB),
+            sameSeedWarning: (seedA && seedB && seedA !== seedB)
+                ? 'Seeds differ — the diff includes composition change, not only the prompt edit.'
+                : undefined,
+            width: diff.width,
+            height: diff.height,
+            changedPercent: diff.changedPercent,
+            meanDelta: diff.meanDelta,
+            changedPixels: diff.changedPixels,
+            imageKind: 'grok'
+        }, diff.image);
+    }
+
+    if (name === 'evaluate_workspace_themes') {
+        const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId);
+        const metadataDb = globalResources.getMetadataDatabase && globalResources.getMetadataDatabase();
+        if (!metadataDb || typeof metadataDb.listWorkspaceGalleryImageRows !== 'function') {
+            return mcpTextResult({ success: false, error: 'Metadata database is not ready' }, true);
+        }
+        const limit = Math.min(120, Math.max(1, Number(input.limit) || 80));
+        const rows = await metadataDb.listWorkspaceGalleryImageRows(workspaceId);
+        const sample = rows.slice(0, limit);
+        const metas = typeof metadataDb.getMultipleMetadata === 'function'
+            ? await metadataDb.getMultipleMetadata(sample.map((row) => row.filename))
+            : {};
+        const themeRows = sample.map((row) => metas[row.filename] || row);
+        const report = evaluateThemeRows(themeRows);
+        return mcpTextResult({ ...report, workspaceId });
+    }
+
+    if (name === 'vfs_read') {
+        if (input.fileId) {
+            return mcpTextResult(await dispatchPacketTool(globalResources, req, 'vfs_download_file', {
+                fileId: input.fileId
+            }));
+        }
+        return mcpTextResult(await dispatchPacketTool(globalResources, req, 'vfs_read_system_file', {
+            systemFileKey: input.systemFileKey || input.path,
+            path: input.path
+        }));
+    }
+
+    if (name === 'list_desktop_items') {
+        input.workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId);
+        input.id = input.workspaceId;
+    }
+
+    if (name === 'vfs_list' && !input.path) {
+        input.path = '/';
+    }
+
     const generateNames = ['generate_image', 'generate_preset', 'upscale_image', 'expand_image'];
     if (generateNames.includes(name)) {
         if (input.workspace || input.workspaceId) {
             input.workspace = resolveWorkspaceId(input.workspace || input.workspaceId);
         }
+        input.mcp_generated = true;
         const packet = await dispatchPacketTool(globalResources, req, def.packet, input);
         const flat = flattenPacket(packet);
         const filename = sanitizeGalleryFilename(
@@ -1694,23 +2123,49 @@ async function handleJsonRpc(globalResources, req, message) {
     if (method === 'tools/call') {
         const name = String(params.name || '').trim();
         const args = params.arguments && typeof params.arguments === 'object' ? params.arguments : {};
+        const generating = isGenerateTool(name, args);
+        const argsSummary = summarizeArgs(args);
+        if (generating) {
+            recordActivity(globalResources, {
+                tool: name,
+                argsSummary,
+                resultSummary: { started: true },
+                success: true,
+                generating: true
+            });
+        }
         try {
             const result = await callTool(globalResources, req, name, args);
+            recordActivity(globalResources, {
+                tool: name,
+                argsSummary,
+                resultSummary: summarizeResult(result),
+                success: !result || result.isError !== true,
+                generating: generating ? false : undefined
+            });
             return { status: 200, body: { jsonrpc: '2.0', id, result } };
         } catch (error) {
             const status = error && error.status ? error.status : 500;
             const messageText = status >= 500 ? 'Tool call failed' : (error.message || 'Tool call failed');
+            const failResult = mcpTextResult({
+                success: false,
+                error: messageText,
+                code: error && error.code ? error.code : undefined,
+                status
+            }, true);
+            recordActivity(globalResources, {
+                tool: name,
+                argsSummary,
+                resultSummary: summarizeResult(failResult),
+                success: false,
+                generating: generating ? false : undefined
+            });
             return {
                 status: 200,
                 body: {
                     jsonrpc: '2.0',
                     id,
-                    result: mcpTextResult({
-                        success: false,
-                        error: messageText,
-                        code: error && error.code ? error.code : undefined,
-                        status
-                    }, true)
+                    result: failResult
                 }
             };
         }
@@ -1865,6 +2320,7 @@ module.exports = {
         isAllowedOAuthOrigin,
         isAbsentOrigin,
         sanitizeGalleryFilename,
+        collectFilenames,
         isCheapMcpRequest,
         resizeImageForGrok,
         GROK_IMAGE_MAX_EDGE,

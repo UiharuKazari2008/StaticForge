@@ -973,12 +973,13 @@ async function openStandalonePhotoSwipe(dataSource) {
         const useDesktopShell = document.body.classList.contains('desktop-mode');
         const mount = getPhotoSwipeMount();
 
+        const multi = Array.isArray(dataSource) && dataSource.length > 1;
         const opts = {
             dataSource: dataSource,
             showHideAnimationType: 'zoom',
             showAnimationDuration: 300,
             hideAnimationDuration: 300,
-            allowPanToNext: false, // No navigation for single images
+            allowPanToNext: multi,
             allowMouseDrag: true,
             allowTouchDrag: true,
             spacing: 0.1,
@@ -988,7 +989,7 @@ async function openStandalonePhotoSwipe(dataSource) {
             closeOnVerticalDrag: true,
             wheelToZoom: true,
             escKey: true,
-            arrowKeys: false, // No arrow keys for single images
+            arrowKeys: multi,
             returnFocus: true,
             initialZoomLevel: 'fit',
             secondaryZoomLevel: 1,

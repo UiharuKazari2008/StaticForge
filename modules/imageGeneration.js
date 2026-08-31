@@ -4167,6 +4167,10 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             }
         } catch {}
 
+        if (body.mcp_generated === true || body.mcpGenerated === true) {
+            baseOptions.mcp_generated = true;
+        }
+
         return baseOptions;
     } catch (error) {
         throw error;
@@ -4507,6 +4511,9 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             upscale_ratio: null,
             upscaled_at: null
         };
+        if (opts.mcp_generated === true || opts.mcpGenerated === true) {
+            forgeData.mcp_generated = true;
+        }
         
         // Add disabled characters and character names to forge metadata if present
 
@@ -4706,6 +4713,9 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             
             forgeData = metadata.forge_data || {};
             mergeNovelForgeFieldsFromOpts(forgeData, opts);
+            if (opts.mcp_generated === true || opts.mcpGenerated === true) {
+                forgeData.mcp_generated = true;
+            }
 
             // Conditionally update only allowed fields
             forgeData.date_generated = Date.now();

@@ -23,7 +23,8 @@ const SCOPE_WS_PACKETS = {
         'workspace_list', 'workspace_create', 'workspace_delete', 'workspace_activate',
         'workspace_update', 'workspace_dump', 'workspace_move_files',
         'workspace_add_pinned', 'workspace_remove_pinned', 'workspace_add_scrap',
-        'workspace_remove_scrap', 'desktop_add_shortcut', 'desktop_update_shortcut',
+        'workspace_remove_scrap', 'workspace_bulk_add_scrap', 'workspace_bulk_pinned',
+        'desktop_add_shortcut', 'desktop_update_shortcut',
         'desktop_remove_shortcut', 'desktop_update_positions'
     ],
     search: [
@@ -35,7 +36,12 @@ const SCOPE_WS_PACKETS = {
     ],
     vfs: [
         'vfs_list', 'vfs_read', 'vfs_write', 'vfs_delete', 'vfs_mkdir', 'vfs_move',
-        'vfs_copy', 'vfs_stat', 'vfs_search'
+        'vfs_copy', 'vfs_stat', 'vfs_search',
+        'vfs_list_directory', 'vfs_get_path_stats', 'vfs_resolve_path',
+        'vfs_read_system_file', 'vfs_download_file', 'vfs_download_system_file',
+        'vfs_upload_file', 'vfs_replace_file', 'vfs_delete_entry', 'vfs_delete_file',
+        'vfs_create_folder', 'vfs_move_items', 'vfs_copy_items',
+        'desktop_get_shortcuts', 'desktop_get_settings'
     ],
     presets: [
         'get_presets', 'search_presets', 'load_preset', 'save_preset', 'update_preset',

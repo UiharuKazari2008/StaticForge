@@ -1,5 +1,6 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
 const { generateImageWebSocket } = require('../../imageGeneration');
+const { broadcastGalleryMutation } = require('./120-galleryHandler');
 
 const PRESET_DESTRUCTIVE = { destructive: true };
 
@@ -561,6 +562,15 @@ async function handleGeneratePreset(handlers, ws, message, clientInfo, wsServer)
             },
             timestamp: new Date().toISOString()
         });
+
+        if (result && result.filename) {
+            await broadcastGalleryMutation(handlers, wsServer, clientInfo, {
+                viewType: 'images',
+                action: 'append_top',
+                filenames: [result.filename],
+                workspaceId: targetWorkspace
+            });
+        }
 
     } catch (error) {
         console.error('Preset generation error:', error);

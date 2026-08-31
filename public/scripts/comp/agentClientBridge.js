@@ -193,6 +193,15 @@
                 replyAgentSessionResult(requestId, result);
                 return;
             }
+            if (command === 'open_viewer') {
+                if (typeof window.openMcpViewer !== 'function') {
+                    replyAgentSessionResult(requestId, { ok: false, error: 'Viewer helper is not available' });
+                    return;
+                }
+                const result = await window.openMcpViewer(data);
+                replyAgentSessionResult(requestId, result);
+                return;
+            }
             if (command === 'apply_studio') {
                 const result = await applyStudioFromCommand(data);
                 replyAgentSessionResult(requestId, result);

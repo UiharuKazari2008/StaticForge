@@ -212,7 +212,7 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 
 | Tool | Wrap | Scope | Bind? |
 |------|------|-------|-------|
-| `generate_image` | Server generate; waits and returns filename + Grok webp (full PNG bytes stripped) | `generation` | no |
+| `generate_image` | Server generate; waits and returns filename + Grok webp. Optional `pipeline` for staged runs. Writes `forge_data.mcp_generated`. Open gallery gets `gallery_updated`. | `generation` | no |
 | `get_generated_image` | Metadata + Grok webp. Filename, seed, or omit for latest. `workspace` default is `default`. | `gallery` | no |
 | `get_workspaces` | `workspace_list` — use the id on `get_generated_image` / `omegasearch` | `workspace` | no |
 | `get_studio_state` | Bound `get_state` (same snapshot as `GET /agent/session/state`) | `generation` | yes |
@@ -226,6 +226,13 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 | `expand_image` | `expand_image` (`filename`, `resolution`, `imageBias` 0–4) | `generation` | no |
 | `omegasearch` | `omegasearch_query` (`query` / `terms` coerced to `blocks`; optional `workspace`) | `search` | no |
 | `list_notes` / `get_note` / `save_note_content` | `notes_get_all_metadata` / `notes_get` / `notes_save_content` | `notes` | no |
+| `delete_images` | `delete_images_bulk` | `gallery` | no |
+| `scrap_images` | `workspace_bulk_add_scrap` / `workspace_remove_scrap` | `workspace` | no |
+| `toggle_favorite` | `workspace_add_pinned` / `workspace_remove_pinned` | `workspace` | no |
+| `open_in_lumen` / `open_in_glancewell` | Bound `open_viewer` or `mcp_open_viewer` push | `gallery` | client |
+| `compare_images` | Sharp abs-diff of two gallery files; magenta webp + change % | `gallery` | no |
+| `evaluate_workspace_themes` | Tag/character frequency on recent workspace files | `gallery` | no |
+| `vfs_list` / `vfs_read` | `vfs_list_directory` / `vfs_read_system_file` or `vfs_download_file`. Path `@desktop` is the workspace desktop. | `vfs` | no |
 | `advanced_tools` | Discover or run a hidden tool (`query`, or `name` + `arguments`) | any | — |
 
 ### Hidden (via `advanced_tools`)
@@ -239,6 +246,7 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 | `list_presets` / `search_presets` / `get_preset` / `generate_preset` | extra preset list/load/server-generate | `presets` / `generation` |
 | `list_references` / `get_references_by_ids` / `list_workspace_references` / `upload_reference` | reference packets | `references` |
 | `list_notes_by_workspace` / `create_note` / `update_note` | extra notepad CRUD | `notes` |
+| `vfs_stat` / `vfs_write` / `vfs_delete` / `list_desktop_items` | VFS mutate + desktop shortcuts | `vfs` |
 
 `search_autofill` returns `{ success, results: [{ term, success, results, spellCheck }] }`. That is the existing ranking-test search, not a new search API. `get_wiki_page` is tag wiki (danbooru / e621). Static / Grimoire pages use hidden `list_static_wiki_*` / `search_static_wiki` / `get_static_wiki_page`. Notes use the existing notepad packets — request the `notes` scope on consent.
 

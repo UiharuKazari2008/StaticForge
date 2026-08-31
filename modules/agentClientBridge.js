@@ -455,7 +455,7 @@ function resolveAgentPacketMessage(body) {
     return message;
 }
 
-function createAgentPacketSink() {
+function createAgentPacketSink(liveServer) {
     const replies = [];
     const ws = {
         readyState: 1,
@@ -468,11 +468,20 @@ function createAgentPacketSink() {
         }
     };
     const wsServer = {
-        clients: new Map(),
+        clients: (liveServer && liveServer.clients) || new Map(),
         sendToClient(_ws, payload) {
             if (payload) replies.push(payload);
         },
-        broadcastToAll() {}
+        broadcast(payload, filter) {
+            if (liveServer && typeof liveServer.broadcast === 'function') {
+                liveServer.broadcast(payload, filter);
+            }
+        },
+        broadcastToAll(...args) {
+            if (liveServer && typeof liveServer.broadcastToAll === 'function') {
+                return liveServer.broadcastToAll(...args);
+            }
+        }
     };
     return { ws, wsServer, replies };
 }
@@ -503,7 +512,10 @@ async function dispatchAgentPacket(globalResources, req, message) {
         err.code = 'READONLY_RESTRICTED';
         throw err;
     }
-    const sink = createAgentPacketSink();
+    const liveServer = typeof globalResources.getWebSocketServer === 'function'
+        ? globalResources.getWebSocketServer()
+        : null;
+    const sink = createAgentPacketSink(liveServer);
     const clientInfo = {
         authenticated: true,
         userType: req.userType || 'admin',

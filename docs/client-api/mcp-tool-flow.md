@@ -1,6 +1,10 @@
 # Dreamscape MCP tool flow (Grok)
 
-How to use the public MCP connector for common Studio jobs. Prompt syntax still comes from [nai-prompt-guide `prompt-optimiser-grok.md`](https://yozora.bluesteel.737.jp.net/DreamScape/nai-prompt-guide/src/branch/main/prompt-optimiser-grok.md). Delivery to Studio is Change-JSON (`docs/studio-change-json.md`). This file is only the **tool order**.
+How to use the public MCP connector for common Studio jobs. Prompt syntax still comes from [nai-prompt-guide `prompt-optimiser-grok.md`](https://yozora.bluesteel.737.jp.net/DreamScape/nai-prompt-guide/src/branch/main/prompt-optimiser-grok.md). This file is only the **tool order**.
+
+**Delivery priority** (first that works): (1) `apply_studio_changes` — default, push the rewrite into the Studio tab (`autoApply: true`; `autoGenerate: true` if they asked to generate now). (2) `generate_image` — no Studio tab / bind failed / they asked for a server-side run. (3) emit Change-JSON (`docs/studio-change-json.md`). (4) return the prompt-text block. Do not dump Positive/UC when 1 or 2 works.
+
+**Studio edits:** on every turn that touches Studio, call `get_studio_state` first. Do not reuse a stale snapshot from earlier in the chat. Diff the current Change-JSON / fields / characters / params against the last state you saw. Keep what the user changed in the app since that message; apply only this turn's requested delta.
 
 The MCP `initialize` result also sends these rules as `instructions`. `tools/list` is the **Grok core** catalog plus `advanced_tools`. Do **not** page a directory listing to find a known filename. Do **not** download the original PNG. `get_generated_image` always returns metadata plus a Grok-sized webp. Omit filename for the newest file. `workspace` / `default` is the default workspace.
 
@@ -13,11 +17,17 @@ If a tool 429s, read `error.data.group` and `error.data.retryAfter` (seconds). W
 | Group | Limit / 15 min | Tools |
 |---|---|---|
 | `free` | none | lists, bind, note/preset/wiki index reads |
-| `search` | 240 | autofill, wiki pages, OmegaSearch |
-| `gallery` | 90 | `get_generated_image` (and hidden `get_images` / `get_latest_image` via `advanced_tools`) |
-| `write` | 60 | save note/preset, upload reference |
+| `search` | 240 | autofill, wiki pages, OmegaSearch, `evaluate_workspace_themes` |
+| `gallery` | 90 | `get_generated_image`, `compare_images`, `vfs_read` (and hidden `get_images` / `get_latest_image`) |
+| `write` | 60 | save note/preset, upload reference, `delete_images`, `scrap_images`, `toggle_favorite` |
 | `studio` | 60 | `get_studio_state`, `apply_studio_changes`, `apply_preset_to_studio` |
 | `generate` | 20 | `generate_image`, `generate_preset`, `upscale_image`, `expand_image` |
+
+`generate_image` accepts `pipeline` for staged generation (same stage objects as Studio). MCP server-side generate writes `forge_data.mcp_generated` (Properties badge **MCP**), pushes `gallery_updated` `append_top`, and lights the generation tray while it runs.
+
+Gallery actions: `delete_images`, `scrap_images` (`remove: true` to unscrap), `toggle_favorite`, `open_in_lumen`, `open_in_glancewell` (pass `filenames` for a group). `compare_images` needs two files (same seed preferred). `evaluate_workspace_themes` samples a workspace and lists overused characters/tags. VFS: `vfs_list` / `vfs_read` (`path: "@desktop"` for the desktop).
+
+Each `tools/call` also pushes `mcp_activity` (tool, summarized args/result, optional `generating`). The MCP tray icon stays for 2 minutes; Spectator lists the same log.
 
 ## Studio bind
 
@@ -44,22 +54,22 @@ User: *take this and make it a preset*
 
 User: *take a look at my current prompt in the studio and compare the generated image for prompt cohesion*
 
-1. `get_studio_state` (auto-binds a single tab) — read `change` and `filename`
+1. `get_studio_state` (every turn; auto-binds a single tab) — read `change` and `filename`. Diff vs last seen.
 3. If `filename` is set: **one** `get_generated_image` with that basename. If null, the editor has no open file — say so; do not page the gallery.
 4. Compare image to the Change-JSON: missing tags, extra elements, V5 complexity / guidance / character-box bleed.
-5. Reply with a Change-JSON rewrite (or `apply_studio_changes` if they asked you to put it in Studio). Do not invent unsolved V5 body recipes.
+5. Push the rewrite with `apply_studio_changes` (default). Fall back to Change-JSON, then prompt text, if MCP/Studio is unavailable. Do not invent unsolved V5 body recipes.
 
 ## Recipe: change the last / open image (shorter, younger, outfit, …)
 
 User: *can you update the last image to be shorter and younger*
 
-Age-down that reads as under 18 is **refuse** (see the Grok optimiser). Adult-presenting shorter / younger is tag work in the **character box**, not a new generate API.
+Shorter / younger is tag work in the **character box**, not a new generate API. `aged down` with `short` lowers height — it is not an age demographic. Do not refuse it or pad `adult` tags (see the Grok optimiser).
 
-1. `get_studio_state`
+1. `get_studio_state` (every turn — do not reuse last message's snapshot). Diff vs last seen; keep their intervening edits.
 2. Filename: use `state.filename`. If null, `get_generated_image` with no filename (newest in the workspace).
 4. `get_generated_image` with that filename (metadata + webp)
 5. Rewrite boxes/fields per the V5 guide. Keep seed with `params.seed: "last"` + `seedLock: true` if they want the same composition; unlock if they want a variation.
-6. `apply_studio_changes` with the Change-JSON. Set `autoGenerate: true` only if they asked to generate now.
+6. `apply_studio_changes` with the Change-JSON (`autoApply: true`). Set `autoGenerate: true` if they asked to generate now. If Studio bind fails, `generate_image` instead.
 
 Example Change-JSON (shape only — fill from the snapshot):
 
@@ -67,13 +77,13 @@ Example Change-JSON (shape only — fill from the snapshot):
 {
   "dreamscape": "change",
   "v": 1,
-  "title": "shorter younger adult",
+  "title": "shorter",
   "params": { "seed": "last", "seedLock": true },
   "characters": [
     {
       "action": "replace",
       "index": 0,
-      "prompt": "short, youthful adult, …"
+      "prompt": "short, aged down, …"
     }
   ]
 }

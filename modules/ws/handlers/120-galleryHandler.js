@@ -91,12 +91,14 @@ function mapMaterializedItemToGalleryRow(item) {
     };
 }
 
-async function buildGalleryRowForFilename(handlers, clientInfo, viewType, filename) {
-    if (!clientInfo?.sessionId || !filename) {
+async function buildGalleryRowForFilename(handlers, clientInfo, viewType, filename, workspaceIdHint) {
+    if (!filename) {
         return null;
     }
 
-    const workspaceId = handlers.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
+    const workspaceId = workspaceIdHint
+        || (clientInfo?.sessionId && handlers.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId))
+        || 'default';
     const metadataDb = handlers.globalResources.getMetadataDatabase();
     const index = await metadataDb.findGalleryWorkspaceItemIndex(workspaceId, viewType, filename);
     if (index >= 0) {
@@ -149,11 +151,10 @@ async function broadcastGalleryMutation(handlers, wsServer, clientInfo, options 
     const viewType = options.viewType || 'images';
     const action = options.action || 'invalidate_sync';
 
-    if (!clientInfo?.sessionId) {
-        return;
-    }
-
-    const workspaceId = handlers.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
+    const workspaceId = options.workspaceId
+        || options.workspace
+        || (clientInfo?.sessionId && handlers.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId))
+        || 'default';
     const metadataDb = handlers.globalResources.getMetadataDatabase();
     const timestamp = new Date().toISOString();
 
@@ -171,7 +172,7 @@ async function broadcastGalleryMutation(handlers, wsServer, clientInfo, options 
     if (action === 'append_top' && appendFilenames.length > 0) {
         const newItems = [];
         for (const filename of appendFilenames) {
-            const newItem = await buildGalleryRowForFilename(handlers, clientInfo, viewType, filename);
+            const newItem = await buildGalleryRowForFilename(handlers, clientInfo, viewType, filename, workspaceId);
             if (newItem) {
                 newItems.push(newItem);
             }

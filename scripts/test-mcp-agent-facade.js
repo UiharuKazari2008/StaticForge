@@ -73,6 +73,8 @@ assert.ok(_test.TOOL_DEFS.some((t) => t.name === 'get_latest_image'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('get_generated_image'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('advanced_tools'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('save_preset'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('apply_studio_changes is the default'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('On every Studio edit: get_studio_state first'));
 assert.strictEqual(_test.resolveWorkspaceId(''), 'default');
 assert.strictEqual(_test.resolveWorkspaceId('default'), 'default');
 assert.strictEqual(_test.resolveWorkspaceId('other'), 'other');
@@ -169,7 +171,31 @@ const coreNames = _test.TOOL_DEFS.filter((t) => t.core).map((t) => t.name);
 assert.ok(coreNames.includes('get_workspaces'));
 assert.ok(coreNames.includes('save_preset'));
 assert.ok(coreNames.includes('get_generated_image'));
-assert.strictEqual(coreNames.length, 16);
+assert.ok(coreNames.includes('delete_images'));
+assert.ok(coreNames.includes('scrap_images'));
+assert.ok(coreNames.includes('toggle_favorite'));
+assert.ok(coreNames.includes('open_in_lumen'));
+assert.ok(coreNames.includes('open_in_glancewell'));
+assert.ok(coreNames.includes('compare_images'));
+assert.ok(coreNames.includes('evaluate_workspace_themes'));
+assert.ok(coreNames.includes('vfs_list'));
+assert.ok(coreNames.includes('vfs_read'));
+assert.strictEqual(coreNames.length, 25);
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.pipeline);
+assert.deepStrictEqual(_test.collectFilenames({ filename: 'a.png', filenames: ['b.png', '../x'] }), ['b.png', 'a.png']);
+assert.strictEqual(_test.rateGroupForTool('delete_images'), 'write');
+assert.strictEqual(_test.rateGroupForTool('compare_images'), 'gallery');
+assert.strictEqual(_test.rateGroupForTool('vfs_list'), 'free');
+
+const galleryOnlyTools = _test.listToolsForScopes(['gallery']);
+assert.ok(galleryOnlyTools.some((t) => t.name === 'delete_images'));
+assert.ok(galleryOnlyTools.some((t) => t.name === 'compare_images'));
+assert.ok(galleryOnlyTools.some((t) => t.name === 'open_in_glancewell'));
+
+const vfsOnly = _test.listToolsForScopes(['vfs']);
+assert.ok(vfsOnly.some((t) => t.name === 'vfs_list'));
+assert.ok(vfsOnly.some((t) => t.name === 'vfs_read'));
+assert.ok(!vfsOnly.some((t) => t.name === 'vfs_write'));
 
 assert.deepStrictEqual(_test.collectOmegasearchBlocks({ query: '1girl sunset' }), ['1girl sunset']);
 assert.deepStrictEqual(
