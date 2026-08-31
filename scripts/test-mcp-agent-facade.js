@@ -356,7 +356,34 @@ async function main() {
     );
     assert.strictEqual(init.status, 200);
     assert.strictEqual(init.body.result.protocolVersion, _test.MCP_PROTOCOL_VERSION);
-    assert.strictEqual(init.body.result.serverInfo.name, 'dreamscape');
+    const rev = _test.currentMcpToolsRevision();
+    assert.ok(/^[0-9a-f]{8}$/.test(rev));
+    assert.strictEqual(init.body.result.serverInfo.name, `DreamScape r${rev}`);
+    assert.strictEqual(init.body.result.serverInfo.title, `DreamScape r${rev}`);
+    assert.strictEqual(init.body.result.serverInfo.version, rev);
+    assert.strictEqual(init.body.result.serverInfo.description, 'Academy City Research P.S.R.');
+    assert.strictEqual(init.body.result.serverInfo.websiteUrl, 'http://localhost:9220');
+    assert.strictEqual(init.body.result.serverInfo.icons[0].src, 'http://localhost:9220/static_images/apple-touch-icon.png');
+    assert.strictEqual(init.body.result.serverInfo.icons[0].mimeType, 'image/png');
+    assert.deepStrictEqual(init.body.result.serverInfo.icons[0].sizes, ['180x180']);
+
+    const initHosted = await _test.handleJsonRpc(
+        { getConfig: ({ path }) => (path === 'public_hostname' ? 'staticforge.737.jp.net' : null) },
+        { applicationAuth: { applicationScopes: ['generation'] } },
+        { jsonrpc: '2.0', id: 11, method: 'initialize' }
+    );
+    assert.strictEqual(initHosted.body.result.serverInfo.name, `DreamScape r${rev}`);
+    assert.strictEqual(initHosted.body.result.serverInfo.websiteUrl, 'https://staticforge.737.jp.net');
+    assert.strictEqual(
+        initHosted.body.result.serverInfo.icons[0].src,
+        'https://staticforge.737.jp.net/static_images/apple-touch-icon.png'
+    );
+
+    const { hashMcpToolsRevision } = require('../modules/mcpServerInfo');
+    assert.notStrictEqual(
+        hashMcpToolsRevision([{ name: 'a', description: 'one' }]),
+        hashMcpToolsRevision([{ name: 'a', description: 'two' }])
+    );
 
     const listed = await _test.handleJsonRpc(
         {},
@@ -456,6 +483,7 @@ async function main() {
     assert.ok(Array.isArray(protectedMeta.recommended_scopes));
     assert.ok(protectedMeta.recommended_scopes.includes('notes'));
     assert.ok(protectedMeta.recommended_scopes.includes('generation'));
+    assert.strictEqual(protectedMeta.resource_name, 'DreamScape');
 
     const asMeta = oauthProvider.getAuthorizationServerMetadata();
     assert.strictEqual(asMeta.issuer, 'https://staticforge.737.jp.net');

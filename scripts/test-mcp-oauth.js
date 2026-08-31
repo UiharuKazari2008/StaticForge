@@ -210,7 +210,8 @@ assert.ok(protectedMeta.authorization_servers.includes('https://staticforge.737.
 assert.ok(Array.isArray(protectedMeta.scopes_supported));
 assert.ok(protectedMeta.scopes_supported.includes('generation'));
 assert.ok(Array.isArray(protectedMeta.recommended_scopes));
-assert.ok(protectedMeta.recommended_scopes.includes('notes'));
+    assert.ok(protectedMeta.recommended_scopes.includes('notes'));
+    assert.strictEqual(protectedMeta.resource_name, 'DreamScape');
 
 const asMeta = oauthProvider.getAuthorizationServerMetadata();
 assert.strictEqual(asMeta.issuer, 'https://staticforge.737.jp.net');

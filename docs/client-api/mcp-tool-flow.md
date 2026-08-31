@@ -6,7 +6,7 @@ How to use the public MCP connector for common Studio jobs. Prompt syntax still 
 
 **Studio edits:** on every turn that touches Studio, call `get_studio_state` first. Do not reuse a stale snapshot from earlier in the chat. Diff the current Change-JSON / fields / characters / params against the last state you saw. Keep what the user changed in the app since that message; apply only this turn's requested delta.
 
-The MCP `initialize` result also sends these rules as `instructions`. `tools/list` is the **Grok core** catalog plus `advanced_tools`. Do **not** page a directory listing to find a known filename. Do **not** download the original PNG. `get_generated_image` always returns metadata plus a Grok-sized webp. Omit filename for the newest file. `workspace` / `default` is the default workspace.
+The MCP `initialize` result also sends these rules as `instructions`. `serverInfo.name` is `DreamScape r` plus an 8-hex tools revision (see [mcp-connector.md](./mcp-connector.md)). `tools/list` is the **Grok core** catalog plus `advanced_tools`. Do **not** page a directory listing to find a known filename. Do **not** download the original PNG. `get_generated_image` always returns metadata plus a Grok-sized webp. Omit filename for the newest file. `workspace` / `default` is the default workspace.
 
 If a listed tool cannot do the job, call `advanced_tools` with `query`, then call it again with `name` + `arguments` to run that hidden tool (bind a second tab, page `get_images`, static wiki, references, extra note/preset actions).
 

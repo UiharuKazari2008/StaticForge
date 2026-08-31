@@ -31,6 +31,7 @@ const {
 const { isGenerateTool, summarizeArgs, summarizeResult, recordActivity } = require('./mcpActivity');
 const { compareImageFiles, evaluateThemeRows } = require('./mcpInsights');
 const { buildStudioSettingsCatalog, applyCatalogToListedTool } = require('./studioSettingsCatalog');
+const { buildMcpServerInfo, hashMcpToolsRevision } = require('./mcpServerInfo');
 
 const MCP_PROTOCOL_VERSION = '2024-11-05';
 const MCP_RATE_WINDOW_MS = 15 * 60 * 1000;
@@ -899,6 +900,22 @@ const ADVANCED_TOOL_DEF = {
         }
     }
 };
+
+function currentMcpToolsRevision() {
+    return hashMcpToolsRevision([
+        ...TOOL_DEFS.map((tool) => ({
+            name: tool.name,
+            description: tool.description,
+            inputSchema: tool.inputSchema
+        })),
+        {
+            name: ADVANCED_TOOL_DEF.name,
+            description: ADVANCED_TOOL_DEF.description,
+            inputSchema: ADVANCED_TOOL_DEF.inputSchema
+        },
+        MCP_INSTRUCTIONS
+    ]);
+}
 
 const AUTOFILL_TERM_MAX = 20;
 const STATIC_WIKI_SEARCH_MAX = 200;
@@ -2219,7 +2236,7 @@ async function handleJsonRpc(globalResources, req, message) {
                 result: {
                     protocolVersion: MCP_PROTOCOL_VERSION,
                     capabilities: { tools: { listChanged: false } },
-                    serverInfo: { name: 'dreamscape', version: '1.0.0' },
+                    serverInfo: buildMcpServerInfo(globalResources, currentMcpToolsRevision()),
                     instructions: MCP_INSTRUCTIONS
                 }
             }
@@ -2468,6 +2485,8 @@ module.exports = {
         searchStaticWikiPages,
         handleJsonRpc,
         applyStudioChanges,
-        getBoundRecord
+        getBoundRecord,
+        currentMcpToolsRevision,
+        buildMcpServerInfo
     }
 };

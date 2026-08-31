@@ -134,7 +134,7 @@ class McpOAuthProvider {
             ],
             recommended_scopes: require('./mcpOAuthConsent').DEFAULT_CREATE_SCOPES.slice(),
             bearer_methods_supported: ['header'],
-            resource_name: 'Dreamscape MCP Server'
+            resource_name: 'DreamScape'
         };
     }
 

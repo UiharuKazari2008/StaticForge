@@ -21,6 +21,24 @@ Same process and port as the app (9220). Auto-generated into `secure.config.json
 
 Wrong UUID is `404` (no route). Do not mount `/mcp` or public `/agent`.
 
+## Connector card (`initialize.serverInfo`)
+
+`initialize` advertises Grok's connector name, publisher, and icon. `capabilities.tools.listChanged` is `false`, so Grok may keep a stale tool list after a ship. The **name includes a tools revision** so a stale connector is obvious.
+
+| Field | Value |
+|-------|--------|
+| `name` / `title` | `DreamScape r` + 8 hex (e.g. `DreamScape r3a1c9e02`) |
+| `version` | same 8 hex |
+| `description` | `Academy City Research P.S.R.` |
+| `websiteUrl` | public hostname (`public_hostname`, `https` unless localhost) |
+| `icons[0]` | `{websiteUrl}/static_images/apple-touch-icon.png` (`180x180`, PNG) |
+
+The revision is the first 8 hex chars of SHA-256 over every tool's `name` / `description` / `inputSchema` (core + hidden), plus `advanced_tools`, plus `instructions`. Live `prompt.config` catalog strings are **not** in the hash. After a tools ship, reconnect or re-add the connector if the name did not change.
+
+OAuth `resource_name` stays `DreamScape` (resource identity, not the tool cache).
+
+CLI alias `grok mcp add … dreamscape` is local only and does not have to match `serverInfo.name`.
+
 ## Auth (public MCP only)
 
 `createMcpAuthMiddleware` in `modules/auth.js`. Not loopback-gated.
