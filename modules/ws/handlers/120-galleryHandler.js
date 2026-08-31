@@ -147,16 +147,34 @@ async function buildGalleryRowForFilename(handlers, clientInfo, viewType, filena
     }
 }
 
+function clientMatchesGalleryWorkspace(handlers, clientInfo, workspaceId) {
+    if (!clientInfo || !clientInfo.sessionId) {
+        return false;
+    }
+    try {
+        const active = handlers.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
+        return (active || 'default') === (workspaceId || 'default');
+    } catch (_err) {
+        return false;
+    }
+}
+
 async function broadcastGalleryMutation(handlers, wsServer, clientInfo, options = {}) {
     const viewType = options.viewType || 'images';
     const action = options.action || 'invalidate_sync';
 
-    const workspaceId = options.workspaceId
-        || options.workspace
-        || (clientInfo?.sessionId && handlers.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId))
-        || 'default';
+    let workspaceId = options.workspaceId || options.workspace || null;
+    if (!workspaceId && clientInfo?.sessionId) {
+        try {
+            workspaceId = handlers.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
+        } catch (_err) {
+            workspaceId = null;
+        }
+    }
+    workspaceId = workspaceId || 'default';
     const metadataDb = handlers.globalResources.getMetadataDatabase();
     const timestamp = new Date().toISOString();
+    const workspaceFilter = (info) => clientMatchesGalleryWorkspace(handlers, info, workspaceId);
 
     const appendFilenames = [];
     if (Array.isArray(options.filenames)) {
@@ -183,10 +201,11 @@ async function broadcastGalleryMutation(handlers, wsServer, clientInfo, options 
                 data: {
                     action: 'append_top',
                     newItems,
-                    viewType
+                    viewType,
+                    workspaceId
                 },
                 timestamp
-            });
+            }, workspaceFilter);
             return;
         }
     }
@@ -197,10 +216,11 @@ async function broadcastGalleryMutation(handlers, wsServer, clientInfo, options 
         data: {
             action: 'invalidate_sync',
             viewType,
+            workspaceId,
             total: Number(probeMeta?.totalItems) || 0
         },
         timestamp
-    });
+    }, workspaceFilter);
 }
 
 function sendGalleryMetaProbeResponse(handlers, ws, requestId, {
@@ -1557,5 +1577,6 @@ function registerPackets(handlersCtx) {
 
 module.exports = {
     registerPackets,
-    broadcastGalleryMutation
+    broadcastGalleryMutation,
+    clientMatchesGalleryWorkspace
 };

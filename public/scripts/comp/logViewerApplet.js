@@ -19,6 +19,7 @@ const LOG_VIEWER_DISK_REFRESH_MS = 60000;
 const LOG_VIEWER_STATUS_INTERVAL_KEY = 'eventViewerStatusInterval';
 const LOG_VIEWER_CLIENT_GALLERY_SOURCE = 'client:gallery-load';
 const LOG_VIEWER_DEV_WARNINGS_SOURCE = 'client:dev-warnings';
+const LOG_VIEWER_MCP_ACTIVITY_SOURCE = 'client:mcp-activity';
 
 const STATUS_REFRESH_PRESETS = [
     { label: '1 second', ms: 1000 },
@@ -692,6 +693,14 @@ class LogViewerApplet {
                 loadfn: (item) => {
                     item.highlighted = this.currentSource === LOG_VIEWER_DEV_WARNINGS_SOURCE;
                 }
+            },
+            {
+                text: 'MCP Activity',
+                action: 'select-log-source',
+                sourceId: LOG_VIEWER_MCP_ACTIVITY_SOURCE,
+                loadfn: (item) => {
+                    item.highlighted = this.currentSource === LOG_VIEWER_MCP_ACTIVITY_SOURCE;
+                }
             }
         ];
 
@@ -1224,8 +1233,14 @@ class LogViewerApplet {
         return source === LOG_VIEWER_DEV_WARNINGS_SOURCE;
     }
 
+    isMcpActivityLogSource(source) {
+        return source === LOG_VIEWER_MCP_ACTIVITY_SOURCE;
+    }
+
     isClientSideLogSource(source) {
-        return this.isClientGalleryLogSource(source) || this.isDevWarningsLogSource(source);
+        return this.isClientGalleryLogSource(source)
+            || this.isDevWarningsLogSource(source)
+            || this.isMcpActivityLogSource(source);
     }
 
     isClientGalleryLogSourceActive() {
@@ -1236,6 +1251,12 @@ class LogViewerApplet {
 
     isDevWarningsLogSourceActive() {
         return this.isDevWarningsLogSource(this.currentSource)
+            && this.modal
+            && !this.modal.classList.contains('hidden');
+    }
+
+    isMcpActivityLogSourceActive() {
+        return this.isMcpActivityLogSource(this.currentSource)
             && this.modal
             && !this.modal.classList.contains('hidden');
     }
@@ -1298,12 +1319,44 @@ class LogViewerApplet {
         this.setStatus(this.formatDevWarningsLogStatusMeta());
     }
 
+    formatMcpActivityLogStatusMeta() {
+        const count = window.mcpActivityLogApi ? window.mcpActivityLogApi.getEntryCount() : 0;
+        return `${count} event${count === 1 ? '' : 's'}`;
+    }
+
+    renderMcpActivityLogContent() {
+        if (!this.contentEl) return;
+        const text = window.mcpActivityLogApi
+            ? window.mcpActivityLogApi.getFormattedText()
+            : 'MCP activity log unavailable.';
+        this.contentEl.textContent = text;
+        this.lineCount = text ? text.split('\n').length : 0;
+        this.trimLogLinesIfNeeded();
+        if (typeof customScrollbar !== 'undefined' && customScrollbar.forceReinit && this.scrollWrapper) {
+            customScrollbar.forceReinit(this.scrollWrapper);
+        }
+        if (this.tailFollow) {
+            this.scrollToBottom(true);
+        }
+    }
+
+    onMcpActivityLogEntry() {
+        if (!this.isMcpActivityLogSourceActive()) {
+            return;
+        }
+        this.renderMcpActivityLogContent();
+        this.setStatus(this.formatMcpActivityLogStatusMeta());
+    }
+
     getSourceMeta(sourceId) {
         if (this.isClientGalleryLogSource(sourceId)) {
             return { id: LOG_VIEWER_CLIENT_GALLERY_SOURCE, label: 'Gallery Load', group: 'client' };
         }
         if (this.isDevWarningsLogSource(sourceId)) {
             return { id: LOG_VIEWER_DEV_WARNINGS_SOURCE, label: 'Developer Warnings', group: 'client' };
+        }
+        if (this.isMcpActivityLogSource(sourceId)) {
+            return { id: LOG_VIEWER_MCP_ACTIVITY_SOURCE, label: 'MCP Activity', group: 'client' };
         }
         return this.sources.find((s) => s.id === sourceId) || null;
     }
@@ -1315,6 +1368,9 @@ class LogViewerApplet {
         }
         if (this.isDevWarningsLogSource(id)) {
             return 'Developer Warnings';
+        }
+        if (this.isMcpActivityLogSource(id)) {
+            return 'MCP Activity';
         }
         const meta = this.getSourceMeta(id);
         if (!meta) return 'Logs';
@@ -1765,6 +1821,12 @@ class LogViewerApplet {
             return;
         }
 
+        if (this.isMcpActivityLogSource(this.currentSource)) {
+            this.renderMcpActivityLogContent();
+            this.setStatus(this.formatMcpActivityLogStatusMeta());
+            return;
+        }
+
         const lines = this.backlogLines;
         const base = this.getBasePath();
         if (!base) return;
@@ -1875,6 +1937,9 @@ class LogViewerApplet {
             if (this.isClientGalleryLogSource(this.currentSource)) {
                 this.renderClientGalleryLogContent();
                 this.setStatus(this.formatGalleryLogStatusMeta());
+            } else if (this.isMcpActivityLogSource(this.currentSource)) {
+                this.renderMcpActivityLogContent();
+                this.setStatus(this.formatMcpActivityLogStatusMeta());
             } else {
                 this.renderDevWarningsLogContent();
                 this.setStatus(this.formatDevWarningsLogStatusMeta());

@@ -23,11 +23,11 @@ If a tool 429s, read `error.data.group` and `error.data.retryAfter` (seconds). W
 | `studio` | 60 | `get_studio_state`, `apply_studio_changes`, `apply_preset_to_studio` |
 | `generate` | 20 | `generate_image`, `generate_preset`, `upscale_image`, `expand_image` |
 
-`generate_image` accepts `pipeline` for staged generation (same stage objects as Studio). MCP server-side generate writes `forge_data.mcp_generated` (Properties badge **MCP**), pushes `gallery_updated` `append_top`, and lights the generation tray while it runs.
+`generate_image` accepts `pipeline` for staged generation (same stage objects as Studio). MCP server-side generate writes `forge_data.mcp_generated` (Properties badge **MCP**), pushes `gallery_updated` `append_top` **only to clients whose active workspace matches the generate workspace**, and lights the generation tray while it runs.
 
 Gallery actions: `delete_images`, `scrap_images` (`remove: true` to unscrap), `toggle_favorite`, `open_in_lumen`, `open_in_glancewell` (pass `filenames` for a group). `compare_images` needs two files (same seed preferred). `evaluate_workspace_themes` samples a workspace and lists overused characters/tags. VFS: `vfs_list` / `vfs_read` (`path: "@desktop"` for the desktop).
 
-Each `tools/call` also pushes `mcp_activity` (tool, summarized args/result, optional `generating`). The MCP tray icon stays for 2 minutes; Spectator lists the same log.
+Each `tools/call` also pushes `mcp_activity` (tool, summarized args/result, optional `generating`). The MCP tray icon stays for 2 minutes; click it to open Periscope source `client:mcp-activity` (Event Viewer). Gallery `append_top` is sent only to clients whose active workspace matches the generate workspace.
 
 ## Studio bind
 

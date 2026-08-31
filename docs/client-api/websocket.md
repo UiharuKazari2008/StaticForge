@@ -217,7 +217,7 @@ These are **pushes** — handle asynchronously. Registered in `public/scripts/ws
 | `connection` | Immediately on WS connect | `status`, `message`, `authenticated`, `userType?`, `vfsPathUuid?`, `logViewerPathUuid?` (admin) |
 | `ping` | ~10s interval broadcast | `timestamp`, `image_count`, `queue_status` |
 | `request_keep_alive` | During long WS requests | `requestId`, `status: "processing"`, optional `progress`, `message` |
-| `gallery_updated` | Image add/delete/move/scrap/pin | `data.action` (`add`, `bulk_delete`, `remove`, …), `filename?`, `filenames?`, `viewType?`, `deletedCount?`, `lastGalleryDestructiveAt?` |
+| `gallery_updated` | Image add/delete/move/scrap/pin | `data.action` (`add`, `append_top`, `bulk_delete`, `remove`, …), `workspaceId?` (when set, only clients whose active gallery workspace matches should apply), `filename?`, `filenames?`, `viewType?`, `newItems?`, `deletedCount?`, `lastGalleryDestructiveAt?` |
 | `gallery_scroll_state` | On reconnect (session restore) | Scroll hints per view: `index`, `viewType`, `workspaceId`, `anchorFilename?` |
 | `workspace_updated` | Workspace mutation | `data.action` (e.g. `bulk_add_pinned`, `settings_updated`, `files_moved`), `workspaceId`, action-specific counts/fields |
 | `workspace_image_added` | New image(s) in workspace | `workspaceId`, `imageFilenames[]` |
@@ -263,7 +263,7 @@ These are **pushes** — handle asynchronously. Registered in `public/scripts/ws
 | `fandom_wiki_import_progress` | Fandom page import progress | `data.phase`, `current`, `total`, optional `pageId`/`message`; Wiki Manager DSAP via `wsClient.on` |
 | `agent_notice` | Loopback `POST /agent/broadcast` | `data.id`, `message`, `title`, `display` (`toast` \| `dialog`), `level`, `timeout` (ms or `false`), `restart` (bool), `source: "agent"` — toast or confirmation dialog; `restart: true` reuses `#agentClientUpdateDialog` then apply+restart via `appWebSocketHandlers.js` |
 | `agent_session_command` | Loopback `/agent/session/*` to the bound Studio tab | `requestId` + `data.command` (`open_image` / `open_viewer` / `apply_studio` / `get_state`) — `public/scripts/comp/agentClientBridge.js`. `open_viewer` takes `target` (`lumen` \| `glancewell`) and `filenames`. `apply_studio` includes sibling `autoApply` (default true) and `autoGenerate` (default false). |
-| `mcp_activity` | After each public MCP `tools/call` | `data.tool`, `data.args` (summarized), `data.result` (summarized), `data.success`, `data.generating` (`true` at generate start, `false` at end), `data.at` — tray `#mcpActivityIndicator` (2 min) + Spectator MCP list + generation tray when `generating` |
+| `mcp_activity` | After each public MCP `tools/call` | `data.tool`, `data.args` (summarized), `data.result` (summarized), `data.success`, `data.generating` (`true` at generate start, `false` at end), `data.at` — tray `#mcpActivityIndicator` (2 min; click opens Periscope `client:mcp-activity`) + generation tray when `generating` |
 | `mcp_open_viewer` | MCP `open_in_lumen` / `open_in_glancewell` when no bind | `data.target`, `data.filenames[]` — `public/scripts/comp/mcpActivityClient.js` |
 | `agent_session_bound` | After `POST /agent/bind` | `data.clientId` |
 | `agent_session_unbound` | Previous bind replaced | `data.clientId` |

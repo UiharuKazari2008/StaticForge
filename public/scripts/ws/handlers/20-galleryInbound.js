@@ -237,6 +237,13 @@ function handleGalleryActionUpdate(data) {
 }
 
 async function handleGalleryUpdatedData(data) {
+    if (!data) {
+        return;
+    }
+    // getGalleryLoadWorkspaceId: public/scripts/comp/galleryView.js
+    if (data.workspaceId && data.workspaceId !== getGalleryLoadWorkspaceId()) {
+        return;
+    }
     // isGalleryWindowHidden, setActiveGalleryList: public/scripts/comp/galleryView.js
     if (isGalleryWindowHidden()) {
         if (data.gallery) {

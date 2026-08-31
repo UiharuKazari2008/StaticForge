@@ -313,7 +313,8 @@ async function handleImageUpscaling(handlers, ws, message, clientInfo, wsServer)
         await broadcastGalleryMutation(handlers, wsServer, clientInfo, {
             viewType: 'images',
             action: 'append_top',
-            filename: result.filename
+            filename: result.filename,
+            workspaceId: data.workspace
         });
     } catch (error) {
         console.error('❌ Image upscaling error:', error);
@@ -467,7 +468,8 @@ async function handleImageExpansion(handlers, ws, message, clientInfo, wsServer)
             await broadcastGalleryMutation(handlers, wsServer, clientInfo, {
                 viewType: 'images',
                 action: 'append_top',
-                filename: result.filename
+                filename: result.filename,
+                workspaceId: data.workspace
             });
         }
     } catch (error) {
@@ -539,7 +541,8 @@ async function handleMaxEnhanceImage(handlers, ws, message, clientInfo, wsServer
             await broadcastGalleryMutation(handlers, wsServer, clientInfo, {
                 viewType: 'images',
                 action: 'append_top',
-                filename: result.filename
+                filename: result.filename,
+                workspaceId: message.workspace
             });
         }
     } catch (error) {
@@ -609,7 +612,8 @@ async function handleEnhanceImage(handlers, ws, message, clientInfo, wsServer) {
             await broadcastGalleryMutation(handlers, wsServer, clientInfo, {
                 viewType: 'images',
                 action: 'append_top',
-                filename: result.filename
+                filename: result.filename,
+                workspaceId: message.workspace
             });
         }
     } catch (error) {

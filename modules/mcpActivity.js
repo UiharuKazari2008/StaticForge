@@ -1,6 +1,6 @@
 /**
  * MCP activity ring + live client notify.
- * Broadcasts mcp_activity so the tray (2 min) and Spectator can show the last call.
+ * Broadcasts mcp_activity so the tray (2 min) and Periscope (Event Viewer) can show the last call.
  */
 
 const MCP_ACTIVITY_TTL_MS = 2 * 60 * 1000;
