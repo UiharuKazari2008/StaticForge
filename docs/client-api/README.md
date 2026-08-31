@@ -62,25 +62,29 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | [mcp-connector.md](./mcp-connector.md) | Public MCP / Grok connector on `/{mcpPathUuid}` — Streamable HTTP wrap of `/agent` + WS; Bearer `sfapp_`; unknown UA bypass + capture |
 | [README-CHILD.md](../README-CHILD.md) | Child/ephemeral replication deployment (master pairing, bootstrap, daily ops) |
 
-### WebSocket domains (290 request types)
+### WebSocket domains
+
+Counts below are source-backed. Most rows come from
+`node scripts/tools/generate-ws-api-docs.js`; Account and Replication are
+hand-maintained from their shared contracts.
 
 | Domain | File | Packets |
 |--------|------|---------|
-| Generation | [ws/generation.md](./ws/generation.md) | 12 |
-| Gallery | [ws/gallery.md](./ws/gallery.md) | 9 |
+| Generation | [ws/generation.md](./ws/generation.md) | 14 |
+| Gallery | [ws/gallery.md](./ws/gallery.md) | 11 |
 | Presets | [ws/presets.md](./ws/presets.md) | 11 |
 | Workspaces | [ws/workspace.md](./ws/workspace.md) | 34 |
-| Search & tags | [ws/search.md](./ws/search.md) | 12 |
+| Search & tags | [ws/search.md](./ws/search.md) | 20 |
 | Grimoire / Wiki | [ws/wiki.md](./ws/wiki.md) | 13 |
 | Chat | [ws/chat.md](./ws/chat.md) | 9 |
 | Director | [ws/director.md](./ws/director.md) | 12 |
 | Notes (+ novels) | [ws/notes.md](./ws/notes.md) | 14 |
 | NAX | [ws/nax.md](./ws/nax.md) | 11 |
-| Agora (NovelAI Explore) | [ws/explore.md](./ws/explore.md) | 3 |
+| Agora (NovelAI Explore) | [ws/explore.md](./ws/explore.md) | 11 |
 | Text replacements | [ws/textReplacements.md](./ws/textReplacements.md) | 6 |
 | Favorites | [ws/favorites.md](./ws/favorites.md) | 3 |
 | Account & app bootstrap | [ws/account.md](./ws/account.md) | 2 |
-| Generation quips | [ws/quips.md](./ws/quips.md) | 4 |
+| Generation quips | [ws/quips.md](./ws/quips.md) | 7 |
 | Menma progress | [ws/menma.md](./ws/menma.md) | 1 |
 | Agent session | [ws/agentSession.md](./ws/agentSession.md) | 2 |
 | Similar-image review | [ws/similarImages.md](./ws/similarImages.md) | 2 |
@@ -88,12 +92,13 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | Knowledge / memories | [ws/knowledge.md](./ws/knowledge.md) | 7 |
 | Persona | [ws/persona.md](./ws/persona.md) | 2 |
 | User settings | [ws/userSettings.md](./ws/userSettings.md) | 2 |
-| Config editor | [ws/configEditor.md](./ws/configEditor.md) | 3 |
+| Config editor | [ws/configEditor.md](./ws/configEditor.md) | 10 |
+| Autofill ranking | [ws/autofillRanking.md](./ws/autofillRanking.md) | 3 |
 | Cache & runtime | [ws/cache.md](./ws/cache.md) | 7 |
 | Infrastructure | [ws/infrastructure.md](./ws/infrastructure.md) | 5 |
 | Managed RunPod pods | [ws/runpod.md](./ws/runpod.md) | 3 |
-| Admin / security (+ application auth) | [ws/admin.md](./ws/admin.md) | 31 |
-| VFS & desktop | [ws/vfs.md](./ws/vfs.md) | 27 |
+| Admin / security (+ application auth) | [ws/admin.md](./ws/admin.md) | 35 |
+| VFS & desktop | [ws/vfs.md](./ws/vfs.md) | 34 |
 | References & vibes | [ws/references.md](./ws/references.md) | 22 |
 | **Replication** | [ws/replication.md](./ws/replication.md) | **12** |
 

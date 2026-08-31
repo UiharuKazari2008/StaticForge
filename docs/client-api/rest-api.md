@@ -954,6 +954,41 @@ CORS echoes `Origin` on asset routes only.
 
 ---
 
+### Gallery (`35-galleryRoutes.js`)
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| `GET` | `/replication/gallery/workspace-files` | session, application key/temp token, or `X-Replication-Token` with `read` scope | Local/master filename list for one workspace/view |
+| `GET` | `/replication/gallery/remote` | none locally; proxy request to master uses configured read token | Child-side proxy to the configured master's workspace file list |
+
+Query fields on both routes:
+
+| Field | Default | Values |
+|-------|---------|--------|
+| `workspaceId` | `default` | Any configured workspace id |
+| `viewType` | `images` | `images`, `scraps`, `pinned` |
+
+`workspace-files` responds with:
+
+```json
+{
+  "success": true,
+  "data": {
+    "workspaceId": "default",
+    "workspaceName": "Default",
+    "viewType": "images",
+    "files": ["123_generated.png"]
+  },
+  "timestamp": "<ISO-8601>"
+}
+```
+
+`remote` requires `replication.masterAccessUrl`, blocks `airgapped`
+connectivity, probes the master first, then calls the master's
+`/replication/gallery/workspace-files` endpoint.
+
+---
+
 ### Cargo (`40-cargoRoutes.js`)
 
 **Auth:** admin session for all routes below.

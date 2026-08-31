@@ -21,6 +21,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `replication_delegate` | `replication_delegate_response` | session | Server proxy to master WS |
 | `replication_delegation_status` | `replication_delegation_status_response` | session | Client reports bridge state |
 | `authenticate_replication` | `replication_authenticated` | critical (token) | Master read-only bridge auth |
+| `replication_request_remote_gallery` | `replication_request_remote_gallery_response` | session | Fetch master gallery filenames for shared remote browse |
 
 ## Server push (no request)
 
@@ -120,6 +121,8 @@ Blocks mode requires the exact confirmation string `BLOCKS_SLOW_PATH_CONFIRMATIO
 | Route | Notes |
 |---|---|
 | `GET /replication/status` | Same payload as `replication_status` WS |
+| `GET /replication/gallery/workspace-files` | Master-side filename list for one workspace/view |
+| `GET /replication/gallery/remote` | Child-side proxy to the configured master gallery list |
 | `GET /replication/delegation/bridge-config` | Client bridge bootstrap |
 | Route modules `10`–`60` under `modules/replication/routes/` | Auto-registered; no collisions with legacy `web_server.js` paths |
 
@@ -163,6 +166,7 @@ Handler registration split:
 | Packet | Registered in |
 |--------|---------------|
 | `replication_status` | `modules/ws/handlers/200-replicationHandler.js` |
+| `replication_request_remote_gallery` | `modules/ws/handlers/200-replicationHandler.js` |
 | `replication_sync_*` | `modules/replication/routes/50-syncRoutes.js` |
 | `replication_separation_*` | `modules/replication/routes/20-separationRoutes.js` |
 | `authenticate_replication`, `replication_delegate`, `replication_delegation_status` | `modules/replication/routes/60-delegationRoutes.js` |
@@ -176,6 +180,43 @@ Handler registration split:
 **Response:** `replication_status_response` — see envelope above (`enabled`, `role`, `maintenance`, `delegation`, …).
 
 **HTTP mirror:** `GET /replication/status`
+
+---
+
+### `replication_request_remote_gallery`
+
+**Auth:** session
+
+**Request fields:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `workspaceId` | No | Workspace id; defaults to `default` |
+| `viewType` | No | `images` (default), `scraps`, or `pinned` |
+
+**Response:** `replication_request_remote_gallery_response`
+
+```json
+{
+  "success": true,
+  "workspaceId": "default",
+  "viewType": "images",
+  "files": ["123_generated.png"]
+}
+```
+
+**Purpose:** fetches filenames from the configured master via
+`modules/replicationGalleryProxy.js` and the master's
+`GET /replication/gallery/workspace-files` route. It returns filenames only;
+gallery metadata and image bytes still use the normal gallery/API paths.
+
+**Constraints:** requires `masterAccessUrl`, rejects `airgapped` connectivity,
+and probes the master before issuing the remote read.
+
+**Errors:** `REPLICATION_CONFIG`, `REPLICATION_CONNECTIVITY_BLOCKED`,
+`REPLICATION_ASSET_UNAVAILABLE`, or a generic fetch failure from the proxy.
+
+**HTTP mirror:** `GET /replication/gallery/remote`
 
 ---
 
