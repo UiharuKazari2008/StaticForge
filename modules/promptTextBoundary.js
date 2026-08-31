@@ -73,6 +73,30 @@ function insertBeforeTextColonOrFirstGroup(prompt, addition) {
     return text ? text + ', ' + addition : addition;
 }
 
+function stripNoTextTag(text) {
+    if (typeof text !== 'string' || !text) return text || '';
+    const split = splitPromptAtTextColon(text);
+    const cleaned = split.tagsPart
+        .replace(/\bno\s+text\b/gi, '')
+        .replace(/,\s*,/g, ',')
+        .replace(/^\s*,\s*|\s*,\s*$/g, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+    return cleaned + (split.textSuffix || '');
+}
+
+function qualityPresetStripCandidates(qualityValue) {
+    const base = String(qualityValue || '').trim();
+    if (!base) return [];
+    const out = [base];
+    if (!/\bno\s+text\b/i.test(base)) {
+        out.push(`${base}, no text`);
+        out.push(`no text, ${base}`);
+    }
+    out.sort((a, b) => b.length - a.length);
+    return out;
+}
+
 module.exports = {
     TEXT_COLON_LEN,
     findTextColonIndex,
@@ -82,5 +106,7 @@ module.exports = {
     stripTextColonPrefix,
     splitPromptAtTextColon,
     insertBeforeTextColon,
-    insertBeforeTextColonOrFirstGroup
+    insertBeforeTextColonOrFirstGroup,
+    stripNoTextTag,
+    qualityPresetStripCandidates
 };

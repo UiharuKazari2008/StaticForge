@@ -8,6 +8,7 @@ const {
     signGeneratedImage,
     verifyGeneratedImage
 } = require('./forgeSigning');
+const { qualityPresetStripCandidates } = require('./promptTextBoundary');
 
 // NovelAI image attestation public key (Ed25519 raw → SPKI)
 // https://github.com/NovelAI/novelai-image-metadata/blob/main/nai_sig.py
@@ -941,23 +942,19 @@ class PngMetadata {
             if (result.prompt && currentPromptConfig.quality_presets) {
                 const modelKey = model.toLowerCase();
                 const qualityValue = currentPromptConfig.quality_presets[modelKey];
-                if (qualityValue && result.prompt.includes(qualityValue)) {
-                    // Split by "|" and check if quality is at the end of the first group
-                    const groups = result.prompt.split('|').map(group => group.trim());
-                    if (groups.length > 0) {
-                        const qualityPattern = ', ' + qualityValue;
-                        if (groups[0].endsWith(qualityPattern)) {
-                            groups[0] = groups[0].slice(0, -qualityPattern.length);
-                            result.prompt = groups.join(' | ');
-                            detectedAppendQuality = true;
-                        }
-                    } else {
-                        // Fallback for single group
-                        const qualityPattern = ', ' + qualityValue;
-                        if (result.prompt.endsWith(qualityPattern)) {
-                            result.prompt = result.prompt.slice(0, -qualityPattern.length);
-                            detectedAppendQuality = true;
-                        }
+                const qualityCandidates = qualityPresetStripCandidates(qualityValue);
+                const groups = result.prompt.split('|').map(group => group.trim());
+                for (let qi = 0; qi < qualityCandidates.length && !detectedAppendQuality; qi++) {
+                    const candidate = qualityCandidates[qi];
+                    if (!candidate || !result.prompt.includes(candidate)) continue;
+                    const qualityPattern = ', ' + candidate;
+                    if (groups.length > 0 && groups[0].endsWith(qualityPattern)) {
+                        groups[0] = groups[0].slice(0, -qualityPattern.length);
+                        result.prompt = groups.join(' | ');
+                        detectedAppendQuality = true;
+                    } else if (result.prompt.endsWith(qualityPattern)) {
+                        result.prompt = result.prompt.slice(0, -qualityPattern.length);
+                        detectedAppendQuality = true;
                     }
                 }
             }

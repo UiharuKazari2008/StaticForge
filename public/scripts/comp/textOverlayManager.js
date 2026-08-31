@@ -84,6 +84,8 @@ function addTextOverlay() {
 
     // Update placeholder based on current creative mode state
     updateTextOverlayPlaceholder(textOverlayId);
+    // syncNoTextSubToggleForOverlays: public/scripts/comp/manualDropdownManager.js
+    syncNoTextSubToggleForOverlays();
 }
 
 function setupTextOverlayDropdowns(textOverlayId) {
@@ -557,6 +559,8 @@ function toggleTextOverlayEnabled(textOverlayId) {
         } else {
             item.classList.remove('text-overlay-disabled');
         }
+        // syncNoTextSubToggleForOverlays: public/scripts/comp/manualDropdownManager.js
+        syncNoTextSubToggleForOverlays();
     }
 }
 
@@ -575,6 +579,8 @@ function deleteTextOverlay(textOverlayId) {
             textOverlaysContainer.classList.add('hidden');
         }
     }
+    // syncNoTextSubToggleForOverlays: public/scripts/comp/manualDropdownManager.js
+    syncNoTextSubToggleForOverlays();
 }
 
 function clearTextOverlays() {
@@ -585,6 +591,8 @@ function clearTextOverlays() {
     textOverlaysContainer.innerHTML = '';
     textOverlaysContainer.classList.add('hidden');
     textOverlayCounter = 0;
+    // syncNoTextSubToggleForOverlays: public/scripts/comp/manualDropdownManager.js
+    syncNoTextSubToggleForOverlays();
 }
 
 function updateAllTextOverlayTargetDropdowns() {
@@ -832,6 +840,8 @@ function loadTextOverlays(textOverlays) {
     updateAllTextOverlayTargetDropdowns();
     updateTextOverlayStageVisibility();
     updateAllTextOverlayPlaceholders();
+    // syncNoTextSubToggleForOverlays: public/scripts/comp/manualDropdownManager.js
+    syncNoTextSubToggleForOverlays();
 }
 
 function extractTextFromPrompt(prompt) {

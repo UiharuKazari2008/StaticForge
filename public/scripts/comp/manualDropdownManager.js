@@ -92,6 +92,7 @@ let selectedNsfwValue = 0; // Default to Neutral
 let nsfwBias = 1.0; // Default bias
 let selectedUcPreset = 3; // Default to "Heavy"
 let appendQuality = true;
+let noTextAutoDisabledByOverlay = false;
 let qualityPresetBias = 1.0; // Default bias for quality preset
 let appendTransparency = false;
 let transparencyBias = 1.0;
@@ -1100,12 +1101,54 @@ function findDatasetConfig(datasetValue) {
     return (window.optionsData?.datasets || []).find((dataset) => dataset.value === datasetValue) || null;
 }
 
+function fillMissingDefaultSubToggles(dataset) {
+    if (!dataset || !window.datasetSettings?.[dataset.value]) return;
+    getVisibleSubToggles(dataset).forEach((subToggle) => {
+        const group = subToggle.group ? getSubToggleGroup(dataset, subToggle.group) : null;
+        if (group && group.mode === 'ratio') return;
+        if (window.datasetSettings[dataset.value][subToggle.id]) return;
+        if (subToggle.default_enabled) writeSubToggleSetting(dataset.value, subToggle, true);
+    });
+}
+
 function ensureActiveSubTogglesInitialized() {
     getActiveSubToggleDatasets().forEach((dataset) => {
         if (!window.datasetSettings?.[dataset.value]) {
             initSubTogglesForDataset(dataset);
+        } else {
+            fillMissingDefaultSubToggles(dataset);
         }
     });
+}
+
+function studioHasActiveTextOverlay() {
+    if (typeof textOverlaysContainer === 'undefined' || !textOverlaysContainer) return false;
+    const items = textOverlaysContainer.querySelectorAll('.text-overlay-item');
+    for (let i = 0; i < items.length; i++) {
+        const btn = document.getElementById(`${items[i].id}_enabled`);
+        if (!btn || btn.getAttribute('data-state') !== 'off') return true;
+    }
+    return false;
+}
+
+function syncNoTextSubToggleForOverlays() {
+    const quality = findDatasetConfig('__quality__');
+    if (!quality || !appendQuality) return;
+    const noText = (quality.sub_toggles || []).find((st) => st.id === 'no_text' || /^\s*no\s+text\s*$/i.test(String(st.value || '')));
+    if (!noText) return;
+    if (!datasetAllowedForModel(noText, getCurrentDatasetModelKey())) return;
+    const hasOverlay = studioHasActiveTextOverlay();
+    if (hasOverlay) {
+        if (isSubToggleEnabled(quality.value, noText)) {
+            noTextAutoDisabledByOverlay = true;
+            writeSubToggleSetting(quality.value, noText, false);
+        }
+    } else if (noTextAutoDisabledByOverlay) {
+        noTextAutoDisabledByOverlay = false;
+        writeSubToggleSetting(quality.value, noText, !!noText.default_enabled);
+    }
+    renderSubTogglesDropdown();
+    updateSubTogglesButtonState();
 }
 
 /**

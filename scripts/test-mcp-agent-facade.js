@@ -193,6 +193,8 @@ assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSc
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'expand_image').inputSchema.properties.overrideParams);
 assert.ok(_test.MCP_INSTRUCTIONS.includes('top-level prompt/uc/params'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('append_quality / append_uc'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('turn that preset off'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('no_text'));
 const listedGen = _test.listToolsForScopes(['generation'], {
     getPromptConfig: () => ({
         quality_presets: { v5: 'very aesthetic, masterpiece, no text' },

@@ -56,7 +56,7 @@ const RESOLUTIONS = [
     { value: 'wallpaper_landscape', label: 'Wallpaper Widescreen', width: 1920, height: 1088 }
 ];
 
-const PRESET_RULE = 'Turn the matching append_* flag on. Do not also paste that preset text into prompt or uc — the server prepends the live value. Prefer the preset over rewriting the same tags by hand.';
+const PRESET_RULE = 'Prefer the matching append_* flag over pasting that preset text. If you need to change a tag inside a preset, turn that preset off (append_quality false / append_uc 0) and put the edited string in prompt or uc. Never leave the preset on and also paste a variant — the server prepends the live value and you would duplicate or fight it. No-text is the Quality sub-toggle dataset_config.settings.__quality__.no_text (default on); disable it for in-image text instead of pasting "no text" or turning quality off.';
 
 function resolvePresetModelKey(table, modelKey) {
     if (!table || !modelKey) return null;
@@ -147,6 +147,21 @@ function readPromptConfig(globalResources) {
     }
 }
 
+function listQualitySubToggles(promptConfig) {
+    const datasets = promptConfig && promptConfig.datasets;
+    if (!Array.isArray(datasets)) return [];
+    const quality = datasets.find((row) => row && (row.isQualityPreset || row.value === '__quality__'));
+    if (!quality) return [];
+    return (quality.sub_toggles || []).map((st) => ({
+        id: st.id,
+        name: st.name,
+        value: st.value,
+        defaultEnabled: !!st.default_enabled,
+        models: Array.isArray(st.models) ? st.models : undefined,
+        param: `dataset_config.settings.${quality.value || '__quality__'}.${st.id}`
+    }));
+}
+
 function buildStudioSettingsCatalog(globalResources, modelHint) {
     const promptConfig = readPromptConfig(globalResources);
     const qualityTable = promptConfig.quality_presets || {};
@@ -174,7 +189,8 @@ function buildStudioSettingsCatalog(globalResources, modelHint) {
             param: 'append_quality',
             type: 'boolean',
             byModel: qualityByModel,
-            forModel: model ? (qualityByModel[resolvePresetModelKey(qualityTable, model) || model] || qualityByModel[model] || null) : undefined
+            forModel: model ? (qualityByModel[resolvePresetModelKey(qualityTable, model) || model] || qualityByModel[model] || null) : undefined,
+            subToggles: listQualitySubToggles(promptConfig)
         },
         uc: {
             param: 'append_uc',
@@ -298,7 +314,12 @@ function patchParamSchema(props, catalog) {
         if (!props.dataset_config.properties) props.dataset_config.properties = {};
         if (!props.dataset_config.properties.nsfw) props.dataset_config.properties.nsfw = { type: 'number' };
         const nsfwDesc = formatNsfwDescription(catalog);
-        props.dataset_config.description = nsfwDesc;
+        const qualitySubs = catalog && catalog.quality && catalog.quality.subToggles;
+        let settingsHint = 'dataset_config.settings.__quality__.no_text: default on; set enabled false for in-image text. Keep append_quality on.';
+        if (Array.isArray(qualitySubs) && qualitySubs.length) {
+            settingsHint = qualitySubs.map((st) => `${st.param} (${st.name}=${st.value}${st.defaultEnabled ? ', default on' : ''})`).join('; ');
+        }
+        props.dataset_config.description = `${nsfwDesc} Quality sub-toggles: ${settingsHint}`;
         props.dataset_config.properties.nsfw.description = nsfwDesc;
         const ids = ((catalog && catalog.nsfw && catalog.nsfw.levels) || []).map((row) => row.id);
         if (ids.length) props.dataset_config.properties.nsfw.enum = ids;

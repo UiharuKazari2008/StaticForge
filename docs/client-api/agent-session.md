@@ -47,7 +47,7 @@ All four require a live bind (`404` if none).
 
 The bound tab replies with `agent_session_result` using the same `requestId`.
 
-`POST /agent/session/studio` and MCP `apply_studio_changes` accept a Change-JSON object **or** the same keys top-level (`prompt`, `uc`, `params`, `characters`, `expanders`, `vibes`, plus each `params` key such as `steps` / `sampler`). The server assembles those into Change-JSON v1 before the bound tab apply. `GET /agent/session/state` and MCP `get_studio_state` also return `settings` (live sampler/resolution enums plus quality/UC/nsfw preset id, name, and true `prompt.config` strings). Enable `append_quality` / `append_uc` instead of copying those strings into prompt/uc.
+`POST /agent/session/studio` and MCP `apply_studio_changes` accept a Change-JSON object **or** the same keys top-level (`prompt`, `uc`, `params`, `characters`, `expanders`, `vibes`, plus each `params` key such as `steps` / `sampler`). The server assembles those into Change-JSON v1 before the bound tab apply. `GET /agent/session/state` and MCP `get_studio_state` also return `settings` (live sampler/resolution enums plus quality/UC/nsfw preset id, name, and true `prompt.config` strings). Enable `append_quality` / `append_uc` instead of copying those strings into prompt/uc. If you need to change a tag inside a preset, turn that preset off and put the edited string in prompt/uc — do not leave the preset on and also paste a variant. In-image text: keep quality on and disable `dataset_config.settings.__quality__.no_text`.
 
 `autoApply` and `autoGenerate` are **siblings of `change`**, not fields inside Change-JSON.
 

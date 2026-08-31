@@ -60,8 +60,8 @@ Do **not** invent keys Studio cannot apply. Unknown keys are ignored. Director i
 | `upscale` | boolean | Request 2× upscale after generate |
 | `strength` | number | img2img strength 0–1 (only if Studio is already in a strength-capable mode) |
 | `noise` | number | img2img noise 0–1 |
-| `append_quality` | boolean | Quality preset on/off. **Do not also paste the quality string into `prompt`.** Live text (per model) is in MCP `get_studio_state.settings.quality` / `tools/list`. Prefer the flag. |
-| `append_uc` | number | `0` None, `1` Human Focus, `2` Light, `3` Heavy, `4` Curated, `5` Furry Focus. **Do not also paste that UC string into `uc`.** Live text is in `settings.uc`. Prefer the id. |
+| `append_quality` | boolean | Quality preset on/off. **Prefer this over pasting the quality string.** If you need to edit those tags, set false and put the edited string in `prompt`. Live text (per model) is in MCP `get_studio_state.settings.quality` / `tools/list`. |
+| `append_uc` | number | `0` None, `1` Human Focus, `2` Light, `3` Heavy, `4` Curated, `5` Furry Focus. **Prefer the id.** If you need to edit that UC, set `0` and put the edited string in `uc`. Live text is in `settings.uc`. |
 
 ### `fields` — base prompt / UC only
 

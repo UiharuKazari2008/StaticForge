@@ -507,7 +507,16 @@ function exploreCollectQualityCandidates(model) {
         if (text && ordered.indexOf(text) === -1) ordered.push(text);
     }
     ordered.sort((a, b) => b.length - a.length);
-    return ordered;
+    const withLegacyNoText = [];
+    ordered.forEach((text) => {
+        withLegacyNoText.push(text);
+        if (!/\bno\s+text\b/i.test(text)) {
+            withLegacyNoText.push(`${text}, no text`);
+            withLegacyNoText.push(`no text, ${text}`);
+        }
+    });
+    withLegacyNoText.sort((a, b) => b.length - a.length);
+    return withLegacyNoText;
 }
 
 function exploreResolveUcPresets(model) {

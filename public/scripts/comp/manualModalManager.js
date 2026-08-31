@@ -2113,6 +2113,9 @@ function collectManualFormValues() {
     };
 
     // Add dataset settings from window.datasetSettings if available
+    // ensureActiveSubTogglesInitialized / syncNoTextSubToggleForOverlays: public/scripts/comp/manualDropdownManager.js
+    ensureActiveSubTogglesInitialized();
+    syncNoTextSubToggleForOverlays();
     if (window.datasetSettings) {
         values.dataset_config.settings = window.datasetSettings;
     }

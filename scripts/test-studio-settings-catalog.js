@@ -20,12 +20,24 @@ const fakeResources = {
         nsfw_presets: {
             0: { remove: { uc: ['nsfw'] } },
             3: { add: { base: 'nsfw, nude' } }
-        }
+        },
+        datasets: [{
+            value: '__quality__',
+            isQualityPreset: true,
+            sub_toggles: [{
+                id: 'no_text',
+                name: 'No text',
+                value: 'no text',
+                default_enabled: true
+            }]
+        }]
     })
 };
 
 const catalog = buildStudioSettingsCatalog(fakeResources, 'v5');
 assert.ok(catalog.rule.includes('append_'));
+assert.ok(catalog.rule.includes('turn that preset off'));
+assert.ok(catalog.quality.subToggles.some((row) => row.id === 'no_text' && row.defaultEnabled));
 assert.deepStrictEqual(catalog.quality.forModel[0].value, 'very aesthetic, masterpiece, no text');
 assert.strictEqual(catalog.uc.forModel[0].id, 0);
 assert.strictEqual(catalog.uc.forModel[1].name, 'Human Focus');
@@ -59,6 +71,7 @@ assert.ok(listed.inputSchema.properties.append_uc.description.includes('Do not a
 assert.ok(listed.inputSchema.properties.params.properties.append_uc.description.includes('Human Focus'));
 assert.ok(listed.inputSchema.properties.dataset_config.properties.nsfw.description.includes('Nude'));
 assert.ok(listed.inputSchema.properties.dataset_config.properties.nsfw.description.includes('nsfw, nude'));
+assert.ok(listed.inputSchema.properties.dataset_config.description.includes('no_text'));
 
 const empty = buildStudioSettingsCatalog(null);
 assert.ok(Array.isArray(empty.samplers));

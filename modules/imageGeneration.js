@@ -7,7 +7,8 @@ const { z } = require('zod');
 const {
     matchCommaTextColon,
     splitPromptAtTextColon,
-    insertBeforeTextColonOrFirstGroup
+    insertBeforeTextColonOrFirstGroup,
+    stripNoTextTag
 } = require('./promptTextBoundary');
 let __runtimeGr = null;
 function bindRuntimeGlobalResources(globalResources) { __runtimeGr = globalResources; }
@@ -2013,24 +2014,29 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             if (datasetConfig.skipPromptValue || datasetConfig.isQualityPreset || datasetConfig.isTransparencyPreset) return true;
             return !String(datasetText || '').trim();
         };
+        const hasApplyingTextOverlays = Array.isArray(body.text_overlays) && body.text_overlays.some((overlay) => {
+            return !!(overlay && !overlay.disabled && String(overlay.text || '').trim());
+        });
         const collectSubToggleTexts = (datasetConfig, datasetSettings) => {
             const texts = [];
-            if (!datasetSettings || !datasetConfig) return texts;
-            const subToggleConfigLookup = {};
+            if (!datasetConfig) return texts;
+            const settings = datasetSettings || {};
             (datasetConfig.sub_toggles || []).forEach((st) => {
-                subToggleConfigLookup[st.id] = st;
-            });
-            Object.keys(datasetSettings).forEach((settingId) => {
-                const setting = datasetSettings[settingId];
-                if (!setting?.enabled || !setting.value) return;
-                const subToggleConfig = subToggleConfigLookup[settingId];
-                if (subToggleConfig && !isConfigAllowedForModel(subToggleConfig)) return;
-                let settingBiasValue = setting.bias !== undefined ? setting.bias :
-                    (subToggleConfig?.default !== undefined ? subToggleConfig.default : 1.0);
-                if (subToggleConfig?.negative === true) {
+                if (!isConfigAllowedForModel(st)) return;
+                if (hasApplyingTextOverlays && (st.id === 'no_text' || /^\s*no\s+text\s*$/i.test(String(st.value || '')))) {
+                    return;
+                }
+                const setting = settings[st.id];
+                const enabled = setting && setting.enabled !== undefined ? !!setting.enabled : !!st.default_enabled;
+                if (!enabled) return;
+                const settingValue = (setting && setting.value) || st.value;
+                if (!settingValue) return;
+                let settingBiasValue = setting && setting.bias !== undefined ? setting.bias :
+                    (st.default !== undefined ? st.default : 1.0);
+                if (st.negative === true) {
                     settingBiasValue = -1.0 * settingBiasValue;
                 }
-                let settingText = setting.value;
+                let settingText = settingValue;
                 if (settingBiasValue !== 1.0) {
                     settingText = applyBiasToText(settingText, settingBiasValue);
                 }
@@ -2128,6 +2134,19 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
 
                 if (body.dataset_config) {
                     body.dataset_config = normalizedDatasetConfig;
+                }
+                if (hasApplyingTextOverlays) {
+                    if (!body.dataset_config) body.dataset_config = normalizedDatasetConfig;
+                    if (!body.dataset_config.settings) body.dataset_config.settings = {};
+                    if (!body.dataset_config.settings.__quality__) body.dataset_config.settings.__quality__ = {};
+                    const qualitySettings = body.dataset_config.settings.__quality__;
+                    qualitySettings.no_text = {
+                        enabled: false,
+                        value: (qualitySettings.no_text && qualitySettings.no_text.value) || 'no text',
+                        bias: qualitySettings.no_text && qualitySettings.no_text.bias !== undefined
+                            ? qualitySettings.no_text.bias
+                            : 1
+                    };
                 }
 
                 if (datasetPrepends.length > 0) {
@@ -2375,9 +2394,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 if (targetIndex === 0) {
                     // Apply to base prompt
                     if (processedPrompt) {
-                        // Remove "no text" from prompt (case-insensitive)
-                        //processedPrompt = processedPrompt.replace(/\bno\s+text\b/gi, '').replace(/,\s*,/g, ',').trim();
-                        // Append text overlay at the very end
+                        processedPrompt = stripNoTextTag(processedPrompt);
                         processedPrompt += textAppend;
                         __runtimeGr.getLogger().detailed(`📝 Applied overlay: "${text.substring(0, 40)}${text.length > 40 ? '...' : ''}" (type: ${type})`);
                     }
@@ -2387,9 +2404,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     if (processedCharacterPrompts && processedCharacterPrompts[charIndex]) {
                         const char = processedCharacterPrompts[charIndex];
                         if (char.prompt) {
-                            // Remove "no text" from character prompt
-                            //char.prompt = char.prompt.replace(/\bno\s+text\b/gi, '').replace(/,\s*,/g, ',').trim();
-                            // Append text overlay at the very end
+                            char.prompt = stripNoTextTag(char.prompt);
                             char.prompt += textAppend;
                             console.log(`📝 Applied text overlay to character ${targetIndex} prompt: "${text}" (type: ${type})`);
                         }
