@@ -279,6 +279,81 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 | `list_notes_by_workspace` / `create_note` / `update_note` | extra notepad CRUD | `notes` |
 | `vfs_stat` / `vfs_write` / `vfs_delete` / `list_desktop_items` | VFS mutate + desktop shortcuts | `vfs` |
 
+### Module Sets (sfapp_ scopes)
+
+MCP tools are organized into **module sets**. Clients select which modules they use via named `sfapp_` scopes on their application key. A missing module scope means those tools are not available.
+
+Example: Grok web must not get cake feeding → do not grant `sfapp_cake_pantry:feed`. A bot may have deliver without consume → grant `sfapp_cake_pantry:deliver` only.
+
+Module scopes support submodule specifiers: `sfapp_cake_pantry:deliver` grants only `deliver_cake`. The full `sfapp_cake_pantry` grants all four pantry tools.
+
+#### Cake Pantry Module (`sfapp_cake_pantry`)
+
+Account-based cake tracking for Menma, Hoshino, Ivory. Preserves Menma's existing `.menma/cake-log.jsonl` + `state.json` structure; extends to per-account ledgers.
+
+| Tool | Description | Submodule |
+|------|-------------|-----------|
+| `deliver_cake` | Add slices to a pile with reason (reward for ship/work). Pass `accountId`, `slices` (or `line_counts` for auto-calc: 1/40 lines or 10KB, min 1 cap 16), `reason`, `cake_type`, `credit` (`grok.menma` = 1.25x). | `deliver` |
+| `feed_cake` | Yukimi grants slices (promotion or just because). Distinct from deliver. Pass `accountId`, `slices`, `reason`, `cake_type`, `from`. | `feed` |
+| `inspect_pantry` | View piles, past consumes, kg history. Returns data, not a wall of text. Pass `accountId`, optional `log_limit`. | `inspect` |
+| `consume_cake` | Eater eats pending slices. Returns usual response data plus **before and after image refs** and kg before/after. Visual QA invariants: empty plates, visible growth, hip contrast, up to 10 gens. | `consume` |
+
+**Cake math:**
+- 0.12kg per slice
+- Cleanup: 1 slice per 40 lines or 10KB removed (min 1, cap 16)
+- 1.25x multiplier for `grok.menma` / `Lead` credit
+
+**Accounts:** `menma`, `hoshino`, `ivory`. Menma's look is locked (breakfast prompts). Hoshino/Ivory ledgers start with their own identity fields.
+
+#### Report Issue Module (`sfapp_report_issue`)
+
+Development QA reporting for Grok and other agents. Reports: tool failures, taking too long, too much data, too bloated / hard to understand.
+
+| Tool | Description |
+|------|-------------|
+| `report_issue` | Report a QA issue. Pass `type` (critical, failure, slow, too_much_data, bloated, hard_to_understand, etc.), `tool`, `message`, `context`, `reporter`, `severity` 1–5. |
+
+**Report levels (config):**
+| Level | Name | Accepts |
+|-------|------|---------|
+| 0 | critical | Recurring failure/confusion only |
+| 1 | errors | Any misunderstandings and errors (default) |
+| 2 | detailed | More detailed level 1 (warnings, slow, bloat) |
+| 3 | all | All good and bad reviews of tools and guides |
+
+Reports are filtered by the configured level. Level 0 drops non-critical reports; level 3 accepts everything. Stored in `.issues/reports.jsonl`.
+
+#### Usage Module (`sfapp_usage`)
+
+Structured NovelAI account/subscription data. Grok web may receive this module.
+
+| Tool | Description |
+|------|-------------|
+| `get_usage` | Get structured usage data. Returns `fixedAnlas`, `paidAnlas`, `opusV5BatteryRemaining` (percent), `withinRefillRate`, `generationCount24h`, `hoursUntilRenewal`. |
+
+**Response fields:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `fixedAnlas` | number | Included/fixed Anlas remaining |
+| `paidAnlas` | number | Paid Anlas remaining |
+| `totalAnlas` | number | Sum of fixed + paid |
+| `opusV5BatteryRemaining` | number\|null | V5 Opus meter/battery percent remaining |
+| `opusV5IsNegative` | boolean\|null | true if over-draining the Opus meter |
+| `opusV5TimeUntilNextPercent` | number\|null | Seconds until next percent refills |
+| `withinRefillRate` | boolean | true if current usage is within refill rate (not over-draining) |
+| `generationCount24h` | number | Generations in the last 24 hours (rolling window from `imageCounter.js`) |
+| `hoursUntilRenewal` | number\|null | Hours until subscription reset/renewal |
+| `subscriptionTier` | number\|null | 0 Paper, 1 Tablet, 2 Scroll, 3 Opus |
+| `subscriptionActive` | boolean | Subscription active |
+
+**Notes:**
+- Upscale uses Anlas, not the Opus meter
+- Img2img drain follows Strength not Noise (see #91)
+- Does NOT invent remaining gens from usageToolManager's 17.3 * percent
+- Uses existing `opusUsage.js` / account endpoints
+
+---
+
 `search_autofill` returns `{ success, results: [{ term, success, untrained, results: [{ tag, count, confidence, exact }] }] }`. Default `exactOnly`. That is the existing ranking-test search, not a new search API. `search_nax` returns `{ success, query, kind, slugs, sort, items: [{ tag, prompt, gallerySlug, score, upvotes, downvotes, ratio, favorite, tryMark }], total, hasMore, next }`. That is the existing NAX `queryTags` ranking, not a new dataset. `get_wiki_page` is tag wiki (danbooru / e621) and returns `text` / `markdown` strings — never `html: {}`. Static / Grimoire pages use hidden `list_static_wiki_*` / `search_static_wiki` / `get_static_wiki_page`. Notes use the existing notepad packets — request the `notes` scope on consent.
 
 `autoApply` (default true) and `autoGenerate` (default false) stay **siblings of `change`**. `autoGenerate` clicks the bound tab's existing Generate button after a successful apply. That is not a second generate API.
