@@ -3323,10 +3323,12 @@ async function callTool(globalResources, req, name, args) {
         // withinRefillRate: not over-draining (isNegative false or no usage data)
         const withinRefillRate = !opusUsage || opusUsage.isNegative !== true;
 
-        // Get generation count from image counter (last 24h not directly available,
-        // but we can provide total count and note that 24h is not tracked server-side)
-        const imageCounter = globalResources.getImageCounter ? globalResources.getImageCounter() : null;
-        const generationCount24h = null; // Not tracked server-side; would need separate tracking
+        // Get generation count from image counter (24h rolling window)
+        // modules/imageCounter.js tracks timestamps and prunes entries older than 24h
+        const imageCounterModule = globalResources.getImageCounter ? globalResources.getImageCounter() : null;
+        const generationCount24h = imageCounterModule && typeof imageCounterModule.getCount === 'function'
+            ? imageCounterModule.getCount()
+            : null;
 
         const result = {
             success: true,
@@ -3342,7 +3344,7 @@ async function callTool(globalResources, req, name, args) {
             subscriptionTier: subscription ? subscription.tier : null,
             subscriptionActive: subscription ? subscription.active !== false : false,
             refreshedAt: new Date().toISOString(),
-            note: 'Upscale uses Anlas, not Opus meter. generationCount24h not tracked server-side.'
+            note: 'Upscale uses Anlas, not Opus meter.'
         };
         return mcpTextResult(result);
     }

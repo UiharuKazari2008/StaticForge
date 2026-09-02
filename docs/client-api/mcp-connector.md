@@ -341,7 +341,7 @@ Structured NovelAI account/subscription data. Grok web may receive this module.
 | `opusV5IsNegative` | boolean\|null | true if over-draining the Opus meter |
 | `opusV5TimeUntilNextPercent` | number\|null | Seconds until next percent refills |
 | `withinRefillRate` | boolean | true if current usage is within refill rate (not over-draining) |
-| `generationCount24h` | number\|null | Generations in last 24h (not tracked server-side) |
+| `generationCount24h` | number | Generations in the last 24 hours (rolling window from `imageCounter.js`) |
 | `hoursUntilRenewal` | number\|null | Hours until subscription reset/renewal |
 | `subscriptionTier` | number\|null | 0 Paper, 1 Tablet, 2 Scroll, 3 Opus |
 | `subscriptionActive` | boolean | Subscription active |
