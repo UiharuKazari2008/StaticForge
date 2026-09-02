@@ -117,6 +117,15 @@ function hasSfappModuleScopes(scopes) {
 }
 
 /**
+ * HARD DENY: Strip cake pantry scopes (sfapp_cake_pantry and subscopes) for Grok web.
+ * Grok web must never receive cake, even if the login request explicitly included it.
+ */
+function stripCakeScopesIfGrokWeb(scopes, redirectUri) {
+    if (!isGrokWebOrigin(redirectUri)) return scopes;
+    return scopes.filter((s) => !s.startsWith('sfapp_cake_pantry'));
+}
+
+/**
  * Get available modules for the consent picker
  * Returns module definitions with disabled flag for Grok web (cake blocked)
  */
@@ -144,7 +153,7 @@ function renderModulesStep(params) {
         const disabledClass = mod.disabled ? ' disabled' : '';
         const checked = mod.defaultChecked && !mod.disabled ? ' checked' : '';
         const disabledNote = mod.disabledReason ? ` <em>(${escapeHtml(mod.disabledReason)})</em>` : '';
-        return `<li class="module-item${disabledClass}" onclick="if(!this.classList.contains('disabled'))this.querySelector('input').click()">
+        return `<li class="module-item${disabledClass}">
 <input type="checkbox" name="modules" value="${escapeHtml(mod.scope)}" id="mod_${escapeHtml(mod.id)}"${checked}${disabled}>
 <label for="mod_${escapeHtml(mod.id)}">
 <strong>${escapeHtml(mod.label)}${disabledNote}</strong>
@@ -481,9 +490,11 @@ function createOAuthRoutes(globalResources) {
         if (!keyScopes) {
             return redirectWithError(res, redirectUri, 'server_error', 'Application key no longer valid', state);
         }
-        const grantedScopes = keyScopes.includes('universal')
+        const filteredScopes = keyScopes.includes('universal')
             ? requestedScopes
             : requestedScopes.filter((s) => keyScopes.includes(s));
+        // HARD DENY: strip cake scopes for Grok web regardless of request
+        const grantedScopes = stripCakeScopesIfGrokWeb(filteredScopes, redirectUri);
         const code = await provider.createAuthorizationCode({
             clientId,
             applicationKeyId,
