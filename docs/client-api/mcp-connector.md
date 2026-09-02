@@ -371,7 +371,7 @@ scope=generation gallery sfapp_cake_pantry:deliver sfapp_cake_pantry:inspect
 **Default behavior:**
 - Core scopes (generation, gallery, workspace, etc.) are always included based on the request
 - `sfapp_usage` is checked by default in the picker — most clients want usage data
-- `sfapp_cake_pantry` is **unchecked** by default and **disabled for Grok web** (grok.com origin). Grok web must not receive cake pantry access.
+- `sfapp_cake_pantry` is **unchecked** by default and **disabled for Grok web** (grok.com origin). Grok web must not receive cake pantry access. Even if the OAuth request includes `sfapp_cake_pantry`, it is stripped at both key-creation/upgrade time (never added to the application key) and grant time (never included in the authorization code).
 - `sfapp_report_issue` is unchecked by default — opt-in for development QA
 
 **Pre-specifying modules:** If the client already knows which modules it needs, include them in the `scope` parameter. The module picker is skipped when `sfapp_` scopes are present in the request.

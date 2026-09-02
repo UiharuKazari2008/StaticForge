@@ -677,7 +677,9 @@ function createOAuthRoutes(globalResources) {
 
             if (action === 'create_key') {
                 const requestedScopes = parseScopes(scope);
-                const createScopes = consent.namedScopesForCreate(requestedScopes);
+                // HARD DENY: strip cake scopes from key for Grok web
+                const filteredScopes = stripCakeScopesIfGrokWeb(requestedScopes, redirect_uri);
+                const createScopes = consent.namedScopesForCreate(filteredScopes);
                 const manager = globalResources.getApplicationAuthManager();
                 const created = await manager.createApplicationKey({
                     appName: String(new_key_name || '').trim() || consent.generatedKeyName(client.clientName),
@@ -699,6 +701,8 @@ function createOAuthRoutes(globalResources) {
 
             if (action === 'approve') {
                 const requestedScopes = parseScopes(scope);
+                // HARD DENY: strip cake scopes from key upgrade for Grok web
+                const scopesForKey = stripCakeScopesIfGrokWeb(requestedScopes, redirect_uri);
                 const keys = await loadPickKeys(session.userType, requestedScopes, client.applicationKeyId);
                 const picked = keys.find((k) => k.id === selected_key_id);
                 let applicationKeyId = picked
@@ -711,7 +715,7 @@ function createOAuthRoutes(globalResources) {
                     });
                 }
                 const manager = globalResources.getApplicationAuthManager();
-                const merged = await manager.mergeNamedScopes(applicationKeyId, requestedScopes, {
+                const merged = await manager.mergeNamedScopes(applicationKeyId, scopesForKey, {
                     userType: session.userType
                 });
                 if (!merged.success) {
