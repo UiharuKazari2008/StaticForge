@@ -20,7 +20,7 @@
 #   STATICFORGE_SOCKET_TIMEOUT_MS      Socket client timeout in ms (default: 120000)
 #   STATICFORGE_SERVER_WAIT_TIMEOUT_MS Wait for HTTP ready after restart (default: 180000)
 #   STATICFORGE_HTTP_PORT                Server port for readiness probe (default: 9220)
-#   STATICFORGE_PM2_TARGET               pm2 process id/name to restart (default: 12)
+#   STATICFORGE_PM2_TARGET               pm2 process id/name to restart (default: Dreamscape)
 
 set -euo pipefail
 
@@ -28,7 +28,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CLIENT_JS="$ROOT/scripts/service-worker-cache-socket.js"
 SOCKET_PATH_DEFAULT="/tmp/staticforge_mcp.sock"
 
-PM2_TARGET="${STATICFORGE_PM2_TARGET:-12}"
+PM2_TARGET="${STATICFORGE_PM2_TARGET:-Dreamscape}"
 SOCKET_PATH="${STATICFORGE_SOCKET_PATH:-$SOCKET_PATH_DEFAULT}"
 SOCKET_WAIT_TIMEOUT_MS="${STATICFORGE_SOCKET_WAIT_TIMEOUT_MS:-120000}"
 SERVER_WAIT_TIMEOUT_MS="${STATICFORGE_SERVER_WAIT_TIMEOUT_MS:-180000}"
