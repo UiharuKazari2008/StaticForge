@@ -308,6 +308,38 @@
     }
   });
 
+  // --- 5. Apocrypha Issue Views ---
+  registerDsap({
+    url: 'apocrypha.737.jp.net',
+    aliases: ['dsap://apocrypha.737.jp.net'],
+    title: 'Apocrypha',
+    type: 'core',
+    async activate(shell, match) {
+      if (!shell || !shell.displayArea) return false;
+      shell._searchPageMode = false;
+      if (shell.searchBody) {
+        shell.searchBody.classList.remove('search-page-view');
+      }
+      try {
+        const response = await fetch('https://apocrypha.737.jp.net/', { credentials: 'include' });
+        const html = await response.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const mainContent = doc.querySelector('main');
+        if (mainContent) {
+          shell.displayArea.innerHTML = '';
+          shell.displayArea.appendChild(mainContent);
+        } else {
+          shell.displayArea.innerHTML = '<div style="padding: 2rem;">Error: Could not find main content.</div>';
+        }
+      } catch (e) {
+        console.error('[Apocrypha] Error fetching view:', e);
+        shell.displayArea.innerHTML = '<div style="padding: 2rem;">Error loading Apocrypha.</div>';
+      }
+      return true;
+    }
+  });
+
   // Optional: expose a tiny helper so other code can ask "is this one of the core encyclopedia surfaces?"
   if (typeof window !== 'undefined') {
     window.__grimoireCoreDomainsRegistered = true;

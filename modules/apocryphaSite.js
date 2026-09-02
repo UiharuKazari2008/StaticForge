@@ -64,7 +64,7 @@ function renderApocrypha({ title, isGrimoire }) {
 </html>`;
 }
 
-function registerRoutes(app, { devAuthMiddleware, globalResources }) {
+function registerRoutes(app, { globalResources }) {
     const uuid = globalResources.getApocryphaPathUuid();
     if (!uuid) {
         console.warn('[apocrypha] missing apocryphaPathUuid; routes not mounted');
@@ -79,18 +79,12 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
         }));
     };
 
-    app.use(prefix + '/grim', devAuthMiddleware, (req, res, next) => {
-        if (req.method !== 'GET' && req.method !== 'HEAD') {
-            return next();
-        }
-        return sendView(req, res, true);
-    });
-
     app.use(prefix, (req, res, next) => {
         if (req.method !== 'GET' && req.method !== 'HEAD') {
             return next();
         }
-        return sendView(req, res, false);
+        const isGrimoire = !!(req.session && req.session.authenticated);
+        return sendView(req, res, isGrimoire);
     });
 }
 

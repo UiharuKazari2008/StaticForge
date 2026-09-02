@@ -2010,7 +2010,7 @@ app.post('/agent/broadcast', devAuthMiddleware, (req, res) => {
 });
 agentClientBridge.registerRoutes(app, { devAuthMiddleware, globalResources });
 mcpAgentFacade.registerRoutes(app, { globalResources });
-apocryphaSite.registerRoutes(app, { devAuthMiddleware, globalResources });
+apocryphaSite.registerRoutes(app, { globalResources });
 app.get('/.login.jpg', (req, res) => {
     res.sendFile(path.join(cacheDir, 'login_array.jpg'));
 });
