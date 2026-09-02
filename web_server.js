@@ -39,6 +39,7 @@ const runtimeAssetService = require('./modules/runtimeAssetService');
 const agentAssetBundle = require('./modules/agentAssetBundle');
 const agentClientBridge = require('./modules/agentClientBridge');
 const mcpAgentFacade = require('./modules/mcpAgentFacade');
+const apocryphaSite = require('./modules/apocryphaSite');
 const workspaceCssService = require('./modules/workspaceCssService');
 const serverStartupStatus = require('./modules/serverStartupStatus');
 const { browserRequest } = require('./modules/browserHttp');
@@ -1637,6 +1638,10 @@ app.use((req, res, next) => {
     if (req.path.startsWith(mcpPrefix)) {
         return next();
     }
+    const apocryphaPrefix = `/${globalResources.getApocryphaPathUuid()}`;
+    if (req.path.startsWith(apocryphaPrefix)) {
+        return next();
+    }
     
     const startTime = Date.now();
     const timestamp = new Date().toLocaleString('en-US', {
@@ -2005,6 +2010,7 @@ app.post('/agent/broadcast', devAuthMiddleware, (req, res) => {
 });
 agentClientBridge.registerRoutes(app, { devAuthMiddleware, globalResources });
 mcpAgentFacade.registerRoutes(app, { globalResources });
+apocryphaSite.registerRoutes(app, { globalResources });
 app.get('/.login.jpg', (req, res) => {
     res.sendFile(path.join(cacheDir, 'login_array.jpg'));
 });

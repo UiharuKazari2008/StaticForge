@@ -2560,6 +2560,23 @@ class GlobalResources {
         return uuid;
     }
 
+    ensureApocryphaPathUuid() {
+        let uuid = this.getSecureConfig({ path: 'apocryphaPathUuid' });
+        if (!uuid || typeof uuid !== 'string') {
+            uuid = crypto.randomUUID();
+            this.modifyConfig('secureConfig').assign('apocryphaPathUuid', uuid);
+        }
+        return uuid;
+    }
+
+    getApocryphaPathUuid() {
+        const uuid = this.getSecureConfig({ path: 'apocryphaPathUuid' });
+        if (!uuid || typeof uuid !== 'string') {
+            return this.ensureApocryphaPathUuid();
+        }
+        return uuid;
+    }
+
     /**
      * Get Express app instance
      */

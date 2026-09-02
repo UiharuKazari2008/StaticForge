@@ -8,6 +8,7 @@
     { "path": ["location", "longitude"], "type": "number", "label": "Longitude", "required": true },
     { "path": ["logViewerPathUuid"], "type": "string", "label": "Log Viewer Path UUID", "editorType": "input", "description": "UUID segment for the log viewer VFS route" },
     { "path": ["vfsPathUuid"], "type": "string", "label": "VFS Path UUID", "editorType": "input", "description": "UUID segment for the virtual filesystem route" },
+    { "path": ["apocryphaPathUuid"], "type": "string", "label": "Apocrypha Path UUID", "editorType": "input", "description": "UUID segment for the public Apocrypha views (hostname presents this path)" },
     { "path": ["devLoginKey"], "type": "string", "secret": true, "label": "Development Login Key" },
     { "path": ["loginKey"], "type": "string", "secret": true, "label": "Login Key" },
     { "path": ["loginPin"], "type": "string", "secret": true, "label": "Admin PIN" },
