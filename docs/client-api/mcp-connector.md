@@ -352,6 +352,30 @@ Structured NovelAI account/subscription data. Grok web may receive this module.
 - Does NOT invent remaining gens from usageToolManager's 17.3 * percent
 - Uses existing `opusUsage.js` / account endpoints
 
+#### Requesting Modules at Login
+
+**Via OAuth scope parameter:** Include `sfapp_` scopes in the OAuth `scope` parameter to request specific modules:
+
+```
+scope=generation gallery workspace sfapp_usage sfapp_report_issue
+```
+
+Submodule specifiers narrow access within a module:
+
+```
+scope=generation gallery sfapp_cake_pantry:deliver sfapp_cake_pantry:inspect
+```
+
+**Module picker (OAuth consent page):** If the OAuth authorization request does **not** include any `sfapp_` scopes, the consent page shows a module picker after PIN authentication. Users select which optional modules to enable before proceeding to key selection. This allows clients that omit modules from the scope to let users opt in.
+
+**Default behavior:**
+- Core scopes (generation, gallery, workspace, etc.) are always included based on the request
+- `sfapp_usage` is checked by default in the picker — most clients want usage data
+- `sfapp_cake_pantry` is **unchecked** by default and **disabled for Grok web** (grok.com origin). Grok web must not receive cake pantry access.
+- `sfapp_report_issue` is unchecked by default — opt-in for development QA
+
+**Pre-specifying modules:** If the client already knows which modules it needs, include them in the `scope` parameter. The module picker is skipped when `sfapp_` scopes are present in the request.
+
 ---
 
 `search_autofill` returns `{ success, results: [{ term, success, untrained, results: [{ tag, count, confidence, exact }] }] }`. Default `exactOnly`. That is the existing ranking-test search, not a new search API. `search_nax` returns `{ success, query, kind, slugs, sort, items: [{ tag, prompt, gallerySlug, score, upvotes, downvotes, ratio, favorite, tryMark }], total, hasMore, next }`. That is the existing NAX `queryTags` ranking, not a new dataset. `get_wiki_page` is tag wiki (danbooru / e621) and returns `text` / `markdown` strings — never `html: {}`. Static / Grimoire pages use hidden `list_static_wiki_*` / `search_static_wiki` / `get_static_wiki_page`. Notes use the existing notepad packets — request the `notes` scope on consent.
