@@ -51,15 +51,22 @@ button{flex:1;padding:14px;border:none;border-radius:8px;font-size:1rem;font-wei
 .custom-dropdown-menu.hidden{display:none}
 .custom-dropdown-menu button{width:100%;text-align:left;background:transparent;color:#e0e0e0;border-radius:0;font-weight:500;padding:10px 12px}
 .custom-dropdown-menu button:hover{background:#252542}
-.module-list{list-style:none;margin:12px 0}
-.module-item{display:flex;align-items:flex-start;padding:12px;background:#1a1a2e;border-radius:8px;margin-bottom:8px;cursor:pointer}
-.module-item:hover{background:#1e1e36}
-.module-item.disabled{opacity:0.5;cursor:not-allowed}
-.module-item input[type="checkbox"]{margin-right:12px;margin-top:3px;width:18px;height:18px;accent-color:#8b8bff}
-.module-item label{flex:1;cursor:pointer}
-.module-item label strong{display:block;color:#e0e0e0;font-size:0.95rem;margin-bottom:4px}
-.module-item label span{color:#888;font-size:0.85rem}
-.module-item.disabled label{cursor:not-allowed}
+.module-dropdown{position:relative;margin-bottom:12px}
+.module-dropdown-btn{width:100%;text-align:left;background:#1a1a2e;color:#e0e0e0;border:1px solid #3a3a5c;border-radius:8px;padding:12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.module-dropdown-btn:hover{border-color:#8b8bff}
+.module-dropdown-btn::after{content:"▾";color:#888;font-size:0.8rem}
+.module-dropdown-menu{position:absolute;left:0;right:0;top:100%;z-index:2;background:#1a1a2e;border:1px solid #3a3a5c;border-radius:8px;margin-top:4px;max-height:280px;overflow:auto}
+.module-dropdown-menu.hidden{display:none}
+.module-option{display:flex;align-items:flex-start;padding:10px 12px;cursor:pointer;border-bottom:1px solid #252542}
+.module-option:last-child{border-bottom:none}
+.module-option:hover{background:#252542}
+.module-option.disabled{opacity:0.5;cursor:not-allowed}
+.module-option.disabled:hover{background:transparent}
+.module-option input[type="checkbox"]{margin-right:10px;margin-top:3px;width:16px;height:16px;accent-color:#8b8bff;flex-shrink:0}
+.module-option-text{flex:1}
+.module-option-text strong{display:block;color:#e0e0e0;font-size:0.9rem}
+.module-option-text span{color:#888;font-size:0.8rem}
+.module-option-text em{color:#ff6b6b;font-size:0.75rem}
 .module-note{font-size:0.8rem;color:#666;margin-top:12px;padding:8px;background:#1a1a2e;border-radius:6px}
 </style>
 </head>
@@ -144,22 +151,27 @@ function getAvailableModulesForConsent(redirectUri) {
 }
 
 /**
- * Render the module picker step HTML
+ * Render the module picker step HTML (multi-select dropdown)
  */
 function renderModulesStep(params) {
     const modules = getAvailableModulesForConsent(params.redirectUri);
-    const moduleListHtml = modules.map((mod) => {
+    const defaultSelected = modules.filter((m) => m.defaultChecked && !m.disabled);
+    const defaultLabel = defaultSelected.length > 0
+        ? defaultSelected.map((m) => m.label).join(', ')
+        : 'None selected';
+
+    const optionsHtml = modules.map((mod) => {
         const disabled = mod.disabled ? ' disabled' : '';
         const disabledClass = mod.disabled ? ' disabled' : '';
         const checked = mod.defaultChecked && !mod.disabled ? ' checked' : '';
-        const disabledNote = mod.disabledReason ? ` <em>(${escapeHtml(mod.disabledReason)})</em>` : '';
-        return `<li class="module-item${disabledClass}">
+        const disabledNote = mod.disabledReason ? `<br><em>${escapeHtml(mod.disabledReason)}</em>` : '';
+        return `<div class="module-option${disabledClass}">
 <input type="checkbox" name="modules" value="${escapeHtml(mod.scope)}" id="mod_${escapeHtml(mod.id)}"${checked}${disabled}>
-<label for="mod_${escapeHtml(mod.id)}">
-<strong>${escapeHtml(mod.label)}${disabledNote}</strong>
-<span>${escapeHtml(mod.description)}</span>
+<label for="mod_${escapeHtml(mod.id)}" class="module-option-text">
+<strong>${escapeHtml(mod.label)}</strong>
+<span>${escapeHtml(mod.description)}${disabledNote}</span>
 </label>
-</li>`;
+</div>`;
     }).join('\n');
 
     return `<form method="POST" action="${escapeHtml(params.formAction)}" autocomplete="off">
@@ -167,16 +179,38 @@ ${hiddenOAuthFields(params)}
 <input type="hidden" name="csrf" value="${escapeHtml(params.csrf)}">
 <div class="field">
 <label>Select optional modules</label>
-<ul class="module-list">
-${moduleListHtml}
-</ul>
+<div class="module-dropdown">
+<button type="button" class="module-dropdown-btn" id="moduleDropdownBtn">
+<span id="moduleDropdownSelected">${escapeHtml(defaultLabel)}</span>
+</button>
+<div id="moduleDropdownMenu" class="module-dropdown-menu hidden">
+${optionsHtml}
+</div>
+</div>
 <p class="module-note">Core tools (generation, gallery, search, etc.) are always included. These optional modules add specialized tools.</p>
 </div>
 <div class="buttons">
 <button type="submit" name="action" value="select_modules" class="approve">Continue</button>
 <button type="submit" name="action" value="deny" class="deny">Deny</button>
 </div>
-</form>`;
+</form>
+<script>
+(function(){
+var btn=document.getElementById('moduleDropdownBtn');
+var menu=document.getElementById('moduleDropdownMenu');
+var label=document.getElementById('moduleDropdownSelected');
+if(!btn||!menu)return;
+btn.addEventListener('click',function(e){e.preventDefault();menu.classList.toggle('hidden');});
+document.addEventListener('click',function(e){if(!btn.contains(e.target)&&!menu.contains(e.target))menu.classList.add('hidden');});
+menu.querySelectorAll('input[type="checkbox"]').forEach(function(cb){
+cb.addEventListener('change',updateLabel);
+});
+function updateLabel(){
+var checked=Array.from(menu.querySelectorAll('input[type="checkbox"]:checked:not(:disabled)'));
+label.textContent=checked.length>0?checked.map(function(c){return c.parentElement.querySelector('strong').textContent;}).join(', '):'None selected';
+}
+})();
+</script>`;
 }
 
 function hiddenOAuthFields(params) {
