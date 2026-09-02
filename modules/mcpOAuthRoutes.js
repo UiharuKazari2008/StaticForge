@@ -2,10 +2,13 @@
  * OAuth 2.1 + PKCE HTTP routes for MCP Grok connector.
  * Mounted under /{mcpPathUuid}/oauth/* by mcpAgentFacade.js
  * OAuth consent chrome. Yukimi asked in chat to collapse scopes and auto-key.
+ * Module picker: when no sfapp_ scopes in request, let user select modules.
  */
 
 const { McpOAuthProvider, validateRedirectUri, parseScopes } = require('./mcpOAuthProvider');
 const consent = require('./mcpOAuthConsent');
+// modules/mcpModuleRegistry.js — specialized module definitions
+const { listSpecializedModules } = require('./mcpModuleRegistry');
 
 const CONSENT_PAGE_HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -48,6 +51,23 @@ button{flex:1;padding:14px;border:none;border-radius:8px;font-size:1rem;font-wei
 .custom-dropdown-menu.hidden{display:none}
 .custom-dropdown-menu button{width:100%;text-align:left;background:transparent;color:#e0e0e0;border-radius:0;font-weight:500;padding:10px 12px}
 .custom-dropdown-menu button:hover{background:#252542}
+.module-dropdown{position:relative;margin-bottom:12px}
+.module-dropdown-btn{width:100%;text-align:left;background:#1a1a2e;color:#e0e0e0;border:1px solid #3a3a5c;border-radius:8px;padding:12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.module-dropdown-btn:hover{border-color:#8b8bff}
+.module-dropdown-btn::after{content:"▾";color:#888;font-size:0.8rem}
+.module-dropdown-menu{position:absolute;left:0;right:0;top:100%;z-index:2;background:#1a1a2e;border:1px solid #3a3a5c;border-radius:8px;margin-top:4px;max-height:280px;overflow:auto}
+.module-dropdown-menu.hidden{display:none}
+.module-option{display:flex;align-items:flex-start;padding:10px 12px;cursor:pointer;border-bottom:1px solid #252542}
+.module-option:last-child{border-bottom:none}
+.module-option:hover{background:#252542}
+.module-option.disabled{opacity:0.5;cursor:not-allowed}
+.module-option.disabled:hover{background:transparent}
+.module-option input[type="checkbox"]{margin-right:10px;margin-top:3px;width:16px;height:16px;accent-color:#8b8bff;flex-shrink:0}
+.module-option-text{flex:1}
+.module-option-text strong{display:block;color:#e0e0e0;font-size:0.9rem}
+.module-option-text span{color:#888;font-size:0.8rem}
+.module-option-text em{color:#ff6b6b;font-size:0.75rem}
+.module-note{font-size:0.8rem;color:#666;margin-top:12px;padding:8px;background:#1a1a2e;border-radius:6px}
 </style>
 </head>
 <body>
@@ -79,6 +99,120 @@ function escapeHtml(str) {
         .replace(/'/g, '&#39;');
 }
 
+/**
+ * Check if the request origin is from Grok web (grok.com)
+ * Grok web must not get cake pantry access
+ */
+function isGrokWebOrigin(redirectUri) {
+    try {
+        const url = new URL(redirectUri);
+        const host = url.hostname.toLowerCase();
+        return host === 'grok.com' || host === 'www.grok.com';
+    } catch (_) {
+        return false;
+    }
+}
+
+/**
+ * Check if requested scopes already include any sfapp_ module scopes
+ */
+function hasSfappModuleScopes(scopes) {
+    if (!Array.isArray(scopes)) {
+        scopes = parseScopes(scopes);
+    }
+    return scopes.some((s) => s.startsWith('sfapp_'));
+}
+
+/**
+ * HARD DENY: Strip cake pantry scopes (sfapp_cake_pantry and subscopes) for Grok web.
+ * Grok web must never receive cake, even if the login request explicitly included it.
+ */
+function stripCakeScopesIfGrokWeb(scopes, redirectUri) {
+    if (!isGrokWebOrigin(redirectUri)) return scopes;
+    return scopes.filter((s) => !s.startsWith('sfapp_cake_pantry'));
+}
+
+/**
+ * Get available modules for the consent picker
+ * Returns module definitions with disabled flag for Grok web (cake blocked)
+ */
+function getAvailableModulesForConsent(redirectUri) {
+    const modules = listSpecializedModules();
+    const isGrokWeb = isGrokWebOrigin(redirectUri);
+    return modules.map((mod) => {
+        const isCake = mod.id === 'cake_pantry';
+        return {
+            ...mod,
+            disabled: isGrokWeb && isCake,
+            disabledReason: isGrokWeb && isCake ? 'Not available for Grok web' : null,
+            defaultChecked: mod.id === 'usage' // usage defaults on, others off
+        };
+    });
+}
+
+/**
+ * Render the module picker step HTML (multi-select dropdown)
+ */
+function renderModulesStep(params) {
+    const modules = getAvailableModulesForConsent(params.redirectUri);
+    const defaultSelected = modules.filter((m) => m.defaultChecked && !m.disabled);
+    const defaultLabel = defaultSelected.length > 0
+        ? defaultSelected.map((m) => m.label).join(', ')
+        : 'None selected';
+
+    const optionsHtml = modules.map((mod) => {
+        const disabled = mod.disabled ? ' disabled' : '';
+        const disabledClass = mod.disabled ? ' disabled' : '';
+        const checked = mod.defaultChecked && !mod.disabled ? ' checked' : '';
+        const disabledNote = mod.disabledReason ? `<br><em>${escapeHtml(mod.disabledReason)}</em>` : '';
+        return `<div class="module-option${disabledClass}">
+<input type="checkbox" name="modules" value="${escapeHtml(mod.scope)}" id="mod_${escapeHtml(mod.id)}"${checked}${disabled}>
+<label for="mod_${escapeHtml(mod.id)}" class="module-option-text">
+<strong>${escapeHtml(mod.label)}</strong>
+<span>${escapeHtml(mod.description)}${disabledNote}</span>
+</label>
+</div>`;
+    }).join('\n');
+
+    return `<form method="POST" action="${escapeHtml(params.formAction)}" autocomplete="off">
+${hiddenOAuthFields(params)}
+<input type="hidden" name="csrf" value="${escapeHtml(params.csrf)}">
+<div class="field">
+<label>Select optional modules</label>
+<div class="module-dropdown">
+<button type="button" class="module-dropdown-btn" id="moduleDropdownBtn">
+<span id="moduleDropdownSelected">${escapeHtml(defaultLabel)}</span>
+</button>
+<div id="moduleDropdownMenu" class="module-dropdown-menu hidden">
+${optionsHtml}
+</div>
+</div>
+<p class="module-note">Core tools (generation, gallery, search, etc.) are always included. These optional modules add specialized tools.</p>
+</div>
+<div class="buttons">
+<button type="submit" name="action" value="select_modules" class="approve">Continue</button>
+<button type="submit" name="action" value="deny" class="deny">Deny</button>
+</div>
+</form>
+<script>
+(function(){
+var btn=document.getElementById('moduleDropdownBtn');
+var menu=document.getElementById('moduleDropdownMenu');
+var label=document.getElementById('moduleDropdownSelected');
+if(!btn||!menu)return;
+btn.addEventListener('click',function(e){e.preventDefault();menu.classList.toggle('hidden');});
+document.addEventListener('click',function(e){if(!btn.contains(e.target)&&!menu.contains(e.target))menu.classList.add('hidden');});
+menu.querySelectorAll('input[type="checkbox"]').forEach(function(cb){
+cb.addEventListener('change',updateLabel);
+});
+function updateLabel(){
+var checked=Array.from(menu.querySelectorAll('input[type="checkbox"]:checked:not(:disabled)'));
+label.textContent=checked.length>0?checked.map(function(c){return c.parentElement.querySelector('strong').textContent;}).join(', '):'None selected';
+}
+})();
+</script>`;
+}
+
 function hiddenOAuthFields(params) {
     return [
         `<input type="hidden" name="client_id" value="${escapeHtml(params.clientId)}">`,
@@ -107,12 +241,12 @@ ${hiddenOAuthFields(params)}
 </form>`;
 }
 
-function renderKeyOptions(keys, selectedKeyId, requestedScopes) {
+function renderKeyOptions(keys, selectedKeyId, displayScopes) {
     if (!keys.length) {
         return '<p class="note">No keys yet. Create one below.</p>';
     }
     return keys.map((key) => {
-        const missing = consent.scopesMissingFromKey(key.scopes, requestedScopes);
+        const missing = consent.scopesMissingFromKey(key.scopes, displayScopes);
         const upgrade = missing.length ? ` · upgrade +${missing.join(', ')}` : '';
         const label = `${key.appName} · ${key.keyPrefix}… · ${(key.scopes || []).join(', ')}${upgrade}`;
         const selected = key.id === selectedKeyId ? ' data-selected="1"' : '';
@@ -122,9 +256,11 @@ function renderKeyOptions(keys, selectedKeyId, requestedScopes) {
 
 function renderPickStep(params) {
     const requestedScopes = parseScopes(params.scope);
+    // For upgrade badge display, strip cake for Grok web so it doesn't show as upgradeable
+    const displayScopes = stripCakeScopesIfGrokWeb(requestedScopes, params.redirectUri);
     const selected = (params.keys || []).find((k) => k.id === params.selectedKeyId);
     const selectedMissing = selected
-        ? consent.scopesMissingFromKey(selected.scopes, requestedScopes)
+        ? consent.scopesMissingFromKey(selected.scopes, displayScopes)
         : [];
     const selectedLabel = selected
         ? `${selected.appName} · ${selected.keyPrefix}…${selectedMissing.length ? ` · upgrade +${selectedMissing.join(', ')}` : ''}`
@@ -144,7 +280,7 @@ ${boundBlock}
 <span id="keyDropdownSelected">${escapeHtml(selectedLabel)}</span>
 </button>
 <div id="keyDropdownMenu" class="custom-dropdown-menu hidden">
-${renderKeyOptions(params.keys || [], params.selectedKeyId, requestedScopes)}
+${renderKeyOptions(params.keys || [], params.selectedKeyId, displayScopes)}
 </div>
 </div>
 <input type="hidden" name="selected_key_id" id="selectedKeyId" value="${escapeHtml(params.selectedKeyId || '')}">
@@ -198,12 +334,16 @@ function renderConsentPage(params) {
         ? `<div class="error">${escapeHtml(params.error)}</div>`
         : '';
     const step = params.step || 'pin';
-    const stepBody = step === 'pick'
-        ? renderPickStep(params)
-        : renderPinStep(params);
-    const stepScript = step === 'pick'
-        ? renderPickScript(true)
-        : '';
+    let stepBody;
+    let stepScript = '';
+    if (step === 'modules') {
+        stepBody = renderModulesStep(params);
+    } else if (step === 'pick') {
+        stepBody = renderPickStep(params);
+        stepScript = renderPickScript(true);
+    } else {
+        stepBody = renderPinStep(params);
+    }
 
     return CONSENT_PAGE_HTML
         .replace('{{ERROR_BLOCK}}', errorBlock)
@@ -386,9 +526,11 @@ function createOAuthRoutes(globalResources) {
         if (!keyScopes) {
             return redirectWithError(res, redirectUri, 'server_error', 'Application key no longer valid', state);
         }
-        const grantedScopes = keyScopes.includes('universal')
+        const filteredScopes = keyScopes.includes('universal')
             ? requestedScopes
             : requestedScopes.filter((s) => keyScopes.includes(s));
+        // HARD DENY: strip cake scopes for Grok web regardless of request
+        const grantedScopes = stripCakeScopesIfGrokWeb(filteredScopes, redirectUri);
         const code = await provider.createAuthorizationCode({
             clientId,
             applicationKeyId,
@@ -486,6 +628,15 @@ function createOAuthRoutes(globalResources) {
                 req.cookies = req.cookies || {};
                 req.cookies[consent.CONSENT_COOKIE_NAME] = session.sessionId;
                 const requestedScopes = parseScopes(scope);
+
+                // Check if modules need to be selected (no sfapp_ scopes in request)
+                if (!hasSfappModuleScopes(requestedScopes)) {
+                    return sendConsentHtml(res, renderConsentPage(consentPageParams(page, {
+                        step: 'modules',
+                        csrf: session.csrf
+                    })));
+                }
+
                 const keys = await loadPickKeys(verified.userType, requestedScopes, client.applicationKeyId);
                 const autoKey = consent.findAutoConsentKey(keys, client.clientName, requestedScopes);
                 if (autoKey) {
@@ -514,9 +665,57 @@ function createOAuthRoutes(globalResources) {
                 })), 401);
             }
 
+            // Handle module selection
+            if (action === 'select_modules') {
+                // Get selected modules from form (can be array or single value)
+                let selectedModules = req.body.modules || [];
+                if (!Array.isArray(selectedModules)) {
+                    selectedModules = selectedModules ? [selectedModules] : [];
+                }
+
+                // Validate against available modules and filter blocked ones
+                const availableModules = getAvailableModulesForConsent(redirect_uri);
+                const validModuleScopes = availableModules
+                    .filter((m) => !m.disabled && selectedModules.includes(m.scope))
+                    .map((m) => m.scope);
+
+                // Merge selected modules into existing scopes
+                const existingScopes = parseScopes(scope);
+                const newScopes = [...existingScopes, ...validModuleScopes];
+                const newScopeString = newScopes.join(' ');
+
+                // Update page with new scopes and proceed to key picker
+                const updatedPage = {
+                    ...page,
+                    scope: newScopeString
+                };
+
+                const requestedScopes = newScopes;
+                const keys = await loadPickKeys(session.userType, requestedScopes, client.applicationKeyId);
+                const autoKey = consent.findAutoConsentKey(keys, client.clientName, requestedScopes);
+                if (autoKey) {
+                    consent.destroyConsentSession(session.sessionId);
+                    consent.clearConsentCookie(res, cookiePath);
+                    return finishApprove(res, {
+                        client,
+                        clientId: client_id,
+                        redirectUri: redirect_uri,
+                        state,
+                        scope: newScopeString,
+                        codeChallenge: code_challenge,
+                        codeChallengeMethod: code_challenge_method,
+                        resource,
+                        applicationKeyId: autoKey.id
+                    });
+                }
+                return renderAuthorizedStep(req, res, updatedPage);
+            }
+
             if (action === 'create_key') {
                 const requestedScopes = parseScopes(scope);
-                const createScopes = consent.namedScopesForCreate(requestedScopes);
+                const baseScopes = consent.namedScopesForCreate(requestedScopes);
+                // HARD DENY: strip cake AFTER fallback (DEFAULT_CREATE_SCOPES includes cake)
+                const createScopes = stripCakeScopesIfGrokWeb(baseScopes, redirect_uri);
                 const manager = globalResources.getApplicationAuthManager();
                 const created = await manager.createApplicationKey({
                     appName: String(new_key_name || '').trim() || consent.generatedKeyName(client.clientName),
@@ -538,6 +737,8 @@ function createOAuthRoutes(globalResources) {
 
             if (action === 'approve') {
                 const requestedScopes = parseScopes(scope);
+                // HARD DENY: strip cake scopes from key upgrade for Grok web
+                const scopesForKey = stripCakeScopesIfGrokWeb(requestedScopes, redirect_uri);
                 const keys = await loadPickKeys(session.userType, requestedScopes, client.applicationKeyId);
                 const picked = keys.find((k) => k.id === selected_key_id);
                 let applicationKeyId = picked
@@ -550,7 +751,7 @@ function createOAuthRoutes(globalResources) {
                     });
                 }
                 const manager = globalResources.getApplicationAuthManager();
-                const merged = await manager.mergeNamedScopes(applicationKeyId, requestedScopes, {
+                const merged = await manager.mergeNamedScopes(applicationKeyId, scopesForKey, {
                     userType: session.userType
                 });
                 if (!merged.success) {
