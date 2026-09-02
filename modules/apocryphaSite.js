@@ -16,7 +16,15 @@ function escapeHtml(value) {
     }[ch]));
 }
 
-function renderScaffold({ title, note }) {
+function renderApocrypha({ title, isGrimoire }) {
+    const grimBlocks = isGrimoire ? `
+        <div class="grim-wrapper">
+            <div class="enshutsuka-memories">
+                <!-- Enshutsuka memories will be injected here -->
+            </div>
+        </div>
+    ` : '';
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -34,15 +42,29 @@ function renderScaffold({ title, note }) {
 </style>
 </head>
 <body>
-<main>
-  <h1>${escapeHtml(title)}</h1>
-  <p>${escapeHtml(note)}</p>
+<main class="window-classic hacker-zine">
+    <header class="masthead">
+        <h1>APOCRYPHA</h1>
+    </header>
+    <div class="billboard">
+        <!-- Billboard area -->
+    </div>
+    <div class="ads-section">
+        <!-- Ads space -->
+    </div>
+    <div class="issue-meta">
+        <!-- issue meta: official vs unofficial, version, counts -->
+    </div>
+    <div class="issue-content">
+        <!-- issue content: images, text -->
+        ${grimBlocks}
+    </div>
 </main>
 </body>
 </html>`;
 }
 
-function registerRoutes(app, { globalResources }) {
+function registerRoutes(app, { devAuthMiddleware, globalResources }) {
     const uuid = globalResources.getApocryphaPathUuid();
     if (!uuid) {
         console.warn('[apocrypha] missing apocryphaPathUuid; routes not mounted');
@@ -50,18 +72,25 @@ function registerRoutes(app, { globalResources }) {
     }
     const prefix = `/${uuid}`;
 
-    const sendView = (req, res) => {
-        res.status(200).type('html').send(renderScaffold({
+    const sendView = (req, res, isGrimoire) => {
+        res.status(200).type('html').send(renderApocrypha({
             title: 'Apocrypha',
-            note: 'Generated view. Scaffold pending. This is not a static HTML drop.'
+            isGrimoire
         }));
     };
+
+    app.use(prefix + '/grim', devAuthMiddleware, (req, res, next) => {
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
+            return next();
+        }
+        return sendView(req, res, true);
+    });
 
     app.use(prefix, (req, res, next) => {
         if (req.method !== 'GET' && req.method !== 'HEAD') {
             return next();
         }
-        return sendView(req, res);
+        return sendView(req, res, false);
     });
 }
 
