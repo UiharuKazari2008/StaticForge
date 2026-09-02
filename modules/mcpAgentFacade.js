@@ -70,6 +70,8 @@ const {
     getReportConfig,
     setReportLevel
 } = require('./mcpReportIssue');
+// modules/opusUsage.js — Opus V5 meter
+const { getOpusUsageFromAccountData } = require('./opusUsage');
 // modules/mcpCors.js — CORS helpers extracted
 const {
     MCP_CORS_ORIGINS,
@@ -1395,6 +1397,20 @@ const TOOL_DEFS = [
                 reporter: { type: 'string', description: 'Who is reporting (grok, cursor, etc.)' },
                 severity: { type: 'number', description: 'Severity 1-5 (optional, inferred from type)' },
                 metadata: { type: 'object', description: 'Additional metadata' }
+            }
+        }
+    },
+    // Usage module tools (sfapp_usage scope)
+    {
+        name: 'get_usage',
+        core: true,
+        description: 'Get structured NovelAI account/subscription usage data. Returns fixedAnlas, paidAnlas, opusV5BatteryRemaining (percent), withinRefillRate, generationCount24h, hoursUntilRenewal. Uses live account data. Upscale uses Anlas not Opus meter. Grok web may receive this module.',
+        scope: 'sfapp_usage',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                refresh: { type: 'boolean', description: 'Force refresh account data from upstream (default false)' }
             }
         }
     }
@@ -3278,6 +3294,57 @@ async function callTool(globalResources, req, name, args) {
     if (name === 'report_issue') {
         const result = reportIssue(input);
         return mcpTextResult(result, !result.success);
+    }
+
+    // Usage module tools (sfapp_usage)
+    if (name === 'get_usage') {
+        const shouldRefresh = input.refresh === true;
+        if (shouldRefresh) {
+            await globalResources.refreshBalance(true);
+        }
+        const accountData = globalResources.getAccountData();
+        const balance = globalResources.getAccountBalance();
+        const opusUsage = getOpusUsageFromAccountData(accountData);
+        const subscription = accountData && accountData.subscription;
+
+        // Calculate hours until renewal from subscription.expiresAt (Unix seconds)
+        let hoursUntilRenewal = null;
+        if (subscription && subscription.expiresAt) {
+            const expiresAtMs = typeof subscription.expiresAt === 'number'
+                ? subscription.expiresAt * 1000
+                : Number(subscription.expiresAt);
+            if (Number.isFinite(expiresAtMs)) {
+                const nowMs = Date.now();
+                const msUntilRenewal = expiresAtMs - nowMs;
+                hoursUntilRenewal = msUntilRenewal > 0 ? Math.ceil(msUntilRenewal / (1000 * 60 * 60)) : 0;
+            }
+        }
+
+        // withinRefillRate: not over-draining (isNegative false or no usage data)
+        const withinRefillRate = !opusUsage || opusUsage.isNegative !== true;
+
+        // Get generation count from image counter (last 24h not directly available,
+        // but we can provide total count and note that 24h is not tracked server-side)
+        const imageCounter = globalResources.getImageCounter ? globalResources.getImageCounter() : null;
+        const generationCount24h = null; // Not tracked server-side; would need separate tracking
+
+        const result = {
+            success: true,
+            fixedAnlas: balance.fixedTrainingStepsLeft || 0,
+            paidAnlas: balance.purchasedTrainingSteps || 0,
+            totalAnlas: balance.totalCredits || (balance.fixedTrainingStepsLeft || 0) + (balance.purchasedTrainingSteps || 0),
+            opusV5BatteryRemaining: opusUsage ? opusUsage.percent : null,
+            opusV5IsNegative: opusUsage ? opusUsage.isNegative : null,
+            opusV5TimeUntilNextPercent: opusUsage ? opusUsage.timeUntilNextPercent : null,
+            withinRefillRate,
+            generationCount24h,
+            hoursUntilRenewal,
+            subscriptionTier: subscription ? subscription.tier : null,
+            subscriptionActive: subscription ? subscription.active !== false : false,
+            refreshedAt: new Date().toISOString(),
+            note: 'Upscale uses Anlas, not Opus meter. generationCount24h not tracked server-side.'
+        };
+        return mcpTextResult(result);
     }
 
     const err = new Error(`Unknown tool: ${name}`);

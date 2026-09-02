@@ -178,6 +178,7 @@ Use on REST only via `X-StaticForge-App-Token: sftok_…` (no UA check). Tokens 
 | `sfapp_cake_pantry:inspect` | Inspect pantry only |
 | `sfapp_cake_pantry:consume` | Consume cake slices only |
 | `sfapp_report_issue` | Development QA reporting (tool failures, errors, reviews) |
+| `sfapp_usage` | NovelAI account usage data (Anlas, Opus meter, generation count) |
 
 Module scopes support submodule specifiers: `sfapp_cake_pantry:deliver` grants only the `deliver_cake` tool. The full `sfapp_cake_pantry` grants all four pantry tools.
 

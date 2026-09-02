@@ -130,6 +130,13 @@ const MODULE_DEFS = {
             },
             defaultLevel: 1
         }
+    },
+    usage: {
+        id: 'usage',
+        scope: 'sfapp_usage',
+        label: 'Usage',
+        description: 'NovelAI account usage data (Anlas, Opus meter, generation count)',
+        tools: ['get_usage']
     }
 };
 

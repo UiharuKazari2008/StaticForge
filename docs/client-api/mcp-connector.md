@@ -323,6 +323,35 @@ Development QA reporting for Grok and other agents. Reports: tool failures, taki
 
 Reports are filtered by the configured level. Level 0 drops non-critical reports; level 3 accepts everything. Stored in `.issues/reports.jsonl`.
 
+#### Usage Module (`sfapp_usage`)
+
+Structured NovelAI account/subscription data. Grok web may receive this module.
+
+| Tool | Description |
+|------|-------------|
+| `get_usage` | Get structured usage data. Returns `fixedAnlas`, `paidAnlas`, `opusV5BatteryRemaining` (percent), `withinRefillRate`, `generationCount24h`, `hoursUntilRenewal`. |
+
+**Response fields:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `fixedAnlas` | number | Included/fixed Anlas remaining |
+| `paidAnlas` | number | Paid Anlas remaining |
+| `totalAnlas` | number | Sum of fixed + paid |
+| `opusV5BatteryRemaining` | number\|null | V5 Opus meter/battery percent remaining |
+| `opusV5IsNegative` | boolean\|null | true if over-draining the Opus meter |
+| `opusV5TimeUntilNextPercent` | number\|null | Seconds until next percent refills |
+| `withinRefillRate` | boolean | true if current usage is within refill rate (not over-draining) |
+| `generationCount24h` | number\|null | Generations in last 24h (not tracked server-side) |
+| `hoursUntilRenewal` | number\|null | Hours until subscription reset/renewal |
+| `subscriptionTier` | number\|null | 0 Paper, 1 Tablet, 2 Scroll, 3 Opus |
+| `subscriptionActive` | boolean | Subscription active |
+
+**Notes:**
+- Upscale uses Anlas, not the Opus meter
+- Img2img drain follows Strength not Noise (see #91)
+- Does NOT invent remaining gens from usageToolManager's 17.3 * percent
+- Uses existing `opusUsage.js` / account endpoints
+
 ---
 
 `search_autofill` returns `{ success, results: [{ term, success, untrained, results: [{ tag, count, confidence, exact }] }] }`. Default `exactOnly`. That is the existing ranking-test search, not a new search API. `search_nax` returns `{ success, query, kind, slugs, sort, items: [{ tag, prompt, gallerySlug, score, upvotes, downvotes, ratio, favorite, tryMark }], total, hasMore, next }`. That is the existing NAX `queryTags` ranking, not a new dataset. `get_wiki_page` is tag wiki (danbooru / e621) and returns `text` / `markdown` strings — never `html: {}`. Static / Grimoire pages use hidden `list_static_wiki_*` / `search_static_wiki` / `get_static_wiki_page`. Notes use the existing notepad packets — request the `notes` scope on consent.
