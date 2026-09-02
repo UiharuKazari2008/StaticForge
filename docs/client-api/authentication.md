@@ -168,6 +168,19 @@ Use on REST only via `X-StaticForge-App-Token: sftok_…` (no UA check). Tokens 
 | `autofill` | Autofill ranking + tag wiki / Grimoire (not stuffed under `search`) |
 | `infrastructure` | ping, status, version |
 
+#### Module scopes (`sfapp_` prefix)
+
+| Scope | Access |
+|-------|--------|
+| `sfapp_cake_pantry` | Account-based cake tracking (deliver, feed, inspect, consume) |
+| `sfapp_cake_pantry:deliver` | Deliver cake slices only |
+| `sfapp_cake_pantry:feed` | Feed cake slices only |
+| `sfapp_cake_pantry:inspect` | Inspect pantry only |
+| `sfapp_cake_pantry:consume` | Consume cake slices only |
+| `sfapp_report_issue` | Development QA reporting (tool failures, errors, reviews) |
+
+Module scopes support submodule specifiers: `sfapp_cake_pantry:deliver` grants only the `deliver_cake` tool. The full `sfapp_cake_pantry` grants all four pantry tools.
+
 List via WS `get_application_auth_scopes` (admin).
 
 ### Admin management (Security Center / WS)
