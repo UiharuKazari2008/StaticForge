@@ -677,9 +677,9 @@ function createOAuthRoutes(globalResources) {
 
             if (action === 'create_key') {
                 const requestedScopes = parseScopes(scope);
-                // HARD DENY: strip cake scopes from key for Grok web
-                const filteredScopes = stripCakeScopesIfGrokWeb(requestedScopes, redirect_uri);
-                const createScopes = consent.namedScopesForCreate(filteredScopes);
+                const baseScopes = consent.namedScopesForCreate(requestedScopes);
+                // HARD DENY: strip cake AFTER fallback (DEFAULT_CREATE_SCOPES includes cake)
+                const createScopes = stripCakeScopesIfGrokWeb(baseScopes, redirect_uri);
                 const manager = globalResources.getApplicationAuthManager();
                 const created = await manager.createApplicationKey({
                     appName: String(new_key_name || '').trim() || consent.generatedKeyName(client.clientName),
