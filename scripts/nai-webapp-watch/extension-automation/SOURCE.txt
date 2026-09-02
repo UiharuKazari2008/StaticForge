@@ -1,0 +1,18 @@
+# ResourcesSaverExt upstream pin (Save All Resources)
+
+Project:  https://github.com/up209d/ResourcesSaverExt
+License:  GPL-3.0+ (see upstream LICENSE)
+Chrome Web Store id (related): abpdnfjocnmdomablahdcfnoggeeiedb
+Version:  2.0.6 (package.json / unpacked2x manifest)
+Commit:   2fa02b74726fb8c1991cb663744cc580d7d1d328
+Date:     2025-03-14
+Expected load path after setup:
+  tools/ResourcesSaverExt/unpacked2x/
+
+Clone/archive URL used by setup-dump-deps.sh:
+  https://github.com/up209d/ResourcesSaverExt/archive/2fa02b74726fb8c1991cb663744cc580d7d1d328.tar.gz
+
+StaticForge applies the automation overlay under this directory
+(extension-automation/) so dump-novelai-webapp.js can trigger a save via:
+  RESOURCES_SAVER_AUTOMATION_SAVE / RESOURCES_SAVER_AUTOMATION_SAVE_RESULT
+without requiring a human to open the DevTools ResourcesSaver panel.
