@@ -241,12 +241,12 @@ ${hiddenOAuthFields(params)}
 </form>`;
 }
 
-function renderKeyOptions(keys, selectedKeyId, requestedScopes) {
+function renderKeyOptions(keys, selectedKeyId, displayScopes) {
     if (!keys.length) {
         return '<p class="note">No keys yet. Create one below.</p>';
     }
     return keys.map((key) => {
-        const missing = consent.scopesMissingFromKey(key.scopes, requestedScopes);
+        const missing = consent.scopesMissingFromKey(key.scopes, displayScopes);
         const upgrade = missing.length ? ` · upgrade +${missing.join(', ')}` : '';
         const label = `${key.appName} · ${key.keyPrefix}… · ${(key.scopes || []).join(', ')}${upgrade}`;
         const selected = key.id === selectedKeyId ? ' data-selected="1"' : '';
@@ -256,9 +256,11 @@ function renderKeyOptions(keys, selectedKeyId, requestedScopes) {
 
 function renderPickStep(params) {
     const requestedScopes = parseScopes(params.scope);
+    // For upgrade badge display, strip cake for Grok web so it doesn't show as upgradeable
+    const displayScopes = stripCakeScopesIfGrokWeb(requestedScopes, params.redirectUri);
     const selected = (params.keys || []).find((k) => k.id === params.selectedKeyId);
     const selectedMissing = selected
-        ? consent.scopesMissingFromKey(selected.scopes, requestedScopes)
+        ? consent.scopesMissingFromKey(selected.scopes, displayScopes)
         : [];
     const selectedLabel = selected
         ? `${selected.appName} · ${selected.keyPrefix}…${selectedMissing.length ? ` · upgrade +${selectedMissing.join(', ')}` : ''}`
@@ -278,7 +280,7 @@ ${boundBlock}
 <span id="keyDropdownSelected">${escapeHtml(selectedLabel)}</span>
 </button>
 <div id="keyDropdownMenu" class="custom-dropdown-menu hidden">
-${renderKeyOptions(params.keys || [], params.selectedKeyId, requestedScopes)}
+${renderKeyOptions(params.keys || [], params.selectedKeyId, displayScopes)}
 </div>
 </div>
 <input type="hidden" name="selected_key_id" id="selectedKeyId" value="${escapeHtml(params.selectedKeyId || '')}">
