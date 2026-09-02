@@ -26,7 +26,7 @@ function dreamscapeLooksRunning() {
     try {
         const out = execSync('pm2 jlist', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
         const list = JSON.parse(out);
-        const ds = list.find((p) => p.name === 'Dreamscape' || p.pm_id === 12);
+        const ds = list.find((p) => p.name === 'Dreamscape');
         return ds && ds.pm2_env && ds.pm2_env.status === 'online';
     } catch (_) {
         return false;
