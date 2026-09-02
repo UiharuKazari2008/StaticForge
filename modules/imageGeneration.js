@@ -2431,7 +2431,16 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             }
         }
         
-        if (dynamic_generation) {
+        if (dynamic_generation && dynamic_generation.enabled === false) {
+            const skippedWarning = 'Dynagen disabled (enabled:false). Generate without compileContext. Omit dynamicGeneration entirely, or pass location / get_client_physics when you need time-of-day.';
+            console.log(`⏭️ ${skippedWarning}`);
+            body.dynamic_generation = {
+                ...dynamic_generation,
+                skipped: true,
+                warning: skippedWarning
+            };
+            dynamic_generation = body.dynamic_generation;
+        } else if (dynamic_generation) {
             // Generate consistent prompt hash using utility function
             const currentPromptHash = generatePromptHash(
                 rawPrompt,
@@ -2773,6 +2782,26 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                         console.log('✅ Prompts unchanged - keeping existing preview image');
                     }
                 }
+            }
+
+            // Temporary: Grok Web owns compile. Do not call the paid Director API.
+            if (!hasValidCache) {
+                __runtimeGr.getLogger().normal('⏭️ Director API nooped — Grok Web owns dynamic generation');
+                const existing = body.dynamic_generation.compiled_prompt;
+                body.dynamic_generation.compiled_prompt = {
+                    success: true,
+                    noop: true,
+                    context: contextForAI || (existing && existing.context) || null,
+                    text_replacements: (existing && existing.text_replacements)
+                        || { prompt: [], uc: [], character_prompts: [] },
+                    prompt_hash: currentPromptHash,
+                    request_hash: currentRequestHash,
+                    directive_hash: currentDirectiveHash,
+                    timestamp: Date.now(),
+                    cache_locked: !!body.dynamic_generation.cache_locked,
+                    context_locked: !!body.dynamic_generation.context_locked
+                };
+                hasValidCache = true;
             }
 
             if (hasValidCache) {
@@ -4942,6 +4971,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             filename: upscaledName,
             saved: shouldSave,
             seed: seed,
+            workspace: targetWorkspaceId || null,
             compiled_prompt: opts.dynamic_generation?.compiled_prompt,
             text_replacements_seed: opts.text_replacements_seed && Array.isArray(opts.text_replacements_seed) && opts.text_replacements_seed.length > 0 ? opts.text_replacements_seed : undefined,
             stageData: stageData // Only populated for pipeline stages
@@ -4972,6 +5002,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             filename: name,
             saved: shouldSave,
             seed: seed,
+            workspace: targetWorkspaceId || null,
             compiled_prompt: opts.dynamic_generation?.compiled_prompt,
             text_replacements_seed: opts.text_replacements_seed && Array.isArray(opts.text_replacements_seed) && opts.text_replacements_seed.length > 0 ? opts.text_replacements_seed : undefined,
             stageData: stageData, // Only populated for pipeline stages
@@ -4998,6 +5029,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             filename: name,
             saved: shouldSave,
             seed: seed,
+            workspace: workspaceId || null,
             compiled_prompt: opts.dynamic_generation?.compiled_prompt
         };
         return result;
@@ -5048,8 +5080,104 @@ const handleImageRequest = async (globalResources, req, res, opts, presetName = 
     res.send(finalBuffer);
 };
 
+const GENERATION_PRINT_COUNT_MAX = 8;
+
+function parseGenerationPrintCount(body) {
+    const n = parseInt(body && body.n, 10);
+    if (!Number.isFinite(n) || n < 1) return 1;
+    return Math.min(GENERATION_PRINT_COUNT_MAX, n);
+}
+
+function collectGenerationResultFilenames(result) {
+    const names = [];
+    const seen = new Set();
+    const pushName = (filename) => {
+        if (!filename || typeof filename !== 'string' || seen.has(filename)) return;
+        seen.add(filename);
+        names.push(filename);
+    };
+    if (Array.isArray(result?.filenames)) {
+        for (const entry of result.filenames) {
+            pushName(typeof entry === 'string' ? entry : entry?.filename);
+        }
+    }
+    pushName(result?.filename);
+    return names;
+}
+
+async function handlePrintCopies(globalResources, body, copies, userType, sessionId, streamingCallback, ws, handler, wsServer) {
+    bindRuntimeGlobalResources(globalResources);
+    if (!body.requestId) body.requestId = `gen-${Date.now()}`;
+    const requestId = body.requestId;
+    const parsedSeed = parseInt(body.seed, 10);
+    const hasFixedSeed = Number.isFinite(parsedSeed) && parsedSeed >= 0;
+    const savedFilenames = [];
+    let lastResult = null;
+
+    console.log(`🖨️ Print copies: ${copies}`);
+    for (let i = 0; i < copies; i++) {
+        if (isStagedGenerationCancelled(handler, requestId)) {
+            console.log(`🛑 Print copies cancelled after ${i} of ${copies}`);
+            break;
+        }
+        if (ws && handler) {
+            handler.sendGenerationProgress(ws, requestId, {
+                phase: 'generating',
+                currentStage: i + 1,
+                totalStages: copies,
+                stageType: 'print'
+            });
+        }
+        const copyBody = { ...body, n: 1, requestId };
+        if (hasFixedSeed) copyBody.seed = parsedSeed + i;
+        const result = await generateImageWebSocket(
+            globalResources,
+            copyBody,
+            userType,
+            sessionId,
+            streamingCallback,
+            ws,
+            handler,
+            wsServer,
+            { singlePrint: true }
+        );
+        lastResult = result;
+        const names = collectGenerationResultFilenames(result);
+        const lastName = names.length ? names[names.length - 1] : null;
+        if (lastName) {
+            savedFilenames.push({
+                filename: lastName,
+                stageId: String(i + 1).padStart(2, '0'),
+                stageIndex: i,
+                stageType: 'print'
+            });
+        }
+        if (ws && handler) {
+            handler.sendGenerationProgress(ws, requestId, {
+                phase: i === copies - 1 ? 'complete' : 'stage_complete',
+                currentStage: i + 1,
+                totalStages: copies,
+                stageType: 'print',
+                filename: lastName || null
+            });
+        }
+    }
+
+    const lastName = savedFilenames.length
+        ? savedFilenames[savedFilenames.length - 1].filename
+        : (lastResult && lastResult.filename) || null;
+    return {
+        ...(lastResult || {}),
+        filename: lastName,
+        filenames: savedFilenames,
+        saved: savedFilenames.length > 0,
+        total_stages: copies,
+        print_count: copies
+    };
+}
+
 // WebSocket-native image generation function
-async function generateImageWebSocket(globalResources, body, userType, sessionId, streamingCallback = null, ws = null, handler = null, wsServer = null) {
+async function generateImageWebSocket(globalResources, body, userType, sessionId, streamingCallback = null, ws = null, handler = null, wsServer = null, options = {}) {
     bindRuntimeGlobalResources(globalResources);
     // Check if user is read-only
     if (userType === 'readonly') {
@@ -5063,6 +5191,21 @@ async function generateImageWebSocket(globalResources, body, userType, sessionId
 
     if (!body.model) {
         throw new Error('Invalid request body: model parameter is missing');
+    }
+
+    const copies = options.singlePrint ? 1 : parseGenerationPrintCount(body);
+    if (copies > 1) {
+        return await handlePrintCopies(
+            globalResources,
+            body,
+            copies,
+            userType,
+            sessionId,
+            streamingCallback,
+            ws,
+            handler,
+            wsServer
+        );
     }
 
     try {

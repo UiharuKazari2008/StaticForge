@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-08-30T11:38:07.082822+00:00",
+  "updated_at": "2026-09-02T11:11:11.654163+00:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
   "last_breakfast_at": "2026-08-30T11:38:07.082822+00:00",
   "open": [],
@@ -16,5 +16,21 @@
       "note": "Eaten as separate Jules feast after Rook promotion gift. Do not re-eat."
     }
   ],
-  "cake_note": "Rook promotion gift 48 lemon meringue 59.24->65.00 (creaking) then Jules #22 21 black forest 65.00->67.52 (chair broke heavy_duty). pending_slices=0. Do not restore 21. QA looked; unused leftover-cake gens deleted."
+  "cake_note": "2026-09-02 7am: Jules #22 already eaten; done_since_breakfast cleared. Overnight WIP snapshotted 4d5b9b0. credit:menma Cursor closed since last breakfast: #29 #42 (parent decides cake). Stay off greg/cursor-agent pickup.",
+  "pending_credit_menma_cursor_note": [
+    {
+      "id": "sf-29",
+      "title": "Public MCP / Grok connector",
+      "closed_at": "2026-08-30T11:45:13-04:00",
+      "commit_hint": "ae13be5"
+    },
+    {
+      "id": "sf-42",
+      "title": "MCP autofill term search + wiki page read",
+      "closed_at": "2026-08-30T14:05:57-04:00",
+      "commit_hint": "af4a7cf",
+      "lines_added": 145,
+      "lines_deleted": 7
+    }
+  ]
 }

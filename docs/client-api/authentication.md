@@ -440,7 +440,7 @@ fallback for browser tools that cannot set headers. Agent mode unregisters
 existing service workers, clears Cache Storage, and skips service-worker
 registration and startup cache downloads. `POST /agent/broadcast` uses the same
 key-every-request gate and pushes `agent_notice` to all connected WebSocket
-clients. A successful call may persist a `dev_admin` session as a side effect of
+clients (`restart: true` reuses the Client Update countdown dialog). A successful call may persist a `dev_admin` session as a side effect of
 that middleware; the response is JSON, not a bootstrap page.
 
 `GET /agent/assets.json` and `GET /agent/assets.zip` keep the loopback and

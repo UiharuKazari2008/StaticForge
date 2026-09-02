@@ -20,7 +20,7 @@ const STUDIO_CHANGE_DIALOG_CLASS = 'studio-change-dialog-modal';
 const STUDIO_CHANGE_AI_SPEC = `Dreamscape studio change JSON. Paste into Studio to apply. Reply with JSON only — no markdown unless fenced as json.
 
 {"dreamscape":"change","v":1,"title":"short name",
- "params":{"steps":28,"guidance":5,"sampler":"k_euler_ancestral","noiseScheduler":"karras","model":"v5","resolution":"normal_portrait","append_uc":3},
+ "params":{"steps":28,"guidance":5,"sampler":"k_euler_ancestral","noiseScheduler":"karras","model":"v5","resolution":"normal_portrait","append_uc":3,"nsfw":3},
  "expanders":[{"prefix":"alice_base","value":"long shared appearance, hair, body"}],
  "fields":[
    {"id":"prompt","action":"replace","chunks":[
@@ -42,8 +42,13 @@ Rules:
 - expanders: if present, DELETE all request expanders and install only this list. In text use !prefix. Do not repeat expander values.
 - vibes: if present, REPLACE current vibe transfers with this id list (ids Studio already has). Omit to leave vibes unchanged. No image uploads.
 - Default action is replace. remove = delete a span or slot. Omit unused keys. Only include params you want to change.
+- params.nsfw: 3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Clense. Prefer the id over pasting that level's add/remove tags. dataset_config.nsfw is the same field.
+- params.append_transparency / n / normalize_vibes / use_coords / save_base_output / skip_pipeline_stages / keep_newlines / auto_char_numerize / prompt_normalize / deduplicate_tags / auto_clean_uc: existing Studio toggles. n is Studio prints (1–8). use_coords true = Auto Position off.
+- dataset_config: include (replace list), bias, settings (e.g. settings.__quality__.no_text.enabled false for in-image text; keep append_quality on), nsfw, nsfw_bias. Echoed on GET /agent/session/state.
 - Named resolution preset (e.g. normal_portrait): omit width/height. Custom size: resolution "custom" plus width and height.
-- params.seed: specific seed (number). params.seedLock: true locks the last used seed (existing Studio sprout). seed: "last" is the same as seedLock: true. Unlock (seedLock: false) rolls a new variation. Copy change JSON and GET /agent/session/state echo the actual seed used plus seedLock. Filename is not a contract.`;
+- params.seed: specific seed (number). params.seedLock: true locks the last used seed (existing Studio sprout). seed: "last" is the same as seedLock: true. Unlock (seedLock: false) rolls a new variation. Copy change JSON and GET /agent/session/state echo the actual seed used plus seedLock. Filename is not a contract.
+- Optional dynamicGeneration: {enabled, cacheLocked, contextLocked, location, tod, weather, season, directive, force_strategy, tool_passes, dialogs_count}. Enable/configure Enshutsuka dynamic generation on the existing Studio toggle (no new chrome). Echoed by GET /agent/session/state. If present on a read image or Studio snapshot, integrate and act — do not ignore it.
+- Optional director: {sessionId, messageId, prompt}. Attached director prompt / session on the existing Director button + creative directive. Same must-act rule.`;
 
 const STUDIO_CHANGE_PARAM_DEFS = [
     { id: 'steps', label: 'Steps' },
@@ -62,8 +67,32 @@ const STUDIO_CHANGE_PARAM_DEFS = [
     { id: 'strength', label: 'Strength' },
     { id: 'noise', label: 'Noise' },
     { id: 'append_quality', label: 'Quality preset' },
-    { id: 'append_uc', label: 'UC preset' }
+    { id: 'append_uc', label: 'UC preset' },
+    { id: 'append_transparency', label: 'Transparency preset' },
+    { id: 'nsfw', label: 'NSFW' },
+    { id: 'n', label: 'Prints' },
+    { id: 'normalize_vibes', label: 'Normalize vibes' },
+    { id: 'use_coords', label: 'Use coords' },
+    { id: 'save_base_output', label: 'Save base output' },
+    { id: 'skip_pipeline_stages', label: 'Skip pipeline stages' },
+    { id: 'nsfw_bias', label: 'NSFW bias' },
+    { id: 'quality_preset_bias', label: 'Quality bias' },
+    { id: 'transparency_bias', label: 'Transparency bias' },
+    { id: 'keep_newlines', label: 'Keep newlines' },
+    { id: 'auto_char_numerize', label: 'Auto char numerize' },
+    { id: 'prompt_normalize', label: 'Prompt normalize' },
+    { id: 'deduplicate_tags', label: 'Deduplicate tags' },
+    { id: 'auto_clean_uc', label: 'Auto-clean UC' }
 ];
+
+const STUDIO_CHANGE_NSFW_NAMES = {
+    3: 'Nude',
+    2: 'Skimpy',
+    1: 'Allow',
+    0: 'Neutral',
+    '-1': 'Remove',
+    '-2': 'Clense'
+};
 
 const STUDIO_CHANGE_FIELD_DEFS = [
     { id: 'prompt', label: 'Prompt' },
@@ -239,7 +268,14 @@ function studioChangeFormatValue(id, value) {
         const n = Number(value);
         return STUDIO_CHANGE_UC_PRESET_NAMES[n] || String(value);
     }
-    if (id === 'variety' || id === 'upscale' || id === 'append_quality' || id === 'seedLock') {
+    if (id === 'nsfw') {
+        const n = Number(value);
+        return STUDIO_CHANGE_NSFW_NAMES[String(n)] || String(value);
+    }
+    if (id === 'variety' || id === 'upscale' || id === 'append_quality' || id === 'append_transparency'
+        || id === 'seedLock' || id === 'normalize_vibes' || id === 'use_coords' || id === 'save_base_output'
+        || id === 'skip_pipeline_stages' || id === 'keep_newlines' || id === 'auto_char_numerize'
+        || id === 'prompt_normalize' || id === 'deduplicate_tags' || id === 'auto_clean_uc') {
         return value ? 'On' : 'Off';
     }
     if (id === 'resolution') {
@@ -250,10 +286,14 @@ function studioChangeFormatValue(id, value) {
 }
 
 function studioChangeValuesEqual(id, a, b) {
-    if (id === 'variety' || id === 'upscale' || id === 'append_quality' || id === 'seedLock') {
+    if (id === 'variety' || id === 'upscale' || id === 'append_quality' || id === 'append_transparency'
+        || id === 'seedLock' || id === 'normalize_vibes' || id === 'use_coords' || id === 'save_base_output'
+        || id === 'skip_pipeline_stages' || id === 'keep_newlines' || id === 'auto_char_numerize'
+        || id === 'prompt_normalize' || id === 'deduplicate_tags' || id === 'auto_clean_uc') {
         return Boolean(a) === Boolean(b);
     }
-    if (id === 'steps' || id === 'width' || id === 'height' || id === 'append_uc' || id === 'seed') {
+    if (id === 'steps' || id === 'width' || id === 'height' || id === 'append_uc' || id === 'nsfw' || id === 'n'
+        || id === 'seed' || id === 'nsfw_bias' || id === 'quality_preset_bias' || id === 'transparency_bias') {
         return Number(a) === Number(b);
     }
     if (id === 'guidance' || id === 'rescale' || id === 'strength' || id === 'noise') {
@@ -307,7 +347,7 @@ function writeStudioFieldValue(fieldId, next) {
     const value = next == null ? '' : String(next);
     // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
     setTextareaValuePreservingUndo(textarea, value);
-    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    textarea.dispatchEvent(new CustomEvent('input', { bubbles: true, detail: { skipAutofill: true } }));
     // applyFormattedText: public/scripts/comp/utilities.js
     applyFormattedText(textarea, true);
     // updateEmphasisHighlighting: public/scripts/comp/emphasisHighlight.js
@@ -403,7 +443,30 @@ function getStudioParamSnapshot() {
         strength: strengthEl ? parseFloat(strengthEl.value) : undefined,
         noise: noiseEl ? parseFloat(noiseEl.value) : undefined,
         append_quality: values.append_quality,
-        append_uc: values.append_uc
+        append_uc: values.append_uc,
+        append_transparency: values.append_transparency,
+        nsfw: values.dataset_config && values.dataset_config.nsfw != null
+            ? values.dataset_config.nsfw
+            : selectedNsfwValue,
+        n: values.n,
+        normalize_vibes: values.normalize_vibes,
+        use_coords: (() => {
+            const autoPositionBtn = document.getElementById('autoPositionBtn');
+            return autoPositionBtn ? autoPositionBtn.getAttribute('data-state') !== 'on' : false;
+        })(),
+        save_base_output: values.save_base_output,
+        skip_pipeline_stages: values.skip_pipeline_stages,
+        nsfw_bias: typeof nsfwBias === 'number' ? nsfwBias : 1,
+        quality_preset_bias: typeof qualityPresetBias === 'number' ? qualityPresetBias : 1,
+        transparency_bias: typeof transparencyBias === 'number' ? transparencyBias : 1,
+        keep_newlines: !!keepPromptNewlines,
+        auto_char_numerize: autoCharNumerize !== false,
+        prompt_normalize: promptNormalize !== false,
+        deduplicate_tags: deduplicateTags !== false,
+        auto_clean_uc: (() => {
+            const btn = document.getElementById('ucPresetsDropdownBtn');
+            return btn ? btn.dataset.autoClean === 'on' : false;
+        })()
     };
 }
 
@@ -672,11 +735,49 @@ function expandFieldChunks(fieldId, spec) {
     }));
 }
 
+function pickStudioChangeDatasetConfig(payload, params) {
+    if (params && params.dataset_config && typeof params.dataset_config === 'object' && !Array.isArray(params.dataset_config)) {
+        return params.dataset_config;
+    }
+    if (payload && payload.dataset_config && typeof payload.dataset_config === 'object' && !Array.isArray(payload.dataset_config)) {
+        return payload.dataset_config;
+    }
+    return null;
+}
+
+function studioDatasetConfigHasWork(cfg) {
+    if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) return false;
+    if (cfg.nsfw != null || cfg.nsfw_bias != null) return true;
+    if (Array.isArray(cfg.include)) return true;
+    if (cfg.bias && typeof cfg.bias === 'object' && Object.keys(cfg.bias).length) return true;
+    if (cfg.settings && typeof cfg.settings === 'object' && Object.keys(cfg.settings).length) return true;
+    return false;
+}
+
 function buildOpsFromPayload(payload) {
     const ops = [];
     if (!payload) return ops;
+
     const currentParams = getStudioParamSnapshot();
-    const params = payload.params && typeof payload.params === 'object' ? payload.params : {};
+    const params = payload.params && typeof payload.params === 'object' ? { ...payload.params } : {};
+    if (params.nsfw == null && params.dataset_config && params.dataset_config.nsfw != null) {
+        params.nsfw = params.dataset_config.nsfw;
+    }
+    if (params.nsfw == null && payload.nsfw != null) params.nsfw = payload.nsfw;
+    if (params.nsfw == null && payload.dataset_config && payload.dataset_config.nsfw != null) {
+        params.nsfw = payload.dataset_config.nsfw;
+    }
+    const datasetConfig = pickStudioChangeDatasetConfig(payload, params);
+    if (datasetConfig) {
+        params.dataset_config = datasetConfig;
+        if (params.nsfw_bias == null && datasetConfig.nsfw_bias != null) params.nsfw_bias = datasetConfig.nsfw_bias;
+        if (params.quality_preset_bias == null && datasetConfig.quality_preset_bias != null) {
+            params.quality_preset_bias = datasetConfig.quality_preset_bias;
+        }
+        if (params.transparency_bias == null && datasetConfig.transparency_bias != null) {
+            params.transparency_bias = datasetConfig.transparency_bias;
+        }
+    }
 
     const skipSize = studioChangeShouldSkipSizeParams(params);
     const wantsLastSeed = isStudioChangeLastSeedToken(params.seed);
@@ -724,6 +825,19 @@ function buildOpsFromPayload(payload) {
             toValue: true,
             enabled: true,
             unchanged: studioChangeValuesEqual('seedLock', currentParams.seedLock, true)
+        });
+    }
+    if (studioDatasetConfigHasWork(datasetConfig)) {
+        ops.push({
+            key: 'dataset_config',
+            group: 'Parameters',
+            kind: 'dataset_config',
+            action: 'set',
+            label: 'Dataset config',
+            fromValue: null,
+            toValue: datasetConfig,
+            enabled: true,
+            unchanged: false
         });
     }
 
@@ -844,6 +958,11 @@ function buildPayloadFromOps(ops, title) {
     ops.filter((op) => op.enabled !== false).forEach((op) => {
         if (op.kind === 'param') {
             params[op.paramId] = op.toValue;
+            return;
+        }
+        if (op.kind === 'dataset_config') {
+            payload.dataset_config = op.toValue;
+            params.dataset_config = op.toValue;
             return;
         }
         if (op.kind === 'expanders-policy') {
@@ -1076,6 +1195,15 @@ function renderStudioChangeOpRow(op) {
         detail = op.unchanged
             ? studioChangeFormatValue(op.paramId, op.toValue)
             : `${studioChangeFormatValue(op.paramId, op.fromValue)} → ${studioChangeFormatValue(op.paramId, op.toValue)}`;
+    } else if (op.kind === 'dataset_config') {
+        title = op.label || 'Dataset config';
+        const cfg = op.toValue || {};
+        const bits = [];
+        if (Array.isArray(cfg.include)) bits.push(`include ${cfg.include.join(', ') || '(none)'}`);
+        if (cfg.settings) bits.push('settings');
+        if (cfg.nsfw != null) bits.push(`nsfw ${cfg.nsfw}`);
+        if (cfg.nsfw_bias != null) bits.push(`nsfw_bias ${cfg.nsfw_bias}`);
+        detail = bits.join(' · ') || 'Dataset config';
     } else if (op.kind === 'character') {
         title = op.name || 'Character';
         detail = op.action === 'remove'
@@ -1296,6 +1424,70 @@ function setStudioCharacterName(index, name) {
     if (placeholder) placeholder.textContent = name;
 }
 
+function applyStudioDatasetConfig(cfg) {
+    if (!studioDatasetConfigHasWork(cfg)) return;
+    if (Array.isArray(cfg.include)) {
+        selectedDatasets = cfg.include.map((id) => String(id));
+        if (cfg.bias && typeof cfg.bias === 'object' && !Array.isArray(cfg.bias)) {
+            Object.keys(cfg.bias).forEach((dataset) => {
+                const n = Number(cfg.bias[dataset]);
+                if (Number.isFinite(n)) datasetBias[dataset] = n;
+            });
+        }
+        // updateDatasetDisplay / renderDatasetDropdown: public/scripts/comp/manualDropdownManager.js
+        updateDatasetDisplay();
+        renderDatasetDropdown();
+    } else if (cfg.bias && typeof cfg.bias === 'object' && !Array.isArray(cfg.bias)) {
+        Object.keys(cfg.bias).forEach((dataset) => {
+            const n = Number(cfg.bias[dataset]);
+            if (Number.isFinite(n)) datasetBias[dataset] = n;
+        });
+        renderDatasetDropdown();
+    }
+    if (cfg.settings && typeof cfg.settings === 'object' && !Array.isArray(cfg.settings)) {
+        Object.keys(cfg.settings).forEach((datasetValue) => {
+            const group = cfg.settings[datasetValue];
+            if (!group || typeof group !== 'object') return;
+            // findDatasetConfig / writeSubToggleSetting: public/scripts/comp/manualDropdownManager.js
+            const datasetConfig = findDatasetConfig(datasetValue);
+            Object.keys(group).forEach((settingId) => {
+                const setting = group[settingId];
+                const enabled = setting && typeof setting === 'object' && !Array.isArray(setting)
+                    ? !!setting.enabled
+                    : !!setting;
+                const found = datasetConfig && (datasetConfig.sub_toggles || []).find((st) => st.id === settingId);
+                const subToggle = found || { id: settingId, value: setting && setting.value, default: 1.0 };
+                writeSubToggleSetting(datasetValue, subToggle, enabled);
+                if (setting && typeof setting === 'object' && window.datasetSettings && window.datasetSettings[datasetValue]) {
+                    if (setting.bias != null && Number.isFinite(Number(setting.bias))) {
+                        window.datasetSettings[datasetValue][settingId].bias = Number(setting.bias);
+                    }
+                    if (setting.value != null) {
+                        window.datasetSettings[datasetValue][settingId].value = setting.value;
+                    }
+                }
+            });
+        });
+        // renderSubTogglesDropdown / updateSubTogglesButtonState: public/scripts/comp/manualDropdownManager.js
+        renderSubTogglesDropdown();
+        updateSubTogglesButtonState();
+    }
+    if (cfg.nsfw != null) {
+        const n = parseInt(cfg.nsfw, 10);
+        if (Number.isFinite(n)) {
+            // selectNsfwValue: public/scripts/comp/manualDropdownManager.js
+            selectNsfwValue(n);
+        }
+    }
+    if (cfg.nsfw_bias != null) {
+        const n = Number(cfg.nsfw_bias);
+        if (Number.isFinite(n)) {
+            nsfwBias = n;
+            updateNsfwButtonDisplay();
+        }
+    }
+}
+
 async function applyStudioParam(paramId, value) {
     const stepsEl = document.getElementById('manualSteps');
     const guidanceEl = document.getElementById('manualGuidance');
@@ -1310,7 +1502,7 @@ async function applyStudioParam(paramId, value) {
 
     const ping = (el) => {
         if (!el) return;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new CustomEvent('input', { bubbles: true, detail: { skipAutofill: true } }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
     };
 
@@ -1417,6 +1609,96 @@ async function applyStudioParam(paramId, value) {
             selectUcPreset(Number(value));
             renderUcPresetsDropdown();
             break;
+        case 'nsfw': {
+            const n = parseInt(value, 10);
+            if (!Number.isFinite(n)) break;
+            // selectNsfwValue: public/scripts/comp/manualDropdownManager.js
+            selectNsfwValue(n);
+            break;
+        }
+        case 'append_transparency':
+            appendTransparency = studioChangeFlagOn(value);
+            // renderDatasetDropdown / updateSubTogglesButtonState: public/scripts/comp/manualDropdownManager.js
+            renderDatasetDropdown();
+            updateSubTogglesButtonState();
+            break;
+        case 'n':
+            // setManualPrintsCount: public/scripts/comp/manualModalManager.js
+            setManualPrintsCount(value);
+            break;
+        case 'normalize_vibes': {
+            const vibeNormalizeToggle = document.getElementById('vibeNormalizeToggle');
+            if (vibeNormalizeToggle) {
+                vibeNormalizeToggle.setAttribute('data-state', studioChangeFlagOn(value) ? 'on' : 'off');
+            }
+            break;
+        }
+        case 'use_coords': {
+            const autoPositionBtn = document.getElementById('autoPositionBtn');
+            if (autoPositionBtn) {
+                autoPositionBtn.setAttribute('data-state', studioChangeFlagOn(value) ? 'off' : 'on');
+            }
+            // updateAutoPositionToggle: public/scripts/comp/characterPromptManager.js
+            updateAutoPositionToggle();
+            break;
+        }
+        case 'save_base_output': {
+            const saveStage0Btn = document.getElementById('saveStage0Btn');
+            if (saveStage0Btn) saveStage0Btn.dataset.state = studioChangeFlagOn(value) ? 'on' : 'off';
+            // updateManualUpscaleVisibility: public/scripts/comp/pipelineStageManager.js
+            updateManualUpscaleVisibility();
+            break;
+        }
+        case 'skip_pipeline_stages': {
+            const nextState = studioChangeFlagOn(value) ? 'off' : 'on';
+            const enableStageGenerationBtn = document.getElementById('enableStageGenerationBtn');
+            if (enableStageGenerationBtn) enableStageGenerationBtn.dataset.state = nextState;
+            const windowBtn = document.getElementById('windowEnableStageGenerationBtn');
+            if (windowBtn) windowBtn.dataset.state = nextState;
+            // updateSaveStage0BtnVisibility: public/scripts/comp/pipelineStageManager.js
+            updateSaveStage0BtnVisibility();
+            break;
+        }
+        case 'nsfw_bias': {
+            const n = Number(value);
+            if (!Number.isFinite(n)) break;
+            nsfwBias = n;
+            updateNsfwButtonDisplay();
+            break;
+        }
+        case 'quality_preset_bias': {
+            const n = Number(value);
+            if (!Number.isFinite(n)) break;
+            qualityPresetBias = n;
+            renderDatasetDropdown();
+            break;
+        }
+        case 'transparency_bias': {
+            const n = Number(value);
+            if (!Number.isFinite(n)) break;
+            transparencyBias = n;
+            renderDatasetDropdown();
+            break;
+        }
+        case 'keep_newlines':
+            keepPromptNewlines = studioChangeFlagOn(value);
+            break;
+        case 'auto_char_numerize':
+            autoCharNumerize = studioChangeFlagOn(value);
+            break;
+        case 'prompt_normalize':
+            promptNormalize = studioChangeFlagOn(value);
+            break;
+        case 'deduplicate_tags':
+            deduplicateTags = studioChangeFlagOn(value);
+            break;
+        case 'auto_clean_uc': {
+            const ucPresetsDropdownBtn = document.getElementById('ucPresetsDropdownBtn');
+            if (ucPresetsDropdownBtn) {
+                ucPresetsDropdownBtn.dataset.autoClean = studioChangeFlagOn(value) ? 'on' : 'off';
+            }
+            break;
+        }
         default:
             break;
     }
@@ -1438,6 +1720,9 @@ async function applyStudioChangeOps(ops) {
         if (hasResolutionPreset && (op.paramId === 'width' || op.paramId === 'height')) continue;
         await applyStudioParam(op.paramId, op.toValue);
     }
+    enabled.filter((op) => op.kind === 'dataset_config').forEach((op) => {
+        applyStudioDatasetConfig(op.toValue);
+    });
 
     if (enabled.some((op) => op.kind === 'expanders-policy')) {
         const nextExpanders = enabled.filter((op) => op.kind === 'expander').map((op) => ({
@@ -1658,8 +1943,16 @@ async function applyStudioChangePayloadSilent(payload) {
         await ensureStudioOpenForChange();
         const ops = buildOpsFromPayload(payload);
         const enabledOps = ops.filter((op) => op.enabled !== false);
-        if (!enabledOps.length) return false;
-        await applyStudioChangeOps(enabledOps);
+        let extras = false;
+        const dyn = payload.dynamicGeneration || payload.dynamic_generation;
+        if (dyn && typeof applyStudioDynamicGenerationConfig === 'function') {
+            extras = applyStudioDynamicGenerationConfig(dyn) || extras;
+        }
+        if (payload.director && typeof applyStudioDirectorAttach === 'function') {
+            extras = applyStudioDirectorAttach(payload.director) || extras;
+        }
+        if (!enabledOps.length && !extras) return false;
+        if (enabledOps.length) await applyStudioChangeOps(enabledOps);
         return true;
     } finally {
         studioChangeDialogBusy = false;
@@ -1834,6 +2127,27 @@ function buildStudioChangeSnapshot() {
         }
     } catch (_err) {
         // keep export-produced slots
+    }
+
+    try {
+        // readDynamicGenerationSnapshot: public/scripts/comp/dynamicGenerationLockState.js
+        if (typeof readDynamicGenerationSnapshot === 'function') {
+            payload.dynamicGeneration = readDynamicGenerationSnapshot();
+        }
+        if (typeof readDirectorAttachSnapshot === 'function') {
+            const director = readDirectorAttachSnapshot();
+            if (director) payload.director = director;
+        }
+    } catch (_err) {
+        // keep prompt/params snapshot even if dynagen helpers are missing
+    }
+
+    try {
+        // collectManualFormValues: public/scripts/comp/manualModalManager.js
+        const values = collectManualFormValues();
+        if (values && values.dataset_config) payload.dataset_config = values.dataset_config;
+    } catch (_err) {
+        // params snapshot still valid without dataset_config
     }
 
     return attachStudioSeedEcho(payload);

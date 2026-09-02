@@ -96,7 +96,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Spellcheck custom word | — | `spellcheck_add_word` | — | `autofill/spellCheck.js` overlay |
 | NAX tags | `GET /naxCache/...` | `get_nax_*`, `set_nax_*`, `generate_nax_custom_tag` | — | NAX applets. MCP `search_nax` / `list_nax_galleries` wrap `queryTags` / `getGalleries` (`sort=score` is top votes). |
 | Docubase | Grimoire site `docubase` (pages in `.cache/wiki/docubase`, clone `.cache/nai-prompt-guide`) | `get_static_wiki_page` / MCP `get_prompt_guide` | — | Hard-reset clone from Yozora on boot, then write the same wiki HTML/index files as other static docs. |
-| Knowledge memories | — | `list_knowledge_memories`, `get_knowledge_memory`, `update_knowledge_memory` | — | Memories DSAP. MCP `list_memories` / `search_memories` / `get_memory` / `save_memory` (refine + `model` `v4_5`). |
+| Knowledge memories | — | `list_knowledge_memories`, `get_knowledge_memory`, `update_knowledge_memory` | — | Memories DSAP. MCP `save_memory` / `saveKnowledgeMemory` (old API name). Grok Memory is not the store. |
 
 ---
 

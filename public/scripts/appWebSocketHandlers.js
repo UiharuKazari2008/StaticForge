@@ -64,6 +64,21 @@ if (window.wsClient) {
                 ? 'fas fa-check-circle'
                 : (level === 'info' ? 'fas fa-info-circle' : 'fas fa-exclamation-triangle'));
 
+        if (notice.restart === true) {
+            const countdownMs = timeout === false ? 15000 : timeout;
+            const countdownSec = countdownMs <= 0
+                ? 0
+                : Math.max(1, Math.round(Number(countdownMs) / 1000));
+            // showAgentClientUpdateDialog: public/scripts/comp/agentClientUpdateDialog.js
+            showAgentClientUpdateDialog({
+                countdownSec,
+                title,
+                lead: title === 'Agent' ? 'An agent asked this client to restart.' : title,
+                message
+            });
+            return;
+        }
+
         if (notice.display === 'dialog') {
             // showConfirmationDialog: public/scripts/comp/confirmationDialog.js
             showConfirmationDialog(message, [

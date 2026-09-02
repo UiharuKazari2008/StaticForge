@@ -91,6 +91,39 @@ function mapMaterializedItemToGalleryRow(item) {
     };
 }
 
+function galleryUpdatedAtMs(value) {
+    const n = Number(value);
+    if (!n) return 0;
+    return n < 1e12 ? n * 1000 : n;
+}
+
+function galleryRowLatestFilename(row) {
+    if (!row) return null;
+    return row.original || row.filename || row.upscaled || null;
+}
+
+async function buildGalleryHint(handlers, workspaceId) {
+    const wsId = workspaceId || 'default';
+    const metadataDb = handlers.globalResources.getMetadataDatabase();
+    const workspaceRecord = handlers.globalResources.getWorkspaceManager().getWorkspace(wsId);
+    const probeMeta = await metadataDb.getGalleryWorkspaceProbeMeta(wsId, 'images');
+    let latestFilename = null;
+    try {
+        const page = await metadataDb.listWorkspaceGalleryItemsPaginated(wsId, 'images', 0, 1);
+        const item = page && page.items && page.items[0];
+        const row = item ? mapMaterializedItemToGalleryRow(item) : null;
+        latestFilename = galleryRowLatestFilename(row);
+    } catch (_err) { /* hint still useful without head filename */ }
+    return {
+        workspaceId: wsId,
+        viewType: 'images',
+        total: Number(probeMeta && probeMeta.totalItems) || 0,
+        lastGalleryUpdatedAt: galleryUpdatedAtMs(probeMeta && probeMeta.updatedAt),
+        lastGalleryDestructiveAt: Number(workspaceRecord && workspaceRecord.lastGalleryDestructiveAt) || 0,
+        latestFilename
+    };
+}
+
 async function buildGalleryRowForFilename(handlers, clientInfo, viewType, filename, workspaceIdHint) {
     if (!filename) {
         return null;
@@ -195,19 +228,24 @@ async function broadcastGalleryMutation(handlers, wsServer, clientInfo, options 
                 newItems.push(newItem);
             }
         }
-        if (newItems.length > 0) {
-            wsServer.broadcast({
-                type: 'gallery_updated',
-                data: {
-                    action: 'append_top',
-                    newItems,
-                    viewType,
-                    workspaceId
-                },
-                timestamp
-            }, workspaceFilter);
-            return;
-        }
+        const probeMeta = await metadataDb.getGalleryWorkspaceProbeMeta(workspaceId, viewType);
+        wsServer.broadcast({
+            type: 'gallery_updated',
+            data: {
+                action: 'append_top',
+                newItems,
+                filenames: appendFilenames,
+                viewType,
+                workspaceId,
+                total: Number(probeMeta && probeMeta.totalItems) || 0,
+                lastGalleryUpdatedAt: galleryUpdatedAtMs(probeMeta && probeMeta.updatedAt),
+                latestFilename: newItems[0]
+                    ? galleryRowLatestFilename(newItems[0])
+                    : appendFilenames[0]
+            },
+            timestamp
+        }, workspaceFilter);
+        return;
     }
 
     const probeMeta = await metadataDb.getGalleryWorkspaceProbeMeta(workspaceId, viewType);
@@ -217,7 +255,8 @@ async function broadcastGalleryMutation(handlers, wsServer, clientInfo, options 
             action: 'invalidate_sync',
             viewType,
             workspaceId,
-            total: Number(probeMeta?.totalItems) || 0
+            total: Number(probeMeta?.totalItems) || 0,
+            lastGalleryUpdatedAt: galleryUpdatedAtMs(probeMeta && probeMeta.updatedAt)
         },
         timestamp
     }, workspaceFilter);
@@ -227,6 +266,7 @@ function sendGalleryMetaProbeResponse(handlers, ws, requestId, {
     viewType,
     activeWorkspaceId,
     lastGalleryDestructiveAt,
+    lastGalleryUpdatedAt,
     totalItems,
     pinnedIndexes,
     offset,
@@ -243,6 +283,7 @@ function sendGalleryMetaProbeResponse(handlers, ws, requestId, {
             blockSize: GALLERY_BLOCK_SIZE,
             pinnedIndexes: Array.isArray(pinnedIndexes) ? pinnedIndexes : [],
             lastGalleryDestructiveAt,
+            lastGalleryUpdatedAt: Number(lastGalleryUpdatedAt) || 0,
             pagination: {
                 offset,
                 limit,
@@ -272,6 +313,7 @@ async function tryServeGalleryFastPaginatedPage(handlers, ws, requestId, {
     light,
     includePinnedStatus,
     lastGalleryDestructiveAt,
+    lastGalleryUpdatedAt,
     galleryClient,
     masterReachable,
     replicationConfig,
@@ -413,6 +455,8 @@ async function tryServeGalleryFastPaginatedPage(handlers, ws, requestId, {
             blockOffset: offset,
             pinnedIndexes,
             lastGalleryDestructiveAt,
+            lastGalleryUpdatedAt: Number(lastGalleryUpdatedAt) || 0,
+            latestFilename: offset === 0 ? galleryRowLatestFilename(gallery[0]) : null,
             replicationContext,
             pagination: {
                 offset,
@@ -453,15 +497,17 @@ async function handleGalleryRequest(handlers, ws, message, clientInfo, wsServer)
 
         const workspaceRecord = handlers.globalResources.getWorkspaceManager().getWorkspace(activeWorkspaceId);
         const lastGalleryDestructiveAt = Number(workspaceRecord?.lastGalleryDestructiveAt) || 0;
+        const probeMeta = await metadataDb.getGalleryWorkspaceProbeMeta(activeWorkspaceId, viewType);
+        const lastGalleryUpdatedAt = galleryUpdatedAtMs(probeMeta && probeMeta.updatedAt);
 
         // Meta probe (limit:0) — O(1) SQL meta only; return before any replication / index work
         if (isHashProbe) {
-            const fastProbe = await tryFastGalleryMetaProbe(metadataDb, activeWorkspaceId, viewType);
             sendGalleryMetaProbeResponse(handlers, ws, requestId, {
                 viewType,
                 activeWorkspaceId,
                 lastGalleryDestructiveAt,
-                totalItems: fastProbe?.totalItems ?? 0,
+                lastGalleryUpdatedAt,
+                totalItems: probeMeta?.totalItems ?? 0,
                 pinnedIndexes: [],
                 offset,
                 limit
@@ -481,6 +527,7 @@ async function handleGalleryRequest(handlers, ws, message, clientInfo, wsServer)
                 light,
                 includePinnedStatus: false,
                 lastGalleryDestructiveAt,
+                lastGalleryUpdatedAt,
                 galleryClient: false,
                 masterReachable: false,
                 replicationConfig: null,
@@ -542,6 +589,7 @@ async function handleGalleryRequest(handlers, ws, message, clientInfo, wsServer)
                 light,
                 includePinnedStatus: effectiveIncludePinned,
                 lastGalleryDestructiveAt,
+                lastGalleryUpdatedAt,
                 galleryClient,
                 masterReachable,
                 replicationConfig,
@@ -1578,5 +1626,7 @@ function registerPackets(handlersCtx) {
 module.exports = {
     registerPackets,
     broadcastGalleryMutation,
-    clientMatchesGalleryWorkspace
+    clientMatchesGalleryWorkspace,
+    buildGalleryHint,
+    galleryUpdatedAtMs
 };

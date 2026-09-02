@@ -1,5 +1,8 @@
 // Director Handler Functions
 // Extracted from websocketHandlers.js to separate director-specific logic
+// MIGRATE-ENSHUTSUKA-MCP: API-era request path (callDirectorAIWithContext → GrokService).
+// Removable once grok.com + MCP is the Enshutsuka requester. Keep session/rules/feedback stores
+// until a later slice decides they are unused. Do not add new API calls here.
 const path = require('path');
 const fs = require('fs');
 const sharp = require('sharp');
@@ -1570,6 +1573,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
     }
 }
 
+// MIGRATE-ENSHUTSUKA-MCP: paid xAI Director completion. Replace with grok.com + MCP.
 async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
     const gr = handler.globalResources;
     const db = directorDb(gr);

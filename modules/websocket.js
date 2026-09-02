@@ -152,6 +152,7 @@ class WebSocketServer {
                         display: data.display === 'dialog' ? 'dialog' : 'toast',
                         level: data.level || 'warning',
                         timeout: data.timeout === false ? false : (data.timeout ?? 10000),
+                        restart: data.restart === true,
                         source: data.source || 'agent'
                     },
                     timestamp: new Date().toISOString()
@@ -241,6 +242,7 @@ class WebSocketServer {
             if (clientInfo.authenticated && clientInfo.sessionId) {
                 await this.restoreSessionWorkspace(clientInfo.sessionId, ws);
                 this.sendGalleryScrollStateFromSession(clientInfo.sessionId, ws);
+                await this.sendGalleryHintToClient(clientInfo.sessionId, ws);
             }
 
             // Send combined search + prompt FTS indexing snapshot on connect
@@ -327,6 +329,24 @@ class WebSocketServer {
     /**
      * Push saved gallery scroll positions from express session so client can restore after loadGallery.
      */
+    async sendGalleryHintToClient(sessionId, ws) {
+        try {
+            const { buildGalleryHint } = require('./ws/handlers/120-galleryHandler');
+            let workspaceId = 'default';
+            try {
+                workspaceId = this.globalResources.getWorkspaceManager().getActiveWorkspace(sessionId) || 'default';
+            } catch (_err) { /* default workspace */ }
+            const data = await buildGalleryHint({ globalResources: this.globalResources }, workspaceId);
+            this.sendToClient(ws, {
+                type: 'gallery_hint',
+                data,
+                timestamp: new Date().toISOString()
+            });
+        } catch (e) {
+            console.warn('sendGalleryHintToClient:', e.message);
+        }
+    }
+
     sendGalleryScrollStateFromSession(sessionId, ws) {
         try {
             if (!this.sessionStore || typeof this.sessionStore.get !== 'function') return;
@@ -468,6 +488,8 @@ class WebSocketServer {
             });
             return;
         }
+
+        clientInfo.lastActivity = new Date();
 
         // Allow critical messages without authentication
         const isCriticalMessage = message.type && 
@@ -823,9 +845,13 @@ class WebSocketServer {
             },
             timestamp: new Date().toISOString()
         }, (clientInfo) => {
-            // Filter: only send to clients viewing the same workspace
-            const clientWorkspace = this.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
-            return clientWorkspace === workspaceId;
+            if (!clientInfo || !clientInfo.sessionId) return false;
+            try {
+                const clientWorkspace = this.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
+                return (clientWorkspace || 'default') === (workspaceId || 'default');
+            } catch (_err) {
+                return false;
+            }
         });
         
         console.log(`📢 Broadcast image addition to workspace ${workspaceId}: ${Array.isArray(imageFilenames) ? imageFilenames.length : 1} image(s)`);

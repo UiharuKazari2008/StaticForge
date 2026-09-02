@@ -3709,7 +3709,7 @@ class TagLookup {
  * @returns {Promise<string>} Markdown formatted text (or HTML if parser fails)
  */
     async convertWikiMarkupToMarkdown(text, source = 'danbooru', baseUrl = null) {
-    if (!text) return '';
+    if (typeof text !== 'string' || !text) return '';
     
     try {
         // Determine base URL if not provided

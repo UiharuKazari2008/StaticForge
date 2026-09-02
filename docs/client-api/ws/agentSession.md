@@ -22,10 +22,10 @@ These packets are **not** gallery / workspace list APIs. No share-code chrome is
 
 | Type | When | Data |
 |------|------|------|
-| `agent_session_command` | Loopback REST / MCP drive of this key's bound tab | `requestId` + `data.command` (`open_image` / `apply_studio` / `get_state` / `get_windows` / `get_editor` / `get_physics` / `client_update`). `get_windows` returns open Lumen / Glancewell / Grimoire / gallery / Studio with current data. `apply_studio` also carries sibling `autoApply` (default true) and `autoGenerate` (default false). Silent apply sets `skipAutofill` on field writes. `get_physics` returns the tab's dynamic-button config; the server compiles location/tod/date/weather/season. `client_update` shows the mandatory 15s Client Update dialog; Cancel aborts, 0 applies then restarts that tab. `POST /agent/broadcast` `restart: true` reuses that same dialog on every connected tab (not this bound command). |
-| `agent_session_bound` | After this key binds the tab | `data.clientId` — tray popup |
-| `agent_session_unbound` | This key rebound / idle 15 min / tray Unbind and no other key remains | `data.clientId`, `data.reason` |
-| `agent_session_notice` | Physics used (and similar tray cues) | `data.action` (`physics`) |
+| `agent_session_command` | Loopback REST / MCP drive of this key's bound tab | `requestId` + `data.command` (`open_image` / `apply_studio` / `get_state` / `get_windows` / `get_editor` / `get_physics` / `client_update`) and optional `data.actorName` (application token name for Remote Access tray copy). `get_windows` returns open Lumen / Glancewell / Grimoire / gallery / Studio with current data. `apply_studio` also carries sibling `autoApply` (default true) and `autoGenerate` (default false). Silent apply sets `skipAutofill` on field writes. `get_physics` returns the tab's dynamic-button config; the server compiles location/tod/date/weather/season. `client_update` shows the mandatory 15s Client Update dialog; Cancel aborts, 0 applies then restarts that tab. `POST /agent/broadcast` `restart: true` reuses that same dialog on every connected tab (not this bound command). |
+| `agent_session_bound` | After this key binds the tab | `data.clientId`, optional `data.actorName` — Remote Access tray popup |
+| `agent_session_unbound` | This key rebound / idle 15 min / tray Disconnect and no other key remains | `data.clientId`, `data.reason` |
+| `agent_session_notice` | Physics used (and similar tray cues) | `data.action` (`physics`), optional `data.actorName` — location-arrow icon + Remote Access popover |
 
 ## Detailed packets
 

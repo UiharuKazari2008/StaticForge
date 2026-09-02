@@ -1898,6 +1898,8 @@ class Director {
         return messageDiv;
     }
     
+    // MIGRATE-ENSHUTSUKA-MCP: in-app chat is the old API requester. Requests now happen
+    // on grok.com; this send path can be removed with the Director API loop.
     async sendMessage() {
         const content = this.directorChatInput.value.trim();
         if (!this.currentSession) return;

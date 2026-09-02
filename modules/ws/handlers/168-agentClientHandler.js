@@ -35,6 +35,9 @@ function registerPackets(handlersCtx) {
 
     reg('session_share_start', 'agentSession', handleSessionShareStart);
     reg('agent_session_result', 'agentSession', handleAgentSessionResult);
+    reg('agent_session_unbind', 'agentSession', (handlers, ws, message, clientInfo) => {
+        agentClientBridge.handleAgentSessionUnbind(handlers, ws, message, clientInfo);
+    });
 }
 
 module.exports = {

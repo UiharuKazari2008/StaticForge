@@ -13,6 +13,8 @@ const {
     csrfMatches,
     filterKeysForConsent,
     generatedKeyName,
+    keyNameMatchesClient,
+    findAutoConsentKey,
     CONSENT_PIN_MAX_FAILS,
     DEFAULT_CREATE_SCOPES
 } = require('../modules/mcpOAuthConsent');
@@ -84,5 +86,28 @@ assert.strictEqual(keyMatchesRequestedScopes(filtered[0].scopes, ['generation'])
 
 assert.strictEqual(generatedKeyName('Grok'), 'MCP Grok');
 assert.strictEqual(generatedKeyName(''), 'MCP Connector');
+
+console.log('Testing keyNameMatchesClient...');
+assert.strictEqual(keyNameMatchesClient('MCP Grok', 'Grok'), true);
+assert.strictEqual(keyNameMatchesClient('Grok', 'Grok'), true);
+assert.strictEqual(keyNameMatchesClient('grok', 'Grok'), true);
+assert.strictEqual(keyNameMatchesClient('MCP  Grok', 'Grok'), true);
+assert.strictEqual(keyNameMatchesClient('Grok Studio', 'Grok'), false);
+assert.strictEqual(keyNameMatchesClient('MCP Grok', 'Claude'), false);
+assert.strictEqual(keyNameMatchesClient('', 'Grok'), false);
+
+console.log('Testing findAutoConsentKey...');
+const grokKey = { id: 'k1', status: 'active', appName: 'MCP Grok', scopes: ['generation', 'gallery'] };
+const grokExact = { id: 'k2', status: 'active', appName: 'Grok', scopes: ['generation', 'gallery'] };
+const otherName = { id: 'k3', status: 'active', appName: 'Studio', scopes: ['generation', 'gallery'] };
+const missingScopes = { id: 'k4', status: 'active', appName: 'MCP Grok', scopes: ['generation'] };
+const revoked = { id: 'k5', status: 'revoked', appName: 'MCP Grok', scopes: ['generation', 'gallery'] };
+assert.strictEqual(findAutoConsentKey([grokKey], 'Grok', ['generation']).id, 'k1');
+assert.strictEqual(findAutoConsentKey([missingScopes], 'Grok', ['generation', 'gallery']), null);
+assert.strictEqual(findAutoConsentKey([otherName], 'Grok', ['generation']), null);
+assert.strictEqual(findAutoConsentKey([revoked], 'Grok', ['generation']), null);
+assert.strictEqual(findAutoConsentKey([grokExact, grokKey], 'Grok', ['generation']).id, 'k1');
+assert.strictEqual(findAutoConsentKey([grokExact], 'Grok', ['generation']).id, 'k2');
+assert.strictEqual(findAutoConsentKey([], 'Grok', ['generation']), null);
 
 console.log('test-mcp-oauth-consent: ok');

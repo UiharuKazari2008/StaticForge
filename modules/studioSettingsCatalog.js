@@ -215,6 +215,35 @@ function buildStudioSettingsCatalog(globalResources, modelHint) {
     };
 }
 
+function slimStudioSettingsCatalog(catalog) {
+    if (!catalog || typeof catalog !== 'object') return catalog;
+    const quality = catalog.quality && typeof catalog.quality === 'object' ? { ...catalog.quality } : {};
+    delete quality.byModel;
+    quality.catalog = 'slim';
+    quality.next = 'Full per-model strings: get_studio_state.settings or tools/list';
+    const uc = catalog.uc && typeof catalog.uc === 'object' ? { ...catalog.uc } : {};
+    delete uc.byModel;
+    uc.catalog = 'slim';
+    uc.next = 'Full per-model strings: get_studio_state.settings or tools/list';
+    const nsfw = catalog.nsfw && typeof catalog.nsfw === 'object' ? { ...catalog.nsfw } : {};
+    if (Array.isArray(nsfw.levels)) {
+        nsfw.levels = nsfw.levels.map((row) => ({ id: row.id, name: row.name }));
+    }
+    nsfw.catalog = 'slim';
+    return {
+        rule: catalog.rule,
+        model: catalog.model,
+        models: catalog.models,
+        samplers: catalog.samplers,
+        noiseScheduler: catalog.noiseScheduler,
+        resolutions: catalog.resolutions,
+        quality,
+        uc,
+        nsfw,
+        transparency: catalog.transparency
+    };
+}
+
 function formatQualityDescription(catalog) {
     const lines = [
         'If true, server prepends the live quality string for the generate model. Do not also put that text in prompt.',
@@ -301,6 +330,7 @@ function patchParamSchema(props, catalog) {
     if (props.upscale) props.upscale.description = 'Request 2x upscale after generate';
     if (props.strength) props.strength.description = 'img2img strength 0–1 (only in a strength-capable mode)';
     if (props.noise) props.noise.description = 'img2img noise 0–1';
+    if (props.n) props.n.description = 'Print count 1–8. generate_image / generate_preset: server copies (filenames[] when n>1). apply_studio_changes: Studio prints input (used with autoGenerate).';
     if (props.append_quality) {
         props.append_quality.description = formatQualityDescription(catalog);
     }
@@ -309,6 +339,11 @@ function patchParamSchema(props, catalog) {
     }
     if (props.append_transparency) {
         props.append_transparency.description = formatTransparencyDescription(catalog);
+    }
+    if (props.nsfw) {
+        props.nsfw.description = formatNsfwDescription(catalog);
+        const ids = ((catalog && catalog.nsfw && catalog.nsfw.levels) || []).map((row) => row.id);
+        if (ids.length) props.nsfw.enum = ids;
     }
     if (props.dataset_config) {
         if (!props.dataset_config.properties) props.dataset_config.properties = {};
@@ -358,6 +393,7 @@ module.exports = {
     RESOLUTIONS,
     PRESET_RULE,
     buildStudioSettingsCatalog,
+    slimStudioSettingsCatalog,
     applyCatalogToListedTool,
     formatQualityDescription,
     formatUcDescription,

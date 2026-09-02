@@ -71,6 +71,14 @@ function naxtGalleryBucketLabel(slug, galleries) {
         .trim() || slug || '';
 }
 
+/** Menu group from nax.moe gallery.version (v5 / v4.5 / v4). Check 4.5 before v5. */
+function naxtGalleryVersionBucket(version) {
+    const v = String(version || '').toLowerCase();
+    if (v.includes('4.5') || v.includes('4-5')) return 'v4.5';
+    if (v.includes('v5') || v === '5') return 'v5';
+    return 'v4';
+}
+
 /** Split tag portion from ", Text:" narrative suffix (manual prompt convention). */
 function naxtSplitPromptTagsAndText(prompt) {
     const p = prompt == null ? '' : String(prompt);
@@ -831,34 +839,26 @@ class NaxtApplet {
     refreshDatasetClickMenuItems() {
         if (!this.datasetClickMenuConfig) return;
         const items = [];
-        const v45 = this.galleries.filter((g) => String(g.version || '').includes('4.5'));
-        const v4 = this.galleries.filter((g) => !String(g.version || '').includes('4.5'));
-        if (v45.length) {
-            items.push({ separator: true, text: 'v4.5' });
-            v45.forEach((g) => {
-                items.push({
-                    text: naxtGalleryMenuLabel(g),
-                    action: 'select-dataset',
-                    datasetSlug: g.slug,
-                    loadfn: (item) => {
-                        item.highlighted = item.datasetSlug === this.selectedGallerySlug;
-                    }
-                });
+        const pushGallery = (g) => {
+            items.push({
+                text: naxtGalleryMenuLabel(g),
+                action: 'select-dataset',
+                datasetSlug: g.slug,
+                loadfn: (item) => {
+                    item.highlighted = item.datasetSlug === this.selectedGallerySlug;
+                }
             });
-        }
-        if (v4.length) {
-            items.push({ separator: true, text: 'v4' });
-            v4.forEach((g) => {
-                items.push({
-                    text: naxtGalleryMenuLabel(g),
-                    action: 'select-dataset',
-                    datasetSlug: g.slug,
-                    loadfn: (item) => {
-                        item.highlighted = item.datasetSlug === this.selectedGallerySlug;
-                    }
-                });
-            });
-        }
+        };
+        const grouped = { v5: [], 'v4.5': [], v4: [] };
+        this.galleries.forEach((g) => {
+            grouped[naxtGalleryVersionBucket(g.version)].push(g);
+        });
+        ['v5', 'v4.5', 'v4'].forEach((bucket) => {
+            const list = grouped[bucket];
+            if (!list.length) return;
+            items.push({ separator: true, text: bucket });
+            list.forEach(pushGallery);
+        });
         if (!items.length) {
             items.push({ text: 'No datasets', disabled: true });
         }

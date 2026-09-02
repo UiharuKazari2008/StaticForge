@@ -73,6 +73,10 @@ console.log('Testing consent page rendering...');
 assert.ok(CONSENT_PAGE_HTML.includes('Authorize Application'));
 assert.ok(CONSENT_PAGE_HTML.includes('{{CLIENT_NAME}}'));
 assert.ok(CONSENT_PAGE_HTML.includes('{{SCOPE_LIST}}'));
+assert.ok(CONSENT_PAGE_HTML.includes('<details class="scopes">'));
+assert.ok(CONSENT_PAGE_HTML.includes('<summary>Requested permissions</summary>'));
+assert.ok(!/details class="scopes"[^>]*\sopen\b/.test(CONSENT_PAGE_HTML));
+assert.ok(CONSENT_PAGE_HTML.indexOf('{{STEP_BODY}}') < CONSENT_PAGE_HTML.indexOf('<details class="scopes">'));
 
 const rendered = renderConsentPage({
     clientName: 'Test Client',
@@ -92,6 +96,9 @@ assert.ok(rendered.includes('generation'));
 assert.ok(rendered.includes('gallery'));
 assert.ok(rendered.includes('testchallenge'));
 assert.ok(rendered.includes('S256'));
+assert.ok(rendered.includes('id="consent_pin"'));
+assert.ok(rendered.indexOf('id="consent_pin"') < rendered.indexOf('<details class="scopes">'));
+assert.ok(!/<details[^>]*\sopen\b/.test(rendered));
 const pinForm = rendered.match(/<form[\s\S]*?<\/form>/)[0];
 const firstSubmit = pinForm.match(/<button[^>]*type="submit"[^>]*value="([^"]+)"/);
 assert.strictEqual(firstSubmit[1], 'pin', 'Enter must submit Continue, not Deny');

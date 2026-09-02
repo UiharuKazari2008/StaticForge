@@ -1,15 +1,24 @@
 /**
- * MCP activity tray (2 min) + Periscope Event Viewer log + open Lumen / Glancewell from MCP.
+ * Remote Access tray (2 min) + Periscope Event Viewer log + open Lumen / Glancewell from MCP.
  * Periscope: public/scripts/comp/logViewerApplet.js
  * Tray generating: public/scripts/comp/trayIndicators.js
  * Lumen / Glancewell: public/scripts/comp/lightbox.js, public/scripts/comp/imageViewer.js
  */
 
 const MCP_ACTIVITY_TTL_MS = 2 * 60 * 1000;
+const MCP_PHYSICS_TTL_MS = 15 * 60 * 1000;
 const MCP_ACTIVITY_LOG_CLIENT_SOURCE_ID = 'client:mcp-activity';
 const MCP_ACTIVITY_LOG_MAX_ENTRIES = 80;
+const MCP_NOTICE_COALESCE_MS = 2000;
 const mcpActivityLogBuffer = [];
 let mcpActivityHideTimer = null;
+let mcpPhysicsHideTimer = null;
+let mcpPhysicsUsedAt = 0;
+let mcpSessionBound = false;
+let mcpLastActorName = '';
+let mcpLastNoticeAt = 0;
+let mcpLastNoticeActor = '';
+let mcpLastNoticeGroup = '';
 
 function formatMcpActivityTime(at) {
     try {
@@ -19,12 +28,45 @@ function formatMcpActivityTime(at) {
     }
 }
 
+function rememberRemoteActor(name) {
+    const trimmed = String(name || '').trim();
+    if (trimmed) mcpLastActorName = trimmed;
+    return mcpLastActorName;
+}
+
+function quotedRemoteActor(name) {
+    const actor = String(name || mcpLastActorName || '').trim();
+    if (!actor) return null;
+    return `"${actor.replace(/"/g, '')}"`;
+}
+
+function formatRemoteAccessMessage(action, actorName) {
+    const who = quotedRemoteActor(actorName);
+    if (action === 'update') {
+        return who ? `Studio was updated by ${who}` : 'Studio was updated remotely';
+    }
+    if (action === 'open') {
+        return who ? `Studio was opened by ${who}` : 'Studio was opened remotely';
+    }
+    if (action === 'read' || action === 'studio-read') {
+        return who ? `Studio was read by ${who}` : 'Studio was read remotely';
+    }
+    if (action === 'physics') {
+        return who ? `Your location was accessed by ${who}` : 'Your location was accessed remotely';
+    }
+    return who ? `Your session was accessed by ${who}` : 'Your session was accessed remotely';
+}
+
 function summarizeMcpHover(entry) {
-    if (!entry) return 'MCP';
-    const tool = entry.tool || 'mcp';
+    const who = quotedRemoteActor(entry && entry.actorName);
+    const accessed = who ? `Your session was accessed by ${who}` : 'Your session was accessed remotely';
+    if (!entry) return accessed;
+    const tool = entry.tool || '';
     const result = entry.result || {};
     const bit = result.filename || (Array.isArray(result.filenames) ? result.filenames[0] : '') || result.error || '';
-    return bit ? `MCP: ${tool} — ${bit}` : `MCP: ${tool}`;
+    if (tool && bit) return `${accessed} — ${tool} (${bit})`;
+    if (tool) return `${accessed} — ${tool}`;
+    return accessed;
 }
 
 function formatMcpActivityLogLine(entry) {
@@ -35,12 +77,14 @@ function formatMcpActivityLogLine(entry) {
     else if (entry.generating === false) phase = 'done';
     const argsText = JSON.stringify(entry.args || {});
     const resultText = entry.result == null ? '' : ` ${JSON.stringify(entry.result)}`;
-    return `[${time}] ${phase} ${entry.tool || 'mcp'} — ${argsText}${resultText}`;
+    const actor = quotedRemoteActor(entry.actorName);
+    const who = actor ? ` ${actor}` : '';
+    return `[${time}] ${phase}${who} ${entry.tool || 'mcp'} — ${argsText}${resultText}`;
 }
 
 function getMcpActivityLogFormattedText() {
     if (!mcpActivityLogBuffer.length) {
-        return 'No MCP interactions recorded.';
+        return 'No remote access recorded.';
     }
     return mcpActivityLogBuffer.map(formatMcpActivityLogLine).join('\n');
 }
@@ -51,17 +95,106 @@ function updateMcpActivityIndicator() {
     const now = Date.now();
     const recent = mcpActivityLogBuffer.filter((row) => now - row.at <= MCP_ACTIVITY_TTL_MS);
     const last = recent[recent.length - 1];
-    if (!last) {
+    if (!last && !mcpSessionBound) {
         indicator.classList.add('hidden');
         indicator.classList.remove('active');
-        indicator.title = 'MCP';
+        indicator.title = 'Remote Access';
         return;
     }
     indicator.classList.remove('hidden');
     indicator.classList.add('active');
-    indicator.title = summarizeMcpHover(last);
+    const who = quotedRemoteActor(last && last.actorName);
+    const boundHint = mcpSessionBound
+        ? (who ? `Remote Access — bound to ${who} (right-click to unbind)` : 'Remote Access — bound (right-click to unbind)')
+        : '';
+    indicator.title = last
+        ? (mcpSessionBound ? `${summarizeMcpHover(last)} (right-click to unbind)` : summarizeMcpHover(last))
+        : boundHint;
     if (mcpActivityHideTimer) clearTimeout(mcpActivityHideTimer);
-    mcpActivityHideTimer = setTimeout(updateMcpActivityIndicator, Math.max(250, MCP_ACTIVITY_TTL_MS - (now - last.at) + 50));
+    if (!mcpSessionBound && last) {
+        mcpActivityHideTimer = setTimeout(updateMcpActivityIndicator, Math.max(250, MCP_ACTIVITY_TTL_MS - (now - last.at) + 50));
+    }
+}
+
+function updateMcpPhysicsIndicator() {
+    const indicator = document.getElementById('mcpPhysicsIndicator');
+    if (!indicator) return;
+    const now = Date.now();
+    const fresh = mcpPhysicsUsedAt && (now - mcpPhysicsUsedAt) <= MCP_PHYSICS_TTL_MS;
+    if (!fresh && !(mcpSessionBound && mcpPhysicsUsedAt)) {
+        indicator.classList.add('hidden');
+        indicator.classList.remove('active');
+        indicator.title = 'Location';
+        return;
+    }
+    indicator.classList.remove('hidden');
+    indicator.classList.add('active');
+    indicator.title = formatRemoteAccessMessage('physics', mcpLastActorName);
+    if (mcpPhysicsHideTimer) clearTimeout(mcpPhysicsHideTimer);
+    if (fresh) {
+        mcpPhysicsHideTimer = setTimeout(updateMcpPhysicsIndicator, Math.max(250, MCP_PHYSICS_TTL_MS - (now - mcpPhysicsUsedAt) + 50));
+    }
+}
+
+function markMcpPhysicsUsed(actorName) {
+    rememberRemoteActor(actorName);
+    mcpPhysicsUsedAt = Date.now();
+    updateMcpPhysicsIndicator();
+    updateMcpActivityIndicator();
+    showAgentSessionTrayNotice('physics');
+}
+
+function markAgentSessionBound() {
+    mcpSessionBound = true;
+    updateMcpActivityIndicator();
+}
+
+function markAgentSessionUnbound() {
+    mcpSessionBound = false;
+    mcpPhysicsUsedAt = 0;
+    mcpLastActorName = '';
+    updateMcpActivityIndicator();
+    updateMcpPhysicsIndicator();
+}
+
+function showAgentSessionTrayNotice(action, messageOrData) {
+    let actorName = mcpLastActorName;
+    let message;
+    if (messageOrData && typeof messageOrData === 'object') {
+        actorName = rememberRemoteActor(messageOrData.actorName || messageOrData.appName);
+        message = formatRemoteAccessMessage(action, actorName);
+    } else if (typeof messageOrData === 'string' && messageOrData) {
+        message = messageOrData;
+    } else {
+        message = formatRemoteAccessMessage(action, actorName);
+    }
+    if (action === 'bound') markAgentSessionBound();
+    if (action === 'physics') {
+        mcpPhysicsUsedAt = Date.now();
+        updateMcpPhysicsIndicator();
+    }
+    updateMcpActivityIndicator();
+    const now = Date.now();
+    const noticeGroup = (action === 'read' || action === 'studio-read' || action === 'windows' || action === 'bound')
+        ? 'access'
+        : action;
+    const sameActor = actorName && actorName === mcpLastNoticeActor;
+    if (sameActor && noticeGroup === mcpLastNoticeGroup && (now - mcpLastNoticeAt) < MCP_NOTICE_COALESCE_MS) {
+        return;
+    }
+    mcpLastNoticeAt = now;
+    mcpLastNoticeActor = actorName || '';
+    mcpLastNoticeGroup = noticeGroup;
+    const anchor = document.getElementById('mcpActivityIndicator');
+    if (!anchor) return;
+    const iconClass = action === 'physics' ? 'fas fa-location-arrow' : 'fas fa-screencast';
+    // showPopover: public/scripts/comp/popoverManager.js
+    showPopover(anchor, 'info', 'Remote Access', message, false, 8000, `<i class="${iconClass}"></i>`, null, {
+        position: 'top',
+        arrowPosition: 'bottom-right'
+    });
+    // startPopoverAutoHideTimer: public/scripts/comp/systemTrayManager.js
+    startPopoverAutoHideTimer(anchor);
 }
 
 function notifyMcpActivityLogViewer(entry) {
@@ -79,8 +212,10 @@ function recordMcpActivity(data) {
         result: data.result || null,
         success: data.success !== false,
         generating: data.generating,
+        actorName: data.actorName || data.appName || '',
         at: Number(data.at) || Date.now()
     };
+    rememberRemoteActor(entry.actorName);
     mcpActivityLogBuffer.push(entry);
     while (mcpActivityLogBuffer.length > MCP_ACTIVITY_LOG_MAX_ENTRIES) {
         mcpActivityLogBuffer.shift();
@@ -165,6 +300,42 @@ function wireMcpActivityTrayClick() {
     indicator.addEventListener('click', function () {
         void openMcpActivityInPeriscope();
     });
+    if (!contextMenu) return;
+    contextMenu.attachToElement(indicator, {
+        sections: [
+            {
+                type: 'list',
+                title: 'Remote Access',
+                items: [
+                    {
+                        icon: 'fas fa-unlink',
+                        text: 'Disconnect',
+                        action: 'mcp-session-unbind',
+                        tooltip: 'Stop remote access from driving this tab',
+                        loadfn: (item) => {
+                            item.disabled = !mcpSessionBound && !window.isAgentSessionBound();
+                        }
+                    },
+                    {
+                        icon: 'fas fa-list',
+                        text: 'Open access log',
+                        action: 'mcp-open-periscope',
+                        tooltip: 'Open Periscope Remote Access activity'
+                    }
+                ]
+            }
+        ],
+        onAction: (action) => {
+            if (action === 'mcp-session-unbind') {
+                // agentSessionUnbindRequest: public/scripts/comp/agentClientBridge.js
+                void agentSessionUnbindRequest();
+                return;
+            }
+            if (action === 'mcp-open-periscope') {
+                void openMcpActivityInPeriscope();
+            }
+        }
+    });
 }
 
 registerWsInboundHandler({
@@ -186,6 +357,9 @@ registerWsInboundHandler({
 
 window.openMcpViewer = openMcpViewer;
 window.recordMcpActivity = recordMcpActivity;
+window.showAgentSessionTrayNotice = showAgentSessionTrayNotice;
+window.markMcpPhysicsUsed = markMcpPhysicsUsed;
+window.markAgentSessionUnbound = markAgentSessionUnbound;
 window.mcpActivityLogApi = {
     clientSourceId: MCP_ACTIVITY_LOG_CLIENT_SOURCE_ID,
     getFormattedText: getMcpActivityLogFormattedText,
@@ -195,9 +369,11 @@ window.mcpActivityLogApi = {
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function () {
         updateMcpActivityIndicator();
+        updateMcpPhysicsIndicator();
         wireMcpActivityTrayClick();
     });
 } else {
     updateMcpActivityIndicator();
+    updateMcpPhysicsIndicator();
     wireMcpActivityTrayClick();
 }

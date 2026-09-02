@@ -55,6 +55,10 @@ function handleImageGenerationErrorMessage(message, wsClient) {
     if (typeof setGenerationPreviewForegroundLinesActive === 'function') {
         setGenerationPreviewForegroundLinesActive(false);
     }
+    // stopStudioPreviewForReroll: public/scripts/comp/galleryView.js
+    if (isRerollImageWsRequest(message.requestId)) {
+        stopStudioPreviewForReroll();
+    }
 }
 
 function handleGenerationQuipsUpdatedMessage(message, wsClient) {

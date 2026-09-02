@@ -1632,6 +1632,14 @@ function updateManualUpscaleToggleState() {
     }
 }
 
+const GENERATION_PRINT_COUNT_MAX = 8;
+
+function parseGenerationPrintCount(value) {
+    const n = parseInt(value, 10);
+    if (!Number.isFinite(n) || n < 1) return 1;
+    return Math.min(GENERATION_PRINT_COUNT_MAX, n);
+}
+
 /**
  * Calculate credit cost for a request
  * @param {object} requestBody
@@ -1661,7 +1669,7 @@ function calculateCreditCost(requestBody) {
         model: requestBody.model || 'V4_5',
         sampler: { meta: requestBody.sampler || 'k_euler_ancestral' },
         subscription: resolveSubscriptionForPricing(window.optionsData?.user?.subscription),
-        nSamples: 1,
+        nSamples: parseGenerationPrintCount(requestBody.n),
         image: requestBody.image ? true : false,
         strength: requestBody.strength || 1,
         reference: refCount > 0,

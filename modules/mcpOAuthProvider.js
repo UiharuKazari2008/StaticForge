@@ -416,6 +416,7 @@ class McpOAuthProvider {
             userType: row.user_type || 'admin',
             scopes: JSON.parse(row.scopes || '[]'),
             applicationKeyId: row.application_key_id,
+            appName: row.app_name || null,
             clientId: row.client_id,
             resource: row.resource,
             expiresAt: row.expires_at * 1000

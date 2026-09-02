@@ -695,7 +695,7 @@ class LogViewerApplet {
                 }
             },
             {
-                text: 'MCP Activity',
+                text: 'Remote Access',
                 action: 'select-log-source',
                 sourceId: LOG_VIEWER_MCP_ACTIVITY_SOURCE,
                 loadfn: (item) => {
@@ -1328,7 +1328,7 @@ class LogViewerApplet {
         if (!this.contentEl) return;
         const text = window.mcpActivityLogApi
             ? window.mcpActivityLogApi.getFormattedText()
-            : 'MCP activity log unavailable.';
+            : 'Remote Access log unavailable.';
         this.contentEl.textContent = text;
         this.lineCount = text ? text.split('\n').length : 0;
         this.trimLogLinesIfNeeded();
@@ -1356,7 +1356,7 @@ class LogViewerApplet {
             return { id: LOG_VIEWER_DEV_WARNINGS_SOURCE, label: 'Developer Warnings', group: 'client' };
         }
         if (this.isMcpActivityLogSource(sourceId)) {
-            return { id: LOG_VIEWER_MCP_ACTIVITY_SOURCE, label: 'MCP Activity', group: 'client' };
+            return { id: LOG_VIEWER_MCP_ACTIVITY_SOURCE, label: 'Remote Access', group: 'client' };
         }
         return this.sources.find((s) => s.id === sourceId) || null;
     }
@@ -1370,7 +1370,7 @@ class LogViewerApplet {
             return 'Developer Warnings';
         }
         if (this.isMcpActivityLogSource(id)) {
-            return 'MCP Activity';
+            return 'Remote Access';
         }
         const meta = this.getSourceMeta(id);
         if (!meta) return 'Logs';

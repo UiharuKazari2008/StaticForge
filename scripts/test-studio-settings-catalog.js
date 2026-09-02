@@ -1,6 +1,7 @@
 const assert = require('assert');
 const {
     buildStudioSettingsCatalog,
+    slimStudioSettingsCatalog,
     applyCatalogToListedTool,
     PRESET_RULE
 } = require('../modules/studioSettingsCatalog');
@@ -73,8 +74,36 @@ assert.ok(listed.inputSchema.properties.dataset_config.properties.nsfw.descripti
 assert.ok(listed.inputSchema.properties.dataset_config.properties.nsfw.description.includes('nsfw, nude'));
 assert.ok(listed.inputSchema.properties.dataset_config.description.includes('no_text'));
 
+const listedApply = applyCatalogToListedTool({
+    name: 'apply_studio_changes',
+    description: 'Apply',
+    inputSchema: {
+        type: 'object',
+        properties: {
+            nsfw: { type: 'number' },
+            dataset_config: { type: 'object' },
+            params: { type: 'object', properties: { nsfw: { type: 'number' } } }
+        }
+    }
+}, catalog);
+assert.ok(listedApply.inputSchema.properties.nsfw.description.includes('Nude'));
+assert.ok(listedApply.inputSchema.properties.params.properties.nsfw.description.includes('Nude'));
+assert.ok(listedApply.inputSchema.properties.dataset_config.properties.nsfw.description.includes('Nude'));
+
+const listedN = applyCatalogToListedTool({
+    name: 'apply_studio_changes',
+    description: 'Apply',
+    inputSchema: { type: 'object', properties: { n: { type: 'number' } } }
+}, catalog);
+assert.ok(listedN.inputSchema.properties.n.description.includes('Studio prints'));
+
 const empty = buildStudioSettingsCatalog(null);
 assert.ok(Array.isArray(empty.samplers));
 assert.deepStrictEqual(empty.quality.byModel, {});
+const slim = slimStudioSettingsCatalog(catalog);
+assert.ok(!slim.quality.byModel);
+assert.strictEqual(slim.quality.catalog, 'slim');
+assert.ok(Array.isArray(slim.nsfw.levels));
+assert.ok(slim.nsfw.levels.every((row) => row.add === undefined));
 
 console.log('test-studio-settings-catalog: ok');

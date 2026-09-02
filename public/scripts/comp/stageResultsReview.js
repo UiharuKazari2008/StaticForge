@@ -1,5 +1,25 @@
 /** Staged generation results review window — placeholders fill as saved stages land. */
 
+function parseRequestPrintCount(requestBody) {
+    // parseGenerationPrintCount: public/scripts/comp/utilities.js
+    return parseGenerationPrintCount(requestBody?.n);
+}
+
+function collectExpectedPrintSlots(printCount) {
+    const slots = [];
+    for (let i = 0; i < printCount; i++) {
+        slots.push({
+            currentStage: i + 1,
+            stageIndex: i,
+            stageId: String(i + 1).padStart(2, '0'),
+            stageType: 'print',
+            label: `Print ${i + 1}`,
+            hex: String(i + 1).padStart(2, '0')
+        });
+    }
+    return slots;
+}
+
 function collectExpectedSavedStageSlots(requestBody) {
     const pipeline = Array.isArray(requestBody?.pipeline) ? requestBody.pipeline : [];
     // calculateStageHexIdsFromData / getPipelineStageMenuLabel: public/scripts/comp/pipelineStageManager.js
@@ -50,6 +70,7 @@ class StageResultsReviewManager {
         this.titleEl = null;
         this.scrollShell = null;
         this.sessionActive = false;
+        this.printMode = false;
     }
 
     init() {
@@ -73,6 +94,8 @@ class StageResultsReviewManager {
     }
 
     isStagedRequest(requestBody) {
+        const printCount = parseRequestPrintCount(requestBody);
+        if (printCount > 1) return true;
         return Array.isArray(requestBody?.pipeline)
             && requestBody.pipeline.length > 0
             && requestBody.skip_pipeline_stages !== true;
@@ -81,12 +104,18 @@ class StageResultsReviewManager {
     openForGeneration(requestBody) {
         if (!this.element || !this.gallery || !this.isStagedRequest(requestBody)) {
             this.sessionActive = false;
+            this.printMode = false;
             return;
         }
 
-        const slots = collectExpectedSavedStageSlots(requestBody);
+        const printCount = parseRequestPrintCount(requestBody);
+        this.printMode = printCount > 1;
+        const slots = this.printMode
+            ? collectExpectedPrintSlots(printCount)
+            : collectExpectedSavedStageSlots(requestBody);
         if (slots.length === 0) {
             this.sessionActive = false;
+            this.printMode = false;
             return;
         }
 
@@ -204,6 +233,7 @@ class StageResultsReviewManager {
 
     applyProgress(data) {
         if (!this.sessionActive || !data) return;
+        if (this.printMode && data.stageType !== 'print') return;
 
         if (data.phase === 'generating' || data.phase === 'stage_delay' || data.phase === 'upscaling' || data.phase === 'previews') {
             this.markGenerating(data);
@@ -249,9 +279,10 @@ class StageResultsReviewManager {
         if (!this.titleEl || !this.gallery) return;
         const total = this.gallery.querySelectorAll('.gallery-item').length;
         const filled = this.gallery.querySelectorAll('.gallery-item[data-stage-filename]').length;
+        const heading = this.printMode ? 'Prints' : 'Stage Results';
         this.titleEl.textContent = total === 0
-            ? 'Stage Results'
-            : `Stage Results · ${filled}/${total}`;
+            ? heading
+            : `${heading} · ${filled}/${total}`;
     }
 
     reinitScrollbar() {

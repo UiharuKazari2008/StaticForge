@@ -8,6 +8,7 @@ const https = require('https');
 const RUNPOD_REST_HOST = 'rest.runpod.io';
 const POLL_MS = 30000;
 const REQUEST_TIMEOUT_MS = 20000;
+const DIRECT_AGENT = new https.Agent({ keepAlive: false });
 const DEFAULT_IDLE_MINUTES = 15;
 
 function toPositiveInt(value, fallback) {
@@ -150,8 +151,7 @@ class RunpodPodManager {
         }
 
         const prevById = new Map((this._snapshot.pods || []).map((p) => [p.id, p]));
-        const pods = [];
-        for (const cfg of configs) {
+        const pods = await Promise.all(configs.map(async (cfg) => {
             const prev = prevById.get(cfg.id) || {};
             const busy = this._busy.get(cfg.id) || null;
             let status = prev.status || 'unknown';
@@ -175,7 +175,7 @@ class RunpodPodManager {
                     this.log('error', `Status ${cfg.id}: ${err.message}`);
                 }
             }
-            pods.push({
+            return {
                 id: cfg.id,
                 name: cfg.name,
                 status,
@@ -187,8 +187,8 @@ class RunpodPodManager {
                 lastStartedAt: cost.lastStartedAt,
                 gpuName: cost.gpuName,
                 error
-            });
-        }
+            };
+        }));
 
         this._snapshot = {
             pods,
@@ -335,6 +335,7 @@ class RunpodPodManager {
                 port: 443,
                 path: `/v1${pathname}`,
                 method,
+                agent: DIRECT_AGENT,
                 headers: {
                     accept: 'application/json',
                     authorization: `Bearer ${apiKey}`

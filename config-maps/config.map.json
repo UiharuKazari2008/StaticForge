@@ -2,118 +2,760 @@
   "configId": "config",
   "label": "Application Config",
   "rules": [
-    { "path": [], "type": "object", "label": "Application Config", "closed": true, "required": true },
-    { "path": ["port"], "type": "number", "label": "HTTP Port", "restartRequired": true, "required": true, "description": "TCP port the HTTP server listens on" },
-    { "path": ["enable_dev"], "type": "boolean", "label": "Developer Access", "editMode": "inline", "restartRequired": true, "description": "Enable routes protected by the development login key" },
-    { "path": ["defaultGrokModel"], "type": "string", "label": "Default Grok Model", "editorType": "input", "description": "Default model ID for Grok chat requests" },
-    { "path": ["chat_streaming_enabled"], "type": "boolean", "label": "Chat Streaming", "editMode": "inline" },
-    { "path": ["debugNovelAI"], "type": "boolean", "label": "Debug NovelAI", "editMode": "inline" },
-    { "path": ["novelaiExplore"], "type": "object", "label": "NovelAI Explore", "closed": true, "required": true },
-    { "path": ["novelaiExplore", "uploadsEnabled"], "type": "boolean", "label": "Explore Uploads Enabled", "editMode": "inline", "required": true, "description": "Allow Publish to Explorer (POST explore.novelai.net/post/image). Keep false until upload flow is verified safe." },
     {
-      "path": ["log_verbosity"],
+      "path": [],
+      "type": "object",
+      "label": "Application Config",
+      "closed": true,
+      "required": true
+    },
+    {
+      "path": [
+        "port"
+      ],
+      "type": "number",
+      "label": "HTTP Port",
+      "restartRequired": true,
+      "required": true,
+      "description": "TCP port the HTTP server listens on"
+    },
+    {
+      "path": [
+        "enable_dev"
+      ],
+      "type": "boolean",
+      "label": "Developer Access",
+      "editMode": "inline",
+      "restartRequired": true,
+      "description": "Enable routes protected by the development login key"
+    },
+    {
+      "path": [
+        "defaultGrokModel"
+      ],
+      "type": "string",
+      "label": "Default Grok Model",
+      "editorType": "input",
+      "description": "Default model ID for Grok chat requests"
+    },
+    {
+      "path": [
+        "chat_streaming_enabled"
+      ],
+      "type": "boolean",
+      "label": "Chat Streaming",
+      "editMode": "inline"
+    },
+    {
+      "path": [
+        "debugNovelAI"
+      ],
+      "type": "boolean",
+      "label": "Debug NovelAI",
+      "editMode": "inline"
+    },
+    {
+      "path": [
+        "novelaiExplore"
+      ],
+      "type": "object",
+      "label": "NovelAI Explore",
+      "closed": true,
+      "required": true
+    },
+    {
+      "path": [
+        "novelaiExplore",
+        "uploadsEnabled"
+      ],
+      "type": "boolean",
+      "label": "Explore Uploads Enabled",
+      "editMode": "inline",
+      "required": true,
+      "description": "Allow Publish to Explorer (POST explore.novelai.net/post/image). Keep false until upload flow is verified safe."
+    },
+    {
+      "path": [
+        "log_verbosity"
+      ],
       "type": "string",
       "label": "Log Verbosity",
-      "enum": ["MINIMAL", "NORMAL", "DETAILED", "VERBOSE"],
+      "enum": [
+        "MINIMAL",
+        "NORMAL",
+        "DETAILED",
+        "VERBOSE"
+      ],
       "description": "Console log detail level (see modules/logger.js VERBOSITY_LEVELS)"
     },
-    { "path": ["preloadTags"], "type": "boolean", "label": "Preload Tags", "editMode": "inline" },
-    { "path": ["sequenziaFolder"], "type": "string", "label": "Sequenzia Upload Folder", "editorType": "input", "description": "Filesystem path for Sequenzia/NovelAI upload integration" },
-    { "path": ["userAgent"], "type": "string", "label": "User-Agent", "editorType": "input", "description": "HTTP User-Agent string sent with outbound requests" },
-    { "path": ["pm2_process_name"], "type": "string", "label": "PM2 Process Name", "editorType": "input", "description": "Process name used when running under PM2" },
-    { "path": ["lruCache"], "type": "object", "label": "LRU Cache", "closed": true, "required": true },
-    { "path": ["lruCache", "*"], "type": "number", "required": true },
-    { "path": ["selectedApiKeys"], "type": "object", "label": "API Key Selection", "closed": true, "required": true },
-    { "path": ["selectedApiKeys", "*"], "type": "number", "label": "Key Index", "required": true },
-    { "path": ["runtimeAssets"], "type": "object", "label": "Runtime Assets", "closed": true, "required": true },
-    { "path": ["runtimeAssets", "autoRecompile"], "type": "boolean", "label": "Auto Recompile Assets", "editMode": "inline", "required": true, "description": "Rebuild runtime assets automatically when sources change" },
-    { "path": ["userGlobalSettings"], "type": "object", "label": "User Global Settings", "closed": true, "required": true },
-    { "path": ["userGlobalSettings", "desktop"], "type": "object", "label": "Desktop Mode", "closed": true, "required": true },
-    { "path": ["userGlobalSettings", "desktop", "autoLaunchWorkspace"], "type": "boolean", "label": "Auto Launch Workspace", "editMode": "inline", "required": true, "description": "Open desktop mode with the active workspace on load" },
-    { "path": ["userGlobalSettings", "desktop", "liveWindowRepositioning"], "type": "boolean", "label": "Live Window Repositioning", "editMode": "inline", "required": true },
-    { "path": ["userGlobalSettings", "desktop", "exitDesktopOnWorkspaceMaximise"], "type": "boolean", "label": "Exit Desktop on Workspace Maximise", "editMode": "inline", "required": true },
-    { "path": ["userGlobalSettings", "desktop", "notificationBridgeEnabled"], "type": "boolean", "label": "Notification Bridge", "editMode": "inline", "required": true },
-    { "path": ["userGlobalSettings", "desktop", "bypassNotificationBridgeInDesktopMode"], "type": "boolean", "label": "Bypass Notification Bridge in Desktop", "editMode": "inline", "required": true },
-    { "path": ["userGlobalSettings", "desktop", "startMenuButton"], "type": "object", "label": "Start Menu Button", "closed": true, "required": true },
     {
-      "path": ["userGlobalSettings", "desktop", "startMenuButton", "preset"],
+      "path": [
+        "preloadTags"
+      ],
+      "type": "boolean",
+      "label": "Preload Tags",
+      "editMode": "inline"
+    },
+    {
+      "path": [
+        "sequenziaFolder"
+      ],
+      "type": "string",
+      "label": "Sequenzia Upload Folder",
+      "editorType": "input",
+      "description": "Filesystem path for Sequenzia/NovelAI upload integration"
+    },
+    {
+      "path": [
+        "userAgent"
+      ],
+      "type": "string",
+      "label": "User-Agent",
+      "editorType": "input",
+      "description": "HTTP User-Agent string sent with outbound requests"
+    },
+    {
+      "path": [
+        "pm2_process_name"
+      ],
+      "type": "string",
+      "label": "PM2 Process Name",
+      "editorType": "input",
+      "description": "Process name used when running under PM2"
+    },
+    {
+      "path": [
+        "public_hostname"
+      ],
+      "type": "string",
+      "label": "Public Hostname",
+      "editorType": "input",
+      "restartRequired": true,
+      "description": "Host without scheme for MCP OAuth issuer (example: staticforge.737.jp.net)"
+    },
+    {
+      "path": [
+        "lruCache"
+      ],
+      "type": "object",
+      "label": "LRU Cache",
+      "closed": true,
+      "required": true
+    },
+    {
+      "path": [
+        "lruCache",
+        "*"
+      ],
+      "type": "number",
+      "required": true
+    },
+    {
+      "path": [
+        "selectedApiKeys"
+      ],
+      "type": "object",
+      "label": "API Key Selection",
+      "closed": true,
+      "required": true
+    },
+    {
+      "path": [
+        "selectedApiKeys",
+        "*"
+      ],
+      "type": "number",
+      "label": "Key Index",
+      "required": true
+    },
+    {
+      "path": [
+        "runtimeAssets"
+      ],
+      "type": "object",
+      "label": "Runtime Assets",
+      "closed": true,
+      "required": true
+    },
+    {
+      "path": [
+        "runtimeAssets",
+        "autoRecompile"
+      ],
+      "type": "boolean",
+      "label": "Auto Recompile Assets",
+      "editMode": "inline",
+      "required": true,
+      "description": "Rebuild runtime assets automatically when sources change"
+    },
+    {
+      "path": [
+        "userGlobalSettings"
+      ],
+      "type": "object",
+      "label": "User Global Settings",
+      "closed": true,
+      "required": true
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "desktop"
+      ],
+      "type": "object",
+      "label": "Desktop Mode",
+      "closed": true,
+      "required": true
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "desktop",
+        "autoLaunchWorkspace"
+      ],
+      "type": "boolean",
+      "label": "Auto Launch Workspace",
+      "editMode": "inline",
+      "required": true,
+      "description": "Open desktop mode with the active workspace on load"
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "desktop",
+        "liveWindowRepositioning"
+      ],
+      "type": "boolean",
+      "label": "Live Window Repositioning",
+      "editMode": "inline",
+      "required": true
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "desktop",
+        "exitDesktopOnWorkspaceMaximise"
+      ],
+      "type": "boolean",
+      "label": "Exit Desktop on Workspace Maximise",
+      "editMode": "inline",
+      "required": true
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "desktop",
+        "notificationBridgeEnabled"
+      ],
+      "type": "boolean",
+      "label": "Notification Bridge",
+      "editMode": "inline",
+      "required": true
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "desktop",
+        "bypassNotificationBridgeInDesktopMode"
+      ],
+      "type": "boolean",
+      "label": "Bypass Notification Bridge in Desktop",
+      "editMode": "inline",
+      "required": true
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "desktop",
+        "startMenuButton"
+      ],
+      "type": "object",
+      "label": "Start Menu Button",
+      "closed": true,
+      "required": true
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "desktop",
+        "startMenuButton",
+        "preset"
+      ],
       "type": "string",
       "label": "Start Button Preset",
       "required": true,
-      "enum": ["start-ja", "start-ko", "start-en", "start-fr", "start-ru", "dream-ja", "dream-ko", "dream-en", "dream-de", "dream-fr", "dream-ru", "custom"]
+      "enum": [
+        "start-ja",
+        "start-ko",
+        "start-en",
+        "start-fr",
+        "start-ru",
+        "dream-ja",
+        "dream-ko",
+        "dream-en",
+        "dream-de",
+        "dream-fr",
+        "dream-ru",
+        "custom"
+      ]
     },
-    { "path": ["userGlobalSettings", "desktop", "startMenuButton", "customText"], "type": "string", "label": "Custom Start Label", "editorType": "input", "required": true, "description": "Up to 24 characters when preset is custom" },
     {
-      "path": ["userGlobalSettings", "desktop", "startMenuButton", "style"],
+      "path": [
+        "userGlobalSettings",
+        "desktop",
+        "startMenuButton",
+        "customText"
+      ],
+      "type": "string",
+      "label": "Custom Start Label",
+      "editorType": "input",
+      "required": true,
+      "description": "Up to 24 characters when preset is custom"
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "desktop",
+        "startMenuButton",
+        "style"
+      ],
       "type": "string",
       "label": "Start Button Style",
       "required": true,
-      "enum": ["luna", "workspace", "orb"]
+      "enum": [
+        "luna",
+        "workspace",
+        "orb"
+      ]
     },
-    { "path": ["userGlobalSettings", "desktop", "startMenuPinned"], "type": "array", "itemsType": "string", "label": "Start Menu Pinned Items", "description": "Applet IDs pinned to the start menu (max 48)" },
-    { "path": ["userGlobalSettings", "naxt"], "type": "object", "label": "NAXT Settings", "closed": true, "required": true },
     {
-      "path": ["userGlobalSettings", "naxt", "elevatePins"],
+      "path": [
+        "userGlobalSettings",
+        "desktop",
+        "startMenuPinned"
+      ],
+      "type": "array",
+      "itemsType": "string",
+      "label": "Start Menu Pinned Items",
+      "description": "Applet IDs pinned to the start menu (max 48)"
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "naxt"
+      ],
+      "type": "object",
+      "label": "NAXT Settings",
+      "closed": true,
+      "required": true
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "naxt",
+        "elevatePins"
+      ],
       "type": "number",
       "label": "Elevate Pins",
       "required": true,
-      "enum": [0, 1, 2, 3],
-      "description": "How strongly NAXT elevates pinned/favorite tags in search (0–3)"
+      "enum": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "description": "How strongly NAXT elevates pinned/favorite tags in search (0\u20133)"
     },
-    { "path": ["userGlobalSettings", "autofillSearch"], "type": "object", "label": "Autofill Search", "closed": true, "required": true },
-    { "path": ["userGlobalSettings", "autofillSearch", "enabled"], "type": "boolean", "label": "Autofill Enabled", "editMode": "inline", "required": true },
-    { "path": ["userGlobalSettings", "autofillSearch", "spellcheck"], "type": "boolean", "label": "Spellcheck", "editMode": "inline", "required": true },
-    { "path": ["userGlobalSettings", "autofillSearch", "thesaurus"], "type": "boolean", "label": "Thesaurus", "editMode": "inline", "required": true },
-    { "path": ["userGlobalSettings", "autofillSearch", "naiAnimeTags"], "type": "boolean", "label": "NovelAI Anime Tags", "editMode": "inline", "required": true },
-    { "path": ["userGlobalSettings", "autofillSearch", "naiFurryTags"], "type": "boolean", "label": "NovelAI Furry Tags", "editMode": "inline", "required": true },
-    { "path": ["userGlobalSettings", "autofillSearch", "dbAnimeTags"], "type": "boolean", "label": "DB Anime Tags", "editMode": "inline", "required": true },
-    { "path": ["userGlobalSettings", "autofillSearch", "dbFurryTags"], "type": "boolean", "label": "DB Furry Tags", "editMode": "inline", "required": true },
-    { "path": ["userGlobalSettings", "autofillSearch", "wikiPreviews"], "type": "boolean", "label": "Wiki Previews", "editMode": "inline", "required": true },
     {
-      "path": ["userGlobalSettings", "autofillSearch", "searchDelayMs"],
+      "path": [
+        "userGlobalSettings",
+        "autofillSearch"
+      ],
+      "type": "object",
+      "label": "Autofill Search",
+      "closed": true,
+      "required": true
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "autofillSearch",
+        "enabled"
+      ],
+      "type": "boolean",
+      "label": "Autofill Enabled",
+      "editMode": "inline",
+      "required": true
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "autofillSearch",
+        "spellcheck"
+      ],
+      "type": "boolean",
+      "label": "Spellcheck",
+      "editMode": "inline",
+      "required": true
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "autofillSearch",
+        "thesaurus"
+      ],
+      "type": "boolean",
+      "label": "Thesaurus",
+      "editMode": "inline",
+      "required": true
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "autofillSearch",
+        "naiAnimeTags"
+      ],
+      "type": "boolean",
+      "label": "NovelAI Anime Tags",
+      "editMode": "inline",
+      "required": true
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "autofillSearch",
+        "naiFurryTags"
+      ],
+      "type": "boolean",
+      "label": "NovelAI Furry Tags",
+      "editMode": "inline",
+      "required": true
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "autofillSearch",
+        "dbAnimeTags"
+      ],
+      "type": "boolean",
+      "label": "DB Anime Tags",
+      "editMode": "inline",
+      "required": true
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "autofillSearch",
+        "dbFurryTags"
+      ],
+      "type": "boolean",
+      "label": "DB Furry Tags",
+      "editMode": "inline",
+      "required": true
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "autofillSearch",
+        "wikiPreviews"
+      ],
+      "type": "boolean",
+      "label": "Wiki Previews",
+      "editMode": "inline",
+      "required": true
+    },
+    {
+      "path": [
+        "userGlobalSettings",
+        "autofillSearch",
+        "searchDelayMs"
+      ],
       "type": "number",
       "label": "Search Delay (ms)",
       "required": true,
-      "enum": [0, 80, 120, 200, 300, 500]
+      "enum": [
+        0,
+        80,
+        120,
+        200,
+        300,
+        500
+      ]
     },
     {
-      "path": ["userGlobalSettings", "autofillSearch", "maxResults"],
+      "path": [
+        "userGlobalSettings",
+        "autofillSearch",
+        "maxResults"
+      ],
       "type": "number",
       "label": "Max Results",
       "required": true,
-      "enum": [15, 25, 35, 50, 75]
+      "enum": [
+        15,
+        25,
+        35,
+        50,
+        75
+      ]
     },
-    { "path": ["generationQuips"], "type": "object", "label": "Generation Quips (Scheduler)", "closed": true, "required": true, "description": "Server scheduler and session settings only — quip text content lives in SQLite, not JSON" },
-    { "path": ["generationQuips", "autoUpdateCheckHour"], "type": "number", "label": "Daily Check Hour", "required": true, "description": "Local hour (0–23) for time-based quip auto-update checks" },
-    { "path": ["generationQuips", "autoUpdateCheckMinute"], "type": "number", "label": "Daily Check Minute", "required": true, "description": "Local minute (0–59) for time-based quip auto-update checks" },
-    { "path": ["generationQuips", "countBasedCheckIntervalHours"], "type": "number", "label": "Count Check Interval (hours)", "required": true, "description": "Hours between count-based auto-update evaluations (1–24)" },
     {
-      "path": ["generationQuips", "// Session continuity for quip generation (native xai path)"],
+      "path": [
+        "generationQuips"
+      ],
+      "type": "object",
+      "label": "Generation Quips (Scheduler)",
+      "closed": true,
+      "required": true,
+      "description": "Server scheduler and session settings only \u2014 quip text content lives in SQLite, not JSON"
+    },
+    {
+      "path": [
+        "generationQuips",
+        "autoUpdateCheckHour"
+      ],
+      "type": "number",
+      "label": "Daily Check Hour",
+      "required": true,
+      "description": "Local hour (0\u201323) for time-based quip auto-update checks"
+    },
+    {
+      "path": [
+        "generationQuips",
+        "autoUpdateCheckMinute"
+      ],
+      "type": "number",
+      "label": "Daily Check Minute",
+      "required": true,
+      "description": "Local minute (0\u201359) for time-based quip auto-update checks"
+    },
+    {
+      "path": [
+        "generationQuips",
+        "countBasedCheckIntervalHours"
+      ],
+      "type": "number",
+      "label": "Count Check Interval (hours)",
+      "required": true,
+      "description": "Hours between count-based auto-update evaluations (1\u201324)"
+    },
+    {
+      "path": [
+        "generationQuips",
+        "// Session continuity for quip generation (native xai path)"
+      ],
       "type": "string",
       "label": "Comment (documentation)",
       "readOnly": true,
-      "readOnlyReason": "JSON comment key — not used at runtime; remove manually if desired",
+      "readOnlyReason": "JSON comment key \u2014 not used at runtime; remove manually if desired",
       "skip": true,
       "description": "Inline documentation copied from generationQuipsManager.js; ignored by the server"
     },
-    { "path": ["generationQuips", "maintainQuipSession"], "type": "boolean", "label": "Maintain Quip Session", "editMode": "inline", "description": "Reuse the same Grok session across quip generation runs" },
-    { "path": ["generationQuips", "breakQuipSessionAt128k"], "type": "boolean", "label": "Break Session at 128k", "editMode": "inline", "description": "Start a fresh session when context nears 128k tokens" },
-    { "path": ["generationQuips", "logFullPromptsToConsole"], "type": "boolean", "label": "Log Full Prompts", "editMode": "inline", "description": "Log full sent messages and model output to console during quip runs" },
-    { "path": ["checkpoints"], "type": "object", "label": "Checkpoints", "closed": true, "required": true, "description": "Tiered retention for config/database checkpoint snapshots" },
-    { "path": ["checkpoints", "enabled"], "type": "boolean", "label": "Checkpoints Enabled", "editMode": "inline", "required": true },
-    { "path": ["checkpoints", "grandfathering"], "type": "object", "label": "Grandfathering Retention", "closed": true, "required": true },
-    { "path": ["checkpoints", "grandfathering", "hour"], "type": "object", "label": "Hour Tier", "closed": true, "required": true },
-    { "path": ["checkpoints", "grandfathering", "hour", "max"], "type": "number", "label": "Hour Tier Max", "required": true, "description": "Recent snapshots kept (default tier); excess deleted when rollover is null" },
-    { "path": ["checkpoints", "grandfathering", "hour", "rollover"], "type": "string", "label": "Hour Rollover Target", "required": false, "description": "Optional tier to promote into (day); null deletes excess" },
-    { "path": ["checkpoints", "grandfathering", "hour", "perBucketMax"], "type": "number", "label": "Hour Per-Bucket Max", "required": false, "description": "Newest snapshots kept within the same hour bucket (default 1)" },
-    { "path": ["checkpoints", "grandfathering", "day"], "type": "object", "label": "Day Tier", "closed": true, "required": true },
-    { "path": ["checkpoints", "grandfathering", "day", "max"], "type": "number", "label": "Day Tier Max", "required": true, "description": "Set 0 to disable day-tier storage" },
-    { "path": ["checkpoints", "grandfathering", "day", "rollover"], "type": "string", "label": "Day Rollover Target", "required": false, "description": "Optional tier to promote into (month); null deletes excess" },
-    { "path": ["checkpoints", "grandfathering", "day", "perBucketMax"], "type": "number", "label": "Day Per-Bucket Max", "required": false, "description": "Newest snapshots kept within the same day bucket (default 1)" },
-    { "path": ["checkpoints", "grandfathering", "month"], "type": "object", "label": "Month Tier", "closed": true, "required": true },
-    { "path": ["checkpoints", "grandfathering", "month", "max"], "type": "number", "label": "Month Tier Max", "required": true, "description": "Set 0 to disable month-tier storage" },
-    { "path": ["checkpoints", "grandfathering", "month", "rollover"], "type": "string", "label": "Month Rollover Target", "required": false, "description": "null — oldest at month tier are deleted" },
-    { "path": ["checkpoints", "overrides"], "type": "object", "label": "Per-Resource Overrides", "closed": true, "description": "Checkpoint retention overrides keyed by resource name (e.g. metadata, tag_wiki)" },
-    { "path": ["userPinLoginEnabled"], "type": "boolean", "label": "User PIN Login Enabled" }
+    {
+      "path": [
+        "generationQuips",
+        "maintainQuipSession"
+      ],
+      "type": "boolean",
+      "label": "Maintain Quip Session",
+      "editMode": "inline",
+      "description": "Reuse the same Grok session across quip generation runs"
+    },
+    {
+      "path": [
+        "generationQuips",
+        "breakQuipSessionAt128k"
+      ],
+      "type": "boolean",
+      "label": "Break Session at 128k",
+      "editMode": "inline",
+      "description": "Start a fresh session when context nears 128k tokens"
+    },
+    {
+      "path": [
+        "generationQuips",
+        "logFullPromptsToConsole"
+      ],
+      "type": "boolean",
+      "label": "Log Full Prompts",
+      "editMode": "inline",
+      "description": "Log full sent messages and model output to console during quip runs"
+    },
+    {
+      "path": [
+        "checkpoints"
+      ],
+      "type": "object",
+      "label": "Checkpoints",
+      "closed": true,
+      "required": true,
+      "description": "Tiered retention for config/database checkpoint snapshots"
+    },
+    {
+      "path": [
+        "checkpoints",
+        "enabled"
+      ],
+      "type": "boolean",
+      "label": "Checkpoints Enabled",
+      "editMode": "inline",
+      "required": true
+    },
+    {
+      "path": [
+        "checkpoints",
+        "grandfathering"
+      ],
+      "type": "object",
+      "label": "Grandfathering Retention",
+      "closed": true,
+      "required": true
+    },
+    {
+      "path": [
+        "checkpoints",
+        "grandfathering",
+        "hour"
+      ],
+      "type": "object",
+      "label": "Hour Tier",
+      "closed": true,
+      "required": true
+    },
+    {
+      "path": [
+        "checkpoints",
+        "grandfathering",
+        "hour",
+        "max"
+      ],
+      "type": "number",
+      "label": "Hour Tier Max",
+      "required": true,
+      "description": "Recent snapshots kept (default tier); excess deleted when rollover is null"
+    },
+    {
+      "path": [
+        "checkpoints",
+        "grandfathering",
+        "hour",
+        "rollover"
+      ],
+      "type": "string",
+      "label": "Hour Rollover Target",
+      "required": false,
+      "description": "Optional tier to promote into (day); null deletes excess"
+    },
+    {
+      "path": [
+        "checkpoints",
+        "grandfathering",
+        "hour",
+        "perBucketMax"
+      ],
+      "type": "number",
+      "label": "Hour Per-Bucket Max",
+      "required": false,
+      "description": "Newest snapshots kept within the same hour bucket (default 1)"
+    },
+    {
+      "path": [
+        "checkpoints",
+        "grandfathering",
+        "day"
+      ],
+      "type": "object",
+      "label": "Day Tier",
+      "closed": true,
+      "required": true
+    },
+    {
+      "path": [
+        "checkpoints",
+        "grandfathering",
+        "day",
+        "max"
+      ],
+      "type": "number",
+      "label": "Day Tier Max",
+      "required": true,
+      "description": "Set 0 to disable day-tier storage"
+    },
+    {
+      "path": [
+        "checkpoints",
+        "grandfathering",
+        "day",
+        "rollover"
+      ],
+      "type": "string",
+      "label": "Day Rollover Target",
+      "required": false,
+      "description": "Optional tier to promote into (month); null deletes excess"
+    },
+    {
+      "path": [
+        "checkpoints",
+        "grandfathering",
+        "day",
+        "perBucketMax"
+      ],
+      "type": "number",
+      "label": "Day Per-Bucket Max",
+      "required": false,
+      "description": "Newest snapshots kept within the same day bucket (default 1)"
+    },
+    {
+      "path": [
+        "checkpoints",
+        "grandfathering",
+        "month"
+      ],
+      "type": "object",
+      "label": "Month Tier",
+      "closed": true,
+      "required": true
+    },
+    {
+      "path": [
+        "checkpoints",
+        "grandfathering",
+        "month",
+        "max"
+      ],
+      "type": "number",
+      "label": "Month Tier Max",
+      "required": true,
+      "description": "Set 0 to disable month-tier storage"
+    },
+    {
+      "path": [
+        "checkpoints",
+        "grandfathering",
+        "month",
+        "rollover"
+      ],
+      "type": "string",
+      "label": "Month Rollover Target",
+      "required": false,
+      "description": "null \u2014 oldest at month tier are deleted"
+    },
+    {
+      "path": [
+        "checkpoints",
+        "overrides"
+      ],
+      "type": "object",
+      "label": "Per-Resource Overrides",
+      "closed": true,
+      "description": "Checkpoint retention overrides keyed by resource name (e.g. metadata, tag_wiki)"
+    },
+    {
+      "path": [
+        "userPinLoginEnabled"
+      ],
+      "type": "boolean",
+      "label": "User PIN Login Enabled"
+    }
   ]
 }

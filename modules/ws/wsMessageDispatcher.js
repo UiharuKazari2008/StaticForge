@@ -77,8 +77,10 @@ function pruneCompletedRequests(state) {
 }
 
 function hasPriorFifoWork(state, entry) {
+    if (!entry.fifoChainKey) return false;
     return state.requests.some((r) =>
-        r.fifoChainKey === entry.fifoChainKey
+        r.fifoChainKey
+        && r.fifoChainKey === entry.fifoChainKey
         && r.id !== entry.id
         && (r.status === 'queued' || r.status === 'running')
         && r.sequence < entry.sequence

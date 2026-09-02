@@ -45,6 +45,7 @@ async function resolveApplicationAuth(req, globalResources, options = {}) {
             authMethod: 'temp_token',
             applicationKeyId: result.applicationKeyId,
             applicationScopes: result.scopes,
+            appName: result.appName || null,
             skipUserAgentCheck: true,
             sessionId: `apptok:${result.tempTokenId}`
         };
@@ -60,6 +61,7 @@ async function resolveApplicationAuth(req, globalResources, options = {}) {
             authMethod: 'application_key',
             applicationKeyId: result.applicationKeyId,
             applicationScopes: result.scopes,
+            appName: result.appName || null,
             applicationUserAgent: userAgent,
             sessionId: `appkey:${result.applicationKeyId}`,
             userAgentMatched: result.userAgentMatched === true,
@@ -201,6 +203,7 @@ function createMcpAuthMiddleware(globalResources, options = {}) {
                                 authMethod: 'oauth_access_token',
                                 applicationKeyId: validation.applicationKeyId,
                                 applicationScopes: validation.scopes,
+                                appName: validation.appName || null,
                                 oauthClientId: validation.clientId,
                                 oauthResource: validation.resource,
                                 sessionId: `oauth:${validation.applicationKeyId}`

@@ -1028,6 +1028,20 @@ html.no-hover .manual-preview-content:hover:not(:disabled) .manual-preview-image
     opacity: 1;
 }
 
+#manualPrintsCount,
+#manualPrintsCountAlt {
+    width: 52px;
+    min-width: 52px;
+    max-width: 52px;
+    text-align: center;
+    padding: 0.25em 0.15em;
+}
+
+#manualPrintsCount {
+    height: 45px;
+    margin-top: var(--spacing-lg);
+}
+
 /* hover capability: html.can-hover (see app.html bootstrap) */
 
     html.can-hover .manual-preview-content:not(:hover) .dynamic-generation-overlay {
@@ -1985,7 +1999,8 @@ body.desktop-mode .form-section.model-control .control-holder .form-row.control-
         display: none;
     }
 
-    #manualGenerateBtnAlt {
+    #manualGenerateBtnAlt,
+    #manualPrintsCountAlt {
         display: none;
     }
 }

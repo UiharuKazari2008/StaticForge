@@ -44,6 +44,16 @@ assert.ok(assembled.fields.some((f) => f.id === 'prompt' && f.chunks[0].text ===
 assert.ok(assembled.fields.some((f) => f.id === 'uc'));
 assert.strictEqual(assembled.characters.length, 1);
 assert.strictEqual(_test.assembleStudioChangeFromToolArgs({ autoApply: true }), null);
+const dynOnly = _test.assembleStudioChangeFromToolArgs({
+    dynamicGeneration: { enabled: true, directive: 'golden hour' }
+});
+assert.strictEqual(dynOnly.dreamscape, 'change');
+assert.strictEqual(dynOnly.dynamicGeneration.enabled, true);
+assert.strictEqual(dynOnly.dynamicGeneration.directive, 'golden hour');
+const directorOnly = _test.assembleStudioChangeFromToolArgs({
+    director: { sessionId: 's1', prompt: 'tighten tags' }
+});
+assert.strictEqual(directorOnly.director.sessionId, 's1');
 assert.strictEqual(_test.assembleStudioChangeFromToolArgs({ params: { guidance: 5 } }).params.guidance, 5);
 
 const nested = _test.assembleStudioChangeFromToolArgs({
@@ -52,6 +62,39 @@ const nested = _test.assembleStudioChangeFromToolArgs({
 });
 assert.strictEqual(nested.params.steps, 23);
 assert.strictEqual(nested.params.guidance, 6);
+assert.strictEqual(_test.assembleStudioChangeFromToolArgs({
+    dataset_config: { nsfw: 3 }
+}).params.nsfw, 3);
+assert.strictEqual(_test.assembleStudioChangeFromToolArgs({
+    params: { nsfw: 2 }
+}).params.nsfw, 2);
+assert.strictEqual(_test.assembleStudioChangeFromToolArgs({
+    nsfw: 1
+}).params.nsfw, 1);
+assert.strictEqual(_test.assembleStudioChangeFromToolArgs({
+    params: { dataset_config: { nsfw: '-2' } }
+}).params.nsfw, -2);
+assert.strictEqual(_test.pickNsfwFromStudioArgs({ nsfw: 9 }, {}), undefined);
+
+const liftedFlags = _test.assembleStudioChangeFromToolArgs({
+    append_transparency: true,
+    n: 2,
+    normalize_vibes: true,
+    use_coords: true,
+    dataset_config: {
+        include: ['ds_foo'],
+        settings: { __quality__: { no_text: { enabled: false } } }
+    }
+});
+assert.strictEqual(liftedFlags.params.append_transparency, true);
+assert.strictEqual(liftedFlags.params.n, 2);
+assert.strictEqual(liftedFlags.params.normalize_vibes, true);
+assert.strictEqual(liftedFlags.params.use_coords, true);
+assert.strictEqual(liftedFlags.dataset_config.settings.__quality__.no_text.enabled, false);
+assert.deepStrictEqual(liftedFlags.params.dataset_config.include, ['ds_foo']);
+assert.ok(_test.STUDIO_CHANGE_PARAM_KEYS.includes('append_transparency'));
+assert.ok(_test.STUDIO_CHANGE_PARAM_KEYS.includes('n'));
+assert.ok(_test.STUDIO_CHANGE_PARAM_KEYS.includes('auto_clean_uc'));
 
 const flatGen = _test.flattenGenerateToolArgs({
     prompt: '1girl',
@@ -64,6 +107,31 @@ assert.strictEqual(flatGen.params, undefined);
 assert.strictEqual(flatGen.allCharacterPrompts[0].chara_name, 'Alice');
 assert.strictEqual(flatGen.allCharacterPrompts[0].center.x, 0.3);
 assert.strictEqual(flatGen.use_coords, true);
+
+const flatDyn = _test.flattenGenerateToolArgs({
+    prompt: '1girl',
+    dynamicGeneration: { enabled: true, directive: 'rain' },
+    director: { sessionId: 's1', messageId: 'm1', prompt: 'use rain' }
+});
+assert.strictEqual(flatDyn.dynamic_generation.enabled, true);
+assert.strictEqual(flatDyn.director_session_id, 's1');
+assert.strictEqual(flatDyn.director_message_id, 'm1');
+assert.strictEqual(flatDyn.dynamic_generation.directive, 'rain');
+assert.strictEqual(_test.flattenGenerateToolArgs({
+    prompt: '1girl',
+    userApprovedPaidRequest: true
+}).allow_paid, true);
+assert.strictEqual(_test.dynagenShouldCompile({ enabled: false, integrated: true }), false);
+assert.strictEqual(_test.dynagenShouldCompile({ enabled: true, tod: true }), true);
+assert.strictEqual(_test.dynagenShouldCompile(null), false);
+
+const flatPrints = _test.flattenGenerateToolArgs({
+    prompt: '1girl',
+    params: { n: 3 }
+});
+assert.strictEqual(flatPrints.n, 3);
+assert.strictEqual(_test.flattenGenerateToolArgs({ prompt: '1girl', n: 1 }).n, undefined);
+assert.strictEqual(_test.flattenGenerateToolArgs({ prompt: '1girl', n: 9 }).n, 8);
 
 const expandMerged = _test.mergeExpansionOverrideParams({
     filename: 'a.png',
@@ -223,6 +291,28 @@ _test.shareCodes.delete('LIVEONE');
 
 
 assert.strictEqual(_test.UPDATE_COMMAND_TIMEOUT_MS, 20000);
+assert.strictEqual(_test.BIND_IDLE_MS, 15 * 60 * 1000);
+assert.strictEqual(_test.resolveBindKey({
+    applicationAuth: { applicationKeyId: 'key-a' },
+    authMethod: 'application_key'
+}), 'appkey:key-a');
+assert.strictEqual(_test.resolveBindKey({
+    applicationAuth: { applicationKeyId: 'key-b' },
+    authMethod: 'application_key'
+}), 'appkey:key-b');
+assert.strictEqual(_test.resolveBindKey({ authMethod: 'dev_login_key' }), 'dev_login_key');
+assert.notStrictEqual(
+    _test.resolveBindKey({ applicationAuth: { applicationKeyId: 'key-a' } }),
+    _test.resolveBindKey({ applicationAuth: { applicationKeyId: 'key-b' } })
+);
+_test.bindSessions.set('appkey:key-a', { clientId: 'aaa', lastInteractionAt: Date.now() - (_test.BIND_IDLE_MS + 5), boundAt: Date.now() });
+assert.strictEqual(_test.expireIdleBind('appkey:key-a'), null);
+assert.strictEqual(_test.bindSessions.has('appkey:key-a'), false);
+_test.bindSessions.set('appkey:key-a', { clientId: 'tab-a', lastInteractionAt: Date.now(), boundAt: Date.now() });
+_test.bindSessions.set('appkey:key-b', { clientId: 'tab-b', lastInteractionAt: Date.now(), boundAt: Date.now() });
+assert.strictEqual(_test.bindSessions.get('appkey:key-a').clientId, 'tab-a');
+assert.strictEqual(_test.bindSessions.get('appkey:key-b').clientId, 'tab-b');
+_test.bindSessions.clear();
 
 const packet = _test.resolveAgentPacketMessage({
     type: 'get_autofill_ranking',
@@ -246,4 +336,79 @@ assert.deepStrictEqual(
     ['generation', 'vfs', 'autofill']
 );
 
-console.log('test-agent-client-bridge: ok');
+assert.strictEqual(_test.resolveActorName({ applicationAuth: { appName: 'Grok' } }), 'Grok');
+assert.strictEqual(_test.resolveActorName({ applicationAuth: { appName: '  ' } }), null);
+assert.strictEqual(_test.resolveActorName({}), null);
+
+const emptyWsResources = { getWebSocketServer: () => ({ clients: new Map() }) };
+assert.strictEqual(_test.resolveGenerateWorkspaceId(emptyWsResources, {}, { workspace: 'folder-a' }), 'folder-a');
+assert.strictEqual(_test.resolveGenerateWorkspaceId(emptyWsResources, {}, { workspace: 'default' }), 'default');
+assert.strictEqual(_test.resolveGenerateWorkspaceId(emptyWsResources, {}, {}), 'default');
+assert.strictEqual(_test.inferBoundWorkspaceId(emptyWsResources, {}), null);
+
+const dynCfg = _test.dynamicConfigFromSnapshot({ tod: 'night', weather: 'rain', season: true, location: 'TOKYO' });
+assert.strictEqual(dynCfg.tod, 'night');
+assert.strictEqual(dynCfg.weather, 'rain');
+assert.strictEqual(dynCfg.location, 'TOKYO');
+
+assert.strictEqual(_test.dynagenNeedsIntegration(null), false);
+assert.strictEqual(_test.dynagenNeedsIntegration({ enabled: false }), false);
+assert.strictEqual(_test.dynagenNeedsIntegration({ enabled: true, integrated: true }), false);
+assert.strictEqual(_test.dynagenNeedsIntegration({
+    compiled_prompt: { success: true, prompt_hash: 'p', request_hash: 'r' }
+}), false);
+assert.strictEqual(_test.dynagenNeedsIntegration({ tod: true, weather: true }), true);
+assert.strictEqual(_test.dynagenNeedsIntegration(true), true);
+assert.strictEqual(_test.dynagenNeedsIntegration({
+    enabled: true,
+    compiled_prompt: { success: false }
+}), false);
+const nsfwFlat = _test.flattenGenerateToolArgs({ prompt: 'x', nsfw: 3 });
+assert.strictEqual(nsfwFlat.dataset_config.nsfw, 3);
+assert.deepStrictEqual(_test.pickDynagenFromInput({ dynamic_generation: { tod: 'night' } }), { tod: 'night' });
+assert.deepStrictEqual(_test.pickPhysicsOverrides({ location: 'TOKYO', weather: true }), {
+    location: 'TOKYO',
+    weather: true
+});
+const sanitized = _test.sanitizeDynagenForGenerate({
+    dynamicGeneration: {
+        tod: true,
+        integrated: true,
+        resolved: { weather: 'rain' },
+        directorApi: 'noop'
+    }
+});
+assert.strictEqual(sanitized.dynamic_generation.tod, true);
+assert.strictEqual(sanitized.dynamic_generation.integrated, undefined);
+assert.strictEqual(sanitized.dynamic_generation.resolved, undefined);
+assert.strictEqual(sanitized.dynamic_generation.directorApi, undefined);
+const bounce = _test.buildDynagenIntegrationPayload({
+    enabled: true,
+    resolved: { weather: 'rain' },
+    directorApi: 'noop'
+});
+assert.strictEqual(bounce.success, false);
+assert.strictEqual(bounce.needsIntegration, true);
+assert.ok(bounce.next.includes('integrated=true'));
+assert.ok(_test.DYNAGEN_INTEGRATION_NEXT.includes('Director API is nooped'));
+
+const stubResources = { getWebSocketServer: () => ({ clients: new Map() }) };
+const bridge = require('../modules/agentClientBridge');
+
+Promise.all([
+    _test.enrichDynamicGenerationForMcp(stubResources, 'missing', { enabled: false, tod: 'night' }),
+    bridge.getClientPhysics(stubResources, null, { enabled: false })
+]).then(([disabledDyn, physics]) => {
+    assert.strictEqual(disabledDyn.directorApi, 'noop');
+    assert.strictEqual(disabledDyn.enabled, false);
+    assert.strictEqual(disabledDyn.resolved, null);
+    assert.strictEqual(physics.success, true);
+    assert.strictEqual(physics.unbound, true);
+    assert.strictEqual(physics.clientId, null);
+    assert.strictEqual(physics.resolved, null);
+    assert.strictEqual(physics.dynamicGeneration.directorApi, 'noop');
+    console.log('test-agent-client-bridge: ok');
+}).catch((err) => {
+    console.error(err);
+    process.exit(1);
+});

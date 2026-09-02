@@ -35,6 +35,8 @@
     let dialog = null;
     let phase = 'idle'; // idle | counting | aborted | applying
     let remaining = COUNTDOWN_SEC;
+    let countdownTotal = COUNTDOWN_SEC;
+    let activeCopy = COPY;
     let tickTimer = null;
     let keydownWired = false;
     let settle = null;
@@ -45,7 +47,23 @@
     }
 
     function progressPct() {
-        return Math.round(((COUNTDOWN_SEC - remaining) / COUNTDOWN_SEC) * 100);
+        if (countdownTotal <= 0) return 100;
+        return Math.round(((countdownTotal - remaining) / countdownTotal) * 100);
+    }
+
+    function copyForShow(options) {
+        const opts = options && typeof options === 'object' ? options : {};
+        const title = typeof opts.title === 'string' && opts.title.trim() ? opts.title.trim() : COPY.counting.title;
+        const lead = typeof opts.lead === 'string' && opts.lead.trim() ? opts.lead.trim() : COPY.counting.lead;
+        const body = typeof opts.message === 'string' && opts.message.trim() ? opts.message.trim() : COPY.counting.body;
+        if (title === COPY.counting.title && lead === COPY.counting.lead && body === COPY.counting.body) {
+            return COPY;
+        }
+        return {
+            counting: { ...COPY.counting, title, lead, body },
+            aborted: { ...COPY.aborted, title: `${title} — Cancelled` },
+            applying: { ...COPY.applying, title }
+        };
     }
 
     function clearTick() {
@@ -228,7 +246,7 @@
     }
 
     function renderCounting() {
-        setCopy(COPY.counting);
+        setCopy(activeCopy.counting);
         setWell('');
         const count = el('#agentClientUpdateCount');
         if (count) {
@@ -241,28 +259,28 @@
     }
 
     function renderAborted() {
-        setCopy(COPY.aborted);
+        setCopy(activeCopy.aborted);
         setWell('aborted');
         const count = el('#agentClientUpdateCount');
         if (count) {
             count.textContent = String(remaining);
             count.classList.add('struck');
         }
-        setStatus(COPY.aborted.status, 'dsap-smf-status-error');
+        setStatus(activeCopy.aborted.status, 'dsap-smf-status-error');
         setBar(progressPct(), false);
         setButtons('ok');
     }
 
     function renderApplying() {
         remaining = 0;
-        setCopy(COPY.applying);
+        setCopy(activeCopy.applying);
         setWell('applying');
         const count = el('#agentClientUpdateCount');
         if (count) {
             count.textContent = '0';
             count.classList.remove('struck');
         }
-        setStatus(COPY.applying.status, 'dsap-smf-status-ok');
+        setStatus(activeCopy.applying.status, 'dsap-smf-status-ok');
         setBar(72, true);
         setButtons('none');
     }
@@ -383,12 +401,14 @@
     }
 
     /**
-     * Show the mandatory Client Update dialog.
+     * Show the mandatory Client Update / broadcast-restart dialog.
+     * options.countdownSec overrides the 15s default (broadcast timeout / 1000).
+     * options.title / message / lead overlay counting copy; chrome stays the same.
      * Resolves on Cancel (aborted) or when countdown hits 0 (applying).
      * A second push while counting/applying is a no-op (alreadyShowing).
      * A second push after abort replaces the aborted dialog with a new countdown.
      */
-    function showAgentClientUpdateDialog() {
+    function showAgentClientUpdateDialog(options) {
         if (phase === 'counting' || phase === 'applying') {
             return Promise.resolve({
                 ok: true,
@@ -397,15 +417,26 @@
                 applying: phase === 'applying'
             });
         }
-        remaining = COUNTDOWN_SEC;
+        const opts = options && typeof options === 'object' ? options : {};
+        const rawCount = opts.countdownSec;
+        countdownTotal = Number.isFinite(rawCount)
+            ? Math.max(0, Math.min(300, Math.floor(rawCount)))
+            : COUNTDOWN_SEC;
+        remaining = countdownTotal;
+        activeCopy = copyForShow(opts);
         phase = 'counting';
         ensureDialog();
         renderCounting();
         openDialog();
-        startTick();
-        return new Promise((resolve) => {
+        const shown = new Promise((resolve) => {
             settle = resolve;
         });
+        if (remaining <= 0) {
+            startApplying();
+        } else {
+            startTick();
+        }
+        return shown;
     }
 
     if (typeof window !== 'undefined') {

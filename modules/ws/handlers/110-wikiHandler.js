@@ -176,11 +176,15 @@ async function handleGetTagWikiPage(handler, ws, message, clientInfo, wsServer) 
                 const e621Result = await tagLookup.getTagWikiBody(tag.id, SOURCE_E621);
                 
                 if (danbooruResult) {
-                    danbooruBody = danbooruResult.body || danbooruResult;
+                    danbooruBody = coerceWikiBodyText(
+                        danbooruResult.body != null ? danbooruResult.body : danbooruResult
+                    );
                     danbooruFetchedOnline = danbooruResult.fetchedOnline || false;
                 }
                 if (e621Result) {
-                    e621Body = e621Result.body || e621Result;
+                    e621Body = coerceWikiBodyText(
+                        e621Result.body != null ? e621Result.body : e621Result
+                    );
                     e621FetchedOnline = e621Result.fetchedOnline || false;
                 }
             } else {
@@ -188,12 +192,12 @@ async function handleGetTagWikiPage(handler, ws, message, clientInfo, wsServer) 
                 const e621Result = await tagLookup.getWikiByTitleAndSource(tagName, SOURCE_E621);
                 
                 if (danbooruResult) {
-                    danbooruBody = danbooruResult.body;
+                    danbooruBody = coerceWikiBodyText(danbooruResult.body);
                     danbooruFetchedOnline = danbooruResult.fetchedOnline || false;
                     danbooruWikiId = danbooruResult.wikiId;
                 }
                 if (e621Result) {
-                    e621Body = e621Result.body;
+                    e621Body = coerceWikiBodyText(e621Result.body);
                     e621FetchedOnline = e621Result.fetchedOnline || false;
                     e621WikiId = e621Result.wikiId;
                 }
@@ -274,14 +278,14 @@ async function handleGetTagWikiPage(handler, ws, message, clientInfo, wsServer) 
             if (danbooruBody) {
                 bodies.push({
                     source: 'danbooru',
-                    html: format === 'html' ? await convertWikiMarkupToHtml(handler, danbooruBody, danbooruWikiId, SOURCE_DANBOORU) : tagLookup.convertWikiMarkupToMarkdown(danbooruBody),
+                    html: await formatWikiBody(handler, tagLookup, danbooruBody, format, danbooruWikiId, SOURCE_DANBOORU),
                     fetchedOnline: danbooruFetchedOnline
                 });
             }
             if (e621Body) {
                 bodies.push({
                     source: 'e621',
-                    html: format === 'html' ? await convertWikiMarkupToHtml(handler, e621Body, e621WikiId, SOURCE_E621) : tagLookup.convertWikiMarkupToMarkdown(e621Body),
+                    html: await formatWikiBody(handler, tagLookup, e621Body, format, e621WikiId, SOURCE_E621),
                     fetchedOnline: e621FetchedOnline
                 });
             }
@@ -323,14 +327,16 @@ async function handleGetTagWikiPage(handler, ws, message, clientInfo, wsServer) 
         if (tag) {
             const bodyResult = await tagLookup.getTagWikiBody(tag.id, sourceId);
             if (bodyResult) {
-                bodyText = bodyResult.body || bodyResult;
+                bodyText = coerceWikiBodyText(
+                    bodyResult.body != null ? bodyResult.body : bodyResult
+                );
                 fetchedOnline = bodyResult.fetchedOnline || false;
             }
         }
         if (!bodyText && !tag) {
             const bodyResult = await tagLookup.getWikiByTitleAndSource(tagName, sourceId);
             if (bodyResult) {
-                bodyText = bodyResult.body;
+                bodyText = coerceWikiBodyText(bodyResult.body);
                 fetchedOnline = bodyResult.fetchedOnline || false;
             }
         }
@@ -376,10 +382,7 @@ async function handleGetTagWikiPage(handler, ws, message, clientInfo, wsServer) 
             }
         }
 
-        // Convert wiki markup directly to HTML
-        const html = format === 'html'
-            ? await convertWikiMarkupToHtml(handler, bodyText, wikiId, sourceId)
-            : tagLookup.convertWikiMarkupToMarkdown(bodyText);
+        const html = await formatWikiBody(handler, tagLookup, bodyText, format, wikiId, sourceId);
 
         handler.sendToClient(ws, {
             type: 'get_tag_wiki_page_response',
@@ -763,7 +766,30 @@ async function handleResolveGrimoireUrl(handler, ws, message, clientInfo, wsServ
     }
 }
 
+function coerceWikiBodyText(value) {
+    if (typeof value === 'string') return value.trim() ? value : '';
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+        for (const key of ['body', 'html', 'text', 'markdown', 'content']) {
+            if (typeof value[key] === 'string' && value[key].trim()) return value[key];
+        }
+    }
+    return '';
+}
+
+async function formatWikiBody(handler, tagLookup, body, format, wikiId, sourceId) {
+    const text = coerceWikiBodyText(body);
+    if (!text) return '';
+    if (format === 'html') {
+        const html = await convertWikiMarkupToHtml(handler, text, wikiId, sourceId);
+        return typeof html === 'string' ? html : '';
+    }
+    // modules/tag-lookup.js convertWikiMarkupToMarkdown
+    const markdown = await tagLookup.convertWikiMarkupToMarkdown(text);
+    return typeof markdown === 'string' ? markdown : '';
+}
+
 async function convertWikiMarkupToHtml(handler, wikiText, wikiId = null, sourceId = null) {
+    wikiText = coerceWikiBodyText(wikiText);
     if (!wikiText) return '';
 
     // Try to use polymorphic module (Ruby dtext_rb parser) via globalResources
@@ -784,8 +810,7 @@ async function convertWikiMarkupToHtml(handler, wikiText, wikiId = null, sourceI
             }
 
             const rubyResult = await handler.globalResources.parseDText(wikiText, source, baseUrl);
-            if (rubyResult) {
-                // Post-process the HTML to add our custom classes and attributes
+            if (typeof rubyResult === 'string' && rubyResult.trim()) {
                 return postProcessWikiHtml(rubyResult);
             }
         } catch (error) {
@@ -798,13 +823,13 @@ async function convertWikiMarkupToHtml(handler, wikiText, wikiId = null, sourceI
             console.warn('Using JavaScript fallback for wiki markup');
         }
     }
-    return wikiText;
+    return typeof wikiText === 'string' ? wikiText : '';
 }
 
 // Post-process HTML from dtext parser to add custom classes and attributes
 // Most processing is now done in Ruby, but we keep this for any edge cases
 function postProcessWikiHtml(html) {
-    if (!html || typeof html !== 'string') return html;
+    if (typeof html !== 'string') return '';
 
     // Ruby parser now handles most link processing, but we can add any final touches here if needed
     // All links should already have proper classes and attributes from Ruby
@@ -854,6 +879,8 @@ module.exports = {
     handleUpdateWikiImport,
     handleDeleteFandomWikiImport,
     handleResolveGrimoireUrl,
+    coerceWikiBodyText,
+    formatWikiBody,
     convertWikiMarkupToHtml,
     postProcessWikiHtml
 };

@@ -1,3 +1,5 @@
+// MIGRATE-ENSHUTSUKA-MCP: director_create_session / director_send_message still hit the
+// xAI API via directorHandlers.callDirectorAIWithContext. Marked for removal with that loop.
 const wsPacketRegistry = require('../wsPacketRegistry');
 const {
     handleDirectorGetSessions,

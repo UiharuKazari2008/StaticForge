@@ -21,8 +21,12 @@ function sendSnapshot(handlers, ws, message, wsServer, extra = {}) {
 async function handleRunpodPodsStatus(handlers, ws, message, clientInfo, wsServer) {
     try {
         const manager = handlers.globalResources.getRunpodPodManager();
-        await manager.getSnapshot({ refresh: true });
         sendSnapshot(handlers, ws, message, wsServer);
+        manager.getSnapshot({ refresh: true }).then(() => {
+            manager.broadcast();
+        }).catch((error) => {
+            manager.log('error', `Status refresh: ${error.message}`);
+        });
     } catch (error) {
         handlers.sendError(ws, 'Failed to get RunPod status', error.message, message.requestId);
     }

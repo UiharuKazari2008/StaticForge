@@ -219,12 +219,12 @@
     <link rel="stylesheet" href="/css/gallery-core.css?sha=dffd7beaa485363c21e6e1a3ee639b4869b985d8becbf74aa970387f5003e51d">
     <link rel="stylesheet" href="/css/gallery-move.css?sha=21f3b582d166b379005161e58efac1f73f43e0f829a2a1a7f88112b5527e5591">
     <link rel="stylesheet" href="/css/lightbox.css?sha=35afc17c4275c4de0d30c90cbe8f1f55bf72a97dd08b32a83bc47b35109b58d8">
-    <link rel="stylesheet" href="/css/manual-modal.css?sha=3fab90fce7b552b44a90258a347b2e9fa5efb08148e3788452f54d6a6cc10ad9">
+    <link rel="stylesheet" href="/css/manual-modal.css?sha=f36eddacb6a6e688f80423c670e1f66c8b33c93e98f14669bdc2a3441ea9ea02">
     <link rel="stylesheet" href="/css/manual-modal-prompt-form.css?sha=758bb7ddda36416b5bab6930d5bad4a24eec42250682ef3deb8edefc5e7ef0c5">
     <link rel="stylesheet" href="/css/novel-tool.css?sha=42e4e83af79bae72c4c8960133e2dd99c24c687ab999a1aaf09a71cd0bc08e64">
     <link rel="stylesheet" href="/css/manual-modal-preview-tools.css?sha=a09df4f4aa1aab3edf2a156758687bc3ebf21b1c5361ee5fd372309f0bfe6f75">
     <link rel="stylesheet" href="/css/manual-modal-generate.css?sha=61f8c621bfe4051c6b1372792ace5fc3cb10a942ae6a6faa3e8da52b9d0cb402">
-    <link rel="stylesheet" href="/css/manual-modal-viewer.css?sha=530f77c755674f36ecb0169f3ca44dbaf573a444c1a19f144f71c01516cf1baa">
+    <link rel="stylesheet" href="/css/manual-modal-viewer.css?sha=b0312af1197616e75e9b509331808ea667c6e808ae066ca4a5ee48bca6d297f4">
     <link rel="stylesheet" href="/css/custom-scrollbar.css?sha=281a0566e03dc04e8d734afdaaf5459a41c98d253ca28c927e3055a49b6065a1">
     <link rel="stylesheet" href="/css/genso-lock.css?sha=3928bbe3c79ed04068e97b21bc20d8e376ab44deeed27144498fa4f52d97ee1f">
     <link rel="stylesheet" href="/css/imageExpansion.css?sha=03fd9c98cb3c1bcf7227eb4d1d93d7f55e920744ef41a1725faf374748490f75">
@@ -246,7 +246,7 @@
     <link rel="stylesheet" href="/css/fatal-error.css?sha=aff5cffbe53e37b93e97d716dcc5126e1866b887fab7067026da213474003443">
     <link rel="stylesheet" href="/css/keyboard-shortcuts.css?sha=b6b6e4670fd4b55ef44ad62a46b886bfe5e50cd4b6cf11bfe0495e92612690d0">
     <link rel="stylesheet" href="/css/window-switcher.css?sha=5dc87b66f31e32e0bb3db64e8c5caed12396e7495be7b7875c17e1240ffcdf54">
-    <link rel="stylesheet" href="/css/confirmation-dialogs.css?sha=0dcad9c40b379a6cea217d00d6e1152f580318ed10776e3b5bec8070a9ce6d6e">
+    <link rel="stylesheet" href="/css/confirmation-dialogs.css?sha=bc7fa95a2069c05ed5d5a4b4c44a8b5c636f5264a04ef96fa2d6508bc2b8d418">
     <link rel="stylesheet" href="/css/about-melaton.css?sha=ec91fe61da672f1e723a25d8dc68aadd22464f87866f4abbc555fdab4d113909">
     <link rel="stylesheet" href="/css/desktop-boot.css?sha=2195457d00de5e315a0de2c2591b16afc4a7908bf80fdfb5dd875e5ed66ad44d">
     <link rel="stylesheet" href="/css/connection-dial.css?sha=d78b021b710e9ba005f3a4141a0477a50f73b2ea9ad85b01f9bd38404aaa1b44">
@@ -2270,6 +2270,9 @@
                                             title="Enable Stage Generations">
                                             <i class="fas fa-arrow-down-square-triangle"></i>
                                         </button>
+                                        <input type="number" id="manualPrintsCount"
+                                            class="form-control hover-show colored" min="1" max="8" step="1" value="1"
+                                            inputmode="numeric" title="Prints" aria-label="Prints">
                                         <button type="submit" id="manualGenerateBtn"
                                             class="btn-primary round-button wide-button">
                                             <span>Generate</span>
@@ -2610,6 +2613,9 @@
                                         class="btn-secondary indicator hidden" data-state="off" title="Auto Generate">
                                         <i class="fas fa-play"></i>
                                     </button>
+                                    <input type="number" id="manualPrintsCountAlt"
+                                        class="form-control hover-show colored" min="1" max="8" step="1" value="1"
+                                        inputmode="numeric" title="Prints" aria-label="Prints">
                                     <button type="submit" id="manualGenerateBtnAlt" class="btn-primary">
                                         <span>Generate</span>
                                         <i id="manualGenerateBtnIconAlt" class="nai-sparkles"></i>
@@ -7714,8 +7720,11 @@ Examples:
                     title="Image generation in progress">
                     <i class="fas fa-sparkles"></i>
                 </div>
-                <div class="taskbar-tray-icon hidden" id="mcpActivityIndicator" title="MCP">
-                    <i class="fas fa-plug"></i>
+                <div class="taskbar-tray-icon hidden" id="mcpActivityIndicator" title="Remote Access">
+                    <i class="fas fa-screencast"></i>
+                </div>
+                <div class="taskbar-tray-icon hidden" id="mcpPhysicsIndicator" title="Location">
+                    <i class="fas fa-location-arrow"></i>
                 </div>
                 <!-- Replication operation indicator -->
                 <div class="replication-tray-indicator taskbar-tray-icon hidden" id="replicationTrayIndicator"

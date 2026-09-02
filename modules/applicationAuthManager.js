@@ -17,7 +17,8 @@ const SCOPE_WS_PACKETS = {
         'generate_image', 'generate_preset', 'cancel_generation', 'upscale_image',
         'expand_image', 'preview_expand_image_prompt', 'reroll_expanded_image',
         'reroll_image', 'resolve_dynamic_context', 'compile_dynamic_generation',
-        'apply_tendai_preview', 'resolve_text_replacements'
+        'apply_tendai_preview', 'resolve_text_replacements',
+        'get_persona_settings', 'save_persona_settings', 'update_persona_settings'
     ],
     workspace: [
         'workspace_list', 'workspace_create', 'workspace_delete', 'workspace_activate',
@@ -50,7 +51,7 @@ const SCOPE_WS_PACKETS = {
     ],
     chat: [
         'create_chat_session', 'send_chat_message', 'get_chat_history', 'delete_chat_session',
-        'get_persona_settings', 'update_persona_settings'
+        'get_persona_settings', 'save_persona_settings', 'update_persona_settings'
     ],
     references: [
         'get_references', 'upload_reference', 'delete_reference', 'encode_vibe',
@@ -340,6 +341,7 @@ class ApplicationAuthManager {
             scopes: parseScopesJson(row.scopes),
             userType: row.user_type || 'admin',
             applicationKeyId: row.id,
+            appName: row.app_name || null,
             expiresAt: row.expires_at != null ? row.expires_at * 1000 : null,
             refreshBeforeAt: row.refresh_before_at * 1000,
             originalExpiresAt: row.original_expires_at != null ? row.original_expires_at * 1000 : null,
@@ -393,6 +395,7 @@ class ApplicationAuthManager {
             userType: row.user_type || 'admin',
             scopes: tokenScopes,
             applicationKeyId: row.application_key_id,
+            appName: row.app_name || null,
             tempTokenId: row.id,
             skipUserAgentCheck: true
         };

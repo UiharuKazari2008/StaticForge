@@ -70,8 +70,6 @@ function appendNewGalleryItems(newItems) {
     // galleryRerollOwnsGalleryDom: public/scripts/comp/galleryView.js
     if (galleryRerollOwnsGalleryDom()) return;
 
-    if (!manualModal.classList.contains('hidden') && !manualModal.classList.contains('windowed')) return;
-
     // isGalleryWindowHidden: public/scripts/comp/galleryView.js
     if (isGalleryWindowHidden()) return;
 
@@ -199,6 +197,11 @@ function handleGalleryActionUpdate(data) {
     if (data.action === 'append_top') {
         const newItems = Array.isArray(data.newItems) ? data.newItems : [];
         if (newItems.length === 0) {
+            const names = Array.isArray(data.filenames) ? data.filenames : [];
+            if (names.length > 0) {
+                // loadGallery: public/scripts/comp/galleryView.js
+                loadGallery(true);
+            }
             return;
         }
 
@@ -224,6 +227,7 @@ function handleGalleryActionUpdate(data) {
         }
         triggerBuildGalleryNavigationCache();
         appendNewGalleryItems(changedItems);
+        stampGalleryImagesSyncHint(data);
         console.log(`Gallery: Appended/updated ${changedItems.length} item(s) via action`);
         return;
     }
@@ -326,6 +330,16 @@ registerWsInboundHandler({
     phase: 'only',
     handler(message) {
         handleGalleryUpdatedData(message.data);
+    }
+});
+
+registerWsInboundHandler({
+    id: 'gallery.hint',
+    type: 'gallery_hint',
+    phase: 'only',
+    handler(message) {
+        // applyGalleryReconnectHint: public/scripts/comp/galleryView.js
+        applyGalleryReconnectHint(message && message.data);
     }
 });
 

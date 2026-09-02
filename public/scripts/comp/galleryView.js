@@ -183,7 +183,7 @@ let galleryImagesLoadTask = null;
 let galleryImagesSyncState = null;
 let galleryRefreshNotificationId = null;
 
-function markGalleryImagesSyncState(workspaceId, viewType, total, pinnedIndexes, destructiveAt) {
+function markGalleryImagesSyncState(workspaceId, viewType, total, pinnedIndexes, destructiveAt, updatedAt, latestFilename) {
     if (!total) {
         return;
     }
@@ -192,8 +192,27 @@ function markGalleryImagesSyncState(workspaceId, viewType, total, pinnedIndexes,
         viewType: viewType || 'images',
         total,
         pinnedIndexes: Array.isArray(pinnedIndexes) ? pinnedIndexes.slice() : [],
-        destructiveAt: Number(destructiveAt) || 0
+        destructiveAt: Number(destructiveAt) || 0,
+        updatedAt: Number(updatedAt) || 0,
+        latestFilename: latestFilename || null
     };
+}
+
+function stampGalleryImagesSyncHint(hint) {
+    if (!galleryImagesSyncState || !hint) return;
+    if (hint.workspaceId && hint.workspaceId !== galleryImagesSyncState.workspaceId) return;
+    if (hint.total != null) {
+        galleryImagesSyncState.total = Number(hint.total) || galleryImagesSyncState.total;
+    }
+    if (hint.lastGalleryDestructiveAt != null) {
+        galleryImagesSyncState.destructiveAt = Number(hint.lastGalleryDestructiveAt) || galleryImagesSyncState.destructiveAt;
+    }
+    if (hint.lastGalleryUpdatedAt != null) {
+        galleryImagesSyncState.updatedAt = Number(hint.lastGalleryUpdatedAt) || galleryImagesSyncState.updatedAt;
+    }
+    if (hint.latestFilename) {
+        galleryImagesSyncState.latestFilename = hint.latestFilename;
+    }
 }
 
 function galleryStoredDestructiveAt(stored) {
@@ -224,7 +243,18 @@ function gallerySessionMatchesProbe(probe) {
     if (!serverTotal || galleryImagesSyncState.total !== serverTotal) {
         return false;
     }
-    return !galleryDestructiveTimestampInvalidatesCache(probe.lastGalleryDestructiveAt, galleryImagesSyncState);
+    if (galleryDestructiveTimestampInvalidatesCache(probe.lastGalleryDestructiveAt, galleryImagesSyncState)) {
+        return false;
+    }
+    const serverUpdatedAt = Number(probe.lastGalleryUpdatedAt) || 0;
+    const storedUpdatedAt = Number(galleryImagesSyncState.updatedAt) || 0;
+    if (serverUpdatedAt && storedUpdatedAt && serverUpdatedAt > storedUpdatedAt) {
+        return false;
+    }
+    if (probe.latestFilename && !activeGalleryHasExactFile(probe.latestFilename)) {
+        return false;
+    }
+    return true;
 }
 
 function canAppendOnlyGallerySync(storedTotal, probeTotal, probeDestructiveAt, storedDestructiveAt) {
@@ -646,7 +676,9 @@ function galleryLoadProbeSummary(probe) {
         total: probe.total || 0,
         pinCount: Array.isArray(probe.pinnedIndexes) ? probe.pinnedIndexes.length : 0,
         workspaceId: probe.workspaceId || null,
-        destructiveAt: probe.lastGalleryDestructiveAt || 0
+        destructiveAt: probe.lastGalleryDestructiveAt || 0,
+        updatedAt: probe.lastGalleryUpdatedAt || 0,
+        latestFilename: probe.latestFilename || null
     };
 }
 
@@ -748,7 +780,9 @@ async function finalizeGalleryImagesLoad(dataItems, probe, workspaceId, viewType
         viewType,
         slimItems.length,
         pinnedIndexes,
-        serverDestructiveAt
+        serverDestructiveAt,
+        probe.lastGalleryUpdatedAt,
+        probe.latestFilename || (slimItems[0] && (slimItems[0].original || slimItems[0].filename || slimItems[0].upscaled)) || null
     );
 }
 
@@ -2879,10 +2913,16 @@ async function loadGallery(addLatest, progressCallback = null, loadOptions = nul
                             'images',
                             allImages.length,
                             serverPinnedIndexes,
-                            serverDestructiveAt
+                            serverDestructiveAt,
+                            payload.lastGalleryUpdatedAt,
+                            payload.latestFilename || latestItems[0].original || latestItems[0].filename || latestItems[0].upscaled || null
                         );
                     } else {
                         driftGalleryImagesSyncState(allImages.length);
+                        stampGalleryImagesSyncHint({
+                            lastGalleryUpdatedAt: payload.lastGalleryUpdatedAt,
+                            latestFilename: payload.latestFilename
+                        });
                     }
                 }
             }
@@ -3058,6 +3098,8 @@ async function loadGalleryChunk(viewType = 'images', offset = 0, limit = 100, ex
         blockOffset: Number(payload.blockOffset) || offset,
         pinnedIndexes: Array.isArray(payload.pinnedIndexes) ? payload.pinnedIndexes : [],
         lastGalleryDestructiveAt: Number(payload.lastGalleryDestructiveAt) || 0,
+        lastGalleryUpdatedAt: Number(payload.lastGalleryUpdatedAt) || 0,
+        latestFilename: payload.latestFilename || null,
         workspaceId: payload.workspaceId || ((typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : 'default')
     };
 }
@@ -3105,7 +3147,9 @@ async function loadCompleteGallery(viewType = 'images', progressCallback = null,
             probe = {
                 total: totalItems,
                 pinnedIndexes: head.pinnedIndexes || (probe && probe.pinnedIndexes) || [],
-                lastGalleryDestructiveAt: head.lastGalleryDestructiveAt || serverDestructiveAt
+                lastGalleryDestructiveAt: head.lastGalleryDestructiveAt || serverDestructiveAt,
+                lastGalleryUpdatedAt: head.lastGalleryUpdatedAt || (probe && probe.lastGalleryUpdatedAt) || 0,
+                latestFilename: head.latestFilename || (probe && probe.latestFilename) || null
             };
         }
 
@@ -3115,6 +3159,7 @@ async function loadCompleteGallery(viewType = 'images', progressCallback = null,
                 galleryImagesSyncState.pinnedIndexes = probe.pinnedIndexes.slice();
             }
             galleryImagesSyncState.destructiveAt = Number(probe.lastGalleryDestructiveAt) || galleryImagesSyncState.destructiveAt || 0;
+            stampGalleryImagesSyncHint(probe);
             loadLog.done('loaded from session memory');
             emitGalleryCacheValidProgress(progressCallback, totalItems);
             finishGalleryLoadProgress(allImages.length, allImages.length, 'cache_valid');
@@ -3331,8 +3376,6 @@ function applyGalleryListReload(newImages, options = {}) {
 // Add a new gallery item after generation with fade-in and slide-in animations
 async function addNewGalleryItemAfterGeneration(newImage) {
     if (galleryRerollOwnsGalleryDom()) return;
-    // Don't add new gallery items if manual modal is open and maximized
-    if (!manualModal.classList.contains('hidden') && !manualModal.classList.contains('windowed')) return;
 
     // Don't add new gallery items if gallery is hidden in desktop mode
     if (isGalleryWindowHidden()) return;
@@ -3399,6 +3442,89 @@ function isGalleryRerollRequest(requestId) {
     if (!s?.requestId || s.completed) return false;
     if (s.requestId === requestId) return true;
     return window.wsClient?.pendingRequests?.get(requestId)?.type === 'reroll_image';
+}
+
+function isRerollImageWsRequest(requestId) {
+    if (!requestId) return false;
+    if (isGalleryRerollRequest(requestId)) return true;
+    return window.wsClient?.pendingRequests?.get(requestId)?.type === 'reroll_image';
+}
+
+function stopStudioPreviewForReroll() {
+    // forceStopPreviewAnimation / setGenerationPreviewForegroundLinesActive: public/scripts/comp/manualModalManager.js
+    if (typeof forceStopPreviewAnimation === 'function') {
+        forceStopPreviewAnimation();
+    }
+    if (typeof setGenerationPreviewForegroundLinesActive === 'function') {
+        setGenerationPreviewForegroundLinesActive(false);
+    }
+    const form = document.getElementById('manualForm');
+    if (form) {
+        form.classList.remove('streaming', 'generating');
+    }
+    if (window.wsClient && typeof window.wsClient.clearStreamingStepQueues === 'function') {
+        window.wsClient.clearStreamingStepQueues('manual', true);
+    }
+}
+
+function ensureRerollProgressToast() {
+    if (progressToastId) return progressToastId;
+    progressToastId = showGlassToast(
+        'info',
+        'Rerolling Image',
+        'Generating new image...',
+        true,
+        false,
+        '<i class="fas fa-dice"></i>'
+    );
+    return progressToastId;
+}
+
+async function applyGalleryReconnectHint(hint) {
+    if (!hint || typeof hint !== 'object') return;
+    if (!galleryImagesSyncState && (!allImages || allImages.length === 0)) return;
+    if (hint.workspaceId && hint.workspaceId !== getGalleryLoadWorkspaceId()) return;
+    if (currentGalleryView && hint.viewType && hint.viewType !== currentGalleryView) return;
+
+    const latest = hint.latestFilename;
+    const serverTotal = Number(hint.total) || 0;
+    const serverUpdatedAt = Number(hint.lastGalleryUpdatedAt) || 0;
+    const serverDestructiveAt = Number(hint.lastGalleryDestructiveAt) || 0;
+    const headMissing = latest && !activeGalleryHasExactFile(latest);
+    const domMissing = latest
+        && !isGalleryWindowHidden()
+        && typeof findGalleryDomItemByIdentity === 'function'
+        && !findGalleryDomItemByIdentity({ filename: latest, original: latest, upscaled: latest });
+    const totalMismatch = galleryImagesSyncState && serverTotal && galleryImagesSyncState.total !== serverTotal;
+    const updatedNewer = galleryImagesSyncState
+        && serverUpdatedAt
+        && (Number(galleryImagesSyncState.updatedAt) || 0)
+        && serverUpdatedAt > (Number(galleryImagesSyncState.updatedAt) || 0);
+    const destructiveNewer = galleryDestructiveTimestampInvalidatesCache(serverDestructiveAt, galleryImagesSyncState);
+
+    if (!headMissing && !domMissing && !totalMismatch && !updatedNewer && !destructiveNewer) {
+        stampGalleryImagesSyncHint(hint);
+        return;
+    }
+
+    if (destructiveNewer) {
+        await loadGallery(false, null, { showProgress: false });
+        return;
+    }
+
+    if (domMissing && latest && !headMissing) {
+        const found = allImages.find((img) =>
+            img.original === latest || img.filename === latest || img.upscaled === latest
+        );
+        if (found) {
+            await addNewGalleryItemAfterGeneration(found);
+            stampGalleryImagesSyncHint(hint);
+            return;
+        }
+    }
+
+    await loadGallery(true);
+    stampGalleryImagesSyncHint(hint);
 }
 
 function galleryRerollOwnsGalleryDom() {
@@ -3733,16 +3859,17 @@ async function completeGalleryRerollSession(requestId, filename, options = {}) {
     if (s.requestId !== requestId && window.wsClient?.pendingRequests?.get(requestId)?.type === 'reroll_image') {
         s.requestId = requestId;
     }
-    window.skipNextGalleryRefresh = (window.skipNextGalleryRefresh || 0) + 2;
     paintGalleryRerollPlaceholder(REROLL_GEN_CAP, 'Finalizing...');
 
     const resolvedImage = await resolveGalleryRerollResultItem(filename);
     s.resolvedImage = resolvedImage;
     lastGalleryRerollResolvedFilename = filename;
     syncServiceWorkerImageCacheRules();
+    stopStudioPreviewForReroll();
 
     // Deep-scroll overlay: keep zoom + preview actions; do not jump or open viewer
     if (s.mode === 'overlay' && s.ui?.root?.isConnected) {
+        window.skipNextGalleryRefresh = (window.skipNextGalleryRefresh || 0) + 1;
         paintGalleryRerollPlaceholder(100, 'Complete');
         showGalleryRerollOverlayActions(resolvedImage);
         return resolvedImage;
@@ -3750,13 +3877,13 @@ async function completeGalleryRerollSession(requestId, filename, options = {}) {
 
     let resolvedElement = null;
     if (!s.hidden && s.mode === 'inline' && s.ui?.root) {
+        window.skipNextGalleryRefresh = (window.skipNextGalleryRefresh || 0) + 1;
         resolvedElement = replaceGalleryRerollPlaceholder(s.ui.root, resolvedImage);
         s.ui = null;
     }
     clearGalleryRerollSession(false);
-    if (options.openPreview !== false && resolvedImage) {
-        // openGalleryImageInViewer: public/scripts/comp/imageViewer.js
-        openGalleryImageInViewer(resolvedImage);
+    if (!resolvedElement && resolvedImage && !isGalleryWindowHidden()) {
+        await addNewGalleryItemAfterGeneration(resolvedImage);
     }
     return resolvedElement || resolvedImage;
 }
@@ -7964,6 +8091,7 @@ document.addEventListener('workspaceImageAdded', async (event) => {
 
     // Check if the gallery is visible and if we're viewing the images gallery
     if (!gallery || gallery.classList.contains('hidden') || currentGalleryView !== 'images') {
+        invalidateGalleryImagesSyncState();
         return;
     }
 

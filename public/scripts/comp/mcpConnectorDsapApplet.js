@@ -10,11 +10,7 @@ const MCP_CONNECTOR_DSAP_ID = 'mcp-connector';
 
 const MCP_CONNECTOR_FALLBACK_INSTRUCTIONS = [
     'You are Enshutsuka for Dreamscape Studio via the DreamScape MCP connector.',
-    'Modes (user says these on grok.com): analyse / analyze my prompt — get_studio_state + get_generated_image, compare prompt to pixels, apply_studio_changes. create — invent from text; no image required. efficiency — same as analyse but tighten tokens / missing tags / stale vs result.',
-    'If get_studio_state or get_generated_image includes dynamicGeneration / dynamic_generation or director / director_session_id / a director prompt, you MUST integrate and act on that data. Enable or change dynamic generation with apply_studio_changes dynamicGeneration (enabled, directive, tod, weather, season, location, cacheLocked, contextLocked) or generate_image dynamic_generation. Do not ignore an attached director prompt.',
-    'LinkXi persona (account): get_linkxi_persona / save_linkxi_persona (user_name, backstory, default_verbosity 1–5). Use it when the user talks as themselves.',
-    'On every Studio edit: get_studio_state first. Compare to the last state you saw this chat. Keep their intervening edits; apply only this message\'s delta.',
-    'Delivery priority: apply_studio_changes is the default (autoApply true; autoGenerate if they asked to generate now). Else generate_image. Else emit Change-JSON. Do not dump Positive/UC when Studio MCP works.'
+    'This grok.com project is MCP-only. Do not attach nai-prompt-guide / Docubase / memory copies. Reload this Grim page for the live paste-block (same text as MCP initialize).'
 ].join(' ');
 
 const mcpConnectorDsapCss = `
@@ -52,7 +48,7 @@ ${mcpConnectorCopyBlock('mcpConnectorAuthorize', 'Authorization endpoint', 2)}
 ${mcpConnectorCopyBlock('mcpConnectorToken', 'Token endpoint', 2)}
 ${mcpConnectorCopyBlock('mcpConnectorScopes', 'Scopes (Enshutsuka minimum)', 2)}
 ${dsapSmfBuildSectionHdr('Project instructions')}
-${dsapSmfBuildStatusBox('Paste into the grok.com project. Modes are analyse / create / efficiency. Dynamic generation and an attached director prompt are must-act.')}
+${dsapSmfBuildStatusBox('Paste into the grok.com project instructions field only. Do not attach nai-prompt-guide, Docubase, or other Dreamscape markdown — Grok will trust the stale file instead of MCP. Re-paste after each DreamScape r######## tools revision. Same text as MCP initialize plus the MCP-only preamble.')}
 ${mcpConnectorCopyBlock('mcpConnectorInstructions', 'Enshutsuka project paste-block', 8)}
 ${dsapSmfBuildSectionHdr('LinkXi')}
 <p>Persona is MCP <code>get_linkxi_persona</code> / <code>save_linkxi_persona</code>. The in-app editor stays at <a href="dsap://xi.dyna.dreamscape.jp/persona" class="dsap-smf-home-link" data-dsap-smf-home-link="dsap://xi.dyna.dreamscape.jp/persona">xi.dyna.dreamscape.jp/persona</a>.</p>

@@ -69,7 +69,7 @@ async function broadcastSavedGenerationFilenames(handlers, wsServer, clientInfo,
         viewType: 'images',
         action: 'append_top',
         filenames,
-        workspaceId: workspaceId || result?.workspace || null
+        workspaceId: result?.workspace || workspaceId || null
     });
 }
 

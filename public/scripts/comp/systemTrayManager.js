@@ -11,6 +11,7 @@ function prepareSystemTrayBackground() {
     const trayIconIds = [
         'imageGenerationIndicator',
         'mcpActivityIndicator',
+        'mcpPhysicsIndicator',
         'replicationTrayIndicator',
         'runpodTrayIcon',
         'subscriptionRenewalIndicator',

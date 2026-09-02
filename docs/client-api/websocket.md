@@ -215,9 +215,10 @@ These are **pushes** — handle asynchronously. Registered in `public/scripts/ws
 | Type | When sent | Payload (top-level / `data`) |
 |------|-----------|------------------------------|
 | `connection` | Immediately on WS connect | `status`, `message`, `authenticated`, `userType?`, `vfsPathUuid?`, `logViewerPathUuid?` (admin) |
+| `gallery_hint` | After workspace restore on connect/reconnect | `workspaceId`, `viewType`, `total`, `lastGalleryUpdatedAt`, `lastGalleryDestructiveAt`, `latestFilename?` — client compares session gallery memory and appends/reloads if stale |
 | `ping` | ~10s interval broadcast | `timestamp`, `image_count`, `queue_status` |
 | `request_keep_alive` | During long WS requests | `requestId`, `status: "processing"`, optional `progress`, `message` |
-| `gallery_updated` | Image add/delete/move/scrap/pin | `data.action` (`add`, `append_top`, `bulk_delete`, `remove`, …), `workspaceId?` (when set, only clients whose active gallery workspace matches should apply), `filename?`, `filenames?`, `viewType?`, `newItems?`, `deletedCount?`, `lastGalleryDestructiveAt?` |
+| `gallery_updated` | Image add/delete/move/scrap/pin | `data.action` (`add`, `append_top`, `bulk_delete`, `remove`, …), `workspaceId?` (when set, only clients whose active gallery workspace matches should apply), `filename?`, `filenames?`, `viewType?`, `newItems?`, `deletedCount?`, `lastGalleryDestructiveAt?`, `lastGalleryUpdatedAt?`, `latestFilename?`, `total?` |
 | `gallery_scroll_state` | On reconnect (session restore) | Scroll hints per view: `index`, `viewType`, `workspaceId`, `anchorFilename?` |
 | `workspace_updated` | Workspace mutation | `data.action` (e.g. `bulk_add_pinned`, `settings_updated`, `files_moved`), `workspaceId`, action-specific counts/fields |
 | `workspace_image_added` | New image(s) in workspace | `workspaceId`, `imageFilenames[]` |
@@ -262,12 +263,12 @@ These are **pushes** — handle asynchronously. Registered in `public/scripts/ws
 | `replication_sync_complete` | Full changelog sync finished | `data.success`, applied counts, `maxLsn` |
 | `fandom_wiki_import_progress` | Fandom page import progress | `data.phase`, `current`, `total`, optional `pageId`/`message`; Wiki Manager DSAP via `wsClient.on` |
 | `agent_notice` | Loopback `POST /agent/broadcast` | `data.id`, `message`, `title`, `display` (`toast` \| `dialog`), `level`, `timeout` (ms or `false`), `restart` (bool), `source: "agent"` — toast or confirmation dialog; `restart: true` reuses `#agentClientUpdateDialog` then apply+restart via `appWebSocketHandlers.js` |
-| `agent_session_command` | Loopback `/agent/session/*` or MCP to **this key's** bound Studio tab | `requestId` + `data.command` (`open_image` / `open_viewer` / `apply_studio` / `get_state` / `get_windows` / `get_physics`) — `public/scripts/comp/agentClientBridge.js`. `get_windows` lists open Lumen / Glancewell / Grimoire / gallery / Studio with current data. `open_viewer` takes `target` (`lumen` \| `glancewell`) and `filenames`. `apply_studio` includes sibling `autoApply` (default true) and `autoGenerate` (default false). Silent apply skips autofill. |
-| `mcp_activity` | After each public MCP `tools/call` | `data.tool`, `data.args` (summarized), `data.result` (summarized), `data.success`, `data.generating` (`true` at generate start, `false` at end), `data.at` — tray `#mcpActivityIndicator` (bound or 2 min; right-click Unbind; click opens Periscope `client:mcp-activity`) + generation tray when `generating` |
+| `agent_session_command` | Loopback `/agent/session/*` or MCP to **this key's** bound Studio tab | `requestId` + `data.command` (`open_image` / `open_viewer` / `apply_studio` / `get_state` / `get_windows` / `get_physics`) and optional `data.actorName` — `public/scripts/comp/agentClientBridge.js`. `get_windows` lists open Lumen / Glancewell / Grimoire / gallery / Studio with current data. `open_viewer` takes `target` (`lumen` \| `glancewell`) and `filenames`. `apply_studio` includes sibling `autoApply` (default true) and `autoGenerate` (default false). Silent apply skips autofill. |
+| `mcp_activity` | After each public MCP `tools/call` | `data.tool`, `data.args` (summarized), `data.result` (summarized), `data.success`, `data.generating` (`true` at generate start, `false` at end), `data.actorName` (application token name), `data.at` — Remote Access tray `#mcpActivityIndicator` (bound or 2 min; hover/popovers like Your session was accessed by "Grok"; right-click Disconnect; click opens Periscope `client:mcp-activity`) + generation tray when `generating` |
 | `mcp_open_viewer` | MCP `open_in_lumen` / `open_in_glancewell` when no bind | `data.target`, `data.filenames[]` — `public/scripts/comp/mcpActivityClient.js` |
-| `agent_session_bound` | After this application key binds the tab | `data.clientId` — tray popup |
-| `agent_session_unbound` | Key rebound / idle 15 min / tray Unbind | `data.clientId`, `data.reason` |
-| `agent_session_notice` | Physics compiled for the bound tab | `data.action` (`physics`) — `#mcpPhysicsIndicator` |
+| `agent_session_bound` | After this application key binds the tab | `data.clientId`, optional `data.actorName` — Remote Access tray popup |
+| `agent_session_unbound` | Key rebound / idle 15 min / tray Disconnect | `data.clientId`, `data.reason` |
+| `agent_session_notice` | Physics compiled for the bound tab | `data.action` (`physics`), optional `data.actorName` — `#mcpPhysicsIndicator` (location arrow) plus Remote Access popover |
 
 Director messages use prefix `director_` (handled in client before inbound registry).
 
@@ -284,9 +285,9 @@ Web client behavior (`WebSocketClient`):
 
 **After reconnect:**
 
-1. Receive `connection` + session restore messages
+1. Receive `connection` + session restore messages (`workspace_restored`, `gallery_scroll_state`, `gallery_hint`)
 2. Run registered refresh callbacks (`registerRefreshCallback`)
-3. Re-fetch gallery, workspace, presets as needed
+3. Re-fetch gallery, workspace, presets as needed. `gallery_hint` tells the client whether head/total/`lastGalleryUpdatedAt` changed so it can append without a full reload
 4. Pass `workspaceId` on `request_gallery` if session map may be stale
 
 ## Request correlation

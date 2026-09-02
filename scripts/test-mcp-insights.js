@@ -39,8 +39,9 @@ assert.strictEqual(resultSummary.filename, 'out.png');
 assert.strictEqual(resultSummary.success, true);
 
 resetActivityLog();
-recordActivity(null, { tool: 'delete_images', argsSummary: { filenames: ['a.png'] }, resultSummary: { success: true }, success: true });
+recordActivity(null, { tool: 'delete_images', argsSummary: { filenames: ['a.png'] }, resultSummary: { success: true }, success: true, actorName: 'Grok' });
 assert.strictEqual(getRecent().length, 1);
+assert.strictEqual(getRecent()[0].actorName, 'Grok');
 
 async function main() {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-diff-'));

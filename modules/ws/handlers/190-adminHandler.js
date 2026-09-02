@@ -206,12 +206,14 @@ async function handleReportClientPerf(handlersCtx, ws, message, clientInfo) {
             });
         }
 
-        handlersCtx.sendToClient(ws, {
-            type: 'report_client_perf_response',
-            requestId: message.requestId,
-            data: { success: true, recorded: validSamples.length },
-            timestamp: new Date().toISOString()
-        });
+        if (message.requestId) {
+            handlersCtx.sendToClient(ws, {
+                type: 'report_client_perf_response',
+                requestId: message.requestId,
+                data: { success: true, recorded: validSamples.length },
+                timestamp: new Date().toISOString()
+            });
+        }
     } catch (error) {
         console.error('❌ Error recording client performance telemetry:', error);
         handlersCtx.sendError(ws, 'Failed to record client performance telemetry', error.message, message.requestId);

@@ -980,7 +980,7 @@ class GlobalResources {
                 base_url: baseUrl || (source === 'e621' ? 'https://e621.net' : 'https://danbooru.donmai.us')
             });
 
-            if (response.success && response.html) {
+            if (response.success && typeof response.html === 'string' && response.html) {
                 return response.html;
             } else {
                 // Parser returned an error - log it for debugging

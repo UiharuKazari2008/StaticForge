@@ -88,6 +88,14 @@
     align-items: flex-end;
 }
 
+.enhance-dialog .form-group > .custom-dropdown-btn {
+    width: 100%;
+}
+
+.enhance-dialog #enhanceMagnitudeInput {
+    width: 100%;
+}
+
 .enhance-dialog .enhance-advanced-toggle-group {
     flex: 0 0 auto;
 }

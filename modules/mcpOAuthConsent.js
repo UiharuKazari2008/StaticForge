@@ -172,6 +172,36 @@ function generatedKeyName(clientName) {
     return `MCP ${base}`.slice(0, 80);
 }
 
+function normalizeKeyName(name) {
+    return String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function keyNameMatchesClient(appName, clientName) {
+    const app = normalizeKeyName(appName);
+    const client = normalizeKeyName(clientName);
+    if (!app || !client) return false;
+    if (app === client) return true;
+    const generated = normalizeKeyName(generatedKeyName(clientName));
+    if (app === generated) return true;
+    const stripMcp = (value) => value.replace(/^mcp\s+/, '');
+    return stripMcp(app) === stripMcp(client);
+}
+
+function findAutoConsentKey(keys, clientName, requestedScopes) {
+    const matches = (keys || []).filter((key) => (
+        key
+        && key.status === 'active'
+        && keyNameMatchesClient(key.appName, clientName)
+        && keyMatchesRequestedScopes(key.scopes, requestedScopes)
+    ));
+    if (!matches.length) return null;
+    const generated = normalizeKeyName(generatedKeyName(clientName));
+    const client = normalizeKeyName(clientName);
+    return matches.find((key) => normalizeKeyName(key.appName) === generated)
+        || matches.find((key) => normalizeKeyName(key.appName) === client)
+        || matches[0];
+}
+
 module.exports = {
     CONSENT_COOKIE_NAME,
     CONSENT_SESSION_TTL_MS,
@@ -196,5 +226,8 @@ module.exports = {
     clearConsentCookie,
     csrfMatches,
     filterKeysForConsent,
-    generatedKeyName
+    generatedKeyName,
+    normalizeKeyName,
+    keyNameMatchesClient,
+    findAutoConsentKey
 };

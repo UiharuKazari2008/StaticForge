@@ -8785,8 +8785,24 @@ async function compileContext(globalResources, dynamicConfig, clientIP = null) {
         __runtimeGr.getLogger().detailed(`⏰ Local time: ${baseTime.hour}:${String(baseTime.minute).padStart(2, '0')} (${timezone}) | ${baseTime.month + 1}/${baseTime.dayOfMonth}`);
     }
 
+    let locationWarning = null;
+    if (baseTime && !currentLocation) {
+        console.warn('⚠️ No location for determineTimePeriod; defaulting to client IP then server location (no 500)');
+        if (clientIP) {
+            currentLocation = await getClientIPLocation(clientIP);
+        }
+        if (!currentLocation) {
+            currentLocation = await getCurrentLocation();
+        }
+        locationWarning = currentLocation
+            ? 'No location provided; used client/server default. Call get_client_physics, pass the user location, or ask the user.'
+            : 'No location for time-of-day. Skipped determineTimePeriod (no 500). Call get_client_physics, pass location, or CLIENT.';
+    }
+
     // Determine time period (only if time is available)
-    const timePeriod = baseTime ? await determineTimePeriod(baseTime, seasonalConfig.season, currentLocation, weatherData || {}, enhancedWeatherData || {}, clothing, guidance !== false) : null;
+    const timePeriod = (baseTime && currentLocation)
+        ? await determineTimePeriod(baseTime, seasonalConfig.season, currentLocation, weatherData || {}, enhancedWeatherData || {}, clothing, guidance !== false)
+        : null;
 
     // Generate seasonal guidelines if seasonal is enabled (must be after weather is fetched)
     let seasonalGuidelines = null;
@@ -8803,6 +8819,10 @@ async function compileContext(globalResources, dynamicConfig, clientIP = null) {
 
     // Build context - only include data that is enabled
     const context = {};
+    if (locationWarning) {
+        context.warning = locationWarning;
+        context.locationDefaulted = !!currentLocation;
+    }
 
     // Add location metadata if available
     if (currentLocation && currentLocation.lat !== undefined && currentLocation.lon !== undefined) {
@@ -10022,8 +10042,23 @@ async function initializeSystemMessageConversation(params) {
 
 // Generalized dynamic generation processing function - extracts core AI logic from WebSocket handler
 
+const DIRECTOR_API_NOOP = true;
+
 async function processDynamicGenerationCore(globalResources, dynamicConfig, context = null, prompt, uc, characterPrompts = [], requestId = 'core', ws = null, handler = null, wsServer = null, backgroundFocus = false, lastGeneratedImage = null, stageContext = null, datasetConfig = null, appliedPresetControls = null, preCalculatedHashes = null) {
     bindRuntimeGlobalResources(globalResources);
+    if (DIRECTOR_API_NOOP) {
+        // Temporary: Grok Web owns compile. Do not fail the generate — stamp context only.
+        return {
+            success: true,
+            skipped: true,
+            noop: true,
+            processed: false,
+            context: context || null,
+            text_replacements: { prompt: [], uc: [], character_prompts: [] },
+            citations: [],
+            dialogs: []
+        };
+    }
     // Declare apiCalls at function scope so it's accessible in catch block
     let apiCalls = [];
     // Declare allPhase1AttemptIds at function scope so it's accessible in catch block for cleanup

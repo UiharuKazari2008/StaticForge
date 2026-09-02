@@ -10,7 +10,7 @@ const compression = require('compression');
 const helmet = require('helmet');
 
 // Security and Rate Limiting
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const slowDown = require('express-slow-down');
 
 // Scheduled preset generation data structures
@@ -120,14 +120,33 @@ function parseAgentBroadcastBody(body) {
         return { status: 400, error: 'title must be plain text' };
     }
 
+    let restart = false;
+    const rawRestart = payload.restart !== undefined ? payload.restart : payload.reload;
+    if (rawRestart !== undefined && rawRestart !== null && rawRestart !== '') {
+        if (rawRestart === true || rawRestart === 'true' || rawRestart === 1 || rawRestart === '1') {
+            restart = true;
+        } else if (rawRestart === false || rawRestart === 'false' || rawRestart === 0 || rawRestart === '0') {
+            restart = false;
+        } else {
+            return { status: 400, error: 'restart must be a boolean' };
+        }
+    }
+
     const rawDisplay = typeof (payload.display || payload.mode) === 'string'
         ? String(payload.display || payload.mode).trim().toLowerCase()
         : 'toast';
     let display = 'toast';
     if (rawDisplay === 'dialog' || rawDisplay === 'popup' || rawDisplay === 'window') {
         display = 'dialog';
+    } else if (rawDisplay === 'restart' || rawDisplay === 'reload') {
+        display = 'dialog';
+        restart = true;
     } else if (rawDisplay !== 'toast') {
-        return { status: 400, error: 'display must be toast or dialog' };
+        return { status: 400, error: 'display must be toast, dialog, or restart' };
+    }
+
+    if (restart) {
+        display = 'dialog';
     }
 
     const rawLevel = typeof (payload.level || payload.type) === 'string'
@@ -139,9 +158,12 @@ function parseAgentBroadcastBody(body) {
 
     let timeout = payload.timeout;
     if (timeout === false || timeout === 'false' || timeout === 'persist') {
+        if (restart) {
+            return { status: 400, error: 'timeout must be milliseconds when restart is true' };
+        }
         timeout = false;
     } else if (timeout == null || timeout === '') {
-        timeout = display === 'dialog' ? false : 10000;
+        timeout = restart ? 15000 : (display === 'dialog' ? false : 10000);
     } else if (typeof timeout === 'number' && Number.isFinite(timeout) && timeout >= 0) {
         timeout = Math.min(Math.floor(timeout), 300000);
     } else if (typeof timeout === 'string' && /^\d+$/.test(timeout)) {
@@ -158,6 +180,7 @@ function parseAgentBroadcastBody(body) {
             display,
             level: rawLevel,
             timeout,
+            restart,
             source: 'agent'
         }
     };
@@ -1016,7 +1039,7 @@ const limiter = rateLimit({
     windowMs: SECURITY_CONFIG.RATE_LIMIT_WINDOW_MS,
     max: SECURITY_CONFIG.RATE_LIMIT_MAX_REQUESTS,
     skipSuccessfulRequests: SECURITY_CONFIG.RATE_LIMIT_SKIP_SUCCESSFUL,
-    keyGenerator: (req) => getRealIP(req),
+    keyGenerator: (req) => ipKeyGenerator(getRealIP(req)),
     skip: (req) => {
         // Skip rate limiting for authenticated users
         if (req.session && req.session.authenticated) {
@@ -1056,7 +1079,7 @@ const speedLimiter = slowDown({
     windowMs: SECURITY_CONFIG.SLOW_DOWN_WINDOW_MS,
     delayAfter: SECURITY_CONFIG.SLOW_DOWN_DELAY_AFTER,
     delayMs: () => SECURITY_CONFIG.SLOW_DOWN_DELAY_MS, // Fixed: Use function instead of static value
-    keyGenerator: (req) => getRealIP(req),
+    keyGenerator: (req) => ipKeyGenerator(getRealIP(req)),
     skipSuccessfulRequests: true,
     skip: (req) => {
         // Skip speed limiting for authenticated users
@@ -1972,6 +1995,7 @@ app.post('/agent/broadcast', devAuthMiddleware, (req, res) => {
             level: parsed.notice.level,
             title: parsed.notice.title,
             timeout: parsed.notice.timeout,
+            restart: parsed.notice.restart === true,
             clients
         });
     } catch (error) {

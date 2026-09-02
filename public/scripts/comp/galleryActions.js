@@ -1,10 +1,5 @@
 /** Gallery reroll / upscale / manual-modal guard (Phase 2 batch 13). */
 async function rerollImage(image, event = null) {
-    // Check if we're in a modal context
-    const isInModal = !document.getElementById('manualModal').classList.contains('hidden');
-
-    const useGalleryRerollPlaceholder = galleryRerollUsesPlaceholder();
-
     try {
         // Determine which filename to use for metadata
         // For gallery items, determine the filename based on available properties
@@ -65,14 +60,9 @@ async function rerollImage(image, event = null) {
             forcePaidRequest = true;
         }
 
-        if (!isInModal) {
-            if (!useGalleryRerollPlaceholder && !progressToastId) {
-                progressToastId = showGlassToast('info', 'Rerolling Image', 'Generating new image...', true, false, '<i class="fas fa-dice"></i>');
-            }
-        } else {
-            // Use existing modal loading overlay when in modal
-            showManualLoading(true, 'Rerolling image...');
-        }
+        // Reroll stays out of Studio — own toast with preview (public/scripts/comp/galleryView.js)
+        ensureRerollProgressToast();
+        stopStudioPreviewForReroll();
 
         // Use WebSocket reroll functionality (preferred method)
         if (window.wsClient && window.wsClient.isConnected()) {
@@ -94,42 +84,36 @@ async function rerollImage(image, event = null) {
                     }
 
                     const rerolledFilename = result.filename;
+                    stopStudioPreviewForReroll();
 
-                    if (!isInModal) {
-                        if (!useGalleryRerollPlaceholder) {
-                            if (progressToastId) {
-                                updateGlassToastProgress(progressToastId, 100);
-                                updateGlassToastComplete(progressToastId, {
-                                    type: 'success',
-                                    title: 'Reroll Complete',
-                                    message: 'Image generated successfully!',
-                                    customIcon: '<i class="nai-check"></i>',
-                                    showProgress: false
-                                });
-                                progressToastId = null;
-                            }
+                    if (result.image && progressToastId && typeof updateGlassToastImagePreview === 'function') {
+                        updateGlassToastImagePreview(progressToastId, result.image);
+                    }
+                    if (progressToastId) {
+                        updateGlassToastProgress(progressToastId, 100);
+                        updateGlassToastComplete(progressToastId, {
+                            type: 'success',
+                            title: 'Reroll Complete',
+                            message: 'Image generated successfully!',
+                            customIcon: '<i class="nai-check"></i>',
+                            showProgress: false
+                        });
+                        progressToastId = null;
+                    }
 
-                            window.skipNextGalleryRefresh = (window.skipNextGalleryRefresh || 0) + 1;
-                            await loadGallery(true);
-
-                            const found = allImages.find(img => img.original === rerolledFilename || img.upscaled === rerolledFilename);
-                            const imageToShow = found || { original: rerolledFilename, upscaled: rerolledFilename };
-                            // openGalleryImageInViewer: public/scripts/comp/imageViewer.js
-                            openGalleryImageInViewer(imageToShow);
-                        } else if (lastGalleryRerollResolvedFilename === rerolledFilename) {
-                            lastGalleryRerollResolvedFilename = null;
-                        } else if (!galleryRerollOwnsGalleryDom()) {
-                            // Placeholder never started — fall back to toast refresh path
-                            window.skipNextGalleryRefresh = (window.skipNextGalleryRefresh || 0) + 1;
-                            await loadGallery(true);
-                            const found = allImages.find(img => img.original === rerolledFilename || img.upscaled === rerolledFilename);
-                            const imageToShow = found || { original: rerolledFilename, upscaled: rerolledFilename };
-                            // openGalleryImageInViewer: public/scripts/comp/imageViewer.js
-                            openGalleryImageInViewer(imageToShow);
-                        }
-                    } else {
-                        showGlassToast('success', 'Reroll Complete', 'Image generated successfully!');
-                        showManualLoading(false);
+                    if (lastGalleryRerollResolvedFilename === rerolledFilename) {
+                        lastGalleryRerollResolvedFilename = null;
+                    }
+                    const alreadyInList = typeof activeGalleryHasExactFile === 'function'
+                        && activeGalleryHasExactFile(rerolledFilename);
+                    const alreadyInDom = typeof findGalleryDomItemByIdentity === 'function'
+                        && findGalleryDomItemByIdentity({
+                            filename: rerolledFilename,
+                            original: rerolledFilename,
+                            upscaled: rerolledFilename
+                        });
+                    if (!galleryRerollOwnsGalleryDom() && (!alreadyInList || (!isGalleryWindowHidden() && !alreadyInDom))) {
+                        await loadGallery(true);
                     }
 
                     // Clean up modal state
@@ -154,27 +138,21 @@ async function rerollImage(image, event = null) {
             // failGalleryRerollSession: public/scripts/comp/galleryView.js
             failGalleryRerollSession(activeGalleryRerollSession.requestId);
         }
-        if (!isInModal) {
-            if (progressToastId) {
-                updateGlassToastComplete(progressToastId, {
-                    type: 'error',
-                    title: 'Reroll Failed',
-                    message: 'Image reroll failed: ' + error.message,
-                    customIcon: '<i class="nai-cross"></i>',
-                    showProgress: false
-                });
-
-                // Clear the global progress toast ID after error
-                progressToastId = null;
-            }
+        stopStudioPreviewForReroll();
+        if (progressToastId) {
+            updateGlassToastComplete(progressToastId, {
+                type: 'error',
+                title: 'Reroll Failed',
+                message: 'Image reroll failed: ' + error.message,
+                customIcon: '<i class="nai-cross"></i>',
+                showProgress: false
+            });
+            progressToastId = null;
         } else {
             showError('Image reroll failed: ' + error.message);
-            showManualLoading(false);
         }
     } finally {
-        if (isInModal) {
-            showManualLoading(false);
-        }
+        stopStudioPreviewForReroll();
     }
 }
 

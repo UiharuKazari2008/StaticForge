@@ -1,7 +1,7 @@
 /**
  * OAuth 2.1 + PKCE HTTP routes for MCP Grok connector.
  * Mounted under /{mcpPathUuid}/oauth/* by mcpAgentFacade.js
- * ui-review: PIN + key picker chrome — Yukimi preview before land.
+ * OAuth consent chrome. Yukimi asked in chat to collapse scopes and auto-key.
  */
 
 const { McpOAuthProvider, validateRedirectUri, parseScopes } = require('./mcpOAuthProvider');
@@ -21,8 +21,12 @@ h1{font-size:1.5rem;margin-bottom:8px;color:#fff}
 .subtitle{color:#888;margin-bottom:24px}
 .client-name{background:#1a1a2e;border-radius:8px;padding:16px;margin-bottom:20px}
 .client-name strong{color:#8b8bff;font-size:1.1rem}
-.scopes{margin-bottom:24px}
-.scopes h3{font-size:0.9rem;color:#888;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px}
+.scopes{margin:20px 0 0}
+.scopes summary{cursor:pointer;font-size:0.9rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;list-style:none}
+.scopes summary::-webkit-details-marker{display:none}
+.scopes summary::before{content:"▸ ";}
+.scopes[open] summary::before{content:"▾ ";}
+.scopes[open] .scope-list{margin-top:12px}
 .scope-list{list-style:none}
 .scope-list li{padding:8px 12px;background:#1a1a2e;border-radius:6px;margin-bottom:6px;display:flex;align-items:center}
 .scope-list li::before{content:"✓";color:#4ade80;margin-right:10px;font-weight:bold}
@@ -54,13 +58,13 @@ button{flex:1;padding:14px;border:none;border-radius:8px;font-size:1rem;font-wei
 <div class="client-name">
 <strong>{{CLIENT_NAME}}</strong>
 </div>
-<div class="scopes">
-<h3>Requested permissions</h3>
+{{STEP_BODY}}
+<details class="scopes">
+<summary>Requested permissions</summary>
 <ul class="scope-list">
 {{SCOPE_LIST}}
 </ul>
-</div>
-{{STEP_BODY}}
+</details>
 </div>
 {{STEP_SCRIPT}}
 </body>
@@ -93,8 +97,8 @@ function renderPinStep(params) {
 ${hiddenOAuthFields(params)}
 <div class="field">
 <label for="consent_pin">Your Dreamscape PIN</label>
-<input type="password" id="consent_pin" name="pin" inputmode="numeric" autocomplete="one-time-code" required>
-<p class="note">Same PIN you use to sign in. Keys stay on the server — you will pick one next.</p>
+<input type="password" id="consent_pin" name="pin" inputmode="numeric" autocomplete="one-time-code" required autofocus>
+<p class="note">Same PIN you use to sign in. A key already named like this client with matching scopes skips the next step.</p>
 </div>
 <div class="buttons">
 <button type="submit" name="action" value="pin" class="approve">Continue</button>
@@ -481,6 +485,24 @@ function createOAuthRoutes(globalResources) {
                 });
                 req.cookies = req.cookies || {};
                 req.cookies[consent.CONSENT_COOKIE_NAME] = session.sessionId;
+                const requestedScopes = parseScopes(scope);
+                const keys = await loadPickKeys(verified.userType, requestedScopes, client.applicationKeyId);
+                const autoKey = consent.findAutoConsentKey(keys, client.clientName, requestedScopes);
+                if (autoKey) {
+                    consent.destroyConsentSession(session.sessionId);
+                    consent.clearConsentCookie(res, cookiePath);
+                    return finishApprove(res, {
+                        client,
+                        clientId: client_id,
+                        redirectUri: redirect_uri,
+                        state,
+                        scope,
+                        codeChallenge: code_challenge,
+                        codeChallengeMethod: code_challenge_method,
+                        resource,
+                        applicationKeyId: autoKey.id
+                    });
+                }
                 return renderAuthorizedStep(req, res, page);
             }
 

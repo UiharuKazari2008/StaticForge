@@ -14,6 +14,7 @@ const DSAP_SMF_BRANCH_AUTOFILL = 'Autofill Ranking';
 const DSAP_SMF_BRANCH_WIKI = 'Wiki Manager';
 const DSAP_SMF_BRANCH_MENMA = 'Menma';
 const DSAP_SMF_BRANCH_SIMILAR = 'Zanzou';
+const DSAP_SMF_BRANCH_MCP = 'MCP Connector';
 
 const DSAP_SMF_DEFAULT_LOGO = '/static_images/logo_icon.png';
 
@@ -173,6 +174,7 @@ function dsapSmfBuildDreamscapeHomeHtml() {
         { url: 'dsap://wiki.dyna.dreamscape.jp/', label: 'Wiki Manager', icon: 'fas fa-books', desc: 'Import and browse Fandom, NovelAI, and MediaWiki caches' },
         { url: 'dsap://menma.dyna.dreamscape.jp/status', label: 'Menma', icon: 'fas fa-cake-candles', desc: 'Cake ledger, work pile, and breakfast before/after' },
         { url: 'dsap://zanzou.dyna.dreamscape.jp/', label: 'Zanzou', icon: 'fas fa-clone', desc: 'Afterimages. Keep the shot, scrap the ghosts.' },
+        { url: 'dsap://mcp.dreamscape.jp/', label: 'MCP Connector', icon: 'fas fa-plug', desc: 'Grok custom connector URLs, OAuth, and Enshutsuka project instructions' },
     ];
 
     const rows = links.map((link) => {

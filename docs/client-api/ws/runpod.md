@@ -14,7 +14,7 @@ These packets control **dedicated GPU Pods** listed in `secure.config.json` → 
 |---|---|---|---|
 | `runpod_pod_start` | `runpod_pod_start_response` | admin/destructive | Handler: handleRunpodPodStart |
 | `runpod_pod_stop` | `runpod_pod_stop_response` | admin/destructive | Handler: handleRunpodPodStop |
-| `runpod_pods_status` | `runpod_pods_status_response` | session | Handler: handleRunpodPodsStatus |
+| `runpod_pods_status` | `runpod_pods_status_response` | session | Returns the cached snapshot immediately; a background refresh may follow as `runpod_pods_status_update` |
 
 ## Response envelope
 
@@ -81,6 +81,8 @@ Logs: Periscope source `runpod` (`logs/runpod.log`).
 
 ---
 
+---
+
 ## Detailed packets
 
 ### `runpod_pod_start`
@@ -128,6 +130,8 @@ Logs: Periscope source `runpod` (`logs/runpod.log`).
 **Auth:** Session required
 
 **Handler:** modules/ws/handlers/175-runpodHandler.js → `handleRunpodPodsStatus`
+
+Replies with the last cached snapshot so the tray/`/status` path never waits on `rest.runpod.io`. A refresh runs in the background and is pushed as `runpod_pods_status_update`.
 
 **Request fields:**
 

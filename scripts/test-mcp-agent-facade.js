@@ -75,6 +75,44 @@ assert.ok(_test.MCP_INSTRUCTIONS.includes('advanced_tools'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('save_preset'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('apply_studio_changes'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('get_session_state view=live'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('studioReachable'));
+const wikiHandler = require('../modules/ws/handlers/110-wikiHandler');
+assert.strictEqual(wikiHandler.postProcessWikiHtml({}), '');
+assert.strictEqual(wikiHandler.postProcessWikiHtml('<p>ok</p>'), '<p>ok</p>');
+assert.strictEqual(wikiHandler.coerceWikiBodyText({}), '');
+assert.strictEqual(wikiHandler.coerceWikiBodyText(''), '');
+assert.strictEqual(wikiHandler.coerceWikiBodyText({ body: 'noir has silver hair' }), 'noir has silver hair');
+assert.strictEqual(wikiHandler.coerceWikiBodyText({ html: {} }), '');
+assert.strictEqual(JSON.stringify({ html: Promise.resolve('x') }), '{"html":{}}');
+assert.deepStrictEqual(_test.reshapeWikiPageForMcp({
+    success: true,
+    tagName: 'noir (nikke)',
+    bodies: [{ source: 'danbooru', html: {}, fetchedOnline: false }]
+}), {
+    success: true,
+    tagName: 'noir (nikke)',
+    text: '',
+    markdown: '',
+    bodySource: undefined,
+    fetchedOnline: false,
+    empty: true,
+    next: 'Wiki body is empty. Try search_wiki aliases, the last Studio character box, or generate and write what the pixels did. A missing wiki is not a ban.'
+});
+assert.strictEqual(_test.reshapeWikiPageForMcp({
+    success: true,
+    tagName: 'alice (nikke)',
+    bodies: [{ source: 'danbooru', html: 'Alice is a Nikke with ...' }]
+}).text.includes('Alice is a Nikke'), true);
+assert.strictEqual(_test.pickPaidApproval({ userApprovedPaidRequest: true }), true);
+assert.strictEqual(_test.pickPaidApproval({ allow_paid: true }), true);
+assert.strictEqual(_test.pickPaidApproval({}), false);
+assert.strictEqual(_test.wouldSpendPaidCredits('upscale_image', {}), true);
+assert.strictEqual(_test.wouldSpendPaidCredits('expand_image', {}), true);
+assert.strictEqual(_test.wouldSpendPaidCredits('generate_image', { resolution: 'normal_portrait' }), false);
+assert.strictEqual(_test.wouldSpendPaidCredits('generate_image', { resolution: 'xlarge_portrait' }), true);
+assert.strictEqual(_test.wouldSpendPaidCredits('generate_image', { upscale: true }), true);
+assert.ok(_test.MCP_INSTRUCTIONS.includes('userApprovedPaidRequest'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('html as {}'));
 assert.strictEqual(_test.resolveWorkspaceId(''), 'default');
 assert.strictEqual(_test.resolveWorkspaceId('default'), 'default');
 assert.strictEqual(_test.resolveWorkspaceId('other'), 'other');
@@ -187,12 +225,18 @@ assert.ok(_test.MCP_INSTRUCTIONS.includes('view=live'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('search_autofill'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('get_wiki_page'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('get_prompt_guide'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('not laws'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('working notes'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('Do not use a grok.com project file'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('save_memory'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('saveKnowledgeMemory'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('Grok Memory'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('MUST call save_memory'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('Do not treat a memory as fact'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('upsert related memories'));
-assert.ok(_test.MCP_INSTRUCTIONS.includes('Frequently create memories'));
 assert.strictEqual(_test.rateGroupForTool('get_session_state'), 'studio');
 assert.strictEqual(_test.rateGroupForTool('save_memory'), 'write');
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'save_memory').inputSchema.properties.observations.description.includes('Strings are fine'));
 assert.strictEqual(_test.rateGroupForTool('get_prompt_guide'), 'free');
 assert.strictEqual(_test.normalizeNaxKind(''), 'ARTIST');
 assert.strictEqual(_test.normalizeNaxKind('character'), 'CHARA');
@@ -302,6 +346,26 @@ const gotMemory = _test.runMemoryTool({
 }, 'get_memory', { name: 'a' });
 assert.strictEqual(gotMemory.needsRefinement, true);
 
+const aliasSaved = _test.runMemoryTool({
+    getKnowledgeMemoryDb: () => ({
+        getKnowledgeMemory: () => null,
+        saveKnowledgeMemory: (name, description, category, entities, relations, observations, confidence, model) => ({
+            name, description, category: category || 'mcp', confidence, model
+        })
+    })
+}, 'saveKnowledgeMemory', { name: 'old-api', description: 'from saveKnowledgeMemory', reason: 'prove it' });
+assert.strictEqual(aliasSaved.success, true);
+assert.strictEqual(aliasSaved.memory.name, 'old-api');
+assert.strictEqual(aliasSaved.refined, false);
+
+const aliasGot = _test.runMemoryTool({
+    getKnowledgeMemoryDb: () => ({
+        getKnowledgeMemory: (n) => (n === 'a' ? { name: 'a', confidence: 0.2, entities: [] } : null)
+    })
+}, 'retrieveKnowledgeMemory', { names: ['a'], reason: 'old retrieve' });
+assert.strictEqual(aliasGot.success, true);
+assert.strictEqual(aliasGot.memories.length, 1);
+
 const { resolveRefinementConfidence, normalizeMemoryModel } = require('../modules/knowledgeMemoryDatabase');
 assert.strictEqual(resolveRefinementConfidence(0.1, undefined), 0.35);
 assert.strictEqual(resolveRefinementConfidence(0.9, 0.25), 1);
@@ -362,7 +426,12 @@ assert.ok(coreNames.includes('list_memories'));
 assert.ok(coreNames.includes('search_memories'));
 assert.ok(coreNames.includes('get_memory'));
 assert.ok(coreNames.includes('save_memory'));
-assert.strictEqual(coreNames.length, 41);
+assert.ok(coreNames.includes('saveKnowledgeMemory'));
+assert.ok(coreNames.includes('searchKnowledgeMemories'));
+assert.ok(coreNames.includes('retrieveKnowledgeMemory'));
+assert.strictEqual(_test.rateGroupForTool('saveKnowledgeMemory'), 'write');
+assert.strictEqual(_test.canonMemoryTool('saveKnowledgeMemory'), 'save_memory');
+assert.strictEqual(coreNames.length, 45);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.pipeline);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.rescale);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.noiseScheduler);
@@ -381,6 +450,12 @@ assert.ok(_test.MCP_INSTRUCTIONS.includes('MUST integrate'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('get_linkxi_persona'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.dynamicGeneration);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.director);
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.nsfw);
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.dataset_config);
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.append_transparency);
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.n);
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.dataset_config.properties.settings);
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.dataset_config.description.includes('no_text'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.dynamicGeneration);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.director);
 assert.strictEqual(_test.rateGroupForTool('get_linkxi_persona'), 'free');
@@ -394,6 +469,22 @@ assert.deepStrictEqual(
     ['director']
 );
 assert.strictEqual(_test.collectEnshutsukaMustAct({}), null);
+assert.strictEqual(_test.collectEnshutsukaMustAct({
+    dynamicGeneration: { enabled: true, integrated: true }
+}), null);
+assert.strictEqual(_test.collectEnshutsukaMustAct({
+    dynamicGeneration: { enabled: true, compiled_prompt: { success: false, error: 'Dynamic generation processing failed' } }
+}), null);
+assert.strictEqual(_test.pickAgentPacketReply([
+    { type: 'image_generation_progress', data: { phase: 'queued', jobId: 'j1' } },
+    { type: 'request_keep_alive', requestId: 'r1' },
+    { type: 'dynamic_generation_progress_update', data: { weather: 'clear' } },
+    { type: 'image_generation_response', data: { filename: 'a.png', seed: 7 } }
+]).data.filename, 'a.png');
+assert.strictEqual(_test.pickAgentPacketReply([
+    { type: 'request_keep_alive' },
+    { type: 'dynamic_generation_progress_update', data: { error: 'Dynamic generation processing failed' } }
+]), null);
 assert.strictEqual(_test.sanitizeLinkXiPersona({
     user_name: 'Yukimi',
     backstory: 'x',
@@ -416,6 +507,15 @@ assert.ok(listedGen.inputSchema.properties.append_uc.description.includes('heavy
 assert.ok(listedGen.inputSchema.properties.sampler.enum.includes('k_euler_ancestral'));
 assert.ok(listedGen.inputSchema.properties.dataset_config.properties.nsfw.description.includes('Nude'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'get_studio_state').description.includes('settings'));
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'get_studio_state').description.includes('nooped'));
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'get_session_state').description.includes('resolved'));
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').description.includes('needsIntegration'));
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.workspace.description.includes('bound Studio tab'));
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.dynamicGeneration.description.includes('integrated=true'));
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'get_client_physics').description.includes('Works without a Studio bind'));
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'get_client_physics').inputSchema.properties.location);
+assert.ok(_test.MCP_INSTRUCTIONS.includes('needsIntegration'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('integrated=true'));
 
 assert.deepStrictEqual(_test.collectFilenames({ filename: 'a.png', filenames: ['b.png', '../x'] }), ['b.png', 'a.png']);
 assert.strictEqual(_test.rateGroupForTool('delete_images'), 'write');
@@ -454,8 +554,43 @@ assert.ok(presetChange.fields.some((f) => f.id === 'uc' && f.chunks[0].text === 
 assert.deepStrictEqual(_test.collectAutofillTerms({ query: '  asuka  ' }), ['asuka']);
 assert.deepStrictEqual(_test.collectAutofillTerms({ terms: ['rei', 'asuka', 'rei', ''] }), ['rei', 'asuka']);
 assert.deepStrictEqual(_test.collectAutofillTerms({ terms: ['rei'], query: 'asuka' }), ['rei', 'asuka']);
-assert.strictEqual(_test.collectAutofillTerms({ terms: Array.from({ length: 30 }, (_, i) => `t${i}`) }).length, 20);
+assert.strictEqual(_test.collectAutofillTerms({ terms: Array.from({ length: 30 }, (_, i) => `t${i}`) }).length, 8);
 assert.deepStrictEqual(_test.collectAutofillTerms({}), []);
+const fetal = _test.trimAutofillBatch('fetal monitor', true, {
+    results: [
+        { name: 'flora (nikke)', type: 'character', matchScore: 40 },
+        { name: 'pregnant', type: 'tag', matchScore: 30 }
+    ]
+});
+assert.strictEqual(fetal.untrained, true);
+assert.strictEqual(fetal.results.length, 0);
+assert.ok(String(fetal.next || '').includes('You may still try it'));
+const rapi = _test.trimAutofillBatch('rapi (nikke)', true, {
+    results: [
+        { name: 'rapi (nikke)', type: 'character', matchScore: 99 },
+        { name: 'rapi (nikke) (old)', type: 'character', matchScore: 80 },
+        { name: 'unrelated', type: 'tag', matchScore: 10 }
+    ]
+});
+assert.strictEqual(rapi.trained, true);
+assert.strictEqual(rapi.results.length, 2);
+assert.strictEqual(rapi.results[0].tag, 'rapi (nikke)');
+assert.strictEqual(rapi.results[0].exact, true);
+const aliceExact = _test.trimAutofillBatch('alice', true, {
+    results: [
+        { name: 'alice (nikke)', type: 'character', matchScore: 90 },
+        { name: 'alice margatroid', type: 'character', matchScore: 80 }
+    ]
+});
+assert.strictEqual(aliceExact.results.length, 1);
+assert.strictEqual(aliceExact.results[0].tag, 'alice (nikke)');
+const aliceFuzzy = _test.trimAutofillBatch('alice', true, {
+    results: [
+        { name: 'alice (nikke)', type: 'character', matchScore: 90 },
+        { name: 'alice margatroid', type: 'character', matchScore: 80 }
+    ]
+}, { exactOnly: false });
+assert.strictEqual(aliceFuzzy.results.length, 2);
 
 assert.ok(_test.TOOL_DEFS.every((t) => t.scope !== 'universal'));
 
@@ -523,6 +658,26 @@ async function runMcpAuth(options) {
 }
 
 async function main() {
+    const wikiMd = await wikiHandler.formatWikiBody(
+        {},
+        { convertWikiMarkupToMarkdown: async (text) => `# ${text}` },
+        'hello',
+        'markdown',
+        null,
+        1
+    );
+    assert.strictEqual(wikiMd, '# hello');
+    const wikiEmpty = await wikiHandler.formatWikiBody(
+        {},
+        { convertWikiMarkupToMarkdown: async () => 'nope' },
+        {},
+        'markdown',
+        null,
+        1
+    );
+    assert.strictEqual(wikiEmpty, '');
+    assert.strictEqual(await wikiHandler.convertWikiMarkupToHtml({}, {}), '');
+
     const noKey = await runMcpAuth({});
     assert.strictEqual(noKey.continued, false);
     assert.strictEqual(noKey.response.statusCode, 401);
@@ -596,10 +751,16 @@ async function main() {
     assert.strictEqual(grimPage.data.connectorUrl, 'https://staticforge.737.jp.net/mcp-test-uuid');
     assert.strictEqual(grimPage.data.mcpUrl, 'https://staticforge.737.jp.net/mcp-test-uuid/mcp');
     assert.ok(grimPage.data.oauthAuthorize.includes('/oauth/authorize'));
-    assert.ok(grimPage.data.projectInstructions.includes('MUST integrate and act'));
+    assert.ok(grimPage.data.projectInstructions.includes('MUST integrate'));
     assert.ok(ENSHUTSUKA_GROK_PROJECT_INSTRUCTIONS.includes('get_linkxi_persona'));
     assert.ok(ENSHUTSUKA_GROK_PROJECT_INSTRUCTIONS.includes('search_memories'));
-    assert.ok(ENSHUTSUKA_GROK_PROJECT_INSTRUCTIONS.includes('Do not treat a memory as fact'));
+    assert.ok(ENSHUTSUKA_GROK_PROJECT_INSTRUCTIONS.includes('saveKnowledgeMemory'));
+    assert.ok(ENSHUTSUKA_GROK_PROJECT_INSTRUCTIONS.includes('Grok Memory'));
+    assert.ok(ENSHUTSUKA_GROK_PROJECT_INSTRUCTIONS.includes('MUST call save_memory'));
+    assert.ok(ENSHUTSUKA_GROK_PROJECT_INSTRUCTIONS.includes('Do not keep a copy'));
+    assert.ok(ENSHUTSUKA_GROK_PROJECT_INSTRUCTIONS.includes('get_prompt_guide'));
+    assert.ok(ENSHUTSUKA_GROK_PROJECT_INSTRUCTIONS.includes('get_session_state'));
+    assert.ok(ENSHUTSUKA_GROK_PROJECT_INSTRUCTIONS.includes(_test.MCP_INSTRUCTIONS));
     assert.notStrictEqual(
         hashMcpToolsRevision([{ name: 'a', description: 'one' }]),
         hashMcpToolsRevision([{ name: 'a', description: 'two' }])
@@ -680,6 +841,44 @@ async function main() {
     assert.ok(advancedPayload.tools.some((t) => t.name === 'generate_preset'));
     assert.ok(advancedPayload.next.includes('name and arguments'));
 
+    const memoryQuery = await _test.handleJsonRpc(
+        {},
+        { applicationAuth: { applicationScopes: ['generation'] }, authMethod: 'application_key' },
+        {
+            jsonrpc: '2.0',
+            id: 41,
+            method: 'tools/call',
+            params: { name: 'advanced_tools', arguments: { query: 'create memory list memories by model v5' } }
+        }
+    );
+    const memoryPayload = JSON.parse(memoryQuery.body.result.content[0].text);
+    assert.ok(memoryPayload.core.some((t) => t.name === 'list_memories'));
+    assert.ok(memoryPayload.core.some((t) => t.name === 'save_memory'));
+    assert.ok(memoryPayload.next.includes('list_memories'));
+    assert.ok(memoryPayload.next.includes('v5'));
+    assert.ok(memoryPayload.core.find((t) => t.name === 'list_memories').inputSchema.properties.model);
+
+    const missQuery = await _test.handleJsonRpc(
+        {},
+        { applicationAuth: { applicationScopes: ['generation'] }, authMethod: 'application_key' },
+        {
+            jsonrpc: '2.0',
+            id: 42,
+            method: 'tools/call',
+            params: { name: 'advanced_tools', arguments: { query: 'zzzz-no-such-tool-xyz' } }
+        }
+    );
+    const missPayload = JSON.parse(missQuery.body.result.content[0].text);
+    assert.strictEqual(missPayload.fallback, true);
+    assert.ok(missPayload.core.some((t) => t.name === 'list_memories'));
+    assert.ok(missPayload.core.some((t) => t.name === 'save_memory'));
+    assert.ok(missPayload.core.length > 10);
+    assert.ok(missPayload.tools.length > 0);
+
+    assert.strictEqual(_test.guessModelFromQuery('list memories by model v5'), 'v5');
+    const { memoryModelQuery } = require('../modules/knowledgeMemoryDatabase');
+    assert.strictEqual(memoryModelQuery('v4.5'), 'v4_5');
+
     const advancedCoreReject = await _test.handleJsonRpc(
         {},
         { applicationAuth: { applicationScopes: ['generation'] }, authMethod: 'application_key' },
@@ -702,10 +901,33 @@ async function main() {
     }, { applicationAuth: { applicationScopes: ['generation'] } }, {});
     const noClientPayload = JSON.parse(noClientSession.content[0].text);
     assert.strictEqual(noClientPayload.success, true);
-    assert.strictEqual(noClientPayload.view, 'full');
+    assert.strictEqual(noClientPayload.view, 'live');
     assert.strictEqual(noClientPayload.hasClients, false);
-    assert.ok(noClientPayload.settings);
+    assert.ok(!noClientPayload.settings);
     assert.ok(noClientPayload.next.includes('generate_image'));
+    const fullSession = await _test.collectSessionState({
+        getPath: () => require('path').join(__dirname, '..', '.cache'),
+        getPromptConfig: () => ({
+            quality_presets: { v5: 'best quality', v4: 'old quality' },
+            uc_presets: {},
+            nsfw_presets: { 3: { add: { base: 'nsfw, nude' } } }
+        }),
+        getWebSocketServer: () => ({ clients: new Map() })
+    }, { applicationAuth: { applicationScopes: ['generation'] } }, { view: 'full' });
+    const fullPayload = JSON.parse(fullSession.content[0].text);
+    assert.strictEqual(fullPayload.view, 'full');
+    assert.ok(fullPayload.settings);
+    assert.ok(!fullPayload.settings.quality.byModel);
+    assert.strictEqual(fullPayload.settings.quality.catalog, 'slim');
+    const catalogSession = await _test.collectSessionState({
+        getPath: () => require('path').join(__dirname, '..', '.cache'),
+        getPromptConfig: () => ({ quality_presets: { v5: 'best quality' }, uc_presets: {}, nsfw_presets: {} }),
+        getWebSocketServer: () => ({ clients: new Map() })
+    }, { applicationAuth: { applicationScopes: ['generation'] } }, { view: 'catalog' });
+    const catalogPayload = JSON.parse(catalogSession.content[0].text);
+    assert.strictEqual(catalogPayload.view, 'catalog');
+    assert.ok(catalogPayload.settings);
+    assert.ok(!catalogPayload.settings.uc.byModel);
     const liveSession = await _test.collectSessionState({
         getPath: () => require('path').join(__dirname, '..', '.cache'),
         getPromptConfig: () => ({ quality_presets: { v5: 'best quality' }, uc_presets: {}, nsfw_presets: {} }),

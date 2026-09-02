@@ -142,6 +142,105 @@ function normalizeMemoryModel(model) {
     return raw || DEFAULT_MEMORY_MODEL;
 }
 
+function slugMemoryEntityId(text) {
+    const slug = String(text || 'memory')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 64);
+    return slug || 'memory';
+}
+
+function coerceMemoryList(value) {
+    if (Array.isArray(value)) return value;
+    if (value == null || value === '') return [];
+    return [value];
+}
+
+function normalizeMemoryEntities(entities) {
+    const out = [];
+    const seen = new Set();
+    coerceMemoryList(entities).forEach((raw) => {
+        if (typeof raw === 'string') {
+            const name = raw.trim();
+            if (!name) return;
+            const id = slugMemoryEntityId(name);
+            if (seen.has(id)) return;
+            seen.add(id);
+            out.push({ id, type: 'concept', name, attributes: {} });
+            return;
+        }
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+        const id = String(raw.id || raw.entity_id || raw.name || '').trim() || slugMemoryEntityId(raw.type || 'entity');
+        const type = String(raw.type || 'concept').trim() || 'concept';
+        const name = String(raw.name || id).trim() || id;
+        if (seen.has(id)) return;
+        seen.add(id);
+        const attributes = raw.attributes && typeof raw.attributes === 'object' && !Array.isArray(raw.attributes)
+            ? raw.attributes
+            : {};
+        out.push({ id, type, name, attributes });
+    });
+    return out;
+}
+
+function normalizeMemoryObservations(observations, entities) {
+    const fallbackId = (entities && entities[0] && entities[0].id) || 'memory';
+    const out = [];
+    coerceMemoryList(observations).forEach((raw) => {
+        if (typeof raw === 'string') {
+            const content = raw.trim();
+            if (!content) return;
+            out.push({ entity_id: fallbackId, content, importance: 0.5 });
+            return;
+        }
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+        const content = String(raw.content || raw.text || raw.observation || raw.note || '').trim();
+        if (!content) return;
+        const entity_id = String(raw.entity_id || raw.entityId || raw.entity || fallbackId).trim() || fallbackId;
+        const importance = Number(raw.importance);
+        out.push({
+            entity_id,
+            content,
+            importance: Number.isFinite(importance) ? importance : 0.5
+        });
+    });
+    return out;
+}
+
+function ensureObservationEntities(entities, observations) {
+    const next = Array.isArray(entities) ? entities.slice() : [];
+    const ids = new Set(next.map((entity) => entity.id));
+    (observations || []).forEach((obs) => {
+        if (!obs || !obs.entity_id || ids.has(obs.entity_id)) return;
+        ids.add(obs.entity_id);
+        next.push({ id: obs.entity_id, type: 'concept', name: obs.entity_id, attributes: {} });
+    });
+    if (observations && observations.length && next.length === 0) {
+        next.push({ id: 'memory', type: 'concept', name: 'memory', attributes: {} });
+    }
+    return next;
+}
+
+function normalizeMemoryRelations(relations) {
+    const out = [];
+    coerceMemoryList(relations).forEach((raw) => {
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+        const from = String(raw.from || raw.from_entity_id || '').trim();
+        const to = String(raw.to || raw.to_entity_id || '').trim();
+        const type = String(raw.type || raw.relation_type || '').trim();
+        if (!from || !to || !type) return;
+        const weight = Number(raw.weight);
+        out.push({
+            from,
+            to,
+            type,
+            weight: Number.isFinite(weight) ? weight : 1.0
+        });
+    });
+    return out;
+}
+
 function resolveRefinementConfidence(existingConfidence, requested) {
     if (existingConfidence == null || !Number.isFinite(Number(existingConfidence))) {
         return 0.1;
@@ -197,9 +296,16 @@ function listKnowledgeMemories() {
  * @param {number} [options.offset=0]
  * @param {string} [options.search=''] - matches against name and description (case-insensitive LIKE)
  * @param {string|null} [options.category=null] - exact category match (or null/'' for all)
+ * @param {string|null} [options.model=null] - Studio model (v5, v4_5; dots become _)
  * @returns {{items: Array, total: number}}
  */
-function listKnowledgeMemoriesPaged({ limit = 25, offset = 0, search = '', category = null } = {}) {
+function memoryModelQuery(model) {
+    const raw = String(model == null ? '' : model).trim();
+    if (!raw) return null;
+    return raw.replace(/\./g, '_');
+}
+
+function listKnowledgeMemoriesPaged({ limit = 25, offset = 0, search = '', category = null, model = null } = {}) {
     if (!db) {
         throw new Error('Knowledge memory database not initialized');
     }
@@ -219,6 +325,12 @@ function listKnowledgeMemoriesPaged({ limit = 25, offset = 0, search = '', categ
     if (category && category.trim()) {
         where += ' AND category = ?';
         params.push(category.trim());
+    }
+
+    const modelFilter = memoryModelQuery(model);
+    if (modelFilter) {
+        where += ' AND REPLACE(model, \'.\', \'_\') = ?';
+        params.push(modelFilter);
     }
 
     // Total count for this filter
@@ -351,6 +463,10 @@ function saveKnowledgeMemory(name, description, category, entities = [], relatio
     }
 
     const resolvedModel = normalizeMemoryModel(model);
+    let normalizedEntities = normalizeMemoryEntities(entities);
+    const normalizedObservations = normalizeMemoryObservations(observations, normalizedEntities);
+    normalizedEntities = ensureObservationEntities(normalizedEntities, normalizedObservations);
+    const normalizedRelations = normalizeMemoryRelations(relations);
 
     // Start transaction
     const transaction = db.transaction(() => {
@@ -388,7 +504,7 @@ function saveKnowledgeMemory(name, description, category, entities = [], relatio
             INSERT INTO knowledge_entities (memory_id, entity_id, type, name, attributes)
             VALUES (?, ?, ?, ?, ?)
         `);
-        entities.forEach(entity => {
+        normalizedEntities.forEach(entity => {
             entityStmt.run(
                 memoryId,
                 entity.id,
@@ -403,7 +519,7 @@ function saveKnowledgeMemory(name, description, category, entities = [], relatio
             INSERT INTO knowledge_relations (memory_id, from_entity_id, to_entity_id, relation_type, weight)
             VALUES (?, ?, ?, ?, ?)
         `);
-        relations.forEach(relation => {
+        normalizedRelations.forEach(relation => {
             relationStmt.run(
                 memoryId,
                 relation.from,
@@ -418,12 +534,12 @@ function saveKnowledgeMemory(name, description, category, entities = [], relatio
             INSERT INTO knowledge_observations (memory_id, entity_id, content, importance)
             VALUES (?, ?, ?, ?)
         `);
-        observations.forEach(observation => {
+        normalizedObservations.forEach(observation => {
             observationStmt.run(
                 memoryId,
                 observation.entity_id,
                 observation.content,
-                observation.importance || 0.5
+                observation.importance
             );
         });
 
@@ -437,9 +553,9 @@ function saveKnowledgeMemory(name, description, category, entities = [], relatio
         name,
         description,
         category,
-        entities,
-        relations,
-        observations,
+        entities: normalizedEntities,
+        relations: normalizedRelations,
+        observations: normalizedObservations,
         confidence,
         model: resolvedModel
     };
@@ -617,7 +733,7 @@ function deleteKnowledgeMemoriesByFilter(filterType) {
  * @param {string} category - Optional category filter
  * @returns {Array} Matching memory names with descriptions, sorted by relevance
  */
-function searchKnowledgeMemories(query, category = null) {
+function searchKnowledgeMemories(query, category = null, model = null) {
     if (!db) {
         throw new Error('Knowledge memory database not initialized');
     }
@@ -837,6 +953,12 @@ function searchKnowledgeMemories(query, category = null) {
     if (category) {
         sql += ' AND km.category = ?';
         params.push(category);
+    }
+
+    const modelFilter = memoryModelQuery(model);
+    if (modelFilter) {
+        sql += ' AND REPLACE(km.model, \'.\', \'_\') = ?';
+        params.push(modelFilter);
     }
     
     // Order by relevance score (descending), then usage count, then updated date
@@ -1137,6 +1259,12 @@ module.exports = {
     saveKnowledgeMemory,
     DEFAULT_MEMORY_MODEL,
     normalizeMemoryModel,
+    normalizeMemoryEntities,
+    normalizeMemoryObservations,
+    normalizeMemoryRelations,
+    ensureObservationEntities,
+    coerceMemoryList,
+    memoryModelQuery,
     resolveRefinementConfidence,
     deleteKnowledgeMemory,
     deleteKnowledgeMemoriesBulk,

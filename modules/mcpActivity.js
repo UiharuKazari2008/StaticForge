@@ -106,6 +106,7 @@ function broadcastActivity(globalResources, row) {
             result: row.resultSummary,
             success: row.success,
             generating: row.generating,
+            actorName: row.actorName || null,
             at: row.at
         },
         timestamp: new Date(row.at).toISOString()
@@ -119,6 +120,7 @@ function recordActivity(globalResources, entry) {
         resultSummary: entry.resultSummary || null,
         success: entry.success !== false,
         generating: entry.generating,
+        actorName: entry.actorName || null,
         at: Date.now()
     };
     entries.push(row);

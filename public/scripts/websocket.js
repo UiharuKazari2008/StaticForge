@@ -529,6 +529,7 @@ class WebSocketClient {
         'runpod_pods_status',
         'runpod_pod_start',
         'runpod_pod_stop',
+        'report_client_perf',
     ]);
 
     static GENERATION_QUIPS_MESSAGE_TYPES = new Set([
@@ -818,6 +819,9 @@ class WebSocketClient {
             return true;
         }
         if (type === 'runpod_pods_status' || type === 'runpod_pods_status_response' || type === 'runpod_pods_status_update') {
+            return true;
+        }
+        if (type === 'report_client_perf' || type === 'report_client_perf_response') {
             return true;
         }
         return false;
@@ -5183,7 +5187,13 @@ class WebSocketClient {
 
         progressState.phase = data.phase;
 
-        if (data.hasDynamicGen) {
+        // isRerollImageWsRequest / ensureRerollProgressToast: public/scripts/comp/galleryView.js
+        const isRerollProgress = isRerollImageWsRequest(requestId);
+        if (isRerollProgress) {
+            ensureRerollProgressToast();
+        }
+
+        if (data.hasDynamicGen && !isRerollProgress) {
             this.applyRentanGenerationProgressUi(data.phase, data);
         }
 
@@ -5193,7 +5203,7 @@ class WebSocketClient {
             updateGalleryRerollProgress(requestId, data);
         }
 
-        if (data.phase === 'generating' && typeof setGenerationPreviewForegroundLinesActive === 'function') {
+        if (data.phase === 'generating' && !isRerollProgress && typeof setGenerationPreviewForegroundLinesActive === 'function') {
             setGenerationPreviewForegroundLinesActive(true);
         }
         // Keep foreground lines moving until preview teardown (stopPreviewAnimation / forceStop), same as background — do not clear on complete.
@@ -5211,7 +5221,7 @@ class WebSocketClient {
                 progressState.progress = 0;
                 progressState.timer = setInterval(() => {
                     progressState.progress = Math.min(progressState.progress + 1, 15);
-                    if (!galleryRerollActive && typeof updateGlassToastProgress === 'function' && progressToastId) {
+                    if ((!galleryRerollActive || isRerollProgress) && typeof updateGlassToastProgress === 'function' && progressToastId) {
                         updateGlassToastProgress(progressToastId, progressState.progress);
                     }
                 }, 1000);
@@ -5220,7 +5230,7 @@ class WebSocketClient {
                 progressState.progress = 76;
                 progressState.timer = setInterval(() => {
                     progressState.progress = Math.min(progressState.progress + 1, 95);
-                    if (!galleryRerollActive && typeof updateGlassToastProgress === 'function' && progressToastId) {
+                    if ((!galleryRerollActive || isRerollProgress) && typeof updateGlassToastProgress === 'function' && progressToastId) {
                         updateGlassToastProgress(progressToastId, progressState.progress);
                     }
                 }, 1000);
@@ -5233,14 +5243,14 @@ class WebSocketClient {
             }
 
             // Update progress toast if it exists (skip for timer phases that are self-updating)
-            if (!galleryRerollActive
+            if ((!galleryRerollActive || isRerollProgress)
                 && typeof updateGlassToastProgress === 'function' && progressToastId
                 && data.phase !== 'starting' && data.phase !== 'upscaling') {
                 updateGlassToastProgress(progressToastId, progressPercent);
             }
 
             // Update main message line with progress status (line 2)
-            if (!galleryRerollActive && typeof updateGlassToastMessage === 'function' && progressToastId) {
+            if ((!galleryRerollActive || isRerollProgress) && typeof updateGlassToastMessage === 'function' && progressToastId) {
                 // getGenerationStatusMessage: public/scripts/comp/generationProgress.js
                 let statusMessage = typeof getGenerationStatusMessage === 'function'
                     ? getGenerationStatusMessage(data)
@@ -5281,7 +5291,7 @@ class WebSocketClient {
             }
 
             // applyStageResultsReviewProgress: public/scripts/comp/stageResultsReview.js
-            if (!galleryRerollActive && !this.isSpellbookGenerationActive()) {
+            if (!galleryRerollActive && !isRerollProgress && !this.isSpellbookGenerationActive()) {
                 applyStageResultsReviewProgress(data);
             }
 
@@ -5302,8 +5312,9 @@ class WebSocketClient {
 
             if (toastPreviewData && typeof updateGlassToastImagePreview === 'function') {
                 const manualModalEl = document.getElementById('manualModal');
-                const skipToastPreview = galleryRerollActive
-                    || (data.phase === 'generating'
+                const skipToastPreview = (galleryRerollActive && !isRerollProgress)
+                    || (!isRerollProgress
+                        && data.phase === 'generating'
                         && manualModalEl
                         && !manualModalEl.classList.contains('hidden')
                         && !this.isSpellbookGenerationActive());
@@ -5313,7 +5324,7 @@ class WebSocketClient {
                 }
             }
 
-            if (data.phase === 'generating' && !galleryRerollActive) {
+            if (data.phase === 'generating' && !galleryRerollActive && !isRerollProgress) {
                 const stepFrames = Array.isArray(data.stepFrames) ? data.stepFrames : null;
                 const hasSingleStep = data.currentStep !== undefined && data.imageData;
                 if (stepFrames && stepFrames.length > 0) {
@@ -5338,7 +5349,7 @@ class WebSocketClient {
                 }
             }
 
-            if (data.phase === 'stage_complete') {
+            if (data.phase === 'stage_complete' && !isRerollProgress) {
                 const modalType = this.isSpellbookGenerationActive() ? 'spellbook' : 'manual';
                 const manualModalEl = document.getElementById('manualModal');
                 if (modalType === 'spellbook'
@@ -5349,7 +5360,7 @@ class WebSocketClient {
                 }
             }
 
-            if (data.phase === 'upscaling' || data.phase === 'complete') {
+            if (!isRerollProgress && (data.phase === 'upscaling' || data.phase === 'complete')) {
                 this.markStreamingSessionServerComplete(requestId, data);
                 if (data.phase === 'complete' && data.filename && !data.isUpscaling) {
                     const found = this.findStreamingStepSessionByRequestId(requestId);
@@ -5372,19 +5383,22 @@ class WebSocketClient {
 
                 const rerollHandledInGallery = isGalleryRerollRequest(requestId);
 
-                if (rerollHandledInGallery && data.filename) {
+                if ((rerollHandledInGallery || isRerollProgress) && data.filename) {
                     completeGalleryRerollSession(requestId, data.filename, {
-                        openPreview: true,
+                        openPreview: false,
                         contentLength: data.contentLength
                     });
+                    stopStudioPreviewForReroll();
                 }
 
-                if (progressToastId && typeof clearGlassToastImagePreview === 'function') {
+                if (isRerollProgress) {
+                    stopStudioPreviewForReroll();
+                } else if (progressToastId && typeof clearGlassToastImagePreview === 'function') {
                     clearGlassToastImagePreview(progressToastId);
                 }
 
                 const manualModal = document.getElementById('manualModal');
-                if (manualModal && !manualModal.classList.contains('hidden')) {
+                if (manualModal && !manualModal.classList.contains('hidden') && !isRerollProgress) {
                     // lockGenerationQuips: public/scripts/comp/generationQuips.js
                     lockGenerationQuips();
                 }
@@ -5392,7 +5406,7 @@ class WebSocketClient {
                 // Clear any running timers
                 this.cleanupGenerationProgressState(requestId);
 
-                if (!rerollHandledInGallery && typeof updateGlassToastComplete === 'function') {
+                if (!rerollHandledInGallery && !isRerollProgress && typeof updateGlassToastComplete === 'function') {
                     updateGlassToastComplete(progressToastId, {
                         type: 'success',
                         title: 'Generation Complete',
@@ -5412,7 +5426,9 @@ class WebSocketClient {
                     hideStageIndicators();
                 }
 
-                progressToastId = null; // Clear the toast ID
+                if (!isRerollProgress) {
+                    progressToastId = null;
+                }
             }
         }
     }
@@ -6579,7 +6595,7 @@ class WebSocketClient {
     }
 
     async reportClientPerf(samples) {
-        return this.sendMessage('report_client_perf', { samples }, false);
+        this.sendAcklessMessage('report_client_perf', { samples });
     }
 
     async unblockIP(ip) {

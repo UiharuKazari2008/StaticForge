@@ -174,7 +174,8 @@ body:not(.desktop-mode) #manualModal #unmaximizeManualBtn,
         transform: none;
     }
 
-    #manualGenerateBtn {
+    #manualGenerateBtn,
+    #manualPrintsCount {
         display: none;
     }
 }

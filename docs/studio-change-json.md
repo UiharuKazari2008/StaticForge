@@ -37,7 +37,9 @@ Do **not** invent keys Studio cannot apply. Unknown keys are ignored. Director i
   "expanders": [],
   "fields": [],
   "characters": [],
-  "vibes": []
+  "vibes": [],
+  "dynamicGeneration": {},
+  "director": {}
 }
 ```
 
@@ -62,6 +64,33 @@ Do **not** invent keys Studio cannot apply. Unknown keys are ignored. Director i
 | `noise` | number | img2img noise 0–1 |
 | `append_quality` | boolean | Quality preset on/off. **Prefer this over pasting the quality string.** If you need to edit those tags, set false and put the edited string in `prompt`. Live text (per model) is in MCP `get_studio_state.settings.quality` / `tools/list`. |
 | `append_uc` | number | `0` None, `1` Human Focus, `2` Light, `3` Heavy, `4` Curated, `5` Furry Focus. **Prefer the id.** If you need to edit that UC, set `0` and put the edited string in `uc`. Live text is in `settings.uc`. |
+| `append_transparency` | boolean | Transparency preset on/off. Server prepends "transparent background". Do not also add that tag by hand. |
+| `nsfw` | number | `3` Nude, `2` Skimpy, `1` Allow, `0` Neutral, `-1` Remove, `-2` Clense. Sets the Studio NSFW dropdown. Same as `dataset_config.nsfw` or top-level `nsfw` on MCP `apply_studio_changes`. **Prefer the id.** Do not also paste that level's add/remove tags. Live strings are in `settings.nsfw`. |
+| `n` | number | Studio prints count 1–8 (`#manualPrintsCount`). On `generate_image` this is server copies; on `apply_studio_changes` / autoGenerate it is the Studio input. |
+| `normalize_vibes` | boolean | Vibe normalize toggle (`#vibeNormalizeToggle`). |
+| `use_coords` | boolean | `true` = use character coords (Auto Position **off**). `false` = Auto Position on. Also implied when `characters[].position` is set. |
+| `save_base_output` | boolean | Save stage 0 / base output (`#saveStage0Btn`). |
+| `skip_pipeline_stages` | boolean | `true` skips pipeline stage generation (Enable stages **off**). |
+| `nsfw_bias` | number | NSFW preset bias (typical `1.0`). Same as `dataset_config.nsfw_bias`. |
+| `quality_preset_bias` | number | Quality preset bias (typical `1.0`). |
+| `transparency_bias` | number | Transparency preset bias (typical `1.0`). |
+| `keep_newlines` | boolean | Keep prompt newlines. |
+| `auto_char_numerize` | boolean | Auto character numerize. |
+| `prompt_normalize` | boolean | Prompt normalize. |
+| `deduplicate_tags` | boolean | Deduplicate tags. |
+| `auto_clean_uc` | boolean | Auto-clean UC phrases that also appear in the prompt. |
+
+### `dataset_config` — optional object (top-level or `params.dataset_config`)
+
+Echoed by `GET /agent/session/state` / `get_studio_state`. `include` **replaces** the selected dataset list (it does not toggle). Omit `include` to leave the current list.
+
+| Key | Type | Notes |
+|-----|------|--------|
+| `nsfw` | number | Same as `params.nsfw`. |
+| `nsfw_bias` | number | Same as `params.nsfw_bias`. |
+| `include` | string[] | Selected dataset ids. Replaces the current list. |
+| `bias` | object | Per-dataset bias map (`{ "ds_id": 1.2 }`). |
+| `settings` | object | Nested `{ [datasetValue]: { [settingId]: { enabled, bias, value } } }`. Quality no-text: `settings.__quality__.no_text.enabled` `false` for in-image text; keep `append_quality` on. |
 
 ### `fields` — base prompt / UC only
 
@@ -134,6 +163,23 @@ If present, Studio **replaces** the current vibe list with this one. Each entry 
 ```
 
 `ie` is the selected information-extracted encoding. Omit `vibes` to leave current vibes alone. Director **image** references (uploaded pics) are **not** in v1.
+
+### `dynamicGeneration` — optional Enshutsuka dynagen
+
+Enable or configure the **existing** Studio dynamic-generation toggle (no new chrome). Echoed by `GET /agent/session/state` and MCP `get_studio_state`. A dynagen-only payload is still a change (`dreamscape:"change"`). If this object is present on a Studio snapshot or gallery image (`forge_data.dynamic_generation`), Grok **must integrate and act**.
+
+| Key | Type | Notes |
+|-----|------|--------|
+| `enabled` | boolean | Open / close `#dynamicGenerationGroup` |
+| `cacheLocked` / `contextLocked` | boolean | Freeze Changes / Freeze Context |
+| `tod` / `weather` / `season` | string, `true` (auto), or `false`/`null` (off) | Existing carousel buttons |
+| `location` | string | Weather button `data-location` |
+| `directive` | string | Creative directive textarea |
+| `force_strategy` / `tool_passes` / `dialogs_count` | string / number | Existing carousel dataset |
+
+### `director` — optional attached director prompt
+
+`{ sessionId, messageId, prompt }` on the existing Director button + creative directive. Same must-act rule as `dynamicGeneration`. Image chaining is out of scope.
 
 ---
 
@@ -216,7 +262,7 @@ and `POST /agent/session/studio`. MCP `apply_studio_changes` / `generate_image` 
 Dreamscape studio change JSON. Paste into Studio to apply. Reply with JSON only — no markdown unless fenced as json.
 
 {"dreamscape":"change","v":1,"title":"short name",
- "params":{"steps":28,"guidance":5,"sampler":"k_euler_ancestral","noiseScheduler":"karras","model":"v5","resolution":"normal_portrait","append_uc":3},
+ "params":{"steps":28,"guidance":5,"sampler":"k_euler_ancestral","noiseScheduler":"karras","model":"v5","resolution":"normal_portrait","append_uc":3,"nsfw":3},
  "expanders":[{"prefix":"alice_base","value":"long shared appearance, hair, body"}],
  "fields":[
    {"id":"prompt","action":"replace","chunks":[
@@ -238,6 +284,11 @@ Rules:
 - expanders: if present, DELETE all request expanders and install only this list. In text use !prefix. Do not repeat expander values.
 - vibes: if present, REPLACE current vibe transfers with this id list (ids Studio already has). Omit to leave vibes unchanged. No image uploads.
 - Default action is replace. remove = delete a span or slot. Omit unused keys. Only include params you want to change.
+- params.nsfw: 3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Clense. Prefer the id over pasting that level's add/remove tags. dataset_config.nsfw is the same field.
+- params.append_transparency / n / normalize_vibes / use_coords / save_base_output / skip_pipeline_stages / keep_newlines / auto_char_numerize / prompt_normalize / deduplicate_tags / auto_clean_uc: existing Studio toggles. n is Studio prints (1–8). use_coords true = Auto Position off.
+- dataset_config: include (replace list), bias, settings (e.g. settings.__quality__.no_text.enabled false for in-image text; keep append_quality on), nsfw, nsfw_bias. Echoed on GET /agent/session/state.
 - Named resolution preset (e.g. normal_portrait): omit width/height. Custom size: resolution "custom" plus width and height.
 - params.seed: specific seed (number). params.seedLock: true locks the last used seed (existing Studio sprout). seed: "last" is the same as seedLock: true. Unlock (seedLock: false) rolls a new variation. Copy change JSON and GET /agent/session/state echo the actual seed used plus seedLock. Filename is not a contract.
+- Optional dynamicGeneration: {enabled, cacheLocked, contextLocked, location, tod, weather, season, directive, force_strategy, tool_passes, dialogs_count}. Enable/configure Enshutsuka dynamic generation on the existing Studio toggle (no new chrome). Echoed by GET /agent/session/state. If present on a read image or Studio snapshot, integrate and act — do not ignore it.
+- Optional director: {sessionId, messageId, prompt}. Attached director prompt / session on the existing Director button + creative directive. Same must-act rule.
 ```

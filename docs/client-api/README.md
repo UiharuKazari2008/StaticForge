@@ -82,7 +82,7 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | Account & app bootstrap | [ws/account.md](./ws/account.md) | 2 |
 | Generation quips | [ws/quips.md](./ws/quips.md) | 4 |
 | Menma progress | [ws/menma.md](./ws/menma.md) | 1 |
-| Agent session | [ws/agentSession.md](./ws/agentSession.md) | 2 |
+| Agent session | [ws/agentSession.md](./ws/agentSession.md) | 3 |
 | Similar-image review | [ws/similarImages.md](./ws/similarImages.md) | 2 |
 | Character database | [ws/characterDb.md](./ws/characterDb.md) | 5 |
 | Knowledge / memories | [ws/knowledge.md](./ws/knowledge.md) | 7 |

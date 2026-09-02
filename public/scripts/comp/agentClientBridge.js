@@ -283,10 +283,7 @@
             return { ok: false, applied: false, autoApply: true, autoGenerate, error: 'Studio change was not applied' };
         }
         // showAgentSessionTrayNotice: public/scripts/comp/mcpActivityClient.js
-        showAgentSessionTrayNotice(
-            studioWasClosed ? 'open' : 'update',
-            studioWasClosed ? 'An external AI opened and updated Studio' : 'An external AI updated Studio'
-        );
+        showAgentSessionTrayNotice(studioWasClosed ? 'open' : 'update', data);
         if (!autoGenerate) {
             return { ok: true, applied: true, autoApply: true, autoGenerate: false, opened: studioWasClosed };
         }
@@ -294,7 +291,7 @@
         return { ok: true, applied: true, autoApply: true, autoGenerate: true, opened: studioWasClosed, ...gen };
     }
 
-    async function openImageFromCommand(filename) {
+    async function openImageFromCommand(filename, commandData) {
         if (!filename) return { ok: false, error: 'filename is required' };
         if (typeof openManualModalWithContent !== 'function') {
             return { ok: false, error: 'Studio is not available' };
@@ -303,7 +300,7 @@
             || { filename };
         await openManualModalWithContent({ type: 'image', image }, null);
         // showAgentSessionTrayNotice: public/scripts/comp/mcpActivityClient.js
-        showAgentSessionTrayNotice('open', 'An external AI opened Studio');
+        showAgentSessionTrayNotice('open', commandData);
         return { ok: true, filename };
     }
 
@@ -342,7 +339,7 @@
         try {
             if (command === 'get_state' || command === 'get_editor') {
                 // showAgentSessionTrayNotice: public/scripts/comp/mcpActivityClient.js
-                showAgentSessionTrayNotice('read', 'An external AI read Studio');
+                showAgentSessionTrayNotice('read', data);
                 replyAgentSessionResult(requestId, {
                     ok: true,
                     workspaceId: readWorkspaceId(),
@@ -362,7 +359,7 @@
             }
             if (command === 'get_windows') {
                 // showAgentSessionTrayNotice: public/scripts/comp/mcpActivityClient.js
-                showAgentSessionTrayNotice('read', 'An external AI read open windows');
+                showAgentSessionTrayNotice('windows', data);
                 replyAgentSessionResult(requestId, {
                     ok: true,
                     clientId: sessionClientId,
@@ -379,7 +376,7 @@
                 return;
             }
             if (command === 'open_image') {
-                const result = await openImageFromCommand(data.filename);
+                const result = await openImageFromCommand(data.filename, data);
                 replyAgentSessionResult(requestId, result);
                 return;
             }
@@ -456,7 +453,7 @@
                     sessionClientId = message.data.clientId;
                 }
                 // showAgentSessionTrayNotice: public/scripts/comp/mcpActivityClient.js
-                showAgentSessionTrayNotice('bound', 'An external AI bound to this tab');
+                showAgentSessionTrayNotice('bound', message && message.data);
             }
         });
         registerWsInboundHandler({
@@ -477,7 +474,7 @@
                 const action = message && message.data && message.data.action;
                 if (action === 'physics') {
                     // markMcpPhysicsUsed: public/scripts/comp/mcpActivityClient.js
-                    markMcpPhysicsUsed();
+                    markMcpPhysicsUsed(message.data.actorName || message.data.appName);
                 }
             }
         });

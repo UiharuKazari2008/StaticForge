@@ -105,6 +105,48 @@ const gallery = document.getElementById('gallery');
 const cacheGallery = document.getElementById('cacheGallery');
 const confettiContainer = document.getElementById('confettiContainer');
 
+const PRINTS_COUNT_STORAGE_KEY = 'studioPrintsCount';
+
+function getManualPrintsCount() {
+    const primary = document.getElementById('manualPrintsCount');
+    const alt = document.getElementById('manualPrintsCountAlt');
+    // parseGenerationPrintCount: public/scripts/comp/utilities.js
+    return parseGenerationPrintCount((primary && primary.value) || (alt && alt.value));
+}
+
+function setManualPrintsCount(value) {
+    // parseGenerationPrintCount: public/scripts/comp/utilities.js
+    const n = parseGenerationPrintCount(value);
+    const primary = document.getElementById('manualPrintsCount');
+    const alt = document.getElementById('manualPrintsCountAlt');
+    if (primary) primary.value = String(n);
+    if (alt) alt.value = String(n);
+    localStorage.setItem(PRINTS_COUNT_STORAGE_KEY, String(n));
+    return n;
+}
+
+function wirePrintsCountInputs() {
+    const primary = document.getElementById('manualPrintsCount');
+    const alt = document.getElementById('manualPrintsCountAlt');
+    const stored = localStorage.getItem(PRINTS_COUNT_STORAGE_KEY);
+    setManualPrintsCount(stored || 1);
+    const syncPair = (event) => {
+        const other = event.target === primary ? alt : primary;
+        if (other) other.value = event.target.value;
+    };
+    const onChange = (event) => {
+        setManualPrintsCount(event.target.value);
+    };
+    if (primary) {
+        primary.addEventListener('input', syncPair);
+        primary.addEventListener('change', onChange);
+    }
+    if (alt) {
+        alt.addEventListener('input', syncPair);
+        alt.addEventListener('change', onChange);
+    }
+}
+
 /** Celebration after a successful image generation: `'sakura'` (default) or classic `'confetti'`. Persists via localStorage key `generationCelebrationEffect`. */
 var generationCelebrationEffect = 'sakura';
 try {
@@ -2085,7 +2127,8 @@ function collectManualFormValues() {
         characterPrompts: getCharacterPrompts(),
         pipelineStages: getPipelineStages(),
         save_base_output: saveStage0Btn?.dataset.state === 'on',
-        skip_pipeline_stages: enableStageGenerationBtn?.dataset.state === 'off'
+        skip_pipeline_stages: enableStageGenerationBtn?.dataset.state === 'off',
+        n: getManualPrintsCount()
     };
 
     // Process resolution value to determine if it's custom or predefined
@@ -2311,6 +2354,10 @@ function addSharedFieldsToRequestBody(requestBody, values) {
         const noiseObj = getNoiseMeta(values.noiseScheduler);
         requestBody.noiseScheduler = noiseObj ? noiseObj.request : values.noiseScheduler;
     }
+
+    // parseGenerationPrintCount: public/scripts/comp/utilities.js
+    const prints = parseGenerationPrintCount(values.n);
+    if (prints > 1) requestBody.n = prints;
 
     if (values.upscale) requestBody.upscale = true;
     if (typeof varietyEnabled !== "undefined" && varietyEnabled) {
@@ -4660,11 +4707,16 @@ async function handleManualGeneration(e, options = {}) {
     // Show the manual preview when generation starts
     showManualPreview();
 
-    // Initialize stage indicators if this is a staged generation
-    if (requestBody.pipeline && Array.isArray(requestBody.pipeline) && requestBody.pipeline.length > 0 && !requestBody.skip_pipeline_stages) {
-        const totalStages = requestBody.target_stage_index !== undefined
-            ? estimateTargetedStageCount(requestBody.target_stage_index)
-            : requestBody.pipeline.length + 1;
+    // Initialize stage indicators if this is a staged generation or print copies
+    // parseGenerationPrintCount: public/scripts/comp/utilities.js
+    const printCount = parseGenerationPrintCount(requestBody.n);
+    const isPipelineRun = requestBody.pipeline && Array.isArray(requestBody.pipeline) && requestBody.pipeline.length > 0 && !requestBody.skip_pipeline_stages;
+    if (isPipelineRun || printCount > 1) {
+        const totalStages = printCount > 1
+            ? printCount
+            : (requestBody.target_stage_index !== undefined
+                ? estimateTargetedStageCount(requestBody.target_stage_index)
+                : requestBody.pipeline.length + 1);
         console.log(`🎬 Staged generation detected: ${totalStages} stages total`);
         initializeStageIndicators(totalStages);
         // openStageResultsReview: public/scripts/comp/stageResultsReview.js
@@ -6354,5 +6406,6 @@ function initManualModalListenerScope() {
 window.wsClient.registerInitStep(470, 'Manual modal listener scope', async () => {
     initManualModalListenerScope();
     wireGenerateButtonContextMenus();
+    wirePrintsCountInputs();
 });
 

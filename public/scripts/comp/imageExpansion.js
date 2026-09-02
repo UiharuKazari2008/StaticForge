@@ -958,16 +958,23 @@ function getEnhanceSourceDimensions(image) {
     return { width, height };
 }
 
-function getEnhanceMagnitudeOptions() {
+function nearestEnhanceMagnitudePreset(magnitudeValue) {
     // MAGNITUDE_PRESETS: public/scripts/comp/utilities.js
-    return Object.keys(MAGNITUDE_PRESETS)
-        .map((key) => Number(key))
-        .filter((value) => Number.isFinite(value))
-        .sort((a, b) => a - b)
-        .map((value) => ({
-            value: value.toFixed(1),
-            name: value.toFixed(1)
-        }));
+    const n = Number(magnitudeValue);
+    if (Number.isFinite(n) && MAGNITUDE_PRESETS[n]) return MAGNITUDE_PRESETS[n];
+    const keys = Object.keys(MAGNITUDE_PRESETS).map(Number).filter(Number.isFinite);
+    if (!keys.length) return { strength: 0.5, noise: 0 };
+    const target = Number.isFinite(n) ? n : 3;
+    let nearest = keys[0];
+    let best = Math.abs(target - nearest);
+    for (let i = 1; i < keys.length; i++) {
+        const d = Math.abs(target - keys[i]);
+        if (d < best) {
+            best = d;
+            nearest = keys[i];
+        }
+    }
+    return MAGNITUDE_PRESETS[nearest];
 }
 
 function getEnhanceScaleOptions(image) {
@@ -990,7 +997,7 @@ function resolveEnhanceStrengthNoise(magnitudeValue, strengthRaw, noiseRaw) {
         return { strength, noise };
     }
     // MAGNITUDE_PRESETS: public/scripts/comp/utilities.js
-    const preset = MAGNITUDE_PRESETS[Number(magnitudeValue)];
+    const preset = nearestEnhanceMagnitudePreset(magnitudeValue);
     return {
         strength: Number.isFinite(strength) ? strength : (preset?.strength ?? 0.5),
         noise: Number.isFinite(noise) ? noise : (preset?.noise ?? 0)
@@ -1000,7 +1007,7 @@ function resolveEnhanceStrengthNoise(magnitudeValue, strengthRaw, noiseRaw) {
 function collectEnhanceDialogValues(dialog) {
     if (!dialog) return null;
     const scale = dialog.querySelector('#enhanceScaleHidden')?.value || '2';
-    const magnitude = dialog.querySelector('#enhanceMagnitudeHidden')?.value || '3.0';
+    const magnitude = dialog.querySelector('#enhanceMagnitudeInput')?.value || '3.0';
     const strengthRaw = dialog.querySelector('#enhanceStrengthInput')?.value ?? '';
     const noiseRaw = dialog.querySelector('#enhanceNoiseInput')?.value ?? '';
     const { strength, noise } = resolveEnhanceStrengthNoise(magnitude, strengthRaw, noiseRaw);
@@ -1035,8 +1042,7 @@ function updateEnhanceScaleHint(scaleValue) {
 }
 
 function applyEnhanceMagnitudeOverlays(magnitudeValue) {
-    // MAGNITUDE_PRESETS: public/scripts/comp/utilities.js
-    const preset = MAGNITUDE_PRESETS[Number(magnitudeValue)] || MAGNITUDE_PRESETS[3] || MAGNITUDE_PRESETS['3.0'];
+    const preset = nearestEnhanceMagnitudePreset(magnitudeValue);
     const strengthInput = document.getElementById('enhanceStrengthInput');
     const noiseInput = document.getElementById('enhanceNoiseInput');
     const strengthOverlay = document.getElementById('enhanceStrengthOverlay');
@@ -1051,12 +1057,65 @@ function applyEnhanceMagnitudeOverlays(magnitudeValue) {
     }
 }
 
-function wireEnhanceDialogDropdown(prefix, renderFn, getSelectedValue) {
-    const container = document.getElementById(`${prefix}Dropdown`);
-    const button = document.getElementById(`${prefix}DropdownBtn`);
-    const menu = document.getElementById(`${prefix}DropdownMenu`);
-    if (!container || !button || !menu) return;
-    setupDropdown(container, button, menu, renderFn, getSelectedValue, { preventFocusTransfer: true });
+let enhanceDialogClickMenuButtons = [];
+
+function teardownEnhanceDialogClickMenus() {
+    // contextMenu.detachClickMenuFromElement / hideMenu: public/scripts/comp/contextMenu.js
+    enhanceDialogClickMenuButtons.forEach((btn) => {
+        contextMenu.detachClickMenuFromElement(btn);
+    });
+    enhanceDialogClickMenuButtons = [];
+    if (contextMenu.isOpen) contextMenu.hideMenu();
+}
+
+function wireEnhanceDialogClickMenu(btn, options, selectFn, getSelectedValue, maxHeight) {
+    if (!btn) return;
+    const config = {
+        position: 'anchor',
+        anchorAlign: 'start',
+        maxHeight: maxHeight || 320,
+        beforeShow: () => {
+            const current = getSelectedValue();
+            config.sections[0].items = options.map((opt) => {
+                if (opt.separator) {
+                    return { separator: true, text: opt.name || opt.text || '' };
+                }
+                return {
+                    text: opt.name,
+                    action: 'select-enhance-option',
+                    optionValue: opt.value,
+                    loadfn: (item) => {
+                        item.highlighted = String(item.optionValue) === String(current);
+                    }
+                };
+            });
+        },
+        sections: [{ type: 'list', items: [] }],
+        onAction: (action, target, item) => {
+            if (action !== 'select-enhance-option') return;
+            selectFn(item.optionValue);
+        }
+    };
+    // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+    contextMenu.attachClickMenuToElement(btn, config);
+    enhanceDialogClickMenuButtons.push(btn);
+}
+
+function wireEnhanceMagnitudeInput() {
+    const input = document.getElementById('enhanceMagnitudeInput');
+    if (!input) return;
+    input.addEventListener('input', () => {
+        applyEnhanceMagnitudeOverlays(input.value);
+    });
+    input.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.5 : 0.1) : (e.shiftKey ? 0.5 : 0.1);
+        const parsed = parseFloat(input.value);
+        const currentVal = input.value !== '' && Number.isFinite(parsed) ? parsed : 3.0;
+        const newValue = Math.max(1.0, Math.min(5.5, currentVal + delta));
+        input.value = newValue.toFixed(1);
+        input.dispatchEvent(new Event('input'));
+    }, { passive: false });
 }
 
 function wireEnhancePercentInput(inputId, overlayId) {
@@ -1075,11 +1134,9 @@ function wireEnhancePercentInput(inputId, overlayId) {
     });
 }
 
-function wireEnhanceDialog(dialog, scaleOptions, magnitudeOptions) {
+function wireEnhanceDialog(dialog, scaleOptions) {
     const scaleHidden = document.getElementById('enhanceScaleHidden');
     const scaleSelected = document.getElementById('enhanceScaleSelected');
-    const magnitudeHidden = document.getElementById('enhanceMagnitudeHidden');
-    const magnitudeSelected = document.getElementById('enhanceMagnitudeSelected');
 
     const selectScale = (value) => {
         if (scaleHidden) scaleHidden.value = value;
@@ -1088,43 +1145,14 @@ function wireEnhanceDialog(dialog, scaleOptions, magnitudeOptions) {
         }
         updateEnhanceScaleHint(value);
     };
-    const selectMagnitude = (value) => {
-        if (magnitudeHidden) magnitudeHidden.value = value;
-        if (magnitudeSelected) {
-            magnitudeSelected.textContent = magnitudeOptions.find((option) => option.value === value)?.name || '3.0';
-        }
-        applyEnhanceMagnitudeOverlays(value);
-    };
+    wireEnhanceDialogClickMenu(
+        document.getElementById('enhanceScaleBtn'),
+        scaleOptions,
+        selectScale,
+        () => scaleHidden?.value || '2'
+    );
 
-    wireEnhanceDialogDropdown('enhanceScale', (selectedValue) => {
-        const menu = document.getElementById('enhanceScaleDropdownMenu');
-        const button = document.getElementById('enhanceScaleDropdownBtn');
-        if (!menu || !button) return;
-        renderSimpleDropdown(
-            menu,
-            scaleOptions,
-            'value',
-            'name',
-            selectScale,
-            () => closeDropdown(menu, button),
-            selectedValue
-        );
-    }, () => scaleHidden?.value || '2');
-
-    wireEnhanceDialogDropdown('enhanceMagnitude', (selectedValue) => {
-        const menu = document.getElementById('enhanceMagnitudeDropdownMenu');
-        const button = document.getElementById('enhanceMagnitudeDropdownBtn');
-        if (!menu || !button) return;
-        renderSimpleDropdown(
-            menu,
-            magnitudeOptions,
-            'value',
-            'name',
-            selectMagnitude,
-            () => closeDropdown(menu, button),
-            selectedValue
-        );
-    }, () => magnitudeHidden?.value || '3.0');
+    wireEnhanceMagnitudeInput();
 
     const selectModel = (value) => {
         const hidden = document.getElementById('enhanceModelHidden');
@@ -1142,22 +1170,20 @@ function wireEnhanceDialog(dialog, scaleOptions, magnitudeOptions) {
             selected.textContent = modelName || 'Inherited';
         }
     };
-    wireEnhanceDialogDropdown('enhanceModel', (selectedValue) => {
-        const menu = document.getElementById('enhanceModelDropdownMenu');
-        if (!menu) return;
-        renderGroupedDropdown(
-            menu,
-            modelGroups,
-            selectModel,
-            () => {
-                const button = document.getElementById('enhanceModelDropdownBtn');
-                closeDropdown(menu, button);
-            },
-            selectedValue,
-            (opt) => `<span>${opt.name}</span>`,
-            { preventFocusTransfer: true }
-        );
-    }, () => document.getElementById('enhanceModelHidden')?.value || '');
+    const modelOptions = [{ value: '', name: 'Inherited' }];
+    for (const group of modelGroups) {
+        modelOptions.push({ separator: true, name: group.group });
+        for (const opt of group.options) {
+            modelOptions.push({ value: opt.value, name: opt.name });
+        }
+    }
+    wireEnhanceDialogClickMenu(
+        document.getElementById('enhanceModelBtn'),
+        modelOptions,
+        selectModel,
+        () => document.getElementById('enhanceModelHidden')?.value || '',
+        420
+    );
 
     const selectSampler = (value) => {
         const hidden = document.getElementById('enhanceSamplerHidden');
@@ -1168,20 +1194,12 @@ function wireEnhanceDialog(dialog, scaleOptions, magnitudeOptions) {
             selected.textContent = sampler ? sampler.display : (value || 'Inherited');
         }
     };
-    wireEnhanceDialogDropdown('enhanceSampler', (selectedValue) => {
-        const menu = document.getElementById('enhanceSamplerDropdownMenu');
-        const button = document.getElementById('enhanceSamplerDropdownBtn');
-        if (!menu || !button) return;
-        renderSimpleDropdown(
-            menu,
-            SAMPLER_MAP,
-            'meta',
-            'display',
-            selectSampler,
-            () => closeDropdown(menu, button),
-            selectedValue
-        );
-    }, () => document.getElementById('enhanceSamplerHidden')?.value || '');
+    wireEnhanceDialogClickMenu(
+        document.getElementById('enhanceSamplerBtn'),
+        [{ value: '', name: 'Inherited' }, ...SAMPLER_MAP.map((entry) => ({ value: entry.meta, name: entry.display }))],
+        selectSampler,
+        () => document.getElementById('enhanceSamplerHidden')?.value || ''
+    );
 
     const selectNoiseScheduler = (value) => {
         const hidden = document.getElementById('enhanceNoiseSchedulerHidden');
@@ -1192,20 +1210,12 @@ function wireEnhanceDialog(dialog, scaleOptions, magnitudeOptions) {
             selected.textContent = noise ? noise.display : (value || 'Inherited');
         }
     };
-    wireEnhanceDialogDropdown('enhanceNoiseScheduler', (selectedValue) => {
-        const menu = document.getElementById('enhanceNoiseSchedulerDropdownMenu');
-        const button = document.getElementById('enhanceNoiseSchedulerDropdownBtn');
-        if (!menu || !button) return;
-        renderSimpleDropdown(
-            menu,
-            NOISE_MAP,
-            'meta',
-            'display',
-            selectNoiseScheduler,
-            () => closeDropdown(menu, button),
-            selectedValue
-        );
-    }, () => document.getElementById('enhanceNoiseSchedulerHidden')?.value || '');
+    wireEnhanceDialogClickMenu(
+        document.getElementById('enhanceNoiseSchedulerBtn'),
+        [{ value: '', name: 'Inherited' }, ...NOISE_MAP.map((entry) => ({ value: entry.meta, name: entry.display }))],
+        selectNoiseScheduler,
+        () => document.getElementById('enhanceNoiseSchedulerHidden')?.value || ''
+    );
 
     wireEnhancePercentInput('enhanceStrengthInput', 'enhanceStrengthOverlay');
     wireEnhancePercentInput('enhanceNoiseInput', 'enhanceNoiseOverlay');
@@ -1225,7 +1235,7 @@ function wireEnhanceDialog(dialog, scaleOptions, magnitudeOptions) {
         });
     }
 
-    applyEnhanceMagnitudeOverlays(magnitudeHidden?.value || '3.0');
+    applyEnhanceMagnitudeOverlays(document.getElementById('enhanceMagnitudeInput')?.value || '3.0');
     updateEnhanceScaleHint(scaleHidden?.value || '2');
 }
 
@@ -1245,7 +1255,6 @@ async function openEnhanceModal(imageFilename, imageDimensions = null, image = n
     }
 
     const scaleOptions = getEnhanceScaleOptions(image);
-    const magnitudeOptions = getEnhanceMagnitudeOptions();
     const dimensionText = imageDimensions?.width && imageDimensions?.height
         ? `${imageDimensions.width} × ${imageDimensions.height}`
         : 'the source dimensions';
@@ -1254,23 +1263,14 @@ async function openEnhanceModal(imageFilename, imageDimensions = null, image = n
             <p>Enhance this image from ${dimensionText}?</p>
             <div class="form-row">
                 <div class="form-group">
-                    <label>Magnitude</label>
-                    <div id="enhanceMagnitudeDropdown" class="custom-dropdown dropup">
-                        <button type="button" id="enhanceMagnitudeDropdownBtn" class="custom-dropdown-btn hover-show colored">
-                            <span id="enhanceMagnitudeSelected">3.0</span>
-                        </button>
-                        <div id="enhanceMagnitudeDropdownMenu" class="custom-dropdown-menu hidden"></div>
-                    </div>
-                    <input type="hidden" id="enhanceMagnitudeHidden" value="3.0">
+                    <label for="enhanceMagnitudeInput">Magnitude</label>
+                    <input type="number" id="enhanceMagnitudeInput" class="form-control hover-show colored" min="1.0" max="5.5" step="0.5" value="3.0">
                 </div>
                 <div class="form-group">
                     <label>Upscale amount</label>
-                    <div id="enhanceScaleDropdown" class="custom-dropdown dropup">
-                        <button type="button" id="enhanceScaleDropdownBtn" class="custom-dropdown-btn hover-show colored">
-                            <span id="enhanceScaleSelected">2×</span>
-                        </button>
-                        <div id="enhanceScaleDropdownMenu" class="custom-dropdown-menu hidden"></div>
-                    </div>
+                    <button type="button" id="enhanceScaleBtn" class="custom-dropdown-btn hover-show colored">
+                        <span id="enhanceScaleSelected">2×</span>
+                    </button>
                     <input type="hidden" id="enhanceScaleHidden" value="2">
                 </div>
                 <div class="form-group enhance-advanced-toggle-group">
@@ -1317,34 +1317,25 @@ async function openEnhanceModal(imageFilename, imageDimensions = null, image = n
                 <div class="form-row">
                     <div class="form-group">
                         <label>Sampler</label>
-                        <div id="enhanceSamplerDropdown" class="custom-dropdown dropup">
-                            <button type="button" id="enhanceSamplerDropdownBtn" class="custom-dropdown-btn hover-show colored">
-                                <span id="enhanceSamplerSelected">Inherited</span>
-                            </button>
-                            <div id="enhanceSamplerDropdownMenu" class="custom-dropdown-menu hidden"></div>
-                        </div>
+                        <button type="button" id="enhanceSamplerBtn" class="custom-dropdown-btn hover-show colored">
+                            <span id="enhanceSamplerSelected">Inherited</span>
+                        </button>
                         <input type="hidden" id="enhanceSamplerHidden" value="">
                     </div>
                     <div class="form-group">
                         <label>Noise Scheduler</label>
-                        <div id="enhanceNoiseSchedulerDropdown" class="custom-dropdown dropup">
-                            <button type="button" id="enhanceNoiseSchedulerDropdownBtn" class="custom-dropdown-btn hover-show colored">
-                                <span id="enhanceNoiseSchedulerSelected">Inherited</span>
-                            </button>
-                            <div id="enhanceNoiseSchedulerDropdownMenu" class="custom-dropdown-menu hidden"></div>
-                        </div>
+                        <button type="button" id="enhanceNoiseSchedulerBtn" class="custom-dropdown-btn hover-show colored">
+                            <span id="enhanceNoiseSchedulerSelected">Inherited</span>
+                        </button>
                         <input type="hidden" id="enhanceNoiseSchedulerHidden" value="">
                     </div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label>Model</label>
-                        <div id="enhanceModelDropdown" class="custom-dropdown dropup">
-                            <button type="button" id="enhanceModelDropdownBtn" class="custom-dropdown-btn hover-show colored">
-                                <span id="enhanceModelSelected">Inherited</span>
-                            </button>
-                            <div id="enhanceModelDropdownMenu" class="custom-dropdown-menu hidden"></div>
-                        </div>
+                        <button type="button" id="enhanceModelBtn" class="custom-dropdown-btn hover-show colored">
+                            <span id="enhanceModelSelected">Inherited</span>
+                        </button>
                         <input type="hidden" id="enhanceModelHidden" value="">
                     </div>
                     <div class="form-group">
@@ -1369,11 +1360,15 @@ async function openEnhanceModal(imageFilename, imageDimensions = null, image = n
                 if (!dialogEl) return;
                 dialogEl.classList.add('enhance-dialog-modal');
                 if (signal) {
-                    signal.addEventListener('abort', () => dialogEl.classList.remove('enhance-dialog-modal'), { once: true });
+                    signal.addEventListener('abort', () => {
+                        teardownEnhanceDialogClickMenus();
+                        dialogEl.classList.remove('enhance-dialog-modal');
+                    }, { once: true });
                 }
-                wireEnhanceDialog(dialogEl, scaleOptions, magnitudeOptions);
+                wireEnhanceDialog(dialogEl, scaleOptions);
             },
             resolveValue: (value, dialogEl) => {
+                teardownEnhanceDialogClickMenus();
                 dialogEl?.classList.remove('enhance-dialog-modal');
                 if (!value) return false;
                 return collectEnhanceDialogValues(dialogEl);

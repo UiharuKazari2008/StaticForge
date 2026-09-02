@@ -103,7 +103,7 @@ When using grok.com → New Connector → Custom, fill in:
 
 ### Client registration (RFC 7591 DCR)
 
-Register an OAuth client before using the flow. `application_key` is **optional** on register. If omitted, `oauth_clients.application_key_id` stays null until consent: PIN, then pick or create a key. Authorize does not accept a pasted `sfapp_` secret.
+Register an OAuth client before using the flow. `application_key` is **optional** on register. If omitted, `oauth_clients.application_key_id` stays null until consent: PIN, then auto-use a same-named matching key or pick/create one. Authorize does not accept a pasted `sfapp_` secret.
 
 **Option A: Pre-mint with app key binding (recommended for CLI)**
 
@@ -143,7 +143,7 @@ Response (both options):
 }
 ```
 
-Use the returned `client_id` in the Grok form. If registered without an app key, the consent page asks for your PIN and a key pick/create.
+Use the returned `client_id` in the Grok form. If registered without an app key, the consent page asks for your PIN; a matching same-named key skips pick/create.
 
 ### Pre-minted client_id for Grok manual form
 
@@ -155,7 +155,7 @@ curl -X POST "https://<host>/{mcpPathUuid}/oauth/register" \
   -d '{"client_name":"Grok","redirect_uris":["https://grok.com/oauth/callback"]}'
 ```
 
-Copy the `client_id` from the response and paste it into the Grok form. On the consent page, sign in with your Dreamscape PIN and pick or create a key.
+Copy the `client_id` from the response and paste it into the Grok form. On the consent page, sign in with your Dreamscape PIN. A key already named like the client with matching scopes is used automatically; otherwise pick or create a key.
 
 ### Authorization flow
 
@@ -169,9 +169,11 @@ Copy the `client_id` from the response and paste it into the Grok form. On the c
    - `code_challenge_method=S256`
    - `resource=https://<host>/{mcpPathUuid}` (optional)
 
-2. User sees consent page (ui-review) showing client name and requested scopes.
+2. User sees consent page showing the client name and PIN first. Requested permissions are collapsed (`details`) so the PIN field stays on screen.
    - Enter the **Dreamscape PIN** (same admin / user PIN as the login pad). PIN is only accepted on UUID `/oauth/authorize`. It is not MCP auth.
-   - After PIN: pick an existing `sfapp_` key for that PIN, or **create a new** key (requested named scopes only, never `universal`). Partial matches stay in the list and are labeled `upgrade +notes, wiki` when Approve will add scopes. Raw keys are not shown or pasted.
+   - After PIN: if an active key is named like the client (`MCP <name>` or the same name) **and** already has the requested scopes, the picker is skipped and the code is issued.
+   - Name match with missing scopes still shows the picker (no silent upgrade).
+   - Otherwise pick an existing `sfapp_` key for that PIN, or **create a new** key (requested named scopes only, never `universal`). Partial matches stay in the list and are labeled `upgrade +notes, wiki` when Approve will add scopes. Raw keys are not shown or pasted.
    - If the client was already bound, the picker still lists that key (pre-selected) plus other active keys. Approve merges **requested named scopes only** onto the selected key. Never `universal`.
    - Consent session is a 5-minute HttpOnly cookie + CSRF field. Wrong PIN is rate-limited and lockouts after 5 failures.
 
@@ -224,36 +226,36 @@ Use `grant_type=refresh_token` to get a new access token before expiry.
 
 Each tool wraps an existing `/agent` function or WS packet. No parallel generate API.
 
-`tools/list` advertises the **core** set plus `advanced_tools`. Hidden tools stay on the server; Grok finds and runs them with `advanced_tools` (`query`, then `name` + `arguments`). Direct `tools/call` of a hidden name still works for CLI.
+`tools/list` advertises the **core** set plus `advanced_tools`. Hidden tools stay on the server; Grok finds and runs them with `advanced_tools` (`query`, then `name` + `arguments`). A query that mentions memories / NAX / the prompt guide / session returns those **core** names and says to call them directly. If the query matches nothing, the result is the **full** core + hidden list. Direct `tools/call` of a hidden name still works for CLI.
 
 ### Core (`tools/list`)
 
 | Tool | Wrap | Scope | Bind? |
 |------|------|-------|-------|
-| `generate_image` | Server generate on the **shared generation FIFO** (Studio Generate / preset / reroll use the same stack; 8–20s gap after each job). Default stalls until filename + Grok webp. `async: true` returns `jobId` immediately. Full Studio settings as top-level keys or `params`. `n` is print count 2–8. Writes `forge_data.mcp_generated`. | `generation` | no |
+| `generate_image` | Server generate on the **shared generation FIFO** (Studio Generate / preset / reroll use the same stack; 8–20s gap after each job). Default stalls until filename + Grok webp. `async: true` returns `jobId` immediately. Full Studio settings as top-level keys or `params`. `n` is print count 2–8. Writes `forge_data.mcp_generated`. Omitting `workspace` uses the bound / only connected tab. Paid Anlas/Opus (upscale, expand, large/xlarge/wallpaper) requires `userApprovedPaidRequest` (alias `allow_paid`) or the tool bounces before FIFO. `dynamicGeneration.enabled: false` or omit does not compile and does not 500. Unintegrated `dynamicGeneration` returns `needsIntegration` + resolved and does not enqueue. | `generation` | no |
 | `get_generation_job` | Poll `jobId` from `async` generate. Status/position while queued; same image payload when done. | `generation` | no |
 | `await_generation_job` | Block on `jobId` until complete, then return filename + Grok webp. | `generation` | no |
 | `get_generated_image` | Metadata + Grok webp. Filename, seed, or omit for latest. `workspace` default is `default`. | `gallery` | no |
 | `get_workspaces` | `workspace_list` — use the id on `get_generated_image` / `omegasearch` | `workspace` | no |
-| `get_session_state` | First-call snapshot. `view=full` (default): models, quality/UC/nsfw, clients, windows, Studio, prompt-guide pages, NAX/memory pointers. `view=live`: windows + Studio only. `hasClients` false → `generate_image`. | `generation` | if clients |
-| `get_studio_state` | Bound `get_state` for **this application key** (stays bound 15 min / until tray Unbind). One tab auto-binds. Several tabs: `needsClientChoice` + clients most recently used first — ask, then `bind_session`. Plus `settings`, `dynamicGeneration`, `director`, and `mustAct` when those fields are present. Prefer `get_session_state`. | `generation` | yes |
+| `get_session_state` | Session snapshot. Default `view=live` (clients, windows, Studio). `view=catalog` slim settings. `view=full` live + slim catalog + promptGuide/NAX/memory pointers. Full per-model quality/UC strings are on `get_studio_state.settings` / `tools/list`. `hasClients` false or `studioReachable` false → `generate_image`. Grimoire window text is truncated; full text via `get_open_windows`. | `generation` | if clients |
+| `get_studio_state` | Bound `get_state` for **this application key** (stays bound 15 min / until tray Unbind). One tab auto-binds. Several tabs: `needsClientChoice` + clients most recently used first — ask, then `bind_session`. Plus `settings`, `dynamicGeneration` (toggles + `resolved` time/weather/season/location; Director compile is nooped), `director`, and `mustAct` when those fields are present. Prefer `get_session_state`. | `generation` | yes |
 | `get_open_windows` | Bound `get_windows`. Open Lumen / Glancewell / Grimoire / gallery / Studio with current data (filename, selected[], page text). `includeImage` default true attaches one Grok webp for the focused file. Prefer `get_session_state` `view=live`. | `generation` | yes |
-| `get_client_physics` | Bound tab location / tod / date / weather / season (dynamic-generation carousel subset). Lights `#mcpPhysicsIndicator` (location arrow) and the Remote Access tray. | `generation` | yes |
+| `get_client_physics` | Pre-resolve dynagen context (`resolved` + flat location / tod / date / weather / season). Works unbound; optional tod/weather/season/location. Missing location warns and defaults to client IP, does not 500. Bound tab still lights `#mcpPhysicsIndicator` and the Remote Access tray. | `generation` | yes |
 | `list_clients` / `bind_session` | List tabs (this key's `bound` flag) / bind this key to a `clientId` | `generation` | bind |
 | `apply_studio_changes` | `POST /agent/session/studio`. Full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes/dynamicGeneration/director (same keys as Studio). Silent apply skips the autofill popup. | `generation` | yes |
 | `get_linkxi_persona` | `get_persona_settings` without the photo blob (`hasPhoto` only). | `generation` | no |
 | `save_linkxi_persona` | `save_persona_settings` (`user_name`, `backstory`, `default_verbosity` 1–5). Preserves an existing photo unless one is sent. | `generation` | no |
-| `search_autofill` | `test_autofill_ranking` once per term (max 20). Same live autocomplete pipeline. Accepts `terms: string[]` and/or `query` | `autofill` | no |
+| `search_autofill` | `test_autofill_ranking` once per term (max 8 terms, 10 close hits each). Default `exactOnly`: exact or same name with `(qualifier)`. Hits are `{tag, count, confidence, exact}`. Empty + `untrained: true` means drop/replace. Accepts `terms: string[]` and/or `query` | `autofill` | no |
 | `search_nax` | `queryTags` / `get_nax_tags`. Default kind ARTIST. Omit query for the current ranking. `sort=score` is top votes; `sort=ratio` is upvote ratio; `invert` reverses. Use `item.prompt` in Studio. | `search` (also listed for `autofill` keys) | no |
 | `list_nax_galleries` | `getGalleries` plus expander kinds (ARTIST, CHARA, FACE, COPYRIGHT, HAIR, CURATED) | `search` (also listed for `autofill` keys) | no |
-| `get_prompt_guide` | Read the Docubase page (clone `.cache/nai-prompt-guide`, wiki site `docubase`). Default `prompt-optimiser-grok`. | `generation` | no |
-| `list_memories` / `search_memories` / `get_memory` / `save_memory` | Onboard knowledge-memory DB (Memories applet). Search first; create/upsert often. `save_memory` refines: omitted graph fields kept, confidence +0–0.25 (new = 0.1). `model` defaults to `v4_5`. Do not treat low-confidence rows as fact. | `generation` | no |
+| `get_prompt_guide` | Read the Docubase page (clone `.cache/nai-prompt-guide`, wiki site `docubase`). Default `prompt-optimiser-grok`. Prior art, not laws — experiment, then `save_memory`. | `generation` | no |
+| `list_memories` / `search_memories` / `get_memory` / `save_memory` | Onboard knowledge-memory DB (Memories applet). Aliases: `listKnowledgeMemories`, `searchKnowledgeMemories`, `retrieveKnowledgeMemory`, `saveKnowledgeMemory` (old paid API names). Grok Memory is not the store — the model must call these tools. `save_memory` refines: omitted graph fields kept, confidence +0–0.25 (new = 0.1). `model` defaults to `v4_5`. | `generation` | no |
 | `search_wiki` | `search_tag_wiki` | `wiki` (also listed for `autofill` keys) | no |
-| `get_wiki_page` | `get_tag_wiki_page` (`tagName`, optional `source`, `format`) | `wiki` (also listed for `autofill` keys) | no |
+| `get_wiki_page` | `get_tag_wiki_page` (`tagName`, optional `source`, `format`; markdown default). Returns `text` / `markdown` strings — never `html` as `{}`. Empty: `empty: true` + `next`. | `wiki` (also listed for `autofill` keys) | no |
 | `save_preset` | `save_preset` — `presetName` + `config` (`name`, `prompt`, `model`) | `presets` | no |
 | `apply_preset_to_studio` | `load_preset` then bound `apply_studio` Change-JSON | `presets` | yes |
-| `upscale_image` | `upscale_image` (`filename`, optional `workspace`) | `generation` | no |
-| `expand_image` | `expand_image` (`filename`, `resolution`, `imageBias` 0–4) | `generation` | no |
+| `upscale_image` | `upscale_image` (`filename`, optional `workspace`). Paid Opus — requires `userApprovedPaidRequest` / `allow_paid`. | `generation` | no |
+| `expand_image` | `expand_image` (`filename`, `resolution`, `imageBias` 0–4). Paid Anlas — requires `userApprovedPaidRequest` / `allow_paid`. | `generation` | no |
 | `omegasearch` | `omegasearch_query` (`query` / `terms` coerced to `blocks`; optional `workspace`) | `search` | no |
 | `list_notes` / `get_note` / `save_note_content` | `notes_get_all_metadata` / `notes_get` / `notes_save_content` | `notes` | no |
 | `delete_images` | `delete_images_bulk` | `gallery` | no |
@@ -263,7 +265,7 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 | `compare_images` | Sharp abs-diff of two gallery files; magenta webp + change % | `gallery` | no |
 | `evaluate_workspace_themes` | Tag/character frequency on recent workspace files | `gallery` | no |
 | `vfs_list` / `vfs_read` | `vfs_list_directory` / `vfs_read_system_file` or `vfs_download_file`. Path `@desktop` is the workspace desktop. | `vfs` | no |
-| `advanced_tools` | Discover or run a hidden tool (`query`, or `name` + `arguments`) | any | — |
+| `advanced_tools` | Discover or run a hidden tool (`query`, or `name` + `arguments`). Memory/NAX/guide/session queries return core names. Empty match returns the full tool list. | any | — |
 
 ### Hidden (via `advanced_tools`)
 
@@ -277,7 +279,7 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 | `list_notes_by_workspace` / `create_note` / `update_note` | extra notepad CRUD | `notes` |
 | `vfs_stat` / `vfs_write` / `vfs_delete` / `list_desktop_items` | VFS mutate + desktop shortcuts | `vfs` |
 
-`search_autofill` returns `{ success, results: [{ term, success, results, spellCheck }] }`. That is the existing ranking-test search, not a new search API. `search_nax` returns `{ success, query, kind, slugs, sort, items: [{ tag, prompt, gallerySlug, score, upvotes, downvotes, ratio, favorite, tryMark }], total, hasMore, next }`. That is the existing NAX `queryTags` ranking, not a new dataset. `get_wiki_page` is tag wiki (danbooru / e621). Static / Grimoire pages use hidden `list_static_wiki_*` / `search_static_wiki` / `get_static_wiki_page`. Notes use the existing notepad packets — request the `notes` scope on consent.
+`search_autofill` returns `{ success, results: [{ term, success, untrained, results: [{ tag, count, confidence, exact }] }] }`. Default `exactOnly`. That is the existing ranking-test search, not a new search API. `search_nax` returns `{ success, query, kind, slugs, sort, items: [{ tag, prompt, gallerySlug, score, upvotes, downvotes, ratio, favorite, tryMark }], total, hasMore, next }`. That is the existing NAX `queryTags` ranking, not a new dataset. `get_wiki_page` is tag wiki (danbooru / e621) and returns `text` / `markdown` strings — never `html: {}`. Static / Grimoire pages use hidden `list_static_wiki_*` / `search_static_wiki` / `get_static_wiki_page`. Notes use the existing notepad packets — request the `notes` scope on consent.
 
 `autoApply` (default true) and `autoGenerate` (default false) stay **siblings of `change`**. `autoGenerate` clicks the bound tab's existing Generate button after a successful apply. That is not a second generate API.
 
@@ -309,6 +311,10 @@ For grok.com Custom Connector UI that requires OAuth:
    - **Token Auth Method**: `none (PKCE only, recommended)`
 3. Click Save & Connect. You'll see the consent page.
 4. Approve. Missing requested named scopes are added to the selected key. Grok gets an access token bound to that key's scopes.
+
+### Grok project files
+
+Paste the Grim block into the **project instructions** field only. Do **not** attach `nai-prompt-guide`, Docubase, memories, or other Dreamscape markdown as project knowledge. Grok will read the stale file and skip MCP (`get_prompt_guide`, `search_memories` / `save_memory`, `search_nax`). The paste is the same text as MCP `initialize.instructions` plus a short MCP-only preamble (`modules/mcpInstructions.js`). Re-paste after `DreamScape r########` changes. Delete any old uploaded copies.
 
 ## Errors
 

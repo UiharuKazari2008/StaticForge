@@ -128,7 +128,9 @@ ignored.
 
 Broadcasts a notice to every connected WebSocket client so a local agent can
 warn users before a restart or other disruptive action. Clients render it as a
-glass toast or a confirmation dialog.
+glass toast or a confirmation dialog. `restart: true` reuses the existing
+Client Update countdown dialog (`#agentClientUpdateDialog`, same chrome as
+`POST /agent/session/update`) and reloads every connected tab after `timeout`.
 
 **Inputs:** JSON body.
 
@@ -136,9 +138,10 @@ glass toast or a confirmation dialog.
 |-------|----------|-------------|
 | `message` | Yes | Plain-text body. Max 2000 characters. HTML (`<` / `>`) is rejected. |
 | `title` | No | Dialog/toast title. Default `Agent`. Max 120 characters. Plain text. |
-| `display` | No | `toast` (default) or `dialog`. Aliases: `mode`, and `popup` / `window` → dialog. |
+| `display` | No | `toast` (default) or `dialog`. Aliases: `mode`, and `popup` / `window` → dialog. `restart` / `reload` force `restart: true` and `display: dialog`. |
 | `level` | No | `info`, `warning` (default), `error`, or `success`. Alias: `type`. |
-| `timeout` | No | Milliseconds, or `false` / `"persist"` to keep it until dismissed. Toast default `10000`. Dialog default stays until OK. Max 300000. |
+| `timeout` | No | Milliseconds, or `false` / `"persist"` to keep it until dismissed. Toast default `10000`. Dialog default stays until OK. Max 300000. When `restart` is true, default `15000`; `false` is rejected. |
+| `restart` | No | When `true`, every connected client shows the Client Update countdown dialog and restarts after `timeout`. Alias: `reload`. Forces `display: dialog`. |
 
 **Success:** `200`
 
@@ -149,7 +152,8 @@ glass toast or a confirmation dialog.
   "display": "dialog",
   "level": "warning",
   "title": "Agent",
-  "timeout": false,
+  "timeout": 15000,
+  "restart": true,
   "clients": 2
 }
 ```
@@ -162,10 +166,12 @@ not up yet). The push type is `agent_notice`.
 `{ "success": false, "error": "Failed to broadcast notice" }` if publish fails.
 
 **Client state after:** Connected web clients show a toast (`showGlassToast`) or
-an OK confirmation dialog (`showConfirmationDialog`).
+an OK confirmation dialog (`showConfirmationDialog`). When `restart` is true,
+they show `#agentClientUpdateDialog` instead (countdown from `timeout`, Cancel
+aborts, 0 applies client updates then restarts that tab).
 
 **Follow-up:** None. The notice is fire-and-forget; the HTTP response does not
-wait for users to dismiss the UI.
+wait for users to dismiss the UI or for a restart to finish.
 
 ### `GET /agent/clients`
 
@@ -191,6 +197,7 @@ pad. This is not a public UI route.
       "userType": "admin",
       "workspaceId": "default",
       "connectedAt": "2026-08-29T08:00:00.000Z",
+      "lastActivity": "2026-08-31T21:00:00.000Z",
       "userAgent": "Mozilla/5.0 ...",
       "bound": true,
       "authenticated": true
@@ -199,7 +206,8 @@ pad. This is not a public UI route.
 }
 ```
 
-`boundClientId` is `null` when nothing is bound. Share codes are never returned
+`boundClientId` is this **application key's** bind (`null` when this key has none).
+Clients are sorted most recently used first. Share codes are never returned
 or logged.
 
 **Errors:** `401` / `403` / `404` / `500` from development auth (same as
@@ -209,8 +217,10 @@ or logged.
 
 **Auth:** Same as `GET /agent`.
 
-Binds the localhost agent to one connected Studio client. Only one bind at a
-time; a new bind unbinds the previous tab (`agent_session_unbound`).
+Binds **this application key** to one connected Studio client. Another key can
+stay bound to a different tab. Rebinding this key unbinds its previous tab
+(`agent_session_unbound`) if no other key still holds it. Idle 15 minutes with
+no session commands, or `POST /agent/unbind` / tray Unbind, also releases it.
 
 **Inputs:** JSON body — one of:
 
@@ -225,7 +235,25 @@ time; a new bind unbinds the previous tab (`agent_session_unbound`).
 code; development-auth errors as `GET /agent`.
 
 **Client state after:** Bound tab receives `agent_session_bound`. Previous bound
-tab receives `agent_session_unbound`.
+tab receives `agent_session_unbound` only if no other key still holds it.
+
+### `POST /agent/unbind`
+
+**Auth:** Same as `GET /agent`.
+
+Releases this application key's Studio bind. Optional body `{ "clientId" }`
+also requires that match. The bound tab's Remote Access tray Disconnect sends
+`agent_session_unbind` and releases every key bound to that tab.
+
+**Success:** `200` `{ "success": true, "unbound": true, "clientId", "reason" }`
+
+### `GET /agent/session/physics`
+
+**Auth:** Same as `GET /agent`. Requires a live bind for this key.
+
+Returns the bound tab's dynamic-generation physics (carousel subset):
+`location`, `tod`, `time`, `date`, `weather`, `season`. Lights
+`#mcpPhysicsIndicator` (location arrow) on that tab and popovers on the Remote Access tray.
 
 ### `GET /agent/scopes`
 
@@ -322,7 +350,7 @@ before `sendBoundCommand` (no client apply, no 504).
 
 **Auth:** Same as `GET /agent`. Requires a live bind.
 
-Pushes the **bound Dreamscape tab** to check for client/app updates, apply them, then restart **that client**. Not a server-side restart. Not `POST /agent/broadcast` (that is a notice to every connected socket).
+Pushes the **bound Dreamscape tab** to check for client/app updates, apply them, then restart **that client**. Not a server-side restart. Not `POST /agent/broadcast` (that is a notice to every connected socket). Broadcast `restart: true` reuses this same Client Update dialog on **all** connected tabs and does not wait for Cancel / countdown 0.
 
 The bound tab shows a mandatory Client Update dialog (classic confirmation / System Update chrome): 15 second countdown, Cancel aborts (no apply, no restart), no input at 0 applies then restarts. Close stays disabled.
 
