@@ -7,13 +7,13 @@
     "locked": true
   },
   "baseline_kg": 54.0,
-  "current_kg": 67.52,
-  "slices_eaten_total": 114,
+  "current_kg": 67.88,
+  "slices_eaten_total": 117,
   "overtime_hours_total": 0.0,
   "pending_slices": 0,
   "pending_overtime_hours": 0,
-  "last_before": "1788089808975_generated_1743950262.png",
-  "last_after": "1788090306652_generated_3933330942.png",
+  "last_before": "1788347890586_generated_3270152233.png",
+  "last_after": "1788348018528_generated_2604811420.png",
   "history": [
     {
       "at": "2026-08-28T05:35:08.356710+00:00",
@@ -106,7 +106,7 @@
       "chair": "creaking",
       "landscape": true,
       "before": "1788090241249_generated_1408843207.png",
-      "after": "1788090170478_generated_848203950.png"
+      "after": "1788092768271_generated_2162993062.png"
     },
     {
       "at": "2026-08-30T11:38:07.082822+00:00",
@@ -117,8 +117,20 @@
       "kg": 67.52,
       "chair": "heavy_duty",
       "landscape": true,
-      "before": "1788089808975_generated_1743950262.png",
-      "after": "1788090306652_generated_3933330942.png"
+      "before": "1788093047531_generated_2738108306.png",
+      "after": "1788092377775_generated_3850980720.png"
+    },
+    {
+      "at": "2026-09-02T11:21:22.695552+00:00",
+      "slices": 3,
+      "stacks": 1,
+      "overtime_hours": 0.0,
+      "gained_kg": 0.36,
+      "kg": 67.88,
+      "chair": "heavy_duty",
+      "landscape": true,
+      "before": "1788347890586_generated_3270152233.png",
+      "after": "1788348018528_generated_2604811420.png"
     }
   ],
   "last_look": "1787895908094_generated_3772933719.png",
@@ -150,10 +162,15 @@
       "n": 1,
       "sum": 4.1,
       "avg": 4.1
+    },
+    "tiramisu layer cake": {
+      "n": 1,
+      "sum": 4.0,
+      "avg": 4.0
     }
   },
   "favorite_cake": null,
-  "cake_rotation_index": 8,
+  "cake_rotation_index": 9,
   "pending_bloat_bytes": 0,
-  "_cake_type": "black forest"
+  "_cake_type": "tiramisu layer cake"
 }
