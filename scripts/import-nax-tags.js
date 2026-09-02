@@ -50,6 +50,7 @@ function createSchema(db) {
             score INTEGER NOT NULL,
             favorite INTEGER NOT NULL DEFAULT 0,
             try_mark INTEGER NOT NULL DEFAULT 0,
+            hidden_mark INTEGER NOT NULL DEFAULT 0,
             export_index INTEGER NOT NULL DEFAULT 0,
             is_custom INTEGER NOT NULL DEFAULT 0,
             UNIQUE(gallery_slug, tag),
@@ -77,6 +78,7 @@ function main() {
     let db = null;
     let favorites = [];
     let tryMarks = [];
+    let hiddenMarks = [];
     let customRows = [];
 
     try {
@@ -87,11 +89,16 @@ function main() {
                 const cols = db.prepare('PRAGMA table_info(nax_tags)').all();
                 const hasCustom = cols.some((c) => c.name === 'is_custom');
                 const hasTry = cols.some((c) => c.name === 'try_mark');
+                const hasHidden = cols.some((c) => c.name === 'hidden_mark');
                 favorites = db.prepare('SELECT gallery_slug, tag FROM nax_tags WHERE favorite = 1').all();
                 console.log('Backed up', favorites.length, 'favorite rows');
                 if (hasTry) {
                     tryMarks = db.prepare('SELECT gallery_slug, tag FROM nax_tags WHERE try_mark = 1').all();
                     console.log('Backed up', tryMarks.length, 'try mark rows');
+                }
+                if (hasHidden) {
+                    hiddenMarks = db.prepare('SELECT gallery_slug, tag FROM nax_tags WHERE hidden_mark = 1').all();
+                    console.log('Backed up', hiddenMarks.length, 'hidden mark rows');
                 }
                 if (hasCustom) {
                     customRows = db.prepare(`
@@ -178,6 +185,17 @@ function main() {
 
         propagateTryMarksInMergeGroups(db);
         console.log('Propagated try marks across', NAX_FAVORITE_MERGE_GROUPS.length, 'merge group(s)');
+
+        if (hiddenMarks.length) {
+            const restoreHidden = db.prepare('UPDATE nax_tags SET hidden_mark = 1 WHERE gallery_slug = ? AND tag = ?');
+            const restoreHiddenMany = db.transaction((rows) => {
+                for (const row of rows) {
+                    restoreHidden.run(row.gallery_slug, row.tag);
+                }
+            });
+            restoreHiddenMany(hiddenMarks);
+            console.log('Restored', hiddenMarks.length, 'hidden marks');
+        }
 
         if (customRows.length) {
             const insCustom = db.prepare(`

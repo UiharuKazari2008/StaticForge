@@ -607,6 +607,8 @@ class WikiDisplayBase {
             this.copyCurrentPageUri();
         } else if (action === 'grimoire-copy-title') {
             this.copyCurrentPageTitle();
+        } else if (action === 'grimoire-copy-markdown') {
+            this.copyCurrentRawMarkdown();
         } else if (action === 'grimoire-open-on-right') {
             this.openCurrentUrlOnPane('right');
         } else if (action === 'grimoire-open-on-left') {
@@ -714,6 +716,24 @@ class WikiDisplayBase {
             return;
         }
         this.copyToClipboard(title);
+    }
+
+    getCurrentRawMarkdown() {
+        if (this.currentStaticWiki && this.currentStaticWiki.text) {
+            return this.currentStaticWiki.text;
+        }
+        const last = this.history && this.history[this.historyIndex];
+        if (last && last.content && last.content.text) return last.content.text;
+        return '';
+    }
+
+    copyCurrentRawMarkdown() {
+        const text = this.getCurrentRawMarkdown();
+        if (!text) {
+            showGlassToast('info', null, 'No markdown source on this page', false, 3000, '<i class="fas fa-info-circle"></i>');
+            return;
+        }
+        this.copyToClipboard(text);
     }
 
     reloadCurrentPage() {
@@ -948,6 +968,12 @@ class WikiDisplayBase {
                 icon: 'fas fa-heading',
                 action: 'grimoire-copy-title',
                 disabled: () => !this.getCurrentPageTitle()
+            },
+            {
+                text: 'Copy Raw Markdown',
+                icon: 'fas fa-code',
+                action: 'grimoire-copy-markdown',
+                hidden: () => !this.getCurrentRawMarkdown()
             },
             {
                 text: 'Add to Desktop',
@@ -1916,6 +1942,7 @@ class WikiDisplayBase {
                 title: data.title || pageId,
                 tagName: data.title || pageId,
                 html: data.html || '',
+                text: data.text || null,
                 staticWiki: true,
                 siteId,
                 pageId,
@@ -2120,6 +2147,7 @@ class WikiDisplayBase {
                 siteId: content.siteId,
                 pageId: content.pageId,
                 title,
+                text: content.text || null,
                 siteIcon: content.siteIcon || null,
                 displayUrl: content.displayUrl || null,
                 kind: content.kind || null,

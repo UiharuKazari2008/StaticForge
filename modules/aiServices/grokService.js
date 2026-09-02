@@ -7408,7 +7408,8 @@ class GrokService {
             entities,
             relations,
             observations,
-            finalConfidence
+            finalConfidence,
+            params.model || (existingMemory && existingMemory.model) || 'v4_5'
         );
 
         const result = {
@@ -7549,6 +7550,7 @@ class GrokService {
                     description: memory.description,
                     category: memory.category,
                     confidence: memory.confidence,
+                    model: memory.model || 'v4_5',
                     entities: optimizedEntities,
                     relations: optimizedRelations,
                     observations: optimizedObservations,
@@ -10264,6 +10266,8 @@ class GrokService {
  * Director-specific AI function using Chat Completions API
  * This is a duplicate created for the director system to avoid breaking the migrated system
  * Uses grok.chat.completions.create() instead of grok.responses.create()
+ * MIGRATE-ENSHUTSUKA-MCP: API-billed Director completion. Removable when Enshutsuka
+ * requests run from grok.com (consumer client) via the public MCP connector.
  */
     async callDirectorAIWithCompletion(messages, options = {}, onStreamUpdate = null) {
         try {

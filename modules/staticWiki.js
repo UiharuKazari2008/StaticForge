@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const naiPromptGuideSync = require('./naiPromptGuideSync');
 
 function getWikiBasePath(globalResources) {
     return path.join(globalResources.getPath('cache'), 'wiki');
@@ -38,9 +39,22 @@ function resolveExistingSiteIcon(base, siteId, iconFromMeta) {
     return null;
 }
 
+function ensureDocubaseMaterialized(globalResources) {
+    if (!globalResources || typeof globalResources.getPath !== 'function') return;
+    const cacheDir = globalResources.getPath('cache');
+    const indexPath = path.join(cacheDir, 'wiki', naiPromptGuideSync.SITE_ID, 'index.json');
+    if (!fs.existsSync(indexPath)) {
+        naiPromptGuideSync.materializeDocubaseWiki(cacheDir);
+    }
+}
+
 function resolveRegisteredSite(globalResources, siteId) {
     if (!siteId || typeof siteId !== 'string') {
         return null;
+    }
+    ensureDocubaseMaterialized(globalResources);
+    if (naiPromptGuideSync.isDocubaseSiteId(siteId)) {
+        siteId = naiPromptGuideSync.SITE_ID;
     }
     const base = path.resolve(getWikiBasePath(globalResources));
     const homeIndex = readJsonSafe(path.join(base, 'index.json'), { sites: [] });
@@ -56,6 +70,7 @@ function resolveRegisteredSite(globalResources, siteId) {
 }
 
 function getWikiHomeData(globalResources) {
+    ensureDocubaseMaterialized(globalResources);
     const base = getWikiBasePath(globalResources);
     const index = readJsonSafe(path.join(base, 'index.json'), { sites: [] });
     const sites = (index.sites || []).map((s) => ({
@@ -85,15 +100,18 @@ function getSiteIndex(globalResources, siteId) {
         groupMap.get(groupName).push({ id: page.id, title: page.title || page.id });
     }
 
-    const groups = Array.from(groupMap.entries()).map(([name, groupPages]) => ({
+    let groups = Array.from(groupMap.entries()).map(([name, groupPages]) => ({
         name,
         pages: groupPages
     }));
+    if (naiPromptGuideSync.isDocubaseSiteId(siteMeta && siteMeta.id)) {
+        groups = naiPromptGuideSync.sortDocubaseGroups(groups);
+    }
 
     return {
-        siteId,
+        siteId: siteMeta && siteMeta.id ? siteMeta.id : siteId,
         name: siteMeta ? siteMeta.name : siteId,
-        icon: resolveExistingSiteIcon(site.base, siteId, siteMeta && siteMeta.icon),
+        icon: resolveExistingSiteIcon(site.base, siteMeta && siteMeta.id, siteMeta && siteMeta.icon),
         kind: siteMeta && siteMeta.kind ? siteMeta.kind : (siteId === 'novelai' ? 'novelai' : null),
         fandomHost: siteMeta && siteMeta.fandomHost ? siteMeta.fandomHost : (siteMeta && siteMeta.kind === 'fandom' ? `${siteId}.fandom.com` : null),
         lang: siteMeta && siteMeta.lang ? siteMeta.lang : null,
@@ -130,6 +148,14 @@ function resolvePageFile(pagesDir, pageId) {
     return null;
 }
 
+function siblingMarkdown(htmlPath) {
+    const mdPath = htmlPath.replace(/\.html$/i, '.md');
+    try {
+        if (fs.existsSync(mdPath)) return fs.readFileSync(mdPath, 'utf8');
+    } catch (_) { /* */ }
+    return null;
+}
+
 function getPageHtml(globalResources, siteId, pageId) {
     if (!siteId || !pageId) {
         return null;
@@ -150,21 +176,24 @@ function getPageHtml(globalResources, siteId, pageId) {
 
     const siteIndex = readJsonSafe(path.join(siteDir, 'index.json'), { pages: [] });
     const pageMeta = (siteIndex.pages || []).find((p) => p.id === normalizedId);
-    const siteIcon = resolveExistingSiteIcon(site.base, siteId, siteMeta && siteMeta.icon);
+    const resolvedSiteId = siteMeta && siteMeta.id ? siteMeta.id : siteId;
+    const siteIcon = resolveExistingSiteIcon(site.base, resolvedSiteId, siteMeta && siteMeta.icon);
 
-    const kind = siteMeta && siteMeta.kind ? siteMeta.kind : (siteId === 'novelai' ? 'novelai' : null);
+    const kind = siteMeta && siteMeta.kind ? siteMeta.kind : (resolvedSiteId === 'novelai' ? 'novelai' : null);
     const displayUrl = kind === 'fandom'
-        ? `rdf://wiki.fandom.jp/${siteId}/${normalizedId}`
-        : (kind === 'novelai' || siteId === 'novelai')
+        ? `rdf://wiki.fandom.jp/${resolvedSiteId}/${normalizedId}`
+        : (kind === 'novelai' || resolvedSiteId === 'novelai')
             ? `rdf://docs.novelai.jp/${normalizedId}`
-            : `edtx://en.grimoire.jp/docs/${siteId}/${normalizedId}`;
-    const addressMode = (kind === 'fandom' || kind === 'novelai' || siteId === 'novelai') ? 'rdf' : 'edtx';
+            : `edtx://en.grimoire.jp/docs/${resolvedSiteId}/${normalizedId}`;
+    const addressMode = (kind === 'fandom' || kind === 'novelai' || resolvedSiteId === 'novelai') ? 'rdf' : 'edtx';
+    const text = siblingMarkdown(resolved);
 
     return {
-        siteId,
+        siteId: resolvedSiteId,
         pageId: normalizedId,
         title: pageMeta ? (pageMeta.title || normalizedId) : normalizedId,
         html: fs.readFileSync(resolved, 'utf8'),
+        text,
         siteIcon,
         kind,
         displayUrl,

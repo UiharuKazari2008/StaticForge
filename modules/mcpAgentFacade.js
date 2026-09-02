@@ -7,7 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const { createMcpAuthMiddleware } = require('./auth');
 const { McpOAuthProvider } = require('./mcpOAuthProvider');
 const { createOAuthRoutes } = require('./mcpOAuthRoutes');
@@ -20,6 +20,7 @@ const {
     getBoundClientId,
     getBoundRecord,
     resolveBindKey,
+    resolveActorName,
     getClientPhysics,
     resolveStudioAutoFlags,
     assembleStudioChangeFromToolArgs,
@@ -34,6 +35,10 @@ const { isGenerateTool, summarizeArgs, summarizeResult, recordActivity } = requi
 const { compareImageFiles, evaluateThemeRows } = require('./mcpInsights');
 const { buildStudioSettingsCatalog, applyCatalogToListedTool } = require('./studioSettingsCatalog');
 const { buildMcpServerInfo, hashMcpToolsRevision } = require('./mcpServerInfo');
+const naxTagsDatabase = require('./naxTagsDatabase');
+const naiPromptGuideSync = require('./naiPromptGuideSync');
+// modules/knowledgeMemoryDatabase.js — refine math + model default
+const { normalizeMemoryModel, resolveRefinementConfidence } = require('./knowledgeMemoryDatabase');
 
 const MCP_PROTOCOL_VERSION = '2024-11-05';
 const MCP_RATE_WINDOW_MS = 15 * 60 * 1000;
@@ -41,22 +46,24 @@ const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 const GROK_IMAGE_MAX_EDGE = 1280;
 const GROK_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
 const MCP_INSTRUCTIONS = [
-    'Known or last gallery image: call get_generated_image. Pass filename, seed, or omit filename for the latest image in that workspace (default workspace if omitted). It returns NovelAI metadata plus a small webp. Never page a directory listing to find a file.',
+    'First call every chat: get_session_state (view full, default). It returns models, quality/UC/nsfw preset values, connected clients, open windows with data, and Studio params when a tab is live. Before any later Studio or window change, call get_session_state view=live (windows + Studio only, no catalog). Diff against the last snapshot; keep their intervening edits; apply only this turn\'s delta. Never modify Studio or open windows from a stale snapshot. get_studio_state and get_open_windows still work if you only need one slice.',
+    'No connected clients (hasClients false): do not call apply_studio_changes. Call generate_image (server-side). Always show the returned webp to the user. If a client is connected when you generate_image, the server also opens that file in Lumen — you do not need a second open_in_lumen unless they asked for Glancewell.',
+    'Has clients: bind as today (one tab auto-binds; several → needsClientChoice then bind_session). Delivery: apply_studio_changes (autoApply true; autoGenerate if they asked to generate now). Else generate_image. Else Change-JSON. Else prompt text. Do not dump Positive/UC when Studio MCP works. get_client_physics returns that tab\'s location, tod, date, weather, and season.',
+    'Known or last gallery image: get_generated_image (filename, seed, or omit for latest). Never page a directory listing. Always show every generated or fetched webp to the user.',
     'A specific workspace: get_workspaces for the id, then pass workspace on get_generated_image or omegasearch.',
-    'Make a preset from this image or Studio tab: get_generated_image or get_studio_state, then save_preset with presetName and config (name, prompt, model).',
-    'Delivery priority: apply_studio_changes is the default (autoApply true; autoGenerate if they asked to generate now). Else generate_image (no Studio tab / server-side run). Else emit Change-JSON. Else the prompt-text block. Do not dump Positive/UC when Studio MCP works.',
-    'On every Studio edit: get_studio_state first. Compare to the last state you saw this chat. Keep their intervening edits; apply only this message\'s delta.',
-    'Studio prompt / compare / edit: call get_studio_state first. It binds this application key to the tab and stays bound until the user unbinds or 15 minutes with no studio calls. One tab auto-binds. Several tabs: the tool returns clients (most recently used first) with needsClientChoice — ask the user which clientId, then bind_session. Then get_generated_image with state.filename. Write back with apply_studio_changes. Full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes/dynamicGeneration/director all apply. autoGenerate clicks the bound Studio Generate button. get_client_physics returns that tab\'s location, tod, date, weather, and season (same subset as dynamic generation). What they are looking at: get_open_windows (Lumen/Glancewell current file, Grimoire page text, gallery selected filenames). Then get_generated_image or gallery/wiki tools.',
-    'Enshutsuka modes (user says these on grok.com): analyse / analyze my prompt — get_studio_state + get_generated_image, compare prompt to pixels, apply_studio_changes. create — invent from text; no image required. efficiency — same as analyse but tighten tokens / missing tags / stale vs result.',
-    'If get_studio_state or get_generated_image includes dynamicGeneration / dynamic_generation or director / director_session_id / a director prompt, you MUST integrate and act on that data. Enable or change dynamic generation with apply_studio_changes dynamicGeneration (enabled, directive, tod, weather, season, location, cacheLocked, contextLocked) or generate_image dynamic_generation. Do not ignore an attached director prompt.',
-    'LinkXi persona (account): get_linkxi_persona / save_linkxi_persona (user_name, backstory, default_verbosity 1–5). Use it when the user talks as themselves in Enshutsuka / Director chat.',
-    'generate_image waits on the shared generation FIFO (Studio Generate uses the same stack; 8–20s gap after each job) and returns the new filename plus a small webp. Pass the same Studio settings as the editor (steps, guidance, rescale, sampler, noiseScheduler, seed, resolution, characters, vibes, pipeline, n, …) as top-level keys or inside params. n is print count 2–8 (omit or 1 for a single image); the server runs that many copies and the result includes filenames[]. async true returns jobId immediately — then get_generation_job to poll or await_generation_job to wait for the same image payload. Do not page the gallery afterward. The matching-workspace gallery updates itself.',
-    'Quality and UC presets: set append_quality / append_uc. Do not paste those live strings into prompt or uc (the server prepends them). If you must change a tag inside a preset, turn that preset off and put the edited string in prompt/uc — never leave the preset on and also paste a variant. NSFW: set dataset_config.nsfw, do not paste that level\'s add/remove tags. In-image text: keep append_quality on and set dataset_config.settings.__quality__.no_text.enabled false (default on). tools/list and get_studio_state.settings list each preset id, name, and true value from prompt.config.',
-    'Gallery actions: delete_images, scrap_images, toggle_favorite, open_in_lumen (one image), open_in_glancewell (a group). get_open_windows gallery window data.selected is the current selection.',
-    'compare_images diffs two same-seed files. evaluate_workspace_themes counts overused characters/tags in a folder.',
-    'VFS: vfs_list path (use @desktop for the workspace desktop), vfs_read, or advanced_tools for write/delete/stat.',
-    'omegasearch finds names; then call get_generated_image.',
-    'If you cannot do the job with the listed tools, call advanced_tools with a query. To run a hidden tool, call advanced_tools again with that name and arguments.',
+    'Make a preset: get_generated_image or get_session_state view=live, then save_preset with presetName and config (name, prompt, model).',
+    'Enshutsuka (analyse / create / efficiency): get_session_state view=live + get_generated_image when there is a file. create can invent from text. If dynamicGeneration or director is present you MUST integrate it.',
+    'LinkXi persona: get_linkxi_persona / save_linkxi_persona.',
+    'generate_image waits on the shared FIFO and always returns filename + a small webp (show it). n is print count 2–8. async true returns jobId — await_generation_job for the same image payload. Do not page the gallery afterward.',
+    'Quality / UC / NSFW: set append_quality / append_uc / dataset_config.nsfw. Do not paste those live strings. If you must edit a tag inside a preset, turn that preset off and put the edited string in prompt/uc. In-image text: keep quality on and set dataset_config.settings.__quality__.no_text.enabled false. Live values are on get_session_state.settings.',
+    'Trained tags (token save): before adding a character/tag, search_autofill. If it is not in the ranking, it is likely untrained — drop or replace it. Then get_wiki_page (or search_wiki) and read that text before you keep, rewrite, or invent the tag.',
+    'NAX (artist / character / face / copyright / hair / curated galleries with votes): search_nax. Default kind ARTIST. Omit query + sort=score for top votes. sort=ratio is upvote ratio; invert reverses. Use item.prompt in Studio. list_nax_galleries for slugs. Do not invent artist names.',
+    'Prompt guide / Docubase (Hoshino living V5/V4.5 rules plus the rest of the nai-prompt-guide repo): get_prompt_guide (default page prompt-optimiser-grok) or get_static_wiki_page siteId docubase (alias nai-prompt-guide). The server hard-resets the clone from Yozora on boot and rebuilds the Grimoire wiki site. Also on get_session_state.promptGuide.',
+    'Onboard knowledge memories: search_memories / list_memories / get_memory / save_memory. Search memories on every real Studio or prompt job before you invent a technique, then apply only what still matches evidence (wiki, NAX, prompt guide, the image). Do not treat a memory as fact unless confidence is high (needsRefinement is true below 60%; prefer ≥80% before you rely on it). Below that it is a hypothesis: get_memory, check it, then save_memory on the same name to refine. Frequently create memories for durable techniques you just proved, and upsert related memories in the same turn (same topic, same model). Write evidence in observations (what you checked, what the pixels or wiki showed). New memories start at 10%. A later save on the same name keeps omitted fields and adds a +0–25% confidence bump (same as the old API). Set model (v4_5 / v5 / …); existing rows are v4_5.',
+    'Gallery: delete_images, scrap_images, toggle_favorite, open_in_lumen, open_in_glancewell. compare_images / evaluate_workspace_themes as needed.',
+    'VFS: vfs_list path (@desktop for the workspace desktop), vfs_read, or advanced_tools for write/delete/stat.',
+    'omegasearch finds names; then get_generated_image.',
+    'If you cannot do the job with the listed tools, call advanced_tools with a query, then name + arguments.',
     'If a tool is rate limited, wait retryAfter seconds for that group (free/search/gallery/write/studio/generate).'
 ].join(' ');
 
@@ -324,7 +331,7 @@ const TOOL_DEFS = [
     {
         name: 'get_open_windows',
         core: true,
-        description: 'List open windows on the bound Dreamscape tab and their current data. Lumen: filename. Glancewell: current filename plus nearby files. Grimoire: address + page text. Gallery: selected filenames. Studio: open filename/model. Auto-binds like get_studio_state. includeImage (default true) attaches one Grok webp for the focused file. Then get_generated_image for metadata, or gallery tools on selected.',
+        description: 'List open windows on the bound Dreamscape tab and their current data. Lumen: filename. Glancewell: current filename plus nearby files. Grimoire: address + page text. Gallery: selected filenames. Studio: open filename/model. Auto-binds like get_studio_state. includeImage (default true) attaches one Grok webp for the focused file. Prefer get_session_state view=live for Studio+windows together.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -333,6 +340,27 @@ const TOOL_DEFS = [
                 includeImage: {
                     type: 'boolean',
                     description: 'Attach a Grok-sized webp for the focused image (active Lumen/Glancewell/gallery selection). Default true.'
+                }
+            }
+        }
+    },
+    {
+        name: 'get_session_state',
+        core: true,
+        description: 'Initial and follow-up snapshot. view=full (default, first call): models, quality/UC/nsfw values, clients, open windows, Studio params, NAX kinds, prompt-guide page list. view=live: clients + windows + Studio only (no catalog). Call full once, then live before every Studio or window edit. hasClients false → generate_image, do not apply_studio_changes. includeImage attaches the focused webp (default false on full, true on live).',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                view: {
+                    type: 'string',
+                    enum: ['full', 'live'],
+                    description: 'full = catalog + live state (first call). live = windows + Studio only (before edits).'
+                },
+                includeImage: {
+                    type: 'boolean',
+                    description: 'Attach a Grok webp for the focused open file. Default false on full, true on live.'
                 }
             }
         }
@@ -427,6 +455,128 @@ const TOOL_DEFS = [
                 },
                 query: { type: 'string', description: 'Single term; merged with terms if both sent' },
                 model: { type: 'string', description: 'Optional model hint, default v4_5' }
+            }
+        }
+    },
+    {
+        name: 'search_nax',
+        core: true,
+        allowAutofill: true,
+        description: 'Search the NAX tag dataset (artists, characters, faces, copyrights, hair, curated). Wraps get_nax_tags / queryTags. Default kind is ARTIST for the model. Omit query to return the current ranking. sort=score (default) is top votes first; sort=ratio is upvote ratio; sort=name is A-Z; invert true reverses. markFilter=favorites|try|unmarked|custom|all. Use item.prompt in Studio (artist:name or art by …). Pass gallerySlug to search one dataset.',
+        scope: 'search',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                query: { type: 'string', description: 'Substring of the tag name. Omit for the current ranking (top votes when sort=score).' },
+                kind: {
+                    type: 'string',
+                    description: 'ARTIST (default), CHARA, FACE, COPYRIGHT, HAIR, CURATED, or ALL. Ignored when gallerySlug is set.',
+                    enum: ['ARTIST', 'CHARA', 'FACE', 'COPYRIGHT', 'HAIR', 'CURATED', 'ALL']
+                },
+                gallerySlug: { type: 'string', description: 'One NAX gallery slug from list_nax_galleries. Overrides kind.' },
+                model: { type: 'string', description: 'v4_5 (default), v5, v4 — picks version-locked artist/character galleries' },
+                sort: {
+                    type: 'string',
+                    description: 'score = top votes (default). ratio = upvote ratio. name = A-Z. date = export order. random = seeded shuffle.',
+                    enum: ['score', 'ratio', 'name', 'date', 'random']
+                },
+                invert: { type: 'boolean', description: 'true reverses the sort (lowest votes / ratio / Z-A).' },
+                markFilter: {
+                    type: 'string',
+                    description: 'all (default), favorites, try, unmarked, custom, hidden',
+                    enum: ['all', 'favorites', 'try', 'unmarked', 'custom', 'hidden']
+                },
+                limit: { type: 'number', description: '1–100, default 20' },
+                offset: { type: 'number', description: 'Skip this many merged hits (default 0)' },
+                randomSeed: { type: 'number', description: 'Only used when sort=random' }
+            }
+        }
+    },
+    {
+        name: 'list_nax_galleries',
+        core: true,
+        allowAutofill: true,
+        description: 'List NAX galleries (slug, title, version, tag_count) and kind ids (ARTIST, CHARA, FACE, COPYRIGHT, HAIR, CURATED). Then search_nax with kind or gallerySlug. sort=score on search_nax is top votes.',
+        scope: 'search',
+        inputSchema: { type: 'object', additionalProperties: false, properties: {} }
+    },
+    {
+        name: 'get_prompt_guide',
+        core: true,
+        description: 'Read a Docubase page (Hoshino living guide plus the rest of the nai-prompt-guide repo). Default page is prompt-optimiser-grok. Other ids come from get_session_state.promptGuide or list_static_wiki_pages siteId docubase. Server hard-resets the clone and rebuilds the wiki site on boot.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                pageId: { type: 'string', description: 'Page id (default prompt-optimiser-grok). Also accepts prompt-guide, BOTS, README, constraints/v5.' }
+            }
+        }
+    },
+    {
+        name: 'list_memories',
+        core: true,
+        description: 'List onboard knowledge memories (name, description, category, confidence, model, usage). Search first on real jobs. Then get_memory. Do not treat low-confidence rows as fact.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                search: { type: 'string' },
+                category: { type: 'string' },
+                limit: { type: 'number', description: '1–200, default 25' },
+                offset: { type: 'number' }
+            }
+        }
+    },
+    {
+        name: 'search_memories',
+        core: true,
+        description: 'Search onboard knowledge memories before inventing a technique. Matches name, description, entities, observations. High relevance returns the full graph. Treat low confidence as a hypothesis to verify and refine.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['query'],
+            properties: {
+                query: { type: 'string' },
+                category: { type: 'string' }
+            }
+        }
+    },
+    {
+        name: 'get_memory',
+        core: true,
+        description: 'Read one onboard knowledge memory by name (entities, relations, observations, confidence, model). needsRefinement is true below 60% — verify with wiki/NAX/guide/image, then save_memory to refine. Do not trust a low-confidence memory as fact.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['name'],
+            properties: {
+                name: { type: 'string' }
+            }
+        }
+    },
+    {
+        name: 'save_memory',
+        core: true,
+        description: 'Create or refine an onboard knowledge memory (same rules as the old saveKnowledgeMemory API). New memories start at 10% confidence. A later save on the same name is a refinement: omitted entities/relations/observations/description/category/model are kept, and confidence is a delta of 0–0.25 added to the current value (cap 100%). Pass model (v4_5, v5, …). Existing rows default to v4_5.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['name'],
+            properties: {
+                name: { type: 'string' },
+                description: { type: 'string' },
+                category: { type: 'string' },
+                entities: { type: 'array' },
+                relations: { type: 'array' },
+                observations: { type: 'array' },
+                confidence: { type: 'number', description: 'On create ignored (starts 0.1). On refine, added to current confidence, capped at +0.25 per save.' },
+                model: { type: 'string', description: 'Studio forge model this memory applies to (v4_5, v5, v5_cur, …). Default v4_5.' }
             }
         }
     },
@@ -1072,6 +1222,196 @@ function currentMcpToolsRevision() {
 
 const AUTOFILL_TERM_MAX = 20;
 const STATIC_WIKI_SEARCH_MAX = 200;
+const NAX_SORT_KEYS = ['score', 'name', 'date', 'ratio', 'random'];
+const NAX_MARK_KEYS = ['all', 'favorites', 'try', 'unmarked', 'hidden', 'custom'];
+const NAX_KIND_IDS = ['ARTIST', 'CHARA', 'FACE', 'COPYRIGHT', 'HAIR', 'CURATED', 'ALL'];
+const NAX_KIND_ALIASES = {
+    artist: 'ARTIST',
+    artists: 'ARTIST',
+    chara: 'CHARA',
+    character: 'CHARA',
+    characters: 'CHARA',
+    curated: 'CURATED',
+    face: 'FACE',
+    faces: 'FACE',
+    copyright: 'COPYRIGHT',
+    copyrights: 'COPYRIGHT',
+    hair: 'HAIR',
+    all: 'ALL'
+};
+
+function resolveNaxModule(globalResources) {
+    if (globalResources && typeof globalResources.getNaxTagsDatabase === 'function') {
+        try {
+            return globalResources.getNaxTagsDatabase();
+        } catch (_) {
+            /* fall through to module singleton */
+        }
+    }
+    return naxTagsDatabase;
+}
+
+function normalizeNaxKind(kind) {
+    if (kind == null || String(kind).trim() === '') return 'ARTIST';
+    const raw = String(kind).trim();
+    const upper = raw.toUpperCase();
+    if (NAX_KIND_IDS.includes(upper)) return upper;
+    return NAX_KIND_ALIASES[raw.toLowerCase()] || 'ARTIST';
+}
+
+function resolveNaxSearchSlugs(nax, input) {
+    const src = input && typeof input === 'object' ? input : {};
+    const slug = String(src.gallerySlug || src.gallery || src.slug || '').trim();
+    if (slug) return [slug];
+    const kind = normalizeNaxKind(src.kind);
+    const model = src.model || 'v4_5';
+    if (kind === 'ALL') {
+        return (typeof nax.getGalleries === 'function' ? nax.getGalleries() : [])
+            .map((g) => g && g.slug)
+            .filter(Boolean);
+    }
+    if (typeof nax.getNaxExpanderPreset === 'function') {
+        const preset = nax.getNaxExpanderPreset(kind);
+        if (preset && typeof preset.resolveSlugs === 'function') {
+            return preset.resolveSlugs(model) || [];
+        }
+    }
+    if (kind === 'ARTIST' && typeof nax.artistGallerySlugsForModel === 'function') {
+        return nax.artistGallerySlugsForModel(model) || [];
+    }
+    return [];
+}
+
+function naxVoteRatio(item) {
+    const up = Number(item && item.upvotes) || 0;
+    const down = Number(item && item.downvotes) || 0;
+    if (up + down <= 0) return -1;
+    return up / (up + down);
+}
+
+function compareNaxItems(a, b, sort, invert) {
+    let cmp = 0;
+    if (sort === 'name') {
+        cmp = String(a.tag || '').localeCompare(String(b.tag || ''), undefined, { sensitivity: 'base' });
+    } else if (sort === 'date') {
+        cmp = (Number(a.exportIndex) || 0) - (Number(b.exportIndex) || 0);
+    } else if (sort === 'ratio') {
+        cmp = naxVoteRatio(b) - naxVoteRatio(a);
+    } else if (sort === 'random') {
+        cmp = 0;
+    } else {
+        cmp = (Number(b.score) || 0) - (Number(a.score) || 0);
+        if (cmp === 0) cmp = (Number(b.upvotes) || 0) - (Number(a.upvotes) || 0);
+    }
+    if (invert) cmp = -cmp;
+    if (cmp === 0) {
+        cmp = String(a.tag || '').localeCompare(String(b.tag || ''), undefined, { sensitivity: 'base' });
+    }
+    return cmp;
+}
+
+function mapNaxSearchItem(nax, item) {
+    const prompt = typeof nax.formatTagForPrompt === 'function'
+        ? nax.formatTagForPrompt(item.tag, item.gallerySlug)
+        : item.tag;
+    const ratio = naxVoteRatio(item);
+    return {
+        tag: item.tag,
+        prompt,
+        gallerySlug: item.gallerySlug,
+        score: item.score,
+        upvotes: item.upvotes,
+        downvotes: item.downvotes,
+        ratio: ratio < 0 ? null : Math.round(ratio * 1000) / 1000,
+        favorite: !!item.favorite,
+        tryMark: !!item.tryMark
+    };
+}
+
+function listNaxGalleries(nax) {
+    const galleries = typeof nax.getGalleries === 'function' ? nax.getGalleries() : [];
+    const presets = nax.NAX_EXPANDER_PRESETS || [];
+    const kinds = presets.map((p) => ({
+        id: p.id,
+        label: p.label,
+        description: p.description
+    }));
+    return {
+        success: true,
+        galleries,
+        kinds,
+        next: 'Call search_nax with kind (ARTIST default) or gallerySlug. Omit query and sort=score for top votes. Use item.prompt in Studio.'
+    };
+}
+
+function searchNaxTags(nax, input) {
+    const src = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+    const query = String(src.query || src.q || src.term || '').trim();
+    const sort = NAX_SORT_KEYS.includes(src.sort) ? src.sort : 'score';
+    const invert = !!src.invert;
+    const markRaw = String(src.markFilter || 'all').toLowerCase();
+    const markFilter = NAX_MARK_KEYS.includes(markRaw) ? markRaw : 'all';
+    const limit = Math.min(Math.max(Number(src.limit) || 20, 1), 100);
+    const offset = Math.max(Number(src.offset) || 0, 0);
+    const slugs = resolveNaxSearchSlugs(nax, src);
+    if (!slugs.length) {
+        return {
+            success: false,
+            error: 'No NAX galleries matched. Call list_nax_galleries or pass a known gallerySlug / kind.',
+            items: [],
+            total: 0,
+            hasMore: false
+        };
+    }
+    if (typeof nax.queryTags !== 'function') {
+        return {
+            success: false,
+            error: 'NAX database is not ready',
+            items: [],
+            total: 0,
+            hasMore: false
+        };
+    }
+    const merged = [];
+    let total = 0;
+    for (const gallerySlug of slugs) {
+        const page = nax.queryTags({
+            gallerySlug,
+            query,
+            sort,
+            invert,
+            markFilter,
+            randomSeed: sort === 'random' ? src.randomSeed : null,
+            offset: 0,
+            limit: 100
+        });
+        total += Number(page && page.total) || 0;
+        if (page && Array.isArray(page.items)) merged.push(...page.items);
+    }
+    if (sort !== 'random') {
+        merged.sort((a, b) => compareNaxItems(a, b, sort, invert));
+    }
+    const sliced = merged.slice(offset, offset + limit);
+    const items = sliced.map((item) => mapNaxSearchItem(nax, item));
+    const kind = src.gallerySlug || src.gallery || src.slug
+        ? null
+        : normalizeNaxKind(src.kind);
+    return {
+        success: true,
+        query,
+        kind,
+        slugs,
+        sort,
+        invert,
+        markFilter,
+        items,
+        total,
+        hasMore: offset + items.length < total,
+        next: items.length
+            ? 'Use item.prompt in Studio (do not invent a different artist string). sort=score is top votes; sort=ratio is upvote ratio; invert reverses.'
+            : 'No matches. Try a shorter query, kind=CHARA / FACE / COPYRIGHT / HAIR / CURATED, or list_nax_galleries.'
+    };
+}
 
 function isAbsentOrigin(origin) {
     return origin == null || origin === '' || String(origin).toLowerCase() === 'null';
@@ -1177,6 +1517,8 @@ const TOOL_RATE_GROUPS = {
     list_workspace_references: 'free',
     get_references_by_ids: 'free',
     search_autofill: 'search',
+    search_nax: 'search',
+    list_nax_galleries: 'free',
     search_wiki: 'search',
     get_wiki_page: 'search',
     search_static_wiki: 'search',
@@ -1192,6 +1534,12 @@ const TOOL_RATE_GROUPS = {
     upload_reference: 'write',
     get_studio_state: 'studio',
     get_open_windows: 'studio',
+    get_session_state: 'studio',
+    get_prompt_guide: 'free',
+    list_memories: 'free',
+    search_memories: 'search',
+    get_memory: 'free',
+    save_memory: 'write',
     get_client_physics: 'studio',
     apply_studio_changes: 'studio',
     apply_preset_to_studio: 'studio',
@@ -1449,7 +1797,11 @@ function autoBindIfNeeded(globalResources, req) {
     }
     const clients = listClients(globalResources, bindKey);
     if (clients.length === 1 && clients[0].clientId) {
-        bindClient(globalResources, { clientId: clients[0].clientId, bindKey });
+        bindClient(globalResources, {
+            clientId: clients[0].clientId,
+            bindKey,
+            actorName: resolveActorName(req)
+        });
         return { bound: true, auto: true, clientId: clients[0].clientId, bindKey };
     }
     return {
@@ -1473,9 +1825,226 @@ function mcpBindChoiceResult(bind) {
     }
     return mcpTextResult({
         success: false,
-        error: 'No Studio client is connected. Open Studio in the browser, then retry.',
+        error: 'No Studio client is connected. Call generate_image (server-side) instead of apply_studio_changes.',
+        hasClients: false,
         clients: (bind && bind.clients) || []
     }, true);
+}
+
+function resolveKnowledgeMemoryDb(globalResources) {
+    if (globalResources && typeof globalResources.getKnowledgeMemoryDb === 'function') {
+        try {
+            return globalResources.getKnowledgeMemoryDb();
+        } catch (_) { /* */ }
+    }
+    return null;
+}
+
+function listPromptGuideForSession(globalResources) {
+    try {
+        const cacheDir = globalResources && typeof globalResources.getPath === 'function'
+            ? globalResources.getPath('cache')
+            : path.join(__dirname, '..', '.cache');
+        const pages = naiPromptGuideSync.listPromptGuidePages(cacheDir);
+        return {
+            siteId: naiPromptGuideSync.SITE_ID,
+            tool: 'get_prompt_guide',
+            defaultPageId: 'prompt-optimiser-grok',
+            pages
+        };
+    } catch (_) {
+        return { siteId: naiPromptGuideSync.SITE_ID, tool: 'get_prompt_guide', pages: [] };
+    }
+}
+
+async function maybeOpenGeneratedInLumen(globalResources, req, filenames) {
+    const names = Array.isArray(filenames) ? filenames.filter(Boolean) : [];
+    if (!names.length) return { opened: false, reason: 'no-filename' };
+    const clients = listClients(globalResources, resolveBindKey(req));
+    if (!clients.length) return { opened: false, reason: 'no-client', clientCount: 0 };
+    const result = await openViewerFromMcp(globalResources, { filenames: names }, 'lumen', req);
+    const payload = result && result.content && result.content[0] && result.content[0].text
+        ? (() => { try { return JSON.parse(result.content[0].text); } catch (_) { return { success: !result.isError }; } })()
+        : { success: !result.isError };
+    return { opened: !result.isError, clientCount: clients.length, ...payload };
+}
+
+async function attachFocusedWindowImage(globalResources, body, windows, includeImage) {
+    const focusedFilename = pickFocusedWindowFilename(windows);
+    const next = { ...body, focusedFilename };
+    if (!includeImage || !focusedFilename) return mcpTextResult(next);
+    try {
+        const resolved = resolveGalleryImagePath(globalResources, focusedFilename);
+        const image = await resizeImageForGrok(resolved.filePath);
+        if (image) {
+            image.filename = focusedFilename;
+            return mcpImageResult({ ...next, filename: focusedFilename, imageKind: 'grok' }, image);
+        }
+    } catch (_) { /* metadata-only */ }
+    return mcpTextResult(next);
+}
+
+async function collectSessionState(globalResources, req, input) {
+    const src = input && typeof input === 'object' ? input : {};
+    const view = String(src.view || src.mode || 'full').toLowerCase() === 'live' ? 'live' : 'full';
+    const bind = autoBindIfNeeded(globalResources, req);
+    const clients = Array.isArray(bind.clients) && bind.clients.length
+        ? bind.clients
+        : listClients(globalResources, bind.bindKey);
+    const hasClients = clients.length > 0;
+    const includeImage = src.includeImage == null
+        ? view === 'live'
+        : src.includeImage !== false && src.includeImage !== 'false';
+    const out = {
+        success: true,
+        view,
+        hasClients,
+        clientCount: clients.length,
+        clients,
+        bound: !!bind.bound,
+        autoBound: !!bind.auto,
+        needsClientChoice: !!bind.needsClientChoice,
+        studio: null,
+        windows: [],
+        next: null
+    };
+    if (view === 'full') {
+        out.settings = buildStudioSettingsCatalog(globalResources);
+        out.promptGuide = listPromptGuideForSession(globalResources);
+        out.nax = {
+            tool: 'search_nax',
+            listTool: 'list_nax_galleries',
+            kinds: ['ARTIST', 'CHARA', 'FACE', 'COPYRIGHT', 'HAIR', 'CURATED'],
+            defaultKind: 'ARTIST',
+            sort: 'score is top votes; ratio is upvote ratio; invert reverses'
+        };
+        out.memories = {
+            tools: ['search_memories', 'list_memories', 'get_memory', 'save_memory'],
+            searchFirst: 'search_memories on every real job; apply only what evidence still supports',
+            trust: 'Do not treat a memory as fact unless confidence is high (≥60%; prefer ≥80%). Below that, refine.',
+            refine: 'save_memory on an existing name keeps omitted fields and adds +0–0.25 confidence (new memories start at 0.1)',
+            createOften: 'Create memories for proven techniques; upsert related memories the same turn',
+            model: 'v4_5 default; all existing rows are v4_5'
+        };
+        out.tagCheck = {
+            trained: 'search_autofill',
+            wiki: 'search_wiki then get_wiki_page — read wiki text before keeping or inventing a tag'
+        };
+    }
+    if (!hasClients) {
+        out.next = 'No client connected. Call generate_image (server-side). Do not apply_studio_changes. Always show the returned webp. If a client is later connected, generate_image opens Lumen for you.';
+        return mcpTextResult(out);
+    }
+    if (!bind.bound) {
+        out.next = 'Several tabs. Ask which clientId, bind_session, then get_session_state view=live before any Studio or window edit.';
+        return mcpTextResult(out, true);
+    }
+    try {
+        const [stateData, windowData] = await Promise.all([
+            sendBoundCommand(globalResources, 'get_state', {}, 8000, bind.bindKey),
+            sendBoundCommand(globalResources, 'get_windows', {}, 8000, bind.bindKey)
+        ]);
+        const change = (stateData && stateData.change && typeof stateData.change === 'object' && !Array.isArray(stateData.change))
+            ? stateData.change
+            : null;
+        const dynamicGeneration = (stateData && stateData.dynamicGeneration) || (change && change.dynamicGeneration) || null;
+        const director = (stateData && stateData.director) || (change && change.director) || null;
+        out.studio = {
+            workspaceId: stateData && stateData.workspaceId || null,
+            filename: stateData && stateData.filename || null,
+            model: stateData && stateData.model || null,
+            clientId: getBoundClientId(bind.bindKey),
+            change,
+            dynamicGeneration,
+            director,
+            mustAct: collectEnshutsukaMustAct({ dynamicGeneration, director })
+        };
+        out.windows = Array.isArray(windowData && windowData.windows) ? windowData.windows : [];
+        out.activeWindowId = windowData && windowData.activeWindowId || null;
+        out.workspaceId = (stateData && stateData.workspaceId) || (windowData && windowData.workspaceId) || null;
+    } catch (error) {
+        if (error.status === 504) {
+            out.partial = true;
+            out.error = 'Bound tab did not answer in time';
+        } else {
+            throw error;
+        }
+    }
+    out.next = view === 'full'
+        ? 'Catalog + live state. Before any later Studio or window change, call get_session_state view=live and diff. Use search_autofill then get_wiki_page for tags; search_nax for artists. Always show generated webps.'
+        : 'Live Studio + windows only. Diff against last snapshot; apply only this turn\'s delta.';
+    return attachFocusedWindowImage(globalResources, out, out.windows, includeImage);
+}
+
+function runMemoryTool(globalResources, name, input) {
+    const db = resolveKnowledgeMemoryDb(globalResources);
+    if (!db) {
+        return { success: false, error: 'Knowledge memory database is not ready' };
+    }
+    if (name === 'list_memories') {
+        const paged = db.listKnowledgeMemoriesPaged({
+            limit: input.limit,
+            offset: input.offset,
+            search: input.search || '',
+            category: input.category || null
+        });
+        return { success: true, ...paged };
+    }
+    if (name === 'search_memories') {
+        const query = String(input.query || '').trim();
+        if (!query) return { success: false, error: 'query is required' };
+        return { success: true, results: db.searchKnowledgeMemories(query, input.category || null) };
+    }
+    if (name === 'get_memory') {
+        const memoryName = String(input.name || '').trim();
+        if (!memoryName) return { success: false, error: 'name is required' };
+        const memory = db.getKnowledgeMemory(memoryName, true);
+        if (!memory) return { success: false, error: `Memory "${memoryName}" not found` };
+        const needsRefinement = Number(memory.confidence) < 0.6;
+        return {
+            success: true,
+            memory,
+            needsRefinement,
+            next: needsRefinement
+                ? 'Confidence is below 60%. Refine with save_memory on the same name (omit unchanged fields; confidence is a +0–0.25 bump).'
+                : undefined
+        };
+    }
+    const memoryName = String(input.name || '').trim();
+    if (!memoryName) {
+        return { success: false, error: 'name is required' };
+    }
+    const existing = db.getKnowledgeMemory(memoryName, false);
+    const description = input.description != null && String(input.description).trim()
+        ? String(input.description).trim()
+        : (existing && existing.description) || '';
+    if (!description) {
+        return { success: false, error: 'description is required when creating a memory' };
+    }
+    const refined = !!existing;
+    const confidence = refined
+        ? resolveRefinementConfidence(existing.confidence, input.confidence)
+        : 0.1;
+    const model = normalizeMemoryModel(input.model || (existing && existing.model));
+    const saved = db.saveKnowledgeMemory(
+        memoryName,
+        description,
+        input.category != null ? input.category : ((existing && existing.category) || 'mcp'),
+        Array.isArray(input.entities) ? input.entities : ((existing && existing.entities) || []),
+        Array.isArray(input.relations) ? input.relations : ((existing && existing.relations) || []),
+        Array.isArray(input.observations) ? input.observations : ((existing && existing.observations) || []),
+        confidence,
+        model
+    );
+    return {
+        success: true,
+        refined,
+        previousConfidence: existing ? existing.confidence : null,
+        confidence: saved.confidence,
+        model: saved.model,
+        needsRefinement: saved.confidence < 0.6,
+        memory: saved
+    };
 }
 
 async function lookupFilenameViaSearch(globalResources, req, query, workspaceId) {
@@ -1602,6 +2171,7 @@ function toolAllowedForScopes(scopes, tool) {
     if (agentHasNamedScope(scopes, tool.scope)) return true;
     // modules/applicationAuthManager.js — autofill already includes wiki packets
     if (tool.scope === 'wiki' && agentHasNamedScope(scopes, 'autofill')) return true;
+    if (tool.allowAutofill && agentHasNamedScope(scopes, 'autofill')) return true;
     return false;
 }
 
@@ -1753,7 +2323,7 @@ async function mcpResultFromGenerateFlat(globalResources, flat, success) {
     return mcpTextResult(body, !success);
 }
 
-async function mcpResultFromGenerationJob(globalResources, job, queue) {
+async function mcpResultFromGenerationJob(globalResources, job, queue, req) {
     const snap = queue.snapshot(job);
     if (job.status !== 'completed') {
         return mcpTextResult({
@@ -1765,7 +2335,16 @@ async function mcpResultFromGenerationJob(globalResources, job, queue) {
     }
     const result = job.result && typeof job.result === 'object' ? job.result : {};
     const flat = result.flat && typeof result.flat === 'object' ? result.flat : {};
-    return mcpResultFromGenerateFlat(globalResources, { ...snap, ...flat }, result.success !== false);
+    const merged = { ...snap, ...flat };
+    if (result.success !== false) {
+        const names = collectFilenames({
+            filename: merged.filename,
+            filenames: merged.filenames
+        });
+        merged.lumen = await maybeOpenGeneratedInLumen(globalResources, req, names);
+        merged.next = 'Show this webp to the user. Do not page the gallery.';
+    }
+    return mcpResultFromGenerateFlat(globalResources, merged, result.success !== false);
 }
 
 async function handleAdvancedTools(globalResources, req, input) {
@@ -1861,6 +2440,36 @@ async function callTool(globalResources, req, name, args) {
             });
         }
         return mcpTextResult({ success: true, results: batches });
+    }
+
+    if (name === 'search_nax') {
+        const result = searchNaxTags(resolveNaxModule(globalResources), input);
+        return mcpTextResult(result, !result.success);
+    }
+
+    if (name === 'list_nax_galleries') {
+        return mcpTextResult(listNaxGalleries(resolveNaxModule(globalResources)));
+    }
+
+    if (name === 'get_prompt_guide') {
+        const cacheDir = globalResources && typeof globalResources.getPath === 'function'
+            ? globalResources.getPath('cache')
+            : path.join(__dirname, '..', '.cache');
+        const page = naiPromptGuideSync.readPromptGuidePage(cacheDir, input.pageId || input.page || 'prompt-optimiser-grok');
+        if (!page) {
+            return mcpTextResult({
+                success: false,
+                error: 'Prompt guide page not found. Call get_session_state or get_prompt_guide without pageId after server init.',
+                siteId: naiPromptGuideSync.SITE_ID,
+                pages: naiPromptGuideSync.listPromptGuidePages(cacheDir)
+            }, true);
+        }
+        return mcpTextResult({ success: true, ...page });
+    }
+
+    if (name === 'list_memories' || name === 'search_memories' || name === 'get_memory' || name === 'save_memory') {
+        const result = runMemoryTool(globalResources, name, input);
+        return mcpTextResult(result, !result.success);
     }
 
     if (name === 'search_static_wiki') {
@@ -2133,11 +2742,11 @@ async function callTool(globalResources, req, name, args) {
             } catch (err) {
                 if (err && err.code === 'GENERATION_JOB_TIMEOUT') throw err;
                 const again = queue.get(jobId);
-                if (again) return mcpResultFromGenerationJob(globalResources, again, queue);
+                if (again) return mcpResultFromGenerationJob(globalResources, again, queue, req);
                 throw err;
             }
         }
-        return mcpResultFromGenerationJob(globalResources, queue.get(jobId) || job, queue);
+        return mcpResultFromGenerationJob(globalResources, queue.get(jobId) || job, queue, req);
     }
 
     const generateNames = ['generate_image', 'generate_preset', 'upscale_image', 'expand_image'];
@@ -2179,7 +2788,18 @@ async function callTool(globalResources, req, name, args) {
         }
 
         const packet = await dispatchPacketTool(globalResources, req, def.packet, payload);
-        return mcpResultFromGenerateFlat(globalResources, flattenPacket(packet), packet.success);
+        const flat = flattenPacket(packet);
+        if (packet.success && (name === 'generate_image' || name === 'generate_preset')) {
+            const names = collectFilenames({
+                filename: flat.filename,
+                filenames: flat.filenames
+            });
+            flat.lumen = await maybeOpenGeneratedInLumen(globalResources, req, names);
+        }
+        if (packet.success) {
+            flat.next = 'Show this webp to the user. Do not page the gallery.';
+        }
+        return mcpResultFromGenerateFlat(globalResources, flat, packet.success);
     }
 
     if (def.packet && name !== 'get_generated_image' && name !== 'get_linkxi_persona' && name !== 'save_linkxi_persona') {
@@ -2298,6 +2918,10 @@ async function callTool(globalResources, req, name, args) {
         });
     }
 
+    if (name === 'get_session_state') {
+        return collectSessionState(globalResources, req, input);
+    }
+
     if (name === 'get_studio_state') {
         const bind = autoBindIfNeeded(globalResources, req);
         const bound = getBoundRecord(globalResources, bind.bindKey);
@@ -2394,7 +3018,8 @@ async function callTool(globalResources, req, name, args) {
         return mcpTextResult(bindClient(globalResources, {
             clientId: input.clientId || input.client_id,
             code: input.code,
-            bindKey: resolveBindKey(req)
+            bindKey: resolveBindKey(req),
+            actorName: resolveActorName(req)
         }));
     }
 
@@ -2604,13 +3229,15 @@ async function handleJsonRpc(globalResources, req, message) {
         const args = params.arguments && typeof params.arguments === 'object' ? params.arguments : {};
         const generating = isGenerateTool(name, args);
         const argsSummary = summarizeArgs(args);
+        const actorName = resolveActorName(req);
         if (generating) {
             recordActivity(globalResources, {
                 tool: name,
                 argsSummary,
                 resultSummary: { started: true },
                 success: true,
-                generating: true
+                generating: true,
+                actorName
             });
         }
         try {
@@ -2620,7 +3247,8 @@ async function handleJsonRpc(globalResources, req, message) {
                 argsSummary,
                 resultSummary: summarizeResult(result),
                 success: !result || result.isError !== true,
-                generating: generating ? false : undefined
+                generating: generating ? false : undefined,
+                actorName
             });
             return { status: 200, body: { jsonrpc: '2.0', id, result } };
         } catch (error) {
@@ -2637,7 +3265,8 @@ async function handleJsonRpc(globalResources, req, message) {
                 argsSummary,
                 resultSummary: summarizeResult(failResult),
                 success: false,
-                generating: generating ? false : undefined
+                generating: generating ? false : undefined,
+                actorName
             });
             return {
                 status: 200,
@@ -2762,7 +3391,7 @@ function registerRoutes(app, { globalResources }) {
         windowMs: 15 * 60 * 1000,
         max: 20,
         skipSuccessfulRequests: true,
-        keyGenerator: (req) => `mcp-consent-pin:${req.ip || req.socket?.remoteAddress || 'unknown'}`,
+        keyGenerator: (req) => `mcp-consent-pin:${ipKeyGenerator(req.ip || req.socket?.remoteAddress || 'unknown')}`,
         handler: (req, res) => {
             res.status(429).send('Too many PIN attempts. Try again later.');
         },
@@ -2823,6 +3452,17 @@ module.exports = {
         toolAllowedForScopes,
         collectAutofillTerms,
         collectOmegasearchBlocks,
+        resolveNaxModule,
+        normalizeNaxKind,
+        resolveNaxSearchSlugs,
+        searchNaxTags,
+        listNaxGalleries,
+        compareNaxItems,
+        mapNaxSearchItem,
+        collectSessionState,
+        maybeOpenGeneratedInLumen,
+        runMemoryTool,
+        listPromptGuideForSession,
         studioChangeFromPreset,
         searchStaticWikiPages,
         handleJsonRpc,

@@ -14,16 +14,16 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | PIN login | `POST /` login | — | — | Login UI, pin modal |
 | Browser-agent login | `GET /agent` → preload `GET /agent/assets.json` → `/app?agent=1`; optional `GET /agent/assets.zip` | session-authenticated connection | — | No service worker; HTTP preload of app-shell CSS/JS; desktop/windowed boot |
 | Agent client notice | `POST /agent/broadcast` | — | `agent_notice` | Toast (`showGlassToast`) or confirmation dialog. `restart: true` reuses the Client Update countdown dialog then apply+restart |
-| Agent session bind | `GET /agent/clients`, `POST /agent/bind` | `session_share_start` | `agent_session_bound`, `agent_session_unbound` | No chrome. Bind by `clientId` or a console-minted share code; loopback + Bearer only |
+| Agent session bind | `GET /agent/clients`, `POST /agent/bind`, `POST /agent/unbind` | `session_share_start`, `agent_session_unbind` | `agent_session_bound`, `agent_session_unbound`, `agent_session_notice` | Per application key. Idle 15 min. Remote Access tray (`#mcpActivityIndicator`, screencast) Unbind + popups on bind/state/studio read/update/open. Physics icon `#mcpPhysicsIndicator` (location arrow); physics also popovers on Remote Access. Notices quote the application token `appName` (e.g. Your session was accessed by "Grok"). |
 | Agent session drive | `POST /agent/session/open-image`, `POST /agent/session/studio`, `POST /agent/session/update`, `GET /agent/session/state`, `GET /agent/scopes`, `POST /agent/packet` | `agent_session_result` | `agent_session_command` | Opens Studio / applies change JSON / bound-tab Client Update dialog / state snapshot (`change` + named `scopes` + `vfsPathUuid` when the key has `vfs`). `POST /agent/packet` runs the same WS handlers (generation, vfs, autofill ranking + Grimoire) under the app key's named scopes. No bind for packet/scopes. |
-| Public MCP / Grok connector | `POST /{mcpPathUuid}` Streamable HTTP (generate/upscale/expand/staged, gallery delete/scrap/favorite, Lumen/Glancewell, compare, theme eval, VFS/desktop, studio, autofill, wiki, presets, notes) | same packets as `/agent/packet` / `agent_session_command`; pushes `mcp_activity`, `mcp_open_viewer`, `gallery_updated` | Tray `#mcpActivityIndicator` (2 min hover; click opens Periscope `client:mcp-activity`), Properties `forgedata-badge` **MCP** | Facade over existing `/agent` + WS. Bearer `sfapp_`. MCP generate writes `forge_data.mcp_generated` and notifies only galleries whose active workspace matches. |
+| Public MCP / Grok connector | `POST /{mcpPathUuid}` Streamable HTTP (generate/upscale/expand/staged, gallery delete/scrap/favorite, Lumen/Glancewell, compare, theme eval, VFS/desktop, studio, `get_session_state`, physics, dynagen/director, LinkXi persona, autofill, NAX, prompt guide, knowledge memories, wiki, presets, notes) | same packets as `/agent/packet` / `agent_session_command`; pushes `mcp_activity`, `mcp_open_viewer`, `gallery_updated`, `agent_session_notice` | Remote Access tray `#mcpActivityIndicator` (bound + 2 min hover quoting token `appName`; right-click Disconnect; click Periscope `client:mcp-activity`), `#mcpPhysicsIndicator` (location arrow) when physics was used — also shown on Remote Access, Properties `forgedata-badge` **MCP** | Facade over existing `/agent` + WS. Bearer `sfapp_`. Bind is per key. First tool: `get_session_state`. `generate_image` always returns a webp and opens Lumen when a client is connected. Grim setup: `dsap://mcp.dreamscape.jp/`. |
 | Session check | `OPTIONS /app`, `POST /` ping | `connection` | — | localStorage sync |
 | Client performance telemetry | — | `report_client_perf`, `get_telemetry` | — | FPS/long-task/heap and UI-size sampling; Security Center details |
 | Logout | `POST /` logout | disconnect | — | Clear local state |
 | Server readiness | `OPTIONS /status` | — | — | Connection dial UI |
 | Bearer API key | `?auth=` / `Authorization` | — | — | — |
 | Application key | `X-StaticForge-App-Key` + UA | `authenticate_application`, refresh, temp tokens | — | Security Center appkeys tab |
-| WS reconnect | — | — | `connection`, restore msgs | Circuit breaker, refresh callbacks |
+| WS reconnect | — | — | `connection`, `gallery_hint`, restore msgs | Circuit breaker, refresh callbacks; `gallery_hint` is the add/update probe (`total`, `lastGalleryUpdatedAt`, `latestFilename`) |
 
 ---
 
@@ -31,13 +31,13 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 
 | Feature | REST | WS | Push | Client-only |
 |---------|------|-----|------|-------------|
-| Manual generate | — | `generate_image` | `image_generation_progress` (incl. `stage_complete`), `image_generation_response`, `gallery_updated` | Manual modal UI; staged runs open a Stage Results grid of saved-stage placeholders, preview each stage, and append every saved file |
+| Manual generate | — | `generate_image` | `image_generation_progress` (incl. `stage_complete`), `image_generation_response`, `gallery_updated` | Manual modal UI; staged runs open a Stage Results grid of saved-stage placeholders, preview each stage, and append every saved file. Prints count next to Generate sends optional `n` (2–8); server runs that many copies and the results window shows one tile per print |
 | Model-aware prompt tokens | `GET /protected/t5_tokenizer.json`, `GET /protected/qwen35_tokenizer.def` | — | — | T5 for V4.5; lazy Qwen BPE for V5 |
 | Opus generation usage | — | `get_app_options`, `retry_account_data` | periodic `ping` | Account-level inverted V5 usage % (Studio gen-count click, Anlas menus, Data Management); ping paints live values |
 | Preset generate (in-app) | — | `generate_preset` | same + `queue_update` | Spellbook UI |
 | Preset webhook | `GET /preset/:uuid` | — | `gallery_updated` (other clients) | — |
 | Queued preset | `GET /pending/preset/:uuid`, `GET /pending/retrieval/:id` | — | — | — |
-| Reroll (Recast) | `GET /reroll/:filename` (admin) | `reroll_image` | generation pushes | — |
+| Reroll (Recast) | `GET /reroll/:filename` (admin) | `reroll_image` | generation pushes, `gallery_updated` | Own progress toast with preview (not Studio). New tile appends even if Studio is open |
 | Upscale | — | `upscale_image` | `image_upscaling_response` | NAI 2x (`image.novelai.net`); `upscale_ratio` measured; origin Comment copied |
 | Expand canvas | — | `expand_image`, `preview_expand_image_prompt`, `reroll_expanded_image` | expansion responses | Image bias UI |
 | Enhance | — | `enhance_image` (`scale` 1 / 1.5 / 2 / `max`) | enhance responses, `gallery_updated` | Image viewer one-shot magnitude + upscale amount |
@@ -94,7 +94,9 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Character database browser | — | `get_character_db`, `character_db_upsert`, `character_db_delete`, `character_db_rename_copyright`, `character_db_delete_copyright` | — | Tools applet (`characterDbApplet`); SQLite `.cache/characters.db`; import `scripts/import-characters-json.js` |
 | Search index admin | — | `search_index_*` | `search_indexing_status` | — |
 | Spellcheck custom word | — | `spellcheck_add_word` | — | `autofill/spellCheck.js` overlay |
-| NAX tags | `GET /naxCache/...` | `get_nax_*`, `set_nax_*`, `generate_nax_custom_tag` | — | NAX applets |
+| NAX tags | `GET /naxCache/...` | `get_nax_*`, `set_nax_*`, `generate_nax_custom_tag` | — | NAX applets. MCP `search_nax` / `list_nax_galleries` wrap `queryTags` / `getGalleries` (`sort=score` is top votes). |
+| Docubase | Grimoire site `docubase` (pages in `.cache/wiki/docubase`, clone `.cache/nai-prompt-guide`) | `get_static_wiki_page` / MCP `get_prompt_guide` | — | Hard-reset clone from Yozora on boot, then write the same wiki HTML/index files as other static docs. |
+| Knowledge memories | — | `list_knowledge_memories`, `get_knowledge_memory`, `update_knowledge_memory` | — | Memories DSAP. MCP `list_memories` / `search_memories` / `get_memory` / `save_memory` (refine + `model` `v4_5`). |
 
 ---
 
@@ -126,7 +128,9 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Feature | REST | WS | Push | Client-only |
 |---------|------|-----|------|-------------|
 | Chat sessions | — | `create_chat_session`, `get_chat_sessions`, … | `chat_streaming_*` | Chat UI |
-| Director AI training | — | `director_*` | `director_*` | Director modals |
+| Director AI training | — | `director_*` | `director_*` | Director modals. Marked `MIGRATE-ENSHUTSUKA-MCP` — paid xAI API path; do not add features here. Grok.com + MCP is the requester. |
+| LinkXi persona (MCP) | — | `get_persona_settings`, `save_persona_settings` | — | MCP `get_linkxi_persona` / `save_linkxi_persona`; in-app `dsap://xi.dyna.dreamscape.jp/persona` |
+| MCP connector Grim | — | `resolve_grimoire_url` (`getPage`) | — | `dsap://mcp.dreamscape.jp/` live connector URLs + Enshutsuka project paste-block |
 
 ---
 

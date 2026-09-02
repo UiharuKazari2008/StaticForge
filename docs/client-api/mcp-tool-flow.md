@@ -1,12 +1,14 @@
 # Dreamscape MCP tool flow (Grok)
 
-How to use the public MCP connector for common Studio jobs. Prompt syntax still comes from [nai-prompt-guide `prompt-optimiser-grok.md`](https://yozora.bluesteel.737.jp.net/DreamScape/nai-prompt-guide/src/branch/main/prompt-optimiser-grok.md). This file is only the **tool order**.
+How to use the public MCP connector for common Studio jobs. Prompt syntax still comes from the living [nai-prompt-guide](https://yozora.bluesteel.737.jp.net/DreamScape/nai-prompt-guide) clone, shown in Grimoire as **Docubase** (`get_prompt_guide`, default `prompt-optimiser-grok`). This file is only the **tool order**.
 
 **Delivery priority** (first that works): (1) `apply_studio_changes` — default, push the rewrite into the Studio tab (`autoApply: true`; `autoGenerate: true` if they asked to generate now). (2) `generate_image` — no Studio tab / bind failed / they asked for a server-side run. (3) emit Change-JSON (`docs/studio-change-json.md`). (4) return the prompt-text block. Do not dump Positive/UC when 1 or 2 works.
 
 **Studio edits:** on every turn that touches Studio, call `get_studio_state` first. Do not reuse a stale snapshot from earlier in the chat. Diff the current Change-JSON / fields / characters / params against the last state you saw. Keep what the user changed in the app since that message; apply only this turn's requested delta.
 
-The MCP `initialize` result also sends these rules as `instructions`. `serverInfo.name` is `DreamScape r` plus an 8-hex tools revision (see [mcp-connector.md](./mcp-connector.md)). `tools/list` is the **Grok core** catalog plus `advanced_tools`. Do **not** page a directory listing to find a known filename. Do **not** download the original PNG. `get_generated_image` always returns metadata plus a Grok-sized webp. Omit filename for the newest file. `workspace` / `default` is the default workspace.
+The MCP `initialize` result also sends these rules as `instructions`. `serverInfo.name` is `DreamScape r` plus an 8-hex tools revision (see [mcp-connector.md](./mcp-connector.md)). `tools/list` is the **Grok core** catalog plus `advanced_tools`. Do **not** page a directory listing to find a known filename. Do **not** download the original PNG. `get_generated_image` and `generate_image` always return metadata plus a Grok-sized webp — **show that webp to the user**. Omit filename for the newest file. `workspace` / `default` is the default workspace.
+
+**First call:** `get_session_state` (`view` full). **Before every Studio or window edit:** `get_session_state` `view=live`. If `hasClients` is false, `generate_image` (do not `apply_studio_changes`). If `generate_image` runs while a client is connected, the server opens Lumen for you.
 
 If a listed tool cannot do the job, call `advanced_tools` with `query`, then call it again with `name` + `arguments` to run that hidden tool (bind a second tab, page `get_images`, static wiki, references, extra note/preset actions).
 
@@ -17,9 +19,9 @@ If a tool 429s, read `error.data.group` and `error.data.retryAfter` (seconds). W
 | Group | Limit / 15 min | Tools |
 |---|---|---|
 | `free` | none | lists, bind, note/preset/wiki index reads, `get_linkxi_persona` |
-| `search` | 240 | autofill, wiki pages, OmegaSearch, `evaluate_workspace_themes` |
+| `search` | 240 | autofill, NAX (`search_nax`), wiki pages, OmegaSearch, `evaluate_workspace_themes` |
 | `gallery` | 90 | `get_generated_image`, `compare_images`, `vfs_read` (and hidden `get_images` / `get_latest_image`) |
-| `write` | 60 | save note/preset, upload reference, `delete_images`, `scrap_images`, `toggle_favorite`, `save_linkxi_persona` |
+| `write` | 60 | save note/preset, `save_memory`, upload reference, `delete_images`, `scrap_images`, `toggle_favorite`, `save_linkxi_persona` |
 | `studio` | 60 | `get_studio_state`, `get_open_windows`, `get_client_physics`, `apply_studio_changes`, `apply_preset_to_studio` |
 | `generate` | 20 | `generate_image`, `generate_preset`, `upscale_image`, `expand_image` |
 
@@ -31,15 +33,15 @@ What they are looking at: `get_open_windows` (Lumen/Glancewell current file + op
 
 Gallery actions: `delete_images`, `scrap_images` (`remove: true` to unscrap), `toggle_favorite`, `open_in_lumen`, `open_in_glancewell` (pass `filenames` for a group). `compare_images` needs two files (same seed preferred). `evaluate_workspace_themes` samples a workspace and lists overused characters/tags. VFS: `vfs_list` / `vfs_read` (`path: "@desktop"` for the desktop).
 
-Each `tools/call` also pushes `mcp_activity` (tool, summarized args/result, optional `generating`). The MCP tray icon stays for 2 minutes; click it to open Periscope source `client:mcp-activity` (Event Viewer). Gallery `append_top` is sent only to clients whose active workspace matches the generate workspace.
+Each `tools/call` also pushes `mcp_activity` (tool, summarized args/result, optional `generating`, `actorName` from the application token). The Remote Access tray icon stays for 2 minutes and quotes the token name (e.g. Your session was accessed by "Grok"); click it to open Periscope source `client:mcp-activity` (Event Viewer). Gallery `append_top` is sent only to clients whose active workspace matches the generate workspace.
 
 ## Studio bind
 
-The bind is stored on **this application key**, not the whole server. `get_studio_state` (and apply / physics) auto-bind when exactly one Studio tab is connected. That bind stays until the user Unbinds from the MCP tray or 15 minutes pass with no studio commands.
+The bind is stored on **this application key**, not the whole server. `get_studio_state` (and apply / physics) auto-bind when exactly one Studio tab is connected. That bind stays until the user Disconnects from the Remote Access tray or 15 minutes pass with no studio commands.
 
 Several tabs: `get_studio_state` returns `needsClientChoice` and `clients` (most recently used first). Ask the user which tab, then `bind_session` `{ "clientId": "…" }`. `list_clients` is also a core tool. Server-side `generate_image` does not need a bind.
 
-`get_client_physics` returns location, tod, date, weather, and season for the bound tab (same subset as dynamic generation). The physics tray icon lights on that tab.
+`get_client_physics` returns location, tod, date, weather, and season for the bound tab (same subset as dynamic generation). The location-arrow physics icon lights on that tab, and the Remote Access tray popovers (Your location was accessed by "Grok").
 
 ## Recipe: what they are looking at
 
@@ -120,6 +122,39 @@ User: *analyse my prompt* / *create* / *efficiency*
 6. Persona as themselves: `get_linkxi_persona` (and `save_linkxi_persona` if they asked to update it).
 
 Connector URLs and this paste-block: Grim `dsap://mcp.dreamscape.jp/`.
+
+## Recipe: first snapshot, then live
+
+User opens a chat / *what is on screen* / *change Studio*
+
+1. `get_session_state` — `view` defaults to `full`. Read `settings` (models, quality, UC, nsfw), `clients`, `studio`, `windows`, `promptGuide`, `nax`, `memories`, `tagCheck`.
+2. `hasClients` false → `generate_image`. Show the webp. Stop. Do not apply Studio changes.
+3. Several clients → `needsClientChoice` → `bind_session` `{ "clientId" }`.
+4. Before any later edit: `get_session_state` `{ "view": "live" }` (windows + Studio only). Diff. Apply only this turn's delta.
+5. Trained tags: `search_autofill` first. Missing from ranking → likely untrained (drop/replace). Then `search_wiki` / `get_wiki_page` and read that text before keeping or inventing the tag.
+6. Artists / NAX: `search_nax` (`sort=score` = top votes). Use `item.prompt`.
+7. Guide text: `get_prompt_guide` (or `get_static_wiki_page` `siteId: "docubase"`). The server hard-resets `.cache/nai-prompt-guide` from Yozora on boot and materializes Grimoire site Docubase.
+8. Memories: `search_memories` first. Apply only high-confidence rows (≥60%; prefer ≥80%). Create or upsert related memories the same turn (`save_memory`; omit unchanged fields; confidence is a +0–25% refine bump). Do not treat a low-confidence memory as fact — verify, then refine with evidence.
+
+## Recipe: NAX artists / top votes
+
+User: *find an artist* / *top voted artists* / *who draws like this*
+
+1. `search_nax` — omit `query` for the current ranking. `sort` defaults to `score` (top votes first). Pass `query` for a name substring. `kind` defaults to `ARTIST` (model `v4_5` unless you pass `v5` / `v4`).
+2. Other rankings: `sort: "ratio"` (upvote ratio), `sort: "name"` (A-Z), `invert: true` (lowest votes / ratio). Marks: `markFilter: "favorites"` or `"try"`.
+3. Other datasets: `kind: "CHARA"` / `"FACE"` / `"COPYRIGHT"` / `"HAIR"` / `"CURATED"`, or `list_nax_galleries` then `gallerySlug`.
+4. Put `item.prompt` in Studio (`artist:name` or `art by …`). Do not invent a different artist string.
+
+## Recipe: memories (search, create, refine)
+
+User: *any real Studio / prompt / technique job*
+
+1. `search_memories` for the topic (and related names). `get_memory` on hits you might apply.
+2. Treat `needsRefinement` / confidence &lt; 60% as a hypothesis, not a fact. Prefer ≥80% before you rely on it. Check wiki, NAX, Docubase, and the image.
+3. Apply only what still matches that evidence. Then `save_memory` to create a new technique or upsert related existing names (omit fields you are not changing). Confidence on refine is a +0–25% bump; new memories start at 10%. Write what you checked in `observations`. Set `model` (`v4_5` default; existing rows are V4.5).
+4. Do this often. Do not wait for a dedicated "remember this" request.
+
+Example: top 10 artists — `{ "sort": "score", "limit": 10 }`. Named hit — `{ "query": "kago", "sort": "score" }`.
 
 ## Recipe: known gallery filename (no Studio)
 

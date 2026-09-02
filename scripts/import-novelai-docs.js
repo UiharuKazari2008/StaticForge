@@ -745,5 +745,6 @@ module.exports = {
     isSupportedUrl,
     getSourceInfo,
     setCacheRoot,
-    getCacheRoot
+    getCacheRoot,
+    normalizeWikiMarkup
 };

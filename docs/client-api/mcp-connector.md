@@ -235,14 +235,19 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 | `await_generation_job` | Block on `jobId` until complete, then return filename + Grok webp. | `generation` | no |
 | `get_generated_image` | Metadata + Grok webp. Filename, seed, or omit for latest. `workspace` default is `default`. | `gallery` | no |
 | `get_workspaces` | `workspace_list` — use the id on `get_generated_image` / `omegasearch` | `workspace` | no |
-| `get_studio_state` | Bound `get_state` for **this application key** (stays bound 15 min / until tray Unbind). One tab auto-binds. Several tabs: `needsClientChoice` + clients most recently used first — ask, then `bind_session`. Plus `settings`, `dynamicGeneration`, `director`, and `mustAct` when those fields are present. Other open windows: `get_open_windows`. | `generation` | yes |
-| `get_open_windows` | Bound `get_windows`. Open Lumen / Glancewell / Grimoire / gallery / Studio with current data (filename, selected[], page text). `includeImage` default true attaches one Grok webp for the focused file. | `generation` | yes |
-| `get_client_physics` | Bound tab location / tod / date / weather / season (dynamic-generation carousel subset). Lights `#mcpPhysicsIndicator`. | `generation` | yes |
+| `get_session_state` | First-call snapshot. `view=full` (default): models, quality/UC/nsfw, clients, windows, Studio, prompt-guide pages, NAX/memory pointers. `view=live`: windows + Studio only. `hasClients` false → `generate_image`. | `generation` | if clients |
+| `get_studio_state` | Bound `get_state` for **this application key** (stays bound 15 min / until tray Unbind). One tab auto-binds. Several tabs: `needsClientChoice` + clients most recently used first — ask, then `bind_session`. Plus `settings`, `dynamicGeneration`, `director`, and `mustAct` when those fields are present. Prefer `get_session_state`. | `generation` | yes |
+| `get_open_windows` | Bound `get_windows`. Open Lumen / Glancewell / Grimoire / gallery / Studio with current data (filename, selected[], page text). `includeImage` default true attaches one Grok webp for the focused file. Prefer `get_session_state` `view=live`. | `generation` | yes |
+| `get_client_physics` | Bound tab location / tod / date / weather / season (dynamic-generation carousel subset). Lights `#mcpPhysicsIndicator` (location arrow) and the Remote Access tray. | `generation` | yes |
 | `list_clients` / `bind_session` | List tabs (this key's `bound` flag) / bind this key to a `clientId` | `generation` | bind |
 | `apply_studio_changes` | `POST /agent/session/studio`. Full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes/dynamicGeneration/director (same keys as Studio). Silent apply skips the autofill popup. | `generation` | yes |
 | `get_linkxi_persona` | `get_persona_settings` without the photo blob (`hasPhoto` only). | `generation` | no |
 | `save_linkxi_persona` | `save_persona_settings` (`user_name`, `backstory`, `default_verbosity` 1–5). Preserves an existing photo unless one is sent. | `generation` | no |
 | `search_autofill` | `test_autofill_ranking` once per term (max 20). Same live autocomplete pipeline. Accepts `terms: string[]` and/or `query` | `autofill` | no |
+| `search_nax` | `queryTags` / `get_nax_tags`. Default kind ARTIST. Omit query for the current ranking. `sort=score` is top votes; `sort=ratio` is upvote ratio; `invert` reverses. Use `item.prompt` in Studio. | `search` (also listed for `autofill` keys) | no |
+| `list_nax_galleries` | `getGalleries` plus expander kinds (ARTIST, CHARA, FACE, COPYRIGHT, HAIR, CURATED) | `search` (also listed for `autofill` keys) | no |
+| `get_prompt_guide` | Read the Docubase page (clone `.cache/nai-prompt-guide`, wiki site `docubase`). Default `prompt-optimiser-grok`. | `generation` | no |
+| `list_memories` / `search_memories` / `get_memory` / `save_memory` | Onboard knowledge-memory DB (Memories applet). Search first; create/upsert often. `save_memory` refines: omitted graph fields kept, confidence +0–0.25 (new = 0.1). `model` defaults to `v4_5`. Do not treat low-confidence rows as fact. | `generation` | no |
 | `search_wiki` | `search_tag_wiki` | `wiki` (also listed for `autofill` keys) | no |
 | `get_wiki_page` | `get_tag_wiki_page` (`tagName`, optional `source`, `format`) | `wiki` (also listed for `autofill` keys) | no |
 | `save_preset` | `save_preset` — `presetName` + `config` (`name`, `prompt`, `model`) | `presets` | no |
@@ -272,7 +277,7 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 | `list_notes_by_workspace` / `create_note` / `update_note` | extra notepad CRUD | `notes` |
 | `vfs_stat` / `vfs_write` / `vfs_delete` / `list_desktop_items` | VFS mutate + desktop shortcuts | `vfs` |
 
-`search_autofill` returns `{ success, results: [{ term, success, results, spellCheck }] }`. That is the existing ranking-test search, not a new search API. `get_wiki_page` is tag wiki (danbooru / e621). Static / Grimoire pages use hidden `list_static_wiki_*` / `search_static_wiki` / `get_static_wiki_page`. Notes use the existing notepad packets — request the `notes` scope on consent.
+`search_autofill` returns `{ success, results: [{ term, success, results, spellCheck }] }`. That is the existing ranking-test search, not a new search API. `search_nax` returns `{ success, query, kind, slugs, sort, items: [{ tag, prompt, gallerySlug, score, upvotes, downvotes, ratio, favorite, tryMark }], total, hasMore, next }`. That is the existing NAX `queryTags` ranking, not a new dataset. `get_wiki_page` is tag wiki (danbooru / e621). Static / Grimoire pages use hidden `list_static_wiki_*` / `search_static_wiki` / `get_static_wiki_page`. Notes use the existing notepad packets — request the `notes` scope on consent.
 
 `autoApply` (default true) and `autoGenerate` (default false) stay **siblings of `change`**. `autoGenerate` clicks the bound tab's existing Generate button after a successful apply. That is not a second generate API.
 

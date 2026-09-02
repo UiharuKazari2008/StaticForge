@@ -27,6 +27,7 @@
  */
 
 const wsPacketRegistry = require('./ws/wsPacketRegistry');
+const { buildMcpConnectorGrimPage } = require('./mcpServerInfo');
 
 const registeredDomains = [];
 let domainHostCache = null; // normalized hosts for fast prefix matching
@@ -325,6 +326,20 @@ registerDomain({
     novel_generate: 'handleNovelGenerate',
     novel_undo: 'handleNovelUndo',
     novel_resolve_image: 'handleNovelResolveImage'
+  }
+});
+
+registerDomain({
+  domain: 'mcp.dreamscape.jp',
+  aliases: [
+    'dsap://mcp.dreamscape.jp',
+    'dsap://mcp.dreamscape.jp/',
+    'en.grimoire.jp/applets/mcp',
+    'applet.grimoire.jp/mcp'
+  ],
+  title: 'MCP Connector',
+  getPage(_match, context) {
+    return buildMcpConnectorGrimPage(context && context.globalResources);
   }
 });
 

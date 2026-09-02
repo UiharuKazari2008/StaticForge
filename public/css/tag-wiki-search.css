@@ -339,6 +339,11 @@
     height: 100%;
 }
 
+.tag-wiki-display-content:has(.tag-wiki-page) {
+    height: auto;
+    min-height: 100%;
+}
+
 .tag-wiki-empty-state {
     display: flex;
     flex-direction: column;
@@ -783,7 +788,7 @@
 }
 
 .tag-wiki-page-content.wiki-static-doc {
-    overflow-x: auto;
+    overflow: visible;
 }
 
 .tag-wiki-page-content.wiki-static-doc table.sortable th:not(.unsortable) {

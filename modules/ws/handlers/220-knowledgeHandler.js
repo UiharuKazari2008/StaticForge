@@ -326,6 +326,7 @@ async function handleUpdateKnowledgeMemory(handlersCtx, ws, message, clientInfo,
         const updatedDescription = updates.description !== undefined ? updates.description : existingMemory.description;
         const updatedCategory = updates.category !== undefined ? updates.category : existingMemory.category;
         const updatedConfidence = updates.confidence !== undefined ? updates.confidence : existingMemory.confidence;
+        const updatedModel = updates.model !== undefined ? updates.model : existingMemory.model;
         const updatedEntities = updates.entities !== undefined ? updates.entities : existingMemory.entities;
         const updatedRelations = updates.relations !== undefined ? updates.relations : existingMemory.relations;
         const updatedObservations = updates.observations !== undefined ? updates.observations : existingMemory.observations;
@@ -364,7 +365,8 @@ async function handleUpdateKnowledgeMemory(handlersCtx, ws, message, clientInfo,
             formattedEntities,
             updatedRelations,
             formattedObservations,
-            updatedConfidence
+            updatedConfidence,
+            updatedModel
         );
 
         console.log(`✏️ Updated knowledge memory: ${name}${updates.name && updates.name !== name ? ` (renamed to ${finalName})` : ''}`);

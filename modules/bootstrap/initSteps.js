@@ -277,6 +277,34 @@ const INIT_STEPS = [
         },
     },
     {
+        id: 'gr_nai_prompt_guide',
+        label: 'Refreshing Docubase wiki',
+        afterReady: true,
+        run: (gr) => {
+            const naiPromptGuideSync = require('../naiPromptGuideSync');
+            const cacheDir = gr.getPath('cache');
+            setImmediate(() => {
+                Promise.resolve(naiPromptGuideSync.syncNaiPromptGuide(cacheDir)).then((result) => {
+                    const built = naiPromptGuideSync.materializeDocubaseWiki(cacheDir);
+                    if (gr.logger?.bootSubStep) {
+                        const syncBit = result.ok
+                            ? (result.cloned ? 'cloned' : 'hard-reset')
+                            : `git skipped (${result.error})`;
+                        const buildBit = built && built.ok ? `${built.pages} wiki pages` : (built && built.error) || 'no pages';
+                        gr.logger.bootSubStep(`Docubase ${syncBit}, ${buildBit}`);
+                    }
+                }).catch((err) => {
+                    try {
+                        naiPromptGuideSync.materializeDocubaseWiki(cacheDir);
+                    } catch (_) { /* */ }
+                    if (gr.logger?.bootSubStep) {
+                        gr.logger.bootSubStep(`Docubase skipped: ${err.message}`);
+                    }
+                });
+            });
+        },
+    },
+    {
         id: 'gr_workspace_sync',
         label: 'Syncing workspace files',
         afterReady: true,

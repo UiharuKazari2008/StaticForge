@@ -1,13 +1,14 @@
 /**
- * Prefetch NAX CDN images for all galleries whose version string contains "4.5"
- * (same layout as the app: .cache/nax_images/<slug>/<filename>).
+ * Prefetch NAX CDN images (same layout as the app: .cache/nax_images/<slug>/<filename>).
  *
  * Usage:
  *   node scripts/prefetch-nax-images-v45.js
+ *   node scripts/prefetch-nax-images-v45.js --version v5
  *   node scripts/prefetch-nax-images-v45.js --cache /path/to/.cache
  *   node scripts/prefetch-nax-images-v45.js --slug danbooru-character-tags-v4.5
  *
  * Default: all galleries with version containing "4.5".
+ * --version v5 | 4.5 | all  (ignored when --slug is set)
  * With --slug: only that gallery (must exist in nax_galleries).
  *
  * Downloads are serial (one HTTPS fetch at a time) to stay light on the CDN.
@@ -28,12 +29,19 @@ const DEFAULT_DB = path.join(ROOT, '.cache', 'nax_tags.db');
 const DEFAULT_CACHE = path.join(ROOT, '.cache');
 
 function parseArgs() {
-    const out = { cacheDir: DEFAULT_CACHE, dbPath: DEFAULT_DB, slug: null };
+    const out = { cacheDir: DEFAULT_CACHE, dbPath: DEFAULT_DB, slug: null, version: '4.5' };
     for (let i = 2; i < process.argv.length; i++) {
         if (process.argv[i] === '--cache' && process.argv[i + 1]) {
             out.cacheDir = path.resolve(process.argv[++i]);
         } else if (process.argv[i] === '--db' && process.argv[i + 1]) {
             out.dbPath = path.resolve(process.argv[++i]);
+        } else if (process.argv[i] === '--version' && process.argv[i + 1]) {
+            const v = String(process.argv[++i]).trim().toLowerCase();
+            if (v !== 'v5' && v !== '5' && v !== '4.5' && v !== 'v4.5' && v !== 'all') {
+                console.error('Invalid --version (allowed: v5, 4.5, all)');
+                process.exit(1);
+            }
+            out.version = v === '5' ? 'v5' : (v === 'v4.5' ? '4.5' : v);
         } else if (process.argv[i] === '--slug' && process.argv[i + 1]) {
             const s = String(process.argv[++i]).trim();
             if (!/^[a-z0-9._-]+$/i.test(s) || s.includes('..')) {
@@ -44,6 +52,12 @@ function parseArgs() {
         }
     }
     return out;
+}
+
+function versionWhereSql(version) {
+    if (version === 'all') return { sql: '1=1', label: 'all galleries' };
+    if (version === 'v5') return { sql: "g.version LIKE '%v5%'", label: 'all v5 galleries' };
+    return { sql: "g.version LIKE '%4.5%'", label: 'all v4.5 galleries' };
 }
 
 function cdnUrl(slug, dbFilename) {
@@ -101,7 +115,7 @@ function downloadOne(slug, dbFilename, destPath) {
 }
 
 async function main() {
-    const { cacheDir, dbPath, slug } = parseArgs();
+    const { cacheDir, dbPath, slug, version } = parseArgs();
 
     if (!fs.existsSync(dbPath)) {
         console.error('Database not found:', dbPath);
@@ -129,13 +143,14 @@ async function main() {
             )
             .all(slug);
     } else {
+        const ver = versionWhereSql(version);
         rows = db
             .prepare(
                 `
             SELECT DISTINCT t.gallery_slug AS slug, t.filename
             FROM nax_tags t
             INNER JOIN nax_galleries g ON g.slug = t.gallery_slug
-            WHERE g.version LIKE '%4.5%'
+            WHERE ${ver.sql}
             ORDER BY t.gallery_slug, t.filename
         `
             )
@@ -145,7 +160,7 @@ async function main() {
     db.close();
 
     if (!rows.length) {
-        console.log(slug ? `No tags for gallery "${slug}". Nothing to do.` : 'No (slug, filename) rows for v4.5 galleries. Nothing to do.');
+        console.log(slug ? `No tags for gallery "${slug}". Nothing to do.` : `No (slug, filename) rows for ${versionWhereSql(version).label}. Nothing to do.`);
         process.exit(0);
     }
 
@@ -154,7 +169,7 @@ async function main() {
     let skipped = 0;
     let failed = 0;
 
-    const scopeLabel = slug ? `gallery "${slug}"` : 'all v4.5 galleries';
+    const scopeLabel = slug ? `gallery "${slug}"` : versionWhereSql(version).label;
     console.log(`Prefetch ${rows.length} images (${scopeLabel}) → ${naxRoot} (serial)`);
 
     for (let i = 0; i < rows.length; i++) {

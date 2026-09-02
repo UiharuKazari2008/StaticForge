@@ -9595,7 +9595,8 @@ function autoSaveInsightMemories(insightMemories, phase = '') {
                     memory.entities,
                     memory.relations || [],
                     memory.observations || [],
-                    finalConfidence
+                    finalConfidence,
+                    memory.model || (existingMemory && existingMemory.model) || 'v4_5'
                 );
                 
                 console.log(`   ✅ Saved global memory: "${memory.name}" (${memory.entities.length} entities, ${(memory.relations || []).length} relations, ${(finalConfidence * 100).toFixed(0)}% confidence)`);

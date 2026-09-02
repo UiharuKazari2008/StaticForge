@@ -333,6 +333,22 @@ function registerDsapManifests() {
         }
     });
 
+    const MCP_DSAP_MANIFEST_URL = 'mcp.dreamscape.jp';
+    registerDsap({
+        url: MCP_DSAP_MANIFEST_URL,
+        aliases: [
+            `dsap://${MCP_DSAP_MANIFEST_URL}`,
+            `dsap://${MCP_DSAP_MANIFEST_URL}/`,
+            'en.grimoire.jp/applets/mcp',
+            'applet.grimoire.jp/mcp'
+        ],
+        type: 'dsap',
+        title: 'MCP Connector',
+        assets: {
+            scripts: ['scripts/comp/mcpConnectorDsapApplet.js']
+        }
+    });
+
     const SIMILAR_DSAP_MANIFEST_URL = 'zanzou.dyna.dreamscape.jp';
     registerDsap({
         url: SIMILAR_DSAP_MANIFEST_URL,

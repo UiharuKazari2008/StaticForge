@@ -73,8 +73,8 @@ assert.ok(_test.TOOL_DEFS.some((t) => t.name === 'get_latest_image'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('get_generated_image'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('advanced_tools'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('save_preset'));
-assert.ok(_test.MCP_INSTRUCTIONS.includes('apply_studio_changes is the default'));
-assert.ok(_test.MCP_INSTRUCTIONS.includes('On every Studio edit: get_studio_state first'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('apply_studio_changes'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('get_session_state view=live'));
 assert.strictEqual(_test.resolveWorkspaceId(''), 'default');
 assert.strictEqual(_test.resolveWorkspaceId('default'), 'default');
 assert.strictEqual(_test.resolveWorkspaceId('other'), 'other');
@@ -103,6 +103,9 @@ assert.ok(genOnly.some((t) => t.name === 'generate_image'));
 assert.ok(genOnly.some((t) => t.name === 'get_generation_job'));
 assert.ok(genOnly.some((t) => t.name === 'await_generation_job'));
 assert.ok(genOnly.some((t) => t.name === 'get_open_windows'));
+assert.ok(genOnly.some((t) => t.name === 'get_session_state'));
+assert.ok(genOnly.some((t) => t.name === 'get_prompt_guide'));
+assert.ok(genOnly.some((t) => t.name === 'save_memory'));
 assert.ok(genOnly.some((t) => t.name === 'apply_studio_changes'));
 const generateImageTool = _test.TOOL_DEFS.find((t) => t.name === 'generate_image');
 assert.ok(generateImageTool.inputSchema.properties.async);
@@ -136,6 +139,8 @@ const autofillOnly = _test.listToolsForScopes(['autofill']);
 assert.ok(autofillOnly.some((t) => t.name === 'search_autofill'));
 assert.ok(autofillOnly.some((t) => t.name === 'search_wiki'), 'autofill keys already include wiki packets');
 assert.ok(autofillOnly.some((t) => t.name === 'get_wiki_page'));
+assert.ok(autofillOnly.some((t) => t.name === 'search_nax'), 'autofill keys also get NAX search');
+assert.ok(autofillOnly.some((t) => t.name === 'list_nax_galleries'));
 assert.ok(autofillOnly.some((t) => t.name === 'advanced_tools'));
 assert.ok(!autofillOnly.some((t) => t.name === 'generate_image'));
 assert.ok(!autofillOnly.some((t) => t.name === 'list_static_wiki_sites'));
@@ -168,8 +173,144 @@ assert.deepStrictEqual(refsOnly.map((t) => t.name), ['advanced_tools']);
 
 const searchOnly = _test.listToolsForScopes(['search']);
 assert.ok(searchOnly.some((t) => t.name === 'omegasearch'));
+assert.ok(searchOnly.some((t) => t.name === 'search_nax'));
+assert.ok(searchOnly.some((t) => t.name === 'list_nax_galleries'));
 assert.ok(searchOnly.some((t) => t.name === 'advanced_tools'));
 assert.ok(!searchOnly.some((t) => t.name === 'search_autofill'));
+assert.ok(!genOnly.some((t) => t.name === 'search_nax'));
+assert.strictEqual(_test.rateGroupForTool('search_nax'), 'search');
+assert.strictEqual(_test.rateGroupForTool('list_nax_galleries'), 'free');
+assert.ok(_test.MCP_INSTRUCTIONS.includes('search_nax'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('top votes'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('get_session_state'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('view=live'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('search_autofill'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('get_wiki_page'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('get_prompt_guide'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('save_memory'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('Do not treat a memory as fact'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('upsert related memories'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('Frequently create memories'));
+assert.strictEqual(_test.rateGroupForTool('get_session_state'), 'studio');
+assert.strictEqual(_test.rateGroupForTool('save_memory'), 'write');
+assert.strictEqual(_test.rateGroupForTool('get_prompt_guide'), 'free');
+assert.strictEqual(_test.normalizeNaxKind(''), 'ARTIST');
+assert.strictEqual(_test.normalizeNaxKind('character'), 'CHARA');
+assert.strictEqual(_test.normalizeNaxKind('artists'), 'ARTIST');
+
+const mockNax = {
+    getGalleries: () => [
+        { slug: 'danbooru-artist-tags-v4.5', title: 'Artists 4.5', version: 'v4.5', tag_count: 2 }
+    ],
+    NAX_EXPANDER_PRESETS: [{ id: 'ARTIST', label: 'Artist', description: 'artists' }],
+    getNaxExpanderPreset: (id) => (id === 'ARTIST' ? {
+        id: 'ARTIST',
+        resolveSlugs: () => ['danbooru-artist-tags-v4.5']
+    } : null),
+    artistGallerySlugsForModel: () => ['danbooru-artist-tags-v4.5'],
+    formatTagForPrompt: (tag, slug) => (String(slug || '').includes('artist') ? `artist:${tag}` : tag),
+    queryTags: ({ query, sort }) => {
+        const all = [
+            {
+                tag: 'kago_shintaro',
+                gallerySlug: 'danbooru-artist-tags-v4.5',
+                score: 90,
+                upvotes: 100,
+                downvotes: 10,
+                favorite: true,
+                tryMark: false
+            },
+            {
+                tag: 'low_vote',
+                gallerySlug: 'danbooru-artist-tags-v4.5',
+                score: 1,
+                upvotes: 1,
+                downvotes: 20,
+                favorite: false,
+                tryMark: false
+            }
+        ];
+        const items = query ? all.filter((row) => row.tag.includes(query)) : all.slice();
+        if (sort === 'score') items.sort((a, b) => b.score - a.score);
+        if (sort === 'ratio') {
+            items.sort((a, b) => (b.upvotes / (b.upvotes + b.downvotes)) - (a.upvotes / (a.upvotes + a.downvotes)));
+        }
+        return { items, total: items.length, hasMore: false };
+    }
+};
+const topVotes = _test.searchNaxTags(mockNax, { sort: 'score' });
+assert.strictEqual(topVotes.success, true);
+assert.strictEqual(topVotes.items[0].tag, 'kago_shintaro');
+assert.strictEqual(topVotes.items[0].prompt, 'artist:kago_shintaro');
+assert.ok(topVotes.next.includes('top votes'));
+const namedNax = _test.searchNaxTags(mockNax, { query: 'kago' });
+assert.strictEqual(namedNax.items.length, 1);
+const naxGalleries = _test.listNaxGalleries(mockNax);
+assert.strictEqual(naxGalleries.galleries.length, 1);
+assert.ok(naxGalleries.next.includes('top votes'));
+const naxMiss = _test.searchNaxTags({
+    getNaxExpanderPreset: () => null,
+    artistGallerySlugsForModel: () => [],
+    getGalleries: () => []
+}, {});
+assert.strictEqual(naxMiss.success, false);
+
+const savedMemory = _test.runMemoryTool({
+    getKnowledgeMemoryDb: () => ({
+        listKnowledgeMemoriesPaged: () => ({ items: [{ name: 'a', description: 'b', confidence: 0.1, model: 'v4_5' }], total: 1 }),
+        searchKnowledgeMemories: () => [{ name: 'a' }],
+        getKnowledgeMemory: () => null,
+        saveKnowledgeMemory: (name, description, category, entities, relations, observations, confidence, model) => ({
+            name, description, category: category || 'mcp', confidence, model
+        })
+    })
+}, 'save_memory', { name: 'artist-tip', description: 'use item.prompt' });
+assert.strictEqual(savedMemory.success, true);
+assert.strictEqual(savedMemory.memory.name, 'artist-tip');
+assert.strictEqual(savedMemory.refined, false);
+assert.strictEqual(savedMemory.confidence, 0.1);
+assert.strictEqual(savedMemory.model, 'v4_5');
+
+let store = {
+    name: 'artist-tip',
+    description: 'old',
+    category: 'mcp',
+    confidence: 0.1,
+    model: 'v4_5',
+    entities: [{ id: 'e1', name: 'keep' }],
+    relations: [],
+    observations: []
+};
+const refinedMemory = _test.runMemoryTool({
+    getKnowledgeMemoryDb: () => ({
+        getKnowledgeMemory: () => store,
+        saveKnowledgeMemory: (name, description, category, entities, relations, observations, confidence, model) => {
+            store = { name, description, category, entities, relations, observations, confidence, model };
+            return store;
+        }
+    })
+}, 'save_memory', { name: 'artist-tip', description: 'new desc' });
+assert.strictEqual(refinedMemory.refined, true);
+assert.strictEqual(refinedMemory.confidence, 0.35);
+assert.strictEqual(refinedMemory.memory.entities.length, 1);
+assert.strictEqual(refinedMemory.needsRefinement, true);
+
+const gotMemory = _test.runMemoryTool({
+    getKnowledgeMemoryDb: () => ({
+        getKnowledgeMemory: () => ({ name: 'a', confidence: 0.2, entities: [] })
+    })
+}, 'get_memory', { name: 'a' });
+assert.strictEqual(gotMemory.needsRefinement, true);
+
+const { resolveRefinementConfidence, normalizeMemoryModel } = require('../modules/knowledgeMemoryDatabase');
+assert.strictEqual(resolveRefinementConfidence(0.1, undefined), 0.35);
+assert.strictEqual(resolveRefinementConfidence(0.9, 0.25), 1);
+assert.strictEqual(resolveRefinementConfidence(0.4, 0), 0.4);
+assert.strictEqual(normalizeMemoryModel(''), 'v4_5');
+assert.strictEqual(normalizeMemoryModel('v5'), 'v5');
+
+const noMemDb = _test.runMemoryTool({}, 'list_memories', {});
+assert.strictEqual(noMemDb.success, false);
 
 const notesOnly = _test.listToolsForScopes(['notes']);
 assert.ok(notesOnly.some((t) => t.name === 'list_notes'));
@@ -213,7 +354,15 @@ assert.ok(coreNames.includes('save_linkxi_persona'));
 assert.ok(coreNames.includes('get_generation_job'));
 assert.ok(coreNames.includes('await_generation_job'));
 assert.ok(coreNames.includes('get_open_windows'));
-assert.strictEqual(coreNames.length, 33);
+assert.ok(coreNames.includes('search_nax'));
+assert.ok(coreNames.includes('list_nax_galleries'));
+assert.ok(coreNames.includes('get_session_state'));
+assert.ok(coreNames.includes('get_prompt_guide'));
+assert.ok(coreNames.includes('list_memories'));
+assert.ok(coreNames.includes('search_memories'));
+assert.ok(coreNames.includes('get_memory'));
+assert.ok(coreNames.includes('save_memory'));
+assert.strictEqual(coreNames.length, 41);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.pipeline);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.rescale);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.noiseScheduler);
@@ -224,12 +373,11 @@ assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSc
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.characters);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.steps);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'expand_image').inputSchema.properties.overrideParams);
-assert.ok(_test.MCP_INSTRUCTIONS.includes('top-level prompt/uc/params'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('append_quality / append_uc'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('turn that preset off'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('no_text'));
-assert.ok(_test.MCP_INSTRUCTIONS.includes('Enshutsuka modes'));
-assert.ok(_test.MCP_INSTRUCTIONS.includes('MUST integrate and act'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('Enshutsuka'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('MUST integrate'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('get_linkxi_persona'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.dynamicGeneration);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.director);
@@ -450,6 +598,8 @@ async function main() {
     assert.ok(grimPage.data.oauthAuthorize.includes('/oauth/authorize'));
     assert.ok(grimPage.data.projectInstructions.includes('MUST integrate and act'));
     assert.ok(ENSHUTSUKA_GROK_PROJECT_INSTRUCTIONS.includes('get_linkxi_persona'));
+    assert.ok(ENSHUTSUKA_GROK_PROJECT_INSTRUCTIONS.includes('search_memories'));
+    assert.ok(ENSHUTSUKA_GROK_PROJECT_INSTRUCTIONS.includes('Do not treat a memory as fact'));
     assert.notStrictEqual(
         hashMcpToolsRevision([{ name: 'a', description: 'one' }]),
         hashMcpToolsRevision([{ name: 'a', description: 'two' }])
@@ -498,9 +648,22 @@ async function main() {
     const autofillNames = autofillListed.body.result.tools.map((t) => t.name);
     assert.ok(autofillNames.includes('search_autofill'));
     assert.ok(autofillNames.includes('get_wiki_page'));
+    assert.ok(autofillNames.includes('search_nax'));
     assert.ok(autofillNames.includes('advanced_tools'));
     assert.ok(!autofillNames.includes('generate_image'));
     assert.ok(!autofillNames.includes('list_static_wiki_sites'));
+
+    const naxCall = await _test.callTool(
+        { getNaxTagsDatabase: () => mockNax },
+        { applicationAuth: { applicationScopes: ['search'] } },
+        'search_nax',
+        { sort: 'score', limit: 10 }
+    );
+    const naxPayload = JSON.parse(naxCall.content[0].text);
+    assert.strictEqual(naxPayload.success, true);
+    assert.strictEqual(naxPayload.items[0].tag, 'kago_shintaro');
+    assert.strictEqual(naxPayload.items[0].prompt, 'artist:kago_shintaro');
+    assert.ok(naxPayload.next.includes('top votes'));
 
     const advancedListed = await _test.handleJsonRpc(
         {},
@@ -531,6 +694,32 @@ async function main() {
     assert.strictEqual(coreRejectPayload.success, false);
     assert.ok(coreRejectPayload.error.includes('core tool'));
     assert.strictEqual(advancedCoreReject.body.result.isError, true);
+
+    const noClientSession = await _test.collectSessionState({
+        getPath: () => require('path').join(__dirname, '..', '.cache'),
+        getPromptConfig: () => ({ quality_presets: { v5: 'best quality' }, uc_presets: {}, nsfw_presets: {} }),
+        getWebSocketServer: () => ({ clients: new Map() })
+    }, { applicationAuth: { applicationScopes: ['generation'] } }, {});
+    const noClientPayload = JSON.parse(noClientSession.content[0].text);
+    assert.strictEqual(noClientPayload.success, true);
+    assert.strictEqual(noClientPayload.view, 'full');
+    assert.strictEqual(noClientPayload.hasClients, false);
+    assert.ok(noClientPayload.settings);
+    assert.ok(noClientPayload.next.includes('generate_image'));
+    const liveSession = await _test.collectSessionState({
+        getPath: () => require('path').join(__dirname, '..', '.cache'),
+        getPromptConfig: () => ({ quality_presets: { v5: 'best quality' }, uc_presets: {}, nsfw_presets: {} }),
+        getWebSocketServer: () => ({ clients: new Map() })
+    }, { applicationAuth: { applicationScopes: ['generation'] } }, { view: 'live' });
+    const livePayload = JSON.parse(liveSession.content[0].text);
+    assert.strictEqual(livePayload.view, 'live');
+    assert.ok(!livePayload.settings);
+
+    const lumenSkip = await _test.maybeOpenGeneratedInLumen({
+        getWebSocketServer: () => ({ clients: new Map() })
+    }, { applicationAuth: { applicationScopes: ['generation'] } }, ['shot.png']);
+    assert.strictEqual(lumenSkip.opened, false);
+    assert.strictEqual(lumenSkip.reason, 'no-client');
 
     // OAuth 2.1 tests
     // modules/mcpOAuthProvider.js
@@ -600,6 +789,27 @@ async function main() {
     assert.ok(resizedMeta.width <= _test.GROK_IMAGE_MAX_EDGE);
     assert.ok(resizedMeta.height <= _test.GROK_IMAGE_MAX_EDGE);
     assert.strictEqual(resizedMeta.format, 'webp');
+
+    const naiPromptGuideSync = require('../modules/naiPromptGuideSync');
+    assert.strictEqual(naiPromptGuideSync.SITE_ID, 'docubase');
+    assert.ok(naiPromptGuideSync.isDocubaseSiteId('nai-prompt-guide'));
+    assert.strictEqual(
+        naiPromptGuideSync.titleFromSource('prompt-guide.md', '# Living Guide\n\nbody'),
+        'prompt-guide.md (Living Guide)'
+    );
+    assert.strictEqual(
+        naiPromptGuideSync.titleFromSource('constraints/v5.yaml', '# not a heading\nkey: 1'),
+        'constraints/v5.yaml'
+    );
+    const docHtml = naiPromptGuideSync.wrapPromptGuideHtml({
+        title: 'Hard syntax',
+        file: 'prompt-guide.md',
+        text: '## Hard syntax\n\n- lowercase\n- weights\n'
+    }, new Set());
+    assert.ok(docHtml.includes('<h4>'));
+    assert.ok(docHtml.includes('tag-wiki-list'));
+    assert.ok(!docHtml.includes('<article'));
+    assert.ok(!/^\s*<pre>/.test(docHtml));
 
     console.log('test-mcp-agent-facade: ok');
 }

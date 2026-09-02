@@ -218,7 +218,11 @@ function getGalleries() {
         SELECT slug, title, version, description, tag_count
         FROM nax_galleries
         ORDER BY
-            CASE WHEN version LIKE '%4.5%' THEN 0 ELSE 1 END,
+            CASE
+                WHEN version LIKE '%v5%' THEN 0
+                WHEN version LIKE '%4.5%' THEN 1
+                ELSE 2
+            END,
             title COLLATE NOCASE
     `).all();
 }
@@ -628,8 +632,14 @@ const NAX_EXPANDER_PRESETS = [
     {
         id: 'CHARA',
         label: 'Character',
-        description: 'Random marked character tag (v4 / v4.5 follows model)',
+        description: 'Random marked character tag (v4 / v4.5 / v5 follows model)',
         resolveSlugs(model) {
+            if (isNaxModelV5(model)) {
+                return existingGallerySlugs([
+                    'danbooru-character-tags-v4.5',
+                    'danbooru-character-tags-v4'
+                ]);
+            }
             const v45 = isNaxModelV45(model);
             const primary = v45 ? 'danbooru-character-tags-v4.5' : 'danbooru-character-tags-v4';
             return existingGallerySlugs([
@@ -642,7 +652,7 @@ const NAX_EXPANDER_PRESETS = [
     {
         id: 'ARTIST',
         label: 'Artist',
-        description: 'Random marked artist tag (v4 / v4.5 follows model; v4.5 pools constrained and loose)',
+        description: 'Random marked artist tag (v4 / v4.5 / v5 follows model; v4.5 pools constrained and loose)',
         resolveSlugs(model) {
             return artistGallerySlugsForModel(model);
         }
@@ -650,7 +660,7 @@ const NAX_EXPANDER_PRESETS = [
     {
         id: 'CURATED',
         label: 'Curated Artist',
-        description: 'Random marked curated artist (v4.5, plain tag prompt)',
+        description: 'Random marked curated artist (v4.5 / v5, plain tag prompt)',
         resolveSlugs(model) {
             return curatedArtistGallerySlugsForModel(model);
         }
@@ -658,8 +668,11 @@ const NAX_EXPANDER_PRESETS = [
     {
         id: 'FACE',
         label: 'Face',
-        description: 'Random marked face tag (v4 / v4.5 follows model)',
+        description: 'Random marked face tag (v4 / v4.5 / v5 follows model)',
         resolveSlugs(model) {
+            if (isNaxModelV5(model)) {
+                return existingGallerySlugs(['danbooru-face-tags-v4.5', 'danbooru-face-tags-v4']);
+            }
             const v45 = isNaxModelV45(model);
             const primary = v45 ? 'danbooru-face-tags-v4.5' : 'danbooru-face-tags-v4';
             return existingGallerySlugs([primary, 'danbooru-face-tags-v4.5', 'danbooru-face-tags-v4']);
@@ -668,17 +681,20 @@ const NAX_EXPANDER_PRESETS = [
     {
         id: 'COPYRIGHT',
         label: 'Copyright',
-        description: 'Random marked copyright tag (v4.5)',
+        description: 'Random marked copyright tag (v4.5 / v5)',
         resolveSlugs(model) {
-            if (!isNaxModelV45(model)) return [];
+            if (!isNaxModelV45(model) && !isNaxModelV5(model)) return [];
             return existingGallerySlugs(['danbooru-copyright-tags-v4.5']);
         }
     },
     {
         id: 'HAIR',
         label: 'Hair',
-        description: 'Random marked hair tag (v4.5)',
+        description: 'Random marked hair tag (v4.5 / v5 follows model)',
         resolveSlugs(model) {
+            if (isNaxModelV5(model)) {
+                return existingGallerySlugs(['danbooru-hair-tags-v5', 'danbooru-hair-tags-v4.5']);
+            }
             if (!isNaxModelV45(model)) return [];
             return existingGallerySlugs(['danbooru-hair-tags-v4.5']);
         }
@@ -691,8 +707,19 @@ function isNaxModelV45(model) {
     return m.includes('4-5') || m.includes('4_5') || m.includes('4.5');
 }
 
-/** Version-locked danbooru artist-tag galleries (constrained + loose on v4.5). */
+function isNaxModelV5(model) {
+    const key = String(model || '').toLowerCase();
+    if (!key) return false;
+    if (key === 'v5' || key === 'v5_cur' || key.startsWith('v5_')) return true;
+    if (key.includes('nai-diffusion-5') || key.includes('diffusion-5')) return true;
+    return false;
+}
+
+/** Version-locked danbooru artist-tag galleries (V5 loose; constrained + loose on v4.5). */
 function artistGallerySlugsForModel(model) {
+    if (isNaxModelV5(model)) {
+        return existingGallerySlugs(['danbooru-artist-tags-2-v5']);
+    }
     if (isNaxModelV45(model)) {
         return existingGallerySlugs([
             'danbooru-artist-tags-v4.5',
@@ -702,9 +729,9 @@ function artistGallerySlugsForModel(model) {
     return existingGallerySlugs(['danbooru-artist-tags-v4']);
 }
 
-/** Curated artist list — separate prompt style, v4.5 only. */
+/** Curated artist list — separate prompt style, v4.5 (also used as V5 fallback). */
 function curatedArtistGallerySlugsForModel(model) {
-    if (!isNaxModelV45(model)) return [];
+    if (!isNaxModelV45(model) && !isNaxModelV5(model)) return [];
     return existingGallerySlugs(['artists-v4.5']);
 }
 
@@ -1052,6 +1079,7 @@ module.exports = {
     findTagByGalleryFilename,
     NAX_EXPANDER_PRESETS,
     isNaxModelV45,
+    isNaxModelV5,
     artistGallerySlugsForModel,
     curatedArtistGallerySlugsForModel,
     isNaxCuratedArtistGallery,

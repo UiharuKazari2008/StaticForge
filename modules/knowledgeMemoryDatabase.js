@@ -63,7 +63,8 @@ function createKnowledgeMemoryTables() {
             updated_at INTEGER DEFAULT (strftime('%s', 'now')),
             usage_count INTEGER DEFAULT 0, -- How many times this memory has been retrieved
             last_used_at INTEGER, -- Last time this memory was used
-            confidence REAL DEFAULT 0.1 -- Confidence level (0-1) starts at 10%, increases by up to 25% per refinement
+            confidence REAL DEFAULT 0.1, -- Confidence level (0-1) starts at 10%, increases by up to 25% per refinement
+            model TEXT NOT NULL DEFAULT 'v4_5' -- Studio forge model this memory applies to
         )
     `);
 
@@ -120,8 +121,35 @@ function createKnowledgeMemoryTables() {
         CREATE INDEX IF NOT EXISTS idx_knowledge_observations_memory_id ON knowledge_observations (memory_id);
         CREATE INDEX IF NOT EXISTS idx_knowledge_observations_entity_id ON knowledge_observations (memory_id, entity_id);
     `);
+
+    ensureKnowledgeMemoryColumns();
     
     logger.bootSubStep('Knowledge memory database ready');
+}
+
+const DEFAULT_MEMORY_MODEL = 'v4_5';
+
+function ensureKnowledgeMemoryColumns() {
+    const cols = db.prepare('PRAGMA table_info(knowledge_memories)').all().map((col) => col.name);
+    if (!cols.includes('model')) {
+        db.exec(`ALTER TABLE knowledge_memories ADD COLUMN model TEXT NOT NULL DEFAULT 'v4_5'`);
+    }
+    db.exec(`UPDATE knowledge_memories SET model = 'v4_5' WHERE model IS NULL OR TRIM(model) = ''`);
+}
+
+function normalizeMemoryModel(model) {
+    const raw = String(model == null ? '' : model).trim();
+    return raw || DEFAULT_MEMORY_MODEL;
+}
+
+function resolveRefinementConfidence(existingConfidence, requested) {
+    if (existingConfidence == null || !Number.isFinite(Number(existingConfidence))) {
+        return 0.1;
+    }
+    const current = Math.max(0, Math.min(1, Number(existingConfidence)));
+    const raw = requested == null || requested === '' ? 0.25 : Number(requested);
+    const bump = Number.isFinite(raw) ? Math.min(Math.max(raw, 0), 0.25) : 0.25;
+    return Math.min(current + bump, 1);
 }
 
 /**
@@ -151,6 +179,7 @@ function listKnowledgeMemories() {
             usage_count,
             last_used_at,
             confidence,
+            model,
             created_at,
             updated_at
         FROM knowledge_memories
@@ -205,6 +234,7 @@ function listKnowledgeMemoriesPaged({ limit = 25, offset = 0, search = '', categ
             usage_count,
             last_used_at,
             confidence,
+            model,
             created_at,
             updated_at
         FROM knowledge_memories
@@ -294,6 +324,7 @@ function getKnowledgeMemory(name, incrementUsage = true) {
         description: memory.description,
         category: memory.category,
         confidence: memory.confidence,
+        model: normalizeMemoryModel(memory.model),
         entities,
         relations,
         observations,
@@ -311,12 +342,15 @@ function getKnowledgeMemory(name, incrementUsage = true) {
  * @param {Array} relations - Array of relation objects
  * @param {Array} observations - Array of observation objects
  * @param {number} confidence - Confidence level (0-1)
+ * @param {string} [model='v4_5'] - Studio forge model this memory applies to
  * @returns {Object} Created/updated memory
  */
-function saveKnowledgeMemory(name, description, category, entities = [], relations = [], observations = [], confidence = 0.1) {
+function saveKnowledgeMemory(name, description, category, entities = [], relations = [], observations = [], confidence = 0.1, model = DEFAULT_MEMORY_MODEL) {
     if (!db) {
         throw new Error('Knowledge memory database not initialized');
     }
+
+    const resolvedModel = normalizeMemoryModel(model);
 
     // Start transaction
     const transaction = db.transaction(() => {
@@ -329,10 +363,10 @@ function saveKnowledgeMemory(name, description, category, entities = [], relatio
             // Update existing memory
             const updateStmt = db.prepare(`
                 UPDATE knowledge_memories 
-                SET description = ?, category = ?, confidence = ?, updated_at = strftime('%s', 'now')
+                SET description = ?, category = ?, confidence = ?, model = ?, updated_at = strftime('%s', 'now')
                 WHERE name = ?
             `);
-            updateStmt.run(description, category, confidence, name);
+            updateStmt.run(description, category, confidence, resolvedModel, name);
             memoryId = existing.id;
 
             // Delete existing entities, relations, and observations (cascade will clean up)
@@ -342,10 +376,10 @@ function saveKnowledgeMemory(name, description, category, entities = [], relatio
         } else {
             // Create new memory
             const insertStmt = db.prepare(`
-                INSERT INTO knowledge_memories (name, description, category, confidence)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO knowledge_memories (name, description, category, confidence, model)
+                VALUES (?, ?, ?, ?, ?)
             `);
-            const result = insertStmt.run(name, description, category, confidence);
+            const result = insertStmt.run(name, description, category, confidence, resolvedModel);
             memoryId = result.lastInsertRowid;
         }
 
@@ -406,7 +440,8 @@ function saveKnowledgeMemory(name, description, category, entities = [], relatio
         entities,
         relations,
         observations,
-        confidence
+        confidence,
+        model: resolvedModel
     };
 }
 
@@ -792,6 +827,7 @@ function searchKnowledgeMemories(query, category = null) {
             km.category,
             km.usage_count,
             km.confidence,
+            km.model,
             -- Calculate relevance score: sum of occurrence counts + bonus for matching multiple components
             (${relevanceScoreParts.join(' + ')} + ${componentMatchBonus}) as relevance_score
         FROM knowledge_memories km
@@ -1099,6 +1135,9 @@ module.exports = {
     listKnowledgeMemoriesPaged,
     getKnowledgeMemory,
     saveKnowledgeMemory,
+    DEFAULT_MEMORY_MODEL,
+    normalizeMemoryModel,
+    resolveRefinementConfidence,
     deleteKnowledgeMemory,
     deleteKnowledgeMemoriesBulk,
     countKnowledgeMemoriesByFilter,
