@@ -89,7 +89,14 @@ const AVAILABLE_SCOPES = [
     { id: 'wiki', label: 'Wiki / Grimoire', description: 'Tag wiki and documentation' },
     { id: 'autofill', label: 'Autofill / Grimoire', description: 'Autofill ranking and tag wiki / Grimoire (not search)' },
     { id: 'notes', label: 'Notes', description: 'Notepad create, read, and update' },
-    { id: 'infrastructure', label: 'Infrastructure', description: 'Ping, status, version checks' }
+    { id: 'infrastructure', label: 'Infrastructure', description: 'Ping, status, version checks' },
+    // Module-based scopes (sfapp_ prefix)
+    { id: 'sfapp_cake_pantry', label: 'Cake Pantry', description: 'Account-based cake tracking (deliver, feed, inspect, consume)' },
+    { id: 'sfapp_cake_pantry:deliver', label: 'Cake Pantry (Deliver)', description: 'Deliver cake slices only' },
+    { id: 'sfapp_cake_pantry:feed', label: 'Cake Pantry (Feed)', description: 'Feed cake slices only' },
+    { id: 'sfapp_cake_pantry:inspect', label: 'Cake Pantry (Inspect)', description: 'Inspect pantry only' },
+    { id: 'sfapp_cake_pantry:consume', label: 'Cake Pantry (Consume)', description: 'Consume cake slices only' },
+    { id: 'sfapp_report_issue', label: 'Report Issue', description: 'Development QA reporting (tool failures, errors, reviews)' }
 ];
 
 const APPLICATION_AUTH_WS_PACKETS = new Set([

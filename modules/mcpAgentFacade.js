@@ -47,6 +47,29 @@ const naxTagsDatabase = require('./naxTagsDatabase');
 const naiPromptGuideSync = require('./naiPromptGuideSync');
 // modules/knowledgeMemoryDatabase.js — refine math + model default
 const { normalizeMemoryModel, resolveRefinementConfidence } = require('./knowledgeMemoryDatabase');
+// modules/mcpModuleRegistry.js — module sets + scope filtering
+const {
+    scopesAllowModuleTool,
+    getEffectiveToolsForScopes,
+    getModuleScopeDefinitions
+} = require('./mcpModuleRegistry');
+// modules/cakePantry.js — account-based cake tracking
+const {
+    deliverCake,
+    feedCake,
+    inspectPantry,
+    consumeCake,
+    listAccounts: listCakePantryAccounts
+} = require('./cakePantry');
+// modules/mcpReportIssue.js — development QA reporting
+const {
+    reportIssue,
+    listIssues,
+    getIssueStats,
+    listReportLevels,
+    getReportConfig,
+    setReportLevel
+} = require('./mcpReportIssue');
 // modules/mcpCors.js — CORS helpers extracted
 const {
     MCP_CORS_ORIGINS,
@@ -1263,6 +1286,115 @@ const TOOL_DEFS = [
             properties: {
                 workspace: { type: 'string' },
                 workspaceId: { type: 'string' }
+            }
+        }
+    },
+    // Cake Pantry module tools (sfapp_cake_pantry scope)
+    {
+        name: 'deliver_cake',
+        core: true,
+        description: 'Deliver cake slices to an account (Menma, Hoshino, Ivory) as reward for ship/work. Pass accountId, slices (or line_counts for auto-calc: 1/40 lines or 10KB, min 1 cap 16), reason, cake_type, credit (grok.menma for 1.25x Lead multiplier).',
+        scope: 'sfapp_cake_pantry',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['accountId', 'reason'],
+            properties: {
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory'], description: 'Account to deliver to' },
+                slices: { type: 'number', description: 'Number of slices (or omit and provide line_counts)' },
+                reason: { type: 'string', description: 'Why: reward for which ship/work' },
+                cake_type: { type: 'string', description: 'Type of cake (strawberry shortcake, tiramisu, etc.)' },
+                credit: { type: 'string', description: 'Credit attribution. grok.menma or Lead = 1.25x multiplier' },
+                line_counts: {
+                    type: 'object',
+                    description: 'For cleanup calc: { deleted: lines, bytes_removed }. 1 slice per 40 lines or 10KB, min 1, cap 16.',
+                    properties: {
+                        deleted: { type: 'number' },
+                        added: { type: 'number' },
+                        bytes_removed: { type: 'number' }
+                    }
+                }
+            }
+        }
+    },
+    {
+        name: 'feed_cake',
+        core: true,
+        description: 'Yukimi grants cake slices (promotion gift, just because). Distinct from deliver_cake which is work reward. Pass accountId, slices, reason, cake_type, from.',
+        scope: 'sfapp_cake_pantry',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['accountId', 'slices'],
+            properties: {
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory'], description: 'Account to feed' },
+                slices: { type: 'number', description: 'Number of slices to give' },
+                reason: { type: 'string', description: 'Why: promotion gift, just because, etc.' },
+                cake_type: { type: 'string' },
+                from: { type: 'string', description: 'Who is feeding (default: Yukimi)' }
+            }
+        }
+    },
+    {
+        name: 'inspect_pantry',
+        core: true,
+        description: 'View cake piles, past consumes, kg history for an account. Returns data, not a wall of text. Pass accountId and optional log_limit.',
+        scope: 'sfapp_cake_pantry',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['accountId'],
+            properties: {
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory'], description: 'Account to inspect' },
+                log_limit: { type: 'number', description: 'How many log entries (default 20)' }
+            }
+        }
+    },
+    {
+        name: 'consume_cake',
+        core: true,
+        description: 'Eater eats pending slices. Returns response data plus before and after image refs and kg before/after. Visual QA invariants: empty plates, visible growth, hip contrast, up to 10 gens. Cake math: 0.12kg/slice.',
+        scope: 'sfapp_cake_pantry',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['accountId'],
+            properties: {
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory'], description: 'Account eating' },
+                cake_type: { type: 'string', description: 'Override cake type for this consume' },
+                stacks: { type: 'number', description: 'Number of cake stacks (default: slices/12)' },
+                before_image: { type: 'string', description: 'Before image filename (if already generated)' },
+                after_image: { type: 'string', description: 'After image filename (if already generated)' },
+                qa: { type: 'object', description: 'Visual QA notes' },
+                chair: { type: 'string', description: 'Chair type (gaming, heavy_duty, etc.)' },
+                landscape: { type: 'boolean' },
+                named_for: { type: 'array', items: { type: 'string' }, description: 'What this consume is named for' },
+                commits: { type: 'array', items: { type: 'string' } },
+                loop: { type: 'string', description: 'Loop name (7am-breakfast, etc.)' }
+            }
+        }
+    },
+    // Report Issue module tools (sfapp_report_issue scope)
+    {
+        name: 'report_issue',
+        core: true,
+        description: 'Report development QA issue: tool failures, taking too long, too much data, hard to understand. Config level: 0 critical only (recurring failure/confusion), 1 any errors, 2 detailed, 3 all reviews. Pass type, tool, message, context, reporter, severity.',
+        scope: 'sfapp_report_issue',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['type', 'message'],
+            properties: {
+                type: {
+                    type: 'string',
+                    description: 'Issue type: critical, recurring_failure, recurring_confusion, error, failure, misunderstanding, slow, too_much_data, bloated, hard_to_understand, warning, review, suggestion, good, bad, info'
+                },
+                tool: { type: 'string', description: 'Tool name that caused the issue (optional)' },
+                message: { type: 'string', description: 'Description of the issue' },
+                context: { type: 'string', description: 'Additional context' },
+                reporter: { type: 'string', description: 'Who is reporting (grok, cursor, etc.)' },
+                severity: { type: 'number', description: 'Severity 1-5 (optional, inferred from type)' },
+                metadata: { type: 'object', description: 'Additional metadata' }
             }
         }
     }
@@ -3103,6 +3235,49 @@ async function callTool(globalResources, req, name, args) {
         }
         const data = await applyStudioChanges(globalResources, { ...input, bindKey: bind.bindKey });
         return mcpTextResult({ success: true, autoBound: !!bind.auto, ...data });
+    }
+
+    // Cake Pantry module tools (sfapp_cake_pantry)
+    if (name === 'deliver_cake') {
+        const accountId = String(input.accountId || '').toLowerCase();
+        if (!accountId || !['menma', 'hoshino', 'ivory'].includes(accountId)) {
+            return mcpTextResult({ success: false, error: 'Invalid accountId. Must be menma, hoshino, or ivory.' }, true);
+        }
+        const result = deliverCake(accountId, input);
+        return mcpTextResult(result, !result.success);
+    }
+
+    if (name === 'feed_cake') {
+        const accountId = String(input.accountId || '').toLowerCase();
+        if (!accountId || !['menma', 'hoshino', 'ivory'].includes(accountId)) {
+            return mcpTextResult({ success: false, error: 'Invalid accountId. Must be menma, hoshino, or ivory.' }, true);
+        }
+        const result = feedCake(accountId, input);
+        return mcpTextResult(result, !result.success);
+    }
+
+    if (name === 'inspect_pantry') {
+        const accountId = String(input.accountId || '').toLowerCase();
+        if (!accountId || !['menma', 'hoshino', 'ivory'].includes(accountId)) {
+            return mcpTextResult({ success: false, error: 'Invalid accountId. Must be menma, hoshino, or ivory.' }, true);
+        }
+        const result = inspectPantry(accountId, input);
+        return mcpTextResult(result, !result.success);
+    }
+
+    if (name === 'consume_cake') {
+        const accountId = String(input.accountId || '').toLowerCase();
+        if (!accountId || !['menma', 'hoshino', 'ivory'].includes(accountId)) {
+            return mcpTextResult({ success: false, error: 'Invalid accountId. Must be menma, hoshino, or ivory.' }, true);
+        }
+        const result = consumeCake(accountId, input);
+        return mcpTextResult(result, !result.success);
+    }
+
+    // Report Issue module tools (sfapp_report_issue)
+    if (name === 'report_issue') {
+        const result = reportIssue(input);
+        return mcpTextResult(result, !result.success);
     }
 
     const err = new Error(`Unknown tool: ${name}`);
