@@ -49,8 +49,8 @@ function readJsonFile(filePath, fallback) {
 function pickWorkItem(item) {
     if (!item || typeof item !== 'object') return null;
     return {
-        id: item.id || '',
-        from: item.from || '',
+        id: item.id || item.work_id || '',
+        from: item.from || item.source_from || '',
         added: item.added || null,
         done: item.done || null,
         summary: item.summary || '',
@@ -252,7 +252,9 @@ async function runAccountImportIfNeeded(db, accountId) {
                         if (!picked) return;
                         const extraData = { ...item };
                         delete extraData.id;
+                        delete extraData.work_id;
                         delete extraData.from;
+                        delete extraData.source_from;
                         delete extraData.added;
                         delete extraData.done;
                         delete extraData.summary;
@@ -614,7 +616,9 @@ async function saveWorkPileToDb(db, accountId, pile) {
             if (!picked) return;
             const extraData = { ...item };
             delete extraData.id;
+            delete extraData.work_id;
             delete extraData.from;
+            delete extraData.source_from;
             delete extraData.added;
             delete extraData.done;
             delete extraData.summary;
@@ -661,7 +665,9 @@ async function addWorkItemToDb(db, accountId, item, type = 'open') {
 
     const extraData = { ...item };
     delete extraData.id;
+    delete extraData.work_id;
     delete extraData.from;
+    delete extraData.source_from;
     delete extraData.added;
     delete extraData.done;
     delete extraData.summary;
