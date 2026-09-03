@@ -598,19 +598,34 @@ function registerRoutes(app, { globalResources }) {
     }
     const prefix = `/${uuid}`;
 
-    const sendView = (req, res, isGrimoire) => {
+    const sendView = (req, res, isGrimoire, { cors = false } = {}) => {
+        if (cors) {
+            res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+            res.setHeader('Access-Control-Allow-Origin', 'https://staticforge.737.jp.net');
+            res.setHeader('Access-Control-Allow-Credentials', 'true');
+        }
         res.status(200).type('html').send(renderApocrypha({
             title: 'Apocrypha — MWF digest',
             isGrimoire
         }));
     };
 
+    app.get('/grim/zine/apocrypha', (req, res) => {
+        const isGrimoire = !!(req.session && req.session.authenticated);
+        if (!isGrimoire) {
+            return res.status(401).json({ error: 'Authentication required' });
+        }
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+        res.setHeader('Pragma', 'no-cache');
+        return sendView(req, res, true);
+    });
+
     app.use(prefix, (req, res, next) => {
         if (req.method !== 'GET' && req.method !== 'HEAD') {
             return next();
         }
         const isGrimoire = !!(req.session && req.session.authenticated);
-        return sendView(req, res, isGrimoire);
+        return sendView(req, res, isGrimoire, { cors: true });
     });
 }
 
