@@ -73,7 +73,7 @@ function renderApocrypha({ title, isGrimoire }) {
         billboardHtml = data.billboard.map(item => {
             const isHero = item.kind === 'hero' ? ' hero' : '';
             const imgHtml = (item.src && typeof item.src === 'string' && item.src.startsWith('http'))
-                ? '<img src="' + escapeHtml(item.src) + '" alt="' + escapeHtml(item.cap || '') + '" style="max-width: 100%; height: auto; margin-top: 8px; display: block; border: 1px solid #333;">'
+                ? '<img referrerpolicy="no-referrer" src="' + escapeHtml(item.src) + '" alt="' + escapeHtml(item.cap || '') + '" style="max-width: 100%; height: auto; margin-top: 8px; display: block; border: 1px solid #333;">'
                 : '';
             const metaHtml = item.cap ? '<div class="tile-meta" style="margin-top: 8px; font-size: 9px; color: #999;">' + escapeHtml(item.cap) + '</div>' : '';
             return '<div class="tile' + isHero + '">\n' +
@@ -103,7 +103,7 @@ function renderApocrypha({ title, isGrimoire }) {
                 const kickerHtml = img.kicker ? '<div style="font-size: 8px; color: #665500; text-transform: uppercase; margin-top: 4px;">' + escapeHtml(img.kicker) + '</div>' : '';
                 const capHtml = img.cap ? '<div style="font-size: 9px; color: #999; margin-top: 2px;">' + escapeHtml(img.cap) + '</div>' : '';
                 return '<div class="image-item">\n' +
-                       '    <img src="' + escapeHtml(img.src) + '" alt="' + escapeHtml(img.cap || '') + '" style="width: 100%; height: auto; border: 1px solid #333; display: block;">\n' +
+                       '    <img referrerpolicy="no-referrer" src="' + escapeHtml(img.src) + '" alt="' + escapeHtml(img.cap || '') + '" style="width: 100%; height: auto; border: 1px solid #333; display: block;">\n' +
                        '    ' + kickerHtml + '\n' +
                        '    ' + capHtml + '\n' +
                        '</div>';
@@ -665,6 +665,71 @@ html, body {
 </html>`;
 }
 
+function getApocryphaInteriorCss() {
+    return `
+@import url('https://fonts.googleapis.com/css2?family=DotGothic16&family=Grenze:wght@400;700&family=Oxanium:wght@400;700&family=Share+Tech+Mono&display=swap');
+.apocrypha-interior { background: #0d0d0d; overflow: auto; max-height: 100%; }
+.apocrypha-interior .zine { background: #0d0d0d; color: #d7ff9a; font-family: 'Share Tech Mono', 'DotGothic16', monospace; font-size: 12px; line-height: 1.4; padding: 16px; max-width: 1024px; margin: 0 auto; box-sizing: border-box; }
+.apocrypha-interior .mast { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #333; }
+.apocrypha-interior .mast-left { display: flex; flex-direction: column; gap: 4px; }
+.apocrypha-interior .mast-title { font-family: 'Grenze', serif; font-size: 48px; font-weight: 400; letter-spacing: 0.08em; color: #d7ff9a; margin: 0; line-height: 1; }
+.apocrypha-interior .stamp { display: inline-block; background: #e11; color: #fff; font-family: 'Oxanium', sans-serif; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; padding: 2px 6px; transform: rotate(-2deg); box-shadow: 1px 1px 2px rgba(0,0,0,0.5); }
+.apocrypha-interior .mast-right { text-align: right; font-size: 10px; color: #ffcc66; }
+.apocrypha-interior .mast-right a { color: #ffcc66; text-decoration: none; }
+.apocrypha-interior .mast-right a:hover { text-decoration: underline; }
+.apocrypha-interior .billboard { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+.apocrypha-interior .tile { border: 1px solid #2a5a2a; padding: 8px; background: #0a1a0a; min-height: 100px; }
+.apocrypha-interior .tile.hero { grid-row: span 2; }
+.apocrypha-interior .tile-kicker { font-size: 9px; color: #e11; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+.apocrypha-interior .tile-title { font-size: 11px; color: #d7ff9a; margin-bottom: 4px; }
+.apocrypha-interior .tile-meta { font-size: 9px; color: #666; }
+.apocrypha-interior .ad-tile { border: 1px dashed #665500; padding: 8px; background: transparent; min-height: 60px; }
+.apocrypha-interior .ad-kicker { font-size: 8px; color: #665500; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
+.apocrypha-interior .ad-title { font-size: 10px; color: #ffcc66; margin-bottom: 2px; }
+.apocrypha-interior .ad-tagline { font-size: 9px; color: #666; font-style: italic; }
+.apocrypha-interior .content { display: grid; grid-template-columns: 1fr 200px; gap: 16px; }
+.apocrypha-interior .main-col { min-width: 0; }
+.apocrypha-interior .sidebar { min-width: 0; }
+.apocrypha-interior .article { border: 1px solid #2a5a2a; padding: 12px; margin-bottom: 12px; background: #0a1a0a; }
+.apocrypha-interior .article-kicker { font-size: 9px; color: #d7ff9a; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; opacity: 0.7; }
+.apocrypha-interior .article-title { font-size: 14px; font-weight: bold; color: #d7ff9a; margin: 0 0 12px 0; }
+.apocrypha-interior .stats-grid { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.apocrypha-interior .stat-box { border: 1px solid #333; padding: 8px 12px; text-align: center; min-width: 60px; }
+.apocrypha-interior .stat-value { font-size: 20px; font-weight: bold; color: #d7ff9a; display: block; }
+.apocrypha-interior .stat-label { font-size: 9px; color: #666; text-transform: lowercase; }
+.apocrypha-interior .split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+.apocrypha-interior .split-col { padding: 8px; border-left: 2px solid; }
+.apocrypha-interior .split-col.official { border-color: #2a5a2a; }
+.apocrypha-interior .split-col.unofficial { border-color: #665500; }
+.apocrypha-interior .split-title { font-size: 10px; font-weight: bold; text-transform: lowercase; margin-bottom: 6px; color: #d7ff9a; }
+.apocrypha-interior .split-text { font-size: 10px; color: #999; line-height: 1.5; }
+.apocrypha-interior .wrap-public { border: 2px dashed #e11; padding: 12px; margin: 12px 0; background: rgba(225, 17, 17, 0.05); }
+.apocrypha-interior .wrap-public-header { font-size: 9px; color: #e11; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+.apocrypha-interior .wrap-public-teaser { font-size: 11px; color: #999; line-height: 1.5; }
+.apocrypha-interior .grim-wrapper { border: 1px solid #2a5a2a; padding: 12px; margin: 12px 0; background: #0a1a0a; }
+.apocrypha-interior .grim-header { font-size: 9px; color: #2a5a2a; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.apocrypha-interior .grim-header::before { content: '●'; color: #4a4; }
+.apocrypha-interior .enshutsuka-memories { font-size: 11px; color: #d7ff9a; line-height: 1.6; }
+.apocrypha-interior .enshutsuka-memories p { margin: 0 0 8px 0; }
+.apocrypha-interior .sidebar-box { border: 1px dashed #665500; padding: 10px; margin-bottom: 12px; }
+.apocrypha-interior .sidebar-kicker { font-size: 8px; color: #665500; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+.apocrypha-interior .sidebar-title { font-size: 11px; color: #ffcc66; margin-bottom: 4px; font-weight: bold; }
+.apocrypha-interior .sidebar-text { font-size: 9px; color: #666; font-style: italic; }
+.apocrypha-interior .sidebar-url { border: 1px solid #333; padding: 10px; margin-bottom: 12px; }
+.apocrypha-interior .sidebar-url-label { font-size: 8px; color: #666; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+.apocrypha-interior .sidebar-url a { font-size: 10px; color: #d7ff9a; text-decoration: none; word-break: break-all; }
+.apocrypha-interior .sidebar-url a:hover { text-decoration: underline; }
+.apocrypha-interior .images { border: 1px solid #333; padding: 12px; margin-top: 16px; }
+.apocrypha-interior .images-kicker { font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+.apocrypha-interior .images-title { font-size: 14px; font-weight: bold; color: #d7ff9a; margin: 0 0 8px 0; }
+.apocrypha-interior .images-note { font-size: 10px; color: #999; line-height: 1.5; }
+.apocrypha-interior .image-item img { width: 100%; height: auto; border: 1px solid #333; display: block; }
+.apocrypha-interior .footer { margin-top: 16px; padding-top: 12px; border-top: 1px solid #333; font-size: 9px; color: #666; }
+.apocrypha-interior .footer a { color: #d7ff9a; text-decoration: none; }
+.apocrypha-interior .footer a:hover { text-decoration: underline; }
+@media (max-width: 768px) { .apocrypha-interior .zine { padding: 12px; } .apocrypha-interior .billboard { grid-template-columns: 1fr 1fr; } .apocrypha-interior .tile.hero { grid-column: span 2; grid-row: span 1; } .apocrypha-interior .content { grid-template-columns: 1fr; } .apocrypha-interior .sidebar { order: -1; } .apocrypha-interior .mast { flex-direction: column; gap: 12px; } .apocrypha-interior .mast-right { text-align: left; } .apocrypha-interior .mast-title { font-size: 32px; } }`;
+}
+
 function getApocryphaInterior(options) {
     const full = renderApocrypha(options);
     const startTag = '<main>';
@@ -674,7 +739,17 @@ function getApocryphaInterior(options) {
     if (startIdx === -1 || endIdx === -1) {
         return '';
     }
-    return full.slice(startIdx + startTag.length, endIdx).trim();
+    let interior = full.slice(startIdx + startTag.length, endIdx).trim();
+    
+    // Remove the full-page <style> block (it has html,body rules that leak)
+    interior = interior.replace(/<style>[\s\S]*?<\/style>/i, '');
+    
+    // Add referrerpolicy to all images for cross-origin attachment hosts
+    interior = interior.replace(/<img /g, '<img referrerpolicy="no-referrer" ');
+    
+    // Wrap in scoped container and prepend scoped CSS
+    const scopedCss = getApocryphaInteriorCss();
+    return '<style>' + scopedCss + '</style>\n<div class="apocrypha-interior">' + interior + '</div>';
 }
 
 function registerRoutes(app, { globalResources }) {
