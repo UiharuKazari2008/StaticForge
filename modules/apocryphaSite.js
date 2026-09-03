@@ -21,9 +21,97 @@ function escapeHtml(value) {
     }[ch]));
 }
 
+function getApocryphaFilePath() {
+    return path.join(process.cwd(), 'data/apocrypha/current.json');
+}
+
+function getApocryphaArchiveDir() {
+    return path.join(process.cwd(), 'data/apocrypha/archive');
+}
+
+function safeIssueSlug(value) {
+    return String(value || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 80);
+}
+
+function issueDateFromData(data) {
+    const dateMatch = String((data && data.kicker) || '').match(/(\d{4}-\d{2}-\d{2})/);
+    return dateMatch ? dateMatch[1] : '';
+}
+
+function issueSlugFromData(data) {
+    const label = safeIssueSlug(data && data.issueLabel) || 'issue';
+    const date = issueDateFromData(data);
+    return date ? label + '-' + date : label;
+}
+
+function shouldArchiveLiveIssue(live, input) {
+    if (!live || typeof live !== 'object') return false;
+    const incomingLabel = typeof input.issueLabel === 'string' ? input.issueLabel.trim() : '';
+    const liveLabel = live.issueLabel ? String(live.issueLabel).trim() : '';
+    if (incomingLabel && liveLabel && incomingLabel !== liveLabel) return true;
+    const incomingDate = issueDateFromData(input);
+    const liveDate = issueDateFromData(live);
+    return !!(incomingDate && liveDate && incomingDate !== liveDate);
+}
+
+function loadArchivedIssue(slug) {
+    const safe = safeIssueSlug(slug);
+    if (!safe) return null;
+    const archiveDir = getApocryphaArchiveDir();
+    const filePath = path.join(archiveDir, safe + '.json');
+    if (!filePath.startsWith(archiveDir + path.sep)) return null;
+    try {
+        if (!fs.existsSync(filePath)) return null;
+        return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    } catch (e) {
+        console.error('[apocrypha] failed to read archive', safe, e.message);
+        return null;
+    }
+}
+
+function listArchivedIssues() {
+    const archiveDir = getApocryphaArchiveDir();
+    if (!fs.existsSync(archiveDir)) return [];
+    const rows = [];
+    for (const name of fs.readdirSync(archiveDir)) {
+        if (!name.endsWith('.json')) continue;
+        const slug = name.slice(0, -5);
+        const data = loadArchivedIssue(slug);
+        if (!data) continue;
+        rows.push({
+            slug: safeIssueSlug(slug),
+            issueLabel: data.issueLabel || slug,
+            kicker: data.kicker || null
+        });
+    }
+    rows.sort((a, b) => String(b.kicker || b.slug).localeCompare(String(a.kicker || a.slug)));
+    return rows;
+}
+
+function archiveLiveIssue(live) {
+    if (!live || typeof live !== 'object') return null;
+    const archiveDir = getApocryphaArchiveDir();
+    if (!fs.existsSync(archiveDir)) {
+        fs.mkdirSync(archiveDir, { recursive: true });
+    }
+    let slug = issueSlugFromData(live);
+    let n = 2;
+    while (fs.existsSync(path.join(archiveDir, slug + '.json'))) {
+        slug = issueSlugFromData(live) + '-' + n;
+        n += 1;
+    }
+    const filePath = path.join(archiveDir, slug + '.json');
+    fs.writeFileSync(filePath, JSON.stringify(live, null, 2), 'utf8');
+    return slug;
+}
+
 function getApocryphaData() {
     try {
-        const filePath = path.join(process.cwd(), 'data/apocrypha/current.json');
+        const filePath = getApocryphaFilePath();
         if (fs.existsSync(filePath)) {
             const raw = fs.readFileSync(filePath, 'utf8');
             return JSON.parse(raw);
@@ -32,6 +120,231 @@ function getApocryphaData() {
         console.error('[apocrypha] failed to read/parse current.json:', e.message);
     }
     return null;
+}
+
+function writeApocryphaData(data) {
+    const filePath = getApocryphaFilePath();
+    const dir = path.dirname(filePath);
+    const tmpPath = path.join(dir, 'current.tmp.json');
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf8');
+    fs.renameSync(tmpPath, filePath);
+}
+
+function sectionIdOf(sec) {
+    return sec && typeof sec === 'object' ? String(sec.id || '').trim() : '';
+}
+
+function collectIncomingSections(input) {
+    if (!input || typeof input !== 'object') return [];
+    if (Array.isArray(input.sections) && input.sections.length) {
+        return input.sections.filter((sec) => sec && typeof sec === 'object');
+    }
+    if (input.article && typeof input.article === 'object') return [input.article];
+    if (input.section && typeof input.section === 'object') return [input.section];
+    if (input.id || input.body || (input.title && input.lede)) {
+        return [input];
+    }
+    return [];
+}
+
+function appendUniqueBySrc(live, key, items) {
+    if (!Array.isArray(items) || !items.length) return;
+    if (!Array.isArray(live[key])) live[key] = [];
+    const have = new Set(live[key].map((item) => item && item.src).filter(Boolean));
+    for (const item of items) {
+        if (!item || typeof item !== 'object') continue;
+        if (item.src && have.has(item.src)) continue;
+        live[key].push(item);
+        if (item.src) have.add(item.src);
+    }
+}
+
+function appendEnshutsuka(live, items) {
+    if (!Array.isArray(items) || !items.length) return;
+    if (!Array.isArray(live.enshutsuka)) live.enshutsuka = [];
+    const have = new Set(live.enshutsuka.map((item) => String((item && item.body) || (item && item.teaser) || '')));
+    for (const item of items) {
+        if (!item || typeof item !== 'object') continue;
+        const key = String(item.body || item.teaser || '');
+        if (key && have.has(key)) continue;
+        live.enshutsuka.push(item);
+        if (key) have.add(key);
+    }
+}
+
+function mergeIssueMeta(live, input) {
+    const keys = ['issueLabel', 'webapp', 'kicker', 'lede', 'title', 'rundown', 'official', 'unofficial', 'imagesNote'];
+    for (const key of keys) {
+        if (typeof input[key] !== 'string' || !input[key]) continue;
+        if (!live[key]) live[key] = input[key];
+    }
+    if (input.counts && typeof input.counts === 'object' && !Array.isArray(input.counts)) {
+        live.counts = Object.assign({}, live.counts || {}, input.counts);
+    }
+    appendUniqueBySrc(live, 'billboard', input.billboard);
+    appendUniqueBySrc(live, 'images', input.images);
+    appendUniqueBySrc(live, 'grimImages', input.grimImages);
+    appendEnshutsuka(live, input.enshutsuka);
+}
+
+function publishApocrypha(input) {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+        return { success: false, error: 'payload must be a JSON object' };
+    }
+    const replace = input.replace === true;
+    const incoming = collectIncomingSections(input);
+    const issueShaped = !!(input.issueLabel || input.rundown || input.billboard || input.counts || input.official || Array.isArray(input.sections));
+    if (!incoming.length && !issueShaped) {
+        return { success: false, error: 'pass a new article (id + title/body) or sections[]' };
+    }
+
+    let live = getApocryphaData() || {};
+    let archived = null;
+    if (shouldArchiveLiveIssue(live, input)) {
+        archived = archiveLiveIssue(live);
+        live = { sections: [] };
+    }
+    if (!Array.isArray(live.sections)) live.sections = [];
+    if (issueShaped) mergeIssueMeta(live, input);
+
+    const added = [];
+    const replaced = [];
+    const skipped = [];
+    for (const sec of incoming) {
+        const id = sectionIdOf(sec);
+        if (!id) {
+            skipped.push({ error: 'section id is required' });
+            continue;
+        }
+        const idx = live.sections.findIndex((row) => sectionIdOf(row) === id);
+        const article = Object.assign({}, sec);
+        delete article.replace;
+        delete article.article;
+        delete article.section;
+        delete article.sections;
+        delete article.issueLabel;
+        delete article.webapp;
+        delete article.rundown;
+        delete article.counts;
+        delete article.official;
+        delete article.unofficial;
+        delete article.billboard;
+        delete article.imagesNote;
+        delete article.enshutsuka;
+        delete article.grimImages;
+        if (idx === -1) {
+            live.sections.push(article);
+            added.push(id);
+        } else if (replace) {
+            live.sections[idx] = article;
+            replaced.push(id);
+        } else {
+            skipped.push({
+                id,
+                error: 'already live; call revoke_apocrypha or pass replace:true'
+            });
+        }
+    }
+
+    writeApocryphaData(live);
+    return {
+        success: true,
+        issueLabel: live.issueLabel || null,
+        added,
+        replaced,
+        skipped,
+        archived,
+        sectionIds: live.sections.map(sectionIdOf).filter(Boolean)
+    };
+}
+
+function revokeApocryphaSection(input) {
+    const id = String((input && (input.id || input.sectionId)) || '').trim();
+    if (!id) {
+        return { success: false, error: 'id is required' };
+    }
+    const live = getApocryphaData();
+    if (!live || !Array.isArray(live.sections)) {
+        return { success: false, error: 'no live issue' };
+    }
+    const next = live.sections.filter((row) => sectionIdOf(row) !== id);
+    if (next.length === live.sections.length) {
+        return { success: false, error: 'section not found: ' + id, sectionIds: live.sections.map(sectionIdOf).filter(Boolean) };
+    }
+    live.sections = next;
+    writeApocryphaData(live);
+    return {
+        success: true,
+        revoked: id,
+        issueLabel: live.issueLabel || null,
+        sectionIds: live.sections.map(sectionIdOf).filter(Boolean)
+    };
+}
+
+function summarizeSections(data) {
+    const sections = data && Array.isArray(data.sections) ? data.sections : [];
+    return sections.map((sec) => ({
+        id: sectionIdOf(sec) || null,
+        kicker: sec && sec.kicker ? sec.kicker : null,
+        title: sec && sec.title ? sec.title : null,
+        grim: !!(sec && sec.grim === true)
+    }));
+}
+
+function listApocrypha(input) {
+    const slug = String((input && (input.slug || input.issue || input.archive)) || '').trim();
+    const archives = listArchivedIssues();
+    if (slug) {
+        const data = loadArchivedIssue(slug);
+        if (!data) {
+            return { success: false, error: 'archive not found: ' + slug, archives };
+        }
+        return {
+            success: true,
+            slug: safeIssueSlug(slug),
+            current: false,
+            issueLabel: data.issueLabel || null,
+            kicker: data.kicker || null,
+            sections: summarizeSections(data),
+            archives
+        };
+    }
+    const live = getApocryphaData();
+    if (!live) {
+        return { success: true, current: true, issueLabel: null, sections: [], archives };
+    }
+    return {
+        success: true,
+        current: true,
+        issueLabel: live.issueLabel || null,
+        kicker: live.kicker || null,
+        sections: summarizeSections(live),
+        archives
+    };
+}
+
+function renderPreviousDaysNav(viewingSlug) {
+    const archives = listArchivedIssues();
+    const liveHref = 'https://apocrypha.737.jp.net/';
+    let html = '<div class="sidebar-url"><span class="sidebar-url-label">PREVIOUS DAYS</span>';
+    html += '<a href="' + liveHref + '">' + (viewingSlug ? 'live issue' : 'live (this issue)') + '</a>';
+    if (!archives.length) {
+        html += '<div class="sidebar-text">earlier MWF issues land here after the next day publishes</div>';
+    }
+    for (const item of archives) {
+        const href = liveHref + 'archive/' + encodeURIComponent(item.slug);
+        const here = viewingSlug && item.slug === viewingSlug;
+        const label = (item.issueLabel || item.slug) + (here ? ' (this issue)' : '');
+        html += '<br><a href="' + href + '">' + escapeHtml(label) + '</a>';
+        if (item.kicker) {
+            html += '<div class="sidebar-text">' + escapeHtml(item.kicker) + '</div>';
+        }
+    }
+    html += '</div>';
+    return html;
 }
 
 function isHttpSrc(value) {
@@ -85,8 +398,10 @@ function renderSectionArticle(sec) {
         '</div>';
 }
 
-function renderApocrypha({ title, isGrimoire }) {
-    const data = getApocryphaData() || {};
+function renderApocrypha({ title, isGrimoire, issueSlug }) {
+    const viewingSlug = issueSlug ? safeIssueSlug(issueSlug) : '';
+    const data = (viewingSlug ? loadArchivedIssue(viewingSlug) : getApocryphaData()) || {};
+    const previousDaysHtml = renderPreviousDaysNav(viewingSlug);
 
     const issueLabelStr = data.issueLabel ? escapeHtml(data.issueLabel) : 'MONDAY DIGEST';
     const kickerStr = data.kicker ? escapeHtml(data.kicker) : '';
@@ -721,6 +1036,7 @@ html, body {
                         <span class="sidebar-url-label">PUBLIC URL</span>
                         <a href="https://apocrypha.737.jp.net/">apocrypha.737.jp.net</a>
                     </div>
+                    ${previousDaysHtml}
                 </aside>
             </div>
 
@@ -832,10 +1148,15 @@ function registerRoutes(app, { globalResources }) {
     }
     const prefix = `/${uuid}`;
 
-    const sendView = (req, res, isGrimoire) => {
+    const sendView = (req, res, isGrimoire, issueSlug) => {
+        if (issueSlug && !loadArchivedIssue(issueSlug)) {
+            res.status(404).type('html').send('<!DOCTYPE html><title>Apocrypha</title>No such issue.');
+            return;
+        }
         res.status(200).type('html').send(renderApocrypha({
             title: 'Apocrypha — MWF digest',
-            isGrimoire
+            isGrimoire,
+            issueSlug
         }));
     };
 
@@ -843,9 +1164,22 @@ function registerRoutes(app, { globalResources }) {
         if (req.method !== 'GET' && req.method !== 'HEAD') {
             return next();
         }
+        const rel = String(req.url || req.path || '/').split('?')[0];
+        const archiveMatch = /^\/archive\/([a-z0-9][a-z0-9.-]{0,79})\/?$/i.exec(rel);
+        const issueSlug = archiveMatch ? archiveMatch[1] : '';
         const isGrimoire = !!(req.session && req.session.authenticated);
-        return sendView(req, res, isGrimoire);
+        return sendView(req, res, isGrimoire, issueSlug);
     });
 }
 
-module.exports = { registerRoutes, renderApocrypha, getApocryphaInterior };
+module.exports = {
+    registerRoutes,
+    renderApocrypha,
+    getApocryphaInterior,
+    getApocryphaData,
+    publishApocrypha,
+    revokeApocryphaSection,
+    listApocrypha,
+    listArchivedIssues,
+    loadArchivedIssue
+};

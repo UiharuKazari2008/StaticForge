@@ -43,6 +43,11 @@ const { compareImageFiles, evaluateThemeRows } = require('./mcpInsights');
 const { buildStudioSettingsCatalog, slimStudioSettingsCatalog, applyCatalogToListedTool } = require('./studioSettingsCatalog');
 const { buildMcpServerInfo, hashMcpToolsRevision } = require('./mcpServerInfo');
 const { MCP_INSTRUCTIONS } = require('./mcpInstructions');
+const {
+    publishApocrypha,
+    revokeApocryphaSection,
+    listApocrypha
+} = require('./apocryphaSite');
 const naxTagsDatabase = require('./naxTagsDatabase');
 const naiPromptGuideSync = require('./naiPromptGuideSync');
 // modules/knowledgeMemoryDatabase.js — refine math + model default
@@ -1296,17 +1301,19 @@ const TOOL_DEFS = [
             }
         }
     },
-    // Apocrypha Publish tool
+    // Apocrypha Publish tools
     {
         name: 'publish_apocrypha',
         core: true,
-        description: 'Publish issue content directly to the live Apocrypha zine. Replaces data/apocrypha/current.json atomically. Accepts freeform JSON.',
+        description: 'Add a new article to the live Apocrypha zine. Default is append: existing articles stay. Duplicate section id is skipped unless replace is true. Pass one article (id + title/body), {article}/{section}, or sections[]. Full-issue fields (issueLabel, rundown, billboard, …) fill blanks and append new image srcs; they do not wipe the live issue. A different issueLabel or kicker date archives the live issue (sidebar PREVIOUS DAYS / get_apocrypha slug). To take an article down first, call revoke_apocrypha.',
         scope: 'sfapp_apocrypha',
         inputSchema: {
             type: 'object',
             additionalProperties: true,
-            required: ['issueLabel'],
             properties: {
+                replace: { type: 'boolean', description: 'If true, overwrite an existing section with the same id. Default false (append only).' },
+                article: { type: 'object', additionalProperties: true },
+                section: { type: 'object', additionalProperties: true },
                 issueLabel: { type: 'string' },
                 webapp: { type: 'string' },
                 kicker: { type: 'string' },
@@ -1414,7 +1421,39 @@ const TOOL_DEFS = [
                             }
                         }
                     }
-                }
+                },
+                id: { type: 'string', description: 'Article id when publishing a single article at the top level' },
+                body: { type: 'string' }
+            }
+        }
+    },
+    {
+        name: 'revoke_apocrypha',
+        core: true,
+        description: 'Remove one live Apocrypha article by id. The rest of the issue stays. Publish the replacement afterward (append). Does not unpublish the whole zine.',
+        scope: 'sfapp_apocrypha',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['id'],
+            properties: {
+                id: { type: 'string', description: 'sections[].id to take down' },
+                sectionId: { type: 'string' }
+            }
+        }
+    },
+    {
+        name: 'get_apocrypha',
+        core: true,
+        description: 'List live Apocrypha articles, or a previous day. Omit args for the live issue plus archives[]. Pass slug (or issue) to read an archived day.',
+        scope: 'sfapp_apocrypha',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                slug: { type: 'string', description: 'Archive slug from archives[] (previous day)' },
+                issue: { type: 'string' },
+                archive: { type: 'string' }
             }
         }
     },
@@ -3609,30 +3648,17 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (name === 'publish_apocrypha') {
-        const issueLabel = typeof input.issueLabel === 'string' ? input.issueLabel.trim() : '';
-        if (!issueLabel) {
-            return mcpTextResult({ success: false, error: 'issueLabel is required' }, true);
-        }
+        const result = publishApocrypha(input);
+        return mcpTextResult(result, !result.success);
+    }
 
-        const targetDir = path.join(process.cwd(), 'data/apocrypha');
-        const targetPath = path.join(targetDir, 'current.json');
-        const tmpPath = path.join(targetDir, 'current.tmp.json');
+    if (name === 'revoke_apocrypha') {
+        const result = revokeApocryphaSection(input);
+        return mcpTextResult(result, !result.success);
+    }
 
-        if (!fs.existsSync(targetDir)) {
-            fs.mkdirSync(targetDir, { recursive: true });
-        }
-
-        try {
-            fs.writeFileSync(tmpPath, JSON.stringify(input, null, 2), 'utf8');
-            fs.renameSync(tmpPath, targetPath);
-            return mcpTextResult({
-                success: true,
-                issueLabel,
-                message: 'Apocrypha published successfully'
-            });
-        } catch (writeErr) {
-            return mcpTextResult({ success: false, error: 'Failed to write current.json: ' + writeErr.message }, true);
-        }
+    if (name === 'get_apocrypha') {
+        return mcpTextResult(listApocrypha(input));
     }
 
     const err = new Error(`Unknown tool: ${name}`);

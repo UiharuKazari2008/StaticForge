@@ -352,6 +352,16 @@ Structured NovelAI account/subscription data. Grok web may receive this module.
 - Does NOT invent remaining gens from usageToolManager's 17.3 * percent
 - Uses existing `opusUsage.js` / account endpoints
 
+#### Apocrypha Module (`sfapp_apocrypha`)
+
+Hoshino (and Rook/Menma) live-publish the zine. Grok web is hard-denied this scope, same as cake pantry.
+
+| Tool | Description |
+|------|-------------|
+| `publish_apocrypha` | **Append** a new article. Existing `sections[]` stay. Duplicate `id` is skipped unless `replace: true`. Pass one article (`id` + title/body), `{article}` / `{section}`, or `sections[]`. Issue-level fields fill blanks and append new image srcs; they do not wipe the live issue. A new `issueLabel` or kicker date (`YYYY-MM-DD`) archives the live issue first; readers open it from sidebar **PREVIOUS DAYS** or `https://apocrypha.737.jp.net/archive/<slug>`. |
+| `revoke_apocrypha` | Take down one article by `id`. Then publish the replacement (append). |
+| `get_apocrypha` | Live `issueLabel` + article ids/titles plus `archives[]`. Pass `slug` to read a previous day. |
+
 #### Requesting Modules at Login
 
 **Via OAuth scope parameter:** Include `sfapp_` scopes in the OAuth `scope` parameter to request specific modules:
@@ -372,6 +382,7 @@ scope=generation gallery sfapp_cake_pantry:deliver sfapp_cake_pantry:inspect
 - Core scopes (generation, gallery, workspace, etc.) are always included based on the request
 - `sfapp_usage` is checked by default in the picker — most clients want usage data
 - `sfapp_cake_pantry` is **unchecked** by default and **disabled for Grok web** (grok.com origin). Grok web must not receive cake pantry access. Even if the OAuth request includes `sfapp_cake_pantry`, it is stripped at both key-creation/upgrade time (never added to the application key) and grant time (never included in the authorization code).
+- `sfapp_apocrypha` is **unchecked** by default and **disabled for Grok web**. Same strip as cake.
 - `sfapp_report_issue` is unchecked by default — opt-in for development QA
 
 **Pre-specifying modules:** If the client already knows which modules it needs, include them in the `scope` parameter. The module picker is skipped when `sfapp_` scopes are present in the request.

@@ -318,8 +318,11 @@
     type: 'core',
     activate(shell, match) {
       if (!shell || !shell.displayArea) return false;
+      const path = String((match && (match.displayPath || match.normalized)) || '');
+      const archiveMatch = /\/archive\/([a-z0-9][a-z0-9.-]{0,79})/i.exec(path);
+      const slug = archiveMatch ? archiveMatch[1] : '';
       if (typeof shell.showApocryphaZine === 'function') {
-        shell.showApocryphaZine();
+        shell.showApocryphaZine({ slug });
       }
       if (typeof shell.setNavigationLoading === 'function') shell.setNavigationLoading(false);
       return true;

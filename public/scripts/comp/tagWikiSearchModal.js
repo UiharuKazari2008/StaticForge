@@ -228,6 +228,18 @@ class WikiDisplayBase {
                 if (a.classList.contains('tag-wiki-link')) {
                     return;
                 }
+                // public/scripts/comp/grimoireCoreDomains.js — apocrypha.737.jp.net stays in Grimoire
+                if (/apocrypha\.737\.jp\.net/i.test(href)) {
+                    a.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        if (typeof this.navigate === 'function') {
+                            this.navigate(href);
+                        } else if (window.tagWikiSearchModal && typeof window.tagWikiSearchModal.navigate === 'function') {
+                            window.tagWikiSearchModal.navigate(href);
+                        }
+                    });
+                    return;
+                }
                 if (!a.hasAttribute('target')) a.setAttribute('target', '_blank');
                 const rel = (a.getAttribute('rel') || '').toLowerCase();
                 if (!rel.includes('noopener')) {
@@ -1620,8 +1632,13 @@ class WikiDisplayBase {
         this.displayArea.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading...</div>';
 
         try {
+            const slug = String(options.slug || options.issue || '').trim()
+                || ((String(options.url || '').match(/\/archive\/([a-z0-9][a-z0-9.-]{0,79})/i) || [])[1] || '');
+            const displayUrl = slug
+                ? 'https://apocrypha.737.jp.net/archive/' + slug
+                : 'https://apocrypha.737.jp.net/';
             // modules/ws/handlers/110-wikiHandler.js: get_apocrypha_zine
-            const response = await wsClient.sendMessage('get_apocrypha_zine', {});
+            const response = await wsClient.sendMessage('get_apocrypha_zine', slug ? { slug } : {});
             if (response && response.interior) {
                 this.displayArea.innerHTML = response.interior;
             } else {
@@ -1629,11 +1646,11 @@ class WikiDisplayBase {
             }
 
             if (typeof this.setAddress === 'function') {
-                this.setAddress({ displayUrl: 'https://apocrypha.737.jp.net/', mode: 'edtx' });
+                this.setAddress({ displayUrl, mode: 'edtx' });
             }
 
             if (!options.skipHistory && typeof this.addToHistory === 'function') {
-                this.addToHistory({ type: 'apocrypha', url: 'https://apocrypha.737.jp.net/' });
+                this.addToHistory({ type: 'apocrypha', url: displayUrl });
             }
 
             if (typeof this._interceptAllLinks === 'function') {
@@ -3441,7 +3458,7 @@ class GrimoireSplitPane extends WikiDisplayBase {
         if (entry.type === 'apocrypha') {
             this.currentSelectedTag = null;
             this.currentTagName = null;
-            this.showApocryphaZine({ skipHistory: true });
+            this.showApocryphaZine({ skipHistory: true, url: entry.url });
             return;
         }
         if (entry.type === 'static-wiki-index') {
@@ -3952,7 +3969,7 @@ class WikiWindowInstance extends WikiDisplayBase {
             this.currentSelectedTag = null;
             this.currentTagName = null;
             this.currentStaticWiki = null;
-            this.showApocryphaZine({ skipHistory: true });
+            this.showApocryphaZine({ skipHistory: true, url: entry.url });
             this.updateNavigationButtons();
             return;
         }
@@ -7217,8 +7234,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         if (entry.type === 'apocrypha') {
             this.currentSelectedTag = null;
             this.currentTagName = null;
-            this.showApocryphaZine({ skipHistory: true });
-            this.setAddress({ displayUrl: 'https://apocrypha.737.jp.net/', mode: 'edtx' });
+            this.showApocryphaZine({ skipHistory: true, url: entry.url });
             this.updateNavigationButtons();
             return;
         }

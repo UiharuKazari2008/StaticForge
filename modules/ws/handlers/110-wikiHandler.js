@@ -1,6 +1,6 @@
 const path = require('path');
 const wsPacketRegistry = require('../wsPacketRegistry');
-const { getApocryphaInterior } = require('../../apocryphaSite');
+const { getApocryphaInterior, loadArchivedIssue } = require('../../apocryphaSite');
 
 async function handleSearchTagWiki(handler, ws, message, clientInfo, wsServer) {
     const { query, category, searchType = 'name', source = 'both', includeNonTag = false, limit = 50 } = message;
@@ -840,7 +840,16 @@ function postProcessWikiHtml(html) {
 
 async function handleGetApocryphaZine(handler, ws, message, clientInfo, wsServer) {
     try {
-        const interior = getApocryphaInterior({ title: 'Apocrypha — MWF digest', isGrimoire: true });
+        const issueSlug = message.issue || message.slug || message.archive || '';
+        if (issueSlug && !loadArchivedIssue(issueSlug)) {
+            handler.sendError(ws, 'No such Apocrypha issue', String(issueSlug), message.requestId);
+            return;
+        }
+        const interior = getApocryphaInterior({
+            title: 'Apocrypha — MWF digest',
+            isGrimoire: true,
+            issueSlug
+        });
         handler.sendToClient(ws, {
             type: 'get_apocrypha_zine_response',
             requestId: message.requestId,

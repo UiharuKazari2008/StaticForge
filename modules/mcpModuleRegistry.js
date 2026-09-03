@@ -120,7 +120,7 @@ const MODULE_DEFS = {
         scope: 'sfapp_apocrypha',
         label: 'Apocrypha Publish',
         description: 'Publish Apocrypha zine content directly',
-        tools: ['publish_apocrypha']
+        tools: ['publish_apocrypha', 'revoke_apocrypha', 'get_apocrypha']
     },
     report_issue: {
         id: 'report_issue',
