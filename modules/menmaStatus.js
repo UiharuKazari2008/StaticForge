@@ -840,6 +840,25 @@ async function buildAccountStatus(globalResources, accountId) {
     }
 }
 
+/**
+ * Build status for all cake pantry accounts
+ * Returns { success, accounts: { menma: {...}, hoshino: {...}, ... } }
+ */
+async function buildAllAccountsStatus(globalResources) {
+    const accountIds = Object.keys(ACCOUNT_DIRS);
+    const accounts = {};
+    
+    for (const accountId of accountIds) {
+        accounts[accountId] = await buildAccountStatus(globalResources, accountId);
+    }
+    
+    return {
+        success: true,
+        updated_at: new Date().toISOString(),
+        accounts
+    };
+}
+
 // ============================================================================
 // Helper to get db from globalResources
 // ============================================================================
@@ -863,6 +882,7 @@ module.exports = {
     ACCOUNT_DIRS,
     buildMenmaStatus,
     buildAccountStatus,
+    buildAllAccountsStatus,
     getCakePantryDb,
     getMenmaDb,
     isAccountImported,
