@@ -3,8 +3,9 @@
 /**
  * Apocrypha public zine: generated views under /{apocryphaPathUuid}.
  * Public hostname apocrypha.737.jp.net proxies here (UUID stays unlisted).
- * Window-classic chrome + underground hacker zine interior.
+ * Underground hacker zine interior only — no window chrome.
  * Anonymous: public teaser only. Authenticated: Enshutsuka memories visible.
+ * Template slots stay for #95 JSON ingest (issueLabel, webapp, kicker, counts, etc.).
  */
 
 function escapeHtml(value) {
@@ -22,12 +23,14 @@ function renderApocrypha({ title, isGrimoire }) {
             <div class="grim-wrapper">
                 <div class="grim-header">GRIM / LOGGED-IN</div>
                 <div class="enshutsuka-memories">
+                    <!-- #95: enshutsuka[].body fills here -->
                     <p>Enshutsuka memory bodies visible</p>
                 </div>
             </div>` : `
             <div class="wrap-public">
                 <div class="wrap-public-header">GRIM / LOGIN WRAPPER · omitted from public</div>
-                <div class="wrap-public-teaser">Teaser: three Enshutsuka memories exist. Bodies stay in Grim after session.</div>
+                <!-- #95: enshutsuka[].teaser fills here -->
+                <div class="wrap-public-teaser">Teaser: Enshutsuka memories exist. Bodies stay in Grim after session.</div>
             </div>`;
 
     return `<!DOCTYPE html>
@@ -38,79 +41,16 @@ function renderApocrypha({ title, isGrimoire }) {
 <title>${escapeHtml(title)}</title>
 </head>
 <body>
-<main class="desktop">
+<main>
 <style>
-/* Window-classic + zine interior — Chiyo ecf82040 */
+/* Zine interior — Chiyo ecf82040 */
 @import url('https://fonts.googleapis.com/css2?family=DotGothic16&family=Grenze:wght@400;700&family=Oxanium:wght@400;700&family=Share+Tech+Mono&display=swap');
 
-.desktop {
-    background: rgb(58, 110, 165);
-    min-height: 100vh;
-    padding: 20px;
-    box-sizing: border-box;
+html, body {
     margin: 0;
-}
-
-.win {
-    background: rgb(212, 208, 200);
-    border: 2px solid;
-    border-color: #ffffff #808080 #808080 #ffffff;
-    box-shadow: 1px 1px 0 #000;
-    max-width: 1024px;
-    margin: 0 auto;
-}
-
-.titlebar {
-    background: linear-gradient(to right, rgb(10, 36, 106), rgb(166, 202, 240));
-    color: #ffffff;
-    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
-    font-size: 11px;
-    font-weight: bold;
-    padding: 2px 4px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 18px;
-    user-select: none;
-}
-
-.titlebar-text {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.titlebar-icon {
-    width: 14px;
-    height: 14px;
-    background: #d7ff9a;
-    border-radius: 2px;
-    font-size: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #0d0d0d;
-    font-weight: bold;
-}
-
-.titlebar-controls {
-    display: flex;
-    gap: 2px;
-}
-
-.titlebar-btn {
-    width: 16px;
-    height: 14px;
-    background: rgb(212, 208, 200);
-    border: 1px solid;
-    border-color: #ffffff #808080 #808080 #ffffff;
-    font-family: 'Marlett', sans-serif;
-    font-size: 9px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #000;
-    cursor: default;
+    padding: 0;
+    min-height: 100vh;
+    background: #0d0d0d;
 }
 
 .zine {
@@ -120,7 +60,10 @@ function renderApocrypha({ title, isGrimoire }) {
     font-size: 12px;
     line-height: 1.4;
     padding: 16px;
-    min-height: 600px;
+    min-height: 100vh;
+    max-width: 1024px;
+    margin: 0 auto;
+    box-sizing: border-box;
 }
 
 .mast {
@@ -490,8 +433,8 @@ function renderApocrypha({ title, isGrimoire }) {
 }
 
 @media (max-width: 768px) {
-    .desktop {
-        padding: 8px;
+    .zine {
+        padding: 12px;
     }
     
     .billboard {
@@ -525,18 +468,6 @@ function renderApocrypha({ title, isGrimoire }) {
     }
 }
 </style>
-    <div class="win">
-        <div class="titlebar">
-            <span class="titlebar-text">
-                <span class="titlebar-icon">A</span>
-                Apocrypha — MWF digest
-            </span>
-            <span class="titlebar-controls">
-                <span class="titlebar-btn">_</span>
-                <span class="titlebar-btn">□</span>
-                <span class="titlebar-btn">×</span>
-            </span>
-        </div>
         <div class="zine">
             <!-- Masthead -->
             <header class="mast">
@@ -545,21 +476,22 @@ function renderApocrypha({ title, isGrimoire }) {
                     <span class="stamp">UNOFFICIAL PRESS</span>
                 </div>
                 <div class="mast-right">
+                    <!-- #95: issueLabel fills here -->
                     MONDAY DIGEST<br>
-                    EXAMPLE DATA
+                    <!-- #95: webapp kicker fills here -->
                 </div>
             </header>
 
-            <!-- Billboard Grid -->
+            <!-- Billboard Grid — #95: billboard[] fills here -->
             <section class="billboard">
                 <div class="tile hero">
                     <span class="tile-kicker">BILLBOARD · image of the day</span>
-                    <div class="tile-title">keep_481516 · atelier-preview</div>
-                    <div class="tile-meta">(placeholder tile, not a real gen)</div>
+                    <div class="tile-title">—</div>
+                    <div class="tile-meta"></div>
                 </div>
                 <div class="tile">
                     <span class="tile-kicker">IOD · 2</span>
-                    <div class="tile-title">staff crop</div>
+                    <div class="tile-title">—</div>
                 </div>
                 <div class="ad-tile">
                     <span class="ad-kicker">AD · ATELIER</span>
@@ -574,9 +506,9 @@ function renderApocrypha({ title, isGrimoire }) {
             <!-- Main Content -->
             <div class="content">
                 <article class="main-col">
-                    <!-- Stats Article -->
+                    <!-- Stats Article — #95: counts, webapp, kicker fill here -->
                     <div class="article">
-                        <span class="article-kicker">MONDAY · WEBAPP r92a1c0e · EXAMPLE</span>
+                        <span class="article-kicker">MONDAY · WEBAPP</span>
                         <h2 class="article-title">Counts, version, official vs unofficial</h2>
                         
                         <div class="stats-grid">
@@ -616,13 +548,12 @@ function renderApocrypha({ title, isGrimoire }) {
                         ${grimContent}
                     </div>
 
-                    <!-- Images Section -->
+                    <!-- Images Section — #95: imagesNote fills here -->
                     <div class="images">
                         <span class="images-kicker">IMAGES</span>
-                        <h3 class="images-title">Day sheet (placeholders)</h3>
+                        <h3 class="images-title">Day sheet</h3>
                         <p class="images-note">
-                            Three fake crops in the billboard. Real gens wait for Hoshino MWF posts. 
-                            Ivory cohesion only after this URL exists.
+                            Awaiting Hoshino MWF posts.
                         </p>
                     </div>
                 </article>
@@ -654,7 +585,6 @@ function renderApocrypha({ title, isGrimoire }) {
                 Grim-only blocks use the red wrapper.
             </footer>
         </div>
-    </div>
 </main>
 </body>
 </html>`;
