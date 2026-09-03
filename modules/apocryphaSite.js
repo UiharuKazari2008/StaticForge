@@ -610,7 +610,7 @@ function registerRoutes(app, { globalResources }) {
         }));
     };
 
-    app.get('/grim/zine/apocrypha', (req, res) => {
+    app.get('/dsap/zine/apocrypha', (req, res) => {
         const isGrimoire = !!(req.session && req.session.authenticated);
         if (!isGrimoire) {
             return res.status(401).json({ error: 'Authentication required' });

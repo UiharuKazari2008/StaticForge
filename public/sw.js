@@ -565,8 +565,8 @@ workbox.routing.registerRoute(
     if (isLogViewerApiRequest(url)) {
       return false;
     }
-    // Grimoire zine routes must hit the server (session-aware HTML)
-    if (url.pathname.startsWith('/grim/zine/')) {
+    // DSAP zine routes must hit the server (session-aware HTML)
+    if (url.pathname.startsWith('/dsap/zine/')) {
       return false;
     }
     // Always handle requests that start with /
@@ -686,8 +686,8 @@ workbox.routing.registerRoute(
     if (isLogViewerApiRequest(url)) {
       return false;
     }
-    // Grimoire zine routes must hit the server (session-aware HTML)
-    if (url.pathname.startsWith('/grim/zine/')) {
+    // DSAP zine routes must hit the server (session-aware HTML)
+    if (url.pathname.startsWith('/dsap/zine/')) {
       return false;
     }
     // Check if this is an HTML request that might be a client-side route

@@ -321,8 +321,8 @@
         shell.searchBody.classList.remove('search-page-view');
       }
       try {
-        // modules/apocryphaSite.js: /grim/zine/apocrypha
-        let response = await fetch('/grim/zine/apocrypha', { credentials: 'include' });
+        // modules/apocryphaSite.js: /dsap/zine/apocrypha
+        let response = await fetch('/dsap/zine/apocrypha', { credentials: 'include' });
         if (!response.ok) {
           response = await fetch('https://apocrypha.737.jp.net/', { credentials: 'include' });
         }
