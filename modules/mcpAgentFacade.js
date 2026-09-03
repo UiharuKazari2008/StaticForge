@@ -3259,7 +3259,7 @@ async function callTool(globalResources, req, name, args) {
         if (!accountId || !['menma', 'hoshino', 'ivory'].includes(accountId)) {
             return mcpTextResult({ success: false, error: 'Invalid accountId. Must be menma, hoshino, or ivory.' }, true);
         }
-        const result = deliverCake(accountId, input);
+        const result = await deliverCake(accountId, input);
         return mcpTextResult(result, !result.success);
     }
 
@@ -3268,7 +3268,7 @@ async function callTool(globalResources, req, name, args) {
         if (!accountId || !['menma', 'hoshino', 'ivory'].includes(accountId)) {
             return mcpTextResult({ success: false, error: 'Invalid accountId. Must be menma, hoshino, or ivory.' }, true);
         }
-        const result = feedCake(accountId, input);
+        const result = await feedCake(accountId, input);
         return mcpTextResult(result, !result.success);
     }
 
@@ -3277,7 +3277,7 @@ async function callTool(globalResources, req, name, args) {
         if (!accountId || !['menma', 'hoshino', 'ivory'].includes(accountId)) {
             return mcpTextResult({ success: false, error: 'Invalid accountId. Must be menma, hoshino, or ivory.' }, true);
         }
-        const result = inspectPantry(accountId, input);
+        const result = await inspectPantry(accountId, input);
         return mcpTextResult(result, !result.success);
     }
 
@@ -3286,7 +3286,7 @@ async function callTool(globalResources, req, name, args) {
         if (!accountId || !['menma', 'hoshino', 'ivory'].includes(accountId)) {
             return mcpTextResult({ success: false, error: 'Invalid accountId. Must be menma, hoshino, or ivory.' }, true);
         }
-        const result = consumeCake(accountId, input);
+        const result = await consumeCake(accountId, input);
         return mcpTextResult(result, !result.success);
     }
 

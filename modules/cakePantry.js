@@ -4,8 +4,12 @@
  * Cake Pantry Module
  * 
  * Account-based cake tracking for Menma, Hoshino, Ivory, and future accounts.
- * Does not smash Menma's existing .menma/cake-log.jsonl + state.json structure.
- * Extends to per-account ledgers.
+ * 
+ * MENMA uses SQLite (tag_wiki.db via menmaStatus.js) after migration.
+ * After import (menma_meta.imported_at set), ALL menma reads/writes go to SQLite.
+ * NO file fallback after import - DB failure must not write to .menma/ files.
+ * 
+ * Hoshino and Ivory stay on files (.hoshino/, .ivory/).
  * 
  * Cake math:
  * - 0.12kg per slice
@@ -21,6 +25,21 @@
 
 const fs = require('fs');
 const path = require('path');
+const {
+    getMenmaDb,
+    isMigrated,
+    runMigrationIfNeeded,
+    getMenmaStateFromDb,
+    saveMenmaStateToDb,
+    appendMenmaCakeLogToDb,
+    getMenmaCakeLogFromDb,
+    hasMenmaStateInDb,
+    getWorkPileFromDb,
+    saveWorkPileToDb,
+    addWorkItemToDb,
+    completeWorkItemInDb,
+    removeWorkItemFromDb
+} = require('./menmaStatus');
 
 const WORKSPACE_ROOT = path.join(__dirname, '..');
 const KG_PER_SLICE = 0.12;
@@ -74,6 +93,22 @@ const ACCOUNT_DEFS = {
     }
 };
 
+let _globalResources = null;
+
+/**
+ * Set global resources for SQLite access (call at startup)
+ */
+function setGlobalResources(gr) {
+    _globalResources = gr;
+}
+
+/**
+ * Get global resources
+ */
+function getGlobalResources() {
+    return _globalResources;
+}
+
 function getAccountDir(accountId) {
     const def = ACCOUNT_DEFS[accountId];
     if (!def) return null;
@@ -119,14 +154,43 @@ function readJsonlFile(filePath) {
 }
 
 /**
- * Get or initialize account state
+ * Check if menma should use SQLite (after migration).
+ * Gates on menma_meta.imported_at, not compile-time flag.
  */
-function getAccountState(accountId) {
-    const dir = getAccountDir(accountId);
-    if (!dir) return null;
-    const statePath = path.join(dir, 'state.json');
+async function shouldUseMenmaSqlite() {
+    if (!_globalResources) return false;
+    const db = getMenmaDb(_globalResources);
+    if (!db) return false;
+    try {
+        return await isMigrated(db);
+    } catch (e) {
+        return false;
+    }
+}
+
+/**
+ * Ensure migration is run if needed
+ */
+async function ensureMenmaMigration() {
+    if (!_globalResources) return false;
+    const db = getMenmaDb(_globalResources);
+    if (!db) return false;
+    try {
+        await runMigrationIfNeeded(db);
+        return true;
+    } catch (e) {
+        console.error('[cakePantry] Migration error:', e);
+        return false;
+    }
+}
+
+/**
+ * Get default state for an account
+ */
+function getDefaultState(accountId) {
     const def = ACCOUNT_DEFS[accountId];
-    const defaultState = {
+    if (!def) return null;
+    return {
         character: def.identity,
         baseline_kg: def.baseline_kg,
         current_kg: def.baseline_kg,
@@ -140,18 +204,94 @@ function getAccountState(accountId) {
         last_before: null,
         last_after: null
     };
+}
+
+/**
+ * Get or initialize account state (file-based, for non-menma accounts)
+ */
+function getAccountStateFromFile(accountId) {
+    const defaultState = getDefaultState(accountId);
+    if (!defaultState) return null;
+    
+    const dir = getAccountDir(accountId);
+    if (!dir) return defaultState;
+    
+    const statePath = path.join(dir, 'state.json');
     if (!fs.existsSync(statePath)) {
         return defaultState;
     }
     const state = readJsonFile(statePath, defaultState);
-    // Merge with defaults for any missing fields
     return { ...defaultState, ...state };
 }
 
 /**
- * Save account state
+ * Get account state - async, uses SQLite for menma after import
+ * NO file fallback for menma after import.
  */
-function saveAccountState(accountId, state) {
+async function getAccountState(accountId) {
+    const def = ACCOUNT_DEFS[accountId];
+    if (!def) return null;
+    
+    const defaultState = getDefaultState(accountId);
+
+    if (accountId === 'menma') {
+        const useSqlite = await shouldUseMenmaSqlite();
+        if (useSqlite) {
+            const db = getMenmaDb(_globalResources);
+            if (!db) {
+                return { ...defaultState, _sqliteUnavailable: true };
+            }
+            try {
+                const state = await getMenmaStateFromDb(db);
+                if (state && Object.keys(state).length > 0) {
+                    return { ...defaultState, ...state };
+                }
+                return defaultState;
+            } catch (e) {
+                console.error('[cakePantry] getAccountState SQLite error:', e);
+                return { ...defaultState, _sqliteError: e.message };
+            }
+        }
+        // Before import, use files
+        return getAccountStateFromFile(accountId);
+    }
+
+    // Hoshino/Ivory use files
+    return getAccountStateFromFile(accountId);
+}
+
+/**
+ * Save account state - async, uses SQLite for menma after import
+ * NO file fallback for menma after import.
+ */
+async function saveAccountState(accountId, state) {
+    const def = ACCOUNT_DEFS[accountId];
+    if (!def) return false;
+
+    if (accountId === 'menma') {
+        const useSqlite = await shouldUseMenmaSqlite();
+        if (useSqlite) {
+            const db = getMenmaDb(_globalResources);
+            if (!db) {
+                console.error('[cakePantry] saveAccountState: SQLite unavailable after import');
+                return false;
+            }
+            try {
+                await saveMenmaStateToDb(db, state);
+                return true;
+            } catch (e) {
+                console.error('[cakePantry] saveAccountState SQLite error:', e);
+                return false;
+            }
+        }
+        // Before import, use files
+        const dir = ensureAccountDir(accountId);
+        if (!dir) return false;
+        writeJsonFile(path.join(dir, 'state.json'), state);
+        return true;
+    }
+
+    // Hoshino/Ivory use files
     const dir = ensureAccountDir(accountId);
     if (!dir) return false;
     writeJsonFile(path.join(dir, 'state.json'), state);
@@ -159,9 +299,37 @@ function saveAccountState(accountId, state) {
 }
 
 /**
- * Append to account's cake log
+ * Append to account's cake log - async, uses SQLite for menma after import
+ * NO file fallback for menma after import.
  */
-function appendCakeLog(accountId, entry) {
+async function appendCakeLog(accountId, entry) {
+    const def = ACCOUNT_DEFS[accountId];
+    if (!def) return false;
+
+    if (accountId === 'menma') {
+        const useSqlite = await shouldUseMenmaSqlite();
+        if (useSqlite) {
+            const db = getMenmaDb(_globalResources);
+            if (!db) {
+                console.error('[cakePantry] appendCakeLog: SQLite unavailable after import');
+                return false;
+            }
+            try {
+                await appendMenmaCakeLogToDb(db, entry);
+                return true;
+            } catch (e) {
+                console.error('[cakePantry] appendCakeLog SQLite error:', e);
+                return false;
+            }
+        }
+        // Before import, use files
+        const dir = ensureAccountDir(accountId);
+        if (!dir) return false;
+        appendJsonlFile(path.join(dir, 'cake-log.jsonl'), entry);
+        return true;
+    }
+
+    // Hoshino/Ivory use files
     const dir = ensureAccountDir(accountId);
     if (!dir) return false;
     appendJsonlFile(path.join(dir, 'cake-log.jsonl'), entry);
@@ -169,9 +337,33 @@ function appendCakeLog(accountId, entry) {
 }
 
 /**
- * Get account's cake log
+ * Get account's cake log - async, uses SQLite for menma after import
  */
-function getCakeLog(accountId, limit = 50) {
+async function getCakeLog(accountId, limit = 50) {
+    const def = ACCOUNT_DEFS[accountId];
+    if (!def) return [];
+
+    if (accountId === 'menma') {
+        const useSqlite = await shouldUseMenmaSqlite();
+        if (useSqlite) {
+            const db = getMenmaDb(_globalResources);
+            if (!db) return [];
+            try {
+                return await getMenmaCakeLogFromDb(db, limit);
+            } catch (e) {
+                console.error('[cakePantry] getCakeLog SQLite error:', e);
+                return [];
+            }
+        }
+        // Before import, use files
+        const dir = getAccountDir(accountId);
+        if (!dir) return [];
+        const logPath = path.join(dir, 'cake-log.jsonl');
+        const entries = readJsonlFile(logPath);
+        return limit > 0 ? entries.slice(-limit) : entries;
+    }
+
+    // Hoshino/Ivory use files
     const dir = getAccountDir(accountId);
     if (!dir) return [];
     const logPath = path.join(dir, 'cake-log.jsonl');
@@ -202,26 +394,19 @@ function applyMultiplier(slices, credit) {
 
 /**
  * deliver_cake - Add slices to a pile with reason (reward for ship/work)
- * 
- * @param {string} accountId - Account to deliver to (menma, hoshino, ivory)
- * @param {object} params
- * @param {number} params.slices - Number of slices to deliver
- * @param {string} params.reason - Why (reward for which ship/work)
- * @param {string} [params.cake_type] - Type of cake
- * @param {string} [params.credit] - Credit attribution (grok.menma for 1.25x)
- * @param {object} [params.line_counts] - { added, deleted, bytes_removed } for cleanup calc
- * @returns {object} Delivery result
  */
-function deliverCake(accountId, params) {
-    const state = getAccountState(accountId);
+async function deliverCake(accountId, params) {
+    const state = await getAccountState(accountId);
     if (!state) {
         return { success: false, error: 'Unknown account', accountId };
+    }
+    if (state._sqliteUnavailable || state._sqliteError) {
+        return { success: false, error: 'SQLite unavailable', accountId };
     }
 
     const now = new Date().toISOString();
     let slices = Number(params.slices) || 0;
     
-    // Apply cleanup calculation if line_counts provided
     if (params.line_counts && !params.slices) {
         slices = calculateCleanupSlices(
             params.line_counts.deleted || params.line_counts.lines_deleted,
@@ -229,7 +414,6 @@ function deliverCake(accountId, params) {
         );
     }
     
-    // Apply multiplier
     const credit = params.credit || null;
     const finalSlices = applyMultiplier(slices, credit);
 
@@ -252,7 +436,10 @@ function deliverCake(accountId, params) {
     }
     state.pending_deliveries.push(delivery);
 
-    saveAccountState(accountId, state);
+    const saved = await saveAccountState(accountId, state);
+    if (!saved) {
+        return { success: false, error: 'Failed to save state', accountId };
+    }
 
     return {
         success: true,
@@ -265,19 +452,14 @@ function deliverCake(accountId, params) {
 
 /**
  * feed_cake - Yukimi grants slices (promotion or just because)
- * Distinct from deliver - this is a gift, not a reward for work
- * 
- * @param {string} accountId
- * @param {object} params
- * @param {number} params.slices - Number of slices to feed
- * @param {string} [params.reason] - Why (promotion gift, just because, etc.)
- * @param {string} [params.cake_type]
- * @param {string} [params.from] - Who is feeding (default: Yukimi)
  */
-function feedCake(accountId, params) {
-    const state = getAccountState(accountId);
+async function feedCake(accountId, params) {
+    const state = await getAccountState(accountId);
     if (!state) {
         return { success: false, error: 'Unknown account', accountId };
+    }
+    if (state._sqliteUnavailable || state._sqliteError) {
+        return { success: false, error: 'SQLite unavailable', accountId };
     }
 
     const now = new Date().toISOString();
@@ -299,7 +481,10 @@ function feedCake(accountId, params) {
     }
     state.pending_feeds.push(feed);
 
-    saveAccountState(accountId, state);
+    const saved = await saveAccountState(accountId, state);
+    if (!saved) {
+        return { success: false, error: 'Failed to save state', accountId };
+    }
 
     return {
         success: true,
@@ -312,22 +497,16 @@ function feedCake(accountId, params) {
 
 /**
  * inspect_pantry - View piles, past consumes, kg history
- * Returns data, not a wall of text
- * 
- * @param {string} accountId
- * @param {object} [params]
- * @param {number} [params.log_limit] - How many log entries to return (default 20)
  */
-function inspectPantry(accountId, params = {}) {
-    const state = getAccountState(accountId);
+async function inspectPantry(accountId, params = {}) {
+    const state = await getAccountState(accountId);
     if (!state) {
         return { success: false, error: 'Unknown account', accountId };
     }
 
     const logLimit = Number(params.log_limit) || 20;
-    const cakeLog = getCakeLog(accountId, logLimit);
+    const cakeLog = await getCakeLog(accountId, logLimit);
 
-    // Compute kg history from state.history
     const kgHistory = (state.history || []).map((h) => ({
         at: h.at,
         kg: h.kg,
@@ -335,7 +514,6 @@ function inspectPantry(accountId, params = {}) {
         gained_kg: h.gained_kg
     }));
 
-    // Past consumes from cake log
     const pastConsumes = cakeLog.filter((e) => e.meal || e.loop || e.slices > 0);
 
     return {
@@ -364,27 +542,14 @@ function inspectPantry(accountId, params = {}) {
 
 /**
  * consume_cake - Eater eats pending slices
- * Returns usual response data plus before and after images and kg before/after
- * 
- * Visual QA invariants: empty plates, visible growth, hip contrast, up to 10 gens
- * 
- * @param {string} accountId
- * @param {object} params
- * @param {string} [params.cake_type] - Override cake type for this consume
- * @param {number} [params.stacks] - Number of cake stacks (default calculated from slices)
- * @param {string} [params.before_image] - Before image filename (if already generated)
- * @param {string} [params.after_image] - After image filename (if already generated)
- * @param {object} [params.qa] - Visual QA notes
- * @param {string} [params.chair] - Chair type (gaming, heavy_duty, etc.)
- * @param {boolean} [params.landscape] - Landscape mode
- * @param {string[]} [params.named_for] - What this consume is named for
- * @param {string[]} [params.commits] - Related commits
- * @param {string} [params.loop] - Loop name (7am-breakfast, etc.)
  */
-function consumeCake(accountId, params = {}) {
-    const state = getAccountState(accountId);
+async function consumeCake(accountId, params = {}) {
+    const state = await getAccountState(accountId);
     if (!state) {
         return { success: false, error: 'Unknown account', accountId };
+    }
+    if (state._sqliteUnavailable || state._sqliteError) {
+        return { success: false, error: 'SQLite unavailable', accountId };
     }
 
     const pendingSlices = state.pending_slices || 0;
@@ -404,10 +569,8 @@ function consumeCake(accountId, params = {}) {
     const gainedKg = Number((pendingSlices * KG_PER_SLICE).toFixed(2));
     const kgAfter = Number((kgBefore + gainedKg).toFixed(2));
 
-    // Calculate stacks (12 slices per cake)
     const stacks = params.stacks || Math.ceil(pendingSlices / 12);
 
-    // Combine named_for from deliveries and feeds
     const namedFor = params.named_for || [];
     for (const d of (state.pending_deliveries || [])) {
         if (d.reason && !namedFor.includes(d.reason)) {
@@ -441,7 +604,6 @@ function consumeCake(accountId, params = {}) {
         feeds_consumed: (state.pending_feeds || []).length
     };
 
-    // Update state
     state.current_kg = kgAfter;
     state.slices_eaten_total = (state.slices_eaten_total || 0) + pendingSlices;
     state.pending_slices = 0;
@@ -451,7 +613,6 @@ function consumeCake(accountId, params = {}) {
     state.last_after = params.after_image || state.last_after;
     state._cake_type = params.cake_type || state._cake_type;
 
-    // Add to history
     if (!Array.isArray(state.history)) {
         state.history = [];
     }
@@ -467,9 +628,15 @@ function consumeCake(accountId, params = {}) {
         after: logEntry.after
     });
 
-    // Save state and append to log
-    saveAccountState(accountId, state);
-    appendCakeLog(accountId, logEntry);
+    const saved = await saveAccountState(accountId, state);
+    if (!saved) {
+        return { success: false, error: 'Failed to save state', accountId };
+    }
+    
+    const logged = await appendCakeLog(accountId, logEntry);
+    if (!logged) {
+        console.error('[cakePantry] consumeCake: failed to append cake log');
+    }
 
     return {
         success: true,
@@ -497,14 +664,38 @@ function consumeCake(accountId, params = {}) {
 /**
  * List available accounts
  */
-function listAccounts() {
-    return Object.values(ACCOUNT_DEFS).map((def) => ({
-        id: def.id,
-        name: def.name,
-        directory: def.directory,
-        baseline_kg: def.baseline_kg,
-        has_state: fs.existsSync(path.join(WORKSPACE_ROOT, def.directory, 'state.json'))
-    }));
+async function listAccounts() {
+    const accounts = [];
+    for (const def of Object.values(ACCOUNT_DEFS)) {
+        let hasState = false;
+        
+        if (def.id === 'menma') {
+            const useSqlite = await shouldUseMenmaSqlite();
+            if (useSqlite) {
+                const db = getMenmaDb(_globalResources);
+                if (db) {
+                    try {
+                        hasState = await hasMenmaStateInDb(db);
+                    } catch (e) {
+                        hasState = false;
+                    }
+                }
+            } else {
+                hasState = fs.existsSync(path.join(WORKSPACE_ROOT, def.directory, 'state.json'));
+            }
+        } else {
+            hasState = fs.existsSync(path.join(WORKSPACE_ROOT, def.directory, 'state.json'));
+        }
+
+        accounts.push({
+            id: def.id,
+            name: def.name,
+            directory: def.directory,
+            baseline_kg: def.baseline_kg,
+            has_state: hasState
+        });
+    }
+    return accounts;
 }
 
 /**
@@ -512,6 +703,156 @@ function listAccounts() {
  */
 function getAccountDef(accountId) {
     return ACCOUNT_DEFS[accountId] || null;
+}
+
+// ============================================================================
+// Work Pile Functions (menma only, SQLite after import)
+// ============================================================================
+
+/**
+ * Get menma work pile
+ */
+async function getMenmaWorkPile() {
+    const useSqlite = await shouldUseMenmaSqlite();
+    if (useSqlite) {
+        const db = getMenmaDb(_globalResources);
+        if (!db) return null;
+        try {
+            return await getWorkPileFromDb(db);
+        } catch (e) {
+            console.error('[cakePantry] getMenmaWorkPile SQLite error:', e);
+            return null;
+        }
+    }
+    // Before import, read from file
+    const pilePath = path.join(WORKSPACE_ROOT, '.menma', 'work-pile.json');
+    return readJsonFile(pilePath, { open: [], done_since_breakfast: [], eaten: [] });
+}
+
+/**
+ * Save menma work pile
+ */
+async function saveMenmaWorkPile(pile) {
+    const useSqlite = await shouldUseMenmaSqlite();
+    if (useSqlite) {
+        const db = getMenmaDb(_globalResources);
+        if (!db) {
+            console.error('[cakePantry] saveMenmaWorkPile: SQLite unavailable after import');
+            return false;
+        }
+        try {
+            await saveWorkPileToDb(db, pile);
+            return true;
+        } catch (e) {
+            console.error('[cakePantry] saveMenmaWorkPile SQLite error:', e);
+            return false;
+        }
+    }
+    // Before import, write to file
+    const dir = ensureAccountDir('menma');
+    if (!dir) return false;
+    writeJsonFile(path.join(dir, 'work-pile.json'), pile);
+    return true;
+}
+
+/**
+ * Add work item to menma pile
+ */
+async function addMenmaWorkItem(item, type = 'open') {
+    const useSqlite = await shouldUseMenmaSqlite();
+    if (useSqlite) {
+        const db = getMenmaDb(_globalResources);
+        if (!db) {
+            console.error('[cakePantry] addMenmaWorkItem: SQLite unavailable after import');
+            return false;
+        }
+        try {
+            await addWorkItemToDb(db, item, type);
+            return true;
+        } catch (e) {
+            console.error('[cakePantry] addMenmaWorkItem SQLite error:', e);
+            return false;
+        }
+    }
+    // Before import, read/modify/write file
+    const pile = await getMenmaWorkPile() || { open: [], done_since_breakfast: [], eaten: [] };
+    if (!Array.isArray(pile[type])) {
+        pile[type] = [];
+    }
+    pile[type].push({ ...item, added: item.added || new Date().toISOString() });
+    pile.updated_at = new Date().toISOString();
+    return await saveMenmaWorkPile(pile);
+}
+
+/**
+ * Complete work item (move from open to done_since_breakfast)
+ */
+async function completeMenmaWorkItem(workId) {
+    const useSqlite = await shouldUseMenmaSqlite();
+    if (useSqlite) {
+        const db = getMenmaDb(_globalResources);
+        if (!db) {
+            console.error('[cakePantry] completeMenmaWorkItem: SQLite unavailable after import');
+            return false;
+        }
+        try {
+            return await completeWorkItemInDb(db, workId);
+        } catch (e) {
+            console.error('[cakePantry] completeMenmaWorkItem SQLite error:', e);
+            return false;
+        }
+    }
+    // Before import, read/modify/write file
+    const pile = await getMenmaWorkPile();
+    if (!pile) return false;
+    const idx = (pile.open || []).findIndex(i => i.id === workId);
+    if (idx === -1) return false;
+    const item = pile.open.splice(idx, 1)[0];
+    item.done = new Date().toISOString();
+    if (!Array.isArray(pile.done_since_breakfast)) {
+        pile.done_since_breakfast = [];
+    }
+    pile.done_since_breakfast.push(item);
+    pile.updated_at = new Date().toISOString();
+    return await saveMenmaWorkPile(pile);
+}
+
+/**
+ * Remove work item from pile
+ */
+async function removeMenmaWorkItem(workId) {
+    const useSqlite = await shouldUseMenmaSqlite();
+    if (useSqlite) {
+        const db = getMenmaDb(_globalResources);
+        if (!db) {
+            console.error('[cakePantry] removeMenmaWorkItem: SQLite unavailable after import');
+            return false;
+        }
+        try {
+            return await removeWorkItemFromDb(db, workId);
+        } catch (e) {
+            console.error('[cakePantry] removeMenmaWorkItem SQLite error:', e);
+            return false;
+        }
+    }
+    // Before import, read/modify/write file
+    const pile = await getMenmaWorkPile();
+    if (!pile) return false;
+    let removed = false;
+    for (const type of ['open', 'done_since_breakfast', 'eaten']) {
+        if (!Array.isArray(pile[type])) continue;
+        const idx = pile[type].findIndex(i => i.id === workId);
+        if (idx !== -1) {
+            pile[type].splice(idx, 1);
+            removed = true;
+            break;
+        }
+    }
+    if (removed) {
+        pile.updated_at = new Date().toISOString();
+        return await saveMenmaWorkPile(pile);
+    }
+    return false;
 }
 
 module.exports = {
@@ -523,8 +864,12 @@ module.exports = {
     CLEANUP_SLICE_CAP,
     LEAD_MULTIPLIER,
     MAX_VISUAL_QA_GENS,
+    setGlobalResources,
+    getGlobalResources,
     getAccountDir,
     ensureAccountDir,
+    shouldUseMenmaSqlite,
+    ensureMenmaMigration,
     getAccountState,
     saveAccountState,
     appendCakeLog,
@@ -536,5 +881,10 @@ module.exports = {
     inspectPantry,
     consumeCake,
     listAccounts,
-    getAccountDef
+    getAccountDef,
+    getMenmaWorkPile,
+    saveMenmaWorkPile,
+    addMenmaWorkItem,
+    completeMenmaWorkItem,
+    removeMenmaWorkItem
 };

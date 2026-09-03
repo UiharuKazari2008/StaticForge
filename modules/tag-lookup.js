@@ -185,6 +185,64 @@ class TagLookup {
         await this.ensureTagSearchSchema();
         this.initSearchDb();
         
+        try {
+            await this.db.run(`
+                CREATE TABLE IF NOT EXISTS menma_state (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TEXT
+                )
+            `);
+
+            await this.db.run(`
+                CREATE TABLE IF NOT EXISTS menma_cake_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    at TEXT,
+                    loop TEXT,
+                    date_local TEXT,
+                    slices INTEGER,
+                    stacks INTEGER,
+                    cake_type TEXT,
+                    cake_rating REAL,
+                    kg_before REAL,
+                    kg_after REAL,
+                    gained_kg REAL,
+                    chair TEXT,
+                    named_for TEXT,
+                    before_img TEXT,
+                    after_img TEXT,
+                    landed TEXT,
+                    left_open TEXT,
+                    extra_data TEXT
+                )
+            `);
+
+            await this.db.run(`
+                CREATE TABLE IF NOT EXISTS menma_work_pile (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    type TEXT NOT NULL, -- 'open' or 'done_since_breakfast' or 'eaten'
+                    work_id TEXT NOT NULL,
+                    source_from TEXT,
+                    added TEXT,
+                    done TEXT,
+                    summary TEXT,
+                    cake TEXT,
+                    slices_hint INTEGER,
+                    extra_data TEXT
+                )
+            `);
+
+            await this.db.run(`
+                CREATE TABLE IF NOT EXISTS menma_meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TEXT
+                )
+            `);
+        } catch (error) {
+            console.error('Error creating Menma tables:', error);
+        }
+
         return true;
     } catch (error) {
         console.error('Error initializing tag database:', error);

@@ -6,7 +6,7 @@ Payload builder: `modules/menmaStatus.js` → `buildMenmaStatus()`.
 
 See [WebSocket protocol](../websocket.md) for envelope format, auth, and error handling.
 
-Menma ledger / breakfast state from `.menma/` (cake log, work pile). Does **not** expose `secure.config`, PIN, or keys. Breakfast images themselves remain `GET /images/:filename` (existing gallery auth).
+Menma ledger / breakfast state from SQLite (`tag_wiki.db` via `menmaStatus.js`). One-shot migration imports existing `.menma/` files into SQLite; after migration all reads and writes use SQLite only. Does **not** expose `secure.config`, PIN, or keys. Breakfast images themselves remain `GET /images/:filename` (existing gallery auth). If the tag database is unavailable, returns `available: false` instead of 500.
 
 The web applet (`public/scripts/comp/menmaDsapApplet.js`) calls `window.wsClient.sendMessage('get_menma_state', {})`. `sendMessage` resolves to the response `data` object (same JSON shape as the former REST `GET /menma/state` body).
 

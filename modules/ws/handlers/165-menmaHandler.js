@@ -3,7 +3,7 @@ const { buildMenmaStatus } = require('../../menmaStatus');
 
 async function handleGetMenmaState(handlersCtx, ws, message, clientInfo, wsServer) {
     try {
-        const payload = buildMenmaStatus();
+        const payload = await buildMenmaStatus(handlersCtx.globalResources);
         handlersCtx.sendToClient(ws, {
             type: 'get_menma_state_response',
             requestId: message.requestId,
