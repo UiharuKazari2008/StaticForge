@@ -1,0 +1,68 @@
+{
+  "issueLabel": "WEDNESDAY DIGEST",
+  "webapp": "70a31dc",
+  "kicker": "WEDNESDAY · WEBAPP 70a31dc · 2026-09-02",
+  "lede": "V5 still will not turn clockwise, but it will turn a pillow into a marshmallow.",
+  "title": "Same seed, two worlds, and a model that prefers the left-hand dutch",
+  "rundown": "Wednesday on Anlatan was a style fight with a quiet staff footnote. matts7123 posted a same-seed goblin barbarian walking from clean anime into photoreal and back again — no artist tags, just 1.4::anime:: against 0.6::photorealistic:: — and the thread treated it like a lab note instead of a flex. Meanwhile the room argued that V5 Full has a default-style attractor: artist tags sway less than they did on 4.5, Curated may be easier to pull, and luca confirmed the UI guidance default is 7 (not 3.5). guestavius could not get a clockwise dutch; weighting clockwise made it more counter-clockwise. The working joke-workaround is to put an object in the upper left so the frame has to tip the other way. Inpaint had the day's useful discovery: tagless English in the hole (\"There is a huge marshmallow instead of a pillow\") is beating tag fights, and a V5 crop sent into 4.5 inpaint wants Focused Area Selection with Minimum Context Area 32. luna (backend) answered the Opus meter in-channel: img2img drain follows Strength, not Noise; inpaint meters on V5 Full; Curated inpaint is still V4.5C; upscale is Anlas, not the battery. Webapp build 70a31dc-production. Contracts unchanged vs the Aug 28 dump. Not updated.\n\nThe unofficial server was smaller and meaner. pleasebankai cranked CFG 8 and prompt-guidance rescale to 0.8–1.0 for what they called a crack look. Amber reported plastic limbs below 15 steps. Aryllias described a V4.5 ladder: PR keepers, vibe img2img, PR again for corrections — typed chunks, not a UI preset. kinky and very-kinky were silent. nsfw-generation dumped images with no pasted prompts. No new verified V5 hip, weight-gain, or pregnancy recipes. Those spicy keepers stay off this public billboard.",
+  "counts": {
+    "official": 30,
+    "unofficial": 12,
+    "enshutsuka": 4,
+    "defaultModel": "V5"
+  },
+  "official": "Afternoon after 10:00 ET: 426 official messages, 30 technique. Morning since 8/28: 9,211 pulled / ~949 on-topic (heuristic). V5 needs much less emphasis than V4.5 (rarely >1.5; 5+ still for undertrained tags; same-seed test). Scout 14–18 steps; some stacks lose quality above ~20–23; complex multi-char 23–28. Character-box split anecdote: base = count + style + camera; actions in boxes (action can still bleed). Same-seed set: seed 336020714, 23 steps, 1216×832, scale 7, cfg_rescale 0, karras, k_euler_ancestral.",
+  "unofficial": "Afternoon: 42 unofficial messages, 12 technique (all nai-image-gen-discussion). Morning since 8/28: 1,082 pulled / ~107 on-topic. CFG 8 + rescale 0.8–1.0. Sub-15 steps artifact. PR then vibe img2img then PR. No new hip/WG/pregnancy recipes.",
+  "billboard": [
+    {
+      "kind": "hero",
+      "kicker": "BILLBOARD · image of the day",
+      "title": "same-seed anime pole",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/861311bf-9e55-4fd8-bab8-65f67c612b2a",
+      "cap": "matts7123 · goblin barbarian · seed 336020714 · official Anlatan"
+    },
+    {
+      "kind": "tile",
+      "kicker": "IOD · blend",
+      "title": "1.4::anime::, 0.6::photorealistic::",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/f7a713ca-4f96-45a2-a75c-a12908939f05",
+      "cap": "same seed · author's lean"
+    }
+  ],
+  "images": [
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/861311bf-9e55-4fd8-bab8-65f67c612b2a",
+      "cap": "anime pole · seed 336020714",
+      "kicker": "OFFICIAL · same seed"
+    },
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/c51ff26c-b587-417b-b80a-5716f2fddab6",
+      "cap": "photorealistic pole · same seed",
+      "kicker": "OFFICIAL · same seed"
+    },
+    {
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/f7a713ca-4f96-45a2-a75c-a12908939f05",
+      "cap": "1.4 anime / 0.6 photo · author lean",
+      "kicker": "OFFICIAL · blend"
+    }
+  ],
+  "imagesNote": "Three official Anlatan same-seed stills (anime / photo / 1.4+0.6). Yozora attachment URLs on this ticket. Unofficial spicy keepers stay off the public billboard.",
+  "enshutsuka": [
+    {
+      "teaser": "Finish tags are not all photoreal. Anime faces break on realistic / Expert Shading panel.",
+      "body": "HOUSE 2026-08-31 same-seed 3108311846. Anime source: strip realistic, Expert Shading panel, photorealism, hyperrealism, unasked 3d, detailed face, detailed skin. Painted/photo/3d jobs may keep those. Leave unless they fight: lone highly finished, ultra-detailed, deep skin, expert shading as lighting, detailed realistic lived in background. More finish on anime: Quality or high complexity, not the panel. Panel compiled leak includes 1.4::realistic:: — read compiled_prompt. Not CONSENSUS."
+    },
+    {
+      "teaser": "MCP generate_image ignores character boxes. Identity and body go in the base prompt on that path.",
+      "body": "HOUSE. Studio apply_studio_changes still uses boxes — keep identity in boxes there. generate_image path: put identity + body in the base prompt or they drop. Not staff."
+    },
+    {
+      "teaser": "ebiblue-scoped hips: one box group 2.2–2.8::huge wide hips:: can move them. Not a universal V5 recipe.",
+      "body": "HOUSE ThicccHips, artist:ebiblue + Hibiki + V5 Full + Euler/karras + square. Isolated 2.2–2.8::huge wide hips:: in the character box. Cap ~2.8. Ban ported V4.5 3–4 stacks. One size word per axis. Split hip-NL from stomach-NL. UC fat/obese only if they asked not fat; intentional plump: UC pregnant to block globe-belly. Box looking at viewer overrides from behind. ebiblue (style) ≠ artist:ebiblue. Working overshoot seed 3031795119. Still unsolved: long growth comics; verified pregnant vs implied; V4.5 3–4 hip novel on V5. Do not promote to CONSENSUS."
+    },
+    {
+      "teaser": "semi-anthro torso is a scoped human-trunk tag, not a furry species package.",
+      "body": "HOUSE. Prompt semi-anthro torso, never bare semi-anthro. Do not UC the torso word. UC fur, muzzle, snout, tail, paws, digitigrade, animal legs. Drop long torso from the prompt; put it in UC; NL normal torso length. Human skin, human face, plantigrade human legs."
+    }
+  ]
+}
