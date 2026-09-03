@@ -83,17 +83,14 @@ function pickLogEntry(entry) {
 
 /**
  * Check if an account has been imported using cake_pantry_meta.imported_at
+ * THROWS on query error - do not swallow as false (fail-closed requirement)
  */
 async function isAccountImported(db, accountId) {
-    try {
-        const row = await db.get(
-            "SELECT value FROM cake_pantry_meta WHERE account_id = ? AND key = 'imported_at'",
-            [accountId]
-        );
-        return row != null && row.value != null;
-    } catch (e) {
-        return false;
-    }
+    const row = await db.get(
+        "SELECT value FROM cake_pantry_meta WHERE account_id = ? AND key = 'imported_at'",
+        [accountId]
+    );
+    return row != null && row.value != null;
 }
 
 /**
@@ -189,8 +186,14 @@ async function runAccountImportIfNeeded(db, accountId) {
         if (!dir) return;
         const accountDir = path.join(WORKSPACE_ROOT, dir);
         
-        // Check if directory exists
+        // Check if directory exists - if not, still mark as imported (nothing to import but SQLite is canonical)
         if (!fs.existsSync(accountDir)) {
+            console.log(`[CakePantry] No ${dir}/ directory exists for ${accountId}. Marking as imported (SQLite canonical).`);
+            const now = new Date().toISOString();
+            await db.run(
+                'INSERT OR REPLACE INTO cake_pantry_meta (account_id, key, value, updated_at) VALUES (?, ?, ?, ?)',
+                [accountId, 'imported_at', now, now]
+            );
             return;
         }
 
