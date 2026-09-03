@@ -175,6 +175,7 @@ function dsapSmfBuildDreamscapeHomeHtml() {
         { url: 'dsap://menma.dyna.dreamscape.jp/status', label: 'Menma', icon: 'fas fa-cake-candles', desc: 'Cake ledger, work pile, and breakfast before/after' },
         { url: 'dsap://zanzou.dyna.dreamscape.jp/', label: 'Zanzou', icon: 'fas fa-clone', desc: 'Afterimages. Keep the shot, scrap the ghosts.' },
         { url: 'dsap://mcp.dreamscape.jp/', label: 'MCP Connector', icon: 'fas fa-plug', desc: 'Grok custom connector URLs, OAuth, and Enshutsuka project instructions' },
+        { url: 'dsap://apocrypha.737.jp.net/', label: 'Apocrypha', icon: 'fas fa-books', desc: 'MWF unofficial press. Hoshino digest.' },
     ];
 
     const rows = links.map((link) => {
