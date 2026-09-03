@@ -725,7 +725,7 @@ html, body {
 }
 
 .split-title {
-    font-size: 10px;
+    font-size: 18px;
     font-weight: bold;
     text-transform: lowercase;
     margin-bottom: 6px;
@@ -733,9 +733,9 @@ html, body {
 }
 
 .split-text {
-    font-size: 10px;
+    font-size: 16px;
     color: #999;
-    line-height: 1.5;
+    line-height: 2;
 }
 
 .wrap-public {
@@ -783,7 +783,7 @@ html, body {
 }
 
 .enshutsuka-memories {
-    font-size: 11px;
+    font-size: 16px;
     color: #d7ff9a;
     line-height: 1.6;
 }
@@ -1087,15 +1087,15 @@ function getApocryphaInteriorCss() {
 .apocrypha-interior .split-col { padding: 8px; border-left: 2px solid; }
 .apocrypha-interior .split-col.official { border-color: #2a5a2a; }
 .apocrypha-interior .split-col.unofficial { border-color: #665500; }
-.apocrypha-interior .split-title { font-size: 10px; font-weight: bold; text-transform: lowercase; margin-bottom: 6px; color: #d7ff9a; }
-.apocrypha-interior .split-text { font-size: 10px; color: #999; line-height: 1.5; }
+.apocrypha-interior .split-title { font-size: 18px; font-weight: bold; text-transform: lowercase; margin-bottom: 6px; color: #d7ff9a; }
+.apocrypha-interior .split-text { font-size: 16px; color: #999; line-height: 2; }
 .apocrypha-interior .wrap-public { border: 2px dashed #e11; padding: 12px; margin: 12px 0; background: rgba(225, 17, 17, 0.05); }
 .apocrypha-interior .wrap-public-header { font-size: 9px; color: #e11; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
 .apocrypha-interior .wrap-public-teaser { font-size: 11px; color: #999; line-height: 1.5; }
 .apocrypha-interior .grim-wrapper { border: 1px solid #2a5a2a; padding: 12px; margin: 12px 0; background: #0a1a0a; }
 .apocrypha-interior .grim-header { font-size: 9px; color: #2a5a2a; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
 .apocrypha-interior .grim-header::before { content: '●'; color: #4a4; }
-.apocrypha-interior .enshutsuka-memories { font-size: 11px; color: #d7ff9a; line-height: 1.6; }
+.apocrypha-interior .enshutsuka-memories { font-size: 16px; color: #d7ff9a; line-height: 1.6; }
 .apocrypha-interior .enshutsuka-memories p { margin: 0 0 8px 0; }
 .apocrypha-interior .sidebar-box { border: 1px dashed #665500; padding: 10px; margin-bottom: 12px; }
 .apocrypha-interior .sidebar-kicker { font-size: 8px; color: #665500; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
