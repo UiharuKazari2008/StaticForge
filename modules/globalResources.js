@@ -724,6 +724,9 @@ class GlobalResources {
             if (logger.setGlobalResources) {
                 logger.setGlobalResources(this);
             }
+            // cakePantry needs globalResources for Menma SQLite operations
+            const { setGlobalResources: setCakePantryGlobalResources } = require('./cakePantry');
+            setCakePantryGlobalResources(this);
             // Initialize TextReplacements instance
             this.textReplacements = new TextReplacements(this);
             this.staticWiki = staticWiki;

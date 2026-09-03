@@ -289,7 +289,7 @@ Module scopes support submodule specifiers: `sfapp_cake_pantry:deliver` grants o
 
 #### Cake Pantry Module (`sfapp_cake_pantry`)
 
-Account-based cake tracking for Menma, Hoshino, Ivory. Preserves Menma's existing `.menma/cake-log.jsonl` + `state.json` structure; extends to per-account ledgers.
+Account-based cake tracking for Menma, Hoshino, Ivory. Menma uses SQLite (`tag_wiki.db`) after one-shot migration; Hoshino/Ivory use per-account ledger files.
 
 | Tool | Description | Submodule |
 |------|-------------|-----------|

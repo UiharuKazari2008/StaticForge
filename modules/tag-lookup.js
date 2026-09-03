@@ -220,7 +220,7 @@ class TagLookup {
             await this.db.run(`
                 CREATE TABLE IF NOT EXISTS menma_work_pile (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    type TEXT NOT NULL, -- 'open' or 'done_since_breakfast'
+                    type TEXT NOT NULL, -- 'open' or 'done_since_breakfast' or 'eaten'
                     work_id TEXT NOT NULL,
                     source_from TEXT,
                     added TEXT,
@@ -229,6 +229,14 @@ class TagLookup {
                     cake TEXT,
                     slices_hint INTEGER,
                     extra_data TEXT
+                )
+            `);
+
+            await this.db.run(`
+                CREATE TABLE IF NOT EXISTS menma_meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TEXT
                 )
             `);
         } catch (error) {
