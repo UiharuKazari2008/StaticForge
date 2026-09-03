@@ -321,18 +321,14 @@
         shell.searchBody.classList.remove('search-page-view');
       }
       try {
-        // modules/apocryphaSite.js: /dsap/zine/apocrypha
-        let response = await fetch('/dsap/zine/apocrypha', { credentials: 'include' });
-        if (!response.ok) {
-          response = await fetch('https://apocrypha.737.jp.net/', { credentials: 'include' });
-        }
+        const response = await fetch('https://apocrypha.737.jp.net/', { credentials: 'include' });
         const html = await response.text();
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
-        const mainContent = doc.querySelector('main') || doc.querySelector('.zine') || doc.body;
+        const mainContent = doc.querySelector('main');
         if (mainContent) {
           shell.displayArea.innerHTML = '';
-          shell.displayArea.appendChild(mainContent.cloneNode(true));
+          shell.displayArea.appendChild(mainContent);
         } else {
           shell.displayArea.innerHTML = '<div style="padding: 2rem;">Error: Could not find main content.</div>';
         }
