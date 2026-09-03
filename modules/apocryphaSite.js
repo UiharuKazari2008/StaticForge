@@ -689,4 +689,4 @@ function registerRoutes(app, { globalResources }) {
     });
 }
 
-module.exports = { registerRoutes };
+module.exports = { registerRoutes, renderApocrypha };
