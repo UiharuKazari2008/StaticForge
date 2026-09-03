@@ -9,7 +9,8 @@ if [[ "$(id -u)" -ne 0 ]]; then
     exit 1
 fi
 
-bash "$APP_ROOT/scripts/setup.sh" --skip-apt --skip-deps
+# Dirs + missing configs only (image build already ran pnpm install).
+bash "$APP_ROOT/scripts/setup.sh" --runtime
 
 cd "$APP_ROOT"
 exec node web_server.js

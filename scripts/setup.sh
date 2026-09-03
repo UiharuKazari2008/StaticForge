@@ -13,12 +13,13 @@
 #
 # Options:
 #   --mode baremetal|docker   Setup path (default: baremetal)
+#   --runtime                 Container entry only: dirs + missing configs (no apt/deps/compose)
 #   --skip-apt                Skip apt-get (Dockerfile image build)
 #   --skip-deps               Skip pnpm install / nekoai configure
 #   --skip-config             Do not create missing config from templates
 #   --skip-docker             Skip Docker install (docker mode only)
 #   --no-run                  Docker mode: install only, do not compose up
-#   --compose-file FILE       Compose file for docker mode (default: docker-compose.test.yml)
+#   --compose-file FILE       Compose file for docker mode (default: docker-compose.yml)
 #   --frozen-lockfile         Pass --frozen-lockfile to pnpm install
 #   --no-node-install         Do not install Node.js when missing/outdated
 #   -h, --help
@@ -39,6 +40,7 @@ SCRIPT_PATH="$(cd "$(dirname "$0")" && pwd)/setup.sh"
 ORIG_ARGS=("$@")
 
 MODE="baremetal"
+RUNTIME_ONLY=0
 SKIP_APT=0
 SKIP_DEPS=0
 SKIP_CONFIG=0
@@ -46,14 +48,14 @@ SKIP_DOCKER=0
 NO_RUN=0
 FROZEN_LOCK=0
 NO_NODE_INSTALL=0
-COMPOSE_FILE="docker-compose.test.yml"
+COMPOSE_FILE="docker-compose.yml"
 
 log() { echo "[setup] $*"; }
 warn() { echo "[setup] WARNING: $*" >&2; }
 die() { echo "[setup] ERROR: $*" >&2; exit 1; }
 
 usage() {
-    sed -n '2,32p' "$0" | sed 's/^# \?//'
+    sed -n '2,34p' "$0" | sed 's/^# \?//'
     exit "${1:-0}"
 }
 
@@ -63,6 +65,7 @@ while [[ $# -gt 0 ]]; do
             MODE="$2"
             shift 2
             ;;
+        --runtime) RUNTIME_ONLY=1; shift ;;
         --skip-apt) SKIP_APT=1; shift ;;
         --skip-deps) SKIP_DEPS=1; shift ;;
         --skip-config) SKIP_CONFIG=1; shift ;;
@@ -524,6 +527,13 @@ run_docker_host_path() {
     print_done_docker_host
 }
 
+run_runtime_path() {
+    log "=== Runtime path: dirs + missing configs only ==="
+    create_directories
+    bootstrap_configs
+    log "Runtime bootstrap complete"
+}
+
 run_image_build_path() {
     log "=== Image build path (inside Dockerfile) ==="
     install_apt_packages full
@@ -557,7 +567,9 @@ print_done_docker_host() {
 }
 
 # --- main ---
-if [[ "$TARGET" == docker ]]; then
+if [[ "$RUNTIME_ONLY" -eq 1 ]]; then
+    run_runtime_path
+elif [[ "$TARGET" == docker ]]; then
     run_image_build_path
 elif [[ "$MODE" == docker ]]; then
     run_docker_host_path

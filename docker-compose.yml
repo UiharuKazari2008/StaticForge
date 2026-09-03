@@ -10,25 +10,19 @@ services:
     environment:
       NEKOAI_JS_SOURCE: registry
     volumes:
-      - dreamscape-images:/app/images
-      - dreamscape-previews:/app/.previews
-      - dreamscape-cache:/app/.cache
-      - dreamscape-logs:/app/logs
-      - dreamscape-secure-prompts:/app/securePrompts
-      # Create configs on the host first: sudo bash scripts/setup.sh --skip-deps
-      # Bind-mount only when files exist (Docker creates directories if missing).
-      - ./config.json:/app/config.json:ro
-      - ./secure.config.json:/app/secure.config.json:ro
-      - ./prompt.config.json:/app/prompt.config.json:ro
-      - ./director.config.json:/app/director.config.json:ro
-      - ./characters.json:/app/characters.json:ro
-      - ./nax_generation_config.json:/app/nax_generation_config.json:ro
+      # Host tree stays visible to rsync/pack; app code is baked into the image.
+      - ./images:/app/images
+      - ./.previews:/app/.previews
+      - ./.cache:/app/.cache
+      - ./logs:/app/logs
+      - ./securePrompts:/app/securePrompts
+      # Create missing configs on the host first: bash scripts/setup.sh --mode docker --no-run
+      # (Docker creates a directory if a bind-mounted file is missing.)
+      - ./config.json:/app/config.json
+      - ./secure.config.json:/app/secure.config.json
+      - ./prompt.config.json:/app/prompt.config.json
+      - ./director.config.json:/app/director.config.json
+      - ./characters.json:/app/characters.json
+      - ./nax_generation_config.json:/app/nax_generation_config.json
     restart: unless-stopped
     mem_limit: 4g
-
-volumes:
-  dreamscape-images:
-  dreamscape-previews:
-  dreamscape-cache:
-  dreamscape-logs:
-  dreamscape-secure-prompts:

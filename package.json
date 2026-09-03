@@ -106,6 +106,8 @@
     "nekoai:local": "NEKOAI_JS_SOURCE=local node scripts/configure-nekoai.js",
     "pack-server": "bash scripts/pack-server-transfer.sh",
     "unpack-server": "bash scripts/unpack-server-transfer.sh",
+    "sync:pull": "bash scripts/dreamscape-sync.sh pull",
+    "sync:push": "bash scripts/dreamscape-sync.sh push",
     "setup": "bash scripts/setup.sh",
     "setup:baremetal": "bash scripts/setup.sh --mode baremetal",
     "setup:docker": "bash scripts/setup.sh --mode docker",
