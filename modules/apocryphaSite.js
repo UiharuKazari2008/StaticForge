@@ -546,9 +546,7 @@ function renderApocrypha({ title, isGrimoire }) {
                 </div>
                 <div class="mast-right">
                     MONDAY DIGEST<br>
-                    EXAMPLE DATA<br>
-                    <a href="#">r92a1c0e</a><br>
-                    public + /apocrypha
+                    EXAMPLE DATA
                 </div>
             </header>
 
