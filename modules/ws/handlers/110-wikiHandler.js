@@ -1,5 +1,6 @@
 const path = require('path');
 const wsPacketRegistry = require('../wsPacketRegistry');
+const { getApocryphaInterior } = require('../../apocryphaSite');
 
 async function handleSearchTagWiki(handler, ws, message, clientInfo, wsServer) {
     const { query, category, searchType = 'name', source = 'both', includeNonTag = false, limit = 50 } = message;
@@ -837,6 +838,21 @@ function postProcessWikiHtml(html) {
     return html;
 }
 
+async function handleGetApocryphaZine(handler, ws, message, clientInfo, wsServer) {
+    try {
+        const interior = getApocryphaInterior({ title: 'Apocrypha — MWF digest', isGrimoire: true });
+        handler.sendToClient(ws, {
+            type: 'get_apocrypha_zine_response',
+            requestId: message.requestId,
+            data: { interior },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('get_apocrypha_zine:', error);
+        handler.sendError(ws, 'Failed to render Apocrypha zine', error.message, message.requestId);
+    }
+}
+
 function registerPackets(handlersCtx) {
     if (!handlersCtx) {
         console.warn('[110-wikiHandler] registerPackets: missing handlersCtx');
@@ -862,6 +878,7 @@ function registerPackets(handlersCtx) {
     regFn('update_wiki_import', handleUpdateWikiImport);
     regFn('delete_fandom_wiki_import', handleDeleteFandomWikiImport);
     regFn('resolve_grimoire_url', handleResolveGrimoireUrl);
+    regFn('get_apocrypha_zine', handleGetApocryphaZine);
 }
 
 module.exports = {
@@ -879,6 +896,7 @@ module.exports = {
     handleUpdateWikiImport,
     handleDeleteFandomWikiImport,
     handleResolveGrimoireUrl,
+    handleGetApocryphaZine,
     coerceWikiBodyText,
     formatWikiBody,
     convertWikiMarkupToHtml,

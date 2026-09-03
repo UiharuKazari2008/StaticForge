@@ -565,10 +565,6 @@ workbox.routing.registerRoute(
     if (isLogViewerApiRequest(url)) {
       return false;
     }
-    // DSAP zine routes must hit the server (session-aware HTML)
-    if (url.pathname.startsWith('/dsap/zine/')) {
-      return false;
-    }
     // Always handle requests that start with /
     return url.pathname.startsWith('/');
   },
@@ -684,10 +680,6 @@ workbox.routing.registerRoute(
       return false;
     }
     if (isLogViewerApiRequest(url)) {
-      return false;
-    }
-    // DSAP zine routes must hit the server (session-aware HTML)
-    if (url.pathname.startsWith('/dsap/zine/')) {
       return false;
     }
     // Check if this is an HTML request that might be a client-side route

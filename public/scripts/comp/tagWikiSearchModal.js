@@ -1597,6 +1597,56 @@ class WikiDisplayBase {
         }
     }
 
+    async showApocryphaZine(options = {}) {
+        if (!this.displayArea) return;
+
+        if (typeof deactivateDsapOnShell === 'function') deactivateDsapOnShell(this);
+
+        this._searchPageMode = false;
+        if (this.searchBody) {
+            this.searchBody.classList.remove('search-page-view');
+        }
+
+        this.currentSelectedTag = null;
+        this.currentTagName = null;
+        this.currentStaticWiki = null;
+
+        if (!wsClient || !wsClient.isConnected()) {
+            this.displayArea.innerHTML = '<div class="tag-wiki-error"><i class="fas fa-exclamation-circle"></i> WebSocket not connected</div>';
+            this.setNavigationLoading(false);
+            return;
+        }
+
+        this.displayArea.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading...</div>';
+
+        try {
+            // modules/ws/handlers/110-wikiHandler.js: get_apocrypha_zine
+            const response = await wsClient.sendMessage('get_apocrypha_zine', {});
+            if (response && response.interior) {
+                this.displayArea.innerHTML = response.interior;
+            } else {
+                this.displayArea.innerHTML = '<div style="padding: 2rem;">Error: No content received.</div>';
+            }
+
+            if (typeof this.setAddress === 'function') {
+                this.setAddress({ displayUrl: 'https://apocrypha.737.jp.net/', mode: 'edtx' });
+            }
+
+            if (!options.skipHistory && typeof this.addToHistory === 'function') {
+                this.addToHistory({ type: 'apocrypha', url: 'https://apocrypha.737.jp.net/' });
+            }
+
+            if (typeof this._interceptAllLinks === 'function') {
+                this._interceptAllLinks();
+            }
+        } catch (e) {
+            console.error('[Apocrypha] Error loading zine:', e);
+            this.displayArea.innerHTML = '<div style="padding: 2rem;">Error loading Apocrypha.</div>';
+        }
+
+        this.setNavigationLoading(false);
+    }
+
     bindDreamWikiHomepageEvents() {
         if (!this.displayArea) return;
 
@@ -1634,7 +1684,7 @@ class WikiDisplayBase {
         const apocryphaBtn = this.displayArea.querySelector('[data-action="open-apocrypha"]');
         if (apocryphaBtn) {
             apocryphaBtn.addEventListener('click', () => {
-                this.navigate('dsap://apocrypha.737.jp.net/');
+                this.showApocryphaZine();
             });
         }
 
@@ -3388,6 +3438,12 @@ class GrimoireSplitPane extends WikiDisplayBase {
             this.showDreamWikiHomepage();
             return;
         }
+        if (entry.type === 'apocrypha') {
+            this.currentSelectedTag = null;
+            this.currentTagName = null;
+            this.showApocryphaZine({ skipHistory: true });
+            return;
+        }
         if (entry.type === 'static-wiki-index') {
             this.currentSelectedTag = null;
             this.currentTagName = null;
@@ -3888,6 +3944,15 @@ class WikiWindowInstance extends WikiDisplayBase {
             this.currentTagName = null;
             this.currentStaticWiki = null;
             this.showDreamWikiHomepage();
+            this.updateNavigationButtons();
+            return;
+        }
+
+        if (entry.type === 'apocrypha') {
+            this.currentSelectedTag = null;
+            this.currentTagName = null;
+            this.currentStaticWiki = null;
+            this.showApocryphaZine({ skipHistory: true });
             this.updateNavigationButtons();
             return;
         }
@@ -7145,6 +7210,15 @@ class TagWikiSearchModal extends WikiDisplayBase {
             this.currentTagName = null;
             this.showDreamWikiHomepage();
             this.setAddress({ displayUrl: 'edtx://en.grimoire.jp/index.dtxt', mode: 'edtx' });
+            this.updateNavigationButtons();
+            return;
+        }
+
+        if (entry.type === 'apocrypha') {
+            this.currentSelectedTag = null;
+            this.currentTagName = null;
+            this.showApocryphaZine({ skipHistory: true });
+            this.setAddress({ displayUrl: 'https://apocrypha.737.jp.net/', mode: 'edtx' });
             this.updateNavigationButtons();
             return;
         }
