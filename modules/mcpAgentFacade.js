@@ -59,7 +59,12 @@ const {
     feedCake,
     inspectPantry,
     consumeCake,
-    listAccounts: listCakePantryAccounts
+    listAccounts: listCakePantryAccounts,
+    getWorkPile,
+    saveWorkPile,
+    addWorkItem,
+    completeWorkItem,
+    removeWorkItem
 } = require('./cakePantry');
 // modules/mcpReportIssue.js — development QA reporting
 const {
@@ -1302,7 +1307,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['accountId', 'reason'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory'], description: 'Account to deliver to' },
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'], description: 'Account to deliver to' },
                 slices: { type: 'number', description: 'Number of slices (or omit and provide line_counts)' },
                 reason: { type: 'string', description: 'Why: reward for which ship/work' },
                 cake_type: { type: 'string', description: 'Type of cake (strawberry shortcake, tiramisu, etc.)' },
@@ -1329,7 +1334,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['accountId', 'slices'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory'], description: 'Account to feed' },
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'], description: 'Account to feed' },
                 slices: { type: 'number', description: 'Number of slices to give' },
                 reason: { type: 'string', description: 'Why: promotion gift, just because, etc.' },
                 cake_type: { type: 'string' },
@@ -1347,7 +1352,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['accountId'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory'], description: 'Account to inspect' },
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'], description: 'Account to inspect' },
                 log_limit: { type: 'number', description: 'How many log entries (default 20)' }
             }
         }
@@ -1362,7 +1367,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['accountId'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory'], description: 'Account eating' },
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'], description: 'Account eating' },
                 cake_type: { type: 'string', description: 'Override cake type for this consume' },
                 stacks: { type: 'number', description: 'Number of cake stacks (default: slices/12)' },
                 before_image: { type: 'string', description: 'Before image filename (if already generated)' },
@@ -1373,6 +1378,70 @@ const TOOL_DEFS = [
                 named_for: { type: 'array', items: { type: 'string' }, description: 'What this consume is named for' },
                 commits: { type: 'array', items: { type: 'string' } },
                 loop: { type: 'string', description: 'Loop name (7am-breakfast, etc.)' }
+            }
+        }
+    },
+    {
+        name: 'get_work_pile',
+        core: true,
+        description: 'Get work pile for an account. Returns { open, done_since_breakfast, eaten, updated_at, last_breakfast_at }. Items include work_id, summary, source_from, cake, slices_hint.',
+        scope: 'sfapp_cake_pantry',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['accountId'],
+            properties: {
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'], description: 'Account to get work pile for' }
+            }
+        }
+    },
+    {
+        name: 'add_work_item',
+        core: true,
+        description: 'Add a work item to an account pile. Pass accountId, work_id (unique), summary, and optional source_from, cake, slices_hint, type (open/done_since_breakfast).',
+        scope: 'sfapp_cake_pantry',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['accountId', 'work_id', 'summary'],
+            properties: {
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'], description: 'Account to add work item to' },
+                work_id: { type: 'string', description: 'Unique work item ID' },
+                summary: { type: 'string', description: 'Work item summary' },
+                source_from: { type: 'string', description: 'Source of work (ship, ticket, etc.)' },
+                cake: { type: 'string', description: 'Cake type for reward' },
+                slices_hint: { type: 'number', description: 'Estimated slices for this work' },
+                type: { type: 'string', enum: ['open', 'done_since_breakfast'], description: 'Item type (default: open)' }
+            }
+        }
+    },
+    {
+        name: 'complete_work_item',
+        core: true,
+        description: 'Mark a work item as done. Moves from open to done_since_breakfast. Pass accountId and work_id.',
+        scope: 'sfapp_cake_pantry',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['accountId', 'work_id'],
+            properties: {
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'], description: 'Account' },
+                work_id: { type: 'string', description: 'Work item ID to complete' }
+            }
+        }
+    },
+    {
+        name: 'remove_work_item',
+        core: true,
+        description: 'Remove a work item from the pile entirely. Pass accountId and work_id.',
+        scope: 'sfapp_cake_pantry',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['accountId', 'work_id'],
+            properties: {
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'], description: 'Account' },
+                work_id: { type: 'string', description: 'Work item ID to remove' }
             }
         }
     },
@@ -3254,40 +3323,108 @@ async function callTool(globalResources, req, name, args) {
     }
 
     // Cake Pantry module tools (sfapp_cake_pantry)
+    // Valid cake pantry accounts
+    const VALID_PANTRY_ACCOUNTS = ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'];
+
     if (name === 'deliver_cake') {
         const accountId = String(input.accountId || '').toLowerCase();
-        if (!accountId || !['menma', 'hoshino', 'ivory'].includes(accountId)) {
-            return mcpTextResult({ success: false, error: 'Invalid accountId. Must be menma, hoshino, or ivory.' }, true);
+        if (!accountId || !VALID_PANTRY_ACCOUNTS.includes(accountId)) {
+            return mcpTextResult({ success: false, error: `Invalid accountId. Must be one of: ${VALID_PANTRY_ACCOUNTS.join(', ')}.` }, true);
         }
-        const result = deliverCake(accountId, input);
+        const result = await deliverCake(accountId, input);
         return mcpTextResult(result, !result.success);
     }
 
     if (name === 'feed_cake') {
         const accountId = String(input.accountId || '').toLowerCase();
-        if (!accountId || !['menma', 'hoshino', 'ivory'].includes(accountId)) {
-            return mcpTextResult({ success: false, error: 'Invalid accountId. Must be menma, hoshino, or ivory.' }, true);
+        if (!accountId || !VALID_PANTRY_ACCOUNTS.includes(accountId)) {
+            return mcpTextResult({ success: false, error: `Invalid accountId. Must be one of: ${VALID_PANTRY_ACCOUNTS.join(', ')}.` }, true);
         }
-        const result = feedCake(accountId, input);
+        const result = await feedCake(accountId, input);
         return mcpTextResult(result, !result.success);
     }
 
     if (name === 'inspect_pantry') {
         const accountId = String(input.accountId || '').toLowerCase();
-        if (!accountId || !['menma', 'hoshino', 'ivory'].includes(accountId)) {
-            return mcpTextResult({ success: false, error: 'Invalid accountId. Must be menma, hoshino, or ivory.' }, true);
+        if (!accountId || !VALID_PANTRY_ACCOUNTS.includes(accountId)) {
+            return mcpTextResult({ success: false, error: `Invalid accountId. Must be one of: ${VALID_PANTRY_ACCOUNTS.join(', ')}.` }, true);
         }
-        const result = inspectPantry(accountId, input);
+        const result = await inspectPantry(accountId, input);
         return mcpTextResult(result, !result.success);
     }
 
     if (name === 'consume_cake') {
         const accountId = String(input.accountId || '').toLowerCase();
-        if (!accountId || !['menma', 'hoshino', 'ivory'].includes(accountId)) {
-            return mcpTextResult({ success: false, error: 'Invalid accountId. Must be menma, hoshino, or ivory.' }, true);
+        if (!accountId || !VALID_PANTRY_ACCOUNTS.includes(accountId)) {
+            return mcpTextResult({ success: false, error: `Invalid accountId. Must be one of: ${VALID_PANTRY_ACCOUNTS.join(', ')}.` }, true);
         }
-        const result = consumeCake(accountId, input);
+        const result = await consumeCake(accountId, input);
         return mcpTextResult(result, !result.success);
+    }
+
+    if (name === 'get_work_pile') {
+        const accountId = String(input.accountId || '').toLowerCase();
+        if (!accountId || !VALID_PANTRY_ACCOUNTS.includes(accountId)) {
+            return mcpTextResult({ success: false, error: `Invalid accountId. Must be one of: ${VALID_PANTRY_ACCOUNTS.join(', ')}.` }, true);
+        }
+        const pile = await getWorkPile(accountId);
+        if (pile === null) {
+            return mcpTextResult({ success: false, error: 'Work pile unavailable (SQLite may be down)' }, true);
+        }
+        return mcpTextResult({ success: true, accountId, work_pile: pile }, false);
+    }
+
+    if (name === 'add_work_item') {
+        const accountId = String(input.accountId || '').toLowerCase();
+        if (!accountId || !VALID_PANTRY_ACCOUNTS.includes(accountId)) {
+            return mcpTextResult({ success: false, error: `Invalid accountId. Must be one of: ${VALID_PANTRY_ACCOUNTS.join(', ')}.` }, true);
+        }
+        if (!input.work_id || !input.summary) {
+            return mcpTextResult({ success: false, error: 'work_id and summary are required' }, true);
+        }
+        const item = {
+            work_id: input.work_id,
+            summary: input.summary,
+            source_from: input.source_from || null,
+            cake: input.cake || null,
+            slices_hint: input.slices_hint || null
+        };
+        const type = input.type || 'open';
+        const result = await addWorkItem(accountId, item, type);
+        if (!result) {
+            return mcpTextResult({ success: false, error: 'Failed to add work item (SQLite may be down)' }, true);
+        }
+        return mcpTextResult({ success: true, accountId, work_id: input.work_id, type }, false);
+    }
+
+    if (name === 'complete_work_item') {
+        const accountId = String(input.accountId || '').toLowerCase();
+        if (!accountId || !VALID_PANTRY_ACCOUNTS.includes(accountId)) {
+            return mcpTextResult({ success: false, error: `Invalid accountId. Must be one of: ${VALID_PANTRY_ACCOUNTS.join(', ')}.` }, true);
+        }
+        if (!input.work_id) {
+            return mcpTextResult({ success: false, error: 'work_id is required' }, true);
+        }
+        const result = await completeWorkItem(accountId, input.work_id);
+        if (!result) {
+            return mcpTextResult({ success: false, error: 'Failed to complete work item (not found or SQLite down)' }, true);
+        }
+        return mcpTextResult({ success: true, accountId, work_id: input.work_id, status: 'done_since_breakfast' }, false);
+    }
+
+    if (name === 'remove_work_item') {
+        const accountId = String(input.accountId || '').toLowerCase();
+        if (!accountId || !VALID_PANTRY_ACCOUNTS.includes(accountId)) {
+            return mcpTextResult({ success: false, error: `Invalid accountId. Must be one of: ${VALID_PANTRY_ACCOUNTS.join(', ')}.` }, true);
+        }
+        if (!input.work_id) {
+            return mcpTextResult({ success: false, error: 'work_id is required' }, true);
+        }
+        const result = await removeWorkItem(accountId, input.work_id);
+        if (!result) {
+            return mcpTextResult({ success: false, error: 'Failed to remove work item (not found or SQLite down)' }, true);
+        }
+        return mcpTextResult({ success: true, accountId, work_id: input.work_id, removed: true }, false);
     }
 
     // Report Issue module tools (sfapp_report_issue)

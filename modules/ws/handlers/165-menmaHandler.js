@@ -1,9 +1,18 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
-const { buildMenmaStatus } = require('../../menmaStatus');
+const { buildMenmaStatus, buildAllAccountsStatus } = require('../../menmaStatus');
 
 async function handleGetMenmaState(handlersCtx, ws, message, clientInfo, wsServer) {
     try {
-        const payload = buildMenmaStatus();
+        // Build Menma status (backward compat) + all accounts for full pantry view
+        const menmaPayload = await buildMenmaStatus(handlersCtx.globalResources);
+        const allAccounts = await buildAllAccountsStatus(handlersCtx.globalResources);
+        
+        // Merge: menma fields at root (backward compat) + accounts object for applet
+        const payload = {
+            ...menmaPayload,
+            accounts: allAccounts.accounts
+        };
+        
         handlersCtx.sendToClient(ws, {
             type: 'get_menma_state_response',
             requestId: message.requestId,

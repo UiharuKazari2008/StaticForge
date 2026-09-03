@@ -30,6 +30,14 @@ const menmaDsapScopedCss = `
 [data-dsap="menma"] .menma-muted { color: #556; font-size: 11px; }
 [data-dsap="menma"] .menma-empty { padding: 10px 4px; color: #556; }
 [data-dsap="menma"] .menma-named { margin: 4px 0 0; padding-left: 16px; }
+[data-dsap="menma"] .menma-accounts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; margin-bottom: 12px; }
+[data-dsap="menma"] .menma-account-card { border: 1px solid #9ab; background: #f7f7f4; padding: 8px 10px; cursor: pointer; }
+[data-dsap="menma"] .menma-account-card:hover { background: #eef; }
+[data-dsap="menma"] .menma-account-card.menma-account-active { border-color: #68a; background: #e8f0f8; }
+[data-dsap="menma"] .menma-account-card-name { font-weight: 600; margin-bottom: 4px; }
+[data-dsap="menma"] .menma-account-card-stats { font-size: 11px; color: #445; }
+[data-dsap="menma"] .menma-account-card-meal { font-size: 10px; color: #667; margin-top: 4px; }
+[data-dsap="menma"] .menma-account-unavail { color: #888; font-style: italic; }
 `;
 
 function menmaDsapEscape(text) {
@@ -116,41 +124,88 @@ function menmaDsapListHtml(items, emptyText, renderItem) {
     return items.map(renderItem).join('');
 }
 
-function menmaDsapStatusHtml(data) {
-    const meal = data.last_meal || {};
-    const kgDelta = (data.current_kg != null && data.baseline_kg != null)
-        ? (Number(data.current_kg) - Number(data.baseline_kg))
+function menmaDsapAccountCardHtml(accountId, accountData, isActive) {
+    if (!accountData || accountData.available === false) {
+        return `<div class="menma-account-card${isActive ? ' menma-account-active' : ''}" data-menma-account="${dsapSmfEscapeAttr(accountId)}">
+  <div class="menma-account-card-name">${menmaDsapEscape(accountId.charAt(0).toUpperCase() + accountId.slice(1))}</div>
+  <div class="menma-account-unavail">No data yet</div>
+</div>`;
+    }
+    const name = accountData.character_name || accountId.charAt(0).toUpperCase() + accountId.slice(1);
+    const kg = accountData.current_kg != null ? `${menmaDsapNum(accountData.current_kg, 1)} kg` : '— kg';
+    const slices = accountData.slices_eaten_total != null ? `${accountData.slices_eaten_total} slices` : '— slices';
+    const lastMeal = accountData.last_meal;
+    let mealLine = '';
+    if (lastMeal && lastMeal.at) {
+        const sliceCount = lastMeal.slices != null ? lastMeal.slices : '?';
+        mealLine = `Last: ${sliceCount} slice${lastMeal.slices === 1 ? '' : 's'}`;
+        if (lastMeal.gained_kg != null) {
+            const gained = Number(lastMeal.gained_kg);
+            mealLine += ` (${gained >= 0 ? '+' : ''}${menmaDsapNum(lastMeal.gained_kg, 2)} kg)`;
+        }
+    }
+    return `<div class="menma-account-card${isActive ? ' menma-account-active' : ''}" data-menma-account="${dsapSmfEscapeAttr(accountId)}">
+  <div class="menma-account-card-name">${menmaDsapEscape(name)}</div>
+  <div class="menma-account-card-stats">${menmaDsapEscape(kg)} · ${menmaDsapEscape(slices)}</div>
+  ${mealLine ? `<div class="menma-account-card-meal">${menmaDsapEscape(mealLine)}</div>` : ''}
+</div>`;
+}
+
+function menmaDsapAccountsGridHtml(accounts, activeAccountId) {
+    if (!accounts || typeof accounts !== 'object') return '';
+    const order = ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'];
+    const cards = order
+        .filter((id) => accounts[id])
+        .map((id) => menmaDsapAccountCardHtml(id, accounts[id], id === activeAccountId));
+    if (!cards.length) return '';
+    return `${dsapSmfBuildSectionHdr('Cake Pantry')}
+<div class="menma-accounts-grid">${cards.join('')}</div>`;
+}
+
+function menmaDsapStatusHtml(data, activeAccountId) {
+    // Get accounts grid HTML
+    const accountsGrid = menmaDsapAccountsGridHtml(data.accounts, activeAccountId || 'menma');
+    
+    // Get active account data (default to menma or root data for backward compat)
+    const activeId = activeAccountId || 'menma';
+    const activeData = (data.accounts && data.accounts[activeId]) || data;
+    
+    const meal = activeData.last_meal || {};
+    const kgDelta = (activeData.current_kg != null && activeData.baseline_kg != null)
+        ? (Number(activeData.current_kg) - Number(activeData.baseline_kg))
         : null;
+    const activeName = activeData.character_name || activeId.charAt(0).toUpperCase() + activeId.slice(1);
     const stats = dsapSmfBuildStatsTable([
-        { label: 'Weight', valueHtml: `${menmaDsapEscape(menmaDsapNum(data.current_kg, 1))} kg` },
-        { label: 'Slices', valueHtml: menmaDsapEscape(String(data.slices_eaten_total == null ? '—' : data.slices_eaten_total)) },
-        { label: 'Cake', valueHtml: menmaDsapEscape(data.cake_type || '—') }
+        { label: 'Weight', valueHtml: `${menmaDsapEscape(menmaDsapNum(activeData.current_kg, 1))} kg` },
+        { label: 'Slices', valueHtml: menmaDsapEscape(String(activeData.slices_eaten_total == null ? '—' : activeData.slices_eaten_total)) },
+        { label: 'Cake', valueHtml: menmaDsapEscape(activeData.cake_type || '—') }
     ]);
     const extra = dsapSmfBuildStatsTable([
-        { label: 'Baseline', valueHtml: `${menmaDsapEscape(menmaDsapNum(data.baseline_kg, 1))} kg` },
+        { label: 'Baseline', valueHtml: `${menmaDsapEscape(menmaDsapNum(activeData.baseline_kg, 1))} kg` },
         { label: 'Delta', valueHtml: kgDelta == null ? '—' : `${kgDelta >= 0 ? '+' : ''}${menmaDsapNum(kgDelta, 2)} kg` },
-        { label: 'Chair', valueHtml: menmaDsapEscape(data.chair || '—') }
+        { label: 'Chair', valueHtml: menmaDsapEscape(activeData.chair || '—') }
     ]);
     const mealBits = [];
     if (meal.at) {
         mealBits.push(menmaDsapFormatWhen(meal.at));
         const slices = meal.slices != null ? meal.slices : '?';
         mealBits.push(`${slices} slice${meal.slices === 1 ? '' : 's'}`);
-        mealBits.push(meal.cake_type || data.cake_type || 'cake');
+        mealBits.push(meal.cake_type || activeData.cake_type || 'cake');
         if (meal.gained_kg != null) {
             const gained = Number(meal.gained_kg);
             mealBits.push(`${gained >= 0 ? '+' : ''}${menmaDsapNum(meal.gained_kg, 2)} kg`);
         }
     }
     const mealLine = mealBits.length ? mealBits.join(' · ') : 'No meal recorded yet.';
-    return `${dsapSmfBuildSectionHdr('Ledger')}
+    return `${accountsGrid}
+${dsapSmfBuildSectionHdr(activeName + ' Ledger')}
 ${stats}
 ${extra}
 ${dsapSmfBuildSectionHdr('Last meal')}
 ${dsapSmfBuildStatusBox(menmaDsapEscape(mealLine))}
 <div class="menma-pair">
-  ${menmaDsapShotHtml(data.last_before, 'Before')}
-  ${menmaDsapShotHtml(data.last_after, 'After')}
+  ${menmaDsapShotHtml(activeData.last_before, 'Before')}
+  ${menmaDsapShotHtml(activeData.last_after, 'After')}
 </div>`;
 }
 
@@ -164,12 +219,21 @@ function menmaDsapWorkItemHtml(item) {
 </div>`;
 }
 
-function menmaDsapWorkHtml(data) {
-    const pile = data.work_pile || { open: [], done_since_breakfast: [] };
+function menmaDsapWorkHtml(data, activeAccountId) {
+    // Get accounts grid HTML
+    const accountsGrid = menmaDsapAccountsGridHtml(data.accounts, activeAccountId || 'menma');
+    
+    // Get active account data
+    const activeId = activeAccountId || 'menma';
+    const activeData = (data.accounts && data.accounts[activeId]) || data;
+    const activeName = activeData.character_name || activeId.charAt(0).toUpperCase() + activeId.slice(1);
+    
+    const pile = activeData.work_pile || { open: [], done_since_breakfast: [] };
     const breakfast = pile.last_breakfast_at
         ? `Last breakfast ${menmaDsapFormatWhen(pile.last_breakfast_at)}`
         : 'No breakfast timestamp.';
-    return `${dsapSmfBuildSectionHdr('Open work pile')}
+    return `${accountsGrid}
+${dsapSmfBuildSectionHdr(activeName + ' — Open work pile')}
 ${dsapSmfBuildStatusBox(menmaDsapEscape(breakfast))}
 ${menmaDsapListHtml(pile.open, 'Nothing open. Quiet desk.', menmaDsapWorkItemHtml)}
 ${dsapSmfBuildSectionHdr('Done since breakfast')}
@@ -195,9 +259,18 @@ function menmaDsapLogItemHtml(entry) {
 </div>`;
 }
 
-function menmaDsapLogHtml(data) {
-    const rows = Array.isArray(data.cake_log) ? data.cake_log.slice().reverse() : [];
-    return `${dsapSmfBuildSectionHdr('Cake log')}
+function menmaDsapLogHtml(data, activeAccountId) {
+    // Get accounts grid HTML
+    const accountsGrid = menmaDsapAccountsGridHtml(data.accounts, activeAccountId || 'menma');
+    
+    // Get active account data
+    const activeId = activeAccountId || 'menma';
+    const activeData = (data.accounts && data.accounts[activeId]) || data;
+    const activeName = activeData.character_name || activeId.charAt(0).toUpperCase() + activeId.slice(1);
+    
+    const rows = Array.isArray(activeData.cake_log) ? activeData.cake_log.slice().reverse() : [];
+    return `${accountsGrid}
+${dsapSmfBuildSectionHdr(activeName + ' — Cake log')}
 ${menmaDsapListHtml(rows, 'No cake-log entries yet.', menmaDsapLogItemHtml)}`;
 }
 
@@ -230,6 +303,7 @@ const menmaDsapDriver = {
             host,
             tabId,
             data: null,
+            activeAccountId: 'menma',
             _onClick: null,
             _timer: null
         };
@@ -295,6 +369,16 @@ const menmaDsapDriver = {
             this._openStudio(openBtn.getAttribute('data-menma-open'));
             return;
         }
+        const accountCard = e.target.closest('[data-menma-account]');
+        if (accountCard) {
+            e.preventDefault();
+            const accountId = accountCard.getAttribute('data-menma-account');
+            if (accountId && this._state) {
+                this._state.activeAccountId = accountId;
+                this._renderView();
+            }
+            return;
+        }
         const refresh = e.target.closest('[data-menma-action="refresh"]');
         if (refresh) {
             e.preventDefault();
@@ -344,19 +428,20 @@ const menmaDsapDriver = {
         if (!view) return;
         const data = state.data;
         if (!data) {
-            view.innerHTML = dsapSmfBuildStatusBox('Loading Menma state…');
+            view.innerHTML = dsapSmfBuildStatusBox('Loading pantry state…');
             return;
         }
         if (data.success === false) {
-            view.innerHTML = dsapSmfBuildStatusBox(menmaDsapEscape(data.error || 'Failed to load Menma state'));
+            view.innerHTML = dsapSmfBuildStatusBox(menmaDsapEscape(data.error || 'Failed to load pantry state'));
             return;
         }
         if (stamp) {
             stamp.textContent = data.updated_at ? `Updated ${menmaDsapFormatWhen(data.updated_at)}` : '';
         }
-        if (state.tabId === 'work') view.innerHTML = menmaDsapWorkHtml(data);
-        else if (state.tabId === 'log') view.innerHTML = menmaDsapLogHtml(data);
-        else view.innerHTML = menmaDsapStatusHtml(data);
+        const activeId = state.activeAccountId || 'menma';
+        if (state.tabId === 'work') view.innerHTML = menmaDsapWorkHtml(data, activeId);
+        else if (state.tabId === 'log') view.innerHTML = menmaDsapLogHtml(data, activeId);
+        else view.innerHTML = menmaDsapStatusHtml(data, activeId);
     }
 };
 
