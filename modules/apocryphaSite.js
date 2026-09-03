@@ -1,11 +1,14 @@
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
+
 /**
  * Apocrypha public zine: generated views under /{apocryphaPathUuid}.
  * Public hostname apocrypha.737.jp.net proxies here (UUID stays unlisted).
  * Underground hacker zine interior only — no window chrome.
  * Anonymous: public teaser only. Authenticated: Enshutsuka memories visible.
- * Template slots stay for #95 JSON ingest (issueLabel, webapp, kicker, counts, etc.).
+ * Reads data/apocrypha/current.json for issueLabel, webapp, kicker, counts, etc.
  */
 
 function escapeHtml(value) {
@@ -18,19 +21,107 @@ function escapeHtml(value) {
     }[ch]));
 }
 
+function getApocryphaData() {
+    try {
+        const filePath = path.join(process.cwd(), 'data/apocrypha/current.json');
+        if (fs.existsSync(filePath)) {
+            const raw = fs.readFileSync(filePath, 'utf8');
+            return JSON.parse(raw);
+        }
+    } catch (e) {
+        console.error('[apocrypha] failed to read/parse current.json:', e.message);
+    }
+    return null;
+}
+
 function renderApocrypha({ title, isGrimoire }) {
+    const data = getApocryphaData() || {};
+
+    const issueLabelStr = data.issueLabel ? escapeHtml(data.issueLabel) : 'MONDAY DIGEST';
+    const kickerStr = data.kicker ? escapeHtml(data.kicker) : '';
+    const ledeStr = data.lede ? escapeHtml(data.lede) : '';
+    const articleTitleStr = data.title ? escapeHtml(data.title) : 'Counts, version, official vs unofficial';
+    const rundownStr = data.rundown ? '<p class="split-text" style="color: #d7ff9a; margin-bottom: 12px;">' + escapeHtml(data.rundown) + '</p>' : '';
+
+    const counts = data.counts || {};
+    const officialCount = counts.official !== undefined ? escapeHtml(String(counts.official)) : '—';
+    const unofficialCount = counts.unofficial !== undefined ? escapeHtml(String(counts.unofficial)) : '—';
+    const enshutsukaCount = counts.enshutsuka !== undefined ? escapeHtml(String(counts.enshutsuka)) : '—';
+    const defaultModel = counts.defaultModel ? escapeHtml(counts.defaultModel) : 'V5';
+
+    const officialText = data.official ? escapeHtml(data.official) : 'staff: V5 hip weights still unsolved. Quality Tags on. No-text off for signs.';
+    const unofficialText = data.unofficial ? escapeHtml(data.unofficial) : 'community: 1–2 unweighted artists. Contrast over magnitude.';
+    const imagesNoteStr = data.imagesNote ? escapeHtml(data.imagesNote) : 'Awaiting Hoshino MWF posts.';
+
+    let enshutsukaHtml = '';
+    if (data.enshutsuka && Array.isArray(data.enshutsuka) && data.enshutsuka.length > 0) {
+        if (isGrimoire) {
+            enshutsukaHtml = data.enshutsuka.map(item => '<p>' + escapeHtml(item.body || '') + '</p>').join('');
+        } else {
+            enshutsukaHtml = data.enshutsuka.map(item => '<div class="wrap-public-teaser">' + escapeHtml(item.teaser || '') + '</div>').join('');
+        }
+    } else {
+        if (isGrimoire) {
+            enshutsukaHtml = '<p>Enshutsuka memory bodies visible</p>';
+        } else {
+            enshutsukaHtml = '<div class="wrap-public-teaser">Teaser: Enshutsuka memories exist. Bodies stay in Grim after session.</div>';
+        }
+    }
+
+    let billboardHtml = '';
+    if (data.billboard && Array.isArray(data.billboard) && data.billboard.length > 0) {
+        billboardHtml = data.billboard.map(item => {
+            const isHero = item.kind === 'hero' ? ' hero' : '';
+            const imgHtml = (item.src && typeof item.src === 'string' && item.src.startsWith('http'))
+                ? '<img src="' + escapeHtml(item.src) + '" alt="' + escapeHtml(item.cap || '') + '" style="max-width: 100%; height: auto; margin-top: 8px; display: block; border: 1px solid #333;">'
+                : '';
+            const metaHtml = item.cap ? '<div class="tile-meta" style="margin-top: 8px; font-size: 9px; color: #999;">' + escapeHtml(item.cap) + '</div>' : '';
+            return '<div class="tile' + isHero + '">\n' +
+                   '    <span class="tile-kicker">' + escapeHtml(item.kicker || '') + '</span>\n' +
+                   '    <div class="tile-title">' + escapeHtml(item.title || '—') + '</div>\n' +
+                   '    ' + imgHtml + '\n' +
+                   '    ' + metaHtml + '\n' +
+                   '</div>';
+        }).join('\n');
+    } else {
+        billboardHtml = `<div class="tile hero">
+                    <span class="tile-kicker">BILLBOARD · image of the day</span>
+                    <div class="tile-title">—</div>
+                    <div class="tile-meta"></div>
+                </div>
+                <div class="tile">
+                    <span class="tile-kicker">IOD · 2</span>
+                    <div class="tile-title">—</div>
+                </div>`;
+    }
+
+    let imagesGridHtml = '';
+    if (data.images && Array.isArray(data.images) && data.images.length > 0) {
+        imagesGridHtml = '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">';
+        imagesGridHtml += data.images.map(img => {
+            if (img.src && typeof img.src === 'string' && img.src.startsWith('http')) {
+                const kickerHtml = img.kicker ? '<div style="font-size: 8px; color: #665500; text-transform: uppercase; margin-top: 4px;">' + escapeHtml(img.kicker) + '</div>' : '';
+                const capHtml = img.cap ? '<div style="font-size: 9px; color: #999; margin-top: 2px;">' + escapeHtml(img.cap) + '</div>' : '';
+                return '<div class="image-item">\n' +
+                       '    <img src="' + escapeHtml(img.src) + '" alt="' + escapeHtml(img.cap || '') + '" style="width: 100%; height: auto; border: 1px solid #333; display: block;">\n' +
+                       '    ' + kickerHtml + '\n' +
+                       '    ' + capHtml + '\n' +
+                       '</div>';
+            }
+            return '<div class="tile"><span class="tile-kicker">PLACEHOLDER</span><div class="tile-title">—</div></div>';
+        }).join('\n');
+        imagesGridHtml += '</div>';
+    }
     const grimContent = isGrimoire ? `
             <div class="grim-wrapper">
                 <div class="grim-header">GRIM / LOGGED-IN</div>
                 <div class="enshutsuka-memories">
-                    <!-- #95: enshutsuka[].body fills here -->
-                    <p>Enshutsuka memory bodies visible</p>
+                    ${enshutsukaHtml}
                 </div>
             </div>` : `
             <div class="wrap-public">
                 <div class="wrap-public-header">GRIM / LOGIN WRAPPER · omitted from public</div>
-                <!-- #95: enshutsuka[].teaser fills here -->
-                <div class="wrap-public-teaser">Teaser: Enshutsuka memories exist. Bodies stay in Grim after session.</div>
+                ${enshutsukaHtml}
             </div>`;
 
     return `<!DOCTYPE html>
@@ -476,23 +567,14 @@ html, body {
                     <span class="stamp">UNOFFICIAL PRESS</span>
                 </div>
                 <div class="mast-right">
-                    <!-- #95: issueLabel fills here -->
-                    MONDAY DIGEST<br>
-                    <!-- #95: webapp kicker fills here -->
+                    ${issueLabelStr}${ledeStr ? '<br><span style="font-size: 9px; color: #999;">' + ledeStr + '</span>' : ''}<br>
+                    ${kickerStr}
                 </div>
             </header>
 
-            <!-- Billboard Grid — #95: billboard[] fills here -->
+            <!-- Billboard Grid -->
             <section class="billboard">
-                <div class="tile hero">
-                    <span class="tile-kicker">BILLBOARD · image of the day</span>
-                    <div class="tile-title">—</div>
-                    <div class="tile-meta"></div>
-                </div>
-                <div class="tile">
-                    <span class="tile-kicker">IOD · 2</span>
-                    <div class="tile-title">—</div>
-                </div>
+                ${billboardHtml}
                 <div class="ad-tile">
                     <span class="ad-kicker">AD · ATELIER</span>
                     <div class="ad-title">NAX faces on the cheap</div>
@@ -506,26 +588,25 @@ html, body {
             <!-- Main Content -->
             <div class="content">
                 <article class="main-col">
-                    <!-- Stats Article — #95: counts, webapp, kicker fill here -->
                     <div class="article">
-                        <span class="article-kicker">MONDAY · WEBAPP</span>
-                        <h2 class="article-title">Counts, version, official vs unofficial</h2>
-                        
+                        <span class="article-kicker">${kickerStr || 'MONDAY · WEBAPP'}</span>
+                        <h2 class="article-title">${articleTitleStr}</h2>
+                        ${rundownStr}
                         <div class="stats-grid">
                             <div class="stat-box">
-                                <span class="stat-value">—</span>
+                                <span class="stat-value">${officialCount}</span>
                                 <span class="stat-label">official</span>
                             </div>
                             <div class="stat-box">
-                                <span class="stat-value">—</span>
+                                <span class="stat-value">${unofficialCount}</span>
                                 <span class="stat-label">unofficial</span>
                             </div>
                             <div class="stat-box">
-                                <span class="stat-value">—</span>
+                                <span class="stat-value">${enshutsukaCount}</span>
                                 <span class="stat-label">Enshutsuka</span>
                             </div>
                             <div class="stat-box">
-                                <span class="stat-value">V5</span>
+                                <span class="stat-value">${defaultModel}</span>
                                 <span class="stat-label">default</span>
                             </div>
                         </div>
@@ -533,28 +614,22 @@ html, body {
                         <div class="split">
                             <div class="split-col official">
                                 <div class="split-title">official</div>
-                                <div class="split-text">
-                                    staff: V5 hip weights still unsolved. Quality Tags on. No-text off for signs.
-                                </div>
+                                <div class="split-text">${officialText}</div>
                             </div>
                             <div class="split-col unofficial">
                                 <div class="split-title">unofficial</div>
-                                <div class="split-text">
-                                    community: 1–2 unweighted artists. Contrast over magnitude.
-                                </div>
+                                <div class="split-text">${unofficialText}</div>
                             </div>
                         </div>
 
                         ${grimContent}
                     </div>
 
-                    <!-- Images Section — #95: imagesNote fills here -->
                     <div class="images">
                         <span class="images-kicker">IMAGES</span>
                         <h3 class="images-title">Day sheet</h3>
-                        <p class="images-note">
-                            Awaiting Hoshino MWF posts.
-                        </p>
+                        <p class="images-note">${imagesNoteStr}</p>
+                        ${imagesGridHtml}
                     </div>
                 </article>
 
