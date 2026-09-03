@@ -111,8 +111,8 @@ async function migrateLegacyMenmaTables(db) {
         console.log('[CakePantry] Migrating legacy menma tables to unified tables...');
         const now = new Date().toISOString();
 
-        await db.run('BEGIN TRANSACTION');
         try {
+            await db.run('BEGIN TRANSACTION');
             // Migrate menma_state to cake_pantry_state
             const stateRows = await db.all('SELECT key, value, updated_at FROM menma_state');
             for (const row of stateRows) {
@@ -164,7 +164,7 @@ async function migrateLegacyMenmaTables(db) {
             await db.run('COMMIT');
             console.log('[CakePantry] Legacy menma tables migrated.');
         } catch (error) {
-            await db.run('ROLLBACK');
+            try { await db.run('ROLLBACK'); } catch (_) { /* no open transaction */ }
             throw error;
         }
     } catch (error) {
@@ -200,9 +200,8 @@ async function runAccountImportIfNeeded(db, accountId) {
         console.log(`[CakePantry] Running one-shot import for ${accountId} from ${dir}/ to tag_wiki.db...`);
         const now = new Date().toISOString();
 
-        await db.run('BEGIN TRANSACTION');
-
         try {
+            await db.run('BEGIN TRANSACTION');
             // 1. Import state.json
             const statePath = path.join(accountDir, 'state.json');
             if (fs.existsSync(statePath)) {
@@ -348,7 +347,7 @@ async function runAccountImportIfNeeded(db, accountId) {
             await db.run('COMMIT');
             console.log(`[CakePantry] Import complete for ${accountId}.`);
         } catch (error) {
-            await db.run('ROLLBACK');
+            try { await db.run('ROLLBACK'); } catch (_) { /* no open transaction */ }
             throw error;
         }
     } catch (error) {
@@ -358,11 +357,16 @@ async function runAccountImportIfNeeded(db, accountId) {
 }
 
 /**
- * Ensure migration runs for an account (call before any operation)
+ * Ensure migration runs for an account (call before any operation).
+ * Serialized: tag_wiki.db is one connection and cannot nest BEGIN TRANSACTION.
  */
+let migrationChain = Promise.resolve();
+
 async function ensureAccountMigration(db, accountId) {
-    await migrateLegacyMenmaTables(db);
-    await runAccountImportIfNeeded(db, accountId);
+    const run = () => migrateLegacyMenmaTables(db).then(() => runAccountImportIfNeeded(db, accountId));
+    const next = migrationChain.then(run, run);
+    migrationChain = next.catch(() => {});
+    return next;
 }
 
 // ============================================================================

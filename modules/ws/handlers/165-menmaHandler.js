@@ -1,13 +1,15 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
-const { buildMenmaStatus, buildAllAccountsStatus } = require('../../menmaStatus');
+const { buildAllAccountsStatus } = require('../../menmaStatus');
 
 async function handleGetMenmaState(handlersCtx, ws, message, clientInfo, wsServer) {
     try {
-        // Build Menma status (backward compat) + all accounts for full pantry view
-        const menmaPayload = await buildMenmaStatus(handlersCtx.globalResources);
+        // One pass: allAccounts already builds menma. Do not call buildMenmaStatus
+        // first — that raced a second BEGIN TRANSACTION on the shared tag_wiki.db.
         const allAccounts = await buildAllAccountsStatus(handlersCtx.globalResources);
-        
-        // Merge: menma fields at root (backward compat) + accounts object for applet
+        const menmaPayload = (allAccounts.accounts && allAccounts.accounts.menma) || {
+            success: false,
+            available: false
+        };
         const payload = {
             ...menmaPayload,
             accounts: allAccounts.accounts
