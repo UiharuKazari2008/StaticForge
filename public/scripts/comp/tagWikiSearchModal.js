@@ -1579,6 +1579,9 @@ class WikiDisplayBase {
             <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-action="open-fandom-wiki">
                 ${this.fandomMarkImgHtml('dreamwiki-site-btn-icon')} Fandom
             </button>
+            <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-action="open-apocrypha">
+                <i class="fas fa-newspaper"></i> Apocrypha
+            </button>
             <!-- Documentation site buttons (e.g. NovelAI) are appended here by loadStaticWikiHomeSites so they participate in the horizontal wrap flow -->
         </div>
     </div>
@@ -1625,6 +1628,13 @@ class WikiDisplayBase {
         if (fandomBtn) {
             fandomBtn.addEventListener('click', () => {
                 this.navigate('rdf://wiki.fandom.jp/');
+            });
+        }
+
+        const apocryphaBtn = this.displayArea.querySelector('[data-action="open-apocrypha"]');
+        if (apocryphaBtn) {
+            apocryphaBtn.addEventListener('click', () => {
+                this.navigate('dsap://apocrypha.737.jp.net/');
             });
         }
 
