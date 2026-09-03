@@ -34,6 +34,57 @@ function getApocryphaData() {
     return null;
 }
 
+function isHttpSrc(value) {
+    return typeof value === 'string' && value.startsWith('http');
+}
+
+function renderImageItem(img) {
+    if (!img || !isHttpSrc(img.src)) return '';
+    const kickerHtml = img.kicker
+        ? '<div class="tile-kicker">' + escapeHtml(img.kicker) + '</div>'
+        : '';
+    const capHtml = img.cap
+        ? '<div class="tile-meta">' + escapeHtml(img.cap) + '</div>'
+        : '';
+    return '<div class="image-item">' +
+        '<img referrerpolicy="no-referrer" src="' + escapeHtml(img.src) + '" alt="' + escapeHtml(img.cap || '') + '">' +
+        kickerHtml +
+        capHtml +
+        '</div>';
+}
+
+function renderImageGrid(images) {
+    if (!Array.isArray(images) || images.length === 0) return '';
+    const items = images.map(renderImageItem).filter(Boolean).join('\n');
+    if (!items) return '';
+    return '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">' + items + '</div>';
+}
+
+function renderExcerpts(excerpts) {
+    if (!Array.isArray(excerpts) || excerpts.length === 0) return '';
+    return excerpts.map((ex) => {
+        if (!ex || typeof ex !== 'object') return '';
+        const who = [ex.speaker, ex.channel, ex.when].filter(Boolean).join(' · ');
+        const meta = who ? '<div class="tile-meta">' + escapeHtml(who) + '</div>' : '';
+        const text = ex.text ? escapeHtml(ex.text).replace(/\n/g, '<br>') : '';
+        if (!text && !meta) return '';
+        return '<blockquote class="split-text">' + text + meta + '</blockquote>';
+    }).join('\n');
+}
+
+function renderSectionArticle(sec) {
+    if (!sec || typeof sec !== 'object') return '';
+    const kicker = sec.kicker ? '<span class="article-kicker">' + escapeHtml(sec.kicker) + '</span>' : '';
+    const title = sec.title ? '<h2 class="article-title">' + escapeHtml(sec.title) + '</h2>' : '';
+    const lede = sec.lede ? '<p class="split-text">' + escapeHtml(sec.lede) + '</p>' : '';
+    const body = sec.body ? '<p class="split-text">' + escapeHtml(sec.body) + '</p>' : '';
+    return '<div class="article">' +
+        kicker + title + lede + body +
+        renderExcerpts(sec.excerpts) +
+        renderImageGrid(sec.images) +
+        '</div>';
+}
+
 function renderApocrypha({ title, isGrimoire }) {
     const data = getApocryphaData() || {};
 
@@ -95,51 +146,18 @@ function renderApocrypha({ title, isGrimoire }) {
                 </div>`;
     }
 
-    let imagesGridHtml = '';
-    if (data.images && Array.isArray(data.images) && data.images.length > 0) {
-        imagesGridHtml = '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">';
-        imagesGridHtml += data.images.map(img => {
-            if (img.src && typeof img.src === 'string' && img.src.startsWith('http')) {
-                const kickerHtml = img.kicker ? '<div style="font-size: 8px; color: #665500; text-transform: uppercase; margin-top: 4px;">' + escapeHtml(img.kicker) + '</div>' : '';
-                const capHtml = img.cap ? '<div style="font-size: 9px; color: #999; margin-top: 2px;">' + escapeHtml(img.cap) + '</div>' : '';
-                return '<div class="image-item">\n' +
-                       '    <img referrerpolicy="no-referrer" src="' + escapeHtml(img.src) + '" alt="' + escapeHtml(img.cap || '') + '" style="width: 100%; height: auto; border: 1px solid #333; display: block;">\n' +
-                       '    ' + kickerHtml + '\n' +
-                       '    ' + capHtml + '\n' +
-                       '</div>';
-            }
-            return '<div class="tile"><span class="tile-kicker">PLACEHOLDER</span><div class="tile-title">—</div></div>';
-        }).join('\n');
-        imagesGridHtml += '</div>';
-    }
-
+    const imagesGridHtml = renderImageGrid(data.images);
+    const sections = Array.isArray(data.sections) ? data.sections : [];
+    const publicSectionsHtml = sections.filter((sec) => sec && sec.grim !== true).map(renderSectionArticle).join('\n');
+    const grimSectionsHtml = isGrimoire
+        ? sections.filter((sec) => sec && sec.grim === true).map(renderSectionArticle).join('\n')
+        : '';
     let grimImagesHtml = '';
-    if (data.grimImages && Array.isArray(data.grimImages) && data.grimImages.length > 0) {
-        grimImagesHtml = '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; border: 1px dashed #d7ff9a; padding: 8px;">';
-        grimImagesHtml += '<div style="grid-column: 1 / -1; font-size: 9px; color: #d7ff9a; text-transform: uppercase;">UNOFFICIAL / SPICY KEEPERS</div>';
-        grimImagesHtml += data.grimImages.map(img => {
-            if (img.src && typeof img.src === 'string' && img.src.startsWith('http')) {
-                const kickerHtml = img.kicker ? '<div style="font-size: 8px; color: #665500; text-transform: uppercase; margin-top: 4px;">' + escapeHtml(img.kicker) + '</div>' : '';
-                const capHtml = img.cap ? '<div style="font-size: 9px; color: #999; margin-top: 2px;">' + escapeHtml(img.cap) + '</div>' : '';
-                return '<div class="image-item">\n' +
-                       '    <img referrerpolicy="no-referrer" src="' + escapeHtml(img.src) + '" alt="' + escapeHtml(img.cap || '') + '" style="width: 100%; height: auto; border: 1px solid #333; display: block;">\n' +
-                       '    ' + kickerHtml + '\n' +
-                       '    ' + capHtml + '\n' +
-                       '</div>';
-            }
-            return '<div class="tile"><span class="tile-kicker">PLACEHOLDER</span><div class="tile-title">—</div></div>';
-        }).join('\n');
-        grimImagesHtml += '</div>';
-    }
-
-    let sectionsHtml = '';
-    if (data.sections && Array.isArray(data.sections) && data.sections.length > 0) {
-        sectionsHtml = data.sections.map(sec => {
-            return '<div class="grim-section" style="margin-top: 16px; padding: 12px; border: 1px dashed #665500;">' +
-                   '<h3 style="margin-top: 0; color: #d7ff9a;">' + escapeHtml(sec.title || '') + '</h3>' +
-                   '<p>' + escapeHtml(sec.body || '') + '</p>' +
-                   '</div>';
-        }).join('\n');
+    if (isGrimoire && Array.isArray(data.grimImages) && data.grimImages.length > 0) {
+        const grimGrid = renderImageGrid(data.grimImages);
+        if (grimGrid) {
+            grimImagesHtml = '<div class="images"><span class="images-kicker">UNOFFICIAL / SPICY KEEPERS</span>' + grimGrid + '</div>';
+        }
     }
 
     const grimContent = isGrimoire ? `
@@ -148,7 +166,7 @@ function renderApocrypha({ title, isGrimoire }) {
                 <div class="enshutsuka-memories">
                     ${enshutsukaHtml}
                 </div>
-                ${sectionsHtml}
+                ${grimSectionsHtml}
                 ${grimImagesHtml}
             </div>` : `
             <div class="wrap-public">
@@ -538,6 +556,24 @@ html, body {
     line-height: 1.5;
 }
 
+.image-item img {
+    width: 100%;
+    height: auto;
+    border: 1px solid #333;
+    display: block;
+}
+
+.article blockquote {
+    margin: 8px 0;
+    padding: 8px 8px 8px 12px;
+    border-left: 2px solid #2a5a2a;
+    color: #999;
+}
+
+.article blockquote .tile-meta {
+    margin-top: 4px;
+}
+
 .footer {
     margin-top: 16px;
     padding-top: 12px;
@@ -657,6 +693,8 @@ html, body {
                         ${grimContent}
                     </div>
 
+                    ${publicSectionsHtml}
+
                     <div class="images">
                         <span class="images-kicker">IMAGES</span>
                         <h3 class="images-title">Day sheet</h3>
@@ -756,6 +794,8 @@ function getApocryphaInteriorCss() {
 .apocrypha-interior .images-title { font-size: 14px; font-weight: bold; color: #d7ff9a; margin: 0 0 8px 0; }
 .apocrypha-interior .images-note { font-size: 10px; color: #999; line-height: 1.5; }
 .apocrypha-interior .image-item img { width: 100%; height: auto; border: 1px solid #333; display: block; }
+.apocrypha-interior .article blockquote { margin: 8px 0; padding: 8px 8px 8px 12px; border-left: 2px solid #2a5a2a; color: #999; }
+.apocrypha-interior .article blockquote .tile-meta { margin-top: 4px; }
 .apocrypha-interior .footer { margin-top: 16px; padding-top: 12px; border-top: 1px solid #333; font-size: 9px; color: #666; }
 .apocrypha-interior .footer a { color: #d7ff9a; text-decoration: none; }
 .apocrypha-interior .footer a:hover { text-decoration: underline; }

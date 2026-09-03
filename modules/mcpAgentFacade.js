@@ -1305,7 +1305,7 @@ const TOOL_DEFS = [
         inputSchema: {
             type: 'object',
             additionalProperties: true,
-            required: ['issueLabel', 'webapp', 'kicker', 'lede', 'title', 'rundown', 'counts', 'official', 'unofficial', 'imagesNote'],
+            required: ['issueLabel'],
             properties: {
                 issueLabel: { type: 'string' },
                 webapp: { type: 'string' },
@@ -1365,11 +1365,55 @@ const TOOL_DEFS = [
                 },
                 grimImages: {
                     type: 'array',
-                    items: { type: 'object' }
+                    items: {
+                        type: 'object',
+                        additionalProperties: true,
+                        properties: {
+                            src: { type: 'string' },
+                            cap: { type: 'string' },
+                            kicker: { type: 'string' }
+                        }
+                    }
                 },
                 sections: {
                     type: 'array',
-                    items: { type: 'object' }
+                    items: {
+                        type: 'object',
+                        additionalProperties: true,
+                        properties: {
+                            id: { type: 'string' },
+                            kicker: { type: 'string' },
+                            title: { type: 'string' },
+                            grim: { type: 'boolean' },
+                            lede: { type: 'string' },
+                            body: { type: 'string' },
+                            excerpts: {
+                                type: 'array',
+                                items: {
+                                    type: 'object',
+                                    additionalProperties: true,
+                                    properties: {
+                                        speaker: { type: 'string' },
+                                        channel: { type: 'string' },
+                                        when: { type: 'string' },
+                                        text: { type: 'string' }
+                                    }
+                                }
+                            },
+                            images: {
+                                type: 'array',
+                                items: {
+                                    type: 'object',
+                                    additionalProperties: true,
+                                    properties: {
+                                        src: { type: 'string' },
+                                        cap: { type: 'string' },
+                                        kicker: { type: 'string' }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -3565,6 +3609,11 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (name === 'publish_apocrypha') {
+        const issueLabel = typeof input.issueLabel === 'string' ? input.issueLabel.trim() : '';
+        if (!issueLabel) {
+            return mcpTextResult({ success: false, error: 'issueLabel is required' }, true);
+        }
+
         const targetDir = path.join(process.cwd(), 'data/apocrypha');
         const targetPath = path.join(targetDir, 'current.json');
         const tmpPath = path.join(targetDir, 'current.tmp.json');
@@ -3574,9 +3623,13 @@ async function callTool(globalResources, req, name, args) {
         }
 
         try {
-            fs.writeFileSync(tmpPath, JSON.stringify(args, null, 2), 'utf8');
+            fs.writeFileSync(tmpPath, JSON.stringify(input, null, 2), 'utf8');
             fs.renameSync(tmpPath, targetPath);
-            return mcpTextResult({ success: true, message: 'Apocrypha published successfully' });
+            return mcpTextResult({
+                success: true,
+                issueLabel,
+                message: 'Apocrypha published successfully'
+            });
         } catch (writeErr) {
             return mcpTextResult({ success: false, error: 'Failed to write current.json: ' + writeErr.message }, true);
         }
