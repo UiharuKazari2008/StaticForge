@@ -289,7 +289,7 @@ Module scopes support submodule specifiers: `sfapp_cake_pantry:deliver` grants o
 
 #### Cake Pantry Module (`sfapp_cake_pantry`)
 
-Account-based cake tracking for Menma, Hoshino, Ivory. Menma uses SQLite (`tag_wiki.db`) after one-shot migration; Hoshino/Ivory use per-account ledger files.
+Account-based cake tracking for Menma, Hoshino, Ivory, Pyra, Chiyo. All accounts use SQLite (`tag_wiki.db`) after one-shot import per account. Fail-closed: after import, SQLite unavailable returns error (no file fallback).
 
 | Tool | Description | Submodule |
 |------|-------------|-----------|
@@ -303,7 +303,7 @@ Account-based cake tracking for Menma, Hoshino, Ivory. Menma uses SQLite (`tag_w
 - Cleanup: 1 slice per 40 lines or 10KB removed (min 1, cap 16)
 - 1.25x multiplier for `grok.menma` / `Lead` credit
 
-**Accounts:** `menma`, `hoshino`, `ivory`. Menma's look is locked (breakfast prompts). Hoshino/Ivory ledgers start with their own identity fields.
+**Accounts:** `menma`, `hoshino`, `ivory`, `pyra`, `chiyo`. Menma's look is locked (breakfast prompts). Other accounts start with their own identity fields. All accounts import to SQLite on first use.
 
 #### Report Issue Module (`sfapp_report_issue`)
 

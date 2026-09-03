@@ -186,6 +186,70 @@ class TagLookup {
         this.initSearchDb();
         
         try {
+            // Unified cake pantry tables with account_id (menma, hoshino, ivory, pyra, chiyo)
+            await this.db.run(`
+                CREATE TABLE IF NOT EXISTS cake_pantry_state (
+                    account_id TEXT NOT NULL,
+                    key TEXT NOT NULL,
+                    value TEXT NOT NULL,
+                    updated_at TEXT,
+                    PRIMARY KEY (account_id, key)
+                )
+            `);
+
+            await this.db.run(`
+                CREATE TABLE IF NOT EXISTS cake_pantry_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id TEXT NOT NULL,
+                    at TEXT,
+                    loop TEXT,
+                    date_local TEXT,
+                    slices INTEGER,
+                    stacks INTEGER,
+                    cake_type TEXT,
+                    cake_rating REAL,
+                    kg_before REAL,
+                    kg_after REAL,
+                    gained_kg REAL,
+                    chair TEXT,
+                    named_for TEXT,
+                    before_img TEXT,
+                    after_img TEXT,
+                    landed TEXT,
+                    left_open TEXT,
+                    extra_data TEXT
+                )
+            `);
+            await this.db.run(`CREATE INDEX IF NOT EXISTS idx_cake_pantry_log_account ON cake_pantry_log(account_id)`);
+
+            await this.db.run(`
+                CREATE TABLE IF NOT EXISTS cake_pantry_work_pile (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id TEXT NOT NULL,
+                    type TEXT NOT NULL, -- 'open' or 'done_since_breakfast' or 'eaten'
+                    work_id TEXT NOT NULL,
+                    source_from TEXT,
+                    added TEXT,
+                    done TEXT,
+                    summary TEXT,
+                    cake TEXT,
+                    slices_hint INTEGER,
+                    extra_data TEXT
+                )
+            `);
+            await this.db.run(`CREATE INDEX IF NOT EXISTS idx_cake_pantry_work_pile_account ON cake_pantry_work_pile(account_id)`);
+
+            await this.db.run(`
+                CREATE TABLE IF NOT EXISTS cake_pantry_meta (
+                    account_id TEXT NOT NULL,
+                    key TEXT NOT NULL,
+                    value TEXT NOT NULL,
+                    updated_at TEXT,
+                    PRIMARY KEY (account_id, key)
+                )
+            `);
+
+            // Legacy menma-only tables (kept for backward compat, data migrated to unified tables)
             await this.db.run(`
                 CREATE TABLE IF NOT EXISTS menma_state (
                     key TEXT PRIMARY KEY,
@@ -193,7 +257,6 @@ class TagLookup {
                     updated_at TEXT
                 )
             `);
-
             await this.db.run(`
                 CREATE TABLE IF NOT EXISTS menma_cake_log (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -216,11 +279,10 @@ class TagLookup {
                     extra_data TEXT
                 )
             `);
-
             await this.db.run(`
                 CREATE TABLE IF NOT EXISTS menma_work_pile (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    type TEXT NOT NULL, -- 'open' or 'done_since_breakfast' or 'eaten'
+                    type TEXT NOT NULL,
                     work_id TEXT NOT NULL,
                     source_from TEXT,
                     added TEXT,
@@ -231,7 +293,6 @@ class TagLookup {
                     extra_data TEXT
                 )
             `);
-
             await this.db.run(`
                 CREATE TABLE IF NOT EXISTS menma_meta (
                     key TEXT PRIMARY KEY,
@@ -240,7 +301,7 @@ class TagLookup {
                 )
             `);
         } catch (error) {
-            console.error('Error creating Menma tables:', error);
+            console.error('Error creating cake pantry tables:', error);
         }
 
         return true;

@@ -3,15 +3,13 @@
 /**
  * Cake Pantry Module
  * 
- * Account-based cake tracking for Menma, Hoshino, Ivory, and future accounts.
+ * Account-based cake tracking for menma, hoshino, ivory, pyra, chiyo.
  * 
- * MENMA uses SQLite (tag_wiki.db via menmaStatus.js) after migration.
- * After import (menma_meta.imported_at set), ALL menma reads/writes go to SQLite.
+ * ALL accounts use SQLite (tag_wiki.db via menmaStatus.js) after import.
+ * After import (cake_pantry_meta.imported_at set per account), ALL reads/writes go to SQLite.
  * 
- * FAIL-CLOSED: After import, if SQLite is unavailable, do NOT write to .menma/ files.
+ * FAIL-CLOSED: After import, if SQLite is unavailable, do NOT write to account files.
  * If import status cannot be confirmed, skip the file path (return error / no-op).
- * 
- * Hoshino and Ivory stay on files (.hoshino/, .ivory/).
  * 
  * Cake math:
  * - 0.12kg per slice
@@ -28,14 +26,15 @@
 const fs = require('fs');
 const path = require('path');
 const {
-    getMenmaDb,
-    isMigrated,
-    runMigrationIfNeeded,
-    getMenmaStateFromDb,
-    saveMenmaStateToDb,
-    appendMenmaCakeLogToDb,
-    getMenmaCakeLogFromDb,
-    hasMenmaStateInDb,
+    ACCOUNT_DIRS,
+    getCakePantryDb,
+    isAccountImported,
+    ensureAccountMigration,
+    getAccountStateFromDb,
+    saveAccountStateToDb,
+    appendCakeLogToDb,
+    getCakeLogFromDb,
+    hasAccountStateInDb,
     getWorkPileFromDb,
     saveWorkPileToDb,
     addWorkItemToDb,
@@ -54,7 +53,6 @@ const MAX_VISUAL_QA_GENS = 10;
 
 /**
  * Account definitions with identity fields
- * Menma's look is locked; Hoshino/Ivory start with their own identity fields
  */
 const ACCOUNT_DEFS = {
     menma: {
@@ -92,8 +90,34 @@ const ACCOUNT_DEFS = {
             locked: false
         },
         baseline_kg: null
+    },
+    pyra: {
+        id: 'pyra',
+        name: 'Pyra',
+        directory: '.pyra',
+        identity: {
+            name: 'Pyra',
+            age_band: null,
+            look: null,
+            locked: false
+        },
+        baseline_kg: null
+    },
+    chiyo: {
+        id: 'chiyo',
+        name: 'Chiyo',
+        directory: '.chiyo',
+        identity: {
+            name: 'Chiyo',
+            age_band: null,
+            look: null,
+            locked: false
+        },
+        baseline_kg: null
     }
 };
+
+const VALID_ACCOUNT_IDS = Object.keys(ACCOUNT_DEFS);
 
 let _globalResources = null;
 
@@ -156,22 +180,22 @@ function readJsonlFile(filePath) {
 }
 
 /**
- * Check Menma import status. Returns:
+ * Check account import status. Returns:
  * - { imported: true, db } if imported_at exists and DB available
  * - { imported: false, db } if not imported yet and DB available (use files)
  * - { imported: 'unknown', db: null } if cannot determine (fail-closed: no file writes)
  */
-async function getMenmaImportStatus() {
+async function getAccountImportStatus(accountId) {
     if (!_globalResources) {
         return { imported: 'unknown', db: null, reason: 'globalResources not set' };
     }
-    const db = getMenmaDb(_globalResources);
+    const db = getCakePantryDb(_globalResources);
     if (!db) {
         return { imported: 'unknown', db: null, reason: 'tag database not available' };
     }
     try {
-        const migrated = await isMigrated(db);
-        return { imported: migrated, db };
+        const imported = await isAccountImported(db, accountId);
+        return { imported, db };
     } catch (e) {
         return { imported: 'unknown', db: null, reason: e.message };
     }
@@ -179,17 +203,16 @@ async function getMenmaImportStatus() {
 
 /**
  * Ensure migration runs before write operations.
- * Called on menma write paths to ensure import happens before first MCP cake write.
  */
-async function ensureMenmaMigration() {
+async function ensurePantryMigration(accountId) {
     if (!_globalResources) return false;
-    const db = getMenmaDb(_globalResources);
+    const db = getCakePantryDb(_globalResources);
     if (!db) return false;
     try {
-        await runMigrationIfNeeded(db);
+        await ensureAccountMigration(db, accountId);
         return true;
     } catch (e) {
-        console.error('[cakePantry] Migration error:', e);
+        console.error(`[cakePantry] Migration error for ${accountId}:`, e);
         return false;
     }
 }
@@ -217,7 +240,7 @@ function getDefaultState(accountId) {
 }
 
 /**
- * Get or initialize account state (file-based, for non-menma accounts)
+ * Get or initialize account state (file-based, for pre-import only)
  */
 function getAccountStateFromFile(accountId) {
     const defaultState = getDefaultState(accountId);
@@ -235,7 +258,7 @@ function getAccountStateFromFile(accountId) {
 }
 
 /**
- * Get account state - async, uses SQLite for menma after import.
+ * Get account state - async, uses SQLite after import.
  * FAIL-CLOSED: If import status unknown, return error state.
  */
 async function getAccountState(accountId) {
@@ -244,172 +267,142 @@ async function getAccountState(accountId) {
     
     const defaultState = getDefaultState(accountId);
 
-    if (accountId === 'menma') {
-        // Ensure migration runs before any menma operation
-        await ensureMenmaMigration();
-        
-        const status = await getMenmaImportStatus();
-        
-        if (status.imported === true) {
-            // After import: SQLite only
-            if (!status.db) {
-                return { ...defaultState, _sqliteUnavailable: true };
-            }
-            try {
-                const state = await getMenmaStateFromDb(status.db);
-                if (state && Object.keys(state).length > 0) {
-                    return { ...defaultState, ...state };
-                }
-                return defaultState;
-            } catch (e) {
-                console.error('[cakePantry] getAccountState SQLite error:', e);
-                return { ...defaultState, _sqliteError: e.message };
-            }
-        } else if (status.imported === false) {
-            // Before import: use files
-            return getAccountStateFromFile(accountId);
-        } else {
-            // Unknown import status: fail-closed
-            console.error('[cakePantry] getAccountState: cannot determine import status:', status.reason);
-            return { ...defaultState, _importStatusUnknown: true, _reason: status.reason };
+    // Ensure migration runs before any operation
+    await ensurePantryMigration(accountId);
+    
+    const status = await getAccountImportStatus(accountId);
+    
+    if (status.imported === true) {
+        // After import: SQLite only
+        if (!status.db) {
+            return { ...defaultState, _sqliteUnavailable: true };
         }
+        try {
+            const state = await getAccountStateFromDb(status.db, accountId);
+            if (state && Object.keys(state).length > 0) {
+                return { ...defaultState, ...state };
+            }
+            return defaultState;
+        } catch (e) {
+            console.error(`[cakePantry] getAccountState SQLite error for ${accountId}:`, e);
+            return { ...defaultState, _sqliteError: e.message };
+        }
+    } else if (status.imported === false) {
+        // Before import: use files
+        return getAccountStateFromFile(accountId);
+    } else {
+        // Unknown import status: fail-closed
+        console.error(`[cakePantry] getAccountState: cannot determine import status for ${accountId}:`, status.reason);
+        return { ...defaultState, _importStatusUnknown: true, _reason: status.reason };
     }
-
-    // Hoshino/Ivory use files
-    return getAccountStateFromFile(accountId);
 }
 
 /**
- * Save account state - async, uses SQLite for menma after import.
+ * Save account state - async, uses SQLite after import.
  * FAIL-CLOSED: After import or unknown status, do NOT write to files.
  */
 async function saveAccountState(accountId, state) {
     const def = ACCOUNT_DEFS[accountId];
     if (!def) return false;
 
-    if (accountId === 'menma') {
-        // Ensure migration runs before any menma write
-        await ensureMenmaMigration();
-        
-        const status = await getMenmaImportStatus();
-        
-        if (status.imported === true) {
-            // After import: SQLite only, NO file fallback
-            if (!status.db) {
-                console.error('[cakePantry] saveAccountState: SQLite unavailable after import');
-                return false;
-            }
-            try {
-                await saveMenmaStateToDb(status.db, state);
-                return true;
-            } catch (e) {
-                console.error('[cakePantry] saveAccountState SQLite error:', e);
-                return false;
-            }
-        } else if (status.imported === false) {
-            // Before import: use files
-            const dir = ensureAccountDir(accountId);
-            if (!dir) return false;
-            writeJsonFile(path.join(dir, 'state.json'), state);
-            return true;
-        } else {
-            // Unknown import status: fail-closed, do NOT write to files
-            console.error('[cakePantry] saveAccountState: cannot determine import status, refusing file write:', status.reason);
+    // Ensure migration runs before any write
+    await ensurePantryMigration(accountId);
+    
+    const status = await getAccountImportStatus(accountId);
+    
+    if (status.imported === true) {
+        // After import: SQLite only, NO file fallback
+        if (!status.db) {
+            console.error(`[cakePantry] saveAccountState: SQLite unavailable after import for ${accountId}`);
             return false;
         }
+        try {
+            await saveAccountStateToDb(status.db, accountId, state);
+            return true;
+        } catch (e) {
+            console.error(`[cakePantry] saveAccountState SQLite error for ${accountId}:`, e);
+            return false;
+        }
+    } else if (status.imported === false) {
+        // Before import: use files
+        const dir = ensureAccountDir(accountId);
+        if (!dir) return false;
+        writeJsonFile(path.join(dir, 'state.json'), state);
+        return true;
+    } else {
+        // Unknown import status: fail-closed, do NOT write to files
+        console.error(`[cakePantry] saveAccountState: cannot determine import status for ${accountId}, refusing file write:`, status.reason);
+        return false;
     }
-
-    // Hoshino/Ivory use files
-    const dir = ensureAccountDir(accountId);
-    if (!dir) return false;
-    writeJsonFile(path.join(dir, 'state.json'), state);
-    return true;
 }
 
 /**
- * Append to account's cake log - async, uses SQLite for menma after import.
+ * Append to account's cake log - async, uses SQLite after import.
  * FAIL-CLOSED: After import or unknown status, do NOT write to files.
  */
 async function appendCakeLog(accountId, entry) {
     const def = ACCOUNT_DEFS[accountId];
     if (!def) return false;
 
-    if (accountId === 'menma') {
-        // Ensure migration runs before any menma write
-        await ensureMenmaMigration();
-        
-        const status = await getMenmaImportStatus();
-        
-        if (status.imported === true) {
-            // After import: SQLite only, NO file fallback
-            if (!status.db) {
-                console.error('[cakePantry] appendCakeLog: SQLite unavailable after import');
-                return false;
-            }
-            try {
-                await appendMenmaCakeLogToDb(status.db, entry);
-                return true;
-            } catch (e) {
-                console.error('[cakePantry] appendCakeLog SQLite error:', e);
-                return false;
-            }
-        } else if (status.imported === false) {
-            // Before import: use files
-            const dir = ensureAccountDir(accountId);
-            if (!dir) return false;
-            appendJsonlFile(path.join(dir, 'cake-log.jsonl'), entry);
-            return true;
-        } else {
-            // Unknown import status: fail-closed, do NOT write to files
-            console.error('[cakePantry] appendCakeLog: cannot determine import status, refusing file write:', status.reason);
+    // Ensure migration runs before any write
+    await ensurePantryMigration(accountId);
+    
+    const status = await getAccountImportStatus(accountId);
+    
+    if (status.imported === true) {
+        // After import: SQLite only, NO file fallback
+        if (!status.db) {
+            console.error(`[cakePantry] appendCakeLog: SQLite unavailable after import for ${accountId}`);
             return false;
         }
+        try {
+            await appendCakeLogToDb(status.db, accountId, entry);
+            return true;
+        } catch (e) {
+            console.error(`[cakePantry] appendCakeLog SQLite error for ${accountId}:`, e);
+            return false;
+        }
+    } else if (status.imported === false) {
+        // Before import: use files
+        const dir = ensureAccountDir(accountId);
+        if (!dir) return false;
+        appendJsonlFile(path.join(dir, 'cake-log.jsonl'), entry);
+        return true;
+    } else {
+        // Unknown import status: fail-closed, do NOT write to files
+        console.error(`[cakePantry] appendCakeLog: cannot determine import status for ${accountId}, refusing file write:`, status.reason);
+        return false;
     }
-
-    // Hoshino/Ivory use files
-    const dir = ensureAccountDir(accountId);
-    if (!dir) return false;
-    appendJsonlFile(path.join(dir, 'cake-log.jsonl'), entry);
-    return true;
 }
 
 /**
- * Get account's cake log - async, uses SQLite for menma after import
+ * Get account's cake log - async, uses SQLite after import
  */
 async function getCakeLog(accountId, limit = 50) {
     const def = ACCOUNT_DEFS[accountId];
     if (!def) return [];
 
-    if (accountId === 'menma') {
-        const status = await getMenmaImportStatus();
-        
-        if (status.imported === true) {
-            if (!status.db) return [];
-            try {
-                return await getMenmaCakeLogFromDb(status.db, limit);
-            } catch (e) {
-                console.error('[cakePantry] getCakeLog SQLite error:', e);
-                return [];
-            }
-        } else if (status.imported === false) {
-            // Before import: use files
-            const dir = getAccountDir(accountId);
-            if (!dir) return [];
-            const logPath = path.join(dir, 'cake-log.jsonl');
-            const entries = readJsonlFile(logPath);
-            return limit > 0 ? entries.slice(-limit) : entries;
-        } else {
-            // Unknown: return empty
+    const status = await getAccountImportStatus(accountId);
+    
+    if (status.imported === true) {
+        if (!status.db) return [];
+        try {
+            return await getCakeLogFromDb(status.db, accountId, limit);
+        } catch (e) {
+            console.error(`[cakePantry] getCakeLog SQLite error for ${accountId}:`, e);
             return [];
         }
+    } else if (status.imported === false) {
+        // Before import: use files
+        const dir = getAccountDir(accountId);
+        if (!dir) return [];
+        const logPath = path.join(dir, 'cake-log.jsonl');
+        const entries = readJsonlFile(logPath);
+        return limit > 0 ? entries.slice(-limit) : entries;
+    } else {
+        // Unknown: return empty
+        return [];
     }
-
-    // Hoshino/Ivory use files
-    const dir = getAccountDir(accountId);
-    if (!dir) return [];
-    const logPath = path.join(dir, 'cake-log.jsonl');
-    const entries = readJsonlFile(logPath);
-    return limit > 0 ? entries.slice(-limit) : entries;
 }
 
 /**
@@ -676,7 +669,7 @@ async function consumeCake(accountId, params = {}) {
     
     const logged = await appendCakeLog(accountId, logEntry);
     if (!logged) {
-        console.error('[cakePantry] consumeCake: failed to append cake log');
+        console.error(`[cakePantry] consumeCake: failed to append cake log for ${accountId}`);
     }
 
     return {
@@ -710,18 +703,14 @@ async function listAccounts() {
     for (const def of Object.values(ACCOUNT_DEFS)) {
         let hasState = false;
         
-        if (def.id === 'menma') {
-            const status = await getMenmaImportStatus();
-            if (status.imported === true && status.db) {
-                try {
-                    hasState = await hasMenmaStateInDb(status.db);
-                } catch (e) {
-                    hasState = false;
-                }
-            } else if (status.imported === false) {
-                hasState = fs.existsSync(path.join(WORKSPACE_ROOT, def.directory, 'state.json'));
+        const status = await getAccountImportStatus(def.id);
+        if (status.imported === true && status.db) {
+            try {
+                hasState = await hasAccountStateInDb(status.db, def.id);
+            } catch (e) {
+                hasState = false;
             }
-        } else {
+        } else if (status.imported === false) {
             hasState = fs.existsSync(path.join(WORKSPACE_ROOT, def.directory, 'state.json'));
         }
 
@@ -744,108 +733,107 @@ function getAccountDef(accountId) {
 }
 
 // ============================================================================
-// Work Pile Functions (menma only, SQLite after import)
+// Work Pile Functions (all accounts, SQLite after import)
 // FAIL-CLOSED: After import or unknown status, do NOT write to files.
 // ============================================================================
 
 /**
- * Get menma work pile
+ * Get work pile for an account
  */
-async function getMenmaWorkPile() {
+async function getWorkPile(accountId) {
     // Ensure migration runs
-    await ensureMenmaMigration();
+    await ensurePantryMigration(accountId);
     
-    const status = await getMenmaImportStatus();
+    const status = await getAccountImportStatus(accountId);
     
     if (status.imported === true) {
         if (!status.db) return null;
         try {
-            return await getWorkPileFromDb(status.db);
+            return await getWorkPileFromDb(status.db, accountId);
         } catch (e) {
-            console.error('[cakePantry] getMenmaWorkPile SQLite error:', e);
+            console.error(`[cakePantry] getWorkPile SQLite error for ${accountId}:`, e);
             return null;
         }
     } else if (status.imported === false) {
         // Before import: read from file
-        const pilePath = path.join(WORKSPACE_ROOT, '.menma', 'work-pile.json');
+        const pilePath = path.join(WORKSPACE_ROOT, ACCOUNT_DIRS[accountId] || `.${accountId}`, 'work-pile.json');
         return readJsonFile(pilePath, { open: [], done_since_breakfast: [], eaten: [] });
     } else {
-        // Unknown: return null
         return null;
     }
 }
 
 /**
- * Save menma work pile
+ * Save work pile for an account
  * FAIL-CLOSED: After import or unknown status, do NOT write to files.
  */
-async function saveMenmaWorkPile(pile) {
+async function saveWorkPile(accountId, pile) {
     // Ensure migration runs
-    await ensureMenmaMigration();
+    await ensurePantryMigration(accountId);
     
-    const status = await getMenmaImportStatus();
+    const status = await getAccountImportStatus(accountId);
     
     if (status.imported === true) {
         // After import: SQLite only, NO file fallback
         if (!status.db) {
-            console.error('[cakePantry] saveMenmaWorkPile: SQLite unavailable after import');
+            console.error(`[cakePantry] saveWorkPile: SQLite unavailable after import for ${accountId}`);
             return false;
         }
         try {
-            await saveWorkPileToDb(status.db, pile);
+            await saveWorkPileToDb(status.db, accountId, pile);
             return true;
         } catch (e) {
-            console.error('[cakePantry] saveMenmaWorkPile SQLite error:', e);
+            console.error(`[cakePantry] saveWorkPile SQLite error for ${accountId}:`, e);
             return false;
         }
     } else if (status.imported === false) {
         // Before import: write to file
-        const dir = ensureAccountDir('menma');
+        const dir = ensureAccountDir(accountId);
         if (!dir) return false;
         writeJsonFile(path.join(dir, 'work-pile.json'), pile);
         return true;
     } else {
         // Unknown import status: fail-closed, do NOT write to files
-        console.error('[cakePantry] saveMenmaWorkPile: cannot determine import status, refusing file write:', status.reason);
+        console.error(`[cakePantry] saveWorkPile: cannot determine import status for ${accountId}, refusing file write:`, status.reason);
         return false;
     }
 }
 
 /**
- * Add work item to menma pile
+ * Add work item to account pile
  * FAIL-CLOSED: After import or unknown status, do NOT write to files.
  */
-async function addMenmaWorkItem(item, type = 'open') {
+async function addWorkItem(accountId, item, type = 'open') {
     // Ensure migration runs
-    await ensureMenmaMigration();
+    await ensurePantryMigration(accountId);
     
-    const status = await getMenmaImportStatus();
+    const status = await getAccountImportStatus(accountId);
     
     if (status.imported === true) {
         // After import: SQLite only, NO file fallback
         if (!status.db) {
-            console.error('[cakePantry] addMenmaWorkItem: SQLite unavailable after import');
+            console.error(`[cakePantry] addWorkItem: SQLite unavailable after import for ${accountId}`);
             return false;
         }
         try {
-            await addWorkItemToDb(status.db, item, type);
+            await addWorkItemToDb(status.db, accountId, item, type);
             return true;
         } catch (e) {
-            console.error('[cakePantry] addMenmaWorkItem SQLite error:', e);
+            console.error(`[cakePantry] addWorkItem SQLite error for ${accountId}:`, e);
             return false;
         }
     } else if (status.imported === false) {
         // Before import: read/modify/write file
-        const pile = await getMenmaWorkPile() || { open: [], done_since_breakfast: [], eaten: [] };
+        const pile = await getWorkPile(accountId) || { open: [], done_since_breakfast: [], eaten: [] };
         if (!Array.isArray(pile[type])) {
             pile[type] = [];
         }
         pile[type].push({ ...item, added: item.added || new Date().toISOString() });
         pile.updated_at = new Date().toISOString();
-        return await saveMenmaWorkPile(pile);
+        return await saveWorkPile(accountId, pile);
     } else {
         // Unknown import status: fail-closed
-        console.error('[cakePantry] addMenmaWorkItem: cannot determine import status, refusing file write:', status.reason);
+        console.error(`[cakePantry] addWorkItem: cannot determine import status for ${accountId}, refusing file write:`, status.reason);
         return false;
     }
 }
@@ -854,27 +842,27 @@ async function addMenmaWorkItem(item, type = 'open') {
  * Complete work item (move from open to done_since_breakfast)
  * FAIL-CLOSED: After import or unknown status, do NOT write to files.
  */
-async function completeMenmaWorkItem(workId) {
+async function completeWorkItem(accountId, workId) {
     // Ensure migration runs
-    await ensureMenmaMigration();
+    await ensurePantryMigration(accountId);
     
-    const status = await getMenmaImportStatus();
+    const status = await getAccountImportStatus(accountId);
     
     if (status.imported === true) {
         // After import: SQLite only
         if (!status.db) {
-            console.error('[cakePantry] completeMenmaWorkItem: SQLite unavailable after import');
+            console.error(`[cakePantry] completeWorkItem: SQLite unavailable after import for ${accountId}`);
             return false;
         }
         try {
-            return await completeWorkItemInDb(status.db, workId);
+            return await completeWorkItemInDb(status.db, accountId, workId);
         } catch (e) {
-            console.error('[cakePantry] completeMenmaWorkItem SQLite error:', e);
+            console.error(`[cakePantry] completeWorkItem SQLite error for ${accountId}:`, e);
             return false;
         }
     } else if (status.imported === false) {
         // Before import: read/modify/write file
-        const pile = await getMenmaWorkPile();
+        const pile = await getWorkPile(accountId);
         if (!pile) return false;
         const idx = (pile.open || []).findIndex(i => i.id === workId);
         if (idx === -1) return false;
@@ -885,10 +873,10 @@ async function completeMenmaWorkItem(workId) {
         }
         pile.done_since_breakfast.push(item);
         pile.updated_at = new Date().toISOString();
-        return await saveMenmaWorkPile(pile);
+        return await saveWorkPile(accountId, pile);
     } else {
         // Unknown import status: fail-closed
-        console.error('[cakePantry] completeMenmaWorkItem: cannot determine import status:', status.reason);
+        console.error(`[cakePantry] completeWorkItem: cannot determine import status for ${accountId}:`, status.reason);
         return false;
     }
 }
@@ -897,27 +885,27 @@ async function completeMenmaWorkItem(workId) {
  * Remove work item from pile
  * FAIL-CLOSED: After import or unknown status, do NOT write to files.
  */
-async function removeMenmaWorkItem(workId) {
+async function removeWorkItem(accountId, workId) {
     // Ensure migration runs
-    await ensureMenmaMigration();
+    await ensurePantryMigration(accountId);
     
-    const status = await getMenmaImportStatus();
+    const status = await getAccountImportStatus(accountId);
     
     if (status.imported === true) {
         // After import: SQLite only
         if (!status.db) {
-            console.error('[cakePantry] removeMenmaWorkItem: SQLite unavailable after import');
+            console.error(`[cakePantry] removeWorkItem: SQLite unavailable after import for ${accountId}`);
             return false;
         }
         try {
-            return await removeWorkItemFromDb(status.db, workId);
+            return await removeWorkItemFromDb(status.db, accountId, workId);
         } catch (e) {
-            console.error('[cakePantry] removeMenmaWorkItem SQLite error:', e);
+            console.error(`[cakePantry] removeWorkItem SQLite error for ${accountId}:`, e);
             return false;
         }
     } else if (status.imported === false) {
         // Before import: read/modify/write file
-        const pile = await getMenmaWorkPile();
+        const pile = await getWorkPile(accountId);
         if (!pile) return false;
         let removed = false;
         for (const type of ['open', 'done_since_breakfast', 'eaten']) {
@@ -931,18 +919,26 @@ async function removeMenmaWorkItem(workId) {
         }
         if (removed) {
             pile.updated_at = new Date().toISOString();
-            return await saveMenmaWorkPile(pile);
+            return await saveWorkPile(accountId, pile);
         }
         return false;
     } else {
         // Unknown import status: fail-closed
-        console.error('[cakePantry] removeMenmaWorkItem: cannot determine import status:', status.reason);
+        console.error(`[cakePantry] removeWorkItem: cannot determine import status for ${accountId}:`, status.reason);
         return false;
     }
 }
 
+// Backward compat aliases for menma-specific functions
+const getMenmaWorkPile = () => getWorkPile('menma');
+const saveMenmaWorkPile = (pile) => saveWorkPile('menma', pile);
+const addMenmaWorkItem = (item, type) => addWorkItem('menma', item, type);
+const completeMenmaWorkItem = (workId) => completeWorkItem('menma', workId);
+const removeMenmaWorkItem = (workId) => removeWorkItem('menma', workId);
+
 module.exports = {
     ACCOUNT_DEFS,
+    VALID_ACCOUNT_IDS,
     KG_PER_SLICE,
     CLEANUP_LINES_PER_SLICE,
     CLEANUP_BYTES_PER_SLICE,
@@ -954,8 +950,8 @@ module.exports = {
     getGlobalResources,
     getAccountDir,
     ensureAccountDir,
-    getMenmaImportStatus,
-    ensureMenmaMigration,
+    getAccountImportStatus,
+    ensurePantryMigration,
     getAccountState,
     saveAccountState,
     appendCakeLog,
@@ -968,6 +964,12 @@ module.exports = {
     consumeCake,
     listAccounts,
     getAccountDef,
+    getWorkPile,
+    saveWorkPile,
+    addWorkItem,
+    completeWorkItem,
+    removeWorkItem,
+    // Backward compat aliases
     getMenmaWorkPile,
     saveMenmaWorkPile,
     addMenmaWorkItem,

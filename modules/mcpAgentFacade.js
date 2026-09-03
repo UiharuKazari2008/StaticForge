@@ -1302,7 +1302,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['accountId', 'reason'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory'], description: 'Account to deliver to' },
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'], description: 'Account to deliver to' },
                 slices: { type: 'number', description: 'Number of slices (or omit and provide line_counts)' },
                 reason: { type: 'string', description: 'Why: reward for which ship/work' },
                 cake_type: { type: 'string', description: 'Type of cake (strawberry shortcake, tiramisu, etc.)' },
@@ -1329,7 +1329,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['accountId', 'slices'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory'], description: 'Account to feed' },
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'], description: 'Account to feed' },
                 slices: { type: 'number', description: 'Number of slices to give' },
                 reason: { type: 'string', description: 'Why: promotion gift, just because, etc.' },
                 cake_type: { type: 'string' },
@@ -1347,7 +1347,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['accountId'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory'], description: 'Account to inspect' },
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'], description: 'Account to inspect' },
                 log_limit: { type: 'number', description: 'How many log entries (default 20)' }
             }
         }
@@ -1362,7 +1362,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['accountId'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory'], description: 'Account eating' },
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'], description: 'Account eating' },
                 cake_type: { type: 'string', description: 'Override cake type for this consume' },
                 stacks: { type: 'number', description: 'Number of cake stacks (default: slices/12)' },
                 before_image: { type: 'string', description: 'Before image filename (if already generated)' },
@@ -3254,10 +3254,13 @@ async function callTool(globalResources, req, name, args) {
     }
 
     // Cake Pantry module tools (sfapp_cake_pantry)
+    // Valid cake pantry accounts
+    const VALID_PANTRY_ACCOUNTS = ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'];
+
     if (name === 'deliver_cake') {
         const accountId = String(input.accountId || '').toLowerCase();
-        if (!accountId || !['menma', 'hoshino', 'ivory'].includes(accountId)) {
-            return mcpTextResult({ success: false, error: 'Invalid accountId. Must be menma, hoshino, or ivory.' }, true);
+        if (!accountId || !VALID_PANTRY_ACCOUNTS.includes(accountId)) {
+            return mcpTextResult({ success: false, error: `Invalid accountId. Must be one of: ${VALID_PANTRY_ACCOUNTS.join(', ')}.` }, true);
         }
         const result = await deliverCake(accountId, input);
         return mcpTextResult(result, !result.success);
@@ -3265,8 +3268,8 @@ async function callTool(globalResources, req, name, args) {
 
     if (name === 'feed_cake') {
         const accountId = String(input.accountId || '').toLowerCase();
-        if (!accountId || !['menma', 'hoshino', 'ivory'].includes(accountId)) {
-            return mcpTextResult({ success: false, error: 'Invalid accountId. Must be menma, hoshino, or ivory.' }, true);
+        if (!accountId || !VALID_PANTRY_ACCOUNTS.includes(accountId)) {
+            return mcpTextResult({ success: false, error: `Invalid accountId. Must be one of: ${VALID_PANTRY_ACCOUNTS.join(', ')}.` }, true);
         }
         const result = await feedCake(accountId, input);
         return mcpTextResult(result, !result.success);
@@ -3274,8 +3277,8 @@ async function callTool(globalResources, req, name, args) {
 
     if (name === 'inspect_pantry') {
         const accountId = String(input.accountId || '').toLowerCase();
-        if (!accountId || !['menma', 'hoshino', 'ivory'].includes(accountId)) {
-            return mcpTextResult({ success: false, error: 'Invalid accountId. Must be menma, hoshino, or ivory.' }, true);
+        if (!accountId || !VALID_PANTRY_ACCOUNTS.includes(accountId)) {
+            return mcpTextResult({ success: false, error: `Invalid accountId. Must be one of: ${VALID_PANTRY_ACCOUNTS.join(', ')}.` }, true);
         }
         const result = await inspectPantry(accountId, input);
         return mcpTextResult(result, !result.success);
@@ -3283,8 +3286,8 @@ async function callTool(globalResources, req, name, args) {
 
     if (name === 'consume_cake') {
         const accountId = String(input.accountId || '').toLowerCase();
-        if (!accountId || !['menma', 'hoshino', 'ivory'].includes(accountId)) {
-            return mcpTextResult({ success: false, error: 'Invalid accountId. Must be menma, hoshino, or ivory.' }, true);
+        if (!accountId || !VALID_PANTRY_ACCOUNTS.includes(accountId)) {
+            return mcpTextResult({ success: false, error: `Invalid accountId. Must be one of: ${VALID_PANTRY_ACCOUNTS.join(', ')}.` }, true);
         }
         const result = await consumeCake(accountId, input);
         return mcpTextResult(result, !result.success);

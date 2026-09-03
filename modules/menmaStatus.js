@@ -1,24 +1,36 @@
 'use strict';
 
 /**
- * Menma DSAP SQLite Module
+ * Cake Pantry SQLite Module
  * 
- * Reads AND writes Menma ledger data (state, cake-log, work-pile) from/to SQLite.
- * After import, ALL reads and writes go through SQLite. Files are read-only for import.
+ * Reads AND writes cake pantry ledger data (state, cake-log, work-pile) from/to SQLite.
+ * Accounts: menma, hoshino, ivory, pyra, chiyo
+ * After import (cake_pantry_meta.imported_at set per account), ALL reads and writes use SQLite.
  * 
  * Tables in tag_wiki.db:
- * - menma_state: key-value state (kg, slices, history, etc.)
- * - menma_cake_log: cake consumption entries
- * - menma_work_pile: work items (open, done_since_breakfast, eaten)
- * - menma_meta: migration metadata (imported_at flag)
+ * - cake_pantry_state: (account_id, key, value, updated_at)
+ * - cake_pantry_log: cake consumption entries per account
+ * - cake_pantry_work_pile: work items per account
+ * - cake_pantry_meta: migration metadata (imported_at per account)
+ * 
+ * Legacy menma_* tables kept for backward compat but data migrates to unified tables.
  */
 
 const fs = require('fs');
 const path = require('path');
 
-const MENMA_DIR = path.join(__dirname, '..', '.menma');
+const WORKSPACE_ROOT = path.join(__dirname, '..');
 const IMAGE_NAME_RE = /^[A-Za-z0-9._-]+\.(png|webp|jpe?g)$/i;
 const LOG_TAIL = 16;
+
+// Account directories
+const ACCOUNT_DIRS = {
+    menma: '.menma',
+    hoshino: '.hoshino',
+    ivory: '.ivory',
+    pyra: '.pyra',
+    chiyo: '.chiyo'
+};
 
 function safeImageName(name) {
     if (!name || typeof name !== 'string') return null;
@@ -70,11 +82,14 @@ function pickLogEntry(entry) {
 }
 
 /**
- * Check if migration has been completed using menma_meta.imported_at
+ * Check if an account has been imported using cake_pantry_meta.imported_at
  */
-async function isMigrated(db) {
+async function isAccountImported(db, accountId) {
     try {
-        const row = await db.get("SELECT value FROM menma_meta WHERE key = 'imported_at'");
+        const row = await db.get(
+            "SELECT value FROM cake_pantry_meta WHERE account_id = ? AND key = 'imported_at'",
+            [accountId]
+        );
         return row != null && row.value != null;
     } catch (e) {
         return false;
@@ -82,107 +97,192 @@ async function isMigrated(db) {
 }
 
 /**
- * Transactional, idempotent one-shot migration from .menma/ files to SQLite.
- * Uses menma_meta.imported_at as gate (not COUNT-based).
+ * Migrate legacy menma tables to unified tables (one-time)
  */
-async function runMigrationIfNeeded(db) {
+async function migrateLegacyMenmaTables(db) {
     try {
-        if (await isMigrated(db)) {
+        // Check if legacy migration already done
+        const legacyMigrated = await db.get(
+            "SELECT value FROM cake_pantry_meta WHERE account_id = 'menma' AND key = 'legacy_migrated'"
+        );
+        if (legacyMigrated) return;
+
+        // Check if legacy menma tables have data
+        const legacyState = await db.get('SELECT COUNT(*) as count FROM menma_state');
+        if (!legacyState || legacyState.count === 0) return;
+
+        console.log('[CakePantry] Migrating legacy menma tables to unified tables...');
+        const now = new Date().toISOString();
+
+        await db.run('BEGIN TRANSACTION');
+        try {
+            // Migrate menma_state to cake_pantry_state
+            const stateRows = await db.all('SELECT key, value, updated_at FROM menma_state');
+            for (const row of stateRows) {
+                await db.run(
+                    'INSERT OR REPLACE INTO cake_pantry_state (account_id, key, value, updated_at) VALUES (?, ?, ?, ?)',
+                    ['menma', row.key, row.value, row.updated_at || now]
+                );
+            }
+
+            // Migrate menma_cake_log to cake_pantry_log
+            const logRows = await db.all('SELECT * FROM menma_cake_log');
+            for (const row of logRows) {
+                await db.run(`
+                    INSERT INTO cake_pantry_log (account_id, at, loop, date_local, slices, stacks, cake_type, 
+                        cake_rating, kg_before, kg_after, gained_kg, chair, named_for, before_img, after_img, 
+                        landed, left_open, extra_data)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `, ['menma', row.at, row.loop, row.date_local, row.slices, row.stacks, row.cake_type,
+                    row.cake_rating, row.kg_before, row.kg_after, row.gained_kg, row.chair, row.named_for,
+                    row.before_img, row.after_img, row.landed, row.left_open, row.extra_data]);
+            }
+
+            // Migrate menma_work_pile to cake_pantry_work_pile
+            const pileRows = await db.all('SELECT * FROM menma_work_pile');
+            for (const row of pileRows) {
+                await db.run(`
+                    INSERT INTO cake_pantry_work_pile (account_id, type, work_id, source_from, added, done, 
+                        summary, cake, slices_hint, extra_data)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `, ['menma', row.type, row.work_id, row.source_from, row.added, row.done,
+                    row.summary, row.cake, row.slices_hint, row.extra_data]);
+            }
+
+            // Migrate menma_meta to cake_pantry_meta
+            const metaRows = await db.all('SELECT key, value, updated_at FROM menma_meta');
+            for (const row of metaRows) {
+                await db.run(
+                    'INSERT OR REPLACE INTO cake_pantry_meta (account_id, key, value, updated_at) VALUES (?, ?, ?, ?)',
+                    ['menma', row.key, row.value, row.updated_at || now]
+                );
+            }
+
+            // Mark legacy migration done
+            await db.run(
+                'INSERT OR REPLACE INTO cake_pantry_meta (account_id, key, value, updated_at) VALUES (?, ?, ?, ?)',
+                ['menma', 'legacy_migrated', now, now]
+            );
+
+            await db.run('COMMIT');
+            console.log('[CakePantry] Legacy menma tables migrated.');
+        } catch (error) {
+            await db.run('ROLLBACK');
+            throw error;
+        }
+    } catch (error) {
+        console.error('[CakePantry] Legacy migration failed:', error);
+    }
+}
+
+/**
+ * Transactional, idempotent one-shot import from account directory files to SQLite.
+ * Uses cake_pantry_meta.imported_at as gate per account.
+ */
+async function runAccountImportIfNeeded(db, accountId) {
+    try {
+        if (await isAccountImported(db, accountId)) {
             return;
         }
 
-        console.log('[Menma] Running one-shot migration from .menma/ to tag_wiki.db...');
+        const dir = ACCOUNT_DIRS[accountId];
+        if (!dir) return;
+        const accountDir = path.join(WORKSPACE_ROOT, dir);
+        
+        // Check if directory exists
+        if (!fs.existsSync(accountDir)) {
+            return;
+        }
+
+        console.log(`[CakePantry] Running one-shot import for ${accountId} from ${dir}/ to tag_wiki.db...`);
         const now = new Date().toISOString();
 
         await db.run('BEGIN TRANSACTION');
 
         try {
-            // 1. Migrate state.json
-            const state = readJsonFile(path.join(MENMA_DIR, 'state.json'), null);
-            if (state) {
-                for (const [key, value] of Object.entries(state)) {
-                    await db.run(
-                        'INSERT OR REPLACE INTO menma_state (key, value, updated_at) VALUES (?, ?, ?)',
-                        [key, JSON.stringify(value), now]
-                    );
-                }
-            }
-
-            // 2. Migrate work-pile.json
-            const pile = readJsonFile(path.join(MENMA_DIR, 'work-pile.json'), null);
-            if (pile) {
-                if (pile.updated_at) {
-                    await db.run(
-                        'INSERT OR REPLACE INTO menma_state (key, value, updated_at) VALUES (?, ?, ?)',
-                        ['work_pile_updated_at', JSON.stringify(pile.updated_at), now]
-                    );
-                }
-                if (pile.last_breakfast_at) {
-                    await db.run(
-                        'INSERT OR REPLACE INTO menma_state (key, value, updated_at) VALUES (?, ?, ?)',
-                        ['work_pile_last_breakfast_at', JSON.stringify(pile.last_breakfast_at), now]
-                    );
-                }
-                if (pile.rule) {
-                    await db.run(
-                        'INSERT OR REPLACE INTO menma_state (key, value, updated_at) VALUES (?, ?, ?)',
-                        ['work_pile_rule', JSON.stringify(pile.rule), now]
-                    );
-                }
-                if (pile.cake_note) {
-                    await db.run(
-                        'INSERT OR REPLACE INTO menma_state (key, value, updated_at) VALUES (?, ?, ?)',
-                        ['work_pile_cake_note', JSON.stringify(pile.cake_note), now]
-                    );
-                }
-
-                const insertWorkItem = async (item, type) => {
-                    const picked = pickWorkItem(item);
-                    if (!picked) return;
-                    const extraData = { ...item };
-                    delete extraData.id;
-                    delete extraData.from;
-                    delete extraData.added;
-                    delete extraData.done;
-                    delete extraData.summary;
-                    delete extraData.cake;
-                    delete extraData.slices_hint;
-
-                    await db.run(`
-                        INSERT INTO menma_work_pile (type, work_id, source_from, added, done, summary, cake, slices_hint, extra_data)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    `, [
-                        type,
-                        picked.id,
-                        picked.from,
-                        picked.added,
-                        picked.done,
-                        picked.summary,
-                        picked.cake,
-                        picked.slices_hint,
-                        JSON.stringify(extraData)
-                    ]);
-                };
-
-                if (Array.isArray(pile.open)) {
-                    for (const item of pile.open) {
-                        await insertWorkItem(item, 'open');
-                    }
-                }
-                if (Array.isArray(pile.done_since_breakfast)) {
-                    for (const item of pile.done_since_breakfast) {
-                        await insertWorkItem(item, 'done_since_breakfast');
-                    }
-                }
-                if (Array.isArray(pile.eaten)) {
-                    for (const item of pile.eaten) {
-                        await insertWorkItem(item, 'eaten');
+            // 1. Import state.json
+            const statePath = path.join(accountDir, 'state.json');
+            if (fs.existsSync(statePath)) {
+                const state = readJsonFile(statePath, null);
+                if (state) {
+                    for (const [key, value] of Object.entries(state)) {
+                        await db.run(
+                            'INSERT OR REPLACE INTO cake_pantry_state (account_id, key, value, updated_at) VALUES (?, ?, ?, ?)',
+                            [accountId, key, JSON.stringify(value), now]
+                        );
                     }
                 }
             }
 
-            // 3. Migrate cake-log.jsonl (idempotent: check 'at' + 'slices' uniqueness)
-            const cakeLogPath = path.join(MENMA_DIR, 'cake-log.jsonl');
+            // 2. Import work-pile.json
+            const pilePath = path.join(accountDir, 'work-pile.json');
+            if (fs.existsSync(pilePath)) {
+                const pile = readJsonFile(pilePath, null);
+                if (pile) {
+                    if (pile.updated_at) {
+                        await db.run(
+                            'INSERT OR REPLACE INTO cake_pantry_state (account_id, key, value, updated_at) VALUES (?, ?, ?, ?)',
+                            [accountId, 'work_pile_updated_at', JSON.stringify(pile.updated_at), now]
+                        );
+                    }
+                    if (pile.last_breakfast_at) {
+                        await db.run(
+                            'INSERT OR REPLACE INTO cake_pantry_state (account_id, key, value, updated_at) VALUES (?, ?, ?, ?)',
+                            [accountId, 'work_pile_last_breakfast_at', JSON.stringify(pile.last_breakfast_at), now]
+                        );
+                    }
+                    if (pile.rule) {
+                        await db.run(
+                            'INSERT OR REPLACE INTO cake_pantry_state (account_id, key, value, updated_at) VALUES (?, ?, ?, ?)',
+                            [accountId, 'work_pile_rule', JSON.stringify(pile.rule), now]
+                        );
+                    }
+                    if (pile.cake_note) {
+                        await db.run(
+                            'INSERT OR REPLACE INTO cake_pantry_state (account_id, key, value, updated_at) VALUES (?, ?, ?, ?)',
+                            [accountId, 'work_pile_cake_note', JSON.stringify(pile.cake_note), now]
+                        );
+                    }
+
+                    const insertWorkItem = async (item, type) => {
+                        const picked = pickWorkItem(item);
+                        if (!picked) return;
+                        const extraData = { ...item };
+                        delete extraData.id;
+                        delete extraData.from;
+                        delete extraData.added;
+                        delete extraData.done;
+                        delete extraData.summary;
+                        delete extraData.cake;
+                        delete extraData.slices_hint;
+
+                        await db.run(`
+                            INSERT INTO cake_pantry_work_pile (account_id, type, work_id, source_from, added, done, summary, cake, slices_hint, extra_data)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        `, [accountId, type, picked.id, picked.from, picked.added, picked.done,
+                            picked.summary, picked.cake, picked.slices_hint, JSON.stringify(extraData)]);
+                    };
+
+                    if (Array.isArray(pile.open)) {
+                        for (const item of pile.open) {
+                            await insertWorkItem(item, 'open');
+                        }
+                    }
+                    if (Array.isArray(pile.done_since_breakfast)) {
+                        for (const item of pile.done_since_breakfast) {
+                            await insertWorkItem(item, 'done_since_breakfast');
+                        }
+                    }
+                    if (Array.isArray(pile.eaten)) {
+                        for (const item of pile.eaten) {
+                            await insertWorkItem(item, 'eaten');
+                        }
+                    }
+                }
+            }
+
+            // 3. Import cake-log.jsonl (idempotent: check 'at' + 'slices' uniqueness)
+            const cakeLogPath = path.join(accountDir, 'cake-log.jsonl');
             if (fs.existsSync(cakeLogPath)) {
                 const raw = fs.readFileSync(cakeLogPath, 'utf8');
                 const lines = raw.split('\n').map((line) => line.trim()).filter(Boolean);
@@ -195,8 +295,8 @@ async function runMigrationIfNeeded(db) {
 
                         // Check if this log entry already exists (idempotent)
                         const exists = await db.get(
-                            'SELECT id FROM menma_cake_log WHERE at = ? AND slices = ?',
-                            [picked.at, picked.slices]
+                            'SELECT id FROM cake_pantry_log WHERE account_id = ? AND at = ? AND slices = ?',
+                            [accountId, picked.at, picked.slices]
                         );
                         if (exists) continue;
 
@@ -219,63 +319,59 @@ async function runMigrationIfNeeded(db) {
                         delete extraData.left_open;
 
                         await db.run(`
-                            INSERT INTO menma_cake_log (
-                                at, loop, date_local, slices, stacks, cake_type, cake_rating,
+                            INSERT INTO cake_pantry_log (account_id, at, loop, date_local, slices, stacks, cake_type, cake_rating,
                                 kg_before, kg_after, gained_kg, chair, named_for, before_img, after_img,
-                                landed, left_open, extra_data
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        `, [
-                            picked.at,
-                            picked.loop,
-                            picked.date_local,
-                            picked.slices,
-                            picked.stacks,
-                            picked.cake_type,
-                            picked.cake_rating,
-                            picked.kg_before,
-                            picked.kg_after,
-                            picked.gained_kg,
-                            picked.chair,
-                            JSON.stringify(picked.named_for),
-                            picked.before,
-                            picked.after,
-                            JSON.stringify(picked.landed),
-                            JSON.stringify(picked.left_open),
-                            JSON.stringify(extraData)
-                        ]);
+                                landed, left_open, extra_data)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        `, [accountId, picked.at, picked.loop, picked.date_local, picked.slices, picked.stacks,
+                            picked.cake_type, picked.cake_rating, picked.kg_before, picked.kg_after,
+                            picked.gained_kg, picked.chair, JSON.stringify(picked.named_for),
+                            picked.before, picked.after, JSON.stringify(picked.landed),
+                            JSON.stringify(picked.left_open), JSON.stringify(extraData)]);
                     } catch (e) {
-                        console.error('[Menma] Error migrating cake log line:', e);
+                        console.error(`[CakePantry] Error importing cake log line for ${accountId}:`, e);
                     }
                 }
             }
 
-            // 4. Set imported_at flag in menma_meta
+            // 4. Set imported_at flag
             await db.run(
-                'INSERT OR REPLACE INTO menma_meta (key, value, updated_at) VALUES (?, ?, ?)',
-                ['imported_at', now, now]
+                'INSERT OR REPLACE INTO cake_pantry_meta (account_id, key, value, updated_at) VALUES (?, ?, ?, ?)',
+                [accountId, 'imported_at', now, now]
             );
 
             await db.run('COMMIT');
-            console.log('[Menma] Migration complete.');
+            console.log(`[CakePantry] Import complete for ${accountId}.`);
         } catch (error) {
             await db.run('ROLLBACK');
             throw error;
         }
     } catch (error) {
-        console.error('[Menma] Migration failed:', error);
+        console.error(`[CakePantry] Import failed for ${accountId}:`, error);
         throw error;
     }
 }
 
+/**
+ * Ensure migration runs for an account (call before any operation)
+ */
+async function ensureAccountMigration(db, accountId) {
+    await migrateLegacyMenmaTables(db);
+    await runAccountImportIfNeeded(db, accountId);
+}
+
 // ============================================================================
-// SQLite Writer Functions for cakePantry integration
+// SQLite Reader/Writer Functions (unified for all accounts)
 // ============================================================================
 
 /**
- * Get Menma state from SQLite (called by cakePantry.getAccountState for menma)
+ * Get account state from SQLite
  */
-async function getMenmaStateFromDb(db) {
-    const stateRows = await db.all('SELECT key, value FROM menma_state');
+async function getAccountStateFromDb(db, accountId) {
+    const stateRows = await db.all(
+        'SELECT key, value FROM cake_pantry_state WHERE account_id = ?',
+        [accountId]
+    );
     const state = {};
     for (const row of stateRows) {
         try {
@@ -288,23 +384,23 @@ async function getMenmaStateFromDb(db) {
 }
 
 /**
- * Save Menma state to SQLite (called by cakePantry.saveAccountState for menma)
+ * Save account state to SQLite
  */
-async function saveMenmaStateToDb(db, state) {
+async function saveAccountStateToDb(db, accountId, state) {
     const now = new Date().toISOString();
     for (const [key, value] of Object.entries(state)) {
         await db.run(
-            'INSERT OR REPLACE INTO menma_state (key, value, updated_at) VALUES (?, ?, ?)',
-            [key, JSON.stringify(value), now]
+            'INSERT OR REPLACE INTO cake_pantry_state (account_id, key, value, updated_at) VALUES (?, ?, ?, ?)',
+            [accountId, key, JSON.stringify(value), now]
         );
     }
     return true;
 }
 
 /**
- * Append cake log entry to SQLite (called by cakePantry.appendCakeLog for menma)
+ * Append cake log entry to SQLite
  */
-async function appendMenmaCakeLogToDb(db, entry) {
+async function appendCakeLogToDb(db, accountId, entry) {
     const picked = pickLogEntry(entry);
     if (!picked) return false;
 
@@ -327,42 +423,28 @@ async function appendMenmaCakeLogToDb(db, entry) {
     delete extraData.left_open;
 
     await db.run(`
-        INSERT INTO menma_cake_log (
-            at, loop, date_local, slices, stacks, cake_type, cake_rating,
+        INSERT INTO cake_pantry_log (account_id, at, loop, date_local, slices, stacks, cake_type, cake_rating,
             kg_before, kg_after, gained_kg, chair, named_for, before_img, after_img,
-            landed, left_open, extra_data
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-        picked.at,
-        picked.loop,
-        picked.date_local,
-        picked.slices,
-        picked.stacks,
-        picked.cake_type,
-        picked.cake_rating,
-        picked.kg_before,
-        picked.kg_after,
-        picked.gained_kg,
-        picked.chair,
-        JSON.stringify(picked.named_for),
-        picked.before,
-        picked.after,
-        JSON.stringify(picked.landed),
-        JSON.stringify(picked.left_open),
-        JSON.stringify(extraData)
-    ]);
+            landed, left_open, extra_data)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [accountId, picked.at, picked.loop, picked.date_local, picked.slices, picked.stacks,
+        picked.cake_type, picked.cake_rating, picked.kg_before, picked.kg_after,
+        picked.gained_kg, picked.chair, JSON.stringify(picked.named_for),
+        picked.before, picked.after, JSON.stringify(picked.landed),
+        JSON.stringify(picked.left_open), JSON.stringify(extraData)]);
     return true;
 }
 
 /**
- * Get cake log from SQLite (called by cakePantry.getCakeLog for menma)
+ * Get cake log from SQLite
  */
-async function getMenmaCakeLogFromDb(db, limit = 50) {
+async function getCakeLogFromDb(db, accountId, limit = 50) {
     const rows = await db.all(`
-        SELECT * FROM menma_cake_log
+        SELECT * FROM cake_pantry_log
+        WHERE account_id = ?
         ORDER BY id DESC
         LIMIT ?
-    `, [limit]);
+    `, [accountId, limit]);
 
     rows.reverse();
 
@@ -399,11 +481,14 @@ async function getMenmaCakeLogFromDb(db, limit = 50) {
 }
 
 /**
- * Check if Menma state exists in SQLite (for listAccounts has_state)
+ * Check if account state exists in SQLite
  */
-async function hasMenmaStateInDb(db) {
+async function hasAccountStateInDb(db, accountId) {
     try {
-        const row = await db.get("SELECT COUNT(*) as count FROM menma_state WHERE key = 'current_kg'");
+        const row = await db.get(
+            "SELECT COUNT(*) as count FROM cake_pantry_state WHERE account_id = ? AND key = 'current_kg'",
+            [accountId]
+        );
         return row && row.count > 0;
     } catch (e) {
         return false;
@@ -417,8 +502,11 @@ async function hasMenmaStateInDb(db) {
 /**
  * Get work pile from SQLite
  */
-async function getWorkPileFromDb(db) {
-    const stateRows = await db.all("SELECT key, value FROM menma_state WHERE key LIKE 'work_pile_%'");
+async function getWorkPileFromDb(db, accountId) {
+    const stateRows = await db.all(
+        "SELECT key, value FROM cake_pantry_state WHERE account_id = ? AND key LIKE 'work_pile_%'",
+        [accountId]
+    );
     let updatedAt = null;
     let lastBreakfastAt = null;
     let rule = null;
@@ -438,7 +526,10 @@ async function getWorkPileFromDb(db) {
         } catch (e) {}
     }
 
-    const workPileRows = await db.all('SELECT * FROM menma_work_pile ORDER BY id ASC');
+    const workPileRows = await db.all(
+        'SELECT * FROM cake_pantry_work_pile WHERE account_id = ? ORDER BY id ASC',
+        [accountId]
+    );
     const open = [];
     const doneSinceBreakfast = [];
     const eaten = [];
@@ -479,39 +570,39 @@ async function getWorkPileFromDb(db) {
 }
 
 /**
- * Save work pile to SQLite (replaces all items)
+ * Save work pile to SQLite (replaces all items for account)
  */
-async function saveWorkPileToDb(db, pile) {
+async function saveWorkPileToDb(db, accountId, pile) {
     const now = new Date().toISOString();
 
     await db.run('BEGIN TRANSACTION');
     try {
-        // Clear existing work pile items
-        await db.run('DELETE FROM menma_work_pile');
+        // Clear existing work pile items for this account
+        await db.run('DELETE FROM cake_pantry_work_pile WHERE account_id = ?', [accountId]);
 
-        // Save metadata to menma_state
+        // Save metadata to cake_pantry_state
         if (pile.updated_at !== undefined) {
             await db.run(
-                'INSERT OR REPLACE INTO menma_state (key, value, updated_at) VALUES (?, ?, ?)',
-                ['work_pile_updated_at', JSON.stringify(pile.updated_at || now), now]
+                'INSERT OR REPLACE INTO cake_pantry_state (account_id, key, value, updated_at) VALUES (?, ?, ?, ?)',
+                [accountId, 'work_pile_updated_at', JSON.stringify(pile.updated_at || now), now]
             );
         }
         if (pile.last_breakfast_at !== undefined) {
             await db.run(
-                'INSERT OR REPLACE INTO menma_state (key, value, updated_at) VALUES (?, ?, ?)',
-                ['work_pile_last_breakfast_at', JSON.stringify(pile.last_breakfast_at), now]
+                'INSERT OR REPLACE INTO cake_pantry_state (account_id, key, value, updated_at) VALUES (?, ?, ?, ?)',
+                [accountId, 'work_pile_last_breakfast_at', JSON.stringify(pile.last_breakfast_at), now]
             );
         }
         if (pile.rule !== undefined) {
             await db.run(
-                'INSERT OR REPLACE INTO menma_state (key, value, updated_at) VALUES (?, ?, ?)',
-                ['work_pile_rule', JSON.stringify(pile.rule), now]
+                'INSERT OR REPLACE INTO cake_pantry_state (account_id, key, value, updated_at) VALUES (?, ?, ?, ?)',
+                [accountId, 'work_pile_rule', JSON.stringify(pile.rule), now]
             );
         }
         if (pile.cake_note !== undefined) {
             await db.run(
-                'INSERT OR REPLACE INTO menma_state (key, value, updated_at) VALUES (?, ?, ?)',
-                ['work_pile_cake_note', JSON.stringify(pile.cake_note), now]
+                'INSERT OR REPLACE INTO cake_pantry_state (account_id, key, value, updated_at) VALUES (?, ?, ?, ?)',
+                [accountId, 'work_pile_cake_note', JSON.stringify(pile.cake_note), now]
             );
         }
 
@@ -528,19 +619,10 @@ async function saveWorkPileToDb(db, pile) {
             delete extraData.slices_hint;
 
             await db.run(`
-                INSERT INTO menma_work_pile (type, work_id, source_from, added, done, summary, cake, slices_hint, extra_data)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `, [
-                type,
-                picked.id,
-                picked.from,
-                picked.added,
-                picked.done,
-                picked.summary,
-                picked.cake,
-                picked.slices_hint,
-                JSON.stringify(extraData)
-            ]);
+                INSERT INTO cake_pantry_work_pile (account_id, type, work_id, source_from, added, done, summary, cake, slices_hint, extra_data)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [accountId, type, picked.id, picked.from, picked.added, picked.done,
+                picked.summary, picked.cake, picked.slices_hint, JSON.stringify(extraData)]);
         };
 
         if (Array.isArray(pile.open)) {
@@ -570,7 +652,7 @@ async function saveWorkPileToDb(db, pile) {
 /**
  * Add a work item to the pile
  */
-async function addWorkItemToDb(db, item, type = 'open') {
+async function addWorkItemToDb(db, accountId, item, type = 'open') {
     const picked = pickWorkItem(item);
     if (!picked) return false;
 
@@ -584,25 +666,16 @@ async function addWorkItemToDb(db, item, type = 'open') {
     delete extraData.slices_hint;
 
     await db.run(`
-        INSERT INTO menma_work_pile (type, work_id, source_from, added, done, summary, cake, slices_hint, extra_data)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-        type,
-        picked.id,
-        picked.from,
-        picked.added || new Date().toISOString(),
-        picked.done,
-        picked.summary,
-        picked.cake,
-        picked.slices_hint,
-        JSON.stringify(extraData)
-    ]);
+        INSERT INTO cake_pantry_work_pile (account_id, type, work_id, source_from, added, done, summary, cake, slices_hint, extra_data)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [accountId, type, picked.id, picked.from, picked.added || new Date().toISOString(),
+        picked.done, picked.summary, picked.cake, picked.slices_hint, JSON.stringify(extraData)]);
 
     // Update work_pile_updated_at
     const now = new Date().toISOString();
     await db.run(
-        'INSERT OR REPLACE INTO menma_state (key, value, updated_at) VALUES (?, ?, ?)',
-        ['work_pile_updated_at', JSON.stringify(now), now]
+        'INSERT OR REPLACE INTO cake_pantry_state (account_id, key, value, updated_at) VALUES (?, ?, ?, ?)',
+        [accountId, 'work_pile_updated_at', JSON.stringify(now), now]
     );
 
     return true;
@@ -611,18 +684,18 @@ async function addWorkItemToDb(db, item, type = 'open') {
 /**
  * Move work item from open to done_since_breakfast
  */
-async function completeWorkItemInDb(db, workId) {
+async function completeWorkItemInDb(db, accountId, workId) {
     const now = new Date().toISOString();
     
     const result = await db.run(
-        "UPDATE menma_work_pile SET type = 'done_since_breakfast', done = ? WHERE work_id = ? AND type = 'open'",
-        [now, workId]
+        "UPDATE cake_pantry_work_pile SET type = 'done_since_breakfast', done = ? WHERE account_id = ? AND work_id = ? AND type = 'open'",
+        [now, accountId, workId]
     );
 
     if (result.changes > 0) {
         await db.run(
-            'INSERT OR REPLACE INTO menma_state (key, value, updated_at) VALUES (?, ?, ?)',
-            ['work_pile_updated_at', JSON.stringify(now), now]
+            'INSERT OR REPLACE INTO cake_pantry_state (account_id, key, value, updated_at) VALUES (?, ?, ?, ?)',
+            [accountId, 'work_pile_updated_at', JSON.stringify(now), now]
         );
         return true;
     }
@@ -632,18 +705,18 @@ async function completeWorkItemInDb(db, workId) {
 /**
  * Remove work item from pile
  */
-async function removeWorkItemFromDb(db, workId) {
+async function removeWorkItemFromDb(db, accountId, workId) {
     const now = new Date().toISOString();
     
     const result = await db.run(
-        'DELETE FROM menma_work_pile WHERE work_id = ?',
-        [workId]
+        'DELETE FROM cake_pantry_work_pile WHERE account_id = ? AND work_id = ?',
+        [accountId, workId]
     );
 
     if (result.changes > 0) {
         await db.run(
-            'INSERT OR REPLACE INTO menma_state (key, value, updated_at) VALUES (?, ?, ?)',
-            ['work_pile_updated_at', JSON.stringify(now), now]
+            'INSERT OR REPLACE INTO cake_pantry_state (account_id, key, value, updated_at) VALUES (?, ?, ?, ?)',
+            [accountId, 'work_pile_updated_at', JSON.stringify(now), now]
         );
         return true;
     }
@@ -651,10 +724,17 @@ async function removeWorkItemFromDb(db, workId) {
 }
 
 // ============================================================================
-// buildMenmaStatus (read-only, same shape as before)
+// buildMenmaStatus (backward compat - reads from unified tables)
 // ============================================================================
 
 async function buildMenmaStatus(globalResources) {
+    return buildAccountStatus(globalResources, 'menma');
+}
+
+/**
+ * Build status for any account (unified)
+ */
+async function buildAccountStatus(globalResources, accountId) {
     if (!globalResources || typeof globalResources.getTagDatabase !== 'function') {
         return {
             success: false,
@@ -684,15 +764,15 @@ async function buildMenmaStatus(globalResources) {
     const db = tagDb.db;
 
     try {
-        await runMigrationIfNeeded(db);
+        await ensureAccountMigration(db, accountId);
     } catch (e) {
-        console.error('[Menma] buildMenmaStatus migration error:', e);
+        console.error(`[CakePantry] buildAccountStatus migration error for ${accountId}:`, e);
     }
 
     try {
-        const state = await getMenmaStateFromDb(db);
-        const workPile = await getWorkPileFromDb(db);
-        const log = await getMenmaCakeLogFromDb(db, LOG_TAIL);
+        const state = await getAccountStateFromDb(db, accountId);
+        const workPile = await getWorkPileFromDb(db, accountId);
+        const log = await getCakeLogFromDb(db, accountId, LOG_TAIL);
 
         const lastLog = log.length ? log[log.length - 1] : null;
         const history = Array.isArray(state.history) ? state.history : [];
@@ -718,9 +798,10 @@ async function buildMenmaStatus(globalResources) {
             success: true,
             updated_at: new Date().toISOString(),
             available: hasState,
+            account_id: accountId,
             character_name: hasState && state.character && state.character.name
                 ? String(state.character.name)
-                : 'Menma',
+                : accountId.charAt(0).toUpperCase() + accountId.slice(1),
             current_kg: hasState ? state.current_kg : null,
             baseline_kg: hasState ? state.baseline_kg : null,
             slices_eaten_total: hasState ? state.slices_eaten_total : null,
@@ -747,7 +828,7 @@ async function buildMenmaStatus(globalResources) {
             cake_log: log.map(pickLogEntry).filter(Boolean)
         };
     } catch (error) {
-        console.error('[Menma] buildMenmaStatus error:', error);
+        console.error(`[CakePantry] buildAccountStatus error for ${accountId}:`, error);
         return {
             success: false,
             available: false,
@@ -757,10 +838,10 @@ async function buildMenmaStatus(globalResources) {
 }
 
 // ============================================================================
-// Helper to get db from globalResources (for cakePantry integration)
+// Helper to get db from globalResources
 // ============================================================================
 
-function getMenmaDb(globalResources) {
+function getCakePantryDb(globalResources) {
     if (!globalResources || typeof globalResources.getTagDatabase !== 'function') {
         return null;
     }
@@ -772,16 +853,24 @@ function getMenmaDb(globalResources) {
     }
 }
 
+// Backward compat alias
+const getMenmaDb = getCakePantryDb;
+
 module.exports = {
+    ACCOUNT_DIRS,
     buildMenmaStatus,
+    buildAccountStatus,
+    getCakePantryDb,
     getMenmaDb,
-    isMigrated,
-    runMigrationIfNeeded,
-    getMenmaStateFromDb,
-    saveMenmaStateToDb,
-    appendMenmaCakeLogToDb,
-    getMenmaCakeLogFromDb,
-    hasMenmaStateInDb,
+    isAccountImported,
+    ensureAccountMigration,
+    runAccountImportIfNeeded,
+    migrateLegacyMenmaTables,
+    getAccountStateFromDb,
+    saveAccountStateToDb,
+    appendCakeLogToDb,
+    getCakeLogFromDb,
+    hasAccountStateInDb,
     getWorkPileFromDb,
     saveWorkPileToDb,
     addWorkItemToDb,
