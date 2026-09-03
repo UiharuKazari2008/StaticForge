@@ -1296,6 +1296,84 @@ const TOOL_DEFS = [
             }
         }
     },
+    // Apocrypha Publish tool
+    {
+        name: 'publish_apocrypha',
+        core: true,
+        description: 'Publish issue content directly to the live Apocrypha zine. Replaces data/apocrypha/current.json atomically. Accepts freeform JSON.',
+        scope: 'sfapp_apocrypha',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: true,
+            required: ['issueLabel', 'webapp', 'kicker', 'lede', 'title', 'rundown', 'counts', 'official', 'unofficial', 'imagesNote'],
+            properties: {
+                issueLabel: { type: 'string' },
+                webapp: { type: 'string' },
+                kicker: { type: 'string' },
+                lede: { type: 'string' },
+                title: { type: 'string' },
+                rundown: { type: 'string' },
+                counts: {
+                    type: 'object',
+                    additionalProperties: true,
+                    properties: {
+                        official: { type: 'number' },
+                        unofficial: { type: 'number' },
+                        enshutsuka: { type: 'number' },
+                        defaultModel: { type: 'string' }
+                    }
+                },
+                official: { type: 'string' },
+                unofficial: { type: 'string' },
+                billboard: {
+                    type: 'array',
+                    items: {
+                        type: 'object',
+                        additionalProperties: true,
+                        properties: {
+                            kind: { type: 'string' },
+                            kicker: { type: 'string' },
+                            title: { type: 'string' },
+                            src: { type: 'string' },
+                            cap: { type: 'string' }
+                        }
+                    }
+                },
+                images: {
+                    type: 'array',
+                    items: {
+                        type: 'object',
+                        additionalProperties: true,
+                        properties: {
+                            src: { type: 'string' },
+                            cap: { type: 'string' },
+                            kicker: { type: 'string' }
+                        }
+                    }
+                },
+                imagesNote: { type: 'string' },
+                enshutsuka: {
+                    type: 'array',
+                    items: {
+                        type: 'object',
+                        additionalProperties: true,
+                        properties: {
+                            teaser: { type: 'string' },
+                            body: { type: 'string' }
+                        }
+                    }
+                },
+                grimImages: {
+                    type: 'array',
+                    items: { type: 'object' }
+                },
+                sections: {
+                    type: 'array',
+                    items: { type: 'object' }
+                }
+            }
+        }
+    },
     // Cake Pantry module tools (sfapp_cake_pantry scope)
     {
         name: 'deliver_cake',
@@ -3484,6 +3562,24 @@ async function callTool(globalResources, req, name, args) {
             note: 'Upscale uses Anlas, not Opus meter.'
         };
         return mcpTextResult(result);
+    }
+
+    if (name === 'publish_apocrypha') {
+        const targetDir = path.join(process.cwd(), 'data/apocrypha');
+        const targetPath = path.join(targetDir, 'current.json');
+        const tmpPath = path.join(targetDir, 'current.tmp.json');
+
+        if (!fs.existsSync(targetDir)) {
+            fs.mkdirSync(targetDir, { recursive: true });
+        }
+
+        try {
+            fs.writeFileSync(tmpPath, JSON.stringify(args, null, 2), 'utf8');
+            fs.renameSync(tmpPath, targetPath);
+            return mcpTextResult({ success: true, message: 'Apocrypha published successfully' });
+        } catch (writeErr) {
+            return mcpTextResult({ success: false, error: 'Failed to write current.json: ' + writeErr.message }, true);
+        }
     }
 
     const err = new Error(`Unknown tool: ${name}`);

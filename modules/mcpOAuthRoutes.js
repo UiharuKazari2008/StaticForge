@@ -124,27 +124,29 @@ function hasSfappModuleScopes(scopes) {
 }
 
 /**
- * HARD DENY: Strip cake pantry scopes (sfapp_cake_pantry and subscopes) for Grok web.
- * Grok web must never receive cake, even if the login request explicitly included it.
+ * HARD DENY: Strip blocked scopes (cake pantry, apocrypha publish) for Grok web.
+ * Grok web must never receive cake or publish apocrypha, even if the login request explicitly included it.
  */
-function stripCakeScopesIfGrokWeb(scopes, redirectUri) {
+function stripBlockedScopesIfGrokWeb(scopes, redirectUri) {
     if (!isGrokWebOrigin(redirectUri)) return scopes;
-    return scopes.filter((s) => !s.startsWith('sfapp_cake_pantry'));
+    return scopes.filter((s) => !s.startsWith('sfapp_cake_pantry') && !s.startsWith('sfapp_apocrypha'));
 }
 
 /**
  * Get available modules for the consent picker
- * Returns module definitions with disabled flag for Grok web (cake blocked)
+ * Returns module definitions with disabled flag for Grok web (cake, apocrypha blocked)
  */
 function getAvailableModulesForConsent(redirectUri) {
     const modules = listSpecializedModules();
     const isGrokWeb = isGrokWebOrigin(redirectUri);
     return modules.map((mod) => {
         const isCake = mod.id === 'cake_pantry';
+        const isApocrypha = mod.id === 'apocrypha';
+        const isBlocked = isGrokWeb && (isCake || isApocrypha);
         return {
             ...mod,
-            disabled: isGrokWeb && isCake,
-            disabledReason: isGrokWeb && isCake ? 'Not available for Grok web' : null,
+            disabled: isBlocked,
+            disabledReason: isBlocked ? 'Not available for Grok web' : null,
             defaultChecked: mod.id === 'usage' // usage defaults on, others off
         };
     });
@@ -257,7 +259,7 @@ function renderKeyOptions(keys, selectedKeyId, displayScopes) {
 function renderPickStep(params) {
     const requestedScopes = parseScopes(params.scope);
     // For upgrade badge display, strip cake for Grok web so it doesn't show as upgradeable
-    const displayScopes = stripCakeScopesIfGrokWeb(requestedScopes, params.redirectUri);
+    const displayScopes = stripBlockedScopesIfGrokWeb(requestedScopes, params.redirectUri);
     const selected = (params.keys || []).find((k) => k.id === params.selectedKeyId);
     const selectedMissing = selected
         ? consent.scopesMissingFromKey(selected.scopes, displayScopes)
@@ -530,7 +532,7 @@ function createOAuthRoutes(globalResources) {
             ? requestedScopes
             : requestedScopes.filter((s) => keyScopes.includes(s));
         // HARD DENY: strip cake scopes for Grok web regardless of request
-        const grantedScopes = stripCakeScopesIfGrokWeb(filteredScopes, redirectUri);
+        const grantedScopes = stripBlockedScopesIfGrokWeb(filteredScopes, redirectUri);
         const code = await provider.createAuthorizationCode({
             clientId,
             applicationKeyId,
@@ -715,7 +717,7 @@ function createOAuthRoutes(globalResources) {
                 const requestedScopes = parseScopes(scope);
                 const baseScopes = consent.namedScopesForCreate(requestedScopes);
                 // HARD DENY: strip cake AFTER fallback (DEFAULT_CREATE_SCOPES includes cake)
-                const createScopes = stripCakeScopesIfGrokWeb(baseScopes, redirect_uri);
+                const createScopes = stripBlockedScopesIfGrokWeb(baseScopes, redirect_uri);
                 const manager = globalResources.getApplicationAuthManager();
                 const created = await manager.createApplicationKey({
                     appName: String(new_key_name || '').trim() || consent.generatedKeyName(client.clientName),
@@ -738,7 +740,7 @@ function createOAuthRoutes(globalResources) {
             if (action === 'approve') {
                 const requestedScopes = parseScopes(scope);
                 // HARD DENY: strip cake scopes from key upgrade for Grok web
-                const scopesForKey = stripCakeScopesIfGrokWeb(requestedScopes, redirect_uri);
+                const scopesForKey = stripBlockedScopesIfGrokWeb(requestedScopes, redirect_uri);
                 const keys = await loadPickKeys(session.userType, requestedScopes, client.applicationKeyId);
                 const picked = keys.find((k) => k.id === selected_key_id);
                 let applicationKeyId = picked
