@@ -112,12 +112,44 @@ function renderApocrypha({ title, isGrimoire }) {
         }).join('\n');
         imagesGridHtml += '</div>';
     }
+
+    let grimImagesHtml = '';
+    if (data.grimImages && Array.isArray(data.grimImages) && data.grimImages.length > 0) {
+        grimImagesHtml = '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; border: 1px dashed #d7ff9a; padding: 8px;">';
+        grimImagesHtml += '<div style="grid-column: 1 / -1; font-size: 9px; color: #d7ff9a; text-transform: uppercase;">UNOFFICIAL / SPICY KEEPERS</div>';
+        grimImagesHtml += data.grimImages.map(img => {
+            if (img.src && typeof img.src === 'string' && img.src.startsWith('http')) {
+                const kickerHtml = img.kicker ? '<div style="font-size: 8px; color: #665500; text-transform: uppercase; margin-top: 4px;">' + escapeHtml(img.kicker) + '</div>' : '';
+                const capHtml = img.cap ? '<div style="font-size: 9px; color: #999; margin-top: 2px;">' + escapeHtml(img.cap) + '</div>' : '';
+                return '<div class="image-item">\n' +
+                       '    <img referrerpolicy="no-referrer" src="' + escapeHtml(img.src) + '" alt="' + escapeHtml(img.cap || '') + '" style="width: 100%; height: auto; border: 1px solid #333; display: block;">\n' +
+                       '    ' + kickerHtml + '\n' +
+                       '    ' + capHtml + '\n' +
+                       '</div>';
+            }
+            return '<div class="tile"><span class="tile-kicker">PLACEHOLDER</span><div class="tile-title">—</div></div>';
+        }).join('\n');
+        grimImagesHtml += '</div>';
+    }
+
+    let sectionsHtml = '';
+    if (data.sections && Array.isArray(data.sections) && data.sections.length > 0) {
+        sectionsHtml = data.sections.map(sec => {
+            return '<div class="grim-section" style="margin-top: 16px; padding: 12px; border: 1px dashed #665500;">' +
+                   '<h3 style="margin-top: 0; color: #d7ff9a;">' + escapeHtml(sec.title || '') + '</h3>' +
+                   '<p>' + escapeHtml(sec.body || '') + '</p>' +
+                   '</div>';
+        }).join('\n');
+    }
+
     const grimContent = isGrimoire ? `
             <div class="grim-wrapper">
                 <div class="grim-header">GRIM / LOGGED-IN</div>
                 <div class="enshutsuka-memories">
                     ${enshutsukaHtml}
                 </div>
+                ${sectionsHtml}
+                ${grimImagesHtml}
             </div>` : `
             <div class="wrap-public">
                 <div class="wrap-public-header">GRIM / LOGIN WRAPPER · omitted from public</div>

@@ -115,6 +115,13 @@ const MODULE_DEFS = {
             consume: ['consume_cake']
         }
     },
+    apocrypha: {
+        id: 'apocrypha',
+        scope: 'sfapp_apocrypha',
+        label: 'Apocrypha Publish',
+        description: 'Publish Apocrypha zine content directly',
+        tools: ['publish_apocrypha']
+    },
     report_issue: {
         id: 'report_issue',
         scope: 'sfapp_report_issue',
