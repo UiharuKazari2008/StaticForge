@@ -665,6 +665,18 @@ html, body {
 </html>`;
 }
 
+function getApocryphaInterior(options) {
+    const full = renderApocrypha(options);
+    const startTag = '<main>';
+    const endTag = '</main>';
+    const startIdx = full.indexOf(startTag);
+    const endIdx = full.indexOf(endTag);
+    if (startIdx === -1 || endIdx === -1) {
+        return '';
+    }
+    return full.slice(startIdx + startTag.length, endIdx).trim();
+}
+
 function registerRoutes(app, { globalResources }) {
     const uuid = globalResources.getApocryphaPathUuid();
     if (!uuid) {
@@ -689,4 +701,4 @@ function registerRoutes(app, { globalResources }) {
     });
 }
 
-module.exports = { registerRoutes, renderApocrypha };
+module.exports = { registerRoutes, renderApocrypha, getApocryphaInterior };

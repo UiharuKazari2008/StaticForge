@@ -1620,17 +1620,10 @@ class WikiDisplayBase {
         this.displayArea.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading...</div>';
 
         try {
+            // modules/ws/handlers/110-wikiHandler.js: get_apocrypha_zine
             const response = await wsClient.sendMessage('get_apocrypha_zine', {});
-            if (response && response.html) {
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(response.html, 'text/html');
-                const mainContent = doc.querySelector('main') || doc.querySelector('.zine') || doc.body;
-                if (mainContent) {
-                    this.displayArea.innerHTML = '';
-                    this.displayArea.appendChild(mainContent.cloneNode(true));
-                } else {
-                    this.displayArea.innerHTML = '<div style="padding: 2rem;">Error: Could not find zine content.</div>';
-                }
+            if (response && response.interior) {
+                this.displayArea.innerHTML = response.interior;
             } else {
                 this.displayArea.innerHTML = '<div style="padding: 2rem;">Error: No content received.</div>';
             }

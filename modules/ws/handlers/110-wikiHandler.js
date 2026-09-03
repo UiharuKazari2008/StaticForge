@@ -1,6 +1,6 @@
 const path = require('path');
 const wsPacketRegistry = require('../wsPacketRegistry');
-const { renderApocrypha } = require('../../apocryphaSite');
+const { getApocryphaInterior } = require('../../apocryphaSite');
 
 async function handleSearchTagWiki(handler, ws, message, clientInfo, wsServer) {
     const { query, category, searchType = 'name', source = 'both', includeNonTag = false, limit = 50 } = message;
@@ -840,11 +840,11 @@ function postProcessWikiHtml(html) {
 
 async function handleGetApocryphaZine(handler, ws, message, clientInfo, wsServer) {
     try {
-        const html = renderApocrypha({ title: 'Apocrypha — MWF digest', isGrimoire: true });
+        const interior = getApocryphaInterior({ title: 'Apocrypha — MWF digest', isGrimoire: true });
         handler.sendToClient(ws, {
             type: 'get_apocrypha_zine_response',
             requestId: message.requestId,
-            data: { html },
+            data: { interior },
             timestamp: new Date().toISOString()
         });
     } catch (error) {
