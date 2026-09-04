@@ -104,6 +104,8 @@ const {
     resetRateGroupHits,
     createMcpRateLimiter
 } = require('./mcpRateLimiter');
+// modules/mcpRateLimiter.js — #66 owns TOOL_RATE_GROUPS this wave
+if (!TOOL_RATE_GROUPS.get_character_card) TOOL_RATE_GROUPS.get_character_card = 'search';
 
 const MCP_PROTOCOL_VERSION = '2024-11-05';
 const MCP_RATE_WINDOW_MS = 15 * 60 * 1000;
@@ -724,6 +726,22 @@ const TOOL_DEFS = [
                 tagName: { type: 'string' },
                 source: { type: 'string', description: 'danbooru | e621 | both' },
                 format: { type: 'string', description: 'markdown (default) or html' }
+            }
+        }
+    },
+    {
+        name: 'get_character_card',
+        core: true,
+        description: 'One character card: name / franchise / aliases, wiki markdown (empty:true if none — do not invent appearance), matching request expander full body, last Studio character-box snapshot (action replace + index), and best NAX CHARA item.prompt. Pass name (required). Optional franchise / model. Reuses get_wiki_page, request expanders, get_studio_state characters, and search_nax kind=CHARA.',
+        scope: 'wiki',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['name'],
+            properties: {
+                name: { type: 'string', description: 'Character tag or display name (e.g. alice, rapi (nikke))' },
+                franchise: { type: 'string', description: 'Optional qualifier (nikke, genshin impact, …)' },
+                model: { type: 'string', description: 'Studio model for NAX CHARA (v5, v4_5, …)' }
             }
         }
     },
@@ -2031,6 +2049,269 @@ function reshapeWikiPageForMcp(flat) {
     return out;
 }
 
+const WIKI_EMPTY_NEXT = 'Wiki body is empty. Try search_wiki aliases, the last Studio character box, or generate and write what the pixels did. A missing wiki is not a ban.';
+
+function normalizeCharacterKey(value) {
+    return String(value || '').trim().toLowerCase().replace(/^!/, '').replace(/_/g, ' ').replace(/\s+/g, ' ');
+}
+
+function parseCharacterFranchise(value) {
+    const raw = String(value || '').trim().replace(/_/g, ' ');
+    const match = raw.match(/\(([^)]+)\)\s*$/);
+    return match ? match[1].trim() : null;
+}
+
+function uniqueCharacterAliases(name, extras) {
+    const skip = normalizeCharacterKey(name);
+    const seen = new Set(skip ? [skip] : []);
+    const out = [];
+    (Array.isArray(extras) ? extras : []).forEach((item) => {
+        const raw = String(item || '').trim();
+        const key = normalizeCharacterKey(raw);
+        if (!raw || !key || seen.has(key)) return;
+        seen.add(key);
+        out.push(raw);
+    });
+    return out;
+}
+
+function expanderPrefixOf(row, fallbackKey) {
+    if (typeof row === 'string') return fallbackKey || row;
+    if (!row || typeof row !== 'object') return fallbackKey || '';
+    return row.prefix || row.key || row.name || row.placeholder || fallbackKey || '';
+}
+
+function expanderValueOf(row) {
+    if (row == null) return '';
+    if (typeof row === 'string') return row;
+    const value = row.value != null ? row.value : (row.body != null ? row.body : (row.text != null ? row.text : row.replacement));
+    if (Array.isArray(value)) return value.filter(Boolean).join(', ');
+    return value != null ? String(value) : '';
+}
+
+function expandersFromPromptConfig(map) {
+    if (!map || typeof map !== 'object' || Array.isArray(map)) return [];
+    return Object.keys(map).map((key) => ({ prefix: key, value: expanderValueOf(map[key]) }));
+}
+
+function matchRequestExpander(expanders, name) {
+    const needle = normalizeCharacterKey(name);
+    if (!needle || !Array.isArray(expanders) || !expanders.length) return null;
+    let best = null;
+    expanders.forEach((row) => {
+        const prefix = String(expanderPrefixOf(row)).replace(/^!/, '');
+        const key = normalizeCharacterKey(prefix);
+        const value = expanderValueOf(row);
+        if (!key || !value) return;
+        const needleFirst = needle.split(' ')[0];
+        let score = 0;
+        if (key === needle) score = 3;
+        else if (needle.startsWith(`${key} `) || needle.startsWith(`${key} (`)) score = 2;
+        else if (key.startsWith(`${needle} `) || key.startsWith(`${needle} (`)) score = 2;
+        else if (needleFirst && (key === needleFirst || key.startsWith(`${needleFirst} `))) score = 1;
+        if (score && (!best || score > best.score)) {
+            best = { score, prefix, value };
+        }
+    });
+    return best ? { prefix: best.prefix, value: best.value } : null;
+}
+
+function pickStudioCharacterBox(characters, name) {
+    if (!Array.isArray(characters) || !characters.length) return null;
+    const needle = normalizeCharacterKey(name);
+    let best = null;
+    characters.forEach((char, index) => {
+        if (!char || typeof char !== 'object') return;
+        const charName = normalizeCharacterKey(char.name || char.promptName);
+        const promptKey = normalizeCharacterKey(char.prompt);
+        let score = 0;
+        if (charName && (charName === needle || charName.startsWith(`${needle} `) || needle.startsWith(`${charName} `))) {
+            score = 3;
+        } else if (needle && promptKey.includes(needle)) {
+            score = 2;
+        }
+        if (score && (!best || score > best.score || (score === best.score && index >= best.index))) {
+            best = { score, index, char };
+        }
+    });
+    const chosen = best ? best.char : characters[characters.length - 1];
+    const index = best ? best.index : characters.length - 1;
+    if (!chosen || typeof chosen !== 'object') return null;
+    return {
+        action: 'replace',
+        index,
+        name: chosen.name || chosen.promptName || null,
+        prompt: chosen.prompt != null ? String(chosen.prompt) : '',
+        uc: chosen.uc != null ? String(chosen.uc)
+            : (chosen.promptNegative != null ? String(chosen.promptNegative) : '')
+    };
+}
+
+function assembleCharacterCard(parts) {
+    const src = parts && typeof parts === 'object' && !Array.isArray(parts) ? parts : {};
+    const name = String(src.name || '').trim();
+    if (!name) {
+        return {
+            success: false,
+            error: 'name is required',
+            wiki: { empty: true, text: '', markdown: '' },
+            expander: null,
+            studioBox: null,
+            naxChara: null,
+            aliases: []
+        };
+    }
+    const wikiShaped = src.wiki && typeof src.wiki === 'object' ? src.wiki : {};
+    const wikiText = coerceWikiText(wikiShaped.text || wikiShaped.markdown);
+    const wiki = {
+        empty: !wikiText,
+        text: wikiText,
+        markdown: wikiText,
+        tagName: wikiShaped.tagName || null
+    };
+    const naxChara = src.naxChara && src.naxChara.prompt
+        ? {
+            tag: src.naxChara.tag || null,
+            prompt: String(src.naxChara.prompt),
+            score: src.naxChara.score,
+            gallerySlug: src.naxChara.gallerySlug || null
+        }
+        : null;
+    const expander = src.expander && src.expander.value
+        ? { prefix: src.expander.prefix || null, value: String(src.expander.value) }
+        : null;
+    const studioBox = src.studioBox && src.studioBox.action === 'replace'
+        ? src.studioBox
+        : (src.studioBox || null);
+    let franchise = src.franchise ? String(src.franchise).trim() : '';
+    if (!franchise) franchise = parseCharacterFranchise(wiki.tagName || name) || '';
+    if (!franchise && naxChara && naxChara.tag) {
+        franchise = parseCharacterFranchise(naxChara.tag) || '';
+    }
+    const aliases = uniqueCharacterAliases(name, src.aliases);
+    const out = {
+        success: true,
+        name,
+        franchise: franchise || null,
+        aliases,
+        wiki,
+        expander,
+        studioBox,
+        naxChara
+    };
+    if (wiki.empty || !expander) out.next = WIKI_EMPTY_NEXT;
+    return out;
+}
+
+function readSavedExpanders(globalResources) {
+    try {
+        // modules/globalResources.js — getPromptConfig
+        return expandersFromPromptConfig(globalResources.getPromptConfig({ path: 'text_replacements' }) || {});
+    } catch (_err) {
+        return [];
+    }
+}
+
+async function readStudioCardSlices(globalResources, req) {
+    const bind = autoBindIfNeeded(globalResources, req);
+    // modules/agentClientBridge.js — getBoundRecord / sendBoundCommand
+    const bound = getBoundRecord(globalResources, bind.bindKey);
+    if (!bound) return { characters: [], expanders: [] };
+    try {
+        const data = await sendBoundCommand(globalResources, 'get_state', {}, 15000, bind.bindKey);
+        const change = data && data.change && typeof data.change === 'object' && !Array.isArray(data.change)
+            ? data.change
+            : {};
+        const characters = Array.isArray(change.characters) ? change.characters : [];
+        const expanders = Array.isArray(change.expanders)
+            ? change.expanders
+            : (Array.isArray(change.text_replacements) ? change.text_replacements : []);
+        return { characters, expanders };
+    } catch (_err) {
+        return { characters: [], expanders: [] };
+    }
+}
+
+async function readWikiCardPage(globalResources, req, tagName) {
+    try {
+        // modules/mcpAgentFacade.js — dispatchPacketTool get_tag_wiki_page / reshapeWikiPageForMcp
+        const packet = await dispatchPacketTool(globalResources, req, 'get_tag_wiki_page', {
+            tagName,
+            format: 'markdown'
+        });
+        return reshapeWikiPageForMcp(flattenPacket(packet));
+    } catch (_err) {
+        return { success: true, tagName, text: '', markdown: '', empty: true };
+    }
+}
+
+async function readWikiAliasTitles(globalResources, req, query) {
+    try {
+        // modules/mcpAgentFacade.js — dispatchPacketTool search_tag_wiki
+        const packet = await dispatchPacketTool(globalResources, req, 'search_tag_wiki', {
+            query,
+            searchType: 'name',
+            limit: 12
+        });
+        const rows = flattenPacket(packet).results;
+        return (Array.isArray(rows) ? rows : [])
+            .map((row) => String((row && (row.title || row.name)) || '').trim())
+            .filter(Boolean);
+    } catch (_err) {
+        return [];
+    }
+}
+
+function readNaxCharaHit(globalResources, name, model) {
+    // modules/mcpAgentFacade.js — searchNaxTags / resolveNaxModule
+    const result = searchNaxTags(resolveNaxModule(globalResources), {
+        query: name,
+        kind: 'CHARA',
+        model,
+        limit: 5
+    });
+    const item = result && Array.isArray(result.items) ? result.items[0] : null;
+    if (!item || !item.prompt) return null;
+    return {
+        tag: item.tag,
+        prompt: item.prompt,
+        score: item.score,
+        gallerySlug: item.gallerySlug
+    };
+}
+
+async function collectCharacterCard(globalResources, req, input) {
+    const src = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+    const name = String(src.name || src.tagName || src.tag || src.title || '').trim();
+    const franchise = src.franchise ? String(src.franchise).trim() : '';
+    const model = src.model ? String(src.model).trim() : undefined;
+    if (!name) return assembleCharacterCard({ name: '' });
+    const wikiQuery = franchise && !/\(/.test(name) ? `${name} (${franchise})` : name;
+    const [wiki, aliasTitles, studio] = await Promise.all([
+        readWikiCardPage(globalResources, req, wikiQuery),
+        readWikiAliasTitles(globalResources, req, wikiQuery),
+        readStudioCardSlices(globalResources, req)
+    ]);
+    const saved = readSavedExpanders(globalResources);
+    const expander = matchRequestExpander(studio.expanders, name) || matchRequestExpander(saved, name);
+    const studioBox = pickStudioCharacterBox(studio.characters, name);
+    const naxChara = readNaxCharaHit(globalResources, name, model);
+    const aliases = uniqueCharacterAliases(name, [
+        wiki && wiki.tagName,
+        naxChara && naxChara.tag && String(naxChara.tag).replace(/_/g, ' '),
+        ...aliasTitles
+    ]);
+    return assembleCharacterCard({
+        name,
+        franchise: franchise || parseCharacterFranchise(wikiQuery),
+        wiki,
+        aliases,
+        expander,
+        studioBox,
+        naxChara
+    });
+}
+
 function pickPaidApproval(payload) {
     if (!payload || typeof payload !== 'object') return false;
     return payload.userApprovedPaidRequest === true
@@ -2584,6 +2865,7 @@ const ADVANCED_CORE_HINTS = [
         names: ['list_memories', 'search_memories', 'get_memory', 'save_memory', 'listKnowledgeMemories', 'searchKnowledgeMemories', 'retrieveKnowledgeMemory', 'saveKnowledgeMemory']
     },
     { test: (q) => /\bnax\b|top votes|artist tag/i.test(q), names: ['search_nax', 'list_nax_galleries'] },
+    { test: (q) => /character card|get_character_card|appearance wiki/i.test(q), names: ['get_character_card'] },
     { test: (q) => /prompt guide|docubase|nai-prompt/i.test(q), names: ['get_prompt_guide'] },
     { test: (q) => /session_state|session snapshot|what.?s on (screen|studio)/i.test(q), names: ['get_session_state'] }
 ];
@@ -2829,6 +3111,9 @@ async function callTool(globalResources, req, name, args) {
     }
     if (name === 'get_wiki_page' && !input.format) {
         input.format = 'markdown';
+    }
+    if (name === 'get_character_card' && !input.name) {
+        input.name = input.tagName || input.tag || input.title;
     }
     if (name === 'list_static_wiki_pages' || name === 'get_static_wiki_page' || name === 'search_static_wiki') {
         input.siteId = input.siteId || input.site;
@@ -3246,6 +3531,11 @@ async function callTool(globalResources, req, name, args) {
         const packet = await dispatchPacketTool(globalResources, req, def.packet, input);
         const shaped = reshapeWikiPageForMcp(flattenPacket(packet));
         return mcpTextResult(shaped, !shaped.success && !!shaped.error);
+    }
+
+    if (name === 'get_character_card') {
+        const card = await collectCharacterCard(globalResources, req, input);
+        return mcpTextResult(card, !card.success);
     }
 
     if (def.packet && name !== 'get_generated_image' && name !== 'get_linkxi_persona' && name !== 'save_linkxi_persona') {
@@ -4143,6 +4433,15 @@ module.exports = {
         flattenPacket,
         reshapeWikiPageForMcp,
         coerceWikiText,
+        WIKI_EMPTY_NEXT,
+        normalizeCharacterKey,
+        parseCharacterFranchise,
+        uniqueCharacterAliases,
+        expandersFromPromptConfig,
+        matchRequestExpander,
+        pickStudioCharacterBox,
+        assembleCharacterCard,
+        collectCharacterCard,
         pickPaidApproval,
         wouldSpendPaidCredits,
         paidApprovalBlock,

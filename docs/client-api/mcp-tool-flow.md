@@ -174,3 +174,12 @@ User: *look at `1782…_generated_….png` in the default workspace*
 ## search_indexes_ready / omegasearch wait
 
 `generate_image` and `await_generation_job` wait until saved filenames have `search_indexes_ready=1` (short timeout) before the tool returns, so an immediate `omegasearch` can hit. If search still returns `total: 0` while indexes are pending, ingest waits one beat and retries once. A timeout still returns the image (`searchIndexed: false`).
+
+## Recipe: character card (wiki + expander + Studio box + NAX CHARA)
+
+User: *who is Rapi* / *appearance for alice (nikke)* / *don't invent this character*
+
+1. `get_character_card` `{ "name": "rapi (nikke)" }` — optional `franchise` / `model`.
+2. Read `wiki.text` / `wiki.markdown`. If `wiki.empty` is true, **do not invent appearance**. Use `aliases`, `expander.value` (full request-expander body), `studioBox` (`action: replace` + `index` snapshot), and `naxChara.prompt` (best `search_nax` `kind=CHARA` hit).
+3. `next` is the same empty-wiki guidance as `get_wiki_page` when wiki or expander is empty. A missing wiki is not a ban.
+4. No new Studio chrome. Characters stay `action: replace` + `index` (`docs/studio-change-json.md`).

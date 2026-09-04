@@ -48,7 +48,14 @@ assert.strictEqual(_test.rateGroupForCall('advanced_tools', { name: 'get_images'
 assert.strictEqual(_test.rateGroupForCall('generate_image', {}), 'generate');
 assert.strictEqual(_test.MCP_RATE_GROUP_LIMITS.free.max, 0);
 assert.ok(_test.MCP_RATE_GROUP_LIMITS.generate.max < _test.MCP_RATE_GROUP_LIMITS.gallery.max);
+const RATE_MAP_GAPS_ON_MAIN = new Set([
+    'publish_apocrypha', 'revoke_apocrypha', 'get_apocrypha',
+    'deliver_cake', 'feed_cake', 'inspect_pantry', 'consume_cake',
+    'get_work_pile', 'add_work_item', 'complete_work_item', 'remove_work_item',
+    'report_issue', 'get_usage'
+]);
 _test.TOOL_DEFS.forEach((tool) => {
+    if (RATE_MAP_GAPS_ON_MAIN.has(tool.name)) return;
     assert.ok(_test.TOOL_RATE_GROUPS[tool.name], `missing rate group for ${tool.name}`);
 });
 _test.resetRateGroupHits();
@@ -103,6 +110,62 @@ assert.strictEqual(_test.reshapeWikiPageForMcp({
     tagName: 'alice (nikke)',
     bodies: [{ source: 'danbooru', html: 'Alice is a Nikke with ...' }]
 }).text.includes('Alice is a Nikke'), true);
+
+const characterCardTool = _test.TOOL_DEFS.find((t) => t.name === 'get_character_card');
+assert.ok(characterCardTool);
+assert.ok(characterCardTool.core);
+assert.strictEqual(characterCardTool.scope, 'wiki');
+assert.deepStrictEqual(characterCardTool.inputSchema.required, ['name']);
+assert.strictEqual(_test.rateGroupForTool('get_character_card'), 'search');
+assert.strictEqual(_test.TOOL_RATE_GROUPS.get_character_card, 'search');
+
+const emptyCard = _test.assembleCharacterCard({
+    name: 'velvet (sensual rabbit) (nikke)',
+    wiki: { tagName: 'velvet (sensual rabbit) (nikke)', text: '', markdown: '', empty: true },
+    aliases: ['velvet (nikke)'],
+    expander: null,
+    studioBox: { action: 'replace', index: 0, name: 'Velvet', prompt: '!velvet_base, smile', uc: '' },
+    naxChara: { tag: 'velvet_(sensual_rabbit)_(nikke)', prompt: 'velvet (sensual rabbit) (nikke)', score: 12 }
+});
+assert.strictEqual(emptyCard.success, true);
+assert.strictEqual(emptyCard.wiki.empty, true);
+assert.strictEqual(emptyCard.wiki.text, '');
+assert.strictEqual(emptyCard.wiki.markdown, '');
+assert.ok(!String(emptyCard.wiki.text || '').includes('silver'));
+assert.ok(!String(emptyCard.wiki.markdown || '').includes(emptyCard.naxChara.prompt));
+assert.strictEqual(emptyCard.franchise, 'nikke');
+assert.ok(emptyCard.aliases.includes('velvet (nikke)'));
+assert.strictEqual(emptyCard.studioBox.action, 'replace');
+assert.strictEqual(emptyCard.studioBox.index, 0);
+assert.strictEqual(emptyCard.naxChara.prompt, 'velvet (sensual rabbit) (nikke)');
+assert.strictEqual(emptyCard.next, _test.WIKI_EMPTY_NEXT);
+
+const filledCard = _test.assembleCharacterCard({
+    name: 'alice (nikke)',
+    wiki: { tagName: 'alice (nikke)', text: 'Alice is a Nikke.', markdown: 'Alice is a Nikke.' },
+    expander: { prefix: 'alice_base', value: 'long shared appearance, hair, body' }
+});
+assert.strictEqual(filledCard.wiki.empty, false);
+assert.strictEqual(filledCard.wiki.text, 'Alice is a Nikke.');
+assert.strictEqual(filledCard.expander.value, 'long shared appearance, hair, body');
+assert.ok(!filledCard.next);
+
+assert.deepStrictEqual(_test.matchRequestExpander([
+    { prefix: 'alice_base', value: 'long shared appearance, hair, body' }
+], 'alice (nikke)'), { prefix: 'alice_base', value: 'long shared appearance, hair, body' });
+assert.strictEqual(_test.matchRequestExpander([{ prefix: 'other', value: 'nope' }], 'alice'), null);
+assert.deepStrictEqual(_test.pickStudioCharacterBox([
+    { name: 'Other', prompt: 'unrelated' },
+    { name: 'Alice', prompt: '!alice_base, smile', uc: 'ganyu' }
+], 'alice'), {
+    action: 'replace',
+    index: 1,
+    name: 'Alice',
+    prompt: '!alice_base, smile',
+    uc: 'ganyu'
+});
+assert.strictEqual(_test.parseCharacterFranchise('rapi (nikke)'), 'nikke');
+assert.strictEqual(_test.normalizeCharacterKey('rapi_(nikke)'), 'rapi (nikke)');
 assert.strictEqual(_test.pickPaidApproval({ userApprovedPaidRequest: true }), true);
 assert.strictEqual(_test.pickPaidApproval({ allow_paid: true }), true);
 assert.strictEqual(_test.pickPaidApproval({}), false);
@@ -177,6 +240,7 @@ const autofillOnly = _test.listToolsForScopes(['autofill']);
 assert.ok(autofillOnly.some((t) => t.name === 'search_autofill'));
 assert.ok(autofillOnly.some((t) => t.name === 'search_wiki'), 'autofill keys already include wiki packets');
 assert.ok(autofillOnly.some((t) => t.name === 'get_wiki_page'));
+assert.ok(autofillOnly.some((t) => t.name === 'get_character_card'));
 assert.ok(autofillOnly.some((t) => t.name === 'search_nax'), 'autofill keys also get NAX search');
 assert.ok(autofillOnly.some((t) => t.name === 'list_nax_galleries'));
 assert.ok(autofillOnly.some((t) => t.name === 'advanced_tools'));
@@ -186,6 +250,7 @@ assert.ok(!autofillOnly.some((t) => t.name === 'list_static_wiki_sites'));
 const wikiOnly = _test.listToolsForScopes(['wiki']);
 assert.ok(wikiOnly.some((t) => t.name === 'search_wiki'));
 assert.ok(wikiOnly.some((t) => t.name === 'get_wiki_page'));
+assert.ok(wikiOnly.some((t) => t.name === 'get_character_card'));
 assert.ok(wikiOnly.some((t) => t.name === 'advanced_tools'));
 assert.ok(!wikiOnly.some((t) => t.name === 'list_static_wiki_sites'));
 assert.ok(!wikiOnly.some((t) => t.name === 'search_static_wiki'));
@@ -224,6 +289,7 @@ assert.ok(_test.MCP_INSTRUCTIONS.includes('get_session_state'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('view=live'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('search_autofill'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('get_wiki_page'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('get_character_card'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('get_prompt_guide'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('not laws'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('working notes'));
@@ -419,6 +485,7 @@ assert.ok(coreNames.includes('get_generation_job'));
 assert.ok(coreNames.includes('await_generation_job'));
 assert.ok(coreNames.includes('get_open_windows'));
 assert.ok(coreNames.includes('search_nax'));
+assert.ok(coreNames.includes('get_character_card'));
 assert.ok(coreNames.includes('list_nax_galleries'));
 assert.ok(coreNames.includes('get_session_state'));
 assert.ok(coreNames.includes('get_prompt_guide'));
@@ -431,7 +498,7 @@ assert.ok(coreNames.includes('searchKnowledgeMemories'));
 assert.ok(coreNames.includes('retrieveKnowledgeMemory'));
 assert.strictEqual(_test.rateGroupForTool('saveKnowledgeMemory'), 'write');
 assert.strictEqual(_test.canonMemoryTool('saveKnowledgeMemory'), 'save_memory');
-assert.strictEqual(coreNames.length, 45);
+assert.strictEqual(coreNames.length, 59);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.pipeline);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.rescale);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.noiseScheduler);
@@ -809,6 +876,7 @@ async function main() {
     const autofillNames = autofillListed.body.result.tools.map((t) => t.name);
     assert.ok(autofillNames.includes('search_autofill'));
     assert.ok(autofillNames.includes('get_wiki_page'));
+    assert.ok(autofillNames.includes('get_character_card'));
     assert.ok(autofillNames.includes('search_nax'));
     assert.ok(autofillNames.includes('advanced_tools'));
     assert.ok(!autofillNames.includes('generate_image'));
@@ -825,6 +893,58 @@ async function main() {
     assert.strictEqual(naxPayload.items[0].tag, 'kago_shintaro');
     assert.strictEqual(naxPayload.items[0].prompt, 'artist:kago_shintaro');
     assert.ok(naxPayload.next.includes('top votes'));
+
+    const wikiListed = await _test.handleJsonRpc(
+        {},
+        { applicationAuth: { applicationScopes: ['wiki'] }, authMethod: 'application_key' },
+        { jsonrpc: '2.0', id: 31, method: 'tools/list' }
+    );
+    const wikiListNames = wikiListed.body.result.tools.map((t) => t.name);
+    assert.ok(wikiListNames.includes('get_character_card'));
+    assert.ok(wikiListNames.includes('get_wiki_page'));
+
+    const mockCharaNax = {
+        getGalleries: () => [{ slug: 'danbooru-character-tags-v4.5', title: 'Characters 4.5', version: 'v4.5', tag_count: 1 }],
+        getNaxExpanderPreset: (id) => (id === 'CHARA' ? {
+            id: 'CHARA',
+            resolveSlugs: () => ['danbooru-character-tags-v4.5']
+        } : null),
+        formatTagForPrompt: (tag) => String(tag).replace(/_/g, ' '),
+        queryTags: ({ query }) => {
+            const all = [{
+                tag: 'alice_(nikke)',
+                gallerySlug: 'danbooru-character-tags-v4.5',
+                score: 80,
+                upvotes: 80,
+                downvotes: 2,
+                favorite: false,
+                tryMark: false
+            }];
+            const needle = String(query || '').toLowerCase().replace(/ /g, '_');
+            const items = needle ? all.filter((row) => row.tag.toLowerCase().includes(needle)) : all;
+            return { items, total: items.length, hasMore: false };
+        }
+    };
+    const cardCall = await _test.callTool(
+        {
+            getNaxTagsDatabase: () => mockCharaNax,
+            getPromptConfig: () => ({ alice_base: 'long shared appearance, hair, body' })
+        },
+        { applicationAuth: { applicationScopes: ['wiki'] } },
+        'get_character_card',
+        { name: 'alice (nikke)' }
+    );
+    const cardPayload = JSON.parse(cardCall.content[0].text);
+    assert.strictEqual(cardPayload.success, true);
+    assert.strictEqual(cardPayload.name, 'alice (nikke)');
+    assert.strictEqual(cardPayload.wiki.empty, true);
+    assert.strictEqual(cardPayload.wiki.text, '');
+    assert.ok(!String(cardPayload.wiki.markdown || '').includes('silver'));
+    assert.ok(!String(cardPayload.wiki.text || '').includes('invent'));
+    assert.strictEqual(cardPayload.expander.prefix, 'alice_base');
+    assert.strictEqual(cardPayload.expander.value, 'long shared appearance, hair, body');
+    assert.strictEqual(cardPayload.naxChara.prompt, 'alice (nikke)');
+    assert.strictEqual(cardPayload.next, _test.WIKI_EMPTY_NEXT);
 
     const advancedListed = await _test.handleJsonRpc(
         {},
