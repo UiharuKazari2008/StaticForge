@@ -7424,14 +7424,11 @@ CRITICAL: Preserve all artist/style references and environment tags from the ori
                 role: 'user',
                 content: [
                     {
-                        type: 'image_url',
-                        image_url: {
-                            url: `data:image/png;base64,${originalImageBuffer.toString('base64')}`,
-                            detail: 'high'
-                        }
+                        type: 'input_image',
+                        image_url: `data:image/png;base64,${originalImageBuffer.toString('base64')}`
                     },
                     {
-                        type: 'text',
+                        type: 'input_text',
                         text: aiInstruction
                     }
                 ]
@@ -7440,47 +7437,61 @@ CRITICAL: Preserve all artist/style references and environment tags from the ori
 
         console.log(`🤖 Starting Grok expansion AI call with requestId: ${requestId}`);
         const expansionAttemptId = `image-expansion-${requestId || 'unknown'}-${Date.now()}`;
-        const grokResponse = await __runtimeGr.getGrokService().callDirectorAIWithStructuredOutput(messages, {
-            model: __runtimeGr.getGrokService().getDefaultGrokModel(),
-            timeout: 120000,
-            store: false,
-            responseSchema: ExpansionPromptSchema,
-            ws: ws,
-            handler: handler,
-            requestId: requestId,
-            _attemptId: expansionAttemptId
-        });
-        console.log(`✅ Grok expansion AI call completed`);
-
-        const additionalText = grokResponse.content?.additional_text || grokResponse.additional_text;
-        expansionReason = grokResponse.content?.reason || grokResponse.reason;
-        expansionReasonDisplay = grokResponse.content?.reason_display || grokResponse.content?.reason || grokResponse.reason;
-
-        if (originalPrompt) {
-            const commaText = matchCommaTextColon(originalPrompt);
-            if (commaText) {
-                const beforeText = originalPrompt.substring(0, commaText.index).trim();
-                expansionPrompt = beforeText + ', ' + additionalText + ', Text:' + originalPrompt.substring(commaText.index + commaText.length);
-            } else {
-                expansionPrompt = originalPrompt + ', ' + additionalText;
-            }
-        } else {
-            expansionPrompt = additionalText;
-        }
-
-        console.log(`✨ Grok additional text: ${additionalText}`);
-        console.log(`🔗 Combined expansion prompt: ${expansionPrompt}`);
-        console.log(`💭 Grok reasoning: ${expansionReason}`);
-
-        if (ws && handler && requestId) {
-            handler.sendGenerationProgress(ws, requestId, {
-                phase: 'completion',
-                hasDynamicGen: true,
-                reasoning: expansionReasonDisplay
+        try {
+            const grokResponse = await __runtimeGr.getGrokService().callDirectorAIWithStructuredOutput(messages, {
+                model: __runtimeGr.getGrokService().getDefaultGrokModel(),
+                timeout: 120000,
+                store: false,
+                responseSchema: ExpansionPromptSchema,
+                ws: ws,
+                handler: handler,
+                requestId: requestId,
+                _attemptId: expansionAttemptId
             });
-            console.log(`✅ Sent completion progress message`);
-        } else {
-            console.warn(`⚠️ Cannot send completion progress: ws=${!!ws}, handler=${!!handler}, requestId=${requestId}`);
+            console.log(`✅ Grok expansion AI call completed`);
+
+            const additionalText = grokResponse.content?.additional_text || grokResponse.additional_text;
+            expansionReason = grokResponse.content?.reason || grokResponse.reason;
+            expansionReasonDisplay = grokResponse.content?.reason_display || grokResponse.content?.reason || grokResponse.reason;
+
+            if (originalPrompt) {
+                const commaText = matchCommaTextColon(originalPrompt);
+                if (commaText) {
+                    const beforeText = originalPrompt.substring(0, commaText.index).trim();
+                    expansionPrompt = beforeText + ', ' + additionalText + ', Text:' + originalPrompt.substring(commaText.index + commaText.length);
+                } else {
+                    expansionPrompt = originalPrompt + ', ' + additionalText;
+                }
+            } else {
+                expansionPrompt = additionalText;
+            }
+
+            console.log(`✨ Grok additional text: ${additionalText}`);
+            console.log(`🔗 Combined expansion prompt: ${expansionPrompt}`);
+            console.log(`💭 Grok reasoning: ${expansionReason}`);
+
+            if (ws && handler && requestId) {
+                handler.sendGenerationProgress(ws, requestId, {
+                    phase: 'completion',
+                    hasDynamicGen: true,
+                    reasoning: expansionReasonDisplay
+                });
+                console.log(`✅ Sent completion progress message`);
+            } else {
+                console.warn(`⚠️ Cannot send completion progress: ws=${!!ws}, handler=${!!handler}, requestId=${requestId}`);
+            }
+        } catch (aiErr) {
+            console.warn(`⚠️ Expansion AI failed, using original prompt: ${aiErr.message}`);
+            expansionPrompt = originalPrompt;
+            expansionReason = `Expansion AI failed: ${aiErr.message}`;
+            expansionReasonDisplay = 'AI fallback';
+            if (ws && handler && requestId) {
+                handler.sendGenerationProgress(ws, requestId, {
+                    phase: 'completion',
+                    hasDynamicGen: false,
+                    reasoning: expansionReasonDisplay
+                });
+            }
         }
     } else {
         if (!enableAI) {

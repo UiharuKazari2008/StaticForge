@@ -432,6 +432,12 @@ function mergeExpansionOverrideParams(input) {
     if (input.noiseScheduler && override.noise_schedule === undefined) {
         override.noise_schedule = input.noiseScheduler;
     }
+    if (typeof input.prompt === 'string' && input.prompt.trim() && override.expansionPromptOverride === undefined) {
+        override.expansionPromptOverride = input.prompt;
+    }
+    if (typeof input.uc === 'string' && override.expansionUcOverride === undefined) {
+        override.expansionUcOverride = input.uc;
+    }
     if (Object.keys(override).length) input.overrideParams = override;
     return input;
 }

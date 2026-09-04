@@ -255,7 +255,7 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 | `save_preset` | `save_preset` — `presetName` + `config` (`name`, `prompt`, `model`) | `presets` | no |
 | `apply_preset_to_studio` | `load_preset` then bound `apply_studio` Change-JSON | `presets` | yes |
 | `upscale_image` | `upscale_image` (`filename`, optional `workspace`). Paid Opus — requires `userApprovedPaidRequest` / `allow_paid`. | `generation` | no |
-| `expand_image` | `expand_image` (`filename`, `resolution`, `imageBias` 0–4). Paid Anlas — requires `userApprovedPaidRequest` / `allow_paid`. | `generation` | no |
+| `expand_image` | `expand_image` (`filename`, `resolution`, `imageBias` 0–4). Paid Anlas — requires `userApprovedPaidRequest` / `allow_paid`. `enableAI` asks Grok to write the expand prompt (Responses `input_image`); Grok failure falls back to the original prompt. Top-level `prompt` / `uc` override the expand inpaint and skip Grok. | `generation` | no |
 | `omegasearch` | `omegasearch_query` (`query` / `terms` coerced to `blocks`; optional `workspace`) | `search` | no |
 | `list_notes` / `get_note` / `save_note_content` | `notes_get_all_metadata` / `notes_get` / `notes_save_content` | `notes` | no |
 | `delete_images` | `delete_images_bulk` | `gallery` | no |
