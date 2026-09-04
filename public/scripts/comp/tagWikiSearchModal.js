@@ -599,6 +599,12 @@ class WikiDisplayBase {
             this.addSelectionToDirective();
         } else if (action === 'wiki-selection-copy') {
             this.copySelectionToClipboard();
+        } else if (action === 'wiki-copy-lookback' || action === 'wiki-selection-copy-lookback') {
+            // copyLookbackWikiContext: public/scripts/comp/copyLookback.js
+            copyLookbackWikiContext(this, { selection: this._selectionInDisplay() });
+        } else if (action === 'grimoire-img-copy-lookback') {
+            // copyLookbackWikiContext: public/scripts/comp/copyLookback.js
+            copyLookbackWikiContext(this, { imgSrc: item && item._grimoireImgSrc });
         } else if (action === 'wiki-refresh-online') {
             this.refreshFromOnline();
         } else if (action === 'wiki-copy-tag') {
@@ -868,6 +874,12 @@ class WikiDisplayBase {
                     _grimoireImgSrc: src
                 });
                 items.push({
+                    text: 'Copy Lookback',
+                    icon: 'fas fa-link',
+                    action: 'grimoire-img-copy-lookback',
+                    _grimoireImgSrc: src
+                });
+                items.push({
                     text: 'Download Image',
                     icon: 'fas fa-download',
                     action: 'grimoire-img-download',
@@ -976,6 +988,11 @@ class WikiDisplayBase {
                 disabled: () => !this.getCurrentPageUri()
             },
             {
+                text: 'Copy Lookback',
+                icon: 'fas fa-link',
+                action: 'wiki-copy-lookback'
+            },
+            {
                 text: 'Copy Page Title',
                 icon: 'fas fa-heading',
                 action: 'grimoire-copy-title',
@@ -1002,6 +1019,11 @@ class WikiDisplayBase {
                 text: 'Copy Selection',
                 icon: 'fas fa-clipboard',
                 action: 'wiki-selection-copy'
+            });
+            items.push({
+                text: 'Copy Lookback',
+                icon: 'fas fa-link',
+                action: 'wiki-selection-copy-lookback'
             });
             items.push({
                 text: 'Search Google',
@@ -1125,6 +1147,11 @@ class WikiDisplayBase {
                             icon: 'fas fa-clipboard',
                             action: 'wiki-selection-copy',
                             hidden: () => !this._selectionInDisplay()
+                        },
+                        {
+                            tooltip: 'Copy Lookback',
+                            icon: 'fas fa-link',
+                            action: 'wiki-copy-lookback'
                         }
                     ]
                 },

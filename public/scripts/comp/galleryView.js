@@ -4561,6 +4561,11 @@ function createGalleryItem(image, index, skipImgElement = false) {
                             action: 'start-chat'
                         },
                         {
+                            icon: 'fas fa-link',
+                            text: 'Copy Lookback',
+                            action: 'copy-lookback'
+                        },
+                        {
                             icon: 'fas fa-globe',
                             text: 'Publish to Explorer',
                             action: 'publish-to-explorer'
@@ -8975,6 +8980,11 @@ function handleGalleryContextMenuAction(event) {
                     console.error('Failed to load chat system:', err);
                 }
             })();
+            break;
+
+        case 'copy-lookback':
+            // copyLookbackImage: public/scripts/comp/copyLookback.js
+            copyLookbackImage(filename);
             break;
 
         case 'publish-to-explorer':

@@ -1194,6 +1194,11 @@ class NotepadManager {
                             action: 'open-in-window'
                         },
                         {
+                            icon: 'fas fa-link',
+                            text: 'Copy Lookback',
+                            action: 'copy-lookback'
+                        },
+                        {
                             icon: 'fas fa-arrow-down-left',
                             text: 'Add to Desktop',
                             action: 'add-to-desktop'
@@ -1219,6 +1224,10 @@ class NotepadManager {
                 switch (action) {
                     case 'open-in-window':
                         await this.notebookOpenInWindow(noteData.id);
+                        break;
+                    case 'copy-lookback':
+                        // copyLookbackNote: public/scripts/comp/copyLookback.js
+                        copyLookbackNote(noteData.id);
                         break;
                     case 'add-to-desktop':
                         await this.notebookAddToDesktop(noteData);
@@ -1649,6 +1658,9 @@ class Notepad {
             textarea.addEventListener('input', () => {
                 this.markAsUnsaved();
             });
+            textarea.addEventListener('select', () => {
+                this._lookbackSel = textarea.value.slice(textarea.selectionStart, textarea.selectionEnd);
+            });
         }
 
         // Save button click - immediate save
@@ -1719,6 +1731,12 @@ class Notepad {
                 text: 'Add to Desktop',
                 action: 'add-shortcut',
                 disabled: !this.note || !this.note.id
+            },
+            {
+                icon: 'fas fa-link',
+                text: 'Copy Lookback',
+                action: 'copy-lookback',
+                disabled: !this.note || !this.note.id
             }
         ];
 
@@ -1774,6 +1792,15 @@ class Notepad {
                         case 'add-shortcut':
                             this.handleAddShortcut();
                             break;
+                        case 'copy-lookback': {
+                            const box = this.element.querySelector(`#notepadTextarea_${this.id}`);
+                            const liveSel = box && box.selectionStart !== box.selectionEnd
+                                ? box.value.slice(box.selectionStart, box.selectionEnd)
+                                : '';
+                            // copyLookbackNote: public/scripts/comp/copyLookback.js
+                            copyLookbackNote(this.note.id, liveSel || this._lookbackSel);
+                            break;
+                        }
                         case 'novel-generate':
                             if (typeof novelHydrateSession === 'function') novelHydrateSession(this.note);
                             if (typeof novelRunGenerate === 'function') {

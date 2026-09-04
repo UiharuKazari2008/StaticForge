@@ -106,6 +106,7 @@ const {
 } = require('./mcpRateLimiter');
 // modules/mcpRateLimiter.js — #66 owns TOOL_RATE_GROUPS this wave
 if (!TOOL_RATE_GROUPS.get_character_card) TOOL_RATE_GROUPS.get_character_card = 'search';
+if (!TOOL_RATE_GROUPS.resolve_lookback) TOOL_RATE_GROUPS.resolve_lookback = 'search';
 
 const MCP_PROTOCOL_VERSION = '2024-11-05';
 const MCP_RATE_WINDOW_MS = 15 * 60 * 1000;
@@ -342,6 +343,24 @@ const TOOL_DEFS = [
                 workspace: { type: 'string', description: 'Workspace id or "default"' },
                 workspaceId: { type: 'string' },
                 full: { type: 'boolean', description: 'Original PNG only if under the size cap. Default false.' }
+            }
+        }
+    },
+    {
+        name: 'resolve_lookback',
+        core: true,
+        description: 'Resolve a pasted Copy Lookback markdown link ([label](dsap://lookback/…)) to that item’s metadata. Gallery images also return a Grok-sized webp. Pass lookback (the markdown or raw dsap://lookback/ URI).',
+        scope: 'gallery',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['lookback'],
+            properties: {
+                lookback: { type: 'string', description: 'Markdown [label](dsap://lookback/…) or raw dsap://lookback/ URI' },
+                uri: { type: 'string' },
+                ref: { type: 'string' },
+                text: { type: 'string' },
+                href: { type: 'string' }
             }
         }
     },
@@ -1913,6 +1932,183 @@ function searchNaxTags(nax, input) {
     };
 }
 
+const LOOKBACK_TYPES = new Set(['img', 'note', 'wiki', 'swiki', 'wimg', 'sel', 'page']);
+
+function decodeLookbackSeg(value) {
+    try {
+        return decodeURIComponent(String(value || ''));
+    } catch (_) {
+        return String(value || '');
+    }
+}
+
+function decodeLookbackB64(seg) {
+    try {
+        return Buffer.from(String(seg || ''), 'base64url').toString('utf8');
+    } catch (_) {
+        return '';
+    }
+}
+
+function extractLookbackHref(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return '';
+    const md = s.match(/\]\((dsap:\/\/lookback\/.+)\)\s*$/i);
+    if (md) return md[1];
+    const bare = s.match(/dsap:\/\/lookback\/\S+/i);
+    if (bare) return bare[0].replace(/[.,;]+$/, '');
+    if (/^lookback\//i.test(s)) return `dsap://${s}`;
+    return s;
+}
+
+function parseLookbackRef(raw) {
+    const href = extractLookbackHref(raw);
+    if (!/^dsap:\/\/lookback\//i.test(href)) return null;
+    const rest = href.replace(/^dsap:\/\/lookback\//i, '').replace(/\/+$/, '');
+    if (!rest) return null;
+    const segs = rest.split('/');
+    const type = String(segs[0] || '').toLowerCase();
+    if (!LOOKBACK_TYPES.has(type)) return null;
+    const parsed = { type, href };
+    if (type === 'img' || type === 'note' || type === 'wiki' || type === 'page' || type === 'wimg') {
+        const joined = segs.slice(1).join('/');
+        parsed.id = type === 'wimg' ? decodeLookbackB64(joined) : decodeLookbackSeg(joined);
+        return parsed.id ? parsed : null;
+    }
+    if (type === 'swiki') {
+        parsed.siteId = decodeLookbackSeg(segs[1]);
+        parsed.pageId = decodeLookbackSeg(segs.slice(2).join('/'));
+        return parsed.siteId && parsed.pageId ? parsed : null;
+    }
+    if (type === 'sel') {
+        const src = String(segs[1] || '').toLowerCase();
+        parsed.src = src;
+        if (src === 'note' || src === 'wiki' || src === 'page' || src === 'img') {
+            parsed.id = decodeLookbackSeg(segs[2]);
+            parsed.text = decodeLookbackB64(segs.slice(3).join('/'));
+            return parsed.id ? parsed : null;
+        }
+        if (src === 'swiki') {
+            parsed.siteId = decodeLookbackSeg(segs[2]);
+            parsed.pageId = decodeLookbackSeg(segs[3]);
+            parsed.text = decodeLookbackB64(segs.slice(4).join('/'));
+            return parsed.siteId && parsed.pageId ? parsed : null;
+        }
+        return null;
+    }
+    return null;
+}
+
+function galleryFilenameFromLookbackSrc(src) {
+    const s = String(src || '').trim();
+    if (!s) return null;
+    const fileQ = s.match(/[?&](?:file|filename)=([^&]+)/i);
+    if (fileQ) return sanitizeGalleryFilename(decodeLookbackSeg(fileQ[1]));
+    const pathName = s.match(/\/(?:images|gallery)\/([^/?#]+)/i);
+    if (pathName) return sanitizeGalleryFilename(decodeLookbackSeg(pathName[1]));
+    if (!/[/:?#]/.test(s)) return sanitizeGalleryFilename(s);
+    return null;
+}
+
+function decorateLookbackResult(result, parsed) {
+    const textEntry = result && Array.isArray(result.content)
+        ? result.content.find((row) => row && row.type === 'text')
+        : null;
+    let body = {};
+    if (textEntry && typeof textEntry.text === 'string') {
+        try {
+            body = JSON.parse(textEntry.text);
+        } catch (_) {
+            body = { text: textEntry.text };
+        }
+    }
+    const extra = {
+        ...body,
+        lookback: parsed.href,
+        lookbackType: parsed.type
+    };
+    if (parsed.type === 'sel' && parsed.text) extra.selectedText = parsed.text;
+    if (result && result.content && result.content.some((row) => row && row.type === 'image')) {
+        return {
+            content: [
+                { type: 'text', text: JSON.stringify(extra) },
+                ...result.content.filter((row) => row && row.type !== 'text')
+            ],
+            isError: !!result.isError
+        };
+    }
+    return mcpTextResult(extra, !!(result && result.isError) || body.success === false);
+}
+
+async function resolveLookback(globalResources, req, input) {
+    const raw = (input && (input.lookback || input.uri || input.ref || input.text || input.href)) || '';
+    const parsed = parseLookbackRef(raw);
+    if (!parsed) {
+        return mcpTextResult({
+            success: false,
+            error: 'Pass a Copy Lookback markdown link or dsap://lookback/ URI.'
+        }, true);
+    }
+    if (parsed.type === 'img' || (parsed.type === 'sel' && parsed.src === 'img')) {
+        return decorateLookbackResult(
+            await callTool(globalResources, req, 'get_generated_image', { filename: parsed.id }),
+            parsed
+        );
+    }
+    if (parsed.type === 'note' || (parsed.type === 'sel' && parsed.src === 'note')) {
+        return decorateLookbackResult(
+            await callTool(globalResources, req, 'get_note', { noteId: parsed.id }),
+            parsed
+        );
+    }
+    if (parsed.type === 'wiki' || (parsed.type === 'sel' && parsed.src === 'wiki')) {
+        return decorateLookbackResult(
+            await callTool(globalResources, req, 'get_wiki_page', { tagName: parsed.id }),
+            parsed
+        );
+    }
+    if (parsed.type === 'swiki' || (parsed.type === 'sel' && parsed.src === 'swiki')) {
+        return decorateLookbackResult(
+            await callTool(globalResources, req, 'get_static_wiki_page', {
+                siteId: parsed.siteId,
+                pageId: parsed.pageId
+            }),
+            parsed
+        );
+    }
+    if (parsed.type === 'wimg') {
+        const filename = galleryFilenameFromLookbackSrc(parsed.id);
+        if (filename) {
+            return decorateLookbackResult(
+                await callTool(globalResources, req, 'get_generated_image', { filename }),
+                parsed
+            );
+        }
+        return mcpTextResult({
+            success: true,
+            lookback: parsed.href,
+            lookbackType: 'wimg',
+            src: parsed.id,
+            image: null,
+            next: 'Remote wiki image. Gallery grok webp only when src is a gallery file.'
+        });
+    }
+    if (parsed.type === 'page' || (parsed.type === 'sel' && parsed.src === 'page')) {
+        return mcpTextResult({
+            success: true,
+            lookback: parsed.href,
+            lookbackType: parsed.type,
+            uri: parsed.id,
+            selectedText: parsed.text || undefined
+        });
+    }
+    return mcpTextResult({
+        success: false,
+        error: 'Unknown lookback type',
+        lookback: parsed.href
+    }, true);
+}
+
 function sanitizeGalleryFilename(filename) {
     const raw = String(filename || '').trim();
     if (!raw) return null;
@@ -2816,6 +3012,12 @@ function readGalleryImage(globalResources, filename) {
 }
 
 function toolAllowedForScopes(scopes, tool) {
+    if (tool.name === 'resolve_lookback') {
+        return agentHasNamedScope(scopes, 'gallery')
+            || agentHasNamedScope(scopes, 'notes')
+            || agentHasNamedScope(scopes, 'wiki')
+            || agentHasNamedScope(scopes, 'autofill');
+    }
     if (agentHasNamedScope(scopes, tool.scope)) return true;
     // modules/applicationAuthManager.js — autofill already includes wiki packets
     if (tool.scope === 'wiki' && agentHasNamedScope(scopes, 'autofill')) return true;
@@ -2866,6 +3068,7 @@ const ADVANCED_CORE_HINTS = [
     },
     { test: (q) => /\bnax\b|top votes|artist tag/i.test(q), names: ['search_nax', 'list_nax_galleries'] },
     { test: (q) => /character card|get_character_card|appearance wiki/i.test(q), names: ['get_character_card'] },
+    { test: (q) => /lookback|dsap:\/\/lookback/i.test(q), names: ['resolve_lookback'] },
     { test: (q) => /prompt guide|docubase|nai-prompt/i.test(q), names: ['get_prompt_guide'] },
     { test: (q) => /session_state|session snapshot|what.?s on (screen|studio)/i.test(q), names: ['get_session_state'] }
 ];
@@ -3525,6 +3728,13 @@ async function callTool(globalResources, req, name, args) {
             flat.next = 'Show this webp to the user. Do not page the gallery.';
         }
         return mcpResultFromGenerateFlat(globalResources, flat, packet.success);
+    }
+
+    if (name === 'resolve_lookback') {
+        if (!input.lookback) {
+            input.lookback = input.uri || input.ref || input.text || input.href;
+        }
+        return resolveLookback(globalResources, req, input);
     }
 
     if (name === 'get_wiki_page') {
@@ -4409,6 +4619,9 @@ module.exports = {
         isAllowedOAuthOrigin,
         isAbsentOrigin,
         sanitizeGalleryFilename,
+        parseLookbackRef,
+        galleryFilenameFromLookbackSrc,
+        resolveLookback,
         collectFilenames,
         isCheapMcpRequest,
         resizeImageForGrok,
