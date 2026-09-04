@@ -930,7 +930,7 @@ const TOOL_DEFS = [
     {
         name: 'expand_image',
         core: true,
-        description: 'Expand canvas (letterbox + generate into the new area). Paid Anlas — requires userApprovedPaidRequest (alias allow_paid) or this bounces before FIFO. Requires filename, target resolution, and imageBias 0–4 (0=start edge, 2=center, 4=end edge). Optional Studio param overrides (model, steps, guidance, rescale, sampler, noiseScheduler, noise, seed) as overrideParams or top-level.',
+        description: 'Expand canvas (letterbox + generate into the new area). Paid Anlas — requires userApprovedPaidRequest (alias allow_paid) or this bounces before FIFO. Requires filename, target resolution, and imageBias 0–4 (0=start edge, 2=center, 4=end edge). enableAI asks Grok to write the expand prompt; Grok failure falls back to the original prompt. Top-level prompt/uc override the expand inpaint and skip Grok. Optional Studio param overrides (model, steps, guidance, rescale, sampler, noiseScheduler, noise, seed) as overrideParams or top-level.',
         scope: 'generation',
         packet: 'expand_image',
         inputSchema: {
@@ -945,7 +945,9 @@ const TOOL_DEFS = [
                 userApprovedPaidRequest: { type: 'boolean', description: 'Required. Expand spends Anlas. Alias of allow_paid.' },
                 allow_paid: { type: 'boolean', description: 'Same as userApprovedPaidRequest.' },
                 upscaleAfterComplete: { type: 'boolean' },
-                enableAI: { type: 'boolean', description: 'Let the server write the expansion prompt' },
+                enableAI: { type: 'boolean', description: 'Let Grok write the expansion prompt (Responses input_image). If Grok fails, expand still runs with the original prompt.' },
+                prompt: { type: 'string', description: 'Optional expansion prompt override. Skips Grok even when enableAI is true.' },
+                uc: { type: 'string', description: 'Optional UC override for the expand inpaint.' },
                 inset: { type: 'boolean' },
                 sourceFilename: { type: 'string' },
                 overrideParams: {
@@ -2000,7 +2002,11 @@ function flattenPacket(packet) {
     });
     if (packet && packet.type) out.packetType = packet.type;
     if (!out.success) {
-        out.error = data.error || data.message || data.error_description || 'request failed';
+        const reply = packet.reply && typeof packet.reply === 'object' ? packet.reply : null;
+        out.error = data.error || data.message || data.error_description
+            || packet.error || packet.message
+            || (reply && (reply.error || reply.message))
+            || 'request failed';
     }
     return out;
 }
@@ -2740,11 +2746,13 @@ async function dispatchPacketTool(globalResources, req, type, args) {
     const reply = pickAgentPacketReply(replies);
     const replyType = reply && reply.type ? String(reply.type) : '';
     const failed = !reply || replyType === 'error' || replyType.endsWith('_error');
+    const replyError = reply && (reply.error || reply.message);
     return {
         success: !failed,
         type: replyType || null,
         requestId: message.requestId,
         data: reply && reply.data !== undefined ? reply.data : null,
+        error: replyError || null,
         reply,
         replies
     };

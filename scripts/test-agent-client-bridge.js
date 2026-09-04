@@ -144,6 +144,15 @@ const expandMerged = _test.mergeExpansionOverrideParams({
 assert.strictEqual(expandMerged.overrideParams.guidance, 5);
 assert.strictEqual(expandMerged.overrideParams.steps, 28);
 assert.strictEqual(expandMerged.overrideParams.sampler, 'k_euler_ancestral');
+const expandPromptOverride = _test.mergeExpansionOverrideParams({
+    filename: 'a.png',
+    resolution: 'normal_landscape',
+    imageBias: 1,
+    prompt: 'sunset continues to the right',
+    uc: 'border, frame'
+});
+assert.strictEqual(expandPromptOverride.overrideParams.expansionPromptOverride, 'sunset continues to the right');
+assert.strictEqual(expandPromptOverride.overrideParams.expansionUcOverride, 'border, frame');
 
 
 assert.strictEqual(_test.readBoolFlag(undefined, true), true);
