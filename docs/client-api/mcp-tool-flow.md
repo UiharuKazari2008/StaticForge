@@ -170,3 +170,7 @@ User: *look at `1782…_generated_….png` in the default workspace*
 2. Build Change-JSON from `get_studio_state` plus what you are trying (guide notes are a start, not a statute)
 3. `apply_studio_changes` `{ "change": {…}, "autoApply": true, "autoGenerate": true }`
 4. `autoGenerate` clicks the bound tab's Generate button. Do not also call `generate_image` unless they asked for a **server-side** run (different session).
+
+## search_indexes_ready / omegasearch wait
+
+`generate_image` and `await_generation_job` wait until saved filenames have `search_indexes_ready=1` (short timeout) before the tool returns, so an immediate `omegasearch` can hit. If search still returns `total: 0` while indexes are pending, ingest waits one beat and retries once. A timeout still returns the image (`searchIndexed: false`).

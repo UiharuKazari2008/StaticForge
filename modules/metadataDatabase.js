@@ -24,6 +24,9 @@ let indexingPaused = false; // Track if indexing is paused globally
 let searchIndexSyncUpToDateUntil = 0;
 const SEARCH_INDEX_SYNC_UP_TO_DATE_TTL_MS = 12 * 60 * 60 * 1000;
 const SEARCH_INDEX_SYNC_BATCH_SIZE = 100;
+const SEARCH_INDEX_READY_TIMEOUT_MS = 2500;
+const SEARCH_INDEX_READY_POLL_MS = 40;
+const OMEGASEARCH_INDEX_RETRY_WAIT_MS = 250;
 
 /*
  * I Spy search indexing (docs/design/ispy-search-indexing-PLAN.md §5).
@@ -1100,6 +1103,60 @@ function scheduleSearchIndexUpdate(filename, metadata, label = 'search-index') {
     );
 }
 
+function normalizeSearchIndexFilenames(filenames) {
+    const list = Array.isArray(filenames) ? filenames : [filenames];
+    const out = [];
+    const seen = new Set();
+    for (const name of list) {
+        if (!name || typeof name !== 'string') continue;
+        const trimmed = name.trim();
+        if (!trimmed || seen.has(trimmed)) continue;
+        seen.add(trimmed);
+        out.push(trimmed);
+    }
+    return out;
+}
+
+async function areSearchIndexesReady(filenames) {
+    const names = normalizeSearchIndexFilenames(filenames);
+    if (!names.length) return true;
+    if (!dbInitialized || !db) return false;
+    const placeholders = names.map(() => '?').join(',');
+    const row = await db.get(
+        `SELECT COUNT(*) AS readyCount FROM images WHERE filename IN (${placeholders}) AND search_indexes_ready = 1`,
+        names
+    );
+    return Number(row?.readyCount) === names.length;
+}
+
+/**
+ * Poll until each filename has search_indexes_ready=1, or the short timeout elapses.
+ * generate persist (addReceiptMetadata) waits here so MCP generate/await can omegasearch immediately.
+ */
+async function waitForSearchIndexesReady(filenames, options = {}) {
+    const names = normalizeSearchIndexFilenames(filenames);
+    const timeoutMs = Number.isFinite(options.timeoutMs)
+        ? Math.max(0, options.timeoutMs)
+        : SEARCH_INDEX_READY_TIMEOUT_MS;
+    const pollMs = Number.isFinite(options.pollMs)
+        ? Math.max(10, options.pollMs)
+        : SEARCH_INDEX_READY_POLL_MS;
+    if (!names.length) {
+        return { searchIndexed: true, filenames: names };
+    }
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        if (await areSearchIndexesReady(names)) {
+            return { searchIndexed: true, filenames: names };
+        }
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) break;
+        await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, remaining)));
+    }
+    const ready = await areSearchIndexesReady(names);
+    return { searchIndexed: ready, filenames: names };
+}
+
 /**
  * Project a hot-cache record to lightweight sort fields.
  */
@@ -2108,7 +2165,11 @@ async function addReceiptMetadata(filename, imagesDir, receiptData = null, forge
         onSuccess: () => metadataWriteQueue.markImagePersisted(filename)
     });
 
-    return metadataWriteQueue.getHotImage(filename) || metadata;
+    // persistImageRowToDb ticks corpus; scheduleSearchIndexUpdate is background.
+    // Wait so generate_image / await_generation_job can omegasearch immediately.
+    const indexWait = await waitForSearchIndexesReady(filename);
+    const hot = metadataWriteQueue.getHotImage(filename) || metadata;
+    return { ...hot, searchIndexed: indexWait.searchIndexed };
 }
 
 
@@ -6314,6 +6375,17 @@ async function searchFilesWithBlocks(blocks, filenamesFilter = null, viewType = 
     }
 
     let results = Array.from(matchingFiles.values()).sort((a, b) => b.matchScore - a.matchScore);
+    if (results.length === 0 && !options.skipSearchIndexWait) {
+        const readDb = await getReadOnlyDatabase();
+        const readHandle = readDb || db;
+        if (await hasImagesPendingSearchIndex(readHandle)) {
+            await new Promise((resolve) => setTimeout(resolve, OMEGASEARCH_INDEX_RETRY_WAIT_MS));
+            return searchFilesWithBlocks(blocks, filenamesFilter, viewType, {
+                ...options,
+                skipSearchIndexWait: true
+            });
+        }
+    }
     return results;
 }
 
@@ -7424,6 +7496,8 @@ module.exports = {
     
     // Search index functions
     updateSearchIndexes,
+    waitForSearchIndexesReady,
+    areSearchIndexesReady,
     searchFilesInDatabase,
     searchFilesWithBlocks,
     normalizeSearchBlocks,
