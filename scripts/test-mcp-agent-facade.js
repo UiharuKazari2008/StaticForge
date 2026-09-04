@@ -119,6 +119,33 @@ assert.deepStrictEqual(characterCardTool.inputSchema.required, ['name']);
 assert.strictEqual(_test.rateGroupForTool('get_character_card'), 'search');
 assert.strictEqual(_test.TOOL_RATE_GROUPS.get_character_card, 'search');
 
+const lookbackTool = _test.TOOL_DEFS.find((t) => t.name === 'resolve_lookback');
+assert.ok(lookbackTool);
+assert.ok(lookbackTool.core);
+assert.deepStrictEqual(lookbackTool.inputSchema.required, ['lookback']);
+assert.strictEqual(_test.rateGroupForTool('resolve_lookback'), 'search');
+assert.deepStrictEqual(_test.parseLookbackRef('[img](dsap://lookback/img/foo.png)'), {
+    type: 'img',
+    href: 'dsap://lookback/img/foo.png',
+    id: 'foo.png'
+});
+assert.strictEqual(_test.parseLookbackRef('dsap://lookback/note/abc-1').id, 'abc-1');
+assert.strictEqual(_test.parseLookbackRef('dsap://lookback/wiki/alice%20%28nikke%29').id, 'alice (nikke)');
+assert.strictEqual(_test.parseLookbackRef('[wiki](dsap://lookback/wiki/alice%20%28nikke%29)').id, 'alice (nikke)');
+assert.deepStrictEqual(_test.parseLookbackRef('dsap://lookback/swiki/docubase/prompt-optimiser-grok'), {
+    type: 'swiki',
+    href: 'dsap://lookback/swiki/docubase/prompt-optimiser-grok',
+    siteId: 'docubase',
+    pageId: 'prompt-optimiser-grok'
+});
+assert.strictEqual(_test.parseLookbackRef('not a lookback'), null);
+assert.strictEqual(_test.galleryFilenameFromLookbackSrc('/images/foo.png'), 'foo.png');
+assert.ok(_test.MCP_INSTRUCTIONS.includes('resolve_lookback'));
+assert.ok(_test.listToolsForScopes(['gallery']).some((t) => t.name === 'resolve_lookback'));
+assert.ok(_test.listToolsForScopes(['notes']).some((t) => t.name === 'resolve_lookback'));
+assert.ok(_test.listToolsForScopes(['wiki']).some((t) => t.name === 'resolve_lookback'));
+assert.ok(!_test.listToolsForScopes(['generation']).some((t) => t.name === 'resolve_lookback'));
+
 const emptyCard = _test.assembleCharacterCard({
     name: 'velvet (sensual rabbit) (nikke)',
     wiki: { tagName: 'velvet (sensual rabbit) (nikke)', text: '', markdown: '', empty: true },
@@ -486,6 +513,7 @@ assert.ok(coreNames.includes('await_generation_job'));
 assert.ok(coreNames.includes('get_open_windows'));
 assert.ok(coreNames.includes('search_nax'));
 assert.ok(coreNames.includes('get_character_card'));
+assert.ok(coreNames.includes('resolve_lookback'));
 assert.ok(coreNames.includes('list_nax_galleries'));
 assert.ok(coreNames.includes('get_session_state'));
 assert.ok(coreNames.includes('get_prompt_guide'));
@@ -498,7 +526,7 @@ assert.ok(coreNames.includes('searchKnowledgeMemories'));
 assert.ok(coreNames.includes('retrieveKnowledgeMemory'));
 assert.strictEqual(_test.rateGroupForTool('saveKnowledgeMemory'), 'write');
 assert.strictEqual(_test.canonMemoryTool('saveKnowledgeMemory'), 'save_memory');
-assert.strictEqual(coreNames.length, 59);
+assert.strictEqual(coreNames.length, 60);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.pipeline);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.rescale);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.noiseScheduler);

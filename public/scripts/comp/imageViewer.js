@@ -794,6 +794,11 @@ class ImageViewer {
                     action: 'image-viewer-start-chat'
                 },
                 {
+                    icon: 'fas fa-link',
+                    text: 'Copy Lookback',
+                    action: 'image-viewer-copy-lookback'
+                },
+                {
                     icon: 'fas fa-image',
                     text: 'Set as Wallpaper',
                     action: 'image-viewer-set-wallpaper',
@@ -913,6 +918,10 @@ class ImageViewer {
                 break;
             case 'image-viewer-start-chat':
                 this.startChat();
+                break;
+            case 'image-viewer-copy-lookback':
+                // copyLookbackImage: public/scripts/comp/copyLookback.js
+                copyLookbackImage(this.getImageFilename());
                 break;
             case 'image-viewer-set-wallpaper':
                 this.setAsWallpaper();

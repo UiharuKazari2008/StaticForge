@@ -183,3 +183,12 @@ User: *who is Rapi* / *appearance for alice (nikke)* / *don't invent this charac
 2. Read `wiki.text` / `wiki.markdown`. If `wiki.empty` is true, **do not invent appearance**. Use `aliases`, `expander.value` (full request-expander body), `studioBox` (`action: replace` + `index` snapshot), and `naxChara.prompt` (best `search_nax` `kind=CHARA` hit).
 3. `next` is the same empty-wiki guidance as `get_wiki_page` when wiki or expander is empty. A missing wiki is not a ban.
 4. No new Studio chrome. Characters stay `action: replace` + `index` (`docs/studio-change-json.md`).
+
+## Recipe: Copy Lookback (`resolve_lookback`)
+
+User pastes a compact markdown link from gallery / Lumen / note / wiki **Copy Lookback**: `[img](dsap://lookback/img/<filename>)`, `[note](dsap://lookback/note/<id>)`, `[wiki](dsap://lookback/wiki/<tag>)`, `[wiki](dsap://lookback/swiki/<siteId>/<pageId>)`, `[wimg](dsap://lookback/wimg/<b64src>)`, or a `sel/…` selection.
+
+1. `resolve_lookback` `{ "lookback": "[img](dsap://lookback/img/foo.png)" }` — raw `dsap://lookback/…` URI also works.
+2. Returns that item’s metadata (`lookback`, `lookbackType`, plus note/wiki/gallery fields). Gallery images also include a Grok-sized webp (`imageKind: grok`). Show the webp.
+3. Selection lookbacks add `selectedText`. Remote wiki images without a gallery filename return `src` only (no fetch).
+4. No new chrome. Menu item only; helper is `public/scripts/comp/copyLookback.js`.

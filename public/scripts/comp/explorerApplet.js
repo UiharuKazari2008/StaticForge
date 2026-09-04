@@ -7,7 +7,7 @@ const EXPLORER_IMAGE_GALLERY_CONTEXT_ACTIONS = new Set([
     'toggle-favorite', 'reroll', 'download', 'copy', 'open-in-window', 'modify',
     'expand-canvas', 'enhance', 'upscale', 'view-image-data',
     'copy-original', 'download-original', 'expand-canvas-original', 'delete-original',
-    'start-chat', 'publish-to-explorer',
+    'start-chat', 'copy-lookback', 'publish-to-explorer',
     'set-wallpaper', 'jump-to-image', 'create-reference', 'create-desktop-shortcut',
     'scrap', 'delete', 'move-to-workspace'
 ]);
@@ -577,6 +577,7 @@ class ExplorerApplet {
                     },
                     { separator: true },
                     { icon: 'fas fa-person-to-portal', text: 'Create Chat', action: 'start-chat' },
+                    { icon: 'fas fa-link', text: 'Copy Lookback', action: 'copy-lookback' },
                     { icon: 'fas fa-globe', text: 'Publish to Explorer', action: 'publish-to-explorer' },
                     {
                         icon: 'fas fa-image',
@@ -643,6 +644,7 @@ class ExplorerApplet {
                 type: 'list',
                 items: [
                     { icon: 'fas fa-window', text: 'Open in Window', action: 'open-in-window' },
+                    { icon: 'fas fa-link', text: 'Copy Lookback', action: 'copy-lookback' },
                     {
                         icon: 'fas fa-arrow-down-left',
                         text: 'Add to Desktop',
@@ -1349,6 +1351,10 @@ class ExplorerApplet {
             case 'start-chat':
                 if (chatSystem) chatSystem.openChatModal(filename, image.characterName || null);
                 break;
+            case 'copy-lookback':
+                // copyLookbackImage: public/scripts/comp/copyLookback.js
+                copyLookbackImage(filename);
+                break;
             case 'publish-to-explorer':
                 // openPublishToExplorerDialog — public/scripts/comp/galleryView.js
                 openPublishToExplorerDialog(image);
@@ -1398,6 +1404,10 @@ class ExplorerApplet {
         switch (action) {
             case 'open-in-window':
                 await notepadManager.notebookOpenInWindow(noteData.id);
+                return true;
+            case 'copy-lookback':
+                // copyLookbackNote: public/scripts/comp/copyLookback.js
+                copyLookbackNote(noteData.id);
                 return true;
             case 'add-to-desktop':
                 await notepadManager.notebookAddToDesktop(noteData);

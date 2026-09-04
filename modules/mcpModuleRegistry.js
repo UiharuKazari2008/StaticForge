@@ -36,7 +36,7 @@ const MODULE_DEFS = {
         label: 'Core Gallery',
         description: 'Gallery browse and image retrieval',
         tools: [
-            'get_generated_image', 'get_latest_image', 'get_images',
+            'get_generated_image', 'resolve_lookback', 'get_latest_image', 'get_images',
             'delete_images', 'open_in_lumen', 'open_in_glancewell',
             'compare_images', 'evaluate_workspace_themes'
         ]
@@ -68,7 +68,7 @@ const MODULE_DEFS = {
         label: 'Core Wiki',
         description: 'Tag wiki and Grimoire',
         tools: [
-            'search_wiki', 'get_wiki_page', 'get_character_card',
+            'search_wiki', 'get_wiki_page', 'get_character_card', 'resolve_lookback',
             'list_static_wiki_sites', 'list_static_wiki_pages', 'search_static_wiki', 'get_static_wiki_page'
         ]
     },
@@ -91,7 +91,7 @@ const MODULE_DEFS = {
         scope: 'notes',
         label: 'Core Notes',
         description: 'Notepad read/write',
-        tools: ['list_notes', 'list_notes_by_workspace', 'get_note', 'create_note', 'update_note', 'save_note_content']
+        tools: ['list_notes', 'list_notes_by_workspace', 'get_note', 'create_note', 'update_note', 'save_note_content', 'resolve_lookback']
     },
     core_vfs: {
         id: 'core_vfs',
