@@ -227,7 +227,7 @@
     <link rel="stylesheet" href="/css/manual-modal-viewer.css?sha=b0312af1197616e75e9b509331808ea667c6e808ae066ca4a5ee48bca6d297f4">
     <link rel="stylesheet" href="/css/custom-scrollbar.css?sha=281a0566e03dc04e8d734afdaaf5459a41c98d253ca28c927e3055a49b6065a1">
     <link rel="stylesheet" href="/css/genso-lock.css?sha=3928bbe3c79ed04068e97b21bc20d8e376ab44deeed27144498fa4f52d97ee1f">
-    <link rel="stylesheet" href="/css/imageExpansion.css?sha=03fd9c98cb3c1bcf7227eb4d1d93d7f55e920744ef41a1725faf374748490f75">
+    <link rel="stylesheet" href="/css/imageExpansion.css?sha=cdba1f4c1f03c8a507c9e796da69f387aa76054cafc7ebc19d85be1cda56e2d6">
     <link rel="stylesheet" href="/css/weather-location.css?sha=db635140d4a0309882a8243ff661da66dca3d0851fa638d4fde99aae417667dd">
     <link rel="stylesheet" href="/css/weather-cards.css?sha=c8e97c39be431dda1fe0033c75348328edcedd60056ecea32ac34ec859e2f32b">
     <link rel="stylesheet" href="/css/weather-lcd.css?sha=159685dcf123c29b0f063410b63164f84a295323e7ea8c9b30392fa913c30f76">
@@ -3043,6 +3043,22 @@
                             <!-- Options will be populated by JavaScript -->
                         </div>
                     </div>
+                </div>
+
+                <div id="expansionCanvasPreview" class="form-group expansion-canvas-preview hidden">
+                    <label>Canvas</label>
+                    <div class="expansion-canvas-preview-stage">
+                        <span class="expansion-canvas-preview-edge" data-edge="top"></span>
+                        <span class="expansion-canvas-preview-edge" data-edge="left"></span>
+                        <div class="expansion-canvas-preview-target">
+                            <div class="expansion-canvas-preview-source">
+                                <img class="expansion-canvas-preview-image" alt="" draggable="false">
+                            </div>
+                        </div>
+                        <span class="expansion-canvas-preview-edge" data-edge="right"></span>
+                        <span class="expansion-canvas-preview-edge" data-edge="bottom"></span>
+                    </div>
+                    <div class="expansion-canvas-preview-meta"></div>
                 </div>
 
                 <div class="form-row">
