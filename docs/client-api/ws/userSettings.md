@@ -8,8 +8,8 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 
 | Request type | Typical response | Auth | Notes |
 |---|---|---|---|
-| `get_user_global_settings` | `get_user_global_settings_response` | session | Handler: handleGetUserGlobalSettings |
-| `update_user_global_settings` | `update_user_global_settings_response` | admin/destructive | Handler: handleUpdateUserGlobalSettings |
+| `get_user_global_settings` | `get_user_global_settings_response` | session | Handler: handleGetUserGlobalSettings. Includes `remoteAccess` (`defaultGenerationMethod`, `autoGenerate`, `openGeneratedImages`). |
+| `update_user_global_settings` | `update_user_global_settings_response` | admin/destructive | Handler: handleUpdateUserGlobalSettings. Desktop **Remote Access Settings** patches `settings.remoteAccess`. |
 
 ## Response envelope
 

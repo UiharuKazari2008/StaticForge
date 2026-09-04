@@ -21,7 +21,46 @@ const BIND_IDLE_MS = 15 * 60 * 1000;
 const shareCodes = new Map(); // code -> { clientId, expiresAt }
 const pendingResults = new Map(); // requestId -> { resolve, reject, timer, clientId }
 const bindSessions = new Map(); // bindKey -> { clientId, lastInteractionAt, boundAt, actorName }
+const mcpStudioCheckpoints = new Map(); // bindKey -> { id, focusedFilename }
 let lastBindResources = null;
+
+function getMcpStudioCheckpoint(bindKey) {
+    if (!bindKey) return null;
+    return mcpStudioCheckpoints.get(bindKey) || null;
+}
+
+function setMcpStudioCheckpoint(bindKey, rec) {
+    if (!bindKey) return;
+    if (!rec || !rec.id) {
+        mcpStudioCheckpoints.delete(bindKey);
+        return;
+    }
+    mcpStudioCheckpoints.set(bindKey, {
+        id: String(rec.id),
+        focusedFilename: rec.focusedFilename || rec.filename || null
+    });
+}
+
+function clearMcpStudioCheckpoint(bindKey) {
+    if (bindKey) mcpStudioCheckpoints.delete(bindKey);
+}
+
+function rememberStudioCheckpointFromState(bindKey, data, focusedFilename) {
+    if (!bindKey || !data || !data.checkpointId) return;
+    setMcpStudioCheckpoint(bindKey, {
+        id: data.checkpointId,
+        focusedFilename: focusedFilename || data.filename || null
+    });
+}
+
+function studioGetStatePayload(bindKey, input) {
+    const forceFull = !!(input && (input.full === true || input.full === 'true'));
+    const prev = forceFull ? null : getMcpStudioCheckpoint(bindKey);
+    return {
+        ...(forceFull ? { full: true } : {}),
+        ...(prev && prev.id ? { since: prev.id } : {})
+    };
+}
 
 function generateClientId() {
     return crypto.randomBytes(6).toString('hex');
@@ -1417,6 +1456,11 @@ module.exports = {
     DYNAGEN_INTEGRATION_NEXT,
     dispatchAgentPacket,
     sendBoundCommand,
+    getMcpStudioCheckpoint,
+    setMcpStudioCheckpoint,
+    clearMcpStudioCheckpoint,
+    rememberStudioCheckpointFromState,
+    studioGetStatePayload,
     resolveStudioAutoFlags,
     coerceStudioChangeObject,
     assembleStudioChangeFromToolArgs,
@@ -1471,6 +1515,12 @@ module.exports = {
         UPDATE_COMMAND_TIMEOUT_MS,
         BIND_IDLE_MS,
         bindSessions,
+        mcpStudioCheckpoints,
+        getMcpStudioCheckpoint,
+        setMcpStudioCheckpoint,
+        clearMcpStudioCheckpoint,
+        rememberStudioCheckpointFromState,
+        studioGetStatePayload,
         sweepIdleBinds,
         resolveBindKey,
         resolveActorName,

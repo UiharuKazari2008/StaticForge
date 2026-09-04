@@ -569,6 +569,11 @@ class ConfigManager {
                         },
                         naxt: {
                             elevatePins: 0
+                        },
+                        remoteAccess: {
+                            defaultGenerationMethod: 'studio',
+                            autoGenerate: false,
+                            openGeneratedImages: 'lumen'
                         }
                     },
                     generationQuips: {

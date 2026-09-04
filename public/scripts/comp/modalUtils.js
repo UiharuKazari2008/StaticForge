@@ -3728,7 +3728,8 @@ const desktopIconsConfig = [
         imageIcon: 'caster.png',
         label: 'Spellcaster',
         action: () => {
-            if (window.spellbookModalManager) window.spellbookModalManager.openModal();
+            // openSpellbookApplet: public/scripts/comp/featureLoader.js
+            void openSpellbookApplet();
         }
     },
     {
@@ -5292,6 +5293,11 @@ document.addEventListener('contextMenuAction', (e) => {
         return;
     }
 
+    if (action === 'open-remote-access-settings') {
+        openRemoteAccessSettingsModal();
+        return;
+    }
+
     if (action === 'desktop-new-folder') {
         if (typeof desktopShortcuts !== 'undefined' && desktopShortcuts) {
             const pos = desktopShortcuts.getContextMenuPosition(e.detail?.event);
@@ -5487,7 +5493,7 @@ const startMenuLaunchables = [
         appMenu: true,
         action: () => { openManualModalWithContent(); }
     },
-    { launchId: 'spellbook', icon: 'fas fa-hat-wizard', imageIcon: 'caster.png', text: 'Spellcaster', appMenu: true, action: () => { window.spellbookModalManager.openModal(); } },
+    { launchId: 'spellbook', icon: 'fas fa-hat-wizard', imageIcon: 'caster.png', text: 'Spellcaster', appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openSpellbookApplet(); } },
     { launchId: 'reference', icon: 'fas fa-swatchbook', imageIcon: 'ref.png', text: 'Reference', appMenu: true, action: () => { showCacheManagerModal(); } },
     { launchId: 'bracket-generation', icon: 'fas fa-layer-group', imageIcon: 'stack.png', text: 'Phasewalker', desktopOnly: true, appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openBracketGenerationApplet(); } },
     { launchId: 'encyclopedia', icon: 'fas fa-book', imageIcon: 'books.png', text: 'Grimoire', appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openGrimoireApplet(); } },
@@ -6785,6 +6791,7 @@ async function addAppletToDesktop(appletItem) {
 // Desktop Wallpaper Management
 function initializeDesktopWallpaper() {
     setupDesktopContextMenu();
+    wireRemoteAccessSettingsModal();
 }
 
 // Save wallpaper to workspace (server will broadcast update)
@@ -7368,6 +7375,11 @@ function setupDesktopContextMenu() {
                         icon: 'fa-light fa-paint-roller',
                         text: 'Personalize',
                         action: 'open-desktop-settings'
+                    },
+                    {
+                        icon: 'fa-light fa-screencast',
+                        text: 'Remote Access Settings',
+                        action: 'open-remote-access-settings'
                     },
                     {
                         icon: 'fa-light fa-info-circle',
@@ -8342,6 +8354,130 @@ function normalizeNaxtElevatePinsClient(value) {
     return 0;
 }
 
+let remoteAccessSettingsState = {
+    defaultGenerationMethod: 'studio',
+    autoGenerate: false,
+    openGeneratedImages: 'lumen'
+};
+let remoteAccessSettingsWired = false;
+
+function normalizeRemoteAccessGenerationMethodClient(raw) {
+    const value = String(raw || '').toLowerCase().replace(/[\s_-]+/g, '');
+    if (value === 'detached' || value === 'detachedrequest' || value === 'generateimage') {
+        return 'detached';
+    }
+    return 'studio';
+}
+
+function normalizeRemoteAccessOpenGeneratedClient(raw) {
+    const value = String(raw || '').toLowerCase();
+    if (value === 'glancewell') return 'glancewell';
+    if (value === 'disabled' || value === 'off' || value === 'none') return 'disabled';
+    return 'lumen';
+}
+
+function applyRemoteAccessSettingsToState(settings) {
+    const src = settings && typeof settings === 'object' ? settings : {};
+    remoteAccessSettingsState = {
+        defaultGenerationMethod: normalizeRemoteAccessGenerationMethodClient(src.defaultGenerationMethod),
+        autoGenerate: src.autoGenerate === true,
+        openGeneratedImages: normalizeRemoteAccessOpenGeneratedClient(src.openGeneratedImages)
+    };
+}
+
+function syncRemoteAccessSettingsUI() {
+    const methodToggle = document.getElementById('remoteAccessDefaultGenerationToggle');
+    if (methodToggle) {
+        methodToggle.setAttribute('data-active', remoteAccessSettingsState.defaultGenerationMethod);
+        methodToggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.method === remoteAccessSettingsState.defaultGenerationMethod);
+        });
+    }
+    const autoBtn = document.getElementById('remoteAccessAutoGenerateBtn');
+    if (autoBtn) {
+        autoBtn.dataset.state = remoteAccessSettingsState.autoGenerate ? 'on' : 'off';
+    }
+    const openToggle = document.getElementById('remoteAccessOpenGeneratedToggle');
+    if (openToggle) {
+        openToggle.setAttribute('data-active', remoteAccessSettingsState.openGeneratedImages);
+        openToggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.open === remoteAccessSettingsState.openGeneratedImages);
+        });
+    }
+}
+
+async function persistRemoteAccessSettingsPatch(patch) {
+    applyRemoteAccessSettingsToState({ ...remoteAccessSettingsState, ...patch });
+    syncRemoteAccessSettingsUI();
+    await persistUserGlobalSettingsPatch({ remoteAccess: { ...remoteAccessSettingsState } });
+}
+
+function wireRemoteAccessSettingsModal() {
+    if (remoteAccessSettingsWired) return;
+    const modal = document.getElementById('remoteAccessSettingsModal');
+    if (!modal) return;
+    remoteAccessSettingsWired = true;
+    const methodToggle = document.getElementById('remoteAccessDefaultGenerationToggle');
+    if (methodToggle) {
+        methodToggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const method = normalizeRemoteAccessGenerationMethodClient(btn.dataset.method);
+                void persistRemoteAccessSettingsPatch({ defaultGenerationMethod: method });
+            });
+        });
+    }
+    const autoBtn = document.getElementById('remoteAccessAutoGenerateBtn');
+    if (autoBtn) {
+        autoBtn.addEventListener('click', () => {
+            void persistRemoteAccessSettingsPatch({
+                autoGenerate: remoteAccessSettingsState.autoGenerate !== true
+            });
+        });
+    }
+    const openToggle = document.getElementById('remoteAccessOpenGeneratedToggle');
+    if (openToggle) {
+        openToggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const open = normalizeRemoteAccessOpenGeneratedClient(btn.dataset.open);
+                void persistRemoteAccessSettingsPatch({ openGeneratedImages: open });
+            });
+        });
+    }
+    const closeBtn = document.getElementById('closeRemoteAccessSettingsBtn');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            closeModal(modal);
+        });
+    }
+    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+    registerKeyboardListener({
+        id: 'remoteAccessSettingsModal.keydown',
+        handler: () => false,
+        type: 'whenFocused',
+        modalId: 'remoteAccessSettingsModal',
+        priority: 78,
+        critical: true,
+        showInOverlay: false
+    });
+    registerModalOverlayEntries('remoteAccessSettingsModal', 'Remote Access', [
+        { id: 'overlay.remoteAccess.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
+    ]);
+}
+
+async function openRemoteAccessSettingsModal() {
+    const modal = document.getElementById('remoteAccessSettingsModal');
+    if (!modal) return;
+    wireRemoteAccessSettingsModal();
+    const settings = await loadUserGlobalSettingsFromServer();
+    if (settings && settings.remoteAccess) {
+        applyRemoteAccessSettingsToState(settings.remoteAccess);
+    }
+    syncRemoteAccessSettingsUI();
+    openModal(modal);
+}
+
 function buildUserGlobalSettingsSnapshotFromClient() {
     let elevatePins = 0;
     try {
@@ -8372,7 +8508,8 @@ function buildUserGlobalSettingsSnapshotFromClient() {
         },
         naxt: {
             elevatePins
-        }
+        },
+        remoteAccess: { ...remoteAccessSettingsState }
     };
 }
 
@@ -8459,6 +8596,11 @@ function applyUserGlobalSettingsToClient(settings) {
             }
         }
     }
+
+    if (settings.remoteAccess && typeof settings.remoteAccess === 'object') {
+        applyRemoteAccessSettingsToState(settings.remoteAccess);
+        syncRemoteAccessSettingsUI();
+    }
 }
 
 async function loadUserGlobalSettingsFromServer() {
@@ -8489,6 +8631,9 @@ async function persistUserGlobalSettingsPatch(patch) {
     }
     if (patch.naxt && typeof patch.naxt === 'object') {
         Object.assign(snap.naxt, patch.naxt);
+    }
+    if (patch.remoteAccess && typeof patch.remoteAccess === 'object') {
+        snap.remoteAccess = { ...snap.remoteAccess, ...patch.remoteAccess };
     }
     applyUserGlobalSettingsToClient(snap);
 

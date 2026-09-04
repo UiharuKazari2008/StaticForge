@@ -4,6 +4,10 @@ const {
     normalizeAutofillSearchSettings,
     mergeAutofillSearchSettingsPatch
 } = require('./autofillSearchSettings');
+const {
+    normalizeRemoteAccessSettings,
+    mergeRemoteAccessSettingsPatch
+} = require('./remoteAccessSettings');
 const grimoireDomainRegistry = require('./grimoireDomainRegistry');
 const wsPacketRegistry = require('./ws/wsPacketRegistry');
 const wsMessageDispatcher = require('./ws/wsMessageDispatcher');
@@ -541,7 +545,8 @@ class WebSocketMessageHandlers {
             naxt: {
                 elevatePins: this.normalizeNaxtElevatePinsSetting(naxt)
             },
-            autofillSearch: normalizeAutofillSearchSettings(base.autofillSearch)
+            autofillSearch: normalizeAutofillSearchSettings(base.autofillSearch),
+            remoteAccess: normalizeRemoteAccessSettings(base.remoteAccess)
         };
     }
 
@@ -590,6 +595,9 @@ class WebSocketMessageHandlers {
         }
         if (patch.autofillSearch && typeof patch.autofillSearch === 'object') {
             out.autofillSearch = mergeAutofillSearchSettingsPatch(out.autofillSearch, patch.autofillSearch);
+        }
+        if (patch.remoteAccess && typeof patch.remoteAccess === 'object') {
+            out.remoteAccess = mergeRemoteAccessSettingsPatch(out.remoteAccess, patch.remoteAccess);
         }
         return out;
     }
