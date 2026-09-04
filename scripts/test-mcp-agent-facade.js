@@ -76,6 +76,9 @@ assert.ok(_test.MCP_INSTRUCTIONS.includes('save_preset'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('apply_studio_changes'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('get_session_state view=live'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('studioReachable'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('remoteAccess'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('checkpoint'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('DRAFT'));
 const wikiHandler = require('../modules/ws/handlers/110-wikiHandler');
 assert.strictEqual(wikiHandler.postProcessWikiHtml({}), '');
 assert.strictEqual(wikiHandler.postProcessWikiHtml('<p>ok</p>'), '<p>ok</p>');
@@ -223,10 +226,12 @@ assert.ok(_test.MCP_INSTRUCTIONS.includes('top votes'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('get_session_state'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('view=live'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('search_autofill'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('omit is v5'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('v5 default'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('get_wiki_page'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('get_prompt_guide'));
-assert.ok(_test.MCP_INSTRUCTIONS.includes('not laws'));
-assert.ok(_test.MCP_INSTRUCTIONS.includes('working notes'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('DRAFT'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('always experiment'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('Do not use a grok.com project file'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('save_memory'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('saveKnowledgeMemory'));
@@ -313,7 +318,7 @@ assert.strictEqual(savedMemory.success, true);
 assert.strictEqual(savedMemory.memory.name, 'artist-tip');
 assert.strictEqual(savedMemory.refined, false);
 assert.strictEqual(savedMemory.confidence, 0.1);
-assert.strictEqual(savedMemory.model, 'v4_5');
+assert.strictEqual(savedMemory.model, 'v5');
 
 let store = {
     name: 'artist-tip',
@@ -370,7 +375,7 @@ const { resolveRefinementConfidence, normalizeMemoryModel } = require('../module
 assert.strictEqual(resolveRefinementConfidence(0.1, undefined), 0.35);
 assert.strictEqual(resolveRefinementConfidence(0.9, 0.25), 1);
 assert.strictEqual(resolveRefinementConfidence(0.4, 0), 0.4);
-assert.strictEqual(normalizeMemoryModel(''), 'v4_5');
+assert.strictEqual(normalizeMemoryModel(''), 'v5');
 assert.strictEqual(normalizeMemoryModel('v5'), 'v5');
 
 const noMemDb = _test.runMemoryTool({}, 'list_memories', {});
@@ -431,7 +436,7 @@ assert.ok(coreNames.includes('searchKnowledgeMemories'));
 assert.ok(coreNames.includes('retrieveKnowledgeMemory'));
 assert.strictEqual(_test.rateGroupForTool('saveKnowledgeMemory'), 'write');
 assert.strictEqual(_test.canonMemoryTool('saveKnowledgeMemory'), 'save_memory');
-assert.strictEqual(coreNames.length, 45);
+assert.strictEqual(coreNames.length, 58);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.pipeline);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.rescale);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.noiseScheduler);
@@ -591,6 +596,57 @@ const aliceFuzzy = _test.trimAutofillBatch('alice', true, {
     ]
 }, { exactOnly: false });
 assert.strictEqual(aliceFuzzy.results.length, 2);
+
+const rapiUnderscore = _test.trimAutofillBatch('rapi (nikke)', true, {
+    results: [
+        { title: 'rapi (nikke)', name: 'rapi_(nikke)', n_count: 88000, score: 91, type: 'tag' }
+    ]
+});
+assert.strictEqual(rapiUnderscore.trained, true);
+assert.strictEqual(rapiUnderscore.results[0].tag, 'rapi (nikke)');
+assert.strictEqual(rapiUnderscore.results[0].count, 88000);
+assert.strictEqual(rapiUnderscore.results[0].confidence, 91);
+assert.strictEqual(rapiUnderscore.model, 'v5');
+
+const rapiPrefixUnderscore = _test.trimAutofillBatch('rapi', true, {
+    results: [
+        { name: 'rapi_(nikke)', type: 'tag', n_count: 12 }
+    ]
+});
+assert.strictEqual(rapiPrefixUnderscore.results[0].tag, 'rapi (nikke)');
+assert.strictEqual(rapiPrefixUnderscore.results[0].exact, false);
+
+const velvetV45 = _test.trimAutofillBatch('velvet (sensual rabbit) (nikke)', true, {
+    results: [
+        { tag: 'noir (black rabbit) (nikke)', count: 6979, confidence: 30, model: 'nai-diffusion-4-5-full' },
+        { tag: 'dancer rabbit', count: 6417, confidence: 37, model: 'nai-diffusion-4-5-full' },
+        { tag: 'folkwang (moist rabbit) (nikke)', count: 5042, confidence: 35, model: 'nai-diffusion-4-5-full' }
+    ]
+}, {}, 'v4_5');
+assert.strictEqual(velvetV45.untrained, true);
+assert.strictEqual(velvetV45.model, 'v4_5');
+assert.strictEqual(velvetV45.results.length, 0);
+assert.ok(velvetV45.neighbors.includes('noir (black rabbit) (nikke)'));
+assert.ok(String(velvetV45.next || '').includes('wrong family'));
+assert.ok(String(velvetV45.next || '').includes('You may still try it'));
+
+const velvetV5 = _test.trimAutofillBatch('velvet (sensual rabbit) (nikke)', true, {
+    results: [
+        { tag: 'velvet (sensual rabbit) (nikke)', count: 10000, confidence: 100, model: 'nai-diffusion-5-full' },
+        { tag: 'velvet (nikke)', count: 10000, confidence: 18, model: 'nai-diffusion-5-full' }
+    ]
+}, {}, 'v5');
+assert.strictEqual(velvetV5.trained, true);
+assert.strictEqual(velvetV5.model, 'v5');
+assert.strictEqual(velvetV5.results[0].tag, 'velvet (sensual rabbit) (nikke)');
+assert.strictEqual(velvetV5.results[0].exact, true);
+assert.strictEqual(velvetV5.results[0].count, 10000);
+assert.strictEqual(velvetV5.results[0].confidence, 100);
+assert.strictEqual(velvetV5.results[0].model, 'nai-diffusion-5-full');
+
+assert.strictEqual(_test.DEFAULT_FORGE_MODEL, 'v5');
+assert.strictEqual(_test.resolveAutofillSearchModel({ model: 'v4_5' }), 'v4_5');
+assert.strictEqual(_test.normalizeAutofillTagKey('velvet_(sensual_rabbit)_(nikke)'), 'velvet (sensual rabbit) (nikke)');
 
 assert.ok(_test.TOOL_DEFS.every((t) => t.scope !== 'universal'));
 
@@ -904,6 +960,10 @@ async function main() {
     assert.strictEqual(noClientPayload.view, 'live');
     assert.strictEqual(noClientPayload.hasClients, false);
     assert.ok(!noClientPayload.settings);
+    assert.ok(noClientPayload.remoteAccess);
+    assert.strictEqual(noClientPayload.remoteAccess.defaultGenerationMethod, 'studio');
+    assert.strictEqual(noClientPayload.remoteAccess.autoGenerate, false);
+    assert.strictEqual(noClientPayload.remoteAccess.openGeneratedImages, 'lumen');
     assert.ok(noClientPayload.next.includes('generate_image'));
     const fullSession = await _test.collectSessionState({
         getPath: () => require('path').join(__dirname, '..', '.cache'),
@@ -942,6 +1002,24 @@ async function main() {
     }, { applicationAuth: { applicationScopes: ['generation'] } }, ['shot.png']);
     assert.strictEqual(lumenSkip.opened, false);
     assert.strictEqual(lumenSkip.reason, 'no-client');
+
+    const lumenDisabled = await _test.maybeOpenGeneratedInLumen({
+        getWebSocketServer: () => ({ clients: new Map() }),
+        getConfig: () => ({ userGlobalSettings: { remoteAccess: { openGeneratedImages: 'disabled' } } })
+    }, { applicationAuth: { applicationScopes: ['generation'] } }, ['shot.png']);
+    assert.strictEqual(lumenDisabled.opened, false);
+    assert.strictEqual(lumenDisabled.reason, 'disabled');
+
+    const { normalizeRemoteAccessSettings } = require('../modules/remoteAccessSettings');
+    assert.deepStrictEqual(normalizeRemoteAccessSettings({
+        defaultGenerationMethod: 'Detached Request',
+        autoGenerate: true,
+        openGeneratedImages: 'Glancewell'
+    }), {
+        defaultGenerationMethod: 'detached',
+        autoGenerate: true,
+        openGeneratedImages: 'glancewell'
+    });
 
     // OAuth 2.1 tests
     // modules/mcpOAuthProvider.js

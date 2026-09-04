@@ -20,6 +20,10 @@ const {
     getBoundClientId,
     getBoundRecord,
     resolveBindKey,
+    clearMcpStudioCheckpoint,
+    getMcpStudioCheckpoint,
+    rememberStudioCheckpointFromState,
+    studioGetStatePayload,
     resolveActorName,
     getClientPhysics,
     enrichDynamicGenerationForMcp,
@@ -43,6 +47,8 @@ const { compareImageFiles, evaluateThemeRows } = require('./mcpInsights');
 const { buildStudioSettingsCatalog, slimStudioSettingsCatalog, applyCatalogToListedTool } = require('./studioSettingsCatalog');
 const { buildMcpServerInfo, hashMcpToolsRevision } = require('./mcpServerInfo');
 const { MCP_INSTRUCTIONS } = require('./mcpInstructions');
+const { readRemoteAccessSettings } = require('./remoteAccessSettings');
+const { DEFAULT_FORGE_MODEL } = require('./modelFeatures');
 const {
     publishApocrypha,
     revokeApocryphaSection,
@@ -403,9 +409,15 @@ const TOOL_DEFS = [
     {
         name: 'get_studio_state',
         core: true,
-        description: 'Current Studio prompt, UC, characters, params, open filename, dynamicGeneration (Studio toggles plus resolved time/weather/season/location; Director API is nooped — you compile), and attached director prompt. Auto-binds the single connected tab. If several tabs are open, returns needsClientChoice and clients (most recently used first) — ask the user which clientId, then bind_session. Also returns settings: live sampler/resolution/model enums plus quality, UC, and NSFW preset id, name, and true prompt.config strings. Then use get_generated_image on filename to see the picture. If dynamicGeneration or director is present you must integrate it. For other open windows (Lumen, Glancewell, Grimoire, gallery selection) call get_open_windows.',
+        description: 'Current Studio prompt, UC, characters, params, open filename, dynamicGeneration (Studio toggles plus resolved time/weather/season/location; Director API is nooped — you compile), and attached director prompt. After apply/get the bound tab stores a checkpoint — later calls return only the delta (diff:true). unchanged means keep your last snapshot. Pass full:true only if you lost that snapshot. Auto-binds the single connected tab. If several tabs are open, returns needsClientChoice and clients (most recently used first) — ask the user which clientId, then bind_session. Also returns settings on a full snapshot: live sampler/resolution/model enums plus quality, UC, and NSFW preset id, name, and true prompt.config strings. Then use get_generated_image on filename to see the picture. If dynamicGeneration or director is present you must integrate it. For other open windows (Lumen, Glancewell, Grimoire, gallery selection) call get_open_windows.',
         scope: 'generation',
-        inputSchema: { type: 'object', properties: {} }
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                full: { type: 'boolean', description: 'Force a full snapshot. Default false — after a checkpoint, only the delta is returned.' }
+            }
+        }
     },
     {
         name: 'get_open_windows',
@@ -426,7 +438,7 @@ const TOOL_DEFS = [
     {
         name: 'get_session_state',
         core: true,
-        description: 'Session snapshot. Default view=live (clients, windows, Studio) — small enough to call often. view=catalog is slim settings (current-model quality/UC ids, no per-model string dump). view=full is live plus slim catalog plus promptGuide/NAX/memory pointers. Full per-model quality/UC strings live on get_studio_state.settings and tools/list — do not pull those on every chat. studio.dynamicGeneration includes toggles plus resolved time/weather/season/location. hasClients false or studioReachable false → generate_image. includeImage default false on catalog/full, true on live.',
+        description: 'Session snapshot. Default view=live (clients, windows, Studio) — small enough to call often. Always includes remoteAccess (desktop Remote Access Settings). After apply/get the bound tab stores a checkpoint; later live checks return only the Studio delta (studio.diff). unchanged means keep your last snapshot. Pass full:true only if you lost that snapshot. view=catalog is slim settings (current-model quality/UC ids, no per-model string dump). view=full is live plus slim catalog plus promptGuide/NAX/memory pointers. Full per-model quality/UC strings live on get_studio_state.settings and tools/list — do not pull those on every chat. studio.dynamicGeneration includes toggles plus resolved time/weather/season/location. hasClients false or studioReachable false → generate_image. includeImage default false on catalog/full, true on live — skipped when the focused file did not change.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -439,8 +451,9 @@ const TOOL_DEFS = [
                 },
                 includeImage: {
                     type: 'boolean',
-                    description: 'Attach a Grok webp for the focused open file. Default false on full, true on live.'
-                }
+                    description: 'Attach a Grok webp for the focused open file. Default false on full, true on live. Skipped when the focused file matches the last checkpoint.'
+                },
+                full: { type: 'boolean', description: 'Force a full Studio snapshot. Default false.' }
             }
         }
     },
@@ -467,7 +480,7 @@ const TOOL_DEFS = [
     {
         name: 'apply_studio_changes',
         core: true,
-        description: 'Write Change-JSON into the bound Studio tab. Auto-binds if one tab is connected. Accepts full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes/dynamicGeneration/director (same keys as Studio). autoGenerate (default false) clicks Studio Generate after apply. Characters must be action replace + index.',
+        description: 'Write Change-JSON into the bound Studio tab. Auto-binds if one tab is connected. Accepts full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes/dynamicGeneration/director (same keys as Studio). autoGenerate omitted uses Remote Access Settings (default off). After apply the tab stores a checkpoint — later get_session_state / get_studio_state return only the delta. Characters must be action replace + index.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -512,7 +525,7 @@ const TOOL_DEFS = [
                     }
                 },
                 autoApply: { type: 'boolean', description: 'Default true. Silent apply on the bound tab.' },
-                autoGenerate: { type: 'boolean', description: 'Default false. After apply, click bound-tab Generate. Blocked with needsIntegration if dynamicGeneration is present and not integrated.' },
+                autoGenerate: { type: 'boolean', description: 'Omitted uses Remote Access Settings autoGenerate (default off). After apply, click bound-tab Generate. Blocked with needsIntegration if dynamicGeneration is present and not integrated.' },
                 ...STUDIO_PARAM_SCHEMA
             }
         }
@@ -545,7 +558,7 @@ const TOOL_DEFS = [
     {
         name: 'search_autofill',
         core: true,
-        description: 'Live autocomplete / SmartText for 1–8 terms (default cap 8). Default exactOnly: exact match or same name with a qualifier in parens (elegg → elegg (nikke)); other-franchise prefix junk is dropped. Hits are {tag, count, confidence, exact} (max 10). Untrained / empty means the ranking does not know it — you may still try it; say so, generate, look, save_memory. Wraps test_autofill_ranking.',
+        description: 'Live autocomplete / SmartText for 1–8 terms (default cap 8). Pass model from live Studio (v5 / v4_5 / …); omit defaults to v5. Default exactOnly: exact match or same name with a qualifier in parens (elegg → elegg (nikke)); _ and space are the same. Hits are {tag, count, confidence, exact, model} (max 10). Empty + untrained means this model ranking does not know it — not “untrained on NovelAI”. Pass v4_5 if Studio is on V4.5. You may still try it; generate, look, save_memory. Wraps test_autofill_ranking.',
         scope: 'autofill',
         inputSchema: {
             type: 'object',
@@ -557,7 +570,7 @@ const TOOL_DEFS = [
                     description: 'Search terms to run (max 8). Prefer 1–3 terms. Seven-term dumps time out the chat.'
                 },
                 query: { type: 'string', description: 'Single term; merged with terms if both sent' },
-                model: { type: 'string', description: 'Optional model hint, default v4_5' },
+                model: { type: 'string', description: 'Studio model for suggest-tags (v5, v4_5, …). Default v5. Pass v4_5 when Studio is on V4.5.' },
                 exactOnly: { type: 'boolean', description: 'Default true. false allows any prefix (alice → alice margatroid).' }
             }
         }
@@ -579,7 +592,7 @@ const TOOL_DEFS = [
                     enum: ['ARTIST', 'CHARA', 'FACE', 'COPYRIGHT', 'HAIR', 'CURATED', 'ALL']
                 },
                 gallerySlug: { type: 'string', description: 'One NAX gallery slug from list_nax_galleries. Overrides kind.' },
-                model: { type: 'string', description: 'v4_5 (default), v5, v4 — picks version-locked artist/character galleries' },
+                model: { type: 'string', description: 'v5 (default), v4_5, v4 — picks version-locked artist/character galleries' },
                 sort: {
                     type: 'string',
                     description: 'score = top votes (default). ratio = upvote ratio. name = A-Z. date = export order. random = seeded shuffle.',
@@ -608,7 +621,7 @@ const TOOL_DEFS = [
     {
         name: 'get_prompt_guide',
         core: true,
-        description: 'Read a Docubase page (Hoshino living guide plus the rest of the nai-prompt-guide repo). Default prompt-optimiser-grok. These pages are prior art / working notes, not laws — try a recipe, look at the webp, then save_memory. constraints/v5 is the same: a note, not a ban. Other ids: get_session_state.promptGuide or list_static_wiki_pages siteId docubase.',
+        description: 'Read a Docubase page (Hoshino living guide plus the rest of the nai-prompt-guide repo). Default prompt-optimiser-grok. DRAFT — use it to help, then always experiment. When the user says the look is correct, save_memory. Not a ban list. Other ids: get_session_state.promptGuide or list_static_wiki_pages siteId docubase.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -670,7 +683,7 @@ const TOOL_DEFS = [
     {
         name: 'save_memory',
         core: true,
-        description: 'MCP write — the ONLY way to persist a Dreamscape knowledge memory (the living rules you write after a gen). Alias saveKnowledgeMemory (old paid API). Grok Memory / "I will remember" does not upsert. Same name = UPDATE (refine). SAVE after you try something: what worked, what failed, even when it broke a guide note. (1) Rendering techniques, (2) Character-specific mods, (3) Character traits/patterns, (4) Scenario approaches, (5) Token/tag combos, (6) Tag preferences. Self-contained snake_case names (e.g. miku_hatsune_hair_rendering) — a later session will not have this chat. New=10%; refinement adds 0–25% (max 100%). Omit unchanged graph fields. Set model (v4_5 default).',
+        description: 'MCP write — the ONLY way to persist a Dreamscape knowledge memory (the living rules you write after a gen). Alias saveKnowledgeMemory (old paid API). Grok Memory / "I will remember" does not upsert. Same name = UPDATE (refine). SAVE after you try something: what worked, what failed, even when it broke a guide note. (1) Rendering techniques, (2) Character-specific mods, (3) Character traits/patterns, (4) Scenario approaches, (5) Token/tag combos, (6) Tag preferences. Self-contained snake_case names (e.g. miku_hatsune_hair_rendering) — a later session will not have this chat. New=10%; refinement adds 0–25% (max 100%). Omit unchanged graph fields. Set model (v5 default; existing rows keep their stored model).',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -684,7 +697,7 @@ const TOOL_DEFS = [
                 relations: { type: 'array' },
                 observations: { type: 'array', description: 'Evidence notes. Strings are fine (attached to a default memory entity). Or {entity_id, content}.' },
                 confidence: { type: 'number', description: 'On create ignored (starts 0.1). On refine, added to current confidence, capped at +0.25 per save.' },
-                model: { type: 'string', description: 'Studio forge model this memory applies to (v4_5, v5, v5_cur, …). Default v4_5.' },
+                model: { type: 'string', description: 'Studio forge model this memory applies to (v5, v4_5, v5_cur, …). Default v5.' },
                 reason: { type: 'string', description: 'Optional. Old API required this; stored only if you also put evidence in observations.' }
             }
         }
@@ -1745,7 +1758,7 @@ function resolveNaxSearchSlugs(nax, input) {
     const slug = String(src.gallerySlug || src.gallery || src.slug || '').trim();
     if (slug) return [slug];
     const kind = normalizeNaxKind(src.kind);
-    const model = src.model || 'v4_5';
+    const model = src.model || DEFAULT_FORGE_MODEL;
     if (kind === 'ALL') {
         return (typeof nax.getGalleries === 'function' ? nax.getGalleries() : [])
             .map((g) => g && g.slug)
@@ -2175,15 +2188,20 @@ function normalizeSessionView(src) {
 }
 
 async function maybeOpenGeneratedInLumen(globalResources, req, filenames) {
+    const settings = readRemoteAccessSettings(globalResources);
+    if (settings.openGeneratedImages === 'disabled') {
+        return { opened: false, reason: 'disabled', target: 'disabled' };
+    }
+    const viewer = settings.openGeneratedImages === 'glancewell' ? 'glancewell' : 'lumen';
     const names = Array.isArray(filenames) ? filenames.filter(Boolean) : [];
-    if (!names.length) return { opened: false, reason: 'no-filename' };
+    if (!names.length) return { opened: false, reason: 'no-filename', target: viewer };
     const clients = listClients(globalResources, resolveBindKey(req));
-    if (!clients.length) return { opened: false, reason: 'no-client', clientCount: 0 };
-    const result = await openViewerFromMcp(globalResources, { filenames: names }, 'lumen', req);
+    if (!clients.length) return { opened: false, reason: 'no-client', clientCount: 0, target: viewer };
+    const result = await openViewerFromMcp(globalResources, { filenames: names }, viewer, req);
     const payload = result && result.content && result.content[0] && result.content[0].text
         ? (() => { try { return JSON.parse(result.content[0].text); } catch (_) { return { success: !result.isError }; } })()
         : { success: !result.isError };
-    return { opened: !result.isError, clientCount: clients.length, ...payload };
+    return { opened: !result.isError, clientCount: clients.length, target: viewer, ...payload };
 }
 
 async function attachFocusedWindowImage(globalResources, body, windows, includeImage) {
@@ -2201,6 +2219,57 @@ async function attachFocusedWindowImage(globalResources, body, windows, includeI
     return mcpTextResult(next);
 }
 
+function attachRemoteAccess(globalResources, out) {
+    const next = out && typeof out === 'object' ? out : {};
+    next.remoteAccess = readRemoteAccessSettings(globalResources);
+    return next;
+}
+
+function resolveMcpStudioAutoFlags(globalResources, body) {
+    const flags = resolveStudioAutoFlags(body);
+    const hasGen = !!(body && Object.prototype.hasOwnProperty.call(body, 'autoGenerate'));
+    if (!hasGen) {
+        flags.autoGenerate = readRemoteAccessSettings(globalResources).autoGenerate === true;
+        if (flags.autoGenerate && !flags.autoApply) {
+            const err = new Error('autoGenerate requires autoApply');
+            err.status = 400;
+            throw err;
+        }
+    }
+    return flags;
+}
+
+function pickStudioFieldsFromBoundReply(data, bind, dynamicGeneration, director) {
+    const isDiff = !!(data && data.diff);
+    const out = {
+        checkpointId: (data && data.checkpointId) || null,
+        diff: isDiff,
+        unchanged: !!(data && data.unchanged),
+        clientId: getBoundClientId(bind.bindKey)
+    };
+    const take = (key, value) => {
+        if (!isDiff || (data && Object.prototype.hasOwnProperty.call(data, key))) {
+            out[key] = value;
+        }
+    };
+    take('workspaceId', (data && data.workspaceId) || null);
+    take('filename', (data && data.filename) || null);
+    take('model', (data && data.model) || null);
+    const change = (data && data.change && typeof data.change === 'object' && !Array.isArray(data.change))
+        ? data.change
+        : null;
+    take('change', change);
+    take('dynamicGeneration', dynamicGeneration);
+    take('director', director);
+    if (!isDiff || out.dynamicGeneration || out.director) {
+        out.mustAct = collectEnshutsukaMustAct({
+            dynamicGeneration: out.dynamicGeneration,
+            director: out.director
+        });
+    }
+    return out;
+}
+
 async function collectSessionState(globalResources, req, input) {
     const src = input && typeof input === 'object' ? input : {};
     const view = normalizeSessionView(src);
@@ -2212,7 +2281,7 @@ async function collectSessionState(globalResources, req, input) {
     const includeImage = src.includeImage == null
         ? view === 'live'
         : src.includeImage !== false && src.includeImage !== 'false';
-    const out = {
+    const out = attachRemoteAccess(globalResources, {
         success: true,
         view,
         hasClients,
@@ -2224,7 +2293,7 @@ async function collectSessionState(globalResources, req, input) {
         studio: null,
         windows: [],
         next: null
-    };
+    });
     if (view === 'catalog') {
         out.settings = sessionSettingsCatalog(globalResources);
         out.promptGuide = listPromptGuideForSession(globalResources);
@@ -2251,14 +2320,16 @@ async function collectSessionState(globalResources, req, input) {
         out.tagCheck = {
             trained: 'search_autofill',
             wiki: 'search_wiki then get_wiki_page — one tag at a time',
-            next: 'search_autofill 1–3 terms (max 8), exactOnly default. Untrained is a hint, not a ban. get_wiki_page returns text/markdown, never html {}. Guide pages are prior art — experiment, then save_memory.'
+            next: 'search_autofill 1–3 terms (max 8), exactOnly default. Omit model is v5. Pass v4_5 when Studio is on V4.5. Untrained is a hint, not a ban. get_wiki_page returns text/markdown, never html {}. Guide pages are prior art — experiment, then save_memory.'
         };
     }
     if (!hasClients) {
         if (view === 'full') {
             out.settings = sessionSettingsCatalog(globalResources);
         }
-        out.next = 'No client connected. Call generate_image (server-side). Do not apply_studio_changes. Always show the returned webp. If a client is later connected, generate_image opens Lumen for you.';
+        out.next = out.remoteAccess.defaultGenerationMethod === 'detached'
+            ? 'No client connected. Call generate_image (server-side). Do not apply_studio_changes. Always show the returned webp.'
+            : 'No client connected. Call generate_image (server-side). Do not apply_studio_changes. Always show the returned webp. If a client is later connected, generate_image opens the configured viewer.';
         return mcpTextResult(out);
     }
     if (!bind.bound) {
@@ -2269,36 +2340,50 @@ async function collectSessionState(globalResources, req, input) {
         return mcpTextResult(out, true);
     }
     try {
+        const prevCheckpoint = getMcpStudioCheckpoint(bind.bindKey);
         const [stateData, windowData] = await Promise.all([
-            sendBoundCommand(globalResources, 'get_state', {}, 15000, bind.bindKey),
+            sendBoundCommand(globalResources, 'get_state', studioGetStatePayload(bind.bindKey, src), 15000, bind.bindKey),
             sendBoundCommand(globalResources, 'get_windows', {}, 15000, bind.bindKey)
         ]);
-        const change = (stateData && stateData.change && typeof stateData.change === 'object' && !Array.isArray(stateData.change))
-            ? stateData.change
-            : null;
-        const dynamicGeneration = await enrichDynamicGenerationForMcp(
-            globalResources,
-            bind.bindKey,
-            (stateData && stateData.dynamicGeneration) || (change && change.dynamicGeneration) || null
-        );
-        const director = (stateData && stateData.director) || (change && change.director) || null;
-        out.studio = {
-            workspaceId: stateData && stateData.workspaceId || null,
-            filename: stateData && stateData.filename || null,
-            model: stateData && stateData.model || null,
-            clientId: getBoundClientId(bind.bindKey),
-            change,
-            dynamicGeneration,
-            director,
-            mustAct: collectEnshutsukaMustAct({ dynamicGeneration, director })
-        };
-        out.windows = slimSessionWindows(Array.isArray(windowData && windowData.windows) ? windowData.windows : []);
+        const windows = slimSessionWindows(Array.isArray(windowData && windowData.windows) ? windowData.windows : []);
+        const focusedFilename = pickFocusedWindowFilename(windows);
+        rememberStudioCheckpointFromState(bind.bindKey, stateData, focusedFilename);
+        const isDiff = !!(stateData && stateData.diff);
+        const shouldEnrich = !isDiff
+            || Object.prototype.hasOwnProperty.call(stateData, 'dynamicGeneration')
+            || Object.prototype.hasOwnProperty.call(stateData, 'change');
+        const rawDyn = (stateData && stateData.dynamicGeneration)
+            || (stateData && stateData.change && stateData.change.dynamicGeneration)
+            || null;
+        const dynamicGeneration = shouldEnrich
+            ? await enrichDynamicGenerationForMcp(globalResources, bind.bindKey, rawDyn)
+            : undefined;
+        const director = shouldEnrich
+            ? ((stateData && stateData.director) || (stateData && stateData.change && stateData.change.director) || null)
+            : undefined;
+        out.studio = pickStudioFieldsFromBoundReply(stateData, bind, dynamicGeneration, director);
+        out.windows = windows;
         out.activeWindowId = windowData && windowData.activeWindowId || null;
-        out.workspaceId = (stateData && stateData.workspaceId) || (windowData && windowData.workspaceId) || null;
+        out.workspaceId = (stateData && Object.prototype.hasOwnProperty.call(stateData, 'workspaceId')
+            ? stateData.workspaceId
+            : null) || (windowData && windowData.workspaceId) || null;
         out.studioReachable = true;
         if (view === 'full') {
             out.settings = sessionSettingsCatalog(globalResources, out.studio && out.studio.model);
         }
+        if (isDiff && stateData.unchanged) {
+            out.next = view === 'full'
+                ? 'Studio unchanged since last checkpoint. Keep your last snapshot. Do not also dump memories/NAX/autofill/guide in this turn.'
+                : 'Studio unchanged since last checkpoint. Keep your last snapshot. Apply only this turn\'s requested delta.';
+        } else {
+            out.next = view === 'full'
+                ? 'Slim catalog + live state. Before later edits call view=live. Do not also dump memories/NAX/autofill/guide in this turn. Full quality/UC strings: get_studio_state.settings.'
+                : (isDiff
+                    ? 'Studio delta since last checkpoint. Keep unchanged fields. Apply only this turn\'s requested delta.'
+                    : 'Live Studio + windows only. Later checks return only the delta.');
+        }
+        const focusedUnchanged = !!(prevCheckpoint && prevCheckpoint.focusedFilename && prevCheckpoint.focusedFilename === focusedFilename);
+        return attachFocusedWindowImage(globalResources, out, out.windows, includeImage && !focusedUnchanged);
     } catch (error) {
         if (error.status === 504) {
             out.partial = true;
@@ -2309,10 +2394,6 @@ async function collectSessionState(globalResources, req, input) {
         }
         throw error;
     }
-    out.next = view === 'full'
-        ? 'Slim catalog + live state. Before later edits call view=live. Do not also dump memories/NAX/autofill/guide in this turn. Full quality/UC strings: get_studio_state.settings.'
-        : 'Live Studio + windows only. Diff against last snapshot; apply only this turn\'s delta.';
-    return attachFocusedWindowImage(globalResources, out, out.windows, includeImage);
 }
 
 function collectMemoryNames(input) {
@@ -2662,7 +2743,7 @@ async function applyStudioChanges(globalResources, body) {
         err.status = 400;
         throw err;
     }
-    const { autoApply, autoGenerate } = resolveStudioAutoFlags(body);
+    const { autoApply, autoGenerate } = resolveMcpStudioAutoFlags(globalResources, body);
     const assembled = assembleStudioChangeFromToolArgs(body);
     if (!assembled) {
         const err = new Error('change JSON or prompt/uc/params fields are required');
@@ -2856,14 +2937,15 @@ async function callTool(globalResources, req, name, args) {
         if (!terms.length) {
             return mcpTextResult({ success: true, results: [] });
         }
+        const model = resolveAutofillSearchModel(input);
         const batches = [];
         for (const term of terms) {
             const packet = await dispatchPacketTool(globalResources, req, 'test_autofill_ranking', {
                 query: term,
-                model: input.model
+                model
             });
             const data = packet.data && typeof packet.data === 'object' ? packet.data : {};
-            batches.push(trimAutofillBatch(term, packet.success, data, input));
+            batches.push(trimAutofillBatch(term, packet.success, data, input, model));
         }
         return mcpTextResult({ success: true, results: batches });
     }
@@ -2890,7 +2972,12 @@ async function callTool(globalResources, req, name, args) {
                 pages: naiPromptGuideSync.listPromptGuidePages(cacheDir)
             }, true);
         }
-        return mcpTextResult({ success: true, ...page });
+        return mcpTextResult({
+            success: true,
+            ...page,
+            draft: true,
+            next: 'This guide is a draft. Use it to help, then experiment. When the user says the look is correct, save_memory.'
+        });
     }
 
     if (name === 'list_memories' || name === 'search_memories' || name === 'get_memory' || name === 'save_memory'
@@ -3375,32 +3462,43 @@ async function callTool(globalResources, req, name, args) {
         }
         const scopePayload = buildAgentScopePayload(req, globalResources);
         try {
-            const data = await sendBoundCommand(globalResources, 'get_state', {}, 15000, bind.bindKey);
+            const data = await sendBoundCommand(
+                globalResources,
+                'get_state',
+                studioGetStatePayload(bind.bindKey, input),
+                15000,
+                bind.bindKey
+            );
+            rememberStudioCheckpointFromState(bind.bindKey, data);
+            const isDiff = !!(data && data.diff);
+            const shouldEnrich = !isDiff
+                || Object.prototype.hasOwnProperty.call(data, 'dynamicGeneration')
+                || Object.prototype.hasOwnProperty.call(data, 'change');
             const change = (data && data.change && typeof data.change === 'object' && !Array.isArray(data.change))
                 ? data.change
                 : null;
-            const settings = buildStudioSettingsCatalog(globalResources, data.model);
-            const dynamicGeneration = await enrichDynamicGenerationForMcp(
-                globalResources,
-                bind.bindKey,
-                data.dynamicGeneration || (change && change.dynamicGeneration) || null
-            );
-            const director = data.director || (change && change.director) || null;
-            return mcpTextResult({
+            const dynamicGeneration = shouldEnrich
+                ? await enrichDynamicGenerationForMcp(
+                    globalResources,
+                    bind.bindKey,
+                    (data && data.dynamicGeneration) || (change && change.dynamicGeneration) || null
+                )
+                : undefined;
+            const director = shouldEnrich
+                ? ((data && data.director) || (change && change.director) || null)
+                : undefined;
+            const studio = pickStudioFieldsFromBoundReply(data, bind, dynamicGeneration, director);
+            const body = {
                 success: true,
                 bound: true,
                 autoBound: !!bind.auto,
-                workspaceId: data.workspaceId || null,
-                filename: data.filename || null,
-                model: data.model || null,
-                clientId: getBoundClientId(bind.bindKey),
-                change,
-                dynamicGeneration,
-                director,
-                mustAct: collectEnshutsukaMustAct({ dynamicGeneration, director }),
-                settings,
+                ...studio,
                 scopes: scopePayload.scopes
-            });
+            };
+            if (!isDiff || Object.prototype.hasOwnProperty.call(data, 'model')) {
+                body.settings = buildStudioSettingsCatalog(globalResources, data.model);
+            }
+            return mcpTextResult(body);
         } catch (error) {
             if (error.status === 504) {
                 return mcpTextResult({
@@ -3480,6 +3578,7 @@ async function callTool(globalResources, req, name, args) {
             return mcpTextResult(blocked, true);
         }
         const data = await applyStudioChanges(globalResources, { ...input, bindKey: bind.bindKey });
+        rememberStudioCheckpointFromState(bind.bindKey, data);
         return mcpTextResult({ success: true, autoBound: !!bind.auto, ...data });
     }
 
@@ -3789,18 +3888,32 @@ function resolveNoteWorkspaceId(globalResources, input, req) {
     return workspaceManager.getActiveWorkspace(bound.info.sessionId) || null;
 }
 
+function resolveAutofillSearchModel(input) {
+    const raw = input && (input.model || input.searchModel);
+    const model = String(raw || '').trim();
+    return model || DEFAULT_FORGE_MODEL;
+}
+
+function normalizeAutofillTagKey(value) {
+    return String(value || '').trim().toLowerCase().replace(/_/g, ' ').replace(/\s+/g, ' ');
+}
+
 function autofillHitName(row) {
     if (!row || typeof row !== 'object') return '';
-    return String(row.name || row.tag || row.displayName || row.title || '').trim();
+    // Local tags: title is spaced, name is underscore. NovelAI suggest-tags: tag is spaced.
+    const raw = row.title || row.displayName || row.name || row.tag || '';
+    return String(raw).replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function autofillNameMatches(name, needle, exactOnly) {
-    if (!needle) return false;
-    if (name === needle) return true;
+    const n = normalizeAutofillTagKey(name);
+    const q = normalizeAutofillTagKey(needle);
+    if (!q) return false;
+    if (n === q) return true;
     if (exactOnly) {
-        return name.startsWith(`${needle} (`) || name.startsWith(`${needle},`);
+        return n.startsWith(`${q} (`) || n.startsWith(`${q},`);
     }
-    return name.startsWith(needle);
+    return n.startsWith(q);
 }
 
 function slimAutofillHit(row, needle) {
@@ -3808,44 +3921,62 @@ function slimAutofillHit(row, needle) {
     const tag = autofillHitName(row);
     const out = {
         tag,
-        exact: tag.toLowerCase() === needle
+        exact: normalizeAutofillTagKey(tag) === normalizeAutofillTagKey(needle)
     };
-    const count = row.postCount != null ? row.postCount : row.count;
+    const count = row.postCount != null ? row.postCount
+        : (row.count != null ? row.count : row.n_count);
     if (count != null) out.count = count;
-    const confidence = row.matchScore != null ? row.matchScore : row.score;
+    const confidence = row.matchScore != null ? row.matchScore
+        : (row.score != null ? row.score : row.confidence);
     if (confidence != null) out.confidence = confidence;
+    const hitModel = row.model || row.searchModel || row.serviceName;
+    if (hitModel) out.model = hitModel;
     return out;
 }
 
-function trimAutofillBatch(term, success, data, input) {
+function trimAutofillBatch(term, success, data, input, model) {
     const raw = Array.isArray(data && data.results) ? data.results.slice() : [];
     const needle = String(term || '').trim().toLowerCase();
     const exactOnly = !(input && (input.exactOnly === false || input.exact_only === false || input.fuzzy === true));
-    const close = raw.filter((row) => autofillNameMatches(autofillHitName(row).toLowerCase(), needle, exactOnly));
+    const searchedModel = resolveAutofillSearchModel({ model: model || (input && input.model) });
+    const close = raw.filter((row) => autofillNameMatches(autofillHitName(row), needle, exactOnly));
     close.sort((a, b) => {
-        const an = autofillHitName(a).toLowerCase();
-        const bn = autofillHitName(b).toLowerCase();
-        const rank = (name) => (name === needle ? 0 : 1);
+        const an = normalizeAutofillTagKey(autofillHitName(a));
+        const bn = normalizeAutofillTagKey(autofillHitName(b));
+        const q = normalizeAutofillTagKey(needle);
+        const rank = (name) => (name === q ? 0 : 1);
         const ra = rank(an);
         const rb = rank(bn);
         if (ra !== rb) return ra - rb;
-        return (Number(b.matchScore || b.score) || 0) - (Number(a.matchScore || a.score) || 0);
+        return (Number(b.matchScore || b.score || b.confidence) || 0) - (Number(a.matchScore || a.score || a.confidence) || 0);
     });
     const miss = close.length === 0;
     const trimmed = close.slice(0, AUTOFILL_RESULT_MAX).map((row) => slimAutofillHit(row, needle));
+    const neighbors = miss
+        ? raw.slice(0, 3).map((row) => autofillHitName(row)).filter(Boolean)
+        : undefined;
+    let next;
+    if (miss) {
+        const other = raw.length
+            ? ` (${raw.length} other hits${neighbors && neighbors.length ? `: ${neighbors.join('; ')}` : ''})`
+            : '';
+        next = `Not in ${searchedModel} ranking${other}. Pass the live Studio model if this is the wrong family (v5 vs v4_5). You may still try it; generate, look, then save_memory.`;
+    } else if (close.length > AUTOFILL_RESULT_MAX) {
+        next = `Showing ${AUTOFILL_RESULT_MAX} of ${close.length} close hits.`;
+    }
     return {
         term,
         success: success !== false,
+        model: searchedModel,
         trained: !miss,
         untrained: miss,
         truncated: close.length > AUTOFILL_RESULT_MAX,
         total: close.length,
         scanned: raw.length,
         results: trimmed,
+        neighbors,
         spellCheck: (data && data.spellCheck) || null,
-        next: miss
-            ? 'Not in ranking — likely untrained. You may still try it; say so, generate, look, then save_memory.'
-            : (close.length > AUTOFILL_RESULT_MAX ? `Showing ${AUTOFILL_RESULT_MAX} of ${close.length} close hits.` : undefined)
+        next
     };
 }
 
@@ -3882,6 +4013,8 @@ async function handleJsonRpc(globalResources, req, message) {
     }
 
     if (method === 'initialize') {
+        const bindKey = resolveBindKey(req);
+        if (bindKey) clearMcpStudioCheckpoint(bindKey);
         return {
             status: 200,
             body: {
@@ -4148,6 +4281,9 @@ module.exports = {
         listToolsForScopes,
         toolAllowedForScopes,
         collectAutofillTerms,
+        resolveAutofillSearchModel,
+        normalizeAutofillTagKey,
+        DEFAULT_FORGE_MODEL,
         trimAutofillBatch,
         collectOmegasearchBlocks,
         resolveNaxModule,
@@ -4159,6 +4295,9 @@ module.exports = {
         mapNaxSearchItem,
         collectSessionState,
         maybeOpenGeneratedInLumen,
+        readRemoteAccessSettings,
+        resolveMcpStudioAutoFlags,
+        pickStudioFieldsFromBoundReply,
         runMemoryTool,
         MEMORY_TOOL_ALIASES,
         canonMemoryTool,

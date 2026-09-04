@@ -228,7 +228,7 @@
     <link rel="stylesheet" href="/css/custom-scrollbar.css?sha=281a0566e03dc04e8d734afdaaf5459a41c98d253ca28c927e3055a49b6065a1">
     <link rel="stylesheet" href="/css/genso-lock.css?sha=3928bbe3c79ed04068e97b21bc20d8e376ab44deeed27144498fa4f52d97ee1f">
     <link rel="stylesheet" href="/css/imageExpansion.css?sha=03fd9c98cb3c1bcf7227eb4d1d93d7f55e920744ef41a1725faf374748490f75">
-    <link rel="stylesheet" href="/css/weather-location.css?sha=3f497f5fe12a956e8db85df41d209e6c38834b58408e158bf0cf994ff7388542">
+    <link rel="stylesheet" href="/css/weather-location.css?sha=db635140d4a0309882a8243ff661da66dca3d0851fa638d4fde99aae417667dd">
     <link rel="stylesheet" href="/css/weather-cards.css?sha=c8e97c39be431dda1fe0033c75348328edcedd60056ecea32ac34ec859e2f32b">
     <link rel="stylesheet" href="/css/weather-lcd.css?sha=159685dcf123c29b0f063410b63164f84a295323e7ea8c9b30392fa913c30f76">
     <link rel="stylesheet" href="/css/director.css?sha=e66042522041eb4c50d86c0b3af57955db67ec222aa8cf78cbf2dca80a7560bf">
@@ -7300,6 +7300,75 @@ Examples:
                     <span>Save</span>
                     <i class="fas fa-floppy-disk"></i>
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="remoteAccessSettingsModal" class="modal hidden"
+    data-window-restore-position="false" data-window-restore-size="false">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-screencast icon-fa"></i>
+                <span>Remote Access Settings</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" id="closeRemoteAccessSettingsBtn" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content dark">
+            <div class="desktop-settings-layout">
+                <div class="desktop-settings-controls">
+                    <div class="settings-section">
+                        <h3 class="section-header"><i class="fas fa-screencast"></i> MCP defaults</h3>
+                        <div class="form-group">
+                            <label>Default Generation Method</label>
+                            <div id="remoteAccessDefaultGenerationToggle"
+                                class="gallery-toggle-group desktop-settings-scope-toggle"
+                                data-active="studio">
+                                <button type="button" class="gallery-toggle-btn" data-method="detached">
+                                    <span class="tab-text">Detached Request</span>
+                                </button>
+                                <button type="button" class="gallery-toggle-btn active" data-method="studio">
+                                    <span class="tab-text">Studio App</span>
+                                </button>
+                                <div class="gallery-toggle-slider"></div>
+                            </div>
+                            <p class="desktop-settings-hint">How MCP generates when the chat does not specify a path. Detached Request uses generate_image. Studio App writes the bound tab.</p>
+                        </div>
+                        <div class="desktop-settings-option">
+                            <button type="button" id="remoteAccessAutoGenerateBtn"
+                                class="btn-secondary toggle-btn icon-only indicator desktop-settings-global-toggle"
+                                data-state="off"
+                                title="When on, MCP apply_studio_changes generates unless the model set autoGenerate">
+                                <i class="fa-regular fa-sparkles"></i>
+                            </button>
+                            <div class="desktop-settings-option-body">
+                                <span class="desktop-settings-option-label">Auto Generate</span>
+                                <p class="desktop-settings-hint">When the model updates Studio and does not set autoGenerate, generate after apply.</p>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Open Generated Images</label>
+                            <div id="remoteAccessOpenGeneratedToggle"
+                                class="gallery-toggle-group desktop-settings-start-menu-style-toggle three-tabs"
+                                data-active="lumen">
+                                <button type="button" class="gallery-toggle-btn" data-open="glancewell">
+                                    <span class="tab-text">Glancewell</span>
+                                </button>
+                                <button type="button" class="gallery-toggle-btn active" data-open="lumen">
+                                    <span class="tab-text">Lumen</span>
+                                </button>
+                                <button type="button" class="gallery-toggle-btn" data-open="disabled">
+                                    <span class="tab-text">Disabled</span>
+                                </button>
+                                <div class="gallery-toggle-slider"></div>
+                            </div>
+                            <p class="desktop-settings-hint">After a detached generate, open the file on the attached client.</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

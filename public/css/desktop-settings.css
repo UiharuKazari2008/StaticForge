@@ -1,5 +1,6 @@
 /* Desktop settings modal */
-#desktopSettingsModal {
+#desktopSettingsModal,
+#remoteAccessSettingsModal {
     width: 550px;
     max-height: 90vh;
 }
@@ -109,32 +110,39 @@
     gap: var(--spacing-md);
 }
 
-#desktopSettingsModal .desktop-settings-scope-toggle {
+#desktopSettingsModal .desktop-settings-scope-toggle,
+#remoteAccessSettingsModal .desktop-settings-scope-toggle {
     grid-template-columns: 1fr 1fr;
     min-width: 11rem;
 }
 
-#desktopSettingsModal .desktop-settings-scope-toggle .gallery-toggle-slider {
+#desktopSettingsModal .desktop-settings-scope-toggle .gallery-toggle-slider,
+#remoteAccessSettingsModal .desktop-settings-scope-toggle .gallery-toggle-slider {
     width: calc(50% - 2px);
 }
 
-#desktopSettingsModal .desktop-settings-scope-toggle[data-active="global"] .gallery-toggle-slider {
+#desktopSettingsModal .desktop-settings-scope-toggle[data-active="global"] .gallery-toggle-slider,
+#remoteAccessSettingsModal .desktop-settings-scope-toggle[data-active="studio"] .gallery-toggle-slider {
     transform: translateX(calc(100% + 1px));
 }
 
-#desktopSettingsModal .desktop-settings-start-menu-style-toggle {
+#desktopSettingsModal .desktop-settings-start-menu-style-toggle,
+#remoteAccessSettingsModal .desktop-settings-start-menu-style-toggle {
     grid-template-columns: 1fr 1fr 1fr;
 }
 
-#desktopSettingsModal .desktop-settings-start-menu-style-toggle .gallery-toggle-slider {
+#desktopSettingsModal .desktop-settings-start-menu-style-toggle .gallery-toggle-slider,
+#remoteAccessSettingsModal .desktop-settings-start-menu-style-toggle .gallery-toggle-slider {
     width: calc(calc(100% / 3) - 2px);
 }
 
-#desktopSettingsModal .desktop-settings-start-menu-style-toggle[data-active="workspace"] .gallery-toggle-slider {
+#desktopSettingsModal .desktop-settings-start-menu-style-toggle[data-active="workspace"] .gallery-toggle-slider,
+#remoteAccessSettingsModal .desktop-settings-start-menu-style-toggle[data-active="lumen"] .gallery-toggle-slider {
     transform: translateX(calc(100% + 1px));
 }
 
-#desktopSettingsModal .desktop-settings-start-menu-style-toggle[data-active="orb"] .gallery-toggle-slider {
+#desktopSettingsModal .desktop-settings-start-menu-style-toggle[data-active="orb"] .gallery-toggle-slider,
+#remoteAccessSettingsModal .desktop-settings-start-menu-style-toggle[data-active="disabled"] .gallery-toggle-slider {
     transform: translateX(calc(200% + 2px));
 }
 
@@ -177,7 +185,8 @@
     line-height: 1.3;
 }
 
-#desktopSettingsModal .desktop-settings-global-toggle {
+#desktopSettingsModal .desktop-settings-global-toggle,
+#remoteAccessSettingsModal .desktop-settings-global-toggle {
     min-width: 44px;
     width: 44px;
     height: 44px;
@@ -185,7 +194,8 @@
     flex-shrink: 0;
 }
 
-#desktopSettingsModal .desktop-settings-hint {
+#desktopSettingsModal .desktop-settings-hint,
+#remoteAccessSettingsModal .desktop-settings-hint {
     margin: var(--spacing-xs) 0 0;
     font-size: 0.78rem;
     line-height: 1.35;

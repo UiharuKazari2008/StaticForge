@@ -14,7 +14,7 @@ const EXPLORER_IMAGE_GALLERY_CONTEXT_ACTIONS = new Set([
 
 const DESKTOP_GLOBAL_CONTEXT_ACTIONS = new Set([
     'refresh-cache', 'clear-cache', 'toggle-glass', 'toggle-privacy-mode',
-    'desktop-new-folder', 'desktop-paste', 'open-desktop-settings', 'open-about-melatonin',
+    'desktop-new-folder', 'desktop-paste', 'open-desktop-settings', 'open-remote-access-settings', 'open-about-melatonin',
     'exit-desktop', 'toggle-gallery-window', 'lock-app', 'logout'
 ]);
 

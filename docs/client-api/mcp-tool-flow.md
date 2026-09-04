@@ -1,14 +1,14 @@
 # Dreamscape MCP tool flow (Grok)
 
-How to use the public MCP connector for common Studio jobs. The living [nai-prompt-guide](https://yozora.bluesteel.737.jp.net/DreamScape/nai-prompt-guide) clone (Grimoire **Docubase**, `get_prompt_guide`, default `prompt-optimiser-grok`) is **prior art**, not statute. Call the tool when you want those notes. Experiment, look at the webp, then write the working rule with `save_memory`. Do not keep a copy of that guide in the grok.com project. This file is only the **tool order**.
+How to use the public MCP connector for common Studio jobs. The living [nai-prompt-guide](https://yozora.bluesteel.737.jp.net/DreamScape/nai-prompt-guide) clone (Grimoire **Docubase**, `get_prompt_guide`, default `prompt-optimiser-grok`) is a **draft**. Call the tool when you want those notes. Use it to help, then always experiment. When the user says the look is correct, `save_memory`. Do not keep a copy of that guide in the grok.com project. This file is only the **tool order**.
 
-**Delivery priority** (first that works): (1) `apply_studio_changes` — default, push the rewrite into the Studio tab (`autoApply: true`; `autoGenerate: true` if they asked to generate now). (2) `generate_image` — no Studio tab / bind failed / they asked for a server-side run. (3) emit Change-JSON (`docs/studio-change-json.md`). (4) return the prompt-text block. Do not dump Positive/UC when 1 or 2 works.
+**Delivery priority** (first that works): honor `remoteAccess` from `get_session_state` when they did not specify a path. (1) `apply_studio_changes` — Studio App default, push the rewrite into the Studio tab (`autoApply: true`; `autoGenerate` from the tool or Remote Access Settings). (2) `generate_image` — Detached Request / no Studio tab / bind failed / they asked for a server-side run. (3) emit Change-JSON (`docs/studio-change-json.md`). (4) return the prompt-text block. Do not dump Positive/UC when 1 or 2 works.
 
-**Studio edits:** on every turn that touches Studio, call `get_studio_state` first. Do not reuse a stale snapshot from earlier in the chat. Diff the current Change-JSON / fields / characters / params against the last state you saw. Keep what the user changed in the app since that message; apply only this turn's requested delta.
+**Studio edits:** on every turn that touches Studio, call `get_studio_state` / `get_session_state` `view=live` first. After apply/get the bound tab stores a checkpoint; later checks return only the delta (`studio.diff`). `unchanged` means keep your last snapshot. Pass `full: true` only if you lost that snapshot. Keep what the user changed in the app since that message; apply only this turn's requested delta.
 
 The MCP `initialize` result also sends these rules as `instructions`. `serverInfo.name` is `DreamScape r` plus an 8-hex tools revision (see [mcp-connector.md](./mcp-connector.md)). `tools/list` is the **Grok core** catalog plus `advanced_tools`. Do **not** page a directory listing to find a known filename. Do **not** download the original PNG. `get_generated_image` and `generate_image` always return metadata plus a Grok-sized webp — **show that webp to the user**. Omit filename for the newest file. `workspace` / `default` is the default workspace.
 
-**First call:** `get_session_state` with no `view` (defaults to **`live`**: clients + windows + Studio). Do **not** pass `view=full` on chat start — that plus parallel memories/NAX/autofill/guide dumps makes Grok summarize and time out. `view=catalog` is a slim settings slice (current-model quality/UC only). Full per-model strings stay on `get_studio_state.settings` and `tools/list`. **Before every Studio or window edit:** `get_session_state` `view=live` again. If `hasClients` is false, **or** `studioReachable` is false / `error` is "Bound tab did not answer in time", `generate_image` (do not `apply_studio_changes`). A bound tab that does not answer is deaf — do not treat `hasClients: true` + `studio: null` as a live Studio path. If `generate_image` runs while a client is connected, the server opens Lumen for you. `await_generation_job` / sync `generate_image` return `filename` + Grok webp from `image_generation_response`, never a keep-alive or weather carousel.
+**First call:** `get_session_state` with no `view` (defaults to **`live`**: clients + windows + Studio + `remoteAccess`). Do **not** pass `view=full` on chat start — that plus parallel memories/NAX/autofill/guide dumps makes Grok summarize and time out. `view=catalog` is a slim settings slice (current-model quality/UC only). Full per-model strings stay on `get_studio_state.settings` and `tools/list`. **Before every Studio or window edit:** `get_session_state` `view=live` again. If `hasClients` is false, **or** `studioReachable` is false / `error` is "Bound tab did not answer in time", `generate_image` (do not `apply_studio_changes`). A bound tab that does not answer is deaf — do not treat `hasClients: true` + `studio: null` as a live Studio path. If `generate_image` runs while a client is connected, the server opens the viewer from Remote Access Settings (`openGeneratedImages`: Lumen / Glancewell / Disabled). `await_generation_job` / sync `generate_image` return `filename` + Grok webp from `image_generation_response`, never a keep-alive or weather carousel.
 
 If a listed tool cannot do the job, call `advanced_tools` with `query`, then call it again with `name` + `arguments` to run that hidden tool (bind a second tab, page `get_images`, static wiki, references, extra note/preset actions).
 
@@ -41,7 +41,7 @@ The bind is stored on **this application key**, not the whole server. `get_studi
 
 Several tabs: `get_studio_state` returns `needsClientChoice` and `clients` (most recently used first). Ask the user which tab, then `bind_session` `{ "clientId": "…" }`. `list_clients` is also a core tool. Server-side `generate_image` does not need a bind.
 
-`get_client_physics` pre-resolves dynagen context (same `resolved` object as get-state, plus flat `location` / `tod` / `time` / `date` / `weather` / `season`). It works without a bind. Optional `tod` / `weather` / `season` / `location` or `dynamicGeneration` override the snapshot. A bound tab still lights the location-arrow physics icon and the Remote Access tray (Your location was accessed by "Grok"). `date.month` is **1-based** (September = 9); holiday tables stay 0-based internally.
+`get_client_physics` pre-resolves dynagen context (same `resolved` object as get-state, plus flat `location` / `tod` / `time` / `date` / `weather` / `season`). It works without a bind. Optional `tod` / `weather` / `season` / `location` or `dynamicGeneration` override the snapshot. A bound tab still lights the location-arrow physics icon and the Remote Access tray (Your location was accessed by "Grok").
 
 ## Recipe: what they are looking at
 
@@ -127,12 +127,12 @@ Connector URLs and this paste-block: Grim `dsap://mcp.dreamscape.jp/`.
 
 User opens a chat / *what is on screen* / *change Studio*
 
-1. `get_session_state` — default `view=live` (clients, windows, Studio). Do not pass `view=full` on chat start. Do not also dump memories + NAX + autofill + prompt guide in the same turn.
+1. `get_session_state` — default `view=live` (clients, windows, Studio, `remoteAccess`). Do not pass `view=full` on chat start. Do not also dump memories + NAX + autofill + prompt guide in the same turn.
 2. `hasClients` false → `generate_image`. Show the webp. Stop. Do not apply Studio changes.
 3. Several clients → `needsClientChoice` → `bind_session` `{ "clientId" }`.
 4. Need preset ids: `view=catalog` (slim) or `get_studio_state.settings` / `tools/list` (full per-model strings).
-5. Before any later edit: `get_session_state` `{ "view": "live" }` again. Diff. Apply only this turn's delta.
-6. Trained tags: `search_autofill` with **1–3 terms** (max 8). Default `exactOnly` (qualifier in parens only). Hits are `{tag, count, confidence, exact}`. `untrained: true` / empty results → drop or replace. Then `get_wiki_page` for that one tag — `text` / `markdown` strings, never `html: {}`. Empty wiki: use aliases or the last Studio character box; do not invent appearance.
+5. Before any later edit: `get_session_state` `{ "view": "live" }` again. If `studio.diff` / `unchanged`, keep the last snapshot. Apply only this turn's delta.
+6. Trained tags: `search_autofill` with **1–3 terms** (max 8). Pass **`model` from live Studio**; omit is `v5`. Default `exactOnly` (qualifier in parens only). Hits are `{tag, count, confidence, exact, model}`. `untrained: true` / empty means **this model** ranking does not know it — pass `model=v4_5` if Studio is on V4.5, do not treat that as “drop, it is untrained”. Then `get_wiki_page` for that one tag — `text` / `markdown` strings, never `html: {}`. Empty wiki: use aliases or the last Studio character box; do not invent appearance.
 7. Artists / NAX: `search_nax` only for this job (`sort=score` = top votes). Use `item.prompt`.
 8. Guide text: `get_prompt_guide` when you want prior art (default `prompt-optimiser-grok`), not a ban list. Not on every chat start. Then try, look, `save_memory`.
 9. Memories: `search_memories` for **this topic**. Apply only high-confidence rows (≥60%; prefer ≥80%). Create or upsert related memories the same turn (`save_memory`).
@@ -141,7 +141,7 @@ User opens a chat / *what is on screen* / *change Studio*
 
 User: *find an artist* / *top voted artists* / *who draws like this*
 
-1. `search_nax` — omit `query` for the current ranking. `sort` defaults to `score` (top votes first). Pass `query` for a name substring. `kind` defaults to `ARTIST` (model `v4_5` unless you pass `v5` / `v4`).
+1. `search_nax` — omit `query` for the current ranking. `sort` defaults to `score` (top votes first). Pass `query` for a name substring. `kind` defaults to `ARTIST` (model `v5` unless you pass `v4_5` / `v4`).
 2. Other rankings: `sort: "ratio"` (upvote ratio), `sort: "name"` (A-Z), `invert: true` (lowest votes / ratio). Marks: `markFilter: "favorites"` or `"try"`.
 3. Other datasets: `kind: "CHARA"` / `"FACE"` / `"COPYRIGHT"` / `"HAIR"` / `"CURATED"`, or `list_nax_galleries` then `gallerySlug`.
 4. Prefer `item.prompt` in Studio (`artist:name` or `art by …`). A different string is an experiment — record it with `save_memory`.
@@ -152,7 +152,7 @@ User: *any real Studio / prompt / technique job*
 
 1. You **must** call `search_memories` (or `searchKnowledgeMemories`) for the topic. Chat recall / Grok Memory is not the store. `get_memory` / `retrieveKnowledgeMemory` on hits you might apply.
 2. Treat `needsRefinement` / confidence &lt; 60% as a hypothesis, not a fact. Prefer ≥80% before you lean on it. Wiki, NAX, Docubase, and memories are starting notes — generate and look.
-3. After a try, you **must** call `save_memory` or `saveKnowledgeMemory` to create or upsert (omit fields you are not changing), including when a gen broke a guide note and it worked. Saying "I will remember" does nothing. Confidence on refine is a +0–25% bump; new memories start at 10%. Write what you checked in `observations` (plain strings are fine). Set `model` (`v4_5` default; existing rows are V4.5).
+3. After a try, you **must** call `save_memory` or `saveKnowledgeMemory` to create or upsert (omit fields you are not changing), including when a gen broke a guide note and it worked. Saying "I will remember" does nothing. Confidence on refine is a +0–25% bump; new memories start at 10%. Write what you checked in `observations` (plain strings are fine). Set `model` (`v5` default; existing rows keep their stored model).
 4. Do this often. Do not wait for a dedicated "remember this" request.
 
 Example: top 10 artists — `{ "sort": "score", "limit": 10 }`. Named hit — `{ "query": "kago", "sort": "score" }`.

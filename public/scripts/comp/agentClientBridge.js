@@ -284,11 +284,12 @@
         }
         // showAgentSessionTrayNotice: public/scripts/comp/mcpActivityClient.js
         showAgentSessionTrayNotice(studioWasClosed ? 'open' : 'update', data);
+        const checkpointId = storeStudioCheckpoint(captureStudioCheckpointPayload());
         if (!autoGenerate) {
-            return { ok: true, applied: true, autoApply: true, autoGenerate: false, opened: studioWasClosed };
+            return { ok: true, applied: true, autoApply: true, autoGenerate: false, opened: studioWasClosed, checkpointId };
         }
         const gen = fireBoundTabGenerate();
-        return { ok: true, applied: true, autoApply: true, autoGenerate: true, opened: studioWasClosed, ...gen };
+        return { ok: true, applied: true, autoApply: true, autoGenerate: true, opened: studioWasClosed, checkpointId, ...gen };
     }
 
     async function openImageFromCommand(filename, commandData) {
@@ -329,6 +330,88 @@
         return { dreamscape: 'change', v: 1 };
     }
 
+    let studioCheckpoint = null;
+
+    function newStudioCheckpointId() {
+        return (typeof crypto !== 'undefined' && crypto.randomUUID)
+            ? crypto.randomUUID()
+            : `cp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    }
+
+    function captureStudioCheckpointPayload() {
+        return {
+            workspaceId: readWorkspaceId(),
+            filename: readOpenFilename(),
+            model: readModel(),
+            change: readStudioChangeSnapshot(),
+            dynamicGeneration: typeof readDynamicGenerationSnapshot === 'function'
+                ? readDynamicGenerationSnapshot()
+                : null,
+            director: typeof readDirectorAttachSnapshot === 'function'
+                ? readDirectorAttachSnapshot()
+                : null
+        };
+    }
+
+    function studioValuesEqual(left, right) {
+        try {
+            return JSON.stringify(left) === JSON.stringify(right);
+        } catch (_err) {
+            return left === right;
+        }
+    }
+
+    function diffStudioCheckpointPayload(prev, next) {
+        const keys = ['workspaceId', 'filename', 'model', 'change', 'dynamicGeneration', 'director'];
+        const delta = {};
+        let changed = false;
+        for (let i = 0; i < keys.length; i += 1) {
+            const key = keys[i];
+            if (!studioValuesEqual(prev && prev[key], next && next[key])) {
+                delta[key] = next[key];
+                changed = true;
+            }
+        }
+        return { changed, delta };
+    }
+
+    function storeStudioCheckpoint(payload) {
+        const id = newStudioCheckpointId();
+        studioCheckpoint = { id, payload };
+        return id;
+    }
+
+    function replyStudioState(requestId, extra) {
+        const current = captureStudioCheckpointPayload();
+        const forceFull = !!(extra && (extra.full === true || extra.full === 'true'));
+        const since = extra && (extra.since || extra.checkpointId);
+        const canDiff = !forceFull && since && studioCheckpoint && studioCheckpoint.id === since;
+        let body;
+        if (canDiff) {
+            const diffed = diffStudioCheckpointPayload(studioCheckpoint.payload, current);
+            const checkpointId = storeStudioCheckpoint(current);
+            body = {
+                ok: true,
+                clientId: sessionClientId,
+                checkpointId,
+                diff: true,
+                unchanged: !diffed.changed,
+                ...diffed.delta
+            };
+        } else {
+            const checkpointId = storeStudioCheckpoint(current);
+            body = {
+                ok: true,
+                clientId: sessionClientId,
+                checkpointId,
+                diff: false,
+                unchanged: false,
+                ...current
+            };
+        }
+        replyAgentSessionResult(requestId, body);
+    }
+
     async function handleAgentSessionCommand(message) {
         const requestId = message && message.requestId;
         const data = (message && message.data) || {};
@@ -340,21 +423,8 @@
             if (command === 'get_state' || command === 'get_editor') {
                 // showAgentSessionTrayNotice: public/scripts/comp/mcpActivityClient.js
                 showAgentSessionTrayNotice('read', data);
-                replyAgentSessionResult(requestId, {
-                    ok: true,
-                    workspaceId: readWorkspaceId(),
-                    filename: readOpenFilename(),
-                    model: readModel(),
-                    clientId: sessionClientId,
-                    change: readStudioChangeSnapshot(),
-                    // readDynamicGenerationSnapshot / readDirectorAttachSnapshot: public/scripts/comp/dynamicGenerationLockState.js
-                    dynamicGeneration: typeof readDynamicGenerationSnapshot === 'function'
-                        ? readDynamicGenerationSnapshot()
-                        : null,
-                    director: typeof readDirectorAttachSnapshot === 'function'
-                        ? readDirectorAttachSnapshot()
-                        : null
-                });
+                // readDynamicGenerationSnapshot / readDirectorAttachSnapshot: public/scripts/comp/dynamicGenerationLockState.js
+                replyStudioState(requestId, data);
                 return;
             }
             if (command === 'get_windows') {
