@@ -68,7 +68,7 @@ const MODULE_DEFS = {
         label: 'Core Wiki',
         description: 'Tag wiki and Grimoire',
         tools: [
-            'search_wiki', 'get_wiki_page',
+            'search_wiki', 'get_wiki_page', 'get_character_card',
             'list_static_wiki_sites', 'list_static_wiki_pages', 'search_static_wiki', 'get_static_wiki_page'
         ]
     },
