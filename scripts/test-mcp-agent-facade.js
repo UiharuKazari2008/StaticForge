@@ -69,7 +69,13 @@ _test.resetRateGroupHits();
 const generatedImageTool = _test.TOOL_DEFS.find((t) => t.name === 'get_generated_image');
 assert.ok(generatedImageTool.description.includes('Grok-sized webp'));
 assert.ok(generatedImageTool.description.includes('Do not page get_images'));
+assert.ok(generatedImageTool.inputSchema.properties.dest_path);
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.dest_path);
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'await_generation_job').inputSchema.properties.dest_path);
 assert.ok(_test.TOOL_DEFS.some((t) => t.name === 'get_latest_image'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('dest_path'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('render_file'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('Grok Imagine'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('get_generated_image'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('advanced_tools'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('save_preset'));
@@ -1089,6 +1095,45 @@ async function main() {
     assert.ok(resizedMeta.width <= _test.GROK_IMAGE_MAX_EDGE);
     assert.ok(resizedMeta.height <= _test.GROK_IMAGE_MAX_EDGE);
     assert.strictEqual(resizedMeta.format, 'webp');
+
+    const tickets = require('../modules/mcpArtifactTickets');
+    tickets.resetArtifactTickets();
+    assert.strictEqual(tickets.normalizeDestPath('', '1788_generated_1.png'), 'artifacts/1788_generated_1.webp');
+    assert.strictEqual(
+        tickets.normalizeDestPath('/home/workdir/artifacts/shot.webp', 'other.png'),
+        'artifacts/shot.webp'
+    );
+    assert.strictEqual(tickets.normalizeDestPath('../etc/passwd', 'keep.png'), 'artifacts/keep.webp');
+    assert.strictEqual(
+        tickets.normalizeDestPath('artifacts/foo.png', 'keep.png', { full: true, mime: 'image/png' }),
+        'artifacts/foo.png'
+    );
+    const minted = tickets.mintArtifactTicket(resized, 'artifacts/shot.webp', 'keep.png');
+    assert.ok(minted);
+    assert.strictEqual(minted.mime, 'image/webp');
+    assert.strictEqual(minted.bytes.length, resized.bytes.length);
+    const fetched = tickets.getArtifactTicket(minted.id);
+    assert.ok(fetched);
+    assert.strictEqual(fetched.bytes.length, resized.bytes.length);
+    const attached = tickets.attachDestPathMeta({
+        getMcpPathUuid: () => 'test-uuid-1234',
+        getConfig: ({ path: key }) => key === 'public_hostname' ? 'staticforge.737.jp.net' : null
+    }, { filename: 'keep.png' }, resized, 'artifacts/shot.webp');
+    assert.strictEqual(attached.dest_path, 'artifacts/shot.webp');
+    assert.strictEqual(attached.mime, 'image/webp');
+    assert.strictEqual(attached.bytes, resized.bytes.length);
+    assert.ok(attached.url.includes('/test-uuid-1234/artifacts/'));
+    assert.ok(!JSON.stringify(attached).includes(resized.bytes.toString('base64').slice(0, 32)));
+    tickets.resetArtifactTickets();
+    const { flattenGenerateToolArgs } = require('../modules/agentClientBridge');
+    const flatGen = flattenGenerateToolArgs({
+        prompt: 'a',
+        dest_path: 'artifacts/x.webp',
+        destPath: 'artifacts/y.webp'
+    });
+    assert.strictEqual(flatGen.dest_path, undefined);
+    assert.strictEqual(flatGen.destPath, undefined);
+    assert.strictEqual(flatGen.prompt, 'a');
 
     const naiPromptGuideSync = require('../modules/naiPromptGuideSync');
     assert.strictEqual(naiPromptGuideSync.SITE_ID, 'docubase');

@@ -397,6 +397,8 @@ function flattenGenerateToolArgs(input) {
     delete out.change;
     delete out.autoApply;
     delete out.autoGenerate;
+    delete out.dest_path;
+    delete out.destPath;
     if (out.promptNegative != null && out.input_prompt_negative == null) {
         out.input_prompt_negative = out.promptNegative;
     }

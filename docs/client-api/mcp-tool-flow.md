@@ -6,9 +6,9 @@ How to use the public MCP connector for common Studio jobs. The living [nai-prom
 
 **Studio edits:** on every turn that touches Studio, call `get_studio_state` / `get_session_state` `view=live` first. After apply/get the bound tab stores a checkpoint; later checks return only the delta (`studio.diff`). `unchanged` means keep your last snapshot. Pass `full: true` only if you lost that snapshot. Keep what the user changed in the app since that message; apply only this turn's requested delta.
 
-The MCP `initialize` result also sends these rules as `instructions`. `serverInfo.name` is `DreamScape r` plus an 8-hex tools revision (see [mcp-connector.md](./mcp-connector.md)). `tools/list` is the **Grok core** catalog plus `advanced_tools`. Do **not** page a directory listing to find a known filename. Do **not** download the original PNG. `get_generated_image` and `generate_image` always return metadata plus a Grok-sized webp — **show that webp to the user**. Omit filename for the newest file. `workspace` / `default` is the default workspace.
+The MCP `initialize` result also sends these rules as `instructions`. `serverInfo.name` is `DreamScape r` plus an 8-hex tools revision (see [mcp-connector.md](./mcp-connector.md)). `tools/list` is the **Grok core** catalog plus `advanced_tools`. Do **not** page a directory listing to find a known filename. Do **not** download the original PNG. `get_generated_image` and `generate_image` return metadata plus a Grok-sized webp on the **tool channel** (inspect) and `dest_path` / `bytes` / `mime` / a short-lived `url` in the JSON (no pixels there). Pass `dest_path` (`artifacts/<filename>.webp`). If `/home/workdir/artifacts` is empty, `curl` the url into that path, then `render_file` it in the final message. Do not reprint with Grok Imagine. Do not paste base64. Omit filename for the newest file. `workspace` / `default` is the default workspace.
 
-**First call:** `get_session_state` with no `view` (defaults to **`live`**: clients + windows + Studio + `remoteAccess`). Do **not** pass `view=full` on chat start — that plus parallel memories/NAX/autofill/guide dumps makes Grok summarize and time out. `view=catalog` is a slim settings slice (current-model quality/UC only). Full per-model strings stay on `get_studio_state.settings` and `tools/list`. **Before every Studio or window edit:** `get_session_state` `view=live` again. If `hasClients` is false, **or** `studioReachable` is false / `error` is "Bound tab did not answer in time", `generate_image` (do not `apply_studio_changes`). A bound tab that does not answer is deaf — do not treat `hasClients: true` + `studio: null` as a live Studio path. If `generate_image` runs while a client is connected, the server opens the viewer from Remote Access Settings (`openGeneratedImages`: Lumen / Glancewell / Disabled). `await_generation_job` / sync `generate_image` return `filename` + Grok webp from `image_generation_response`, never a keep-alive or weather carousel.
+**First call:** `get_session_state` with no `view` (defaults to **`live`**: clients + windows + Studio + `remoteAccess`). Do **not** pass `view=full` on chat start — that plus parallel memories/NAX/autofill/guide dumps makes Grok summarize and time out. `view=catalog` is a slim settings slice (current-model quality/UC only). Full per-model strings stay on `get_studio_state.settings` and `tools/list`. **Before every Studio or window edit:** `get_session_state` `view=live` again. If `hasClients` is false, **or** `studioReachable` is false / `error` is "Bound tab did not answer in time", `generate_image` (do not `apply_studio_changes`). A bound tab that does not answer is deaf — do not treat `hasClients: true` + `studio: null` as a live Studio path. If `generate_image` runs while a client is connected, the server opens the viewer from Remote Access Settings (`openGeneratedImages`: Lumen / Glancewell / Disabled). `await_generation_job` / sync `generate_image` return `filename` + Grok webp + `dest_path` from `image_generation_response`, never a keep-alive or weather carousel. `apply_studio_changes` + `autoGenerate` does **not** return pixels — after `generateStarted`, `get_generated_image` with `dest_path`, then `render_file`.
 
 If a listed tool cannot do the job, call `advanced_tools` with `query`, then call it again with `name` + `arguments` to run that hidden tool (bind a second tab, page `get_images`, static wiki, references, extra note/preset actions).
 
@@ -128,7 +128,7 @@ Connector URLs and this paste-block: Grim `dsap://mcp.dreamscape.jp/`.
 User opens a chat / *what is on screen* / *change Studio*
 
 1. `get_session_state` — default `view=live` (clients, windows, Studio, `remoteAccess`). Do not pass `view=full` on chat start. Do not also dump memories + NAX + autofill + prompt guide in the same turn.
-2. `hasClients` false → `generate_image`. Show the webp. Stop. Do not apply Studio changes.
+2. `hasClients` false → `generate_image` with `dest_path`. `render_file` that path. Stop. Do not apply Studio changes.
 3. Several clients → `needsClientChoice` → `bind_session` `{ "clientId" }`.
 4. Need preset ids: `view=catalog` (slim) or `get_studio_state.settings` / `tools/list` (full per-model strings).
 5. Before any later edit: `get_session_state` `{ "view": "live" }` again. If `studio.diff` / `unchanged`, keep the last snapshot. Apply only this turn's delta.
@@ -145,6 +145,7 @@ User: *find an artist* / *top voted artists* / *who draws like this*
 2. Other rankings: `sort: "ratio"` (upvote ratio), `sort: "name"` (A-Z), `invert: true` (lowest votes / ratio). Marks: `markFilter: "favorites"` or `"try"`.
 3. Other datasets: `kind: "CHARA"` / `"FACE"` / `"COPYRIGHT"` / `"HAIR"` / `"CURATED"`, or `list_nax_galleries` then `gallerySlug`.
 4. Prefer `item.prompt` in Studio (`artist:name` or `art by …`). A different string is an experiment — record it with `save_memory`.
+5. Do **not** treat omit-query + `sort=score` as a default style lock. That ranking is community votes, not V5 training proof. Use NAX only when they ask for a look, a voted character, or a gallery slug. Tag stack: `search_autofill` → wiki → pixels → `save_memory`.
 
 ## Recipe: memories (search, create, refine)
 
@@ -169,7 +170,7 @@ User: *look at `1782…_generated_….png` in the default workspace*
 1. Bind
 2. Build Change-JSON from `get_studio_state` plus what you are trying (guide notes are a start, not a statute)
 3. `apply_studio_changes` `{ "change": {…}, "autoApply": true, "autoGenerate": true }`
-4. `autoGenerate` clicks the bound tab's Generate button. Do not also call `generate_image` unless they asked for a **server-side** run (different session).
+4. `autoGenerate` clicks the bound tab's Generate button. It does **not** return pixels. Then `get_generated_image` (that filename or latest) with `dest_path`, `curl` `url` into `/home/workdir/artifacts` if needed, `render_file`. Do not also call `generate_image` unless they asked for a **server-side** run (different session). Do not Imagine-reprint.
 
 ## search_indexes_ready / omegasearch wait
 

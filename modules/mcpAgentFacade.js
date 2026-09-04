@@ -48,6 +48,13 @@ const { buildStudioSettingsCatalog, slimStudioSettingsCatalog, applyCatalogToLis
 const { buildMcpServerInfo, hashMcpToolsRevision } = require('./mcpServerInfo');
 const { MCP_INSTRUCTIONS } = require('./mcpInstructions');
 const { readRemoteAccessSettings } = require('./remoteAccessSettings');
+const {
+    DEST_PATH_SCHEMA,
+    pickDestPathInput,
+    attachDestPathMeta,
+    getArtifactTicket,
+    destPathNext
+} = require('./mcpArtifactTickets');
 const { DEFAULT_FORGE_MODEL } = require('./modelFeatures');
 const {
     publishApocrypha,
@@ -283,6 +290,7 @@ const GENERATE_IMAGE_PROPERTIES = {
         type: 'boolean',
         description: 'Default false: stall this call until the file and Grok webp are ready. true: enqueue on the shared generation FIFO and return jobId now. Then get_generation_job or await_generation_job.'
     },
+    dest_path: DEST_PATH_SCHEMA,
     append_transparency: { type: 'boolean', description: 'If true, server prepends "transparent background". Do not also add that tag by hand.' },
     image: { type: 'string', description: 'img2img source: file:filename or omitted if Studio already has one' },
     image_bias: { type: 'number' },
@@ -293,7 +301,7 @@ const TOOL_DEFS = [
     {
         name: 'generate_image',
         core: true,
-        description: 'Generate on the server. Default waits on the shared generation FIFO (Studio uses the same stack; 8–20s gap after each job) and returns filename plus a Grok-sized webp. async true returns jobId immediately — then get_generation_job or await_generation_job. Full Studio settings (steps, guidance, rescale, sampler, noiseScheduler, seed, resolution, characters, vibes, pipeline, n, …) as top-level keys or inside params. n (2–8) is print copies. Paid Anlas/Opus (upscale, expand, large/xlarge/wallpaper) requires userApprovedPaidRequest (alias allow_paid) or this bounces before FIFO. dynamicGeneration enabled:false or omit does not compile and does not 500. Unintegrated toggles return needsIntegration + resolved and do not enqueue. Not the Studio Generate button (use apply_studio_changes autoGenerate).',
+        description: 'Generate on the server. Default waits on the shared generation FIFO (Studio uses the same stack; 8–20s gap after each job) and returns filename plus a Grok-sized webp (tool channel) and dest_path / bytes / mime / url (no pixels in the JSON). Pass dest_path (default artifacts/<filename>.webp) then render_file /home/workdir/artifacts/… after curling url if the sandbox file is missing. async true returns jobId immediately — then get_generation_job or await_generation_job with the same dest_path. Full Studio settings (steps, guidance, rescale, sampler, noiseScheduler, seed, resolution, characters, vibes, pipeline, n, …) as top-level keys or inside params. n (2–8) is print copies. Paid Anlas/Opus (upscale, expand, large/xlarge/wallpaper) requires userApprovedPaidRequest (alias allow_paid) or this bounces before FIFO. dynamicGeneration enabled:false or omit does not compile and does not 500. Unintegrated toggles return needsIntegration + resolved and do not enqueue. Not the Studio Generate button (use apply_studio_changes autoGenerate).',
         scope: 'generation',
         packet: 'generate_image',
         inputSchema: {
@@ -305,13 +313,14 @@ const TOOL_DEFS = [
     {
         name: 'get_generation_job',
         core: true,
-        description: 'Poll a generate_image / generate_preset job from async true. Pass jobId. If complete, returns the same filename + Grok webp as generate_image. If still queued or running, returns status and position.',
+        description: 'Poll a generate_image / generate_preset job from async true. Pass jobId. If complete, returns the same filename + Grok webp + dest_path as generate_image. If still queued or running, returns status and position.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
             additionalProperties: false,
             properties: {
-                jobId: { type: 'string', description: 'Token from generate_image async true' }
+                jobId: { type: 'string', description: 'Token from generate_image async true' },
+                dest_path: DEST_PATH_SCHEMA
             },
             required: ['jobId']
         }
@@ -319,13 +328,14 @@ const TOOL_DEFS = [
     {
         name: 'await_generation_job',
         core: true,
-        description: 'Block until a generate_image / generate_preset job finishes, then return filename + Grok webp. Pass jobId from async true.',
+        description: 'Block until a generate_image / generate_preset job finishes, then return filename + Grok webp + dest_path. Pass jobId from async true (same dest_path as generate_image).',
         scope: 'generation',
         inputSchema: {
             type: 'object',
             additionalProperties: false,
             properties: {
-                jobId: { type: 'string', description: 'Token from generate_image async true' }
+                jobId: { type: 'string', description: 'Token from generate_image async true' },
+                dest_path: DEST_PATH_SCHEMA
             },
             required: ['jobId']
         }
@@ -333,7 +343,7 @@ const TOOL_DEFS = [
     {
         name: 'get_generated_image',
         core: true,
-        description: 'Get one gallery image as NovelAI metadata plus a Grok-sized webp. Pass filename, seed, or omit filename for the latest image. workspace default is "default". Do not page get_images.',
+        description: 'Get one gallery image as NovelAI metadata plus a Grok-sized webp (tool channel) and dest_path / bytes / mime / url. Pass dest_path then render_file that sandbox path. Filename, seed, or omit filename for the latest image. workspace default is "default". Do not page get_images.',
         scope: 'gallery',
         packet: 'request_image_metadata',
         inputSchema: {
@@ -344,7 +354,8 @@ const TOOL_DEFS = [
                 seed: { type: ['string', 'number'], description: 'Find by seed when filename is unknown' },
                 workspace: { type: 'string', description: 'Workspace id or "default"' },
                 workspaceId: { type: 'string' },
-                full: { type: 'boolean', description: 'Original PNG only if under the size cap. Default false.' }
+                full: { type: 'boolean', description: 'Original PNG only if under the size cap. Default false. dest_path then uses that original under the cap.' },
+                dest_path: DEST_PATH_SCHEMA
             }
         }
     },
@@ -357,7 +368,8 @@ const TOOL_DEFS = [
             additionalProperties: false,
             properties: {
                 workspace: { type: 'string' },
-                workspaceId: { type: 'string' }
+                workspaceId: { type: 'string' },
+                dest_path: DEST_PATH_SCHEMA
             }
         }
     },
@@ -885,6 +897,7 @@ const TOOL_DEFS = [
                     type: 'boolean',
                     description: 'Default false waits for the image. true returns jobId for get_generation_job / await_generation_job.'
                 },
+                dest_path: DEST_PATH_SCHEMA,
                 params: {
                     type: 'object',
                     additionalProperties: true,
@@ -2328,8 +2341,8 @@ async function collectSessionState(globalResources, req, input) {
             out.settings = sessionSettingsCatalog(globalResources);
         }
         out.next = out.remoteAccess.defaultGenerationMethod === 'detached'
-            ? 'No client connected. Call generate_image (server-side). Do not apply_studio_changes. Always show the returned webp.'
-            : 'No client connected. Call generate_image (server-side). Do not apply_studio_changes. Always show the returned webp. If a client is later connected, generate_image opens the configured viewer.';
+            ? 'No client connected. Call generate_image (server-side) with dest_path. Do not apply_studio_changes. render_file the dest_path after curling url if needed.'
+            : 'No client connected. Call generate_image (server-side) with dest_path. Do not apply_studio_changes. render_file the dest_path after curling url if needed. If a client is later connected, generate_image opens the configured viewer.';
         return mcpTextResult(out);
     }
     if (!bind.bound) {
@@ -2789,7 +2802,7 @@ function pickFocusedWindowFilename(windows) {
     );
 }
 
-async function mcpResultFromGenerateFlat(globalResources, flat, success) {
+async function mcpResultFromGenerateFlat(globalResources, flat, success, destPathHint) {
     const filename = sanitizeGalleryFilename(
         (flat && flat.filename) || (flat && Array.isArray(flat.filenames) ? flat.filenames[0] : '')
     );
@@ -2800,21 +2813,25 @@ async function mcpResultFromGenerateFlat(globalResources, flat, success) {
             const image = await resizeImageForGrok(resolved.filePath);
             if (image) {
                 image.filename = filename;
-                return mcpImageResult({ ...body, imageKind: 'grok' }, image);
+                return mcpImageResult(attachDestPathMeta(globalResources, {
+                    ...body,
+                    imageKind: 'grok'
+                }, image, destPathHint), image);
             }
         } catch (_) { /* metadata-only fallback */ }
     }
     return mcpTextResult(body, !success);
 }
 
-async function mcpResultFromGenerationJob(globalResources, job, queue, req) {
+async function mcpResultFromGenerationJob(globalResources, job, queue, req, destPathHint) {
     const snap = queue.snapshot(job);
     if (job.status !== 'completed') {
         return mcpTextResult({
             ...snap,
+            dest_path: destPathHint || job.destPath || null,
             next: job.status === 'failed'
                 ? null
-                : 'Call await_generation_job to wait, or get_generation_job again to poll.'
+                : 'Call await_generation_job with this jobId and the same dest_path. Do not invent a save after polling.'
         }, job.status === 'failed');
     }
     const result = job.result && typeof job.result === 'object' ? job.result : {};
@@ -2826,9 +2843,13 @@ async function mcpResultFromGenerationJob(globalResources, job, queue, req) {
             filenames: merged.filenames
         });
         merged.lumen = await maybeOpenGeneratedInLumen(globalResources, req, names);
-        merged.next = 'Show this webp to the user. Do not page the gallery.';
     }
-    return mcpResultFromGenerateFlat(globalResources, merged, result.success !== false);
+    return mcpResultFromGenerateFlat(
+        globalResources,
+        merged,
+        result.success !== false,
+        destPathHint || job.destPath
+    );
 }
 
 async function handleAdvancedTools(globalResources, req, input) {
@@ -3256,15 +3277,31 @@ async function callTool(globalResources, req, name, args) {
             } catch (err) {
                 if (err && err.code === 'GENERATION_JOB_TIMEOUT') throw err;
                 const again = queue.get(jobId);
-                if (again) return mcpResultFromGenerationJob(globalResources, again, queue, req);
+                if (again) {
+                    return mcpResultFromGenerationJob(
+                        globalResources,
+                        again,
+                        queue,
+                        req,
+                        pickDestPathInput(input) || again.destPath
+                    );
+                }
                 throw err;
             }
         }
-        return mcpResultFromGenerationJob(globalResources, queue.get(jobId) || job, queue, req);
+        const ready = queue.get(jobId) || job;
+        return mcpResultFromGenerationJob(
+            globalResources,
+            ready,
+            queue,
+            req,
+            pickDestPathInput(input) || ready.destPath
+        );
     }
 
     const generateNames = ['generate_image', 'generate_preset', 'upscale_image', 'expand_image'];
     if (generateNames.includes(name)) {
+        const destPathHint = pickDestPathInput(input);
         let payload = flattenGenerateToolArgs(input);
         if (name === 'expand_image') {
             payload = mergeExpansionOverrideParams(payload);
@@ -3277,6 +3314,8 @@ async function callTool(globalResources, req, name, args) {
         const wantAsync = payload.async === true || payload.async === 'true';
         delete payload.async;
         delete payload.skipGenerationQueue;
+        delete payload.dest_path;
+        delete payload.destPath;
 
         if (name === 'generate_image' || name === 'generate_preset') {
             const dyn = pickDynagenFromInput(payload);
@@ -3294,6 +3333,7 @@ async function callTool(globalResources, req, name, args) {
             const job = queue.submit({
                 type: name,
                 source: 'mcp',
+                destPath: destPathHint || null,
                 run: async () => {
                     const packet = await dispatchPacketTool(globalResources, req, def.packet, {
                         ...payload,
@@ -3309,7 +3349,8 @@ async function callTool(globalResources, req, name, args) {
                 status: job.status,
                 position: job.position,
                 delayMs: job.estimatedDelayMs,
-                next: 'Call await_generation_job with this jobId to wait for the image, or get_generation_job to poll.'
+                dest_path: destPathHint || null,
+                next: 'Call await_generation_job with this jobId and the same dest_path. Do not invent a save after polling.'
             });
         }
 
@@ -3322,10 +3363,7 @@ async function callTool(globalResources, req, name, args) {
             });
             flat.lumen = await maybeOpenGeneratedInLumen(globalResources, req, names);
         }
-        if (packet.success) {
-            flat.next = 'Show this webp to the user. Do not page the gallery.';
-        }
-        return mcpResultFromGenerateFlat(globalResources, flat, packet.success);
+        return mcpResultFromGenerateFlat(globalResources, flat, packet.success, destPathHint);
     }
 
     if (name === 'get_wiki_page') {
@@ -3431,14 +3469,14 @@ async function callTool(globalResources, req, name, args) {
             }, !packet.success);
         }
         const mustAct = collectEnshutsukaMustAct(meta);
-        return mcpImageResult({
+        return mcpImageResult(attachDestPathMeta(globalResources, {
             ...meta,
             filename,
             imageKind,
             workspaceId: lookedUp.workspaceId,
             latest: !!lookedUp.latest,
             mustAct
-        }, image);
+        }, image, pickDestPathInput(input), { full: wantFull }), image);
     }
 
     if (name === 'list_clients') {
@@ -3579,7 +3617,15 @@ async function callTool(globalResources, req, name, args) {
         }
         const data = await applyStudioChanges(globalResources, { ...input, bindKey: bind.bindKey });
         rememberStudioCheckpointFromState(bind.bindKey, data);
-        return mcpTextResult({ success: true, autoBound: !!bind.auto, ...data });
+        const next = data && data.generateStarted
+            ? 'apply does not return pixels. Call get_generated_image (that filename or latest) with dest_path, then render_file /home/workdir/artifacts/… after curling url if missing. Do not reprint with Grok Imagine.'
+            : undefined;
+        return mcpTextResult({
+            success: true,
+            autoBound: !!bind.auto,
+            ...data,
+            ...(next ? { next } : {})
+        });
     }
 
     // Cake Pantry module tools (sfapp_cake_pantry)
@@ -4236,6 +4282,26 @@ function registerRoutes(app, { globalResources }) {
     app.get(`${prefix}/mcp`, ...stack, handleMcpGet);
     app.post(prefix, ...stack, handleMcpPost);
     app.post(`${prefix}/mcp`, ...stack, handleMcpPost);
+
+    const artifactLimiter = rateLimit({
+        windowMs: 15 * 60 * 1000,
+        max: 60,
+        keyGenerator: (req) => `mcp-artifact:${ipKeyGenerator(req.ip || req.socket?.remoteAddress || 'unknown')}`,
+        standardHeaders: true,
+        legacyHeaders: false
+    });
+    app.get(`${prefix}/artifacts/:ticket`, artifactLimiter, (req, res) => {
+        const row = getArtifactTicket(req.params.ticket);
+        if (!row) {
+            return res.status(404).json({ error: 'Artifact expired or unknown', code: 'ARTIFACT_NOT_FOUND' });
+        }
+        const name = path.posix.basename(row.destPath || 'generated.webp');
+        res.setHeader('Content-Type', row.mime);
+        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('Content-Disposition', `inline; filename="${name}"`);
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        return res.status(200).send(row.bytes);
+    });
 }
 
 module.exports = {
@@ -4309,6 +4375,8 @@ module.exports = {
         getBoundRecord,
         pickFocusedWindowFilename,
         currentMcpToolsRevision,
-        buildMcpServerInfo
+        buildMcpServerInfo,
+        pickDestPathInput,
+        destPathNext
     }
 };
