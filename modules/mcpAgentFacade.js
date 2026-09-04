@@ -226,12 +226,17 @@ const STUDIO_PARAM_SCHEMA = {
     auto_clean_uc: { type: 'boolean' }
 };
 
+const WORKSPACE_PLACEMENT_SCHEMA = {
+    type: 'string',
+    description: 'Workspace id. Pass the folder they named, or the folder that already holds the source / this job\'s gens. Do not copy the bound Studio tab just because it is focused. Omit is unsafe: the server may fall back to that tab or default.'
+};
+
 const GENERATE_IMAGE_PROPERTIES = {
     prompt: { type: 'string', description: 'Positive prompt. If append_quality is true, do not also paste the quality preset string — the server prepends it.' },
     uc: { type: 'string', description: 'Undesired content. If append_uc > 0, do not also paste that UC preset string — the server prepends it.' },
     promptNegative: { type: 'string' },
     input_prompt_negative: { type: 'string' },
-    workspace: { type: 'string', description: 'Workspace id. Omit to use the bound Studio tab (or the only connected tab). Do not leave this empty if several tabs are in different folders.' },
+    workspace: WORKSPACE_PLACEMENT_SCHEMA,
     pipeline: {
         type: 'array',
         description: 'Staged generation stages (same payload as Studio pipeline). Omit for a single image.'
@@ -352,7 +357,7 @@ const TOOL_DEFS = [
             properties: {
                 filename: { type: 'string', description: 'Basename, partial name, or omit for latest' },
                 seed: { type: ['string', 'number'], description: 'Find by seed when filename is unknown' },
-                workspace: { type: 'string', description: 'Workspace id or "default"' },
+                workspace: { type: 'string', description: 'Workspace id or "default". Use the same folder as the job / source gens, not the focused Studio tab.' },
                 workspaceId: { type: 'string' },
                 full: { type: 'boolean', description: 'Original PNG only if under the size cap. Default false. dest_path then uses that original under the cap.' },
                 dest_path: DEST_PATH_SCHEMA
@@ -886,7 +891,7 @@ const TOOL_DEFS = [
             required: ['presetName'],
             properties: {
                 presetName: { type: 'string' },
-                workspace: { type: 'string' },
+                workspace: WORKSPACE_PLACEMENT_SCHEMA,
                 allow_paid: { type: 'boolean', description: 'Same as userApprovedPaidRequest. Required for paid Anlas/Opus on this preset generate.' },
                 userApprovedPaidRequest: { type: 'boolean', description: 'Required if this preset generate spends paid Anlas/Opus. Alias of allow_paid.' },
                 n: {
@@ -919,7 +924,7 @@ const TOOL_DEFS = [
             required: ['filename'],
             properties: {
                 filename: { type: 'string' },
-                workspace: { type: 'string' },
+                workspace: WORKSPACE_PLACEMENT_SCHEMA,
                 upscaler: { type: 'string', description: 'Default novelai' },
                 scale: { type: 'number', description: 'Passed through; live NAI contract is 2x' },
                 userApprovedPaidRequest: { type: 'boolean', description: 'Required. Upscale spends Opus. Alias of allow_paid.' },
@@ -941,7 +946,7 @@ const TOOL_DEFS = [
                 filename: { type: 'string' },
                 resolution: { type: 'string', description: 'Named Studio resolution (e.g. large_landscape)' },
                 imageBias: { type: 'number', description: '0–4 placement of the original in the new canvas' },
-                workspace: { type: 'string' },
+                workspace: WORKSPACE_PLACEMENT_SCHEMA,
                 userApprovedPaidRequest: { type: 'boolean', description: 'Required. Expand spends Anlas. Alias of allow_paid.' },
                 allow_paid: { type: 'boolean', description: 'Same as userApprovedPaidRequest.' },
                 upscaleAfterComplete: { type: 'boolean' },
