@@ -2134,7 +2134,7 @@ class DesktopShortcutsManager {
             const metadata = {
                 prompt: requestBody.prompt || '',
                 uc: requestBody.uc || '',
-                model: requestBody.model || 'v4_5',
+                model: requestBody.model || 'v5',
                 steps: requestBody.steps || 25,
                 guidance: requestBody.guidance || 5.0,
                 rescale: requestBody.rescale || 0.0,

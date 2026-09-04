@@ -1351,7 +1351,7 @@ function getManualModalValues() {
     }
 
     return {
-        model: manualSelectedModel || 'v4_5',
+        model: manualSelectedModel || 'v5',
         steps: parseInt(manualSteps?.value) || 25,
         guidance: parseFloat(manualGuidance?.value) || 5.0,
         rescale: parseFloat(manualRescale?.value) || 0.0,
@@ -1738,6 +1738,18 @@ function renderExpandCanvasStage(stageId) {
     stageBody.innerHTML = `
         <div class="stage-controls-section stage-expand">
             <div class="form-row justify-spaced">
+                <div id="${stageId}_canvasPreview" class="expansion-canvas-preview hidden">
+                    <div class="expansion-canvas-preview-stage">
+                        <span class="expansion-canvas-preview-edge" data-edge="top"></span>
+                        <span class="expansion-canvas-preview-edge" data-edge="left"></span>
+                        <div class="expansion-canvas-preview-target">
+                            <div class="expansion-canvas-preview-source"></div>
+                        </div>
+                        <span class="expansion-canvas-preview-edge" data-edge="right"></span>
+                        <span class="expansion-canvas-preview-edge" data-edge="bottom"></span>
+                    </div>
+                    <div class="expansion-canvas-preview-meta"></div>
+                </div>
                 <div class="group-controls-container">
                     <div class="form-group group-resolution">
                         <label for="${stageId}_resolution">
@@ -2285,34 +2297,64 @@ function getExpandCanvasStageBasePixelDimensions(stageId) {
     return { width: 0, height: 0 };
 }
 
+function getExpandCanvasStageTargetPixelDimensions(stageId) {
+    const resInput = document.getElementById(`${stageId}_resolution`);
+    const resVal = resInput?.value;
+    if (resVal === 'custom') {
+        const wEl = document.getElementById(`${stageId}_width`);
+        const hEl = document.getElementById(`${stageId}_height`);
+        return {
+            width: parseInt(wEl?.value, 10) || 0,
+            height: parseInt(hEl?.value, 10) || 0
+        };
+    }
+    if (resVal) {
+        const d = getDimensionsFromResolution(resVal);
+        if (d) return d;
+    }
+    return { width: 0, height: 0 };
+}
+
+function updateExpandCanvasStagePreview(stageId) {
+    const root = document.getElementById(`${stageId}_canvasPreview`);
+    if (!root) return;
+
+    const base = getExpandCanvasStageBasePixelDimensions(stageId);
+    const target = getExpandCanvasStageTargetPixelDimensions(stageId);
+    const biasInput = document.getElementById(`${stageId}_bias`);
+    const insetBtn = document.getElementById(`${stageId}_insetToggle`);
+    const bias = biasInput && biasInput.value !== '' ? biasInput.value : 2;
+    const insetOn = insetBtn ? insetBtn.dataset.state === 'on' : false;
+    // computeExpansionLetterboxLayout: public/scripts/comp/utilities.js
+    const layout = computeExpansionLetterboxLayout(
+        base.width,
+        base.height,
+        target.width,
+        target.height,
+        bias,
+        { inset: insetOn }
+    );
+    // applyExpansionCanvasPreview: public/scripts/comp/imageExpansion.js
+    applyExpansionCanvasPreview(root, layout);
+}
+
 /** Show expand-canvas inset control only when target output is strictly larger than incoming image on both axes. */
 function updateExpandCanvasStageInsetToggle(stageId) {
     const stageItem = document.getElementById(stageId);
     if (!stageItem || stageItem.dataset.stageType !== STAGE_TYPES.EXPAND_CANVAS) return;
 
     const insetBtn = document.getElementById(`${stageId}_insetToggle`);
-    if (!insetBtn) return;
+    if (!insetBtn) {
+        updateExpandCanvasStagePreview(stageId);
+        return;
+    }
 
     const base = getExpandCanvasStageBasePixelDimensions(stageId);
     const bw = base.width || 0;
     const bh = base.height || 0;
-
-    const resInput = document.getElementById(`${stageId}_resolution`);
-    const resVal = resInput?.value;
-    let tw = 0;
-    let th = 0;
-    if (resVal === 'custom') {
-        const wEl = document.getElementById(`${stageId}_width`);
-        const hEl = document.getElementById(`${stageId}_height`);
-        tw = parseInt(wEl?.value, 10) || 0;
-        th = parseInt(hEl?.value, 10) || 0;
-    } else if (resVal) {
-        const d = getDimensionsFromResolution(resVal);
-        if (d) {
-            tw = d.width;
-            th = d.height;
-        }
-    }
+    const target = getExpandCanvasStageTargetPixelDimensions(stageId);
+    const tw = target.width;
+    const th = target.height;
 
     const applicable = bw > 0 && bh > 0 && tw > 0 && th > 0 && tw > bw && th > bh;
     const wasHidden = insetBtn.classList.contains('hidden');
@@ -2325,6 +2367,8 @@ function updateExpandCanvasStageInsetToggle(stageId) {
         insetBtn.classList.add('hidden');
         insetBtn.dataset.state = 'off';
     }
+
+    updateExpandCanvasStagePreview(stageId);
 }
 
 // Stage dropdown render functions
@@ -3100,6 +3144,8 @@ function selectStageBias(stageId, value, name, isPortrait) {
     if (resolutionInput) {
         updateStageBiasOrientation(stageId, resolutionInput.value);
     }
+
+    updateExpandCanvasStagePreview(stageId);
 }
 
 function updateStageBiasOrientation(stageId, resolutionValue) {

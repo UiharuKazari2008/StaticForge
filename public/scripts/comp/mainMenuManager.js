@@ -794,8 +794,8 @@ function setupMainMenuContextMenus() {
                 break;
 
             case 'cast-spell':
-                // Open spellbook modal directly
-                window.spellbookModalManager.openModal();
+                // openSpellbookApplet: public/scripts/comp/featureLoader.js
+                void openSpellbookApplet();
                 break;
 
             case 'creator-model':

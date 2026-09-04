@@ -2,34 +2,230 @@
   "configId": "secureConfig",
   "label": "Secure Config",
   "rules": [
-    { "path": [], "type": "object", "label": "Secure Config", "closed": true, "required": true },
-    { "path": ["location"], "type": "object", "label": "Location", "closed": true, "required": true },
-    { "path": ["location", "latitude"], "type": "number", "label": "Latitude", "required": true },
-    { "path": ["location", "longitude"], "type": "number", "label": "Longitude", "required": true },
-    { "path": ["logViewerPathUuid"], "type": "string", "label": "Log Viewer Path UUID", "editorType": "input", "description": "UUID segment for the log viewer VFS route" },
-    { "path": ["vfsPathUuid"], "type": "string", "label": "VFS Path UUID", "editorType": "input", "description": "UUID segment for the virtual filesystem route" },
-    { "path": ["apocryphaPathUuid"], "type": "string", "label": "Apocrypha Path UUID", "editorType": "input", "description": "UUID segment for the public Apocrypha views (hostname presents this path)" },
-    { "path": ["devLoginKey"], "type": "string", "secret": true, "label": "Development Login Key" },
-    { "path": ["loginKey"], "type": "string", "secret": true, "label": "Login Key" },
-    { "path": ["loginPin"], "type": "string", "secret": true, "label": "Admin PIN" },
-    { "path": ["readOnlyPin"], "type": "string", "secret": true, "label": "User PIN" },
-    { "path": ["sessionSecret"], "type": "string", "secret": true, "label": "Session Secret", "required": true },
-    { "path": ["*"], "type": "object", "label": "Provider", "closed": true },
-    { "path": ["*", "keys"], "type": "array", "label": "API Keys", "allowAdd": true, "required": true },
-    { "path": ["*", "keys", "*"], "type": "object", "closed": true },
-    { "path": ["*", "keys", "*", "name"], "type": "string", "label": "Key Name", "editorType": "input", "required": true },
-    { "path": ["*", "keys", "*", "apiKey"], "type": "string", "secret": true, "label": "API Key", "required": true },
-    { "path": ["grok", "useWebSearch"], "type": "boolean", "label": "Grok Web Search", "editMode": "inline" },
-    { "path": ["grok", "_tagWikiCollectionId"], "type": "string", "label": "Tag Wiki Collection ID", "editorType": "input", "description": "Grok collection ID for tag wiki RAG" },
-    { "path": ["runpod", "esrganWorkerId"], "type": "string", "label": "ESRGAN Worker ID", "editorType": "input", "description": "RunPod serverless worker ID for upscaling" },
-    { "path": ["runpod", "idleMinutes"], "type": "number", "label": "Managed pod idle minutes", "description": "Default auto-shutdown idle time when no Dreamscape sessions are logged in" },
-    { "path": ["runpod", "managedPods"], "type": "array", "itemsType": "object", "label": "Managed GPU Pods", "allowAdd": true, "description": "Dedicated GPU Pods started/stopped from the taskbar tray (not serverless workers)" },
     {
-      "path": ["runpod", "managedPods", "*"],
+      "path": [],
+      "type": "object",
+      "label": "Secure Config",
+      "closed": true,
+      "required": true
+    },
+    {
+      "path": [
+        "location"
+      ],
+      "type": "object",
+      "label": "Location",
+      "closed": true,
+      "required": true
+    },
+    {
+      "path": [
+        "location",
+        "latitude"
+      ],
+      "type": "number",
+      "label": "Latitude",
+      "required": true
+    },
+    {
+      "path": [
+        "location",
+        "longitude"
+      ],
+      "type": "number",
+      "label": "Longitude",
+      "required": true
+    },
+    {
+      "path": [
+        "logViewerPathUuid"
+      ],
+      "type": "string",
+      "label": "Log Viewer Path UUID",
+      "editorType": "input",
+      "description": "UUID segment for the log viewer VFS route"
+    },
+    {
+      "path": [
+        "vfsPathUuid"
+      ],
+      "type": "string",
+      "label": "VFS Path UUID",
+      "editorType": "input",
+      "description": "UUID segment for the virtual filesystem route"
+    },
+    {
+      "path": [
+        "apocryphaPathUuid"
+      ],
+      "type": "string",
+      "label": "Apocrypha Path UUID",
+      "editorType": "input",
+      "description": "UUID segment for the public Apocrypha views (hostname presents this path)"
+    },
+    {
+      "path": [
+        "mcpPathUuid"
+      ],
+      "type": "string",
+      "label": "MCP Path UUID",
+      "editorType": "input",
+      "description": "UUID segment for the unlisted MCP facade"
+    },
+    {
+      "path": [
+        "devLoginKey"
+      ],
+      "type": "string",
+      "secret": true,
+      "label": "Development Login Key"
+    },
+    {
+      "path": [
+        "loginKey"
+      ],
+      "type": "string",
+      "secret": true,
+      "label": "Login Key"
+    },
+    {
+      "path": [
+        "loginPin"
+      ],
+      "type": "string",
+      "secret": true,
+      "label": "Admin PIN"
+    },
+    {
+      "path": [
+        "readOnlyPin"
+      ],
+      "type": "string",
+      "secret": true,
+      "label": "User PIN"
+    },
+    {
+      "path": [
+        "sessionSecret"
+      ],
+      "type": "string",
+      "secret": true,
+      "label": "Session Secret",
+      "required": true
+    },
+    {
+      "path": [
+        "*"
+      ],
+      "type": "object",
+      "label": "Provider",
+      "closed": true
+    },
+    {
+      "path": [
+        "*",
+        "keys"
+      ],
+      "type": "array",
+      "label": "API Keys",
+      "allowAdd": true,
+      "required": true
+    },
+    {
+      "path": [
+        "*",
+        "keys",
+        "*"
+      ],
+      "type": "object",
+      "closed": true
+    },
+    {
+      "path": [
+        "*",
+        "keys",
+        "*",
+        "name"
+      ],
+      "type": "string",
+      "label": "Key Name",
+      "editorType": "input",
+      "required": true
+    },
+    {
+      "path": [
+        "*",
+        "keys",
+        "*",
+        "apiKey"
+      ],
+      "type": "string",
+      "secret": true,
+      "label": "API Key",
+      "required": true
+    },
+    {
+      "path": [
+        "grok",
+        "useWebSearch"
+      ],
+      "type": "boolean",
+      "label": "Grok Web Search",
+      "editMode": "inline"
+    },
+    {
+      "path": [
+        "grok",
+        "_tagWikiCollectionId"
+      ],
+      "type": "string",
+      "label": "Tag Wiki Collection ID",
+      "editorType": "input",
+      "description": "Grok collection ID for tag wiki RAG"
+    },
+    {
+      "path": [
+        "runpod",
+        "esrganWorkerId"
+      ],
+      "type": "string",
+      "label": "ESRGAN Worker ID",
+      "editorType": "input",
+      "description": "RunPod serverless worker ID for upscaling"
+    },
+    {
+      "path": [
+        "runpod",
+        "idleMinutes"
+      ],
+      "type": "number",
+      "label": "Managed pod idle minutes",
+      "description": "Default auto-shutdown idle time when no Dreamscape sessions are logged in"
+    },
+    {
+      "path": [
+        "runpod",
+        "managedPods"
+      ],
+      "type": "array",
+      "itemsType": "object",
+      "label": "Managed GPU Pods",
+      "allowAdd": true,
+      "description": "Dedicated GPU Pods started/stopped from the taskbar tray (not serverless workers)"
+    },
+    {
+      "path": [
+        "runpod",
+        "managedPods",
+        "*"
+      ],
       "type": "object",
       "label": "Managed Pod",
       "displayTemplate": "{name} ({id})",
-      "displayFields": ["name", "id"],
+      "displayFields": [
+        "name",
+        "id"
+      ],
       "defaultSkeleton": {
         "id": "",
         "name": "",
@@ -37,9 +233,51 @@
         "idleMinutes": 15
       }
     },
-    { "path": ["runpod", "managedPods", "*", "id"], "type": "string", "label": "Pod ID", "editorType": "input", "required": true, "description": "RunPod GPU Pod ID from the console (not a serverless endpoint id)" },
-    { "path": ["runpod", "managedPods", "*", "name"], "type": "string", "label": "Display name", "editorType": "input" },
-    { "path": ["runpod", "managedPods", "*", "autoShutdown"], "type": "boolean", "label": "Auto-shutdown", "editMode": "inline", "description": "Stop this pod when no Dreamscape users are logged in and it has been idle" },
-    { "path": ["runpod", "managedPods", "*", "idleMinutes"], "type": "number", "label": "Idle minutes" }
+    {
+      "path": [
+        "runpod",
+        "managedPods",
+        "*",
+        "id"
+      ],
+      "type": "string",
+      "label": "Pod ID",
+      "editorType": "input",
+      "required": true,
+      "description": "RunPod GPU Pod ID from the console (not a serverless endpoint id)"
+    },
+    {
+      "path": [
+        "runpod",
+        "managedPods",
+        "*",
+        "name"
+      ],
+      "type": "string",
+      "label": "Display name",
+      "editorType": "input"
+    },
+    {
+      "path": [
+        "runpod",
+        "managedPods",
+        "*",
+        "autoShutdown"
+      ],
+      "type": "boolean",
+      "label": "Auto-shutdown",
+      "editMode": "inline",
+      "description": "Stop this pod when no Dreamscape users are logged in and it has been idle"
+    },
+    {
+      "path": [
+        "runpod",
+        "managedPods",
+        "*",
+        "idleMinutes"
+      ],
+      "type": "number",
+      "label": "Idle minutes"
+    }
   ]
 }

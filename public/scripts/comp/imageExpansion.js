@@ -14,6 +14,7 @@ let expansionModalData = {
     enableAI: false, // Default to disabled
     enableInset: false, // Default to disabled
     expandSourcePixels: null, // { width, height } of image being expanded (for inset eligibility)
+    previewName: null, // gallery preview basename for the canvas thumbnail
     compiledPrompt: null, // { prompt, uc, characterPrompts } baseline from server (not sent unless editor save)
     savedPromptOverrides: null, // { prompt, uc, characterPrompts } set only via expansion prompt editor Save
     compiledPromptReady: false
@@ -667,6 +668,7 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
         enableAI: false, // Reset to disabled
         enableInset: false, // Reset to disabled
         expandSourcePixels: null,
+        previewName: null,
         compiledPrompt: null,
         savedPromptOverrides: null,
         compiledPromptReady: false
@@ -1439,11 +1441,22 @@ function closeImageExpansionModal() {
     expansionModalData.overrideParams = {};
     expansionModalData.compiledPromptReady = false;
     expansionModalData.expandSourcePixels = null;
+    expansionModalData.previewName = null;
     expansionModalData.filename = null;
     expansionModalData.originalImage = null;
     expansionModalData.targetImage = null;
     expansionModalData.lastImage = null;
     expansionModalData.originalDimensions = null;
+
+    const preview = document.getElementById('expansionCanvasPreview');
+    if (preview) {
+        applyExpansionCanvasPreview(preview, null);
+        const img = preview.querySelector('.expansion-canvas-preview-image');
+        if (img) {
+            img.removeAttribute('src');
+            img.dataset.boundSrc = '';
+        }
+    }
 
     const modal = document.getElementById('imageExpansionDialog');
     if (modal) {
@@ -1616,16 +1629,19 @@ async function populateExpansionResolutionDropdown() {
                 height: metadata.actual_height || metadata.height
             };
             resPresetToUse = (metadata.actual_resolution || metadata.resPreset || metadata.resolution || '').toLowerCase();
+            expansionModalData.previewName = metadata.preview || null;
             console.log(`📐 Using ${expansionModalData.expansionMode} image dimensions for resolution filtering:`, dimsToUse, 'preset:', resPresetToUse);
         } else {
             console.warn('No metadata available for selected image');
             dimsToUse = expansionModalData.originalDimensions;
             resPresetToUse = (expansionModalData.originalDimensions?.resPreset || '').toLowerCase();
+            expansionModalData.previewName = null;
         }
     } catch (error) {
         console.error('Failed to get image metadata for resolution filtering:', error);
         dimsToUse = expansionModalData.originalDimensions;
         resPresetToUse = (expansionModalData.originalDimensions?.resPreset || '').toLowerCase();
+        expansionModalData.previewName = null;
     }
 
     if (!dimsToUse) {
@@ -1715,6 +1731,7 @@ function updateExpansionInsetToggleVisibility() {
         btn.classList.add('hidden');
         btn.setAttribute('data-state', 'off');
         expansionModalData.enableInset = false;
+        updateExpansionCanvasPreview();
         return;
     }
 
@@ -1724,6 +1741,123 @@ function updateExpansionInsetToggleVisibility() {
         btn.setAttribute('data-state', 'on');
         expansionModalData.enableInset = true;
     }
+
+    updateExpansionCanvasPreview();
+}
+
+function formatExpansionPadLabel(px) {
+    return px > 0 ? `+${px}` : '';
+}
+
+function bindExpansionCanvasPreviewImage(img) {
+    if (!img || img.dataset.previewBound === '1') return;
+    img.dataset.previewBound = '1';
+    img.addEventListener('error', () => {
+        const fallback = img.dataset.fallbackSrc;
+        if (fallback && img.dataset.fallbackUsed !== '1') {
+            img.dataset.fallbackUsed = '1';
+            img.src = fallback;
+        }
+    });
+}
+
+function getExpansionCanvasPreviewUrls(filename) {
+    // localGalleryPreviewUrl / localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+    // getGalleryPreviewUrl: public/scripts/utils/deviceUtils.js
+    const fallbackUrl = filename ? localGalleryImageUrl(filename) : '';
+    const preview = expansionModalData.previewName;
+    if (preview) {
+        return { imageUrl: localGalleryPreviewUrl(getGalleryPreviewUrl(preview)), fallbackUrl };
+    }
+    if (!filename) {
+        return { imageUrl: '', fallbackUrl: '' };
+    }
+    const base = String(filename).replace(/\.(png|jpg|jpeg|webp)$/i, '');
+    return { imageUrl: localGalleryPreviewUrl(`${base}.webp`), fallbackUrl };
+}
+
+function applyExpansionCanvasPreview(root, layout, imageUrl, fallbackUrl) {
+    if (!root) return;
+    if (!layout) {
+        root.classList.add('hidden');
+        return;
+    }
+
+    const target = root.querySelector('.expansion-canvas-preview-target');
+    const meta = root.querySelector('.expansion-canvas-preview-meta');
+    if (!target) {
+        root.classList.add('hidden');
+        return;
+    }
+
+    const tmax = Math.max(layout.targetWidth, layout.targetHeight);
+    target.style.setProperty('--expansion-target-w', String(layout.targetWidth));
+    target.style.setProperty('--expansion-target-h', String(layout.targetHeight));
+    target.style.setProperty('--expansion-target-max', String(tmax));
+    target.style.setProperty('--expansion-source-x', String(layout.left));
+    target.style.setProperty('--expansion-source-y', String(layout.top));
+    target.style.setProperty('--expansion-source-w', String(layout.scaledWidth));
+    target.style.setProperty('--expansion-source-h', String(layout.scaledHeight));
+
+    const pads = {
+        top: layout.padTop,
+        right: layout.padRight,
+        bottom: layout.padBottom,
+        left: layout.padLeft
+    };
+    root.querySelectorAll('.expansion-canvas-preview-edge').forEach((el) => {
+        el.textContent = formatExpansionPadLabel(pads[el.dataset.edge] || 0);
+    });
+
+    if (meta) {
+        meta.textContent = `${layout.origWidth}×${layout.origHeight} → ${layout.targetWidth}×${layout.targetHeight}`;
+    }
+
+    const img = root.querySelector('.expansion-canvas-preview-image');
+    if (img) {
+        bindExpansionCanvasPreviewImage(img);
+        if (imageUrl) {
+            if (img.dataset.boundSrc !== imageUrl) {
+                img.dataset.boundSrc = imageUrl;
+                img.dataset.fallbackUsed = '';
+                if (fallbackUrl && fallbackUrl !== imageUrl) {
+                    img.dataset.fallbackSrc = fallbackUrl;
+                } else {
+                    img.removeAttribute('data-fallback-src');
+                }
+                img.src = imageUrl;
+            }
+        } else {
+            img.removeAttribute('src');
+            img.dataset.boundSrc = '';
+        }
+    }
+
+    root.classList.remove('hidden');
+}
+
+function updateExpansionCanvasPreview() {
+    const root = document.getElementById('expansionCanvasPreview');
+    if (!root) return;
+
+    const px = expansionModalData.expandSourcePixels;
+    const res = expansionModalData.selectedResolution;
+    const target = res ? getDimensionsFromResolution(res) : null;
+    const insetToggle = document.getElementById('expansionInsetToggle');
+    const insetOn = insetToggle ? insetToggle.getAttribute('data-state') === 'on' : expansionModalData.enableInset;
+    // computeExpansionLetterboxLayout: public/scripts/comp/utilities.js
+    const layout = px && target
+        ? computeExpansionLetterboxLayout(
+            px.width,
+            px.height,
+            target.width,
+            target.height,
+            expansionModalData.selectedBias,
+            { inset: insetOn }
+        )
+        : null;
+    const urls = getExpansionCanvasPreviewUrls(expansionModalData.targetImage);
+    applyExpansionCanvasPreview(root, layout, urls.imageUrl, urls.fallbackUrl);
 }
 
 // Select expansion resolution
@@ -1862,6 +1996,7 @@ function selectExpansionBias(value) {
     // Re-render dropdown to update selected state
     renderExpansionBiasDropdown(value.toString());
 
+    updateExpansionCanvasPreview();
     scheduleExpansionCompiledPromptReload();
 }
 
@@ -2549,6 +2684,7 @@ function toggleExpansionInset() {
     const newState = currentState === 'on' ? 'off' : 'on';
     insetToggle.setAttribute('data-state', newState);
     expansionModalData.enableInset = newState === 'on';
+    updateExpansionCanvasPreview();
 }
 
 // Toggle AI enhancement

@@ -723,8 +723,9 @@ function createRunPresetEntry(presetName, subtitle, score) {
         keywords: [presetName],
         score,
         execute: async () => {
+            // openSpellbookApplet: public/scripts/comp/featureLoader.js
+            await openSpellbookApplet();
             if (window.spellbookModalManager) {
-                window.spellbookModalManager.openModal();
                 window.spellbookModalManager.selectPreset(presetName);
             } else if (typeof showPresetManager === 'function') {
                 showPresetManager();
@@ -1602,9 +1603,12 @@ function getRunEntryActionMenu(entry) {
                 }
             ],
             onAction: async (action) => {
-                if (action === 'spellbook' && window.spellbookModalManager) {
-                    window.spellbookModalManager.openModal();
-                    window.spellbookModalManager.selectPreset(entry.presetName);
+                if (action === 'spellbook') {
+                    // openSpellbookApplet: public/scripts/comp/featureLoader.js
+                    await openSpellbookApplet();
+                    if (window.spellbookModalManager) {
+                        window.spellbookModalManager.selectPreset(entry.presetName);
+                    }
                 } else if (action === 'manager' && typeof showPresetManager === 'function') {
                     showPresetManager();
                 }

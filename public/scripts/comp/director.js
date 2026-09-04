@@ -2490,7 +2490,7 @@ class Director {
             append_transparency: appendTransparency || false,
             transparency_bias: transparencyBias !== 1.0 ? transparencyBias : undefined,
             append_uc: selectedUcPreset || 0,
-            model: window.manualSelectedModel || 'v4_5'
+            model: window.manualSelectedModel || 'v5'
         };
     }
     

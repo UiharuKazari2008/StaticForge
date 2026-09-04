@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('./logger');
 const { attachLegacyDatabaseCheckpoint } = require('./legacyDatabaseCheckpoint');
+const { DEFAULT_FORGE_MODEL } = require('./modelFeatures');
 
 let dbPath = null;
 let db = null;
@@ -127,7 +128,7 @@ function createKnowledgeMemoryTables() {
     logger.bootSubStep('Knowledge memory database ready');
 }
 
-const DEFAULT_MEMORY_MODEL = 'v4_5';
+const DEFAULT_MEMORY_MODEL = DEFAULT_FORGE_MODEL;
 
 function ensureKnowledgeMemoryColumns() {
     const cols = db.prepare('PRAGMA table_info(knowledge_memories)').all().map((col) => col.name);
@@ -454,7 +455,7 @@ function getKnowledgeMemory(name, incrementUsage = true) {
  * @param {Array} relations - Array of relation objects
  * @param {Array} observations - Array of observation objects
  * @param {number} confidence - Confidence level (0-1)
- * @param {string} [model='v4_5'] - Studio forge model this memory applies to
+ * @param {string} [model] - Studio forge model this memory applies to (omit = DEFAULT_FORGE_MODEL)
  * @returns {Object} Created/updated memory
  */
 function saveKnowledgeMemory(name, description, category, entities = [], relations = [], observations = [], confidence = 0.1, model = DEFAULT_MEMORY_MODEL) {

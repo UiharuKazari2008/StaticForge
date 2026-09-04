@@ -448,7 +448,7 @@ function exploreWireCardTint(cardEl) {
 }
 
 function explorePresetModelKey(model) {
-    const m = String(model || 'v4_5').toLowerCase();
+    const m = String(model || 'v5').toLowerCase();
     if (m === 'v3_furry' || m === 'furry') return 'furry';
     return m;
 }
@@ -553,7 +553,7 @@ function exploreTryStripQualitySuffix(prompt, qualityValue) {
  * Neutral NSFW removes "nsfw" from UC on generate — strip that prefix with the UC preset match.
  */
 function exploreStripAndFlagPresets(metadata) {
-    const model = metadata.model || 'v4_5';
+    const model = metadata.model || 'v5';
     let prompt = String(metadata.prompt || '');
     let uc = String(metadata.uc || '');
     let appendQuality = false;

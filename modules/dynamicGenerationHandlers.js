@@ -15,6 +15,7 @@ const { createDynamicGenerationResponseSchema, getZodSchemaKeyCount } = require(
 const ClothingDatabase = require('./clothingDatabase');
 const { stripPromptBlocksForEffectivePrompt } = require('./promptStageBlocks');
 const { matchCommaTextColon } = require('./promptTextBoundary');
+const { DEFAULT_FORGE_MODEL } = require('./modelFeatures');
 
 let __runtimeGr = null;
 function bindRuntimeGlobalResources(globalResources) {
@@ -9616,7 +9617,7 @@ function autoSaveInsightMemories(insightMemories, phase = '') {
                     memory.relations || [],
                     memory.observations || [],
                     finalConfidence,
-                    memory.model || (existingMemory && existingMemory.model) || 'v4_5'
+                    memory.model || (existingMemory && existingMemory.model) || DEFAULT_FORGE_MODEL
                 );
                 
                 console.log(`   ✅ Saved global memory: "${memory.name}" (${memory.entities.length} entities, ${(memory.relations || []).length} relations, ${(finalConfidence * 100).toFixed(0)}% confidence)`);

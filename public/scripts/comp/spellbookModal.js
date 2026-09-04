@@ -2482,7 +2482,7 @@ class SpellbookModalManager {
 }
 
 function getSpellbookStepPreviewDimensions() {
-    const container = document.querySelector('.spellbook-preview-image-container');
+    const container = document.querySelector('#spellbookGenerationModal .spellbook-preview-image-container');
     if (!container) return null;
     const rect = container.getBoundingClientRect();
     const width = Math.round(rect.width || container.clientWidth || 0);
@@ -2491,7 +2491,16 @@ function getSpellbookStepPreviewDimensions() {
     return { width, height };
 }
 
-// Initialize when DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
+function initializeSpellbookModalManager() {
+    if (window.spellbookModalManager) {
+        return window.spellbookModalManager;
+    }
     window.spellbookModalManager = new SpellbookModalManager();
-});
+    return window.spellbookModalManager;
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeSpellbookModalManager);
+} else {
+    initializeSpellbookModalManager();
+}

@@ -7,6 +7,7 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
 const { normalizeAutofillRanking, mergeAutofillRankingPatch } = require('../../autofillRankingSettings');
 const { normalizeAutofillSearchSettings } = require('../../autofillSearchSettings');
+const { DEFAULT_FORGE_MODEL } = require('../../modelFeatures');
 
 const AUTOFILL_RANKING_DESTRUCTIVE = { destructive: true };
 
@@ -107,7 +108,7 @@ async function handleTestAutofillRanking(handlers, ws, message, clientInfo, wsSe
                 : config.userGlobalSettings?.autofillSearch
         );
 
-        const model = message.model || 'v4_5';
+        const model = message.model || DEFAULT_FORGE_MODEL;
         // Isolated session/request keys so the test never supersedes the client's live search turn.
         const isolatedSessionId = `${clientInfo.sessionId || 'anon'}::autofill-ranking-test`;
         const testRequestId = `autofill-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

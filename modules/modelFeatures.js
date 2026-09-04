@@ -75,10 +75,14 @@ function isV5ForgeModel(forgeModel) {
     return key === 'v5' || key === 'v5_cur' || key.startsWith('v5_');
 }
 
+/** Omit-default forge key for MCP / new memories / ranking tests. Pass an explicit model to override. */
+const DEFAULT_FORGE_MODEL = 'v5';
+
 module.exports = {
     loadModelFeatures,
     getModelFeatures,
     resolveApiModelSlug,
     remapDatasetInclude,
-    isV5ForgeModel
+    isV5ForgeModel,
+    DEFAULT_FORGE_MODEL
 };
