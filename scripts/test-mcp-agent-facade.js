@@ -648,7 +648,9 @@ assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'get_studio_state').description
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'get_studio_state').description.includes('nooped'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'get_session_state').description.includes('resolved'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').description.includes('needsIntegration'));
-assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.workspace.description.includes('bound Studio tab'));
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.workspace.description.includes('Do not copy the bound Studio tab'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('do not copy the bound Studio tab'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('gens this job started from'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.dynamicGeneration.description.includes('integrated=true'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'get_client_physics').description.includes('Works without a Studio bind'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'get_client_physics').inputSchema.properties.location);
