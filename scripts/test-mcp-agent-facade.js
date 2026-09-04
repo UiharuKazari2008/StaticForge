@@ -141,6 +141,10 @@ assert.deepStrictEqual(_test.parseLookbackRef('dsap://lookback/swiki/docubase/pr
 assert.strictEqual(_test.parseLookbackRef('not a lookback'), null);
 assert.strictEqual(_test.galleryFilenameFromLookbackSrc('/images/foo.png'), 'foo.png');
 assert.ok(_test.MCP_INSTRUCTIONS.includes('resolve_lookback'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('Copy Lookback is a compact markdown ref'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('img/<filename>'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('Do not invent lookback URIs'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('returns that item'));
 assert.ok(_test.listToolsForScopes(['gallery']).some((t) => t.name === 'resolve_lookback'));
 assert.ok(_test.listToolsForScopes(['notes']).some((t) => t.name === 'resolve_lookback'));
 assert.ok(_test.listToolsForScopes(['wiki']).some((t) => t.name === 'resolve_lookback'));
