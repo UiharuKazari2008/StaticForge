@@ -2,6 +2,8 @@
  * MCP rate limiter extracted from mcpAgentFacade.js
  */
 
+const { ipKeyGenerator } = require('express-rate-limit');
+
 // Copied as-is from mcpAgentFacade.js (required by extracted bytes)
 const MCP_RATE_WINDOW_MS = 15 * 60 * 1000;
 const ADVANCED_TOOL_NAME = 'advanced_tools';
@@ -165,7 +167,8 @@ function resetRateGroupHits() {
 function rateLimitPrincipal(req) {
     const keyId = req.applicationAuth && req.applicationAuth.applicationKeyId;
     if (keyId) return `mcp-key:${keyId}`;
-    return `mcp-ip:${req.ip || req.socket?.remoteAddress || 'unknown'}`;
+    const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+    return `mcp-ip:${ipKeyGenerator(ip)}`;
 }
 
 function sendRateLimitResponse(req, res, denied) {
