@@ -186,9 +186,19 @@ User: *who is Rapi* / *appearance for alice (nikke)* / *don't invent this charac
 
 ## Recipe: Copy Lookback (`resolve_lookback`)
 
-User pastes a compact markdown link from gallery / Lumen / note / wiki **Copy Lookback**: `[img](dsap://lookback/img/<filename>)`, `[note](dsap://lookback/note/<id>)`, `[wiki](dsap://lookback/wiki/<tag>)`, `[wiki](dsap://lookback/swiki/<siteId>/<pageId>)`, `[wimg](dsap://lookback/wimg/<b64src>)`, or a `sel/…` selection.
+A **lookback** is a compact, not-human-readable markdown pointer the Studio **Copy Lookback** menu writes to the clipboard. It is not the item. **Copy** is that menu action. **Resolve** is what you do when the user pastes one: call `resolve_lookback`. Do not mint `dsap://lookback/…` yourself. Do not invent other schemes (`dsap://mcp.dreamscape.jp/` is the Grim connector page).
+
+Shapes (from `public/scripts/comp/copyLookback.js`):
+
+- gallery / Lumen image: `[img](dsap://lookback/img/<filename>)`
+- note: `[note](dsap://lookback/note/<id>)`
+- wiki tag: `[wiki](dsap://lookback/wiki/<tag>)`
+- static wiki page: `[wiki](dsap://lookback/swiki/<siteId>/<pageId>)`
+- wiki image: `[wimg](dsap://lookback/wimg/<b64src>)`
+- page uri: `[page](dsap://lookback/page/<uri>)`
+- selection: `[sel](dsap://lookback/sel/note|wiki|swiki|page|img/…)`
 
 1. `resolve_lookback` `{ "lookback": "[img](dsap://lookback/img/foo.png)" }` — raw `dsap://lookback/…` URI also works.
-2. Returns that item’s metadata (`lookback`, `lookbackType`, plus note/wiki/gallery fields). Gallery images also include a Grok-sized webp (`imageKind: grok`). Show the webp.
+2. Returns **that item** (`lookback`, `lookbackType`, plus note/wiki/gallery fields). Gallery images also include a Grok-sized webp (`imageKind: grok`). Show the webp.
 3. Selection lookbacks add `selectedText`. Remote wiki images without a gallery filename return `src` only (no fetch).
 4. No new chrome. Menu item only; helper is `public/scripts/comp/copyLookback.js`.
