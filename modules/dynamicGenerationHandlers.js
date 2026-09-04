@@ -7789,9 +7789,8 @@ async function getClientIPLocation(clientIP) {
 
     } catch (error) {
         console.error('❌ Client IP geolocation failed:', error);
-        // Fallback to a default location if IP geolocation fails
-        console.log('⚠️ Falling back to default location for client IP geolocation failure');
-        return await getCurrentLocation();
+        // Do not geo the Dreamscape host here. CLIENT callers must stay on the user/request IP.
+        return null;
     }
 }
 
@@ -7914,14 +7913,13 @@ async function compileContext(globalResources, dynamicConfig, clientIP = null) {
         if (location) {
             console.log(`📍 Location data received: "${location}"`);
             if (location === 'CLIENT') {
-                // Special case: use client IP for geolocation
+                // Bound tab clientIP or MCP request IP — never Dreamscape host geo
                 console.log('📍 Using client IP for weather location');
                 if (clientIP) {
                     currentLocation = await getClientIPLocation(clientIP);
                     console.log(`📍 Using client IP for weather location: ${clientIP}`);
                 } else {
-                    console.warn('⚠️ No client IP found, falling back to current location');
-                    currentLocation = await getCurrentLocation();
+                    console.warn('⚠️ No client IP for location=CLIENT; leaving location empty (not server geo)');
                 }
             } else {
                 // Parse location in "LONG_LAT" format
@@ -8787,16 +8785,21 @@ async function compileContext(globalResources, dynamicConfig, clientIP = null) {
 
     let locationWarning = null;
     if (baseTime && !currentLocation) {
-        console.warn('⚠️ No location for determineTimePeriod; defaulting to client IP then server location (no 500)');
+        const clientOnly = location === 'CLIENT';
+        console.warn(clientOnly
+            ? '⚠️ location=CLIENT with no usable client IP; not using Dreamscape host geo'
+            : '⚠️ No location for determineTimePeriod; defaulting to client IP then server location (no 500)');
         if (clientIP) {
             currentLocation = await getClientIPLocation(clientIP);
         }
-        if (!currentLocation) {
+        if (!currentLocation && !clientOnly) {
             currentLocation = await getCurrentLocation();
         }
         locationWarning = currentLocation
             ? 'No location provided; used client/server default. Call get_client_physics, pass the user location, or ask the user.'
-            : 'No location for time-of-day. Skipped determineTimePeriod (no 500). Call get_client_physics, pass location, or CLIENT.';
+            : (clientOnly
+                ? 'location=CLIENT needs a bound tab clientIP or the MCP request IP. Dreamscape host geo was not used.'
+                : 'No location for time-of-day. Skipped determineTimePeriod (no 500). Call get_client_physics, pass location, or CLIENT.');
     }
 
     // Determine time period (only if time is available)
@@ -11006,7 +11009,8 @@ async function processDynamicGenerationCore(globalResources, dynamicConfig, cont
                 data: {
                     date: context.time ? {
                         year: context.time.year,
-                        month: context.time.month, // 0-based
+                        month: context.time.month + 1, // 1-based egress; getCurrentTime month stays 0-based
+                        monthName: context.time.monthName,
                         day: context.time.dayOfMonth
                     } : null,
                     time: context.time ? `${String(context.time.hour).padStart(2, '0')}:${String(context.time.minute).padStart(2, '0')}` : new Date().toTimeString().split(' ')[0],
@@ -12731,21 +12735,17 @@ async function resolveDynamicContext(globalResources, dynamicConfig, clientIP = 
  * @returns {Object} Formatted data for carousel display
  */
 function formatContextForCarousel(context) {
-    // Check if date was overridden (different from today's date)
+    // Holiday / Date() math stays 0-based on context.time.month. Egress month is 1-based.
     let dateItem = null;
     if (context.time) {
         const contextDate = new Date(context.time.year, context.time.month, context.time.dayOfMonth);
-        const today = new Date();
-        const isDateOverridden = contextDate.toDateString() !== today.toDateString();
-
-        if (isDateOverridden) {
-            dateItem = {
-                month: context.time.month,
-                day: context.time.dayOfMonth,
-                year: context.time.year,
-                formatted: contextDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-            };
-        }
+        dateItem = {
+            month: context.time.month + 1,
+            monthName: context.time.monthName,
+            day: context.time.dayOfMonth,
+            year: context.time.year,
+            formatted: contextDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        };
     }
 
     return {
