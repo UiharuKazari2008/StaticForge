@@ -3,6 +3,7 @@ const path = require('path');
 const { normalizeAutofillSearchSettings, parseAutofillArtistSearchPrefix } = require('./autofillSearchSettings');
 const { getBrowserHeaders, decompressIfNeeded } = require('./browserHttp');
 const { isTextColonPrefix, stripTextColonPrefix } = require('./promptTextBoundary');
+const { DEFAULT_FORGE_MODEL } = require('./modelFeatures');
 
 // Search functionality module
 class SearchService {
@@ -778,7 +779,7 @@ class SearchService {
                     const preset = currentPromptConfig.presets[presetName];
                     results.push({
                         name: presetName,
-                        model: preset.model || 'v4_5',
+                        model: preset.model || DEFAULT_FORGE_MODEL,
                         resolution: preset.resolution || '',
                         upscale: preset.upscale || false,
                         allow_paid: preset.allow_paid || false,

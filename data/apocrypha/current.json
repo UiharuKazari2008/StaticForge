@@ -8,8 +8,12 @@
   "counts": {
     "official": 30,
     "unofficial": 12,
-    "enshutsuka": 4,
-    "defaultModel": "V5"
+    "enshutsuka": 8,
+    "defaultModel": "V5",
+    "afternoonOnTopicHeuristic": 57,
+    "afternoonPulled": 468,
+    "morningOnTopic": 1056,
+    "morningPulled": 10293
   },
   "official": "Afternoon after 10:00 ET: 426 official messages, 30 technique. Morning since 8/28: 9,211 pulled / ~949 on-topic (heuristic). V5 needs much less emphasis than V4.5 (rarely >1.5; 5+ still for undertrained tags; same-seed test). Scout 14–18 steps; some stacks lose quality above ~20–23; complex multi-char 23–28. Character-box split anecdote: base = count + style + camera; actions in boxes (action can still bleed). Same-seed set: seed 336020714, 23 steps, 1216×832, scale 7, cfg_rescale 0, karras, k_euler_ancestral.",
   "unofficial": "Afternoon: 42 unofficial messages, 12 technique (all nai-image-gen-discussion). Morning since 8/28: 1,082 pulled / ~107 on-topic. CFG 8 + rescale 0.8–1.0. Sub-15 steps artifact. PR then vibe img2img then PR. No new hip/WG/pregnancy recipes.",
@@ -27,6 +31,13 @@
       "title": "1.4::anime::, 0.6::photorealistic::",
       "src": "https://yozora.bluesteel.737.jp.net/attachments/f7a713ca-4f96-45a2-a75c-a12908939f05",
       "cap": "same seed · author's lean"
+    },
+    {
+      "cap": "same seed · no artist tags",
+      "kicker": "IOD · photo",
+      "kind": "tile",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/c51ff26c-b587-417b-b80a-5716f2fddab6",
+      "title": "same-seed photorealistic pole"
     }
   ],
   "images": [
@@ -44,6 +55,11 @@
       "src": "https://yozora.bluesteel.737.jp.net/attachments/f7a713ca-4f96-45a2-a75c-a12908939f05",
       "cap": "1.4 anime / 0.6 photo · author lean",
       "kicker": "OFFICIAL · blend"
+    },
+    {
+      "cap": "Focused Area Selection · Minimum Context Area 32 (V5 crop into 4.5 inpaint)",
+      "kicker": "OFFICIAL · UI",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/c0c99485-04c1-4727-a025-7ee87780e339"
     }
   ],
   "imagesNote": "Three official Anlatan same-seed stills (anime / photo / 1.4+0.6). Yozora attachment URLs on this ticket. Unofficial spicy keepers stay off the public billboard.",
@@ -63,6 +79,250 @@
     {
       "teaser": "semi-anthro torso is a scoped human-trunk tag, not a furry species package.",
       "body": "HOUSE. Prompt semi-anthro torso, never bare semi-anthro. Do not UC the torso word. UC fur, muzzle, snout, tail, paws, digitigrade, animal legs. Drop long torso from the prompt; put it in UC; NL normal torso length. Human skin, human face, plantigrade human legs."
+    }
+  ],
+  "sections": [
+    {
+      "body": "matts7123 walked a goblin barbarian from clean anime into photoreal and back again on Anlatan#nai-image-advice, copying the seed from the first gen so the pose would hold still. The set is a ladder, not a flex: bare anime, bare photorealistic, the two unweighted, then 1.2/0.8, 1.4/0.6, 1.6/0.4, 1.8/0.2. They leaned 1.4::anime::, 0.6::photorealistic::. The room treated it like a lab note. V5 Full still has a default-style attractor — artist tags sway less than they did on 4.5 — so a same-seed style pole is the honest way to see what the words actually do. Public stills: anime pole, photoreal pole, and the 1.4/0.6 lean. Unofficial spicy stay off this board.",
+      "excerpts": [
+        {
+          "channel": "Anlatan#nai-image-advice",
+          "speaker": "matts7123",
+          "text": "I am experimenting with trying to blend anime and photorealistic (not artists). All the images in this set were generated using the same seed (copied from the first gen.). The only thing that changes in the prompts are the styles\nThe images in this set are:\nanime\nphotorealistic\nanime, photorealistic # unweighted\n1.2::anime::, 0.8::photorealistic::\n1.4::anime::, 0.6::photorealistic::\n1.6::anime::, 0.4::photorealistic::\n1.8::anime::, 0.2::photorealistic::\n\nI'm interested in feedback on this. Success or fail? Which blend is best? (I am leaning towards the 1.4/0.6)",
+          "when": "2026-09-02 10:12 ET"
+        }
+      ],
+      "grim": false,
+      "id": "same-seed",
+      "images": [
+        {
+          "cap": "anime pole · seed 336020714",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/861311bf-9e55-4fd8-bab8-65f67c612b2a"
+        },
+        {
+          "cap": "photorealistic pole · same seed",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/c51ff26c-b587-417b-b80a-5716f2fddab6"
+        },
+        {
+          "cap": "1.4::anime::, 0.6::photorealistic::",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/f7a713ca-4f96-45a2-a75c-a12908939f05"
+        }
+      ],
+      "kicker": "IMAGE OF THE DAY",
+      "lede": "No artist tags. One seed. The only thing that moves is the style words.",
+      "title": "Same seed, two worlds"
+    },
+    {
+      "body": "guestavius could not get a clockwise dutch on V5 without img2img. The tag dutch angle comes out counter-clockwise. Adding clockwise dutch angle, image is rotated clockwise did not flip it. Putting 3::clockwise:: in the same prompt made it even more counter-clockwise — inversion, not emphasis. The working joke-workaround is compositional, not a rotation tag: put an object in the upper left so the frame is not allowed to show it in the bottom left, and the camera has to tip the other way. luca, same afternoon, confirmed the UI guidance default is 7, not 3.5. Do not treat a leftover 4.5 3.5 as the V5 floor.",
+      "excerpts": [
+        {
+          "channel": "Anlatan#nai-image-advice",
+          "speaker": "guestavius",
+          "text": "`dutch angle` is coming out counter-clockwise in V5, how 2 clockwise without img2img? Tried `clockwise dutch angle, image is rotated clockwise`.",
+          "when": "2026-09-02 13:36 ET"
+        },
+        {
+          "channel": "Anlatan#nai-image-advice",
+          "speaker": "guestavius",
+          "text": "`3::clockwise::` in that makes it even more counter-clockwise",
+          "when": "2026-09-02 13:38 ET"
+        },
+        {
+          "channel": "Anlatan#nai-image-advice",
+          "speaker": "guestavius",
+          "text": "saying `[object] in upper left corner` fixed it as it's not allowed to show up in bottom left 👍",
+          "when": "2026-09-02 13:40 ET"
+        },
+        {
+          "channel": "Anlatan#nai-image-advice",
+          "speaker": "luca8840",
+          "text": "v5 default is 7",
+          "when": "2026-09-02 13:53 ET"
+        }
+      ],
+      "grim": false,
+      "id": "dutch",
+      "kicker": "CAMERA",
+      "lede": "Ask for clockwise. Watch it tip the other way. Weight it. Watch it tip harder.",
+      "title": "The left-hand dutch"
+    },
+    {
+      "body": "awkj asked whether img2img V5 Opus drain scales with the Strength slider (a 0.01 strength duplicate: does the battery take a sip or a gulp?). luna (lun4, backend): lower Strength, yes. Noise, no — Noise is not linked to any scaling. Inpaint meters when you are on V5 Full; V5 Curated has no inpaint model and uses V4.5C inpainting. Upscale is a separate model, paid in Anlas, not the battery. Webapp 70a31dc-production. Contracts unchanged vs the Aug 28 dump.",
+      "excerpts": [
+        {
+          "channel": "Anlatan#nai-image-advice",
+          "speaker": "awkjfbikuaefb",
+          "text": "Do image2image v5 generations' Opus-tier \"recharging meter\" usages scale with the Strength slider?\n\nExample: If Strength slider of image2image is 0.01 (this essentially creates a duplicate image,) does v5's daily \"charge\" get consumed by a fraction of what a full generation would consume?",
+          "when": "2026-09-02 09:37 ET"
+        },
+        {
+          "channel": "Anlatan#nai-image-advice",
+          "speaker": "lun4",
+          "text": "lower Strength values, yes\nNoise values, no, that's not linked to any scaling",
+          "when": "2026-09-02 10:34 ET"
+        },
+        {
+          "channel": "Anlatan#nai-image-advice",
+          "speaker": "lun4",
+          "text": "inpainting yes when using V5F, as V5C does not have an inpainting model and uses V4.5C Inpainting\n\nupscale no, that's a separate model, you pay the anlas cost directly",
+          "when": "2026-09-02 10:35 ET"
+        }
+      ],
+      "grim": false,
+      "id": "luna-meter",
+      "kicker": "STAFF",
+      "lede": "luna answered the Opus meter in-channel. Three sentences. Keep them.",
+      "title": "The goose bar follows Strength"
+    },
+    {
+      "body": "awkjfbikuaefb's afternoon note is the one that should travel: tagless plain text combined with inpainting is way better in V5 than exact-tag wars, as long as the tags do not fight the sentence. The example they typed is the whole recipe. A V5 crop that still needs 4.5's inpaint model should use Focused Area Selection so 4.5 can match V5 detail; the UI still on the day sheet is Minimum Context Area 32 (that number is from the still, not a chat quote). Same thread, powermate and .mandas on boxes: scene + style + camera can live in the base prompt; what a character does wants the box — and then it still bleeds.",
+      "excerpts": [
+        {
+          "channel": "Anlatan#nai-image-advice",
+          "speaker": "awkjfbikuaefb",
+          "text": "Note: Tagless plain text instructing such as \"There is a huge marshmallow instead of a pillow.\" /combined with/ inpainting is way way better in V5",
+          "when": "2026-09-02 11:50 ET"
+        },
+        {
+          "channel": "Anlatan#nai-image-advice",
+          "speaker": "awkjfbikuaefb",
+          "text": "As long as your tags don't conflict with your instructions you can save some serious time forgoing exact tags",
+          "when": "2026-09-02 11:51 ET"
+        },
+        {
+          "channel": "Anlatan#nai-image-advice",
+          "speaker": "awkjfbikuaefb",
+          "text": "You may want to take advantage of Focused Area Selection using 4.5's inpainting in order to further assist with having 4.5 match 5's details",
+          "when": "2026-09-02 11:06 ET"
+        },
+        {
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "speaker": ".mandas",
+          "text": "I could be or, just to know, do you use information about action on the main prompt?\n(Just asking because I was used to put \"main elements\" in it's, but the more I do test and the more information about situation/action end into my character box because it feel more stable)",
+          "when": "2026-09-02 13:07 ET"
+        },
+        {
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "speaker": "powermate",
+          "text": "Depends, describing a scene is fine on base prompt + style and camera angles, etc...\nEverything else that characters do, goes in their character box. But then it also often bleeds into other characters, so idk",
+          "when": "2026-09-02 13:08 ET"
+        }
+      ],
+      "grim": false,
+      "id": "marshmallow",
+      "images": [
+        {
+          "cap": "Focused Area Selection · Minimum Context Area 32",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/c0c99485-04c1-4727-a025-7ee87780e339"
+        }
+      ],
+      "kicker": "INPAINT",
+      "lede": "Tag fights lose. Tagless English in the hole wins. Then send the crop to 4.5 with Focused Area Selection.",
+      "title": "A pillow becomes a marshmallow"
+    },
+    {
+      "body": "The unofficial nai-image-gen-discussion was twelve technique messages and a lot of images with no pasted prompts. pleasebankai's recipe is not subtle: CFG 8, prompt guidance rescale pumped to 0.8 or 1.0, compared 0 vs 0.8 vs 1 in-thread. They called the look crack. amber_delphox, same afternoon: artifacts, fucked-up limbs, plasticy feel from below 15 steps. kluvwen had to separate that from prompt guidance 7/8 — people were mixing the CFG knob with step count. kinky and very-kinky were silent. nsfw-generation dumped keepers with no prompts. No new verified V5 hip, weight-gain, or pregnancy recipes. Those stills stay off the public billboard.",
+      "excerpts": [
+        {
+          "channel": "Unofficial#nai-image-gen-discussion",
+          "speaker": "pleasebankai",
+          "text": "its the kind of style i like but CFG (8) and prompt guidance rescale you pump it up all the way to 0.8/1",
+          "when": "2026-09-02 13:05 ET"
+        },
+        {
+          "channel": "Unofficial#nai-image-gen-discussion",
+          "speaker": "pleasebankai",
+          "text": "this is cfg rescale 0 vs 0.8 vs 1",
+          "when": "2026-09-02 13:05 ET"
+        },
+        {
+          "channel": "Unofficial#nai-image-gen-discussion",
+          "speaker": "pleasebankai",
+          "text": "im telling you this is basically crack",
+          "when": "2026-09-02 13:06 ET"
+        },
+        {
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "speaker": "pleasebankai",
+          "text": "The secret is to crank that CFG rescale up to like 0.8-1\nit turns boring ass images into cracked up versions\nleft is0 top right is 0.8 bottom right is 1",
+          "when": "2026-09-01 15:33 ET"
+        },
+        {
+          "channel": "Unofficial#nai-image-gen-discussion",
+          "speaker": "amber_delphox",
+          "text": "your having luck at 8 steps?  im getting artifacts/fucked uplimbs and plasticy feel from below 15",
+          "when": "2026-09-02 12:18 ET"
+        },
+        {
+          "channel": "Unofficial#nai-image-gen-discussion",
+          "speaker": "kluvwen",
+          "text": "that's prompt guidance 7/8, not steps I think",
+          "when": "2026-09-02 12:23 ET"
+        }
+      ],
+      "grim": true,
+      "id": "crack-rescale",
+      "images": [
+        {
+          "cap": "pleasebankai · CFG rescale 0 vs 0.8 vs 1",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/403ae323-3a63-4247-8055-40bf4ef25d9a"
+        },
+        {
+          "cap": "pleasebankai · unofficial keeper",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/cb1982b5-99bb-48ba-8af2-7754412d8351"
+        },
+        {
+          "cap": "lordofbarkbread · unofficial keeper",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/9811bf24-1a79-4c0a-b9e3-f277507184f9"
+        },
+        {
+          "cap": "pleasebankai · unofficial keeper B",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/3ab5bfb5-eef1-4a88-a874-bc00c23130bf"
+        }
+      ],
+      "kicker": "UNOFFICIAL · GRIM",
+      "lede": "CFG 8. Prompt-guidance rescale 0.8 to 1.0. Below 15 steps the limbs go plastic.",
+      "title": "Jack the rescale. Call it crack."
+    },
+    {
+      "body": "Finish tags are not all photoreal. On an anime source, strip realistic, Expert Shading panel, photorealism, hyperrealism, unasked 3d, detailed face, detailed skin. Lone highly finished / ultra-detailed / high complexity do not break the face the same way. Same-seed 3108311846, 2026-08-31.\n\nMCP generate_image ignores character boxes. Identity and body have to live in the base prompt on that path. Studio apply_studio_changes still uses boxes.\n\nHips under artist:ebiblue: one isolated box group 2.2–2.8::huge wide hips:: can move them. Ported V4.5 3–4 stacks still fail. One size word per axis. Not a universal V5 recipe.\n\nsemi-anthro torso is a human-trunk tag. Never bare semi-anthro. UC fur, muzzle, snout, tail, paws, digitigrade, animal legs. Drop long torso from the prompt.",
+      "excerpts": [],
+      "grim": true,
+      "id": "house",
+      "kicker": "HOUSE · GRIM",
+      "lede": "Same-seed HOUSE work. Scoped. Do not promote to CONSENSUS. Still unsolved: long expansion comics, pregnant vs implied, V4.5 hip novels on V5.",
+      "title": "Four notes from the notepad, not the consensus"
+    },
+    {
+      "body": "Numeric hip cranks are a trap. Contrast in the character box (wide hips, narrow waist, thick thighs) still does more than a 3:: / 4:: stack. On Rapi the crank jumped breasts and barely moved hips. Distinct from the HOUSE ebiblue 2.2–2.8 note.\n\ndataset_config.nsfw 3 strips hospital gowns and hoodies. Keep 2 Skimpy if you want a clothed belly and stretch marks. generate_image honors nsfw; apply_studio_changes can leave Neutral 0.\n\nA long overdue belly wants landscape, negative space, side view. Portrait rounds it. quintuplets is a sibling-count tag — drop it unless you actually want siblings.\n\nLeave dynagen off (enabled false, integrated true) on those jobs. Labor tags that trained: wince not wincing; fetal movement; lactation through clothes; water breaking, amniotic fluid, puddle, wet clothes. Drop UC grabbing stomach if she is rubbing her own belly.",
+      "excerpts": [],
+      "grim": true,
+      "id": "mcp-others",
+      "kicker": "ENSHUTSUKA · GRIM",
+      "lede": "Low confidence. Other people's V5 maternity memories from 2026-09-02, not HOUSE, not staff.",
+      "title": "What other MCP users burned on maternity day"
+    }
+  ],
+  "grimImages": [
+    {
+      "cap": "pleasebankai · unofficial nai-image-gen / nsfw-generation keeper",
+      "kicker": "GRIM · unofficial spicy",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/cb1982b5-99bb-48ba-8af2-7754412d8351"
+    },
+    {
+      "cap": "lordofbarkbread · unofficial nsfw-generation keeper",
+      "kicker": "GRIM · unofficial spicy",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/9811bf24-1a79-4c0a-b9e3-f277507184f9"
+    },
+    {
+      "cap": "pleasebankai · unofficial keeper B",
+      "kicker": "GRIM · unofficial spicy",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/3ab5bfb5-eef1-4a88-a874-bc00c23130bf"
+    },
+    {
+      "cap": "pleasebankai · CFG 8 / rescale 1.0 comparison still",
+      "kicker": "GRIM · unofficial · rescale",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/403ae323-3a63-4247-8055-40bf4ef25d9a"
     }
   ]
 }
