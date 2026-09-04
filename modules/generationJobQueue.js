@@ -81,6 +81,7 @@ function createGenerationJobQueue(options) {
             success: job.status === 'completed' ? result.success !== false : null,
             filename: flat.filename || result.filename || null,
             filenames: flat.filenames || result.filenames || null,
+            destPath: job.destPath || flat.dest_path || null,
             seed: flat.seed || result.seed || null,
             error: job.status === 'failed'
                 ? (job.error && job.error.message) || flat.error || 'generation failed'
@@ -151,6 +152,7 @@ function createGenerationJobQueue(options) {
             type: String(info.type || 'generate_image'),
             source: String(info.source || 'unknown'),
             requestId: info.requestId || null,
+            destPath: info.destPath || info.dest_path || null,
             status: 'queued',
             createdAt: nowFn(),
             startedAt: null,
