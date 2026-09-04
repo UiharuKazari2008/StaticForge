@@ -628,6 +628,7 @@ class PngMetadata {
                     'prompt_normalize',
                     'deduplicate_tags',
                     'emphasis_normalization',
+                    'vSlider',
                     'novel_note_id',
                     'novel_story_cursor_line',
                     'blurhash'

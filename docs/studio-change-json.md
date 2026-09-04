@@ -39,7 +39,8 @@ Do **not** invent keys Studio cannot apply. Unknown keys are ignored. Director i
   "characters": [],
   "vibes": [],
   "dynamicGeneration": {},
-  "director": {}
+  "director": {},
+  "vSlider": []
 }
 ```
 
@@ -143,6 +144,31 @@ Optional `position` maps to the existing Studio slot dataset (`positionX` / `pos
 | `{ "x": 0.3, "y": 0.1, "cell": "B1" }` | x/y win; `cell` is a label when it matches the 5×5 grid. |
 
 `center: { x, y }` is accepted as an alias. Omit `position` to leave the slot’s current placement alone. `GET /agent/session/state` echoes `position` when the slot has stored coords. Applying a position turns Auto Position off so generate uses those centers.
+
+### `vSlider` — optional intensity widgets
+
+Optional array. Studio shows **one** tool window with a scrolling list of cards. Drag/select is preview only. **Finalise** writes every dirty widget into an expander (`!prefix`) or the prompt. Catalog + values persist as `forge_data.vSlider` and are echoed by Copy change JSON and `GET /agent/session/state`.
+
+| `kind` | Control | Blend |
+|--------|---------|-------|
+| `slider` | 1 axis, `glass-slider` | yes |
+| `xypad` | 2 axes | yes, per axis |
+| `star` | 2–8 axes, spokes | yes, per axis |
+| `dropdown` | custom-dropdown | no — one option `text` |
+
+`slider` ≠1 axis, `xypad` ≠2, and `star` &lt;2 are ignored. Star default is a regular N-gon at each axis median.
+
+Between catalog stops, emit **both** adjacent texts as NovelAI emphasis:
+
+```
+t = (value - at_i) / (at_{i+1} - at_i)
+N_left  = round(1 + (1-t) * 0.5, 2)
+N_right = round(1 + t * 0.5, 2)
+```
+
+Exact stop = that `text` only (no `N::` wrapper). Omit a block when `N <= 1.02`. Nearer stop gets higher N (1.0–1.5). Each xypad/star axis blends into its own target. Do not hang this mixer on Weight Rack. Do not write Phasewalker `_P` / `_N` expanders.
+
+Axes need `stops[{at,text}]` and a required `default` (median stop unless the request justifies a bias). Dropdown `default` is an option `id`. `commit` is `"expander"` (default) or `"prompt"`. Confirm dialog: one row **Install vSlider widgets**.
 
 ### `expanders` — request-level `!prefix` text replacements
 
@@ -275,7 +301,8 @@ Dreamscape studio change JSON. Paste into Studio to apply. Reply with JSON only 
    {"index":0,"action":"replace","name":"Alice","prompt":"!alice_base, school uniform, smile","uc":"nude","position":{"x":0.3,"y":0.1,"cell":"B1"}},
    {"index":1,"action":"replace","name":"Bob","prompt":"bob prompt","uc":"alice (name)"}
  ],
- "vibes":[{"id":"vibe-id","ie":"v4full","strength":0.7,"inject_text":true}]}
+ "vibes":[{"id":"vibe-id","ie":"v4full","strength":0.7,"inject_text":true}],
+ "vSlider":[{"id":"body_weight","kind":"slider","commit":"expander","value":{"weight":0.55},"axes":[{"id":"weight","default":0.55,"target":{"kind":"expander","prefix":"body"},"stops":[{"at":0,"text":"skinny"},{"at":0.55,"text":"slightly chubby"},{"at":1,"text":"fat"}]}]}]}
 
 Rules:
 - characters: ALWAYS replace + index. NEVER add. index 0 = first slot, index 1 = second. add+index is illegal (treated as replace). Do not copy slot 0 into slot 1.
@@ -291,4 +318,5 @@ Rules:
 - params.seed: specific seed (number). params.seedLock: true locks the last used seed (existing Studio sprout). seed: "last" is the same as seedLock: true. Unlock (seedLock: false) rolls a new variation. Copy change JSON and GET /agent/session/state echo the actual seed used plus seedLock. Filename is not a contract.
 - Optional dynamicGeneration: {enabled, cacheLocked, contextLocked, location, tod, weather, season, directive, force_strategy, tool_passes, dialogs_count}. Enable/configure Enshutsuka dynamic generation on the existing Studio toggle (no new chrome). Echoed by GET /agent/session/state. If present on a read image or Studio snapshot, integrate and act — do not ignore it.
 - Optional director: {sessionId, messageId, prompt}. Attached director prompt / session on the existing Director button + creative directive. Same must-act rule.
+- Optional vSlider: array of widgets; Studio shows one scrolling tool. kind: slider (1 axis) | xypad (2) | star (2+) | dropdown (named presets). Axes: stops[{at,text}] + required default (median stop unless the request justifies a bias). Between stops: emit BOTH adjacent texts as NovelAI emphasis N::text:: (nearer = higher N, 1.0-1.5). Exact stop = that text only, no wrapper. This is how intensity slides. dropdown: options[{id,label,text}] fill the target expander. Use for scenes/presets to evaluate. No blend. commit expander (default) or prompt. Finalise writes all dirty widgets. Echoed in forge_data.vSlider and GET /agent/session/state.
 ```

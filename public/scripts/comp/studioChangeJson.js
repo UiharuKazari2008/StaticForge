@@ -33,7 +33,8 @@ const STUDIO_CHANGE_AI_SPEC = `Dreamscape studio change JSON. Paste into Studio 
    {"index":0,"action":"replace","name":"Alice","prompt":"!alice_base, school uniform, smile","uc":"nude","position":{"x":0.3,"y":0.1,"cell":"B1"}},
    {"index":1,"action":"replace","name":"Bob","prompt":"bob prompt","uc":"alice (name)"}
  ],
- "vibes":[{"id":"vibe-id","ie":"v4full","strength":0.7,"inject_text":true}]}
+ "vibes":[{"id":"vibe-id","ie":"v4full","strength":0.7,"inject_text":true}],
+ "vSlider":[{"id":"body_weight","kind":"slider","commit":"expander","value":{"weight":0.55},"axes":[{"id":"weight","default":0.55,"target":{"kind":"expander","prefix":"body"},"stops":[{"at":0,"text":"skinny"},{"at":0.55,"text":"slightly chubby"},{"at":1,"text":"fat"}]}]}]}
 
 Rules:
 - characters: ALWAYS replace + index. NEVER add. index 0 = first slot, index 1 = second. add+index is illegal (treated as replace). Do not copy slot 0 into slot 1.
@@ -48,7 +49,8 @@ Rules:
 - Named resolution preset (e.g. normal_portrait): omit width/height. Custom size: resolution "custom" plus width and height.
 - params.seed: specific seed (number). params.seedLock: true locks the last used seed (existing Studio sprout). seed: "last" is the same as seedLock: true. Unlock (seedLock: false) rolls a new variation. Copy change JSON and GET /agent/session/state echo the actual seed used plus seedLock. Filename is not a contract.
 - Optional dynamicGeneration: {enabled, cacheLocked, contextLocked, location, tod, weather, season, directive, force_strategy, tool_passes, dialogs_count}. Enable/configure Enshutsuka dynamic generation on the existing Studio toggle (no new chrome). Echoed by GET /agent/session/state. If present on a read image or Studio snapshot, integrate and act — do not ignore it.
-- Optional director: {sessionId, messageId, prompt}. Attached director prompt / session on the existing Director button + creative directive. Same must-act rule.`;
+- Optional director: {sessionId, messageId, prompt}. Attached director prompt / session on the existing Director button + creative directive. Same must-act rule.
+- Optional vSlider: array of widgets; Studio shows one scrolling tool. kind: slider (1 axis) | xypad (2) | star (2+) | dropdown (named presets). Axes: stops[{at,text}] + required default (median stop unless the request justifies a bias). Between stops: emit BOTH adjacent texts as NovelAI emphasis N::text:: (nearer = higher N, 1.0-1.5). Exact stop = that text only, no wrapper. This is how intensity slides. dropdown: options[{id,label,text}] fill the target expander. Use for scenes/presets to evaluate. No blend. commit expander (default) or prompt. Finalise writes all dirty widgets. Echoed in forge_data.vSlider and GET /agent/session/state.`;
 
 const STUDIO_CHANGE_PARAM_DEFS = [
     { id: 'steps', label: 'Steps' },
@@ -679,6 +681,39 @@ function normalizeStudioChangeExpander(entry) {
     };
 }
 
+function collectStudioChangeVSliderList(payload) {
+    if (!payload || !Object.prototype.hasOwnProperty.call(payload, 'vSlider')) return null;
+    return Array.isArray(payload.vSlider) ? payload.vSlider : [];
+}
+
+function buildStudioChangeVSliderOps(payload) {
+    const list = collectStudioChangeVSliderList(payload);
+    if (list == null) return [];
+    // normalizeStudioVSliderList: public/scripts/comp/studioVSlider.js
+    const widgets = normalizeStudioVSliderList(list);
+    if (!widgets.length && !list.length) {
+        return [{
+            key: 'vSlider:install',
+            group: 'vSlider',
+            kind: 'vslider',
+            action: 'set',
+            label: 'Install vSlider widgets',
+            widgets: [],
+            enabled: true
+        }];
+    }
+    if (!widgets.length) return [];
+    return [{
+        key: 'vSlider:install',
+        group: 'vSlider',
+        kind: 'vslider',
+        action: 'set',
+        label: 'Install vSlider widgets',
+        widgets,
+        enabled: true
+    }];
+}
+
 function buildStudioChangeExpanderOps(payload) {
     const list = collectStudioChangeExpanderList(payload);
     if (list == null) return [];
@@ -877,6 +912,7 @@ function buildOpsFromPayload(payload) {
 
     buildStudioChangeExpanderOps(payload).forEach((op) => ops.push(op));
     buildStudioChangeVibeOps(payload).forEach((op) => ops.push(op));
+    buildStudioChangeVSliderOps(payload).forEach((op) => ops.push(op));
 
     characters.forEach((entry, index) => {
         if (!entry || typeof entry !== 'object') return;
@@ -951,6 +987,7 @@ function buildPayloadFromOps(ops, title) {
     const characters = [];
     const expanders = [];
     const vibes = [];
+    let vSlider = null;
     const characterChunkMap = new Map();
     let replaceExpanders = false;
     let replaceVibes = false;
@@ -985,6 +1022,10 @@ function buildPayloadFromOps(ops, title) {
             if (op.strength != null) entry.strength = op.strength;
             if (op.inject_text === false) entry.inject_text = false;
             vibes.push(entry);
+            return;
+        }
+        if (op.kind === 'vslider') {
+            vSlider = Array.isArray(op.widgets) ? op.widgets : [];
             return;
         }
         if (op.kind === 'character') {
@@ -1047,6 +1088,7 @@ function buildPayloadFromOps(ops, title) {
     if (Object.keys(params).length) payload.params = params;
     if (replaceExpanders) payload.expanders = expanders;
     if (replaceVibes) payload.vibes = vibes;
+    if (vSlider) payload.vSlider = vSlider;
     if (fieldMap.size) payload.fields = Array.from(fieldMap.values());
     if (characters.length) payload.characters = characters;
     return payload;
@@ -1172,6 +1214,20 @@ function buildExportOpsFromStudio() {
         });
     }
 
+    // getStudioVSliderSnapshot: public/scripts/comp/studioVSlider.js
+    const currentVSlider = getStudioVSliderSnapshot();
+    if (currentVSlider && currentVSlider.length) {
+        ops.push({
+            key: 'vSlider:install',
+            group: 'vSlider',
+            kind: 'vslider',
+            action: 'set',
+            label: 'Install vSlider widgets',
+            widgets: currentVSlider,
+            enabled: true
+        });
+    }
+
     return ops;
 }
 
@@ -1225,6 +1281,10 @@ function renderStudioChangeOpRow(op) {
     } else if (op.kind === 'vibe') {
         title = op.name || op.vibeId || 'Vibe';
         detail = studioChangeTruncate(`${op.ie || 'ie?'} · strength ${op.strength}${op.inject_text === false ? ' · no text' : ''}`, 110);
+    } else if (op.kind === 'vslider') {
+        title = op.label || 'Install vSlider widgets';
+        const count = Array.isArray(op.widgets) ? op.widgets.length : 0;
+        detail = count ? `${count} widget${count === 1 ? '' : 's'}` : 'Clear vSlider widgets';
     } else {
         title = op.name || 'Chunk';
         detail = studioChangeTruncate(op.from && op.action === 'replace'
@@ -1847,6 +1907,11 @@ async function applyStudioChangeOps(ops) {
         writeStudioFieldValue(fieldId, next);
     });
 
+    enabled.filter((op) => op.kind === 'vslider').forEach((op) => {
+        // installStudioVSliderWidgets: public/scripts/comp/studioVSlider.js
+        installStudioVSliderWidgets(op.widgets || [], { open: true });
+    });
+
     return enabled.length;
 }
 
@@ -2148,6 +2213,14 @@ function buildStudioChangeSnapshot() {
         if (values && values.dataset_config) payload.dataset_config = values.dataset_config;
     } catch (_err) {
         // params snapshot still valid without dataset_config
+    }
+
+    try {
+        // getStudioVSliderSnapshot: public/scripts/comp/studioVSlider.js
+        const vSlider = getStudioVSliderSnapshot();
+        if (vSlider && vSlider.length) payload.vSlider = vSlider;
+    } catch (_err) {
+        // prompt/params snapshot still valid without vSlider
     }
 
     return attachStudioSeedEcho(payload);

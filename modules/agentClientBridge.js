@@ -314,6 +314,7 @@ function assembleStudioChangeFromToolArgs(body) {
     if (out.expanders === undefined && Array.isArray(body.text_replacements)) out.expanders = body.text_replacements;
     if (out.vibes === undefined && Array.isArray(body.vibes)) out.vibes = body.vibes;
     if (out.vibes === undefined && Array.isArray(body.vibe_transfer)) out.vibes = body.vibe_transfer;
+    if (out.vSlider === undefined && Array.isArray(body.vSlider)) out.vSlider = body.vSlider;
 
     const dyn = body.dynamicGeneration || body.dynamic_generation
         || (base && (base.dynamicGeneration || base.dynamic_generation));
@@ -331,6 +332,7 @@ function assembleStudioChangeFromToolArgs(body) {
         || (Array.isArray(out.characters) && out.characters.length)
         || Array.isArray(out.expanders)
         || Array.isArray(out.vibes)
+        || Array.isArray(out.vSlider)
         || out.dynamicGeneration
         || out.director
     );
@@ -1358,6 +1360,7 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
                         data.dynamicGeneration || (change && change.dynamicGeneration) || null
                     ),
                     director: data.director || (change && change.director) || null,
+                    vSlider: (change && change.vSlider) || data.vSlider || null,
                     settings: buildStudioSettingsCatalog(globalResources, data.model),
                     scopes: scopePayload.scopes,
                     ...(scopePayload.vfsPathUuid ? { vfsPathUuid: scopePayload.vfsPathUuid } : {})
