@@ -4,6 +4,7 @@ const clarinet = require('clarinet');
 const sharp = require('sharp');
 const { createDynamicGenerationResponseSchema } = require('../dynamicGenerationSchema');
 const { stripPromptBlocksForEffectivePrompt } = require('../promptStageBlocks');
+const { toResponsesApiMessages } = require('./responsesApiInput');
 
 /**
  * GrokService class - handles all Grok AI service interactions
@@ -8541,7 +8542,7 @@ class GrokService {
         let toolingComplete = false; // Track if completeTooling was called
         let useTools = options?.tools && options.tools.length > 0; // Track whether to use tools
         let lastResponseId = null; // Track the last response ID for stateful continuation
-        let nextIterationMessages = messages; // Messages to send in next iteration (starts with initial messages)
+        let nextIterationMessages = toResponsesApiMessages(messages); // Chat Completions image_url/text → Responses input_image/input_text
         let totalUsageData = null; // Track cumulative usage across all API calls
         let apiCallIndex = 0; // Track index for mailstack ordering
         let publishedAnalysis = null; // Track analysis from publishAnalysisResults tool (function-level scope)

@@ -3,6 +3,22 @@ const crypto = require('crypto');
 const { createMcpAuthMiddleware } = require('../modules/auth');
 const { _test, McpOAuthProvider } = require('../modules/mcpAgentFacade');
 const { validateRedirectUri, verifyPkceChallenge, parseScopes, ALLOWED_REDIRECT_URI_HOSTS } = require('../modules/mcpOAuthProvider');
+const { toResponsesApiMessages, toResponsesApiContentPart } = require('../modules/aiServices/responsesApiInput');
+
+const converted = toResponsesApiMessages([{
+    role: 'user',
+    content: [
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,abc', detail: 'high' } },
+        { type: 'text', text: 'widen left' }
+    ]
+}]);
+assert.deepStrictEqual(converted[0].content[0], { type: 'input_image', image_url: 'data:image/png;base64,abc' });
+assert.deepStrictEqual(converted[0].content[1], { type: 'input_text', text: 'widen left' });
+assert.deepStrictEqual(toResponsesApiContentPart({ type: 'input_image', image_url: 'data:image/jpeg;base64,xyz' }), {
+    type: 'input_image',
+    image_url: 'data:image/jpeg;base64,xyz'
+});
+assert.strictEqual(toResponsesApiMessages('leave'), 'leave');
 
 assert.strictEqual(_test.isAllowedMcpOrigin(undefined), true);
 assert.strictEqual(_test.isAllowedMcpOrigin(''), true);
@@ -220,6 +236,18 @@ assert.strictEqual(_test.flattenPacket({
     type: 'image_generation_response',
     data: { filename: 'a.png', image: 'HUGE', seed: 1 }
 }).filename, 'a.png');
+assert.strictEqual(_test.flattenPacket({
+    success: false,
+    type: 'image_expansion_error',
+    data: null,
+    reply: { type: 'image_expansion_error', data: null, error: 'Streaming failed after 3 retries: 422' }
+}).error, 'Streaming failed after 3 retries: 422');
+assert.strictEqual(_test.flattenPacket({
+    success: false,
+    type: 'image_expansion_error',
+    data: null,
+    error: 'Image not found'
+}).error, 'Image not found');
 assert.strictEqual(_test.pickFocusedWindowFilename([
     { active: false, data: { filename: 'other.png' } },
     { active: true, data: { selected: ['focus.png', 'b.png'] } }
