@@ -41,7 +41,7 @@ The bind is stored on **this application key**, not the whole server. `get_studi
 
 Several tabs: `get_studio_state` returns `needsClientChoice` and `clients` (most recently used first). Ask the user which tab, then `bind_session` `{ "clientId": "…" }`. `list_clients` is also a core tool. Server-side `generate_image` does not need a bind.
 
-`get_client_physics` pre-resolves dynagen context (same `resolved` object as get-state, plus flat `location` / `tod` / `time` / `date` / `weather` / `season`). It works without a bind. Optional `tod` / `weather` / `season` / `location` or `dynamicGeneration` override the snapshot. A bound tab still lights the location-arrow physics icon and the Remote Access tray (Your location was accessed by "Grok").
+`get_client_physics` pre-resolves dynagen context (same `resolved` object as get-state, plus flat `location` / `tod` / `time` / `date` / `weather` / `season`). It works without a bind. Optional `tod` / `weather` / `season` / `location` or `dynamicGeneration` override the snapshot. A bound tab still lights the location-arrow physics icon and the Remote Access tray (Your location was accessed by "Grok"). `date.month` is **1-based** (September = 9); holiday tables stay 0-based internally.
 
 ## Recipe: what they are looking at
 
@@ -170,3 +170,7 @@ User: *look at `1782…_generated_….png` in the default workspace*
 2. Build Change-JSON from `get_studio_state` plus what you are trying (guide notes are a start, not a statute)
 3. `apply_studio_changes` `{ "change": {…}, "autoApply": true, "autoGenerate": true }`
 4. `autoGenerate` clicks the bound tab's Generate button. Do not also call `generate_image` unless they asked for a **server-side** run (different session).
+
+## search_indexes_ready / omegasearch wait
+
+`generate_image` and `await_generation_job` wait until saved filenames have `search_indexes_ready=1` (short timeout) before the tool returns, so an immediate `omegasearch` can hit. If search still returns `total: 0` while indexes are pending, ingest waits one beat and retries once. A timeout still returns the image (`searchIndexed: false`).
