@@ -543,6 +543,7 @@ function setupExpandCanvasStageEvents(stageId) {
     if (insetToggle) {
         insetToggle.addEventListener('click', () => {
             insetToggle.dataset.state = insetToggle.dataset.state === 'on' ? 'off' : 'on';
+            updateExpandCanvasStagePreview(stageId);
         });
     }
 

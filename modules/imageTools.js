@@ -1,5 +1,6 @@
 const sharp = require('sharp');
 const { createCanvas, loadImage } = require('canvas');
+const { computeExpansionLetterboxLayout } = require('./expansionLetterbox');
 
 const inverseDimensionsMap = {
     "small_portrait": "512x768",
@@ -212,61 +213,19 @@ async function processDynamicImageLetterbox(imageBuffer, targetDims, bias = 2, o
 
     // Get original dimensions using Sharp
     const metadata = await sharp(imageBuffer).metadata();
-    const origDims = { width: metadata.width, height: metadata.height };
-    
-    // Calculate scaled dimensions that fit inside target while maintaining aspect ratio
-    const origAR = origDims.width / origDims.height;
-    const targetAR = targetDims.width / targetDims.height;
-    const insetEnabled = options && (options.inset === true || options.inset === 'true' || options.inset === 1);
-    
-    let scaledWidth, scaledHeight;
-    
-    // Inset mode keeps source scale when output is larger than source dimensions.
-    // This guarantees transparent padding on both axes for low-resolution inputs.
-    const targetIsLargerThanSource = targetDims.width > origDims.width && targetDims.height > origDims.height;
-    if (insetEnabled && targetIsLargerThanSource) {
-        scaledWidth = origDims.width;
-        scaledHeight = origDims.height;
-    } else {
-        if (origAR > targetAR) {
-            // Image is wider than target, scale to match target width
-            scaledWidth = targetDims.width;
-            scaledHeight = Math.round(targetDims.width / origAR);
-        } else {
-            // Image is taller than target, scale to match target height
-            scaledHeight = targetDims.height;
-            scaledWidth = Math.round(targetDims.height * origAR);
-        }
+    const layout = computeExpansionLetterboxLayout(
+        metadata.width,
+        metadata.height,
+        targetDims.width,
+        targetDims.height,
+        bias,
+        options
+    );
+    if (!layout) {
+        throw new Error('Target dimensions are required');
     }
-    
-    // Calculate positioning based on bias (0-4)
-    // Bias values: 0=top/left, 1=mid-top/mid-left, 2=center, 3=mid-bottom/mid-right, 4=bottom/right
-    const biasFractions = [0, 0.25, 0.5, 0.75, 1];
-    const biasFrac = biasFractions[bias] !== undefined ? biasFractions[bias] : 0.5;
-    
-    let left, top;
-    const padX = targetDims.width - scaledWidth;
-    const padY = targetDims.height - scaledHeight;
 
-    // Inset with slack on both axes: bias follows portrait/vertical vs landscape/horizontal (matches expansion modal)
-    if (insetEnabled && padX > 0 && padY > 0) {
-        const isPortraitSource = origDims.height > origDims.width;
-        if (isPortraitSource) {
-            left = Math.round(padX * 0.5);
-            top = Math.round(padY * biasFrac);
-        } else {
-            left = Math.round(padX * biasFrac);
-            top = Math.round(padY * 0.5);
-        }
-    } else if (origAR > targetAR) {
-        // Wider image, position vertically based on bias
-        left = 0;
-        top = Math.round(padY * biasFrac);
-    } else {
-        // Taller image, position horizontally based on bias
-        left = Math.round(padX * biasFrac);
-        top = 0;
-    }
+    const { scaledWidth, scaledHeight, left, top } = layout;
     
     // Use Sharp to resize image with high quality
     const resizedImageBuffer = await sharp(imageBuffer)
@@ -545,6 +504,7 @@ module.exports = {
     getDimensionsFromResolution,
     matchOriginalResolution,
     processDynamicImage,
+    computeExpansionLetterboxLayout,
     processDynamicImageLetterbox,
     getImageDimensionsWithCanvas,
     resizeMaskWithCanvas,
