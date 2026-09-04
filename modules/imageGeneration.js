@@ -10,6 +10,7 @@ const {
     insertBeforeTextColonOrFirstGroup,
     stripNoTextTag
 } = require('./promptTextBoundary');
+const { DEFAULT_FORGE_MODEL } = require('./modelFeatures');
 let __runtimeGr = null;
 function bindRuntimeGlobalResources(globalResources) { __runtimeGr = globalResources; }
 
@@ -7117,7 +7118,7 @@ async function processExpandCanvas(globalResources, stage, body, baseMetadata, g
         
         // Get system defaults for generation
         const defaultParams = {
-            model: 'v4_5',
+            model: DEFAULT_FORGE_MODEL,
             steps: 28,
             guidance: 4.9,
             rescale: 0.07,
@@ -7221,7 +7222,7 @@ async function processEnhanceStage(globalResources, stage, body, baseMetadata, g
         
         // Get system defaults for generation
         const defaultParams = {
-            model: 'v4_5',
+            model: DEFAULT_FORGE_MODEL,
             steps: 28,
             guidance: 4.9,
             rescale: 0.07,

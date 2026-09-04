@@ -1351,7 +1351,7 @@ function getManualModalValues() {
     }
 
     return {
-        model: manualSelectedModel || 'v4_5',
+        model: manualSelectedModel || 'v5',
         steps: parseInt(manualSteps?.value) || 25,
         guidance: parseFloat(manualGuidance?.value) || 5.0,
         rescale: parseFloat(manualRescale?.value) || 0.0,

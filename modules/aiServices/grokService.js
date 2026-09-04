@@ -5,6 +5,7 @@ const sharp = require('sharp');
 const { createDynamicGenerationResponseSchema } = require('../dynamicGenerationSchema');
 const { stripPromptBlocksForEffectivePrompt } = require('../promptStageBlocks');
 const { toResponsesApiMessages } = require('./responsesApiInput');
+const { DEFAULT_FORGE_MODEL } = require('../modelFeatures');
 
 /**
  * GrokService class - handles all Grok AI service interactions
@@ -7410,7 +7411,7 @@ class GrokService {
             relations,
             observations,
             finalConfidence,
-            params.model || (existingMemory && existingMemory.model) || 'v4_5'
+            params.model || (existingMemory && existingMemory.model) || DEFAULT_FORGE_MODEL
         );
 
         const result = {
@@ -7551,7 +7552,7 @@ class GrokService {
                     description: memory.description,
                     category: memory.category,
                     confidence: memory.confidence,
-                    model: memory.model || 'v4_5',
+                    model: memory.model || DEFAULT_FORGE_MODEL,
                     entities: optimizedEntities,
                     relations: optimizedRelations,
                     observations: optimizedObservations,

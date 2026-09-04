@@ -1413,13 +1413,13 @@ async function generateFromPreset(presetName) {
 
         hidePresetManager();
 
-        // spellbookModalManager: public/scripts/comp/spellbookModal.js
+        // openSpellbookApplet: public/scripts/comp/featureLoader.js
+        await openSpellbookApplet();
         if (!window.spellbookModalManager) {
             showGlassToast('error', 'Generation Failed', 'Spellcaster is not available');
             return;
         }
 
-        window.spellbookModalManager.openModal();
         window.spellbookModalManager.selectPreset(presetName);
         await window.spellbookModalManager.handleGenerate();
     } catch (error) {

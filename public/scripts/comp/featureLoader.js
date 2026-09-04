@@ -4,17 +4,19 @@
  */
 
 const FEATURE_MANIFEST = {
+    spellbook: {
+        styles: ['css/spellbook.css'],
+        scripts: ['scripts/comp/spellbookModal.js']
+    },
     notepad: {
         html: 'templates/notepad.html',
         styles: [
             'css/notepad.css',
-            'css/spellbook.css',
             'css/spell-check.css',
             'css/autocomplete.css'
         ],
         scripts: [
-            'scripts/comp/notepadManager.js',
-            'scripts/comp/spellbookModal.js'
+            'scripts/comp/notepadManager.js'
         ]
     },
     chat: {
@@ -62,7 +64,7 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/explorerApplet.js']
     },
     naxt: {
-        styles: ['css/naxt-shell.css'],
+        styles: ['css/naxt-shell.css', 'css/spellbook.css'],
         scripts: ['scripts/comp/naxtApplet.js']
     },
     bracket_gen: {
@@ -201,6 +203,14 @@ async function openExplorerApplet(path) {
 async function openGrimoireApplet(initialQuery) {
     await featureLoader.loadFeature('grimoire');
     tagWikiSearchModal.open(initialQuery || '');
+}
+
+async function openSpellbookApplet() {
+    await featureLoader.loadFeature('spellbook');
+    // initializeSpellbookModalManager: public/scripts/comp/spellbookModal.js
+    const manager = initializeSpellbookModalManager();
+    if (manager) manager.openModal();
+    return manager;
 }
 
 async function openNaxtApplet() {

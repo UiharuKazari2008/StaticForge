@@ -2691,7 +2691,7 @@ function requestAutofillWikiPreviewsForSession(extraTagIds, options) {
         window.wsClient.fetchAutofillWikiPreviews(batch, {
             requestId: currentSearchRequestId,
             autofillSessionId: autofillSessionId,
-            model: manualModel?.value || 'v4_5'
+            model: manualModel?.value || 'v5'
         });
     }
 }
