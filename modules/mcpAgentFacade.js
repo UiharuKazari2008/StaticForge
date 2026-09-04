@@ -22,6 +22,7 @@ const {
     resolveBindKey,
     resolveActorName,
     getClientPhysics,
+    requestClientIP,
     enrichDynamicGenerationForMcp,
     pickDynagenFromInput,
     dynagenNeedsIntegration,
@@ -3457,7 +3458,8 @@ async function callTool(globalResources, req, name, args) {
 
     if (name === 'get_client_physics') {
         const bind = autoBindIfNeeded(globalResources, req);
-        const data = await getClientPhysics(globalResources, bind.bindKey, input);
+        // requestClientIP: modules/agentClientBridge.js (same order as web_server.js getRealIP)
+        const data = await getClientPhysics(globalResources, bind.bindKey, input, requestClientIP(req));
         return mcpTextResult({ success: true, autoBound: !!bind.auto, ...data });
     }
 

@@ -41,7 +41,7 @@ The bind is stored on **this application key**, not the whole server. `get_studi
 
 Several tabs: `get_studio_state` returns `needsClientChoice` and `clients` (most recently used first). Ask the user which tab, then `bind_session` `{ "clientId": "…" }`. `list_clients` is also a core tool. Server-side `generate_image` does not need a bind.
 
-`get_client_physics` pre-resolves dynagen context (same `resolved` object as get-state, plus flat `location` / `tod` / `time` / `date` / `weather` / `season`). It works without a bind. Optional `tod` / `weather` / `season` / `location` or `dynamicGeneration` override the snapshot. A bound tab still lights the location-arrow physics icon and the Remote Access tray (Your location was accessed by "Grok").
+`get_client_physics` pre-resolves dynagen context (same `resolved` object as get-state, plus flat `location` / `tod` / `time` / `date` / `weather` / `season`). It works without a bind. Optional `tod` / `weather` / `season` / `location` or `dynamicGeneration` override the snapshot. A bound tab still lights the location-arrow physics icon and the Remote Access tray (Your location was accessed by "Grok"). `date.month` is **1-based** (September = 9); holiday tables stay 0-based internally.
 
 ## Recipe: what they are looking at
 
