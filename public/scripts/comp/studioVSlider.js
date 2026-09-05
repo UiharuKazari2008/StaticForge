@@ -652,7 +652,9 @@ function studioVSliderDeleteWidget(widgetId) {
 function studioVSliderClearSession(options) {
     const opts = options || {};
     studioVSliderWidgets = [];
-    studioVSliderStampForgeData(null);
+    // Do NOT stamp null onto preview/lastGeneration forge_data — that poisons
+    // getImageMetadata's in-memory cache so reopen looks like vSlider was never saved.
+    // Disk PNG keeps forge_data.vSlider; session widgets alone clear until restore.
     studioVSliderEditorDraft = null;
     studioVSliderEditorWidgetId = null;
     const list = document.getElementById('studioVSliderList');
@@ -1124,6 +1126,11 @@ function studioVSliderRefreshEditorScrollbar() {
 function studioVSliderOpenWindow() {
     const el = document.getElementById('studioVSliderTool');
     if (!el) return;
+    // Re-hydrate from Studio metadata if session was cleared but image still has catalog
+    if (!studioVSliderWidgets.length) {
+        const list = studioVSliderResolveCatalogFromStudio(null);
+        if (list && list.length) installStudioVSliderWidgets(list, { open: false });
+    }
     // openModal / debouncedUpdateTaskbarWindows: public/scripts/comp/modalUtils.js
     openModal(el);
     if (typeof debouncedUpdateTaskbarWindows === 'function') debouncedUpdateTaskbarWindows();
@@ -1154,10 +1161,30 @@ function installStudioVSliderWidgets(list, options) {
 
 function studioVSliderReadFromImage(image) {
     if (!image) return null;
+    // lastGeneration is often the metadata object itself (forge_data on top)
     const meta = image.metadata || image;
     const forge = (meta && meta.forge_data) || image.forge_data;
-    if (forge && Array.isArray(forge.vSlider)) return forge.vSlider;
-    if (meta && Array.isArray(meta.vSlider)) return meta.vSlider;
+    if (forge && Array.isArray(forge.vSlider) && forge.vSlider.length) return forge.vSlider;
+    if (meta && Array.isArray(meta.vSlider) && meta.vSlider.length) return meta.vSlider;
+    return null;
+}
+
+/** Prefer fetched Studio metadata over gallery card stubs. */
+function studioVSliderResolveCatalogFromStudio(content) {
+    if (window.currentEditMetadata) {
+        const fromEdit = studioVSliderReadFromImage({ metadata: window.currentEditMetadata });
+        if (fromEdit) return fromEdit;
+    }
+    const preview = studioVSliderForge.previewImage();
+    const fromPreview = studioVSliderReadFromImage(preview);
+    if (fromPreview) return fromPreview;
+    const fromLast = studioVSliderReadFromImage(window.lastGeneration);
+    if (fromLast) return fromLast;
+    if (content && content.metadata) {
+        const fromContentMeta = studioVSliderReadFromImage({ metadata: content.metadata });
+        if (fromContentMeta) return fromContentMeta;
+    }
+    if (content && content.image) return studioVSliderReadFromImage(content.image);
     return null;
 }
 
@@ -1165,6 +1192,13 @@ function studioVSliderMaybeRestoreFromImage(image) {
     const list = studioVSliderReadFromImage(image);
     if (!list) return;
     installStudioVSliderWidgets(list, { open: true });
+}
+
+function studioVSliderMaybeRestoreFromStudio(content, options) {
+    const opts = options || {};
+    const list = studioVSliderResolveCatalogFromStudio(content);
+    if (!list || !list.length) return;
+    installStudioVSliderWidgets(list, { open: opts.open !== false });
 }
 
 function studioVSliderWireHooks() {
@@ -1178,8 +1212,9 @@ function studioVSliderWireHooks() {
     const prevOpen = openManualModalWithContent;
     openManualModalWithContent = async function (content, event) {
         const result = await prevOpen(content, event);
-        const image = content && content.image ? content.image : studioVSliderForge.previewImage();
-        studioVSliderMaybeRestoreFromImage(image);
+        // After fetch: currentEditMetadata / preview hold full forge_data (incl. vSlider).
+        // Gallery content.image is often a stub without forge_data.vSlider.
+        studioVSliderMaybeRestoreFromStudio(content, { open: true });
         return result;
     };
 }
