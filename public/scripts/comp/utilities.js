@@ -247,6 +247,8 @@ const RESOLUTIONS = [
     { value: 'normal_portrait', display: 'Normal Portrait', width: 832, height: 1216, aspect: 0.684 },
     { value: 'normal_landscape', display: 'Normal Landscape', width: 1216, height: 832, aspect: 1.462 },
     { value: 'normal_square', display: 'Normal Square', width: 1024, height: 1024, aspect: 1.0 },
+    { value: 'normal_wallpaper_portrait', display: 'Normal Wallpaper Portrait', width: 576, height: 1024, aspect: 0.563 },
+    { value: 'normal_wallpaper_landscape', display: 'Normal Wallpaper Widescreen', width: 1024, height: 576, aspect: 1.778 },
     { value: 'large_portrait', display: 'Large Portrait', width: 1024, height: 1536, aspect: 0.667 },
     { value: 'large_landscape', display: 'Large Landscape', width: 1536, height: 1024, aspect: 1.5 },
     { value: 'large_square', display: 'Large Square', width: 1472, height: 1472, aspect: 1.0 },

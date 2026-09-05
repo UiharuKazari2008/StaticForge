@@ -143,7 +143,8 @@ There is **no** separate `vslider` MCP tool. Use `apply_studio_changes` with a `
 ```
 
 4. Studio opens the vSlider tool window (one confirm row: **Install vSlider widgets**). User drags for preview; **Finalise** writes blended emphasis into the target expander or prompt.
-5. `kind`: `slider` (1 axis) | `xypad` (2) | `star` (2–8) | `dropdown` (named presets, no blend). Full schema: `docs/studio-change-json.md`.
+5. `apply_studio_changes` returns `vSliderInstalled`, `vSliderRejected`, and `vSliderHydrated`. If `vSliderRejected > 0` or the next `get_studio_state` still has `vSlider: null`, fix the catalog and retry — **do not** substitute static expanders.
+6. `kind`: `slider` (1 axis) | `xypad` (2) | `star` (2–8) | `dropdown` (named presets, no blend). String `stops`, `catalog`, and `target: "body"` shorthands are accepted. Full schema: `docs/studio-change-json.md`.
 
 ## Recipe: Enshutsuka on grok.com (analyse / create / efficiency)
 

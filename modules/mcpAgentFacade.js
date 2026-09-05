@@ -204,7 +204,7 @@ const STUDIO_PARAM_SCHEMA = {
     model: { type: 'string', description: 'e.g. v5, v5_cur, v4_5, v4_5_cur, v4, v4_cur, v3, furry. Live ids are on tools/list and get_studio_state.settings.models' },
     seed: { type: ['string', 'number'], description: 'Specific seed, or "last" to lock last used' },
     seedLock: { type: 'boolean', description: 'true locks last used seed (Studio sprout). false rolls a new variation' },
-    resolution: { type: 'string', description: 'Named size (normal_portrait=832x1216, normal_landscape=1216x832, normal_square=1024x1024, large_*, xlarge_*, wallpaper_*, small_*) or custom plus width/height. Live px sizes are on tools/list and get_studio_state.settings.resolutions' },
+    resolution: { type: 'string', description: 'Named size (normal_portrait=832x1216, normal_landscape=1216x832, normal_square=1024x1024, normal_wallpaper_landscape=1024x576, normal_wallpaper_portrait=576x1024, large_*, xlarge_*, wallpaper_*, small_*) or custom plus width/height. Live px sizes are on tools/list and get_studio_state.settings.resolutions' },
     width: { type: 'number', description: 'Only with resolution custom' },
     height: { type: 'number', description: 'Only with resolution custom' },
     variety: { type: 'boolean', description: 'Variety+ (model-dependent)' },
@@ -4141,14 +4141,17 @@ async function callTool(globalResources, req, name, args) {
         }
         const data = await applyStudioChanges(globalResources, { ...input, bindKey: bind.bindKey });
         rememberStudioCheckpointFromState(bind.bindKey, data);
-        const next = data && data.generateStarted
-            ? 'apply does not return pixels. Call get_generated_image (that filename or latest) with dest_path, then render_file /home/workdir/artifacts/… after curling url if missing. Do not reprint with Grok Imagine.'
-            : undefined;
+        let responseNext;
+        if (data && data.vSliderRejected > 0) {
+            responseNext = 'vSlider catalog did not hydrate. Each widget needs kind (slider/xypad/star/dropdown), axes with stops[{at,text}] (2+ per axis), and target expander prefix. Do not substitute static expanders — retry apply_studio_changes with a corrected vSlider array.';
+        } else if (data && data.generateStarted) {
+            responseNext = 'apply does not return pixels. Call get_generated_image (that filename or latest) with dest_path, then render_file /home/workdir/artifacts/… after curling url if missing. Do not reprint with Grok Imagine.';
+        }
         return mcpTextResult({
             success: true,
             autoBound: !!bind.auto,
             ...data,
-            ...(next ? { next } : {})
+            ...(responseNext ? { next: responseNext } : {})
         });
     }
 

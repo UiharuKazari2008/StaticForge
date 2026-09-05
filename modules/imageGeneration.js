@@ -111,6 +111,7 @@ const { buildPromptApplicationContext, mapProcessedToRaw } = require('./promptAp
 const { 
     getImageDimensions, 
     getDimensionsFromResolution, 
+    resolutionUsesExplicitDimensions,
     processDynamicImage,
     processDynamicImageLetterbox,
     resizeMaskWithCanvas,
@@ -923,8 +924,8 @@ async function generatePresetSourceImage(globalResources, presetName, seed, reso
     
     // Override resolution if provided
     if (resolution) {
-        if (resolution.toLowerCase().startsWith('xlarge_')) {
-            // Handle xlarge resolutions by converting to custom dimensions
+        if (resolutionUsesExplicitDimensions(resolution)) {
+            // Handle DreamScene-only presets by converting to custom dimensions
             const dims = getDimensionsFromResolution(resolution.toLowerCase());
             if (dims && dims.width && dims.height) {
                 presetOptions.width = dims.width;
@@ -3611,8 +3612,8 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
         if (body.width && body.height) {
             baseOptions.width = parseInt(body.width.toString());
             baseOptions.height = parseInt(body.height.toString());
-        } else if (resolutionValue && resolutionValue.toLowerCase().startsWith('xlarge_')) {
-            // Handle xlarge resolutions by converting to custom dimensions
+        } else if (resolutionValue && resolutionUsesExplicitDimensions(resolutionValue)) {
+            // Handle DreamScene-only presets by converting to custom dimensions
             const dims = getDimensionsFromResolution(resolutionValue.toLowerCase());
             if (dims && dims.width && dims.height) {
                 baseOptions.width = dims.width;
@@ -5824,7 +5825,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                 if (stage.type === 'expand-canvas') {
                     // Handle xlarge resolutions by converting to custom dimensions
                     if (stage.resolution !== undefined) {
-                        if (stage.resolution.startsWith('xlarge_')) {
+                        if (resolutionUsesExplicitDimensions(stage.resolution)) {
                             const dims = getDimensionsFromResolution(stage.resolution);
                             if (dims && dims.width && dims.height) {
                                 stageRequestBody.width = dims.width;
@@ -5896,14 +5897,16 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                     } else if (!needsImg2Img) {
                         // Variation without base image: apply provided resolution or dimensions directly
                         if (stage.resolution !== undefined) {
-                            if (stage.resolution.startsWith('xlarge_')) {
+                            if (resolutionUsesExplicitDimensions(stage.resolution)) {
                                 const dims = getDimensionsFromResolution(stage.resolution);
                                 if (dims && dims.width && dims.height) {
                                     stageRequestBody.width = dims.width;
                                     stageRequestBody.height = dims.height;
                                     delete stageRequestBody.resolution;
-                                } else {
+                                } else if (stage.resolution.startsWith('xlarge_')) {
                                     stageRequestBody.resolution = stage.resolution.replace('xlarge_', 'large_');
+                                } else {
+                                    stageRequestBody.resolution = stage.resolution;
                                 }
                             } else {
                                 stageRequestBody.resolution = stage.resolution;

@@ -1,0 +1,383 @@
+/* Studio vSlider — approved #52 mockup chrome (reuse Weight Rack ticks / glass-slider). */
+
+#studioVSliderTool {
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+}
+
+#studioVSliderTool > .modal-content {
+    padding: 8px;
+    overflow: hidden;
+    min-height: 0;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#studioVSliderTool .vslider-kind {
+    font-size: 0.68rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+    margin-left: 4px;
+}
+
+#studioVSliderTool .vslider-scroll-shell {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+#studioVSliderTool .vslider-scroll-inner {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 2px 4px 8px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#studioVSliderTool #studioVSliderList {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#studioVSliderTool .vslider-card {
+    flex: 0 0 auto;
+    padding: 8px;
+    background: var(--glass-layer-dark-4, hsl(0 0% 0% / 35%));
+    border: 1px solid var(--glass-border-2, #444);
+    border-radius: var(--border-radius-lg);
+}
+
+#studioVSliderTool .vslider-card-title {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+    font-size: 0.82rem;
+    font-weight: 650;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+#studioVSliderTool .vslider-card-title .vslider-kind {
+    margin-left: 0;
+}
+
+#studioVSliderTool .vslider-axis-label {
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: none;
+}
+
+#studioVSliderTool .vslider-axis-label strong {
+    color: var(--text-primary);
+    font-weight: 650;
+}
+
+#studioVSliderTool .vslider-stop {
+    color: var(--primary-color);
+    font-variant-numeric: tabular-nums;
+}
+
+#studioVSliderTool .vslider-slider-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    --emphasis-slider-thumb-half: 11px;
+    --emphasis-slider-thumb-w: 22px;
+}
+
+#studioVSliderTool .vslider-slider-row .slider-container {
+    min-height: 28px;
+    margin: 0;
+    padding: 2px 8px;
+    flex: 1 1 auto;
+    min-width: 0;
+    background: var(--glass-layer-dark-4);
+    border: 1px solid var(--glass-border-2);
+    border-radius: var(--border-radius-lg);
+    box-shadow: none;
+    position: relative;
+    isolation: isolate;
+}
+
+#studioVSliderTool .vslider-slider-row .slider-container::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 16px #0000008c;
+    pointer-events: none;
+    z-index: 4;
+}
+
+#studioVSliderTool .vslider-slider-row .slider-container .glass-slider {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+    margin: 0;
+    height: 18px;
+    min-height: 18px;
+    padding: 0;
+    cursor: ew-resize;
+    background: transparent;
+    touch-action: none;
+    position: relative;
+    z-index: 5;
+}
+
+#studioVSliderTool .vslider-slider-row .slider-container .glass-slider::-webkit-slider-runnable-track {
+    height: 0;
+    background: transparent;
+    border: none;
+}
+
+#studioVSliderTool .vslider-slider-row .slider-container .glass-slider::-moz-range-track {
+    height: 0;
+    background: transparent;
+    border: none;
+}
+
+#studioVSliderTool .vslider-slider-row .slider-container .glass-slider::-webkit-slider-thumb,
+#studioVSliderTool .vslider-slider-row .slider-container .glass-slider::-moz-range-thumb,
+#studioVSliderTool .vslider-slider-row .slider-container .glass-slider::-ms-thumb {
+    box-sizing: border-box;
+    width: var(--emphasis-slider-thumb-w);
+    height: 20px;
+    background-color: var(--glass-layer-3);
+    background-image:
+        linear-gradient(to bottom,
+            transparent 0%,
+            transparent 25%,
+            rgba(255, 255, 255, 0.5) 25%,
+            rgba(255, 255, 255, 0.5) 75%,
+            transparent 75%,
+            transparent 100%),
+        linear-gradient(to bottom,
+            transparent 0%,
+            transparent 22%,
+            rgba(255, 255, 255, 0.22) 22%,
+            rgba(255, 255, 255, 0.22) 78%,
+            transparent 78%,
+            transparent 100%),
+        linear-gradient(to bottom,
+            transparent 0%,
+            transparent 18%,
+            rgba(255, 228, 196, 0.18) 18%,
+            rgba(255, 228, 196, 0.18) 82%,
+            transparent 82%,
+            transparent 100%);
+    background-size: 1px 100%, 2px 100%, 3px 100%;
+    background-position: center;
+    background-repeat: no-repeat;
+    box-shadow: var(--glass-shadow-3);
+    border: 1.5px solid var(--glass-border-3);
+    border-radius: var(--border-radius-md);
+    margin-top: -10px;
+    cursor: pointer;
+}
+
+#studioVSliderTool .vslider-stop-labels {
+    display: flex;
+    justify-content: space-between;
+    gap: 4px;
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: none;
+}
+
+#studioVSliderTool .vslider-blend {
+    margin-top: 2px;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    font-family: var(--font-secondary, ui-monospace, monospace);
+    word-break: break-word;
+}
+
+#studioVSliderTool .vslider-blend code {
+    color: var(--primary-color);
+    font-size: 0.72rem;
+}
+
+#studioVSliderTool .vslider-card .custom-dropdown {
+    width: 100%;
+}
+
+#studioVSliderTool .vslider-card .custom-dropdown-btn.hover-show.colored {
+    width: 100%;
+    justify-content: space-between;
+}
+
+#studioVSliderTool .vslider-footer-note {
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    align-self: center;
+}
+
+#studioVSliderTool .vslider-footer-note.dirty {
+    color: var(--primary-color);
+}
+
+#studioVSliderTool .vslider-pad-wrap {
+    display: grid;
+    grid-template-columns: 36px 1fr 88px;
+    grid-template-rows: minmax(160px, 200px) 22px;
+    gap: 6px;
+}
+
+#studioVSliderTool .vslider-pad-ylabel {
+    grid-row: 1;
+    grid-column: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 4px 0;
+    text-transform: none;
+}
+
+#studioVSliderTool .vslider-pad-ylabel .axis-name {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    color: var(--text-primary);
+}
+
+#studioVSliderTool .vslider-pad-xlabel {
+    grid-row: 2;
+    grid-column: 2;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: none;
+}
+
+#studioVSliderTool .vslider-pad-xlabel .axis-name {
+    color: var(--text-primary);
+}
+
+#studioVSliderTool .vslider-pad-read {
+    grid-row: 1;
+    grid-column: 3;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 10px;
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    text-transform: none;
+}
+
+#studioVSliderTool .vslider-pad-read b {
+    color: var(--text-primary);
+    display: block;
+    font-size: 0.8rem;
+}
+
+#studioVSliderTool .vslider-pad-read .vslider-stop {
+    display: block;
+}
+
+#studioVSliderTool .vslider-stage {
+    grid-row: 1;
+    grid-column: 2;
+    position: relative;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--border-radius-sm);
+    overflow: hidden;
+    cursor: pointer;
+    touch-action: none;
+}
+
+#studioVSliderTool .vslider-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(to right, rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+    background-size: 20% 20%;
+    background-position: center;
+    pointer-events: none;
+}
+
+#studioVSliderTool .vslider-cross {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.12);
+    pointer-events: none;
+}
+
+#studioVSliderTool .vslider-cross.v {
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 1px;
+    height: auto;
+    right: auto;
+}
+
+#studioVSliderTool .vslider-median-dot {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.35);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
+#studioVSliderTool .vslider-stage .character-position-pin {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    --character-pin-color: var(--primary-color);
+}
+
+#studioVSliderTool .vslider-star-stage {
+    position: relative;
+    min-height: 220px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--border-radius-sm);
+    touch-action: none;
+}
+
+#studioVSliderTool .vslider-star-stage svg {
+    display: block;
+    width: 100%;
+    height: 220px;
+    cursor: pointer;
+}
+
+#studioVSliderTool .vslider-empty {
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    padding: 8px 4px;
+    text-transform: none;
+}
+
+#studioVSliderTool .vslider-empty code {
+    color: var(--text-primary);
+}

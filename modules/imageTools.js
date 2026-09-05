@@ -9,6 +9,8 @@ const inverseDimensionsMap = {
     "normal_portrait": "832x1216",
     "normal_landscape": "1216x832",
     "normal_square": "1024x1024",
+    "normal_wallpaper_portrait": "576x1024",
+    "normal_wallpaper_landscape": "1024x576",
     "large_portrait": "1024x1536",
     "large_landscape": "1536x1024",
     "large_square": "1472x1472",
@@ -26,6 +28,8 @@ const dimensionsMap = {
     "832x1216": "normal_portrait",
     "1216x832": "normal_landscape",
     "1024x1024": "normal_square",
+    "576x1024": "normal_wallpaper_portrait",
+    "1024x576": "normal_wallpaper_landscape",
     "1024x1536": "large_portrait",
     "1536x1024": "large_landscape",
     "1472x1472": "large_square",
@@ -91,6 +95,12 @@ function getDimensionsFromResolution(resolution) {
     if (width && height) {
         return { width, height };
     }
+}
+
+/** Presets not in nekoai-js Resolution enum — send explicit width/height to the API. */
+function resolutionUsesExplicitDimensions(resolution) {
+    const r = (resolution || '').toLowerCase();
+    return r.startsWith('xlarge_') || r.startsWith('normal_wallpaper_');
 }
 
 // Helper: For upscaled images, try to match original resolution
@@ -502,6 +512,7 @@ module.exports = {
     getImageDimensions,
     getResolutionFromDimensions,
     getDimensionsFromResolution,
+    resolutionUsesExplicitDimensions,
     matchOriginalResolution,
     processDynamicImage,
     computeExpansionLetterboxLayout,

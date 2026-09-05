@@ -1309,6 +1309,10 @@ function handlePromptTextareaContextMenuAction(action, textarea, item) {
                 });
             }
             break;
+        case 'prompt-ctx-open-vslider':
+            // openStudioVSliderTool: public/scripts/comp/studioVSlider.js
+            openStudioVSliderTool();
+            break;
         default:
             break;
     }
@@ -1638,6 +1642,11 @@ function getPromptTextareaContextMenuConfig() {
                         handlerfn: (subItem, target) => {
                             handlePromptTextareaContextMenuAction(subItem.action, target, subItem);
                         }
+                    },
+                    {
+                        icon: 'fas fa-sliders',
+                        text: 'vSlider',
+                        action: 'prompt-ctx-open-vslider'
                     },
                     {
                         icon: 'fas fa-book-font',

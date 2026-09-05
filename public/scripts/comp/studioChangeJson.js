@@ -689,8 +689,11 @@ function collectStudioChangeVSliderList(payload) {
 function buildStudioChangeVSliderOps(payload) {
     const list = collectStudioChangeVSliderList(payload);
     if (list == null) return [];
-    // normalizeStudioVSliderList: public/scripts/comp/studioVSlider.js
-    const widgets = normalizeStudioVSliderList(list);
+    // normalizeStudioVSliderList / studioVSliderCoerceRawList: public/scripts/comp/studioVSlider.js
+    let widgets = normalizeStudioVSliderList(list);
+    if (!widgets.length && list.length) {
+        widgets = normalizeStudioVSliderList(studioVSliderCoerceRawList(list));
+    }
     if (!widgets.length && !list.length) {
         return [{
             key: 'vSlider:install',
@@ -702,7 +705,18 @@ function buildStudioChangeVSliderOps(payload) {
             enabled: true
         }];
     }
-    if (!widgets.length) return [];
+    if (!widgets.length) {
+        return [{
+            key: 'vSlider:install',
+            group: 'vSlider',
+            kind: 'vslider',
+            action: 'set',
+            label: 'Install vSlider widgets (rejected — need kind + axes with 2+ stops)',
+            widgets: [],
+            rejected: list.length,
+            enabled: true
+        }];
+    }
     return [{
         key: 'vSlider:install',
         group: 'vSlider',

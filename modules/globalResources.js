@@ -3129,7 +3129,9 @@ class GlobalResources {
         const xlargeResolutions = [
             { name: 'XLARGE_PORTRAIT', width: 1408, height: 2112 },
             { name: 'XLARGE_LANDSCAPE', width: 2112, height: 1408 },
-            { name: 'XLARGE_SQUARE', width: 1728, height: 1728 }
+            { name: 'XLARGE_SQUARE', width: 1728, height: 1728 },
+            { name: 'NORMAL_WALLPAPER_PORTRAIT', width: 576, height: 1024 },
+            { name: 'NORMAL_WALLPAPER_LANDSCAPE', width: 1024, height: 576 }
         ];
 
         xlargeResolutions.forEach(res => {

@@ -213,6 +213,34 @@
         return { dreamscape: 'change', v: 1, fields };
     }
 
+    function resolveStudioPayload(data) {
+        if (!data || typeof data !== 'object') return null;
+        if (data.change && typeof data.change === 'object' && !Array.isArray(data.change)) {
+            return data.change;
+        }
+        const text = resolveStudioText(data);
+        if (!text || typeof window.extractStudioChangeJson !== 'function') return null;
+        return window.extractStudioChangeJson(text);
+    }
+
+    function readVSliderHydration(payload) {
+        const requested = payload && Array.isArray(payload.vSlider) ? payload.vSlider.length : 0;
+        let installed = 0;
+        try {
+            const snap = typeof getStudioVSliderSnapshot === 'function' ? getStudioVSliderSnapshot() : null;
+            installed = snap && snap.length ? snap.length : 0;
+        } catch (_err) {
+            installed = 0;
+        }
+        return {
+            vSlider: installed ? getStudioVSliderSnapshot() : null,
+            vSliderRequested: requested,
+            vSliderInstalled: installed,
+            vSliderRejected: requested > installed ? requested - installed : 0,
+            vSliderHydrated: requested === 0 || installed > 0
+        };
+    }
+
     function resolveStudioText(data) {
         if (!data || typeof data !== 'object') return null;
         if (typeof data.change === 'string') return data.change;
@@ -251,19 +279,15 @@
         if (!autoApply && autoGenerate) {
             return { ok: false, error: 'autoGenerate requires autoApply' };
         }
-        const text = resolveStudioText(data);
-        if (!text) {
+        const payload = resolveStudioPayload(data);
+        if (!payload) {
             return { ok: false, error: 'change JSON or prompt/uc fields are required' };
         }
         if (!autoApply) {
             return { ok: true, applied: false, autoApply: false, autoGenerate: false };
         }
-        if (typeof window.applyStudioChangePayloadSilent !== 'function' || typeof window.extractStudioChangeJson !== 'function') {
+        if (typeof window.applyStudioChangePayloadSilent !== 'function') {
             return { ok: false, error: 'Studio change helper is not available' };
-        }
-        const payload = window.extractStudioChangeJson(text);
-        if (!payload) {
-            return { ok: false, error: 'change JSON is not valid' };
         }
         const modal = document.getElementById('manualModal');
         const studioWasClosed = !modal || modal.classList.contains('hidden');
@@ -279,17 +303,40 @@
                 error: (err && err.message) || 'Failed to apply studio change'
             };
         }
+        const hydration = readVSliderHydration(payload);
         if (!applied) {
-            return { ok: false, applied: false, autoApply: true, autoGenerate, error: 'Studio change was not applied' };
+            return {
+                ok: false,
+                applied: false,
+                autoApply: true,
+                autoGenerate,
+                ...hydration,
+                error: hydration.vSliderRejected
+                    ? 'Studio change was not applied (vSlider catalog did not hydrate — check kind, axes, and 2+ stops per axis)'
+                    : 'Studio change was not applied'
+            };
         }
+        const partialVSlider = hydration.vSliderRejected > 0;
         // showAgentSessionTrayNotice: public/scripts/comp/mcpActivityClient.js
         showAgentSessionTrayNotice(studioWasClosed ? 'open' : 'update', data);
         const checkpointId = storeStudioCheckpoint(captureStudioCheckpointPayload());
+        const baseResult = {
+            ok: true,
+            applied: true,
+            autoApply: true,
+            opened: studioWasClosed,
+            checkpointId,
+            ...hydration,
+            ...(partialVSlider ? {
+                partial: true,
+                warning: 'Prompt/expanders applied but vSlider catalog did not hydrate — fix kind, axes, and 2+ stops per axis, then retry vSlider only.'
+            } : {})
+        };
         if (!autoGenerate) {
-            return { ok: true, applied: true, autoApply: true, autoGenerate: false, opened: studioWasClosed, checkpointId };
+            return { ...baseResult, autoGenerate: false };
         }
         const gen = fireBoundTabGenerate();
-        return { ok: true, applied: true, autoApply: true, autoGenerate: true, opened: studioWasClosed, checkpointId, ...gen };
+        return { ...baseResult, autoGenerate: true, ...gen };
     }
 
     async function openImageFromCommand(filename, commandData) {

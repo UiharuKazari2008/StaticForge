@@ -315,6 +315,7 @@ function assembleStudioChangeFromToolArgs(body) {
     if (Array.isArray(base && base.characters)) out.characters = base.characters.slice();
     if (Array.isArray(base && base.expanders)) out.expanders = base.expanders.slice();
     if (Array.isArray(base && base.vibes)) out.vibes = base.vibes.slice();
+    if (Array.isArray(base && base.vSlider)) out.vSlider = base.vSlider.slice();
 
     out.dreamscape = out.dreamscape || 'change';
     out.v = out.v || 1;

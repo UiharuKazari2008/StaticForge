@@ -76,6 +76,17 @@ assert.strictEqual(_test.assembleStudioChangeFromToolArgs({
 }).params.nsfw, -2);
 assert.strictEqual(_test.pickNsfwFromStudioArgs({ nsfw: 9 }, {}), undefined);
 
+const vSliderAssembled = _test.assembleStudioChangeFromToolArgs({
+    prompt: '1girl',
+    vSlider: [{
+        id: 'body_weight',
+        kind: 'slider',
+        axes: [{ id: 'weight', default: 0.5, target: { kind: 'expander', prefix: 'body' }, stops: [{ at: 0, text: 'thin' }, { at: 1, text: 'thick' }] }]
+    }]
+});
+assert.ok(Array.isArray(vSliderAssembled.vSlider));
+assert.strictEqual(vSliderAssembled.vSlider.length, 1);
+
 const liftedFlags = _test.assembleStudioChangeFromToolArgs({
     append_transparency: true,
     n: 2,

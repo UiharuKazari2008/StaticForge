@@ -258,6 +258,7 @@
     <link rel="stylesheet" href="/css/grimoire-browser.css?sha=e26a52d8d4f034f357d20720ba2913cf1d22440f4e21d05eb5c94a55cd930ccb">
     <link rel="stylesheet" href="/css/emphasis-groups-tool.css?sha=8601349e668b62daeeb5d62991a1471f58948c6d031eee6439aab54edc211ef9">
     <link rel="stylesheet" href="/css/character-position-tool.css?sha=e1ea1132fb7cdb215c4b855346e0fe73ab886c47098dd3d51282348bb75c1c07">
+    <link rel="stylesheet" href="/css/studio-vslider.css?sha=7cee2e00423c71d642304d7468532f5d8a2db73b105166eaf8387aa9b634a0e7">
     <link rel="stylesheet" href="/css/emphasis-manager.css?sha=42db6953f33250e0a16b7410e43692ba8acae006d801f6a9f6526a3ddfd1301a">
     <link rel="stylesheet" href="/css/windows-classic-theme.css?sha=bffe5e53cd5300486322056e94eb3550259565fe02f1ca394e4b7c560473cee8">
     <link rel="stylesheet" href="/css/service-worker-tray.css?sha=b71d1e07077cf9a9c707945cca0effcc56b0bd0b54692ec105fcc42ee756c3b4">
@@ -2816,17 +2817,17 @@
         </div>
     </div>
 
-    <!-- Studio vSlider intensity widgets -->
+    <!-- Studio vSlider intensity widgets (#52 mockup chrome) -->
     <div id="studioVSliderTool"
         class="modal hidden transient tool-window resizeable-window"
         data-window-identifier="studio-vslider-tool" data-parent-modal-id="manualModal"
         data-window-min-width="360" data-window-min-height="320"
         data-window-max-width="720" data-window-max-height="900"
-        data-window-default-width="440" data-window-default-height="560">
+        data-window-default-width="540" data-window-default-height="680">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-sliders icon-fa"></i>
-                <span>vSlider</span>
+                <span>vSlider <span id="studioVSliderKindLabel" class="vslider-kind"></span></span>
             </div>
         </div>
         <div class="modal-window-controls">
@@ -2839,18 +2840,26 @@
             </button>
         </div>
         <div class="modal-content dark">
-            <div class="modal-body">
-                <div class="form-section-scroll scrollbar-padding" data-custom-scrollbar
+            <div class="vslider-scroll-shell">
+                <div class="vslider-scroll-inner scrollbar-padding" data-custom-scrollbar
                     data-scrollable-wrapper-class="studio-vslider-scrollable">
-                    <div id="studioVSliderList" class="form-section"></div>
+                    <div id="studioVSliderList"></div>
                 </div>
             </div>
-            <div class="modal-footer">
-                <div class="form-actions">
-                    <button type="button" id="studioVSliderRevertBtn" class="btn-secondary" disabled>Revert</button>
-                    <button type="button" id="studioVSliderFinaliseBtn" class="btn-primary" disabled>
-                        <i class="fas fa-check"></i> Finalise
-                    </button>
+            <div class="character-position-footer">
+                <div class="modal-footer">
+                    <div class="modal-footer-left">
+                        <button type="button" id="studioVSliderRevertBtn" class="btn-secondary" disabled>
+                            <span>Revert</span>
+                        </button>
+                        <span id="studioVSliderFooterNote" class="vslider-footer-note"></span>
+                    </div>
+                    <div class="modal-footer-right">
+                        <button type="button" id="studioVSliderFinaliseBtn" class="btn-primary" disabled>
+                            <span>Finalise</span>
+                            <i class="fas fa-check"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

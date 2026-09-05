@@ -622,7 +622,8 @@ class PromptTextareaToolbar {
             { value: 'clear-emphasis', display: 'Reset Emphasis', icon: 'fas fa-eraser' },
             { value: 'reindex-group-ids', display: 'Reset Group IDs', icon: 'fas fa-list-ol' },
             { value: 'split-emphasis', display: 'Split Emphasis', icon: 'fas fa-scissors', toolbarWide: true },
-            { value: 'request-body-replacements', display: 'Text Expanders', icon: 'fas fa-book-font' }
+            { value: 'request-body-replacements', display: 'Text Expanders', icon: 'fas fa-book-font' },
+            { value: 'studio-vslider', display: 'vSlider', icon: 'fas fa-sliders' }
         ];
         return menuOptions;
     }
@@ -825,6 +826,10 @@ class PromptTextareaToolbar {
                 break;
             case 'request-body-replacements':
                 showRequestBodyReplacementsModal();
+                break;
+            case 'studio-vslider':
+                // openStudioVSliderTool: public/scripts/comp/studioVSlider.js
+                openStudioVSliderTool();
                 break;
             case 'manage-director-rules':
                 // Rules now live inside the Memories DSAP (static rules)

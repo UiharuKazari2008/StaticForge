@@ -46,6 +46,8 @@ const RESOLUTIONS = [
     { value: 'normal_portrait', label: 'Normal Portrait', width: 832, height: 1216 },
     { value: 'normal_landscape', label: 'Normal Landscape', width: 1216, height: 832 },
     { value: 'normal_square', label: 'Normal Square', width: 1024, height: 1024 },
+    { value: 'normal_wallpaper_portrait', label: 'Normal Wallpaper Portrait', width: 576, height: 1024 },
+    { value: 'normal_wallpaper_landscape', label: 'Normal Wallpaper Widescreen', width: 1024, height: 576 },
     { value: 'large_portrait', label: 'Large Portrait', width: 1024, height: 1536 },
     { value: 'large_landscape', label: 'Large Landscape', width: 1536, height: 1024 },
     { value: 'large_square', label: 'Large Square', width: 1472, height: 1472 },
