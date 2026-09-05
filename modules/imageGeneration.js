@@ -102,6 +102,9 @@ function mergeNovelForgeFieldsFromOpts(forgeData, opts) {
             forgeData.generated_image_name = opts.dynamic_generation.compiled_prompt.generated_image_name;
         }
     }
+    if (Array.isArray(opts.vSlider) && opts.vSlider.length) {
+        forgeData.vSlider = opts.vSlider;
+    }
 }
 
 // Import modules
@@ -3571,6 +3574,9 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             prompt_normalize: body.prompt_normalize !== undefined ? !!body.prompt_normalize : (preset && preset.prompt_normalize !== undefined ? !!preset.prompt_normalize : true),
             deduplicate_tags: body.deduplicate_tags !== undefined ? !!body.deduplicate_tags : (preset && preset.deduplicate_tags !== undefined ? !!preset.deduplicate_tags : true),
             emphasis_normalization: body.emphasis_normalization !== undefined ? body.emphasis_normalization : (preset && preset.emphasis_normalization ? preset.emphasis_normalization : undefined),
+            vSlider: Array.isArray(body.vSlider)
+                ? body.vSlider
+                : (preset && Array.isArray(preset.vSlider) ? preset.vSlider : undefined),
         };
 
         // Hard gate unsupported V5 capabilities (vibe / precise reference / e2e upscale / Variety+)
@@ -4288,6 +4294,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
     delete apiOpts.auto_char_numerize;
     delete apiOpts.prompt_normalize;
     delete apiOpts.emphasis_normalization;
+    delete apiOpts.vSlider;
     // Note: deduplicate_tags intentionally NOT deleted — nekoai-js reads it, then strips it before the API request.
     delete apiOpts.stepPreviewWidth;
     delete apiOpts.stepPreviewHeight;
@@ -4744,6 +4751,9 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         }
         if (opts.emphasis_normalization && typeof opts.emphasis_normalization === 'object') {
             forgeData.emphasis_normalization = opts.emphasis_normalization;
+        }
+        if (Array.isArray(opts.vSlider) && opts.vSlider.length) {
+            forgeData.vSlider = opts.vSlider;
         }
         if (opts.chain_source && typeof opts.chain_source === 'string' && opts.chain_source.length > 0) {
             forgeData.chain_source = opts.chain_source;
@@ -6631,6 +6641,12 @@ async function convertMetadataToRequestFormat(globalResources, metadata, allowPa
         requestBody.emphasis_normalization = extractedMetadata.emphasis_normalization;
     } else if (forgeData.emphasis_normalization && typeof forgeData.emphasis_normalization === 'object') {
         requestBody.emphasis_normalization = forgeData.emphasis_normalization;
+    }
+
+    if (Array.isArray(extractedMetadata.vSlider) && extractedMetadata.vSlider.length) {
+        requestBody.vSlider = extractedMetadata.vSlider;
+    } else if (Array.isArray(forgeData.vSlider) && forgeData.vSlider.length) {
+        requestBody.vSlider = forgeData.vSlider;
     }
 
     // Remove seed to ensure new random seed is generated
