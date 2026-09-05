@@ -507,6 +507,19 @@ function studioVSliderStampForgeData(list) {
 }
 
 function studioVSliderWriteRequestBody(requestBody) {
+    // Generate (and compile) must use live slider positions. Drag is preview in the tool UI;
+    // without this, N:: blends never reach text_replacements unless Finalise was clicked.
+    // addSharedFieldsToRequestBody already copied values.text_replacements — rewrite after commit.
+    if (studioVSliderWidgets.length) {
+        studioVSliderWidgets.forEach((widget) => studioVSliderCommitWidget(widget));
+        studioVSliderStampForgeData(getStudioVSliderSnapshot());
+        studioVSliderSyncFooter();
+        studioVSliderRefreshPreviews();
+        // requestBodyReplacements: public/scripts/comp/requestBodyReplacementsModal.js
+        if (Array.isArray(requestBodyReplacements)) {
+            requestBody.text_replacements = requestBodyReplacements.slice();
+        }
+    }
     const snapshot = getStudioVSliderSnapshot();
     if (snapshot && snapshot.length) requestBody.vSlider = snapshot;
     else delete requestBody.vSlider;
