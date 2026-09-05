@@ -259,6 +259,10 @@ const GENERATE_IMAGE_PROPERTIES = {
     use_coords: { type: 'boolean' },
     expanders: { type: 'array', description: 'Request !prefix text replacements' },
     text_replacements: { type: 'array' },
+    vSlider: {
+        type: 'array',
+        description: 'Intensity widgets (slider/xypad/star/dropdown). Prefer over static expanders when they ask for sliders.'
+    },
     vibes: { type: 'array', description: 'Vibe transfer ids Studio already knows' },
     vibe_transfer: { type: 'array' },
     normalize_vibes: { type: 'boolean' },
@@ -519,7 +523,7 @@ const TOOL_DEFS = [
     {
         name: 'apply_studio_changes',
         core: true,
-        description: 'Write Change-JSON into the bound Studio tab. Auto-binds if one tab is connected. Accepts full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes/dynamicGeneration/director (same keys as Studio). autoGenerate omitted uses Remote Access Settings (default off). After apply the tab stores a checkpoint — later get_session_state / get_studio_state return only the delta. Characters must be action replace + index.',
+        description: 'Write Change-JSON into the bound Studio tab. Auto-binds if one tab is connected. Accepts full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes/vSlider/dynamicGeneration/director (same keys as Studio). vSlider installs interactive intensity widgets (slider/xypad/star/dropdown) — prefer this over static expanders when they ask for sliders. autoGenerate omitted uses Remote Access Settings (default off). After apply the tab stores a checkpoint — later get_session_state / get_studio_state return only the delta. Characters must be action replace + index.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -541,6 +545,10 @@ const TOOL_DEFS = [
                 },
                 expanders: { type: 'array', description: '!prefix text replacements (replaces current list if sent)' },
                 text_replacements: { type: 'array' },
+                vSlider: {
+                    type: 'array',
+                    description: 'Intensity widgets (slider 1 axis, xypad 2, star 2–8, dropdown presets). Each axis: stops[{at,text}], default, target expander or prompt. Studio Finalise blends N::text:: between stops. Prefer over static expanders when they ask for sliders / body weight / vSlider. See docs/studio-change-json.md.'
+                },
                 vibes: { type: 'array' },
                 fields: { type: 'array' },
                 dynamicGeneration: {
@@ -2761,6 +2769,7 @@ function pickStudioFieldsFromBoundReply(data, bind, dynamicGeneration, director)
         ? data.change
         : null;
     take('change', change);
+    take('vSlider', (change && change.vSlider) || (data && data.vSlider) || null);
     take('dynamicGeneration', dynamicGeneration);
     take('director', director);
     if (!isDiff || out.dynamicGeneration || out.director) {

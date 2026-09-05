@@ -110,6 +110,41 @@ Example Change-JSON (shape only — fill from the snapshot):
 
 Characters are always `action: replace` + `index`. Never `add`.
 
+## Recipe: vSlider intensity widgets (body weight, sliders, …)
+
+User: *make a vslider for this prompt* / *body weight slider* / *intensity controls*
+
+There is **no** separate `vslider` MCP tool. Use `apply_studio_changes` with a `vSlider` array (or inside `change`). Do **not** substitute a static `!prefix` expander when they asked for sliders — expanders are fixed text; vSlider widgets blend `N::text::` emphasis between catalog stops when the user Finalises.
+
+1. `get_studio_state` — read `change`, existing `vSlider` / `change.vSlider`, expanders, character boxes.
+2. `search_autofill` (1–3 terms) for body/weight tags if needed; `get_wiki_page` for the character.
+3. `apply_studio_changes` with `vSlider` (and any prompt/expander edits). Example body slider:
+
+```json
+{
+  "vSlider": [{
+    "id": "body_weight",
+    "kind": "slider",
+    "commit": "expander",
+    "value": { "weight": 0.55 },
+    "axes": [{
+      "id": "weight",
+      "default": 0.55,
+      "target": { "kind": "expander", "prefix": "body" },
+      "stops": [
+        { "at": 0, "text": "skinny" },
+        { "at": 0.55, "text": "slightly chubby" },
+        { "at": 1, "text": "fat" }
+      ]
+    }]
+  }],
+  "expanders": [{ "prefix": "body", "value": "" }]
+}
+```
+
+4. Studio opens the vSlider tool window (one confirm row: **Install vSlider widgets**). User drags for preview; **Finalise** writes blended emphasis into the target expander or prompt.
+5. `kind`: `slider` (1 axis) | `xypad` (2) | `star` (2–8) | `dropdown` (named presets, no blend). Full schema: `docs/studio-change-json.md`.
+
 ## Recipe: Enshutsuka on grok.com (analyse / create / efficiency)
 
 User: *analyse my prompt* / *create* / *efficiency*

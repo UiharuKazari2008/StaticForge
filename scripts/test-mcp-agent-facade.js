@@ -588,6 +588,8 @@ assert.ok(_test.MCP_INSTRUCTIONS.includes('MUST integrate'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('get_linkxi_persona'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.dynamicGeneration);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.director);
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.vSlider);
+assert.ok(_test.MCP_INSTRUCTIONS.includes('vSlider'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.nsfw);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.dataset_config);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.append_transparency);
