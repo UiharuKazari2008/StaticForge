@@ -28,7 +28,7 @@ ctx.window = ctx;
 vm.createContext(ctx);
 vm.runInContext(src, ctx);
 
-const { normalizeStudioVSliderList, studioVSliderCoerceRawList } = ctx;
+const { normalizeStudioVSliderList, studioVSliderCoerceRawList, studioVSliderBlendAxis } = ctx;
 
 const bodySlider = normalizeStudioVSliderList([{
     id: 'body_weight',
@@ -62,5 +62,17 @@ assert.strictEqual(coerced.length, 1);
 assert.strictEqual(coerced[0].axes[0].target.prefix, 'body');
 
 assert.strictEqual(normalizeStudioVSliderList([{ kind: 'slider', axes: [{ stops: [{ at: 0, text: 'a' }] }] }]).length, 0);
+
+const stops = [
+    { at: 0, text: 'skinny' },
+    { at: 0.5, text: 'chubby' },
+    { at: 1, text: 'fat' }
+];
+assert.strictEqual(studioVSliderBlendAxis(stops, 0.5), 'chubby');
+assert.strictEqual(studioVSliderBlendAxis(stops, 0), 'skinny');
+const midLow = studioVSliderBlendAxis(stops, 0.25);
+assert.ok(midLow.includes('0.75::skinny::'), midLow);
+assert.ok(midLow.includes('1.25::chubby::'), midLow);
+assert.ok(!midLow.includes('1.25::skinny::') && !midLow.includes('0.75::chubby::'), midLow);
 
 console.log('test-studio-vslider-normalize: ok');

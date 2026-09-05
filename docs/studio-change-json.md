@@ -158,15 +158,17 @@ Optional array. Studio shows **one** tool window with a scrolling list of cards.
 
 `slider` ≠1 axis, `xypad` ≠2, and `star` &lt;2 are ignored. Star default is a regular N-gon at each axis median.
 
-Between catalog stops, emit **both** adjacent texts as NovelAI emphasis:
+Between catalog stops, emit **both** adjacent texts as a NovelAI emphasis crossfade — leaving stop **de**-emphasised, approaching stop **over**-emphasised (not both over):
 
 ```
 t = (value - at_i) / (at_{i+1} - at_i)
-N_left  = round(1 + (1-t) * 0.5, 2)
-N_right = round(1 + t * 0.5, 2)
+N_left  = round(1 - t * 0.5, 2)   // 1.00 → 0.50 (start / leaving)
+N_right = round(1 + t * 0.5, 2)   // 1.00 → 1.50 (end / approaching)
 ```
 
-Exact stop = that `text` only (no `N::` wrapper). Omit a block when `N <= 1.02`. Nearer stop gets higher N (1.0–1.5). Each xypad/star axis blends into its own target. Do not hang this mixer on Weight Rack. Do not write Phasewalker `_P` / `_N` expanders.
+Example mid (`t = 0.5`): `0.75::skinny::, 1.25::slightly chubby::`.
+
+Exact stop = that `text` only (no `N::` wrapper). Omit left when `N >= 0.98`, omit right when `N <= 1.02`. Each xypad/star axis blends into its own target. Do not hang this mixer on Weight Rack. Do not write Phasewalker `_P` / `_N` expanders.
 
 Axes need `stops[{at,text}]` and a required `default` (median stop unless the request justifies a bias). Dropdown `default` is an option `id`. `commit` is `"expander"` (default) or `"prompt"`. Confirm dialog: one row **Install vSlider widgets**.
 
@@ -318,5 +320,5 @@ Rules:
 - params.seed: specific seed (number). params.seedLock: true locks the last used seed (existing Studio sprout). seed: "last" is the same as seedLock: true. Unlock (seedLock: false) rolls a new variation. Copy change JSON and GET /agent/session/state echo the actual seed used plus seedLock. Filename is not a contract.
 - Optional dynamicGeneration: {enabled, cacheLocked, contextLocked, location, tod, weather, season, directive, force_strategy, tool_passes, dialogs_count}. Enable/configure Enshutsuka dynamic generation on the existing Studio toggle (no new chrome). Echoed by GET /agent/session/state. If present on a read image or Studio snapshot, integrate and act — do not ignore it.
 - Optional director: {sessionId, messageId, prompt}. Attached director prompt / session on the existing Director button + creative directive. Same must-act rule.
-- Optional vSlider: array of widgets; Studio shows one scrolling tool. kind: slider (1 axis) | xypad (2) | star (2+) | dropdown (named presets). Axes: stops[{at,text}] + required default (median stop unless the request justifies a bias). Between stops: emit BOTH adjacent texts as NovelAI emphasis N::text:: (nearer = higher N, 1.0-1.5). Exact stop = that text only, no wrapper. This is how intensity slides. dropdown: options[{id,label,text}] fill the target expander. Use for scenes/presets to evaluate. No blend. commit expander (default) or prompt. Generate/compile applies live slider values into expanders without removing widgets. Finalise bakes resolved text into the prompt (replaces !prefix), removes that expander, and deletes the widget from the catalog. Studio can author widgets via the vSlider editor. Echoed in forge_data.vSlider and GET /agent/session/state.
+- Optional vSlider: array of widgets; Studio shows one scrolling tool. kind: slider (1 axis) | xypad (2) | star (2+) | dropdown (named presets). Axes: stops[{at,text}] + required default (median stop unless the request justifies a bias). Between stops: emit BOTH adjacent texts as NovelAI emphasis — leaving/start stop de-emphasised N=1−t·0.5 (1.0→0.5), approaching/end stop over-emphasised N=1+t·0.5 (1.0→1.5). Exact stop = that text only, no wrapper. This is how intensity slides. dropdown: options[{id,label,text}] fill the target expander. Use for scenes/presets to evaluate. No blend. commit expander (default) or prompt. Generate/compile applies live slider values into expanders without removing widgets. Finalise bakes resolved text into the prompt (replaces !prefix), removes that expander, and deletes the widget from the catalog. Studio can author widgets via the vSlider editor. Echoed in forge_data.vSlider and GET /agent/session/state.
 ```

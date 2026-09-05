@@ -13,7 +13,9 @@
 const STUDIO_VSLIDER_MANAGED_PREFIXES = { _P: true, _N: true };
 const STUDIO_VSLIDER_STAR_MAX_AXES = 8;
 const STUDIO_VSLIDER_EXACT_EPS = 1e-4;
-const STUDIO_VSLIDER_OMIT_N = 1.02;
+/** Omit near-neutral emphasis wrappers (right over / left under). */
+const STUDIO_VSLIDER_OMIT_OVER = 1.02;
+const STUDIO_VSLIDER_OMIT_UNDER = 0.98;
 
 let studioVSliderWidgets = [];
 let studioVSliderWired = false;
@@ -67,11 +69,13 @@ function studioVSliderBlendAxis(stops, value) {
     }
     const span = right.at - left.at;
     const t = span === 0 ? 0 : (v - left.at) / span;
-    const nLeft = studioVSliderRoundN(1 + (1 - t) * 0.5);
-    const nRight = studioVSliderRoundN(1 + t * 0.5);
+    // Crossfade: leaving stop de-emphasises, approaching stop over-emphasises.
+    // Both at 1.0–1.5 (old formula) stacked competing tags at high weight.
+    const nLeft = studioVSliderRoundN(1 - t * 0.5);  // 1.00 → 0.50
+    const nRight = studioVSliderRoundN(1 + t * 0.5); // 1.00 → 1.50
     const parts = [];
-    if (nLeft > STUDIO_VSLIDER_OMIT_N) parts.push(`${nLeft}::${left.text}::`);
-    if (nRight > STUDIO_VSLIDER_OMIT_N) parts.push(`${nRight}::${right.text}::`);
+    if (nLeft < STUDIO_VSLIDER_OMIT_UNDER) parts.push(`${nLeft}::${left.text}::`);
+    if (nRight > STUDIO_VSLIDER_OMIT_OVER) parts.push(`${nRight}::${right.text}::`);
     if (!parts.length) return String(t < 0.5 ? left.text : right.text);
     return parts.join(', ');
 }
@@ -1788,4 +1792,5 @@ if (typeof window !== 'undefined') {
     window.installStudioVSliderWidgets = installStudioVSliderWidgets;
     window.getStudioVSliderSnapshot = getStudioVSliderSnapshot;
     window.normalizeStudioVSliderList = normalizeStudioVSliderList;
+    window.studioVSliderBlendAxis = studioVSliderBlendAxis;
 }
