@@ -942,6 +942,7 @@ function studioVSliderRenderCards() {
     if (!studioVSliderWidgets.length) {
         list.innerHTML = '<div class="vslider-empty">No vSlider widgets. Install via Change JSON / MCP <code>vSlider</code>. Reopen from the Studio toolbox or prompt context menu.</div>';
         studioVSliderSyncFooter();
+        studioVSliderRefreshScrollbar();
         return;
     }
     list.innerHTML = studioVSliderWidgets.map(studioVSliderRenderCard).join('');
@@ -950,6 +951,15 @@ function studioVSliderRenderCards() {
         if (card) studioVSliderWireCard(widget, card);
     });
     studioVSliderSyncFooter();
+    studioVSliderRefreshScrollbar();
+}
+
+function studioVSliderRefreshScrollbar() {
+    const shell = document.querySelector('#studioVSliderTool .vslider-scroll-shell[data-custom-scrollbar]');
+    if (!shell) return;
+    // customScrollbar: public/scripts/comp/customScrollbar.js
+    if (shell.classList.contains('has-custom-scrollbar')) customScrollbar.updateScrollbar(shell);
+    else customScrollbar.forceReinit(shell);
 }
 
 function studioVSliderOpenWindow() {

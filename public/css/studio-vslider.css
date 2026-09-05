@@ -23,22 +23,23 @@
     margin-left: 4px;
 }
 
+/* Same flex+custom-scrollbar contract as stage-results / character-db */
 #studioVSliderTool .vslider-scroll-shell {
     flex: 1 1 auto;
     min-height: 0;
     overflow: hidden;
-    display: flex;
-    flex-direction: column;
 }
 
-#studioVSliderTool .vslider-scroll-inner {
-    flex: 1 1 auto;
-    min-height: 0;
+#studioVSliderTool .vslider-scroll-shell:not(.has-custom-scrollbar) {
+    overflow-y: auto;
+}
+
+#studioVSliderTool .scrollable-content.studio-vslider-scrollable {
+    display: block;
+    height: 100%;
+    min-height: 0 !important;
     overflow: auto;
     padding: 2px 4px 8px 0;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
 }
 
 #studioVSliderTool #studioVSliderList {
