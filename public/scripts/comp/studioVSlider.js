@@ -5,7 +5,9 @@
  * public/scripts/comp/dropdown.js
  * public/scripts/comp/modalUtils.js
  * public/scripts/comp/textareaUtils.js
- * Drag is preview only. Finalise writes NovelAI emphasis N::text:: (or dropdown text).
+ * public/scripts/comp/contextMenu.js
+ * Drag is preview. Generate applies live blends into expanders.
+ * Finalise bakes !prefix → literal prompt text and removes the widget.
  */
 
 const STUDIO_VSLIDER_MANAGED_PREFIXES = { _P: true, _N: true };
@@ -462,6 +464,16 @@ function studioVSliderWriteExpander(prefix, text) {
     renderRequestBodyReplacementsList();
 }
 
+function studioVSliderRemoveExpander(prefix) {
+    if (!prefix || !Array.isArray(requestBodyReplacements)) return;
+    const next = requestBodyReplacements.filter((entry) => !(entry && entry.name === prefix));
+    if (next.length === requestBodyReplacements.length) return;
+    requestBodyReplacements.length = 0;
+    next.forEach((entry) => requestBodyReplacements.push(entry));
+    // renderRequestBodyReplacementsList: public/scripts/comp/requestBodyReplacementsModal.js
+    renderRequestBodyReplacementsList();
+}
+
 function studioVSliderReplacePromptSpan(previous, next) {
     // getStudioFieldValue / writeStudioFieldValue: public/scripts/comp/studioChangeJson.js
     let prompt = getStudioFieldValue('prompt') || '';
@@ -469,6 +481,21 @@ function studioVSliderReplacePromptSpan(previous, next) {
         prompt = prompt.replace(previous, next);
     } else if (next) {
         prompt = prompt.trim() ? `${prompt.trim()}, ${next}` : next;
+    }
+    writeStudioFieldValue('prompt', prompt);
+}
+
+/** Replace !prefix token in prompt with literal baked text (expander lookahead). */
+function studioVSliderReplaceExpanderRefInPrompt(prefix, text) {
+    if (!prefix) return;
+    // getStudioFieldValue / writeStudioFieldValue: public/scripts/comp/studioChangeJson.js
+    let prompt = getStudioFieldValue('prompt') || '';
+    const escaped = String(prefix).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`!${escaped}(?=[,\\s|\\[\\]{}:]|$)`, 'g');
+    if (re.test(prompt)) {
+        prompt = prompt.replace(re, text || '');
+    } else if (text) {
+        prompt = prompt.trim() ? `${prompt.trim()}, ${text}` : text;
     }
     writeStudioFieldValue('prompt', prompt);
 }
@@ -501,17 +528,18 @@ class StudioVSliderForge {
 }
 
 const studioVSliderForge = new StudioVSliderForge();
+let studioVSliderEditorDraft = null;
+let studioVSliderEditorWidgetId = null;
+let studioVSliderCloseObserver = null;
 
 function studioVSliderStampForgeData(list) {
     studioVSliderForge.stamp(list);
 }
 
+/** Live apply into expanders for Generate/compile — keeps widgets for remixing. */
 function studioVSliderWriteRequestBody(requestBody) {
-    // Generate (and compile) must use live slider positions. Drag is preview in the tool UI;
-    // without this, N:: blends never reach text_replacements unless Finalise was clicked.
-    // addSharedFieldsToRequestBody already copied values.text_replacements — rewrite after commit.
     if (studioVSliderWidgets.length) {
-        studioVSliderWidgets.forEach((widget) => studioVSliderCommitWidget(widget));
+        studioVSliderWidgets.forEach((widget) => studioVSliderCommitLiveToExpanders(widget));
         studioVSliderStampForgeData(getStudioVSliderSnapshot());
         studioVSliderSyncFooter();
         studioVSliderRefreshPreviews();
@@ -525,7 +553,8 @@ function studioVSliderWriteRequestBody(requestBody) {
     else delete requestBody.vSlider;
 }
 
-function studioVSliderCommitWidget(widget) {
+/** Preview-gen path: write live blend into expander/prompt span; keep widget. */
+function studioVSliderCommitLiveToExpanders(widget) {
     const liveRows = studioVSliderResolvedTexts(widget, true);
     const committedRows = studioVSliderResolvedTexts(widget, false);
     liveRows.forEach((row, index) => {
@@ -543,25 +572,95 @@ function studioVSliderCommitWidget(widget) {
     widget.dirty = false;
 }
 
+/**
+ * Permanent Finalise: bake resolved text into the prompt (replace !prefix),
+ * remove the request expander, and delete the widget from the catalog.
+ */
+function studioVSliderBakeWidget(widget) {
+    if (!widget) return false;
+    const liveRows = studioVSliderResolvedTexts(widget, true);
+    liveRows.forEach((row) => {
+        if (!row.target) return;
+        if (row.commit === 'prompt' || row.target.kind === 'prompt') {
+            studioVSliderReplacePromptSpan('', row.text);
+            return;
+        }
+        if (row.target.kind === 'expander' && row.target.prefix) {
+            studioVSliderReplaceExpanderRefInPrompt(row.target.prefix, row.text);
+            studioVSliderRemoveExpander(row.target.prefix);
+        }
+    });
+    studioVSliderWidgets = studioVSliderWidgets.filter((entry) => entry.id !== widget.id);
+    return true;
+}
+
+function studioVSliderFinaliseWidget(widgetId) {
+    const widget = studioVSliderWidgets.find((entry) => entry.id === widgetId);
+    if (!widget) return;
+    studioVSliderBakeWidget(widget);
+    studioVSliderStampForgeData(getStudioVSliderSnapshot());
+    studioVSliderRenderCards();
+    showGlassToast('success', 'vSlider', `Finalised “${widget.title}” into prompt`, false, 2200, '<i class="fas fa-check"></i>');
+}
+
 function studioVSliderFinaliseAll() {
-    const dirty = studioVSliderWidgets.filter((widget) => widget.dirty);
-    if (!dirty.length) {
+    if (!studioVSliderWidgets.length) {
         showGlassToast('info', 'vSlider', 'Nothing to finalise', false, 2000, '<i class="fas fa-info-circle"></i>');
         return;
     }
-    dirty.forEach((widget) => studioVSliderCommitWidget(widget));
+    const count = studioVSliderWidgets.length;
+    const pending = studioVSliderWidgets.slice();
+    pending.forEach((widget) => studioVSliderBakeWidget(widget));
     studioVSliderStampForgeData(getStudioVSliderSnapshot());
-    studioVSliderSyncFooter();
-    studioVSliderRefreshPreviews();
-    showGlassToast('success', 'vSlider', `Finalised ${dirty.length} widget${dirty.length === 1 ? '' : 's'}`, false, 2000, '<i class="fas fa-check"></i>');
+    studioVSliderRenderCards();
+    showGlassToast('success', 'vSlider', `Finalised ${count} widget${count === 1 ? '' : 's'} into prompt`, false, 2200, '<i class="fas fa-check"></i>');
+}
+
+function studioVSliderWidgetDefaultsValue(widget) {
+    if (widget.kind === 'dropdown') {
+        return widget.default != null ? widget.default : (widget.options[0] && widget.options[0].id);
+    }
+    const value = {};
+    (widget.axes || []).forEach((axis) => {
+        value[axis.id] = axis.default;
+    });
+    return value;
+}
+
+function studioVSliderRevertWidget(widgetId) {
+    const widget = studioVSliderWidgets.find((entry) => entry.id === widgetId);
+    if (!widget) return;
+    widget.value = studioVSliderClone(studioVSliderWidgetDefaultsValue(widget));
+    widget.dirty = true;
+    studioVSliderRenderCards();
 }
 
 function studioVSliderRevertAll() {
     studioVSliderWidgets.forEach((widget) => {
-        widget.value = studioVSliderClone(widget.committedValue);
-        widget.dirty = false;
+        widget.value = studioVSliderClone(studioVSliderWidgetDefaultsValue(widget));
+        widget.dirty = true;
     });
     studioVSliderRenderCards();
+}
+
+function studioVSliderDeleteWidget(widgetId) {
+    studioVSliderWidgets = studioVSliderWidgets.filter((entry) => entry.id !== widgetId);
+    studioVSliderStampForgeData(getStudioVSliderSnapshot());
+    studioVSliderRenderCards();
+}
+
+function studioVSliderClearSession(options) {
+    const opts = options || {};
+    studioVSliderWidgets = [];
+    studioVSliderStampForgeData(null);
+    studioVSliderEditorDraft = null;
+    studioVSliderEditorWidgetId = null;
+    const list = document.getElementById('studioVSliderList');
+    if (list) list.innerHTML = '';
+    studioVSliderSyncFooter();
+    if (opts.closeEditor !== false) {
+        studioVSliderCloseEditor({ skipClear: true, skipClose: !!opts.fromHide });
+    }
 }
 
 function studioVSliderMarkDirty(widgetId, mutator) {
@@ -931,10 +1030,12 @@ function studioVSliderFooterSummary() {
 }
 
 function studioVSliderSyncFooter() {
+    const hasWidgets = studioVSliderWidgets.length > 0;
     const dirty = studioVSliderWidgets.some((widget) => widget.dirty);
     const finaliseBtn = document.getElementById('studioVSliderFinaliseBtn');
     const revertBtn = document.getElementById('studioVSliderRevertBtn');
-    if (finaliseBtn) finaliseBtn.disabled = !dirty;
+    // Finalise all bakes every remaining widget (permanent), not only dirty
+    if (finaliseBtn) finaliseBtn.disabled = !hasWidgets;
     if (revertBtn) revertBtn.disabled = !dirty;
     const note = document.getElementById('studioVSliderFooterNote');
     if (note) {
@@ -949,11 +1050,47 @@ function studioVSliderSyncFooter() {
     }
 }
 
+function studioVSliderAttachCardContextMenu(card, widget) {
+    if (!card || !widget) return;
+    // contextMenu: public/scripts/comp/contextMenu.js
+    if (card.hasAttribute('data-context-menu')) contextMenu.detachFromElement(card);
+    const widgetId = widget.id;
+    contextMenu.attachToElement(card, {
+        sections: [{
+            type: 'list',
+            items: [
+                { icon: 'fas fa-pen', text: 'Edit', action: 'edit' },
+                { icon: 'fas fa-plus', text: 'Add new', action: 'add' },
+                { icon: 'fas fa-undo', text: 'Revert to default', action: 'revert' },
+                { icon: 'fas fa-check', text: 'Finalise', action: 'finalise' },
+                { separator: true },
+                { icon: 'fas fa-trash', text: 'Delete', action: 'delete', className: 'context-menu-item-danger' }
+            ]
+        }],
+        onAction: (action) => {
+            if (action === 'edit') studioVSliderOpenEditor(widgetId);
+            else if (action === 'add') studioVSliderOpenEditor(null);
+            else if (action === 'revert') studioVSliderRevertWidget(widgetId);
+            else if (action === 'finalise') studioVSliderFinaliseWidget(widgetId);
+            else if (action === 'delete') studioVSliderDeleteWidget(widgetId);
+        }
+    });
+}
+
 function studioVSliderRenderCards() {
     const list = document.getElementById('studioVSliderList');
     if (!list) return;
     if (!studioVSliderWidgets.length) {
-        list.innerHTML = '<div class="vslider-empty">No vSlider widgets. Install via Change JSON / MCP <code>vSlider</code>. Reopen from the Studio toolbox or prompt context menu.</div>';
+        list.innerHTML = `
+            <div class="vslider-empty">
+                <div>No vSlider widgets yet.</div>
+                <button type="button" class="btn-primary" data-vslider-add-empty>
+                    <i class="fas fa-plus"></i> Add widget
+                </button>
+                <div class="form-hint">Or install via Change JSON / MCP <code>vSlider</code>.</div>
+            </div>`;
+        const addBtn = list.querySelector('[data-vslider-add-empty]');
+        if (addBtn) addBtn.addEventListener('click', () => studioVSliderOpenEditor(null));
         studioVSliderSyncFooter();
         studioVSliderRefreshScrollbar();
         return;
@@ -961,7 +1098,9 @@ function studioVSliderRenderCards() {
     list.innerHTML = studioVSliderWidgets.map(studioVSliderRenderCard).join('');
     studioVSliderWidgets.forEach((widget) => {
         const card = list.querySelector(`[data-vslider-card="${widget.id}"]`);
-        if (card) studioVSliderWireCard(widget, card);
+        if (!card) return;
+        studioVSliderWireCard(widget, card);
+        studioVSliderAttachCardContextMenu(card, widget);
     });
     studioVSliderSyncFooter();
     studioVSliderRefreshScrollbar();
@@ -975,11 +1114,19 @@ function studioVSliderRefreshScrollbar() {
     else customScrollbar.forceReinit(shell);
 }
 
+function studioVSliderRefreshEditorScrollbar() {
+    const shell = document.querySelector('#studioVSliderEditorTool .vslider-scroll-shell[data-custom-scrollbar]');
+    if (!shell) return;
+    if (shell.classList.contains('has-custom-scrollbar')) customScrollbar.updateScrollbar(shell);
+    else customScrollbar.forceReinit(shell);
+}
+
 function studioVSliderOpenWindow() {
     const el = document.getElementById('studioVSliderTool');
     if (!el) return;
-    // openModal: public/scripts/comp/modalUtils.js
+    // openModal / debouncedUpdateTaskbarWindows: public/scripts/comp/modalUtils.js
     openModal(el);
+    if (typeof debouncedUpdateTaskbarWindows === 'function') debouncedUpdateTaskbarWindows();
     studioVSliderRenderCards();
 }
 
@@ -1037,6 +1184,468 @@ function studioVSliderWireHooks() {
     };
 }
 
+function studioVSliderNewId(prefix) {
+    return `${prefix}_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e4)}`;
+}
+
+function studioVSliderDefaultDraft(kind) {
+    const k = kind || 'slider';
+    if (k === 'dropdown') {
+        return {
+            id: studioVSliderNewId('scene'),
+            kind: 'dropdown',
+            title: 'scene',
+            commit: 'expander',
+            target: { kind: 'expander', prefix: 'scene' },
+            default: 'a',
+            value: 'a',
+            options: [
+                { id: 'a', label: 'option a', text: 'option a' },
+                { id: 'b', label: 'option b', text: 'option b' }
+            ]
+        };
+    }
+    const axisCount = k === 'xypad' ? 2 : (k === 'star' ? 3 : 1);
+    const axes = [];
+    for (let i = 0; i < axisCount; i++) {
+        const id = axisCount === 1 ? 'weight' : (i === 0 ? 'x' : (i === 1 ? 'y' : `axis${i}`));
+        axes.push({
+            id,
+            label: id,
+            default: 0.5,
+            target: { kind: 'expander', prefix: id },
+            stops: [
+                { at: 0, text: 'low' },
+                { at: 0.5, text: 'mid' },
+                { at: 1, text: 'high' }
+            ]
+        });
+    }
+    const value = {};
+    axes.forEach((axis) => { value[axis.id] = axis.default; });
+    return {
+        id: studioVSliderNewId(k),
+        kind: k,
+        title: k === 'slider' ? 'body weight' : k,
+        commit: 'expander',
+        target: axes[0].target,
+        value,
+        axes
+    };
+}
+
+function studioVSliderOpenEditor(widgetId) {
+    const existing = widgetId
+        ? studioVSliderWidgets.find((entry) => entry.id === widgetId)
+        : null;
+    studioVSliderEditorWidgetId = existing ? existing.id : null;
+    studioVSliderEditorDraft = existing
+        ? studioVSliderClone(existing)
+        : studioVSliderDefaultDraft('slider');
+    if (!studioVSliderEditorDraft.target && studioVSliderEditorDraft.axes && studioVSliderEditorDraft.axes[0]) {
+        studioVSliderEditorDraft.target = studioVSliderClone(studioVSliderEditorDraft.axes[0].target);
+    }
+    studioVSliderRenderEditor();
+    const el = document.getElementById('studioVSliderEditorTool');
+    if (!el) return;
+    openModal(el);
+    if (typeof debouncedUpdateTaskbarWindows === 'function') debouncedUpdateTaskbarWindows();
+}
+
+function studioVSliderCloseEditor(options) {
+    const opts = options || {};
+    const el = document.getElementById('studioVSliderEditorTool');
+    if (el && !el.classList.contains('hidden') && !opts.skipClose) {
+        // closeModal: public/scripts/comp/modalUtils.js
+        closeModal(el);
+    }
+    if (!opts.skipClear) {
+        studioVSliderEditorDraft = null;
+        studioVSliderEditorWidgetId = null;
+    }
+}
+
+function studioVSliderEditorKindBadge() {
+    const draft = studioVSliderEditorDraft;
+    if (!draft) return '';
+    return studioVSliderEditorWidgetId ? `edit · ${draft.kind}` : `new · ${draft.kind}`;
+}
+
+function studioVSliderRenderEditor() {
+    const body = document.getElementById('studioVSliderEditorBody');
+    const kindLabel = document.getElementById('studioVSliderEditorKindLabel');
+    if (!body || !studioVSliderEditorDraft) return;
+    if (kindLabel) kindLabel.textContent = studioVSliderEditorKindBadge();
+    const draft = studioVSliderEditorDraft;
+    const targetKind = draft.target && draft.target.kind === 'prompt' ? 'prompt' : 'expander';
+    const prefix = draft.target && draft.target.prefix ? draft.target.prefix : '';
+    const kindOptions = ['slider', 'xypad', 'star', 'dropdown'].map((kind) => `
+        <div class="custom-dropdown-option${draft.kind === kind ? ' selected' : ''}"
+            data-vslider-editor-kind="${kind}">${kind}</div>
+    `).join('');
+    const targetOptions = `
+        <div class="custom-dropdown-option${targetKind === 'expander' ? ' selected' : ''}"
+            data-vslider-editor-target-kind="expander">expander</div>
+        <div class="custom-dropdown-option${targetKind === 'prompt' ? ' selected' : ''}"
+            data-vslider-editor-target-kind="prompt">prompt</div>
+    `;
+
+    let listsHtml = '';
+    if (draft.kind === 'dropdown') {
+        const rows = (draft.options || []).map((opt, index) => `
+            <div class="vslider-editor-list-row vslider-editor-option-row" data-vslider-editor-option="${index}">
+                <input type="text" data-field="id" value="${studioVSliderEscape(opt.id)}" placeholder="id">
+                <input type="text" data-field="label" value="${studioVSliderEscape(opt.label)}" placeholder="label">
+                <input type="text" data-field="text" value="${studioVSliderEscape(opt.text)}" placeholder="text">
+                <button type="button" class="btn-danger btn-small" data-vslider-editor-remove-option title="Remove">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        `).join('');
+        listsHtml = `
+            <div class="vslider-editor-axis">
+                <div class="vslider-editor-axis-title">Options</div>
+                <div class="vslider-editor-list" data-vslider-editor-options>${rows}</div>
+                <div class="vslider-editor-list-actions">
+                    <button type="button" class="btn-secondary btn-small" data-vslider-editor-add-option>
+                        <i class="fas fa-plus"></i> Add option
+                    </button>
+                </div>
+            </div>
+        `;
+    } else {
+        listsHtml = (draft.axes || []).map((axis, axisIndex) => {
+            const stopRows = (axis.stops || []).map((stop, stopIndex) => `
+                <div class="vslider-editor-list-row" data-vslider-editor-stop="${stopIndex}">
+                    <input type="number" min="0" max="1" step="0.01" data-field="at"
+                        value="${studioVSliderEscape(stop.at)}" title="at (0–1)">
+                    <input type="text" data-field="text" value="${studioVSliderEscape(stop.text)}" placeholder="text">
+                    <button type="button" class="btn-danger btn-small" data-vslider-editor-remove-stop title="Remove">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            `).join('');
+            return `
+                <div class="vslider-editor-axis" data-vslider-editor-axis="${axisIndex}">
+                    <div class="vslider-editor-axis-title">Axis ${axisIndex + 1}</div>
+                    <div class="vslider-editor-row">
+                        <label>Id</label>
+                        <input type="text" data-vslider-editor-axis-id value="${studioVSliderEscape(axis.id)}">
+                    </div>
+                    <div class="vslider-editor-row">
+                        <label>Label</label>
+                        <input type="text" data-vslider-editor-axis-label value="${studioVSliderEscape(axis.label)}">
+                    </div>
+                    <div class="vslider-editor-list" data-vslider-editor-stops>${stopRows}</div>
+                    <div class="vslider-editor-list-actions">
+                        <button type="button" class="btn-secondary btn-small" data-vslider-editor-add-stop>
+                            <i class="fas fa-plus"></i> Add stop
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        if (draft.kind === 'star') {
+            listsHtml += `
+                <div class="vslider-editor-list-actions">
+                    <button type="button" class="btn-secondary btn-small" data-vslider-editor-add-axis
+                        ${(draft.axes || []).length >= STUDIO_VSLIDER_STAR_MAX_AXES ? 'disabled' : ''}>
+                        <i class="fas fa-plus"></i> Add axis
+                    </button>
+                    <button type="button" class="btn-secondary btn-small" data-vslider-editor-remove-axis
+                        ${(draft.axes || []).length <= 2 ? 'disabled' : ''}>
+                        <i class="fas fa-minus"></i> Remove axis
+                    </button>
+                </div>
+            `;
+        }
+    }
+
+    body.innerHTML = `
+        <div class="vslider-editor-row">
+            <label>Kind</label>
+            <div class="custom-dropdown dark" data-vslider-editor-kind-dd>
+                <button type="button" class="custom-dropdown-btn hover-show colored">
+                    <span data-vslider-editor-kind-label>${studioVSliderEscape(draft.kind)}</span>
+                </button>
+                <div class="custom-dropdown-menu hidden">${kindOptions}</div>
+            </div>
+        </div>
+        <div class="vslider-editor-row">
+            <label>Title</label>
+            <input type="text" data-vslider-editor-title value="${studioVSliderEscape(draft.title)}">
+        </div>
+        <div class="vslider-editor-row">
+            <label>Target</label>
+            <div class="custom-dropdown dark" data-vslider-editor-target-dd>
+                <button type="button" class="custom-dropdown-btn hover-show colored">
+                    <span data-vslider-editor-target-label>${studioVSliderEscape(targetKind)}</span>
+                </button>
+                <div class="custom-dropdown-menu hidden">${targetOptions}</div>
+            </div>
+        </div>
+        <div class="vslider-editor-row${targetKind === 'prompt' ? ' hidden' : ''}" data-vslider-editor-prefix-row>
+            <label>Expander prefix</label>
+            <input type="text" data-vslider-editor-prefix value="${studioVSliderEscape(prefix)}" placeholder="body">
+        </div>
+        ${listsHtml}
+    `;
+    studioVSliderWireEditor(body);
+    studioVSliderRefreshEditorScrollbar();
+}
+
+function studioVSliderWireEditor(body) {
+    const draft = studioVSliderEditorDraft;
+    if (!draft || !body) return;
+
+    const titleInput = body.querySelector('[data-vslider-editor-title]');
+    if (titleInput) {
+        titleInput.addEventListener('input', () => {
+            draft.title = titleInput.value;
+        });
+    }
+    const prefixInput = body.querySelector('[data-vslider-editor-prefix]');
+    if (prefixInput) {
+        prefixInput.addEventListener('input', () => {
+            const prefix = prefixInput.value.trim();
+            draft.target = prefix
+                ? { kind: 'expander', prefix }
+                : { kind: 'expander', prefix: '' };
+            (draft.axes || []).forEach((axis) => {
+                axis.target = draft.target && draft.target.prefix
+                    ? studioVSliderClone(draft.target)
+                    : axis.target;
+            });
+        });
+    }
+
+    const kindDd = body.querySelector('[data-vslider-editor-kind-dd]');
+    if (kindDd) {
+        const btn = kindDd.querySelector('.custom-dropdown-btn');
+        const menu = kindDd.querySelector('.custom-dropdown-menu');
+        // setupDropdown: public/scripts/comp/dropdown.js
+        setupDropdown(kindDd, btn, menu, () => {}, () => draft.kind, { preventFocusTransfer: true });
+        menu.querySelectorAll('[data-vslider-editor-kind]').forEach((opt) => {
+            opt.addEventListener('click', () => {
+                const kind = opt.getAttribute('data-vslider-editor-kind');
+                const keptId = draft.id;
+                const keptTitle = draft.title;
+                studioVSliderEditorDraft = studioVSliderDefaultDraft(kind);
+                studioVSliderEditorDraft.id = keptId;
+                if (keptTitle) studioVSliderEditorDraft.title = keptTitle;
+                // closeDropdown: public/scripts/comp/dropdown.js
+                closeDropdown(menu, btn);
+                studioVSliderRenderEditor();
+            });
+        });
+    }
+
+    const targetDd = body.querySelector('[data-vslider-editor-target-dd]');
+    if (targetDd) {
+        const btn = targetDd.querySelector('.custom-dropdown-btn');
+        const menu = targetDd.querySelector('.custom-dropdown-menu');
+        setupDropdown(targetDd, btn, menu, () => {}, () => (draft.target && draft.target.kind) || 'expander', { preventFocusTransfer: true });
+        menu.querySelectorAll('[data-vslider-editor-target-kind]').forEach((opt) => {
+            opt.addEventListener('click', () => {
+                const kind = opt.getAttribute('data-vslider-editor-target-kind');
+                if (kind === 'prompt') draft.target = { kind: 'prompt' };
+                else {
+                    const prefixEl = body.querySelector('[data-vslider-editor-prefix]');
+                    const prefix = (prefixEl && prefixEl.value.trim()) || 'body';
+                    draft.target = { kind: 'expander', prefix };
+                }
+                draft.commit = kind === 'prompt' ? 'prompt' : 'expander';
+                closeDropdown(menu, btn);
+                studioVSliderRenderEditor();
+            });
+        });
+    }
+
+    body.querySelectorAll('[data-vslider-editor-axis]').forEach((axisEl) => {
+        const axisIndex = Number(axisEl.getAttribute('data-vslider-editor-axis'));
+        const axis = draft.axes[axisIndex];
+        if (!axis) return;
+        const idInput = axisEl.querySelector('[data-vslider-editor-axis-id]');
+        const labelInput = axisEl.querySelector('[data-vslider-editor-axis-label]');
+        if (idInput) idInput.addEventListener('input', () => { axis.id = idInput.value.trim() || axis.id; });
+        if (labelInput) labelInput.addEventListener('input', () => { axis.label = labelInput.value; });
+        axisEl.querySelectorAll('[data-vslider-editor-stop]').forEach((row) => {
+            const stopIndex = Number(row.getAttribute('data-vslider-editor-stop'));
+            const stop = axis.stops[stopIndex];
+            if (!stop) return;
+            const atInput = row.querySelector('[data-field="at"]');
+            const textInput = row.querySelector('[data-field="text"]');
+            if (atInput) atInput.addEventListener('input', () => { stop.at = studioVSliderClamp01(atInput.value); });
+            if (textInput) textInput.addEventListener('input', () => { stop.text = textInput.value; });
+            const removeBtn = row.querySelector('[data-vslider-editor-remove-stop]');
+            if (removeBtn) {
+                removeBtn.addEventListener('click', () => {
+                    if (axis.stops.length <= 2) {
+                        showGlassToast('info', 'vSlider', 'Need at least 2 stops', false, 2000, '<i class="fas fa-info-circle"></i>');
+                        return;
+                    }
+                    axis.stops.splice(stopIndex, 1);
+                    studioVSliderRenderEditor();
+                });
+            }
+        });
+        const addStop = axisEl.querySelector('[data-vslider-editor-add-stop]');
+        if (addStop) {
+            addStop.addEventListener('click', () => {
+                axis.stops.push({ at: 1, text: 'new' });
+                studioVSliderRenderEditor();
+            });
+        }
+    });
+
+    const addAxis = body.querySelector('[data-vslider-editor-add-axis]');
+    if (addAxis) {
+        addAxis.addEventListener('click', () => {
+            if ((draft.axes || []).length >= STUDIO_VSLIDER_STAR_MAX_AXES) return;
+            const n = draft.axes.length;
+            draft.axes.push({
+                id: `axis${n}`,
+                label: `axis${n}`,
+                default: 0.5,
+                target: draft.target ? studioVSliderClone(draft.target) : { kind: 'expander', prefix: `axis${n}` },
+                stops: [
+                    { at: 0, text: 'low' },
+                    { at: 0.5, text: 'mid' },
+                    { at: 1, text: 'high' }
+                ]
+            });
+            studioVSliderRenderEditor();
+        });
+    }
+    const removeAxis = body.querySelector('[data-vslider-editor-remove-axis]');
+    if (removeAxis) {
+        removeAxis.addEventListener('click', () => {
+            if ((draft.axes || []).length <= 2) return;
+            draft.axes.pop();
+            studioVSliderRenderEditor();
+        });
+    }
+
+    body.querySelectorAll('[data-vslider-editor-option]').forEach((row) => {
+        const index = Number(row.getAttribute('data-vslider-editor-option'));
+        const opt = draft.options[index];
+        if (!opt) return;
+        ['id', 'label', 'text'].forEach((field) => {
+            const input = row.querySelector(`[data-field="${field}"]`);
+            if (input) input.addEventListener('input', () => { opt[field] = input.value; });
+        });
+        const removeBtn = row.querySelector('[data-vslider-editor-remove-option]');
+        if (removeBtn) {
+            removeBtn.addEventListener('click', () => {
+                if (draft.options.length <= 1) {
+                    showGlassToast('info', 'vSlider', 'Need at least 1 option', false, 2000, '<i class="fas fa-info-circle"></i>');
+                    return;
+                }
+                draft.options.splice(index, 1);
+                studioVSliderRenderEditor();
+            });
+        }
+    });
+    const addOpt = body.querySelector('[data-vslider-editor-add-option]');
+    if (addOpt) {
+        addOpt.addEventListener('click', () => {
+            const id = `opt${(draft.options || []).length + 1}`;
+            draft.options.push({ id, label: id, text: id });
+            studioVSliderRenderEditor();
+        });
+    }
+}
+
+function studioVSliderSaveEditor() {
+    const draft = studioVSliderEditorDraft;
+    if (!draft) return;
+    if (draft.kind === 'dropdown') {
+        draft.options = (draft.options || []).map((opt) => ({
+            id: String(opt.id || '').trim(),
+            label: String(opt.label || opt.id || '').trim(),
+            text: String(opt.text || opt.label || opt.id || '').trim()
+        })).filter((opt) => opt.id && opt.text);
+        if (!draft.options.length) {
+            showGlassToast('error', 'vSlider', 'Dropdown needs at least one option', false, 2500, '<i class="fas fa-exclamation-triangle"></i>');
+            return;
+        }
+        if (!draft.options.some((opt) => opt.id === draft.default)) draft.default = draft.options[0].id;
+        draft.value = draft.default;
+        draft.commit = draft.target && draft.target.kind === 'prompt' ? 'prompt' : 'expander';
+    } else {
+        draft.axes = (draft.axes || []).map((axis) => {
+            const stops = (axis.stops || []).map((stop) => ({
+                at: studioVSliderClamp01(stop.at),
+                text: String(stop.text || '').trim()
+            })).filter((stop) => stop.text);
+            return {
+                id: String(axis.id || '').trim() || 'axis',
+                label: String(axis.label || axis.id || 'axis'),
+                default: axis.default != null ? studioVSliderClamp01(axis.default) : studioVSliderMedianAt(stops),
+                target: draft.target && draft.target.kind === 'prompt'
+                    ? { kind: 'prompt' }
+                    : (draft.target && draft.target.prefix
+                        ? { kind: 'expander', prefix: String(draft.target.prefix).trim() }
+                        : { kind: 'expander', prefix: String(axis.id || 'axis').trim() }),
+                stops
+            };
+        }).filter((axis) => axis.stops.length >= 2);
+        if (draft.kind === 'slider' && draft.axes.length !== 1) {
+            showGlassToast('error', 'vSlider', 'Slider needs exactly 1 axis with 2+ stops', false, 2500, '<i class="fas fa-exclamation-triangle"></i>');
+            return;
+        }
+        if (draft.kind === 'xypad' && draft.axes.length !== 2) {
+            showGlassToast('error', 'vSlider', 'XY pad needs exactly 2 axes', false, 2500, '<i class="fas fa-exclamation-triangle"></i>');
+            return;
+        }
+        if (draft.kind === 'star' && (draft.axes.length < 2 || draft.axes.length > STUDIO_VSLIDER_STAR_MAX_AXES)) {
+            showGlassToast('error', 'vSlider', 'Star needs 2–8 axes', false, 2500, '<i class="fas fa-exclamation-triangle"></i>');
+            return;
+        }
+        draft.commit = draft.target && draft.target.kind === 'prompt' ? 'prompt' : 'expander';
+        if (!draft.value || typeof draft.value !== 'object') draft.value = {};
+        draft.axes.forEach((axis) => {
+            if (draft.value[axis.id] == null) draft.value[axis.id] = axis.default;
+        });
+    }
+    if (draft.commit === 'expander' && (!draft.target || !draft.target.prefix)) {
+        showGlassToast('error', 'vSlider', 'Expander target needs a prefix', false, 2500, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+
+    const normalized = normalizeStudioVSliderList([draft]);
+    if (!normalized.length) {
+        showGlassToast('error', 'vSlider', 'Widget failed validation', false, 2500, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+    const widget = normalized[0];
+    const existingIndex = studioVSliderEditorWidgetId
+        ? studioVSliderWidgets.findIndex((entry) => entry.id === studioVSliderEditorWidgetId)
+        : -1;
+    if (existingIndex >= 0) studioVSliderWidgets[existingIndex] = widget;
+    else studioVSliderWidgets.push(widget);
+    studioVSliderStampForgeData(getStudioVSliderSnapshot());
+    studioVSliderCloseEditor();
+    studioVSliderOpenWindow();
+    studioVSliderRenderCards();
+    showGlassToast('success', 'vSlider', existingIndex >= 0 ? 'Widget updated' : 'Widget added', false, 1800, '<i class="fas fa-check"></i>');
+}
+
+function studioVSliderWatchToolClose(el) {
+    if (!el || studioVSliderCloseObserver) return;
+    studioVSliderCloseObserver = new MutationObserver(() => {
+        if (el.classList.contains('hidden') && !el.classList.contains('minimised') && !el.classList.contains('minimising')) {
+            studioVSliderClearSession({ closeEditor: true, fromHide: true });
+            const editor = document.getElementById('studioVSliderEditorTool');
+            if (editor && !editor.classList.contains('hidden') && !editor.classList.contains('minimised')) {
+                // closeModal: public/scripts/comp/modalUtils.js
+                closeModal(editor);
+            }
+        }
+    });
+    studioVSliderCloseObserver.observe(el, { attributes: true, attributeFilter: ['class'] });
+}
+
 function studioVSliderInit() {
     if (studioVSliderWired) return;
     const el = document.getElementById('studioVSliderTool');
@@ -1044,18 +1653,51 @@ function studioVSliderInit() {
     studioVSliderWired = true;
     // transientWindowsWithPositions / linkToolWindowToParent / addResizeHandles: public/scripts/comp/modalUtils.js
     transientWindowsWithPositions.add('studio-vslider-tool');
+    transientWindowsWithPositions.add('studio-vslider-editor');
     linkToolWindowToParent(el, document.getElementById('manualModal'));
     if (!el.querySelector('.resize-handle')) addResizeHandles(el);
+    studioVSliderWatchToolClose(el);
+
+    const editorEl = document.getElementById('studioVSliderEditorTool');
+    if (editorEl) {
+        linkToolWindowToParent(editorEl, document.getElementById('manualModal'));
+        if (!editorEl.querySelector('.resize-handle')) addResizeHandles(editorEl);
+    }
+
     const closeBtn = document.getElementById('studioVSliderCloseBtn');
     if (closeBtn) {
         closeBtn.addEventListener('click', () => {
+            studioVSliderClearSession({ closeEditor: true });
+            // closeModal: public/scripts/comp/modalUtils.js
             closeModal(el);
         });
     }
+    const minimizeBtn = el.querySelector('.minimize-btn');
+    if (minimizeBtn) {
+        minimizeBtn.addEventListener('click', () => {
+            // Ensure taskbar anchor exists before the global minimize handler animates
+            // getOrCreateTaskbarItem / setMinimizeTargetVariables / debouncedUpdateTaskbarWindows:
+            // public/scripts/comp/modalUtils.js
+            const item = getOrCreateTaskbarItem(el);
+            if (item) setMinimizeTargetVariables(el, item);
+            if (typeof debouncedUpdateTaskbarWindows === 'function') debouncedUpdateTaskbarWindows();
+        }, true);
+    }
+
     const finaliseBtn = document.getElementById('studioVSliderFinaliseBtn');
     if (finaliseBtn) finaliseBtn.addEventListener('click', studioVSliderFinaliseAll);
     const revertBtn = document.getElementById('studioVSliderRevertBtn');
     if (revertBtn) revertBtn.addEventListener('click', studioVSliderRevertAll);
+    const addBtn = document.getElementById('studioVSliderAddBtn');
+    if (addBtn) addBtn.addEventListener('click', () => studioVSliderOpenEditor(null));
+
+    const editorClose = document.getElementById('studioVSliderEditorCloseBtn');
+    if (editorClose) editorClose.addEventListener('click', () => studioVSliderCloseEditor());
+    const editorCancel = document.getElementById('studioVSliderEditorCancelBtn');
+    if (editorCancel) editorCancel.addEventListener('click', () => studioVSliderCloseEditor());
+    const editorSave = document.getElementById('studioVSliderEditorSaveBtn');
+    if (editorSave) editorSave.addEventListener('click', studioVSliderSaveEditor);
+
     studioVSliderWireHooks();
     studioVSliderSyncFooter();
 }

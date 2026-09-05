@@ -258,7 +258,7 @@
     <link rel="stylesheet" href="/css/grimoire-browser.css?sha=e26a52d8d4f034f357d20720ba2913cf1d22440f4e21d05eb5c94a55cd930ccb">
     <link rel="stylesheet" href="/css/emphasis-groups-tool.css?sha=8601349e668b62daeeb5d62991a1471f58948c6d031eee6439aab54edc211ef9">
     <link rel="stylesheet" href="/css/character-position-tool.css?sha=e1ea1132fb7cdb215c4b855346e0fe73ab886c47098dd3d51282348bb75c1c07">
-    <link rel="stylesheet" href="/css/studio-vslider.css?sha=575fbb034ce012d045555d5b7e70080a48421958408a51aa2035466bb1c30bbc">
+    <link rel="stylesheet" href="/css/studio-vslider.css?sha=c0eb44cd8ded1b60cba68a4f0b850199cb4f847791171f5b6197dadbbdd5bdf0">
     <link rel="stylesheet" href="/css/emphasis-manager.css?sha=42db6953f33250e0a16b7410e43692ba8acae006d801f6a9f6526a3ddfd1301a">
     <link rel="stylesheet" href="/css/windows-classic-theme.css?sha=bffe5e53cd5300486322056e94eb3550259565fe02f1ca394e4b7c560473cee8">
     <link rel="stylesheet" href="/css/service-worker-tray.css?sha=b71d1e07077cf9a9c707945cca0effcc56b0bd0b54692ec105fcc42ee756c3b4">
@@ -2850,11 +2850,60 @@
                         <button type="button" id="studioVSliderRevertBtn" class="btn-secondary" disabled>
                             <span>Revert</span>
                         </button>
+                        <button type="button" id="studioVSliderAddBtn" class="btn-secondary" title="Add widget">
+                            <i class="fas fa-plus"></i>
+                            <span>Add</span>
+                        </button>
                         <span id="studioVSliderFooterNote" class="vslider-footer-note"></span>
                     </div>
                     <div class="modal-footer-right">
                         <button type="button" id="studioVSliderFinaliseBtn" class="btn-primary" disabled>
-                            <span>Finalise</span>
+                            <span>Finalise all</span>
+                            <i class="fas fa-check"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Studio vSlider widget editor (#142) -->
+    <div id="studioVSliderEditorTool"
+        class="modal hidden transient tool-window resizeable-window"
+        data-window-identifier="studio-vslider-editor" data-parent-modal-id="manualModal"
+        data-window-min-width="420" data-window-min-height="400"
+        data-window-max-width="720" data-window-max-height="960"
+        data-window-default-width="520" data-window-default-height="640">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-sliders icon-fa"></i>
+                <span>vSlider editor <span id="studioVSliderEditorKindLabel" class="vslider-kind"></span></span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" id="studioVSliderEditorCloseBtn" class="btn-danger close-btn btn-small"
+                title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content dark">
+            <div class="vslider-scroll-shell scrollbar-padding" data-custom-scrollbar
+                data-scrollable-wrapper-class="studio-vslider-editor-scrollable">
+                <div id="studioVSliderEditorBody" class="vslider-editor-body"></div>
+            </div>
+            <div class="character-position-footer">
+                <div class="modal-footer">
+                    <div class="modal-footer-left">
+                        <button type="button" id="studioVSliderEditorCancelBtn" class="btn-secondary">
+                            <span>Cancel</span>
+                        </button>
+                    </div>
+                    <div class="modal-footer-right">
+                        <button type="button" id="studioVSliderEditorSaveBtn" class="btn-primary">
+                            <span>Save</span>
                             <i class="fas fa-check"></i>
                         </button>
                     </div>

@@ -377,8 +377,115 @@
     font-size: 0.82rem;
     padding: 8px 4px;
     text-transform: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-start;
 }
 
 #studioVSliderTool .vslider-empty code {
     color: var(--text-primary);
+}
+
+#studioVSliderTool .vslider-card {
+    cursor: context-menu;
+}
+
+/* Editor tool */
+#studioVSliderEditorTool {
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+}
+
+#studioVSliderEditorTool > .modal-content {
+    padding: 8px;
+    overflow: hidden;
+    min-height: 0;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#studioVSliderEditorTool .vslider-scroll-shell {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+#studioVSliderEditorTool .vslider-scroll-shell:not(.has-custom-scrollbar) {
+    overflow-y: auto;
+}
+
+#studioVSliderEditorTool .scrollable-content.studio-vslider-editor-scrollable {
+    display: block;
+    height: 100%;
+    min-height: 0 !important;
+    overflow: auto;
+    padding: 2px 4px 8px 0;
+}
+
+#studioVSliderEditorTool .vslider-editor-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+#studioVSliderEditorTool .vslider-editor-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+#studioVSliderEditorTool .vslider-editor-row > label {
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: none;
+}
+
+#studioVSliderEditorTool .vslider-editor-row input[type="text"],
+#studioVSliderEditorTool .vslider-editor-row input[type="number"] {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+#studioVSliderEditorTool .vslider-editor-axis {
+    padding: 8px;
+    border: 1px solid var(--glass-border-2);
+    border-radius: var(--border-radius-lg);
+    background: var(--glass-layer-dark-4, hsl(0 0% 0% / 35%));
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#studioVSliderEditorTool .vslider-editor-axis-title {
+    color: var(--text-primary);
+    font-size: 0.82rem;
+    font-weight: 650;
+}
+
+#studioVSliderEditorTool .vslider-editor-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+#studioVSliderEditorTool .vslider-editor-list-row {
+    display: grid;
+    grid-template-columns: 72px 1fr auto;
+    gap: 6px;
+    align-items: center;
+}
+
+#studioVSliderEditorTool .vslider-editor-list-row.vslider-editor-option-row {
+    grid-template-columns: 1fr 1fr 1fr auto;
+}
+
+#studioVSliderEditorTool .vslider-editor-list-actions {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
 }
