@@ -426,51 +426,38 @@
     padding: 2px 4px 8px 0;
 }
 
+/* Editor body uses shared form-section / form-control hover-show colored chrome */
 #studioVSliderEditorTool .vslider-editor-body {
-    display: flex;
-    flex-direction: column;
+    display: block;
+}
+
+#studioVSliderEditorTool .vslider-editor-body > .form-section {
     gap: 10px;
 }
 
-#studioVSliderEditorTool .vslider-editor-row {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-#studioVSliderEditorTool .vslider-editor-row > label {
-    color: var(--text-secondary);
-    font-size: 0.72rem;
-    font-weight: 600;
-    text-transform: none;
-}
-
-#studioVSliderEditorTool .vslider-editor-row input[type="text"],
-#studioVSliderEditorTool .vslider-editor-row input[type="number"] {
+#studioVSliderEditorTool .custom-dropdown {
     width: 100%;
-    box-sizing: border-box;
+}
+
+#studioVSliderEditorTool .custom-dropdown-btn {
+    width: 100%;
+    justify-content: space-between;
 }
 
 #studioVSliderEditorTool .vslider-editor-axis {
-    padding: 8px;
-    border: 1px solid var(--glass-border-2);
-    border-radius: var(--border-radius-lg);
-    background: var(--glass-layer-dark-4, hsl(0 0% 0% / 35%));
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
 }
 
-#studioVSliderEditorTool .vslider-editor-axis-title {
-    color: var(--text-primary);
-    font-size: 0.82rem;
-    font-weight: 650;
+#studioVSliderEditorTool .vslider-editor-stops-label {
+    margin-top: 4px;
 }
 
 #studioVSliderEditorTool .vslider-editor-list {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
 }
 
 #studioVSliderEditorTool .vslider-editor-list-row {
@@ -484,8 +471,14 @@
     grid-template-columns: 1fr 1fr 1fr auto;
 }
 
+#studioVSliderEditorTool .vslider-editor-list-row .form-control {
+    width: 100%;
+    min-width: 0;
+}
+
 #studioVSliderEditorTool .vslider-editor-list-actions {
     display: flex;
-    gap: 4px;
+    gap: 6px;
     flex-wrap: wrap;
+    margin-top: 4px;
 }

@@ -1329,22 +1329,27 @@ function studioVSliderRenderEditor() {
     if (draft.kind === 'dropdown') {
         const rows = (draft.options || []).map((opt, index) => `
             <div class="vslider-editor-list-row vslider-editor-option-row" data-vslider-editor-option="${index}">
-                <input type="text" data-field="id" value="${studioVSliderEscape(opt.id)}" placeholder="id">
-                <input type="text" data-field="label" value="${studioVSliderEscape(opt.label)}" placeholder="label">
-                <input type="text" data-field="text" value="${studioVSliderEscape(opt.text)}" placeholder="text">
-                <button type="button" class="btn-danger btn-small" data-vslider-editor-remove-option title="Remove">
+                <input type="text" class="form-control hover-show colored" data-field="id"
+                    value="${studioVSliderEscape(opt.id)}" placeholder="id" autocomplete="off">
+                <input type="text" class="form-control hover-show colored" data-field="label"
+                    value="${studioVSliderEscape(opt.label)}" placeholder="label" autocomplete="off">
+                <input type="text" class="form-control hover-show colored" data-field="text"
+                    value="${studioVSliderEscape(opt.text)}" placeholder="text" autocomplete="off">
+                <button type="button" class="btn-secondary btn-small" data-vslider-editor-remove-option title="Remove">
                     <i class="fas fa-trash"></i>
                 </button>
             </div>
         `).join('');
         listsHtml = `
-            <div class="vslider-editor-axis">
-                <div class="vslider-editor-axis-title">Options</div>
-                <div class="vslider-editor-list" data-vslider-editor-options>${rows}</div>
-                <div class="vslider-editor-list-actions">
-                    <button type="button" class="btn-secondary btn-small" data-vslider-editor-add-option>
-                        <i class="fas fa-plus"></i> Add option
-                    </button>
+            <div class="form-row">
+                <div class="form-group vslider-editor-axis">
+                    <label>Options</label>
+                    <div class="vslider-editor-list" data-vslider-editor-options>${rows}</div>
+                    <div class="vslider-editor-list-actions text-replacement-add-item">
+                        <button type="button" class="btn-secondary" data-vslider-editor-add-option>
+                            <i class="fas fa-plus"></i> Add option
+                        </button>
+                    </div>
                 </div>
             </div>
         `;
@@ -1352,78 +1357,116 @@ function studioVSliderRenderEditor() {
         listsHtml = (draft.axes || []).map((axis, axisIndex) => {
             const stopRows = (axis.stops || []).map((stop, stopIndex) => `
                 <div class="vslider-editor-list-row" data-vslider-editor-stop="${stopIndex}">
-                    <input type="number" min="0" max="1" step="0.01" data-field="at"
-                        value="${studioVSliderEscape(stop.at)}" title="at (0–1)">
-                    <input type="text" data-field="text" value="${studioVSliderEscape(stop.text)}" placeholder="text">
-                    <button type="button" class="btn-danger btn-small" data-vslider-editor-remove-stop title="Remove">
+                    <input type="number" class="form-control hover-show colored" min="0" max="1" step="0.01"
+                        data-field="at" value="${studioVSliderEscape(stop.at)}" title="at (0–1)"
+                        autocomplete="off">
+                    <input type="text" class="form-control hover-show colored" data-field="text"
+                        value="${studioVSliderEscape(stop.text)}" placeholder="text" autocomplete="off">
+                    <button type="button" class="btn-secondary btn-small" data-vslider-editor-remove-stop title="Remove">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
             `).join('');
             return `
-                <div class="vslider-editor-axis" data-vslider-editor-axis="${axisIndex}">
-                    <div class="vslider-editor-axis-title">Axis ${axisIndex + 1}</div>
-                    <div class="vslider-editor-row">
-                        <label>Id</label>
-                        <input type="text" data-vslider-editor-axis-id value="${studioVSliderEscape(axis.id)}">
-                    </div>
-                    <div class="vslider-editor-row">
-                        <label>Label</label>
-                        <input type="text" data-vslider-editor-axis-label value="${studioVSliderEscape(axis.label)}">
-                    </div>
-                    <div class="vslider-editor-list" data-vslider-editor-stops>${stopRows}</div>
-                    <div class="vslider-editor-list-actions">
-                        <button type="button" class="btn-secondary btn-small" data-vslider-editor-add-stop>
-                            <i class="fas fa-plus"></i> Add stop
-                        </button>
+                <div class="form-row" data-vslider-editor-axis="${axisIndex}">
+                    <div class="form-group vslider-editor-axis">
+                        <label>Axis ${axisIndex + 1}</label>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Id</label>
+                                <div class="form-group-row">
+                                    <input type="text" class="form-control hover-show colored"
+                                        data-vslider-editor-axis-id value="${studioVSliderEscape(axis.id)}"
+                                        autocomplete="off">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Label</label>
+                                <div class="form-group-row">
+                                    <input type="text" class="form-control hover-show colored"
+                                        data-vslider-editor-axis-label value="${studioVSliderEscape(axis.label)}"
+                                        autocomplete="off">
+                                </div>
+                            </div>
+                        </div>
+                        <label class="vslider-editor-stops-label">Stops</label>
+                        <div class="vslider-editor-list" data-vslider-editor-stops>${stopRows}</div>
+                        <div class="vslider-editor-list-actions text-replacement-add-item">
+                            <button type="button" class="btn-secondary" data-vslider-editor-add-stop>
+                                <i class="fas fa-plus"></i> Add stop
+                            </button>
+                        </div>
                     </div>
                 </div>
             `;
         }).join('');
         if (draft.kind === 'star') {
             listsHtml += `
-                <div class="vslider-editor-list-actions">
-                    <button type="button" class="btn-secondary btn-small" data-vslider-editor-add-axis
-                        ${(draft.axes || []).length >= STUDIO_VSLIDER_STAR_MAX_AXES ? 'disabled' : ''}>
-                        <i class="fas fa-plus"></i> Add axis
-                    </button>
-                    <button type="button" class="btn-secondary btn-small" data-vslider-editor-remove-axis
-                        ${(draft.axes || []).length <= 2 ? 'disabled' : ''}>
-                        <i class="fas fa-minus"></i> Remove axis
-                    </button>
+                <div class="form-row">
+                    <div class="form-group">
+                        <div class="vslider-editor-list-actions">
+                            <button type="button" class="btn-secondary" data-vslider-editor-add-axis
+                                ${(draft.axes || []).length >= STUDIO_VSLIDER_STAR_MAX_AXES ? 'disabled' : ''}>
+                                <i class="fas fa-plus"></i> Add axis
+                            </button>
+                            <button type="button" class="btn-secondary" data-vslider-editor-remove-axis
+                                ${(draft.axes || []).length <= 2 ? 'disabled' : ''}>
+                                <i class="fas fa-minus"></i> Remove axis
+                            </button>
+                        </div>
+                    </div>
                 </div>
             `;
         }
     }
 
+    // Same form chrome as Request Expanders create dialog (form-control hover-show colored)
     body.innerHTML = `
-        <div class="vslider-editor-row">
-            <label>Kind</label>
-            <div class="custom-dropdown dark" data-vslider-editor-kind-dd>
-                <button type="button" class="custom-dropdown-btn hover-show colored">
-                    <span data-vslider-editor-kind-label>${studioVSliderEscape(draft.kind)}</span>
-                </button>
-                <div class="custom-dropdown-menu hidden">${kindOptions}</div>
+        <div class="form-section">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Kind</label>
+                    <div class="custom-dropdown dark" data-vslider-editor-kind-dd>
+                        <button type="button" class="custom-dropdown-btn hover-show colored">
+                            <span data-vslider-editor-kind-label>${studioVSliderEscape(draft.kind)}</span>
+                        </button>
+                        <div class="custom-dropdown-menu hidden">${kindOptions}</div>
+                    </div>
+                </div>
             </div>
-        </div>
-        <div class="vslider-editor-row">
-            <label>Title</label>
-            <input type="text" data-vslider-editor-title value="${studioVSliderEscape(draft.title)}">
-        </div>
-        <div class="vslider-editor-row">
-            <label>Target</label>
-            <div class="custom-dropdown dark" data-vslider-editor-target-dd>
-                <button type="button" class="custom-dropdown-btn hover-show colored">
-                    <span data-vslider-editor-target-label>${studioVSliderEscape(targetKind)}</span>
-                </button>
-                <div class="custom-dropdown-menu hidden">${targetOptions}</div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Title</label>
+                    <div class="form-group-row">
+                        <input type="text" class="form-control hover-show colored"
+                            data-vslider-editor-title value="${studioVSliderEscape(draft.title)}"
+                            autocomplete="off" autocapitalize="off" spellcheck="false">
+                    </div>
+                </div>
             </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Target</label>
+                    <div class="custom-dropdown dark" data-vslider-editor-target-dd>
+                        <button type="button" class="custom-dropdown-btn hover-show colored">
+                            <span data-vslider-editor-target-label>${studioVSliderEscape(targetKind)}</span>
+                        </button>
+                        <div class="custom-dropdown-menu hidden">${targetOptions}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="form-row${targetKind === 'prompt' ? ' hidden' : ''}" data-vslider-editor-prefix-row>
+                <div class="form-group">
+                    <label>Expander prefix</label>
+                    <div class="form-group-row">
+                        <input type="text" class="form-control hover-show colored"
+                            data-vslider-editor-prefix value="${studioVSliderEscape(prefix)}"
+                            placeholder="body" autocomplete="off" autocapitalize="off" spellcheck="false">
+                    </div>
+                </div>
+            </div>
+            ${listsHtml}
         </div>
-        <div class="vslider-editor-row${targetKind === 'prompt' ? ' hidden' : ''}" data-vslider-editor-prefix-row>
-            <label>Expander prefix</label>
-            <input type="text" data-vslider-editor-prefix value="${studioVSliderEscape(prefix)}" placeholder="body">
-        </div>
-        ${listsHtml}
     `;
     studioVSliderWireEditor(body);
     studioVSliderRefreshEditorScrollbar();
