@@ -21,6 +21,18 @@ function escapeHtml(value) {
     }[ch]));
 }
 
+function formatBodyText(text) {
+    if (typeof text !== 'string') return '';
+    // Split by triple backticks first, then single backticks
+    return text.split(/```/).map((block, i) => {
+        if (i % 2 === 1) return '<div class="code-block">' + escapeHtml(block) + '</div>';
+        return block.split(/`/).map((inline, j) => {
+            if (j % 2 === 1) return '<span class="code-inline">' + escapeHtml(inline) + '</span>';
+            return escapeHtml(inline).replace(/\n/g, '<br>');
+        }).join('');
+    }).join('');
+}
+
 function getApocryphaFilePath() {
     return path.join(process.cwd(), 'data/apocrypha/current.json');
 }
@@ -385,14 +397,34 @@ function renderExcerpts(excerpts) {
     }).join('\n');
 }
 
+function renderTryThis(tryThis) {
+    if (!tryThis || typeof tryThis !== 'object') return '';
+    let html = '<div class="try-this-card">';
+    html += '<div class="try-this-header">TRY THIS</div>';
+    html += '<div class="try-this-body">';
+    const rows = [
+        { label: 'Settings', val: tryThis.settings },
+        { label: tryThis.promptA && tryThis.promptB ? 'Prompt A' : 'Prompt', val: tryThis.promptA || tryThis.prompt },
+        { label: 'Prompt B', val: tryThis.promptB },
+        { label: 'Look for', val: tryThis.lookFor }
+    ];
+    for (const r of rows) {
+        if (!r.val) continue;
+        html += '<div class="try-this-row"><span class="try-this-label">' + escapeHtml(r.label) + ':</span><div class="try-this-prompt">' + formatBodyText(r.val) + '</div></div>';
+    }
+    html += '</div></div>';
+    return html;
+}
+
 function renderSectionArticle(sec) {
     if (!sec || typeof sec !== 'object') return '';
     const kicker = sec.kicker ? '<span class="article-kicker">' + escapeHtml(sec.kicker) + '</span>' : '';
     const title = sec.title ? '<h2 class="article-title">' + escapeHtml(sec.title) + '</h2>' : '';
-    const lede = sec.lede ? '<p class="split-text">' + escapeHtml(sec.lede) + '</p>' : '';
-    const body = sec.body ? '<p class="split-text">' + escapeHtml(sec.body) + '</p>' : '';
+    const lede = sec.lede ? '<p class="split-text">' + formatBodyText(sec.lede) + '</p>' : '';
+    const body = sec.body ? '<p class="split-text" style="white-space: pre-wrap; word-break: break-word;">' + formatBodyText(sec.body) + '</p>' : '';
     return '<div class="article">' +
         kicker + title + lede + body +
+        renderTryThis(sec.tryThis) +
         renderExcerpts(sec.excerpts) +
         renderImageGrid(sec.images) +
         '</div>';
@@ -878,6 +910,17 @@ html, body {
     display: block;
 }
 
+.apocrypha-interior .try-this-card { border: 1px solid #ffcc66; margin: 12px 0; background: rgba(102, 85, 0, 0.05); }
+.apocrypha-interior .try-this-header { background: #665500; color: #fff; padding: 4px 8px; font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.1em; }
+.apocrypha-interior .try-this-body { padding: 12px; }
+.apocrypha-interior .try-this-row { margin-bottom: 8px; }
+.apocrypha-interior .try-this-row:last-child { margin-bottom: 0; }
+.apocrypha-interior .try-this-label { font-size: 9px; color: #ffcc66; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 2px; }
+.apocrypha-interior .try-this-text { font-size: 14px; color: #d7ff9a; line-height: 1.5; }
+.apocrypha-interior .try-this-prompt { font-family: "Share Tech Mono", "DotGothic16", monospace; font-size: 12px; color: #fff; background: #111; padding: 6px; border: 1px solid #333; display: block; white-space: pre-wrap; word-break: break-word; }
+.apocrypha-interior .code-inline { background: rgba(255, 255, 255, 0.1); padding: 0 4px; border-radius: 2px; color: #fff; font-family: monospace; }
+.apocrypha-interior .code-block { background: #111; padding: 8px; border: 1px solid #333; display: block; white-space: pre-wrap; word-break: break-word; font-family: monospace; margin: 8px 0; color: #fff; }
+
 .article blockquote {
     margin: 8px 0;
     padding: 8px 8px 8px 12px;
@@ -1110,6 +1153,17 @@ function getApocryphaInteriorCss() {
 .apocrypha-interior .images-title { font-size: 14px; font-weight: bold; color: #d7ff9a; margin: 0 0 8px 0; }
 .apocrypha-interior .images-note { font-size: 10px; color: #999; line-height: 1.5; }
 .apocrypha-interior .image-item img { width: 100%; height: auto; border: 1px solid #333; display: block; }
+.apocrypha-interior .try-this-card { border: 1px solid #ffcc66; margin: 12px 0; background: rgba(102, 85, 0, 0.05); }
+.apocrypha-interior .try-this-header { background: #665500; color: #fff; padding: 4px 8px; font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.1em; }
+.apocrypha-interior .try-this-body { padding: 12px; }
+.apocrypha-interior .try-this-row { margin-bottom: 8px; }
+.apocrypha-interior .try-this-row:last-child { margin-bottom: 0; }
+.apocrypha-interior .try-this-label { font-size: 9px; color: #ffcc66; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 2px; }
+.apocrypha-interior .try-this-text { font-size: 14px; color: #d7ff9a; line-height: 1.5; }
+.apocrypha-interior .try-this-prompt { font-family: "Share Tech Mono", "DotGothic16", monospace; font-size: 12px; color: #fff; background: #111; padding: 6px; border: 1px solid #333; display: block; white-space: pre-wrap; word-break: break-word; }
+.apocrypha-interior .code-inline { background: rgba(255, 255, 255, 0.1); padding: 0 4px; border-radius: 2px; color: #fff; font-family: monospace; }
+.apocrypha-interior .code-block { background: #111; padding: 8px; border: 1px solid #333; display: block; white-space: pre-wrap; word-break: break-word; font-family: monospace; margin: 8px 0; color: #fff; }
+
 .apocrypha-interior .article blockquote { margin: 8px 0; padding: 8px 8px 8px 12px; border-left: 2px solid #2a5a2a; color: #999; }
 .apocrypha-interior .article blockquote .tile-meta { margin-top: 4px; }
 .apocrypha-interior .footer { margin-top: 16px; padding-top: 12px; border-top: 1px solid #333; font-size: 9px; color: #666; }
