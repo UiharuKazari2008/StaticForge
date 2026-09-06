@@ -1601,7 +1601,7 @@ const TOOL_DEFS = [
     {
         name: 'consume_cake',
         core: true,
-        description: 'Eater eats pending slices. Returns response data plus before and after image refs and kg before/after. Visual QA invariants: empty plates, visible growth, hip contrast, up to 10 gens. Cake math: 0.12kg/slice.',
+        description: 'Eater eats pending slices (max 8 eligible per sitting; remainder carries). Skips do-not-eat / dry-verify deliveries. Optional slices (1..8). Records kg; does not auto-generate before/after images — pass before_image/after_image if already generated, else visual_gen.status=not_generated with a clear error while kg still saves. Visual QA invariants: empty plates, visible growth, hip contrast, up to 10 gens. Cake math: 0.12kg/slice.',
         scope: 'sfapp_cake_pantry',
         inputSchema: {
             type: 'object',
@@ -1609,10 +1609,11 @@ const TOOL_DEFS = [
             required: ['accountId'],
             properties: {
                 accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account eating' },
+                slices: { type: 'number', description: 'Optional sitting size (clamped 1..8, and to eligible pending). Default: min(8, eligible).' },
                 cake_type: { type: 'string', description: 'Override cake type for this consume' },
                 stacks: { type: 'number', description: 'Number of cake stacks (default: slices/12)' },
-                before_image: { type: 'string', description: 'Before image filename (if already generated)' },
-                after_image: { type: 'string', description: 'After image filename (if already generated)' },
+                before_image: { type: 'string', description: 'Before image filename (if already generated via generate_image). Not auto-generated.' },
+                after_image: { type: 'string', description: 'After image filename (if already generated via generate_image). Not auto-generated.' },
                 qa: { type: 'object', description: 'Visual QA notes' },
                 chair: { type: 'string', description: 'Chair type (gaming, heavy_duty, etc.)' },
                 landscape: { type: 'boolean' },

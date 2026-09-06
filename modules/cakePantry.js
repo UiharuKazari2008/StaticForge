@@ -15,8 +15,10 @@
  * - 0.12kg per slice
  * - Cleanup: 1 slice per 40 lines or 10KB removed (min 1, cap 16)
  * - 1.25x multiplier for grok.menma (Jules/Cursor Lead)
+ * - Max 8 eligible slices per consume sitting; remainder carries
+ * - Skip do-not-eat / dry-verify reasons (case-insensitive)
  * 
- * Visual QA invariants:
+ * Visual QA invariants (caller-supplied image refs; no auto-gen):
  * - Empty plates
  * - Visible growth
  * - Hip contrast
@@ -50,6 +52,54 @@ const CLEANUP_SLICE_MIN = 1;
 const CLEANUP_SLICE_CAP = 16;
 const LEAD_MULTIPLIER = 1.25;
 const MAX_VISUAL_QA_GENS = 10;
+/** Hard cap: one meal sitting eats at most this many eligible slices; remainder stays pending. */
+const MAX_SLICES_PER_SITTING = 8;
+
+/**
+ * Dry-verify / do-not-eat deliveries must never be consumed.
+ * Case-insensitive; matches reason containing do not eat / do-not-eat / dry verify / dry-verify.
+ */
+function isDoNotEatReason(reason) {
+    if (reason == null) return false;
+    const r = String(reason).toLowerCase();
+    return (
+        r.includes('do not eat') ||
+        r.includes('do-not-eat') ||
+        r.includes('dry verify') ||
+        r.includes('dry-verify')
+    );
+}
+
+/**
+ * FIFO take up to `budget` slices from items; may split the last item.
+ * Returns { taken, remaining, slicesTaken }.
+ */
+function takeSlicesFromItems(items, budget) {
+    const taken = [];
+    const remaining = [];
+    let left = budget;
+    for (const item of items || []) {
+        const slices = Number(item.slices) || 0;
+        if (left <= 0) {
+            remaining.push(item);
+            continue;
+        }
+        if (slices <= left) {
+            taken.push({ ...item });
+            left -= slices;
+        } else {
+            taken.push({ ...item, slices: left, _partial: true, _original_slices: slices });
+            remaining.push({ ...item, slices: slices - left });
+            left = 0;
+        }
+    }
+    const slicesTaken = taken.reduce((s, i) => s + (Number(i.slices) || 0), 0);
+    return { taken, remaining, slicesTaken };
+}
+
+function sumItemSlices(items) {
+    return (items || []).reduce((s, i) => s + (Number(i.slices) || 0), 0);
+}
 
 /**
  * Account definitions with identity fields
@@ -596,6 +646,12 @@ async function inspectPantry(accountId, params = {}) {
 
 /**
  * consume_cake - Eater eats pending slices
+ *
+ * Rules:
+ * - Cap MAX_SLICES_PER_SITTING (8) eligible slices per call; remainder stays pending
+ * - Skip deliveries/feeds whose reason matches do-not-eat / dry verify
+ * - Optional params.slices: clamp to 1..8 and to eligible pending
+ * - Does NOT auto-generate before/after images (pass refs if already generated)
  */
 async function consumeCake(accountId, params = {}) {
     const state = await getAccountState(accountId);
@@ -606,42 +662,124 @@ async function consumeCake(accountId, params = {}) {
         return { success: false, error: state._reason || 'SQLite unavailable', accountId };
     }
 
-    const pendingSlices = state.pending_slices || 0;
-    if (pendingSlices <= 0) {
+    const pendingDeliveries = Array.isArray(state.pending_deliveries) ? state.pending_deliveries : [];
+    const pendingFeeds = Array.isArray(state.pending_feeds) ? state.pending_feeds : [];
+
+    const skippedDeliveries = pendingDeliveries.filter((d) => isDoNotEatReason(d.reason));
+    const eligibleDeliveries = pendingDeliveries.filter((d) => !isDoNotEatReason(d.reason));
+    const skippedFeeds = pendingFeeds.filter((f) => isDoNotEatReason(f.reason));
+    const eligibleFeeds = pendingFeeds.filter((f) => !isDoNotEatReason(f.reason));
+
+    const eligibleSlices = sumItemSlices(eligibleDeliveries) + sumItemSlices(eligibleFeeds);
+    const skippedSlices = sumItemSlices(skippedDeliveries) + sumItemSlices(skippedFeeds);
+
+    if (eligibleSlices <= 0) {
+        // Keep counter honest if only do-not-eat remain
+        const recalcPending = skippedSlices;
+        if ((state.pending_slices || 0) !== recalcPending) {
+            state.pending_slices = recalcPending;
+            state.pending_deliveries = [...skippedDeliveries];
+            state.pending_feeds = [...skippedFeeds];
+            await saveAccountState(accountId, state);
+        }
         return {
             success: false,
-            error: 'No pending slices to consume',
+            error: skippedSlices > 0
+                ? 'No eligible pending slices to consume (only do-not-eat / dry-verify remain)'
+                : 'No pending slices to consume',
             accountId,
-            pending_slices: 0
+            pending_slices: state.pending_slices || 0,
+            skipped_slices: skippedSlices,
+            skipped_deliveries: skippedDeliveries.length,
+            max_slices_per_sitting: MAX_SLICES_PER_SITTING
+        };
+    }
+
+    let requested = null;
+    if (params.slices != null && params.slices !== '') {
+        requested = Number(params.slices);
+        if (!Number.isFinite(requested) || requested < 1) {
+            return {
+                success: false,
+                error: 'slices must be a number from 1 to 8 (or up to eligible pending)',
+                accountId,
+                max_slices_per_sitting: MAX_SLICES_PER_SITTING,
+                eligible_slices: eligibleSlices
+            };
+        }
+        requested = Math.floor(requested);
+        if (requested > MAX_SLICES_PER_SITTING) {
+            requested = MAX_SLICES_PER_SITTING;
+        }
+    }
+
+    const budget = Math.min(
+        MAX_SLICES_PER_SITTING,
+        eligibleSlices,
+        requested != null ? requested : MAX_SLICES_PER_SITTING
+    );
+
+    const fromDeliveries = takeSlicesFromItems(eligibleDeliveries, budget);
+    const remainingBudget = budget - fromDeliveries.slicesTaken;
+    const fromFeeds = takeSlicesFromItems(eligibleFeeds, remainingBudget);
+
+    const slicesToConsume = fromDeliveries.slicesTaken + fromFeeds.slicesTaken;
+    if (slicesToConsume <= 0) {
+        return {
+            success: false,
+            error: 'No eligible pending slices to consume',
+            accountId,
+            pending_slices: state.pending_slices || 0,
+            max_slices_per_sitting: MAX_SLICES_PER_SITTING
         };
     }
 
     const now = new Date().toISOString();
     const dateLocal = new Date().toISOString().split('T')[0];
-    
+
     const kgBefore = state.current_kg || state.baseline_kg || 0;
-    const gainedKg = Number((pendingSlices * KG_PER_SLICE).toFixed(2));
+    const gainedKg = Number((slicesToConsume * KG_PER_SLICE).toFixed(2));
     const kgAfter = Number((kgBefore + gainedKg).toFixed(2));
 
-    const stacks = params.stacks || Math.ceil(pendingSlices / 12);
+    const stacks = params.stacks || Math.ceil(slicesToConsume / 12);
 
     const namedFor = params.named_for || [];
-    for (const d of (state.pending_deliveries || [])) {
+    for (const d of fromDeliveries.taken) {
         if (d.reason && !namedFor.includes(d.reason)) {
             namedFor.push(d.reason);
         }
     }
-    for (const f of (state.pending_feeds || [])) {
-        if (f.reason && !namedFor.includes(f.reason)) {
+    for (const f of fromFeeds.taken) {
+        if (f.reason && !namedFor.includes(`[gift] ${f.reason}`)) {
             namedFor.push(`[gift] ${f.reason}`);
         }
     }
+
+    const beforeImage = params.before_image || null;
+    const afterImage = params.after_image || null;
+    const visualsProvided = Boolean(beforeImage || afterImage);
+    // Root cause (Yozora #151): consume_cake never auto-generates images — it only
+    // records caller-supplied refs. Silent nulls looked like a Bot/Hoshino MCP key
+    // workspace/gallery failure; surface an explicit status instead.
+    const visualGen = {
+        status: visualsProvided ? 'provided' : 'not_generated',
+        error: visualsProvided
+            ? null
+            : 'consume_cake does not auto-generate before/after images; pass before_image/after_image from generate_image (or leave null). Kg and pantry state still recorded.',
+        max_gens: MAX_VISUAL_QA_GENS,
+        invariants: ['empty_plates', 'visible_growth', 'hip_contrast'],
+        kg_per_slice: KG_PER_SLICE
+    };
+
+    const remainingDeliveries = [...fromDeliveries.remaining, ...skippedDeliveries];
+    const remainingFeeds = [...fromFeeds.remaining, ...skippedFeeds];
+    const pendingAfter = sumItemSlices(remainingDeliveries) + sumItemSlices(remainingFeeds);
 
     const logEntry = {
         at: now,
         loop: params.loop || null,
         date_local: dateLocal,
-        slices: pendingSlices,
+        slices: slicesToConsume,
         stacks,
         cake_type: params.cake_type || state._cake_type || null,
         kg_before: kgBefore,
@@ -650,21 +788,26 @@ async function consumeCake(accountId, params = {}) {
         chair: params.chair || (state.milestones && state.milestones.chair) || null,
         landscape: params.landscape || false,
         named_for: namedFor.slice(0, 24),
-        before: params.before_image || null,
-        after: params.after_image || null,
+        before: beforeImage,
+        after: afterImage,
         qa: params.qa || null,
         commits: params.commits || null,
-        deliveries_consumed: (state.pending_deliveries || []).length,
-        feeds_consumed: (state.pending_feeds || []).length
+        deliveries_consumed: fromDeliveries.taken.length,
+        feeds_consumed: fromFeeds.taken.length,
+        slices_requested: requested,
+        max_slices_per_sitting: MAX_SLICES_PER_SITTING,
+        skipped_do_not_eat: skippedDeliveries.length + skippedFeeds.length,
+        pending_slices_after: pendingAfter,
+        visual_gen_status: visualGen.status
     };
 
     state.current_kg = kgAfter;
-    state.slices_eaten_total = (state.slices_eaten_total || 0) + pendingSlices;
-    state.pending_slices = 0;
-    state.pending_deliveries = [];
-    state.pending_feeds = [];
-    state.last_before = params.before_image || state.last_before;
-    state.last_after = params.after_image || state.last_after;
+    state.slices_eaten_total = (state.slices_eaten_total || 0) + slicesToConsume;
+    state.pending_slices = pendingAfter;
+    state.pending_deliveries = remainingDeliveries;
+    state.pending_feeds = remainingFeeds;
+    state.last_before = beforeImage || state.last_before;
+    state.last_after = afterImage || state.last_after;
     state._cake_type = params.cake_type || state._cake_type;
 
     if (!Array.isArray(state.history)) {
@@ -672,7 +815,7 @@ async function consumeCake(accountId, params = {}) {
     }
     state.history.push({
         at: now,
-        slices: pendingSlices,
+        slices: slicesToConsume,
         stacks,
         gained_kg: gainedKg,
         kg: kgAfter,
@@ -686,7 +829,7 @@ async function consumeCake(accountId, params = {}) {
     if (!saved) {
         return { success: false, error: 'Failed to save state', accountId };
     }
-    
+
     const logged = await appendCakeLog(accountId, logEntry);
     if (!logged) {
         console.error(`[cakePantry] consumeCake: failed to append cake log for ${accountId}`);
@@ -696,7 +839,9 @@ async function consumeCake(accountId, params = {}) {
         success: true,
         accountId,
         account_name: state.character && state.character.name,
-        slices_consumed: pendingSlices,
+        slices_consumed: slicesToConsume,
+        slices_requested: requested,
+        max_slices_per_sitting: MAX_SLICES_PER_SITTING,
         stacks,
         cake_type: logEntry.cake_type,
         kg_before: kgBefore,
@@ -704,13 +849,14 @@ async function consumeCake(accountId, params = {}) {
         gained_kg: gainedKg,
         before_image: logEntry.before,
         after_image: logEntry.after,
+        visual_gen: visualGen,
+        visual_qa: visualGen,
         named_for: namedFor,
         slices_eaten_total: state.slices_eaten_total,
-        visual_qa: {
-            max_gens: MAX_VISUAL_QA_GENS,
-            invariants: ['empty_plates', 'visible_growth', 'hip_contrast'],
-            kg_per_slice: KG_PER_SLICE
-        },
+        pending_slices: pendingAfter,
+        skipped_slices: skippedSlices,
+        skipped_deliveries: skippedDeliveries.map((d) => d.id).filter(Boolean),
+        carry_slices: pendingAfter,
         log_entry: logEntry
     };
 }
@@ -966,6 +1112,10 @@ module.exports = {
     CLEANUP_SLICE_CAP,
     LEAD_MULTIPLIER,
     MAX_VISUAL_QA_GENS,
+    MAX_SLICES_PER_SITTING,
+    isDoNotEatReason,
+    takeSlicesFromItems,
+    sumItemSlices,
     setGlobalResources,
     getGlobalResources,
     getAccountDir,
