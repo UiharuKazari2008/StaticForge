@@ -153,7 +153,7 @@ function menmaDsapAccountCardHtml(accountId, accountData, isActive) {
 
 function menmaDsapAccountsGridHtml(accounts, activeAccountId) {
     if (!accounts || typeof accounts !== 'object') return '';
-    const order = ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'];
+    const order = ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'];
     const cards = order
         .filter((id) => accounts[id])
         .map((id) => menmaDsapAccountCardHtml(id, accounts[id], id === activeAccountId));

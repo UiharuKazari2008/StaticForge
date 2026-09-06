@@ -186,7 +186,7 @@ class TagLookup {
         this.initSearchDb();
         
         try {
-            // Unified cake pantry tables with account_id (menma, hoshino, ivory, pyra, chiyo)
+            // Unified cake pantry tables with account_id (menma, hoshino, ivory, pyra, chiyo, guren)
             await this.db.run(`
                 CREATE TABLE IF NOT EXISTS cake_pantry_state (
                     account_id TEXT NOT NULL,

@@ -1541,14 +1541,14 @@ const TOOL_DEFS = [
     {
         name: 'deliver_cake',
         core: true,
-        description: 'Deliver cake slices to an account (Menma, Hoshino, Ivory) as reward for ship/work. Pass accountId, slices (or line_counts for auto-calc: 1/40 lines or 10KB, min 1 cap 16), reason, cake_type, credit (grok.menma for 1.25x Lead multiplier).',
+        description: 'Deliver cake slices to an account (Menma, Hoshino, Ivory, Pyra, Chiyo, Guren) as reward for ship/work. Pass accountId, slices (or line_counts for auto-calc: 1/40 lines or 10KB, min 1 cap 16), reason, cake_type, credit (grok.menma for 1.25x Lead multiplier).',
         scope: 'sfapp_cake_pantry',
         inputSchema: {
             type: 'object',
             additionalProperties: false,
             required: ['accountId', 'reason'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'], description: 'Account to deliver to' },
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account to deliver to' },
                 slices: { type: 'number', description: 'Number of slices (or omit and provide line_counts)' },
                 reason: { type: 'string', description: 'Why: reward for which ship/work' },
                 cake_type: { type: 'string', description: 'Type of cake (strawberry shortcake, tiramisu, etc.)' },
@@ -1575,7 +1575,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['accountId', 'slices'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'], description: 'Account to feed' },
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account to feed' },
                 slices: { type: 'number', description: 'Number of slices to give' },
                 reason: { type: 'string', description: 'Why: promotion gift, just because, etc.' },
                 cake_type: { type: 'string' },
@@ -1593,7 +1593,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['accountId'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'], description: 'Account to inspect' },
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account to inspect' },
                 log_limit: { type: 'number', description: 'How many log entries (default 20)' }
             }
         }
@@ -1608,7 +1608,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['accountId'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'], description: 'Account eating' },
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account eating' },
                 cake_type: { type: 'string', description: 'Override cake type for this consume' },
                 stacks: { type: 'number', description: 'Number of cake stacks (default: slices/12)' },
                 before_image: { type: 'string', description: 'Before image filename (if already generated)' },
@@ -1632,7 +1632,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['accountId'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'], description: 'Account to get work pile for' }
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account to get work pile for' }
             }
         }
     },
@@ -1646,7 +1646,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['accountId', 'work_id', 'summary'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'], description: 'Account to add work item to' },
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account to add work item to' },
                 work_id: { type: 'string', description: 'Unique work item ID' },
                 summary: { type: 'string', description: 'Work item summary' },
                 source_from: { type: 'string', description: 'Source of work (ship, ticket, etc.)' },
@@ -1666,7 +1666,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['accountId', 'work_id'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'], description: 'Account' },
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account' },
                 work_id: { type: 'string', description: 'Work item ID to complete' }
             }
         }
@@ -1681,7 +1681,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['accountId', 'work_id'],
             properties: {
-                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'], description: 'Account' },
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account' },
                 work_id: { type: 'string', description: 'Work item ID to remove' }
             }
         }
@@ -4162,7 +4162,7 @@ async function callTool(globalResources, req, name, args) {
 
     // Cake Pantry module tools (sfapp_cake_pantry)
     // Valid cake pantry accounts
-    const VALID_PANTRY_ACCOUNTS = ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'];
+    const VALID_PANTRY_ACCOUNTS = ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'];
 
     if (name === 'deliver_cake') {
         const accountId = String(input.accountId || '').toLowerCase();

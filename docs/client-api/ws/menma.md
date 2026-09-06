@@ -6,11 +6,11 @@ Payload builder: `modules/menmaStatus.js` → `buildMenmaStatus()`, `buildAllAcc
 
 See [WebSocket protocol](../websocket.md) for envelope format, auth, and error handling.
 
-Cake pantry state from SQLite (`tag_wiki.db` via `menmaStatus.js`). Supports accounts: `menma`, `hoshino`, `ivory`, `pyra`, `chiyo`. One-shot import per account from `.{account}/` files into SQLite; after import all reads and writes use SQLite only (fail-closed). Does **not** expose `secure.config`, PIN, or keys. Breakfast images remain `GET /images/:filename` (existing gallery auth). If the tag database is unavailable, returns `available: false` instead of 500.
+Cake pantry state from SQLite (`tag_wiki.db` via `menmaStatus.js`). Supports accounts: `menma`, `hoshino`, `ivory`, `pyra`, `chiyo`, `guren`. One-shot import per account from `.{account}/` files into SQLite; after import all reads and writes use SQLite only (fail-closed). Does **not** expose `secure.config`, PIN, or keys. Breakfast images remain `GET /images/:filename` (existing gallery auth). If the tag database is unavailable, returns `available: false` instead of 500.
 
 The web applet (`public/scripts/comp/menmaDsapApplet.js`) calls `window.wsClient.sendMessage('get_menma_state', {})`. Response includes:
 - Root-level Menma fields (backward compat)
-- `accounts` object with status for all five accounts (menma, hoshino, ivory, pyra, chiyo)
+- `accounts` object with status for all six accounts (menma, hoshino, ivory, pyra, chiyo, guren)
 
 The applet displays all accounts in a clickable grid; selecting an account shows its ledger, work pile, and cake log.
 

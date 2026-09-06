@@ -4,7 +4,7 @@
  * Cake Pantry SQLite Module
  * 
  * Reads AND writes cake pantry ledger data (state, cake-log, work-pile) from/to SQLite.
- * Accounts: menma, hoshino, ivory, pyra, chiyo
+ * Accounts: menma, hoshino, ivory, pyra, chiyo, guren
  * After import (cake_pantry_meta.imported_at set per account), ALL reads and writes use SQLite.
  * 
  * Tables in tag_wiki.db:
@@ -29,7 +29,8 @@ const ACCOUNT_DIRS = {
     hoshino: '.hoshino',
     ivory: '.ivory',
     pyra: '.pyra',
-    chiyo: '.chiyo'
+    chiyo: '.chiyo',
+    guren: '.guren'
 };
 
 function safeImageName(name) {

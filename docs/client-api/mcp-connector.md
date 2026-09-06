@@ -303,7 +303,7 @@ Account-based cake tracking for Menma, Hoshino, Ivory, Pyra, Chiyo. All accounts
 - Cleanup: 1 slice per 40 lines or 10KB removed (min 1, cap 16)
 - 1.25x multiplier for `grok.menma` / `Lead` credit
 
-**Accounts:** `menma`, `hoshino`, `ivory`, `pyra`, `chiyo`. Menma's look is locked (breakfast prompts). Other accounts start with their own identity fields. All accounts import to SQLite on first use.
+**Accounts:** `menma`, `hoshino`, `ivory`, `pyra`, `chiyo`, `guren`. Menma's look is locked (breakfast prompts). Other accounts start with their own identity fields. All accounts import to SQLite on first use.
 
 #### Report Issue Module (`sfapp_report_issue`)
 

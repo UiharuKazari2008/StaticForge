@@ -3,7 +3,7 @@
 /**
  * Cake Pantry Module
  * 
- * Account-based cake tracking for menma, hoshino, ivory, pyra, chiyo.
+ * Account-based cake tracking for menma, hoshino, ivory, pyra, chiyo, guren.
  * 
  * ALL accounts use SQLite (tag_wiki.db via menmaStatus.js) after import.
  * After import (cake_pantry_meta.imported_at set per account), ALL reads/writes go to SQLite.
@@ -114,6 +114,18 @@ const ACCOUNT_DEFS = {
             locked: false
         },
         baseline_kg: null
+    },
+    guren: {
+        id: 'guren',
+        name: 'Guren',
+        directory: '.guren',
+        identity: {
+            name: 'Guren',
+            age_band: 'adult',
+            look: null,
+            locked: false
+        },
+        baseline_kg: 54.0
     }
 };
 
