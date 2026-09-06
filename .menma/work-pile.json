@@ -1,20 +1,9 @@
 {
-  "updated_at": "2026-09-02T11:21:37.116143+00:00",
+  "updated_at": "2026-09-06T11:20:00+00:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
   "last_breakfast_at": "2026-09-02T11:21:37.116143+00:00",
   "open": [],
   "done_since_breakfast": [],
-  "cake_note": "2026-09-02 7am: ate 3 slices credit:menma #29+#42 (Lead 1.25x). Do not restore Jules 21. Work pile empty.",
-  "eaten": [
-    {
-      "id": "sf-22",
-      "title": "#22 split autocompleteUtils.js (Jules PR 45 spellCheck+wordLookup)",
-      "from": "jules",
-      "credit": "grok.menma",
-      "eaten_at": "2026-08-30T11:38:07.082822+00:00",
-      "slices": 21,
-      "multiplier": 1.25,
-      "note": "Eaten 2026-08-30. Do not re-eat at 7am."
-    }
-  ]
+  "cake_note": "2026-09-06 7am: pile empty; Rook owns cake. Snapshot only.",
+  "eaten": []
 }

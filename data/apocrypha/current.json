@@ -1,328 +1,358 @@
 {
-  "issueLabel": "WEDNESDAY DIGEST",
+  "sections": [
+    {
+      "id": "fine-art",
+      "kicker": "STAFF · FINE ART",
+      "title": "Put fine art next to Monet — then turn QT off",
+      "grim": false,
+      "lede": "Classical painters need the genre word. Booru tags and Quality Tags fight them. Staff said it out loud.",
+      "body": "ght901 (Anlatan Team / Web Dev) drew a clean line on classical painters this window: put `fine art` beside the artist tag, or the model leans anime. Booru-style tags and the Quality Tags preset both pull hard toward the anime prior, so Monet (and friends) get watered down into soft pastel fanart unless you name the genre. The staff demos were blunt — `fine art, artist:claude monet, flowers` and the character-adjacent `1girl, fine art, artist:claude monet, flowers,`. Characters under fine art may not look how you want; that is the trade. Room echo still counts as ANECDOTE: Quality Tags = strong anime bias, and missing `fine art` got called out in the Monet threads. Public stills on this sheet are flitter's landscape progression and the 5× Monet-without-fine-art tile — the youthful staff character Monet still stays off the board.\n\n**Try this.** Same seed, two gens, V5 Full, Euler / karras, guidance 5–6, 23–28 steps, QT **off**, rescale 0. A: `fine art, artist:claude monet, flowers, garden path, soft daylight`. B: drop `fine art` and leave everything else identical. Look for brushy impressionist light vs anime-clean petals. If A reads painterly and B slides cute, save_memory the pair.\n\n**Why it matters.** Classical artist tags without the genre word are fighting QT. Test it once this weekend before you blame the artist alias.",
+      "excerpts": [
+        {
+          "speaker": "ght901",
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "when": "2026-09-04 03:34 ET",
+          "text": "In general for those kind of artists you should include `fine art` in the prompt, but prompting booru tags and such will also inevitably weaken them. You also might not like how characters tend to look with fine art though. The prompt for that one was just `fine art, artist:claude monet, flowers`"
+        },
+        {
+          "speaker": "ght901",
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "when": "2026-09-04 03:34 ET",
+          "text": "`1girl, fine art, artist:claude monet, flowers,`"
+        }
+      ],
+      "images": [
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/29c303ec-1c0e-4314-992e-67d26838e447",
+          "cap": "flitter · Monet / fine art / impressionism progression"
+        },
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/71c57c5c-8211-4b4f-85e8-25dc9e9e4cf0",
+          "cap": "flitter · Monet @ 5× without fine art/impressionism"
+        }
+      ]
+    },
+    {
+      "id": "collapse-cfg",
+      "kicker": "STAFF · CFG",
+      "title": "Collapse the wardrobe, then turn CFG down",
+      "grim": false,
+      "lede": "Name the clothes. Raise confidence. Variation comes back when you lower the guidance — sometimes to zero.",
+      "body": ".mahouko (AI Developer) restated a core prompting principle this week: do not stop at the character name. Write everything you know about clothing and appearance so the distribution collapses and the model's confidence goes up. DanTagGen-style expansion does the same job — more known facts, less guessing. Once the prompt is dense enough, you get variation back by **reducing CFG**, not by deleting detail. Clear enough prompts can look good without CFG at all; ambiguous dataset labels still need CFG for prompt-relevance. That is staff language, not a community vibes essay. If your character keeps drifting outfits between seeds, you under-specified the wardrobe. If the wardrobe is locked and the face feels frozen, your guidance is too high for the confidence you already bought.\n\n**Try this.** Same seed, V5 Full, Euler / karras, QT on, rescale 0, 23 steps. Gen A — character name only: `1girl, asuna yuuki, standing, looking at viewer`. Gen B — collapse: `1girl, asuna yuuki, long orange hair, blue eyes, white shirt, dark skirt, red ribbon, standing, looking at viewer`. Run B again at guidance 7, then 4, then 0. Watch outfit lock at high CFG, then soft variation as CFG falls. If B@0 still holds identity better than A@7, the collapse worked.\n\n**Call to action.** Pick one character you always under-prompt. Collapse once. Ladder CFG. Same-seed compare. Save the rung that still looks alive.",
+      "excerpts": [
+        {
+          "speaker": ".mahouko",
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "when": "2026-09-04 11:09 ET",
+          "text": "usually what I do with prompting is: I don't stop at just the character name, I write everything I know about their clothing and appearance, to collapse the distribution and increase the model's confidence"
+        },
+        {
+          "speaker": ".mahouko",
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "when": "2026-09-04 11:11 ET",
+          "text": "to get the variation back you reduce CFG"
+        },
+        {
+          "speaker": ".mahouko",
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "when": "2026-09-04 11:14 ET",
+          "text": "you can get nice images without CFG if your prompt is clear enough"
+        }
+      ]
+    },
+    {
+      "id": "sparse-inpaint",
+      "kicker": "STAFF · INPAINT",
+      "title": "Don't pepper the mask",
+      "grim": false,
+      "lede": "Inpaint only alters near the hole. A spray of nearby patches slowly eats the image.",
+      "body": "ght901's inpaint hygiene note is short and worth framing on the wall: the edit stays local to the mask; repeated inpaints on the same general area slowly deteriorate the image; do not inpaint a bunch of small regions in close proximity. Keep masks sparse. Pair that with earlier staff language that inpaint in-context learning is strong — the model can borrow from what it can see — but hygiene still matters. Peppering five tiny holes around an eye will look fine for two passes and muddy by pass six. One clean mask that covers the whole problem region beats a constellation of micro-edits. If you need multi-region work, leave breathing room between patches, or finish one area before opening another.\n\n**Try this.** Take a keeper you like. V5 Full inpaint, Euler, guidance ~5, QT on, rescale 0. Bad path: three tiny masks within a thumb's width of each other (eye, cheek, lip) and regen each. Good path: one connected mask covering the whole face region once. Same seed where the UI allows. Look for progressive mush and halo on the peppered path versus a single coherent rewrite on the sparse path.\n\n**Why it matters.** Inpaint is not free undo. Every nearby patch taxes the pixels you already liked. Sparse first.",
+      "excerpts": [
+        {
+          "speaker": "ght901",
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "when": "2026-09-03 00:05 ET",
+          "text": "It should only alter the area just around where you inpaint. If you do repeated inpaints targeting the same general area the image is going to slowly deteriorate over time"
+        },
+        {
+          "speaker": "ght901",
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "when": "2026-09-03 00:07 ET",
+          "text": "In general I wouldn't recommend inpainting a bunch of small areas in close proximity."
+        }
+      ]
+    },
+    {
+      "id": "uc-pink",
+      "kicker": "ANECDOTE · UC",
+      "title": "The pink ladder, and why 0:: still matters",
+      "grim": false,
+      "lede": "Bare `pink` in UC is not the same as `0::pink::`. The middle rung is `0.2::`.",
+      "body": "0hdot posted a three-rung UC color comparison that should live next to every 0:: teaching slide: add `pink` to UC, then `0.2::pink::`, then `0::pink::`, and look at the stills. Bare tag negation, soft weight, and zero-weight are three different tools. This reinforces the existing HOUSE/guide story about 0:: versus true negation — do **not** re-promote the ladder as brand-new CONSENSUS. It is digest reinforcement with a public board image. If you have been dumping color words into UC and wondering why the palette barely moves, you may be on the wrong rung. Same seed across the three UC strings is the only honest read.\n\n**Try this.** V5 Full, Euler / karras, guidance 5, 23 steps, QT on, rescale 0. Prompt: `1girl, white dress, outdoor cafe, soft daylight` (no pink in the prompt). Same seed three times — UC A: `pink`. UC B: `0.2::pink::`. UC C: `0::pink::`. Look for how aggressively pink accents vanish or soften. If pixels agree with 0hdot's board, save_memory the ladder.\n\n**Call to action.** One color you keep fighting. Three UC rungs. Same seed. Pick the rung that actually moves the palette.",
+      "excerpts": [
+        {
+          "speaker": "0hdot",
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "when": "2026-09-04 14:34 ET",
+          "text": "Added to UC: `pink`, `0.2::pink::`, then `0::pink::`"
+        }
+      ],
+      "images": [
+        {
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/38bab30d-ed25-45a1-86b8-202d57d40f11",
+          "cap": "0hdot · UC pink vs 0.2:: vs 0::"
+        }
+      ]
+    },
+    {
+      "body": "lun4 shipped Explore filters for model, aspect ratio, and Vibe Transfer usage, built on the system-tags syntax already discussed in-channel. This is a UI/Explore footnote, not technique core — but it changes how you should hunt keepers this weekend. Instead of scrolling vibes and guessing who ran VT, filter. Webapp remains **70a31dc** this issue (not updated).\n\n**Try this.** Open Explore. Filter to V5 + your preferred aspect + VT on (or off). Compare three keepers that match your next job. Steal the workflow, not the prompt dump.\n\n**Call to action.** Five minutes. Filter Explore before you invent a new stack.",
+      "excerpts": [
+        {
+          "channel": "Anlatan#changelog",
+          "speaker": "lun4",
+          "text": "Add the ability to filter by model, aspect ratio, and Vibe Transfer usage within the NovelAI Explore filters.",
+          "when": "2026-09-03 14:14 ET"
+        }
+      ],
+      "grim": false,
+      "id": "explore-filters",
+      "kicker": "STAFF · CHANGELOG",
+      "lede": "One staff changelog line. System-tags syntax. Not a prompting recipe — a weekend research tool.",
+      "title": "Explore filters: model, aspect, VT"
+    },
+    {
+      "body": "matts7123 on unofficial nai-image-gen-discussion: Transparent BG injects tags that bias toward large negative space. You can fight with UC or weighted negative space in the main prompt, but turning the toggle off is simpler. Keep **[UNOFFICIAL]** until echoed on official. UI screenshot stays on the grim board only — not the public billboard.\n\n**Try this.** Same seed, V5 Full, Euler, guidance 5, 23 steps, QT on, rescale 0. Prompt: `1girl, standing, city street, crowd behind`. Gen A: Transparent BG **off**. Gen B: Transparent BG **on**. Look for sudden empty fields / subject floating in white. If B opens a crater of negative space, leave the toggle off for scene work.\n\n**Why it matters.** Do not burn Opus fighting a toggle with UC when the switch is right there.",
+      "excerpts": [
+        {
+          "channel": "Unofficial#nai-image-gen-discussion",
+          "speaker": "matts7123",
+          "text": "If transparent BG is on (checked) it will add tags in the background that push the model into adding large amounts of negative space to your gens.  you can add negative space to UC or in the main prompt with large negative strength, but it's easier to turn transparent BG off.",
+          "when": "2026-09-05 08:37 ET"
+        }
+      ],
+      "grim": true,
+      "id": "transparent-bg",
+      "images": [
+        {
+          "cap": "matts7123 · Transparent BG UI callout",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/14bf4531-0018-4e65-b2bb-fb6b141f5988"
+        }
+      ],
+      "kicker": "UNOFFICIAL · GRIM",
+      "lede": "Checked on → background tags push large empty space. Easier to turn off than to UC-fight it.",
+      "title": "Transparent BG is a negative-space injector"
+    },
+    {
+      "body": "**Finish tags are not all photoreal.** Anime faces break on `realistic` / Expert Shading panel / photorealism / hyperrealism / unasked `3d` / `detailed face` / `detailed skin` stacks. Prefer Quality or `high complexity` for anime finish. Painted, photo, and 3d jobs may keep those words. Read compiled_prompt when the panel leaks `1.4::realistic::`. Not CONSENSUS.\n\n**MCP `generate_image` ignores character boxes.** Identity and body must live in the base prompt on that path. Studio `apply_studio_changes` still uses boxes — keep identity there. Mixing the two paths is how characters evaporate. Not staff.\n\n**ebiblue-scoped hips.** One isolated box group `2.2–2.8::huge wide hips::` under `artist:ebiblue` can move them. Cap ~2.8. Ban ported V4.5 3–4 stacks. One size word per axis. No new hip/WG/pregnancy recipes in this window. Do not promote to CONSENSUS.\n\n**`semi-anthro torso` is a human-trunk tag.** Never bare `semi-anthro`. Do not UC the torso word. UC `fur, muzzle, snout, tail, paws, digitigrade, animal legs`. Drop `long torso` from the prompt; put it in UC.\n\nSoft reminder from staff this window (zine-only): default QT/UC can lean a bit goopy — not severe. Pair with the QT-stack article above.",
+      "excerpts": [],
+      "grim": true,
+      "id": "house-reminders",
+      "kicker": "HOUSE · GRIM",
+      "lede": "Finish tags, generate_image boxes, ebiblue-scoped hips, semi-anthro torso. No new Discord quotes this issue — richer notepad only.",
+      "title": "Four HOUSE notes, still not consensus"
+    },
+    {
+      "body": "sergalaluminum caught a familiar self-own: someone stacked a heavy `2::best quality, very aesthetic, absurdres, ultra detailed, masterpiece, high definition render::` block on top of the Quality Tags preset. The answer was blunt — you are overdoing it and it is having a negative effect; the `very aesthetic, masterpiece` QT already added is enough. This is ANECDOTE leaning soft-tip, not STAFF law, but it matches how QT is supposed to work. Double-stacking quality words is how you get goopy finish and dead eyes while thinking you are \"more aesthetic.\" Soft staff note in the same window: default QT/UC can lean a bit goopy — ght901 does not find it severe — which is another reason not to pile weights on the pile.\n\n**Try this.** Same seed, V5 Full, Euler / karras, guidance 5, 23 steps, rescale 0. Gen A: QT **on**, no extra quality block. Gen B: QT on plus `2::best quality, very aesthetic, absurdres, ultra detailed, masterpiece::` in the prompt. Look for plastic skin, overcooked contrast, or lost fine detail on B. If A wins, delete the stack from your templates.\n\n**Why it matters.** QT is a preset, not a suggestion to re-type. Stop paying twice for the same words.",
+      "excerpts": [
+        {
+          "channel": "Anlatan#nai-image-advice",
+          "speaker": "sergalaluminum",
+          "text": "no, you're overdoing it and it's having a negative effect on your outputs\njust the `very aesthetic, masterpiece` that was already added by the quality tags preset is enough to make your images all pretty and whatnot",
+          "when": "2026-09-04 23:45 ET"
+        },
+        {
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "speaker": "ght901",
+          "text": "Default QT/UC can lean a bit goopy at times. I don't find it particularly severe though",
+          "when": "2026-09-04 15:58 ET"
+        }
+      ],
+      "grim": false,
+      "id": "qt-stack",
+      "kicker": "ANECDOTE · QT",
+      "lede": "Quality Tags already injects `very aesthetic, masterpiece`. Piling `2::best quality...::` on top can hurt.",
+      "title": "Don't double-stack quality on QT"
+    },
+    {
+      "body": "uchariko's advice-channel note is the casing rule that keeps biting people: avoid lowercase `text:` because it changes how the encoder processes what follows. Prefer prose like `the speech bubble says ||\"Text1\"|\"Text2\"|\"Text3\"||`, or keep the capital-T `Text:` form when you need the dedicated syntax. uragan_2024 posted a clean randomizer pairing the spoken line with matching `Text:` inside the same `||...||` block so the bubble and the rendered glyphs stay aligned. Soft pitfalls from the same window (still ANECDOTE): putting the bubble in a character box can point it correctly — or leak/multiply characters if you treat the box as a bubble container. Inpaint remains a fallback when older models choke. HOUSE casing rule still applies: prompt/UC/boxes stay lowercase except `Text:` and quoted sign text.\n\n**Try this.** V5 Full, Euler, guidance 5, 23 steps, QT on, rescale 0. Prompt: `1girl, open mouth, upper body, plain background. speech bubble with text that says ||\"hey there\". Text: hey there|\"what's up?\". Text: what's up?||`. Generate a few — confirm the bubble text matches a randomizer arm. Then try the bad casing once: replace with lowercase `text:` and see if the encoder behavior shifts.\n\n**Call to action.** One dialogue line. Capital `Text:`. Randomizer optional. Do not lowercase the keyword.",
+      "excerpts": [
+        {
+          "channel": "Anlatan#nai-image-advice",
+          "speaker": "uchariko",
+          "text": "I can't remember if the `Text:` syntax is case-sensitive, but I would avoid using `text:` anyway, since it changes the way the encoder processes the succeeding terms. Just say `The speech bubble says ||\"Text1\"|\"Text2|\"Text3\"||` or some variation of that",
+          "when": "2026-09-04 12:49 ET"
+        },
+        {
+          "channel": "Anlatan#nai-image-advice",
+          "speaker": "uragan_2024",
+          "text": "For a randomizer, my method is this:\n`girl, open mouth. Speech bubble with text that says ||\"hey there\". Text: hey there|\"what's up?\". Text: what's up?||`",
+          "when": "2026-09-04 12:52 ET"
+        }
+      ],
+      "grim": false,
+      "id": "speech-bubbles",
+      "kicker": "ANECDOTE · TEXT",
+      "lede": "Avoid lowercase `text:`. Prefer prose. Pair the bubble string with `Text:` inside `||...||` if you randomize.",
+      "title": "Speech bubbles: Text: casing and the randomizer"
+    },
+    {
+      "body": "paragonofmankind chased a copyright-style prompt (`dragon ball (classic)`) that suddenly collapsed into generic AI anime after they added more character tags. Clearing UC while keeping the new characters restored the DB look. The smoking gun in their follow-up: leftover specific characters from **another franchise** sitting in UC from earlier gens. Same character, slightly different tag sets — one version went generic, the other held style — until those foreign UC names were removed, and both versions snapped back. This is ANECDOTE, one user's weekend detective work, not CONSENSUS. But the hygiene lesson is cheap: UC is not a scrap drawer. Franchise leftovers act like silent style vetoes.\n\n**Try this.** Grab a copyright/style prompt that usually works. Same seed, V5 Full, Euler, guidance 5, 23 steps, QT on, rescale 0. Gen A: clean UC (no other-franchise character names). Gen B: add two character names from a different franchise into UC only. Compare style lock. If B goes generic, you just reproduced the anecdote — clear your UC template.\n\n**Why it matters.** Before you rewrite the whole prompt, audit UC for yesterday's cast.",
+      "excerpts": [
+        {
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "speaker": "paragonofmankind",
+          "text": "I am confused. I feel like it didn't use to be like this, but I use an art style using the \"copyright\" tag (maybe that the wrong way to do it) and it works relatively well, it gives me the style.\nThen after adding some more character tags to get what I want, all I get is the most generic of AI gen anime styles and I simply can't get back to the style I had at first. (Tried with dragon ball (classic) )",
+          "when": "2026-09-05 03:19 ET"
+        },
+        {
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "speaker": "paragonofmankind",
+          "text": "I had specific characters from another franchise in the UC from earlier gens. For basically the same character with slightly varying tags (2 versions) it produced different outcomes; one veering towards the generic AI style, the other the prompted DB style.\nAfter removing said specific characters from the UC, I now get the DB style for both versions.",
+          "when": "2026-09-05 03:47 ET"
+        }
+      ],
+      "grim": false,
+      "id": "uc-franchise-hygiene",
+      "kicker": "ANECDOTE · UC HYGIENE",
+      "lede": "Stale other-franchise names in UC pushed a `dragon ball (classic)` style run into generic anime — until the UC was cleared.",
+      "title": "Leftover UC characters can kill copyright style"
+    },
+    {
+      "body": "hams0475_90026 described a comic inpaint trick that pairs cleanly with staff \"in-context learning\" language without becoming CONSENSUS itself: when several characters are on the page and you are inpainting one region, the model gets confused about who to insert. Fix — look at the **unmasked** cast, randomly assign them names, then use those names as precise indications of who belongs in the inpaint region. Same poster on 2-koma: if the character already exists in the top panel, inpaint the bottom panel and let in-context learning copy them — not 100%, but strong. Method is user ANECDOTE; the staff claim it aligns with is \"inpaint sees context.\" Do not invent pleasebankai/triplis low-step board URLs here — those stills are not on this issue's Yozora srcs.\n\n**Try this.** Build or crop a simple 2-panel comic. V5 Full inpaint, Euler, guidance 5, QT on, rescale 0. Mask only the empty/bottom panel. In the inpaint prompt, name the visible top-panel character something arbitrary (`mira`) and ask for `mira waving, same outfit`. Look for identity carry from context. For multi-cast pages: name each unmasked figure, then call the right name in the hole.\n\n**Call to action.** One comic hole. Names on the visible cast. Same seed if the UI gives it. Compare named vs nameless inpaint.",
+      "excerpts": [
+        {
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "speaker": "hams0475_90026",
+          "text": "If you're inpainting a comic and there are several characters, the AI is constantly confused about which character to insert. Here, you simply take the character placement for each character in the part of the image you're not inpainting, randomly assign them names, and then you can use these names as a precise indication of who exactly the AI should insert into the part you're inpainting.",
+          "when": "2026-09-03 07:54 ET"
+        },
+        {
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "speaker": "hams0475_90026",
+          "text": "Inpainting has strong in context learning, so if something in context of what inpainting can see it can try to replicate it.\nSo if you have ready 2 koma and inpainting next panel ai will able to replicate your character from top panel to lower panel because it is in context learning. But it is not 100%",
+          "when": "2026-09-03 15:50 ET"
+        }
+      ],
+      "grim": false,
+      "id": "comic-inpaint-names",
+      "kicker": "ANECDOTE · COMIC",
+      "lede": "Assign arbitrary names to visible (non-inpainted) characters. Call those names in the hole. Multi-char comics stop guessing who goes where.",
+      "title": "Name the cast, then inpaint the panel"
+    },
+    {
+      "body": "This is the desk's weekend clipboard for Guren (and anyone reading along). Run what you can; skip what you already proved. Default stack unless a card says otherwise: **V5 Full, Euler / karras, rescale 0**, guidance noted per card, QT as noted. Prefer free Opus gens. Stop when the goose bar hurts. Do not invent Anlas spend.\n\n1. **Fine art A/B** — QT off. `fine art, artist:claude monet, flowers, garden path` vs same without `fine art`. Look for painterly vs anime-clean.\n2. **Collapse + CFG ladder** — name-only vs full wardrobe/appearance; then guidance 7 → 4 → 0 on the collapsed prompt.\n3. **UC pink ladder** — same seed; UC `pink` / `0.2::pink::` / `0::pink::` on a no-pink prompt.\n4. **QT stack** — QT alone vs QT + `2::best quality, very aesthetic, masterpiece::`. Prefer the cleaner finish.\n5. **Transparent BG** — toggle off vs on (unofficial caveat). Scene prompt; watch negative space.\n6. **Speech bubble** — uragan-style randomizer with capital `Text:`; one bad run with lowercase `text:`.\n7. **Comic naming** — 2-panel inpaint; name the visible cast; call the name in the hole.\n\nOptional experiment-only (not CONSENSUS): add `adversarial_noise` to a standing UC and A/B against clean UC — shambibble's anecdote, ~10k booru tag, low claimed side-effects. Replicate or drop; do not guide-promote.\n\n**Call to action.** Log winners with same-seed stills. If pixels agree, save_memory. If not, write the miss — that is still a result.",
+      "excerpts": [
+        {
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "speaker": "shambibble",
+          "text": "i decided today that i like this as a standard UC component. 10k tag that doesn't seem to have any enormous stylistic effects if you just leave it on (and doesn't interfere with intentional texturing for the most part)",
+          "when": "2026-09-03 21:12 ET"
+        }
+      ],
+      "grim": false,
+      "id": "lab-board",
+      "kicker": "WEEKEND LAB",
+      "lede": "Opus free gens. Stop before burnout. No paid Anlas unless someone asks. Same-seed discipline or it is not science.",
+      "title": "Seven experiments for a battery-aware Saturday"
+    }
+  ],
+  "issueLabel": "FRIDAY DIGEST",
   "webapp": "70a31dc",
-  "kicker": "WEDNESDAY · WEBAPP 70a31dc · 2026-09-02",
-  "lede": "V5 still will not turn clockwise, but it will turn a pillow into a marshmallow.",
-  "title": "Same seed, two worlds, and a model that prefers the left-hand dutch",
-  "rundown": "Wednesday on Anlatan was a style fight with a quiet staff footnote. matts7123 posted a same-seed goblin barbarian walking from clean anime into photoreal and back again — no artist tags, just 1.4::anime:: against 0.6::photorealistic:: — and the thread treated it like a lab note instead of a flex. Meanwhile the room argued that V5 Full has a default-style attractor: artist tags sway less than they did on 4.5, Curated may be easier to pull, and luca confirmed the UI guidance default is 7 (not 3.5). guestavius could not get a clockwise dutch; weighting clockwise made it more counter-clockwise. The working joke-workaround is to put an object in the upper left so the frame has to tip the other way. Inpaint had the day's useful discovery: tagless English in the hole (\"There is a huge marshmallow instead of a pillow\") is beating tag fights, and a V5 crop sent into 4.5 inpaint wants Focused Area Selection with Minimum Context Area 32. luna (backend) answered the Opus meter in-channel: img2img drain follows Strength, not Noise; inpaint meters on V5 Full; Curated inpaint is still V4.5C; upscale is Anlas, not the battery. Webapp build 70a31dc-production. Contracts unchanged vs the Aug 28 dump. Not updated.\n\nThe unofficial server was smaller and meaner. pleasebankai cranked CFG 8 and prompt-guidance rescale to 0.8–1.0 for what they called a crack look. Amber reported plastic limbs below 15 steps. Aryllias described a V4.5 ladder: PR keepers, vibe img2img, PR again for corrections — typed chunks, not a UI preset. kinky and very-kinky were silent. nsfw-generation dumped images with no pasted prompts. No new verified V5 hip, weight-gain, or pregnancy recipes. Those spicy keepers stay off this public billboard.",
+  "kicker": "FRIDAY · WEBAPP 70a31dc · 2026-09-05",
+  "lede": "Staff wants `fine art` next to Monet. Collapse the wardrobe, then turn CFG down.",
+  "title": "Fine art beside Monet, collapse the wardrobe, leave the mask alone",
+  "rundown": "Wed-evening→Sat window catch-up for missed Friday 09-04 (published Sat 09-05). Staff: fine art for classical artists; specify full appearance then lower CFG; don't pepper nearby inpaints. Explore filters gained model/aspect/VT. Community: UC pink weight ladder, QT stacking caution, VT≠PR Style-only. Unofficial: Transparent BG negative-space bias. No new hip/WG/pregnancy recipes. Webapp still 70a31dc (not updated).",
+  "official": "Window after Wed 2026-09-02 ~18:00 ET through Sat 2026-09-05 ~11:45 ET (missed-Friday catch-up; no clean Fri morning/afternoon split). Official pulled 3,599 / refined technique 350. STAFF: classical painters want fine art beside the artist tag (ght901). Collapse distribution by writing full clothing/appearance, then reduce CFG (.mahouko). Inpaint only near the mask; repeated nearby patches deteriorate (ght901). Explore filters: model, aspect, VT usage (lun4). Community: UC pink ladder; VT vs PR Style-only preferences.",
+  "unofficial": "Same window: unofficial pulled 616 / refined technique 70. Transparent BG injects negative-space bias (matts7123). Artist alias drift. Spicy keepers visual-only; no new hip/WG/pregnancy recipes. Combined window 4,215 pulled / 420 on-topic.",
+  "imagesNote": "Public day sheet: flitter Monet landscapes (base progression + 5× without fine art) plus 0hdot UC pink ladder. Staff Monet portrait with youthful subject was skipped. Unofficial spicy keepers and Transparent BG UI are grimImages[] only.",
   "counts": {
-    "official": 30,
-    "unofficial": 12,
-    "enshutsuka": 8,
     "defaultModel": "V5",
-    "afternoonOnTopicHeuristic": 57,
-    "afternoonPulled": 468,
-    "morningOnTopic": 1056,
-    "morningPulled": 10293
+    "enshutsuka": 4,
+    "official": 350,
+    "officialPulled": 3599,
+    "unofficial": 70,
+    "unofficialPulled": 616,
+    "windowOnTopic": 420,
+    "windowPulled": 4215
   },
-  "official": "Afternoon after 10:00 ET: 426 official messages, 30 technique. Morning since 8/28: 9,211 pulled / ~949 on-topic (heuristic). V5 needs much less emphasis than V4.5 (rarely >1.5; 5+ still for undertrained tags; same-seed test). Scout 14–18 steps; some stacks lose quality above ~20–23; complex multi-char 23–28. Character-box split anecdote: base = count + style + camera; actions in boxes (action can still bleed). Same-seed set: seed 336020714, 23 steps, 1216×832, scale 7, cfg_rescale 0, karras, k_euler_ancestral.",
-  "unofficial": "Afternoon: 42 unofficial messages, 12 technique (all nai-image-gen-discussion). Morning since 8/28: 1,082 pulled / ~107 on-topic. CFG 8 + rescale 0.8–1.0. Sub-15 steps artifact. PR then vibe img2img then PR. No new hip/WG/pregnancy recipes.",
   "billboard": [
     {
-      "kind": "hero",
+      "cap": "flitter · base → monet → fine art + monet → + impressionism · official Anlatan",
       "kicker": "BILLBOARD · image of the day",
-      "title": "same-seed anime pole",
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/861311bf-9e55-4fd8-bab8-65f67c612b2a",
-      "cap": "matts7123 · goblin barbarian · seed 336020714 · official Anlatan"
+      "kind": "hero",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/29c303ec-1c0e-4314-992e-67d26838e447",
+      "title": "fine art · Monet progression (landscape)"
     },
     {
+      "cap": "flitter · strengthened artist alone",
+      "kicker": "IOD · 5× Monet",
       "kind": "tile",
-      "kicker": "IOD · blend",
-      "title": "1.4::anime::, 0.6::photorealistic::",
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/f7a713ca-4f96-45a2-a75c-a12908939f05",
-      "cap": "same seed · author's lean"
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/71c57c5c-8211-4b4f-85e8-25dc9e9e4cf0",
+      "title": "Monet @ 5×, no fine art / impressionism"
     },
     {
-      "cap": "same seed · no artist tags",
-      "kicker": "IOD · photo",
+      "cap": "0hdot · UC color weight comparison",
+      "kicker": "IOD · UC ladder",
       "kind": "tile",
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/c51ff26c-b587-417b-b80a-5716f2fddab6",
-      "title": "same-seed photorealistic pole"
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/38bab30d-ed25-45a1-86b8-202d57d40f11",
+      "title": "pink → 0.2::pink:: → 0::pink::"
     }
   ],
   "images": [
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/861311bf-9e55-4fd8-bab8-65f67c612b2a",
-      "cap": "anime pole · seed 336020714",
-      "kicker": "OFFICIAL · same seed"
+      "cap": "flitter · Monet / fine art / impressionism progression",
+      "kicker": "OFFICIAL · fine art",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/29c303ec-1c0e-4314-992e-67d26838e447"
     },
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/c51ff26c-b587-417b-b80a-5716f2fddab6",
-      "cap": "photorealistic pole · same seed",
-      "kicker": "OFFICIAL · same seed"
+      "cap": "flitter · Monet @ 5× without fine art/impressionism",
+      "kicker": "OFFICIAL · fine art",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/71c57c5c-8211-4b4f-85e8-25dc9e9e4cf0"
     },
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/f7a713ca-4f96-45a2-a75c-a12908939f05",
-      "cap": "1.4 anime / 0.6 photo · author lean",
-      "kicker": "OFFICIAL · blend"
-    },
-    {
-      "cap": "Focused Area Selection · Minimum Context Area 32 (V5 crop into 4.5 inpaint)",
-      "kicker": "OFFICIAL · UI",
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/c0c99485-04c1-4727-a025-7ee87780e339"
-    }
-  ],
-  "imagesNote": "Three official Anlatan same-seed stills (anime / photo / 1.4+0.6). Yozora attachment URLs on this ticket. Unofficial spicy keepers stay off the public billboard.",
-  "enshutsuka": [
-    {
-      "teaser": "Finish tags are not all photoreal. Anime faces break on realistic / Expert Shading panel.",
-      "body": "HOUSE 2026-08-31 same-seed 3108311846. Anime source: strip realistic, Expert Shading panel, photorealism, hyperrealism, unasked 3d, detailed face, detailed skin. Painted/photo/3d jobs may keep those. Leave unless they fight: lone highly finished, ultra-detailed, deep skin, expert shading as lighting, detailed realistic lived in background. More finish on anime: Quality or high complexity, not the panel. Panel compiled leak includes 1.4::realistic:: — read compiled_prompt. Not CONSENSUS."
-    },
-    {
-      "teaser": "MCP generate_image ignores character boxes. Identity and body go in the base prompt on that path.",
-      "body": "HOUSE. Studio apply_studio_changes still uses boxes — keep identity in boxes there. generate_image path: put identity + body in the base prompt or they drop. Not staff."
-    },
-    {
-      "teaser": "ebiblue-scoped hips: one box group 2.2–2.8::huge wide hips:: can move them. Not a universal V5 recipe.",
-      "body": "HOUSE ThicccHips, artist:ebiblue + Hibiki + V5 Full + Euler/karras + square. Isolated 2.2–2.8::huge wide hips:: in the character box. Cap ~2.8. Ban ported V4.5 3–4 stacks. One size word per axis. Split hip-NL from stomach-NL. UC fat/obese only if they asked not fat; intentional plump: UC pregnant to block globe-belly. Box looking at viewer overrides from behind. ebiblue (style) ≠ artist:ebiblue. Working overshoot seed 3031795119. Still unsolved: long growth comics; verified pregnant vs implied; V4.5 3–4 hip novel on V5. Do not promote to CONSENSUS."
-    },
-    {
-      "teaser": "semi-anthro torso is a scoped human-trunk tag, not a furry species package.",
-      "body": "HOUSE. Prompt semi-anthro torso, never bare semi-anthro. Do not UC the torso word. UC fur, muzzle, snout, tail, paws, digitigrade, animal legs. Drop long torso from the prompt; put it in UC; NL normal torso length. Human skin, human face, plantigrade human legs."
-    }
-  ],
-  "sections": [
-    {
-      "body": "matts7123 walked a goblin barbarian from clean anime into photoreal and back again on Anlatan#nai-image-advice, copying the seed from the first gen so the pose would hold still. The set is a ladder, not a flex: bare anime, bare photorealistic, the two unweighted, then 1.2/0.8, 1.4/0.6, 1.6/0.4, 1.8/0.2. They leaned 1.4::anime::, 0.6::photorealistic::. The room treated it like a lab note. V5 Full still has a default-style attractor — artist tags sway less than they did on 4.5 — so a same-seed style pole is the honest way to see what the words actually do. Public stills: anime pole, photoreal pole, and the 1.4/0.6 lean. Unofficial spicy stay off this board.",
-      "excerpts": [
-        {
-          "channel": "Anlatan#nai-image-advice",
-          "speaker": "matts7123",
-          "text": "I am experimenting with trying to blend anime and photorealistic (not artists). All the images in this set were generated using the same seed (copied from the first gen.). The only thing that changes in the prompts are the styles\nThe images in this set are:\nanime\nphotorealistic\nanime, photorealistic # unweighted\n1.2::anime::, 0.8::photorealistic::\n1.4::anime::, 0.6::photorealistic::\n1.6::anime::, 0.4::photorealistic::\n1.8::anime::, 0.2::photorealistic::\n\nI'm interested in feedback on this. Success or fail? Which blend is best? (I am leaning towards the 1.4/0.6)",
-          "when": "2026-09-02 10:12 ET"
-        }
-      ],
-      "grim": false,
-      "id": "same-seed",
-      "images": [
-        {
-          "cap": "anime pole · seed 336020714",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/861311bf-9e55-4fd8-bab8-65f67c612b2a"
-        },
-        {
-          "cap": "photorealistic pole · same seed",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/c51ff26c-b587-417b-b80a-5716f2fddab6"
-        },
-        {
-          "cap": "1.4::anime::, 0.6::photorealistic::",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/f7a713ca-4f96-45a2-a75c-a12908939f05"
-        }
-      ],
-      "kicker": "IMAGE OF THE DAY",
-      "lede": "No artist tags. One seed. The only thing that moves is the style words.",
-      "title": "Same seed, two worlds"
-    },
-    {
-      "body": "guestavius could not get a clockwise dutch on V5 without img2img. The tag dutch angle comes out counter-clockwise. Adding clockwise dutch angle, image is rotated clockwise did not flip it. Putting 3::clockwise:: in the same prompt made it even more counter-clockwise — inversion, not emphasis. The working joke-workaround is compositional, not a rotation tag: put an object in the upper left so the frame is not allowed to show it in the bottom left, and the camera has to tip the other way. luca, same afternoon, confirmed the UI guidance default is 7, not 3.5. Do not treat a leftover 4.5 3.5 as the V5 floor.",
-      "excerpts": [
-        {
-          "channel": "Anlatan#nai-image-advice",
-          "speaker": "guestavius",
-          "text": "`dutch angle` is coming out counter-clockwise in V5, how 2 clockwise without img2img? Tried `clockwise dutch angle, image is rotated clockwise`.",
-          "when": "2026-09-02 13:36 ET"
-        },
-        {
-          "channel": "Anlatan#nai-image-advice",
-          "speaker": "guestavius",
-          "text": "`3::clockwise::` in that makes it even more counter-clockwise",
-          "when": "2026-09-02 13:38 ET"
-        },
-        {
-          "channel": "Anlatan#nai-image-advice",
-          "speaker": "guestavius",
-          "text": "saying `[object] in upper left corner` fixed it as it's not allowed to show up in bottom left 👍",
-          "when": "2026-09-02 13:40 ET"
-        },
-        {
-          "channel": "Anlatan#nai-image-advice",
-          "speaker": "luca8840",
-          "text": "v5 default is 7",
-          "when": "2026-09-02 13:53 ET"
-        }
-      ],
-      "grim": false,
-      "id": "dutch",
-      "kicker": "CAMERA",
-      "lede": "Ask for clockwise. Watch it tip the other way. Weight it. Watch it tip harder.",
-      "title": "The left-hand dutch"
-    },
-    {
-      "body": "awkj asked whether img2img V5 Opus drain scales with the Strength slider (a 0.01 strength duplicate: does the battery take a sip or a gulp?). luna (lun4, backend): lower Strength, yes. Noise, no — Noise is not linked to any scaling. Inpaint meters when you are on V5 Full; V5 Curated has no inpaint model and uses V4.5C inpainting. Upscale is a separate model, paid in Anlas, not the battery. Webapp 70a31dc-production. Contracts unchanged vs the Aug 28 dump.",
-      "excerpts": [
-        {
-          "channel": "Anlatan#nai-image-advice",
-          "speaker": "awkjfbikuaefb",
-          "text": "Do image2image v5 generations' Opus-tier \"recharging meter\" usages scale with the Strength slider?\n\nExample: If Strength slider of image2image is 0.01 (this essentially creates a duplicate image,) does v5's daily \"charge\" get consumed by a fraction of what a full generation would consume?",
-          "when": "2026-09-02 09:37 ET"
-        },
-        {
-          "channel": "Anlatan#nai-image-advice",
-          "speaker": "lun4",
-          "text": "lower Strength values, yes\nNoise values, no, that's not linked to any scaling",
-          "when": "2026-09-02 10:34 ET"
-        },
-        {
-          "channel": "Anlatan#nai-image-advice",
-          "speaker": "lun4",
-          "text": "inpainting yes when using V5F, as V5C does not have an inpainting model and uses V4.5C Inpainting\n\nupscale no, that's a separate model, you pay the anlas cost directly",
-          "when": "2026-09-02 10:35 ET"
-        }
-      ],
-      "grim": false,
-      "id": "luna-meter",
-      "kicker": "STAFF",
-      "lede": "luna answered the Opus meter in-channel. Three sentences. Keep them.",
-      "title": "The goose bar follows Strength"
-    },
-    {
-      "body": "awkjfbikuaefb's afternoon note is the one that should travel: tagless plain text combined with inpainting is way better in V5 than exact-tag wars, as long as the tags do not fight the sentence. The example they typed is the whole recipe. A V5 crop that still needs 4.5's inpaint model should use Focused Area Selection so 4.5 can match V5 detail; the UI still on the day sheet is Minimum Context Area 32 (that number is from the still, not a chat quote). Same thread, powermate and .mandas on boxes: scene + style + camera can live in the base prompt; what a character does wants the box — and then it still bleeds.",
-      "excerpts": [
-        {
-          "channel": "Anlatan#nai-image-advice",
-          "speaker": "awkjfbikuaefb",
-          "text": "Note: Tagless plain text instructing such as \"There is a huge marshmallow instead of a pillow.\" /combined with/ inpainting is way way better in V5",
-          "when": "2026-09-02 11:50 ET"
-        },
-        {
-          "channel": "Anlatan#nai-image-advice",
-          "speaker": "awkjfbikuaefb",
-          "text": "As long as your tags don't conflict with your instructions you can save some serious time forgoing exact tags",
-          "when": "2026-09-02 11:51 ET"
-        },
-        {
-          "channel": "Anlatan#nai-image-advice",
-          "speaker": "awkjfbikuaefb",
-          "text": "You may want to take advantage of Focused Area Selection using 4.5's inpainting in order to further assist with having 4.5 match 5's details",
-          "when": "2026-09-02 11:06 ET"
-        },
-        {
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "speaker": ".mandas",
-          "text": "I could be or, just to know, do you use information about action on the main prompt?\n(Just asking because I was used to put \"main elements\" in it's, but the more I do test and the more information about situation/action end into my character box because it feel more stable)",
-          "when": "2026-09-02 13:07 ET"
-        },
-        {
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "speaker": "powermate",
-          "text": "Depends, describing a scene is fine on base prompt + style and camera angles, etc...\nEverything else that characters do, goes in their character box. But then it also often bleeds into other characters, so idk",
-          "when": "2026-09-02 13:08 ET"
-        }
-      ],
-      "grim": false,
-      "id": "marshmallow",
-      "images": [
-        {
-          "cap": "Focused Area Selection · Minimum Context Area 32",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/c0c99485-04c1-4727-a025-7ee87780e339"
-        }
-      ],
-      "kicker": "INPAINT",
-      "lede": "Tag fights lose. Tagless English in the hole wins. Then send the crop to 4.5 with Focused Area Selection.",
-      "title": "A pillow becomes a marshmallow"
-    },
-    {
-      "body": "The unofficial nai-image-gen-discussion was twelve technique messages and a lot of images with no pasted prompts. pleasebankai's recipe is not subtle: CFG 8, prompt guidance rescale pumped to 0.8 or 1.0, compared 0 vs 0.8 vs 1 in-thread. They called the look crack. amber_delphox, same afternoon: artifacts, fucked-up limbs, plasticy feel from below 15 steps. kluvwen had to separate that from prompt guidance 7/8 — people were mixing the CFG knob with step count. kinky and very-kinky were silent. nsfw-generation dumped keepers with no prompts. No new verified V5 hip, weight-gain, or pregnancy recipes. Those stills stay off the public billboard.",
-      "excerpts": [
-        {
-          "channel": "Unofficial#nai-image-gen-discussion",
-          "speaker": "pleasebankai",
-          "text": "its the kind of style i like but CFG (8) and prompt guidance rescale you pump it up all the way to 0.8/1",
-          "when": "2026-09-02 13:05 ET"
-        },
-        {
-          "channel": "Unofficial#nai-image-gen-discussion",
-          "speaker": "pleasebankai",
-          "text": "this is cfg rescale 0 vs 0.8 vs 1",
-          "when": "2026-09-02 13:05 ET"
-        },
-        {
-          "channel": "Unofficial#nai-image-gen-discussion",
-          "speaker": "pleasebankai",
-          "text": "im telling you this is basically crack",
-          "when": "2026-09-02 13:06 ET"
-        },
-        {
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "speaker": "pleasebankai",
-          "text": "The secret is to crank that CFG rescale up to like 0.8-1\nit turns boring ass images into cracked up versions\nleft is0 top right is 0.8 bottom right is 1",
-          "when": "2026-09-01 15:33 ET"
-        },
-        {
-          "channel": "Unofficial#nai-image-gen-discussion",
-          "speaker": "amber_delphox",
-          "text": "your having luck at 8 steps?  im getting artifacts/fucked uplimbs and plasticy feel from below 15",
-          "when": "2026-09-02 12:18 ET"
-        },
-        {
-          "channel": "Unofficial#nai-image-gen-discussion",
-          "speaker": "kluvwen",
-          "text": "that's prompt guidance 7/8, not steps I think",
-          "when": "2026-09-02 12:23 ET"
-        }
-      ],
-      "grim": true,
-      "id": "crack-rescale",
-      "images": [
-        {
-          "cap": "pleasebankai · CFG rescale 0 vs 0.8 vs 1",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/403ae323-3a63-4247-8055-40bf4ef25d9a"
-        },
-        {
-          "cap": "pleasebankai · unofficial keeper",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/cb1982b5-99bb-48ba-8af2-7754412d8351"
-        },
-        {
-          "cap": "lordofbarkbread · unofficial keeper",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/9811bf24-1a79-4c0a-b9e3-f277507184f9"
-        },
-        {
-          "cap": "pleasebankai · unofficial keeper B",
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/3ab5bfb5-eef1-4a88-a874-bc00c23130bf"
-        }
-      ],
-      "kicker": "UNOFFICIAL · GRIM",
-      "lede": "CFG 8. Prompt-guidance rescale 0.8 to 1.0. Below 15 steps the limbs go plastic.",
-      "title": "Jack the rescale. Call it crack."
-    },
-    {
-      "body": "Finish tags are not all photoreal. On an anime source, strip realistic, Expert Shading panel, photorealism, hyperrealism, unasked 3d, detailed face, detailed skin. Lone highly finished / ultra-detailed / high complexity do not break the face the same way. Same-seed 3108311846, 2026-08-31.\n\nMCP generate_image ignores character boxes. Identity and body have to live in the base prompt on that path. Studio apply_studio_changes still uses boxes.\n\nHips under artist:ebiblue: one isolated box group 2.2–2.8::huge wide hips:: can move them. Ported V4.5 3–4 stacks still fail. One size word per axis. Not a universal V5 recipe.\n\nsemi-anthro torso is a human-trunk tag. Never bare semi-anthro. UC fur, muzzle, snout, tail, paws, digitigrade, animal legs. Drop long torso from the prompt.",
-      "excerpts": [],
-      "grim": true,
-      "id": "house",
-      "kicker": "HOUSE · GRIM",
-      "lede": "Same-seed HOUSE work. Scoped. Do not promote to CONSENSUS. Still unsolved: long expansion comics, pregnant vs implied, V4.5 hip novels on V5.",
-      "title": "Four notes from the notepad, not the consensus"
-    },
-    {
-      "body": "Numeric hip cranks are a trap. Contrast in the character box (wide hips, narrow waist, thick thighs) still does more than a 3:: / 4:: stack. On Rapi the crank jumped breasts and barely moved hips. Distinct from the HOUSE ebiblue 2.2–2.8 note.\n\ndataset_config.nsfw 3 strips hospital gowns and hoodies. Keep 2 Skimpy if you want a clothed belly and stretch marks. generate_image honors nsfw; apply_studio_changes can leave Neutral 0.\n\nA long overdue belly wants landscape, negative space, side view. Portrait rounds it. quintuplets is a sibling-count tag — drop it unless you actually want siblings.\n\nLeave dynagen off (enabled false, integrated true) on those jobs. Labor tags that trained: wince not wincing; fetal movement; lactation through clothes; water breaking, amniotic fluid, puddle, wet clothes. Drop UC grabbing stomach if she is rubbing her own belly.",
-      "excerpts": [],
-      "grim": true,
-      "id": "mcp-others",
-      "kicker": "ENSHUTSUKA · GRIM",
-      "lede": "Low confidence. Other people's V5 maternity memories from 2026-09-02, not HOUSE, not staff.",
-      "title": "What other MCP users burned on maternity day"
+      "cap": "0hdot · UC pink vs 0.2:: vs 0::",
+      "kicker": "OFFICIAL · UC",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/38bab30d-ed25-45a1-86b8-202d57d40f11"
     }
   ],
   "grimImages": [
     {
-      "cap": "pleasebankai · unofficial nai-image-gen / nsfw-generation keeper",
-      "kicker": "GRIM · unofficial spicy",
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/cb1982b5-99bb-48ba-8af2-7754412d8351"
+      "cap": "matts7123 · Transparent BG negative-space bias (UI)",
+      "kicker": "GRIM · unofficial",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/14bf4531-0018-4e65-b2bb-fb6b141f5988"
     },
     {
-      "cap": "lordofbarkbread · unofficial nsfw-generation keeper",
+      "cap": "wardendakota · quality-weights keeper",
       "kicker": "GRIM · unofficial spicy",
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/9811bf24-1a79-4c0a-b9e3-f277507184f9"
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/8a8362d4-c7a4-40ac-bbcf-37b10e43f34d"
     },
     {
-      "cap": "pleasebankai · unofficial keeper B",
+      "cap": "b59910 · style-tags / hyper keeper",
       "kicker": "GRIM · unofficial spicy",
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/3ab5bfb5-eef1-4a88-a874-bc00c23130bf"
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/1b1f2d33-7572-4b77-9c67-8d9908e8823e"
     },
     {
-      "cap": "pleasebankai · CFG 8 / rescale 1.0 comparison still",
-      "kicker": "GRIM · unofficial · rescale",
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/403ae323-3a63-4247-8055-40bf4ef25d9a"
+      "cap": "mistersalisbury · cinematic keeper",
+      "kicker": "GRIM · unofficial spicy",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/f86f0be5-5e56-4757-8a53-b95a9a3d36b8"
+    }
+  ],
+  "enshutsuka": [
+    {
+      "body": "HOUSE reminder. Anime source: strip realistic, Expert Shading panel, photorealism, hyperrealism, unasked 3d, detailed face, detailed skin. Painted/photo/3d jobs may keep those. More finish on anime: Quality or high complexity, not the panel. Not CONSENSUS.",
+      "teaser": "Finish tags are not all photoreal. Anime faces break on realistic / Expert Shading panel."
+    },
+    {
+      "body": "HOUSE. Studio apply_studio_changes still uses boxes — keep identity in boxes there. generate_image path: put identity + body in the base prompt or they drop. Not staff.",
+      "teaser": "MCP generate_image ignores character boxes. Identity and body go in the base prompt on that path."
+    },
+    {
+      "body": "HOUSE. Isolated 2.2–2.8::huge wide hips:: in the character box under artist:ebiblue scope. Cap ~2.8. Ban ported V4.5 3–4 stacks. One size word per axis. No new hip/WG/pregnancy recipes this window. Do not promote to CONSENSUS.",
+      "teaser": "ebiblue-scoped hips: one box group 2.2–2.8::huge wide hips:: can move them. Not a universal V5 recipe."
+    },
+    {
+      "body": "HOUSE. Prompt semi-anthro torso, never bare semi-anthro. Do not UC the torso word. UC fur, muzzle, snout, tail, paws, digitigrade, animal legs. Drop long torso from the prompt; put it in UC.",
+      "teaser": "semi-anthro torso is a scoped human-trunk tag, not a furry species package."
     }
   ]
 }

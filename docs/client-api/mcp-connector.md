@@ -289,7 +289,7 @@ Module scopes support submodule specifiers: `sfapp_cake_pantry:deliver` grants o
 
 #### Cake Pantry Module (`sfapp_cake_pantry`)
 
-Account-based cake tracking for Menma, Hoshino, Ivory, Pyra, Chiyo. All accounts use SQLite (`tag_wiki.db`) after one-shot import per account. Fail-closed: after import, SQLite unavailable returns error (no file fallback).
+Account-based cake tracking for Menma, Hoshino, Ivory, Pyra, Chiyo, Guren. All accounts use SQLite (`tag_wiki.db`) after one-shot import per account. Fail-closed: after import, SQLite unavailable returns error (no file fallback).
 
 | Tool | Description | Submodule |
 |------|-------------|-----------|
