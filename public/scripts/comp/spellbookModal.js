@@ -2223,7 +2223,8 @@ class SpellbookModalManager {
         if (this.progressDate && data.date) {
             let formattedDate;
             if (typeof data.date === 'object' && data.date.year !== undefined) {
-                const date = new Date(data.date.year, data.date.month, data.date.day);
+                // egress month is 1-based (dynamicGenerationHandlers); Date ctor expects 0-based
+                const date = new Date(data.date.year, data.date.month - 1, data.date.day);
                 formattedDate = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
             } else {
                 const date = new Date(data.date);

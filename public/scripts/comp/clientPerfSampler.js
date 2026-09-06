@@ -129,8 +129,10 @@ function getClientPerfAutofillSnapshot() {
 }
 
 function getClientPerfSample(reason = 'manual') {
-    // getGalleryPerformanceSnapshot: public/scripts/comp/galleryView.js
-    const gallery = getGalleryPerformanceSnapshot();
+    // getGalleryPerformanceSnapshot: public/scripts/comp/galleryImagesLoad.js
+    const gallery = (typeof getGalleryPerformanceSnapshot === 'function')
+        ? getGalleryPerformanceSnapshot()
+        : null;
     return {
         schemaVersion: 2,
         timestamp: Date.now(),

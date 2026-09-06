@@ -5390,7 +5390,8 @@ function updateProgressContext(data) {
         let formattedDate;
         if (typeof data.date === 'object' && data.date.year !== undefined) {
             // Date sent as components - reconstruct properly to avoid timezone issues
-            const date = new Date(data.date.year, data.date.month, data.date.day);
+            // egress month is 1-based (dynamicGenerationHandlers); Date ctor expects 0-based
+            const date = new Date(data.date.year, data.date.month - 1, data.date.day);
             formattedDate = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         } else {
             // Fallback for string format
