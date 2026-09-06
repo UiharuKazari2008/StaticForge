@@ -1746,7 +1746,7 @@ function canonMemoryTool(name) {
     ['listKnowledgeMemories', 'list_memories', 'Old paid-API name for list_memories.']
 ].forEach(([aliasName, canonName, description]) => {
     const src = TOOL_DEFS.find((tool) => tool.name === canonName);
-    if (src) TOOL_DEFS.push({ ...src, name: aliasName, description });
+    if (src) TOOL_DEFS.push({ ...src, name: aliasName, description, alias: true });
 });
 
 const ADVANCED_TOOL_NAME = 'advanced_tools';
@@ -3166,7 +3166,7 @@ function listAdvancedToolDefs(scopes, query, globalResources) {
     const q = String(query || '').trim().toLowerCase();
     const words = q ? q.split(/\s+/).filter(Boolean) : [];
     return TOOL_DEFS.filter((tool) => {
-        if (tool.core) return false;
+        if (tool.core || tool.alias) return false;
         if (!toolAllowedForScopes(scopes, tool)) return false;
         if (!words.length) return true;
         const hay = `${tool.name} ${tool.description} ${tool.scope}`.toLowerCase();
@@ -3222,7 +3222,7 @@ function slimToolList(tools) {
 function listToolsForScopes(scopes, globalResources) {
     const catalog = buildStudioSettingsCatalog(globalResources);
     const core = TOOL_DEFS
-        .filter((tool) => tool.core && toolAllowedForScopes(scopes, tool))
+        .filter((tool) => tool.core && !tool.alias && toolAllowedForScopes(scopes, tool))
         .map((tool) => serializeListedTool(tool, catalog));
     core.push(serializeListedTool(ADVANCED_TOOL_DEF, catalog));
     return core;
