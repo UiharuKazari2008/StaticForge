@@ -1601,7 +1601,7 @@ const TOOL_DEFS = [
     {
         name: 'consume_cake',
         core: true,
-        description: 'Eater eats pending slices (max 8 eligible per sitting; remainder carries). Skips do-not-eat / dry-verify deliveries. Optional slices (1..8). Records kg; does not auto-generate before/after images — pass before_image/after_image if already generated, else visual_gen.status=not_generated with a clear error while kg still saves. Visual QA invariants: empty plates, visible growth, hip contrast, up to 10 gens. Cake math: 0.12kg/slice.',
+        description: 'Eater eats pending slices. Soft sitting cap default 8 (remainder carries); override with slices and/or max_slices up to all eligible pending. Skips do-not-eat / dry-verify forever. Records kg; does not auto-generate before/after images — pass before_image/after_image if already generated, else visual_gen.status=not_generated with a clear error while kg still saves. Visual QA invariants: empty plates, visible growth, hip contrast, up to 10 gens. Cake math: 0.12kg/slice.',
         scope: 'sfapp_cake_pantry',
         inputSchema: {
             type: 'object',
@@ -1609,7 +1609,8 @@ const TOOL_DEFS = [
             required: ['accountId'],
             properties: {
                 accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account eating' },
-                slices: { type: 'number', description: 'Optional sitting size (clamped 1..8, and to eligible pending). Default: min(8, eligible).' },
+                slices: { type: 'number', description: 'Optional sitting size (>=1). Default soft cap 8; values >8 override up to eligible pending. Combined with max_slices: budget = min(slices, max_slices, eligible).' },
+                max_slices: { type: 'number', description: 'Optional sitting ceiling (>=1). Default 8. Alone: eat min(max_slices, eligible) — may exceed 8. With slices: clamps slices. Alias/companion to slices for soft-cap override (Rook #152).' },
                 cake_type: { type: 'string', description: 'Override cake type for this consume' },
                 stacks: { type: 'number', description: 'Number of cake stacks (default: slices/12)' },
                 before_image: { type: 'string', description: 'Before image filename (if already generated via generate_image). Not auto-generated.' },

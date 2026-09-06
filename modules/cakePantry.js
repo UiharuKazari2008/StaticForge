@@ -15,7 +15,7 @@
  * - 0.12kg per slice
  * - Cleanup: 1 slice per 40 lines or 10KB removed (min 1, cap 16)
  * - 1.25x multiplier for grok.menma (Jules/Cursor Lead)
- * - Max 8 eligible slices per consume sitting; remainder carries
+ * - Soft sitting cap default 8; override via slices/max_slices up to all eligible; remainder carries
  * - Skip do-not-eat / dry-verify reasons (case-insensitive)
  * 
  * Visual QA invariants (caller-supplied image refs; no auto-gen):
@@ -52,7 +52,7 @@ const CLEANUP_SLICE_MIN = 1;
 const CLEANUP_SLICE_CAP = 16;
 const LEAD_MULTIPLIER = 1.25;
 const MAX_VISUAL_QA_GENS = 10;
-/** Hard cap: one meal sitting eats at most this many eligible slices; remainder stays pending. */
+/** Soft default sitting cap (8). Override via slices and/or max_slices up to all eligible pending. */
 const MAX_SLICES_PER_SITTING = 8;
 
 /**
@@ -101,6 +101,93 @@ function sumItemSlices(items) {
     return (items || []).reduce((s, i) => s + (Number(i.slices) || 0), 0);
 }
 
+/**
+ * Soft sitting-cap budget for one consume_cake call (Yozora #152).
+ * Default ceiling = MAX_SLICES_PER_SITTING (8). Either `slices` and/or `max_slices`
+ * may raise (or lower) the ceiling up to all eligible pending — never past eligible,
+ * and never into do-not-eat / dry-verify (those are filtered before this runs).
+ *
+ * Semantics:
+ * - neither arg → budget = min(8, eligible)
+ * - max_slices alone → budget = min(max_slices, eligible)  (may exceed 8)
+ * - slices alone → budget = min(slices, softCeiling, eligible);
+ *     softCeiling is 8 unless slices > 8, in which case softCeiling = slices (capped to eligible)
+ * - both → ceiling = min(max_slices, eligible); budget = min(slices, ceiling, eligible)
+ *
+ * Returns { ok, budget, requested, ceiling, default_cap, override, error? }.
+ */
+function resolveSittingBudget(eligibleSlices, params = {}) {
+    const defaultCap = MAX_SLICES_PER_SITTING;
+    const eligible = Math.max(0, Number(eligibleSlices) || 0);
+
+    const hasSlices = params.slices != null && params.slices !== '';
+    const hasMax = params.max_slices != null && params.max_slices !== '';
+
+    let slicesN = null;
+    let maxN = null;
+
+    if (hasSlices) {
+        slicesN = Number(params.slices);
+        if (!Number.isFinite(slicesN) || slicesN < 1) {
+            return {
+                ok: false,
+                error: 'slices must be a number >= 1 (default soft cap 8; override up to all eligible pending)',
+                ceiling: Math.min(defaultCap, eligible),
+                requested: null,
+                budget: 0,
+                default_cap: defaultCap,
+                override: true
+            };
+        }
+        slicesN = Math.floor(slicesN);
+    }
+    if (hasMax) {
+        maxN = Number(params.max_slices);
+        if (!Number.isFinite(maxN) || maxN < 1) {
+            return {
+                ok: false,
+                error: 'max_slices must be a number >= 1 (raises/lowers sitting ceiling; default 8; up to all eligible)',
+                ceiling: Math.min(defaultCap, eligible),
+                requested: null,
+                budget: 0,
+                default_cap: defaultCap,
+                override: true
+            };
+        }
+        maxN = Math.floor(maxN);
+    }
+
+    let ceiling;
+    if (hasMax) {
+        ceiling = Math.min(maxN, eligible);
+    } else if (hasSlices && slicesN > defaultCap) {
+        ceiling = Math.min(slicesN, eligible);
+    } else {
+        ceiling = Math.min(defaultCap, eligible);
+    }
+
+    let requested = null;
+    if (hasSlices) {
+        requested = slicesN;
+    } else if (hasMax) {
+        requested = maxN;
+    }
+
+    const budget = Math.min(
+        eligible,
+        ceiling,
+        requested != null ? requested : ceiling
+    );
+
+    return {
+        ok: true,
+        budget: Math.max(0, budget),
+        requested,
+        ceiling,
+        default_cap: defaultCap,
+        override: hasSlices || hasMax
+    };
+}
 /**
  * Account definitions with identity fields
  */
@@ -648,9 +735,9 @@ async function inspectPantry(accountId, params = {}) {
  * consume_cake - Eater eats pending slices
  *
  * Rules:
- * - Cap MAX_SLICES_PER_SITTING (8) eligible slices per call; remainder stays pending
- * - Skip deliveries/feeds whose reason matches do-not-eat / dry verify
- * - Optional params.slices: clamp to 1..8 and to eligible pending
+ * - Soft sitting cap default MAX_SLICES_PER_SITTING (8); remainder stays pending
+ * - Override with params.slices and/or params.max_slices up to all eligible pending
+ * - Skip deliveries/feeds whose reason matches do-not-eat / dry verify (forever)
  * - Does NOT auto-generate before/after images (pass refs if already generated)
  */
 async function consumeCake(accountId, params = {}) {
@@ -695,29 +782,19 @@ async function consumeCake(accountId, params = {}) {
         };
     }
 
-    let requested = null;
-    if (params.slices != null && params.slices !== '') {
-        requested = Number(params.slices);
-        if (!Number.isFinite(requested) || requested < 1) {
-            return {
-                success: false,
-                error: 'slices must be a number from 1 to 8 (or up to eligible pending)',
-                accountId,
-                max_slices_per_sitting: MAX_SLICES_PER_SITTING,
-                eligible_slices: eligibleSlices
-            };
-        }
-        requested = Math.floor(requested);
-        if (requested > MAX_SLICES_PER_SITTING) {
-            requested = MAX_SLICES_PER_SITTING;
-        }
+    const sitting = resolveSittingBudget(eligibleSlices, params);
+    if (!sitting.ok) {
+        return {
+            success: false,
+            error: sitting.error,
+            accountId,
+            max_slices_per_sitting: MAX_SLICES_PER_SITTING,
+            sitting_ceiling: sitting.ceiling,
+            eligible_slices: eligibleSlices
+        };
     }
-
-    const budget = Math.min(
-        MAX_SLICES_PER_SITTING,
-        eligibleSlices,
-        requested != null ? requested : MAX_SLICES_PER_SITTING
-    );
+    const requested = sitting.requested;
+    const budget = sitting.budget;
 
     const fromDeliveries = takeSlicesFromItems(eligibleDeliveries, budget);
     const remainingBudget = budget - fromDeliveries.slicesTaken;
@@ -796,6 +873,8 @@ async function consumeCake(accountId, params = {}) {
         feeds_consumed: fromFeeds.taken.length,
         slices_requested: requested,
         max_slices_per_sitting: MAX_SLICES_PER_SITTING,
+        sitting_ceiling: sitting.ceiling,
+        soft_cap_override: sitting.override,
         skipped_do_not_eat: skippedDeliveries.length + skippedFeeds.length,
         pending_slices_after: pendingAfter,
         visual_gen_status: visualGen.status
@@ -842,6 +921,8 @@ async function consumeCake(accountId, params = {}) {
         slices_consumed: slicesToConsume,
         slices_requested: requested,
         max_slices_per_sitting: MAX_SLICES_PER_SITTING,
+        sitting_ceiling: sitting.ceiling,
+        soft_cap_override: sitting.override,
         stacks,
         cake_type: logEntry.cake_type,
         kg_before: kgBefore,
@@ -1116,6 +1197,7 @@ module.exports = {
     isDoNotEatReason,
     takeSlicesFromItems,
     sumItemSlices,
+    resolveSittingBudget,
     setGlobalResources,
     getGlobalResources,
     getAccountDir,

@@ -2,7 +2,8 @@
 'use strict';
 
 /**
- * Unit tests for cake pantry consume_cake sitting cap / do-not-eat skip (Yozora #151).
+ * Unit tests for cake pantry consume_cake soft sitting cap / do-not-eat skip
+ * (Yozora #151 hard cap → #152 soft override via slices / max_slices).
  * Pure helpers + schema only — does not touch live pantry SQLite or eat cake.
  */
 
@@ -12,6 +13,7 @@ const {
     isDoNotEatReason,
     takeSlicesFromItems,
     sumItemSlices,
+    resolveSittingBudget,
     MAX_SLICES_PER_SITTING,
     KG_PER_SLICE
 } = require('../modules/cakePantry');
@@ -27,7 +29,7 @@ assert.strictEqual(isDoNotEatReason('Dry-verify do not eat'), true);
 assert.strictEqual(isDoNotEatReason('DO-NOT-EAT marker'), true);
 assert.strictEqual(isDoNotEatReason('dry verify pantry probe'), true);
 assert.strictEqual(isDoNotEatReason('DRY-VERIFY'), true);
-assert.strictEqual(isDoNotEatReason('ship reward for #151'), false);
+assert.strictEqual(isDoNotEatReason('ship reward for #152'), false);
 assert.strictEqual(isDoNotEatReason(null), false);
 assert.strictEqual(isDoNotEatReason(''), false);
 
@@ -56,14 +58,55 @@ const eligible = mixed.filter((d) => !isDoNotEatReason(d.reason));
 const skipped = mixed.filter((d) => isDoNotEatReason(d.reason));
 assert.strictEqual(sumItemSlices(eligible), 16);
 assert.strictEqual(sumItemSlices(skipped), 5);
-const sitting = takeSlicesFromItems(eligible, MAX_SLICES_PER_SITTING);
-assert.strictEqual(sitting.slicesTaken, 8);
-assert.strictEqual(sumItemSlices(sitting.remaining) + sumItemSlices(skipped), 13);
+const sittingDefault = takeSlicesFromItems(eligible, MAX_SLICES_PER_SITTING);
+assert.strictEqual(sittingDefault.slicesTaken, 8);
+assert.strictEqual(sumItemSlices(sittingDefault.remaining) + sumItemSlices(skipped), 13);
+
+// Soft sitting budget (#152)
+const dflt = resolveSittingBudget(21, {});
+assert.strictEqual(dflt.ok, true);
+assert.strictEqual(dflt.budget, 8);
+assert.strictEqual(dflt.override, false);
+
+const small = resolveSittingBudget(21, { slices: 3 });
+assert.strictEqual(small.budget, 3);
+assert.strictEqual(small.override, true);
+
+const raiseViaSlices = resolveSittingBudget(21, { slices: 16 });
+assert.strictEqual(raiseViaSlices.budget, 16);
+assert.strictEqual(raiseViaSlices.ceiling, 16);
+assert.strictEqual(raiseViaSlices.override, true);
+
+const raiseViaMax = resolveSittingBudget(21, { max_slices: 20 });
+assert.strictEqual(raiseViaMax.budget, 20);
+assert.strictEqual(raiseViaMax.ceiling, 20);
+
+const both = resolveSittingBudget(30, { slices: 12, max_slices: 20 });
+assert.strictEqual(both.budget, 12);
+assert.strictEqual(both.ceiling, 20);
+
+const bothClamp = resolveSittingBudget(30, { slices: 25, max_slices: 20 });
+assert.strictEqual(bothClamp.budget, 20);
+
+const allEligible = resolveSittingBudget(13, { max_slices: 999 });
+assert.strictEqual(allEligible.budget, 13);
+assert.strictEqual(allEligible.ceiling, 13);
+
+const lowerCap = resolveSittingBudget(21, { max_slices: 4 });
+assert.strictEqual(lowerCap.budget, 4);
+
+const bad = resolveSittingBudget(21, { slices: 0 });
+assert.strictEqual(bad.ok, false);
 
 const consumeDef = _test.TOOL_DEFS.find((t) => t.name === 'consume_cake');
 assert.ok(consumeDef, 'consume_cake tool def missing');
 assert.ok(consumeDef.inputSchema.properties.slices, 'optional slices arg missing on consume_cake');
-assert.ok(consumeDef.description.includes('max 8'), 'description should mention 8-cap');
+assert.ok(consumeDef.inputSchema.properties.max_slices, 'optional max_slices arg missing on consume_cake');
+assert.ok(
+    consumeDef.description.includes('soft sitting cap') || consumeDef.description.includes('Soft sitting'),
+    'description should mention soft sitting cap'
+);
+assert.ok(consumeDef.description.includes('max_slices'), 'description should mention max_slices');
 assert.ok(
     consumeDef.description.includes('do-not-eat') || consumeDef.description.includes('dry-verify'),
     'description should mention skip'

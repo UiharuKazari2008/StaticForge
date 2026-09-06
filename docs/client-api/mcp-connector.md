@@ -296,15 +296,19 @@ Account-based cake tracking for Menma, Hoshino, Ivory, Pyra, Chiyo, Guren. All a
 | `deliver_cake` | Add slices to a pile with reason (reward for ship/work). Pass `accountId`, `slices` (or `line_counts` for auto-calc: 1/40 lines or 10KB, min 1 cap 16), `reason`, `cake_type`, `credit` (`grok.menma` = 1.25x). | `deliver` |
 | `feed_cake` | Yukimi grants slices (promotion or just because). Distinct from deliver. Pass `accountId`, `slices`, `reason`, `cake_type`, `from`. | `feed` |
 | `inspect_pantry` | View piles, past consumes, kg history. Returns data, not a wall of text. Pass `accountId`, optional `log_limit`. | `inspect` |
-| `consume_cake` | Eater eats pending slices (**max 8 eligible per sitting**; remainder carries). Skips do-not-eat / dry-verify reasons. Optional `slices` (1..8). Returns kg before/after; **does not auto-generate** before/after images (pass refs or get `visual_gen.status=not_generated` with clear error while kg still saves). Visual QA invariants: empty plates, visible growth, hip contrast, up to 10 gens. | `consume` |
+| `consume_cake` | Eater eats pending slices (**soft sitting cap default 8**; remainder carries). Override with `slices` and/or `max_slices` up to **all eligible pending**. Skips do-not-eat / dry-verify forever. Returns kg before/after; **does not auto-generate** before/after images (pass refs or get `visual_gen.status=not_generated` with clear error while kg still saves). Visual QA invariants: empty plates, visible growth, hip contrast, up to 10 gens. | `consume` |
 
 **Cake math:**
 - 0.12kg per slice
 - Cleanup: 1 slice per 40 lines or 10KB removed (min 1, cap 16)
 - 1.25x multiplier for `grok.menma` / `Lead` credit
-- Max **8 eligible slices per `consume_cake` sitting**; remainder stays pending for the next meal
-- Deliveries/feeds whose `reason` matches do-not-eat / dry-verify (case-insensitive; also `do not eat`, `do-not-eat`, `dry verify`) are **skipped** and left pending
-- Optional `slices` arg clamped to 1..8 (and to eligible pending)
+- Soft sitting cap: default **8 eligible slices** per `consume_cake`; remainder stays pending for the next meal
+- Override with `slices` and/or `max_slices` up to **all eligible pending** (either arg may exceed 8; never past eligible; never eats do-not-eat)
+  - neither → `min(8, eligible)`
+  - `max_slices` alone → `min(max_slices, eligible)`
+  - `slices` alone → `min(slices, softCeiling, eligible)` where softCeiling is 8 unless `slices > 8`
+  - both → `min(slices, max_slices, eligible)`
+- Deliveries/feeds whose `reason` matches do-not-eat / dry-verify (case-insensitive; also `do not eat`, `do-not-eat`, `dry verify`) are **skipped forever** and left pending
 - `consume_cake` does **not** auto-generate visuals; pass `before_image` / `after_image` from `generate_image`, or expect `visual_gen.status=not_generated`
 
 **Accounts:** `menma`, `hoshino`, `ivory`, `pyra`, `chiyo`, `guren`. Menma's look is locked (breakfast prompts). Other accounts start with their own identity fields. All accounts import to SQLite on first use.
