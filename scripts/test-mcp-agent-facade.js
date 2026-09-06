@@ -66,7 +66,6 @@ assert.strictEqual(_test.MCP_RATE_GROUP_LIMITS.free.max, 0);
 assert.ok(_test.MCP_RATE_GROUP_LIMITS.generate.max < _test.MCP_RATE_GROUP_LIMITS.gallery.max);
 const RATE_MAP_GAPS_ON_MAIN = new Set([
     'publish_apocrypha', 'revoke_apocrypha', 'get_apocrypha',
-    'deliver_cake', 'feed_cake', 'inspect_pantry', 'consume_cake',
     'get_work_pile', 'add_work_item', 'complete_work_item', 'remove_work_item',
     'report_issue', 'get_usage'
 ]);
@@ -74,6 +73,25 @@ _test.TOOL_DEFS.forEach((tool) => {
     if (RATE_MAP_GAPS_ON_MAIN.has(tool.name)) return;
     assert.ok(_test.TOOL_RATE_GROUPS[tool.name], `missing rate group for ${tool.name}`);
 });
+assert.strictEqual(_test.TOOL_RATE_GROUPS.deliver_cake, 'write');
+assert.strictEqual(_test.TOOL_RATE_GROUPS.feed_cake, 'write');
+assert.strictEqual(_test.TOOL_RATE_GROUPS.inspect_pantry, 'free');
+assert.strictEqual(_test.TOOL_RATE_GROUPS.consume_cake, 'write');
+const cakeNames = (scopes) => _test.listToolsForScopes(scopes, null).map((t) => t.name);
+const cakeFull = cakeNames(['sfapp_cake_pantry']);
+for (const name of ['deliver_cake', 'feed_cake', 'inspect_pantry', 'consume_cake']) {
+    assert.ok(cakeFull.includes(name), `full pantry scope missing ${name}`);
+}
+const cakeDeliver = cakeNames(['sfapp_cake_pantry:deliver']);
+assert.ok(cakeDeliver.includes('deliver_cake'));
+assert.ok(!cakeDeliver.includes('feed_cake'));
+assert.ok(!cakeDeliver.includes('inspect_pantry'));
+assert.ok(!cakeDeliver.includes('consume_cake'));
+const apoOnly = cakeNames(['sfapp_apocrypha']);
+assert.ok(apoOnly.includes('publish_apocrypha'));
+assert.ok(!apoOnly.includes('deliver_cake'));
+const { applyMultiplier } = require('../modules/cakePantry');
+assert.strictEqual(applyMultiplier(4, 'grok.menma'), 5);
 _test.resetRateGroupHits();
 const first = _test.consumeRateGroup('test-key', 'generate');
 assert.strictEqual(first.ok, true);

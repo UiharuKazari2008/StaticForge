@@ -70,7 +70,8 @@ const { normalizeMemoryModel, resolveRefinementConfidence } = require('./knowled
 const {
     scopesAllowModuleTool,
     getEffectiveToolsForScopes,
-    getModuleScopeDefinitions
+    getModuleScopeDefinitions,
+    TOOL_TO_MODULES
 } = require('./mcpModuleRegistry');
 // modules/cakePantry.js — account-based cake tracking
 const {
@@ -3136,6 +3137,10 @@ function toolAllowedForScopes(scopes, tool) {
     // modules/applicationAuthManager.js — autofill already includes wiki packets
     if (tool.scope === 'wiki' && agentHasNamedScope(scopes, 'autofill')) return true;
     if (tool.allowAutofill && agentHasNamedScope(scopes, 'autofill')) return true;
+    // Module / submodule specifiers: sfapp_cake_pantry:deliver grants deliver_cake only
+    if (tool.name && TOOL_TO_MODULES[tool.name] && TOOL_TO_MODULES[tool.name].length) {
+        return getEffectiveToolsForScopes(scopes, [tool.name]).includes(tool.name);
+    }
     return false;
 }
 

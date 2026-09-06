@@ -282,6 +282,12 @@ async function getAccountState(accountId) {
             if (state && Object.keys(state).length > 0) {
                 return { ...defaultState, ...state };
             }
+            // Imported accounts stay on SQLite even with no prior rows (no file leftovers)
+            try {
+                await saveAccountStateToDb(status.db, accountId, defaultState);
+            } catch (persistErr) {
+                console.error(`[cakePantry] persist default state failed for ${accountId}:`, persistErr);
+            }
             return defaultState;
         } catch (e) {
             console.error(`[cakePantry] getAccountState SQLite error for ${accountId}:`, e);
@@ -409,9 +415,10 @@ async function getCakeLog(accountId, limit = 50) {
  * Calculate cleanup slices from line/byte stats
  * 1 slice per 40 lines or 10KB removed, min 1, cap 16
  */
-function calculateCleanupSlices(linesDeleted, bytesRemoved) {
-    const byLines = Math.floor((linesDeleted || 0) / CLEANUP_LINES_PER_SLICE);
-    const byBytes = Math.floor((bytesRemoved || 0) / CLEANUP_BYTES_PER_SLICE);
+function calculateCleanupSlices(linesDeleted, bytesRemoved, roundUp = false) {
+    const round = roundUp ? Math.ceil : Math.floor;
+    const byLines = round((linesDeleted || 0) / CLEANUP_LINES_PER_SLICE);
+    const byBytes = round((bytesRemoved || 0) / CLEANUP_BYTES_PER_SLICE);
     const raw = Math.max(byLines, byBytes);
     return Math.min(Math.max(raw, CLEANUP_SLICE_MIN), CLEANUP_SLICE_CAP);
 }
@@ -444,7 +451,8 @@ async function deliverCake(accountId, params) {
     if (params.line_counts && !params.slices) {
         slices = calculateCleanupSlices(
             params.line_counts.deleted || params.line_counts.lines_deleted,
-            params.line_counts.bytes_removed
+            params.line_counts.bytes_removed,
+            accountId !== 'menma'
         );
     }
     
