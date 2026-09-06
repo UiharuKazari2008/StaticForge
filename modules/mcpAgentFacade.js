@@ -1541,7 +1541,7 @@ const TOOL_DEFS = [
     {
         name: 'deliver_cake',
         core: true,
-        description: 'Deliver cake slices to an account (Menma, Hoshino, Ivory, Pyra, Chiyo, Guren) as reward for ship/work. Pass accountId, slices (or line_counts for auto-calc: 1/40 lines or 10KB, min 1 cap 16), reason, cake_type, credit (grok.menma for 1.25x Lead multiplier).',
+        description: 'Deliver cake slices to an account (Menma, Hoshino, Ivory, Pyra, Chiyo, Guren) as reward for ship/work. Pass accountId, slices (or line_counts for auto-calc: 1/40 lines or 10KB, min 1 cap 16), reason, cake_type, optional do_not_eat (or cake_type=dry-verify) for forever-skip dry verifies, credit (grok.menma for 1.25x Lead multiplier).',
         scope: 'sfapp_cake_pantry',
         inputSchema: {
             type: 'object',
@@ -1551,7 +1551,8 @@ const TOOL_DEFS = [
                 accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account to deliver to' },
                 slices: { type: 'number', description: 'Number of slices (or omit and provide line_counts)' },
                 reason: { type: 'string', description: 'Why: reward for which ship/work' },
-                cake_type: { type: 'string', description: 'Type of cake (strawberry shortcake, tiramisu, etc.)' },
+                cake_type: { type: 'string', description: 'Type of cake (strawberry shortcake, tiramisu, etc.). Use dry-verify for forever-skip dry verifies (sets do_not_eat).' },
+                do_not_eat: { type: 'boolean', description: 'If true, forever-skip this delivery (also set when cake_type=dry-verify). Prefer over reason text (Yozora #154).' },
                 credit: { type: 'string', description: 'Credit attribution. grok.menma or Lead = 1.25x multiplier' },
                 line_counts: {
                     type: 'object',
@@ -1568,7 +1569,7 @@ const TOOL_DEFS = [
     {
         name: 'feed_cake',
         core: true,
-        description: 'Yukimi grants cake slices (promotion gift, just because). Distinct from deliver_cake which is work reward. Pass accountId, slices, reason, cake_type, from.',
+        description: 'Yukimi grants cake slices (promotion gift, just because). Distinct from deliver_cake which is work reward. Pass accountId, slices, reason, cake_type, optional do_not_eat (or cake_type=dry-verify) for forever-skip, from.',
         scope: 'sfapp_cake_pantry',
         inputSchema: {
             type: 'object',
@@ -1578,7 +1579,8 @@ const TOOL_DEFS = [
                 accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account to feed' },
                 slices: { type: 'number', description: 'Number of slices to give' },
                 reason: { type: 'string', description: 'Why: promotion gift, just because, etc.' },
-                cake_type: { type: 'string' },
+                cake_type: { type: 'string', description: 'Use dry-verify for forever-skip dry verifies (sets do_not_eat).' },
+                do_not_eat: { type: 'boolean', description: 'If true, forever-skip this feed (also set when cake_type=dry-verify). Prefer over reason text (Yozora #154).' },
                 from: { type: 'string', description: 'Who is feeding (default: Yukimi)' }
             }
         }
@@ -1601,7 +1603,7 @@ const TOOL_DEFS = [
     {
         name: 'consume_cake',
         core: true,
-        description: 'Eater eats pending slices. Soft sitting cap default 8 (remainder carries); override with slices and/or max_slices up to all eligible pending. Skips do-not-eat / dry-verify forever. Records kg; does not auto-generate before/after images — pass before_image/after_image if already generated, else visual_gen.status=not_generated with a clear error while kg still saves. Visual QA invariants: empty plates, visible growth, hip contrast, up to 10 gens. Cake math: 0.12kg/slice.',
+        description: 'Eater eats pending slices. Soft sitting cap default 8 (remainder carries); override with slices and/or max_slices up to all eligible pending. Skips dry-verify forever via cake_type=dry-verify and/or do_not_eat (not reason substring; legacy reason must start with marker). Records kg; does not auto-generate before/after images — pass before_image/after_image if already generated, else visual_gen.status=not_generated with a clear error while kg still saves. Visual QA invariants: empty plates, visible growth, hip contrast, up to 10 gens. Cake math: 0.12kg/slice.',
         scope: 'sfapp_cake_pantry',
         inputSchema: {
             type: 'object',

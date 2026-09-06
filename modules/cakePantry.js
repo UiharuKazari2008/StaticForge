@@ -16,7 +16,8 @@
  * - Cleanup: 1 slice per 40 lines or 10KB removed (min 1, cap 16)
  * - 1.25x multiplier for grok.menma (Jules/Cursor Lead)
  * - Soft sitting cap default 8; override via slices/max_slices up to all eligible; remainder carries
- * - Skip do-not-eat / dry-verify reasons (case-insensitive)
+ * - Skip dry-verify forever via cake_type=dry-verify and/or do_not_eat flag
+ *   (not reason substring; legacy reason must *start with* marker)
  * 
  * Visual QA invariants (caller-supplied image refs; no auto-gen):
  * - Empty plates
@@ -56,18 +57,96 @@ const MAX_VISUAL_QA_GENS = 10;
 const MAX_SLICES_PER_SITTING = 8;
 
 /**
- * Dry-verify / do-not-eat deliveries must never be consumed.
- * Case-insensitive; matches reason containing do not eat / do-not-eat / dry verify / dry-verify.
+ * Normalize cake_type for comparisons (trim, lower, spaces → hyphens).
+ */
+function normalizeCakeType(cakeType) {
+    if (cakeType == null || cakeType === '') return null;
+    return String(cakeType).trim().toLowerCase().replace(/\s+/g, '-');
+}
+
+function isDryVerifyCakeType(cakeType) {
+    return normalizeCakeType(cakeType) === 'dry-verify';
+}
+
+function truthyDoNotEatFlag(value) {
+    if (value === true || value === 1) return true;
+    if (typeof value === 'string') {
+        const s = value.trim().toLowerCase();
+        return s === 'true' || s === '1' || s === 'yes';
+    }
+    return false;
+}
+
+/**
+ * Legacy reason-only dry verifies (pre-#154).
+ * Match only when the reason *starts with* a dry-verify / do-not-eat marker
+ * after trim — never a mid-string ship note like "skip do-not-eat".
+ * Prefer cake_type=dry-verify or do_not_eat on new deliveries (Yozora #154).
+ */
+function legacyReasonIsDoNotEat(reason) {
+    if (reason == null) return false;
+    const r = String(reason).trim().toLowerCase().replace(/\s+/g, ' ');
+    if (!r) return false;
+    const exact = new Set([
+        'do not eat',
+        'do-not-eat',
+        'dry verify',
+        'dry-verify',
+        'dry-verify do not eat',
+        'dry verify do not eat'
+    ]);
+    if (exact.has(r)) return true;
+    return /^(dry[ -]?verify|do[ -]?not[ -]?eat)\b/.test(r);
+}
+
+/**
+ * @deprecated Use isDoNotEatItem. Kept for tests/callers; now prefix-only (not substring).
  */
 function isDoNotEatReason(reason) {
-    if (reason == null) return false;
-    const r = String(reason).toLowerCase();
-    return (
-        r.includes('do not eat') ||
-        r.includes('do-not-eat') ||
-        r.includes('dry verify') ||
-        r.includes('dry-verify')
-    );
+    return legacyReasonIsDoNotEat(reason);
+}
+
+/**
+ * Forever-skip when cake_type is dry-verify, do_not_eat is set, or legacy
+ * reason *starts with* a dry-verify / do-not-eat marker (Yozora #154).
+ */
+function isDoNotEatItem(item) {
+    if (!item || typeof item !== 'object') return false;
+    if (truthyDoNotEatFlag(item.do_not_eat)) return true;
+    if (isDryVerifyCakeType(item.cake_type)) return true;
+    return legacyReasonIsDoNotEat(item.reason);
+}
+
+/**
+ * Resolve cake_type + do_not_eat for deliver/feed.
+ * dry-verify cake_type or explicit do_not_eat ⇒ both stamped.
+ */
+function resolveDoNotEatFields(params = {}) {
+    const fromType = isDryVerifyCakeType(params.cake_type);
+    const fromFlag = truthyDoNotEatFlag(params.do_not_eat);
+    const doNotEat = fromType || fromFlag;
+    let cakeType =
+        params.cake_type != null && String(params.cake_type).trim() !== ''
+            ? params.cake_type
+            : null;
+    if (doNotEat && !cakeType) {
+        cakeType = 'dry-verify';
+    }
+    return { cake_type: cakeType, do_not_eat: doNotEat };
+}
+
+/**
+ * Careful migration: stamp flag + cake_type onto legacy reason-only skips
+ * so later consumes do not depend on reason text.
+ */
+function stampDoNotEatMigration(item) {
+    if (!item || typeof item !== 'object') return item;
+    if (!isDoNotEatItem(item)) return item;
+    const next = { ...item, do_not_eat: true };
+    if (!next.cake_type) {
+        next.cake_type = 'dry-verify';
+    }
+    return next;
 }
 
 /**
@@ -105,7 +184,7 @@ function sumItemSlices(items) {
  * Soft sitting-cap budget for one consume_cake call (Yozora #152).
  * Default ceiling = MAX_SLICES_PER_SITTING (8). Either `slices` and/or `max_slices`
  * may raise (or lower) the ceiling up to all eligible pending — never past eligible,
- * and never into do-not-eat / dry-verify (those are filtered before this runs).
+ * and never into dry-verify / do_not_eat (those are filtered before this runs).
  *
  * Semantics:
  * - neither arg → budget = min(8, eligible)
@@ -608,13 +687,15 @@ async function deliverCake(accountId, params) {
     const credit = params.credit || null;
     const finalSlices = applyMultiplier(slices, credit);
 
+    const dne = resolveDoNotEatFields(params);
     const delivery = {
         id: `del_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         at: now,
         slices: finalSlices,
         raw_slices: slices,
         reason: params.reason || 'unspecified',
-        cake_type: params.cake_type || null,
+        cake_type: dne.cake_type,
+        do_not_eat: dne.do_not_eat,
         credit,
         multiplier: credit === 'grok.menma' || credit === 'Lead' ? LEAD_MULTIPLIER : 1,
         line_counts: params.line_counts || null,
@@ -656,12 +737,14 @@ async function feedCake(accountId, params) {
     const now = new Date().toISOString();
     const slices = Number(params.slices) || 0;
 
+    const dne = resolveDoNotEatFields(params);
     const feed = {
         id: `feed_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         at: now,
         slices,
         reason: params.reason || 'gift',
-        cake_type: params.cake_type || null,
+        cake_type: dne.cake_type,
+        do_not_eat: dne.do_not_eat,
         from: params.from || 'Yukimi',
         source: 'feed'
     };
@@ -737,7 +820,7 @@ async function inspectPantry(accountId, params = {}) {
  * Rules:
  * - Soft sitting cap default MAX_SLICES_PER_SITTING (8); remainder stays pending
  * - Override with params.slices and/or params.max_slices up to all eligible pending
- * - Skip deliveries/feeds whose reason matches do-not-eat / dry verify (forever)
+ * - Skip dry-verify forever via cake_type=dry-verify and/or do_not_eat (legacy: reason starts with marker)
  * - Does NOT auto-generate before/after images (pass refs if already generated)
  */
 async function consumeCake(accountId, params = {}) {
@@ -752,10 +835,15 @@ async function consumeCake(accountId, params = {}) {
     const pendingDeliveries = Array.isArray(state.pending_deliveries) ? state.pending_deliveries : [];
     const pendingFeeds = Array.isArray(state.pending_feeds) ? state.pending_feeds : [];
 
-    const skippedDeliveries = pendingDeliveries.filter((d) => isDoNotEatReason(d.reason));
-    const eligibleDeliveries = pendingDeliveries.filter((d) => !isDoNotEatReason(d.reason));
-    const skippedFeeds = pendingFeeds.filter((f) => isDoNotEatReason(f.reason));
-    const eligibleFeeds = pendingFeeds.filter((f) => !isDoNotEatReason(f.reason));
+    // Prefer cake_type / do_not_eat; stamp legacy reason-prefix skips (Yozora #154)
+    const skippedDeliveries = pendingDeliveries
+        .filter((d) => isDoNotEatItem(d))
+        .map(stampDoNotEatMigration);
+    const eligibleDeliveries = pendingDeliveries.filter((d) => !isDoNotEatItem(d));
+    const skippedFeeds = pendingFeeds
+        .filter((f) => isDoNotEatItem(f))
+        .map(stampDoNotEatMigration);
+    const eligibleFeeds = pendingFeeds.filter((f) => !isDoNotEatItem(f));
 
     const eligibleSlices = sumItemSlices(eligibleDeliveries) + sumItemSlices(eligibleFeeds);
     const skippedSlices = sumItemSlices(skippedDeliveries) + sumItemSlices(skippedFeeds);
@@ -1194,7 +1282,14 @@ module.exports = {
     LEAD_MULTIPLIER,
     MAX_VISUAL_QA_GENS,
     MAX_SLICES_PER_SITTING,
+    normalizeCakeType,
+    isDryVerifyCakeType,
+    truthyDoNotEatFlag,
+    legacyReasonIsDoNotEat,
     isDoNotEatReason,
+    isDoNotEatItem,
+    resolveDoNotEatFields,
+    stampDoNotEatMigration,
     takeSlicesFromItems,
     sumItemSlices,
     resolveSittingBudget,
