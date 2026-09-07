@@ -1805,7 +1805,10 @@ async function applyStudioChangeOps(ops) {
             extend: Boolean(op.extend)
         }));
         // requestBodyReplacements / renderRequestBodyReplacementsList: public/scripts/comp/requestBodyReplacementsModal.js
-        requestBodyReplacements = nextExpanders;
+        if (typeof requestBodyReplacements !== 'undefined') {
+            requestBodyReplacements.length = 0;
+            nextExpanders.forEach(entry => requestBodyReplacements.push(entry));
+        }
         renderRequestBodyReplacementsList();
     }
 
