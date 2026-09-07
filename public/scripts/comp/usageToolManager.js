@@ -62,10 +62,53 @@ class GenerationUsageToolManager {
         return remaining == null ? null : Math.max(0, Math.round(100 - remaining));
     }
 
+    getCurrentDrainMultiplier() {
+        if (!this.isOpus()) return 1.0;
+
+        const manualUpscale = document.getElementById('manualUpscale');
+        if (manualUpscale && manualUpscale.getAttribute('data-state') === 'on') {
+            return 0; // Upscale does NOT use Opus meter
+        }
+
+        const model = typeof window.getCurrentSelectedModel === 'function' ? String(window.getCurrentSelectedModel() || '').toLowerCase() : '';
+        const isV5Full = model === 'v5' || (model.startsWith('v5_') && model !== 'v5_cur');
+        const isV5Curated = model === 'v5_cur';
+
+        if (!isV5Full && !isV5Curated) {
+            return 0;
+        }
+
+        const isInpaint = !!window.currentMaskData;
+        if (isInpaint) {
+            // Inpaint drains meter on V5 Full; V5 Curated inpaint is still V4.5 Curated path (not V5F meter).
+            if (isV5Curated) return 0;
+            return 1.0;
+        }
+
+        const isImg2Img = !!window.uploadedImageData || !!(window.currentEditMetadata && window.currentEditMetadata.isVariationEdit);
+        if (isImg2Img) {
+            // V5 Opus img2img meter drain follows Strength, not Noise.
+            const strengthEl = document.getElementById('manualStrengthValue') || document.getElementById('manualStrength');
+            let strength = 1.0;
+            if (strengthEl) {
+                strength = Number(strengthEl.value !== undefined ? strengthEl.value : strengthEl.textContent);
+            }
+            if (!Number.isFinite(strength)) strength = 1.0;
+            return strength;
+        }
+
+        return 1.0;
+    }
+
     remainingGens(usage) {
         const remaining = this.remainingPercent(usage);
+        if (remaining == null) return null;
+
+        const drain = this.getCurrentDrainMultiplier();
+        if (drain <= 0) return 'Free';
+
         // NovelAI chunk 52 / module 42283: Math.round(17.3 * percent)
-        return remaining == null ? null : Math.round(17.3 * remaining);
+        return Math.round((17.3 * remaining) / drain);
     }
 
     refillPercentPerDay(usage) {
@@ -133,16 +176,18 @@ class GenerationUsageToolManager {
         const percent = this.usedPercent(usage);
         const remainingPercent = this.remainingPercent(usage);
         const remaining = this.remainingGens(usage);
+        const drain = this.getCurrentDrainMultiplier();
+        const remainingText = drain > 0 ? `~${remaining}` : 'Free';
         const refillPercent = this.refillPercentPerDay(usage);
         const refillPaused = this.isRefillPaused(usage);
-        const refillGenerations = Math.round(17.3 * refillPercent);
+        const refillGenerations = drain > 0 ? Math.round((17.3 * refillPercent) / drain) : 'Free';
         const high = this.isHigh(usage);
         const extended = remainingPercent > 100;
         const extraPercent = extended ? Math.round(remainingPercent - 100) : 0;
         const compactLabel = extended ? `+${extraPercent}%` : `${percent}%`;
         const title = extended
-            ? `24h ${this.recentImageCount()} — Extended free usage (+${extraPercent}%, ${remainingPercent}% remaining, ~${remaining} left)`
-            : `24h ${this.recentImageCount()} — V5 usage ${percent}% (~${remaining} left)`;
+            ? `24h ${this.recentImageCount()} — Extended free usage (+${extraPercent}%, ${remainingPercent}% remaining, ${remainingText} left)`
+            : `24h ${this.recentImageCount()} — V5 usage ${percent}% (${remainingText} left)`;
         return {
             isOpus: true,
             usage,
@@ -200,7 +245,7 @@ class GenerationUsageToolManager {
         showGlassToast(
             'success',
             'Extended Free Usage',
-            `Opus V5 got a one-time +100% usage boost for launch, which can go past the normal 100% cap.<br/>You have <strong>${snap.remainingPercent}%</strong> remaining (~${snap.remaining} free gens, +${snap.extraPercent}% extra). Refill stays paused until you drop below 100%.`,
+            `Opus V5 got a one-time +100% usage boost for launch, which can go past the normal 100% cap.<br/>You have <strong>${snap.remainingPercent}%</strong> remaining (${snap.remaining === 'Free' ? 'Free' : '~' + snap.remaining + ' free'} gens, +${snap.extraPercent}% extra). Refill stays paused until you drop below 100%.`,
             false,
             20000,
             '<i class="fas fa-battery-full"></i>',
@@ -224,8 +269,8 @@ class GenerationUsageToolManager {
 
         valueEl.textContent = snap.remaining != null
             ? (snap.extended
-                ? `Extended +${snap.extraPercent}% (~${snap.remaining})`
-                : `${snap.compactLabel} (~${snap.remaining})`)
+                ? `Extended +${snap.extraPercent}% (${snap.remaining === 'Free' ? 'Free' : '~' + snap.remaining})`
+                : `${snap.compactLabel} (${snap.remaining === 'Free' ? 'Free' : '~' + snap.remaining})`)
             : snap.compactLabel;
         row.title = snap.title;
         row.classList.toggle('low-credits', snap.high);
@@ -251,8 +296,8 @@ class GenerationUsageToolManager {
         if (valueEl) {
             valueEl.textContent = snap.remaining != null
                 ? (snap.extended
-                    ? `Extended free +${snap.extraPercent}% (~${snap.remaining} left)`
-                    : `${snap.compactLabel} (~${snap.remaining} left)`)
+                    ? `Extended free +${snap.extraPercent}% (${snap.remaining === 'Free' ? 'Free' : '~' + snap.remaining} left)`
+                    : `${snap.compactLabel} (${snap.remaining === 'Free' ? 'Free' : '~' + snap.remaining} left)`)
                 : snap.compactLabel;
         }
         if (fillEl) {
@@ -290,15 +335,15 @@ class GenerationUsageToolManager {
         if (statusLabel) statusLabel.textContent = snap.extended ? 'Extended' : 'Usage';
         if (remainingEl) {
             remainingEl.textContent = snap.extended
-                ? `~${snap.remaining} (${snap.remainingPercent}%)`
-                : `~${snap.remaining}`;
+                ? `${snap.remaining === 'Free' ? 'Free' : '~' + snap.remaining} (${snap.remainingPercent}%)`
+                : `${snap.remaining === 'Free' ? 'Free' : '~' + snap.remaining}`;
         }
         if (refillEl) {
             refillEl.textContent = snap.extended
                 ? 'Paused (full)'
                 : (snap.refillPaused
                     ? 'Paused'
-                    : `${snap.refillPercent}% / day (~${snap.refillGenerations})`);
+                    : `${snap.refillPercent}% / day (${snap.refillGenerations === 'Free' ? 'Free' : '~' + snap.refillGenerations})`);
         }
         valueEl.textContent = snap.extended
             ? `Free +${snap.extraPercent}%`
@@ -310,7 +355,7 @@ class GenerationUsageToolManager {
                 ? `${recentCount} generated / extended free`
                 : (snap.refillPaused
                     ? `${recentCount} generated / refill paused`
-                    : `${recentCount} generated / ~${snap.refillGenerations} refilled`);
+                    : `${recentCount} generated / ${snap.refillGenerations === 'Free' ? 'Free' : '~' + snap.refillGenerations} refilled`);
         }
     }
 
