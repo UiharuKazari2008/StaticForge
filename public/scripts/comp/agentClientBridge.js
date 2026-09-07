@@ -396,7 +396,8 @@
                 : null,
             director: typeof readDirectorAttachSnapshot === 'function'
                 ? readDirectorAttachSnapshot()
-                : null
+                : null,
+            lastGeneratedImageName: window.lastGeneratedImageName || null
         };
     }
 
@@ -409,7 +410,7 @@
     }
 
     function diffStudioCheckpointPayload(prev, next) {
-        const keys = ['workspaceId', 'filename', 'model', 'change', 'dynamicGeneration', 'director'];
+        const keys = ['workspaceId', 'filename', 'model', 'change', 'dynamicGeneration', 'director', 'lastGeneratedImageName'];
         const delta = {};
         let changed = false;
         for (let i = 0; i < keys.length; i += 1) {
