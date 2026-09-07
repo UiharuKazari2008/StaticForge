@@ -29,7 +29,7 @@ const SCOPE_WS_PACKETS = {
         'desktop_remove_shortcut', 'desktop_update_positions',
         'workspace_get', 'workspace_get_files', 'workspace_get_scraps',
         'workspace_get_pinned', 'workspace_get_groups', 'workspace_get_group',
-        'workspace_get_image_groups'
+        'workspace_get_image_groups', 'workspace_bulk_remove_scrap'
     ],
     search: [
         'search_tags', 'search_dataset_tags', 'search_files', 'search_characters',
@@ -95,7 +95,7 @@ const SCOPE_WS_PACKETS = {
     ],
     'workspace_vfs:soft_delete': [
         'workspace_remove_pinned', 'workspace_remove_scrap', 'workspace_bulk_remove_pinned', 'workspace_remove_images_from_group',
-        'scrap_similar_images', 'vfs_move_to_trash', 'vfs_restore_from_trash'
+        'scrap_similar_images', 'vfs_move_to_trash', 'vfs_restore_from_trash', 'workspace_bulk_remove_scrap'
     ],
     'workspace_vfs:delete': [
         'workspace_delete', 'workspace_delete_group', 'delete_images_bulk', 'delete_unupscaled_original',

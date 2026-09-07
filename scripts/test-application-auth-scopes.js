@@ -59,6 +59,8 @@ assert.strictEqual(scopesAllowPacket(['workspace_vfs:read'], 'vfs_list'), true);
 assert.strictEqual(scopesAllowPacket(['workspace_vfs:write'], 'workspace_create'), true);
 assert.strictEqual(scopesAllowPacket(['workspace_vfs:write'], 'vfs_upload_file'), true);
 assert.strictEqual(scopesAllowPacket(['workspace_vfs:soft_delete'], 'workspace_remove_pinned'), true);
+assert.strictEqual(scopesAllowPacket(['workspace_vfs:soft_delete'], 'workspace_bulk_remove_scrap'), true);
+assert.strictEqual(scopesAllowPacket(['workspace_vfs:soft_delete'], 'workspace_bulk_remove_scrap'), true);
 assert.strictEqual(scopesAllowPacket(['workspace_vfs:soft_delete'], 'vfs_move_to_trash'), true);
 assert.strictEqual(scopesAllowPacket(['workspace_vfs:delete'], 'workspace_delete'), true);
 assert.strictEqual(scopesAllowPacket(['workspace_vfs:delete'], 'vfs_permanently_delete'), true);
