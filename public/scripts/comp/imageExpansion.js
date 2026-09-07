@@ -920,23 +920,20 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
         expansionModalBootstrapping = false;
     }
 
-    if (!expansionModalData.selectedResolution) {
-        showGlassToast('error', 'Expand Canvas', 'No valid target resolution for this image', false, 5000, '<i class="nai-cross"></i>');
-        return;
-    }
-
-    const prepared = await fetchExpansionCompiledPrompt({
-        showToast: expansionModalData.enableAI === true,
-        blockUI: true
-    });
-    if (!prepared.ok) {
-        if (prepared.error && !prepared.cancelled) {
-            const msg = prepared.error.message || 'Could not compile expansion prompt';
-            if (!prepared.error.message || prepared.error.message !== 'WebSocket not connected') {
-                showGlassToast('error', 'Expand Canvas', msg, false, 5000, '<i class="nai-cross"></i>');
+    if (expansionModalData.selectedResolution) {
+        const prepared = await fetchExpansionCompiledPrompt({
+            showToast: expansionModalData.enableAI === true,
+            blockUI: true
+        });
+        if (!prepared.ok) {
+            if (prepared.error && !prepared.cancelled) {
+                const msg = prepared.error.message || 'Could not compile expansion prompt';
+                if (!prepared.error.message || prepared.error.message !== 'WebSocket not connected') {
+                    showGlassToast('error', 'Expand Canvas', msg, false, 5000, '<i class="nai-cross"></i>');
+                }
             }
+            return;
         }
-        return;
     }
 
     openModal(modal);

@@ -443,7 +443,6 @@ function setupExpandCanvasStageEvents(stageId) {
                 });
             });
 
-            if (availableResolutions.length === 0) return;
 
             // Find current index - use inherited value if input is empty
             let currentValue = resolutionInput.value;
