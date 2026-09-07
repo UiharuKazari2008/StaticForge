@@ -293,7 +293,7 @@ const ACCOUNT_DEFS = {
             look: null,
             locked: false
         },
-        baseline_kg: null
+        baseline_kg: 54.0 // visual-feast lock
     },
     ivory: {
         id: 'ivory',
@@ -305,7 +305,7 @@ const ACCOUNT_DEFS = {
             look: null,
             locked: false
         },
-        baseline_kg: null
+        baseline_kg: 54.0 // visual-feast lock
     },
     pyra: {
         id: 'pyra',
@@ -317,7 +317,7 @@ const ACCOUNT_DEFS = {
             look: null,
             locked: false
         },
-        baseline_kg: null
+        baseline_kg: 54.0 // visual-feast lock
     },
     chiyo: {
         id: 'chiyo',
@@ -329,7 +329,7 @@ const ACCOUNT_DEFS = {
             look: null,
             locked: false
         },
-        baseline_kg: null
+        baseline_kg: 54.0 // visual-feast lock
     },
     guren: {
         id: 'guren',
@@ -445,6 +445,52 @@ async function ensurePantryMigration(accountId) {
     }
 }
 
+/** Visual-feast locked start weight for pantry keepers (and Menma/Guren defs). */
+const VISUAL_FEAST_BASELINE_KG = 54.0;
+
+/**
+ * Fail-closed kg seed: never leave current_kg/baseline_kg null for known accounts.
+ * Also one-shot lift accounts that ate from 0 while baseline was null (Pyra 0→0.96 → 54.96).
+ * Menma unchanged beyond null-seed; Guren already above baseline stays put.
+ * Returns { state, seeded }.
+ */
+function ensureCurrentKgSeeded(accountId, state) {
+    if (!state || state._sqliteUnavailable || state._sqliteError || state._importStatusUnknown) {
+        return { state, seeded: false };
+    }
+    const def = ACCOUNT_DEFS[accountId];
+    if (!def) return { state, seeded: false };
+
+    let seeded = false;
+    const lockedBaseline = def.baseline_kg != null ? def.baseline_kg : VISUAL_FEAST_BASELINE_KG;
+
+    if (state.baseline_kg == null || state.baseline_kg === '') {
+        state.baseline_kg = lockedBaseline;
+        seeded = true;
+    }
+
+    if (state.current_kg == null || state.current_kg === '') {
+        state.current_kg = state.baseline_kg;
+        seeded = true;
+    }
+
+    // One-shot: consumed from 0 while baseline was null → current is below feast lock
+    // Do not touch menma; do not touch anyone already at/above baseline (Guren 72.12).
+    if (
+        accountId !== 'menma'
+        && !state._baseline_lift_applied
+        && state.baseline_kg != null
+        && state.current_kg != null
+        && Number(state.current_kg) < Number(state.baseline_kg)
+    ) {
+        state.current_kg = Number((Number(state.current_kg) + Number(state.baseline_kg)).toFixed(2));
+        state._baseline_lift_applied = true;
+        seeded = true;
+    }
+
+    return { state, seeded };
+}
+
 /**
  * Get default state for an account
  */
@@ -482,7 +528,9 @@ function getAccountStateFromFile(accountId) {
         return defaultState;
     }
     const state = readJsonFile(statePath, defaultState);
-    return { ...defaultState, ...state };
+    const merged = { ...defaultState, ...state };
+    const { state: seededState } = ensureCurrentKgSeeded(accountId, merged);
+    return seededState;
 }
 
 /**
@@ -508,7 +556,16 @@ async function getAccountState(accountId) {
         try {
             const state = await getAccountStateFromDb(status.db, accountId);
             if (state && Object.keys(state).length > 0) {
-                return { ...defaultState, ...state };
+                const merged = { ...defaultState, ...state };
+                const { state: seededState, seeded } = ensureCurrentKgSeeded(accountId, merged);
+                if (seeded) {
+                    try {
+                        await saveAccountStateToDb(status.db, accountId, seededState);
+                    } catch (persistErr) {
+                        console.error(`[cakePantry] seed kg persist failed for ${accountId}:`, persistErr);
+                    }
+                }
+                return seededState;
             }
             // Imported accounts stay on SQLite even with no prior rows (no file leftovers)
             try {
@@ -777,6 +834,11 @@ async function inspectPantry(accountId, params = {}) {
     if (!state) {
         return { success: false, error: 'Unknown account', accountId };
     }
+    const { state: seededState, seeded } = ensureCurrentKgSeeded(accountId, state);
+    Object.assign(state, seededState);
+    if (seeded && !state._sqliteUnavailable && !state._sqliteError && !state._importStatusUnknown) {
+        await saveAccountState(accountId, state);
+    }
 
     const logLimit = Number(params.log_limit) || 20;
     const cakeLog = await getCakeLog(accountId, logLimit);
@@ -902,7 +964,13 @@ async function consumeCake(accountId, params = {}) {
     const now = new Date().toISOString();
     const dateLocal = new Date().toISOString().split('T')[0];
 
-    const kgBefore = state.current_kg || state.baseline_kg || 0;
+    const { state: kgState, seeded: kgSeeded } = ensureCurrentKgSeeded(accountId, state);
+    Object.assign(state, kgState);
+    if (kgSeeded) {
+        // Persist seed before consume so a crash mid-meal cannot re-null
+        await saveAccountState(accountId, state);
+    }
+    const kgBefore = state.current_kg ?? state.baseline_kg ?? VISUAL_FEAST_BASELINE_KG;
     const gainedKg = Number((slicesToConsume * KG_PER_SLICE).toFixed(2));
     const kgAfter = Number((kgBefore + gainedKg).toFixed(2));
 
