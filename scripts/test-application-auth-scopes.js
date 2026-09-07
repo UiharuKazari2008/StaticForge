@@ -54,4 +54,26 @@ assert.strictEqual(scopesAllowPacket(['wiki'], 'notes_create'), false);
 assert.strictEqual(scopesAllowPacket(['universal'], 'get_autofill_ranking'), true);
 assert.strictEqual(scopesAllowPacket([], 'generate_image'), false);
 
+assert.strictEqual(scopesAllowPacket(['workspace_vfs:read'], 'workspace_get_files'), true);
+assert.strictEqual(scopesAllowPacket(['workspace_vfs:read'], 'vfs_list'), true);
+assert.strictEqual(scopesAllowPacket(['workspace_vfs:write'], 'workspace_create'), true);
+assert.strictEqual(scopesAllowPacket(['workspace_vfs:write'], 'vfs_upload_file'), true);
+assert.strictEqual(scopesAllowPacket(['workspace_vfs:soft_delete'], 'workspace_remove_pinned'), true);
+assert.strictEqual(scopesAllowPacket(['workspace_vfs:soft_delete'], 'vfs_move_to_trash'), true);
+assert.strictEqual(scopesAllowPacket(['workspace_vfs:delete'], 'workspace_delete'), true);
+assert.strictEqual(scopesAllowPacket(['workspace_vfs:delete'], 'vfs_permanently_delete'), true);
+assert.strictEqual(scopesAllowPacket(['workspace_vfs:move'], 'workspace_move_files'), true);
+assert.strictEqual(scopesAllowPacket(['workspace_vfs:move'], 'vfs_rename_file'), true);
+
+assert.strictEqual(scopesAllowPacket(['root_vfs:read'], 'vfs_list'), true);
+assert.strictEqual(scopesAllowPacket(['root_vfs:read'], 'workspace_get_files'), false);
+assert.strictEqual(scopesAllowPacket(['root_vfs:write'], 'vfs_upload_file'), true);
+assert.strictEqual(scopesAllowPacket(['root_vfs:write'], 'workspace_create'), false);
+assert.strictEqual(scopesAllowPacket(['root_vfs:soft_delete'], 'vfs_move_to_trash'), true);
+assert.strictEqual(scopesAllowPacket(['root_vfs:soft_delete'], 'workspace_remove_pinned'), false);
+assert.strictEqual(scopesAllowPacket(['root_vfs:delete'], 'vfs_permanently_delete'), true);
+assert.strictEqual(scopesAllowPacket(['root_vfs:delete'], 'workspace_delete'), false);
+assert.strictEqual(scopesAllowPacket(['root_vfs:move'], 'vfs_rename_file'), true);
+assert.strictEqual(scopesAllowPacket(['root_vfs:move'], 'workspace_move_files'), false);
+
 console.log('test-application-auth-scopes: ok');

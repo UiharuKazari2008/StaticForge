@@ -26,7 +26,10 @@ const SCOPE_WS_PACKETS = {
         'workspace_add_pinned', 'workspace_remove_pinned', 'workspace_add_scrap',
         'workspace_remove_scrap', 'workspace_bulk_add_scrap', 'workspace_bulk_pinned',
         'desktop_add_shortcut', 'desktop_update_shortcut',
-        'desktop_remove_shortcut', 'desktop_update_positions'
+        'desktop_remove_shortcut', 'desktop_update_positions',
+        'workspace_get', 'workspace_get_files', 'workspace_get_scraps',
+        'workspace_get_pinned', 'workspace_get_groups', 'workspace_get_group',
+        'workspace_get_image_groups'
     ],
     search: [
         'search_tags', 'search_dataset_tags', 'search_files', 'search_characters',
@@ -73,7 +76,57 @@ const SCOPE_WS_PACKETS = {
         'notes_create', 'notes_get', 'notes_get_by_workspace', 'notes_get_all',
         'notes_get_all_metadata', 'notes_update', 'notes_save_content', 'notes_delete'
     ],
-    infrastructure: ['ping', 'pong', 'server_status', 'check_updates', 'version_check']
+    infrastructure: ['ping', 'pong', 'server_status', 'check_updates', 'version_check'],
+    'workspace_vfs:read': [
+        'request_gallery', 'request_image_metadata', 'get_similar_image_groups',
+        'workspace_list', 'workspace_get', 'workspace_get_files', 'workspace_get_scraps',
+        'workspace_get_pinned', 'workspace_get_groups', 'workspace_get_group',
+        'workspace_get_image_groups', 'vfs_list', 'vfs_read', 'vfs_stat', 'vfs_search',
+        'vfs_list_directory', 'vfs_get_path_stats', 'vfs_resolve_path',
+        'vfs_download_file', 'desktop_get_shortcuts', 'desktop_get_settings', 'vfs_folder_has_user_files'
+    ],
+    'workspace_vfs:write': [
+        'workspace_create', 'workspace_update', 'workspace_add_pinned', 'workspace_create_group',
+        'workspace_add_scrap', 'workspace_bulk_add_scrap', 'workspace_bulk_pinned', 'workspace_add_images_to_group',
+        'desktop_add_shortcut', 'desktop_update_shortcut', 'desktop_update_positions', 'workspace_update_color', 'workspace_update_background_color', 'workspace_update_settings', 'workspace_update_window_positions', 'workspace_update_primary_font', 'workspace_update_textarea_font',
+        'vfs_write', 'vfs_mkdir', 'vfs_copy', 'vfs_upload_file', 'vfs_replace_file',
+        'vfs_create_folder', 'vfs_copy_items',
+        'update_image_preset_bulk', 'desktop_create_empty_folder', 'desktop_update_shortcut_folders', 'desktop_create_folder_from_selection'
+    ],
+    'workspace_vfs:soft_delete': [
+        'workspace_remove_pinned', 'workspace_remove_scrap', 'workspace_bulk_remove_pinned', 'workspace_remove_images_from_group',
+        'scrap_similar_images', 'vfs_move_to_trash', 'vfs_restore_from_trash'
+    ],
+    'workspace_vfs:delete': [
+        'workspace_delete', 'workspace_delete_group', 'delete_images_bulk', 'delete_unupscaled_original',
+        'vfs_delete', 'vfs_delete_entry', 'vfs_delete_file', 'vfs_delete_folder',
+        'vfs_permanently_delete', 'vfs_empty_trash', 'desktop_remove_shortcut'
+    ],
+    'workspace_vfs:move': [
+        'workspace_move_files', 'workspace_reorder', 'workspace_rename', 'workspace_rename_group', 'vfs_move', 'vfs_move_items', 'vfs_rename_entry',
+        'vfs_rename_file', 'vfs_rename_folder', 'vfs_rename_shortcut_entry'
+    ],
+    'root_vfs:read': [
+        'vfs_list', 'vfs_read', 'vfs_stat', 'vfs_search', 'vfs_list_directory',
+        'vfs_get_path_stats', 'vfs_resolve_path', 'vfs_read_system_file',
+        'vfs_download_file', 'vfs_download_system_file', 'desktop_get_shortcuts',
+        'desktop_get_settings', 'vfs_folder_has_user_files'
+    ],
+    'root_vfs:write': [
+        'vfs_write', 'vfs_mkdir', 'vfs_copy', 'vfs_upload_file', 'vfs_replace_file',
+        'vfs_create_folder', 'vfs_copy_items', 'desktop_create_empty_folder', 'desktop_update_shortcut_folders', 'desktop_create_folder_from_selection', 'desktop_add_shortcut', 'desktop_update_shortcut', 'desktop_update_positions'
+    ],
+    'root_vfs:soft_delete': [
+        'vfs_move_to_trash', 'vfs_restore_from_trash'
+    ],
+    'root_vfs:delete': [
+        'vfs_delete', 'vfs_delete_entry', 'vfs_delete_file', 'vfs_delete_folder',
+        'vfs_permanently_delete', 'vfs_empty_trash', 'desktop_remove_shortcut'
+    ],
+    'root_vfs:move': [
+        'vfs_move', 'vfs_move_items', 'vfs_rename_entry', 'vfs_rename_file',
+        'vfs_rename_folder', 'vfs_rename_shortcut_entry'
+    ]
 };
 
 const AVAILABLE_SCOPES = [
@@ -97,6 +150,16 @@ const AVAILABLE_SCOPES = [
     { id: 'sfapp_cake_pantry:inspect', label: 'Cake Pantry (Inspect)', description: 'Inspect pantry only' },
     { id: 'sfapp_cake_pantry:consume', label: 'Cake Pantry (Consume)', description: 'Consume cake slices only' },
     { id: 'sfapp_report_issue', label: 'Report Issue', description: 'Development QA reporting (tool failures, errors, reviews)' },
+    { id: 'workspace_vfs:read', label: 'Workspace VFS (Read)', description: 'Read files and galleries' },
+    { id: 'workspace_vfs:write', label: 'Workspace VFS (Write)', description: 'Upload and modify files' },
+    { id: 'workspace_vfs:soft_delete', label: 'Workspace VFS (Soft Delete)', description: 'Trash and scrap files' },
+    { id: 'workspace_vfs:delete', label: 'Workspace VFS (Delete)', description: 'Permanently delete files' },
+    { id: 'workspace_vfs:move', label: 'Workspace VFS (Move)', description: 'Rename and move files' },
+    { id: 'root_vfs:read', label: 'Root VFS (Read)', description: 'Read system files' },
+    { id: 'root_vfs:write', label: 'Root VFS (Write)', description: 'Write system files' },
+    { id: 'root_vfs:soft_delete', label: 'Root VFS (Soft Delete)', description: 'Trash system files' },
+    { id: 'root_vfs:delete', label: 'Root VFS (Delete)', description: 'Delete system files' },
+    { id: 'root_vfs:move', label: 'Root VFS (Move)', description: 'Move system files' },
     { id: 'sfapp_usage', label: 'Usage', description: 'NovelAI account usage data (Anlas, Opus meter, generation count)' },
     { id: 'sfapp_apocrypha', label: 'Apocrypha Publish', description: 'Publish Apocrypha zine content directly' }
 ];

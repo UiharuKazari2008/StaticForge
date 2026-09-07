@@ -167,6 +167,16 @@ Use on REST only via `X-StaticForge-App-Token: sftok_…` (no UA check). Tokens 
 | `wiki` | Tag wiki / Grimoire |
 | `autofill` | Autofill ranking + tag wiki / Grimoire (not stuffed under `search`) |
 | `infrastructure` | ping, status, version |
+| `workspace_vfs:read` | Read files and galleries |
+| `workspace_vfs:write` | Upload and modify files |
+| `workspace_vfs:soft_delete` | Trash and scrap files |
+| `workspace_vfs:delete` | Permanently delete files |
+| `workspace_vfs:move` | Rename and move files |
+| `root_vfs:read` | Read system files |
+| `root_vfs:write` | Write system files |
+| `root_vfs:soft_delete` | Trash system files |
+| `root_vfs:delete` | Delete system files |
+| `root_vfs:move` | Move system files |
 
 #### Module scopes (`sfapp_` prefix)
 
