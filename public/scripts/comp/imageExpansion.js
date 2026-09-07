@@ -745,13 +745,20 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
     // Load previous expansion settings if available
     if (metadata?.forge_data?.expansion_source) {
         
-        // Set previous expansion resolution
+        // Set previous expansion resolution only if it is a valid *different* aspect target
         if (metadata.forge_data.expansion_resolution) {
-            expansionModalData.selectedResolution = metadata.forge_data.expansion_resolution;
-            const resData = RESOLUTIONS.find(r => r.value === metadata.forge_data.expansion_resolution);
-            const selectedElement = document.getElementById('expansionResolutionSelected');
-            if (selectedElement && resData) {
-                selectedElement.textContent = resData.display;
+            const prevRes = metadata.forge_data.expansion_resolution;
+            const prevDims = typeof getDimensionsFromResolution === 'function'
+                ? getDimensionsFromResolution(prevRes)
+                : null;
+            const srcPx = expansionModalData.expandSourcePixels;
+            const sameAspect = !!(srcPx && prevDims
+                && samePixelAspectRatio(srcPx.width, srcPx.height, prevDims.width, prevDims.height));
+            if (!sameAspect && prevDims) {
+                selectExpansionResolution(prevRes);
+            } else {
+                // Keep / force first different-aspect option from the filtered dropdown
+                ensureExpansionDifferentAspectSelected();
             }
         }
         
@@ -920,27 +927,28 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
         expansionModalBootstrapping = false;
     }
 
-    if (expansionModalData.selectedResolution) {
-        const prepared = await fetchExpansionCompiledPrompt({
-            showToast: expansionModalData.enableAI === true,
-            blockUI: true
-        });
-        if (!prepared.ok) {
-            if (prepared.error && !prepared.cancelled) {
-                const msg = prepared.error.message || 'Could not compile expansion prompt';
-                if (!prepared.error.message || prepared.error.message !== 'WebSocket not connected') {
-                    showGlassToast('error', 'Expand Canvas', msg, false, 5000, '<i class="nai-cross"></i>');
-                }
-            }
-            return;
-        }
-    }
+    // Always open — never block the window before the user can pick a ratio/direction.
+    ensureExpansionDifferentAspectSelected();
 
     openModal(modal);
     modal.classList.add('visible');
 
     if (typeof ensureModalWithinViewport === 'function') {
         ensureModalWithinViewport(modal);
+    }
+
+    // Compile after open; failures must not close/hide the modal.
+    if (expansionModalData.selectedResolution) {
+        const prepared = await fetchExpansionCompiledPrompt({
+            showToast: expansionModalData.enableAI === true,
+            blockUI: false
+        });
+        if (!prepared.ok && prepared.error && !prepared.cancelled) {
+            const msg = prepared.error.message || 'Could not compile expansion prompt';
+            if (!prepared.error.message || prepared.error.message !== 'WebSocket not connected') {
+                showGlassToast('error', 'Expand Canvas', msg, false, 5000, '<i class="nai-cross"></i>');
+            }
+        }
     }
 }
 
@@ -1607,6 +1615,37 @@ function updateExpansionModeDisplay() {
 }
 
 // Populate resolution dropdown with filtered options
+
+/** Prefer a target resolution with a different aspect than the source; never leave open blocked. */
+function ensureExpansionDifferentAspectSelected() {
+    const srcPx = expansionModalData.expandSourcePixels;
+    const current = expansionModalData.selectedResolution;
+    if (current) {
+        const curDims = typeof getDimensionsFromResolution === 'function'
+            ? getDimensionsFromResolution(current)
+            : null;
+        if (curDims && srcPx
+            && !samePixelAspectRatio(srcPx.width, srcPx.height, curDims.width, curDims.height)) {
+            return current;
+        }
+    }
+
+    if (typeof RESOLUTION_GROUPS === 'undefined' || !Array.isArray(RESOLUTION_GROUPS)) {
+        return null;
+    }
+
+    for (const group of RESOLUTION_GROUPS) {
+        if (!group || !Array.isArray(group.options)) continue;
+        for (const opt of group.options) {
+            if (!opt || opt.value === 'custom' || String(opt.value).startsWith('small_')) continue;
+            if (srcPx && samePixelAspectRatio(srcPx.width, srcPx.height, opt.width, opt.height)) continue;
+            selectExpansionResolution(opt.value, group.group);
+            return opt.value;
+        }
+    }
+    return null;
+}
+
 async function populateExpansionResolutionDropdown() {
     const dropdown = document.getElementById('expansionResolutionDropdownMenu');
     if (!dropdown) return;
@@ -1698,9 +1737,14 @@ async function populateExpansionResolutionDropdown() {
         dropdown.appendChild(noOptions);
     }
 
-    if (!expansionModalData.selectedResolution && filteredGroups.length > 0 && filteredGroups[0].options.length > 0) {
-        const firstOpt = filteredGroups[0].options[0];
-        selectExpansionResolution(firstOpt.value, filteredGroups[0].group);
+    // Always auto-select a different-aspect target when available (open must never be blocked).
+    if (filteredGroups.length > 0 && filteredGroups[0].options.length > 0) {
+        const current = expansionModalData.selectedResolution;
+        const stillValid = current && filteredGroups.some(g => g.options.some(o => o.value === current));
+        if (!stillValid) {
+            const firstOpt = filteredGroups[0].options[0];
+            selectExpansionResolution(firstOpt.value, filteredGroups[0].group);
+        }
     }
 
     updateExpansionInsetToggleVisibility();
