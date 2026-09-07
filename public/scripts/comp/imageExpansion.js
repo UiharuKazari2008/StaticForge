@@ -1616,16 +1616,25 @@ function updateExpansionModeDisplay() {
 
 // Populate resolution dropdown with filtered options
 
-/** Prefer a target resolution with a different aspect than the source; never leave open blocked. */
+/** Prefer different-aspect target; prefer inset-eligible (larger on both axes) so inset controls stay available. */
 function ensureExpansionDifferentAspectSelected() {
     const srcPx = expansionModalData.expandSourcePixels;
+
+    function isDifferentAspect(w, h) {
+        if (!srcPx || !srcPx.width || !srcPx.height) return true;
+        return !samePixelAspectRatio(srcPx.width, srcPx.height, w, h);
+    }
+    function isInsetEligible(w, h) {
+        if (!srcPx || !srcPx.width || !srcPx.height) return false;
+        return expansionInsetTargetApplicable(srcPx.width, srcPx.height, w, h);
+    }
+
     const current = expansionModalData.selectedResolution;
     if (current) {
         const curDims = typeof getDimensionsFromResolution === 'function'
             ? getDimensionsFromResolution(current)
             : null;
-        if (curDims && srcPx
-            && !samePixelAspectRatio(srcPx.width, srcPx.height, curDims.width, curDims.height)) {
+        if (curDims && isDifferentAspect(curDims.width, curDims.height) && isInsetEligible(curDims.width, curDims.height)) {
             return current;
         }
     }
@@ -1634,14 +1643,19 @@ function ensureExpansionDifferentAspectSelected() {
         return null;
     }
 
+    const candidates = [];
     for (const group of RESOLUTION_GROUPS) {
         if (!group || !Array.isArray(group.options)) continue;
         for (const opt of group.options) {
             if (!opt || opt.value === 'custom' || String(opt.value).startsWith('small_')) continue;
-            if (srcPx && samePixelAspectRatio(srcPx.width, srcPx.height, opt.width, opt.height)) continue;
-            selectExpansionResolution(opt.value, group.group);
-            return opt.value;
+            if (!isDifferentAspect(opt.width, opt.height)) continue;
+            candidates.push({ opt, group: group.group, inset: isInsetEligible(opt.width, opt.height) });
         }
+    }
+    const pick = candidates.find(c => c.inset) || candidates[0];
+    if (pick) {
+        selectExpansionResolution(pick.opt.value, pick.group);
+        return pick.opt.value;
     }
     return null;
 }
@@ -1737,13 +1751,27 @@ async function populateExpansionResolutionDropdown() {
         dropdown.appendChild(noOptions);
     }
 
-    // Always auto-select a different-aspect target when available (open must never be blocked).
-    if (filteredGroups.length > 0 && filteredGroups[0].options.length > 0) {
+    // Auto-select different-aspect target; prefer inset-eligible so inset controls stay visible.
+    if (filteredGroups.length > 0) {
         const current = expansionModalData.selectedResolution;
-        const stillValid = current && filteredGroups.some(g => g.options.some(o => o.value === current));
-        if (!stillValid) {
-            const firstOpt = filteredGroups[0].options[0];
-            selectExpansionResolution(firstOpt.value, filteredGroups[0].group);
+        const flat = [];
+        for (const g of filteredGroups) {
+            for (const o of g.options) flat.push({ opt: o, group: g.group });
+        }
+        const stillValid = current && flat.some(x => x.opt.value === current);
+        let keep = stillValid;
+        if (keep && expansionModalData.expandSourcePixels) {
+            const d = getDimensionsFromResolution(current);
+            keep = !!(d && expansionInsetTargetApplicable(
+                expansionModalData.expandSourcePixels.width,
+                expansionModalData.expandSourcePixels.height,
+                d.width, d.height));
+        }
+        if (!keep && flat.length) {
+            const src = expansionModalData.expandSourcePixels;
+            const insetPick = flat.find(x => src && expansionInsetTargetApplicable(src.width, src.height, x.opt.width, x.opt.height));
+            const pick = insetPick || flat[0];
+            selectExpansionResolution(pick.opt.value, pick.group);
         }
     }
 
@@ -2868,20 +2896,7 @@ document.addEventListener('DOMContentLoaded', () => {
         autoSeedToggle.addEventListener('click', toggleAutoSeed);
     }
     
-    // Setup AI toggle
-    const aiToggle = document.getElementById('expansionAIToggle');
-    if (aiToggle) {
-        aiToggle.addEventListener('click', toggleExpansionAI);
-    }
-
-    const expansionRequestedContent = document.getElementById('expansionRequestedContent');
-    if (expansionRequestedContent) {
-        expansionRequestedContent.addEventListener('input', () => {
-            if (expansionModalData.enableAI) {
-                scheduleExpansionCompiledPromptReload();
-            }
-        });
-    }
+    // Expand Canvas AI enhance mode removed.
 
     const expansionEditCompiledPromptBtn = document.getElementById('expansionEditCompiledPromptBtn');
     if (expansionEditCompiledPromptBtn) {
