@@ -3846,6 +3846,25 @@ async function callTool(globalResources, req, name, args) {
                 );
             }
             sanitizeDynagenForGenerate(payload);
+
+            if (typeof payload.prompt === 'string') {
+                const existingTextMatch = payload.prompt.match(/,\s*(?:speech bubble|thought bubble|caption|subtitle)?,?\s*Text:\s*(.+?)$/i);
+                if (existingTextMatch) {
+                    const content = existingTextMatch[1].trim();
+                    if (content.startsWith('"') && content.endsWith('"') && content.length >= 2) {
+                        const bareContent = content.slice(1, -1);
+                        payload.prompt = payload.prompt.substring(0, existingTextMatch.index) + payload.prompt.substring(existingTextMatch.index).replace(content, bareContent);
+                    }
+                } else {
+                    const trailingQuoteMatch = payload.prompt.match(/(?:^|,\s*)"([^"\n]+)"\s*$/);
+                    if (trailingQuoteMatch) {
+                        const content = trailingQuoteMatch[1];
+                        payload.prompt = payload.prompt.substring(0, trailingQuoteMatch.index).trim();
+                        if (payload.prompt.endsWith(',')) payload.prompt = payload.prompt.slice(0, -1).trim();
+                        payload.prompt = payload.prompt ? `${payload.prompt}, Text: ${content}` : `Text: ${content}`;
+                    }
+                }
+            }
         }
 
         if (wantAsync && (name === 'generate_image' || name === 'generate_preset')) {
