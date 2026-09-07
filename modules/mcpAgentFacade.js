@@ -300,6 +300,10 @@ const GENERATE_IMAGE_PROPERTIES = {
         type: 'number',
         description: 'Print count 1–8. generate_image: server copies (filenames[] when n>1). apply_studio_changes: Studio prints input (used with autoGenerate).'
     },
+    batch_characters: {
+        type: 'boolean',
+        description: 'If true, coordinates one generation per character box sequentially. Incompatible with n>1.'
+    },
     async: {
         type: 'boolean',
         description: 'Default false: stall this call until the file and Grok webp are ready. true: enqueue on the shared generation FIFO and return jobId now. Then get_generation_job or await_generation_job.'
