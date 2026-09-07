@@ -198,7 +198,7 @@ function sanitizeLinkXiPersona(settings) {
 
 const STUDIO_PARAM_SCHEMA = {
     steps: { type: 'number', description: 'Sampler steps (typical 23–28)' },
-    guidance: { type: 'number', description: 'CFG / prompt guidance (typical 5)' },
+    guidance: { type: 'number', description: 'CFG / prompt guidance (typical 5). 0 is falsy and remaps to 5.5; pass 0.001 for near-zero CFG.' },
     rescale: { type: 'number', description: 'CFG rescale 0–1' },
     sampler: { type: 'string', description: 'k_euler_ancestral (Euler Ancestral), k_dpmpp_sde (DPM++ SDE), k_dpmpp_2m (DPM++ 2M), k_dpmpp_2m_sde (DPM++ 2M SDE), k_euler (Euler), k_dpmpp_2s_ancestral (DPM++ 2S Ancestral)', enum: ['k_euler_ancestral', 'k_dpmpp_sde', 'k_dpmpp_2m', 'k_dpmpp_2m_sde', 'k_euler', 'k_dpmpp_2s_ancestral'] },
     noiseScheduler: { type: 'string', description: 'karras, exponential, or polyexponential', enum: ['karras', 'exponential', 'polyexponential'] },

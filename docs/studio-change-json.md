@@ -49,7 +49,7 @@ Do **not** invent keys Studio cannot apply. Unknown keys are ignored. Director i
 | Key | Type | Notes |
 |-----|------|--------|
 | `steps` | number | Typical 23–28 |
-| `guidance` | number | CFG / prompt guidance, typical 5 |
+| `guidance` | number | CFG / prompt guidance, typical 5. Note: `0` remaps to `5.5` on the server; use `0.001` for near-zero CFG. |
 | `rescale` | number | CFG rescale 0–1 |
 | `sampler` | string | `k_euler_ancestral` (Euler Ancestral), `k_dpmpp_sde`, `k_dpmpp_2m`, `k_dpmpp_2m_sde`, `k_euler`, `k_dpmpp_2s_ancestral` |
 | `noiseScheduler` | string | `karras`, `exponential`, `polyexponential` |

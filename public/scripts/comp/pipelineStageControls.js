@@ -1439,6 +1439,9 @@ function setupStageAdvancedControls(stageId) {
             if (value > 10) value = 10;
             if (guidanceInput.value !== '') {
                 guidanceInput.value = value >= 10 ? value.toString() : value.toFixed(1);
+                if (value === 0 && typeof showGlassToast === 'function') {
+                    showGlassToast('info', 'Guidance', '0 CFG remaps to 5.5 on the server. For near-zero CFG, enter 0.001.', false, 5000);
+                }
             }
         });
 
