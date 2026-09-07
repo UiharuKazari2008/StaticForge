@@ -60,6 +60,9 @@ function cacheKeyFromParams(params) {
         sort: params.sort || 'new',
         period: params.period || 'day',
         search: (params.search || '').trim().toLowerCase(),
+        model: (params.model || '').trim().toLowerCase(),
+        aspect: (params.aspect || '').trim().toLowerCase(),
+        vt: (params.vt || '').trim().toLowerCase(),
         creatorId: (params.creatorId || '').trim(),
         offset: params.offset || 0,
         limit: params.limit || PAGE_LIMIT
@@ -122,7 +125,7 @@ function normalizePeriod(period) {
     return 'day';
 }
 
-function buildSearchBody({ sort, period, search, creatorId, offset, limit }) {
+function buildSearchBody({ sort, period, search, model, aspect, vt, creatorId, offset, limit }) {
     const selectors = [];
     let orderers;
 
@@ -147,6 +150,15 @@ function buildSearchBody({ sort, period, search, creatorId, offset, limit }) {
     const q = (search || '').trim();
     if (q && !cid) {
         selectors.push({ field: 'tag', value: q });
+    }
+    if (model && !cid) {
+        selectors.push({ field: 'tag', value: 'system:model:' + model });
+    }
+    if (aspect && !cid) {
+        selectors.push({ field: 'tag', value: 'system:aspect:' + aspect });
+    }
+    if (vt === 'with' && !cid) {
+        selectors.push({ field: 'tag', value: 'system:has_vt' });
     }
 
     return {
