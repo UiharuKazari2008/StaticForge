@@ -152,7 +152,7 @@ function createTokenTooltip(token) {
     const parts = [];
     
     parts.push(`ID: ${token.tokenId}`);
-    parts.push(`Text: "${token.text}"`);
+    parts.push(`Text: ${token.text}`);
     
     if (token.isSpecial) {
         parts.push('Type: Special Token');
