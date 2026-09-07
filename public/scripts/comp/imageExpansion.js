@@ -1652,6 +1652,7 @@ function ensureExpansionDifferentAspectSelected() {
         if (!group || !Array.isArray(group.options)) continue;
         for (const opt of group.options) {
             if (!opt || opt.value === 'custom' || String(opt.value).startsWith('small_')) continue;
+            if (!opt.width || !opt.height) continue;
             if (!isDifferentAspect(opt.width, opt.height)) continue;
             candidates.push({ opt, group: group.group, inset: isInsetEligible(opt.width, opt.height) });
         }
@@ -1717,11 +1718,15 @@ async function populateExpansionResolutionDropdown() {
     // Filter RESOLUTION_GROUPS: hide small presets and any preset with the same aspect ratio as the image (exact rational match)
     const filteredGroups = RESOLUTION_GROUPS.map(group => {
         const filteredOptions = group.options.filter(opt => {
-            if (opt.value === 'custom') return false;
+            // Keep Custom so big sources can pick inset-eligible WxH
+            if (opt.value === 'custom') return true;
 
             if (opt.value.startsWith('small_')) {
                 return false;
             }
+
+            // Custom option has no width/height — already handled above
+            if (!opt.width || !opt.height) return false;
 
             if (samePixelAspectRatio(baseW, baseH, opt.width, opt.height)) {
                 return false;
@@ -1773,12 +1778,21 @@ async function populateExpansionResolutionDropdown() {
         }
         if (!keep && flat.length) {
             const src = expansionModalData.expandSourcePixels;
-            const insetPick = flat.find(x => src && expansionInsetTargetApplicable(src.width, src.height, x.opt.width, x.opt.height));
-            const pick = insetPick || flat[0];
-            selectExpansionResolution(pick.opt.value, pick.group);
+            const insetPick = flat.find(x => x.opt.width && x.opt.height && src
+                && expansionInsetTargetApplicable(src.width, src.height, x.opt.width, x.opt.height));
+            if (insetPick) {
+                selectExpansionResolution(insetPick.opt.value, insetPick.group);
+            } else if (src && src.width && src.height) {
+                // No preset fits unscaled source — open Custom with best-effort dims
+                selectExpansionResolution('custom', 'Custom');
+            } else {
+                const pick = flat.find(x => x.opt.value !== 'custom') || flat[0];
+                selectExpansionResolution(pick.opt.value, pick.group);
+            }
         }
     }
 
+    bindExpansionCustomResolutionInputs();
     updateExpansionInsetToggleVisibility();
 }
 
@@ -1795,6 +1809,127 @@ function expansionInsetTargetApplicable(sw, sh, tw, th) {
  * Inset = keep source at native pixels (no scale) and pad the extra canvas for inpaint.
  * Always show the toggle; only disable when the target cannot fit the unscaled source.
  */
+const EXPANSION_CUSTOM_MAX_AREA = 3047424; // Max (~3MP), same as Studio Max area
+
+function snapUpToStep(n, step = 64) {
+    const v = parseInt(n, 10) || 0;
+    if (v < step) return step;
+    return Math.ceil(v / step) * step;
+}
+
+/** Default custom target: both axes strictly larger than source when possible under max area. */
+function getExpansionCustomDefaultDims(srcW, srcH) {
+    const sw = parseInt(srcW, 10) || 1024;
+    const sh = parseInt(srcH, 10) || 1024;
+    let tw = snapUpToStep(sw + 1);
+    let th = snapUpToStep(sh + 1);
+    if (tw <= sw) tw = snapUpToStep(sw + 64);
+    if (th <= sh) th = snapUpToStep(sh + 64);
+
+    if (typeof correctDimensions === 'function') {
+        const result = correctDimensions(String(tw), String(th), {
+            step: 64,
+            maxArea: EXPANSION_CUSTOM_MAX_AREA
+        });
+        tw = result.width;
+        th = result.height;
+    } else if (tw * th > EXPANSION_CUSTOM_MAX_AREA) {
+        const scale = Math.sqrt(EXPANSION_CUSTOM_MAX_AREA / (tw * th));
+        tw = snapUpToStep(Math.floor(tw * scale));
+        th = snapUpToStep(Math.floor(th * scale));
+        while (tw * th > EXPANSION_CUSTOM_MAX_AREA && (tw > 64 || th > 64)) {
+            if (tw >= th) tw = Math.max(64, tw - 64);
+            else th = Math.max(64, th - 64);
+        }
+    }
+    return { width: tw, height: th };
+}
+
+function showExpansionCustomResolutionInputs(show) {
+    const row = document.getElementById('expansionCustomResolution');
+    if (!row) return;
+    if (show) row.classList.remove('hidden');
+    else row.classList.add('hidden');
+}
+
+function setExpansionCustomInputs(width, height) {
+    const wEl = document.getElementById('expansionCustomWidth');
+    const hEl = document.getElementById('expansionCustomHeight');
+    if (wEl) wEl.value = String(width);
+    if (hEl) hEl.value = String(height);
+}
+
+function applyExpansionCustomResolutionFromInputs(opts = {}) {
+    const wEl = document.getElementById('expansionCustomWidth');
+    const hEl = document.getElementById('expansionCustomHeight');
+    if (!wEl || !hEl) return null;
+    const rawW = wEl.value;
+    const rawH = hEl.value;
+    if (!rawW || !rawH) return null;
+
+    let width = parseInt(rawW, 10) || 1024;
+    let height = parseInt(rawH, 10) || 1024;
+    if (typeof correctDimensions === 'function') {
+        const result = correctDimensions(String(width), String(height), {
+            step: 64,
+            maxArea: EXPANSION_CUSTOM_MAX_AREA
+        });
+        if (result.changed && opts.toast !== false && typeof showGlassToast === 'function') {
+            showGlassToast('warning', null, `Custom size adjusted to ${result.width}×${result.height}`);
+        }
+        width = result.width;
+        height = result.height;
+    }
+    setExpansionCustomInputs(width, height);
+    const value = `custom_${width}x${height}`;
+    expansionModalData.selectedResolution = value;
+    const selectedElement = document.getElementById('expansionResolutionSelected');
+    if (selectedElement) selectedElement.textContent = `Custom (${width}×${height})`;
+    showExpansionCustomResolutionInputs(true);
+    updateExpansionInsetToggleVisibility();
+    if (!opts.skipCompile) scheduleExpansionCompiledPromptReload();
+    return { width, height, value };
+}
+
+function enterExpansionCustomResolution(seedFromSrc = true) {
+    const src = expansionModalData.expandSourcePixels;
+    let width = 1024;
+    let height = 1024;
+    const current = expansionModalData.selectedResolution;
+    if (current && String(current).startsWith('custom_')) {
+        const d = getDimensionsFromResolution(current);
+        if (d) { width = d.width; height = d.height; }
+    } else if (seedFromSrc && src && src.width && src.height) {
+        const d = getExpansionCustomDefaultDims(src.width, src.height);
+        width = d.width;
+        height = d.height;
+        if (!expansionInsetTargetApplicable(src.width, src.height, width, height)
+            && typeof showGlassToast === 'function') {
+            showGlassToast('info', null,
+                `No size under 3MP is larger than ${src.width}×${src.height} on both axes — inset stays off`);
+        }
+    } else if (current) {
+        const d = getDimensionsFromResolution(current);
+        if (d) { width = d.width; height = d.height; }
+    }
+    setExpansionCustomInputs(width, height);
+    showExpansionCustomResolutionInputs(true);
+    return applyExpansionCustomResolutionFromInputs({ toast: false, skipCompile: false });
+}
+
+function bindExpansionCustomResolutionInputs() {
+    const wEl = document.getElementById('expansionCustomWidth');
+    const hEl = document.getElementById('expansionCustomHeight');
+    if (!wEl || !hEl || wEl.dataset.bound === '1') return;
+    wEl.dataset.bound = '1';
+    hEl.dataset.bound = '1';
+    const onCommit = () => applyExpansionCustomResolutionFromInputs({ toast: true });
+    wEl.addEventListener('change', onCommit);
+    hEl.addEventListener('change', onCommit);
+    wEl.addEventListener('blur', onCommit);
+    hEl.addEventListener('blur', onCommit);
+}
+
 function updateExpansionInsetToggleVisibility() {
     const btn = document.getElementById('expansionInsetToggle');
     if (!btn) return;
@@ -1955,16 +2090,47 @@ function updateExpansionCanvasPreview() {
 
 // Select expansion resolution
 function selectExpansionResolution(value, group) {
-    expansionModalData.selectedResolution = value;
-    
-    const selectedElement = document.getElementById('expansionResolutionSelected');
-    if (selectedElement) {
-        // Find the resolution name from RESOLUTIONS array
-        const resData = RESOLUTIONS.find(r => r.value === value);
-        if (resData) {
-            selectedElement.textContent = resData.display;
-        } else {
-            selectedElement.textContent = value;
+    if (value === 'custom') {
+        enterExpansionCustomResolution(true);
+        const upscaleToggleEarly = document.getElementById('expansionUpscaleToggle');
+        if (upscaleToggleEarly && typeof calculateUpscaleInfo === 'function') {
+            const dimensions = getDimensionsFromResolution(expansionModalData.selectedResolution);
+            if (dimensions) {
+                const upscaleInfo = calculateUpscaleInfo(dimensions.width, dimensions.height);
+                if (upscaleInfo.available) {
+                    upscaleToggleEarly.disabled = false;
+                    upscaleToggleEarly.title = 'Enable upscaling after expansion';
+                } else {
+                    upscaleToggleEarly.disabled = true;
+                    upscaleToggleEarly.title = upscaleInfo.reason || 'Upscaling not available for this resolution';
+                    if (upscaleToggleEarly.getAttribute('data-state') === 'on') {
+                        upscaleToggleEarly.setAttribute('data-state', 'off');
+                    }
+                }
+            }
+        }
+        return;
+    }
+
+    if (value && String(value).startsWith('custom_')) {
+        expansionModalData.selectedResolution = value;
+        const d = getDimensionsFromResolution(value);
+        if (d) setExpansionCustomInputs(d.width, d.height);
+        showExpansionCustomResolutionInputs(true);
+        const selectedCustom = document.getElementById('expansionResolutionSelected');
+        if (selectedCustom && d) selectedCustom.textContent = `Custom (${d.width}×${d.height})`;
+        else if (selectedCustom) selectedCustom.textContent = value;
+    } else {
+        expansionModalData.selectedResolution = value;
+        showExpansionCustomResolutionInputs(false);
+        const selectedElement = document.getElementById('expansionResolutionSelected');
+        if (selectedElement) {
+            const resData = typeof RESOLUTIONS !== 'undefined' && RESOLUTIONS.find(r => r.value === value);
+            if (resData) {
+                selectedElement.textContent = resData.display;
+            } else {
+                selectedElement.textContent = value;
+            }
         }
     }
     
