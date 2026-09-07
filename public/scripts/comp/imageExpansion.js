@@ -2257,6 +2257,16 @@ function selectExpansionSampler(value) {
         // Find the sampler name from SAMPLER_MAP
         const sampler = SAMPLER_MAP.find(s => s.meta === value);
         selectedElement.textContent = sampler ? sampler.display : value;
+
+        const is2xSampler = value === 'k_dpmpp_sde' || value === 'k_dpmpp_2m_sde' || value === 'k_dpmpp_2s_ancestral';
+        const costHint = document.getElementById('expansionSamplerCostHint');
+        if (costHint) {
+            if (is2xSampler) {
+                costHint.classList.remove('hidden');
+            } else {
+                costHint.classList.add('hidden');
+            }
+        }
     }
 }
 

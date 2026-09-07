@@ -2527,7 +2527,12 @@
                     </div>
                     <div class="form-row control-row-sampler">
                         <div class="form-group auto-flex">
-                            <label for="manualSampler">Sampler</label>
+                            <label for="manualSampler" style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>Sampler</span>
+                                <span id="manualSamplerCostHint" class="form-hint hidden" style="font-size: 0.75rem; margin-bottom: 0;" title="1 step = 2 model invocations">
+                                    <i class="fas fa-battery-half"></i> 2x
+                                </span>
+                            </label>
                             <!-- Custom Manual Sampler Dropdown -->
                             <div id="manualSamplerDropdown" class="custom-dropdown dropup">
                                 <button type="button" id="manualSamplerDropdownBtn"
@@ -3219,7 +3224,12 @@
                         </div>
                     </div>
                     <div class="form-group">
-                        <label for="expansionSamplerDropdown">Sampler</label>
+                        <label for="expansionSamplerDropdown" style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>Sampler</span>
+                            <span id="expansionSamplerCostHint" class="form-hint hidden" style="font-size: 0.75rem; margin-bottom: 0;" title="1 step = 2 model invocations">
+                                <i class="fas fa-battery-half"></i> 2x
+                            </span>
+                        </label>
                         <div id="expansionSamplerDropdown" class="custom-dropdown dropup">
                             <button type="button" id="expansionSamplerDropdownBtn"
                                 class="custom-dropdown-btn hover-show colored">
