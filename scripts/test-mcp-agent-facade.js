@@ -79,10 +79,11 @@ assert.strictEqual(_test.TOOL_RATE_GROUPS.inspect_pantry, 'free');
 assert.strictEqual(_test.TOOL_RATE_GROUPS.consume_cake, 'write');
 const cakeNames = (scopes) => _test.listToolsForScopes(scopes, null).map((t) => t.name);
 const cakeFull = cakeNames(['sfapp_cake_pantry']);
-for (const name of ['deliver_cake', 'feed_cake', 'inspect_pantry', 'consume_cake']) {
+for (const name of ['sync_ship_cake', 'deliver_cake', 'feed_cake', 'inspect_pantry', 'consume_cake']) {
     assert.ok(cakeFull.includes(name), `full pantry scope missing ${name}`);
 }
 const cakeDeliver = cakeNames(['sfapp_cake_pantry:deliver']);
+assert.ok(cakeDeliver.includes('sync_ship_cake'));
 assert.ok(cakeDeliver.includes('deliver_cake'));
 assert.ok(!cakeDeliver.includes('feed_cake'));
 assert.ok(!cakeDeliver.includes('inspect_pantry'));
@@ -587,7 +588,7 @@ assert.ok(coreNames.includes('searchKnowledgeMemories'));
 assert.ok(coreNames.includes('retrieveKnowledgeMemory'));
 assert.strictEqual(_test.rateGroupForTool('saveKnowledgeMemory'), 'write');
 assert.strictEqual(_test.canonMemoryTool('saveKnowledgeMemory'), 'save_memory');
-assert.strictEqual(coreNames.length, 60);
+assert.strictEqual(coreNames.length, 61);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.pipeline);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.rescale);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.noiseScheduler);

@@ -1537,7 +1537,24 @@ const TOOL_DEFS = [
             }
         }
     },
+
     // Cake Pantry module tools (sfapp_cake_pantry scope)
+    {
+        name: 'sync_ship_cake',
+        core: true,
+        description: 'Scan closed Gitea StaticForge issues since last consume, auto-deliver cake for lines deleted. Skips greg. Dry run returns plan without write. Math: 1 slice per 40 lines/10KB. Pass accountId, since (default last consume/breakfast), dry_run.',
+        scope: 'sfapp_cake_pantry',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['accountId'],
+            properties: {
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account to deliver to' },
+                since: { type: 'string', description: 'ISO date or timestamp to scan from (default: per-account last consume/breakfast)' },
+                dry_run: { type: 'boolean', description: 'Return plan without actually delivering' }
+            }
+        }
+    },
     {
         name: 'deliver_cake',
         core: true,
@@ -4160,9 +4177,20 @@ async function callTool(globalResources, req, name, args) {
         });
     }
 
+
     // Cake Pantry module tools (sfapp_cake_pantry)
     // Valid cake pantry accounts
-    const VALID_PANTRY_ACCOUNTS = ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo'];
+    const VALID_PANTRY_ACCOUNTS = ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'];
+
+    if (name === 'sync_ship_cake') {
+        const accountId = String(input.accountId || '').toLowerCase();
+        if (!accountId || !VALID_PANTRY_ACCOUNTS.includes(accountId)) {
+            return mcpTextResult({ success: false, error: `Invalid accountId. Must be one of: ${VALID_PANTRY_ACCOUNTS.join(', ')}.` }, true);
+        }
+        const { syncShipCake } = require('./cakePantry');
+        const result = await syncShipCake(accountId, input);
+        return mcpTextResult(JSON.stringify(result, null, 2), !result.success);
+    }
 
     if (name === 'deliver_cake') {
         const accountId = String(input.accountId || '').toLowerCase();

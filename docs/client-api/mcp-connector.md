@@ -293,6 +293,7 @@ Account-based cake tracking for Menma, Hoshino, Ivory, Pyra, Chiyo. All accounts
 
 | Tool | Description | Submodule |
 |------|-------------|-----------|
+| `sync_ship_cake` | Scan closed Gitea StaticForge issues since last consume, auto-deliver cake for lines deleted. Skips greg. Dedups against pending/past. Math: 1 slice per 40 lines/10KB. Pass `accountId`, `since` (default last consume/breakfast), `dry_run`. | `deliver` |
 | `deliver_cake` | Add slices to a pile with reason (reward for ship/work). Pass `accountId`, `slices` (or `line_counts` for auto-calc: 1/40 lines or 10KB, min 1 cap 16), `reason`, `cake_type`, `credit` (`grok.menma` = 1.25x). | `deliver` |
 | `feed_cake` | Yukimi grants slices (promotion or just because). Distinct from deliver. Pass `accountId`, `slices`, `reason`, `cake_type`, `from`. | `feed` |
 | `inspect_pantry` | View piles, past consumes, kg history. Returns data, not a wall of text. Pass `accountId`, optional `log_limit`. | `inspect` |
