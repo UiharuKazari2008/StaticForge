@@ -13,6 +13,7 @@ let expansionModalData = {
     overrideParams: {},
     enableAI: false, // Default to disabled
     enableInset: false, // Default to disabled
+    insetPreferred: true, // User preference while inset is unavailable
     expandSourcePixels: null, // { width, height } of image being expanded (for inset eligibility)
     previewName: null, // gallery preview basename for the canvas thumbnail
     compiledPrompt: null, // { prompt, uc, characterPrompts } baseline from server (not sent unless editor save)
@@ -504,7 +505,7 @@ function getExpansionPreviewParamsFromUI() {
     const upscaleToggle = document.getElementById('expansionUpscaleToggle');
     const upscaleAfterComplete = upscaleToggle ? upscaleToggle.getAttribute('data-state') === 'on' : false;
     const insetToggle = document.getElementById('expansionInsetToggle');
-    expansionModalData.enableInset = insetToggle ? insetToggle.getAttribute('data-state') === 'on' : false;
+    expansionModalData.enableInset = !!(insetToggle && !insetToggle.disabled && insetToggle.getAttribute('data-state') === 'on');
 
     let overrideParams = {};
     const advancedSection = document.getElementById('expansionAdvancedOptions');
@@ -667,6 +668,7 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
         overrideParams: {},
         enableAI: false, // Reset to disabled
         enableInset: false, // Reset to disabled
+        insetPreferred: true,
         expandSourcePixels: null,
         previewName: null,
         compiledPrompt: null,
@@ -785,6 +787,7 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
                 metadata.forge_data.expansion_params?.inset === 'true';
             insetToggle.setAttribute('data-state', wasInset ? 'on' : 'off');
             expansionModalData.enableInset = wasInset;
+            expansionModalData.insetPreferred = wasInset;
         }
 
         // Set requested content if it was used (input to AI — not the compiled prompt)
@@ -872,6 +875,7 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
         if (insetToggle) {
             insetToggle.setAttribute('data-state', 'on');
             expansionModalData.enableInset = true;
+            expansionModalData.insetPreferred = true;
         }
         
         // Clear advanced inputs (model follows the source image when known)
@@ -1803,24 +1807,33 @@ function updateExpansionInsetToggleVisibility() {
 
     btn.classList.remove('hidden');
 
+    // Remember explicit on/off while the control is usable
+    const stateNow = btn.getAttribute('data-state');
+    if (!btn.disabled && (stateNow === 'on' || stateNow === 'off')) {
+        expansionModalData.insetPreferred = stateNow === 'on';
+    }
+
     if (!applicable) {
         btn.disabled = true;
-        btn.title = 'Inset needs a target larger than the source on both axes (keeps source unscaled)';
-        // Keep prior on/off preference in data-state, but force runtime off while unavailable
+        btn.setAttribute('aria-disabled', 'true');
+        // Force visual off so the green pip does not look "enabled"
+        btn.setAttribute('data-state', 'off');
         expansionModalData.enableInset = false;
+        const sw = px ? px.width : '?';
+        const sh = px ? px.height : '?';
+        const tw = target ? target.width : '?';
+        const th = target ? target.height : '?';
+        btn.title = `Inset needs both sides larger than source (source ${sw}×${sh}, target ${tw}×${th})`;
         updateExpansionCanvasPreview();
         return;
     }
 
     btn.disabled = false;
+    btn.removeAttribute('aria-disabled');
+    const preferOn = expansionModalData.insetPreferred !== false;
+    btn.setAttribute('data-state', preferOn ? 'on' : 'off');
+    expansionModalData.enableInset = preferOn;
     btn.title = 'Inset source without scaling (transparent padding for inpaint)';
-    // If we just became applicable and have no explicit off, default on
-    if (btn.getAttribute('data-state') !== 'off' && btn.getAttribute('data-state') !== 'on') {
-        btn.setAttribute('data-state', 'on');
-    }
-    if (btn.getAttribute('data-state') === 'on') {
-        expansionModalData.enableInset = true;
-    }
     updateExpansionCanvasPreview();
 }
 
@@ -1923,7 +1936,8 @@ function updateExpansionCanvasPreview() {
     const res = expansionModalData.selectedResolution;
     const target = res ? getDimensionsFromResolution(res) : null;
     const insetToggle = document.getElementById('expansionInsetToggle');
-    const insetOn = insetToggle ? insetToggle.getAttribute('data-state') === 'on' : expansionModalData.enableInset;
+    // Prefer runtime enableInset (forced off while target is not larger on both axes)
+    const insetOn = !!expansionModalData.enableInset;
     // computeExpansionLetterboxLayout: public/scripts/comp/utilities.js
     const layout = px && target
         ? computeExpansionLetterboxLayout(
@@ -2156,7 +2170,7 @@ async function submitImageExpansionReroll() {
         Object.assign(overrideParams, getExpansionOverrideParams());
     }
     const insetToggleReroll = document.getElementById('expansionInsetToggle');
-    const rerollInsetOn = insetToggleReroll ? insetToggleReroll.getAttribute('data-state') === 'on' : false;
+    const rerollInsetOn = !!(insetToggleReroll && !insetToggleReroll.disabled && insetToggleReroll.getAttribute('data-state') === 'on');
     overrideParams.inset = rerollInsetOn;
 
     Object.assign(overrideParams, applyExpansionSavedOverridesToParams({}));
@@ -2509,7 +2523,7 @@ async function submitImageExpansion() {
     
     // Get inset toggle state
     const insetToggle = document.getElementById('expansionInsetToggle');
-    expansionModalData.enableInset = insetToggle ? insetToggle.getAttribute('data-state') === 'on' : false;
+    expansionModalData.enableInset = !!(insetToggle && !insetToggle.disabled && insetToggle.getAttribute('data-state') === 'on');
     
     // Get override parameters from advanced options
     const advancedSection = document.getElementById('expansionAdvancedOptions');
@@ -2757,12 +2771,13 @@ function toggleExpansionUpscale() {
 // Toggle inset padding behavior
 function toggleExpansionInset() {
     const insetToggle = document.getElementById('expansionInsetToggle');
-    if (!insetToggle) return;
-    
+    if (!insetToggle || insetToggle.disabled) return;
+
     const currentState = insetToggle.getAttribute('data-state');
     const newState = currentState === 'on' ? 'off' : 'on';
     insetToggle.setAttribute('data-state', newState);
     expansionModalData.enableInset = newState === 'on';
+    expansionModalData.insetPreferred = newState === 'on';
     updateExpansionCanvasPreview();
 }
 
