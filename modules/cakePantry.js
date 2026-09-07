@@ -330,9 +330,10 @@ async function saveAccountState(accountId, state) {
         writeJsonFile(path.join(dir, 'state.json'), state);
         return true;
     } else {
-        // Unknown import status: fail-closed, do NOT write to files
-        console.error(`[cakePantry] saveAccountState: cannot determine import status for ${accountId}, refusing file write:`, status.reason);
-        return false;
+        // Unknown import status: fail-closed
+        const msg = `[cakePantry] saveAccountState: cannot determine import status for ${accountId}: ${status.reason}`;
+        console.error(msg);
+        throw new Error(msg);
     }
 }
 
@@ -369,9 +370,10 @@ async function appendCakeLog(accountId, entry) {
         appendJsonlFile(path.join(dir, 'cake-log.jsonl'), entry);
         return true;
     } else {
-        // Unknown import status: fail-closed, do NOT write to files
-        console.error(`[cakePantry] appendCakeLog: cannot determine import status for ${accountId}, refusing file write:`, status.reason);
-        return false;
+        // Unknown import status: fail-closed
+        const msg = `[cakePantry] appendCakeLog: cannot determine import status for ${accountId}: ${status.reason}`;
+        console.error(msg);
+        throw new Error(msg);
     }
 }
 
@@ -747,19 +749,21 @@ async function getWorkPile(accountId) {
     const status = await getAccountImportStatus(accountId);
     
     if (status.imported === true) {
-        if (!status.db) return null;
+        if (!status.db) {
+            throw new Error(`SQLite unavailable for getWorkPile for ${accountId}`);
+        }
         try {
             return await getWorkPileFromDb(status.db, accountId);
         } catch (e) {
             console.error(`[cakePantry] getWorkPile SQLite error for ${accountId}:`, e);
-            return null;
+            throw new Error(`SQLite error in getWorkPile: ${e.message}`);
         }
     } else if (status.imported === false) {
         // Before import: read from file
         const pilePath = path.join(WORKSPACE_ROOT, ACCOUNT_DIRS[accountId] || `.${accountId}`, 'work-pile.json');
         return readJsonFile(pilePath, { open: [], done_since_breakfast: [], eaten: [] });
     } else {
-        return null;
+        throw new Error(`Cannot determine import status for getWorkPile for ${accountId}`);
     }
 }
 
@@ -793,9 +797,10 @@ async function saveWorkPile(accountId, pile) {
         writeJsonFile(path.join(dir, 'work-pile.json'), pile);
         return true;
     } else {
-        // Unknown import status: fail-closed, do NOT write to files
-        console.error(`[cakePantry] saveWorkPile: cannot determine import status for ${accountId}, refusing file write:`, status.reason);
-        return false;
+        // Unknown import status: fail-closed
+        const msg = `[cakePantry] saveWorkPile: cannot determine import status for ${accountId}: ${status.reason}`;
+        console.error(msg);
+        throw new Error(msg);
     }
 }
 
@@ -833,8 +838,9 @@ async function addWorkItem(accountId, item, type = 'open') {
         return await saveWorkPile(accountId, pile);
     } else {
         // Unknown import status: fail-closed
-        console.error(`[cakePantry] addWorkItem: cannot determine import status for ${accountId}, refusing file write:`, status.reason);
-        return false;
+        const msg = `[cakePantry] addWorkItem: cannot determine import status for ${accountId}: ${status.reason}`;
+        console.error(msg);
+        throw new Error(msg);
     }
 }
 
@@ -876,8 +882,9 @@ async function completeWorkItem(accountId, workId) {
         return await saveWorkPile(accountId, pile);
     } else {
         // Unknown import status: fail-closed
-        console.error(`[cakePantry] completeWorkItem: cannot determine import status for ${accountId}:`, status.reason);
-        return false;
+        const msg = `[cakePantry] completeWorkItem: cannot determine import status for ${accountId}: ${status.reason}`;
+        console.error(msg);
+        throw new Error(msg);
     }
 }
 
@@ -924,8 +931,9 @@ async function removeWorkItem(accountId, workId) {
         return false;
     } else {
         // Unknown import status: fail-closed
-        console.error(`[cakePantry] removeWorkItem: cannot determine import status for ${accountId}:`, status.reason);
-        return false;
+        const msg = `[cakePantry] removeWorkItem: cannot determine import status for ${accountId}: ${status.reason}`;
+        console.error(msg);
+        throw new Error(msg);
     }
 }
 
