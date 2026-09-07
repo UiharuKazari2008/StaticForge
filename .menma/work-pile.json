@@ -1,10 +1,10 @@
 {
-  "updated_at": "2026-09-07T11:16:03.762068+00:00",
+  "updated_at": "2026-09-07T11:17:36.561930+00:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
   "last_breakfast_at": "2026-09-02T11:21:37.116143+00:00",
   "open": [],
   "done_since_breakfast": [],
-  "cake_note": "2026-09-07 7am: pile empty; tree clean (no snapshot needed). Ships since 3c3a0fe for Rook 11am: e780f79 #154, 98e73e3 #152, 6ad9596 #151 cake-pantry (+540/-42). Jules #150 COMPLETED PR70 \u2014 8:30 collect. New Jules: dynamicGenerationHandlers deep inspect. Rook owns cake.",
+  "cake_note": "2026-09-07 7am: pile empty; commit 4532987 work-pile only. Ships since 3c3a0fe: 6ad9596 #151, 98e73e3 #152, e780f79 #154 cake-pantry (+540/-42) credit grok.menma. Jules #150 COMPLETED PR https://github.com/UiharuKazari2008/StaticForge/pull/70 \u2014 8:30 collect. Jules #155 kicked https://jules.google.com/session/641911174387864586. Rook owns cake.",
   "eaten": [
     {
       "id": "sf-22",
