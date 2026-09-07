@@ -1787,7 +1787,10 @@ function expansionInsetTargetApplicable(sw, sh, tw, th) {
     return swN > 0 && shN > 0 && twN > 0 && thN > 0 && twN > swN && thN > shN;
 }
 
-/** Show inset toggle only when output is larger than source on both dimensions; otherwise hide and clear inset. */
+/**
+ * Inset = keep source at native pixels (no scale) and pad the extra canvas for inpaint.
+ * Always show the toggle; only disable when the target cannot fit the unscaled source.
+ */
 function updateExpansionInsetToggleVisibility() {
     const btn = document.getElementById('expansionInsetToggle');
     if (!btn) return;
@@ -1795,22 +1798,29 @@ function updateExpansionInsetToggleVisibility() {
     const px = expansionModalData.expandSourcePixels;
     const res = expansionModalData.selectedResolution;
     const target = res ? getDimensionsFromResolution(res) : null;
+    const applicable = !!(px && px.width && px.height && target
+        && expansionInsetTargetApplicable(px.width, px.height, target.width, target.height));
 
-    if (!px || !px.width || !px.height || !target || !expansionInsetTargetApplicable(px.width, px.height, target.width, target.height)) {
-        btn.classList.add('hidden');
-        btn.setAttribute('data-state', 'off');
+    btn.classList.remove('hidden');
+
+    if (!applicable) {
+        btn.disabled = true;
+        btn.title = 'Inset needs a target larger than the source on both axes (keeps source unscaled)';
+        // Keep prior on/off preference in data-state, but force runtime off while unavailable
         expansionModalData.enableInset = false;
         updateExpansionCanvasPreview();
         return;
     }
 
-    const wasHidden = btn.classList.contains('hidden');
-    btn.classList.remove('hidden');
-    if (wasHidden) {
+    btn.disabled = false;
+    btn.title = 'Inset source without scaling (transparent padding for inpaint)';
+    // If we just became applicable and have no explicit off, default on
+    if (btn.getAttribute('data-state') !== 'off' && btn.getAttribute('data-state') !== 'on') {
         btn.setAttribute('data-state', 'on');
+    }
+    if (btn.getAttribute('data-state') === 'on') {
         expansionModalData.enableInset = true;
     }
-
     updateExpansionCanvasPreview();
 }
 
