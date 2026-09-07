@@ -26,6 +26,8 @@ const MCP_INSTRUCTIONS = [
     'VFS: vfs_list path (@desktop for the workspace desktop), vfs_read, or advanced_tools for write/delete/stat.',
     'omegasearch finds names; then get_generated_image.',
     'If you cannot do the job with the listed tools, call advanced_tools with a query, then name + arguments.',
+    'Use tools/list for core tools. Call advanced_tools { query: "..." } to search hidden tools.',
+    'search_explore / get_explore_post for NovelAI Explore (Agora) top votes and posts.',
     'If a tool is rate limited, wait retryAfter seconds for that group (free/search/gallery/write/studio/generate).'
 ].join(' ');
 
