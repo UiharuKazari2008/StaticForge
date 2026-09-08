@@ -910,21 +910,23 @@ async function syncShipCake(accountId, params) {
     const sinceDate = new Date(sinceTime);
 
     let issues = [];
-    try {
-        const res = await fetch(`${GITEA_BASE}/issues?state=closed&limit=50`);
-        issues = await res.json();
-    } catch (e) {
-        console.error(`[cakePantry] syncShipCake fetch failed for ${accountId}:`, e.message);
-        // Fail closed (Yozora #163) — do not block the eat
-        return {
-            success: true,
-            accountId,
-            since: sinceDate.toISOString(),
-            delivered_slices_total: 0,
-            delivered_keys: [],
-            plan: [],
-            warning: 'Gitea fetch failed: ' + e.message
-        };
+    let fetchError = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+            const res = await fetch(`${GITEA_BASE}/issues?state=closed&limit=50`);
+            issues = await res.json();
+            fetchError = null;
+            break;
+        } catch (e) {
+            fetchError = e;
+            if (attempt < 2) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
+    }
+
+    if (fetchError) {
+        return { success: false, error: 'Failed to fetch issues from Gitea after retries', details: fetchError.message };
     }
 
     const plan = [];
@@ -949,10 +951,27 @@ async function syncShipCake(accountId, params) {
         }
 
         if (issue.pull_request) {
-            try {
-                const prRes = await fetch(`${GITEA_BASE}/pulls/${issue.number}`);
-                const pr = await prRes.json();
+            let pr = null;
+            let fetchError = null;
+            for (let attempt = 1; attempt <= 2; attempt++) {
+                try {
+                    const prRes = await fetch(`${GITEA_BASE}/pulls/${issue.number}`);
+                    pr = await prRes.json();
+                    fetchError = null;
+                    break;
+                } catch (e) {
+                    fetchError = e;
+                    if (attempt < 2) {
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    }
+                }
+            }
 
+            if (fetchError) {
+                return { success: false, error: `Failed to fetch PR ${issue.number} from Gitea after retries`, details: fetchError.message };
+            }
+
+            try {
                 const sha = pr.merge_commit_sha || pr.head?.sha || 'unknown';
                 const reasonKey = `ship:${issue.number}:${sha}`;
 
