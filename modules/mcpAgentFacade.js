@@ -544,7 +544,7 @@ const TOOL_DEFS = [
                     type: 'array',
                     description: 'Existing slots only. Always action replace + index.'
                 },
-                expanders: { type: 'array', description: '!prefix text replacements (replaces current list if sent)' },
+                expanders: { type: 'array', description: '!prefix text replacements (replaces current list with full bodies if sent; not an ambiguous append)' },
                 text_replacements: { type: 'array' },
                 vSlider: {
                     type: 'array',
