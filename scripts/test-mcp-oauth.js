@@ -97,6 +97,8 @@ assert.ok(rendered.includes('gallery'));
 assert.ok(rendered.includes('testchallenge'));
 assert.ok(rendered.includes('S256'));
 assert.ok(rendered.includes('id="consent_pin"'));
+assert.ok(rendered.includes('id="consentPinDots"'));
+assert.ok(rendered.includes('class="pin-dot"'));
 assert.ok(rendered.indexOf('id="consent_pin"') < rendered.indexOf('<details class="scopes">'));
 assert.ok(!/<details[^>]*\sopen\b/.test(rendered));
 const pinForm = rendered.match(/<form[\s\S]*?<\/form>/)[0];
@@ -129,8 +131,9 @@ const renderedXss = renderConsentPage({
     codeChallenge: 'test',
     formAction: '/test'
 });
-assert.ok(!renderedXss.includes('<script>'));
+assert.ok(!renderedXss.includes(xssAttempt));
 assert.ok(renderedXss.includes('&lt;script&gt;'));
+assert.ok(renderedXss.includes('&#39;') || renderedXss.includes('&lt;'));
 
 console.log('Testing consent PIN step (no raw sfapp_ paste)...');
 const renderedNoKey = renderConsentPage({
@@ -146,7 +149,9 @@ const renderedNoKey = renderConsentPage({
 });
 assert.ok(renderedNoKey.includes('Your Dreamscape PIN'));
 assert.ok(renderedNoKey.includes('name="pin"'));
-assert.ok(renderedNoKey.includes('type="password"'));
+assert.ok(renderedNoKey.includes('id="consentPinDots"'));
+assert.ok((renderedNoKey.match(/class="pin-dot"/g) || []).length >= 6);
+assert.ok(!renderedNoKey.includes('type="password"'));
 assert.ok(!renderedNoKey.includes('name="application_key"'));
 assert.ok(!renderedNoKey.includes('sfapp_'));
 

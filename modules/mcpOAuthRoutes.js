@@ -68,6 +68,18 @@ button{flex:1;padding:14px;border:none;border-radius:8px;font-size:1rem;font-wei
 .module-option-text span{color:#888;font-size:0.8rem}
 .module-option-text em{color:#ff6b6b;font-size:0.75rem}
 .module-note{font-size:0.8rem;color:#666;margin-top:12px;padding:8px;background:#1a1a2e;border-radius:6px}
+.pin-display{margin:8px 0 16px}
+.pin-dots{display:flex;gap:14px;justify-content:center}
+.pin-dot{width:18px;height:18px;border-radius:50%;background:rgba(255,255,255,0.2);border:2px solid rgba(255,255,255,0.45);transition:background-color .2s ease,border-color .2s ease,box-shadow .2s ease}
+.pin-dot.filled{background:#fff;border-color:#fff;box-shadow:0 0 10px rgba(255,255,255,0.45)}
+.pin-dot.error{border-color:#ff6b6b;animation:pin-shake .4s ease-in-out}
+@keyframes pin-shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+.pin-pad{display:flex;flex-direction:column;gap:8px;max-width:220px;margin:0 auto 8px}
+.pin-row{display:flex;gap:8px;justify-content:center}
+.pin-button{flex:0 0 64px;height:48px;padding:0;border:1px solid #3a3a5c;border-radius:8px;background:#1a1a2e;color:#e0e0e0;font-size:1.15rem;font-weight:600}
+.pin-button:hover{border-color:#8b8bff}
+.pin-button.action{font-size:0.85rem;color:#888}
+.pin-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
 </style>
 </head>
 <body>
@@ -229,18 +241,94 @@ function hiddenOAuthFields(params) {
 }
 
 function renderPinStep(params) {
-    return `<form method="POST" action="${escapeHtml(params.formAction)}" autocomplete="off">
+    const dots = [0, 1, 2, 3, 4, 5]
+        .map((i) => `<div class="pin-dot" data-index="${i}"></div>`)
+        .join('');
+    const padRow = (cells) => `<div class="pin-row">${cells.join('')}</div>`;
+    const digitBtn = (n) => `<button type="button" class="pin-button" data-number="${n}">${n}</button>`;
+    return `<form method="POST" action="${escapeHtml(params.formAction)}" autocomplete="off" id="consentPinForm">
 ${hiddenOAuthFields(params)}
 <div class="field">
-<label for="consent_pin">Your Dreamscape PIN</label>
-<input type="password" id="consent_pin" name="pin" inputmode="numeric" autocomplete="one-time-code" required autofocus>
-<p class="note">Same PIN you use to sign in. A key already named like this client with matching scopes skips the next step.</p>
+<label id="consent_pin_label">Your Dreamscape PIN</label>
+<input type="hidden" id="consent_pin" name="pin" value="" required>
+<div class="pin-display" role="group" aria-labelledby="consent_pin_label">
+<div class="pin-dots" id="consentPinDots">${dots}</div>
+</div>
+<div class="pin-pad" aria-label="PIN keypad">
+${padRow([digitBtn(1), digitBtn(2), digitBtn(3)])}
+${padRow([digitBtn(4), digitBtn(5), digitBtn(6)])}
+${padRow([digitBtn(7), digitBtn(8), digitBtn(9)])}
+${padRow([
+        '<button type="button" class="pin-button action" data-action="clear">C</button>',
+        digitBtn(0),
+        '<button type="button" class="pin-button action" data-action="backspace">⌫</button>'
+    ])}
+</div>
+<p class="note">Six digits — same PIN you use to sign in. A key already named like this client with matching scopes skips the next step.</p>
 </div>
 <div class="buttons">
-<button type="submit" name="action" value="pin" class="approve">Continue</button>
+<button type="submit" name="action" value="pin" class="approve" id="consentPinContinue" disabled>Continue</button>
 <button type="submit" name="action" value="deny" class="deny" formnovalidate>Deny</button>
 </div>
 </form>`;
+}
+
+function renderPinScript() {
+    return `<script>
+(function(){
+var form=document.getElementById('consentPinForm');
+var hidden=document.getElementById('consent_pin');
+var dots=document.querySelectorAll('#consentPinDots .pin-dot');
+var cont=document.getElementById('consentPinContinue');
+if(!form||!hidden||!dots.length)return;
+var pin='';
+function paint(){
+for(var i=0;i<dots.length;i++){
+if(i<pin.length)dots[i].classList.add('filled');
+else dots[i].classList.remove('filled');
+}
+hidden.value=pin;
+if(cont)cont.disabled=pin.length!==6;
+}
+function addDigit(d){
+if(pin.length>=6)return;
+if(!/^[0-9]$/.test(d))return;
+pin+=d;
+paint();
+if(pin.length===6){
+setTimeout(function(){if(cont&&!cont.disabled)cont.click();},200);
+}
+}
+function backspace(){if(pin.length){pin=pin.slice(0,-1);paint();}}
+function clearPin(){pin='';paint();}
+form.querySelectorAll('.pin-button').forEach(function(btn){
+btn.addEventListener('click',function(e){
+e.preventDefault();
+var n=btn.getAttribute('data-number');
+var a=btn.getAttribute('data-action');
+if(n)addDigit(n);
+else if(a==='clear')clearPin();
+else if(a==='backspace')backspace();
+});
+});
+document.addEventListener('keydown',function(e){
+if(e.target&&(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'))return;
+if(e.key>='0'&&e.key<='9'){e.preventDefault();addDigit(e.key);}
+else if(e.key==='Backspace'){e.preventDefault();backspace();}
+else if(e.key==='Escape'){e.preventDefault();clearPin();}
+else if(e.key==='Enter'&&pin.length===6&&cont&&!cont.disabled){e.preventDefault();cont.click();}
+});
+form.addEventListener('submit',function(e){
+var action=(e.submitter&&e.submitter.value)||'pin';
+if(action==='pin'&&!/^[0-9]{6}$/.test(hidden.value)){
+e.preventDefault();
+for(var i=0;i<dots.length;i++)dots[i].classList.add('error');
+setTimeout(function(){for(var j=0;j<dots.length;j++)dots[j].classList.remove('error');},500);
+}
+});
+paint();
+})();
+</script>`;
 }
 
 function renderKeyOptions(keys, selectedKeyId, displayScopes) {
@@ -345,6 +433,7 @@ function renderConsentPage(params) {
         stepScript = renderPickScript(true);
     } else {
         stepBody = renderPinStep(params);
+        stepScript = renderPinScript();
     }
 
     return CONSENT_PAGE_HTML
@@ -609,6 +698,12 @@ function createOAuthRoutes(globalResources) {
                         step: 'pin',
                         error: 'Too many PIN attempts. Try again later.'
                     })), 429);
+                }
+                if (!/^\d{6}$/.test(String(pin || ''))) {
+                    return sendConsentHtml(res, renderConsentPage(consentPageParams(page, {
+                        step: 'pin',
+                        error: 'Enter the 6-digit PIN'
+                    })), 400);
                 }
                 const verified = consent.verifyConsentPin(pin, globalResources);
                 if (!verified.ok) {
