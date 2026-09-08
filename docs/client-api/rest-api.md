@@ -705,7 +705,7 @@ Regenerates from existing image metadata.
 
 ### `POST /test-bias-adjustment`
 
-**Auth:** None — only `serverReadinessMiddleware` (no `authMiddleware`). Unauthenticated clients on the same network can call this endpoint when the server is ready. Intended as an internal/dev image-processing probe, not a public API.
+**Auth:** Requires session (`authMiddleware`) and `serverReadinessMiddleware`. Intended as an internal image-processing probe, not a public API.
 
 **Body (JSON):**
 

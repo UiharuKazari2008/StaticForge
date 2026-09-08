@@ -3015,7 +3015,7 @@ app.get('/reroll/:filename', serverReadinessMiddleware, authMiddleware, getQueue
 });
 
 // Test bias adjustment endpoint
-app.post('/test-bias-adjustment', serverReadinessMiddleware, async (req, res) => {
+app.post('/test-bias-adjustment', serverReadinessMiddleware, authMiddleware, async (req, res) => {
     try {
         const { image_source, target_width, target_height, bias } = req.body;
         
