@@ -4412,22 +4412,33 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                     }
                     if (event.event_type === __runtimeGr.getNekoAiService('EventType').INTERMEDIATE) {
                         const rawImageBuffer = Buffer.from(event.image.data);
-                        let jpegBuffer = rawImageBuffer;
-                        try {
-                            jpegBuffer = await encodeStepPreviewJpeg(
-                                rawImageBuffer,
-                                opts.stepPreviewWidth,
-                                opts.stepPreviewHeight
-                            );
-                        } catch (encodeErr) {
-                            console.warn('⚠️ Step preview JPEG encode failed, sending raw frame:', encodeErr.message);
+                        const sendPreviewImages = !(ws && handler && typeof handler.shouldSendStepPreviewImages === 'function')
+                            || handler.shouldSendStepPreviewImages(ws);
+                        let stepFrame;
+                        if (sendPreviewImages) {
+                            let jpegBuffer = rawImageBuffer;
+                            try {
+                                jpegBuffer = await encodeStepPreviewJpeg(
+                                    rawImageBuffer,
+                                    opts.stepPreviewWidth,
+                                    opts.stepPreviewHeight
+                                );
+                            } catch (encodeErr) {
+                                console.warn('⚠️ Step preview JPEG encode failed, sending raw frame:', encodeErr.message);
+                            }
+                            stepFrame = {
+                                currentStep: event.step_ix,
+                                totalSteps: opts.steps || 25,
+                                imageData: jpegBuffer.toString('base64'),
+                                imageFormat: 'jpeg'
+                            };
+                        } else {
+                            // High latency / WS backlog: skip encode + image payload; keep step counters.
+                            stepFrame = {
+                                currentStep: event.step_ix,
+                                totalSteps: opts.steps || 25
+                            };
                         }
-                        const stepFrame = {
-                            currentStep: event.step_ix,
-                            totalSteps: opts.steps || 25,
-                            imageData: jpegBuffer.toString('base64'),
-                            imageFormat: 'jpeg'
-                        };
                         if (stepPreviewBatcher) {
                             stepPreviewBatcher.add(stepFrame);
                         } else if (ws && handler) {

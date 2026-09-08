@@ -202,6 +202,7 @@ On timeout client rejects with `Error` code `REQUEST_TIMEOUT`.
 When `enableStreaming: true` on `generate_image`, `generate_preset`, `expand_image`, etc.:
 
 - Intermediate/progress via `image_generation_progress`, `dynamic_generation_progress_update`
+- Under congestion / high client RTT, server still sends progress counters but **drops** step-preview image payloads (`imageData` / `stepFrames`) so the WS backlog does not grow (`modules/websocketHandlers.js` `shouldSendStepPreviewImages`, threshold aligned with client `pingWarningThreshold` 500ms)
 - Staged/pipeline runs emit `phase: "stage_complete"` after each earlier stage so the editor preview can swap to that result; `phase: "complete"` is reserved for the last stage
 - Final result still on `image_generation_response` (or domain-specific `*_response`)
 - Client tracks streaming sessions in `WebSocketClient` (`beginStreamingStepSession`, etc.)
@@ -236,7 +237,7 @@ These are **pushes** — handle asynchronously. Registered in `public/scripts/ws
 | `search_status_update` | File search progress | Status text, counts |
 | `search_results_complete` | File search finished | Final result set reference |
 | `dynamic_generation_progress_update` | Rentan / dynamic gen | `phase`, `data` (may include `requestId` routing) |
-| `image_generation_progress` | Streaming step preview | Step index, preview base64/thumbnail, `requestId` |
+| `image_generation_progress` | Streaming step preview | Step counters (`currentStep`/`totalSteps`) always; preview `imageData`/`stepFrames` may be **omitted** when WS `bufferedAmount` > 512KiB or client RTT > 500ms (see `shouldSendStepPreviewImages`); `requestId` |
 | `image_generation_error` | Generation failed (push path) | Exact API message in `error` (prefixed with HTTP/`statusCode` when present); `statusCode`, `code`, and `data.{statusCode,code,message}`; `requestId` |
 | `image_generation_response` | Some flows push final result | Same shape as request response (also used as correlated reply) |
 | `image_upscaling_response` / `image_upscaling_error` | Upscale complete/fail | Result filename or error |

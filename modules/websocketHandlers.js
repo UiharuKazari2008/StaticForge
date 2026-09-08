@@ -1091,28 +1091,45 @@ class WebSocketMessageHandlers {
         });
     }
 
-    // Step preview frames are batched to reduce WebSocket message overhead on high-latency links.
+    // Step preview images are large; skip payloads when the link is backed up or high-latency
+    // (align RTT with public/scripts/websocket.js pingWarningThreshold). Healthy links still
+    // batch frames to cut WebSocket message overhead.
+    STEP_PREVIEW_RTT_MS_THRESHOLD = 500;
     STEP_PREVIEW_BATCH_FLUSH_MS = 120;
     STEP_PREVIEW_BATCH_MAX_FRAMES = 8;
     STEP_PREVIEW_BUFFERED_BYTES_THRESHOLD = 512 * 1024;
     STEP_PREVIEW_INITIAL_MIN_FRAMES = 5;
     STEP_PREVIEW_INITIAL_MAX_WAIT_MS = 1000;
 
+    shouldSendStepPreviewImages(ws) {
+        try {
+            if (ws && typeof ws.bufferedAmount === 'number'
+                && ws.bufferedAmount > this.STEP_PREVIEW_BUFFERED_BYTES_THRESHOLD) {
+                return false;
+            }
+            const wsServer = this.globalResources.getWebSocketServer();
+            const clientInfo = wsServer && wsServer.clients && wsServer.clients.get(ws);
+            if (clientInfo && typeof clientInfo.lastClientRttMs === 'number'
+                && Number.isFinite(clientInfo.lastClientRttMs)
+                && clientInfo.lastClientRttMs > this.STEP_PREVIEW_RTT_MS_THRESHOLD) {
+                return false;
+            }
+            return true;
+        } catch {
+            return true;
+        }
+    }
+
     createStepPreviewBatcher(ws, requestId, progressBase = {}) {
+        const handler = this;
         const pendingFrames = [];
         let flushTimer = null;
         let initialWaitTimer = null;
         let initialPhaseComplete = false;
         const maxFrames = this.STEP_PREVIEW_BATCH_MAX_FRAMES;
         const flushMs = this.STEP_PREVIEW_BATCH_FLUSH_MS;
-        const bufferedThreshold = this.STEP_PREVIEW_BUFFERED_BYTES_THRESHOLD;
         const initialMinFrames = this.STEP_PREVIEW_INITIAL_MIN_FRAMES;
         const initialMaxWaitMs = this.STEP_PREVIEW_INITIAL_MAX_WAIT_MS;
-
-        const isSendBufferHigh = () => {
-            return ws && typeof ws.bufferedAmount === 'number'
-                && ws.bufferedAmount >= bufferedThreshold;
-        };
 
         const clearInitialWaitTimer = () => {
             if (initialWaitTimer) {
@@ -1131,14 +1148,15 @@ class WebSocketMessageHandlers {
             initialPhaseComplete = true;
             const stepFrames = pendingFrames.splice(0, pendingFrames.length);
             const lastFrame = stepFrames[stepFrames.length - 1];
-            this.sendGenerationProgress(ws, requestId, {
+            const sendImages = handler.shouldSendStepPreviewImages(ws);
+            handler.sendGenerationProgress(ws, requestId, {
                 ...progressBase,
                 phase: 'generating',
-                stepFrames,
+                stepFrames: sendImages ? stepFrames : null,
                 currentStep: lastFrame.currentStep,
                 totalSteps: lastFrame.totalSteps,
-                imageData: lastFrame.imageData,
-                imageFormat: lastFrame.imageFormat || 'jpeg'
+                imageData: sendImages ? lastFrame.imageData : null,
+                imageFormat: sendImages ? (lastFrame.imageFormat || 'jpeg') : null
             });
         };
 
@@ -1154,6 +1172,17 @@ class WebSocketMessageHandlers {
 
         return {
             add(frame) {
+                // Under congestion / high RTT: keep step counters only — do not queue image
+                // payloads (old flush-on-high-buffer path made the backlog worse).
+                if (!handler.shouldSendStepPreviewImages(ws) || !frame?.imageData) {
+                    pendingFrames.length = 0;
+                    pendingFrames.push({
+                        currentStep: frame.currentStep,
+                        totalSteps: frame.totalSteps
+                    });
+                    scheduleFlush();
+                    return;
+                }
                 pendingFrames.push(frame);
                 if (!initialPhaseComplete) {
                     if (pendingFrames.length >= initialMinFrames) {
@@ -1163,7 +1192,7 @@ class WebSocketMessageHandlers {
                     }
                     return;
                 }
-                if (pendingFrames.length >= maxFrames || isSendBufferHigh()) {
+                if (pendingFrames.length >= maxFrames) {
                     flushNow();
                 } else {
                     scheduleFlush();
@@ -1207,7 +1236,12 @@ class WebSocketMessageHandlers {
     sendGenerationProgress(ws, requestId, progressData) {
         let imageData = progressData.imageData || null;
         let stepFrames = progressData.stepFrames || null;
-        if (stepFrames && Array.isArray(stepFrames) && stepFrames.length > 0) {
+        const sendImages = this.shouldSendStepPreviewImages(ws);
+        if (!sendImages) {
+            // Progress counters still go out; omit heavy base64 previews on slow links.
+            imageData = null;
+            stepFrames = null;
+        } else if (stepFrames && Array.isArray(stepFrames) && stepFrames.length > 0) {
             const lastFrame = stepFrames[stepFrames.length - 1];
             if (!imageData && lastFrame && lastFrame.imageData) {
                 imageData = lastFrame.imageData;
@@ -1228,8 +1262,10 @@ class WebSocketMessageHandlers {
                 reasoning: progressData.reasoning || null, // for 3rd line display
                 toolName: progressData.toolName || null, // tool name for icon/styling
                 toolReason: progressData.toolReason || null, // tool-specific reason
-                imageData,
-                imageFormat: progressData.imageFormat || (stepFrames && stepFrames[0] ? stepFrames[0].imageFormat : null) || null,
+                imageData, // omitted when connection is slow or high-latency
+                imageFormat: sendImages
+                    ? (progressData.imageFormat || (stepFrames && stepFrames[0] ? stepFrames[0].imageFormat : null) || null)
+                    : null,
                 stepFrames,
                 // Staged generation fields
                 totalStages: progressData.totalStages || null,
