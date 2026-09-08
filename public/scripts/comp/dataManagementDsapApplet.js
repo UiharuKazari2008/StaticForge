@@ -1019,24 +1019,27 @@ function dataMgmtDsapRenderFavoritesList(root) {
 }
 
 function dataMgmtDsapRefreshWorkspacesIfPresent() {
-    const list = document.getElementById('dataMgmtWorkspaceList');
-    if (!list) return;
-    const root = list.closest('[data-dsap="data-mgmt"]');
-    if (root) dataMgmtDsapRenderWorkspaceList(root);
+    const lists = document.querySelectorAll('#dataMgmtWorkspaceList');
+    lists.forEach((list) => {
+        const root = list.closest('[data-dsap="data-mgmt"]');
+        if (root) dataMgmtDsapRenderWorkspaceList(root);
+    });
 }
 
 function dataMgmtDsapRefreshFavoritesIfPresent() {
-    const list = document.getElementById('dataMgmtFavoritesList');
-    if (!list) return;
-    const root = list.closest('[data-dsap="data-mgmt"]');
-    if (root) dataMgmtDsapRenderFavoritesList(root);
+    const lists = document.querySelectorAll('#dataMgmtFavoritesList');
+    lists.forEach((list) => {
+        const root = list.closest('[data-dsap="data-mgmt"]');
+        if (root) dataMgmtDsapRenderFavoritesList(root);
+    });
 }
 
 function dataMgmtDsapRefreshStatusIfPresent() {
-    const pieHost = document.getElementById('dataMgmtPieHost');
-    if (!pieHost) return;
-    const root = pieHost.closest('[data-dsap="data-mgmt"]');
-    if (root) void dataMgmtDsapDriver._loadStatus(root);
+    const pieHosts = document.querySelectorAll('#dataMgmtPieHost');
+    pieHosts.forEach((pieHost) => {
+        const root = pieHost.closest('[data-dsap="data-mgmt"]');
+        if (root) void dataMgmtDsapDriver._loadStatus(root);
+    });
 }
 
 function dataMgmtDsapReplicationEscapeHtml(text) {

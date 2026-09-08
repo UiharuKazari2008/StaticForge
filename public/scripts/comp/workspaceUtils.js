@@ -1490,6 +1490,8 @@ async function createWorkspace(name) {
                 // Update UI components that need the new workspace
                 renderWorkspaceDropdown();
                 updateActiveWorkspaceDisplay();
+                refreshWorkspaceManagementListsIfPresent();
+                refreshExplorerWorkspacesListIfOpen();
             }
         } else {
             showError('Failed to create workspace: WebSocket not connected');
@@ -1542,6 +1544,8 @@ async function deleteWorkspace(id) {
                 // Update UI components
                 renderWorkspaceDropdown();
                 updateActiveWorkspaceDisplay();
+                refreshWorkspaceManagementListsIfPresent();
+                refreshExplorerWorkspacesListIfOpen();
                 
                 // Only refresh gallery if it's currently visible
                 if (!document.getElementById('gallery')?.classList.contains('hidden')) {
@@ -1578,6 +1582,8 @@ async function dumpWorkspace(sourceId, targetId) {
                     
                 // Update UI components
                 renderWorkspaceDropdown();
+                refreshWorkspaceManagementListsIfPresent();
+                refreshExplorerWorkspacesListIfOpen();
                 
                 // Only refresh gallery if it's currently visible
                 if (!document.getElementById('gallery')?.classList.contains('hidden')) {
@@ -1949,6 +1955,8 @@ function updateWorkspaceData(workspaceId, updates) {
     // Update UI components
     renderWorkspaceDropdown();
     updateActiveWorkspaceDisplay();
+    refreshWorkspaceManagementListsIfPresent();
+    refreshExplorerWorkspacesListIfOpen();
 }
 
 // Update workspace color
@@ -2910,6 +2918,8 @@ function initializeWebSocketWorkspaceEvents() {
                 
                 // Update UI components
                 renderWorkspaceDropdown();
+                refreshWorkspaceManagementListsIfPresent();
+                refreshExplorerWorkspacesListIfOpen();
                 
                 break;
                 
