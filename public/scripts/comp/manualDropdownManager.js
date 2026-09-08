@@ -520,6 +520,16 @@ function updateSamplerDisplay() {
         const showNoiseBadge = (manualSelectedSampler === 'k_dpmpp_2m' && manualSelectedNoiseScheduler !== 'exponential') ||
                               (manualSelectedSampler !== 'k_dpmpp_2m' && manualSelectedNoiseScheduler !== 'karras');
 
+        const is2xSampler = manualSelectedSampler === 'k_dpmpp_sde' || manualSelectedSampler === 'k_dpmpp_2m_sde' || manualSelectedSampler === 'k_dpmpp_2s_ancestral';
+        const costHint = document.getElementById('manualSamplerCostHint');
+        if (costHint) {
+            if (is2xSampler) {
+                costHint.classList.remove('hidden');
+            } else {
+                costHint.classList.add('hidden');
+            }
+        }
+
         manualSamplerSelected.innerHTML = [
             `<span class="custom-dropdown-text small-viewport">${s.display_short || s.display}</span>`,
             `<span class="custom-dropdown-text full-viewport">${s.display_short_full || s.display}</span>`,

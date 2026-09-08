@@ -5117,6 +5117,53 @@ function collectGenerationResultFilenames(result) {
     return names;
 }
 
+async function handleCharacterBatch(globalResources, body, userType, sessionId, streamingCallback, ws, handler, wsServer) {
+    bindRuntimeGlobalResources(globalResources);
+    if (!body.requestId) body.requestId = `gen-${Date.now()}`;
+    const requestId = body.requestId;
+
+    const chars = (body.allCharacterPrompts || []).filter(c => c && c.enabled !== false);
+    const count = chars.length;
+    if (count === 0) {
+        const copyBody = { ...body, batch_characters: false };
+        return await generateImageWebSocket(globalResources, copyBody, userType, sessionId, streamingCallback, ws, handler, wsServer, { singlePrint: true });
+    }
+
+    const savedFilenames = [];
+    let lastResult = null;
+
+    console.log(`📦 Character batch copies: ${count}`);
+    for (let i = 0; i < count; i++) {
+        if (isStagedGenerationCancelled(handler, requestId)) {
+            console.log(`🛑 Character batch cancelled after ${i} of ${count}`);
+            break;
+        }
+        if (ws && handler) {
+            handler.sendGenerationProgress(ws, requestId, {
+                phase: 'generating',
+                currentStage: i + 1,
+                totalStages: count,
+                stageType: 'batch_character'
+            });
+        }
+        const copyBody = { ...body, n: 1, batch_characters: false, requestId };
+        copyBody.allCharacterPrompts = [chars[i]];
+        const result = await generateImageWebSocket(globalResources, copyBody, userType, sessionId, streamingCallback, ws, handler, wsServer, { singlePrint: true });
+        lastResult = result;
+        const names = collectGenerationResultFilenames(result);
+        const lastName = names.length ? names[names.length - 1] : null;
+        if (lastName) {
+            savedFilenames.push({ filename: lastName, stageId: String(i + 1).padStart(2, '0'), stageIndex: i, stageType: 'batch_character', chara_name: chars[i].chara_name || `Character ${i + 1}` });
+        }
+        if (ws && handler) {
+            handler.sendGenerationProgress(ws, requestId, { phase: i === count - 1 ? 'complete' : 'stage_complete', currentStage: i + 1, totalStages: count, stageType: 'batch_character', filename: lastName || null });
+        }
+    }
+
+    const lastName = savedFilenames.length ? savedFilenames[savedFilenames.length - 1].filename : (lastResult && lastResult.filename) || null;
+    return { ...(lastResult || {}), filename: lastName, filenames: savedFilenames, saved: savedFilenames.length > 0, total_stages: count, print_count: count };
+}
+
 async function handlePrintCopies(globalResources, body, copies, userType, sessionId, streamingCallback, ws, handler, wsServer) {
     bindRuntimeGlobalResources(globalResources);
     if (!body.requestId) body.requestId = `gen-${Date.now()}`;
@@ -5203,6 +5250,10 @@ async function generateImageWebSocket(globalResources, body, userType, sessionId
 
     if (!body.model) {
         throw new Error('Invalid request body: model parameter is missing');
+    }
+
+    if (body.batch_characters && !options.singlePrint) {
+        return await handleCharacterBatch(globalResources, body, userType, sessionId, streamingCallback, ws, handler, wsServer);
     }
 
     const copies = options.singlePrint ? 1 : parseGenerationPrintCount(body);

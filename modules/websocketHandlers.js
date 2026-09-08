@@ -341,6 +341,7 @@ class WebSocketMessageHandlers {
             'workspace_add_scrap',
             'workspace_remove_scrap',
             'workspace_bulk_add_scrap',
+            'workspace_bulk_remove_scrap',
             'workspace_add_pinned',
             'workspace_remove_pinned',
             'workspace_bulk_add_pinned',

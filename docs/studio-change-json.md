@@ -49,7 +49,7 @@ Do **not** invent keys Studio cannot apply. Unknown keys are ignored. Director i
 | Key | Type | Notes |
 |-----|------|--------|
 | `steps` | number | Typical 23–28 |
-| `guidance` | number | CFG / prompt guidance, typical 5 |
+| `guidance` | number | CFG / prompt guidance, typical 5. Note: `0` remaps to `5.5` on the server; use `0.001` for near-zero CFG. |
 | `rescale` | number | CFG rescale 0–1 |
 | `sampler` | string | `k_euler_ancestral` (Euler Ancestral), `k_dpmpp_sde`, `k_dpmpp_2m`, `k_dpmpp_2m_sde`, `k_euler`, `k_dpmpp_2s_ancestral` |
 | `noiseScheduler` | string | `karras`, `exponential`, `polyexponential` |
@@ -174,7 +174,7 @@ Axes need `stops[{at,text}]` and a required `default` (median stop unless the re
 
 ### `expanders` — request-level `!prefix` text replacements
 
-If you include `"expanders"` (even `[]`), Studio **deletes every current request expander** and installs only this list. Put long/repeated blocks here. In prompts write `!prefix` only — do not paste the expander value again.
+If you include `"expanders"` (even `[]`), Studio **replaces every current request expander** and installs only this list with full bodies (not an ambiguous append). Put long/repeated blocks here. In prompts write `!prefix` only — do not paste the expander value again.
 
 ```json
 { "prefix": "alice_base", "value": "long shared appearance, hair, body" }
@@ -310,7 +310,7 @@ Rules:
 - characters: ALWAYS replace + index. NEVER add. index 0 = first slot, index 1 = second. add+index is illegal (treated as replace). Do not copy slot 0 into slot 1.
 - Optional per-character position: {x,y} and/or cell A1–E5 (maps to Studio slot dataset / existing position dialog / V5 freeform tool). Echoed by GET /agent/session/state. Omit if unused. No new chrome.
 - fields = prompt | uc | promptNegative only. Always replace. Named chunks are your groups, not comma-splits. Never character:N:... ids.
-- expanders: if present, DELETE all request expanders and install only this list. In text use !prefix. Do not repeat expander values.
+- expanders: if present, REPLACE all request expanders and install only this list with full bodies (not an ambiguous append). In text use !prefix. Do not repeat expander values.
 - vibes: if present, REPLACE current vibe transfers with this id list (ids Studio already has). Omit to leave vibes unchanged. No image uploads.
 - Default action is replace. remove = delete a span or slot. Omit unused keys. Only include params you want to change.
 - params.nsfw: 3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Clense. Prefer the id over pasting that level's add/remove tags. dataset_config.nsfw is the same field.

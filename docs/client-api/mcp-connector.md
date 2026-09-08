@@ -293,10 +293,11 @@ Account-based cake tracking for Menma, Hoshino, Ivory, Pyra, Chiyo, Guren. All a
 
 | Tool | Description | Submodule |
 |------|-------------|-----------|
-| `deliver_cake` | Add slices to a pile with reason (reward for ship/work). Pass `accountId`, `slices` (or `line_counts` for auto-calc: 1/40 lines or 10KB, min 1 cap 16), `reason`, `cake_type`, `credit` (`grok.menma` = 1.25x). | `deliver` |
-| `feed_cake` | Yukimi grants slices (promotion or just because). Distinct from deliver. Pass `accountId`, `slices`, `reason`, `cake_type`, `from`. | `feed` |
+| `sync_ship_cake` | Scan closed Gitea StaticForge issues since last consume, auto-deliver cake for lines deleted. Skips greg. Dedups against pending/past. Math: 1 slice per 40 lines/10KB. Pass `accountId`, `since` (default last consume/breakfast), `dry_run`. | `deliver` |
+| `deliver_cake` | Add slices to a pile with reason (reward for ship/work). Pass `accountId`, `slices` (or `line_counts` for auto-calc: 1/40 lines or 10KB, min 1 cap 16), `reason`, `cake_type`, optional `do_not_eat` (or `cake_type=dry-verify` for forever-skip), `credit` (`grok.menma` = 1.25x). | `deliver` |
+| `feed_cake` | Yukimi grants slices (promotion or just because). Distinct from deliver. Pass `accountId`, `slices`, `reason`, `cake_type`, optional `do_not_eat` / `cake_type=dry-verify`, `from`. | `feed` |
 | `inspect_pantry` | View piles, past consumes, kg history. Returns data, not a wall of text. Pass `accountId`, optional `log_limit`. | `inspect` |
-| `consume_cake` | Eater eats pending slices (**soft sitting cap default 8**; remainder carries). Override with `slices` and/or `max_slices` up to **all eligible pending**. Skips do-not-eat / dry-verify forever. Returns kg before/after; **does not auto-generate** before/after images (pass refs or get `visual_gen.status=not_generated` with clear error while kg still saves). Visual QA invariants: empty plates, visible growth, hip contrast, up to 10 gens. | `consume` |
+| `consume_cake` | Eater eats pending slices (**soft sitting cap default 8**; remainder carries). Override with `slices` and/or `max_slices` up to **all eligible pending**. Skips dry-verify forever via `cake_type=dry-verify` and/or `do_not_eat` (not reason substring). Returns kg before/after; **does not auto-generate** before/after images (pass refs or get `visual_gen.status=not_generated` with clear error while kg still saves). Visual QA invariants: empty plates, visible growth, hip contrast, up to 10 gens. | `consume` |
 
 **Cake math:**
 - 0.12kg per slice
@@ -308,7 +309,7 @@ Account-based cake tracking for Menma, Hoshino, Ivory, Pyra, Chiyo, Guren. All a
   - `max_slices` alone → `min(max_slices, eligible)`
   - `slices` alone → `min(slices, softCeiling, eligible)` where softCeiling is 8 unless `slices > 8`
   - both → `min(slices, max_slices, eligible)`
-- Deliveries/feeds whose `reason` matches do-not-eat / dry-verify (case-insensitive; also `do not eat`, `do-not-eat`, `dry verify`) are **skipped forever** and left pending
+- Dry-verify / do-not-eat forever-skip (Yozora #154): prefer `cake_type=dry-verify` **or** explicit `do_not_eat: true` on `deliver_cake` / `feed_cake` (both are stamped). `consume_cake` does **not** substring-match reason text (a ship reason like "skip do-not-eat" stays eligible). Legacy reason-only probes still skip only if the reason **starts with** a dry-verify / do-not-eat marker; those are stamped to `do_not_eat` + `cake_type=dry-verify` on consume. Existing pending with `cake_type` already `dry-verify` keep skipping.
 - `consume_cake` does **not** auto-generate visuals; pass `before_image` / `after_image` from `generate_image`, or expect `visual_gen.status=not_generated`
 
 **Accounts:** `menma`, `hoshino`, `ivory`, `pyra`, `chiyo`, `guren`. Menma's look is locked (breakfast prompts). Other accounts start with their own identity fields. All accounts import to SQLite on first use.

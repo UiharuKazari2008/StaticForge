@@ -180,6 +180,9 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 | `sort` | Optional |
 | `period` | Optional |
 | `search` | Optional |
+| `model` | Optional — Explore system tag `system:model:<id>` (e.g. `nai-diffusion-5-full`) |
+| `aspect` | Optional — `portrait` / `landscape` / `square` → `system:aspect:<value>` |
+| `vt` | Optional — `with` → `system:has_vt` (vibe transfer) |
 | `creatorId` | Optional |
 | `page` | Optional |
 | `offset` | Optional |

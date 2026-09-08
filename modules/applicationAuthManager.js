@@ -21,10 +21,13 @@ const SCOPE_WS_PACKETS = {
         'get_persona_settings', 'save_persona_settings', 'update_persona_settings'
     ],
     workspace: [
-        'workspace_list', 'workspace_create', 'workspace_delete', 'workspace_activate',
-        'workspace_update', 'workspace_dump', 'workspace_move_files',
+        'workspace_list', 'workspace_get', 'workspace_create', 'workspace_delete', 'workspace_activate',
+        'workspace_update', 'workspace_dump', 'workspace_get_files', 'workspace_move_files',
+        'workspace_get_scraps', 'workspace_get_pinned',
         'workspace_add_pinned', 'workspace_remove_pinned', 'workspace_add_scrap',
-        'workspace_remove_scrap', 'workspace_bulk_add_scrap', 'workspace_bulk_pinned',
+        'workspace_remove_scrap', 'workspace_bulk_add_scrap', 'workspace_bulk_remove_scrap',
+        'workspace_bulk_pinned',
+        'workspace_get_groups', 'workspace_get_group', 'workspace_get_image_groups',
         'desktop_add_shortcut', 'desktop_update_shortcut',
         'desktop_remove_shortcut', 'desktop_update_positions'
     ],

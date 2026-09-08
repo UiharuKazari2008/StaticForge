@@ -22,7 +22,9 @@ const EXPLORE_MODEL_OPTIONS = [
     { value: 'nai-diffusion-4-curated', label: 'NAI Diffusion V4 Curated' },
     { value: 'nai-diffusion-4-full', label: 'NAI Diffusion V4 Full' },
     { value: 'nai-diffusion-v4-curated', label: 'NAI Diffusion V4.5 Curated' },
-    { value: 'nai-diffusion-v4', label: 'NAI Diffusion V4.5 Full' }
+    { value: 'nai-diffusion-v4', label: 'NAI Diffusion V4.5 Full' },
+    { value: 'nai-diffusion-5-curated', label: 'NAI Diffusion V5 Curated' },
+    { value: 'nai-diffusion-5-full', label: 'NAI Diffusion V5 Full' }
 ];
 
 const EXPLORE_ASPECT_OPTIONS = [

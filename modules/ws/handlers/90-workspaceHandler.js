@@ -1272,6 +1272,50 @@ class WorkspaceWebSocketHandlers {
         }
     }
 
+    async handleWorkspaceBulkRemoveScrap(ws, message, clientInfo, wsServer) {
+        try {
+            const { id, filenames } = message;
+
+            if (!id) {
+                this.handlers.sendError(ws, 'Workspace ID is required', 'workspace_bulk_remove_scrap', message.requestId);
+                return;
+            }
+
+            if (!Array.isArray(filenames) || filenames.length === 0) {
+                this.handlers.sendError(ws, 'Filenames array is required', 'workspace_bulk_remove_scrap', message.requestId);
+                return;
+            }
+
+            let successCount = 0;
+
+            for (const filename of filenames) {
+                try {
+                    this.globalResources.getWorkspaceManager().removeFromWorkspaceArray('scraps', filename, id);
+                    successCount++;
+                } catch (error) {
+                    console.error(`Failed to remove ${filename} from scraps:`, error);
+                }
+            }
+
+            this.handlers.sendToClient(ws, {
+                type: 'workspace_bulk_remove_scrap_response',
+                requestId: message.requestId,
+                data: { success: true, removedCount: successCount },
+                timestamp: new Date().toISOString()
+            });
+
+            // Broadcast workspace update to all clients
+            this.broadcast(wsServer, {
+                type: 'workspace_updated',
+                data: { action: 'bulk_remove_scrap', workspaceId: id, removedCount: successCount },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Workspace bulk remove scrap error:', error);
+            this.handlers.sendError(ws, 'Failed to bulk remove from scraps', error.message, message.requestId);
+        }
+    }
+
     async handleWorkspaceBulkAddPinned(ws, message, clientInfo, wsServer) {
         try {
             const { id, filenames } = message;
@@ -1368,6 +1412,7 @@ function registerPackets(handlersCtx) {
     reg('workspace_update_textarea_font', 'handleWorkspaceUpdateTextareaFont', WORKSPACE_DESTRUCTIVE);
     reg('workspace_reorder', 'handleWorkspaceReorder', WORKSPACE_DESTRUCTIVE);
     reg('workspace_bulk_add_scrap', 'handleWorkspaceBulkAddScrap', WORKSPACE_DESTRUCTIVE);
+    reg('workspace_bulk_remove_scrap', 'handleWorkspaceBulkRemoveScrap', WORKSPACE_DESTRUCTIVE);
     reg('workspace_bulk_add_pinned', 'handleWorkspaceBulkAddPinned', WORKSPACE_DESTRUCTIVE);
 }
 

@@ -13,6 +13,7 @@ let expansionModalData = {
     overrideParams: {},
     enableAI: false, // Default to disabled
     enableInset: false, // Default to disabled
+    insetPreferred: true, // User preference while inset is unavailable
     expandSourcePixels: null, // { width, height } of image being expanded (for inset eligibility)
     previewName: null, // gallery preview basename for the canvas thumbnail
     compiledPrompt: null, // { prompt, uc, characterPrompts } baseline from server (not sent unless editor save)
@@ -504,7 +505,7 @@ function getExpansionPreviewParamsFromUI() {
     const upscaleToggle = document.getElementById('expansionUpscaleToggle');
     const upscaleAfterComplete = upscaleToggle ? upscaleToggle.getAttribute('data-state') === 'on' : false;
     const insetToggle = document.getElementById('expansionInsetToggle');
-    expansionModalData.enableInset = insetToggle ? insetToggle.getAttribute('data-state') === 'on' : false;
+    expansionModalData.enableInset = !!(insetToggle && !insetToggle.disabled && insetToggle.getAttribute('data-state') === 'on');
 
     let overrideParams = {};
     const advancedSection = document.getElementById('expansionAdvancedOptions');
@@ -667,6 +668,7 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
         overrideParams: {},
         enableAI: false, // Reset to disabled
         enableInset: false, // Reset to disabled
+        insetPreferred: true,
         expandSourcePixels: null,
         previewName: null,
         compiledPrompt: null,
@@ -745,13 +747,20 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
     // Load previous expansion settings if available
     if (metadata?.forge_data?.expansion_source) {
         
-        // Set previous expansion resolution
+        // Set previous expansion resolution only if it is a valid *different* aspect target
         if (metadata.forge_data.expansion_resolution) {
-            expansionModalData.selectedResolution = metadata.forge_data.expansion_resolution;
-            const resData = RESOLUTIONS.find(r => r.value === metadata.forge_data.expansion_resolution);
-            const selectedElement = document.getElementById('expansionResolutionSelected');
-            if (selectedElement && resData) {
-                selectedElement.textContent = resData.display;
+            const prevRes = metadata.forge_data.expansion_resolution;
+            const prevDims = typeof getDimensionsFromResolution === 'function'
+                ? getDimensionsFromResolution(prevRes)
+                : null;
+            const srcPx = expansionModalData.expandSourcePixels;
+            const sameAspect = !!(srcPx && prevDims
+                && samePixelAspectRatio(srcPx.width, srcPx.height, prevDims.width, prevDims.height));
+            if (!sameAspect && prevDims) {
+                selectExpansionResolution(prevRes);
+            } else {
+                // Keep / force first different-aspect option from the filtered dropdown
+                ensureExpansionDifferentAspectSelected();
             }
         }
         
@@ -778,6 +787,7 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
                 metadata.forge_data.expansion_params?.inset === 'true';
             insetToggle.setAttribute('data-state', wasInset ? 'on' : 'off');
             expansionModalData.enableInset = wasInset;
+            expansionModalData.insetPreferred = wasInset;
         }
 
         // Set requested content if it was used (input to AI — not the compiled prompt)
@@ -865,6 +875,7 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
         if (insetToggle) {
             insetToggle.setAttribute('data-state', 'on');
             expansionModalData.enableInset = true;
+            expansionModalData.insetPreferred = true;
         }
         
         // Clear advanced inputs (model follows the source image when known)
@@ -920,30 +931,28 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
         expansionModalBootstrapping = false;
     }
 
-    if (!expansionModalData.selectedResolution) {
-        showGlassToast('error', 'Expand Canvas', 'No valid target resolution for this image', false, 5000, '<i class="nai-cross"></i>');
-        return;
-    }
-
-    const prepared = await fetchExpansionCompiledPrompt({
-        showToast: expansionModalData.enableAI === true,
-        blockUI: true
-    });
-    if (!prepared.ok) {
-        if (prepared.error && !prepared.cancelled) {
-            const msg = prepared.error.message || 'Could not compile expansion prompt';
-            if (!prepared.error.message || prepared.error.message !== 'WebSocket not connected') {
-                showGlassToast('error', 'Expand Canvas', msg, false, 5000, '<i class="nai-cross"></i>');
-            }
-        }
-        return;
-    }
+    // Always open — never block the window before the user can pick a ratio/direction.
+    ensureExpansionDifferentAspectSelected();
 
     openModal(modal);
     modal.classList.add('visible');
 
     if (typeof ensureModalWithinViewport === 'function') {
         ensureModalWithinViewport(modal);
+    }
+
+    // Compile after open; failures must not close/hide the modal.
+    if (expansionModalData.selectedResolution) {
+        const prepared = await fetchExpansionCompiledPrompt({
+            showToast: expansionModalData.enableAI === true,
+            blockUI: false
+        });
+        if (!prepared.ok && prepared.error && !prepared.cancelled) {
+            const msg = prepared.error.message || 'Could not compile expansion prompt';
+            if (!prepared.error.message || prepared.error.message !== 'WebSocket not connected') {
+                showGlassToast('error', 'Expand Canvas', msg, false, 5000, '<i class="nai-cross"></i>');
+            }
+        }
     }
 }
 
@@ -1610,6 +1619,52 @@ function updateExpansionModeDisplay() {
 }
 
 // Populate resolution dropdown with filtered options
+
+/** Prefer different-aspect target; prefer inset-eligible (larger on both axes) so inset controls stay available. */
+function ensureExpansionDifferentAspectSelected() {
+    const srcPx = expansionModalData.expandSourcePixels;
+
+    function isDifferentAspect(w, h) {
+        if (!srcPx || !srcPx.width || !srcPx.height) return true;
+        return !samePixelAspectRatio(srcPx.width, srcPx.height, w, h);
+    }
+    function isInsetEligible(w, h) {
+        if (!srcPx || !srcPx.width || !srcPx.height) return false;
+        return expansionInsetTargetApplicable(srcPx.width, srcPx.height, w, h);
+    }
+
+    const current = expansionModalData.selectedResolution;
+    if (current) {
+        const curDims = typeof getDimensionsFromResolution === 'function'
+            ? getDimensionsFromResolution(current)
+            : null;
+        if (curDims && isDifferentAspect(curDims.width, curDims.height) && isInsetEligible(curDims.width, curDims.height)) {
+            return current;
+        }
+    }
+
+    if (typeof RESOLUTION_GROUPS === 'undefined' || !Array.isArray(RESOLUTION_GROUPS)) {
+        return null;
+    }
+
+    const candidates = [];
+    for (const group of RESOLUTION_GROUPS) {
+        if (!group || !Array.isArray(group.options)) continue;
+        for (const opt of group.options) {
+            if (!opt || opt.value === 'custom' || String(opt.value).startsWith('small_')) continue;
+            if (!opt.width || !opt.height) continue;
+            if (!isDifferentAspect(opt.width, opt.height)) continue;
+            candidates.push({ opt, group: group.group, inset: isInsetEligible(opt.width, opt.height) });
+        }
+    }
+    const pick = candidates.find(c => c.inset) || candidates[0];
+    if (pick) {
+        selectExpansionResolution(pick.opt.value, pick.group);
+        return pick.opt.value;
+    }
+    return null;
+}
+
 async function populateExpansionResolutionDropdown() {
     const dropdown = document.getElementById('expansionResolutionDropdownMenu');
     if (!dropdown) return;
@@ -1663,11 +1718,15 @@ async function populateExpansionResolutionDropdown() {
     // Filter RESOLUTION_GROUPS: hide small presets and any preset with the same aspect ratio as the image (exact rational match)
     const filteredGroups = RESOLUTION_GROUPS.map(group => {
         const filteredOptions = group.options.filter(opt => {
-            if (opt.value === 'custom') return false;
+            // Keep Custom so big sources can pick inset-eligible WxH
+            if (opt.value === 'custom') return true;
 
             if (opt.value.startsWith('small_')) {
                 return false;
             }
+
+            // Custom option has no width/height — already handled above
+            if (!opt.width || !opt.height) return false;
 
             if (samePixelAspectRatio(baseW, baseH, opt.width, opt.height)) {
                 return false;
@@ -1701,11 +1760,39 @@ async function populateExpansionResolutionDropdown() {
         dropdown.appendChild(noOptions);
     }
 
-    if (!expansionModalData.selectedResolution && filteredGroups.length > 0 && filteredGroups[0].options.length > 0) {
-        const firstOpt = filteredGroups[0].options[0];
-        selectExpansionResolution(firstOpt.value, filteredGroups[0].group);
+    // Auto-select different-aspect target; prefer inset-eligible so inset controls stay visible.
+    if (filteredGroups.length > 0) {
+        const current = expansionModalData.selectedResolution;
+        const flat = [];
+        for (const g of filteredGroups) {
+            for (const o of g.options) flat.push({ opt: o, group: g.group });
+        }
+        const stillValid = current && flat.some(x => x.opt.value === current);
+        let keep = stillValid;
+        if (keep && expansionModalData.expandSourcePixels) {
+            const d = getDimensionsFromResolution(current);
+            keep = !!(d && expansionInsetTargetApplicable(
+                expansionModalData.expandSourcePixels.width,
+                expansionModalData.expandSourcePixels.height,
+                d.width, d.height));
+        }
+        if (!keep && flat.length) {
+            const src = expansionModalData.expandSourcePixels;
+            const insetPick = flat.find(x => x.opt.width && x.opt.height && src
+                && expansionInsetTargetApplicable(src.width, src.height, x.opt.width, x.opt.height));
+            if (insetPick) {
+                selectExpansionResolution(insetPick.opt.value, insetPick.group);
+            } else if (src && src.width && src.height) {
+                // No preset fits unscaled source — open Custom with best-effort dims
+                selectExpansionResolution('custom', 'Custom');
+            } else {
+                const pick = flat.find(x => x.opt.value !== 'custom') || flat[0];
+                selectExpansionResolution(pick.opt.value, pick.group);
+            }
+        }
     }
 
+    bindExpansionCustomResolutionInputs();
     updateExpansionInsetToggleVisibility();
 }
 
@@ -1718,7 +1805,131 @@ function expansionInsetTargetApplicable(sw, sh, tw, th) {
     return swN > 0 && shN > 0 && twN > 0 && thN > 0 && twN > swN && thN > shN;
 }
 
-/** Show inset toggle only when output is larger than source on both dimensions; otherwise hide and clear inset. */
+/**
+ * Inset = keep source at native pixels (no scale) and pad the extra canvas for inpaint.
+ * Always show the toggle; only disable when the target cannot fit the unscaled source.
+ */
+const EXPANSION_CUSTOM_MAX_AREA = 3047424; // Max (~3MP), same as Studio Max area
+
+function snapUpToStep(n, step = 64) {
+    const v = parseInt(n, 10) || 0;
+    if (v < step) return step;
+    return Math.ceil(v / step) * step;
+}
+
+/** Default custom target: both axes strictly larger than source when possible under max area. */
+function getExpansionCustomDefaultDims(srcW, srcH) {
+    const sw = parseInt(srcW, 10) || 1024;
+    const sh = parseInt(srcH, 10) || 1024;
+    let tw = snapUpToStep(sw + 1);
+    let th = snapUpToStep(sh + 1);
+    if (tw <= sw) tw = snapUpToStep(sw + 64);
+    if (th <= sh) th = snapUpToStep(sh + 64);
+
+    if (typeof correctDimensions === 'function') {
+        const result = correctDimensions(String(tw), String(th), {
+            step: 64,
+            maxArea: EXPANSION_CUSTOM_MAX_AREA
+        });
+        tw = result.width;
+        th = result.height;
+    } else if (tw * th > EXPANSION_CUSTOM_MAX_AREA) {
+        const scale = Math.sqrt(EXPANSION_CUSTOM_MAX_AREA / (tw * th));
+        tw = snapUpToStep(Math.floor(tw * scale));
+        th = snapUpToStep(Math.floor(th * scale));
+        while (tw * th > EXPANSION_CUSTOM_MAX_AREA && (tw > 64 || th > 64)) {
+            if (tw >= th) tw = Math.max(64, tw - 64);
+            else th = Math.max(64, th - 64);
+        }
+    }
+    return { width: tw, height: th };
+}
+
+function showExpansionCustomResolutionInputs(show) {
+    const row = document.getElementById('expansionCustomResolution');
+    if (!row) return;
+    if (show) row.classList.remove('hidden');
+    else row.classList.add('hidden');
+}
+
+function setExpansionCustomInputs(width, height) {
+    const wEl = document.getElementById('expansionCustomWidth');
+    const hEl = document.getElementById('expansionCustomHeight');
+    if (wEl) wEl.value = String(width);
+    if (hEl) hEl.value = String(height);
+}
+
+function applyExpansionCustomResolutionFromInputs(opts = {}) {
+    const wEl = document.getElementById('expansionCustomWidth');
+    const hEl = document.getElementById('expansionCustomHeight');
+    if (!wEl || !hEl) return null;
+    const rawW = wEl.value;
+    const rawH = hEl.value;
+    if (!rawW || !rawH) return null;
+
+    let width = parseInt(rawW, 10) || 1024;
+    let height = parseInt(rawH, 10) || 1024;
+    if (typeof correctDimensions === 'function') {
+        const result = correctDimensions(String(width), String(height), {
+            step: 64,
+            maxArea: EXPANSION_CUSTOM_MAX_AREA
+        });
+        if (result.changed && opts.toast !== false && typeof showGlassToast === 'function') {
+            showGlassToast('warning', null, `Custom size adjusted to ${result.width}×${result.height}`);
+        }
+        width = result.width;
+        height = result.height;
+    }
+    setExpansionCustomInputs(width, height);
+    const value = `custom_${width}x${height}`;
+    expansionModalData.selectedResolution = value;
+    const selectedElement = document.getElementById('expansionResolutionSelected');
+    if (selectedElement) selectedElement.textContent = `Custom (${width}×${height})`;
+    showExpansionCustomResolutionInputs(true);
+    updateExpansionInsetToggleVisibility();
+    if (!opts.skipCompile) scheduleExpansionCompiledPromptReload();
+    return { width, height, value };
+}
+
+function enterExpansionCustomResolution(seedFromSrc = true) {
+    const src = expansionModalData.expandSourcePixels;
+    let width = 1024;
+    let height = 1024;
+    const current = expansionModalData.selectedResolution;
+    if (current && String(current).startsWith('custom_')) {
+        const d = getDimensionsFromResolution(current);
+        if (d) { width = d.width; height = d.height; }
+    } else if (seedFromSrc && src && src.width && src.height) {
+        const d = getExpansionCustomDefaultDims(src.width, src.height);
+        width = d.width;
+        height = d.height;
+        if (!expansionInsetTargetApplicable(src.width, src.height, width, height)
+            && typeof showGlassToast === 'function') {
+            showGlassToast('info', null,
+                `No size under 3MP is larger than ${src.width}×${src.height} on both axes — inset stays off`);
+        }
+    } else if (current) {
+        const d = getDimensionsFromResolution(current);
+        if (d) { width = d.width; height = d.height; }
+    }
+    setExpansionCustomInputs(width, height);
+    showExpansionCustomResolutionInputs(true);
+    return applyExpansionCustomResolutionFromInputs({ toast: false, skipCompile: false });
+}
+
+function bindExpansionCustomResolutionInputs() {
+    const wEl = document.getElementById('expansionCustomWidth');
+    const hEl = document.getElementById('expansionCustomHeight');
+    if (!wEl || !hEl || wEl.dataset.bound === '1') return;
+    wEl.dataset.bound = '1';
+    hEl.dataset.bound = '1';
+    const onCommit = () => applyExpansionCustomResolutionFromInputs({ toast: true });
+    wEl.addEventListener('change', onCommit);
+    hEl.addEventListener('change', onCommit);
+    wEl.addEventListener('blur', onCommit);
+    hEl.addEventListener('blur', onCommit);
+}
+
 function updateExpansionInsetToggleVisibility() {
     const btn = document.getElementById('expansionInsetToggle');
     if (!btn) return;
@@ -1726,22 +1937,38 @@ function updateExpansionInsetToggleVisibility() {
     const px = expansionModalData.expandSourcePixels;
     const res = expansionModalData.selectedResolution;
     const target = res ? getDimensionsFromResolution(res) : null;
+    const applicable = !!(px && px.width && px.height && target
+        && expansionInsetTargetApplicable(px.width, px.height, target.width, target.height));
 
-    if (!px || !px.width || !px.height || !target || !expansionInsetTargetApplicable(px.width, px.height, target.width, target.height)) {
-        btn.classList.add('hidden');
+    btn.classList.remove('hidden');
+
+    // Remember explicit on/off while the control is usable
+    const stateNow = btn.getAttribute('data-state');
+    if (!btn.disabled && (stateNow === 'on' || stateNow === 'off')) {
+        expansionModalData.insetPreferred = stateNow === 'on';
+    }
+
+    if (!applicable) {
+        btn.disabled = true;
+        btn.setAttribute('aria-disabled', 'true');
+        // Force visual off so the green pip does not look "enabled"
         btn.setAttribute('data-state', 'off');
         expansionModalData.enableInset = false;
+        const sw = px ? px.width : '?';
+        const sh = px ? px.height : '?';
+        const tw = target ? target.width : '?';
+        const th = target ? target.height : '?';
+        btn.title = `Inset needs both sides larger than source (source ${sw}×${sh}, target ${tw}×${th})`;
         updateExpansionCanvasPreview();
         return;
     }
 
-    const wasHidden = btn.classList.contains('hidden');
-    btn.classList.remove('hidden');
-    if (wasHidden) {
-        btn.setAttribute('data-state', 'on');
-        expansionModalData.enableInset = true;
-    }
-
+    btn.disabled = false;
+    btn.removeAttribute('aria-disabled');
+    const preferOn = expansionModalData.insetPreferred !== false;
+    btn.setAttribute('data-state', preferOn ? 'on' : 'off');
+    expansionModalData.enableInset = preferOn;
+    btn.title = 'Inset source without scaling (transparent padding for inpaint)';
     updateExpansionCanvasPreview();
 }
 
@@ -1844,7 +2071,8 @@ function updateExpansionCanvasPreview() {
     const res = expansionModalData.selectedResolution;
     const target = res ? getDimensionsFromResolution(res) : null;
     const insetToggle = document.getElementById('expansionInsetToggle');
-    const insetOn = insetToggle ? insetToggle.getAttribute('data-state') === 'on' : expansionModalData.enableInset;
+    // Prefer runtime enableInset (forced off while target is not larger on both axes)
+    const insetOn = !!expansionModalData.enableInset;
     // computeExpansionLetterboxLayout: public/scripts/comp/utilities.js
     const layout = px && target
         ? computeExpansionLetterboxLayout(
@@ -1862,16 +2090,47 @@ function updateExpansionCanvasPreview() {
 
 // Select expansion resolution
 function selectExpansionResolution(value, group) {
-    expansionModalData.selectedResolution = value;
-    
-    const selectedElement = document.getElementById('expansionResolutionSelected');
-    if (selectedElement) {
-        // Find the resolution name from RESOLUTIONS array
-        const resData = RESOLUTIONS.find(r => r.value === value);
-        if (resData) {
-            selectedElement.textContent = resData.display;
-        } else {
-            selectedElement.textContent = value;
+    if (value === 'custom') {
+        enterExpansionCustomResolution(true);
+        const upscaleToggleEarly = document.getElementById('expansionUpscaleToggle');
+        if (upscaleToggleEarly && typeof calculateUpscaleInfo === 'function') {
+            const dimensions = getDimensionsFromResolution(expansionModalData.selectedResolution);
+            if (dimensions) {
+                const upscaleInfo = calculateUpscaleInfo(dimensions.width, dimensions.height);
+                if (upscaleInfo.available) {
+                    upscaleToggleEarly.disabled = false;
+                    upscaleToggleEarly.title = 'Enable upscaling after expansion';
+                } else {
+                    upscaleToggleEarly.disabled = true;
+                    upscaleToggleEarly.title = upscaleInfo.reason || 'Upscaling not available for this resolution';
+                    if (upscaleToggleEarly.getAttribute('data-state') === 'on') {
+                        upscaleToggleEarly.setAttribute('data-state', 'off');
+                    }
+                }
+            }
+        }
+        return;
+    }
+
+    if (value && String(value).startsWith('custom_')) {
+        expansionModalData.selectedResolution = value;
+        const d = getDimensionsFromResolution(value);
+        if (d) setExpansionCustomInputs(d.width, d.height);
+        showExpansionCustomResolutionInputs(true);
+        const selectedCustom = document.getElementById('expansionResolutionSelected');
+        if (selectedCustom && d) selectedCustom.textContent = `Custom (${d.width}×${d.height})`;
+        else if (selectedCustom) selectedCustom.textContent = value;
+    } else {
+        expansionModalData.selectedResolution = value;
+        showExpansionCustomResolutionInputs(false);
+        const selectedElement = document.getElementById('expansionResolutionSelected');
+        if (selectedElement) {
+            const resData = typeof RESOLUTIONS !== 'undefined' && RESOLUTIONS.find(r => r.value === value);
+            if (resData) {
+                selectedElement.textContent = resData.display;
+            } else {
+                selectedElement.textContent = value;
+            }
         }
     }
     
@@ -2077,7 +2336,7 @@ async function submitImageExpansionReroll() {
         Object.assign(overrideParams, getExpansionOverrideParams());
     }
     const insetToggleReroll = document.getElementById('expansionInsetToggle');
-    const rerollInsetOn = insetToggleReroll ? insetToggleReroll.getAttribute('data-state') === 'on' : false;
+    const rerollInsetOn = !!(insetToggleReroll && !insetToggleReroll.disabled && insetToggleReroll.getAttribute('data-state') === 'on');
     overrideParams.inset = rerollInsetOn;
 
     Object.assign(overrideParams, applyExpansionSavedOverridesToParams({}));
@@ -2257,6 +2516,16 @@ function selectExpansionSampler(value) {
         // Find the sampler name from SAMPLER_MAP
         const sampler = SAMPLER_MAP.find(s => s.meta === value);
         selectedElement.textContent = sampler ? sampler.display : value;
+
+        const is2xSampler = value === 'k_dpmpp_sde' || value === 'k_dpmpp_2m_sde' || value === 'k_dpmpp_2s_ancestral';
+        const costHint = document.getElementById('expansionSamplerCostHint');
+        if (costHint) {
+            if (is2xSampler) {
+                costHint.classList.remove('hidden');
+            } else {
+                costHint.classList.add('hidden');
+            }
+        }
     }
 }
 
@@ -2430,7 +2699,7 @@ async function submitImageExpansion() {
     
     // Get inset toggle state
     const insetToggle = document.getElementById('expansionInsetToggle');
-    expansionModalData.enableInset = insetToggle ? insetToggle.getAttribute('data-state') === 'on' : false;
+    expansionModalData.enableInset = !!(insetToggle && !insetToggle.disabled && insetToggle.getAttribute('data-state') === 'on');
     
     // Get override parameters from advanced options
     const advancedSection = document.getElementById('expansionAdvancedOptions');
@@ -2678,12 +2947,13 @@ function toggleExpansionUpscale() {
 // Toggle inset padding behavior
 function toggleExpansionInset() {
     const insetToggle = document.getElementById('expansionInsetToggle');
-    if (!insetToggle) return;
-    
+    if (!insetToggle || insetToggle.disabled) return;
+
     const currentState = insetToggle.getAttribute('data-state');
     const newState = currentState === 'on' ? 'off' : 'on';
     insetToggle.setAttribute('data-state', newState);
     expansionModalData.enableInset = newState === 'on';
+    expansionModalData.insetPreferred = newState === 'on';
     updateExpansionCanvasPreview();
 }
 
@@ -2827,20 +3097,7 @@ document.addEventListener('DOMContentLoaded', () => {
         autoSeedToggle.addEventListener('click', toggleAutoSeed);
     }
     
-    // Setup AI toggle
-    const aiToggle = document.getElementById('expansionAIToggle');
-    if (aiToggle) {
-        aiToggle.addEventListener('click', toggleExpansionAI);
-    }
-
-    const expansionRequestedContent = document.getElementById('expansionRequestedContent');
-    if (expansionRequestedContent) {
-        expansionRequestedContent.addEventListener('input', () => {
-            if (expansionModalData.enableAI) {
-                scheduleExpansionCompiledPromptReload();
-            }
-        });
-    }
+    // Expand Canvas AI enhance mode removed.
 
     const expansionEditCompiledPromptBtn = document.getElementById('expansionEditCompiledPromptBtn');
     if (expansionEditCompiledPromptBtn) {
@@ -2909,6 +3166,12 @@ document.addEventListener('DOMContentLoaded', () => {
     
     const guidanceInput = document.getElementById('expansionGuidanceInput');
     if (guidanceInput) {
+        guidanceInput.addEventListener('blur', function() {
+            const value = parseFloat(this.value);
+            if (value === 0 && typeof showGlassToast === 'function') {
+                showGlassToast('info', 'Guidance', '0 CFG remaps to 5.5 on the server. For near-zero CFG, enter 0.001.', false, 5000);
+            }
+        });
         guidanceInput.addEventListener('wheel', function(e) {
             e.preventDefault();
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);

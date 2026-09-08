@@ -40,6 +40,7 @@ const WS_FIFO_PACKET_TYPES = new Set([
     'workspace_update_textarea_font',
     'workspace_reorder',
     'workspace_bulk_add_scrap',
+    'workspace_bulk_remove_scrap',
     'workspace_bulk_add_pinned'
 ]);
 

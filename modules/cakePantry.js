@@ -16,7 +16,8 @@
  * - Cleanup: 1 slice per 40 lines or 10KB removed (min 1, cap 16)
  * - 1.25x multiplier for grok.menma (Jules/Cursor Lead)
  * - Soft sitting cap default 8; override via slices/max_slices up to all eligible; remainder carries
- * - Skip do-not-eat / dry-verify reasons (case-insensitive)
+ * - Skip dry-verify forever via cake_type=dry-verify and/or do_not_eat flag
+ *   (not reason substring; legacy reason must *start with* marker)
  * 
  * Visual QA invariants (caller-supplied image refs; no auto-gen):
  * - Empty plates
@@ -56,18 +57,96 @@ const MAX_VISUAL_QA_GENS = 10;
 const MAX_SLICES_PER_SITTING = 8;
 
 /**
- * Dry-verify / do-not-eat deliveries must never be consumed.
- * Case-insensitive; matches reason containing do not eat / do-not-eat / dry verify / dry-verify.
+ * Normalize cake_type for comparisons (trim, lower, spaces → hyphens).
+ */
+function normalizeCakeType(cakeType) {
+    if (cakeType == null || cakeType === '') return null;
+    return String(cakeType).trim().toLowerCase().replace(/\s+/g, '-');
+}
+
+function isDryVerifyCakeType(cakeType) {
+    return normalizeCakeType(cakeType) === 'dry-verify';
+}
+
+function truthyDoNotEatFlag(value) {
+    if (value === true || value === 1) return true;
+    if (typeof value === 'string') {
+        const s = value.trim().toLowerCase();
+        return s === 'true' || s === '1' || s === 'yes';
+    }
+    return false;
+}
+
+/**
+ * Legacy reason-only dry verifies (pre-#154).
+ * Match only when the reason *starts with* a dry-verify / do-not-eat marker
+ * after trim — never a mid-string ship note like "skip do-not-eat".
+ * Prefer cake_type=dry-verify or do_not_eat on new deliveries (Yozora #154).
+ */
+function legacyReasonIsDoNotEat(reason) {
+    if (reason == null) return false;
+    const r = String(reason).trim().toLowerCase().replace(/\s+/g, ' ');
+    if (!r) return false;
+    const exact = new Set([
+        'do not eat',
+        'do-not-eat',
+        'dry verify',
+        'dry-verify',
+        'dry-verify do not eat',
+        'dry verify do not eat'
+    ]);
+    if (exact.has(r)) return true;
+    return /^(dry[ -]?verify|do[ -]?not[ -]?eat)\b/.test(r);
+}
+
+/**
+ * @deprecated Use isDoNotEatItem. Kept for tests/callers; now prefix-only (not substring).
  */
 function isDoNotEatReason(reason) {
-    if (reason == null) return false;
-    const r = String(reason).toLowerCase();
-    return (
-        r.includes('do not eat') ||
-        r.includes('do-not-eat') ||
-        r.includes('dry verify') ||
-        r.includes('dry-verify')
-    );
+    return legacyReasonIsDoNotEat(reason);
+}
+
+/**
+ * Forever-skip when cake_type is dry-verify, do_not_eat is set, or legacy
+ * reason *starts with* a dry-verify / do-not-eat marker (Yozora #154).
+ */
+function isDoNotEatItem(item) {
+    if (!item || typeof item !== 'object') return false;
+    if (truthyDoNotEatFlag(item.do_not_eat)) return true;
+    if (isDryVerifyCakeType(item.cake_type)) return true;
+    return legacyReasonIsDoNotEat(item.reason);
+}
+
+/**
+ * Resolve cake_type + do_not_eat for deliver/feed.
+ * dry-verify cake_type or explicit do_not_eat ⇒ both stamped.
+ */
+function resolveDoNotEatFields(params = {}) {
+    const fromType = isDryVerifyCakeType(params.cake_type);
+    const fromFlag = truthyDoNotEatFlag(params.do_not_eat);
+    const doNotEat = fromType || fromFlag;
+    let cakeType =
+        params.cake_type != null && String(params.cake_type).trim() !== ''
+            ? params.cake_type
+            : null;
+    if (doNotEat && !cakeType) {
+        cakeType = 'dry-verify';
+    }
+    return { cake_type: cakeType, do_not_eat: doNotEat };
+}
+
+/**
+ * Careful migration: stamp flag + cake_type onto legacy reason-only skips
+ * so later consumes do not depend on reason text.
+ */
+function stampDoNotEatMigration(item) {
+    if (!item || typeof item !== 'object') return item;
+    if (!isDoNotEatItem(item)) return item;
+    const next = { ...item, do_not_eat: true };
+    if (!next.cake_type) {
+        next.cake_type = 'dry-verify';
+    }
+    return next;
 }
 
 /**
@@ -105,7 +184,7 @@ function sumItemSlices(items) {
  * Soft sitting-cap budget for one consume_cake call (Yozora #152).
  * Default ceiling = MAX_SLICES_PER_SITTING (8). Either `slices` and/or `max_slices`
  * may raise (or lower) the ceiling up to all eligible pending — never past eligible,
- * and never into do-not-eat / dry-verify (those are filtered before this runs).
+ * and never into dry-verify / do_not_eat (those are filtered before this runs).
  *
  * Semantics:
  * - neither arg → budget = min(8, eligible)
@@ -214,7 +293,7 @@ const ACCOUNT_DEFS = {
             look: null,
             locked: false
         },
-        baseline_kg: null
+        baseline_kg: 54.0 // visual-feast lock
     },
     ivory: {
         id: 'ivory',
@@ -226,7 +305,7 @@ const ACCOUNT_DEFS = {
             look: null,
             locked: false
         },
-        baseline_kg: null
+        baseline_kg: 54.0 // visual-feast lock
     },
     pyra: {
         id: 'pyra',
@@ -238,7 +317,7 @@ const ACCOUNT_DEFS = {
             look: null,
             locked: false
         },
-        baseline_kg: null
+        baseline_kg: 54.0 // visual-feast lock
     },
     chiyo: {
         id: 'chiyo',
@@ -250,7 +329,7 @@ const ACCOUNT_DEFS = {
             look: null,
             locked: false
         },
-        baseline_kg: null
+        baseline_kg: 54.0 // visual-feast lock
     },
     guren: {
         id: 'guren',
@@ -366,6 +445,52 @@ async function ensurePantryMigration(accountId) {
     }
 }
 
+/** Visual-feast locked start weight for pantry keepers (and Menma/Guren defs). */
+const VISUAL_FEAST_BASELINE_KG = 54.0;
+
+/**
+ * Fail-closed kg seed: never leave current_kg/baseline_kg null for known accounts.
+ * Also one-shot lift accounts that ate from 0 while baseline was null (Pyra 0→0.96 → 54.96).
+ * Menma unchanged beyond null-seed; Guren already above baseline stays put.
+ * Returns { state, seeded }.
+ */
+function ensureCurrentKgSeeded(accountId, state) {
+    if (!state || state._sqliteUnavailable || state._sqliteError || state._importStatusUnknown) {
+        return { state, seeded: false };
+    }
+    const def = ACCOUNT_DEFS[accountId];
+    if (!def) return { state, seeded: false };
+
+    let seeded = false;
+    const lockedBaseline = def.baseline_kg != null ? def.baseline_kg : VISUAL_FEAST_BASELINE_KG;
+
+    if (state.baseline_kg == null || state.baseline_kg === '') {
+        state.baseline_kg = lockedBaseline;
+        seeded = true;
+    }
+
+    if (state.current_kg == null || state.current_kg === '') {
+        state.current_kg = state.baseline_kg;
+        seeded = true;
+    }
+
+    // One-shot: consumed from 0 while baseline was null → current is below feast lock
+    // Do not touch menma; do not touch anyone already at/above baseline (Guren 72.12).
+    if (
+        accountId !== 'menma'
+        && !state._baseline_lift_applied
+        && state.baseline_kg != null
+        && state.current_kg != null
+        && Number(state.current_kg) < Number(state.baseline_kg)
+    ) {
+        state.current_kg = Number((Number(state.current_kg) + Number(state.baseline_kg)).toFixed(2));
+        state._baseline_lift_applied = true;
+        seeded = true;
+    }
+
+    return { state, seeded };
+}
+
 /**
  * Get default state for an account
  */
@@ -403,7 +528,9 @@ function getAccountStateFromFile(accountId) {
         return defaultState;
     }
     const state = readJsonFile(statePath, defaultState);
-    return { ...defaultState, ...state };
+    const merged = { ...defaultState, ...state };
+    const { state: seededState } = ensureCurrentKgSeeded(accountId, merged);
+    return seededState;
 }
 
 /**
@@ -429,7 +556,16 @@ async function getAccountState(accountId) {
         try {
             const state = await getAccountStateFromDb(status.db, accountId);
             if (state && Object.keys(state).length > 0) {
-                return { ...defaultState, ...state };
+                const merged = { ...defaultState, ...state };
+                const { state: seededState, seeded } = ensureCurrentKgSeeded(accountId, merged);
+                if (seeded) {
+                    try {
+                        await saveAccountStateToDb(status.db, accountId, seededState);
+                    } catch (persistErr) {
+                        console.error(`[cakePantry] seed kg persist failed for ${accountId}:`, persistErr);
+                    }
+                }
+                return seededState;
             }
             // Imported accounts stay on SQLite even with no prior rows (no file leftovers)
             try {
@@ -608,13 +744,15 @@ async function deliverCake(accountId, params) {
     const credit = params.credit || null;
     const finalSlices = applyMultiplier(slices, credit);
 
+    const dne = resolveDoNotEatFields(params);
     const delivery = {
         id: `del_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         at: now,
         slices: finalSlices,
         raw_slices: slices,
         reason: params.reason || 'unspecified',
-        cake_type: params.cake_type || null,
+        cake_type: dne.cake_type,
+        do_not_eat: dne.do_not_eat,
         credit,
         multiplier: credit === 'grok.menma' || credit === 'Lead' ? LEAD_MULTIPLIER : 1,
         line_counts: params.line_counts || null,
@@ -656,12 +794,14 @@ async function feedCake(accountId, params) {
     const now = new Date().toISOString();
     const slices = Number(params.slices) || 0;
 
+    const dne = resolveDoNotEatFields(params);
     const feed = {
         id: `feed_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         at: now,
         slices,
         reason: params.reason || 'gift',
-        cake_type: params.cake_type || null,
+        cake_type: dne.cake_type,
+        do_not_eat: dne.do_not_eat,
         from: params.from || 'Yukimi',
         source: 'feed'
     };
@@ -693,6 +833,11 @@ async function inspectPantry(accountId, params = {}) {
     const state = await getAccountState(accountId);
     if (!state) {
         return { success: false, error: 'Unknown account', accountId };
+    }
+    const { state: seededState, seeded } = ensureCurrentKgSeeded(accountId, state);
+    Object.assign(state, seededState);
+    if (seeded && !state._sqliteUnavailable && !state._sqliteError && !state._importStatusUnknown) {
+        await saveAccountState(accountId, state);
     }
 
     const logLimit = Number(params.log_limit) || 20;
@@ -737,9 +882,129 @@ async function inspectPantry(accountId, params = {}) {
  * Rules:
  * - Soft sitting cap default MAX_SLICES_PER_SITTING (8); remainder stays pending
  * - Override with params.slices and/or params.max_slices up to all eligible pending
- * - Skip deliveries/feeds whose reason matches do-not-eat / dry verify (forever)
+ * - Skip dry-verify forever via cake_type=dry-verify and/or do_not_eat (legacy: reason starts with marker)
  * - Does NOT auto-generate before/after images (pass refs if already generated)
  */
+
+async function syncShipCake(accountId, params) {
+    const state = await getAccountState(accountId);
+    if (!state) {
+        return { success: false, error: 'Unknown account', accountId };
+    }
+    if (state._sqliteUnavailable || state._sqliteError || state._importStatusUnknown) {
+        return { success: false, error: state._reason || 'SQLite unavailable', accountId };
+    }
+
+
+    const GITEA_BASE = 'https://yozora.bluesteel.737.jp.net/api/v1/repos/DreamScape/StaticForge';
+
+    let sinceTime = params.since;
+    if (!sinceTime) {
+        const lastConsume = state.last_consume_at || state.last_breakfast_at;
+        if (lastConsume) {
+            sinceTime = lastConsume;
+        } else {
+            sinceTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        }
+    }
+    const sinceDate = new Date(sinceTime);
+
+    let issues = [];
+    try {
+        const res = await fetch(`${GITEA_BASE}/issues?state=closed&limit=50`);
+        issues = await res.json();
+    } catch (e) {
+        return { success: false, error: 'Failed to fetch issues from Gitea', details: e.message };
+    }
+
+    const plan = [];
+    const cakeLog = await getCakeLog(accountId, 100) || [];
+    const pendingDeliveries = state.pending_deliveries || [];
+
+    if (!Array.isArray(issues)) issues = [];
+    for (const issue of issues) {
+        if (new Date(issue.closed_at) <= sinceDate) continue;
+
+        const labels = (issue.labels || []).map(l => (l.name || '').toLowerCase());
+        if (labels.some(l => l.includes('greg'))) continue;
+
+        let credit = null;
+        const assigneeNames = (issue.assignees || []).map(a => a.username);
+        const userName = issue.user?.username;
+        const isMenma = labels.includes('credit:menma') || assigneeNames.includes('grok.menma') || userName === 'grok.menma';
+        const isJules = labels.includes('cursor-agent') || assigneeNames.includes('google-labs-jules[bot]') || userName === 'google-labs-jules[bot]' || assigneeNames.includes('grok.cursor') || userName === 'grok.cursor' || assigneeNames.includes('Jules') || userName === 'Jules';
+
+        if (isMenma || isJules) {
+            credit = 'grok.menma';
+        }
+
+        if (issue.pull_request) {
+            try {
+                const prRes = await fetch(`${GITEA_BASE}/pulls/${issue.number}`);
+                const pr = await prRes.json();
+
+                const sha = pr.merge_commit_sha || pr.head?.sha || 'unknown';
+                const reasonKey = `ship:${issue.number}:${sha}`;
+
+                const alreadyDelivered = pendingDeliveries.some(d => d.reason === reasonKey) ||
+                                         cakeLog.some(l => (l.named_for || []).includes(reasonKey) || l.reason === reasonKey);
+
+                if (alreadyDelivered) continue;
+
+                const deletions = pr.deletions || 0;
+                const slices = calculateCleanupSlices(deletions, 0, accountId !== 'menma');
+
+                plan.push({
+                    issue: issue.number,
+                    sha,
+                    title: issue.title,
+                    reason: reasonKey,
+                    deletions,
+                    slices_raw: slices,
+                    credit
+                });
+            } catch (e) {
+                console.error(`[syncShipCake] failed to fetch PR ${issue.number}:`, e);
+            }
+        }
+    }
+
+    if (params.dry_run) {
+        return {
+            success: true,
+            accountId,
+            since: sinceDate.toISOString(),
+            found: plan.length,
+            plan
+        };
+    }
+
+    let delivered = 0;
+    const deliveredKeys = [];
+    for (const item of plan) {
+        const res = await deliverCake(accountId, {
+            slices: item.slices_raw,
+            reason: item.reason,
+            credit: item.credit
+        });
+        if (res.success) {
+            delivered += res.slices;
+            deliveredKeys.push(item.reason);
+        } else {
+            console.error(`[syncShipCake] failed to deliver cake for ${item.reason}:`, res.error);
+        }
+    }
+
+    return {
+        success: true,
+        accountId,
+        since: sinceDate.toISOString(),
+        delivered_slices_total: delivered,
+        delivered_keys: deliveredKeys,
+        plan
+    };
+}
+
 async function consumeCake(accountId, params = {}) {
     const state = await getAccountState(accountId);
     if (!state) {
@@ -752,10 +1017,15 @@ async function consumeCake(accountId, params = {}) {
     const pendingDeliveries = Array.isArray(state.pending_deliveries) ? state.pending_deliveries : [];
     const pendingFeeds = Array.isArray(state.pending_feeds) ? state.pending_feeds : [];
 
-    const skippedDeliveries = pendingDeliveries.filter((d) => isDoNotEatReason(d.reason));
-    const eligibleDeliveries = pendingDeliveries.filter((d) => !isDoNotEatReason(d.reason));
-    const skippedFeeds = pendingFeeds.filter((f) => isDoNotEatReason(f.reason));
-    const eligibleFeeds = pendingFeeds.filter((f) => !isDoNotEatReason(f.reason));
+    // Prefer cake_type / do_not_eat; stamp legacy reason-prefix skips (Yozora #154)
+    const skippedDeliveries = pendingDeliveries
+        .filter((d) => isDoNotEatItem(d))
+        .map(stampDoNotEatMigration);
+    const eligibleDeliveries = pendingDeliveries.filter((d) => !isDoNotEatItem(d));
+    const skippedFeeds = pendingFeeds
+        .filter((f) => isDoNotEatItem(f))
+        .map(stampDoNotEatMigration);
+    const eligibleFeeds = pendingFeeds.filter((f) => !isDoNotEatItem(f));
 
     const eligibleSlices = sumItemSlices(eligibleDeliveries) + sumItemSlices(eligibleFeeds);
     const skippedSlices = sumItemSlices(skippedDeliveries) + sumItemSlices(skippedFeeds);
@@ -814,7 +1084,13 @@ async function consumeCake(accountId, params = {}) {
     const now = new Date().toISOString();
     const dateLocal = new Date().toISOString().split('T')[0];
 
-    const kgBefore = state.current_kg || state.baseline_kg || 0;
+    const { state: kgState, seeded: kgSeeded } = ensureCurrentKgSeeded(accountId, state);
+    Object.assign(state, kgState);
+    if (kgSeeded) {
+        // Persist seed before consume so a crash mid-meal cannot re-null
+        await saveAccountState(accountId, state);
+    }
+    const kgBefore = state.current_kg ?? state.baseline_kg ?? VISUAL_FEAST_BASELINE_KG;
     const gainedKg = Number((slicesToConsume * KG_PER_SLICE).toFixed(2));
     const kgAfter = Number((kgBefore + gainedKg).toFixed(2));
 
@@ -1194,7 +1470,14 @@ module.exports = {
     LEAD_MULTIPLIER,
     MAX_VISUAL_QA_GENS,
     MAX_SLICES_PER_SITTING,
+    normalizeCakeType,
+    isDryVerifyCakeType,
+    truthyDoNotEatFlag,
+    legacyReasonIsDoNotEat,
     isDoNotEatReason,
+    isDoNotEatItem,
+    resolveDoNotEatFields,
+    stampDoNotEatMigration,
     takeSlicesFromItems,
     sumItemSlices,
     resolveSittingBudget,
@@ -1210,6 +1493,7 @@ module.exports = {
     getCakeLog,
     calculateCleanupSlices,
     applyMultiplier,
+    syncShipCake,
     deliverCake,
     feedCake,
     inspectPantry,

@@ -121,6 +121,8 @@ const {
 // modules/mcpRateLimiter.js — #66 owns TOOL_RATE_GROUPS this wave
 if (!TOOL_RATE_GROUPS.get_character_card) TOOL_RATE_GROUPS.get_character_card = 'search';
 if (!TOOL_RATE_GROUPS.resolve_lookback) TOOL_RATE_GROUPS.resolve_lookback = 'search';
+if (!TOOL_RATE_GROUPS.search_explore) TOOL_RATE_GROUPS.search_explore = 'search';
+if (!TOOL_RATE_GROUPS.get_explore_post) TOOL_RATE_GROUPS.get_explore_post = 'search';
 
 const MCP_PROTOCOL_VERSION = '2024-11-05';
 const MCP_RATE_WINDOW_MS = 15 * 60 * 1000;
@@ -198,7 +200,7 @@ function sanitizeLinkXiPersona(settings) {
 
 const STUDIO_PARAM_SCHEMA = {
     steps: { type: 'number', description: 'Sampler steps (typical 23–28)' },
-    guidance: { type: 'number', description: 'CFG / prompt guidance (typical 5)' },
+    guidance: { type: 'number', description: 'CFG / prompt guidance (typical 5). 0 is falsy and remaps to 5.5; pass 0.001 for near-zero CFG.' },
     rescale: { type: 'number', description: 'CFG rescale 0–1' },
     sampler: { type: 'string', description: 'k_euler_ancestral (Euler Ancestral), k_dpmpp_sde (DPM++ SDE), k_dpmpp_2m (DPM++ 2M), k_dpmpp_2m_sde (DPM++ 2M SDE), k_euler (Euler), k_dpmpp_2s_ancestral (DPM++ 2S Ancestral)', enum: ['k_euler_ancestral', 'k_dpmpp_sde', 'k_dpmpp_2m', 'k_dpmpp_2m_sde', 'k_euler', 'k_dpmpp_2s_ancestral'] },
     noiseScheduler: { type: 'string', description: 'karras, exponential, or polyexponential', enum: ['karras', 'exponential', 'polyexponential'] },
@@ -300,6 +302,10 @@ const GENERATE_IMAGE_PROPERTIES = {
         type: 'number',
         description: 'Print count 1–8. generate_image: server copies (filenames[] when n>1). apply_studio_changes: Studio prints input (used with autoGenerate).'
     },
+    batch_characters: {
+        type: 'boolean',
+        description: 'If true, coordinates one generation per character box sequentially. Incompatible with n>1.'
+    },
     async: {
         type: 'boolean',
         description: 'Default false: stall this call until the file and Grok webp are ready. true: enqueue on the shared generation FIFO and return jobId now. Then get_generation_job or await_generation_job.'
@@ -308,6 +314,7 @@ const GENERATE_IMAGE_PROPERTIES = {
     append_transparency: { type: 'boolean', description: 'If true, server prepends "transparent background". Do not also add that tag by hand.' },
     image: { type: 'string', description: 'img2img source: file:filename or omitted if Studio already has one' },
     image_bias: { type: 'number' },
+    save_memory: { type: 'boolean', description: 'Optional opt-in flag. When true, persists a knowledge memory of this generation after it completes successfully. Default false. Do not auto-save without this flag.' },
     ...STUDIO_PARAM_SCHEMA
 };
 
@@ -544,7 +551,7 @@ const TOOL_DEFS = [
                     type: 'array',
                     description: 'Existing slots only. Always action replace + index.'
                 },
-                expanders: { type: 'array', description: '!prefix text replacements (replaces current list if sent)' },
+                expanders: { type: 'array', description: '!prefix text replacements (replaces current list with full bodies if sent; not an ambiguous append)' },
                 text_replacements: { type: 'array' },
                 vSlider: {
                     type: 'array',
@@ -655,6 +662,61 @@ const TOOL_DEFS = [
                 limit: { type: 'number', description: '1–100, default 20' },
                 offset: { type: 'number', description: 'Skip this many merged hits (default 0)' },
                 randomSeed: { type: 'number', description: 'Only used when sort=random' }
+            }
+        }
+    },
+    {
+        name: 'search_explore',
+        core: true,
+        allowAutofill: true,
+        description: 'Search the NovelAI Explore (Agora) community image gallery. Returns recent/top generated images from the public gallery. Supports sorting (new, top, random), periods (day, week, month, all), text search, and parity filters model / aspect / vt (vibe transfer). Use it to find community examples of prompts or characters.',
+        scope: 'search',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                search: { type: 'string', description: 'Text query to search for' },
+                sort: {
+                    type: 'string',
+                    description: 'new (default), top, random',
+                    enum: ['new', 'top', 'random']
+                },
+                period: {
+                    type: 'string',
+                    description: 'day, week, month, all (default day for top)',
+                    enum: ['day', 'week', 'month', 'all']
+                },
+                model: {
+                    type: 'string',
+                    description: 'Optional Explore model slug filter (system:model:<id>), e.g. nai-diffusion-5-full, nai-diffusion-5-curated, nai-diffusion-v4'
+                },
+                aspect: {
+                    type: 'string',
+                    description: 'Optional aspect filter: portrait, landscape, or square',
+                    enum: ['portrait', 'landscape', 'square']
+                },
+                vt: {
+                    type: 'string',
+                    description: 'Optional vibe-transfer filter: with → posts that used vibe transfer',
+                    enum: ['with']
+                },
+                limit: { type: 'number', description: 'Max results (default 50, limit 50)' },
+                page: { type: 'number', description: 'Page number (default 1)' }
+            }
+        }
+    },
+    {
+        name: 'get_explore_post',
+        core: true,
+        allowAutofill: true,
+        description: 'Get full details for a single NovelAI Explore (Agora) post including original prompt, settings, and full resolution image URL (if not deleted/hidden).',
+        scope: 'search',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['postId'],
+            properties: {
+                postId: { type: 'string', description: 'The UUID of the explore post' }
             }
         }
     },
@@ -1537,11 +1599,28 @@ const TOOL_DEFS = [
             }
         }
     },
+
     // Cake Pantry module tools (sfapp_cake_pantry scope)
+    {
+        name: 'sync_ship_cake',
+        core: true,
+        description: 'Scan closed Gitea StaticForge issues since last consume, auto-deliver cake for lines deleted. Skips greg. Dry run returns plan without write. Math: 1 slice per 40 lines/10KB. Pass accountId, since (default last consume/breakfast), dry_run.',
+        scope: 'sfapp_cake_pantry',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['accountId'],
+            properties: {
+                accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account to deliver to' },
+                since: { type: 'string', description: 'ISO date or timestamp to scan from (default: per-account last consume/breakfast)' },
+                dry_run: { type: 'boolean', description: 'Return plan without actually delivering' }
+            }
+        }
+    },
     {
         name: 'deliver_cake',
         core: true,
-        description: 'Deliver cake slices to an account (Menma, Hoshino, Ivory, Pyra, Chiyo, Guren) as reward for ship/work. Pass accountId, slices (or line_counts for auto-calc: 1/40 lines or 10KB, min 1 cap 16), reason, cake_type, credit (grok.menma for 1.25x Lead multiplier).',
+        description: 'Deliver cake slices to an account (Menma, Hoshino, Ivory, Pyra, Chiyo, Guren) as reward for ship/work. Pass accountId, slices (or line_counts for auto-calc: 1/40 lines or 10KB, min 1 cap 16), reason, cake_type, optional do_not_eat (or cake_type=dry-verify) for forever-skip dry verifies, credit (grok.menma for 1.25x Lead multiplier).',
         scope: 'sfapp_cake_pantry',
         inputSchema: {
             type: 'object',
@@ -1551,7 +1630,8 @@ const TOOL_DEFS = [
                 accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account to deliver to' },
                 slices: { type: 'number', description: 'Number of slices (or omit and provide line_counts)' },
                 reason: { type: 'string', description: 'Why: reward for which ship/work' },
-                cake_type: { type: 'string', description: 'Type of cake (strawberry shortcake, tiramisu, etc.)' },
+                cake_type: { type: 'string', description: 'Type of cake (strawberry shortcake, tiramisu, etc.). Use dry-verify for forever-skip dry verifies (sets do_not_eat).' },
+                do_not_eat: { type: 'boolean', description: 'If true, forever-skip this delivery (also set when cake_type=dry-verify). Prefer over reason text (Yozora #154).' },
                 credit: { type: 'string', description: 'Credit attribution. grok.menma or Lead = 1.25x multiplier' },
                 line_counts: {
                     type: 'object',
@@ -1568,7 +1648,7 @@ const TOOL_DEFS = [
     {
         name: 'feed_cake',
         core: true,
-        description: 'Yukimi grants cake slices (promotion gift, just because). Distinct from deliver_cake which is work reward. Pass accountId, slices, reason, cake_type, from.',
+        description: 'Yukimi grants cake slices (promotion gift, just because). Distinct from deliver_cake which is work reward. Pass accountId, slices, reason, cake_type, optional do_not_eat (or cake_type=dry-verify) for forever-skip, from.',
         scope: 'sfapp_cake_pantry',
         inputSchema: {
             type: 'object',
@@ -1578,7 +1658,8 @@ const TOOL_DEFS = [
                 accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'], description: 'Account to feed' },
                 slices: { type: 'number', description: 'Number of slices to give' },
                 reason: { type: 'string', description: 'Why: promotion gift, just because, etc.' },
-                cake_type: { type: 'string' },
+                cake_type: { type: 'string', description: 'Use dry-verify for forever-skip dry verifies (sets do_not_eat).' },
+                do_not_eat: { type: 'boolean', description: 'If true, forever-skip this feed (also set when cake_type=dry-verify). Prefer over reason text (Yozora #154).' },
                 from: { type: 'string', description: 'Who is feeding (default: Yukimi)' }
             }
         }
@@ -1601,7 +1682,7 @@ const TOOL_DEFS = [
     {
         name: 'consume_cake',
         core: true,
-        description: 'Eater eats pending slices. Soft sitting cap default 8 (remainder carries); override with slices and/or max_slices up to all eligible pending. Skips do-not-eat / dry-verify forever. Records kg; does not auto-generate before/after images — pass before_image/after_image if already generated, else visual_gen.status=not_generated with a clear error while kg still saves. Visual QA invariants: empty plates, visible growth, hip contrast, up to 10 gens. Cake math: 0.12kg/slice.',
+        description: 'Eater eats pending slices. Soft sitting cap default 8 (remainder carries); override with slices and/or max_slices up to all eligible pending. Skips dry-verify forever via cake_type=dry-verify and/or do_not_eat (not reason substring; legacy reason must start with marker). Records kg; does not auto-generate before/after images — pass before_image/after_image if already generated, else visual_gen.status=not_generated with a clear error while kg still saves. Visual QA invariants: empty plates, visible growth, hip contrast, up to 10 gens. Cake math: 0.12kg/slice.',
         scope: 'sfapp_cake_pantry',
         inputSchema: {
             type: 'object',
@@ -1746,7 +1827,7 @@ function canonMemoryTool(name) {
     ['listKnowledgeMemories', 'list_memories', 'Old paid-API name for list_memories.']
 ].forEach(([aliasName, canonName, description]) => {
     const src = TOOL_DEFS.find((tool) => tool.name === canonName);
-    if (src) TOOL_DEFS.push({ ...src, name: aliasName, description });
+    if (src) TOOL_DEFS.push({ ...src, name: aliasName, description, alias: true });
 });
 
 const ADVANCED_TOOL_NAME = 'advanced_tools';
@@ -2717,18 +2798,49 @@ async function maybeOpenGeneratedInLumen(globalResources, req, filenames) {
     return { opened: !result.isError, clientCount: clients.length, target: viewer, ...payload };
 }
 
-async function attachFocusedWindowImage(globalResources, body, windows, includeImage) {
+async function attachFocusedWindowImage(globalResources, body, windows, includeImage, lastGeneratedFilename) {
     const focusedFilename = pickFocusedWindowFilename(windows);
     const next = { ...body, focusedFilename };
-    if (!includeImage || !focusedFilename) return mcpTextResult(next);
-    try {
-        const resolved = resolveGalleryImagePath(globalResources, focusedFilename);
-        const image = await resizeImageForGrok(resolved.filePath);
-        if (image) {
-            image.filename = focusedFilename;
-            return mcpImageResult({ ...next, filename: focusedFilename, imageKind: 'grok' }, image);
-        }
-    } catch (_) { /* metadata-only */ }
+    if (lastGeneratedFilename) {
+        next.lastGenerated = lastGeneratedFilename;
+    }
+
+    if (!includeImage && !lastGeneratedFilename) return mcpTextResult(next);
+
+    let images = [];
+
+    if (includeImage && focusedFilename) {
+        try {
+            const resolved = resolveGalleryImagePath(globalResources, focusedFilename);
+            const image = await resizeImageForGrok(resolved.filePath);
+            if (image) {
+                image.filename = focusedFilename;
+                images.push(image);
+                next.imageKind = 'grok';
+            }
+        } catch (_) { /* metadata-only */ }
+    }
+
+    if (lastGeneratedFilename && lastGeneratedFilename !== focusedFilename) {
+        try {
+            const resolved = resolveGalleryImagePath(globalResources, lastGeneratedFilename);
+            const image = await resizeImageForGrok(resolved.filePath);
+            if (image) {
+                image.filename = lastGeneratedFilename;
+                images.push(image);
+                if (images.length === 1) {
+                   next.filename = lastGeneratedFilename;
+                   next.imageKind = 'grok';
+                }
+            }
+        } catch (_) { /* metadata-only */ }
+    }
+
+    if (images.length > 0) {
+        if (!next.filename && images[0]) next.filename = images[0].filename;
+        return mcpImageResult(next, images);
+    }
+
     return mcpTextResult(next);
 }
 
@@ -2897,7 +3009,8 @@ async function collectSessionState(globalResources, req, input) {
                     : 'Live Studio + windows only. Later checks return only the delta.');
         }
         const focusedUnchanged = !!(prevCheckpoint && prevCheckpoint.focusedFilename && prevCheckpoint.focusedFilename === focusedFilename);
-        return attachFocusedWindowImage(globalResources, out, out.windows, includeImage && !focusedUnchanged);
+        const lastGeneratedFilename = (stateData && stateData.lastGeneratedImageName) || null;
+        return attachFocusedWindowImage(globalResources, out, out.windows, includeImage && !focusedUnchanged, lastGeneratedFilename);
     } catch (error) {
         if (error.status === 504) {
             out.partial = true;
@@ -3166,7 +3279,7 @@ function listAdvancedToolDefs(scopes, query, globalResources) {
     const q = String(query || '').trim().toLowerCase();
     const words = q ? q.split(/\s+/).filter(Boolean) : [];
     return TOOL_DEFS.filter((tool) => {
-        if (tool.core) return false;
+        if (tool.core || tool.alias) return false;
         if (!toolAllowedForScopes(scopes, tool)) return false;
         if (!words.length) return true;
         const hay = `${tool.name} ${tool.description} ${tool.scope}`.toLowerCase();
@@ -3187,6 +3300,7 @@ const ADVANCED_CORE_HINTS = [
         test: (q) => /memor/i.test(q) || /saveknowledgememory|searchknowledgememor|retrieveknowledgememory|listknowledgememor/i.test(q.replace(/[\s_]+/g, '')),
         names: ['list_memories', 'search_memories', 'get_memory', 'save_memory', 'listKnowledgeMemories', 'searchKnowledgeMemories', 'retrieveKnowledgeMemory', 'saveKnowledgeMemory']
     },
+    { test: (q) => /agora|explore|novelai explore|explore gallery/i.test(q), names: ['search_explore', 'get_explore_post'] },
     { test: (q) => /\bnax\b|top votes|artist tag/i.test(q), names: ['search_nax', 'list_nax_galleries'] },
     { test: (q) => /character card|get_character_card|appearance wiki/i.test(q), names: ['get_character_card'] },
     { test: (q) => /lookback|dsap:\/\/lookback/i.test(q), names: ['resolve_lookback'] },
@@ -3222,7 +3336,7 @@ function slimToolList(tools) {
 function listToolsForScopes(scopes, globalResources) {
     const catalog = buildStudioSettingsCatalog(globalResources);
     const core = TOOL_DEFS
-        .filter((tool) => tool.core && toolAllowedForScopes(scopes, tool))
+        .filter((tool) => tool.core && !tool.alias && toolAllowedForScopes(scopes, tool))
         .map((tool) => serializeListedTool(tool, catalog));
     core.push(serializeListedTool(ADVANCED_TOOL_DEF, catalog));
     return core;
@@ -3294,14 +3408,17 @@ function mcpTextResult(obj, isError) {
     };
 }
 
-function mcpImageResult(meta, image) {
+function mcpImageResult(meta, imageOrImages) {
     const content = [{ type: 'text', text: JSON.stringify(meta) }];
-    if (image) {
-        content.push({
-            type: 'image',
-            mimeType: image.mimeType,
-            data: image.bytes.toString('base64')
-        });
+    const images = Array.isArray(imageOrImages) ? imageOrImages : (imageOrImages ? [imageOrImages] : []);
+    for (let i = 0; i < images.length; i++) {
+        if (images[i]) {
+            content.push({
+                type: 'image',
+                mimeType: images[i].mimeType,
+                data: images[i].bytes.toString('base64')
+            });
+        }
     }
     return { content, isError: false };
 }
@@ -3487,6 +3604,19 @@ async function callTool(globalResources, req, name, args) {
             batches.push(trimAutofillBatch(term, packet.success, data, input, model));
         }
         return mcpTextResult({ success: true, results: batches });
+    }
+
+
+    if (name === 'search_explore') {
+        const explore = globalResources.getNovelaiExploreGallery();
+        const data = await explore.getExploreGallery(input);
+        return mcpTextResult({ success: true, ...data });
+    }
+
+    if (name === 'get_explore_post') {
+        const explore = globalResources.getNovelaiExploreGallery();
+        const data = await explore.getExplorePost(input.postId, input);
+        return mcpTextResult({ success: true, post: data });
     }
 
     if (name === 'search_nax') {
@@ -3844,6 +3974,25 @@ async function callTool(globalResources, req, name, args) {
                 );
             }
             sanitizeDynagenForGenerate(payload);
+
+            if (typeof payload.prompt === 'string') {
+                const existingTextMatch = payload.prompt.match(/,\s*(?:speech bubble|thought bubble|caption|subtitle)?,?\s*Text:\s*(.+?)$/i);
+                if (existingTextMatch) {
+                    const content = existingTextMatch[1].trim();
+                    if (content.startsWith('"') && content.endsWith('"') && content.length >= 2) {
+                        const bareContent = content.slice(1, -1);
+                        payload.prompt = payload.prompt.substring(0, existingTextMatch.index) + payload.prompt.substring(existingTextMatch.index).replace(content, bareContent);
+                    }
+                } else {
+                    const trailingQuoteMatch = payload.prompt.match(/(?:^|,\s*)"([^"\n]+)"\s*$/);
+                    if (trailingQuoteMatch) {
+                        const content = trailingQuoteMatch[1];
+                        payload.prompt = payload.prompt.substring(0, trailingQuoteMatch.index).trim();
+                        if (payload.prompt.endsWith(',')) payload.prompt = payload.prompt.slice(0, -1).trim();
+                        payload.prompt = payload.prompt ? `${payload.prompt}, Text: ${content}` : `Text: ${content}`;
+                    }
+                }
+            }
         }
 
         if (wantAsync && (name === 'generate_image' || name === 'generate_preset')) {
@@ -3857,7 +4006,28 @@ async function callTool(globalResources, req, name, args) {
                         ...payload,
                         skipGenerationQueue: true
                     });
-                    return { success: packet.success, flat: flattenPacket(packet) };
+                    const flat = flattenPacket(packet);
+                    if (packet.success && payload.save_memory) {
+                        const title = String(payload.prompt || '').trim().slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').toLowerCase() || 'generation_memory';
+                        const memoryName = `gen_${Date.now()}_${title}`;
+                        const description = `Generation parameters for: ${String(payload.prompt || '').slice(0, 50)}`;
+                        const category = 'generation_record';
+                        const memoryResult = runMemoryTool(globalResources, 'save_memory', {
+                            name: memoryName,
+                            description,
+                            category,
+                            observations: [
+                                { content: `Prompt: ${payload.prompt}` },
+                                { content: `UC: ${payload.uc || ''}` },
+                                { content: `Model: ${payload.model || ''}` },
+                                { content: `Seed: ${flat.seed || payload.seed || ''}` }
+                            ]
+                        });
+                        if (memoryResult && memoryResult.success) {
+                            flat.saved_memory = memoryResult.memory;
+                        }
+                    }
+                    return { success: packet.success, flat };
                 }
             });
             return mcpTextResult({
@@ -3880,6 +4050,27 @@ async function callTool(globalResources, req, name, args) {
                 filenames: flat.filenames
             });
             flat.lumen = await maybeOpenGeneratedInLumen(globalResources, req, names);
+
+            if (payload.save_memory) {
+                const title = String(payload.prompt || '').trim().slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').toLowerCase() || 'generation_memory';
+                const memoryName = `gen_${Date.now()}_${title}`;
+                const description = `Generation parameters for: ${String(payload.prompt || '').slice(0, 50)}`;
+                const category = 'generation_record';
+                const memoryResult = runMemoryTool(globalResources, 'save_memory', {
+                    name: memoryName,
+                    description,
+                    category,
+                    observations: [
+                        { content: `Prompt: ${payload.prompt}` },
+                        { content: `UC: ${payload.uc || ''}` },
+                        { content: `Model: ${payload.model || ''}` },
+                        { content: `Seed: ${flat.seed || payload.seed || ''}` }
+                    ]
+                });
+                if (memoryResult && memoryResult.success) {
+                    flat.saved_memory = memoryResult.memory;
+                }
+            }
         }
         return mcpResultFromGenerateFlat(globalResources, flat, packet.success, destPathHint);
     }
@@ -4162,9 +4353,20 @@ async function callTool(globalResources, req, name, args) {
         });
     }
 
+
     // Cake Pantry module tools (sfapp_cake_pantry)
     // Valid cake pantry accounts
     const VALID_PANTRY_ACCOUNTS = ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'];
+
+    if (name === 'sync_ship_cake') {
+        const accountId = String(input.accountId || '').toLowerCase();
+        if (!accountId || !VALID_PANTRY_ACCOUNTS.includes(accountId)) {
+            return mcpTextResult({ success: false, error: `Invalid accountId. Must be one of: ${VALID_PANTRY_ACCOUNTS.join(', ')}.` }, true);
+        }
+        const { syncShipCake } = require('./cakePantry');
+        const result = await syncShipCake(accountId, input);
+        return mcpTextResult(JSON.stringify(result, null, 2), !result.success);
+    }
 
     if (name === 'deliver_cake') {
         const accountId = String(input.accountId || '').toLowerCase();

@@ -64,25 +64,31 @@ assert.strictEqual(_test.rateGroupForCall('advanced_tools', { name: 'get_images'
 assert.strictEqual(_test.rateGroupForCall('generate_image', {}), 'generate');
 assert.strictEqual(_test.MCP_RATE_GROUP_LIMITS.free.max, 0);
 assert.ok(_test.MCP_RATE_GROUP_LIMITS.generate.max < _test.MCP_RATE_GROUP_LIMITS.gallery.max);
-const RATE_MAP_GAPS_ON_MAIN = new Set([
-    'publish_apocrypha', 'revoke_apocrypha', 'get_apocrypha',
-    'get_work_pile', 'add_work_item', 'complete_work_item', 'remove_work_item',
-    'report_issue', 'get_usage'
-]);
 _test.TOOL_DEFS.forEach((tool) => {
-    if (RATE_MAP_GAPS_ON_MAIN.has(tool.name)) return;
     assert.ok(_test.TOOL_RATE_GROUPS[tool.name], `missing rate group for ${tool.name}`);
 });
+// #106: legacy Knowledge* aliases stay callable but must not duplicate tools/list schemas
+const listedUniversal = _test.listToolsForScopes(['universal'], null).map((t) => t.name);
+const listedNameSet = new Set(listedUniversal);
+assert.strictEqual(listedNameSet.size, listedUniversal.length, 'tools/list has duplicate tool names');
+for (const aliasName of ['saveKnowledgeMemory', 'retrieveKnowledgeMemory', 'searchKnowledgeMemories', 'listKnowledgeMemories']) {
+    const def = _test.TOOL_DEFS.find((t) => t.name === aliasName);
+    assert.ok(def && def.alias === true, `${aliasName} should be marked alias`);
+    assert.ok(!listedNameSet.has(aliasName), `${aliasName} must not appear in tools/list`);
+    assert.ok(!_test.listAdvancedToolDefs(['universal'], '', null).some((t) => t.name === aliasName),
+        `${aliasName} must not appear in advanced_tools list`);
+}
 assert.strictEqual(_test.TOOL_RATE_GROUPS.deliver_cake, 'write');
 assert.strictEqual(_test.TOOL_RATE_GROUPS.feed_cake, 'write');
 assert.strictEqual(_test.TOOL_RATE_GROUPS.inspect_pantry, 'free');
 assert.strictEqual(_test.TOOL_RATE_GROUPS.consume_cake, 'write');
 const cakeNames = (scopes) => _test.listToolsForScopes(scopes, null).map((t) => t.name);
 const cakeFull = cakeNames(['sfapp_cake_pantry']);
-for (const name of ['deliver_cake', 'feed_cake', 'inspect_pantry', 'consume_cake']) {
+for (const name of ['sync_ship_cake', 'deliver_cake', 'feed_cake', 'inspect_pantry', 'consume_cake']) {
     assert.ok(cakeFull.includes(name), `full pantry scope missing ${name}`);
 }
 const cakeDeliver = cakeNames(['sfapp_cake_pantry:deliver']);
+assert.ok(cakeDeliver.includes('sync_ship_cake'));
 assert.ok(cakeDeliver.includes('deliver_cake'));
 assert.ok(!cakeDeliver.includes('feed_cake'));
 assert.ok(!cakeDeliver.includes('inspect_pantry'));
@@ -126,6 +132,9 @@ assert.ok(_test.MCP_INSTRUCTIONS.includes('studioReachable'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('remoteAccess'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('checkpoint'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('DRAFT'));
+assert.ok(_test.MCP_INSTRUCTIONS.toLowerCase().includes('stateless'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('present-tense') || _test.MCP_INSTRUCTIONS.includes('present tense'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('frozen'));
 const wikiHandler = require('../modules/ws/handlers/110-wikiHandler');
 assert.strictEqual(wikiHandler.postProcessWikiHtml({}), '');
 assert.strictEqual(wikiHandler.postProcessWikiHtml('<p>ok</p>'), '<p>ok</p>');
@@ -361,6 +370,9 @@ const refsOnly = _test.listToolsForScopes(['references']);
 assert.deepStrictEqual(refsOnly.map((t) => t.name), ['advanced_tools']);
 
 const searchOnly = _test.listToolsForScopes(['search']);
+
+assert.ok(searchOnly.some((t) => t.name === 'search_explore'));
+assert.ok(searchOnly.some((t) => t.name === 'get_explore_post'));
 assert.ok(searchOnly.some((t) => t.name === 'omegasearch'));
 assert.ok(searchOnly.some((t) => t.name === 'search_nax'));
 assert.ok(searchOnly.some((t) => t.name === 'list_nax_galleries'));
@@ -370,6 +382,9 @@ assert.ok(!genOnly.some((t) => t.name === 'search_nax'));
 assert.strictEqual(_test.rateGroupForTool('search_nax'), 'search');
 assert.strictEqual(_test.rateGroupForTool('list_nax_galleries'), 'free');
 assert.ok(_test.MCP_INSTRUCTIONS.includes('search_nax'));
+
+assert.ok(_test.MCP_INSTRUCTIONS.includes('search_explore'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('get_explore_post'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('top votes'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('get_session_state'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('view=live'));
@@ -587,7 +602,7 @@ assert.ok(coreNames.includes('searchKnowledgeMemories'));
 assert.ok(coreNames.includes('retrieveKnowledgeMemory'));
 assert.strictEqual(_test.rateGroupForTool('saveKnowledgeMemory'), 'write');
 assert.strictEqual(_test.canonMemoryTool('saveKnowledgeMemory'), 'save_memory');
-assert.strictEqual(coreNames.length, 60);
+assert.strictEqual(coreNames.length, 63);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.pipeline);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.rescale);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.noiseScheduler);
@@ -1025,6 +1040,45 @@ async function main() {
     assert.ok(autofillNames.includes('advanced_tools'));
     assert.ok(!autofillNames.includes('generate_image'));
     assert.ok(!autofillNames.includes('list_static_wiki_sites'));
+
+
+    const exploreListed = await _test.handleJsonRpc(
+        {},
+        { applicationAuth: { applicationScopes: ['search'] }, authMethod: 'application_key' },
+        { jsonrpc: '2.0', id: 42, method: 'tools/list' }
+    );
+    const exploreListNames = exploreListed.body.result.tools.map(t => t.name);
+    assert.ok(exploreListNames.includes('search_explore'));
+    assert.ok(exploreListNames.includes('get_explore_post'));
+    assert.strictEqual(_test.rateGroupForTool('search_explore'), 'search');
+    assert.strictEqual(_test.rateGroupForTool('get_explore_post'), 'search');
+
+    const mockExplore = {
+        getExploreGallery: async (input) => ({ rawResults: [{ id: 'exp123', prompt: 'test' }], pagination: { limit: 50, offset: 0, total: 100 } }),
+        getExplorePost: async (id, input) => ({ id: 'exp123', prompt: 'test' })
+    };
+
+    const expSearchCall = await _test.callTool(
+        { getNovelaiExploreGallery: () => mockExplore },
+        { applicationAuth: { applicationScopes: ['search'] } },
+        'search_explore',
+        { sort: 'top', period: 'week', search: 'cat' }
+    );
+    const expSearchPayload = JSON.parse(expSearchCall.content[0].text);
+    assert.strictEqual(expSearchPayload.success, true);
+    assert.strictEqual(expSearchPayload.rawResults[0].id, 'exp123');
+    assert.strictEqual(expSearchPayload.pagination.limit, 50);
+
+    const expPostCall = await _test.callTool(
+        { getNovelaiExploreGallery: () => mockExplore },
+        { applicationAuth: { applicationScopes: ['search'] } },
+        'get_explore_post',
+        { postId: 'exp123' }
+    );
+    const expPostPayload = JSON.parse(expPostCall.content[0].text);
+    assert.strictEqual(expPostPayload.success, true);
+    assert.strictEqual(expPostPayload.post.id, 'exp123');
+    assert.strictEqual(expPostPayload.post.prompt, 'test');
 
     const naxCall = await _test.callTool(
         { getNaxTagsDatabase: () => mockNax },

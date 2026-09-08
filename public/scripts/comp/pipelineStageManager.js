@@ -1833,7 +1833,12 @@ function renderExpandCanvasStage(stageId) {
                         </div>
                     </div>
                     <div class="form-group group-sampler">
-                        <label for="${stageId}_sampler">Sampler</label>
+                        <label for="${stageId}_sampler" style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>Sampler</span>
+                            <span id="${stageId}_samplerCostHint" class="form-hint hidden" style="font-size: 0.75rem; margin-bottom: 0;" title="1 step = 2 model invocations">
+                                <i class="fas fa-battery-half"></i> 2x
+                            </span>
+                        </label>
                         <div id="${stageId}_samplerDropdown" class="custom-dropdown dropup dropright">
                             <button type="button" id="${stageId}_samplerDropdownBtn" class="custom-dropdown-btn hover-show colored">
                                 <span id="${stageId}_samplerSelected">Select sampler...</span>
@@ -3340,6 +3345,16 @@ function updateStageSamplerDisplay(stageId) {
         // Show badge if: (sampler is dpmpp_2m AND noise is NOT exponential) OR (sampler is NOT dpmpp_2m AND noise is NOT karras)
         const showNoiseBadge = (samplerValue === 'k_dpmpp_2m' && noiseValue !== 'exponential') ||
             (samplerValue !== 'k_dpmpp_2m' && noiseValue !== 'karras');
+
+        const is2xSampler = samplerValue === 'k_dpmpp_sde' || samplerValue === 'k_dpmpp_2m_sde' || samplerValue === 'k_dpmpp_2s_ancestral';
+        const costHint = document.getElementById(`${stageId}_samplerCostHint`);
+        if (costHint) {
+            if (is2xSampler) {
+                costHint.classList.remove('hidden');
+            } else {
+                costHint.classList.add('hidden');
+            }
+        }
 
         // Build display exactly like manual modal
         samplerSelected.innerHTML = [

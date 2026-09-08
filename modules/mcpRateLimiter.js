@@ -110,6 +110,7 @@ const TOOL_RATE_GROUPS = {
     publish_apocrypha: 'write',
     revoke_apocrypha: 'write',
     get_apocrypha: 'free',
+    sync_ship_cake: 'write',
     deliver_cake: 'write',
     feed_cake: 'write',
     inspect_pantry: 'free',
