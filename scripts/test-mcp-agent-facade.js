@@ -67,6 +67,17 @@ assert.ok(_test.MCP_RATE_GROUP_LIMITS.generate.max < _test.MCP_RATE_GROUP_LIMITS
 _test.TOOL_DEFS.forEach((tool) => {
     assert.ok(_test.TOOL_RATE_GROUPS[tool.name], `missing rate group for ${tool.name}`);
 });
+// #106: legacy Knowledge* aliases stay callable but must not duplicate tools/list schemas
+const listedUniversal = _test.listToolsForScopes(['universal'], null).map((t) => t.name);
+const listedNameSet = new Set(listedUniversal);
+assert.strictEqual(listedNameSet.size, listedUniversal.length, 'tools/list has duplicate tool names');
+for (const aliasName of ['saveKnowledgeMemory', 'retrieveKnowledgeMemory', 'searchKnowledgeMemories', 'listKnowledgeMemories']) {
+    const def = _test.TOOL_DEFS.find((t) => t.name === aliasName);
+    assert.ok(def && def.alias === true, `${aliasName} should be marked alias`);
+    assert.ok(!listedNameSet.has(aliasName), `${aliasName} must not appear in tools/list`);
+    assert.ok(!_test.listAdvancedToolDefs(['universal'], '', null).some((t) => t.name === aliasName),
+        `${aliasName} must not appear in advanced_tools list`);
+}
 assert.strictEqual(_test.TOOL_RATE_GROUPS.deliver_cake, 'write');
 assert.strictEqual(_test.TOOL_RATE_GROUPS.feed_cake, 'write');
 assert.strictEqual(_test.TOOL_RATE_GROUPS.inspect_pantry, 'free');
