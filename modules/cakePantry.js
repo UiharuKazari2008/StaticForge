@@ -885,6 +885,126 @@ async function inspectPantry(accountId, params = {}) {
  * - Skip dry-verify forever via cake_type=dry-verify and/or do_not_eat (legacy: reason starts with marker)
  * - Does NOT auto-generate before/after images (pass refs if already generated)
  */
+
+async function syncShipCake(accountId, params) {
+    const state = await getAccountState(accountId);
+    if (!state) {
+        return { success: false, error: 'Unknown account', accountId };
+    }
+    if (state._sqliteUnavailable || state._sqliteError || state._importStatusUnknown) {
+        return { success: false, error: state._reason || 'SQLite unavailable', accountId };
+    }
+
+
+    const GITEA_BASE = 'https://yozora.bluesteel.737.jp.net/api/v1/repos/DreamScape/StaticForge';
+
+    let sinceTime = params.since;
+    if (!sinceTime) {
+        const lastConsume = state.last_consume_at || state.last_breakfast_at;
+        if (lastConsume) {
+            sinceTime = lastConsume;
+        } else {
+            sinceTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        }
+    }
+    const sinceDate = new Date(sinceTime);
+
+    let issues = [];
+    try {
+        const res = await fetch(`${GITEA_BASE}/issues?state=closed&limit=50`);
+        issues = await res.json();
+    } catch (e) {
+        return { success: false, error: 'Failed to fetch issues from Gitea', details: e.message };
+    }
+
+    const plan = [];
+    const cakeLog = await getCakeLog(accountId, 100) || [];
+    const pendingDeliveries = state.pending_deliveries || [];
+
+    if (!Array.isArray(issues)) issues = [];
+    for (const issue of issues) {
+        if (new Date(issue.closed_at) <= sinceDate) continue;
+
+        const labels = (issue.labels || []).map(l => (l.name || '').toLowerCase());
+        if (labels.some(l => l.includes('greg'))) continue;
+
+        let credit = null;
+        const assigneeNames = (issue.assignees || []).map(a => a.username);
+        const userName = issue.user?.username;
+        const isMenma = labels.includes('credit:menma') || assigneeNames.includes('grok.menma') || userName === 'grok.menma';
+        const isJules = labels.includes('cursor-agent') || assigneeNames.includes('google-labs-jules[bot]') || userName === 'google-labs-jules[bot]' || assigneeNames.includes('grok.cursor') || userName === 'grok.cursor' || assigneeNames.includes('Jules') || userName === 'Jules';
+
+        if (isMenma || isJules) {
+            credit = 'grok.menma';
+        }
+
+        if (issue.pull_request) {
+            try {
+                const prRes = await fetch(`${GITEA_BASE}/pulls/${issue.number}`);
+                const pr = await prRes.json();
+
+                const sha = pr.merge_commit_sha || pr.head?.sha || 'unknown';
+                const reasonKey = `ship:${issue.number}:${sha}`;
+
+                const alreadyDelivered = pendingDeliveries.some(d => d.reason === reasonKey) ||
+                                         cakeLog.some(l => (l.named_for || []).includes(reasonKey) || l.reason === reasonKey);
+
+                if (alreadyDelivered) continue;
+
+                const deletions = pr.deletions || 0;
+                const slices = calculateCleanupSlices(deletions, 0, accountId !== 'menma');
+
+                plan.push({
+                    issue: issue.number,
+                    sha,
+                    title: issue.title,
+                    reason: reasonKey,
+                    deletions,
+                    slices_raw: slices,
+                    credit
+                });
+            } catch (e) {
+                console.error(`[syncShipCake] failed to fetch PR ${issue.number}:`, e);
+            }
+        }
+    }
+
+    if (params.dry_run) {
+        return {
+            success: true,
+            accountId,
+            since: sinceDate.toISOString(),
+            found: plan.length,
+            plan
+        };
+    }
+
+    let delivered = 0;
+    const deliveredKeys = [];
+    for (const item of plan) {
+        const res = await deliverCake(accountId, {
+            slices: item.slices_raw,
+            reason: item.reason,
+            credit: item.credit
+        });
+        if (res.success) {
+            delivered += res.slices;
+            deliveredKeys.push(item.reason);
+        } else {
+            console.error(`[syncShipCake] failed to deliver cake for ${item.reason}:`, res.error);
+        }
+    }
+
+    return {
+        success: true,
+        accountId,
+        since: sinceDate.toISOString(),
+        delivered_slices_total: delivered,
+        delivered_keys: deliveredKeys,
+        plan
+    };
+}
+
 async function consumeCake(accountId, params = {}) {
     const state = await getAccountState(accountId);
     if (!state) {
@@ -1373,6 +1493,7 @@ module.exports = {
     getCakeLog,
     calculateCleanupSlices,
     applyMultiplier,
+    syncShipCake,
     deliverCake,
     feedCake,
     inspectPantry,
