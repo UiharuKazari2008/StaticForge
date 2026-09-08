@@ -661,7 +661,15 @@ button#layer1SeedToggle {
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
-    margin-right: auto;
+}
+
+.mask-editor-hint {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
 }
 
 .brush-size-control label {
@@ -766,6 +774,10 @@ button#layer1SeedToggle {
 
 /* Responsive adjustments for mask editor */
 @media (max-width: 767px) {
+    .mask-editor-hint {
+        display: none;
+    }
+
     .mask-editor-content {
         width: 95vw;
         max-height: 95vh;
