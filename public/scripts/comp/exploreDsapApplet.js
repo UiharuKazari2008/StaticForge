@@ -15,6 +15,30 @@ const EXPLORE_PERIOD_OPTIONS = [
     { value: 'week', label: 'Week' },
     { value: 'month', label: 'Month' }
 ];
+
+const EXPLORE_MODEL_OPTIONS = [
+    { value: '', label: 'All Models' },
+    { value: 'nai-diffusion-3', label: 'NAI Diffusion V3' },
+    { value: 'nai-diffusion-4-curated', label: 'NAI Diffusion V4 Curated' },
+    { value: 'nai-diffusion-4-full', label: 'NAI Diffusion V4 Full' },
+    { value: 'nai-diffusion-v4-curated', label: 'NAI Diffusion V4.5 Curated' },
+    { value: 'nai-diffusion-v4', label: 'NAI Diffusion V4.5 Full' },
+    { value: 'nai-diffusion-5-curated', label: 'NAI Diffusion V5 Curated' },
+    { value: 'nai-diffusion-5-full', label: 'NAI Diffusion V5 Full' }
+];
+
+const EXPLORE_ASPECT_OPTIONS = [
+    { value: '', label: 'All Aspects' },
+    { value: 'portrait', label: 'Portrait' },
+    { value: 'landscape', label: 'Landscape' },
+    { value: 'square', label: 'Square' }
+];
+
+const EXPLORE_VT_OPTIONS = [
+    { value: '', label: 'Any Vibe' },
+    { value: 'with', label: 'Has Vibe Transfer' }
+];
+
 const EXPLORE_CREATOR_ROW_MAX = 10;
 const EXPLORE_CREATOR_CARD_W = 148;
 
@@ -30,6 +54,9 @@ function exploreParseState(host) {
     const sort = (host.getQueryParam('sort') || 'new').toLowerCase();
     const period = (host.getQueryParam('period') || 'day').toLowerCase();
     const search = host.getQueryParam('q') || host.getQueryParam('search') || '';
+    const model = host.getQueryParam('model') || '';
+    const aspect = host.getQueryParam('aspect') || '';
+    const vt = host.getQueryParam('vt') || '';
     const pageParam = parseInt(host.getQueryParam('page') || '1', 10) || 1;
     const offsetParam = host.getQueryParam('offset');
     const offsetParsed = offsetParam != null && offsetParam !== ''
@@ -51,6 +78,9 @@ function exploreParseState(host) {
         sort: ['new', 'top', 'hot'].includes(sort) ? sort : 'new',
         period: ['day', 'week', 'month'].includes(period) ? period : 'day',
         search: String(search || '').trim(),
+        model: String(model || '').trim(),
+        aspect: String(aspect || '').trim(),
+        vt: String(vt || '').trim(),
         page: Math.max(1, pageParam),
         offset: offsetParsed,
         detailId,
@@ -60,11 +90,14 @@ function exploreParseState(host) {
     };
 }
 
-function exploreBuildGalleryUrl({ sort = 'new', period = 'day', search = '', page = 1, offset = null } = {}) {
+function exploreBuildGalleryUrl({ sort = 'new', period = 'day', search = '', model = '', aspect = '', vt = '', page = 1, offset = null } = {}) {
     const q = new URLSearchParams();
     if (sort && sort !== 'new') q.set('sort', sort);
     if (sort !== 'new' && period && period !== 'day') q.set('period', period);
     if (search) q.set('q', search);
+    if (model) q.set('model', model);
+    if (aspect) q.set('aspect', aspect);
+    if (vt) q.set('vt', vt);
     const pg = parseInt(page, 10) || 1;
     if (pg > 1) q.set('page', String(pg));
     const off = offset == null ? null : Math.max(0, parseInt(offset, 10) || 0);
@@ -90,6 +123,9 @@ function exploreBuildDetailUrl(id, backState) {
         if (backState?.sort && backState.sort !== 'new') q.set('sort', backState.sort);
         if (backState?.sort !== 'new' && backState?.period) q.set('period', backState.period);
         if (backState?.search) q.set('q', backState.search);
+        if (backState?.model) q.set('model', backState.model);
+        if (backState?.aspect) q.set('aspect', backState.aspect);
+        if (backState?.vt) q.set('vt', backState.vt);
         const pg = parseInt(backState?.page, 10) || 1;
         if (pg > 1) q.set('page', String(pg));
     }
@@ -206,6 +242,17 @@ function exploreSortLabel(sort) {
 
 function explorePeriodLabel(period) {
     return EXPLORE_PERIOD_OPTIONS.find((o) => o.value === period)?.label || 'Day';
+}
+
+
+function exploreModelLabel(model) {
+    return EXPLORE_MODEL_OPTIONS.find((o) => o.value === model)?.label || 'All Models';
+}
+function exploreAspectLabel(aspect) {
+    return EXPLORE_ASPECT_OPTIONS.find((o) => o.value === aspect)?.label || 'All Aspects';
+}
+function exploreVtLabel(vt) {
+    return EXPLORE_VT_OPTIONS.find((o) => o.value === vt)?.label || 'Any Vibe';
 }
 
 function exploreParseNaiMetadata(raw) {
@@ -1311,7 +1358,7 @@ const exploreDsapScopedCss = `
   align-items: stretch;
 }
 [data-dsap="explore-gallery"] .ex-search-wrap {
-  flex: 1 1 220px;
+  flex: 1 1 180px;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -2377,7 +2424,12 @@ const exploreDsapDriver = {
                 host.navigate(exploreBuildGalleryUrl({
                     sort: state.sort,
                     period: state.period,
+
                     search: state.search,
+                    model: state.model,
+                    aspect: state.aspect,
+                    vt: state.vt,
+
                     page: state.page
                 }));
             }
@@ -2536,6 +2588,30 @@ const exploreDsapDriver = {
                 <div id="exPeriodMenu" class="custom-dropdown-menu hidden"></div>
               </div>
               <input type="hidden" id="exPeriodHidden" value="${exploreEscapeHtml(state.period)}">
+              <div class="custom-dropdown" id="exModelDropdown">
+                <button type="button" class="custom-dropdown-btn hover-show colored" id="exModelBtn">
+                  <span id="exModelSelected">${exploreEscapeHtml(exploreModelLabel(state.model))}</span>
+                </button>
+                <div id="exModelMenu" class="custom-dropdown-menu hidden"></div>
+              </div>
+              <input type="hidden" id="exModelHidden" value="${exploreEscapeHtml(state.model)}">
+
+              <div class="custom-dropdown" id="exAspectDropdown">
+                <button type="button" class="custom-dropdown-btn hover-show colored" id="exAspectBtn">
+                  <span id="exAspectSelected">${exploreEscapeHtml(exploreAspectLabel(state.aspect))}</span>
+                </button>
+                <div id="exAspectMenu" class="custom-dropdown-menu hidden"></div>
+              </div>
+              <input type="hidden" id="exAspectHidden" value="${exploreEscapeHtml(state.aspect)}">
+
+              <div class="custom-dropdown" id="exVtDropdown">
+                <button type="button" class="custom-dropdown-btn hover-show colored" id="exVtBtn">
+                  <span id="exVtSelected">${exploreEscapeHtml(exploreVtLabel(state.vt))}</span>
+                </button>
+                <div id="exVtMenu" class="custom-dropdown-menu hidden"></div>
+              </div>
+              <input type="hidden" id="exVtHidden" value="${exploreEscapeHtml(state.vt)}">
+
               <button type="button" class="ex-refresh-btn" id="exRefreshBtn" title="Refresh from NovelAI">
                 <i class="fas fa-arrows-rotate"></i>
               </button>
@@ -2669,12 +2745,17 @@ const exploreDsapDriver = {
                 const next = {
                     sort: state.sort,
                     period: state.period,
+
                     search: state.search,
+                    model: state.model,
+                    aspect: state.aspect,
+                    vt: state.vt,
+
                     page: state.page,
                     offset: state.pageOffset,
                     ...patch
                 };
-                if (patch.sort != null || patch.period != null || patch.search != null) {
+                if (patch.sort != null || patch.period != null || patch.search != null || patch.model != null || patch.aspect != null || patch.vt != null) {
                     if (patch.page == null) next.page = 1;
                     if (patch.offset == null) next.offset = 0;
                     state.offsetByPage = { 1: 0 };
@@ -2725,7 +2806,74 @@ const exploreDsapDriver = {
                 () => periodHidden.value
             );
 
+
+            setupDropdown(
+                root.querySelector('#exModelDropdown'),
+                root.querySelector('#exModelBtn'),
+                root.querySelector('#exModelMenu'),
+                (selectedVal) => renderSimpleDropdown(
+                    root.querySelector('#exModelMenu'),
+                    EXPLORE_MODEL_OPTIONS,
+                    'value',
+                    'label',
+                    (item) => {
+                        root.querySelector('#exModelHidden').value = item.value;
+                        root.querySelector('#exModelSelected').textContent = item.label;
+                        navigateWith({ model: item.value, page: 1, offset: 0 });
+                    },
+                    closeDropdown,
+                    selectedVal
+                ),
+                () => root.querySelector('#exModelHidden').value
+            );
+
+            setupDropdown(
+                root.querySelector('#exAspectDropdown'),
+                root.querySelector('#exAspectBtn'),
+                root.querySelector('#exAspectMenu'),
+                (selectedVal) => renderSimpleDropdown(
+                    root.querySelector('#exAspectMenu'),
+                    EXPLORE_ASPECT_OPTIONS,
+                    'value',
+                    'label',
+                    (item) => {
+                        root.querySelector('#exAspectHidden').value = item.value;
+                        root.querySelector('#exAspectSelected').textContent = item.label;
+                        navigateWith({ aspect: item.value, page: 1, offset: 0 });
+                    },
+                    closeDropdown,
+                    selectedVal
+                ),
+                () => root.querySelector('#exAspectHidden').value
+            );
+
+            setupDropdown(
+                root.querySelector('#exVtDropdown'),
+                root.querySelector('#exVtBtn'),
+                root.querySelector('#exVtMenu'),
+                (selectedVal) => renderSimpleDropdown(
+                    root.querySelector('#exVtMenu'),
+                    EXPLORE_VT_OPTIONS,
+                    'value',
+                    'label',
+                    (item) => {
+                        root.querySelector('#exVtHidden').value = item.value;
+                        root.querySelector('#exVtSelected').textContent = item.label;
+                        navigateWith({ vt: item.value, page: 1, offset: 0 });
+                    },
+                    closeDropdown,
+                    selectedVal
+                ),
+                () => root.querySelector('#exVtHidden').value
+            );
+
             if (periodWrap) periodWrap.classList.toggle('is-disabled', state.sort === 'new');
+            const modelWrap = root.querySelector('#exModelDropdown');
+            if (modelWrap) modelWrap.classList.toggle('is-disabled', state.creatorId !== '');
+            const aspectWrap = root.querySelector('#exAspectDropdown');
+            if (aspectWrap) aspectWrap.classList.toggle('is-disabled', state.creatorId !== '');
+            const vtWrap = root.querySelector('#exVtDropdown');
+            if (vtWrap) vtWrap.classList.toggle('is-disabled', state.creatorId !== '');
 
             searchInput?.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
@@ -2868,6 +3016,9 @@ const exploreDsapDriver = {
                 payload.sort = state.sort;
                 payload.period = state.period;
                 payload.search = state.search;
+                payload.model = state.model;
+                payload.aspect = state.aspect;
+                payload.vt = state.vt;
             }
             state.forceNext = false;
             const data = await wsClient.sendMessage('get_novelai_explore_gallery', payload, false);

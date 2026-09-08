@@ -669,7 +669,7 @@ const TOOL_DEFS = [
         name: 'search_explore',
         core: true,
         allowAutofill: true,
-        description: 'Search the NovelAI Explore (Agora) community image gallery. Returns recent/top generated images from the public gallery. Supports sorting (new, top, random), periods (day, week, month, all), and exact text search. Use it to find community examples of prompts or characters.',
+        description: 'Search the NovelAI Explore (Agora) community image gallery. Returns recent/top generated images from the public gallery. Supports sorting (new, top, random), periods (day, week, month, all), text search, and parity filters model / aspect / vt (vibe transfer). Use it to find community examples of prompts or characters.',
         scope: 'search',
         inputSchema: {
             type: 'object',
@@ -685,6 +685,20 @@ const TOOL_DEFS = [
                     type: 'string',
                     description: 'day, week, month, all (default day for top)',
                     enum: ['day', 'week', 'month', 'all']
+                },
+                model: {
+                    type: 'string',
+                    description: 'Optional Explore model slug filter (system:model:<id>), e.g. nai-diffusion-5-full, nai-diffusion-5-curated, nai-diffusion-v4'
+                },
+                aspect: {
+                    type: 'string',
+                    description: 'Optional aspect filter: portrait, landscape, or square',
+                    enum: ['portrait', 'landscape', 'square']
+                },
+                vt: {
+                    type: 'string',
+                    description: 'Optional vibe-transfer filter: with → posts that used vibe transfer',
+                    enum: ['with']
                 },
                 limit: { type: 'number', description: 'Max results (default 50, limit 50)' },
                 page: { type: 'number', description: 'Page number (default 1)' }
