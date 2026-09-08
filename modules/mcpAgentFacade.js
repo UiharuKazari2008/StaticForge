@@ -2719,18 +2719,49 @@ async function maybeOpenGeneratedInLumen(globalResources, req, filenames) {
     return { opened: !result.isError, clientCount: clients.length, target: viewer, ...payload };
 }
 
-async function attachFocusedWindowImage(globalResources, body, windows, includeImage) {
+async function attachFocusedWindowImage(globalResources, body, windows, includeImage, lastGeneratedFilename) {
     const focusedFilename = pickFocusedWindowFilename(windows);
     const next = { ...body, focusedFilename };
-    if (!includeImage || !focusedFilename) return mcpTextResult(next);
-    try {
-        const resolved = resolveGalleryImagePath(globalResources, focusedFilename);
-        const image = await resizeImageForGrok(resolved.filePath);
-        if (image) {
-            image.filename = focusedFilename;
-            return mcpImageResult({ ...next, filename: focusedFilename, imageKind: 'grok' }, image);
-        }
-    } catch (_) { /* metadata-only */ }
+    if (lastGeneratedFilename) {
+        next.lastGenerated = lastGeneratedFilename;
+    }
+
+    if (!includeImage && !lastGeneratedFilename) return mcpTextResult(next);
+
+    let images = [];
+
+    if (includeImage && focusedFilename) {
+        try {
+            const resolved = resolveGalleryImagePath(globalResources, focusedFilename);
+            const image = await resizeImageForGrok(resolved.filePath);
+            if (image) {
+                image.filename = focusedFilename;
+                images.push(image);
+                next.imageKind = 'grok';
+            }
+        } catch (_) { /* metadata-only */ }
+    }
+
+    if (lastGeneratedFilename && lastGeneratedFilename !== focusedFilename) {
+        try {
+            const resolved = resolveGalleryImagePath(globalResources, lastGeneratedFilename);
+            const image = await resizeImageForGrok(resolved.filePath);
+            if (image) {
+                image.filename = lastGeneratedFilename;
+                images.push(image);
+                if (images.length === 1) {
+                   next.filename = lastGeneratedFilename;
+                   next.imageKind = 'grok';
+                }
+            }
+        } catch (_) { /* metadata-only */ }
+    }
+
+    if (images.length > 0) {
+        if (!next.filename && images[0]) next.filename = images[0].filename;
+        return mcpImageResult(next, images);
+    }
+
     return mcpTextResult(next);
 }
 
@@ -2899,7 +2930,8 @@ async function collectSessionState(globalResources, req, input) {
                     : 'Live Studio + windows only. Later checks return only the delta.');
         }
         const focusedUnchanged = !!(prevCheckpoint && prevCheckpoint.focusedFilename && prevCheckpoint.focusedFilename === focusedFilename);
-        return attachFocusedWindowImage(globalResources, out, out.windows, includeImage && !focusedUnchanged);
+        const lastGeneratedFilename = (stateData && stateData.lastGeneratedImageName) || null;
+        return attachFocusedWindowImage(globalResources, out, out.windows, includeImage && !focusedUnchanged, lastGeneratedFilename);
     } catch (error) {
         if (error.status === 504) {
             out.partial = true;
@@ -3296,14 +3328,17 @@ function mcpTextResult(obj, isError) {
     };
 }
 
-function mcpImageResult(meta, image) {
+function mcpImageResult(meta, imageOrImages) {
     const content = [{ type: 'text', text: JSON.stringify(meta) }];
-    if (image) {
-        content.push({
-            type: 'image',
-            mimeType: image.mimeType,
-            data: image.bytes.toString('base64')
-        });
+    const images = Array.isArray(imageOrImages) ? imageOrImages : (imageOrImages ? [imageOrImages] : []);
+    for (let i = 0; i < images.length; i++) {
+        if (images[i]) {
+            content.push({
+                type: 'image',
+                mimeType: images[i].mimeType,
+                data: images[i].bytes.toString('base64')
+            });
+        }
     }
     return { content, isError: false };
 }
