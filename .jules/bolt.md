@@ -13,3 +13,6 @@
 ## 2026-09-07 - NovelAI Explore API Filters
 **Learning:** The NovelAI Explore API (`/post/search`) uses a `oneof` validation pattern that rejects adding fields like `model` or `aspect` directly to the `selectors` array. Filtering by these characteristics requires pushing a `tag` field selector with specific `system:` prefix values.
 **Action:** Always verify unknown or assumed API payload structures against the actual upstream API using direct requests (e.g. `curl`) before modifying internal backend schemas.
+## 2026-10-27 - Caching nulls for missing lookups
+**Learning:** When adding batch caching to replace O(W*F) loop lookups, it's critical to cache negative hits (misses) as `null` within the context cache. Failing to do so causes unassigned items to fall back to the unoptimized path every time.
+**Action:** When pre-fetching values for an array of items, initialize the cache map with all requested keys set to `null`, then overwrite with successful database hits.

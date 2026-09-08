@@ -826,8 +826,14 @@ class VfsManager {
         }
     }
 
-    _findImageOwnerWorkspaceId(filename) {
+    _findImageOwnerWorkspaceId(filename, ctx = null) {
         if (!filename) return null;
+
+        // Fast O(1) path if pre-batched in context
+        if (ctx?.imageOwnerWorkspaceMap?.has(filename)) {
+            return ctx.imageOwnerWorkspaceMap.get(filename);
+        }
+
         const workspaces = this.globalResources.getWorkspaceManager().getWorkspaces();
         for (const [id, ws] of Object.entries(workspaces)) {
             if (ws.files?.includes(filename) || ws.scraps?.includes(filename) || ws.pinned?.includes(filename)) {
@@ -844,7 +850,7 @@ class VfsManager {
             switch (item.shortcutType) {
                 case 'image': {
                     const fn = item.previewImageFilename || item.targetId || item.shortcutData?.filename;
-                    return this._findImageOwnerWorkspaceId(fn) || fallback;
+                    return this._findImageOwnerWorkspaceId(fn, ctx) || fallback;
                 }
                 case 'reference':
                     return item.shortcutData?.workspaceId || fallback;
@@ -862,7 +868,7 @@ class VfsManager {
             case 'image':
             case 'scrap': {
                 const fn = item.previewImageFilename || item.targetId;
-                return this._findImageOwnerWorkspaceId(fn) || fallback;
+                return this._findImageOwnerWorkspaceId(fn, ctx) || fallback;
             }
             case 'reference':
             case 'vibe':
@@ -1088,8 +1094,9 @@ class VfsManager {
                 if (hash) refHashes.add(hash);
             } else if (item.targetKind === 'note') {
                 noteIds.add(item.targetId);
-            } else if (item.shortcutType === 'image' && item.shortcutData?.filename) {
-                imageFilenames.add(item.shortcutData.filename);
+            } else if (item.shortcutType === 'image') {
+                const fn = item.previewImageFilename || item.targetId || item.shortcutData?.filename;
+                if (fn) imageFilenames.add(fn);
             } else if (item.shortcutType === 'reference' && item.shortcutData?.hash) {
                 refHashes.add(item.shortcutData.hash);
             }
@@ -1124,6 +1131,21 @@ class VfsManager {
         }
 
         const shortcutItems = items.filter(i => i.isShortcut || i.isDesktopShortcut);
+        if (imageFilenames.size) {
+            const metadataDb = this.globalResources.getMetadataDatabase();
+            const filenameArray = Array.from(imageFilenames);
+            ctx.imageOwnerWorkspaceMap = new Map();
+            if (metadataDb && typeof metadataDb.getGalleryOwnershipForFilenames === 'function') {
+                for (const fn of filenameArray) {
+                    ctx.imageOwnerWorkspaceMap.set(fn, null);
+                }
+                const ownershipMap = await metadataDb.getGalleryOwnershipForFilenames(filenameArray);
+                for (const [fn, data] of ownershipMap.entries()) {
+                    ctx.imageOwnerWorkspaceMap.set(fn, data.workspaceId);
+                }
+            }
+        }
+
         const locationKeys = new Set();
         for (const item of shortcutItems) {
             if (item.isDesktopShortcut) continue;

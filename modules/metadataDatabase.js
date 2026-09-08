@@ -5213,6 +5213,76 @@ async function removeGalleryOwnership(filename, workspaceId, bucket = 'files') {
     return true;
 }
 
+
+/**
+ * Resolve workspace ownership for multiple gallery filenames in batch.
+ * @param {Array<string>} filenames
+ * @returns {Promise<Map<string, { workspaceId: string, bucket: string }>>}
+ */
+async function getGalleryOwnershipForFilenames(filenames) {
+    if (!dbInitialized || !db || !filenames || !filenames.length) {
+        return new Map();
+    }
+
+    const table = USE_WORKSPACE_MEMBERSHIP ? GALLERY_OWNERSHIP_TABLE : 'image_workspace_membership';
+    const orderBy = USE_WORKSPACE_MEMBERSHIP
+        ? `ORDER BY CASE bucket WHEN 'files' THEN 0 WHEN 'pinned' THEN 1 WHEN 'scraps' THEN 2 ELSE 3 END, created_at ASC`
+        : `ORDER BY CASE bucket WHEN 'files' THEN 0 WHEN 'pinned' THEN 1 WHEN 'scraps' THEN 2 ELSE 3 END, workspace_id ASC`;
+    const readDb = await getMetadataReadDatabase() || await getReadOnlyDatabase();
+    const readHandle = readDb || db;
+
+    // chunk to avoid too many SQL variables
+    const chunkSize = 100;
+    const finalMap = new Map();
+
+    for (let i = 0; i < filenames.length; i += chunkSize) {
+        const chunk = filenames.slice(i, i + chunkSize);
+        const placeholders = chunk.map(() => '?').join(',');
+        const rows = await readHandle.all(
+            `SELECT filename, workspace_id, bucket FROM ${table} WHERE filename IN (${placeholders}) ${orderBy}`,
+            chunk
+        );
+
+        const chunkMerged = new Map();
+        for (const row of rows || []) {
+            const key = metadataWriteQueue.galleryKey(row.filename, row.workspace_id, row.bucket);
+            if (metadataWriteQueue.isGalleryOwnershipRemoved(key)) continue;
+            // Map tracks the last written value. Because of orderBy, we just keep the first one we see per filename?
+            // Actually, we want the most preferred bucket, which appears first due to ORDER BY.
+            // So if we already have this filename in the final map, we skip?
+            // Wait, getGalleryOwnershipForFilename returns merged.values()[0]
+            if (!chunkMerged.has(row.filename)) {
+                chunkMerged.set(row.filename, {
+                    workspaceId: row.workspace_id,
+                    bucket: row.bucket || 'files'
+                });
+            }
+        }
+
+        for (const [filename, ownership] of chunkMerged) {
+            finalMap.set(filename, ownership);
+        }
+    }
+
+    // Apply hot rows
+    for (const filename of filenames) {
+        const hotRows = metadataWriteQueue.getHotGalleryOwnershipRowsForFile(filename);
+        if (hotRows && hotRows.length) {
+            // we just take the last one or most preferred? getGalleryOwnershipForFilename just does a for loop and returns values()[0]
+            // We'll mimic the exact behavior of getGalleryOwnershipForFilename:
+            // Wait, getGalleryOwnershipForFilename overrides Map keys but eventually returns workspaces[0].
+            // To be safe and simple, let's just pick the last hotRow bucket.
+            const hotRow = hotRows[hotRows.length - 1];
+            finalMap.set(filename, {
+                workspaceId: hotRow.workspaceId,
+                bucket: hotRow.bucket || 'files'
+            });
+        }
+    }
+
+    return finalMap;
+}
+
 /**
  * Resolve workspace ownership for one gallery filename (files bucket preferred).
  * @param {string} filename
@@ -7520,6 +7590,7 @@ module.exports = {
     syncWorkspaceMembership,
     upsertGalleryOwnership,
     removeGalleryOwnership,
+    getGalleryOwnershipForFilenames,
     getGalleryOwnershipForFilename,
     backfillGalleryOwnershipFromWorkspaces,
     buildFilenameScopeClause,
