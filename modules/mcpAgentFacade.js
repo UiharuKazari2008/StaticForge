@@ -308,6 +308,7 @@ const GENERATE_IMAGE_PROPERTIES = {
     append_transparency: { type: 'boolean', description: 'If true, server prepends "transparent background". Do not also add that tag by hand.' },
     image: { type: 'string', description: 'img2img source: file:filename or omitted if Studio already has one' },
     image_bias: { type: 'number' },
+    save_memory: { type: 'boolean', description: 'Optional opt-in flag. When true, persists a knowledge memory of this generation after it completes successfully. Default false. Do not auto-save without this flag.' },
     ...STUDIO_PARAM_SCHEMA
 };
 
@@ -3913,7 +3914,28 @@ async function callTool(globalResources, req, name, args) {
                         ...payload,
                         skipGenerationQueue: true
                     });
-                    return { success: packet.success, flat: flattenPacket(packet) };
+                    const flat = flattenPacket(packet);
+                    if (packet.success && payload.save_memory) {
+                        const title = String(payload.prompt || '').trim().slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').toLowerCase() || 'generation_memory';
+                        const memoryName = `gen_${Date.now()}_${title}`;
+                        const description = `Generation parameters for: ${String(payload.prompt || '').slice(0, 50)}`;
+                        const category = 'generation_record';
+                        const memoryResult = runMemoryTool(globalResources, 'save_memory', {
+                            name: memoryName,
+                            description,
+                            category,
+                            observations: [
+                                { content: `Prompt: ${payload.prompt}` },
+                                { content: `UC: ${payload.uc || ''}` },
+                                { content: `Model: ${payload.model || ''}` },
+                                { content: `Seed: ${flat.seed || payload.seed || ''}` }
+                            ]
+                        });
+                        if (memoryResult && memoryResult.success) {
+                            flat.saved_memory = memoryResult.memory;
+                        }
+                    }
+                    return { success: packet.success, flat };
                 }
             });
             return mcpTextResult({
@@ -3936,6 +3958,27 @@ async function callTool(globalResources, req, name, args) {
                 filenames: flat.filenames
             });
             flat.lumen = await maybeOpenGeneratedInLumen(globalResources, req, names);
+
+            if (payload.save_memory) {
+                const title = String(payload.prompt || '').trim().slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').toLowerCase() || 'generation_memory';
+                const memoryName = `gen_${Date.now()}_${title}`;
+                const description = `Generation parameters for: ${String(payload.prompt || '').slice(0, 50)}`;
+                const category = 'generation_record';
+                const memoryResult = runMemoryTool(globalResources, 'save_memory', {
+                    name: memoryName,
+                    description,
+                    category,
+                    observations: [
+                        { content: `Prompt: ${payload.prompt}` },
+                        { content: `UC: ${payload.uc || ''}` },
+                        { content: `Model: ${payload.model || ''}` },
+                        { content: `Seed: ${flat.seed || payload.seed || ''}` }
+                    ]
+                });
+                if (memoryResult && memoryResult.success) {
+                    flat.saved_memory = memoryResult.memory;
+                }
+            }
         }
         return mcpResultFromGenerateFlat(globalResources, flat, packet.success, destPathHint);
     }
