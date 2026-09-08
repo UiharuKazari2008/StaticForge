@@ -1,10 +1,10 @@
 {
-  "updated_at": "2026-09-08T11:13:18.377310+00:00",
+  "updated_at": "2026-09-08T11:16:10.354183+00:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
   "last_breakfast_at": "2026-09-02T11:21:37.116143+00:00",
   "open": [],
   "done_since_breakfast": [],
-  "cake_note": "2026-09-08 7am: pile empty. Landed ffed8ee step-preview omit on high RTT/WS backlog (imageGeneration+websocketHandlers, +108/-196) + client-api docs. Public was behind origin by 98c3431 docs + 42eda81 #131 \u2014 push both. Ready #150 referenceManager deep inspect \u2192 Jules after push. Stay off greg #11/#9. cursor-agent tickets left for Cursor. Rook owns cake.",
+  "cake_note": "2026-09-08 7am: pile empty. Shipped 8420679 feat(ws) skip step-preview images on high RTT/WS backlog (imageGeneration+websocketHandlers+docs/client-api/websocket.md+pnpm-lock) +112/-199 credit grok.menma. Pushed origin+Public. Dreamscape PM2 restarted after broadcast. DB backup keep=2. Jules #150 kicked https://jules.google.com/session/9848061668012910307 (requirePlanApproval+AUTO_CREATE_PR) \u2014 8:30 collect. No leftover Menma edits (waiting Rook). Stay off greg #11/#9. cursor-agent left alone. Rook owns cake.",
   "eaten": [
     {
       "id": "sf-22",
