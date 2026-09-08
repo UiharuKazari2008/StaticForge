@@ -393,7 +393,6 @@ async function handlePreviewExpandImagePrompt(handlers, ws, message, clientInfo,
             data.imageBias,
             overrideParams,
             data.sourceFilename || data.filename,
-            data.enableAI || false,
             ws,
             handlers,
             requestId
@@ -476,7 +475,6 @@ async function handleImageExpansion(handlers, ws, message, clientInfo, wsServer)
             handlers,
             requestId,
             data.sourceFilename || data.filename,
-            data.enableAI || false,
             data.stepPreviewWidth,
             data.stepPreviewHeight
         );

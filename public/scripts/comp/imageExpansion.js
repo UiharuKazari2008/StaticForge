@@ -11,7 +11,6 @@ let expansionModalData = {
     selectedBias: 2, // Default to center
     upscaleAfterComplete: false,
     overrideParams: {},
-    enableAI: false, // Default to disabled
     enableInset: false, // Default to disabled
     insetPreferred: true, // User preference while inset is unavailable
     expandSourcePixels: null, // { width, height } of image being expanded (for inset eligibility)
@@ -310,10 +309,6 @@ function applyExpansionSavedOverridesToParams(overrideParams) {
     return merged;
 }
 
-function syncExpansionEnableAIFromToggle() {
-    const aiToggle = document.getElementById('expansionAIToggle');
-    expansionModalData.enableAI = aiToggle ? aiToggle.getAttribute('data-state') === 'on' : false;
-}
 
 function clearExpansionSavedPromptOverrides() {
     expansionModalData.savedPromptOverrides = null;
@@ -500,8 +495,6 @@ function saveExpansionCompiledPromptForSubmission() {
 }
 
 function getExpansionPreviewParamsFromUI() {
-    syncExpansionEnableAIFromToggle();
-
     const upscaleToggle = document.getElementById('expansionUpscaleToggle');
     const upscaleAfterComplete = upscaleToggle ? upscaleToggle.getAttribute('data-state') === 'on' : false;
     const insetToggle = document.getElementById('expansionInsetToggle');
@@ -511,10 +504,6 @@ function getExpansionPreviewParamsFromUI() {
     const advancedSection = document.getElementById('expansionAdvancedOptions');
     if (advancedSection && !advancedSection.classList.contains('hidden')) {
         overrideParams = getExpansionOverrideParams();
-    }
-    const requestedContentTextarea = document.getElementById('expansionRequestedContent');
-    if (requestedContentTextarea && requestedContentTextarea.value.trim()) {
-        overrideParams.requestedContent = requestedContentTextarea.value.trim();
     }
     overrideParams.inset = expansionModalData.enableInset;
 
@@ -527,8 +516,7 @@ function getExpansionPreviewParamsFromUI() {
         overrideParams,
         inset: expansionModalData.enableInset,
         enableInset: expansionModalData.enableInset,
-        workspace: activeWorkspace || null,
-        enableAI: expansionModalData.enableAI
+        workspace: activeWorkspace || null
     };
 }
 
@@ -666,7 +654,6 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
         selectedBias: 2,
         upscaleAfterComplete: false,
         overrideParams: {},
-        enableAI: false, // Reset to disabled
         enableInset: false, // Reset to disabled
         insetPreferred: true,
         expandSourcePixels: null,
@@ -675,18 +662,6 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
         savedPromptOverrides: null,
         compiledPromptReady: false
     };
-    
-    // Reset AI toggle state
-    const aiToggle = document.getElementById('expansionAIToggle');
-    if (aiToggle) {
-        aiToggle.setAttribute('data-state', 'off');
-    }
-    
-    // Hide requested content by default
-    const requestedContentGroup = document.getElementById('expansionRequestedContentGroup');
-    if (requestedContentGroup) {
-        requestedContentGroup.classList.add('hidden');
-    }
     
     console.log('📊 Received imageDimensions:', imageDimensions);
     
@@ -790,21 +765,6 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
             expansionModalData.insetPreferred = wasInset;
         }
 
-        // Set requested content if it was used (input to AI — not the compiled prompt)
-        const requestedContentTextarea = document.getElementById('expansionRequestedContent');
-        if (requestedContentTextarea && metadata.forge_data.expansion_requested_content) {
-            requestedContentTextarea.value = metadata.forge_data.expansion_requested_content;
-            if (aiToggle) {
-                aiToggle.setAttribute('data-state', 'on');
-                expansionModalData.enableAI = true;
-            }
-            if (requestedContentGroup) {
-                requestedContentGroup.classList.remove('hidden');
-            }
-        } else if (requestedContentTextarea) {
-            requestedContentTextarea.value = '';
-        }
-        
         // Load advanced params if they were used
         if (metadata.forge_data.expansion_params) {
             const params = metadata.forge_data.expansion_params;
@@ -888,10 +848,6 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
         document.getElementById('expansionSeedInput').value = '';
 
         // Clear requested content textarea
-        const requestedContentTextarea = document.getElementById('expansionRequestedContent');
-        if (requestedContentTextarea) {
-            requestedContentTextarea.value = '';
-        }
         
         // Reset dropdown displays
         const modelSelected = document.getElementById('expansionModelSelected');
@@ -913,7 +869,6 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
     expansionModalData.compiledPrompt = null;
     expansionModalData.compiledPromptReady = false;
     clearExpansionSavedPromptOverrides();
-    syncExpansionEnableAIFromToggle();
 
     // Setup expansion mode dropdown (only once)
     const expansionModeDropdown = document.getElementById('expansionModeDropdown');
@@ -944,7 +899,7 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
     // Compile after open; failures must not close/hide the modal.
     if (expansionModalData.selectedResolution) {
         const prepared = await fetchExpansionCompiledPrompt({
-            showToast: expansionModalData.enableAI === true,
+            showToast: false,
             blockUI: false
         });
         if (!prepared.ok && prepared.error && !prepared.cancelled) {
@@ -2709,12 +2664,6 @@ async function submitImageExpansion() {
         expansionModalData.overrideParams = {};
     }
     
-    // Get requested content if provided
-    const requestedContentTextarea = document.getElementById('expansionRequestedContent');
-    if (requestedContentTextarea && requestedContentTextarea.value.trim()) {
-        expansionModalData.overrideParams.requestedContent = requestedContentTextarea.value.trim();
-    }
-    
     // Persist inset in existing override params channel
     expansionModalData.overrideParams.inset = expansionModalData.enableInset;
 
@@ -2737,7 +2686,7 @@ async function submitImageExpansion() {
     
     // Show progress toast (use global progressToastId for websocket handler compatibility)
     if (!progressToastId) {
-        progressToastId = showGlassToast('info', 'Expanding Canvas', 'Analyzing image and generating expansion...', true, false, '<i class="mdi mdi-1-25 mdi-relative-scale"></i>');
+        progressToastId = showGlassToast('info', 'Expanding Canvas', 'Generating expansion...', true, false, '<i class="mdi mdi-1-25 mdi-relative-scale"></i>');
     }
 
     try {
@@ -2753,8 +2702,7 @@ async function submitImageExpansion() {
             inset: expansionModalData.enableInset,
             enableInset: expansionModalData.enableInset,
             workspace: activeWorkspace || null,
-            enableStreaming: true,
-            enableAI: expansionModalData.enableAI
+            enableStreaming: true
         });
         
         if (result) {
@@ -2957,30 +2905,6 @@ function toggleExpansionInset() {
     updateExpansionCanvasPreview();
 }
 
-// Toggle AI enhancement
-function toggleExpansionAI() {
-    const toggle = document.getElementById('expansionAIToggle');
-    const requestedContentGroup = document.getElementById('expansionRequestedContentGroup');
-    
-    if (!toggle) return;
-    
-    const currentState = toggle.getAttribute('data-state');
-    const newState = currentState === 'on' ? 'off' : 'on';
-    toggle.setAttribute('data-state', newState);
-    
-    expansionModalData.enableAI = newState === 'on';
-    
-    // Show/hide requested content group
-    if (requestedContentGroup) {
-        if (newState === 'on') {
-            requestedContentGroup.classList.remove('hidden');
-        } else {
-            requestedContentGroup.classList.add('hidden');
-        }
-    }
-
-    scheduleExpansionCompiledPromptReload();
-}
 
 // Update percentage overlay for an input
 function updateExpansionPercentageOverlay(input, overlay, minVal = 0) {

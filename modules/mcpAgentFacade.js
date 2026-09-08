@@ -1044,7 +1044,7 @@ const TOOL_DEFS = [
     {
         name: 'expand_image',
         core: true,
-        description: 'Expand canvas (letterbox + generate into the new area). Paid Anlas — requires userApprovedPaidRequest (alias allow_paid) or this bounces before FIFO. Requires filename, target resolution, and imageBias 0–4 (0=start edge, 2=center, 4=end edge). enableAI asks Grok to write the expand prompt; Grok failure falls back to the original prompt. Top-level prompt/uc override the expand inpaint and skip Grok. Optional Studio param overrides (model, steps, guidance, rescale, sampler, noiseScheduler, noise, seed) as overrideParams or top-level.',
+        description: 'Expand canvas (letterbox + generate into the new area). Paid Anlas — requires userApprovedPaidRequest (alias allow_paid) or this bounces before FIFO. Requires filename, target resolution, and imageBias 0–4 (0=start edge, 2=center, 4=end edge). Top-level prompt/uc override the expand inpaint (compiled-prompt path). Optional Studio param overrides (model, steps, guidance, rescale, sampler, noiseScheduler, noise, seed) as overrideParams or top-level.',
         scope: 'generation',
         packet: 'expand_image',
         inputSchema: {
@@ -1059,8 +1059,7 @@ const TOOL_DEFS = [
                 userApprovedPaidRequest: { type: 'boolean', description: 'Required. Expand spends Anlas. Alias of allow_paid.' },
                 allow_paid: { type: 'boolean', description: 'Same as userApprovedPaidRequest.' },
                 upscaleAfterComplete: { type: 'boolean' },
-                enableAI: { type: 'boolean', description: 'Let Grok write the expansion prompt (Responses input_image). If Grok fails, expand still runs with the original prompt.' },
-                prompt: { type: 'string', description: 'Optional expansion prompt override. Skips Grok even when enableAI is true.' },
+                prompt: { type: 'string', description: 'Optional expansion prompt override (inpaint prompt for the letterboxed area).' },
                 uc: { type: 'string', description: 'Optional UC override for the expand inpaint.' },
                 inset: { type: 'boolean' },
                 sourceFilename: { type: 'string' },

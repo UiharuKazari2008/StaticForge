@@ -7377,218 +7377,28 @@ async function processEnhanceStage(globalResources, stage, body, baseMetadata, g
 }
 
 /**
- * Resolve the inpaint prompt (and metadata side-effects) for expand-canvas: optional Grok enhancement, or source prompt only.
- * Used by expandImage and previewExpandImagePrompt.
+ * Resolve the inpaint prompt for expand-canvas: user override if present, else source PNG prompt.
+ * Used by expandImage and previewExpandImagePrompt. No Grok / enableAI path.
  */
 async function resolveExpandImageExpansionPrompt({
-    originalImageBuffer,
-    originalDims,
-    targetDims,
-    imageBias,
     originalPrompt,
-    enableAI,
-    overrideParams,
-    ws,
-    handler,
-    requestId
+    overrideParams
 }) {
-    const origAR = originalDims.width / originalDims.height;
-    const targetAR = targetDims.width / targetDims.height;
-    const isExpandingHorizontally = origAR < targetAR;
-    const isExpandingVertically = origAR > targetAR;
-
-    const biasFractions = [0, 0.25, 0.5, 0.75, 1];
-    const biasFrac = biasFractions[imageBias] !== undefined ? biasFractions[imageBias] : 0.5;
-
-    let direction;
-    let leftPercent = 0;
-    let rightPercent = 0;
-    let topPercent = 0;
-    let bottomPercent = 0;
-
-    if (isExpandingVertically) {
-        direction = 'taller';
-        const addedHeight = targetDims.height - targetDims.width / origAR;
-        const topAdd = addedHeight * biasFrac;
-        const bottomAdd = addedHeight * (1 - biasFrac);
-        topPercent = Math.round((topAdd / targetDims.height) * 100);
-        bottomPercent = Math.round((bottomAdd / targetDims.height) * 100);
-    } else if (isExpandingHorizontally) {
-        direction = 'wider';
-        const addedWidth = targetDims.width - targetDims.height * origAR;
-        const leftAdd = addedWidth * biasFrac;
-        const rightAdd = addedWidth * (1 - biasFrac);
-        leftPercent = Math.round((leftAdd / targetDims.width) * 100);
-        rightPercent = Math.round((rightAdd / targetDims.width) * 100);
-    } else {
-        throw new Error('Cannot expand: original and target have the same aspect ratio');
+    if (typeof overrideParams?.expansionPromptOverride === 'string') {
+        return {
+            expansionPrompt: overrideParams.expansionPromptOverride,
+            expansionReason: 'User-edited prompt',
+            expansionReasonDisplay: 'Edited'
+        };
     }
-
-    let expansionPrompt;
-    let expansionReason;
-    let expansionReasonDisplay;
-
-    const imageBufferUsable = Buffer.isBuffer(originalImageBuffer) && originalImageBuffer.length > 0;
-    let runExpansionAi = enableAI;
-    if (enableAI && !imageBufferUsable) {
-        console.warn('⚠️ resolveExpandImageExpansionPrompt: missing or empty originalImageBuffer; skipping Grok expansion.');
-        runExpansionAi = false;
-    }
-
-    if (runExpansionAi) {
-        let expansionDescription = `given this image we are adding content to make it ${direction}`;
-        if (direction === 'wider') {
-            if (leftPercent > 0 && rightPercent > 0) {
-                expansionDescription += ` by adding ${leftPercent}% on the left and ${rightPercent}% on the right`;
-            } else if (leftPercent > 0) {
-                expansionDescription += ` by adding ${leftPercent}% on the left`;
-            } else {
-                expansionDescription += ` by adding ${rightPercent}% on the right`;
-            }
-        } else {
-            if (topPercent > 0 && bottomPercent > 0) {
-                expansionDescription += ` by adding ${topPercent}% on the top and ${bottomPercent}% on the bottom`;
-            } else if (topPercent > 0) {
-                expansionDescription += ` by adding ${topPercent}% on the top`;
-            } else {
-                expansionDescription += ` by adding ${bottomPercent}% on the bottom`;
-            }
-        }
-
-        let aiInstruction = expansionDescription;
-
-        if (originalPrompt) {
-            aiInstruction += `\n\nThe original image was generated with this NovelAI prompt:\n---\n${originalPrompt}\n---`;
-        }
-
-        aiInstruction += `\n\nNovelAI Emphasis Syntax Rules:
-- {tag} = light emphasis, {{tag}} = stronger emphasis, {{{tag}}} = even stronger
-- [tag] = light de-emphasis, [[tag]] = stronger de-emphasis, [[[tag]]] = even stronger
-- 1.5::content:: = weighted emphasis groups (positive or negative values) (preserve the weight::content:: structure exactly)
-
-CRITICAL: Preserve all artist/style references and environment tags from the original prompt verbatim. Include them unchanged in your output to maintain artistic consistency.`;
-
-        const requestedContent = overrideParams?.requestedContent;
-        if (requestedContent && requestedContent.trim()) {
-            aiInstruction += `\n\nUser has requested to incorporate the following into the expanded area:\n---\n${requestedContent.trim()}\n---`;
-        }
-
-        aiInstruction += `\n\nAdd descriptive text to help clarify and enhance the environment in the expanded area. Focus on adding missing visual details that would naturally extend the existing scene. Do not describe scale, give directional instructions, or duplicate information already present in the original prompt. Only add text if it provides meaningful environmental details that aren't already clear from the original prompt. Your response should be only the additional descriptive text to append to the original prompt.`;
-
-        if (ws && handler) {
-            handler.sendGenerationProgress(ws, requestId, {
-                phase: 'starting',
-                hasDynamicGen: true
-            });
-        }
-
-        console.log(`🤖 Calling Grok for expansion prompt with enhanced context`);
-
-        const ExpansionPromptSchema = z.object({
-            additional_text: z.string().describe('Additional descriptive text to append to the original prompt'),
-            reason: z.string().describe('Brief reasoning for the additional text'),
-            reason_display: z.string().describe('Very short explanation for display in UI (2-5 words)')
-        });
-
-        const messages = [
-            {
-                role: 'user',
-                content: [
-                    {
-                        type: 'input_image',
-                        image_url: `data:image/png;base64,${originalImageBuffer.toString('base64')}`
-                    },
-                    {
-                        type: 'input_text',
-                        text: aiInstruction
-                    }
-                ]
-            }
-        ];
-
-        console.log(`🤖 Starting Grok expansion AI call with requestId: ${requestId}`);
-        const expansionAttemptId = `image-expansion-${requestId || 'unknown'}-${Date.now()}`;
-        try {
-            const grokResponse = await __runtimeGr.getGrokService().callDirectorAIWithStructuredOutput(messages, {
-                model: __runtimeGr.getGrokService().getDefaultGrokModel(),
-                timeout: 120000,
-                store: false,
-                responseSchema: ExpansionPromptSchema,
-                ws: ws,
-                handler: handler,
-                requestId: requestId,
-                _attemptId: expansionAttemptId
-            });
-            console.log(`✅ Grok expansion AI call completed`);
-
-            const additionalText = grokResponse.content?.additional_text || grokResponse.additional_text;
-            expansionReason = grokResponse.content?.reason || grokResponse.reason;
-            expansionReasonDisplay = grokResponse.content?.reason_display || grokResponse.content?.reason || grokResponse.reason;
-
-            if (originalPrompt) {
-                const commaText = matchCommaTextColon(originalPrompt);
-                if (commaText) {
-                    const beforeText = originalPrompt.substring(0, commaText.index).trim();
-                    expansionPrompt = beforeText + ', ' + additionalText + ', Text:' + originalPrompt.substring(commaText.index + commaText.length);
-                } else {
-                    expansionPrompt = originalPrompt + ', ' + additionalText;
-                }
-            } else {
-                expansionPrompt = additionalText;
-            }
-
-            console.log(`✨ Grok additional text: ${additionalText}`);
-            console.log(`🔗 Combined expansion prompt: ${expansionPrompt}`);
-            console.log(`💭 Grok reasoning: ${expansionReason}`);
-
-            if (ws && handler && requestId) {
-                handler.sendGenerationProgress(ws, requestId, {
-                    phase: 'completion',
-                    hasDynamicGen: true,
-                    reasoning: expansionReasonDisplay
-                });
-                console.log(`✅ Sent completion progress message`);
-            } else {
-                console.warn(`⚠️ Cannot send completion progress: ws=${!!ws}, handler=${!!handler}, requestId=${requestId}`);
-            }
-        } catch (aiErr) {
-            console.warn(`⚠️ Expansion AI failed, using original prompt: ${aiErr.message}`);
-            expansionPrompt = originalPrompt;
-            expansionReason = `Expansion AI failed: ${aiErr.message}`;
-            expansionReasonDisplay = 'AI fallback';
-            if (ws && handler && requestId) {
-                handler.sendGenerationProgress(ws, requestId, {
-                    phase: 'completion',
-                    hasDynamicGen: false,
-                    reasoning: expansionReasonDisplay
-                });
-            }
-        }
-    } else {
-        if (!enableAI) {
-            console.log('🚫 AI processing disabled, using original prompt');
-            expansionReason = 'AI processing disabled';
-            expansionReasonDisplay = '';
-        } else {
-            console.log('🚫 Skipping Grok expansion (no usable image buffer), using original prompt');
-            expansionReason = 'Expansion AI skipped: invalid image buffer';
-            expansionReasonDisplay = 'No image for AI';
-        }
-        expansionPrompt = originalPrompt;
-
-        if (ws && handler && requestId) {
-            handler.sendGenerationProgress(ws, requestId, {
-                phase: 'completion',
-                hasDynamicGen: false
-            });
-            console.log(`✅ Sent completion progress (AI disabled)`);
-        }
-    }
-
-    return { expansionPrompt, expansionReason, expansionReasonDisplay };
+    return {
+        expansionPrompt: originalPrompt || '',
+        expansionReason: 'Source prompt',
+        expansionReasonDisplay: ''
+    };
 }
 
-/** Preview-only: same prompt/UC as expand would use (runs Grok when enableAI). */
+/** Preview-only: same prompt/UC as expand would use (override or source metadata; no Grok). */
 async function previewExpandImagePrompt(
     globalResources,
     filename,
@@ -7596,7 +7406,6 @@ async function previewExpandImagePrompt(
     imageBias,
     overrideParams = {},
     sourceFilename = null,
-    enableAI = false,
     ws = null,
     handler = null,
     requestId = null
@@ -7613,7 +7422,6 @@ async function previewExpandImagePrompt(
 
     const originalImageBuffer = fs.readFileSync(filePath);
     const sourceImageBuffer = sourceFilePath ? fs.readFileSync(sourceFilePath) : originalImageBuffer;
-    const originalDims = await getImageDimensions(originalImageBuffer);
 
     let originalPrompt = '';
     let originalUc = '';
@@ -7636,16 +7444,8 @@ async function previewExpandImagePrompt(
     }
 
     const { expansionPrompt, expansionReason, expansionReasonDisplay } = await resolveExpandImageExpansionPrompt({
-        originalImageBuffer,
-        originalDims,
-        targetDims,
-        imageBias,
         originalPrompt,
-        enableAI,
-        overrideParams,
-        ws,
-        handler,
-        requestId
+        overrideParams
     });
 
     return {
@@ -7695,7 +7495,7 @@ function resolveForgeModelFromPngBuffer(imageBuffer, fallback = 'v4_5') {
 }
 
 // Image expansion function - expands image to new resolution using AI-powered inpainting
-async function expandImage(globalResources, filename, resolution, imageBias, upscaleAfterComplete = false, overrideParams = {}, sessionId, workspaceId = null, streamingCallback = null, ws = null, handler = null, requestId = null, sourceFilename = null, enableAI = false, stepPreviewWidth = null, stepPreviewHeight = null) {
+async function expandImage(globalResources, filename, resolution, imageBias, upscaleAfterComplete = false, overrideParams = {}, sessionId, workspaceId = null, streamingCallback = null, ws = null, handler = null, requestId = null, sourceFilename = null, stepPreviewWidth = null, stepPreviewHeight = null) {
     bindRuntimeGlobalResources(globalResources);
     try {
         console.log(`🔍 Starting image expansion: ${filename} to ${resolution} with bias ${imageBias}`);
@@ -7883,27 +7683,13 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         let expansionReason;
         let expansionReasonDisplay;
 
-        if (typeof overrideParams?.expansionPromptOverride === 'string') {
-            expansionPrompt = overrideParams.expansionPromptOverride;
-            expansionReason = 'User-edited prompt';
-            expansionReasonDisplay = 'Edited';
-        } else {
-            const resolved = await resolveExpandImageExpansionPrompt({
-                originalImageBuffer,
-                originalDims,
-                targetDims,
-                imageBias,
-                originalPrompt,
-                enableAI,
-                overrideParams,
-                ws,
-                handler,
-                requestId
-            });
-            expansionPrompt = resolved.expansionPrompt;
-            expansionReason = resolved.expansionReason;
-            expansionReasonDisplay = resolved.expansionReasonDisplay;
-        }
+        const resolved = await resolveExpandImageExpansionPrompt({
+            originalPrompt,
+            overrideParams
+        });
+        expansionPrompt = resolved.expansionPrompt;
+        expansionReason = resolved.expansionReason;
+        expansionReasonDisplay = resolved.expansionReasonDisplay;
 
         let ucForRequest = originalUc;
         if (typeof overrideParams?.expansionUcOverride === 'string') {
@@ -7923,7 +7709,7 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         };
         
         // Merge with override params (strip prompt-review-only keys)
-        const { expansionPromptOverride: _stripPromptOv, expansionUcOverride: _stripUcOv, ...overrideForGen } = overrideParams || {};
+        const { expansionPromptOverride: _stripPromptOv, expansionUcOverride: _stripUcOv, requestedContent: _stripReqContent, ...overrideForGen } = overrideParams || {};
         const genParams = { ...defaultParams, ...overrideForGen };
         
         // Build request body for inpainting
@@ -8000,11 +7786,6 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
             expansion_params: genParams,
             generation_type: 'expanded'
         };
-        
-        // Store requested content if it was provided
-        if (overrideParams.requestedContent) {
-            expansionMetadata.expansion_requested_content = overrideParams.requestedContent;
-        }
         
         const expandedBuffer = __runtimeGr.getPngMetadata().updateMetadata(result.buffer, expansionMetadata);
         
@@ -8349,10 +8130,6 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
             expansion_params: genParams,
             generation_type: 'expanded'
         };
-        
-        if (overrideParams.requestedContent) {
-            expansionMetadata.expansion_requested_content = overrideParams.requestedContent;
-        }
         
         const expandedBuffer = __runtimeGr.getPngMetadata().updateMetadata(result.buffer, expansionMetadata);
         
