@@ -64,13 +64,7 @@ assert.strictEqual(_test.rateGroupForCall('advanced_tools', { name: 'get_images'
 assert.strictEqual(_test.rateGroupForCall('generate_image', {}), 'generate');
 assert.strictEqual(_test.MCP_RATE_GROUP_LIMITS.free.max, 0);
 assert.ok(_test.MCP_RATE_GROUP_LIMITS.generate.max < _test.MCP_RATE_GROUP_LIMITS.gallery.max);
-const RATE_MAP_GAPS_ON_MAIN = new Set([
-    'publish_apocrypha', 'revoke_apocrypha', 'get_apocrypha',
-    'get_work_pile', 'add_work_item', 'complete_work_item', 'remove_work_item',
-    'report_issue', 'get_usage'
-]);
 _test.TOOL_DEFS.forEach((tool) => {
-    if (RATE_MAP_GAPS_ON_MAIN.has(tool.name)) return;
     assert.ok(_test.TOOL_RATE_GROUPS[tool.name], `missing rate group for ${tool.name}`);
 });
 assert.strictEqual(_test.TOOL_RATE_GROUPS.deliver_cake, 'write');
