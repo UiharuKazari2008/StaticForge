@@ -3166,6 +3166,12 @@ document.addEventListener('DOMContentLoaded', () => {
     
     const guidanceInput = document.getElementById('expansionGuidanceInput');
     if (guidanceInput) {
+        guidanceInput.addEventListener('blur', function() {
+            const value = parseFloat(this.value);
+            if (value === 0 && typeof showGlassToast === 'function') {
+                showGlassToast('info', 'Guidance', '0 CFG remaps to 5.5 on the server. For near-zero CFG, enter 0.001.', false, 5000);
+            }
+        });
         guidanceInput.addEventListener('wheel', function(e) {
             e.preventDefault();
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);

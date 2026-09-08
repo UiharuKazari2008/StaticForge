@@ -120,6 +120,12 @@ function attachManualGenerationParamsListeners(signal) {
     }
 
     if (manualGuidance) {
+        manualGuidance.addEventListener('blur', function () {
+            const value = parseFloat(this.value);
+            if (value === 0 && typeof showGlassToast === 'function') {
+                showGlassToast('info', 'Guidance', '0 CFG remaps to 5.5 on the server. For near-zero CFG, enter 0.001.', false, 5000);
+            }
+        }, { signal });
         manualGuidance.addEventListener('wheel', function (e) {
             const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.01 : 0.1) : (e.shiftKey ? 0.01 : 0.1);
             const currentValue = parseFloat(this.value) || 5.0;
