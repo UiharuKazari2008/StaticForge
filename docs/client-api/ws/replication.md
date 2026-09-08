@@ -11,6 +11,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | Request type | Typical response | Auth | Notes |
 |---|---|---|---|
 | `replication_status` | `replication_status_response` | session | Role, maintenance, delegation |
+| `replication_request_remote_gallery` | `replication_request_remote_gallery_response` | session | Child: fetch master workspace file list via HTTP gallery proxy |
 | `replication_sync_begin` | `replication_sync_begin_response` | admin session | Child role only; blocks during non-sync maintenance |
 | `replication_sync_status` | `replication_sync_status_response` | session | Poll sync phase + maintenance |
 | `replication_sync_apply` | `replication_sync_apply_response` | session | Destructive; apply remote changelog rows |
@@ -121,7 +122,10 @@ Blocks mode requires the exact confirmation string `BLOCKS_SLOW_PATH_CONFIRMATIO
 |---|---|
 | `GET /replication/status` | Same payload as `replication_status` WS |
 | `GET /replication/delegation/bridge-config` | Client bridge bootstrap |
-| Route modules `10`–`60` under `modules/replication/routes/` | Auto-registered; no collisions with legacy `web_server.js` paths |
+| `GET /replication/gallery/workspace-files` | Workspace filename list (`images` / `scraps` / `pinned`) |
+| `GET /replication/gallery/remote` | Child proxy to master's workspace-files |
+| `POST /replication/maintenance/ack` | Partner maintenance ACK (`cargo-write` token) |
+| Route modules `10`–`70` under `modules/replication/routes/` | Auto-registered; no collisions with legacy `web_server.js` paths |
 
 CORS (`Access-Control-Allow-Origin` echo) is applied **only** on `30-assetRoutes.js` (`OPTIONS`/`GET`/`HEAD /replication/assets/*`).
 
@@ -176,6 +180,29 @@ Handler registration split:
 **Response:** `replication_status_response` — see envelope above (`enabled`, `role`, `maintenance`, `delegation`, …).
 
 **HTTP mirror:** `GET /replication/status`
+
+---
+
+### `replication_request_remote_gallery`
+
+**Auth:** session
+
+**Handler:** `modules/ws/handlers/200-replicationHandler.js` → `handleReplicationRemoteGallery`
+
+Child (or any role with `masterAccessUrl`) asks this server to pull the master's workspace filename list (`GET /replication/gallery/workspace-files` on master with the read token).
+
+**Request fields:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `workspaceId` | No | Default `default` |
+| `viewType` | No | `images` (default), `scraps`, or `pinned` |
+
+**Response:** `replication_request_remote_gallery_response` — `data: { success, workspaceId, viewType, files[] }`
+
+**Errors:** `REPLICATION_CONFIG` (no `masterAccessUrl`), `REPLICATION_CONNECTIVITY_BLOCKED` (airgapped), `REPLICATION_ASSET_UNAVAILABLE` / master unreachable.
+
+**HTTP cousin:** `GET /replication/gallery/remote` (same proxy from the child HTTP surface).
 
 ---
 

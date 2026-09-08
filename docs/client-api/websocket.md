@@ -167,15 +167,13 @@ Server broadcasts **ping** every ~10 seconds (`modules/websocket.js` → `startP
 }
 ```
 
-Client should respond with **pong** (also a registered handler):
+Client should respond with **pong** (registered critical handler — server echoes `type: "pong"`):
 
 ```json
 { "type": "pong", "timestamp": "..." }
 ```
 
-`ping` is in `CRITICAL_MESSAGE_TYPES` — works without auth.
-
-Client may also send `ping` request; server responds via `pong` handler.
+`ping` and `pong` are in `CRITICAL_MESSAGE_TYPES` / infrastructure owner — work without auth. Client may also send a **request** `ping` (RTT probe); server replies with `ping_response` (see [ws/infrastructure.md](./ws/infrastructure.md)).
 
 ## Long-running requests
 
@@ -216,7 +214,8 @@ These are **pushes** — handle asynchronously. Registered in `public/scripts/ws
 |------|-----------|------------------------------|
 | `connection` | Immediately on WS connect | `status`, `message`, `authenticated`, `userType?`, `vfsPathUuid?`, `logViewerPathUuid?` (admin) |
 | `gallery_hint` | After workspace restore on connect/reconnect | `workspaceId`, `viewType`, `total`, `lastGalleryUpdatedAt`, `lastGalleryDestructiveAt`, `latestFilename?` — client compares session gallery memory and appends/reloads if stale |
-| `ping` | ~10s interval broadcast | `timestamp`, `image_count`, `queue_status` |
+| `ping` | ~10s interval broadcast | `timestamp`, `image_count`, `queue_status`, plus `balance` / `opusUsage` / `accountHealth` when available — see [ws/infrastructure.md](./ws/infrastructure.md#ping-server-push-fields) |
+| `account_data_health_updated` | Account health fields change | Same health fields as `get_app_options` / ping `accountHealth` — [ws/account.md](./ws/account.md) |
 | `request_keep_alive` | During long WS requests | `requestId`, `status: "processing"`, optional `progress`, `message` |
 | `gallery_updated` | Image add/delete/move/scrap/pin | `data.action` (`add`, `append_top`, `bulk_delete`, `remove`, …), `workspaceId?` (when set, only clients whose active gallery workspace matches should apply), `filename?`, `filenames?`, `viewType?`, `newItems?`, `deletedCount?`, `lastGalleryDestructiveAt?`, `lastGalleryUpdatedAt?`, `latestFilename?`, `total?` |
 | `gallery_scroll_state` | On reconnect (session restore) | Scroll hints per view: `index`, `viewType`, `workspaceId`, `anchorFilename?` |

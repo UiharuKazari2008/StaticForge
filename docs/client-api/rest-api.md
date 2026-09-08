@@ -982,6 +982,17 @@ CORS echoes `Origin` on asset routes only.
 
 ---
 
+### Gallery lists (`35-galleryRoutes.js`)
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| `GET` | `/replication/gallery/workspace-files` | session **or** replication read token | Query: `workspaceId` (default `default`), `viewType` `images` \| `scraps` \| `pinned`. Returns `{ success, data: { workspaceId, workspaceName, viewType, files[] } }` |
+| `GET` | `/replication/gallery/remote` | session (child) | Proxies master's `/replication/gallery/workspace-files` using `masterAccessUrl` + read token. Blocked when airgapped or master unreachable. Same query params. |
+
+**WS cousin:** `replication_request_remote_gallery` — [ws/replication.md](./ws/replication.md).
+
+---
+
 ### Cargo (`40-cargoRoutes.js`)
 
 **Auth:** admin session for all routes below.
@@ -1026,6 +1037,14 @@ Token header: `X-Replication-Token` (or body/query `replicationToken`).
 |--------|------|------|---------|
 | `GET` | `/replication/delegation/bridge-config` | session | `masterWsUrl`, `replicationToken`, `cloneProfile`, `gallerySharedDefault` for client bridge |
 | `GET` | `/replication/delegation/status` | session | Bridge snapshot + `delegation` status |
+
+---
+
+### Maintenance (`70-maintenanceRoutes.js`)
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| `POST` | `/replication/maintenance/ack` | `X-Replication-Token` (`cargo-write` scope) | Partner ACK to exit paired maintenance. Body: `maintenanceSessionId` / `sessionId`, `partnerInstanceId` / `instanceId`, optional `operation`. **409** if ACK rejected. |
 
 ---
 

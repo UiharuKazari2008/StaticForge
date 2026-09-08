@@ -11,6 +11,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `check_updates` | `check_updates_response` | critical | Handler: handleCheckUpdates |
 | `get_system_info` | `get_system_info_response` | session | Handler: handleGetSystemInfo |
 | `ping` | `ping_response` | critical | Handler: handlePing |
+| `pong` | `pong` (echo) | critical | Client heartbeat reply; server echoes `type: "pong"` |
 | `server_status` | `server_status_response` | critical | Handler: handleServerStatus |
 | `version_check` | `version_check_response` | critical | Handler: handleVersionCheck |
 
@@ -111,6 +112,8 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 
 **Handler:** modules/ws/handlers/170-infrastructureHandler.js → `handlePing`
 
+Client-initiated RTT / health probe (distinct from the server broadcast `ping` push).
+
 **Request fields:**
 
 | Field | Notes |
@@ -121,6 +124,25 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 **Success response:** `ping_response`
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `pong`
+
+**Auth:** Critical (no session required)
+
+**Handler:** modules/ws/handlers/170-infrastructureHandler.js (inline)
+
+Client reply to the server broadcast `ping` (~10s). Also allowed during replication maintenance (`REPLICATION_MAINTENANCE_ALLOWED_PACKETS`).
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `timestamp` | Optional |
+
+**Success response:** `type: "pong"` with the same `requestId` (echo; not `pong_response`).
+
+**Errors:** none typical.
 
 ### `server_status`
 

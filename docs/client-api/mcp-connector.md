@@ -247,11 +247,14 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 | `save_linkxi_persona` | `save_persona_settings` (`user_name`, `backstory`, `default_verbosity` 1–5). Preserves an existing photo unless one is sent. | `generation` | no |
 | `search_autofill` | `test_autofill_ranking` once per term (max 8 terms, 10 close hits each). Pass Studio `model` (`v5` / `v4_5`; omit is `v5`). Default `exactOnly`: exact or same name with `(qualifier)`. Hits are `{tag, count, confidence, exact, model}`. Empty + `untrained: true` means this model ranking missed it — pass `v4_5` if Studio is on V4.5, not “drop”. Accepts `terms: string[]` and/or `query` | `autofill` | no |
 | `search_nax` | `queryTags` / `get_nax_tags`. Default kind ARTIST. Omit query for the current ranking. `sort=score` is top votes; `sort=ratio` is upvote ratio; `invert` reverses. Use `item.prompt` in Studio. | `search` (also listed for `autofill` keys) | no |
+| `search_explore` | NovelAI Explore / Agora gallery search (`get_novelai_explore_gallery`). `sort` `new`/`top`/`random`; `period`; optional `model` / `aspect` / `vt`; `limit`/`page`. | `search` (also listed for `autofill` keys) | no |
+| `get_explore_post` | Full Explore post (`get_novelai_explore_post`) by `postId` — prompt, settings, image URL when available. | `search` (also listed for `autofill` keys) | no |
 | `list_nax_galleries` | `getGalleries` plus expander kinds (ARTIST, CHARA, FACE, COPYRIGHT, HAIR, CURATED) | `search` (also listed for `autofill` keys) | no |
 | `get_prompt_guide` | Read the Docubase page (clone `.cache/nai-prompt-guide`, wiki site `docubase`). Default `prompt-optimiser-grok`. **Draft** (`draft: true`) — use to help, then experiment. When the user says the look is correct, `save_memory`. | `generation` | no |
 | `list_memories` / `search_memories` / `get_memory` / `save_memory` | Onboard knowledge-memory DB (Memories applet). Aliases: `listKnowledgeMemories`, `searchKnowledgeMemories`, `retrieveKnowledgeMemory`, `saveKnowledgeMemory` (old paid API names). Grok Memory is not the store — the model must call these tools. `save_memory` refines: omitted graph fields kept, confidence +0–0.25 (new = 0.1). `model` defaults to `v5`. | `generation` | no |
 | `search_wiki` | `search_tag_wiki` | `wiki` (also listed for `autofill` keys) | no |
 | `get_wiki_page` | `get_tag_wiki_page` (`tagName`, optional `source`, `format`; markdown default). Returns `text` / `markdown` strings — never `html` as `{}`. Empty: `empty: true` + `next`. | `wiki` (also listed for `autofill` keys) | no |
+| `get_character_card` | One character card: wiki markdown + request expander + Studio box snapshot (`action: replace` + `index`) + best NAX CHARA `item.prompt`. Required `name`; optional `franchise` / `model`. Empty wiki → do not invent appearance. | `wiki` (also listed for `autofill` keys) | no |
 | `save_preset` | `save_preset` — `presetName` + `config` (`name`, `prompt`, `model`) | `presets` | no |
 | `apply_preset_to_studio` | `load_preset` then bound `apply_studio` Change-JSON | `presets` | yes |
 | `upscale_image` | `upscale_image` (`filename`, optional `workspace`). Paid Opus — requires `userApprovedPaidRequest` / `allow_paid`. | `generation` | no |
@@ -298,6 +301,10 @@ Account-based cake tracking for Menma, Hoshino, Ivory, Pyra, Chiyo, Guren. All a
 | `feed_cake` | Yukimi grants slices (promotion or just because). Distinct from deliver. Pass `accountId`, `slices`, `reason`, `cake_type`, optional `do_not_eat` / `cake_type=dry-verify`, `from`. | `feed` |
 | `inspect_pantry` | View piles, past consumes, kg history. Returns data, not a wall of text. Pass `accountId`, optional `log_limit`. | `inspect` |
 | `consume_cake` | Eater eats pending slices (**soft sitting cap default 8**; remainder carries). Override with `slices` and/or `max_slices` up to **all eligible pending**. Skips dry-verify forever via `cake_type=dry-verify` and/or `do_not_eat` (not reason substring). Returns kg before/after; **does not auto-generate** before/after images (pass refs or get `visual_gen.status=not_generated` with clear error while kg still saves). Visual QA invariants: empty plates, visible growth, hip contrast, up to 10 gens. | `consume` |
+| `get_work_pile` | Work pile snapshot `{ open, done_since_breakfast, eaten, updated_at, last_breakfast_at }`. Pass `accountId`. | `inspect` |
+| `add_work_item` | Add open (or `done_since_breakfast`) item. Required `accountId`, `work_id`, `summary`; optional `source_from`, `cake`, `slices_hint`, `type`. | `deliver` |
+| `complete_work_item` | Move item from `open` → `done_since_breakfast`. Pass `accountId`, `work_id`. | `deliver` |
+| `remove_work_item` | Remove a work item entirely. Pass `accountId`, `work_id`. | `deliver` |
 
 **Cake math:**
 - 0.12kg per slice

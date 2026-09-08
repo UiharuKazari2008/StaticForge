@@ -58,13 +58,14 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Image metadata | — | `request_image_metadata`, `request_image_by_index` | — | Studio / viewer; `blurhash` on metadata + gallery rows |
 | Bulk delete | — | `delete_images_bulk` | `gallery_updated` | Selection UI |
 | Zanzou (afterimage keep/scrap) | — | `get_similar_image_groups`, `scrap_similar_images` (wraps `delete_images_bulk`) | `gallery_updated` (on scrap) | Zanzou DSAP (`zanzou.dyna.dreamscape.jp`); Control Panel only |
-| Pin / scrap | — | `workspace_add_pinned`, `workspace_remove_pinned`, `workspace_*_scrap` | `workspace_updated` | — |
+| Pin / scrap | — | `workspace_add_pinned`, `workspace_remove_pinned`, `workspace_add_scrap`, `workspace_remove_scrap`, `workspace_bulk_add_scrap`, `workspace_bulk_remove_scrap`, … | `workspace_updated` | — |
 | Move between workspaces | — | `workspace_move_files` | `workspace_image_added` | — |
 | Workspace CRUD | — | `workspace_list`, `workspace_create`, … | `workspace_updated`, `workspace_activated` | Color/fonts/wallpaper UI |
 | Gallery scroll restore | — | `gallery_position_hint` | `gallery_scroll_state` | — |
 | Sequenzia export | — | `send_to_sequenzia_bulk` | — | — |
 | Update image preset tag | — | `update_image_preset_bulk` | — | — |
 | Publish workspace image to NovelAI Explore | — | `check_novelai_explore_upload`, `upload_novelai_explore_image` | — | Gallery / Explorer context menu → Publish to Explorer |
+| Agora (NovelAI Explore) browse | — | `get_novelai_explore_gallery`, `get_novelai_explore_post`, `get_novelai_explore_user`, `ensure_novelai_explore_image`, `set_novelai_explore_post_like`, `downvote_novelai_explore_post`, `block_novelai_explore_creator`, `list_novelai_explore_blocked_creators`, `clear_novelai_explore_gallery_cache` | — | Agora DSAP; MCP `search_explore` / `get_explore_post` |
 
 ---
 
@@ -87,7 +88,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Model-aware tag suggest cutoffs | — | (applied inside `search_tags` / autofill) | — | V4.5 hides tags after 2025-05-29; V5 hides tags on/after 2026-08-01; wiki pages stay browsable (`modules/tagModelCutoff.js`) |
 | Autofill ranking config | — | `get_autofill_ranking`, `update_autofill_ranking`, `test_autofill_ranking` | `autofill_ranking_updated` | autofillConfigDsapApplet (admin) |
 | File search | — | `search_files` | `search_results_*` | File search modal |
-| Tag wiki / Grimoire | `GET /private/wiki/*` (cached pages) | `search_tag_wiki`, `get_tag_wiki_page`, `refresh_tag_wiki_page`, `resolve_grimoire_url` | — | DSAP router, panes |
+| Tag wiki / Grimoire | `GET /private/wiki/*` (cached pages) | `search_tag_wiki`, `get_tag_wiki_page`, `refresh_tag_wiki_page`, `resolve_grimoire_url`, `get_apocrypha_zine` | — | DSAP router, panes; Apocrypha zine interior |
 | Static NovelAI docs | — | `get_static_wiki_site_index`, `get_static_wiki_page` | — | — |
 | Fandom / static / MediaWiki offline wikis | `GET /private/wiki/*` (mirrored assets) | `get_fandom_wiki_index`, `get_fandom_wiki_manager`, `import_fandom_wiki_page` (Fandom + generic MediaWiki `/api.php`), `import_static_wiki`, `update_wiki_import`, `delete_fandom_wiki_import`, `get_static_wiki_page` (missing pages import then serve; `recordImport: false` for click-through) | `fandom_wiki_import_progress` | Grimoire Fandom index + Wiki Manager DSAP (`wiki.dyna.dreamscape.jp`); list/add/pull/update Fandom, NovelAI docs, MediaWiki (Wikipedia/Miraheze/wiki.gg); follow-children capped at 25 for generic MediaWiki; click-through live fetch |
 | Character search | — | `search_characters` | `search_results_update` | Autofill overlay |
@@ -118,7 +119,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | VFS file download | `GET /{vfsPathUuid}/files/:id` | `vfs_download_file` | `vfs_updated` | Explorer applet |
 | System cache binary download | `GET /{vfsPathUuid}/system/:encodedKey` | `vfs_download_system_file` | — | Explorer / System folder |
 | VFS CRUD | — | `vfs_*`, `desktop_*` | `vfs_updated`, `workspace_desktop_persisted` | Desktop shortcuts |
-| Studio change JSON | — | — (clipboard / desktop shortcut payload) | — | Client-only studio delta apply/export (`studioChangeJson.js`) |
+| Studio change JSON | `POST /agent/session/studio`, MCP `apply_studio_changes` | — (clipboard / desktop shortcut payload; applied in bound tab) | — | Client apply/export (`studioChangeJson.js`); not chrome — see [studio-change-json.md](../studio-change-json.md) |
 | Menma progress | — | `get_menma_state` | — | Menma DSAP (`menma.dyna.dreamscape.jp`) windowed applet; Open in Studio uses `openManualModalWithContent` |
 
 ---
@@ -184,6 +185,8 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Cargo export/import | `POST /replication/cargo/export`, `/import/begin`, `/import/complete`, `GET/PUT /replication/cargo/stream/:id` | — | `replication_progress` | replicationDsapCargo.js |
 | Upsert to master | `POST /replication/cargo/upsert/begin`, `/send`, `/complete` | — | `replication_maintenance`, `replication_progress` | DSAP Cargo panel |
 | Remote gallery assets | `GET /replication/assets/:kind/:key` | — | — | assetUrlResolver.js |
+| Remote gallery file lists | `GET /replication/gallery/workspace-files`, `GET /replication/gallery/remote` | `replication_request_remote_gallery` | — | Shared gallery browse on child |
+| Maintenance partner ACK | `POST /replication/maintenance/ack` | — | `replication_maintenance` | Paired exit |
 | Shared gallery merge | — | `request_gallery` + `galleryShowSharedRemote` | — | `#galleryToggleGroup` context menu, `galleryShowSharedRemote` localStorage |
 | Master unreachable banner | — | `request_gallery` → `replicationWarning` | — | replicationGalleryBanner.js |
 | Wiki/autocomplete delegation | `GET /replication/delegation/bridge-config` | `authenticate_replication`, `replication_delegate`, `replication_delegation_status` | — | masterWsBridge.js |
@@ -208,8 +211,8 @@ Operational guide: [README-CHILD.md](../../README-CHILD.md).
 
 | Category | Count |
 |----------|-------|
-| Documented REST route groups | ~25 explicit + static |
-| WS request types (client → server) | **297** |
+| Documented REST route groups | ~25 explicit + static + replication gallery/maintenance |
+| WS request types (client → server) | **~332** unique (~334 domain-index rows; `get_app_options` / `retry_account_data` appear in both account + quips) |
 | WS server push types (common) | **~50** |
 | Auth flows | **3** (PIN session, Bearer loginKey, loopback `devLoginKey` on `/agent`) |
 

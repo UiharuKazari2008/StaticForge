@@ -183,6 +183,14 @@ User: *find an artist* / *top voted artists* / *who draws like this*
 4. Prefer `item.prompt` in Studio (`artist:name` or `art by …`). A different string is an experiment — record it with `save_memory`.
 5. Do **not** treat omit-query + `sort=score` as a default style lock. That ranking is community votes, not V5 training proof. Use NAX only when they ask for a look, a voted character, or a gallery slug. Tag stack: `search_autofill` → wiki → pixels → `save_memory`.
 
+## Recipe: NovelAI Explore (Agora)
+
+User: *show Explore top this week* / *find community gens of X* / *open that Explore post*
+
+1. `search_explore` — `sort` `new` / `top` / `random`; `period` `day`/`week`/`month`/`all`; optional text `search`; parity filters `model` / `aspect` / `vt: "with"`.
+2. `get_explore_post` `{ "postId": "<uuid>" }` for full prompt + settings + image URL.
+3. In-app WS cousins: [ws/explore.md](./ws/explore.md) (`get_novelai_explore_gallery`, `get_novelai_explore_post`, …).
+
 ## Recipe: memories (search, create, refine)
 
 User: *any real Studio / prompt / technique job*

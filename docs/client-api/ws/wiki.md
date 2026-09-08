@@ -11,6 +11,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | Request type | Typical response | Auth | Notes |
 |---|---|---|---|
 | `delete_fandom_wiki_import` | `delete_fandom_wiki_import_response` | admin/destructive | Handler: handleDeleteFandomWikiImport |
+| `get_apocrypha_zine` | `get_apocrypha_zine_response` | session | Apocrypha MWF digest HTML interior (`modules/apocryphaSite.js`) |
 | `get_fandom_wiki_index` | `get_fandom_wiki_index_response` | session | Handler: handleGetFandomWikiIndex |
 | `get_fandom_wiki_manager` | `get_fandom_wiki_manager_response` | session | Handler: handleGetFandomWikiManager |
 | `get_static_wiki_page` | `get_static_wiki_page_response` | session | Handler: handleGetStaticWikiPage |
@@ -201,6 +202,25 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 **Success response:** `get_wiki_home_response`
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `get_apocrypha_zine`
+
+**Auth:** Session required
+
+**Handler:** modules/ws/handlers/110-wikiHandler.js → `handleGetApocryphaZine`
+
+Renders the Apocrypha zine interior HTML for Grimoire (`tagWikiSearchModal` / Apocrypha DSAP). Live issue by default; pass a slug to read an archived day.
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `issue` / `slug` / `archive` | Optional archive slug. If set and unknown → error `No such Apocrypha issue` |
+
+**Success response:** `get_apocrypha_zine_response` — `data.interior` (HTML string)
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors).
 
 ### `import_fandom_wiki_page`
 

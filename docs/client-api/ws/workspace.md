@@ -16,6 +16,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `workspace_bulk_add_scrap` | `workspace_bulk_add_scrap_response` | admin/destructive | Handler: handleWorkspaceBulkAddScrap |
 | `workspace_bulk_pinned` | `workspace_bulk_pinned_response` | admin/destructive | Handler: handleWorkspaceBulkPinned |
 | `workspace_bulk_remove_pinned` | `workspace_bulk_remove_pinned_response` | admin/destructive | Handler: handleWorkspaceBulkRemovePinned |
+| `workspace_bulk_remove_scrap` | `workspace_bulk_remove_scrap_response` | admin/destructive | Handler: handleWorkspaceBulkRemoveScrap |
 | `workspace_create` | `workspace_create_response` | admin/destructive | Handler: handleWorkspaceCreate |
 | `workspace_create_group` | `workspace_create_group_response` | admin/destructive | Handler: handleWorkspaceCreateGroup |
 | `workspace_delete` | `workspace_delete_response` | admin/destructive | Handler: handleWorkspaceDelete |
@@ -249,6 +250,31 @@ Additional response/push types from handler:
 
 Additional response/push types from handler:
 - `workspace_updated`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `workspace_bulk_remove_scrap`
+
+**Auth:** Session required. Admin only (destructive — blocked for readonly)
+
+**Handler:** modules/ws/handlers/90-workspaceHandler.js → `handleWorkspaceBulkRemoveScrap`
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `id` | Required — workspace id |
+| `filenames` | Required — non-empty string array |
+
+**Validation errors:**
+- Workspace ID is required
+- Filenames array is required
+
+**Success response:** `workspace_bulk_remove_scrap_response` — `data.removedCount`
+
+Additional response/push types from handler:
+- `workspace_updated` (`action: bulk_remove_scrap`)
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
