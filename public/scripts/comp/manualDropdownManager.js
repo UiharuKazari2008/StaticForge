@@ -1285,6 +1285,8 @@ function renderDatasetDropdown() {
                     updatePromptStatusIcons();
                     renderDatasetDropdown();
                     updateSubTogglesButtonState();
+                    // notifyStudioSoftTipsDatasetChange: public/scripts/comp/studioSoftTips.js
+                    notifyStudioSoftTipsDatasetChange();
                 });
 
                 // Add click handlers for quality bias controls (only if selected)
