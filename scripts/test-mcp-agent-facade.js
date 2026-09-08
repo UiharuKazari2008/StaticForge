@@ -358,6 +358,9 @@ const refsOnly = _test.listToolsForScopes(['references']);
 assert.deepStrictEqual(refsOnly.map((t) => t.name), ['advanced_tools']);
 
 const searchOnly = _test.listToolsForScopes(['search']);
+
+assert.ok(searchOnly.some((t) => t.name === 'search_explore'));
+assert.ok(searchOnly.some((t) => t.name === 'get_explore_post'));
 assert.ok(searchOnly.some((t) => t.name === 'omegasearch'));
 assert.ok(searchOnly.some((t) => t.name === 'search_nax'));
 assert.ok(searchOnly.some((t) => t.name === 'list_nax_galleries'));
@@ -367,6 +370,9 @@ assert.ok(!genOnly.some((t) => t.name === 'search_nax'));
 assert.strictEqual(_test.rateGroupForTool('search_nax'), 'search');
 assert.strictEqual(_test.rateGroupForTool('list_nax_galleries'), 'free');
 assert.ok(_test.MCP_INSTRUCTIONS.includes('search_nax'));
+
+assert.ok(_test.MCP_INSTRUCTIONS.includes('search_explore'));
+assert.ok(_test.MCP_INSTRUCTIONS.includes('get_explore_post'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('top votes'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('get_session_state'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('view=live'));
@@ -584,7 +590,7 @@ assert.ok(coreNames.includes('searchKnowledgeMemories'));
 assert.ok(coreNames.includes('retrieveKnowledgeMemory'));
 assert.strictEqual(_test.rateGroupForTool('saveKnowledgeMemory'), 'write');
 assert.strictEqual(_test.canonMemoryTool('saveKnowledgeMemory'), 'save_memory');
-assert.strictEqual(coreNames.length, 60);
+assert.strictEqual(coreNames.length, 62);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.pipeline);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.rescale);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.noiseScheduler);
@@ -1022,6 +1028,45 @@ async function main() {
     assert.ok(autofillNames.includes('advanced_tools'));
     assert.ok(!autofillNames.includes('generate_image'));
     assert.ok(!autofillNames.includes('list_static_wiki_sites'));
+
+
+    const exploreListed = await _test.handleJsonRpc(
+        {},
+        { applicationAuth: { applicationScopes: ['search'] }, authMethod: 'application_key' },
+        { jsonrpc: '2.0', id: 42, method: 'tools/list' }
+    );
+    const exploreListNames = exploreListed.body.result.tools.map(t => t.name);
+    assert.ok(exploreListNames.includes('search_explore'));
+    assert.ok(exploreListNames.includes('get_explore_post'));
+    assert.strictEqual(_test.rateGroupForTool('search_explore'), 'search');
+    assert.strictEqual(_test.rateGroupForTool('get_explore_post'), 'search');
+
+    const mockExplore = {
+        getExploreGallery: async (input) => ({ rawResults: [{ id: 'exp123', prompt: 'test' }], pagination: { limit: 50, offset: 0, total: 100 } }),
+        getExplorePost: async (id, input) => ({ id: 'exp123', prompt: 'test' })
+    };
+
+    const expSearchCall = await _test.callTool(
+        { getNovelaiExploreGallery: () => mockExplore },
+        { applicationAuth: { applicationScopes: ['search'] } },
+        'search_explore',
+        { sort: 'top', period: 'week', search: 'cat' }
+    );
+    const expSearchPayload = JSON.parse(expSearchCall.content[0].text);
+    assert.strictEqual(expSearchPayload.success, true);
+    assert.strictEqual(expSearchPayload.rawResults[0].id, 'exp123');
+    assert.strictEqual(expSearchPayload.pagination.limit, 50);
+
+    const expPostCall = await _test.callTool(
+        { getNovelaiExploreGallery: () => mockExplore },
+        { applicationAuth: { applicationScopes: ['search'] } },
+        'get_explore_post',
+        { postId: 'exp123' }
+    );
+    const expPostPayload = JSON.parse(expPostCall.content[0].text);
+    assert.strictEqual(expPostPayload.success, true);
+    assert.strictEqual(expPostPayload.post.id, 'exp123');
+    assert.strictEqual(expPostPayload.post.prompt, 'test');
 
     const naxCall = await _test.callTool(
         { getNaxTagsDatabase: () => mockNax },

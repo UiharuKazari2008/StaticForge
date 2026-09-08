@@ -121,6 +121,8 @@ const {
 // modules/mcpRateLimiter.js — #66 owns TOOL_RATE_GROUPS this wave
 if (!TOOL_RATE_GROUPS.get_character_card) TOOL_RATE_GROUPS.get_character_card = 'search';
 if (!TOOL_RATE_GROUPS.resolve_lookback) TOOL_RATE_GROUPS.resolve_lookback = 'search';
+if (!TOOL_RATE_GROUPS.search_explore) TOOL_RATE_GROUPS.search_explore = 'search';
+if (!TOOL_RATE_GROUPS.get_explore_post) TOOL_RATE_GROUPS.get_explore_post = 'search';
 
 const MCP_PROTOCOL_VERSION = '2024-11-05';
 const MCP_RATE_WINDOW_MS = 15 * 60 * 1000;
@@ -656,6 +658,47 @@ const TOOL_DEFS = [
                 limit: { type: 'number', description: '1–100, default 20' },
                 offset: { type: 'number', description: 'Skip this many merged hits (default 0)' },
                 randomSeed: { type: 'number', description: 'Only used when sort=random' }
+            }
+        }
+    },
+    {
+        name: 'search_explore',
+        core: true,
+        allowAutofill: true,
+        description: 'Search the NovelAI Explore (Agora) community image gallery. Returns recent/top generated images from the public gallery. Supports sorting (new, top, random), periods (day, week, month, all), and exact text search. Use it to find community examples of prompts or characters.',
+        scope: 'search',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                search: { type: 'string', description: 'Text query to search for' },
+                sort: {
+                    type: 'string',
+                    description: 'new (default), top, random',
+                    enum: ['new', 'top', 'random']
+                },
+                period: {
+                    type: 'string',
+                    description: 'day, week, month, all (default day for top)',
+                    enum: ['day', 'week', 'month', 'all']
+                },
+                limit: { type: 'number', description: 'Max results (default 50, limit 50)' },
+                page: { type: 'number', description: 'Page number (default 1)' }
+            }
+        }
+    },
+    {
+        name: 'get_explore_post',
+        core: true,
+        allowAutofill: true,
+        description: 'Get full details for a single NovelAI Explore (Agora) post including original prompt, settings, and full resolution image URL (if not deleted/hidden).',
+        scope: 'search',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['postId'],
+            properties: {
+                postId: { type: 'string', description: 'The UUID of the explore post' }
             }
         }
     },
@@ -3222,6 +3265,7 @@ const ADVANCED_CORE_HINTS = [
         test: (q) => /memor/i.test(q) || /saveknowledgememory|searchknowledgememor|retrieveknowledgememory|listknowledgememor/i.test(q.replace(/[\s_]+/g, '')),
         names: ['list_memories', 'search_memories', 'get_memory', 'save_memory', 'listKnowledgeMemories', 'searchKnowledgeMemories', 'retrieveKnowledgeMemory', 'saveKnowledgeMemory']
     },
+    { test: (q) => /agora|explore|novelai explore|explore gallery/i.test(q), names: ['search_explore', 'get_explore_post'] },
     { test: (q) => /\bnax\b|top votes|artist tag/i.test(q), names: ['search_nax', 'list_nax_galleries'] },
     { test: (q) => /character card|get_character_card|appearance wiki/i.test(q), names: ['get_character_card'] },
     { test: (q) => /lookback|dsap:\/\/lookback/i.test(q), names: ['resolve_lookback'] },
@@ -3525,6 +3569,19 @@ async function callTool(globalResources, req, name, args) {
             batches.push(trimAutofillBatch(term, packet.success, data, input, model));
         }
         return mcpTextResult({ success: true, results: batches });
+    }
+
+
+    if (name === 'search_explore') {
+        const explore = globalResources.getNovelaiExploreGallery();
+        const data = await explore.getExploreGallery(input);
+        return mcpTextResult({ success: true, ...data });
+    }
+
+    if (name === 'get_explore_post') {
+        const explore = globalResources.getNovelaiExploreGallery();
+        const data = await explore.getExplorePost(input.postId, input);
+        return mcpTextResult({ success: true, post: data });
     }
 
     if (name === 'search_nax') {
