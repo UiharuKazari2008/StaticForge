@@ -699,7 +699,6 @@ function closeManualWorkspaceDropdown() {
 
 /**
  * Select manual model - MOVED FROM app.js
- * TODO: Move function implementation from app.js
  */
 function selectManualModel(value, group, preventPropagation = false) {
     const previousModel = (manualSelectedModel || manualModelHidden?.value || '').toLowerCase();

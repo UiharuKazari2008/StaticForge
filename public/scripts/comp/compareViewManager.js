@@ -456,31 +456,6 @@ function clearCompareSourceImage() {
     notifyKeyboardOverlayContextChanged();
 }
 
-function applyCompareDefaultSettingsStub() {
-    const loaded = loadCompareDefaultSettings();
-    if (loaded && loaded.overlayRuntime) {
-        compareRuntimeSettings = { ...COMPARE_DEFAULT_SETTINGS, ...loaded.overlayRuntime };
-    }
-    if (loaded) {
-        compareOverlayEnabled = Boolean(loaded.defaultOverlayEnabled);
-        compareSlideEnabled = Boolean(loaded.defaultSlideEnabled);
-        persistCompareViewQuickStoredIfActive();
-    }
-}
-
-function loadCompareDefaultSettings() {
-    // TODO: wire to UI / preset export; read localStorage when implemented
-    return {
-        overlayRuntime: { ...COMPARE_DEFAULT_SETTINGS },
-        defaultOverlayEnabled: false,
-        defaultSlideEnabled: false
-    };
-}
-
-function saveCompareDefaultSettings() {
-    // TODO: persist overlayRuntime + defaultOverlayEnabled + defaultSlideEnabled
-}
-
 function compareSourcePrimaryClick(showToast = false) {
     if (!compareSourceImageData || !compareSourceImageData.url) {
         let ok = setCompareSourceFromCurrentPreview();
