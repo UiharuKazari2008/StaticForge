@@ -440,6 +440,7 @@ function flattenGenerateToolArgs(input) {
     if (out.nsfw != null && (out.dataset_config == null || out.dataset_config.nsfw == null)) {
         out.dataset_config = { ...(out.dataset_config || {}), nsfw: out.nsfw };
     }
+    if (out.batch_characters === true) out.batch_characters = true;
     if (out.n != null) {
         const prints = parseInt(out.n, 10);
         if (!Number.isFinite(prints) || prints <= 1) {
