@@ -914,7 +914,17 @@ async function syncShipCake(accountId, params) {
         const res = await fetch(`${GITEA_BASE}/issues?state=closed&limit=50`);
         issues = await res.json();
     } catch (e) {
-        return { success: false, error: 'Failed to fetch issues from Gitea', details: e.message };
+        console.error(`[cakePantry] syncShipCake fetch failed for ${accountId}:`, e.message);
+        // Fail closed (Yozora #163) — do not block the eat
+        return {
+            success: true,
+            accountId,
+            since: sinceDate.toISOString(),
+            delivered_slices_total: 0,
+            delivered_keys: [],
+            plan: [],
+            warning: 'Gitea fetch failed: ' + e.message
+        };
     }
 
     const plan = [];
