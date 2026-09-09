@@ -451,7 +451,13 @@ class ImageViewer {
         try {
             await new Promise((resolve, reject) => {
                 let settled = false;
+                let retryTimeoutId;
+                let retryCount = 0;
+                const MAX_LOAD_RETRIES = 5;
+                let currentLoadSrc = loadSrc;
+
                 const cleanup = () => {
+                    if (retryTimeoutId) clearTimeout(retryTimeoutId);
                     imgElement.onload = null;
                     imgElement.onerror = null;
                 };
@@ -462,22 +468,45 @@ class ImageViewer {
                     resolve();
                 };
 
-                this.prepareImageSrcSwap(imgElement);
-                imgElement.onload = finish;
-                imgElement.onerror = () => {
+                const attemptLoad = () => {
                     if (settled || loadGeneration !== this._loadGeneration) return;
-                    settled = true;
-                    cleanup();
-                    reject(new Error('Failed to load image into DOM'));
-                };
-                imgElement.src = loadSrc;
-                if (imgElement.decode) {
-                    imgElement.decode().then(finish).catch(() => {
-                        if (imgElement.complete && imgElement.naturalWidth > 0) {
-                            finish();
+
+                    this.prepareImageSrcSwap(imgElement);
+                    imgElement.onload = finish;
+                    imgElement.onerror = () => {
+                        if (settled || loadGeneration !== this._loadGeneration) return;
+
+                        if (retryCount < MAX_LOAD_RETRIES) {
+                            retryCount += 1;
+                            const delay = Math.min(400 * Math.pow(1.5, retryCount), 3000);
+                            this.showNavigationLoading(true, `Retrying image load (${retryCount}/${MAX_LOAD_RETRIES})…`);
+
+                            retryTimeoutId = setTimeout(() => {
+                                if (settled || loadGeneration !== this._loadGeneration) return;
+                                if (!currentLoadSrc.startsWith('data:') && !currentLoadSrc.startsWith('blob:')) {
+                                    const sep = currentLoadSrc.includes('?') ? '&' : '?';
+                                    currentLoadSrc = `${currentLoadSrc}${sep}_sf_retry=${retryCount}_${Date.now()}`;
+                                }
+                                attemptLoad();
+                            }, delay);
+                            return;
                         }
-                    });
-                }
+
+                        settled = true;
+                        cleanup();
+                        reject(new Error('Failed to load image into DOM'));
+                    };
+                    imgElement.src = currentLoadSrc;
+                    if (imgElement.decode) {
+                        imgElement.decode().then(finish).catch(() => {
+                            if (imgElement.complete && imgElement.naturalWidth > 0) {
+                                finish();
+                            }
+                        });
+                    }
+                };
+
+                attemptLoad();
             });
 
             if (loadGeneration !== this._loadGeneration) return;
@@ -1602,13 +1631,14 @@ window.openGalleryImageInViewer = function (imageData) {
 
     // Determine the correct URL for gallery images
     let imageSrc;
-    if (imageData.url) {
-        // For newly generated images
+    const hasPersistentFile = !!(imageData.filename || imageData.original || imageData.upscaled);
+    if (imageData.url && (!imageData.url.startsWith('blob:') || !hasPersistentFile)) {
         imageSrc = imageData.url;
     } else {
         // resolveGalleryFullImageUrl / localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
         imageSrc = resolveGalleryFullImageUrl(imageData)
-            || localGalleryImageUrl(imageData.upscaled || imageData.original);
+            || localGalleryImageUrl(imageData.upscaled || imageData.original || imageData.filename)
+            || imageData.url;
     }
 
     const title = imageData.filename || imageData.base || 'Gallery Image';

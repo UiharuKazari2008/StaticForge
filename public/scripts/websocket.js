@@ -506,6 +506,7 @@ class WebSocketClient {
     static TIMEOUT_HOST_AVAILABILITY = 3000; // Host availability check timeout
     static TIMEOUT_VERSION_CHECK = 2000; // Version compatibility check timeout
     static TIMEOUT_GET_APP_OPTIONS = 3000; // Critical app options timeout (3 seconds)
+    static TIMEOUT_INACTIVITY = 2 * 60 * 60 * 1000; // Inactivity timeout before disconnect (2 hours)
 
     static DELAY_RECONNECT_INITIAL = 1000; // Initial reconnect delay (1 second)
     static DELAY_RECONNECT_MAX = 30000; // Maximum reconnect delay (30 seconds)
@@ -625,6 +626,13 @@ class WebSocketClient {
         this.pingInterval = null;
         this.pingTimeout = null;
         this.healthCheckInterval = null;
+
+        // Inactivity management (disconnect only after 2 hours of continuous user inactivity)
+        this.lastUserActivity = Date.now();
+        this.disconnectedDueToInactivity = false;
+        this.inactivityCheckInterval = null;
+        this._inactivityListenersAttached = false;
+        this._boundOnUserActivity = this._onUserActivity.bind(this);
 
         // RTT (Round-Trip Time) tracking for dynamic timeout adjustment
         this.rttMeasurements = []; // Array of recent RTT measurements
@@ -3011,6 +3019,9 @@ class WebSocketClient {
         // Initialize pending requests spinner
         this.updatePendingRequestsSpinner();
 
+        // Wire 2-hour inactivity tracking
+        this._setupInactivityTracking();
+
         this.connect();
 
         // Handle page visibility changes (covers tab switching, app minimise, screen lock)
@@ -3031,16 +3042,11 @@ class WebSocketClient {
             }
         });
 
-        // Intentionally do nothing on beforeunload.
-        // The event fires even when the browser leave/refresh prompt is cancelled.
-        // Disconnecting here can leave the app offline until a manual reconnect.
+        // Intentionally do nothing on beforeunload or pagehide.
+        // Disconnecting on pagehide or blur caused premature disconnection when switching tabs or losing focus.
+        // The browser/OS automatically tears down the WebSocket/TCP session upon true window or tab closure.
         window.addEventListener('beforeunload', () => {});
-
-        // Mark true manual close only when the page is actually leaving.
-        window.addEventListener('pagehide', () => {
-            this.isManualClose = true;
-            this.disconnect();
-        });
+        window.addEventListener('pagehide', () => {});
 
         // Handle window focus (covers alt-tab, clicking back into the window)
         window.addEventListener('focus', () => {
@@ -3599,6 +3605,8 @@ class WebSocketClient {
         if (this._isStartupHaltedForInstall()) {
             return;
         }
+        this.disconnectedDueToInactivity = false;
+        this.lastUserActivity = Date.now();
         this.isManualClose = false;
         this.reconnectAttempts = 0;
         this.reconnectDelay = 1000;
@@ -3615,6 +3623,8 @@ class WebSocketClient {
         if (this._isStartupHaltedForInstall()) {
             return;
         }
+        this.disconnectedDueToInactivity = false;
+        this.lastUserActivity = Date.now();
         this.isManualClose = false;
         this.reconnectAttempts = 0;
         this.reconnectDelay = 1000;
@@ -3644,6 +3654,20 @@ class WebSocketClient {
      * @param {string} source - The event that triggered this call (for logging)
      */
     _reconnectOnFocusRegain(source) {
+        if (this.disconnectedDueToInactivity) {
+            console.log(`👁️ App regained focus (${source}) after inactivity disconnect — reconnecting WebSocket...`);
+            this.disconnectedDueToInactivity = false;
+            this.isManualClose = false;
+            this.lastUserActivity = Date.now();
+            this.circuitBreaker = false;
+            this.reconnectAttempts = 0;
+            this.lastConnectionAttempt = 0;
+            this.connect();
+            return;
+        }
+
+        this.lastUserActivity = Date.now();
+
         // Already connected or actively connecting — nothing to do
         if (this.isConnected() || this.isConnecting || this.connectionLock) {
             return;
@@ -3686,6 +3710,18 @@ class WebSocketClient {
 
         // Disconnect and cleanup connection
         this.disconnect();
+
+        if (this.inactivityCheckInterval) {
+            clearInterval(this.inactivityCheckInterval);
+            this.inactivityCheckInterval = null;
+        }
+        if (this._inactivityListenersAttached) {
+            const activityEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'wheel'];
+            for (const evt of activityEvents) {
+                window.removeEventListener(evt, this._boundOnUserActivity);
+            }
+            this._inactivityListenersAttached = false;
+        }
 
         // Clear all timeouts and intervals
         if (this.tickerHideTimeout) {
@@ -3783,6 +3819,9 @@ class WebSocketClient {
     }
 
     send(message) {
+        if (message && message.type !== 'ping') {
+            this.recordUserActivity();
+        }
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.logGenerationQuipsWs('out', message);
             this._recordWsMessage('out', message);
@@ -4979,11 +5018,35 @@ class WebSocketClient {
         };
 
         session.finalPrefetch = prefetch;
+
+        const reportDownloadProgress = (progress) => {
+            if (session.aborted) return;
+            if (modalType === 'manual' && typeof showManualPreviewNavigationLoading === 'function') {
+                if (progress.total > 0) {
+                    const pct = Math.min(100, Math.round(progress.ratio * 100));
+                    // formatImageTransferEta, formatImageTransferBytes: public/scripts/comp/utilities.js
+                    const eta = progress.etaSeconds != null ? formatImageTransferEta(progress.etaSeconds) : '';
+                    const sizeHint = progress.loaded > 0
+                        ? ` · ${formatImageTransferBytes(progress.loaded)} / ${formatImageTransferBytes(progress.total)}`
+                        : '';
+                    const label = eta
+                        ? `Downloading ${pct}% · ${eta}${sizeHint}`
+                        : `Downloading ${pct}%${sizeHint}`;
+                    showManualPreviewNavigationLoading(true, label, pct);
+                } else if (progress.loaded > 0) {
+                    const label = `Downloading ${formatImageTransferBytes(progress.loaded)}…`;
+                    showManualPreviewNavigationLoading(true, label, 'indeterminate');
+                } else {
+                    showManualPreviewNavigationLoading(true, 'Downloading…', knownBytes > 0 ? 0 : 'indeterminate');
+                }
+            }
+        };
+
         // fetchTrackedImageBlob: public/scripts/comp/utilities.js
         prefetch.promise = fetchTrackedImageBlob(
             imageUrl,
             knownBytes > 0 ? knownBytes : null,
-            null,
+            reportDownloadProgress,
             { headers: { 'X-Preview-Finalize': '1' } }
         ).then((fetchResult) => {
             if (session.aborted) {
@@ -5060,12 +5123,22 @@ class WebSocketClient {
                 this.ensureGenerationFinalPrefetch(modalType, filename, contentLength);
             }
 
+            if (modalType === 'manual' && typeof showManualPreviewNavigationLoading === 'function') {
+                const activeSession = this.getStreamingStepSession(modalType);
+                if (!activeSession || activeSession.steps.length === 0 || activeSession.playIndex >= activeSession.steps.length) {
+                    showManualPreviewNavigationLoading(true, 'Downloading…', contentLength ? 0 : 'indeterminate');
+                }
+            }
+
             await this.waitForStreamingStepsComplete(modalType);
 
             const activeSession = this.getStreamingStepSession(modalType);
             const prefetch = activeSession?.finalPrefetch;
 
             if (prefetch?.promise && !prefetch.ready) {
+                if (modalType === 'manual' && typeof showManualPreviewNavigationLoading === 'function') {
+                    showManualPreviewNavigationLoading(true, 'Downloading…', contentLength ? 0 : 'indeterminate');
+                }
                 try {
                     await prefetch.promise;
                 } catch (_e) { /* fall through to tracked fetch in preview manager */ }
@@ -5364,13 +5437,12 @@ class WebSocketClient {
                 this.markStreamingSessionServerComplete(requestId, data);
                 if (data.phase === 'complete' && data.filename && !data.isUpscaling) {
                     const found = this.findStreamingStepSessionByRequestId(requestId);
-                    if (found) {
-                        this.ensureGenerationFinalPrefetch(
-                            found.modalType,
-                            data.filename,
-                            data.contentLength
-                        );
-                    }
+                    const targetModalType = found ? found.modalType : (this.isSpellbookGenerationActive() ? 'spellbook' : 'manual');
+                    this.ensureGenerationFinalPrefetch(
+                        targetModalType,
+                        data.filename,
+                        data.contentLength
+                    );
                 }
             }
 
@@ -6446,6 +6518,118 @@ class WebSocketClient {
         }
     }
 
+    /**
+     * Sets up listeners for user activity across the window to track inactivity.
+     */
+    _setupInactivityTracking() {
+        if (this._inactivityListenersAttached) return;
+        this._inactivityListenersAttached = true;
+
+        const activityEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'wheel'];
+        for (const evt of activityEvents) {
+            window.addEventListener(evt, this._boundOnUserActivity, { passive: true });
+        }
+
+        this._startInactivityCheck();
+    }
+
+    /**
+     * Starts interval check for 2 hours of inactivity.
+     */
+    _startInactivityCheck() {
+        if (this.inactivityCheckInterval) {
+            clearInterval(this.inactivityCheckInterval);
+            this.inactivityCheckInterval = null;
+        }
+        this.inactivityCheckInterval = setInterval(() => {
+            this._checkInactivity();
+        }, 30000); // Check every 30 seconds
+    }
+
+    /**
+     * Records user activity, resetting inactivity timer and reconnecting if disconnected due to inactivity.
+     */
+    recordUserActivity() {
+        this._onUserActivity();
+    }
+
+    _onUserActivity() {
+        const now = Date.now();
+
+        // If we disconnected due to inactivity, reconnect immediately upon user return
+        if (this.disconnectedDueToInactivity) {
+            console.log('👁️ User activity detected after inactivity disconnect — reconnecting WebSocket...');
+            this.disconnectedDueToInactivity = false;
+            this.isManualClose = false;
+            this.lastUserActivity = now;
+            this.circuitBreaker = false;
+            this.reconnectAttempts = 0;
+            this.lastConnectionAttempt = 0;
+            if (!this.isConnected() && !this.isConnecting && !this.connectionLock) {
+                this.connect();
+            }
+            return;
+        }
+
+        // Throttle updates to lastUserActivity timestamp to at most once every 10 seconds
+        if (now - this.lastUserActivity > 10000) {
+            this.lastUserActivity = now;
+        }
+    }
+
+    /**
+     * Checks if client has been inactive for 2 hours and disconnects if so.
+     */
+    _checkInactivity() {
+        if (!this.isConnected()) {
+            return;
+        }
+
+        // Do not disconnect if generation or critical tasks are running
+        if (typeof this.isGenerationCloseBlocked === 'function' && this.isGenerationCloseBlocked()) {
+            this.lastUserActivity = Date.now();
+            return;
+        }
+
+        if (this.pendingRequests && this.pendingRequests.size > 0) {
+            for (const req of this.pendingRequests.values()) {
+                if (req.type !== 'ping') {
+                    this.lastUserActivity = Date.now();
+                    return;
+                }
+            }
+        }
+
+        const elapsed = Date.now() - this.lastUserActivity;
+        if (elapsed >= WebSocketClient.TIMEOUT_INACTIVITY) {
+            console.log(`⏱️ WebSocket disconnecting after 2 hours of inactivity (${Math.round(elapsed / 60000)} minutes idle)`);
+            this.disconnectedDueToInactivity = true;
+            this.disconnect(true);
+            this.updateWebSocketStatus('disconnected');
+            this._setConnectionPhase('idle', {
+                message: 'Disconnected after 2 hours of inactivity. Interact to reconnect.'
+            });
+        }
+    }
+
+    /**
+     * Returns current user activity and inactivity status.
+     * @returns {Object}
+     */
+    getInactivityStatus() {
+        const elapsed = Date.now() - this.lastUserActivity;
+        const remaining = Math.max(0, WebSocketClient.TIMEOUT_INACTIVITY - elapsed);
+        return {
+            lastUserActivity: this.lastUserActivity,
+            idleMs: elapsed,
+            idleMinutes: Math.round(elapsed / 60000),
+            remainingMs: remaining,
+            remainingMinutes: Math.round(remaining / 60000),
+            disconnectedDueToInactivity: this.disconnectedDueToInactivity,
+            timeoutMs: WebSocketClient.TIMEOUT_INACTIVITY
+        };
+    }
+
     async refreshServerCache() {
         return this.sendMessage('refresh_server_cache', {}, false); // Background operation
     }
@@ -6730,6 +6914,9 @@ class WebSocketClient {
      * @throws {Error} If WebSocket is not connected or request times out
      */
     sendMessage(type, data = {}, showBanner = true) {
+        if (type !== 'ping') {
+            this.recordUserActivity();
+        }
         const silentTicker = this.isSilentTickerRequest(type);
         const effectiveShowBanner = silentTicker ? false : showBanner;
 
@@ -6888,6 +7075,9 @@ class WebSocketClient {
 
     // Send message with custom request ID and callback
     sendMessageWithCallback(type, data = {}, callback = null, showBanner = true) {
+        if (type !== 'ping') {
+            this.recordUserActivity();
+        }
         return new Promise((resolve, reject) => {
             if (!this.isConnected()) {
                 console.error('❌ WebSocket not connected - rejecting request:', {

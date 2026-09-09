@@ -230,8 +230,6 @@
     box-shadow: 0 0 0 2px var(--primary-color);
 }
 
-.vibe-manager-gallery.selection-mode .vibe-manager-gallery-item {}
-
 .vibe-manager-gallery.selection-mode .vibe-manager-gallery-item:not(.selected):not(:hover) {
     opacity: 0.7;
 }

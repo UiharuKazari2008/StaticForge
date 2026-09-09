@@ -1,14 +1,24 @@
-.image-prompt-inspector {
+.image-prompt-inspector.modal,
+body.desktop-mode .image-prompt-inspector.modal {
     width: min(780px, calc(100vw - 32px));
     height: min(820px, calc(100vh - 48px));
+    max-height: calc(100vh - 48px);
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    overflow: hidden;
 }
 
 .image-prompt-inspector .image-prompt-inspector-content {
     display: flex;
     flex-direction: column;
+    flex: 1 1 0;
     min-height: 0;
+    height: 100%;
+    max-height: 100%;
     overflow: hidden;
     padding: 0;
+    box-sizing: border-box;
 }
 
 .image-prompt-inspector-summary {
@@ -109,9 +119,10 @@
 }
 
 .image-prompt-inspector-scroll-shell {
-    flex: 1;
+    flex: 1 1 0;
     min-height: 0;
     overflow: hidden;
+    position: relative;
 }
 
 .image-prompt-inspector-scrollable {
@@ -220,6 +231,141 @@
 .image-prompt-inspector-dynamic .info-item span:last-child {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+}
+
+/* Enable text selection and copying across text displays */
+.image-prompt-inspector,
+.image-prompt-inspector .image-prompt-inspector-content,
+.image-prompt-inspector .image-prompt-inspector-summary,
+.image-prompt-inspector .image-prompt-inspector-file,
+.image-prompt-inspector-filename,
+.image-prompt-inspector-subtitle,
+.image-prompt-inspector-section-title,
+.image-prompt-inspector-character,
+.image-prompt-inspector-character *,
+.image-prompt-inspector .blueprint-info,
+.image-prompt-inspector .blueprint-info *,
+.image-prompt-inspector .blueprint-info .meta-value,
+.image-prompt-inspector .blueprint-info .meta-value *,
+.image-prompt-inspector .blueprint-info label,
+.image-prompt-inspector .form-group,
+.image-prompt-inspector .form-group *,
+.image-prompt-inspector-expanders,
+.image-prompt-inspector-expanders *,
+.image-prompt-inspector-dynamic,
+.image-prompt-inspector-dynamic *,
+.image-prompt-inspector .info-item,
+.image-prompt-inspector .info-item *,
+.image-prompt-inspector .badge,
+.image-prompt-inspector .forgedata-badge,
+.image-prompt-inspector .forgedata-badge span,
+.image-prompt-inspector .custom-dropdown-badge,
+.image-prompt-inspector .scale-ratio-badge,
+.image-prompt-inspector .text-replacement-badge {
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    -moz-user-select: text !important;
+    -webkit-user-drag: auto !important;
+}
+
+.image-prompt-inspector-filename,
+.image-prompt-inspector-subtitle,
+.image-prompt-inspector-section-title,
+.image-prompt-inspector .blueprint-info label,
+.image-prompt-inspector .blueprint-info .meta-value,
+.image-prompt-inspector .blueprint-info .meta-value span,
+.image-prompt-inspector .blueprint-info .meta-value div,
+.image-prompt-inspector .form-group label,
+.image-prompt-inspector .text-replacement-full-value,
+.image-prompt-inspector .text-replacement-original,
+.image-prompt-inspector .text-replacement-selected,
+.image-prompt-inspector .info-item span,
+.image-prompt-inspector .info-item label,
+.image-prompt-inspector .info-label,
+.image-prompt-inspector-character strong,
+.image-prompt-inspector-empty,
+.image-prompt-inspector .forgedata-badge span,
+.image-prompt-inspector .scale-ratio-badge {
+    cursor: text !important;
+}
+
+.image-prompt-inspector textarea[readonly] {
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    -moz-user-select: text !important;
+    cursor: text !important;
+}
+
+/* Specific interactive/chrome elements that should NOT have text selection */
+.image-prompt-inspector button,
+.image-prompt-inspector button *,
+.image-prompt-inspector .toolbar-btn,
+.image-prompt-inspector .toggle-btn,
+.image-prompt-inspector .modal-window-title,
+.image-prompt-inspector .modal-window-title *,
+.image-prompt-inspector .modal-window-controls,
+.image-prompt-inspector .modal-window-controls *,
+.image-prompt-inspector .image-prompt-inspector-footer-label,
+.image-prompt-inspector .image-prompt-inspector-thumb,
+.image-prompt-inspector .custom-scrollbar,
+.image-prompt-inspector .custom-scrollbar-thumb,
+.image-prompt-inspector .icon-fa,
+.image-prompt-inspector .icon-image {
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    -moz-user-select: none !important;
+    cursor: default;
+}
+
+.image-prompt-inspector button,
+.image-prompt-inspector button *,
+.image-prompt-inspector .toolbar-btn,
+.image-prompt-inspector .toggle-btn,
+.image-prompt-inspector .close-btn,
+.image-prompt-inspector .minimize-btn,
+.image-prompt-inspector .modal-work-area-maximize {
+    cursor: pointer !important;
+}
+
+.image-prompt-inspector-footer {
+    display: flex;
+    align-items: center;
+    padding: var(--spacing-xs) var(--spacing-md);
+    border-top: 1px solid var(--glass-border-2);
+    background: var(--glass-layer-1);
+    min-height: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    z-index: 10;
+}
+
+.image-prompt-inspector-footer-label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.image-prompt-inspector-footer-spacer {
+    flex: 1;
+}
+
+.image-prompt-inspector-footer-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.image-prompt-inspector-footer-actions .toolbar-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .image-prompt-inspector-json {

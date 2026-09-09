@@ -1465,14 +1465,6 @@ function getPromptTextareaContextMenuConfig() {
                         }
                     },
                     {
-                        icon: 'fas fa-weight-scale',
-                        tooltip: 'Weight Rack',
-                        action: 'prompt-ctx-emphasis-groups',
-                        loadfn: (icon, target) => {
-                            icon.disabled = promptCtxIsCreativeDirectiveTextarea(target);
-                        }
-                    },
-                    {
                         icon: 'fas fa-distribute-spacing-horizontal',
                         tooltip: 'Split',
                         action: 'prompt-ctx-split-emphasis',
@@ -1526,7 +1518,7 @@ function getPromptTextareaContextMenuConfig() {
                 items: [
                     {
                         icon: 'fas fa-dial',
-                        text: 'Set Emphasis',
+                        text: 'Apply Emphasis...',
                         openOnHover: true,
                         loadfn: (menuItem, target) => {
                             menuItem.disabled = promptCtxIsCreativeDirectiveTextarea(target);
@@ -1537,8 +1529,16 @@ function getPromptTextareaContextMenuConfig() {
                         }
                     },
                     {
+                        icon: 'fas fa-weight-scale',
+                        text: 'Weight Rack',
+                        action: 'prompt-ctx-emphasis-groups',
+                        loadfn: (icon, target) => {
+                            icon.disabled = promptCtxIsCreativeDirectiveTextarea(target);
+                        }
+                    },
+                    {
                         icon: 'fas fa-knife-kitchen',
-                        text: 'Subdivide Emphasis',
+                        text: 'Subdivide',
                         action: 'prompt-ctx-split-emphasis-commas',
                         loadfn: (menuItem, target) => {
                             if (promptCtxIsCreativeDirectiveTextarea(target)) {

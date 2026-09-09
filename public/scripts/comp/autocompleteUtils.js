@@ -6617,6 +6617,7 @@ function handleCharacterAutocompleteBeforeinput(e) {
     if (typeof isTextInputComposing === 'function' && isTextInputComposing(target, e)) return;
     if (!isCharacterAutocompleteOverlayOpen()) return;
     if (currentCharacterAutocompleteTarget && target !== currentCharacterAutocompleteTarget) return;
+    if (!isAutofillOverlayEnteredForNavigation()) return;
 
     e.preventDefault();
     applyActiveAutofillEnterSelection(target);

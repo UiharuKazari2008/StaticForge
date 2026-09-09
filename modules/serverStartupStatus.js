@@ -16,7 +16,7 @@ const BOOT_PHASES = [
     { id: 'generation_quips_auto_update_init', message: 'Starting generation quips scheduler…', weight: 2 },
     { id: 'unix_socket_init', message: 'Starting admin CLI socket…', weight: 1 },
     { id: 'finalizing', message: 'Finalizing server setup…', weight: 2 },
-    { id: 'ready', message: 'Server ready', weight: 0 }
+    { id: 'ready', message: 'Starting Dreamscape…', weight: 0 }
 ];
 
 const GLOBAL_RESOURCES_STEPS = [

@@ -737,15 +737,38 @@ function explorePngFilename(post) {
 }
 
 async function exploreCopyRawImage(post) {
+    const toastId = showGlassToast ? showGlassToast('info', 'Copying', 'Copying data to clipboard...', true, false, '<i class="fas fa-clipboard"></i>') : null;
     try {
         const blob = await exploreFetchPngBlob(post);
         const name = explorePngFilename(post);
         // copyBlobToClipboard: public/scripts/utils/dreamscapeClipboard.js
         await copyBlobToClipboard(blob, { name });
-        showGlassToast('success', 'Agora', `Image copied (${formatClipboardBlobSize(blob)})`, false, 3000, '<i class="fas fa-clipboard-check"></i>');
+        if (toastId && typeof updateGlassToastComplete === 'function') {
+            updateGlassToastComplete(toastId, {
+                type: 'success',
+                title: 'Agora',
+                message: `Image copied (${formatClipboardBlobSize(blob)})`,
+                customIcon: '<i class="fas fa-clipboard-check"></i>',
+                showProgress: false,
+                timeout: 3000
+            });
+        } else if (showGlassToast) {
+            showGlassToast('success', 'Agora', `Image copied (${formatClipboardBlobSize(blob)})`, false, 3000, '<i class="fas fa-clipboard-check"></i>');
+        }
     } catch (err) {
         console.error('Agora copy image', err);
-        showGlassToast('error', 'Agora', err.message || 'Failed to copy image', false, 4000);
+        if (toastId && typeof updateGlassToastComplete === 'function') {
+            updateGlassToastComplete(toastId, {
+                type: 'error',
+                title: 'Agora',
+                message: err.message || 'Failed to copy image',
+                customIcon: '<i class="fas fa-clipboard"></i>',
+                showProgress: false,
+                timeout: 4000
+            });
+        } else if (showGlassToast) {
+            showGlassToast('error', 'Agora', err.message || 'Failed to copy image', false, 4000);
+        }
     }
 }
 

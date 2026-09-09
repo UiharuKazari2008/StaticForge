@@ -1622,6 +1622,7 @@ class SpellbookModalManager {
     async handleCopy() {
         if (!this.previewImage || this.previewImage.classList.contains('hidden')) return;
 
+        const toastId = window.showGlassToast ? window.showGlassToast('info', 'Copying', 'Copying data to clipboard...', true, false, '<i class="fas fa-clipboard"></i>') : null;
         try {
             // Get image as blob
             const response = await fetch(this.previewImage.src);
@@ -1631,12 +1632,30 @@ class SpellbookModalManager {
             await copyBlobToClipboard(blob, { name: 'spellbook-image.png' });
 
             // Show success message
-            if (window.showGlassToast) {
+            if (toastId && typeof updateGlassToastComplete === 'function') {
+                updateGlassToastComplete(toastId, {
+                    type: 'success',
+                    title: 'Image Copied',
+                    message: 'Image copied to clipboard!',
+                    customIcon: '<i class="fas fa-check"></i>',
+                    showProgress: false,
+                    timeout: 3000
+                });
+            } else if (window.showGlassToast) {
                 window.showGlassToast('success', 'Image Copied', 'Image copied to clipboard!', false, 3000, '<i class="fas fa-check"></i>');
             }
         } catch (error) {
             console.error('Failed to copy image:', error);
-            if (window.showGlassToast) {
+            if (toastId && typeof updateGlassToastComplete === 'function') {
+                updateGlassToastComplete(toastId, {
+                    type: 'error',
+                    title: 'Copy Failed',
+                    message: 'Failed to copy image to clipboard',
+                    customIcon: '<i class="fas fa-exclamation-triangle"></i>',
+                    showProgress: false,
+                    timeout: 5000
+                });
+            } else if (window.showGlassToast) {
                 window.showGlassToast('error', 'Copy Failed', 'Failed to copy image to clipboard', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
             }
         }

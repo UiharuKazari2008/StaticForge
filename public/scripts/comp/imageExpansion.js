@@ -1205,137 +1205,381 @@ function wireEnhanceDialog(dialog, scaleOptions) {
     updateEnhanceScaleHint(scaleHidden?.value || '2');
 }
 
-function openEnhanceFromImage(image) {
+function openEnhanceFromImage(image, options = {}) {
     const filename = getEnhanceSourceFilename(image);
     if (!filename) {
         showGlassToast('error', 'Enhance', 'No image filename provided', false, 5000, '<i class="nai-cross"></i>');
         return;
     }
-    return openEnhanceModal(filename, getEnhanceSourceDimensions(image), image);
+    return openEnhanceModal(filename, getEnhanceSourceDimensions(image), image, options);
 }
 
-async function openEnhanceModal(imageFilename, imageDimensions = null, image = null) {
+async function openEnhanceModal(imageFilename, imageDimensions = null, image = null, options = {}) {
     if (!imageFilename) {
         showGlassToast('error', 'Enhance', 'No image filename provided', false, 5000, '<i class="nai-cross"></i>');
         return;
     }
 
-    const scaleOptions = getEnhanceScaleOptions(image);
-    const dimensionText = imageDimensions?.width && imageDimensions?.height
-        ? `${imageDimensions.width} × ${imageDimensions.height}`
-        : 'the source dimensions';
-    const confirmation = showConfirmationDialog(
-        `<div class="enhance-dialog">
-            <p>Enhance this image from ${dimensionText}?</p>
+    const isStudio = Boolean(options && options.isStudio);
+    let workingImage = image;
+    let workingFilename = imageFilename;
+    let workingDimensions = imageDimensions || getEnhanceSourceDimensions(workingImage);
+
+    const getImageId = (img) => {
+        if (!img) return '';
+        return img.filename || img.original || img.upscaled || (img.metadata && (img.metadata.filename || img.metadata.title)) || '';
+    };
+
+    const getWorkingPreviewUrl = () => {
+        if (workingImage?.src && typeof workingImage.src === 'string' && workingImage.src.startsWith('blob:')) {
+            return workingImage.src;
+        }
+        return workingFilename ? localGalleryImageUrl(workingFilename) : '';
+    };
+
+    const getDimensionText = (dims) => {
+        return dims?.width && dims?.height
+            ? `${dims.width} × ${dims.height}`
+            : 'the source dimensions';
+    };
+
+    const scaleOptions = getEnhanceScaleOptions(workingImage);
+    const initialDimensionText = getDimensionText(workingDimensions);
+
+    const controlsHtml = `
+        <p class="enhance-dialog-question">Enhance this image from ${initialDimensionText}?</p>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="enhanceMagnitudeInput">Magnitude</label>
+                <input type="number" id="enhanceMagnitudeInput" class="form-control hover-show colored" min="1.0" max="5.5" step="0.5" value="3.0">
+            </div>
+            <div class="form-group">
+                <label>Upscale amount</label>
+                <button type="button" id="enhanceScaleBtn" class="custom-dropdown-btn hover-show colored">
+                    <span id="enhanceScaleSelected">2×</span>
+                </button>
+                <input type="hidden" id="enhanceScaleHidden" value="2">
+            </div>
+            <div class="form-group enhance-advanced-toggle-group">
+                <label>&nbsp;</label>
+                <button type="button" id="enhanceAdvancedToggle" class="btn-secondary" title="Toggle Advanced Controls">
+                    <i class="fas fa-wrench"></i>
+                </button>
+            </div>
+        </div>
+        <div id="enhanceAdvancedOptions" class="stage-advanced-controls hidden">
             <div class="form-row">
                 <div class="form-group">
-                    <label for="enhanceMagnitudeInput">Magnitude</label>
-                    <input type="number" id="enhanceMagnitudeInput" class="form-control hover-show colored" min="1.0" max="5.5" step="0.5" value="3.0">
+                    <label>Strength</label>
+                    <div class="percentage-input-container hover-show colored inherited">
+                        <span id="enhanceStrengthOverlay" class="percentage-input-overlay">50%</span>
+                        <input type="number" id="enhanceStrengthInput" class="form-control" min="0.00" max="1.00" step="0.01">
+                    </div>
                 </div>
                 <div class="form-group">
-                    <label>Upscale amount</label>
-                    <button type="button" id="enhanceScaleBtn" class="custom-dropdown-btn hover-show colored">
-                        <span id="enhanceScaleSelected">2×</span>
-                    </button>
-                    <input type="hidden" id="enhanceScaleHidden" value="2">
-                </div>
-                <div class="form-group enhance-advanced-toggle-group">
-                    <label>&nbsp;</label>
-                    <button type="button" id="enhanceAdvancedToggle" class="btn-secondary" title="Toggle Advanced Controls">
-                        <i class="fas fa-wrench"></i>
-                    </button>
-                </div>
-            </div>
-            <div id="enhanceAdvancedOptions" class="stage-advanced-controls hidden">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Strength</label>
-                        <div class="percentage-input-container hover-show colored inherited">
-                            <span id="enhanceStrengthOverlay" class="percentage-input-overlay">50%</span>
-                            <input type="number" id="enhanceStrengthInput" class="form-control" min="0.00" max="1.00" step="0.01">
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>Noise</label>
-                        <div class="percentage-input-container hover-show colored inherited">
-                            <span id="enhanceNoiseOverlay" class="percentage-input-overlay">0%</span>
-                            <input type="number" id="enhanceNoiseInput" class="form-control" min="0.00" max="1.00" step="0.01">
-                        </div>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Steps</label>
-                        <input type="number" id="enhanceStepsInput" class="form-control hover-show colored" min="1" max="50" placeholder="Inherited">
-                    </div>
-                    <div class="form-group">
-                        <label>Guidance</label>
-                        <input type="number" id="enhanceGuidanceInput" class="form-control hover-show colored" min="0" max="10" step="0.1" placeholder="Inherited">
-                    </div>
-                    <div class="form-group">
-                        <label>Rescale</label>
-                        <div class="percentage-input-container hover-show colored">
-                            <span id="enhanceRescaleOverlay" class="percentage-input-overlay">0%</span>
-                            <input type="number" id="enhanceRescaleInput" class="form-control" min="0" max="1" step="0.01" placeholder="Inherited">
-                        </div>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Sampler</label>
-                        <button type="button" id="enhanceSamplerBtn" class="custom-dropdown-btn hover-show colored">
-                            <span id="enhanceSamplerSelected">Inherited</span>
-                        </button>
-                        <input type="hidden" id="enhanceSamplerHidden" value="">
-                    </div>
-                    <div class="form-group">
-                        <label>Noise Scheduler</label>
-                        <button type="button" id="enhanceNoiseSchedulerBtn" class="custom-dropdown-btn hover-show colored">
-                            <span id="enhanceNoiseSchedulerSelected">Inherited</span>
-                        </button>
-                        <input type="hidden" id="enhanceNoiseSchedulerHidden" value="">
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Model</label>
-                        <button type="button" id="enhanceModelBtn" class="custom-dropdown-btn hover-show colored">
-                            <span id="enhanceModelSelected">Inherited</span>
-                        </button>
-                        <input type="hidden" id="enhanceModelHidden" value="">
-                    </div>
-                    <div class="form-group">
-                        <label>Seed</label>
-                        <input type="number" id="enhanceSeedInput" class="form-control hover-show colored" placeholder="Random">
+                    <label>Noise</label>
+                    <div class="percentage-input-container hover-show colored inherited">
+                        <span id="enhanceNoiseOverlay" class="percentage-input-overlay">0%</span>
+                        <input type="number" id="enhanceNoiseInput" class="form-control" min="0.00" max="1.00" step="0.01">
                     </div>
                 </div>
             </div>
-            <small id="enhanceScaleHint">Enhance reprocesses the image with its prompt and saves a new gallery image.</small>
-        </div>`,
-        [
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Steps</label>
+                    <input type="number" id="enhanceStepsInput" class="form-control hover-show colored" min="1" max="50" placeholder="Inherited">
+                </div>
+                <div class="form-group">
+                    <label>Guidance</label>
+                    <input type="number" id="enhanceGuidanceInput" class="form-control hover-show colored" min="0" max="10" step="0.1" placeholder="Inherited">
+                </div>
+                <div class="form-group">
+                    <label>Rescale</label>
+                    <div class="percentage-input-container hover-show colored">
+                        <span id="enhanceRescaleOverlay" class="percentage-input-overlay">0%</span>
+                        <input type="number" id="enhanceRescaleInput" class="form-control" min="0" max="1" step="0.01" placeholder="Inherited">
+                    </div>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Sampler</label>
+                    <button type="button" id="enhanceSamplerBtn" class="custom-dropdown-btn hover-show colored">
+                        <span id="enhanceSamplerSelected">Inherited</span>
+                    </button>
+                    <input type="hidden" id="enhanceSamplerHidden" value="">
+                </div>
+                <div class="form-group">
+                    <label>Noise Scheduler</label>
+                    <button type="button" id="enhanceNoiseSchedulerBtn" class="custom-dropdown-btn hover-show colored">
+                        <span id="enhanceNoiseSchedulerSelected">Inherited</span>
+                    </button>
+                    <input type="hidden" id="enhanceNoiseSchedulerHidden" value="">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Model</label>
+                    <button type="button" id="enhanceModelBtn" class="custom-dropdown-btn hover-show colored">
+                        <span id="enhanceModelSelected">Inherited</span>
+                    </button>
+                    <input type="hidden" id="enhanceModelHidden" value="">
+                </div>
+                <div class="form-group">
+                    <label>Seed</label>
+                    <input type="number" id="enhanceSeedInput" class="form-control hover-show colored" placeholder="Random">
+                </div>
+            </div>
+        </div>
+        <small id="enhanceScaleHint">Enhance reprocesses the image with its prompt and saves a new gallery image.</small>
+    `;
+
+    const dialogHtml = isStudio
+        ? `<div class="enhance-dialog studio-mode">
+            <div class="enhance-dialog-content-row">
+                <div class="enhance-dialog-controls-pane">
+                    ${controlsHtml}
+                </div>
+                <div class="enhance-dialog-preview-pane">
+                    <div class="enhance-preview-container">
+                        <img id="enhancePreviewThumbnail" src="${getWorkingPreviewUrl()}" alt="Enhance preview">
+                    </div>
+                    <div class="enhance-preview-info">
+                        <span id="enhancePreviewDimensions">${initialDimensionText}</span>
+                        <span id="enhancePreviewFilename" title="${workingFilename}">${workingFilename}</span>
+                    </div>
+                </div>
+            </div>
+        </div>`
+        : `<div class="enhance-dialog">
+            ${controlsHtml}
+        </div>`;
+
+    const executeEnhance = async (enhanceValues, targetFilename, targetImage, submitBtn) => {
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.classList.add('loading');
+        }
+
+        const isMax = enhanceValues.scale === 'max';
+        const scaleLabel = isMax ? 'Max' : `${enhanceValues.scale}×`;
+        const enhanceToastId = showGlassToast(
+            'info',
+            isMax ? 'Max Enhancing' : 'Enhancing',
+            isMax ? 'Enhancing image at its source dimensions...' : `Enhancing image at ${scaleLabel}...`,
+            true,
+            false,
+            '<i class="fas fa-wand-magic-sparkles"></i>'
+        );
+
+        try {
+            const { scale, ...rest } = enhanceValues;
+            const result = await wsClient.enhanceImage(targetFilename, scale, activeWorkspace || null, rest);
+            updateGlassToastComplete(enhanceToastId, {
+                type: 'success',
+                title: isMax ? 'Max Enhance Complete' : 'Enhance Complete',
+                message: 'Enhanced image saved to the gallery.',
+                customIcon: '<i class="fas fa-wand-magic-sparkles"></i>',
+                showProgress: false
+            });
+
+            const imageSrc = localGalleryImageUrl(result.filename);
+            const mockResponse = {
+                headers: {
+                    get: (headerName) => {
+                        if (headerName === 'X-Generated-Filename') return result.filename;
+                        if (headerName === 'X-Seed') return result.seed;
+                        return null;
+                    }
+                }
+            };
+            await handleImageResult(imageSrc, undefined, result.seed, mockResponse, result.metadata);
+        } catch (error) {
+            updateGlassToastComplete(enhanceToastId, {
+                type: 'error',
+                title: isMax ? 'Max Enhance Failed' : 'Enhance Failed',
+                message: error.message || 'Failed to enhance image',
+                customIcon: '<i class="nai-cross"></i>',
+                showProgress: false
+            });
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('loading');
+            }
+            if (isStudio) {
+                checkDivergence();
+            }
+        }
+    };
+
+    const checkDivergence = () => {
+        if (!isStudio) return;
+        const currentStudioId = getImageId(window.currentManualPreviewImage);
+        const currentWorkingId = getImageId(workingImage);
+        const useImgBtn = document.getElementById('enhanceUseStudioImageBtn');
+        if (!useImgBtn) return;
+        if (currentStudioId && currentWorkingId && currentStudioId !== currentWorkingId) {
+            useImgBtn.classList.remove('hidden');
+        } else {
+            useImgBtn.classList.add('hidden');
+        }
+    };
+
+    const updateWorkingImage = (newImage) => {
+        if (!newImage) return;
+        workingImage = newImage;
+        workingFilename = getEnhanceSourceFilename(workingImage);
+        workingDimensions = getEnhanceSourceDimensions(workingImage);
+        const dimsText = getDimensionText(workingDimensions);
+
+        const dialogEl = document.getElementById('confirmationDialog');
+        if (!dialogEl) return;
+
+        const thumb = dialogEl.querySelector('#enhancePreviewThumbnail');
+        if (thumb) {
+            thumb.src = getWorkingPreviewUrl();
+        }
+        const dimsEl = dialogEl.querySelector('#enhancePreviewDimensions');
+        if (dimsEl) {
+            dimsEl.textContent = dimsText;
+        }
+        const fnEl = dialogEl.querySelector('#enhancePreviewFilename');
+        if (fnEl) {
+            fnEl.textContent = workingFilename;
+            fnEl.title = workingFilename;
+        }
+        const questionEl = dialogEl.querySelector('.enhance-dialog-question');
+        if (questionEl) {
+            questionEl.textContent = `Enhance this image from ${dimsText}?`;
+        }
+
+        const updatedScaleOptions = getEnhanceScaleOptions(workingImage);
+        wireEnhanceDialog(dialogEl, updatedScaleOptions);
+        checkDivergence();
+    };
+
+    const dialogOptions = isStudio
+        ? [
+            {
+                id: 'enhancePromptBtn',
+                text: 'Prompt',
+                icon: 'fas fa-align-left',
+                className: 'btn-secondary',
+                title: 'Inspect prompt and metadata',
+                closeOnClick: false,
+                onClick: () => {
+                    if (window.featureLoader) {
+                        window.featureLoader.loadFeature('image_prompt_inspector').then(() => {
+                            if (typeof openImagePromptInspector === 'function') {
+                                openImagePromptInspector(workingImage);
+                            }
+                        });
+                    } else if (typeof openImagePromptInspector === 'function') {
+                        openImagePromptInspector(workingImage);
+                    }
+                }
+            },
+            {
+                id: 'enhanceUseStudioImageBtn',
+                text: 'Use Image',
+                icon: 'fas fa-arrow-down-to-bracket',
+                className: 'btn-secondary',
+                title: 'Update working image to the current studio image',
+                hidden: true,
+                closeOnClick: false,
+                onClick: () => {
+                    if (window.currentManualPreviewImage) {
+                        updateWorkingImage(window.currentManualPreviewImage);
+                    }
+                }
+            },
+            {
+                id: 'enhanceSubmitBtn',
+                text: 'Enhance',
+                className: 'btn-primary',
+                icon: 'fas fa-wand-magic-sparkles',
+                closeOnClick: false,
+                onClick: async (e, confirmationDialog) => {
+                    const dialogEl = document.getElementById('confirmationDialog');
+                    const enhanceValues = collectEnhanceDialogValues(dialogEl);
+                    if (!enhanceValues) return;
+                    await executeEnhance(enhanceValues, workingFilename, workingImage, e.currentTarget);
+                }
+            },
+            {
+                id: 'enhanceCloseBtn',
+                text: 'Close',
+                value: false,
+                className: 'btn-secondary'
+            }
+        ]
+        : [
             { text: 'Enhance', value: true, className: 'btn-primary', icon: 'fas fa-wand-magic-sparkles' },
             { text: 'Cancel', value: false, className: 'btn-secondary' }
-        ],
+        ];
+
+    const confirmation = showConfirmationDialog(
+        dialogHtml,
+        dialogOptions,
         null,
         {
             title: 'Enhance',
             icon: 'fas fa-wand-magic-sparkles',
-            width: 520,
+            width: isStudio ? 740 : 520,
             onDialogReady: (signal) => {
                 const dialogEl = document.getElementById('confirmationDialog');
                 if (!dialogEl) return;
                 dialogEl.classList.add('enhance-dialog-modal');
+                if (isStudio) {
+                    dialogEl.classList.add('studio-mode');
+                    const controlsEl = dialogEl.querySelector('#confirmationControls');
+                    if (controlsEl) {
+                        let leftContainer = controlsEl.querySelector('.confirmation-controls-left');
+                        let rightContainer = controlsEl.querySelector('.confirmation-controls-right');
+                        if (!leftContainer) {
+                            leftContainer = document.createElement('div');
+                            leftContainer.className = 'confirmation-controls-left';
+                            controlsEl.appendChild(leftContainer);
+                        }
+                        if (!rightContainer) {
+                            rightContainer = document.createElement('div');
+                            rightContainer.className = 'confirmation-controls-right';
+                            controlsEl.appendChild(rightContainer);
+                        }
+                        const promptBtn = document.getElementById('enhancePromptBtn');
+                        const useImgBtn = document.getElementById('enhanceUseStudioImageBtn');
+                        const submitBtn = document.getElementById('enhanceSubmitBtn');
+                        const closeBtn = document.getElementById('enhanceCloseBtn');
+                        if (promptBtn) leftContainer.appendChild(promptBtn);
+                        if (useImgBtn) leftContainer.appendChild(useImgBtn);
+                        if (submitBtn) rightContainer.appendChild(submitBtn);
+                        if (closeBtn) rightContainer.appendChild(closeBtn);
+                    }
+                }
+
+                let divergenceTimer = null;
+                const handleManualPreviewUpdate = () => checkDivergence();
+
+                if (isStudio) {
+                    divergenceTimer = setInterval(checkDivergence, 500);
+                    document.addEventListener('manualPreviewUpdated', handleManualPreviewUpdate);
+                    checkDivergence();
+                }
+
                 if (signal) {
                     signal.addEventListener('abort', () => {
                         teardownEnhanceDialogClickMenus();
-                        dialogEl.classList.remove('enhance-dialog-modal');
+                        dialogEl.classList.remove('enhance-dialog-modal', 'studio-mode');
+                        if (divergenceTimer) clearInterval(divergenceTimer);
+                        document.removeEventListener('manualPreviewUpdated', handleManualPreviewUpdate);
                     }, { once: true });
                 }
                 wireEnhanceDialog(dialogEl, scaleOptions);
             },
             resolveValue: (value, dialogEl) => {
                 teardownEnhanceDialogClickMenus();
-                dialogEl?.classList.remove('enhance-dialog-modal');
+                dialogEl?.classList.remove('enhance-dialog-modal', 'studio-mode');
                 if (!value) return false;
                 return collectEnhanceDialogValues(dialogEl);
             }
@@ -1343,51 +1587,9 @@ async function openEnhanceModal(imageFilename, imageDimensions = null, image = n
     );
 
     const confirmed = await confirmation;
-    if (!confirmed) return;
+    if (!confirmed || isStudio) return;
 
-    const enhanceOptions = confirmed;
-    const isMax = enhanceOptions.scale === 'max';
-    const scaleLabel = isMax ? 'Max' : `${enhanceOptions.scale}×`;
-    const enhanceToastId = showGlassToast(
-        'info',
-        isMax ? 'Max Enhancing' : 'Enhancing',
-        isMax ? 'Enhancing image at its source dimensions...' : `Enhancing image at ${scaleLabel}...`,
-        true,
-        false,
-        '<i class="fas fa-wand-magic-sparkles"></i>'
-    );
-
-    try {
-        const { scale, ...rest } = enhanceOptions;
-        const result = await wsClient.enhanceImage(imageFilename, scale, activeWorkspace || null, rest);
-        updateGlassToastComplete(enhanceToastId, {
-            type: 'success',
-            title: isMax ? 'Max Enhance Complete' : 'Enhance Complete',
-            message: 'Enhanced image saved to the gallery.',
-            customIcon: '<i class="fas fa-wand-magic-sparkles"></i>',
-            showProgress: false
-        });
-
-        const imageSrc = localGalleryImageUrl(result.filename);
-        const mockResponse = {
-            headers: {
-                get: (headerName) => {
-                    if (headerName === 'X-Generated-Filename') return result.filename;
-                    if (headerName === 'X-Seed') return result.seed;
-                    return null;
-                }
-            }
-        };
-        await handleImageResult(imageSrc, undefined, result.seed, mockResponse, result.metadata);
-    } catch (error) {
-        updateGlassToastComplete(enhanceToastId, {
-            type: 'error',
-            title: isMax ? 'Max Enhance Failed' : 'Enhance Failed',
-            message: error.message || 'Failed to enhance image',
-            customIcon: '<i class="nai-cross"></i>',
-            showProgress: false
-        });
-    }
+    await executeEnhance(confirmed, imageFilename, image, null);
 }
 
 // Close image expansion modal

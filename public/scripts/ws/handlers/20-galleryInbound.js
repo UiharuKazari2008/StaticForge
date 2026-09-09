@@ -106,8 +106,14 @@ function appendNewGalleryItems(newItems) {
         newItem.classList.add('gallery-placeholder', 'fade-in');
         gallery.insertBefore(newItem, gallery.children[0]);
 
-        newItem.addEventListener('animationend', function handler() {
+        let finished = false;
+        const onDone = () => {
+            if (finished) return;
+            finished = true;
             newItem.classList.remove('fade-in');
+            if (typeof ensureGalleryItemComplete === 'function') {
+                ensureGalleryItemComplete(newItem, imageData, i);
+            }
             newItem.classList.remove('gallery-placeholder');
             if (!galleryItemHasImageWork(newItem)) {
                 addImgToGalleryItemAsync(newItem, imageData);
@@ -118,7 +124,11 @@ function appendNewGalleryItems(newItems) {
                 newItem.removeEventListener('animationend', slideHandler);
             });
             newItem.removeEventListener('animationend', handler);
-        });
+            clearTimeout(fallbackTimer);
+        };
+        const handler = () => onDone();
+        newItem.addEventListener('animationend', handler);
+        const fallbackTimer = setTimeout(onDone, 400);
     }
 
     reindexGallery();

@@ -150,9 +150,22 @@ function buildCompareDataFromPreview() {
     }
     const dims = getCurrentPreviewDimensions();
     const img = window.currentManualPreviewImage;
-    const chainSourceFile = img ? (img.original || img.upscaled || img.filename || null) : null;
+    const chainSourceFile = img
+        ? (img.original || img.upscaled || img.filename || img.base || null)
+        : (window.lastGeneration?.filename || window.lastGeneratedImageName || null);
+
+    // Prefer stable persistent gallery image URL over ephemeral blob: URL
+    let url = null;
+    if (chainSourceFile) {
+        url = localGalleryImageUrl(chainSourceFile);
+    } else if (previewImage.dataset.manualPreviewUrl && !previewImage.dataset.manualPreviewUrl.startsWith('blob:')) {
+        url = previewImage.dataset.manualPreviewUrl;
+    } else {
+        url = previewImage.src;
+    }
+
     return {
-        url: previewImage.src,
+        url,
         width: dims?.width || 0,
         height: dims?.height || 0,
         chainSourceFile
@@ -686,8 +699,10 @@ function getCompareContextMenuConfig() {
                     const container = document.createElement('div');
                     container.className = 'compare-menu-preview-container';
                     container.style.cssText = 'padding: 4px 8px 0 8px; display: flex; justify-content: center; align-items: center; min-height: 120px; flex-shrink: 0;';
+                    const chainFile = compareSourceImageData.chainSourceFile;
+                    const displayUrl = (chainFile ? localGalleryImageUrl(chainFile) : null) || compareSourceImageData.url;
                     const img = document.createElement('img');
-                    img.src = compareSourceImageData.url;
+                    img.src = displayUrl;
                     img.alt = 'Compare source';
                     img.style.cssText = 'max-width: 100%; max-height: 175px; border-radius: 4px; object-fit: contain; cursor: pointer;';
                     img.loading = 'lazy';
@@ -696,10 +711,10 @@ function getCompareContextMenuConfig() {
                         if (contextMenu) {
                             contextMenu.hideMenu();
                         }
-                        const chainFile = compareSourceImageData.chainSourceFile;
+                        const viewerUrl = (chainFile ? localGalleryImageUrl(chainFile) : null) || compareSourceImageData.url;
                         // openGalleryImageInViewer: public/scripts/comp/imageViewer.js
                         openGalleryImageInViewer({
-                            url: compareSourceImageData.url,
+                            url: viewerUrl,
                             width: compareSourceImageData.width || img.naturalWidth || 0,
                             height: compareSourceImageData.height || img.naturalHeight || 0,
                             filename: chainFile || 'compare-source',

@@ -164,8 +164,20 @@ class ImagePromptInspector {
         this.characters = this.find('imagePromptInspectorCharacters');
         this.parameters = this.find('imagePromptInspectorParameters');
         this.expanders = this.find('imagePromptInspectorExpanders');
+        this.expandersSection = this.find('imagePromptInspectorExpandersSection')
+            || this.expanders?.closest('.image-prompt-inspector-section');
         this.dynamic = this.find('imagePromptInspectorDynamic');
+        this.dynamicSection = this.find('imagePromptInspectorDynamicSection')
+            || this.dynamic?.closest('.image-prompt-inspector-section');
         this.scrollShell = this.find('imagePromptInspectorScrollShell');
+
+        // Footer copy buttons
+        this.copyFilenameBtn = this.find('imagePromptInspectorCopyFilename');
+        this.copyPromptInputBtn = this.find('imagePromptInspectorCopyPromptInput');
+        this.copyPromptCompiledBtn = this.find('imagePromptInspectorCopyPromptCompiled');
+        this.copyChangeJsonBtn = this.find('imagePromptInspectorCopyChangeJson');
+        this.copyRawJsonBtn = this.find('imagePromptInspectorCopyRawJson');
+        this.copyImageWithMetaBtn = this.find('imagePromptInspectorCopyImageWithMeta');
     }
 
     getDisplayFilename() {
@@ -247,6 +259,237 @@ class ImagePromptInspector {
         });
 
         this.element.querySelector('.close-btn').addEventListener('click', () => this.close());
+
+        // Copy footer actions
+        this.copyFilenameBtn?.addEventListener('click', async () => {
+            const name = this.getDisplayFilename();
+            if (!name) return;
+            // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
+            await copyTextToClipboard(name);
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('success', 'Copied', 'Filename copied to clipboard', false, 2500, '<i class="fas fa-file-signature"></i>');
+            }
+        });
+
+        this.copyPromptInputBtn?.addEventListener('click', async () => {
+            const fields = this.getPromptFields('input');
+            const text = fields.prompt || this.metadata.input_prompt || this.metadata.prompt || '';
+            if (!text) {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('info', 'Prompt', 'No input prompt available', false, 2500, '<i class="fas fa-align-left"></i>');
+                }
+                return;
+            }
+            await copyTextToClipboard(text);
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('success', 'Copied', 'Input prompt copied to clipboard', false, 2500, '<i class="fas fa-align-left"></i>');
+            }
+        });
+
+        this.copyPromptCompiledBtn?.addEventListener('click', async () => {
+            const fields = this.getPromptFields('computed');
+            const compiledPrompt = typeof this.metadata.compiled_prompt === 'string'
+                ? this.metadata.compiled_prompt
+                : this.metadata.compiled_prompt?.prompt;
+            const text = fields.prompt || compiledPrompt || this.metadata.prompt || '';
+            if (!text) {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('info', 'Prompt', 'No compiled prompt available', false, 2500, '<i class="fas fa-hammer"></i>');
+                }
+                return;
+            }
+            await copyTextToClipboard(text);
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('success', 'Copied', 'Compiled prompt copied to clipboard', false, 2500, '<i class="fas fa-hammer"></i>');
+            }
+        });
+
+        this.copyChangeJsonBtn?.addEventListener('click', async () => {
+            const changeJson = this.buildChangeJson();
+            const text = JSON.stringify(changeJson, null, 2);
+            await copyTextToClipboard(text);
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('success', 'Copied', 'Change JSON copied to clipboard', false, 2500, '<i class="fas fa-code-compare"></i>');
+            }
+        });
+
+        this.copyRawJsonBtn?.addEventListener('click', async () => {
+            const text = JSON.stringify(this.metadata, null, 2);
+            await copyTextToClipboard(text);
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('success', 'Copied', 'Raw metadata JSON copied to clipboard', false, 2500, '<i class="fas fa-brackets-curly"></i>');
+            }
+        });
+
+        this.copyImageWithMetaBtn?.addEventListener('click', () => {
+            if (typeof copyImageToClipboard === 'function') {
+                copyImageToClipboard(this.metadata);
+            } else if (typeof window.copyImageToClipboard === 'function') {
+                window.copyImageToClipboard(this.metadata);
+            } else {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('error', 'Copy Failed', 'Clipboard copy routine unavailable', false, 3000);
+                }
+            }
+        });
+
+        const copyValueWithToast = async (value, label = 'Copied') => {
+            const cleanText = (value || '').trim();
+            if (!cleanText) return;
+            // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
+            await copyTextToClipboard(cleanText);
+            if (typeof showGlassToast === 'function') {
+                const preview = cleanText.length > 32 ? `${cleanText.slice(0, 32)}…` : cleanText;
+                showGlassToast('success', label, `"${preview}" copied to clipboard`, false, 2000, '<i class="fas fa-copy"></i>');
+            }
+        };
+
+        this.filename?.addEventListener('dblclick', async () => {
+            await copyValueWithToast(this.getDisplayFilename(), 'Filename Copied');
+        });
+
+        this.subtitle?.addEventListener('dblclick', async () => {
+            const text = this.subtitle?.innerText || this.subtitle?.textContent;
+            await copyValueWithToast(text, 'Model / Dimensions Copied');
+        });
+
+        this.parameters?.addEventListener('dblclick', async (event) => {
+            const spanOrLabel = event.target.closest('span, label, .meta-value');
+            const target = spanOrLabel || event.target.closest('.form-group');
+            if (!target) return;
+            const text = (target.innerText || target.textContent || '').trim();
+            await copyValueWithToast(text, 'Parameter Copied');
+        });
+
+        this.expanders?.addEventListener('dblclick', async (event) => {
+            const target = event.target.closest(
+                '.text-replacement-full-value, .text-replacement-original, .text-replacement-selected, .text-replacement-badge, .text-replacement-lock-item'
+            );
+            if (!target) return;
+            const text = (target.innerText || target.textContent || '').trim();
+            await copyValueWithToast(text, 'Expander Copied');
+        });
+
+        this.dynamic?.addEventListener('dblclick', async (event) => {
+            const target = event.target.closest('span, label, .info-item');
+            if (!target) return;
+            const text = (target.innerText || target.textContent || '').trim();
+            await copyValueWithToast(text, 'Dynamic Info Copied');
+        });
+    }
+
+    buildChangeJson() {
+        const metadata = this.metadata || {};
+        const forge = metadata.forge_data || {};
+        const title = this.getDisplayFilename();
+
+        const params = {};
+        const paramKeys = [
+            'steps', 'sampler', 'model', 'resolution', 'width', 'height',
+            'variety', 'strength', 'noise', 'nsfw'
+        ];
+        paramKeys.forEach((key) => {
+            if (metadata[key] !== undefined && metadata[key] !== null) {
+                params[key] = metadata[key];
+            }
+        });
+        if (metadata.scale !== undefined && metadata.scale !== null) {
+            params.guidance = metadata.scale;
+        } else if (metadata.guidance !== undefined && metadata.guidance !== null) {
+            params.guidance = metadata.guidance;
+        }
+        if (metadata.rescale !== undefined && metadata.rescale !== null) {
+            params.rescale = metadata.rescale;
+        } else if (metadata.cfg_rescale !== undefined && metadata.cfg_rescale !== null) {
+            params.rescale = metadata.cfg_rescale;
+        }
+        if (metadata.noise_schedule !== undefined && metadata.noise_schedule !== null) {
+            params.noiseScheduler = metadata.noise_schedule;
+        } else if (metadata.noiseScheduler !== undefined && metadata.noiseScheduler !== null) {
+            params.noiseScheduler = metadata.noiseScheduler;
+        }
+        if (metadata.seed !== undefined && metadata.seed !== null) {
+            params.seed = metadata.seed;
+        }
+        if (metadata.append_uc !== undefined && metadata.append_uc !== null) {
+            params.append_uc = metadata.append_uc;
+        }
+        if (metadata.append_quality !== undefined && metadata.append_quality !== null) {
+            params.append_quality = metadata.append_quality;
+        }
+
+        const inputFields = this.getPromptFields('input');
+        const promptText = inputFields.prompt || '';
+        const ucText = inputFields.uc || '';
+        const fields = [
+            {
+                id: 'prompt',
+                action: 'replace',
+                chunks: [{ name: 'Prompt', text: promptText }]
+            },
+            {
+                id: 'uc',
+                action: 'replace',
+                chunks: [{ name: 'UC', text: ucText }]
+            }
+        ];
+
+        let characters = [];
+        if (Array.isArray(inputFields.characters) && inputFields.characters.length) {
+            characters = inputFields.characters.map((char, index) => {
+                const entry = {
+                    index,
+                    action: 'replace',
+                    name: char.chara_name || char.name || `Character ${index + 1}`,
+                    prompt: char.input_prompt ?? char.prompt ?? '',
+                    uc: char.input_uc ?? char.uc ?? ''
+                };
+                if (char.position) {
+                    entry.position = char.position;
+                } else if (Array.isArray(char.center)) {
+                    entry.position = { x: char.center[0], y: char.center[1] };
+                }
+                return entry;
+            });
+        }
+
+        const rawExpanders = metadata.text_replacements
+            || forge.text_replacements
+            || [];
+        let expanders = [];
+        if (Array.isArray(rawExpanders) && rawExpanders.length) {
+            expanders = rawExpanders.map((exp) => ({
+                prefix: exp.name || exp.prefix || exp.key || '',
+                value: exp.value != null ? String(exp.value) : ''
+            })).filter((exp) => Boolean(exp.prefix));
+        }
+
+        const dynamicGeneration = metadata.dynamic_generation || forge.dynamic_generation || null;
+
+        const rawVibes = metadata.vibes || forge.vibes || null;
+        let vibes = [];
+        if (Array.isArray(rawVibes) && rawVibes.length) {
+            vibes = rawVibes.map((v) => ({
+                id: v.id || v.vibeId,
+                ...(v.ie ? { ie: v.ie } : {}),
+                ...(v.strength != null ? { strength: v.strength } : {}),
+                ...(v.inject_text != null ? { inject_text: v.inject_text } : {})
+            }));
+        }
+
+        const payload = {
+            dreamscape: 'change',
+            v: 1,
+            title,
+            params,
+            fields,
+            ...(characters.length ? { characters } : {}),
+            ...(expanders.length ? { expanders } : {}),
+            ...(vibes.length ? { vibes } : {}),
+            ...(dynamicGeneration ? { dynamicGeneration } : {})
+        };
+
+        return payload;
     }
 
     updateToggle(group, datasetKey, value) {
@@ -507,8 +750,10 @@ class ImagePromptInspector {
             this.appendDynamicTendaiRows(dynamicTr);
         }
 
-        if (!this.expanders.childElementCount) {
-            this.renderEmpty(this.expanders, 'No text expanders stored.');
+        const hasExpanders = this.expanders.childElementCount > 0;
+        const section = this.expandersSection || this.expanders?.closest('.image-prompt-inspector-section');
+        if (section) {
+            section.classList.toggle('hidden', !hasExpanders);
         }
     }
 
@@ -545,36 +790,36 @@ class ImagePromptInspector {
 
         const characterBadge = characterIndex !== null
             ? `<span class="text-replacement-badge text-replacement-badge-character">
-                <i class="fas fa-person"></i>
-                <span style="font-size: 0.75em;">${characterIndex + 1}</span>
-            </span>`
+            <i class="fas fa-person"></i>
+            <span style="font-size: 0.75em;">${characterIndex + 1}</span>
+        </span>`
             : '';
 
         const patternHtml = isStatic
             ? `<span class="text-replacement-original">!${escapeHtml(String(key))}</span>`
             : `<span class="text-replacement-original">${escapeHtml(String(originalPattern))}</span>
-                <i class="fas fa-arrow-right text-replacement-arrow"></i>
-                <span class="text-replacement-selected">!${escapeHtml(String(key))}${indexDisplay}</span>`;
+            <i class="fas fa-arrow-right text-replacement-arrow"></i>
+            <span class="text-replacement-selected">!${escapeHtml(String(key))}${indexDisplay}</span>`;
 
         item.innerHTML = `
-            <div class="text-replacement-lock-content">
-                <div class="text-replacement-lock-info">
-                    <div class="text-replacement-full-value">${escapeHtml(this.formatValue(seed.value))}</div>
+        <div class="text-replacement-lock-content">
+            <div class="text-replacement-lock-info">
+                <div class="text-replacement-full-value">${escapeHtml(this.formatValue(seed.value))}</div>
+            </div>
+            <div class="text-replacement-lock-row">
+                <div class="text-replacement-lock-badges">
+                    <span class="text-replacement-badge text-replacement-badge-combined">
+                        <span class="badge-icon-location" style="color: ${getLocationColor(source)};">${getLocationIcon(source)}</span>
+                        ${characterBadge}
+                        <span class="badge-icon-type" style="color: ${getReplacementTypeColor(seed.type)};">${getReplacementTypeIcon(seed.type)}</span>
+                    </span>
                 </div>
-                <div class="text-replacement-lock-row">
-                    <div class="text-replacement-lock-badges">
-                        <span class="text-replacement-badge text-replacement-badge-combined">
-                            <span class="badge-icon-location" style="color: ${getLocationColor(source)};">${getLocationIcon(source)}</span>
-                            ${characterBadge}
-                            <span class="badge-icon-type" style="color: ${getReplacementTypeColor(seed.type)};">${getReplacementTypeIcon(seed.type)}</span>
-                        </span>
-                    </div>
-                    <div class="text-replacement-lock-pattern">
-                        ${patternHtml}
-                    </div>
+                <div class="text-replacement-lock-pattern">
+                    ${patternHtml}
                 </div>
             </div>
-        `;
+        </div>
+    `;
         return item;
     }
 
@@ -650,8 +895,12 @@ class ImagePromptInspector {
             rows.push([this.formatLabel(key), value, 'fas fa-circle-info']);
         });
 
-        if (!rows.length) {
-            this.renderEmpty(this.dynamic, 'No dynamic generation data stored.');
+        const hasDynamic = rows.length > 0;
+        const section = this.dynamicSection || this.dynamic?.closest('.image-prompt-inspector-section');
+        if (section) {
+            section.classList.toggle('hidden', !hasDynamic);
+        }
+        if (!hasDynamic) {
             return;
         }
 

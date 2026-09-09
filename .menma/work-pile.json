@@ -1,10 +1,10 @@
 {
-  "updated_at": "2026-09-08T11:16:10.354183+00:00",
+  "updated_at": "2026-09-09T11:07:39.253655+00:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
   "last_breakfast_at": "2026-09-02T11:21:37.116143+00:00",
   "open": [],
   "done_since_breakfast": [],
-  "cake_note": "2026-09-08 7am: pile empty. Shipped 8420679 feat(ws) skip step-preview images on high RTT/WS backlog (imageGeneration+websocketHandlers+docs/client-api/websocket.md+pnpm-lock) +112/-199 credit grok.menma. Pushed origin+Public. Dreamscape PM2 restarted after broadcast. DB backup keep=2. Jules #150 kicked https://jules.google.com/session/9848061668012910307 (requirePlanApproval+AUTO_CREATE_PR) \u2014 8:30 collect. No leftover Menma edits (waiting Rook). Stay off greg #11/#9. cursor-agent left alone. Rook owns cake.",
+  "cake_note": "2026-09-09 7am: pile empty. Safety snapshot 4c0b9a5 wip overnight gallery/studio/UI (24 files +3595/-2354) credit grok.menma snapshot-only. Also since last Rook note: 8d4eb55 Merge PR #88 Jules #150 referenceManager extract (Yukimi merged; Jules google-labs; credit:menma 1.25x) from session https://jules.google.com/session/9848061668012910307. No leftover Menma edits (waiting Rook). Ready #163 cake-meals DSAP for Rook clear. Stay off greg #11/#9. cursor-agent left alone. Docs: no new client-api contract in WIP; step-preview docs still accurate. Rook owns cake.",
   "eaten": [
     {
       "id": "sf-22",

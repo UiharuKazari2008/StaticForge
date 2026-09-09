@@ -174,7 +174,7 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
             const confirmText = options;
             const cancelText = arguments[2] || 'Cancel';
             const eventArg = arguments[3];
-            
+
             options = [
                 { text: confirmText, value: true, className: 'btn-standard primary' },
                 { text: cancelText, value: false, className: 'btn-standard' }
@@ -286,7 +286,16 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
 
                 // Add text content
                 button.appendChild(document.createTextNode(option.text));
-                button.id = `confirmationBtn${index}`;
+                button.id = option.id || `confirmationBtn${index}`;
+                if (option.title) {
+                    button.title = option.title;
+                }
+                if (option.hidden) {
+                    button.classList.add('hidden');
+                }
+                if (option.style) {
+                    Object.assign(button.style, option.style);
+                }
 
                 if (index === primaryIndex) {
                     button.setAttribute('data-dialog-primary', '1');
@@ -294,6 +303,12 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
 
                 button.addEventListener('click', (e) => {
                     e.preventDefault();
+                    if (typeof option.onClick === 'function') {
+                        option.onClick(e, confirmationDialog);
+                        if (option.closeOnClick === false) {
+                            return;
+                        }
+                    }
                     const res = currentResolve;
                     const resolved = typeof config.resolveValue === 'function'
                         ? config.resolveValue(option.value, confirmationDialog)
@@ -607,11 +622,11 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
                 messageEl.textContent = message;
             }
         }
-        
+
         // Add input field
         const inputWrapper = document.createElement('div');
         inputWrapper.className = 'confirmation-input-wrapper';
-        
+
         const input = document.createElement('input');
         input.type = 'text';
         input.className = 'form-input form-control';
@@ -619,10 +634,10 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
         input.value = defaultValue;
         input.placeholder = placeholder;
         input.id = 'confirmationInput';
-        
+
         inputWrapper.appendChild(input);
         messageEl.appendChild(inputWrapper);
-        
+
         // Check if there are any options to display
         const hasOptions = options && options.length > 0;
 

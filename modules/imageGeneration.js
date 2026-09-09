@@ -111,9 +111,9 @@ function mergeNovelForgeFieldsFromOpts(forgeData, opts) {
 const { expandShorthandTags, cleanupPromptSyntax, applyDynamicReplacements, generatePromptHash, generateRequestHash, generateDirectiveHash, processDynamicGenerationCore, calculateDynamicExpiration, compileContext, formatContextForCarousel } = require('./dynamicGenerationHandlers');
 const { buildPromptApplicationContext, mapProcessedToRaw } = require('./promptApplicationContext');
 
-const { 
-    getImageDimensions, 
-    getDimensionsFromResolution, 
+const {
+    getImageDimensions,
+    getDimensionsFromResolution,
     resolutionUsesExplicitDimensions,
     processDynamicImage,
     processDynamicImageLetterbox,
@@ -147,9 +147,9 @@ function normalizePeriodKey(periodKey) {
     if (!periodKey || typeof periodKey !== 'string') {
         return periodKey;
     }
-    
+
     const normalized = periodKey.toLowerCase().trim();
-    
+
     // Legacy to new mappings
     const legacyMappings = {
         'earlymorning': 'morning',
@@ -160,7 +160,7 @@ function normalizePeriodKey(periodKey) {
         'lateevening': 'night',
         'late_evening': 'night'
     };
-    
+
     return legacyMappings[normalized] || normalized;
 }
 
@@ -175,17 +175,17 @@ function normalizePeriodKey(periodKey) {
  */
 function calculateStageHexIdsFromData(stagesData) {
     if (!stagesData || !Array.isArray(stagesData)) return [];
-    
+
     let mainStageCounter = 0;
     const branchChains = ['A', 'B', 'C', 'D', 'E', 'F'];
     let nextBranchIndex = 0;
     let inBranch = false;
     let currentChain = '0';
     let currentChainCounter = 0;
-    
+
     return stagesData.map((stageData, index) => {
         const isBranch = stageData.branch === true;
-        
+
         if (isBranch) {
             if (!inBranch) {
                 // Entering a new branch
@@ -210,7 +210,7 @@ function calculateStageHexIdsFromData(stagesData) {
                 currentChainCounter = mainStageCounter;
             }
         }
-        
+
         const stageNum = currentChainCounter.toString(16).toUpperCase();
         return currentChain + stageNum;
     });
@@ -256,7 +256,7 @@ function applyNsfwProcessing(prompt, negativePrompt, characterPrompts, nsfwValue
     let processedPrompt = prompt;
     let processedNegativePrompt = negativePrompt;
     let processedCharacterPrompts = characterPrompts ? [...characterPrompts] : [];
-    
+
     // Track what modifications were made
     const modifications = { prompt: [], uc: [], character_prompts: [], character_uc: [] };
 
@@ -279,13 +279,13 @@ function applyNsfwProcessing(prompt, negativePrompt, characterPrompts, nsfwValue
 
         let result = text;
         const itemsToRemove = Array.isArray(toRemove) ? toRemove : [toRemove];
-        
+
         itemsToRemove.forEach(item => {
             if (!item || typeof item !== 'string') return;
-            
+
             // Escape special regex characters
             const escapedItem = item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            
+
             // Create comprehensive regex patterns to handle various positions and formats
             const patterns = [
                 // Pattern 1: Item with commas on both sides (middle position)
@@ -302,7 +302,7 @@ function applyNsfwProcessing(prompt, negativePrompt, characterPrompts, nsfwValue
                 new RegExp(`\\s*,\\s*\\d+\\.\\d*::${escapedItem}\\s*$`, 'gi'),
                 new RegExp(`^\\s*\\d+\\.\\d*::${escapedItem}\\s*$`, 'gi')
             ];
-            
+
             // Apply all patterns
             patterns.forEach(pattern => {
                 result = result.replace(pattern, ', ');
@@ -317,7 +317,7 @@ function applyNsfwProcessing(prompt, negativePrompt, characterPrompts, nsfwValue
             .replace(/,\s*$/, '')              // Remove trailing comma
             .replace(/[ \t]+/g, ' ')           // Normalize multiple spaces/tabs (preserve newlines)
             .trim();
-            
+
         return result;
     }
 
@@ -559,7 +559,7 @@ function applyBiasToText(input, bias) {
 
     // Check if input is already a complete emphasis group (starts with BIAS:: and ends with ::)
     const isCompleteGroup = /^(-?\d+\.?\d*)::.+::$/s.test(input);
-    
+
     // Check if input contains any bias groups
     const hasBiasGroups = /(-?\d+\.?\d*)::/g.test(input);
 
@@ -568,7 +568,7 @@ function applyBiasToText(input, bias) {
         let result = input.replace(/(-?\d+\.?\d*)::/g, (match, biasValue) => {
             const currentBias = parseFloat(biasValue);
             let newBias;
-            
+
             if (bias >= 1.0) {
                 // Increase emphasis - add the bias value
                 newBias = currentBias + bias;
@@ -583,7 +583,7 @@ function applyBiasToText(input, bias) {
                     newBias = currentBias - difference;
                 }
             }
-            
+
             const rounded = Math.round(newBias * 10) / 10; // Round to 1 decimal place
             return `${rounded.toFixed(1)}::`;
         });
@@ -595,7 +595,7 @@ function applyBiasToText(input, bias) {
             const innerBiasValue = parseFloat(innerBias);
             const newInnerBias = innerBiasValue + biasAdjustment;
             const rounded = Math.round(newInnerBias * 10) / 10;
-            
+
             return `${rounded.toFixed(1)}::${content}, ${bias}::`;
         });
         return `${bias}::${result}::`;
@@ -861,11 +861,11 @@ async function generatePresetSourceImage(globalResources, presetName, seed, reso
     if (!presetName || typeof presetName !== 'string') {
         throw new Error('Preset name must be a non-empty string');
     }
-    
+
     if (typeof seed !== 'number' || seed < 0 || seed > 0xFFFFFFFF) {
         throw new Error(`Invalid seed: ${seed}. Must be a number between 0 and 4294967295`);
     }
-    
+
     if (model && typeof model !== 'string') {
         throw new Error('Model must be a string');
     }
@@ -875,26 +875,26 @@ async function generatePresetSourceImage(globalResources, presetName, seed, reso
     } catch (error) {
         throw new Error(`Failed to load prompt configuration: ${error.message}`);
     }
-    
+
     // Check if preset exists
     if (!currentPromptConfig.presets || !currentPromptConfig.presets[presetName]) {
         throw new Error(`Preset "${presetName}" not found`);
     }
-    
+
     // Get preset configuration
     const preset = currentPromptConfig.presets[presetName];
-    
+
     // Check for recursion - if preset has image source, throw error
     if (preset.image && preset.image.startsWith('preset:')) {
         throw new Error(`Recursive presets are not allowed. Preset "${presetName}" references "${preset.image}" as image source.`);
     }
-    
+
     // Create cache filename
     const presetHash = crypto.createHash('md5').update(presetName).digest('hex');
     const cacheFilename = `${presetHash}_${seed}.png`;
     const presetSourceCacheDir = __runtimeGr.getPath('presetSourceCache');
     const cachePath = path.join(presetSourceCacheDir, cacheFilename);
-    
+
     // Ensure cache directory exists
     try {
         ensurePresetSourceCacheDir();
@@ -902,7 +902,7 @@ async function generatePresetSourceImage(globalResources, presetName, seed, reso
         console.warn(`⚠️ Failed to create cache directory: ${error.message}`);
         // Continue without caching if directory creation fails
     }
-    
+
     // Check if cached image exists
     if (fs.existsSync(cachePath)) {
         try {
@@ -917,14 +917,14 @@ async function generatePresetSourceImage(globalResources, presetName, seed, reso
             // Continue to regenerate if cache read fails
         }
     }
-    
+
     // Build options for preset generation
     const presetOptions = {
         ...preset,
         seed: seed,
         no_save: true
     };
-    
+
     // Override resolution if provided
     if (resolution) {
         if (resolutionUsesExplicitDimensions(resolution)) {
@@ -945,11 +945,11 @@ async function generatePresetSourceImage(globalResources, presetName, seed, reso
                 if (dims.length === 2) {
                     const width = parseInt(dims[0]);
                     const height = parseInt(dims[1]);
-                    
+
                     if (isNaN(width) || isNaN(height) || width <= 0 || height <= 0) {
                         throw new Error(`Invalid resolution format: ${resolution}. Expected format: "widthxheight" (e.g., "1024x1024")`);
                     }
-                    
+
                     presetOptions.width = width;
                     presetOptions.height = height;
                 } else {
@@ -960,7 +960,7 @@ async function generatePresetSourceImage(globalResources, presetName, seed, reso
             }
         }
     }
-    
+
     // Generate Request Options
     let opts;
     try {
@@ -976,7 +976,7 @@ async function generatePresetSourceImage(globalResources, presetName, seed, reso
     } catch (error) {
         throw new Error(`Failed to generate preset image for "${presetName}": ${error.message}`);
     }
-    
+
     // Save to cache without metadata
     try {
         fs.writeFileSync(cachePath, result.buffer);
@@ -984,11 +984,11 @@ async function generatePresetSourceImage(globalResources, presetName, seed, reso
         console.warn(`⚠️ Failed to cache preset source image ${cacheFilename}: ${error.message}`);
         // Continue without caching - this is not critical
     }
-    
+
     // Add random delay between 5 and 15 seconds
     const delaySeconds = Math.floor(Math.random() * 11) + 5; // Random between 5-15 seconds
     await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
-    
+
     return {
         buffer: result.buffer,
         seed: result.seed,
@@ -1022,9 +1022,9 @@ function selectPresetItem(presetConfig, modelKey, combinedPrompt, providedId = n
     if (!resolvedKey) {
         return null;
     }
-    
+
     const modelPresets = presetConfig[resolvedKey];
-    
+
     // Handle simple string/array format (backward compatibility)
     if (typeof modelPresets === 'string' || (Array.isArray(modelPresets) && typeof modelPresets[0] === 'string')) {
         if (typeof modelPresets === 'string') {
@@ -1037,7 +1037,7 @@ function selectPresetItem(presetConfig, modelKey, combinedPrompt, providedId = n
             return { value: modelPresets[index], id: index + 1 };
         }
     }
-    
+
     // Handle new enhanced format with sub-items
     if (Array.isArray(modelPresets) && modelPresets.length > 0 && typeof modelPresets[0] === 'object') {
         // If specific ID provided, find it
@@ -1047,10 +1047,10 @@ function selectPresetItem(presetConfig, modelKey, combinedPrompt, providedId = n
                 return { value: foundItem.value, id: foundItem.id, name: foundItem.name };
             }
         }
-        
+
         // Automatic selection based on tag matching
         const lowerCombinedPrompt = combinedPrompt.toLowerCase();
-        
+
         for (const item of modelPresets) {
             if (item.match && Array.isArray(item.match)) {
                 for (const matchTag of item.match) {
@@ -1060,12 +1060,12 @@ function selectPresetItem(presetConfig, modelKey, combinedPrompt, providedId = n
                 }
             }
         }
-        
+
         // Default to first item if no matches found
         const defaultItem = modelPresets[0];
         return { value: defaultItem.value, id: defaultItem.id, name: defaultItem.name };
     }
-    
+
     return null;
 }
 
@@ -1103,24 +1103,24 @@ function deduplicateTagsInText(text) {
 
     // Split by common delimiters while preserving emphasis groups
     const tokens = splitTextIntoTokens(text);
-    
+
     // Track seen tags (case-insensitive)
     const seenTags = new Set();
     const deduplicatedTokens = [];
 
     for (const token of tokens) {
         const normalizedTag = normalizeTag(token);
-        
+
         // Skip empty or whitespace-only tokens
         if (!normalizedTag || normalizedTag.trim() === '') {
             continue;
         }
-        
+
         // Check for empty groups and skip them
         if (isEmptyGroup(token)) {
             continue;
         }
-        
+
         if (!seenTags.has(normalizedTag)) {
             seenTags.add(normalizedTag);
             deduplicatedTokens.push(token);
@@ -1149,14 +1149,14 @@ function splitTextIntoTokens(text) {
             // Check if this is the start of an emphasis group
             const beforeColons = text.substring(0, i).trim();
             const emphasisMatch = beforeColons.match(/(-?\d+(?:\.\d+)?)$/);
-            
+
             if (emphasisMatch) {
                 // This is an emphasis group
                 if (currentToken.trim()) {
                     tokens.push(currentToken.trim());
                     currentToken = '';
                 }
-                
+
                 inEmphasisGroup = true;
                 emphasisGroupContent = emphasisMatch[1] + '::';
                 continue;
@@ -1165,7 +1165,7 @@ function splitTextIntoTokens(text) {
 
         if (inEmphasisGroup) {
             emphasisGroupContent += char;
-            
+
             // Check for end of emphasis group
             if (char === ':' && nextChar === ':') {
                 inEmphasisGroup = false;
@@ -1182,7 +1182,7 @@ function splitTextIntoTokens(text) {
         } else if (char === '}') {
             braceLevel--;
         }
-        
+
         // Handle square brackets
         if (char === '[') {
             bracketLevel++;
@@ -1241,40 +1241,40 @@ function normalizeTag(token) {
 // Function to check if a token represents an empty group
 function isEmptyGroup(token) {
     if (!token || typeof token !== 'string') return false;
-    
+
     const trimmed = token.trim();
-    
+
     // Check for empty curly braces: {}, {{}}, etc.
     if (/^\{\s*\}+$/.test(trimmed)) {
         return true;
     }
-    
+
     // Check for empty square brackets: [], [[]], etc.
     if (/^\[\s*\]+\s*$/.test(trimmed)) {
         return true;
     }
-    
+
     // Check for empty emphasis groups: #.#::::, etc.
     if (/^-?\d+(?:\.\d+)?::\s*::$/.test(trimmed)) {
         return true;
     }
-    
+
     // Check for groups with only whitespace or commas
     const contentOnly = trimmed.replace(/^[-+]?\d+(?:\.\d+)?::/, '').replace(/::$/, '');
     const contentOnly2 = contentOnly.replace(/^\{+\s*/, '').replace(/\s*\}+$/, '');
     const contentOnly3 = contentOnly2.replace(/^\[+\s*/, '').replace(/\s*\]+$/, '');
-    
+
     if (contentOnly3.trim() === '' || /^[\s,]*$/.test(contentOnly3.trim())) {
         return true;
     }
-    
+
     return false;
 }
 
 // Function to strip emphasis syntax from a phrase to get the core text
 function stripEmphasisSyntax(text) {
     if (!text) return '';
-    
+
     let stripped = text.trim();
     // stripManagedEmphasisDelimitersForCounting: modules/emphasisGroupIdSyntax.js
     try {
@@ -1285,52 +1285,52 @@ function stripEmphasisSyntax(text) {
     let previousStripped = '';
     let iterations = 0;
     const maxIterations = 20; // Prevent infinite loops
-    
+
     // Keep stripping layers until no more changes occur (handles nested emphasis)
     while (stripped !== previousStripped && iterations < maxIterations) {
         previousStripped = stripped;
         iterations++;
-        
+
         // Strip weight group notation: weight::text:: or -weight::text::
         // Match patterns like "3.0::text::" or "-2::text::"
         const weightGroupMatch = stripped.match(/^-?[\d.]+::(.*?)::$/);
         if (weightGroupMatch) {
             stripped = weightGroupMatch[1].trim();
         }
-        
+
         // Strip weight notation in brackets: (text:1.2) or {text:1.1} or [text:0.9]
         stripped = stripped.replace(/^[\{\[\(]+([^:\{\[\(\)\]\}]+):[\d.]+[\}\]\)]+$/g, '$1');
-        
+
         // Strip curly braces: {text}, {{text}}, etc. (one layer at a time)
         if (stripped.startsWith('{') && stripped.endsWith('}')) {
             stripped = stripped.replace(/^\{+/, '').replace(/\}+$/, '').trim();
         }
-        
+
         // Strip square brackets: [text], [[text]], etc. (one layer at a time)
         if (stripped.startsWith('[') && stripped.endsWith(']')) {
             stripped = stripped.replace(/^\[+/, '').replace(/\]+$/, '').trim();
         }
-        
+
         // Strip parentheses: (text) (one layer at a time)
         if (stripped.startsWith('(') && stripped.endsWith(')')) {
             stripped = stripped.replace(/^\(+/, '').replace(/\)+$/, '').trim();
         }
     }
-    
+
     return stripped.trim();
 }
 
 // Helper function to split text by commas while respecting bracket depth
 function splitByCommaRespectingBrackets(text) {
     if (!text) return [];
-    
+
     const items = [];
     let currentItem = '';
     let depth = 0;
-    
+
     for (let i = 0; i < text.length; i++) {
         const char = text[i];
-        
+
         // Track bracket depth
         if (char === '{' || char === '[' || char === '(') {
             depth++;
@@ -1348,12 +1348,12 @@ function splitByCommaRespectingBrackets(text) {
             currentItem += char;
         }
     }
-    
+
     // Add the last item
     if (currentItem.trim()) {
         items.push(currentItem.trim());
     }
-    
+
     return items;
 }
 
@@ -1363,16 +1363,16 @@ function splitUCPhrases(ucPrompt) {
     let currentPhrase = '';
     let insideWeightGroup = false;
     let depth = 0;
-    
+
     for (let i = 0; i < ucPrompt.length; i++) {
         const char = ucPrompt[i];
         const nextChar = ucPrompt[i + 1];
-        
+
         // Check for :: delimiter (weight group start/end)
         if (char === ':' && nextChar === ':') {
             currentPhrase += '::';
             i++; // Skip next colon
-            
+
             // Toggle weight group state
             if (!insideWeightGroup) {
                 insideWeightGroup = true;
@@ -1381,7 +1381,7 @@ function splitUCPhrases(ucPrompt) {
             }
             continue;
         }
-        
+
         // Track bracket depth
         if (char === '{' || char === '[') {
             depth++;
@@ -1399,12 +1399,12 @@ function splitUCPhrases(ucPrompt) {
             currentPhrase += char;
         }
     }
-    
+
     // Add the last phrase
     if (currentPhrase.trim()) {
         phrases.push(currentPhrase.trim());
     }
-    
+
     return phrases;
 }
 
@@ -1412,28 +1412,28 @@ function splitUCPhrases(ucPrompt) {
 // Splits prompt into phrases and compares them exactly (not as substrings)
 function phraseExistsInPrompt(prompt, ucPhrase) {
     if (!prompt || !ucPhrase) return false;
-    
+
     const normalizedUcPhrase = ucPhrase.toLowerCase().trim();
     if (!normalizedUcPhrase) return false;
-    
+
     // Split the prompt into phrases the same way we split UC
     const promptPhrases = splitUCPhrases(prompt);
-    
+
     // Check each prompt phrase
     for (const promptPhrase of promptPhrases) {
         if (!promptPhrase) continue;
-        
+
         // Handle weight groups in the prompt
         const weightGroupMatch = promptPhrase.match(/^(-?[\d.]+)::(.*?)::$/);
         if (weightGroupMatch && weightGroupMatch[2] !== undefined) {
             const weight = parseFloat(weightGroupMatch[1]);
-            
+
             // Skip negative weight groups - they're reducing elements, not adding them
             // So they don't count as "having the phrase in the prompt"
             if (weight < 0) {
                 continue;
             }
-            
+
             // Split items within the weight group
             const items = splitByCommaRespectingBrackets(weightGroupMatch[2]);
             for (const item of items) {
@@ -1451,7 +1451,7 @@ function phraseExistsInPrompt(prompt, ucPhrase) {
             }
         }
     }
-    
+
     return false;
 }
 
@@ -1460,7 +1460,7 @@ function autoCleanUCPrompt(prompt, ucPrompt) {
     if (!prompt || !ucPrompt) {
         return ucPrompt;
     }
-    
+
     // Split UC by commas while respecting emphasis syntax
     const ucPhrases = splitUCPhrases(ucPrompt);
     const cleanedPhrases = [];
@@ -1468,41 +1468,41 @@ function autoCleanUCPrompt(prompt, ucPrompt) {
 
     for (const phrase of ucPhrases) {
         if (!phrase) continue; // Skip empty phrases
-        
+
         // Check if this is a weight group with potential multiple items
         const weightGroupMatch = phrase.match(/^(-?[\d.]+)::(.*?)::$/);
         if (weightGroupMatch) {
             // This is a weight group like "3.0::item1, item2, item3::"
             const weight = parseFloat(weightGroupMatch[1]);
             const content = weightGroupMatch[2];
-            
+
             // If this is a negative weight group (like -1:: or -2::), keep it entirely
             // Negative UC weights actually BOOST elements, so they work with the prompt
             if (weight < 0) {
                 cleanedPhrases.push(phrase);
                 continue;
             }
-            
+
             // Split the content by commas while respecting inner bracket groups
             const items = splitByCommaRespectingBrackets(content);
             const keptItems = [];
             const removedItems = [];
-            
+
             for (const item of items) {
                 // Strip any remaining emphasis from individual items
                 const strippedItem = stripEmphasisSyntax(item);
-                
+
                 if (strippedItem && phraseExistsInPrompt(prompt, strippedItem)) {
                     removedItems.push(item);
                 } else {
                     keptItems.push(item);
                 }
             }
-            
+
             // If all items were removed, remove the entire group
             if (keptItems.length === 0) {
                 removedPhrases.push(phrase);
-            } 
+            }
             // If some items were removed, reconstruct the group with remaining items
             else if (removedItems.length > 0) {
                 const reconstructedPhrase = `${weightGroupMatch[1]}::${keptItems.join(', ')}::`;
@@ -1519,7 +1519,7 @@ function autoCleanUCPrompt(prompt, ucPrompt) {
         } else {
             // Regular phrase without weight group
             const coreText = stripEmphasisSyntax(phrase);
-            
+
             // Check if the core text appears as a complete phrase in the main prompt
             if (coreText && phraseExistsInPrompt(prompt, coreText)) {
                 removedPhrases.push(phrase);
@@ -1551,11 +1551,11 @@ function autoCleanUCPrompt(prompt, ucPrompt) {
  */
 const applyCachedTextReplacements = (compiledPrompt, processedPrompt, processedNegativePrompt, processedCharacterPrompts) => {
     if (!compiledPrompt.text_replacements) return { success: true, processedPrompt, processedNegativePrompt, processedCharacterPrompts };
-    
+
     const originalPrompt = processedPrompt + '';
     const originalNegativePrompt = processedNegativePrompt + '';
     const originalCharacterPrompts = processedCharacterPrompts ? processedCharacterPrompts.map(char => ({ ...char })) : [];
-    
+
     try {
         // Apply replacements to prompt
         if (compiledPrompt.text_replacements.prompt?.length > 0) {
@@ -1563,37 +1563,37 @@ const applyCachedTextReplacements = (compiledPrompt, processedPrompt, processedN
             if (!result.success) throw new Error(`Failed: ${result.failedReplacements.join(', ')}`);
             processedPrompt = result.result;
         }
-        
+
         // Apply replacements to negative prompt
         if (compiledPrompt.text_replacements.uc?.length > 0) {
             const result = applyDynamicReplacements(__runtimeGr, processedNegativePrompt, compiledPrompt.text_replacements, 'uc');
             if (!result.success) throw new Error(`Failed: ${result.failedReplacements.join(', ')}`);
             processedNegativePrompt = result.result;
         }
-        
+
         // Apply replacements to character prompts
         if (processedCharacterPrompts?.length > 0 && compiledPrompt.text_replacements.character_prompts) {
             processedCharacterPrompts = processedCharacterPrompts.map((char, index) => {
                 const charReplacements = compiledPrompt.text_replacements.character_prompts[index];
                 if (!charReplacements) return char;
                 let updatedChar = { ...char };
-                
+
                 if (charReplacements.prompt?.length > 0) {
                     const result = applyDynamicReplacements(__runtimeGr, char.prompt || '', compiledPrompt.text_replacements, 'character', index, 'prompt');
                     if (!result.success) throw new Error(`Failed character ${index} prompt`);
                     updatedChar.prompt = result.result;
                 }
-                
+
                 if (charReplacements.uc?.length > 0) {
                     const result = applyDynamicReplacements(__runtimeGr, char.uc || '', compiledPrompt.text_replacements, 'character', index, 'uc');
                     if (!result.success) throw new Error(`Failed character ${index} UC`);
                     updatedChar.uc = result.result;
                 }
-                
+
                 return updatedChar;
             });
         }
-        
+
         // Apply character names
         if (compiledPrompt.character_names?.length > 0) {
             processedCharacterPrompts = processedCharacterPrompts || [];
@@ -1604,7 +1604,7 @@ const applyCachedTextReplacements = (compiledPrompt, processedPrompt, processedN
                 }
             });
         }
-        
+
         return { success: true, processedPrompt, processedNegativePrompt, processedCharacterPrompts };
     } catch (error) {
         return { success: false, processedPrompt: originalPrompt, processedNegativePrompt: originalNegativePrompt, processedCharacterPrompts: originalCharacterPrompts, error };
@@ -1677,7 +1677,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
     bindRuntimeGlobalResources(globalResources);
     const referenceMetadataDb = __runtimeGr.getReferenceMetadataDatabase();
     const allowPaid = body.allow_paid ? body.allow_paid : preset?.allow_paid;
-    
+
     const currentPromptConfig = __runtimeGr.getPromptConfig({ clone: true });
     const presetName = preset ? Object.keys(currentPromptConfig.presets).find(key => currentPromptConfig.presets[key] === preset) : null;
     const rawPrompt = (body.prompt !== undefined && body.prompt !== null) ? body.prompt : preset?.prompt;
@@ -1691,7 +1691,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
     if (queryParams.upscale !== undefined) {
         if (queryParams.upscale === 'true') {
             upscaleValue = true; // Default to 4x
-    } else {
+        } else {
             const parsedUpscale = parseFloat(queryParams.upscale);
             if (!isNaN(parsedUpscale) && parsedUpscale > 0) {
                 upscaleValue = parsedUpscale;
@@ -1708,7 +1708,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
     let resolutionValue = queryParams?.resolution !== undefined ? __runtimeGr.getNekoAiService('Resolution')[queryParams?.resolution?.toUpperCase()] : body.resolution || preset?.resolution;
     let seedValue = queryParams?.seed !== undefined ? parseInt(queryParams?.seed) : body.seed || preset?.seed;
     let varietyValue = queryParams?.variety !== undefined ? Boolean(queryParams?.variety) : body.variety || preset?.variety || false;
-    
+
     try {
         // Get periodKey from dynamic generation context if available, otherwise current time
         let periodKey = body.dynamic_generation?.compiled_prompt?.context?.time?.periodKey || getCurrentPeriodKey();
@@ -1755,13 +1755,13 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
 
         // Define marker for dynamic append-to-end operations (inserted before presets)
         const APPEND_MARKER = '__ENSHUTSUKA_APPEND_POINT__';
-        
+
         // Add marker to prompt before "Text:" (any case) if it exists, otherwise at the end of the prompt
         processedPrompt = insertBeforeTextColonOrFirstGroup(processedPrompt, APPEND_MARKER);
-        
+
         // Add marker to UC at the end
         processedNegativePrompt = processedNegativePrompt + (processedNegativePrompt ? ', ' : '') + APPEND_MARKER;
-        
+
         // Add marker to character prompts at the end
         if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) {
             processedCharacterPrompts = processedCharacterPrompts.map(char => ({
@@ -1881,7 +1881,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
         //
         // Track preset controls applied - will be passed to dynamic generation
         const appliedPresetControls = { prompt: [], uc: [], character_prompts: [], character_uc: [] };
-        
+
         // Process vibe append text injection for each vibe transfer (moved before baseOptions assignment)
         // Skip entirely when model-features gate vibeTransfer off (V5)
         const earlyVibeCaps = __runtimeGr.getModelFeatures(body.model);
@@ -1924,7 +1924,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                                     console.log(`🎨 Appended vibe prompt text for ${vibeTransfer.id}`);
                                 }
                             }
-                            
+
                             // Track this modification
                             appliedPresetControls.prompt.push({
                                 action: 'vibe_text_injection',
@@ -1944,7 +1944,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                                 processedNegativePrompt = processedNegativePrompt + ', ' + vibeUcText;
                                 console.log(`🚫 Appended vibe UC text for ${vibeTransfer.id}`);
                             }
-                            
+
                             // Track this modification
                             appliedPresetControls.uc.push({
                                 action: 'vibe_text_injection',
@@ -1957,7 +1957,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 }
             }
         }
-        
+
         // Process NSFW settings from dataset_config
         const nsfwValue = body.dataset_config?.nsfw;
         const nsfwBias = body.dataset_config?.nsfw_bias || 1.0;
@@ -1972,7 +1972,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 nsfwBias,
                 currentPromptConfig
             ));
-            
+
             // Track this modification with what was actually added/removed
             if (nsfwModifications.prompt.length > 0) {
                 appliedPresetControls.prompt.push({
@@ -2213,7 +2213,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 processedPrompt = insertBeforeTextColonOrFirstGroup(processedPrompt, qualityText);
                 selectedQualityId = selectedQuality.id;
                 __runtimeGr.getLogger().detailed(`🎨 Quality preset: ${qualityText.substring(0, 60)}${qualityText.length > 60 ? '...' : ''} (ID: ${selectedQuality.id})`);
-                
+
                 // Track this modification
                 appliedPresetControls.prompt.push({
                     action: 'quality_preset',
@@ -2236,19 +2236,19 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 });
             }
         }
-        
+
         // Handle append_uc with enhanced preset selection
         if (body.append_uc !== undefined && body.append_uc > 0 && currentPromptConfig.uc_presets) {
             const modelKey = body.model.toLowerCase();
             const combinedPrompt = processedPrompt + (processedCharacterPrompts ? processedCharacterPrompts.map(c => c.prompt).join(', ') : '');
             const selectedUc = selectPresetItem(currentPromptConfig.uc_presets, modelKey, combinedPrompt, body.append_uc_id || body.append_uc);
-            
+
             if (selectedUc) {
                 // Add UC preset to the start of the UC and separate the original UC with ", "
                 processedNegativePrompt = selectedUc.value + (processedNegativePrompt ? ', ' + processedNegativePrompt : '');
                 selectedUcId = selectedUc.id;
                 __runtimeGr.getLogger().detailed(`🚫 UC preset: ${selectedUc.value.substring(0, 80)}${selectedUc.value.length > 80 ? '...' : ''} (ID: ${selectedUc.id})`);
-                
+
                 // Track this modification
                 appliedPresetControls.uc.push({
                     action: 'uc_preset',
@@ -2297,7 +2297,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 });
             }
         }
-        
+
         // Apply text overlays if any exist
         if (body.text_overlays && Array.isArray(body.text_overlays) && body.text_overlays.length > 0) {
             const currentStageIndex = stageData?.stageIndex || 0;
@@ -2306,27 +2306,27 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 'thought': { name: 'Thought Bubble', tags: 'english text, thought bubble' },
                 'caption': { name: 'Subtitle', tags: 'english text, caption, subtitle' }
             };
-            
+
             body.text_overlays.forEach((overlay, index) => {
                 // Skip if disabled
                 if (overlay.disabled) {
                     console.log(`⏭️ Text overlay ${index + 1} is disabled, skipping`);
                     return;
                 }
-                
+
                 // Check if this overlay applies to the current stage
                 // Support both old 'stage' field and new 'stages' array
                 const overlayStages = overlay.stages || (overlay.stage !== undefined ? [overlay.stage.toString()] : []);
                 const currentStageHexId = stageData?.hexId || '00';
                 const isEnhancementStage = stageData?.stageType === 'enhance';
-                
+
                 // Check if pipelines are disabled
                 const pipelinesDisabled = body.skip_pipeline_stages === true;
-                
+
                 // Check if this overlay should be applied to this stage
                 const isAllStages = overlayStages.includes('all');
                 const hasBaseStage00 = overlayStages.includes('00') || overlayStages.length === 0; // Empty stages means base only (stage 00)
-                
+
                 // When pipelines are disabled, always apply if overlay targets 'all' stages or has base stage '00'
                 let shouldApply;
                 if (pipelinesDisabled && (isAllStages || hasBaseStage00)) {
@@ -2334,11 +2334,11 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 } else {
                     // Normal pipeline logic
                     shouldApply = isAllStages || // 'all' means apply to all stages
-                                 overlayStages.length === 0 || // Empty stages means base only
-                                 overlayStages.includes(currentStageHexId) ||
-                                 (isEnhancementStage && overlayStages.length > 0); // Enhancement stages get all non-base overlays
+                        overlayStages.length === 0 || // Empty stages means base only
+                        overlayStages.includes(currentStageHexId) ||
+                        (isEnhancementStage && overlayStages.length > 0); // Enhancement stages get all non-base overlays
                 }
-                
+
                 if (!shouldApply) {
                     return; // Skip if not for this stage
                 }
@@ -2346,7 +2346,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 // Get text and type
                 let text = overlay.text || '';
                 let type = overlay.type || 'speech';
-                
+
                 // Log when applying overlay
                 const pipelineDisabledNote = pipelinesDisabled && (isAllStages || hasBaseStage00) ? ' (pipelines disabled, applying always)' : '';
                 if (isAllStages) {
@@ -2364,16 +2364,16 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                         return; // Skip empty text without dynamic generation
                     }
                 }
-                
+
                 const tags = textTags[type]?.tags || 'english text, speech bubble';
                 const targetIndex = overlay.target || 0;
-                
+
                 // Calculate emphasis for tags based on text length
                 // Range: 1.5 (short text) to 5.5 (long text)
                 // More text = higher emphasis to prevent tags from being overshadowed
                 const textLength = text.length;
                 let tagEmphasis;
-                
+
                 if (textLength <= 10) {
                     // Very short text: minimum emphasis
                     tagEmphasis = 1.5;
@@ -2387,14 +2387,14 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     // Round to 1 decimal place
                     tagEmphasis = Math.round(tagEmphasis * 10) / 10;
                 }
-                
+
                 // Apply emphasis to tags using applyBiasToText to properly handle inner emphasis groups
                 const emphasizedTags = applyBiasToText(tags, tagEmphasis);
-                
+
                 // Build the text append string
                 const textAppend = `, ${emphasizedTags}, Text: ${text}`;
                 __runtimeGr.getLogger().verbose(`📝 Text overlay append (emphasis ${tagEmphasis}): "${textAppend.substring(0, 60)}${textAppend.length > 60 ? '...' : ''}"`);
-                
+
                 // Determine which prompt to append to
                 if (targetIndex === 0) {
                     // Apply to base prompt
@@ -2435,7 +2435,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 body.dynamic_generation.use_cache_responses = preset.use_cache_responses_preset;
             }
         }
-        
+
         if (dynamic_generation && dynamic_generation.enabled === false) {
             const skippedWarning = 'Dynagen disabled (enabled:false). Generate without compileContext. Omit dynamicGeneration entirely, or pass location / get_client_physics when you need time-of-day.';
             console.log(`⏭️ ${skippedWarning}`);
@@ -2477,7 +2477,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 body.dynamic_generation.cache_locked = true;
                 console.log(`🎯 Stage ${body.stageIndex}: Inheriting compiled prompt from previous stage`);
             }
-            
+
             // Check if we have a cached compiled prompt with valid conditions
             // Skip entirely if compiled_prompt has success: false
             // Only validate directive_hash if a directive is being used
@@ -2487,7 +2487,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 !!body?.dynamic_generation?.compiled_prompt?.prompt_hash &&
                 !!body?.dynamic_generation?.compiled_prompt?.request_hash &&
                 (!requiresDirective || !!body?.dynamic_generation?.compiled_prompt?.directive_hash);
-            
+
             // Debug: Log why cache might be invalid
             if (!hasValidCache) {
                 if (!body?.dynamic_generation?.compiled_prompt) {
@@ -2538,7 +2538,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 // Context is locked - reuse from compiled_prompt
                 console.log('🔒 Context locked: Reusing existing context from compiled prompt');
                 contextForAI = dynaRequest.compiled_prompt.context;
-                
+
                 // Send context phase progress update when context is reused
                 if (ws && handler && contextForAI) {
                     const carouselData = formatContextForCarousel(contextForAI);
@@ -2565,7 +2565,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 // Pipeline stage inheritance - reuse context from previous stage
                 console.log('🔒 Pipeline locked mode: Reusing context from previous stage');
                 contextForAI = dynaRequest.compiled_prompt.context;
-                
+
                 // Send context phase progress update when context is reused
                 if (ws && handler && contextForAI) {
                     const carouselData = formatContextForCarousel(contextForAI);
@@ -2593,7 +2593,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 const clientInfo = wsServer?.clients?.get(ws);
                 const clientIP = clientInfo?.clientIP || null;
                 contextForAI = await compileContext(__runtimeGr, dynaRequest, clientIP);
-                
+
                 // Send context phase progress update when context is freshly compiled
                 if (ws && handler && contextForAI) {
                     const carouselData = formatContextForCarousel(contextForAI);
@@ -2625,8 +2625,8 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 const compiledPrompt = body.dynamic_generation.compiled_prompt;
                 const now = Date.now();
                 // Use dynamic expiration if available, otherwise fall back to timestamp-based 15 minute check
-                const isNotExpired = compiledPrompt.expiresAt 
-                    ? now < compiledPrompt.expiresAt 
+                const isNotExpired = compiledPrompt.expiresAt
+                    ? now < compiledPrompt.expiresAt
                     : (now - compiledPrompt.timestamp) < 15 * 60 * 1000;
                 const canUseCache = isNotExpired || isCacheLocked;
 
@@ -2673,7 +2673,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                             processedNegativePrompt,
                             processedCharacterPrompts
                         );
-                        
+
                         if (replacementResult.success) {
                             processedPrompt = replacementResult.processedPrompt;
                             processedNegativePrompt = replacementResult.processedNegativePrompt;
@@ -2690,15 +2690,15 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     }
                 } else {
                     console.log('⏰ Cached prompt expired and not locked, checking if context changed...');
-                    
+
                     // Check if context has actually changed by comparing expiration metadata
                     const cachedMetadata = compiledPrompt?.context?.expirationMetadata;
-                    
+
                     if (cachedMetadata && contextForAI && !body?.dynamic_generation?.force_context_refresh) {
                         // Use precompiled context to compare
                         try {
                             const freshMetadata = contextForAI?.expirationMetadata;
-                            
+
                             if (freshMetadata) {
                                 // Check if context has meaningfully changed
                                 const timePeriodChanged = cachedMetadata.timePeriod !== freshMetadata.timePeriod;
@@ -2706,22 +2706,22 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                                 const phenomenonChanged = cachedMetadata.hasWeatherPhenomenon !== freshMetadata.hasWeatherPhenomenon;
                                 const cloudCoverageDiff = Math.abs((cachedMetadata.cloudCoverage || 0) - (freshMetadata.cloudCoverage || 0));
                                 const tempDiff = Math.abs((cachedMetadata.temperature || 0) - (freshMetadata.temperature || 0));
-                                
-                                const hasSignificantChange = timePeriodChanged || weatherChanged || phenomenonChanged || 
-                                                            cloudCoverageDiff >= 20 || tempDiff >= 10;
-                                
+
+                                const hasSignificantChange = timePeriodChanged || weatherChanged || phenomenonChanged ||
+                                    cloudCoverageDiff >= 20 || tempDiff >= 10;
+
                                 if (!hasSignificantChange) {
                                     console.log('  ✅ Context unchanged - keeping cache and updating expiration');
                                     // Update the context and recalculate expiration
                                     compiledPrompt.context = contextForAI;
                                     compiledPrompt.expiresAt = calculateDynamicExpiration(__runtimeGr, contextForAI, 30 * 60 * 1000);;
                                     compiledPrompt.timestamp = now;
-                                    
+
                                     const msUntil = compiledPrompt.expiresAt - now;
                                     const minutesUntil = Math.round(msUntil / (60 * 1000));
                                     const hoursUntil = Math.round(minutesUntil / 60 * 10) / 10;
                                     console.log(`  ⏰ Updated expiration: ${new Date(compiledPrompt.expiresAt).toLocaleTimeString()} (${hoursUntil}h ${minutesUntil % 60}m)`);
-                                    
+
                                     // Apply cached text replacements using helper function
                                     console.log('♻️ Applying cached text replacements (context unchanged)');
                                     const replacementResult = applyCachedTextReplacements(
@@ -2730,7 +2730,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                                         processedNegativePrompt,
                                         processedCharacterPrompts
                                     );
-                                    
+
                                     if (replacementResult.success) {
                                         processedPrompt = replacementResult.processedPrompt;
                                         processedNegativePrompt = replacementResult.processedNegativePrompt;
@@ -2776,9 +2776,9 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
 
                 if (!hasValidCache) {
                     console.log(`🗑️ ${isCacheLocked ? 'Locked' : 'Cached'} prompt invalidated - will regenerate`);
-                    
+
                     const promptsChanged = body.dynamic_generation?.compiled_prompt?.prompt_hash !== currentPromptHash;
-                    const directiveChanged = body.dynamic_generation?.compiled_prompt?.directive_hash !== currentDirectiveHash; 
+                    const directiveChanged = body.dynamic_generation?.compiled_prompt?.directive_hash !== currentDirectiveHash;
                     if (initialPromptAware && (body.dynamic_generation?.compiled_prompt?.preview_image || body.dynamic_generation?.compiled_prompt?.preview_image_hash) && promptsChanged) {
                         console.log('🗑️ Prompts changed - clearing old preview image for regeneration');
                         delete body.dynamic_generation.compiled_prompt.preview_image;
@@ -2879,23 +2879,23 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     hasValidPreview = true;
                     console.log(`✅ Legacy preview found, skipping regeneration`);
                 }
-                
+
                 const needsPreview = initialPromptAware &&
-                                     !hasValidPreview &&
-                                     !body.stageIndex &&
-                                     !body.compile_only; // Only generate preview for initial generation, not pipeline stages
-                
+                    !hasValidPreview &&
+                    !body.stageIndex &&
+                    !body.compile_only; // Only generate preview for initial generation, not pipeline stages
+
                 if (needsPreview) {
                     console.log('🖼️ Initial Prompt Aware enabled - generating preview first');
                     if (!body.seed) {
                         body.seed = Math.floor(0x100000000 * Math.random() - 1);
                         console.log(`🎲 Generated seed for preview and main generation: ${body.seed}`);
                     }
-                    
+
                     // Calculate preview resolution (max area 262144, maintain aspect ratio)
                     let previewWidth, previewHeight;
                     const maxArea = 262144; // 512x512 equivalent
-                    
+
                     if (body.width && body.height) {
                         const previewDims = dimensionsMaxUnderArea(body.width, body.height, maxArea, 64, 64, 64);
                         previewWidth = previewDims.width;
@@ -2913,9 +2913,9 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                             previewHeight = 512;
                         }
                     }
-                    
+
                     console.log(`🖼️ Preview resolution: ${previewWidth}x${previewHeight} (max area: ${maxArea})`);
-                    
+
                     // Create preview generation options (without dynamic generation to avoid recursion)
                     const previewBody = {
                         ...body,
@@ -2926,7 +2926,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                         dynamic_generation: undefined, // Skip dynamic generation for preview
                         no_save: true // Don't save the preview
                     };
-                    
+
                     // Lock ALL text replacements from initial processing for preview and final generation
                     // This ensures both the preview and final image use the same exact text replacements
                     if (body.text_replacements !== undefined && allTextReplacementSeeds && allTextReplacementSeeds.length > 0) {
@@ -2934,19 +2934,19 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                         previewBody.text_replacements_seed = lockedReplacements;
                         console.log(`🔒 Locked ${lockedReplacements.length} text replacements for preview`);
                     }
-                    
+
                     // Remove resolution if using custom dimensions
                     delete previewBody.resolution;
-                    
+
                     // Generate preview
                     const previewOptions = await buildOptions(globalResources, previewBody, null, {}, ws, handler, wsServer);
                     // Ensure preview streams by providing a streaming callback
-                    const streamCb = () => {};
+                    const streamCb = () => { };
                     const previewResult = await handleGeneration(globalResources, previewOptions, true, null, body.workspace, null, streamCb, ws, handler);
-                    
+
                     if (previewResult && previewResult.buffer) {
                         __runtimeGr.getLogger().detailed('✅ Preview generated');
-                        
+
                         // Trace: attach generated preview (use actual requestId)
                         try {
                             if (body.requestId && previewResult.buffer) {
@@ -2956,21 +2956,21 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                                     stage: 'preview'
                                 });
                             }
-                        } catch {}
-                        
+                        } catch { }
+
                         // Generate hash from preview buffer
                         const previewHash = crypto.createHash('sha256').update(previewResult.buffer).digest('hex');
-                        
+
                         // Save preview to .cache/dynGenPreview/ directory
                         const dynGenPreviewDir = path.join(__runtimeGr.getPath('cache'), 'dynGenPreview');
                         if (!fs.existsSync(dynGenPreviewDir)) {
                             fs.mkdirSync(dynGenPreviewDir, { recursive: true });
                         }
-                        
+
                         const previewFilePath = path.join(dynGenPreviewDir, `${previewHash}.png`);
                         fs.writeFileSync(previewFilePath, previewResult.buffer);
                         console.log(`💾 Saved preview to cache: ${previewHash}.png`);
-                        
+
                         // Store only the hash in dynamic_generation for the actual generation
                         body.dynamic_generation.compiled_prompt = body.dynamic_generation.compiled_prompt || {};
                         body.dynamic_generation.compiled_prompt.preview_image_hash = previewHash;
@@ -2980,7 +2980,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                             steps: previewBody.steps,
                             seed: body.seed // Store seed used for preview
                         };
-                        
+
                         console.log(`🖼️ Preview stored with hash ${previewHash.substring(0, 8)}... (seed: ${body.seed}), proceeding with full generation`);
                     } else {
                         console.warn('⚠️ Preview generation failed, proceeding without preview');
@@ -2999,7 +2999,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 let dynamicResult = null;
                 let chainRetries = 0;
                 const maxChainRetries = 3;
-                
+
                 // Remove append marker from prompts before passing to AI
                 // AI shouldn't see the marker - it's only for internal processing
                 const markerRegex = new RegExp(`\\s*,?\\s*${APPEND_MARKER}\\s*,?\\s*`, 'g');
@@ -3019,7 +3019,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 ));
                 const promptForAI = stripAppendMarker(processedPrompt);
                 const ucForAI = stripAppendMarker(processedNegativePrompt);
-                const characterPromptsForAI = (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) 
+                const characterPromptsForAI = (processedCharacterPrompts && Array.isArray(processedCharacterPrompts))
                     ? processedCharacterPrompts.map(char => ({
                         ...char,
                         prompt: stripAppendMarker(char.prompt),
@@ -3039,7 +3039,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     processedPromptNegativeFragment,
                     APPEND_MARKER
                 });
-                
+
                 while (chainRetries < maxChainRetries) {
                     try {
                         if (body.emphasis_normalization && typeof body.emphasis_normalization === 'object') {
@@ -3048,7 +3048,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                                 emphasis_normalization: body.emphasis_normalization
                             };
                         }
-                        dynamicResult = await processDynamicGenerationCore(__runtimeGr, 
+                        dynamicResult = await processDynamicGenerationCore(__runtimeGr,
                             dynaRequest,
                             contextForAI,
                             promptForAI,
@@ -3094,14 +3094,14 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                         // Check if we have empty or missing text_replacements after validation failure
                         // This happens when validation fails and AI returns empty response - we should restart instead of falling back
                         if (dynamicResult.success) {
-                            const hasEmptyTextReplacements = !dynamicResult.text_replacements || 
-                                (!dynamicResult.text_replacements.prompt?.length && 
-                                 !dynamicResult.text_replacements.uc?.length && 
-                                 (!dynamicResult.text_replacements.character_prompts || 
-                                  dynamicResult.text_replacements.character_prompts.every(char => 
-                                      (!char.prompt?.length && !char.uc?.length)
-                                  )));
-                            
+                            const hasEmptyTextReplacements = !dynamicResult.text_replacements ||
+                                (!dynamicResult.text_replacements.prompt?.length &&
+                                    !dynamicResult.text_replacements.uc?.length &&
+                                    (!dynamicResult.text_replacements.character_prompts ||
+                                        dynamicResult.text_replacements.character_prompts.every(char =>
+                                            (!char.prompt?.length && !char.uc?.length)
+                                        )));
+
                             if (hasEmptyTextReplacements && chainRetries < maxChainRetries) {
                                 chainRetries++;
                                 console.log(`⚠️ No text replacements provided after validation failure, restarting dynamic generation (retry ${chainRetries}/${maxChainRetries})`);
@@ -3160,7 +3160,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                         }
                     }
                 }
-                
+
                 // If we exhausted retries due to chain rejection, return error
                 if (chainRetries >= maxChainRetries && dynamicResult.chainRejected) {
                     console.error(`❌ Chain rejected ${maxChainRetries} times, giving up`);
@@ -3186,15 +3186,15 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                             timestamp: new Date().toISOString()
                         });
                     }
-                    
+
                     // Try to reuse text_replacements from previous compiled_prompt if available
                     const previousCompiledPrompt = body.dynamic_generation?.compiled_prompt;
                     let reusedTextReplacements = dynamicResult.text_replacements;
-                    
+
                     if (!reusedTextReplacements && previousCompiledPrompt?.text_replacements && previousCompiledPrompt.success !== false) {
                         console.log('💾 Reusing text_replacements from previous successful compiled_prompt');
                         reusedTextReplacements = previousCompiledPrompt.text_replacements;
-                        
+
                         // Apply the reused text replacements
                         try {
                             // Apply replacements to prompt
@@ -3256,7 +3256,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                             console.error('❌ Error applying reused text replacements:', error);
                         }
                     }
-                    
+
                     // Store failed result with success: false
                     dynamic_generation.compiled_prompt = {
                         success: false,
@@ -3291,7 +3291,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     // Store the compiled result
                     const now = Date.now();
                     const expiresAt = calculateDynamicExpiration(__runtimeGr, dynamicResult.context, 30 * 60 * 1000); // Default 30 minutes fallback
-                    
+
                     const compiledPrompt = {
                         success: true,
                         citations: dynamicResult.citations,
@@ -3324,7 +3324,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                             ? buildPromptApplicationContext(body._promptApplicationBaseline)
                             : null
                     };
-                    
+
                     if (dynamicResult.text_replacements) {
                         // Apply replacements to prompt
                         if (dynamicResult.text_replacements.prompt && dynamicResult.text_replacements.prompt.length > 0) {
@@ -3365,7 +3365,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                                         if (processedCharacterPrompts[index]) {
                                             if (charReplacements.prompt && charReplacements.prompt.length > 0) {
                                                 try {
-                                                    const result = applyDynamicReplacements(__runtimeGr, 
+                                                    const result = applyDynamicReplacements(__runtimeGr,
                                                         processedCharacterPrompts[index].prompt || '',
                                                         dynamicResult.text_replacements,
                                                         'character',
@@ -3385,7 +3385,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                                             if (charReplacements.uc && charReplacements.uc.length > 0) {
                                                 console.log(`🔄 Applying ${charReplacements.uc.length} UC replacements to character ${index}`);
                                                 try {
-                                                    const result = applyDynamicReplacements(__runtimeGr, 
+                                                    const result = applyDynamicReplacements(__runtimeGr,
                                                         processedCharacterPrompts[index].uc || '',
                                                         dynamicResult.text_replacements,
                                                         'character',
@@ -3406,7 +3406,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                                 });
                             }
                         }
-                        
+
                         // Apply character names from AI to character prompts
                         if (dynamicResult.character_names && Array.isArray(dynamicResult.character_names) && dynamicResult.character_names.length > 0) {
                             processedCharacterPrompts = processedCharacterPrompts || [];
@@ -3427,9 +3427,9 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                             processedCharacterPrompts
                         ));
                         const totalReplacements = (dynamicResult.text_replacements.prompt?.length || 0) +
-                                                    (dynamicResult.text_replacements.uc?.length || 0) +
-                                                    (dynamicResult.text_replacements.character_prompts?.reduce((sum, char) =>
-                                                        (char.prompt?.length || 0) + (char.uc?.length || 0), 0) || 0);
+                            (dynamicResult.text_replacements.uc?.length || 0) +
+                            (dynamicResult.text_replacements.character_prompts?.reduce((sum, char) =>
+                                (char.prompt?.length || 0) + (char.uc?.length || 0), 0) || 0);
                         __runtimeGr.getLogger().normal(`🔄 Applied ${totalReplacements} text replacements`);
                     } else {
                         // No text replacements provided - this should have been caught earlier and restarted
@@ -3450,7 +3450,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     __runtimeGr.getLogger().verbose('💾 Stored compiled prompt');
 
                     // If this is a preset generation, save the compiled prompt directly to the preset
-                    if (!!preset &&body.presetName) {
+                    if (!!preset && body.presetName) {
                         try {
                             const currentPromptConfig = __runtimeGr.getPromptConfig({ clone: true });
 
@@ -3736,7 +3736,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 console.warn(`⚠️ Failed to process character reference: ${error.message}`);
             }
         }
-        
+
         if (!!body.image && body.image !== 'data:base64') {
             if (!body.image.includes(":")) throw new Error(`No Image Format Passed`);
 
@@ -3768,19 +3768,19 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     if (!resolution && body.width && body.height) {
                         resolution = `${body.width}x${body.height}`;
                     }
-                    
+
                     try {
                         const presetResult = await generatePresetSourceImage(globalResources, presetName, seed, resolution, body.model);
-                        
+
                         // Validate the generated image buffer
                         if (!presetResult.buffer || !Buffer.isBuffer(presetResult.buffer)) {
                             throw new Error('Generated preset image is invalid or empty');
                         }
-                        
+
                         if (presetResult.buffer.length === 0) {
                             throw new Error('Generated preset image buffer is empty');
                         }
-                        
+
                         imageBuffer = presetResult.buffer;
                         imageSourceSeed = presetResult.seed;
                         originalSource = `preset:${presetName}`;
@@ -3816,12 +3816,12 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     targetDims.height = dims.height;
                 }
             }
-            
+
             if (!targetDims.width || !targetDims.height) {
                 console.error('Invalid target dimensions:', targetDims);
                 throw new Error('Invalid target dimensions');
             }
-            
+
             const skipBaseImageResize = body.stage_index !== undefined || body.image_preletterboxed === true;
             if (targetDims.width && targetDims.height && !skipBaseImageResize) {
                 imageBuffer = baseOptions.append_transparency
@@ -3852,40 +3852,40 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     body.mask_compressed = null;
                 }
             }
-            
+
             // Auto-convert standard mask to compressed mask if no compressed mask exists
             if (body.mask && !body.mask_compressed && targetDims.width && targetDims.height) {
                 try {
                     // Convert standard mask to compressed format (1/8 scale)
                     const compressedWidth = Math.floor(targetDims.width / 8);
                     const compressedHeight = Math.floor(targetDims.height / 8);
-                    
+
                     // Create a temporary canvas to resize the mask
                     const maskBuffer = Buffer.from(body.mask, 'base64');
                     const maskImage = await loadImage(maskBuffer);
-                    
+
                     const tempCanvas = createCanvas(compressedWidth, compressedHeight);
                     const tempCtx = tempCanvas.getContext('2d');
-                    
+
                     // Fill with black background
                     tempCtx.fillStyle = 'black';
                     tempCtx.fillRect(0, 0, compressedWidth, compressedHeight);
-                    
+
                     // Disable image smoothing for nearest neighbor scaling
                     tempCtx.imageSmoothingEnabled = false;
-                    
+
                     // Draw the mask scaled down to compressed size
                     tempCtx.drawImage(maskImage, 0, 0, compressedWidth, compressedHeight);
-                    
+
                     // Binarize the image data to ensure crisp 1-bit mask
                     const imageData = tempCtx.getImageData(0, 0, compressedWidth, compressedHeight);
                     const data = imageData.data;
-                    
+
                     for (let i = 0; i < data.length; i += 4) {
                         const r = data[i];
                         const g = data[i + 1];
                         const b = data[i + 2];
-                        
+
                         // If pixel is not black (has been drawn on), make it pure white
                         if (r > 0 || g > 0 || b > 0) {
                             data[i] = 255;     // Red
@@ -3900,22 +3900,22 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                             data[i + 3] = 255; // Alpha
                         }
                     }
-                    
+
                     // Put the binarized image data back
                     tempCtx.putImageData(imageData, 0, 0);
-                    
+
                     // Convert to base64 and store as compressed mask
                     const compressedMaskBase64 = tempCanvas.toBuffer('image/png').toString('base64');
                     body.mask_compressed = compressedMaskBase64;
                     baseOptions.mask_compressed = compressedMaskBase64;
-                    
+
                     console.log(`🔄 Auto-converted standard mask to compressed format (${compressedWidth}x${compressedHeight})`);
                 } catch (error) {
                     console.error('❌ Failed to auto-convert standard mask to compressed:', error.message);
                     // Continue with original mask if conversion fails
                 }
             }
-            
+
             if (body.mask) {
                 // Process compressed mask if available, otherwise use regular mask
                 baseOptions.mask = body.mask;
@@ -3933,8 +3933,8 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
         }
 
         // Process vibe transfer data if present (disabled when mask is provided for inpainting)
-        if (baseOptions.vibe_transfer && Array.isArray(baseOptions.vibe_transfer) && baseOptions.vibe_transfer.length > 0 && 
-        !(baseOptions.director_reference_images && baseOptions.director_reference_images.length > 0)) {
+        if (baseOptions.vibe_transfer && Array.isArray(baseOptions.vibe_transfer) && baseOptions.vibe_transfer.length > 0 &&
+            !(baseOptions.director_reference_images && baseOptions.director_reference_images.length > 0)) {
             if (baseOptions.mask) {
                 console.log(`⚠️ Vibe transfers disabled due to inpainting mask presence`);
             } else {
@@ -3943,12 +3943,12 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     const referenceImageMultiple = [];
                     const referenceStrengthMultiple = [];
                     const refDb = __runtimeGr.getReferenceMetadataDatabase();
-                    
+
                     for (const vibeTransfer of baseOptions.vibe_transfer) {
                         try {
                             // Get encoding from database
                             const encoding = refDb.getVibeEncoding(vibeTransfer.id, body.model, vibeTransfer.ie);
-                            
+
                             if (encoding) {
                                 referenceImageMultiple.push(encoding);
                                 referenceStrengthMultiple.push(vibeTransfer.strength);
@@ -3992,7 +3992,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 baseOptions.save_base_output = body.save_base_output;
             }
         }
-        
+
         if (body.text_replacements !== undefined) {
             baseOptions.text_replacements = body.text_replacements;
         }
@@ -4024,12 +4024,12 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
         }
 
         const autoCleanEnabled = body.auto_clean_uc !== undefined ? body.auto_clean_uc : true;
-        
+
         if (autoCleanEnabled) {
             if (baseOptions.prompt && baseOptions.negative_prompt) {
                 const originalUC = baseOptions.negative_prompt;
                 baseOptions.negative_prompt = autoCleanUCPrompt(baseOptions.prompt, baseOptions.negative_prompt);
-                
+
                 if (originalUC !== baseOptions.negative_prompt) {
                     console.log('🧹 Main UC auto-cleaned');
                 }
@@ -4039,11 +4039,11 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     if (char.prompt && char.uc) {
                         const originalCharUC = char.uc;
                         const cleanedCharUC = autoCleanUCPrompt(char.prompt, char.uc);
-                        
+
                         if (originalCharUC !== cleanedCharUC) {
                             console.log(`🧹 Character ${index} UC auto-cleaned`);
                         }
-                        
+
                         return {
                             ...char,
                             uc: cleanedCharUC
@@ -4217,7 +4217,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     stageData: stageData || null
                 });
             }
-        } catch {}
+        } catch { }
 
         if (body.mcp_generated === true || body.mcpGenerated === true) {
             baseOptions.mcp_generated = true;
@@ -4229,11 +4229,31 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
     }
 };
 
+let lastApiGenerationRecord = null;
+
+function canonicalizeApiOptions(apiOpts, upscale) {
+    if (!apiOpts || typeof apiOpts !== 'object') return '';
+    const cleanObject = (obj) => {
+        if (obj === null || typeof obj !== 'object') return obj;
+        if (Array.isArray(obj)) return obj.map(cleanObject);
+        const sorted = {};
+        Object.keys(obj).sort().forEach(k => {
+            if (k === 'requestId' || k === 'stepPreviewHeight' || k === 'stepPreviewWidth') return;
+            sorted[k] = cleanObject(obj[k]);
+        });
+        return sorted;
+    };
+    return JSON.stringify({
+        api: cleanObject(apiOpts),
+        upscale: !!upscale
+    });
+}
+
 async function handleGeneration(globalResources, opts, returnImage = false, presetName = null, workspaceId = null, req = null, streamingCallback = null, ws = null, handler = null, baseMetadata = null, stageSeeds = null) {
     bindRuntimeGlobalResources(globalResources);
     const seed = opts.seed || Math.floor(0x100000000 * Math.random() - 1);
     const layer1Seed = opts.layer1Seed || null;
-    
+
     opts.n_samples = 1;
     opts.seed = seed;
     if (opts.action === __runtimeGr.getNekoAiService('Action').INPAINT) {
@@ -4246,7 +4266,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
     __runtimeGr.getLogger().detailed(`🎬 Streaming callback: ${streamingCallback !== null && typeof streamingCallback === 'function'}`);
 
     let img;
-    
+
     // Create a clean copy of opts for the API call, removing custom properties
     const apiOpts = { ...opts };
     delete apiOpts.upscale;
@@ -4308,10 +4328,10 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             ...char,
             prompt: opts.auto_char_numerize === false ? char.prompt : char.prompt.replace(/1girl/g, "girl").replace(/1boy/g, "boy")
         }));
-        
+
         // Filter enabled characters for API request
         const enabledCharacters = processedCharacterPrompts.filter(char => char.enabled);
-        
+
         // Convert to API format: remove chara_name and use_coords from individual characters.
         // Stock nekoai-js: null/undefined center is treated as non-0.5 → use_coords true,
         // then fills every center to 0.5/0.5 and collapses multi-char. Always send explicit
@@ -4337,16 +4357,52 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 enabled: char.enabled
             };
         });
-        
+
         if (apiCharacters.length > 0) {
             apiOpts.characterPrompts = apiCharacters;
             apiOpts.use_coords = useCoords;
         }
     }
-    
+
+    // Check for duplicate generation request to NovelAI API
+    const currentFingerprint = canonicalizeApiOptions(apiOpts, opts.upscale);
+    if (lastApiGenerationRecord && lastApiGenerationRecord.fingerprint === currentFingerprint && lastApiGenerationRecord.filename) {
+        const candidatePath = path.join(__runtimeGr.getPath('images'), lastApiGenerationRecord.filename);
+        if (fs.existsSync(candidatePath)) {
+            __runtimeGr.getLogger().normal(`⚡ Reusing identical generation result for existing image: ${lastApiGenerationRecord.filename}`);
+            const existingBuffer = fs.readFileSync(candidatePath);
+            const targetWorkspaceId = workspaceId || __runtimeGr.getWorkspaceManager().getActiveWorkspace(req?.session?.id);
+
+            sendStageOrGenerationComplete(ws, handler, opts, {
+                isUpscaling: false,
+                contentLength: existingBuffer.length,
+                filename: lastApiGenerationRecord.filename
+            });
+
+            if (returnImage) {
+                return {
+                    buffer: existingBuffer,
+                    filename: lastApiGenerationRecord.filename,
+                    saved: true,
+                    seed: seed,
+                    workspace: targetWorkspaceId || null,
+                    compiled_prompt: opts.dynamic_generation?.compiled_prompt,
+                    text_replacements_seed: opts.text_replacements_seed && Array.isArray(opts.text_replacements_seed) && opts.text_replacements_seed.length > 0 ? opts.text_replacements_seed : undefined,
+                    stageData: baseMetadata ? {
+                        prompt: opts.prompt,
+                        uc: opts.negative_prompt,
+                        characterPrompts: opts.allCharacterPrompts || undefined,
+                        dynamic_generation: opts.dynamic_generation?.compiled_prompt || undefined
+                    } : null
+                };
+            }
+            return lastApiGenerationRecord.filename;
+        }
+    }
+
     // Get balance before generation
     let creditUsage;
-    
+
     try {
         // Tripwire: block generation while NovelAI is locked after repeated API errors.
         if (__runtimeGr.isServiceLocked('novelai')) {
@@ -4398,82 +4454,82 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 }
                 const streamIterator = streamingResponse[Symbol.asyncIterator]();
                 try {
-                while (true) {
-                    if (isStagedGenerationCancelled(handler, opts.requestId)) {
-                        break;
-                    }
-                    const iterResult = await streamIterator.next();
-                    if (iterResult.done) {
-                        break;
-                    }
-                    const event = iterResult.value;
-                    if (isStagedGenerationCancelled(handler, opts.requestId)) {
-                        break;
-                    }
-                    if (event.event_type === __runtimeGr.getNekoAiService('EventType').INTERMEDIATE) {
-                        const rawImageBuffer = Buffer.from(event.image.data);
-                        const sendPreviewImages = !(ws && handler && typeof handler.shouldSendStepPreviewImages === 'function')
-                            || handler.shouldSendStepPreviewImages(ws);
-                        let stepFrame;
-                        if (sendPreviewImages) {
-                            let jpegBuffer = rawImageBuffer;
-                            try {
-                                jpegBuffer = await encodeStepPreviewJpeg(
-                                    rawImageBuffer,
-                                    opts.stepPreviewWidth,
-                                    opts.stepPreviewHeight
-                                );
-                            } catch (encodeErr) {
-                                console.warn('⚠️ Step preview JPEG encode failed, sending raw frame:', encodeErr.message);
+                    while (true) {
+                        if (isStagedGenerationCancelled(handler, opts.requestId)) {
+                            break;
+                        }
+                        const iterResult = await streamIterator.next();
+                        if (iterResult.done) {
+                            break;
+                        }
+                        const event = iterResult.value;
+                        if (isStagedGenerationCancelled(handler, opts.requestId)) {
+                            break;
+                        }
+                        if (event.event_type === __runtimeGr.getNekoAiService('EventType').INTERMEDIATE) {
+                            const rawImageBuffer = Buffer.from(event.image.data);
+                            const sendPreviewImages = !(ws && handler && typeof handler.shouldSendStepPreviewImages === 'function')
+                                || handler.shouldSendStepPreviewImages(ws);
+                            let stepFrame;
+                            if (sendPreviewImages) {
+                                let jpegBuffer = rawImageBuffer;
+                                try {
+                                    jpegBuffer = await encodeStepPreviewJpeg(
+                                        rawImageBuffer,
+                                        opts.stepPreviewWidth,
+                                        opts.stepPreviewHeight
+                                    );
+                                } catch (encodeErr) {
+                                    console.warn('⚠️ Step preview JPEG encode failed, sending raw frame:', encodeErr.message);
+                                }
+                                stepFrame = {
+                                    currentStep: event.step_ix,
+                                    totalSteps: opts.steps || 25,
+                                    imageData: jpegBuffer.toString('base64'),
+                                    imageFormat: 'jpeg'
+                                };
+                            } else {
+                                // High latency / WS backlog: skip encode + image payload; keep step counters.
+                                stepFrame = {
+                                    currentStep: event.step_ix,
+                                    totalSteps: opts.steps || 25
+                                };
                             }
-                            stepFrame = {
-                                currentStep: event.step_ix,
-                                totalSteps: opts.steps || 25,
-                                imageData: jpegBuffer.toString('base64'),
-                                imageFormat: 'jpeg'
-                            };
-                        } else {
-                            // High latency / WS backlog: skip encode + image payload; keep step counters.
-                            stepFrame = {
-                                currentStep: event.step_ix,
-                                totalSteps: opts.steps || 25
-                            };
-                        }
-                        if (stepPreviewBatcher) {
-                            stepPreviewBatcher.add(stepFrame);
-                        } else if (ws && handler) {
-                            handler.sendGenerationProgress(ws, opts.requestId || 'generation', {
-                                phase: 'generating',
-                                ...stepProgressBase,
-                                ...stepFrame
-                            });
-                        }
+                            if (stepPreviewBatcher) {
+                                stepPreviewBatcher.add(stepFrame);
+                            } else if (ws && handler) {
+                                handler.sendGenerationProgress(ws, opts.requestId || 'generation', {
+                                    phase: 'generating',
+                                    ...stepProgressBase,
+                                    ...stepFrame
+                                });
+                            }
 
-                        await streamingCallback({
-                            type: 'intermediate',
-                            step: event.step_ix,
-                            image: rawImageBuffer,
-                            timestamp: Date.now()
-                        });
-                        
-                    } else if (event.event_type === __runtimeGr.getNekoAiService('EventType').FINAL) {
-                        img = event.image;
-                        break;
+                            await streamingCallback({
+                                type: 'intermediate',
+                                step: event.step_ix,
+                                image: rawImageBuffer,
+                                timestamp: Date.now()
+                            });
+
+                        } else if (event.event_type === __runtimeGr.getNekoAiService('EventType').FINAL) {
+                            img = event.image;
+                            break;
+                        }
                     }
-                }
                 } finally {
-                if (stepPreviewBatcher) {
-                    if (isStagedGenerationCancelled(handler, opts.requestId)) {
-                        stepPreviewBatcher.dispose();
-                    } else {
-                        stepPreviewBatcher.flush();
+                    if (stepPreviewBatcher) {
+                        if (isStagedGenerationCancelled(handler, opts.requestId)) {
+                            stepPreviewBatcher.dispose();
+                        } else {
+                            stepPreviewBatcher.flush();
+                        }
                     }
-                }
-                if (isStagedGenerationCancelled(handler, opts.requestId) && typeof streamIterator.return === 'function') {
-                    try {
-                        await streamIterator.return();
-                    } catch (_streamCloseErr) { /* ignore */ }
-                }
+                    if (isStagedGenerationCancelled(handler, opts.requestId) && typeof streamIterator.return === 'function') {
+                        try {
+                            await streamIterator.return();
+                        } catch (_streamCloseErr) { /* ignore */ }
+                    }
                 }
             } else if (Array.isArray(streamingResponse) && streamingResponse[0]) {
                 // Library returned batch images instead of a stream (e.g. action without step stream)
@@ -4515,14 +4571,14 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
 
         // Successful round-trip to NovelAI — reset the tripwire failure counter.
         __runtimeGr.getApiKeyManager().recordApiSuccess('novelai');
-        
+
         // Get new balance and calculate credit usage
         creditUsage = await __runtimeGr.calculateCreditUsage();
-        
+
         if (creditUsage.totalUsage > 0) {
             console.log(`💰 Image Generation Cost: ${creditUsage.totalUsage} ${creditUsage.usageType === 'paid' ? 'paid' : 'fixed'}`);
         }
-        
+
     } catch (error) {
         // Tripwire: record admin-fixable NovelAI API failures (skip client-side cancels).
         if (error && error.code !== 'GENERATION_CANCELLED') {
@@ -4543,19 +4599,19 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         fallbackErr.name = 'ImageGenerationError';
         throw fallbackErr;
     }
-    
+
     const timestamp = Date.now().toString();
     let namePrefix = presetName || 'generated';
-    
+
     // Generate filename based on standard generation
     let name;
     name = `${timestamp}_${namePrefix}_${seed}.png`;
-    
+
     const shouldSave = opts.no_save !== true;
-    
+
     if (returnImage) {
         let buffer = Buffer.from(img.data);
-        
+
         // Extract stage data before metadata operations (for pipeline tracking)
         let stageData = null;
         if (baseMetadata) {
@@ -4566,7 +4622,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 dynamic_generation: opts.dynamic_generation?.compiled_prompt || undefined
             };
         }
-        
+
         // Prepare forge metadata
         let forgeData = {
             date_generated: Date.now(),
@@ -4578,7 +4634,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         if (opts.mcp_generated === true || opts.mcpGenerated === true) {
             forgeData.mcp_generated = true;
         }
-        
+
         // Add disabled characters and character names to forge metadata if present
 
         if (opts.input_character_prompts) {
@@ -4590,10 +4646,10 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 ...char,
                 prompt: opts.auto_char_numerize === false ? char.prompt : char.prompt.replace(/1girl/g, "girl").replace(/1boy/g, "boy")
             }));
-            
+
             const disabledCharacters = [];
             const characterNames = [];
-            
+
             processedCharacterPrompts.forEach((char, index) => {
                 characterNames.push(char.chara_name);
                 if (!char.enabled) {
@@ -4606,17 +4662,17 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                     });
                 }
             });
-            
+
             if (disabledCharacters.length > 0) {
                 forgeData.disabledCharacters = disabledCharacters;
             }
             if (characterNames.length > 0) {
                 forgeData.characterNames = characterNames;
             }
-            
+
             forgeData.use_coords = opts.use_coords;
         }
-        
+
         // Preserve existing preset_name if it exists, otherwise set new one
         if (presetName) {
             forgeData.preset_name = presetName;
@@ -4639,7 +4695,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             } else if (opts.mask !== undefined) {
                 forgeData.mask = opts.mask;
             }
-            if (opts.mask_bias !== undefined ) {
+            if (opts.mask_bias !== undefined) {
                 forgeData.mask_bias = opts.mask_bias;
             }
             if (opts.strength !== undefined) {
@@ -4649,7 +4705,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 forgeData.img2img_noise = opts.noise;
             }
         }
-        
+
         // Save editor input values for hydrate (managed ids preserved when present; see sanitize snapshots above)
         if (opts.input_prompt !== undefined) {
             forgeData.input_prompt = opts.input_prompt;
@@ -4777,7 +4833,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             metadata = JSON.parse(baseMetadata.tEXt.Comment);
             // Stage mode: preserve base metadata, update only specific forge_data fields
             finalBuffer = __runtimeGr.getPngMetadata().stripPngTextChunks(buffer);
-            
+
             forgeData = metadata.forge_data || {};
             mergeNovelForgeFieldsFromOpts(forgeData, opts);
             if (opts.mcp_generated === true || opts.mcpGenerated === true) {
@@ -4801,7 +4857,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 if (stageData && stageData.dynamic_generation && stageData.dynamic_generation?.success) {
                     currentStageSeedData.dynamic_generation = stageData.dynamic_generation;
                 }
-                
+
                 const completeStageSeeds = [...(stageSeeds || []), currentStageSeedData];
                 forgeData.stage_seeds = completeStageSeeds;
                 console.log(`💾 Injecting ${completeStageSeeds.length} stage seeds into metadata (${stageSeeds.length} previous + current)`);
@@ -4834,7 +4890,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             } catch (signErr) {
                 console.error('Forge image signing failed (stage):', signErr.message);
             }
-            
+
             console.log(`📝 Stage metadata: preserved base, updated forge_data (origin_response_embedded=${!!forgeData.origin_response_embedded})`);
         } else {
             // Normal mode: create new metadata
@@ -4846,9 +4902,9 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             const rawMetadata = __runtimeGr.getPngMetadata().readMetadata(finalBuffer);
             metadata = rawMetadata?.tEXt?.Comment ? JSON.parse(rawMetadata.tEXt.Comment) : null;
         }
-        
+
         const targetWorkspaceId = workspaceId || __runtimeGr.getWorkspaceManager().getActiveWorkspace(req?.session?.id);
-        
+
         // Always send receipt notification when there's a cost, regardless of whether image is saved
         if (creditUsage.totalUsage > 0) {
             const receiptData = {
@@ -4857,18 +4913,18 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 creditType: creditUsage.usageType,
                 date: Date.now().valueOf()
             };
-            
+
             const plumbing = __runtimeGr.getDataPlumbing();
             plumbing.publish('ws:broadcast:receipt', receiptData);
         }
-        
+
         if (shouldSave) {
             fs.writeFileSync(path.join(__runtimeGr.getPath('images'), name), finalBuffer);
             __runtimeGr.getLogger().normal(`💾 Saved: ${name}`);
-            
+
             // Add file to workspace
             __runtimeGr.getWorkspaceManager().addToWorkspaceArray('files', name, targetWorkspaceId);
-            
+
             // Register image in metadata DB (always); receipt row only when credits were charged
             const generationReceiptData = creditUsage.totalUsage > 0 ? {
                 type: 'generation',
@@ -4886,14 +4942,14 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                     hasDynamicGen: !!opts.dynamic_generation,
                     isUpscaling: !!opts.upscale
                 };
-                
+
                 // Add stage information if available (convert to 1-based indexing for UI)
                 if (opts.stageIndex !== undefined) {
                     progressData.totalStages = opts.totalStages;
                     progressData.currentStage = opts.stageIndex + 1;
                     progressData.stageType = opts.stageType;
                 }
-                
+
                 handler.sendGenerationProgress(ws, opts.requestId || 'generation', progressData);
             }
 
@@ -4911,8 +4967,12 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 contentLength: finalBuffer.length,
                 filename: name
             });
+            lastApiGenerationRecord = {
+                fingerprint: currentFingerprint,
+                filename: name
+            };
         }
-        
+
         if (opts.upscale) {
             console.log(`✅ Upscaling is enabled! Processing upscale...`);
             // Send progress update indicating upscaling is starting
@@ -4922,30 +4982,30 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                     hasDynamicGen: !!opts.dynamic_generation,
                     isUpscaling: true
                 };
-                
+
                 // Add stage information if available (convert to 1-based indexing for UI)
                 if (opts.stageIndex !== undefined) {
                     progressData.totalStages = opts.totalStages;
                     progressData.currentStage = opts.stageIndex + 1;
                     progressData.stageType = opts.stageType;
                 }
-                
+
                 handler.sendGenerationProgress(ws, opts.requestId || 'generation', progressData);
             }
 
             const scale = opts.upscale === true ? 4 : opts.upscale;
             await new Promise(resolve => setTimeout(resolve, 2000));
-            
+
             const { width: upscaleWidth, height: upscaleHeight } = await getImageDimensions(finalBuffer);
             const scaledBuffer = await upscaleImageCore(globalResources, finalBuffer, scale, upscaleWidth, upscaleHeight);
-            
+
             // Get new balance and calculate credit usage for upscaling
             const upscaleCreditUsage = await __runtimeGr.calculateCreditUsage();
-            
+
             if (upscaleCreditUsage.totalUsage > 0) {
                 console.log(`💰 Upscaling Cost: ${upscaleCreditUsage.totalUsage} ${upscaleCreditUsage.usageType === 'paid' ? 'paid' : 'fixed'}`);
             }
-            
+
             // Copy origin Comment onto the upscaled PNG; record measured ratio (NAI live 2x, not the old implicit 4).
             const ratio = await resolveUpscaleRatio(scaledBuffer, upscaleWidth, scale, 'novelai');
             const upscaledForgeData = {
@@ -4960,10 +5020,10 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             if (shouldSave) {
                 fs.writeFileSync(path.join(__runtimeGr.getPath('images'), upscaledName), updatedScaledBuffer);
                 console.log(`💾 Saved: ${upscaledName}`);
-                
+
                 // Add upscaled file to workspace
                 __runtimeGr.getWorkspaceManager().addToWorkspaceArray('files', upscaledName, targetWorkspaceId);
-                
+
                 // Update metadata cache for upscaled image
                 const upscaledReceiptData = {
                     type: 'upscaling',
@@ -4974,12 +5034,16 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 // Attach receipt to parent image instead of upscaled image
                 await __runtimeGr.getMetadataDatabase().addReceiptMetadata(name, __runtimeGr.getPath('images'), upscaledReceiptData, upscaledForgeData);
                 await recordReplicationGalleryJournal(upscaledName, targetWorkspaceId);
-                
+
                 const upscaledPreviewResult = await generateMobilePreviews(path.join(__runtimeGr.getPath('images'), upscaledName), upscaledBaseName);
                 await storePreviewBlurhash(__runtimeGr, upscaledName, upscaledPreviewResult);
-                
+
                 const plumbing = __runtimeGr.getDataPlumbing();
                 plumbing.publish('ws:broadcast:receipt', upscaledReceiptData);
+                lastApiGenerationRecord = {
+                    fingerprint: currentFingerprint,
+                    filename: upscaledName
+                };
             }
 
             sendStageOrGenerationComplete(ws, handler, opts, {
@@ -4988,20 +5052,20 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 filename: upscaledName
             });
 
-        // Return result with appropriate seed information
-        const result = {
-            buffer: updatedScaledBuffer,
-            filename: upscaledName,
-            saved: shouldSave,
-            seed: seed,
-            workspace: targetWorkspaceId || null,
-            compiled_prompt: opts.dynamic_generation?.compiled_prompt,
-            text_replacements_seed: opts.text_replacements_seed && Array.isArray(opts.text_replacements_seed) && opts.text_replacements_seed.length > 0 ? opts.text_replacements_seed : undefined,
-            stageData: stageData // Only populated for pipeline stages
-        };
-        return result;
+            // Return result with appropriate seed information
+            const result = {
+                buffer: updatedScaledBuffer,
+                filename: upscaledName,
+                saved: shouldSave,
+                seed: seed,
+                workspace: targetWorkspaceId || null,
+                compiled_prompt: opts.dynamic_generation?.compiled_prompt,
+                text_replacements_seed: opts.text_replacements_seed && Array.isArray(opts.text_replacements_seed) && opts.text_replacements_seed.length > 0 ? opts.text_replacements_seed : undefined,
+                stageData: stageData // Only populated for pipeline stages
+            };
+            return result;
         }
-        
+
         if (!shouldSave && !isLastPipelineStage(opts) && ws && handler && finalBuffer) {
             try {
                 const jpegBuffer = await encodeStepPreviewJpeg(
@@ -5038,15 +5102,15 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             const filePath = path.join(__runtimeGr.getPath('images'), name);
             await img.save(filePath);
             console.log(`💾 Saved: ${name}`);
-            
+
             // Generate preview
             const baseName = __runtimeGr.getPngMetadata().getBaseName(name);
-            
+
             const legacyPreviewResult = await generateMobilePreviews(path.join(__runtimeGr.getPath('images'), name), baseName);
             await storePreviewBlurhash(__runtimeGr, name, legacyPreviewResult);
             __runtimeGr.getLogger().detailed(`📸 Generated previews for ${baseName}`);
         }
-        
+
         // Return result with appropriate seed information
         const result = {
             filename: name,
@@ -5064,13 +5128,13 @@ const handleImageRequest = async (globalResources, req, res, opts, presetName = 
     bindRuntimeGlobalResources(globalResources);
     const workspaceId = req.body.workspace || req.query.workspace || null;
     const result = await handleGeneration(globalResources, opts, true, presetName, workspaceId, req);
-    
+
     // Check if optimization is requested
     const optimize = req.query.optimize === 'true';
-    
+
     let finalBuffer = result.buffer;
     let contentType = 'image/png';
-    
+
     if (optimize) {
         try {
             finalBuffer = await sharp(result.buffer)
@@ -5081,16 +5145,16 @@ const handleImageRequest = async (globalResources, req, res, opts, presetName = 
             console.error('❌ Image optimization failed:', error.message);
         }
     }
-    
+
     res.setHeader('Content-Type', contentType);
     res.setHeader('Access-Control-Expose-Headers', 'X-Generated-Filename, X-Seed');
-    
+
     if (result && result.filename) {
         res.setHeader('X-Generated-Filename', result.filename);
     } else {
         console.error('❌ No filename available in result:', result);
     }
-    
+
     // Add seed to response header
     if (result && result.seed !== undefined) {
         res.setHeader('X-Seed', result.seed.toString());
@@ -5289,7 +5353,7 @@ async function generateImageWebSocket(globalResources, body, userType, sessionId
         try {
             __runtimeGr.getTracing().startTrace(body.requestId, { type: 'single_generation', workspace: body.workspace || null });
             __runtimeGr.getTracing().addEvent(body.requestId, { type: 'request_body', body });
-        } catch {}
+        } catch { }
 
         const model = __runtimeGr.getNekoAiService('Model')[body.model.toUpperCase()];
         if (!model) {
@@ -5332,13 +5396,13 @@ async function generateImageWebSocket(globalResources, body, userType, sessionId
                     filename: result.filename
                 });
             }
-        } catch {}
-        
-        try { __runtimeGr.getTracing().finalizeTrace(requestId, 'completed', { seed: result.seed, filename: result.filename }); } catch {}
+        } catch { }
+
+        try { __runtimeGr.getTracing().finalizeTrace(requestId, 'completed', { seed: result.seed, filename: result.filename }); } catch { }
         return result;
-    } catch(e) {
+    } catch (e) {
         console.error('❌ WebSocket image generation error:', e);
-        try { if (body && body.requestId) __runtimeGr.getTracing().finalizeTrace(body.requestId, 'failed', { error: String(e && e.message || e) }); } catch {}
+        try { if (body && body.requestId) __runtimeGr.getTracing().finalizeTrace(body.requestId, 'failed', { error: String(e && e.message || e) }); } catch { }
         throw e;
     }
 }
@@ -5374,7 +5438,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
         });
         // Log full body (no sanitization per request)
         __runtimeGr.getTracing().addEvent(bodyData.requestId, { type: 'request_body', body: bodyData });
-    } catch {}
+    } catch { }
     try {
         const pipeline = bodyData.pipeline;
         const totalStages = pipeline.length + 1; // +1 for base generation
@@ -5382,13 +5446,13 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
         let currentBuffer = null;
         let savedFilenames = []; // Array to track all saved stage filenames
         let previousStageBody = { ...bodyData };
-        
+
         // Extract client-provided compiled prompts array (for rerolls from saved images)
         let clientCompiledPrompts = bodyData.stage_compiled_prompts || null;
         if (clientCompiledPrompts && Array.isArray(clientCompiledPrompts)) {
             console.log(`📋 Received ${clientCompiledPrompts.length} compiled prompts from client`);
         }
-        
+
         // Remove dynamic_generation if it has no enabled values (dynamic generation is disabled)
         if (bodyData.dynamic_generation) {
             const hasEnabledValues = !!(
@@ -5402,7 +5466,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                 bodyData.dynamic_generation.clothing ||
                 bodyData.dynamic_generation.directive
             );
-            
+
             if (!hasEnabledValues) {
                 delete bodyData.dynamic_generation;
                 delete previousStageBody.dynamic_generation;
@@ -5412,14 +5476,14 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                 previousStageBody.dynamic_generation = JSON.parse(JSON.stringify(previousStageBody.dynamic_generation));
             }
         }
-        
+
         // Separate variables to track compiled prompts for inheritance
         let normalCompiledPrompt = null;
         let backgroundFocusCompiledPrompt = null;
-        
+
         // Shared context across all stages (weather, time, season should be consistent)
         let sharedContext = null;
-        
+
         let isInBranchChain = false;
         let preBranchState = null; // Stores {buffer, body} - seeds continue normally
 
@@ -5429,7 +5493,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
         console.log(`🔢 Stage hex IDs: 00 (base), ${stageHexIds.join(', ')}`);
 
         // Create base request body that all stages inherit from
-        
+
         // Track inherited directive - starts with main directive and accumulates through stages
         let inheritedDirective = bodyData.dynamic_generation?.directive || '';
 
@@ -5467,17 +5531,17 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
 
         // Generate base image
         const baseResult = await handleGeneration(globalResources, baseOpts, true, bodyData?.preset || bodyData?.presetName, bodyData?.workspace, mockReq, streamingCallback, ws, handler);
-        
+
         // Trace: attach base stage image
         try {
             if (bodyData.requestId && baseResult.buffer) {
                 __runtimeGr.getTracing().addImageAttachment(bodyData.requestId, 'stage-0-base', baseResult.buffer, 'png', { stageIndex: 0, stageType: 'base' });
             }
-        } catch {}
-        
+        } catch { }
+
         // Store base seed for return value
         const baseSeed = baseResult.seed;
-        
+
         // Extract base metadata for all stages
         const baseMetadata = __runtimeGr.getPngMetadata().readMetadata(baseResult.buffer);
         if (!baseMetadata?.tEXt?.Comment) {
@@ -5490,17 +5554,17 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                 // No stage configuration means apply to all stages
                 return true;
             }
-            
+
             const stages = replacement.body_replacement_stages;
             if (Array.isArray(stages)) {
                 // Specific stages array
                 return stages.includes(currentStage);
             }
-            
+
             if (typeof stages === 'object') {
                 // Range configuration
                 const { start, end } = stages;
-                
+
                 if (start !== undefined && end !== undefined) {
                     return currentStage >= start && currentStage <= end;
                 } else if (start !== undefined) {
@@ -5509,7 +5573,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                     return currentStage <= end;
                 }
             }
-            
+
             // Default to applying if no valid stage configuration
             return true;
         };
@@ -5558,19 +5622,19 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
         }
 
         currentBuffer = baseResult.buffer;
-        
+
         // Set compiled prompt variables for inheritance - only if successful
         if (baseResult.compiled_prompt && baseResult.compiled_prompt.success !== false) {
             normalCompiledPrompt = baseResult.compiled_prompt;
             console.log('🔍 Set base normal compiled prompt for inheritance');
-            
+
             // If dynamic generation ran successfully, clear client-provided compiled prompts
             // This ensures pipeline stages use fresh data instead of stale client prompts
             if (clientCompiledPrompts) {
                 console.log('🔄 Dynamic generation ran successfully - clearing client-provided compiled prompts');
                 clientCompiledPrompts = null;
             }
-            
+
             // Extract and store shared context for all pipeline stages
             if (baseResult.compiled_prompt.context) {
                 sharedContext = baseResult.compiled_prompt.context;
@@ -5648,18 +5712,18 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                         savedStages: savedFilenames.length
                     });
                 }
-            } catch {}
+            } catch { }
             return buildStagedPartialReturn({ cancelled: true, stopped_early: true });
         }
-        
+
         // Process pipeline stages
         for (let i = 0; i < pipeline.length; i++) {
             const stage = pipeline[i];
             const stageIndex = i + 1;
             const stageHexId = stageHexIds[i] || '??';
-            
+
             console.log(`🎯 Stage ${stageIndex} (${stageHexId}): ${stage.type}`);
-            
+
             // Branch chain detection
             const isBranchStage = stage.branch === true;
             const prevStage = i > 0 ? pipeline[i - 1] : null;
@@ -5667,7 +5731,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
             const nextStage = i < pipeline.length - 1 ? pipeline[i + 1] : null;
             const nextIsBranch = nextStage && nextStage.branch === true;
             const isLastInBranchChain = isBranchStage && !nextIsBranch;
-            
+
             // Entering branch chain - save pre-branch state
             if (isBranchStage && !prevWasBranch && !isInBranchChain) {
                 console.log(`🌿 Stage ${stageIndex}: Entering branch chain`);
@@ -5678,7 +5742,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                     // NOTE: Seeds continue to be added to stageSeeds array normally
                 };
             }
-            
+
             // Exiting branch chain - restore pre-branch state
             if (!isBranchStage && isInBranchChain && preBranchState) {
                 console.log(`🌿 Stage ${stageIndex}: Exiting branch chain, restoring pre-branch state`);
@@ -5688,7 +5752,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                 isInBranchChain = false;
                 preBranchState = null;
             }
-            
+
             try {
                 if (isStagedGenerationCancelled(handler, bodyData.requestId)) {
                     console.log(`🛑 Generation cancelled before stage ${stageIndex} - skipping remaining ${pipeline.length - i} stage(s)`);
@@ -5706,11 +5770,11 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                         stageType: stage.type
                     });
                 }
-                
+
                 // Random delay between stages (5-10 seconds)
                 const delayMs = Math.floor(Math.random() * 5000) + 5000; // 5000-10000ms
                 console.log(`⏳ Stage delay: ${delayMs}ms`);
-                
+
                 if (ws && handler) {
                     handler.sendGenerationProgress(ws, bodyData.requestId || 'generation', {
                         phase: 'stage_delay',
@@ -5719,7 +5783,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                         delayMs: delayMs
                     });
                 }
-                
+
                 const delayCompleted = await waitStageDelayWithCancellation(delayMs, handler, bodyData.requestId);
                 if (!delayCompleted) {
                     console.log(`🛑 Generation cancelled during stage ${stageIndex} delay - skipping remaining ${pipeline.length - i} stage(s)`);
@@ -5727,12 +5791,12 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                     sendCancelledCompleteProgress(stageIndex);
                     break;
                 }
-                
+
                 // Validate stage parameters
                 if (!stage.type) {
                     throw new Error(`Stage ${stageIndex}: Missing stage type`);
                 }
-                
+
                 if (stage.type === 'expand-canvas') {
                     if (!stage.resolution) {
                         throw new Error(`Stage ${stageIndex}: Missing resolution for expand-canvas stage`);
@@ -5754,10 +5818,10 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                 } else {
                     throw new Error(`Stage ${stageIndex}: Unknown stage type: ${stage.type}`);
                 }
-                
+
                 // Determine if this stage should save
                 const shouldSave = stage.saveResults || isLastInBranchChain || (i === pipeline.length - 1) || stage.stopAtStage;
-                
+
                 // Force save if last stage in branch chain
                 if (isLastInBranchChain) {
                     console.log(`🌿 Stage ${stageIndex}: Last stage in branch chain - forcing save`);
@@ -5768,18 +5832,18 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
 
                 // Build stage request body by inheriting from previous stage
                 let stageRequestBody = { ...previousStageBody };
-                
+
                 // Deep copy dynamic_generation to prevent shared reference issues between stages
                 if (stageRequestBody.dynamic_generation) {
                     stageRequestBody.dynamic_generation = JSON.parse(JSON.stringify(stageRequestBody.dynamic_generation));
                 }
-                
+
                 // Determine which compiled prompt to inherit based on current stage's background focus state
                 const isCurrentStageBackgroundFocus = stage.type === 'expand-canvas' && stage.backgroundFocus;
-                
+
                 // Check for compiled prompt from previous stage - prioritize client-provided, then runtime stageSeeds
                 let previousStageCompiledPrompt = null;
-                
+
                 // First priority: Client-provided compiled prompts (from rerolling saved images)
                 // clientCompiledPrompts[0] = first pipeline stage, [1] = second pipeline stage, etc.
                 if (clientCompiledPrompts && Array.isArray(clientCompiledPrompts)) {
@@ -5794,7 +5858,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                     }
                     // Note: For i === 0 (first pipeline stage), we skip client-provided check and fall through to runtime or base
                 }
-                
+
                 // Second priority: Runtime-generated stageSeeds array (from current generation session)
                 if (!previousStageCompiledPrompt && stageSeeds.length > 0) {
                     // Get the last stage's data (the immediate previous stage)
@@ -5804,7 +5868,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                         console.log(`📋 Stage ${stageIndex}: Using runtime compiled prompt from previous stage (stage ${stageSeeds.length - 1})`);
                     }
                 }
-                
+
                 // Inject the appropriate compiled prompt for this stage
                 if (previousStageCompiledPrompt) {
                     // Use compiled prompt from previous stage in seeds array (priority)
@@ -5812,7 +5876,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                         stageRequestBody.dynamic_generation = {};
                     }
                     stageRequestBody.dynamic_generation.compiled_prompt = { ...previousStageCompiledPrompt };
-                    
+
                     // Always merge in shared context to ensure consistency
                     if (sharedContext) {
                         stageRequestBody.dynamic_generation.compiled_prompt.context = sharedContext;
@@ -5826,7 +5890,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                         stageRequestBody.dynamic_generation = {};
                     }
                     stageRequestBody.dynamic_generation.compiled_prompt = { ...backgroundFocusCompiledPrompt };
-                    
+
                     // Always merge in shared context to ensure consistency
                     if (sharedContext) {
                         stageRequestBody.dynamic_generation.compiled_prompt.context = sharedContext;
@@ -5840,7 +5904,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                         stageRequestBody.dynamic_generation = {};
                     }
                     stageRequestBody.dynamic_generation.compiled_prompt = { ...normalCompiledPrompt };
-                    
+
                     // Always merge in shared context to ensure consistency
                     if (sharedContext && normalCompiledPrompt.context !== sharedContext) {
                         stageRequestBody.dynamic_generation.compiled_prompt.context = sharedContext;
@@ -5853,11 +5917,11 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                     if (!stageRequestBody.dynamic_generation) {
                         stageRequestBody.dynamic_generation = {};
                     }
-                    
+
                     if (normalCompiledPrompt) {
                         // Copy normal compiled prompt for background focus stage
                         stageRequestBody.dynamic_generation.compiled_prompt = { ...normalCompiledPrompt };
-                        
+
                         // Override with shared context to ensure consistency
                         if (sharedContext) {
                             stageRequestBody.dynamic_generation.compiled_prompt.context = sharedContext;
@@ -5884,7 +5948,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                     };
                     console.log(`🔍 Stage ${stageIndex}: No compiled prompt, but using shared context`);
                 }
-                
+
 
                 // Clean up stage-specific data from previous stage to prevent contamination
                 delete stageRequestBody.mask;
@@ -5926,7 +5990,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                         // Previous stage used custom dimensions - resize based on target area
                         const currentWidth = stageRequestBody.width;
                         const currentHeight = stageRequestBody.height;
-                        
+
                         // Define target areas for each resolution level
                         const areaMap = {
                             'small': 409600,      // ~640x640
@@ -5936,9 +6000,9 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                         };
                         // nekoai-js MetadataProcessor enforces product width*height <= 3047424
                         const MAX_API_TOTAL_PIXELS = 3047424;
-                        
+
                         const maxArea = Math.min(areaMap[stage.resolution] || areaMap['normal'], MAX_API_TOTAL_PIXELS);
-                        
+
                         const snapped = dimensionsMaxUnderArea(currentWidth, currentHeight, maxArea, 64, 512, 512);
                         stageRequestBody.width = snapped.width;
                         stageRequestBody.height = snapped.height;
@@ -5953,7 +6017,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                         const parts = stageRequestBody.resolution.toLowerCase().split('_');
                         const aspectRatio = parts.length > 1 ? parts.slice(1).join('_') : 'square';
                         const newResolution = `${stage.resolution}_${aspectRatio}`;
-                        
+
                         // Convert to custom dimensions to avoid API issues with xlarge
                         const dims = getDimensionsFromResolution(newResolution);
                         if (dims && dims.width && dims.height) {
@@ -5993,7 +6057,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                 // Handle seed inheritance BEFORE merging advanced config
                 if (stage.advanced && stage.advanced.inheritSeed) {
                     let seedToInherit;
-                    
+
                     // First pipeline stage (i === 0) inherits from base generation
                     if (i === 0) {
                         seedToInherit = baseSeed;
@@ -6003,14 +6067,14 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                         const prevStageIndex = i - 1;
                         seedToInherit = stageSeeds[prevStageIndex]?.seed;
                     }
-                    
+
                     if (seedToInherit !== undefined) {
                         // Set the seed directly on the stage's advanced config before merge
                         stage.advanced.seed = seedToInherit;
                         console.log(`🔗 Stage ${stageIndex}: Inheriting seed ${seedToInherit} from ${i === 0 ? 'base generation' : 'previous stage'}`);
                     }
                 }
-                
+
                 // Merge advanced config if present
                 if (stage.advanced) {
                     Object.assign(stageRequestBody, stage.advanced);
@@ -6027,7 +6091,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                     stageRequestBody.max_enhance_source = stageRequestBody.chain_source || null;
                     delete stageRequestBody.resolution;
                 }
-                
+
                 // Handle resolution conflicts: if named resolution is set, remove width/height, and vice versa
                 if (stageRequestBody.resolution && stageRequestBody.resolution !== 'custom') {
                     // Named resolution was set - remove explicit dimensions
@@ -6048,7 +6112,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                 if (stage.type === 'expand-canvas' || stage.type === 'enhance' || stage.maxEnhance === true || (stage.type === 'variation' && stage.useBaseImage)) {
                     stageRequestBody.image = `data:${currentBuffer.toString('base64')}`;
                 }
-                
+
                 // Filter locked replacements for this specific stage
                 // Use text_replacements from stageRequestBody (merged from stage.advanced or inherited from base)
                 const stageBodyReplacements = stageRequestBody.text_replacements || [];
@@ -6058,7 +6122,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                     stageBodyReplacements
                 );
                 stageRequestBody.text_replacements_seed = filteredLockedReplacements;
-                
+
                 if (filteredLockedReplacements.length > 0) {
                     console.log(`🔒 Stage ${stageIndex}: Using ${filteredLockedReplacements.length} locked replacements`);
                 }
@@ -6071,7 +6135,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                         stageRequestBody.dynamic_generation.cache_locked = true;
                         console.log(`🔒 Stage ${stageIndex}: Locked mode enabled - will reuse compiled prompt context and cache`);
                     }
-                    
+
                     // Debug logging to trace context preservation
                     console.log(`🔍 Stage ${stageIndex} dynamic_generation state:`, {
                         hasCompiledPrompt: !!stageRequestBody.dynamic_generation.compiled_prompt,
@@ -6082,7 +6146,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                         hasLighting: !!stageRequestBody.dynamic_generation.compiled_prompt?.context?.timePeriod?.lighting,
                         locked: stageRequestBody.dynamic_generation.locked
                     });
-                    
+
                     const stageContext = {
                         isInitial: i === 0, // First stage in pipeline
                         isBackgroundFocus: stage.type === 'expand-canvas' && stage.backgroundFocus,
@@ -6092,25 +6156,25 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                         pipelineStageGeneration: true
                     };
                     stageRequestBody.dynamic_generation.stageContext = stageContext;
-                    
+
                     // Handle directive inheritance and accumulation
-                    const currentDirective = stage.advanced && stage.advanced.directive && stage.advanced.directive.trim() 
-                        ? stage.advanced.directive.trim() 
+                    const currentDirective = stage.advanced && stage.advanced.directive && stage.advanced.directive.trim()
+                        ? stage.advanced.directive.trim()
                         : '';
-                    
+
                     // If current stage has a directive, append it to inherited directive
                     if (currentDirective) {
-                        inheritedDirective = inheritedDirective 
-                            ? `${inheritedDirective}\n\n${currentDirective}` 
+                        inheritedDirective = inheritedDirective
+                            ? `${inheritedDirective}\n\n${currentDirective}`
                             : currentDirective;
                     }
-                    
+
                     // Apply the accumulated directive to this stage
                     if (inheritedDirective) {
                         stageRequestBody.dynamic_generation.directive = inheritedDirective;
                         console.log(`🎬 Stage ${stageIndex} directive: ${inheritedDirective}`);
                     }
-                    
+
                     console.log(`🎬 Stage ${stageIndex} context: ${JSON.stringify(stageContext)}`);
                 }
 
@@ -6121,30 +6185,30 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                     } else {
                         targetDims = getDimensionsFromResolution((stageRequestBody.resolution)?.toLowerCase() || '');
                     }
-                    
+
                     if (!targetDims || !targetDims.width || !targetDims.height) {
                         throw new Error(`Stage ${stageIndex}: Invalid target resolution`);
                     }
-                    
+
                     const originalDims = await getImageDimensions(currentBuffer);
 
                     // Create letterboxed image with transparent padding
                     const letterboxedBuffer = await processDynamicImageLetterbox(currentBuffer, targetDims, stage.bias, { inset: stage.inset === true || stage.inset === 'true' || stage.inset === 1 });
                     console.log(`📦 Letterboxed image created for stage ${stageIndex}`);
-                    
+
                     // Trace: attach letterboxed image
                     try {
                         if (bodyData.requestId && letterboxedBuffer) {
                             __runtimeGr.getTracing().addImageAttachment(bodyData.requestId, `stage-${stageIndex}-letterboxed`, letterboxedBuffer, 'png', { stageIndex });
                         }
-                    } catch {}
-                    
+                    } catch { }
+
                     // If background focus is enabled, pass letterboxed buffer directly to dynamic generation
                     if (stage.backgroundFocus && stageRequestBody.dynamic_generation) {
                         stageRequestBody.dynamic_generation.lastGeneratedImage = letterboxedBuffer;
                         console.log(`📸 Passing letterboxed buffer directly for background focus analysis`);
                     }
-                    
+
                     // Create expansion mask from letterboxed image with edge detection
                     const stageInset = stage.inset === true || stage.inset === 'true' || stage.inset === 1;
                     const maskBuffer = await createExpansionMask(
@@ -6168,15 +6232,15 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                 if (shouldSave && stage.upscale) {
                     stageRequestBody.upscale = stage.upscale;
                 }
-                
+
                 // Handle background focus for expand canvas stages
                 if (stage.type === 'expand-canvas' && stage.backgroundFocus && stageRequestBody.dynamic_generation) {
-                    console.log(`🌳 Background focus enabled for stage ${stageIndex}`);                    
+                    console.log(`🌳 Background focus enabled for stage ${stageIndex}`);
                     // Force dynamic generation to run even if there's a cached prompt
                     stageRequestBody.dynamic_generation.backgroundFocus = true;
                     // Letterboxed buffer will be passed directly via lastGeneratedImage after creation
                 }
-                
+
                 // Handle enhance/variation(useBaseImage) stages - pass current buffer for analysis
                 if ((stage.type === 'enhance' || stage.maxEnhance === true || (stage.type === 'variation' && stage.useBaseImage)) && stageRequestBody.dynamic_generation) {
                     console.log(`✨ Enhance/Variation(useBaseImage) stage with dynamic generation - passing current image buffer for analysis`);
@@ -6211,14 +6275,14 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
 
                 // Generate stage image using the unified approach
                 const stageResult = await handleGeneration(globalResources, stageOpts, true, null, bodyData.workspace, mockReq, streamingCallback, ws, handler, baseMetadata, stageSeeds);
-                
+
                 // Update locked replacements pool with new replacements from this stage
                 if (stageResult.text_replacements_seed && Array.isArray(stageResult.text_replacements_seed)) {
                     // Add new replacements to the pool (they will have body_replacement_stages metadata)
                     const newReplacements = stageResult.text_replacements_seed
                         .filter(r => r.can_lock !== false)
                         .map(r => ({ ...r, locked: true }));
-                    
+
                     // Remove old replacements with the same key that don't apply to future stages
                     const newReplacementKeys = new Set(newReplacements.map(r => r.key));
                     allLockedReplacements = allLockedReplacements.filter(oldRep => {
@@ -6228,24 +6292,24 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                         // If there's a new replacement with the same key, only keep the old one if it has persist flag
                         return oldRep.body_replacement_persist === true;
                     });
-                    
+
                     // Add the new replacements
                     allLockedReplacements.push(...newReplacements);
                     console.log(`🔄 Stage ${stageIndex}: Updated locked replacements pool (${allLockedReplacements.length} total)`);
                 }
-                
+
                 // Collect stage data for tracking (will be used by next saved stage or final return)
                 const stageSeedData = { ...stageResult.stageData, seed: stageResult.seed };
                 stageSeeds.push(stageSeedData);
 
                 // Save current body for next stage
                 previousStageBody = { ...stageRequestBody };
-                
+
                 // Deep copy dynamic_generation to prevent shared reference issues
                 if (previousStageBody.dynamic_generation) {
                     previousStageBody.dynamic_generation = JSON.parse(JSON.stringify(previousStageBody.dynamic_generation));
                 }
-                
+
                 // Update compiled prompt variables for next stage only if successful
                 if (stageResult.stageData.dynamic_generation?.success) {
                     // If dynamic generation ran successfully in this stage, clear client-provided prompts
@@ -6254,10 +6318,10 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                         console.log(`🔄 Stage ${stageIndex}: Dynamic generation ran - clearing client-provided compiled prompts`);
                         clientCompiledPrompts = null;
                     }
-                    
+
                     // Store compiled prompt based on whether this stage had background focus
                     const isBackgroundFocusStage = stage.type === 'expand-canvas' && stage.backgroundFocus;
-                    
+
                     if (isBackgroundFocusStage) {
                         // Store background focus compiled prompt separately
                         backgroundFocusCompiledPrompt = stageResult.stageData.dynamic_generation;
@@ -6267,13 +6331,13 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                         normalCompiledPrompt = stageResult.stageData.dynamic_generation;
                         console.log(`🔍 Saved stage ${stageIndex} compiled_prompt for next stage`);
                     }
-                    
+
                     // Update shared context if this stage generated new context
                     if (stageResult.stageData.dynamic_generation?.context) {
                         sharedContext = stageResult.stageData.dynamic_generation.context;
                         console.log(`🌍 Updated shared context from stage ${stageIndex}`);
                     }
-                    
+
                     // Debug logging
                     console.log(`🔍 Saved stage ${stageIndex} compiled_prompt for next stage:`, {
                         isBackgroundFocus: isBackgroundFocusStage,
@@ -6285,10 +6349,10 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                     // Even if generation failed, preserve context for all subsequent stages
                     // Context (weather, time, season) is still valid and expensive to regenerate
                     const preservedContext = stageResult.stageData.dynamic_generation.context;
-                    
+
                     // Update shared context - this applies to ALL subsequent stages
                     sharedContext = preservedContext;
-                    
+
                     console.log(`💾 Stage ${stageIndex} generation failed but preserving context for all subsequent stages`);
                     console.log(`🌍 Updated shared context:`, {
                         hasWeather: !!preservedContext.weather,
@@ -6296,16 +6360,16 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                         hasSeason: !!preservedContext.season
                     });
                 }
-                
+
                 currentBuffer = stageResult.buffer;
-                
+
                 // Trace: attach final stage image
                 try {
                     if (bodyData.requestId && stageResult.buffer) {
                         __runtimeGr.getTracing().addImageAttachment(bodyData.requestId, `stage-${stageIndex}-final`, stageResult.buffer, 'png', { stageIndex });
                     }
-                } catch {}
-                
+                } catch { }
+
                 // Track saved filename if stage was saved
                 if (stageResult.saved && stageResult.filename) {
                     savedFilenames.push({
@@ -6316,7 +6380,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                     });
                     console.log(`💾 Stage ${stageIndex} saved: ${stageResult.filename} (ID: ${stageHexId})`);
                 }
-                
+
                 console.log(`✅ Stage ${stageIndex} completed successfully`);
 
                 if (isStagedGenerationCancelled(handler, bodyData.requestId)) {
@@ -6325,11 +6389,11 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                     sendCancelledCompleteProgress(stageIndex + 1);
                     break;
                 }
-                
+
                 // Check if we should stop at this stage (either stopAtStage flag or breakPoint match)
                 if (stage.stopAtStage) {
                     console.log(`🛑 Stop at stage ${stageIndex} - skipping remaining ${pipeline.length - i - 1} stage(s)`);
-                    
+
                     // Send completion progress update
                     if (ws && handler) {
                         const lastSaved = savedFilenames.length > 0 ? savedFilenames[savedFilenames.length - 1] : null;
@@ -6343,15 +6407,15 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                             filename: lastSaved ? lastSaved.filename : null
                         });
                     }
-                    
+
                     break; // Exit the pipeline loop
                 }
-                
+
                 // Check if this stage matches the breakPoint ID (request-specific breakpoint)
-                if (bodyData.breakPoint && stage.stageId && 
+                if (bodyData.breakPoint && stage.stageId &&
                     stage.stageId.toLowerCase() === bodyData.breakPoint.toLowerCase()) {
                     console.log(`🛑 BreakPoint hit at stage ${stageIndex} (ID: ${stage.stageId}) - skipping remaining ${pipeline.length - i - 1} stage(s)`);
-                    
+
                     // Send completion progress update
                     if (ws && handler) {
                         const lastSaved = savedFilenames.length > 0 ? savedFilenames[savedFilenames.length - 1] : null;
@@ -6366,13 +6430,13 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                             filename: lastSaved ? lastSaved.filename : null
                         });
                     }
-                    
+
                     break; // Exit the pipeline loop
                 }
-                
+
             } catch (stageError) {
                 console.error(`❌ Stage ${stageIndex} failed:`, stageError.message);
-                
+
                 // Send error progress update (use 1-based indexing for UI: stageIndex + 1)
                 if (ws && handler) {
                     handler.sendGenerationProgress(ws, bodyData.requestId || 'generation', {
@@ -6383,7 +6447,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                         stageType: stage.type
                     });
                 }
-                
+
                 // If we have saved results from previous stages, return them
                 if (savedFilenames.length > 0 && currentBuffer) {
                     console.log(`⚠️ Returning partial result from stage ${stageIndex - 1}`);
@@ -6399,7 +6463,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                         error: `Stage ${stageIndex} failed: ${stageError.message}`
                     };
                 }
-                
+
                 // If no previous result, re-throw the error
                 throw stageError;
             }
@@ -6417,10 +6481,10 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                         seeds: { base: baseSeed, stages: stageSeeds }
                     });
                 }
-            } catch {}
+            } catch { }
             return buildStagedPartialReturn({ cancelled: true, stopped_early: true });
         }
-        
+
         // Send completion progress update
         if (ws && handler) {
             const lastSaved = savedFilenames.length > 0 ? savedFilenames[savedFilenames.length - 1] : null;
@@ -6433,10 +6497,10 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                 filename: lastSaved ? lastSaved.filename : null
             });
         }
-        
+
         console.log(`✅ Staged generation completed`);
         console.log(`💾 Total saved stages: ${savedFilenames.length}`);
-        
+
         // Finalize trace for pipeline
         try {
             if (bodyData.requestId) {
@@ -6446,17 +6510,17 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                     seeds: { base: baseSeed, stages: stageSeeds }
                 });
             }
-        } catch {}
-        
+        } catch { }
+
         return buildStagedPartialReturn({ saved: true });
-        
+
     } catch (error) {
         console.error('❌ Staged generation error:', error);
         try {
             if (bodyData.requestId) {
                 __runtimeGr.getTracing().finalizeTrace(bodyData.requestId, 'failed', { error: String(error && error.message || error) });
             }
-        } catch {}
+        } catch { }
         throw error;
     }
 }
@@ -6637,7 +6701,7 @@ async function convertMetadataToRequestFormat(globalResources, metadata, allowPa
     if (extractedMetadata.expansion_mode !== undefined) {
         requestBody.expansion_mode = extractedMetadata.expansion_mode;
     }
-    
+
     if (extractedMetadata.pipeline !== undefined) {
         requestBody.pipeline = extractedMetadata.pipeline;
     }
@@ -6841,25 +6905,25 @@ function dilateExpansionMaskWhiteIntoOpaque(maskData, compressedMaskWidth, compr
 // Helper function to create expansion mask from letterboxed image
 async function createExpansionMask(letterboxedBuffer, targetWidth, targetHeight, originalWidth, originalHeight, inset = false) {
     const letterboxedImg = await loadImage(letterboxedBuffer);
-    
+
     // Calculate compressed dimensions (8x smaller)
     const compressedMaskWidth = Math.round(targetWidth / 8);
     const compressedMaskHeight = Math.round(targetHeight / 8);
-    
+
     // Create downsampled version of letterboxed image
     const downsampledCanvas = createCanvas(compressedMaskWidth, compressedMaskHeight);
     const downsampledCtx = downsampledCanvas.getContext('2d');
     downsampledCtx.imageSmoothingEnabled = false;
     downsampledCtx.drawImage(letterboxedImg, 0, 0, compressedMaskWidth, compressedMaskHeight);
-    
+
     // Extract alpha channel
     const downsampledImageData = downsampledCtx.getImageData(0, 0, compressedMaskWidth, compressedMaskHeight);
     const downsampledData = downsampledImageData.data;
-    
+
     // Detect which edges have transparency
     let hasTransparentTop = false, hasTransparentBottom = false;
     let hasTransparentLeft = false, hasTransparentRight = false;
-    
+
     for (let x = 0; x < compressedMaskWidth; x++) {
         if (downsampledData[(0 * compressedMaskWidth + x) * 4 + 3] < 128) hasTransparentTop = true;
         if (downsampledData[((compressedMaskHeight - 1) * compressedMaskWidth + x) * 4 + 3] < 128) hasTransparentBottom = true;
@@ -6868,19 +6932,19 @@ async function createExpansionMask(letterboxedBuffer, targetWidth, targetHeight,
         if (downsampledData[(y * compressedMaskWidth + 0) * 4 + 3] < 128) hasTransparentLeft = true;
         if (downsampledData[(y * compressedMaskWidth + (compressedMaskWidth - 1)) * 4 + 3] < 128) hasTransparentRight = true;
     }
-    
+
     // Determine expansion direction
     const origAR = originalWidth / originalHeight;
     const targetAR = targetWidth / targetHeight;
     const isExpandingHorizontally = origAR < targetAR;
     const isExpandingVertically = origAR > targetAR;
-    
+
     // Create mask from alpha channel
     const maskCanvas = createCanvas(compressedMaskWidth, compressedMaskHeight);
     const maskCtx = maskCanvas.getContext('2d');
     const maskImageData = maskCtx.createImageData(compressedMaskWidth, compressedMaskHeight);
     const maskData = maskImageData.data;
-    
+
     // Mark transparent areas as white, opaque as black
     for (let i = 0; i < downsampledData.length; i += 4) {
         const alpha = downsampledData[i + 3];
@@ -6891,7 +6955,7 @@ async function createExpansionMask(letterboxedBuffer, targetWidth, targetHeight,
             maskData[i + 3] = 255;
         }
     }
-    
+
     const expandedMaskData = dilateExpansionMaskWhiteIntoOpaque(maskData, compressedMaskWidth, compressedMaskHeight, {
         inset,
         hasTransparentTop,
@@ -6901,7 +6965,7 @@ async function createExpansionMask(letterboxedBuffer, targetWidth, targetHeight,
         isExpandingHorizontally,
         isExpandingVertically
     });
-    
+
     const finalMaskImageData = maskCtx.createImageData(compressedMaskWidth, compressedMaskHeight);
     finalMaskImageData.data.set(expandedMaskData);
     maskCtx.putImageData(finalMaskImageData, 0, 0);
@@ -6922,43 +6986,43 @@ async function processExpandCanvas(globalResources, stage, body, baseMetadata, g
     bindRuntimeGlobalResources(globalResources);
     try {
         console.log(`🔍 Processing expand canvas stage with resolution: ${params.resolution}, bias: ${params.bias}`);
-        
+
         // Get original dimensions
         const originalDims = await getImageDimensions(imageBuffer);
         console.log(`📐 Original dimensions: ${originalDims.width}x${originalDims.height}`);
-        
+
         // Get target dimensions from resolution
         const targetDims = getDimensionsFromResolution(params.resolution?.toLowerCase() || '');
         if (!targetDims || !targetDims.width || !targetDims.height) {
             throw new Error(`Invalid target resolution: ${params.resolution}`);
         }
         console.log(`🎯 Target dimensions: ${targetDims.width}x${targetDims.height}`);
-        
+
         // Process image with letterbox mode to add transparent padding
         const letterboxedBuffer = await processDynamicImageLetterbox(imageBuffer, targetDims, params.bias, { inset: params.inset === true || params.inset === 'true' || params.inset === 1 });
         console.log(`📦 Letterboxed image created`);
-        
+
         // Load letterboxed image for mask creation
         const letterboxedImg = await loadImage(letterboxedBuffer);
-        
+
         // Calculate compressed dimensions (8x smaller)
         const compressedMaskWidth = Math.round(targetDims.width / 8);
         const compressedMaskHeight = Math.round(targetDims.height / 8);
-        
+
         // Create downsampled version of letterboxed image first
         const downsampledCanvas = createCanvas(compressedMaskWidth, compressedMaskHeight);
         const downsampledCtx = downsampledCanvas.getContext('2d');
         downsampledCtx.imageSmoothingEnabled = false; // Nearest neighbor
         downsampledCtx.drawImage(letterboxedImg, 0, 0, compressedMaskWidth, compressedMaskHeight);
-        
+
         // Extract alpha channel from downsampled image
         const downsampledImageData = downsampledCtx.getImageData(0, 0, compressedMaskWidth, compressedMaskHeight);
         const downsampledData = downsampledImageData.data;
-        
+
         // Detect which edges have transparency in downsampled image
         let hasTransparentTop = false, hasTransparentBottom = false;
         let hasTransparentLeft = false, hasTransparentRight = false;
-        
+
         // Check top edge
         for (let x = 0; x < compressedMaskWidth; x++) {
             const i = (0 * compressedMaskWidth + x) * 4;
@@ -6967,7 +7031,7 @@ async function processExpandCanvas(globalResources, stage, body, baseMetadata, g
                 break;
             }
         }
-        
+
         // Check bottom edge
         for (let x = 0; x < compressedMaskWidth; x++) {
             const i = ((compressedMaskHeight - 1) * compressedMaskWidth + x) * 4;
@@ -6976,7 +7040,7 @@ async function processExpandCanvas(globalResources, stage, body, baseMetadata, g
                 break;
             }
         }
-        
+
         // Check left edge
         for (let y = 0; y < compressedMaskHeight; y++) {
             const i = (y * compressedMaskWidth + 0) * 4;
@@ -6985,7 +7049,7 @@ async function processExpandCanvas(globalResources, stage, body, baseMetadata, g
                 break;
             }
         }
-        
+
         // Check right edge
         for (let y = 0; y < compressedMaskHeight; y++) {
             const i = (y * compressedMaskWidth + (compressedMaskWidth - 1)) * 4;
@@ -6994,19 +7058,19 @@ async function processExpandCanvas(globalResources, stage, body, baseMetadata, g
                 break;
             }
         }
-        
+
         // Determine expansion direction
         const origAR = originalDims.width / originalDims.height;
         const targetAR = targetDims.width / targetDims.height;
         const isExpandingHorizontally = origAR < targetAR;
         const isExpandingVertically = origAR > targetAR;
-        
+
         // Create mask from downsampled alpha channel
         const maskCanvas = createCanvas(compressedMaskWidth, compressedMaskHeight);
         const maskCtx = maskCanvas.getContext('2d');
         const maskImageData = maskCtx.createImageData(compressedMaskWidth, compressedMaskHeight);
         const maskData = maskImageData.data;
-        
+
         // Mark transparent areas as white, opaque areas as black
         for (let i = 0; i < downsampledData.length; i += 4) {
             const alpha = downsampledData[i + 3];
@@ -7024,7 +7088,7 @@ async function processExpandCanvas(globalResources, stage, body, baseMetadata, g
                 maskData[i + 3] = 255;
             }
         }
-        
+
         const insetExpandCanvas = params.inset === true || params.inset === 'true' || params.inset === 1;
         let expandedMaskData;
         if (insetExpandCanvas) {
@@ -7041,27 +7105,27 @@ async function processExpandCanvas(globalResources, stage, body, baseMetadata, g
             // Expand mask by 1-2 pixels ONLY in the direction of expansion
             const expandPixels = Math.max(1, Math.floor(compressedMaskWidth / 128)); // Scale for compressed size
             expandedMaskData = new Uint8ClampedArray(maskData);
-            
+
             for (let pass = 0; pass < expandPixels; pass++) {
                 const tempData = new Uint8ClampedArray(expandedMaskData);
-                
+
                 for (let y = 0; y < compressedMaskHeight; y++) {
                     for (let x = 0; x < compressedMaskWidth; x++) {
                         const i = (y * compressedMaskWidth + x) * 4;
-                        
+
                         // Skip if already white
                         if (tempData[i] === 255) continue;
-                        
+
                         // Only expand in the direction of expansion
                         let shouldExpand = false;
-                        
+
                         if (isExpandingHorizontally) {
                             // Only expand left-right
                             if (hasTransparentLeft && x > 0) {
                                 const leftI = (y * compressedMaskWidth + (x - 1)) * 4;
                                 if (tempData[leftI] === 255) shouldExpand = true;
                             }
-                            
+
                             // Ensure sufficient overlap between expanded mask and original content by adaptively adding rows
                             // Definition: overlapCount = count of pixels that turned from black (original mask) to white (expanded)
                             // Target: at least ~1.5% of total pixels (configurable via params.min_mask_overlap_pct in [0.01, 0.03])
@@ -7069,7 +7133,7 @@ async function processExpandCanvas(globalResources, stage, body, baseMetadata, g
                                 const totalPixels = compressedMaskWidth * compressedMaskHeight;
                                 const minPct = Math.max(0.01, Math.min(0.03, Number(params?.min_mask_overlap_pct) || 0.015));
                                 const minOverlap = Math.max(1, Math.floor(totalPixels * minPct));
-                                
+
                                 function computeOverlapCount() {
                                     let count = 0;
                                     for (let i = 0; i < expandedMaskData.length; i += 4) {
@@ -7078,7 +7142,7 @@ async function processExpandCanvas(globalResources, stage, body, baseMetadata, g
                                     }
                                     return count;
                                 }
-                                
+
                                 function expandOneRowDirectionally() {
                                     const tempData = new Uint8ClampedArray(expandedMaskData);
                                     for (let y = 0; y < compressedMaskHeight; y++) {
@@ -7115,7 +7179,7 @@ async function processExpandCanvas(globalResources, stage, body, baseMetadata, g
                                         }
                                     }
                                 }
-                                
+
                                 let overlapCount = computeOverlapCount();
                                 let safetyPasses = 0;
                                 const maxExtraPasses = 16; // safety cap
@@ -7128,13 +7192,13 @@ async function processExpandCanvas(globalResources, stage, body, baseMetadata, g
                                     console.warn(`⚠️ Mask overlap below target after max passes: ${overlapCount}/${minOverlap}`);
                                 }
                             })();
-                            
+
                             if (hasTransparentRight && x < compressedMaskWidth - 1) {
                                 const rightI = (y * compressedMaskWidth + (x + 1)) * 4;
                                 if (tempData[rightI] === 255) shouldExpand = true;
                             }
                         }
-                        
+
                         if (isExpandingVertically) {
                             // Only expand top-bottom
                             if (hasTransparentTop && y > 0) {
@@ -7146,7 +7210,7 @@ async function processExpandCanvas(globalResources, stage, body, baseMetadata, g
                                 if (tempData[bottomI] === 255) shouldExpand = true;
                             }
                         }
-                        
+
                         if (shouldExpand) {
                             expandedMaskData[i] = 255;
                             expandedMaskData[i + 1] = 255;
@@ -7157,21 +7221,21 @@ async function processExpandCanvas(globalResources, stage, body, baseMetadata, g
                 }
             }
         }
-        
+
         // Create ImageData using canvas context (Node.js compatible)
         const finalMaskImageData = maskCtx.createImageData(compressedMaskWidth, compressedMaskHeight);
         finalMaskImageData.data.set(expandedMaskData);
         maskCtx.putImageData(finalMaskImageData, 0, 0);
-        
+
         const compressedMaskBase64 = maskCanvas.toDataURL('image/png').split(',')[1];
         console.log(`🎭 Mask created and compressed: ${compressedMaskWidth}x${compressedMaskHeight}`);
-        
+
         // Calculate expansion percentages based on bias and dimensions
         const biasFractions = [0, 0.25, 0.5, 0.75, 1];
         const biasFrac = biasFractions[params.bias] !== undefined ? biasFractions[params.bias] : 0.5;
-        
+
         let direction, leftPercent = 0, rightPercent = 0, topPercent = 0, bottomPercent = 0;
-        
+
         if (isExpandingVertically) {
             // Expanding vertically (taller)
             direction = 'taller';
@@ -7192,11 +7256,11 @@ async function processExpandCanvas(globalResources, stage, body, baseMetadata, g
             // No expansion needed (same aspect ratio)
             throw new Error('Cannot expand: original and target have the same aspect ratio');
         }
-        
+
         // For staged expansion, we don't use AI - just use the provided prompt
         const expansionPrompt = params.prompt || '';
         const expansionReason = 'Staged expansion';
-        
+
         // Get system defaults for generation
         const defaultParams = {
             model: DEFAULT_FORGE_MODEL,
@@ -7208,10 +7272,10 @@ async function processExpandCanvas(globalResources, stage, body, baseMetadata, g
             noise: 0,
             seed: undefined // Let system generate random seed unless overridden
         };
-        
+
         // Merge with advanced overrides
         const genParams = { ...defaultParams, ...params.advanced };
-        
+
         // Build request body for inpainting
         const requestBody = {
             prompt: expansionPrompt,
@@ -7234,20 +7298,20 @@ async function processExpandCanvas(globalResources, stage, body, baseMetadata, g
             image_preletterboxed: true
             // Note: no_save will be set by the calling function based on stage requirements
         };
-        
+
         // Add seed if provided in overrides
         if (genParams.seed !== undefined) {
             requestBody.seed = genParams.seed;
         }
-        
+
         // Build options for generation
         const opts = await buildOptions(globalResources, requestBody, null, {}, null, null);
-        
+
         // Set no_save flag if specified
         if (params.no_save) {
             opts.no_save = true;
         }
-        
+
         // Add stage information to opts for progress messages
         if (params.stageIndex !== undefined) {
             opts.stageIndex = params.stageIndex;
@@ -7257,11 +7321,11 @@ async function processExpandCanvas(globalResources, stage, body, baseMetadata, g
             opts.pipeline = params.pipeline;
             opts.text_replacements = params.text_replacements;
         }
-        
+
         // Generate expanded image
         console.log(`🎨 Generating expanded image...`);
         const result = await handleGeneration(globalResources, opts, true, null, params.workspaceId, null, streamingCallback, ws, handler);
-        
+
         // Create metadata for the expansion
         const expansionMetadata = {
             expansion_inset: params.inset === true,
@@ -7277,10 +7341,10 @@ async function processExpandCanvas(globalResources, stage, body, baseMetadata, g
             expansion_params: genParams,
             generation_type: 'expanded'
         };
-        
+
         // Stage metadata is now handled by handleGeneration, so we don't need to update the buffer again
         const expandedBuffer = result.buffer;
-        
+
         return {
             buffer: expandedBuffer,
             seed: result.seed,
@@ -7288,7 +7352,7 @@ async function processExpandCanvas(globalResources, stage, body, baseMetadata, g
             saved: result.saved,
             filename: result.filename
         };
-        
+
     } catch (error) {
         console.error('❌ Expand canvas processing error:', error);
         throw error;
@@ -7300,7 +7364,7 @@ async function processEnhanceStage(globalResources, stage, body, baseMetadata, g
     bindRuntimeGlobalResources(globalResources);
     try {
         console.log(`🔍 Processing enhance stage with strength: ${params.strength}, noise: ${params.noise}`);
-        
+
         // Get system defaults for generation
         const defaultParams = {
             model: DEFAULT_FORGE_MODEL,
@@ -7311,10 +7375,10 @@ async function processEnhanceStage(globalResources, stage, body, baseMetadata, g
             noise_schedule: 'karras',
             seed: undefined // Let system generate random seed unless overridden
         };
-        
+
         // Merge with advanced overrides
         const genParams = { ...defaultParams, ...params.advanced };
-        
+
         // Build request body for img2img
         const requestBody = {
             prompt: params.prompt || '',
@@ -7334,20 +7398,20 @@ async function processEnhanceStage(globalResources, stage, body, baseMetadata, g
             append_uc: 0
             // Note: no_save will be set by the calling function based on stage requirements
         };
-        
+
         // Add seed if provided in overrides
         if (genParams.seed !== undefined) {
             requestBody.seed = genParams.seed;
         }
-        
+
         // Build options for generation
         const opts = await buildOptions(globalResources, requestBody, null, {}, null, null);
-        
+
         // Set no_save flag if specified
         if (params.no_save) {
             opts.no_save = true;
         }
-        
+
         // Add stage information to opts for progress messages
         if (params.stageIndex !== undefined) {
             opts.stageIndex = params.stageIndex;
@@ -7357,11 +7421,11 @@ async function processEnhanceStage(globalResources, stage, body, baseMetadata, g
             opts.pipeline = params.pipeline;
             opts.text_replacements = params.text_replacements;
         }
-        
+
         // Generate enhanced image
         console.log(`🎨 Generating enhanced image...`);
         const result = await handleGeneration(globalResources, opts, true, null, params.workspaceId, null, streamingCallback, ws, handler);
-        
+
         // Create metadata for the enhancement
         const enhanceMetadata = {
             enhance_strength: params.strength,
@@ -7369,10 +7433,10 @@ async function processEnhanceStage(globalResources, stage, body, baseMetadata, g
             enhance_params: genParams,
             generation_type: 'enhanced'
         };
-        
+
         // Stage metadata is now handled by handleGeneration, so we don't need to update the buffer again
         const enhancedBuffer = result.buffer;
-        
+
         return {
             buffer: enhancedBuffer,
             seed: result.seed,
@@ -7380,7 +7444,7 @@ async function processEnhanceStage(globalResources, stage, body, baseMetadata, g
             saved: result.saved,
             filename: result.filename
         };
-        
+
     } catch (error) {
         console.error('❌ Enhance stage processing error:', error);
         throw error;
@@ -7512,7 +7576,7 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         console.log(`🔍 Starting image expansion: ${filename} to ${resolution} with bias ${imageBias}`);
         const inset = overrideParams?.inset === true || overrideParams?.inset === 'true' || overrideParams?.inset === 1;
         console.log(`📌 Expansion inset (native-scale letterbox padding): ${inset}`);
-        
+
         // Load original image
         const filePath = path.join(__runtimeGr.getPath('images'), filename);
         if (!fs.existsSync(filePath)) {
@@ -7522,12 +7586,12 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         if (sourceFilePath && !fs.existsSync(sourceFilePath)) {
             throw new Error('Source image not found');
         }
-        
+
         const originalImageBuffer = fs.readFileSync(filePath);
         const sourceImageBuffer = sourceFilePath ? fs.readFileSync(sourceFilePath) : originalImageBuffer;
         const originalDims = await getImageDimensions(originalImageBuffer);
         console.log(`📐 Original dimensions: ${originalDims.width}x${originalDims.height}`);
-        
+
         // Extract original prompt, UC, and characters from PNG metadata
         let originalPrompt = '';
         let originalUc = '';
@@ -7546,39 +7610,39 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
             console.warn('⚠️ Could not extract original metadata:', error.message);
         }
         console.log(`🎨 Expansion source model: ${originalModel}`);
-        
+
         // Get target dimensions from resolution
         const targetDims = getDimensionsFromResolution(resolution?.toLowerCase() || '');
         if (!targetDims || !targetDims.width || !targetDims.height) {
             throw new Error(`Invalid target resolution: ${resolution}`);
         }
         console.log(`🎯 Target dimensions: ${targetDims.width}x${targetDims.height}`);
-        
+
         // Process image with letterbox mode to add transparent padding
         const letterboxedBuffer = await processDynamicImageLetterbox(originalImageBuffer, targetDims, imageBias, { inset });
         console.log(`📦 Letterboxed image created`);
-        
+
         // Load letterboxed image for mask creation
         const letterboxedImg = await loadImage(letterboxedBuffer);
-        
+
         // Calculate compressed dimensions (8x smaller)
         const compressedMaskWidth = Math.round(targetDims.width / 8);
         const compressedMaskHeight = Math.round(targetDims.height / 8);
-        
+
         // Create downsampled version of letterboxed image first
         const downsampledCanvas = createCanvas(compressedMaskWidth, compressedMaskHeight);
         const downsampledCtx = downsampledCanvas.getContext('2d');
         downsampledCtx.imageSmoothingEnabled = false; // Nearest neighbor
         downsampledCtx.drawImage(letterboxedImg, 0, 0, compressedMaskWidth, compressedMaskHeight);
-        
+
         // Extract alpha channel from downsampled image
         const downsampledImageData = downsampledCtx.getImageData(0, 0, compressedMaskWidth, compressedMaskHeight);
         const downsampledData = downsampledImageData.data;
-        
+
         // Detect which edges have transparency in downsampled image
         let hasTransparentTop = false, hasTransparentBottom = false;
         let hasTransparentLeft = false, hasTransparentRight = false;
-        
+
         // Check top edge
         for (let x = 0; x < compressedMaskWidth; x++) {
             const i = (0 * compressedMaskWidth + x) * 4;
@@ -7587,7 +7651,7 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
                 break;
             }
         }
-        
+
         // Check bottom edge
         for (let x = 0; x < compressedMaskWidth; x++) {
             const i = ((compressedMaskHeight - 1) * compressedMaskWidth + x) * 4;
@@ -7596,7 +7660,7 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
                 break;
             }
         }
-        
+
         // Check left edge
         for (let y = 0; y < compressedMaskHeight; y++) {
             const i = (y * compressedMaskWidth + 0) * 4;
@@ -7605,7 +7669,7 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
                 break;
             }
         }
-        
+
         // Check right edge
         for (let y = 0; y < compressedMaskHeight; y++) {
             const i = (y * compressedMaskWidth + (compressedMaskWidth - 1)) * 4;
@@ -7614,19 +7678,19 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
                 break;
             }
         }
-        
+
         // Determine expansion direction
         const origAR = originalDims.width / originalDims.height;
         const targetAR = targetDims.width / targetDims.height;
         const isExpandingHorizontally = origAR < targetAR;
         const isExpandingVertically = origAR > targetAR;
-        
+
         // Create mask from downsampled alpha channel
         const maskCanvas = createCanvas(compressedMaskWidth, compressedMaskHeight);
         const maskCtx = maskCanvas.getContext('2d');
         const maskImageData = maskCtx.createImageData(compressedMaskWidth, compressedMaskHeight);
         const maskData = maskImageData.data;
-        
+
         // Mark transparent areas as white, opaque areas as black
         for (let i = 0; i < downsampledData.length; i += 4) {
             const alpha = downsampledData[i + 3];
@@ -7644,7 +7708,7 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
                 maskData[i + 3] = 255;
             }
         }
-        
+
         const expandedMaskData = dilateExpansionMaskWhiteIntoOpaque(maskData, compressedMaskWidth, compressedMaskHeight, {
             inset,
             hasTransparentTop,
@@ -7654,21 +7718,21 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
             isExpandingHorizontally,
             isExpandingVertically
         });
-        
+
         // Create ImageData using canvas context (Node.js compatible)
         const finalMaskImageData = maskCtx.createImageData(compressedMaskWidth, compressedMaskHeight);
         finalMaskImageData.data.set(expandedMaskData);
         maskCtx.putImageData(finalMaskImageData, 0, 0);
-        
+
         const compressedMaskBase64 = maskCanvas.toDataURL('image/png').split(',')[1];
         console.log(`🎭 Mask created and compressed: ${compressedMaskWidth}x${compressedMaskHeight}`);
-        
+
         // Calculate expansion percentages based on bias and dimensions
         const biasFractions = [0, 0.25, 0.5, 0.75, 1];
         const biasFrac = biasFractions[imageBias] !== undefined ? biasFractions[imageBias] : 0.5;
-        
+
         let direction, leftPercent = 0, rightPercent = 0, topPercent = 0, bottomPercent = 0;
-        
+
         if (isExpandingVertically) {
             // Expanding vertically (taller)
             direction = 'taller';
@@ -7718,11 +7782,11 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
             noise: 0,
             seed: undefined // Let system generate random seed unless overridden
         };
-        
+
         // Merge with override params (strip prompt-review-only keys)
         const { expansionPromptOverride: _stripPromptOv, expansionUcOverride: _stripUcOv, requestedContent: _stripReqContent, ...overrideForGen } = overrideParams || {};
         const genParams = { ...defaultParams, ...overrideForGen };
-        
+
         // Build request body for inpainting
         const requestBody = {
             prompt: expansionPrompt,
@@ -7750,20 +7814,20 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
             requestBody.stepPreviewWidth = stepPreviewWidth;
             requestBody.stepPreviewHeight = stepPreviewHeight;
         }
-        
+
         console.log(`🔍 Expansion upscale setting: upscaleAfterComplete=${upscaleAfterComplete}, type=${typeof upscaleAfterComplete}`);
-        
+
         // Add seed if provided in overrides
         if (genParams.seed !== undefined) {
             requestBody.seed = genParams.seed;
         }
-        
+
         // Build options for generation
         const opts = await buildOptions(globalResources, requestBody, null, {}, null, null);
-        
+
         // Create mock req for session tracking
         const mockReq = { session: { id: sessionId } };
-        
+
         // Send progress update indicating image generation is starting
         if (ws && handler) {
             handler.sendGenerationProgress(ws, requestId, {
@@ -7778,7 +7842,7 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         // Set the requestId in opts so handleGeneration uses it for progress updates
         opts.requestId = requestId;
         const result = await handleGeneration(globalResources, opts, true, null, workspaceId, mockReq, streamingCallback, ws, handler);
-        
+
         // Add expansion metadata to result buffer
         const expansionMetadata = {
             expansion_source: sourceFilename || filename, // Use source filename for tracking original source
@@ -7797,9 +7861,9 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
             expansion_params: genParams,
             generation_type: 'expanded'
         };
-        
+
         const expandedBuffer = __runtimeGr.getPngMetadata().updateMetadata(result.buffer, expansionMetadata);
-        
+
         // Save with "_expanded" suffix and fresh timestamp
         const namingFilename = sourceFilename || filename;
         const baseName = __runtimeGr.getPngMetadata().getBaseName(namingFilename);
@@ -7811,12 +7875,12 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         const timestamp = Date.now();
         const expandedFilename = `${timestamp}_${nameWithoutTimestamp}_expanded.png`;
         const expandedPath = path.join(__runtimeGr.getPath('images'), expandedFilename);
-        
+
         console.log(`💾 Attempting to save: ${expandedFilename} at ${expandedPath}`);
         console.log(`📊 Buffer size: ${expandedBuffer.length} bytes`);
-        
+
         fs.writeFileSync(expandedPath, expandedBuffer);
-        
+
         // Verify file was written
         if (fs.existsSync(expandedPath)) {
             const stats = fs.statSync(expandedPath);
@@ -7824,11 +7888,11 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         } else {
             console.error(`❌ File was not saved: ${expandedFilename}`);
         }
-        
+
         // Add to workspace
         const targetWorkspaceId = workspaceId || __runtimeGr.getWorkspaceManager().getActiveWorkspace(sessionId);
         console.log(`📂 Target workspace ID: ${targetWorkspaceId}`);
-        
+
         if (targetWorkspaceId) {
             __runtimeGr.getWorkspaceManager().addToWorkspaceArray('files', expandedFilename, targetWorkspaceId);
             console.log(`✅ Added to workspace: ${expandedFilename} -> ${targetWorkspaceId}`);
@@ -7836,7 +7900,7 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         } else {
             console.warn(`⚠️ No workspace ID available, file not added to workspace`);
         }
-        
+
         // Generate preview
         const expandedBaseName = __runtimeGr.getPngMetadata().getBaseName(expandedFilename);
         const expandedPreviewResult = await generateMobilePreviews(expandedPath, expandedBaseName);
@@ -7880,7 +7944,7 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
             expansionReason,
             metadata: responseMetadata
         };
-        
+
     } catch (error) {
         console.error('❌ Image expansion error:', error);
         throw error;
@@ -7892,30 +7956,30 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
     bindRuntimeGlobalResources(globalResources);
     try {
         console.log(`🔄 Starting image expansion reroll: ${filename}`);
-        
+
         // 1. Load image and extract metadata
         const filePath = path.join(__runtimeGr.getPath('images'), filename);
         if (!fs.existsSync(filePath)) {
             throw new Error('Image not found');
         }
-        
+
         const imageBuffer = fs.readFileSync(filePath);
         const metadata = __runtimeGr.getPngMetadata().readMetadata(imageBuffer);
-        
+
         // 2. Validate expansion metadata exists
         if (!metadata?.tEXt?.Comment) {
             throw new Error('No metadata found');
         }
         const parsedMetadata = JSON.parse(metadata.tEXt.Comment);
         const forgeData = parsedMetadata.forge_data || {};
-        
+
         if (!forgeData.expansion_prompt) {
             throw new Error('Not an expanded image');
         }
         if (!forgeData.expansion_source) {
             throw new Error('Missing expansion_source');
         }
-        
+
         // 3. Extract stored expansion data
         const expansionPrompt = forgeData.expansion_prompt;
         const expansion_source = forgeData.expansion_source;
@@ -7925,28 +7989,28 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
         const originalUc = parsedMetadata.uc || '';
         const originalCharacters = parsedMetadata.characterPrompts || forgeData.allCharacters || [];
         const originalModel = resolveForgeModelFromPngBuffer(imageBuffer, 'v4_5');
-        
+
         console.log(`📋 Reusing expansion prompt: ${expansionPrompt.substring(0, 100)}${expansionPrompt.length > 100 ? '...' : ''}`);
         console.log(`🔗 Maintaining expansion source: ${expansion_source}`);
-        
+
         // Load the SOURCE image for letterboxing (not the expanded image)
         const sourceFilePath = path.join(__runtimeGr.getPath('images'), expansion_source);
         if (!fs.existsSync(sourceFilePath)) {
             throw new Error(`Source image not found: ${expansion_source}`);
         }
         const sourceImageBuffer = fs.readFileSync(sourceFilePath);
-        
+
         // Get source image dimensions
         const originalDims = await getImageDimensions(sourceImageBuffer);
         console.log(`📐 Original dimensions: ${originalDims.width}x${originalDims.height}`);
-        
+
         // Get target dimensions from resolution
         const targetDims = getDimensionsFromResolution(resolution?.toLowerCase() || '');
         if (!targetDims || !targetDims.width || !targetDims.height) {
             throw new Error(`Invalid target resolution: ${resolution}`);
         }
         console.log(`🎯 Target dimensions: ${targetDims.width}x${targetDims.height}`);
-        
+
         // Process SOURCE image with letterbox mode to add transparent padding
         const insetFromForge = forgeData.expansion_inset === true || forgeData.expansion_params?.inset === true ||
             forgeData.expansion_params?.inset === 'true' || forgeData.expansion_params?.inset === 1;
@@ -7957,28 +8021,28 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
         console.log(`📌 Expansion reroll inset (native-scale letterbox padding): ${inset}`);
         const letterboxedBuffer = await processDynamicImageLetterbox(sourceImageBuffer, targetDims, imageBias, { inset });
         console.log(`📦 Letterboxed image created`);
-        
+
         // Load letterboxed image for mask creation
         const letterboxedImg = await loadImage(letterboxedBuffer);
-        
+
         // Calculate compressed dimensions (8x smaller)
         const compressedMaskWidth = Math.round(targetDims.width / 8);
         const compressedMaskHeight = Math.round(targetDims.height / 8);
-        
+
         // Create downsampled version of letterboxed image first
         const downsampledCanvas = createCanvas(compressedMaskWidth, compressedMaskHeight);
         const downsampledCtx = downsampledCanvas.getContext('2d');
         downsampledCtx.imageSmoothingEnabled = false; // Nearest neighbor
         downsampledCtx.drawImage(letterboxedImg, 0, 0, compressedMaskWidth, compressedMaskHeight);
-        
+
         // Extract alpha channel from downsampled image
         const downsampledImageData = downsampledCtx.getImageData(0, 0, compressedMaskWidth, compressedMaskHeight);
         const downsampledData = downsampledImageData.data;
-        
+
         // Detect which edges have transparency in downsampled image
         let hasTransparentTop = false, hasTransparentBottom = false;
         let hasTransparentLeft = false, hasTransparentRight = false;
-        
+
         // Check top edge
         for (let x = 0; x < compressedMaskWidth; x++) {
             const i = (0 * compressedMaskWidth + x) * 4;
@@ -7987,7 +8051,7 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
                 break;
             }
         }
-        
+
         // Check bottom edge
         for (let x = 0; x < compressedMaskWidth; x++) {
             const i = ((compressedMaskHeight - 1) * compressedMaskWidth + x) * 4;
@@ -7996,7 +8060,7 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
                 break;
             }
         }
-        
+
         // Check left edge
         for (let y = 0; y < compressedMaskHeight; y++) {
             const i = (y * compressedMaskWidth + 0) * 4;
@@ -8005,7 +8069,7 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
                 break;
             }
         }
-        
+
         // Check right edge
         for (let y = 0; y < compressedMaskHeight; y++) {
             const i = (y * compressedMaskWidth + (compressedMaskWidth - 1)) * 4;
@@ -8014,19 +8078,19 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
                 break;
             }
         }
-        
+
         // Determine expansion direction
         const origAR = originalDims.width / originalDims.height;
         const targetAR = targetDims.width / targetDims.height;
         const isExpandingHorizontally = origAR < targetAR;
         const isExpandingVertically = origAR > targetAR;
-        
+
         // Create mask from downsampled alpha channel
         const maskCanvas = createCanvas(compressedMaskWidth, compressedMaskHeight);
         const maskCtx = maskCanvas.getContext('2d');
         const maskImageData = maskCtx.createImageData(compressedMaskWidth, compressedMaskHeight);
         const maskData = maskImageData.data;
-        
+
         // Mark transparent areas as white, opaque areas as black
         for (let i = 0; i < downsampledData.length; i += 4) {
             const alpha = downsampledData[i + 3];
@@ -8044,7 +8108,7 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
                 maskData[i + 3] = 255;
             }
         }
-        
+
         const expandedMaskData = dilateExpansionMaskWhiteIntoOpaque(maskData, compressedMaskWidth, compressedMaskHeight, {
             inset,
             hasTransparentTop,
@@ -8054,15 +8118,15 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
             isExpandingHorizontally,
             isExpandingVertically
         });
-        
+
         // Create ImageData using canvas context (Node.js compatible)
         const finalMaskImageData = maskCtx.createImageData(compressedMaskWidth, compressedMaskHeight);
         finalMaskImageData.data.set(expandedMaskData);
         maskCtx.putImageData(finalMaskImageData, 0, 0);
-        
+
         const compressedMaskBase64 = maskCanvas.toDataURL('image/png').split(',')[1];
         console.log(`🎭 Mask created and compressed: ${compressedMaskWidth}x${compressedMaskHeight}`);
-        
+
         // 4. Merge stored params with overrides (source PNG model if none was saved)
         const defaultParams = {
             model: originalModel,
@@ -8075,7 +8139,7 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
             ...(forgeData.expansion_params || {})
         };
         const genParams = { ...defaultParams, ...overrideParams };
-        
+
         // 5. Build request WITHOUT calling AI
         const requestBody = {
             prompt: expansionPrompt,  // Use stored prompt directly
@@ -8103,7 +8167,7 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
             requestBody.stepPreviewWidth = stepPreviewWidth;
             requestBody.stepPreviewHeight = stepPreviewHeight;
         }
-        
+
         // Add seed if provided in overrides
         if (genParams.seed !== undefined) {
             requestBody.seed = genParams.seed;
@@ -8111,11 +8175,11 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
         } else {
             console.log(`🎲 Using random seed`);
         }
-        
+
         // 6. Build options and generate
         const opts = await buildOptions(globalResources, requestBody, null, {}, null, null);
         const mockReq = { session: { id: sessionId } };
-        
+
         if (ws && handler) {
             opts.requestId = requestId;
             handler.sendGenerationProgress(ws, requestId, {
@@ -8124,10 +8188,10 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
                 isUpscaling: genParams.upscale
             });
         }
-        
+
         console.log(`🎨 Generating rerolled expanded image...`);
         const result = await handleGeneration(globalResources, opts, true, null, workspaceId, mockReq, streamingCallback, ws, handler);
-        
+
         // 7. Save with new filename, PRESERVE expansion_source
         const expansionMetadata = {
             expansion_source: expansion_source,  // Maintain the chain!
@@ -8141,24 +8205,24 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
             expansion_params: genParams,
             generation_type: 'expanded'
         };
-        
+
         const expandedBuffer = __runtimeGr.getPngMetadata().updateMetadata(result.buffer, expansionMetadata);
-        
+
         // Save file
         const baseName = __runtimeGr.getPngMetadata().getBaseName(expansion_source);
         const nameWithoutTimestamp = baseName.replace(/^\d+_/, '');
         const timestamp = Date.now();
         const expandedFilename = `${timestamp}_${nameWithoutTimestamp}_expanded.png`;
         const expandedPath = path.join(__runtimeGr.getPath('images'), expandedFilename);
-        
+
         console.log(`💾 Saving: ${expandedFilename}`);
         fs.writeFileSync(expandedPath, expandedBuffer);
-        
+
         if (fs.existsSync(expandedPath)) {
             const stats = fs.statSync(expandedPath);
             console.log(`✅ File saved successfully: ${expandedFilename} (${stats.size} bytes)`);
         }
-        
+
         // Add to workspace
         const targetWorkspaceId = workspaceId || __runtimeGr.getWorkspaceManager().getActiveWorkspace(sessionId);
         if (targetWorkspaceId) {
@@ -8166,7 +8230,7 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
             console.log(`✅ Added to workspace: ${expandedFilename}`);
             await recordReplicationGalleryJournal(expandedFilename, targetWorkspaceId);
         }
-        
+
         // Generate preview
         const rerollExpandedBase = __runtimeGr.getPngMetadata().getBaseName(expandedFilename);
         const rerollPreviewResult = await generateMobilePreviews(expandedPath, rerollExpandedBase);
@@ -8315,7 +8379,7 @@ async function compileDynamicGenerationWebSocket(globalResources, body, ws, hand
 
     try {
         __runtimeGr.getTracing().startTrace(body.requestId, { type: 'compile_dynamic_generation', workspace: body.workspace || null });
-    } catch {}
+    } catch { }
 
     await buildOptions(globalResources, body, null, {}, ws, handler, wsServer);
 
@@ -8340,7 +8404,7 @@ async function compileDynamicGenerationWebSocket(globalResources, body, ws, hand
 
     try {
         __runtimeGr.getTracing().finalizeTrace(body.requestId, 'completed', { compileOnly: true });
-    } catch {}
+    } catch { }
 
     return {
         success: compiled_prompt.success !== false,

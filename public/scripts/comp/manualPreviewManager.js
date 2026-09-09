@@ -11,6 +11,11 @@ function releaseManualPreviewElementImageSrc(img) {
     img.onerror = null;
     const src = img.currentSrc || img.src || '';
     if (src.startsWith('blob:')) {
+        // Protect blob URL if currently held as compareSourceImageData.url
+        if (typeof compareSourceImageData !== 'undefined' && compareSourceImageData?.url === src) {
+            img.removeAttribute('src');
+            return;
+        }
         if (img.dataset.revokedBlobUrl !== src) {
             try {
                 URL.revokeObjectURL(src);
@@ -630,9 +635,15 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
 
             await new Promise((resolve, reject) => {
                 let timeoutId;
+                let retryTimeoutId;
                 let settled = false;
+                let retryCount = 0;
+                const MAX_LOAD_RETRIES = 5;
+                let currentLoadSrc = loadSrc;
+
                 const cleanup = () => {
                     if (timeoutId) clearTimeout(timeoutId);
+                    if (retryTimeoutId) clearTimeout(retryTimeoutId);
                     previewImage.onload = null;
                     previewImage.onerror = null;
                     if (generationAnimationActive && !manualForm?.classList.contains('generating')) {
@@ -659,25 +670,57 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                         if (settled) return;
                         timedOut = true;
                         resolve();
-                    }, 10000);
+                    }, 15000);
                 }
-                prepareManualPreviewSrcSwap(previewImage);
-                previewImage.onload = finish;
-                previewImage.onerror = () => {
+
+                const attemptLoad = () => {
                     if (settled) return;
                     if (previewImage.dataset.manualPreviewUrl !== imageUrl) return;
-                    settled = true;
-                    cleanup();
-                    reject(new Error('Failed to load image into DOM'));
-                };
-                previewImage.src = loadSrc;
-                if (previewImage.decode) {
-                    previewImage.decode().then(finish).catch(() => {
-                        if (previewImage.complete && previewImage.naturalWidth > 0) {
-                            finish();
+
+                    prepareManualPreviewSrcSwap(previewImage);
+                    previewImage.onload = finish;
+                    previewImage.onerror = () => {
+                        if (settled) return;
+                        if (previewImage.dataset.manualPreviewUrl !== imageUrl) return;
+
+                        if (retryCount < MAX_LOAD_RETRIES) {
+                            retryCount += 1;
+                            const delay = Math.min(400 * Math.pow(1.5, retryCount), 3000);
+                            console.warn(`[ManualPreview] Load failed, retrying (${retryCount}/${MAX_LOAD_RETRIES}) in ${delay}ms: ${currentLoadSrc}`);
+                            showManualPreviewNavigationLoading(true, `Retrying image load (${retryCount}/${MAX_LOAD_RETRIES})…`, 'indeterminate');
+
+                            retryTimeoutId = setTimeout(() => {
+                                if (settled || previewImage.dataset.manualPreviewUrl !== imageUrl) return;
+                                // If a blob URL failed, fallback to canonical HTTP URL
+                                if (currentLoadSrc.startsWith('blob:')) {
+                                    currentLoadSrc = imageUrl;
+                                }
+                                // Cache-bust HTTP URLs on retry
+                                if (!currentLoadSrc.startsWith('data:') && !currentLoadSrc.startsWith('blob:')) {
+                                    const sep = currentLoadSrc.includes('?') ? '&' : '?';
+                                    currentLoadSrc = `${currentLoadSrc}${sep}_sf_retry=${retryCount}_${Date.now()}`;
+                                }
+                                attemptLoad();
+                            }, delay);
+                            return;
                         }
-                    });
-                }
+
+                        settled = true;
+                        cleanup();
+                        reject(new Error('Failed to load image into DOM'));
+                    };
+
+                    previewImage.src = currentLoadSrc;
+                    if (previewImage.decode) {
+                        previewImage.decode().then(finish).catch(() => {
+                            if (previewImage.complete && previewImage.naturalWidth > 0) {
+                                finish();
+                            }
+                        });
+                    }
+                };
+
+                attemptLoad();
             });
 
             // If a newer preview request started while we waited, don't clobber UI state.
@@ -761,32 +804,42 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                     }
                 }
             } else if (index === 0) {
-                // For index 0, show the last generation on the right side if available
-                let lastGenImage = null;
-                if (window.lastGeneration && window.lastGeneration.filename) {
-                    lastGenImage = window.lastGeneration;
-                } else if (allImages && allImages.length > 0) {
-                    // Use the first image as the "last generation"
-                    lastGenImage = allImages[0];
-                }
-
-                if (lastGenImage && originalImage) {
-                    const lastGenFilename = lastGenImage.original || lastGenImage.filename || lastGenImage.upscaled;
-                    if (lastGenFilename) {
-                        releaseManualPreviewOriginalImageSrc();
-                        originalImage.src = localGalleryImageUrl(lastGenFilename);
-                        originalImage.classList.remove('hidden');
-                        originalImage.onclick = function () {
-                            swapManualPreviewImages();
-                        };
-
-                        // Enable dual mode
-                        imageContainers.forEach(container => {
-                            container.classList.add('dual-mode');
-                        });
-                    } else {
-                    }
+                // For index 0, if compareSourceImageData is active, show the compare source as the original
+                if (typeof compareSourceImageData !== 'undefined' && compareSourceImageData && compareSourceImageData.url && originalImage) {
+                    releaseManualPreviewOriginalImageSrc();
+                    originalImage.src = compareSourceImageData.url;
+                    originalImage.classList.remove('hidden');
+                    originalImage.onclick = function () {
+                        swapManualPreviewImages();
+                    };
+                    imageContainers.forEach(container => {
+                        container.classList.add('dual-mode');
+                    });
                 } else {
+                    let lastGenImage = null;
+                    if (window.lastGeneration && window.lastGeneration.filename) {
+                        lastGenImage = window.lastGeneration;
+                    } else if (allImages && allImages.length > 0) {
+                        // Use the first image as the "last generation"
+                        lastGenImage = allImages[0];
+                    }
+
+                    if (lastGenImage && originalImage) {
+                        const lastGenFilename = lastGenImage.original || lastGenImage.filename || lastGenImage.upscaled;
+                        if (lastGenFilename) {
+                            releaseManualPreviewOriginalImageSrc();
+                            originalImage.src = localGalleryImageUrl(lastGenFilename);
+                            originalImage.classList.remove('hidden');
+                            originalImage.onclick = function () {
+                                swapManualPreviewImages();
+                            };
+
+                            // Enable dual mode
+                            imageContainers.forEach(container => {
+                                container.classList.add('dual-mode');
+                            });
+                        }
+                    }
                 }
             } else {
                 // Single image mode
@@ -1009,9 +1062,15 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
             let timedOut = false;
             await new Promise((resolve, reject) => {
                 let timeoutId;
+                let retryTimeoutId;
                 let settled = false;
+                let retryCount = 0;
+                const MAX_LOAD_RETRIES = 5;
+                let currentLoadSrc = imageUrl;
+
                 const cleanup = () => {
                     if (timeoutId) clearTimeout(timeoutId);
+                    if (retryTimeoutId) clearTimeout(retryTimeoutId);
                     previewImage.onload = null;
                     previewImage.onerror = null;
                     if (generationAnimationActive && !manualForm?.classList.contains('generating')) {
@@ -1041,25 +1100,51 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
                     // Keep the load/error handlers active so the image can still load later.
                     timedOut = true;
                     resolve();
-                }, 10000);
-                prepareManualPreviewSrcSwap(previewImage);
-                previewImage.onload = finish;
-                previewImage.onerror = () => {
+                }, 15000);
+
+                const attemptLoad = () => {
                     if (settled) return;
-                    // Ignore stale errors if a newer preview request repointed the element.
                     if (previewImage.dataset.manualPreviewUrl !== imageUrl) return;
-                    settled = true;
-                    cleanup();
-                    reject(new Error('Failed to load image into DOM'));
-                };
-                previewImage.src = imageUrl;
-                if (previewImage.decode) {
-                    previewImage.decode().then(finish).catch(() => {
-                        if (previewImage.complete && previewImage.naturalWidth > 0) {
-                            finish();
+
+                    prepareManualPreviewSrcSwap(previewImage);
+                    previewImage.onload = finish;
+                    previewImage.onerror = () => {
+                        if (settled) return;
+                        // Ignore stale errors if a newer preview request repointed the element.
+                        if (previewImage.dataset.manualPreviewUrl !== imageUrl) return;
+
+                        if (retryCount < MAX_LOAD_RETRIES) {
+                            retryCount += 1;
+                            const delay = Math.min(400 * Math.pow(1.5, retryCount), 3000);
+                            console.warn(`[ManualPreviewDirect] Load failed, retrying (${retryCount}/${MAX_LOAD_RETRIES}) in ${delay}ms: ${currentLoadSrc}`);
+
+                            retryTimeoutId = setTimeout(() => {
+                                if (settled || previewImage.dataset.manualPreviewUrl !== imageUrl) return;
+                                if (!currentLoadSrc.startsWith('data:') && !currentLoadSrc.startsWith('blob:')) {
+                                    const sep = currentLoadSrc.includes('?') ? '&' : '?';
+                                    currentLoadSrc = `${currentLoadSrc}${sep}_sf_retry=${retryCount}_${Date.now()}`;
+                                }
+                                attemptLoad();
+                            }, delay);
+                            return;
                         }
-                    });
-                }
+
+                        settled = true;
+                        cleanup();
+                        reject(new Error('Failed to load image into DOM'));
+                    };
+
+                    previewImage.src = currentLoadSrc;
+                    if (previewImage.decode) {
+                        previewImage.decode().then(finish).catch(() => {
+                            if (previewImage.complete && previewImage.naturalWidth > 0) {
+                                finish();
+                            }
+                        });
+                    }
+                };
+
+                attemptLoad();
             });
 
             // If a newer preview request started while we waited, don't clobber UI state.
@@ -1227,6 +1312,10 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
                 carouselMode = 'compiled';
                 updateDynamicCarousel(context, 'compiled');
             }
+
+            document.dispatchEvent(new CustomEvent('manualPreviewUpdated', {
+                detail: { image: window.currentManualPreviewImage }
+            }));
         }
     } finally {
         // Hide loading overlay if it was shown
@@ -1240,7 +1329,11 @@ function swapManualPreviewImages() {
     const originalImage = document.getElementById('manualPreviewOriginalImage');
     const imageContainers = document.querySelectorAll('.manual-preview-image-container, #manualPanelSection');
 
-    if (!previewImage || !originalImage || !imageContainers || !window.lastGeneration || !window.initialEdit) return;
+    const hasOriginalSource = (window.initialEdit && window.initialEdit.image)
+        || (typeof compareSourceImageData !== 'undefined' && compareSourceImageData && compareSourceImageData.url)
+        || (window.navigationOriginalImage && window.navigationOriginalImage.image);
+
+    if (!previewImage || !originalImage || !imageContainers || !hasOriginalSource) return;
 
     // Check if we're currently showing the original image
     if (Array.from(imageContainers).some(container => container.classList.contains('swapped'))) {
@@ -1298,8 +1391,30 @@ function swapManualPreviewImages() {
         });
     } else {
         // Switch to original image
+        let originalImageUrl = null;
+        let originalImageObj = null;
         if (window.initialEdit && window.initialEdit.image) {
-            const originalImageUrl = localGalleryImageUrl(window.initialEdit.image.upscaled || window.initialEdit.image.original);
+            originalImageObj = window.initialEdit.image;
+            originalImageUrl = localGalleryImageUrl(
+                originalImageObj.upscaled || originalImageObj.original || originalImageObj.filename || originalImageObj.base
+            );
+        } else if (typeof compareSourceImageData !== 'undefined' && compareSourceImageData && compareSourceImageData.url) {
+            originalImageUrl = compareSourceImageData.url;
+            originalImageObj = {
+                filename: compareSourceImageData.chainSourceFile,
+                original: compareSourceImageData.chainSourceFile,
+                url: compareSourceImageData.url,
+                width: compareSourceImageData.width,
+                height: compareSourceImageData.height
+            };
+        } else if (window.navigationOriginalImage && window.navigationOriginalImage.image) {
+            originalImageObj = window.navigationOriginalImage.image;
+            originalImageUrl = localGalleryImageUrl(
+                originalImageObj.upscaled || originalImageObj.original || originalImageObj.filename || originalImageObj.base
+            );
+        }
+
+        if (originalImageUrl) {
             releaseManualPreviewImageSrc();
             previewImage.dataset.manualPreviewUrl = originalImageUrl;
             previewImage.src = originalImageUrl;
@@ -1313,20 +1428,23 @@ function swapManualPreviewImages() {
                 seed: window.lastGeneratedSeed
             };
             // Update global variables to reflect the original image
-            window.currentManualPreviewImage = window.initialEdit.image;
+            if (originalImageObj) {
+                window.currentManualPreviewImage = originalImageObj;
+            }
             // Director new session functionality is always available
             // Try to find the index of the original image
             let imageIndex = -1;
-            if (window.originalAllImages && window.originalAllImages.length > 0 && window.filteredImageIndices) {
-                imageIndex = window.originalAllImages.findIndex(img => {
-                    return img.upscaled === window.initialEdit.image.upscaled ||
-                        img.original === window.initialEdit.image.original;
-                });
-            } else if (allImages && allImages.length > 0) {
-                imageIndex = allImages.findIndex(img => {
-                    return img.upscaled === window.initialEdit.image.upscaled ||
-                        img.original === window.initialEdit.image.original;
-                });
+            const targetFilename = originalImageObj?.upscaled || originalImageObj?.original || originalImageObj?.filename;
+            if (targetFilename) {
+                if (window.originalAllImages && window.originalAllImages.length > 0 && window.filteredImageIndices) {
+                    imageIndex = window.originalAllImages.findIndex(img => {
+                        return img.upscaled === targetFilename || img.original === targetFilename || img.filename === targetFilename;
+                    });
+                } else if (allImages && allImages.length > 0) {
+                    imageIndex = allImages.findIndex(img => {
+                        return img.upscaled === targetFilename || img.original === targetFilename || img.filename === targetFilename;
+                    });
+                }
             }
             window.currentManualPreviewIndex = imageIndex !== -1 ? imageIndex : null;
         }
@@ -1687,7 +1805,9 @@ async function restoreOriginalImage() {
 
         if (previewImage && originalImage) {
             // Restore the original image to the main preview
-            const imageUrl = localGalleryImageUrl(window.navigationOriginalImage.image.original || window.navigationOriginalImage.image.filename);
+            const targetImg = window.navigationOriginalImage.image;
+            const targetFilename = targetImg ? (targetImg.original || targetImg.filename || targetImg.upscaled || targetImg.base) : null;
+            const imageUrl = targetFilename ? localGalleryImageUrl(targetFilename) : (targetImg?.url || '');
             releaseManualPreviewImageSrc();
             previewImage.dataset.manualPreviewUrl = imageUrl;
             previewImage.src = imageUrl;

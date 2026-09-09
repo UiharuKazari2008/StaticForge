@@ -5180,9 +5180,9 @@ function showTaskbarGroupContextMenu(e, groupItem, modals) {
                         bottomItems.push(itemData);
                         return;
                     } else if (control.classList.contains('modal-work-area-maximize')
-                    || control.id === 'maximizeGalleryBtn'
-                    || control.id === 'maximizePhotoSwipeBtn'
-                    || control.id === 'restoreManualBtn') {
+                        || control.id === 'maximizeGalleryBtn'
+                        || control.id === 'maximizePhotoSwipeBtn'
+                        || control.id === 'restoreManualBtn') {
                         itemData.action = 'taskbar-window-maximize';
                         itemData.hidden = activeModalInGroup.id === 'galleryWindow';
                         bottomItems.push(itemData);
@@ -7378,7 +7378,7 @@ function setupDesktopContextMenu() {
                     },
                     {
                         icon: 'fa-light fa-screencast',
-                        text: 'Remote Access Settings',
+                        text: 'Remote Access',
                         action: 'open-remote-access-settings'
                     },
                     {

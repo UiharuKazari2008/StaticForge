@@ -3777,16 +3777,10 @@ body.desktop-mode .modal:not(.active-window):not(.opening):not(.closing):not(.mi
 }
 
 /* High-impact surfaces: gallery canvas, taskbar, floating chrome, overlays */
-.gallery:has(.gallery-item.context-open) .gallery-item {
-    will-change: transform, opacity, filter;
-}
-
 .gallery-item.context-open {
     will-change: transform, box-shadow, border-color, background-color;
 }
 
-.gallery.highlighting .gallery-item,
-.gallery.highlighting .gallery-placeholder,
 .gallery-item.fade-in,
 .gallery-item.slide-in,
 .gallery-item.highlighted {
@@ -3897,15 +3891,7 @@ body.desktop-mode .modal:not(.active-window):not(.opening):not(.closing):not(.mi
     will-change: opacity;
 }
 
-.gallery.selection-mode .gallery-item,
-.vibe-manager-gallery.selection-mode .vibe-manager-gallery-item {
-    will-change: transform, opacity, scale;
-}
-
-.vibe-manager-gallery-item.selected,
-.gallery-item.selected {
-    will-change: border-color, box-shadow, transform, opacity, scale;
-}
+/* Remove permanent will-change on selection-mode grid tiles to prevent GPU layer thrashing during virtual scrolling */
 
 .manual-preview-image-container.dual-mode .manual-preview-image-container {
     will-change: max-width, max-height, transform, opacity;

@@ -2012,14 +2012,38 @@ class ExplorerApplet {
     async _copyImageToClipboard(item) {
         const filename = item.previewImageFilename || item.targetId || item.shortcutData?.filename;
         if (!filename) return;
+        const toastId = showGlassToast ? showGlassToast('info', 'Copying', 'Copying data to clipboard...', true, false, '<i class="fas fa-clipboard"></i>') : null;
         try {
             // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
             const resp = await fetch(localGalleryImageUrl(filename));
             const blob = await resp.blob();
             // copyBlobToClipboard: public/scripts/utils/dreamscapeClipboard.js
             await copyBlobToClipboard(blob, { name: filename });
+            if (toastId && typeof updateGlassToastComplete === 'function') {
+                updateGlassToastComplete(toastId, {
+                    type: 'success',
+                    title: 'Copied',
+                    message: `Image copied (${formatClipboardBlobSize(blob)})`,
+                    customIcon: '<i class="fas fa-clipboard-check"></i>',
+                    showProgress: false,
+                    timeout: 3000
+                });
+            } else if (showGlassToast) {
+                showGlassToast('success', 'Copied', `Image copied (${formatClipboardBlobSize(blob)})`, false, 3000, '<i class="fas fa-clipboard-check"></i>');
+            }
         } catch (err) {
-            showGlassToast('error', 'Copy Failed', err.message || 'Could not copy image', false, 4000);
+            if (toastId && typeof updateGlassToastComplete === 'function') {
+                updateGlassToastComplete(toastId, {
+                    type: 'error',
+                    title: 'Copy Failed',
+                    message: err.message || 'Could not copy image',
+                    customIcon: '<i class="fas fa-clipboard"></i>',
+                    showProgress: false,
+                    timeout: 4000
+                });
+            } else {
+                showGlassToast('error', 'Copy Failed', err.message || 'Could not copy image', false, 4000);
+            }
         }
     }
 

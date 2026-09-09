@@ -505,6 +505,15 @@ function createManualPreviewImageContextMenuConfig() {
                         text: 'Open in Window',
                         action: 'open-in-window'
                     },
+                    {
+                        icon: 'fas fa-glasses-round',
+                        text: 'Properties',
+                        action: 'view-image-data',
+                        disabled: () => {
+                            const img = window.currentManualPreviewImage;
+                            return !(img && (img.filename || img.original || img.upscaled || img.metadata));
+                        }
+                    },
                     { separator: true },
                     {
                         icon: 'mdi mdi-1-25 mdi-relative-scale',
@@ -699,6 +708,7 @@ async function handleManualPreviewImageContextMenuAction(event) {
 
         case 'copy':
             if (previewImage && previewImage.dataset.blobUrl) {
+                const toastId = showGlassToast ? showGlassToast('info', 'Copying', 'Copying data to clipboard...', true, false, '<i class="fas fa-clipboard"></i>') : null;
                 try {
                     // Fetch the image as a blob
                     const response = await fetch(previewImage.dataset.blobUrl);
@@ -710,15 +720,45 @@ async function handleManualPreviewImageContextMenuAction(event) {
                     const sizeText = formatClipboardBlobSize(blob);
 
                     // Show success notification with size
-                    if (showGlassToast) {
+                    if (toastId && typeof updateGlassToastComplete === 'function') {
+                        updateGlassToastComplete(toastId, {
+                            type: 'success',
+                            title: 'Image copied to clipboard!',
+                            message: `(${sizeText})`,
+                            customIcon: '<i class="fa-regular fa-clipboard-check"></i>',
+                            showProgress: false,
+                            timeout: 3000
+                        });
+                    } else if (showGlassToast) {
                         showGlassToast('success', 'Image copied to clipboard!', `(${sizeText})`, false, 3000, '<i class="fa-regular fa-clipboard-check"></i>');
                     }
                 } catch (error) {
                     console.error('Failed to copy image to clipboard:', error);
-                    if (showGlassToast) {
+                    if (toastId && typeof updateGlassToastComplete === 'function') {
+                        updateGlassToastComplete(toastId, {
+                            type: 'error',
+                            title: 'Failed to copy image to clipboard',
+                            message: error.message || '',
+                            customIcon: '<i class="fa-regular fa-clipboard"></i>',
+                            showProgress: false,
+                            timeout: 3000
+                        });
+                    } else if (showGlassToast) {
                         showGlassToast('error', 'Failed to copy image to clipboard', '', false, 3000, '<i class="fa-regular fa-clipboard"></i>');
                     }
                 }
+            }
+            break;
+
+        case 'view-image-data':
+            if (window.featureLoader) {
+                void window.featureLoader.loadFeature('image_prompt_inspector').then(() => {
+                    if (typeof openImagePromptInspector === 'function') {
+                        openImagePromptInspector(image);
+                    }
+                });
+            } else if (typeof openImagePromptInspector === 'function') {
+                openImagePromptInspector(image);
             }
             break;
 
@@ -795,7 +835,7 @@ async function handleManualPreviewImageContextMenuAction(event) {
 
         case 'enhance':
             if (window.currentManualPreviewImage) {
-                openEnhanceFromImage(window.currentManualPreviewImage);
+                openEnhanceFromImage(window.currentManualPreviewImage, { isStudio: true });
             } else {
                 showGlassToast('error', 'Enhance Failed', 'No image available', false, undefined, '<i class="fas fa-image-slash"></i>');
             }
@@ -4996,11 +5036,14 @@ async function handleImageResult(imageSrc, clearContextFn, seed = null, response
     };
 
     if (manualModalOpen) {
-        const skipDownloadOverlay = response?.skippedDownloadUi === true || !!response?.prefetchedBlobUrl;
         const headerContentLength = response?.headers?.get?.('Content-Length') || response?.headers?.get?.('content-length');
         const knownLen = parseInt(headerContentLength || '0', 10);
         const navOverlay = document.getElementById('manualPreviewNavigationLoading');
-        if (!skipDownloadOverlay) {
+        if (response?.prefetchedBlobUrl) {
+            if (!navOverlay || navOverlay.classList.contains('hidden')) {
+                showManualPreviewNavigationLoading(true, 'Processing image…', 'indeterminate');
+            }
+        } else {
             if (Number.isFinite(knownLen) && knownLen > 0) {
                 showManualPreviewNavigationLoading(true, 'Downloading…', 0);
             } else if (!navOverlay?.classList.contains('download-progress')) {
@@ -5066,9 +5109,12 @@ async function handleImageResult(imageSrc, clearContextFn, seed = null, response
 
     releaseManualPreviewImageSrc();
     if (response?.prefetchedBlobUrl && response.prefetchedBlobUrl.startsWith('blob:')) {
-        try {
-            URL.revokeObjectURL(response.prefetchedBlobUrl);
-        } catch (_e) { /* ignore */ }
+        const isUsedInCompare = typeof compareSourceImageData !== 'undefined' && compareSourceImageData?.url === response.prefetchedBlobUrl;
+        if (!isUsedInCompare) {
+            try {
+                URL.revokeObjectURL(response.prefetchedBlobUrl);
+            } catch (_e) { /* ignore */ }
+        }
     }
     if (window.wsClient) {
         window.wsClient.releaseDataImageSrc(document.getElementById('manualPreviewImage'));
@@ -5858,18 +5904,37 @@ async function handleManualPreviewCopyClick(e) {
     e.preventDefault();
     const previewImage = document.getElementById('manualPreviewImage');
     if (previewImage && previewImage.dataset.blobUrl) {
+        const toastId = showGlassToast ? showGlassToast('info', 'Copying', 'Copying data to clipboard...', true, false, '<i class="fas fa-clipboard"></i>') : null;
         try {
             const response = await fetch(previewImage.dataset.blobUrl);
             const blob = await response.blob();
             // copyBlobToClipboard: public/scripts/utils/dreamscapeClipboard.js
             await copyBlobToClipboard(blob, { name: 'generated-image.png' });
             const sizeText = formatClipboardBlobSize(blob);
-            if (showGlassToast) {
+            if (toastId && typeof updateGlassToastComplete === 'function') {
+                updateGlassToastComplete(toastId, {
+                    type: 'success',
+                    title: 'Image copied to clipboard!',
+                    message: `(${sizeText})`,
+                    customIcon: '<i class="fa-regular fa-clipboard-check"></i>',
+                    showProgress: false,
+                    timeout: 3000
+                });
+            } else if (showGlassToast) {
                 showGlassToast('success', 'Image copied to clipboard!', `(${sizeText})`, false, 3000, '<i class="fa-regular fa-clipboard-check"></i>');
             }
         } catch (error) {
             console.error('Failed to copy image to clipboard:', error);
-            if (showGlassToast) {
+            if (toastId && typeof updateGlassToastComplete === 'function') {
+                updateGlassToastComplete(toastId, {
+                    type: 'error',
+                    title: 'Failed to copy image to clipboard',
+                    message: error.message || '',
+                    customIcon: '<i class="fa-regular fa-clipboard"></i>',
+                    showProgress: false,
+                    timeout: 3000
+                });
+            } else if (showGlassToast) {
                 showGlassToast('error', 'Failed to copy image to clipboard', '', false, 3000, '<i class="fa-regular fa-clipboard"></i>');
             }
         }
