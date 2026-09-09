@@ -82,7 +82,7 @@ function appendNewGalleryItems(newItems) {
         if (existingDom) {
             updateGalleryItemElementFromData(existingDom, imageData);
             if (!isGalleryScrolledFromHead() && gallery.children[0] !== existingDom) {
-                gallery.insertBefore(existingDom, gallery.children[0]);
+                gallery.insertBefore(existingDom, gallery.children[0] || null);
             }
             continue;
         }
@@ -104,7 +104,7 @@ function appendNewGalleryItems(newItems) {
         const imageData = itemsToInsert[i];
         const newItem = createGalleryItem(imageData, i, true);
         newItem.classList.add('gallery-placeholder', 'fade-in');
-        gallery.insertBefore(newItem, gallery.children[0]);
+        gallery.insertBefore(newItem, gallery.children[0] || null);
 
         let finished = false;
         const onDone = () => {
