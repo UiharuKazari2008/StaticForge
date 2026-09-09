@@ -1844,7 +1844,6 @@ function disableDynamicGeneration() {
 
 /**
  * Clear manual form - MOVED FROM app.js
- * TODO: Move function implementation from app.js
  */
 function clearManualForm() {
     // Clean up any existing blob URLs
@@ -2138,7 +2137,6 @@ function clearManualForm() {
 
 /**
  * Collect manual form values - MOVED FROM app.js
- * TODO: Move function implementation from app.js
  */
 function collectManualFormValues() {
     // Ensure manualResolutionHidden has a value
@@ -2241,7 +2239,6 @@ function collectManualFormValues() {
 
 /**
  * Collect vibe transfer data - MOVED FROM app.js
- * TODO: Move function implementation from app.js
  */
 function collectVibeTransferData() {
     if (!vibeReferencesContainer) return [];
@@ -2377,7 +2374,6 @@ function extractLockedDynamicReplacements() {
 
 /**
  * Add shared fields to request body - MOVED FROM app.js
- * TODO: Move function implementation from app.js
  */
 function addSharedFieldsToRequestBody(requestBody, values) {
     if (values.uc) requestBody.uc = values.uc;
@@ -4509,7 +4505,6 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
 
 /**
  * Auto-resize textareas after modal show - MOVED FROM app.js
- * TODO: Move function implementation from app.js
  */
 function autoResizeTextareasAfterModalShow() {
     const textareas = [];
@@ -4569,7 +4564,6 @@ function autoResizeTextareasAfterModalShow() {
 
 /**
  * Handle manual generation - MOVED FROM app.js
- * TODO: Move function implementation from app.js
  */
 async function handleManualGeneration(e, options = {}) {
     e.preventDefault();
@@ -5002,7 +4996,6 @@ async function handleManualGeneration(e, options = {}) {
 
 /**
  * Handle image result - MOVED FROM app.js
- * TODO: Move function implementation from app.js
  */
 async function handleImageResult(imageSrc, clearContextFn, seed = null, response = null, metadata = null) {
     const manualModalOpen = manualModal && !manualModal.classList.contains('hidden');
