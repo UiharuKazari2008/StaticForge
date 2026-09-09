@@ -1,10 +1,10 @@
 {
-  "updated_at": "2026-09-09T11:07:39.253655+00:00",
+  "updated_at": "2026-09-09T11:09:28.645748+00:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
   "last_breakfast_at": "2026-09-02T11:21:37.116143+00:00",
   "open": [],
   "done_since_breakfast": [],
-  "cake_note": "2026-09-09 7am: pile empty. Safety snapshot 4c0b9a5 wip overnight gallery/studio/UI (24 files +3595/-2354) credit grok.menma snapshot-only. Also since last Rook note: 8d4eb55 Merge PR #88 Jules #150 referenceManager extract (Yukimi merged; Jules google-labs; credit:menma 1.25x) from session https://jules.google.com/session/9848061668012910307. No leftover Menma edits (waiting Rook). Ready #163 cake-meals DSAP for Rook clear. Stay off greg #11/#9. cursor-agent left alone. Docs: no new client-api contract in WIP; step-preview docs still accurate. Rook owns cake.",
+  "cake_note": "2026-09-09 7am: pile empty. Safety snapshot c3aebe1 wip overnight gallery/studio/UI 25 files +3597/-2356 credit grok.menma snapshot-only (not review-complete). Also: 8d4eb55 Merge PR #88 Jules referenceManager extract +1077/-1038 (session https://jules.google.com/session/9848061668012910307, credit:menma 1.25x). Jules kicked: (1) deep inspect WIP https://jules.google.com/session/7215142525272760004 (2) #5 websocket next slice https://jules.google.com/session/272685997277074641 \u2014 both requirePlanApproval+AUTO_CREATE_PR; 8:30 collect. Ready #163 waiting Rook clear (Jules session COMPLETED earlier for cake meal images \u2014 do not double-count until landed). No leftover Menma edits. Stay off greg #11/#9. cursor-agent left alone. Docs: no new client-api contract in WIP; step-preview docs still accurate. DB backup keep=2. Dreamscape not bounced (already running live WIP). Rook owns cake.",
   "eaten": [
     {
       "id": "sf-22",
