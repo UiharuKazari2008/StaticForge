@@ -197,6 +197,11 @@ function menmaDsapStatusHtml(data, activeAccountId) {
         }
     }
     const mealLine = mealBits.length ? mealBits.join(' · ') : 'No meal recorded yet.';
+
+    // Yozora #163: Show images from the latest meal when present, rather than stale historical last_before/after
+    const beforeImg = meal.before !== undefined ? meal.before : activeData.last_before;
+    const afterImg = meal.after !== undefined ? meal.after : activeData.last_after;
+
     return `${accountsGrid}
 ${dsapSmfBuildSectionHdr(activeName + ' Ledger')}
 ${stats}
@@ -204,8 +209,8 @@ ${extra}
 ${dsapSmfBuildSectionHdr('Last meal')}
 ${dsapSmfBuildStatusBox(menmaDsapEscape(mealLine))}
 <div class="menma-pair">
-  ${menmaDsapShotHtml(activeData.last_before, 'Before')}
-  ${menmaDsapShotHtml(activeData.last_after, 'After')}
+  ${menmaDsapShotHtml(beforeImg, 'Before')}
+  ${menmaDsapShotHtml(afterImg, 'After')}
 </div>`;
 }
 
