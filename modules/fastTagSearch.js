@@ -87,9 +87,10 @@ class FastTagSearch {
      * Search curated tag groups using index (PRIORITY 1)
      * Fast O(1) lookup using pre-built index
      * @param {string} query - Text to search
+     * @param {boolean} [includeContaining=false] - Whether to perform O(N) contains search
      * @returns {Object|null} Group info if found
      */
-    searchTagGroups(query) {
+    searchTagGroups(query, includeContaining = false) {
         if (!this.tagToPathIndex) return null;
 
         const normalized = query.toLowerCase().trim();
@@ -113,16 +114,18 @@ class FastTagSearch {
         }
 
         // CONTAINS SEARCH: Check all tags in index
-        // Only do this if we need to find alternatives for weak tags
-        for (const tagLower in this.tagToPathIndex) {
-            if (tagLower !== normalized && tagLower.includes(normalized)) {
-                const matches = this.tagToPathIndex[tagLower];
-                for (const match of matches) {
-                    found.containingGroups.push({
-                        tag: match.tag,
-                        groupPath: match.path.join('/'),
-                        category: match.path[0]
-                    });
+        // Only do this if explicitly requested (O(N) operation)
+        if (includeContaining) {
+            for (const tagLower in this.tagToPathIndex) {
+                if (tagLower !== normalized && tagLower.includes(normalized)) {
+                    const matches = this.tagToPathIndex[tagLower];
+                    for (const match of matches) {
+                        found.containingGroups.push({
+                            tag: match.tag,
+                            groupPath: match.path.join('/'),
+                            category: match.path[0]
+                        });
+                    }
                 }
             }
         }
