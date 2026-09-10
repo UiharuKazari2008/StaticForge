@@ -1527,7 +1527,7 @@ class DesktopShortcutsManager {
                             text: 'Open in Notion',
                             action: 'open-note-in-notebook'
                         },
-                        ...this.getShortcutManagementMenuItems(true, shortcut)
+                        ...this.getShortcutManagementMenuItems(true)
                     ]
                 }
             ],
@@ -1667,7 +1667,7 @@ class DesktopShortcutsManager {
             sections: [
                 {
                     type: 'list',
-                    items: this.getShortcutManagementMenuItems(false, shortcut)
+                    items: this.getShortcutManagementMenuItems(false)
                 }
             ]
         };
@@ -1763,7 +1763,7 @@ class DesktopShortcutsManager {
             sections: [
                 {
                     type: 'list',
-                    items: this.getShortcutManagementMenuItems(false, shortcut)
+                    items: this.getShortcutManagementMenuItems(false)
                 }
             ]
         };
@@ -1815,7 +1815,7 @@ class DesktopShortcutsManager {
             sections: [
                 {
                     type: 'list',
-                    items: this.getShortcutManagementMenuItems(false, shortcut)
+                    items: this.getShortcutManagementMenuItems(false)
                 }
             ]
         };
@@ -2074,7 +2074,7 @@ class DesktopShortcutsManager {
             sections: [
                 {
                     type: 'list',
-                    items: this.getShortcutManagementMenuItems(false, shortcut)
+                    items: this.getShortcutManagementMenuItems(false)
                 }
             ]
         };
@@ -2192,7 +2192,7 @@ class DesktopShortcutsManager {
                 {
                     type: 'list',
                     items: [
-                        ...this.getShortcutManagementMenuItems(false, shortcut)
+                        ...this.getShortcutManagementMenuItems(false)
                     ]
                 }
             ]
@@ -2251,7 +2251,7 @@ class DesktopShortcutsManager {
                             text: 'Copy URL',
                             action: 'preset-copy-url'
                         },
-                        ...this.getShortcutManagementMenuItems(true, shortcut)
+                        ...this.getShortcutManagementMenuItems(true)
                     ]
                 }
             ]
@@ -2401,7 +2401,7 @@ class DesktopShortcutsManager {
             sections: [
                 {
                     type: 'list',
-                    items: this.getShortcutManagementMenuItems(false, shortcut)
+                    items: this.getShortcutManagementMenuItems(false)
                 }
             ]
         };
@@ -2492,7 +2492,7 @@ class DesktopShortcutsManager {
                             action: 'nax-tag-add-to-prompt',
                             disabled: () => manualModal && manualModal.classList.contains('hidden')
                         },
-                        ...this.getShortcutManagementMenuItems(true, shortcut)
+                        ...this.getShortcutManagementMenuItems(true)
                     ]
                 }
             ]
@@ -2674,7 +2674,7 @@ class DesktopShortcutsManager {
             sections: [
                 {
                     type: 'list',
-                    items: this.getShortcutManagementMenuItems(false, shortcut)
+                    items: this.getShortcutManagementMenuItems(false)
                 }
             ]
         };
@@ -2707,7 +2707,7 @@ class DesktopShortcutsManager {
                             text: 'Copy to Clipboard',
                             action: 'copy-to-clipboard'
                         },
-                        ...this.getShortcutManagementMenuItems(true, shortcut)
+                        ...this.getShortcutManagementMenuItems(true)
                     ]
                 }
             ]
