@@ -449,7 +449,8 @@ class ClothingDatabase {
         if (!options[category] || options[category].length === 0) return null;
         
         // Filter out recently used options to ensure diversity
-        const availableOptions = options[category].filter(option => !usedOptions.includes(option));
+        const usedSet = usedOptions instanceof Set ? usedOptions : new Set(usedOptions);
+        const availableOptions = options[category].filter(option => !usedSet.has(option));
         const optionsToChooseFrom = availableOptions.length > 0 ? availableOptions : options[category];
         
         const randomIndex = Math.floor(Math.random() * optionsToChooseFrom.length);
@@ -461,7 +462,8 @@ class ClothingDatabase {
         if (!options[category] || options[category].length === 0) return [];
         
         // Filter out recently used options to ensure diversity
-        const availableOptions = options[category].filter(option => !usedOptions.includes(option));
+        const usedSet = usedOptions instanceof Set ? usedOptions : new Set(usedOptions);
+        const availableOptions = options[category].filter(option => !usedSet.has(option));
         const optionsToChooseFrom = availableOptions.length > 0 ? availableOptions : options[category];
         
         const shuffled = [...optionsToChooseFrom].sort(() => 0.5 - Math.random());
@@ -469,8 +471,8 @@ class ClothingDatabase {
     }
 
     // Generate dynamic clothing suggestions based on context
-    generateClothingSuggestions(context) {
-        const options = this.getClothingOptions(context);
+    generateClothingSuggestions(context, optionsOverride = null) {
+        const options = optionsOverride || this.getClothingOptions(context);
         const suggestions = [];
 
         // Generate fabric suggestions with diversity
@@ -527,8 +529,8 @@ class ClothingDatabase {
     }
 
     // Get specific clothing recommendations for a context
-    getClothingRecommendations(context) {
-        const options = this.getClothingOptions(context);
+    getClothingRecommendations(context, optionsOverride = null) {
+        const options = optionsOverride || this.getClothingOptions(context);
         const recommendations = {
             primary: {
                 fabric: this.getRandomOption(options, 'fabrics'),
@@ -548,8 +550,8 @@ class ClothingDatabase {
     }
 
     // Generate contextual clothing examples for AI guidance
-    generateContextualExamples(context) {
-        const options = this.getClothingOptions(context);
+    generateContextualExamples(context, optionsOverride = null) {
+        const options = optionsOverride || this.getClothingOptions(context);
         const examples = [];
 
         // Generate fabric replacement examples
@@ -611,8 +613,8 @@ class ClothingDatabase {
     }
 
     // Get intelligent clothing combinations based on context
-    getIntelligentCombinations(context) {
-        const options = this.getClothingOptions(context);
+    getIntelligentCombinations(context, optionsOverride = null) {
+        const options = optionsOverride || this.getClothingOptions(context);
         const combinations = [];
 
         // Generate 3-5 intelligent combinations
@@ -699,12 +701,13 @@ class ClothingDatabase {
 
     // Get all clothing data in a single call
     getAllClothingData(context) {
+        const options = this.getClothingOptions(context);
         return {
-            options: this.getClothingOptions(context),
-            recommendations: this.getClothingRecommendations(context),
-            suggestions: this.generateClothingSuggestions(context),
-            examples: this.generateContextualExamples(context),
-            combinations: this.getIntelligentCombinations(context)
+            options,
+            recommendations: this.getClothingRecommendations(context, options),
+            suggestions: this.generateClothingSuggestions(context, options),
+            examples: this.generateContextualExamples(context, options),
+            combinations: this.getIntelligentCombinations(context, options)
         };
     }
 }
