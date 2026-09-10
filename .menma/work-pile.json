@@ -1,10 +1,10 @@
 {
-  "updated_at": "2026-09-09T11:09:28.645748+00:00",
+  "updated_at": "2026-09-10T12:03:02.275852+00:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
   "last_breakfast_at": "2026-09-02T11:21:37.116143+00:00",
   "open": [],
   "done_since_breakfast": [],
-  "cake_note": "2026-09-09 7am: pile empty. Safety snapshot c3aebe1 wip overnight gallery/studio/UI 25 files +3597/-2356 credit grok.menma snapshot-only (not review-complete). Also: 8d4eb55 Merge PR #88 Jules referenceManager extract +1077/-1038 (session https://jules.google.com/session/9848061668012910307, credit:menma 1.25x). Jules kicked: (1) deep inspect WIP https://jules.google.com/session/7215142525272760004 (2) #5 websocket next slice https://jules.google.com/session/272685997277074641 \u2014 both requirePlanApproval+AUTO_CREATE_PR; 8:30 collect. Ready #163 waiting Rook clear (Jules session COMPLETED earlier for cake meal images \u2014 do not double-count until landed). No leftover Menma edits. Stay off greg #11/#9. cursor-agent left alone. Docs: no new client-api contract in WIP; step-preview docs still accurate. DB backup keep=2. Dreamscape not bounced (already running live WIP). Rook owns cake.",
+  "cake_note": "2026-09-10 7am: pile empty. Quiet tree (no .agent locks, no live source mtimes). Landed Jules PR #99 desktopShortcuts getShortcutManagementMenuItems signature fix +11/-11 (session https://jules.google.com/session/9439836321021720140) \u2014 merged f30f935, pulled live + pushed Yozora, SW notify (no Dreamscape bounce). credit:menma 1.25x. Also on main since last Rook note: PR #95 dead presetManagement +193 del (merged yesterday by Yukimi, session https://jules.google.com/session/779935248069158724) \u2014 credit if not already plated. CLOSED unmerged Jules (do NOT rewrite; 8:30 reopen/land): #96 gallery insertBefore (+2/-2 sess 7215142525272760004), #97 ClothingDatabase perf (+18/-15), #98 auth on /test-bias-adjustment (+1/-1), #89 DSAP cake thumbs (+44/-10 sess 12023835158094833279 for Ready #163). Ready #163 still waiting Rook clear. Stay off greg #11/#9. cursor-agent left alone. Docs: no new client-api contract today. DB backup keep=2. Rook owns cake.",
   "eaten": [
     {
       "id": "sf-22",
