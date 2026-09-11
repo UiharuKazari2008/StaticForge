@@ -67,25 +67,35 @@ class LoginPage {
     }
 
     setupPinPadListener() {
+        const handlePress = (button, e) => {
+            if (e.type === 'pointerdown') {
+                button._handledPointer = true;
+            } else if (e.type === 'click' && button._handledPointer) {
+                button._handledPointer = false;
+                return;
+            }
+
+            if (!this.pinReady || this.isLoading) return;
+
+            const number = button.getAttribute('data-number');
+            const action = button.getAttribute('data-action');
+
+            if (number) {
+                this.addDigit(number);
+            } else if (action === 'clear') {
+                this.clearPin();
+            } else if (action === 'backspace') {
+                this.removeDigit();
+            } else if (action === 'cache-clear') {
+                setTimeout(() => this.clearCachesAndReload(), 10);
+            } else if (action === 'update-static') {
+                setTimeout(() => this.updateStaticData(), 10);
+            }
+        };
+
         this.pinButtons.forEach(button => {
-            button.addEventListener('click', (e) => {
-                if (!this.pinReady || this.isLoading) return;
-                
-                const number = button.getAttribute('data-number');
-                const action = button.getAttribute('data-action');
-                
-                if (number) {
-                    this.addDigit(number);
-                } else if (action === 'clear') {
-                    this.clearPin();
-                } else if (action === 'backspace') {
-                    this.removeDigit();
-                } else if (action === 'cache-clear') {
-                    this.clearCachesAndReload();
-                } else if (action === 'update-static') {
-                    this.updateStaticData();
-                }
-            });
+            button.addEventListener('pointerdown', (e) => handlePress(button, e));
+            button.addEventListener('click', (e) => handlePress(button, e));
         });
 
         const togglePinPad = () => {
