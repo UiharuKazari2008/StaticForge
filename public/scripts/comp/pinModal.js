@@ -81,21 +81,31 @@ class PinModal {
     }
 
     setupPinPadListener() {
+        const handlePress = (button, e) => {
+            if (e.type === 'pointerdown') {
+                button._handledPointer = true;
+            } else if (e.type === 'click' && button._handledPointer) {
+                button._handledPointer = false;
+                return;
+            }
+
+            if (this.isLoading) return;
+
+            const number = button.getAttribute('data-number');
+            const action = button.getAttribute('data-action');
+
+            if (number) {
+                this.addDigit(number);
+            } else if (action === 'clear') {
+                this.clearPin();
+            } else if (action === 'backspace') {
+                this.removeDigit();
+            }
+        };
+
         this.pinButtons.forEach(button => {
-            button.addEventListener('click', (e) => {
-                if (this.isLoading) return;
-                
-                const number = button.getAttribute('data-number');
-                const action = button.getAttribute('data-action');
-                
-                if (number) {
-                    this.addDigit(number);
-                } else if (action === 'clear') {
-                    this.clearPin();
-                } else if (action === 'backspace') {
-                    this.removeDigit();
-                }
-            });
+            button.addEventListener('pointerdown', (e) => handlePress(button, e));
+            button.addEventListener('click', (e) => handlePress(button, e));
         });
     }
 
