@@ -104,62 +104,6 @@ let widthBlurred = false; // Track if width field has been blurred
 let heightBlurred = false; // Track if height field has been blurred
 
 // ============================================================================
-// MANUAL DROPDOWN MANAGEMENT CLASS
-// ============================================================================
-
-class ManualDropdownManager {
-    constructor() {
-        this.initialized = false;
-        this.dropdowns = new Map();
-        this.eventListeners = [];
-    }
-
-    /**
-     * Initialize the manual dropdown manager
-     */
-    init() {
-        if (this.initialized) return;
-        this.initialized = true;
-        this.setupDropdowns();
-        this.setupEventListeners();
-    }
-
-    /**
-     * Set up all dropdowns
-     */
-    setupDropdowns() {
-        // TODO: Set up all dropdowns using setupDropdown() from dropdown.js
-        // Model dropdown, sampler dropdown, resolution dropdown, etc.
-    }
-
-    /**
-     * Set up event listeners for dropdown management
-     */
-    setupEventListeners() {
-        // TODO: Move event listeners from app.js setupEventListeners() function
-        // Related to dropdown interactions, custom resolution, etc.
-    }
-
-    /**
-     * Clean up event listeners
-     */
-    destroy() {
-        // TODO: Remove all event listeners
-        this.eventListeners.forEach(({ element, event, handler }) => {
-            element.removeEventListener(event, handler);
-        });
-        this.eventListeners = [];
-    }
-
-    /**
-     * Update dropdown state based on model selection
-     */
-    updateDropdownState() {
-        // TODO: Update dropdown visibility and options based on current state
-    }
-}
-
-// ============================================================================
 // PLACEHOLDER FUNCTIONS (MOVED FROM app.js)
 // ============================================================================
 
