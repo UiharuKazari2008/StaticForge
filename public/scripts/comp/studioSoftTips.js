@@ -12,6 +12,11 @@ const STUDIO_SOFT_TIP_HEAVY_EMPHASIS_RE = /(?:^|[\s,])2(?:\.\d+)?::[^:]{0,80}::/
 const STUDIO_SOFT_TIP_LOWER_TEXT_RE = /(?:^|[\s,{[])text\s*:/;
 const STUDIO_SOFT_TIP_SCENE_RE = /\b(background|scenery|outdoors|indoors|landscape|cityscape|bedroom|classroom|beach|forest|street|skyline|interior|exterior)\b/i;
 const STUDIO_SOFT_TIP_UC_CHAR_RE = /\b[a-z0-9][a-z0-9 _.-]{1,40}\s*\([^)]{2,40}\)/i;
+const STUDIO_SOFT_TIP_A1111_RE = /\([^)]+:\d+(?:\.\d+)?\)/;
+const STUDIO_SOFT_TIP_ACCESSORY_RE = /\b(tiara|cross|necklace|earrings|choker|ring|bracelet|hair ornament|pendant|brooch)\b/i;
+const STUDIO_SOFT_TIP_RELATIONAL_NL_RE = /\b(wearing|on|around|with|near|above|below|face|body|neck|head|ears|eyes|hat)\b/i;
+const STUDIO_SOFT_TIP_FUR_DATASET_RE = /\bfur dataset\b/i;
+const STUDIO_SOFT_TIP_ZERO_PICTURED_RE = /\bzero pictured\b/i;
 
 function studioSoftTipMayShow(id) {
     const last = studioSoftTipLastShown[id] || 0;
@@ -79,6 +84,30 @@ function evaluateStudioSoftTips() {
             'uc-franchise',
             'UC hygiene',
             'UC still has character (franchise) tags. Leftovers from another series can fight copyright style — clear stale names when you switch.'
+        );
+    }
+
+    if (STUDIO_SOFT_TIP_A1111_RE.test(prompt)) {
+        studioSoftTipShow(
+            'a1111-emphasis',
+            'A1111 Emphasis',
+            'A1111 weights (tag:1.1) barely shift style. Prefer braces {tag} / [tag] OR 1.1::tag::.'
+        );
+    }
+
+    if (STUDIO_SOFT_TIP_ACCESSORY_RE.test(prompt) && !STUDIO_SOFT_TIP_RELATIONAL_NL_RE.test(prompt)) {
+        studioSoftTipShow(
+            'nl-accessory',
+            'Accessory Tags',
+            'Tags alone slide accessories. Describe vs face/body — relational NL wins sliding accessories.'
+        );
+    }
+
+    if (STUDIO_SOFT_TIP_FUR_DATASET_RE.test(prompt) && STUDIO_SOFT_TIP_SCENE_RE.test(prompt) && !STUDIO_SOFT_TIP_ZERO_PICTURED_RE.test(prompt)) {
+        studioSoftTipShow(
+            'fur-zero-pictured',
+            'Fur Scenery',
+            'Recommend "zero pictured" on fur-dataset scenery as insurance even without creatures.'
         );
     }
 }
