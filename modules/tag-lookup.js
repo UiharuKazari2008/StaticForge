@@ -4373,17 +4373,19 @@ class TagLookup {
     
     // Sort by score (descending), then by usage count as tiebreaker
     const linksToScores = await Promise.all(linksToFiltered.map(tag => getTagSortScore(tag)));
+    const linksToScoreMap = new Map(linksToFiltered.map((tag, i) => [tag, linksToScores[i]]));
     linksToFiltered.sort((a, b) => {
-        const scoreA = linksToScores[linksToFiltered.indexOf(a)];
-        const scoreB = linksToScores[linksToFiltered.indexOf(b)];
+        const scoreA = linksToScoreMap.get(a) || 0;
+        const scoreB = linksToScoreMap.get(b) || 0;
         if (scoreB !== scoreA) return scoreB - scoreA;
         return getTagUsageCount(b) - getTagUsageCount(a);
     });
     
     const linkedByScores = await Promise.all(linkedByFiltered.map(tag => getTagSortScore(tag)));
+    const linkedByScoreMap = new Map(linkedByFiltered.map((tag, i) => [tag, linkedByScores[i]]));
     linkedByFiltered.sort((a, b) => {
-        const scoreA = linkedByScores[linkedByFiltered.indexOf(a)];
-        const scoreB = linkedByScores[linkedByFiltered.indexOf(b)];
+        const scoreA = linkedByScoreMap.get(a) || 0;
+        const scoreB = linkedByScoreMap.get(b) || 0;
         if (scoreB !== scoreA) return scoreB - scoreA;
         return getTagUsageCount(b) - getTagUsageCount(a);
     });
