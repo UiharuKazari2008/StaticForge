@@ -46,7 +46,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Text replacements preview | — | `resolve_text_replacements` | — | — |
 | View image file | `GET /images/:filename` | — | — | Lightbox |
 | Slim / optimized download | `GET /image/slim/:filename`, `/image/opti/:filename` | — | — | — |
-| Bias test | `POST /test-bias-adjustment` | — | — | Image bias modal |
+| Bias test | `POST /test-bias-adjustment` (auth) | — | — | Image bias modal |
 
 ---
 
