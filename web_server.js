@@ -2494,7 +2494,7 @@ app.use('/traces/files', authMiddleware, (req, res, next) => {
 app.get('/launch', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'launch.html'));
 });
-app.get('/preset/:uuid', serverReadinessMiddleware, getQueueMiddleware, async (req, res) => {
+app.get('/preset/:uuid', serverReadinessMiddleware, authMiddleware, getQueueMiddleware, async (req, res) => {
     try {
         res.setHeader('Cache-Control', 'realtime, no-cache, no-store, must-revalidate, private, max-age=0');
         res.setHeader('Pragma', 'no-cache');
@@ -2628,7 +2628,7 @@ app.get('/preset/:uuid', serverReadinessMiddleware, getQueueMiddleware, async (r
 });
 
 // Scheduled preset generation endpoint
-app.get('/pending/preset/:uuid', serverReadinessMiddleware, getQueueMiddleware, async (req, res) => {
+app.get('/pending/preset/:uuid', serverReadinessMiddleware, authMiddleware, getQueueMiddleware, async (req, res) => {
     try {
         res.setHeader('Cache-Control', 'realtime, no-cache, no-store, must-revalidate, private, max-age=0');
         res.setHeader('Pragma', 'no-cache');
