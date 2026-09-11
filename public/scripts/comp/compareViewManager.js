@@ -482,7 +482,19 @@ function applyCompareDefaultSettingsStub() {
 }
 
 function loadCompareDefaultSettings() {
-    // TODO: wire to UI / preset export; read localStorage when implemented
+    try {
+        const stored = localStorage.getItem('compareDefaultSettings');
+        if (stored) {
+            const parsed = JSON.parse(stored);
+            return {
+                overlayRuntime: parsed.overlayRuntime ? { ...COMPARE_DEFAULT_SETTINGS, ...parsed.overlayRuntime } : { ...COMPARE_DEFAULT_SETTINGS },
+                defaultOverlayEnabled: !!parsed.defaultOverlayEnabled,
+                defaultSlideEnabled: !!parsed.defaultSlideEnabled
+            };
+        }
+    } catch (e) {
+        console.warn('Failed to load compare default settings from localStorage:', e);
+    }
     return {
         overlayRuntime: { ...COMPARE_DEFAULT_SETTINGS },
         defaultOverlayEnabled: false,
@@ -490,8 +502,14 @@ function loadCompareDefaultSettings() {
     };
 }
 
-function saveCompareDefaultSettings() {
-    // TODO: persist overlayRuntime + defaultOverlayEnabled + defaultSlideEnabled
+function saveCompareDefaultSettings(settings) {
+    try {
+        if (settings) {
+            localStorage.setItem('compareDefaultSettings', JSON.stringify(settings));
+        }
+    } catch (e) {
+        console.warn('Failed to save compare default settings to localStorage:', e);
+    }
 }
 
 function compareSourcePrimaryClick(showToast = false) {
