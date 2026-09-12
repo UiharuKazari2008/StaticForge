@@ -200,6 +200,76 @@ class ExplorerApplet {
         return typeof activeWorkspace !== 'undefined' ? activeWorkspace : null;
     }
 
+    _owningWorkspaceId(item) {
+        if (item?.workspaceId) return item.workspaceId;
+        const fromPath = this.getWorkspaceIdFromPath();
+        if (fromPath) return fromPath;
+        if (item?.isDesktopShortcut && typeof desktopShortcuts !== 'undefined' && desktopShortcuts.currentWorkspace) {
+            return desktopShortcuts.currentWorkspace;
+        }
+        if (typeof activeWorkspace !== 'undefined' && activeWorkspace) return activeWorkspace;
+        if (getActiveWorkspace) return getActiveWorkspace();
+        return 'default';
+    }
+
+    _explorerImageFilename(item) {
+        return item?.previewImageFilename || item?.targetId || item?.shortcutData?.filename || null;
+    }
+
+    _isOwningWorkspaceActive(workspaceId) {
+        return workspaceId === (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null);
+    }
+
+    _explorerGalleryActionItems(item) {
+        const sel = this.grid?.getSelectedItems() || [];
+        if (sel.length > 1 && item && sel.some((s) => s.id === item.id)
+            && sel.every((i) => this._isGalleryImageContextItem(i))) {
+            return sel;
+        }
+        return item ? [item] : [];
+    }
+
+    _explorerResolvedFilename(item) {
+        const image = this._resolveGalleryImage(item);
+        return image?.filename || image?.original || image?.upscaled || this._explorerImageFilename(item);
+    }
+
+    _groupExplorerImagesByWorkspace(items) {
+        const groups = new Map();
+        for (const entry of items || []) {
+            const wsId = this._owningWorkspaceId(entry);
+            const filename = this._explorerResolvedFilename(entry);
+            if (!filename) continue;
+            if (!groups.has(wsId)) groups.set(wsId, { files: [], scraps: [] });
+            const bucket = entry.targetKind === 'scrap' ? 'scraps' : 'files';
+            groups.get(wsId)[bucket].push(filename);
+        }
+        return groups;
+    }
+
+    _refreshGalleryIfOwningActive(items) {
+        const hit = (items || []).some((i) => this._isOwningWorkspaceActive(this._owningWorkspaceId(i)));
+        if (hit && typeof loadGallery === 'function') loadGallery(true);
+    }
+
+    _syncExplorerGridSelection() {
+        if (!this.grid) return;
+        this.grid._updateSelectionClasses();
+        this.grid.onSelectionChange(this.grid.getSelectedItems());
+    }
+
+    _selectExplorerIndexRange(start, end) {
+        if (!this.grid) return;
+        const lo = Math.max(0, Math.min(start, end));
+        const hi = Math.min(this.grid.items.length - 1, Math.max(start, end));
+        this.grid.selectedIds.clear();
+        for (let i = lo; i <= hi; i++) {
+            const row = this.grid.items[i];
+            if (row && !row.isUploadPlaceholder) this.grid.selectedIds.add(row.id);
+        }
+        this._syncExplorerGridSelection();
+    }
+
     setupDetailsHeader() {
         const header = this.el?.detailsHeader;
         if (!header) return;
@@ -402,6 +472,9 @@ class ExplorerApplet {
             item.targetKind = 'image';
             item.previewImageFilename = data.filename;
             item.targetId = data.filename;
+            item.workspaceId = data.workspaceId
+                || (typeof desktopShortcuts !== 'undefined' ? desktopShortcuts.currentWorkspace : null)
+                || (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null);
         }
         if (item.shortcutType === 'system-folder') {
             item.targetKind = 'system-folder';
@@ -414,19 +487,38 @@ class ExplorerApplet {
 
     _resolveGalleryImage(item) {
         if (!item) return null;
-        const filename = item.previewImageFilename || item.targetId || item.shortcutData?.filename;
+        const filename = this._explorerImageFilename(item);
         if (!filename) return null;
+        const wsId = this._owningWorkspaceId(item);
+        let found = null;
         // public/scripts/comp/galleryView.js findImageByFilename
         if (typeof findImageByFilename === 'function') {
-            const found = findImageByFilename(filename);
-            if (found) return found;
+            found = findImageByFilename(filename);
         }
-        if (typeof allImages !== 'undefined' && Array.isArray(allImages)) {
-            return allImages.find(img =>
+        if (!found && typeof allImages !== 'undefined' && Array.isArray(allImages)) {
+            found = allImages.find(img =>
                 img.filename === filename || img.original === filename || img.upscaled === filename
             ) || null;
         }
-        return null;
+        const isPinned = item.isPinned !== undefined
+            ? !!item.isPinned
+            : !!(found && this._isOwningWorkspaceActive(wsId) && found.isPinned);
+        if (found) {
+            return {
+                ...found,
+                workspaceId: wsId,
+                isPinned
+            };
+        }
+        return {
+            filename,
+            original: filename,
+            upscaled: item.upscaled || undefined,
+            width: item.width,
+            height: item.height,
+            workspaceId: wsId,
+            isPinned
+        };
     }
 
     _getNoteContextData(item) {
@@ -573,7 +665,7 @@ class ExplorerApplet {
                         icon: 'fas fa-glasses-round',
                         text: 'Properties',
                         action: 'view-image-data',
-                        disabled: true
+                        disabled: !this._explorerImageFilename(item)
                     },
                     { separator: true },
                     { icon: 'fas fa-person-to-portal', text: 'Create Chat', action: 'start-chat' },
@@ -630,6 +722,80 @@ class ExplorerApplet {
                         icon: 'fas fa-fire',
                         text: 'Incinerate',
                         action: 'delete',
+                        className: 'context-menu-item-danger'
+                    }
+                ]
+            }
+        ];
+    }
+
+    _buildImageScrapBulkContextMenuSections(item, sel) {
+        const allScraps = sel.every((i) => i.targetKind === 'scrap');
+        return [
+            {
+                type: 'icons',
+                icons: [
+                    {
+                        icon: 'fa-solid fa-check-double',
+                        tooltip: 'Select All',
+                        action: 'explorer-bulk-select-all',
+                        loadfn: (menuItem) => {
+                            const total = (this.grid?.items || []).filter((i) => !i.isUploadPlaceholder).length;
+                            menuItem.disabled = (this.grid?.getSelectedItems()?.length || 0) === total;
+                        }
+                    },
+                    { icon: 'fas fa-up-to-dotted-line', tooltip: 'Select All Before', action: 'explorer-bulk-select-before' },
+                    { icon: 'fas fa-down-to-dotted-line', tooltip: 'Select All After', action: 'explorer-bulk-select-after' },
+                    { icon: 'fas fa-diamond-half-stroke', tooltip: 'Invert Selection', action: 'explorer-bulk-invert' },
+                    {
+                        icon: 'fa-regular fa-xmark-large',
+                        tooltip: 'Clear Selection',
+                        action: 'explorer-bulk-clear',
+                        className: 'text-danger'
+                    }
+                ]
+            },
+            {
+                type: 'list',
+                title: 'Bulk Actions',
+                items: [
+                    { icon: 'fas fa-clipboard', text: 'Copy Image(s)', action: 'explorer-bulk-copy' },
+                    { icon: 'fas fa-download', text: 'Download Image(s)', action: 'explorer-bulk-download' },
+                    { icon: 'fas fa-share', text: 'Share to Sequenzia', action: 'explorer-bulk-sequenzia' },
+                    {
+                        icon: 'fas fa-folder-arrow-up',
+                        text: 'Move to...',
+                        optionsfn: () => this._getExplorerMoveWorkspaceOptions(),
+                        handlerfn: (subItem) => this._handleExplorerMoveWorkspace(subItem, item),
+                        openOnHover: false
+                    },
+                    {
+                        icon: allScraps ? 'nai-dot-reset' : 'fas fa-bin-recycle',
+                        text: allScraps ? 'Restore' : 'Move to Scraps',
+                        action: 'explorer-bulk-scrap'
+                    },
+                    {
+                        icon: 'fa-solid fa-star',
+                        text: 'Pin',
+                        action: 'explorer-bulk-pin',
+                        loadfn: (menuItem) => {
+                            const items = this._explorerGalleryActionItems(this._explorerContextTargetItem());
+                            menuItem.disabled = !items.some((i) => !i.isPinned);
+                        }
+                    },
+                    {
+                        icon: 'fa-regular fa-star',
+                        text: 'Unpin',
+                        action: 'explorer-bulk-unpin',
+                        loadfn: (menuItem) => {
+                            const items = this._explorerGalleryActionItems(this._explorerContextTargetItem());
+                            menuItem.disabled = !items.some((i) => i.isPinned);
+                        }
+                    },
+                    {
+                        icon: 'nai-trash',
+                        text: 'Delete',
+                        action: 'explorer-bulk-delete',
                         className: 'context-menu-item-danger'
                     }
                 ]
@@ -1070,16 +1236,11 @@ class ExplorerApplet {
     _getExplorerMoveWorkspaceOptions() {
         const workspaceOptions = [];
         const workspacesData = workspaces || {};
-        let currentWorkspaceId = 'default';
-        if (typeof activeWorkspace !== 'undefined') {
-            currentWorkspaceId = activeWorkspace;
-        } else if (getActiveWorkspace) {
-            currentWorkspaceId = getActiveWorkspace();
-        }
+        const actionItems = this._explorerGalleryActionItems(this._explorerContextTargetItem());
 
         Object.values(workspacesData)
             .sort((a, b) => (a.sort || 0) - (b.sort || 0))
-            .filter(workspace => workspace.id !== currentWorkspaceId)
+            .filter((workspace) => actionItems.some((i) => this._owningWorkspaceId(i) !== workspace.id))
             .forEach((workspace) => {
                 const workspaceColor = workspace.color || '#6366f1';
                 workspaceOptions.push({
@@ -1102,17 +1263,14 @@ class ExplorerApplet {
         const workspaceName = subItem.workspaceName;
         if (!workspaceId || !workspaceName) return;
 
-        const image = this._resolveGalleryImage(item);
-        if (!image) {
-            showGlassToast('error', 'Explorer', 'Could not resolve image data', false, 4000);
-            return;
-        }
+        const items = this._explorerGalleryActionItems(item);
+        if (!items.length) return;
 
-        const filename = image.filename || image.original || image.upscaled;
-        if (!filename) return;
-
+        const itemCount = items.length;
         const confirmed = await showConfirmationDialog(
-            `Move this image to workspace "${workspaceName}"?`,
+            itemCount === 1
+                ? `Move this image to workspace "${workspaceName}"?`
+                : `Move ${itemCount} images to workspace "${workspaceName}"?`,
             [
                 { text: 'Move', value: true, className: 'btn-primary' },
                 { text: 'Cancel', value: false, className: 'btn-secondary' }
@@ -1120,22 +1278,37 @@ class ExplorerApplet {
         );
         if (!confirmed) return;
 
-        let currentWorkspaceId = this.getWorkspaceIdFromPath();
-        if (!currentWorkspaceId) {
-            if (typeof activeWorkspace !== 'undefined') currentWorkspaceId = activeWorkspace;
-            else if (getActiveWorkspace) currentWorkspaceId = getActiveWorkspace();
-            else currentWorkspaceId = 'default';
+        try {
+        const groups = this._groupExplorerImagesByWorkspace(items);
+        let moved = 0;
+        for (const [sourceId, group] of groups) {
+            if (sourceId === workspaceId) continue;
+            if (group.files.length) {
+                const response = await wsClient.moveFilesToWorkspace(group.files, workspaceId, sourceId, 'files');
+                if (!response?.success) throw new Error(response?.message || 'Move failed');
+                moved += group.files.length;
+            }
+            if (group.scraps.length) {
+                const response = await wsClient.moveFilesToWorkspace(group.scraps, workspaceId, sourceId, 'scraps');
+                if (!response?.success) throw new Error(response?.message || 'Move failed');
+                moved += group.scraps.length;
+            }
         }
 
-        const moveType = item.targetKind === 'scrap' ? 'scraps' : 'files';
-        const response = await wsClient.moveFilesToWorkspace([filename], workspaceId, currentWorkspaceId, moveType);
-        if (!response?.success) {
-            throw new Error(response?.message || 'Move failed');
-        }
-
-        showGlassToast('success', 'Moved', `Image moved to ${workspaceName}`, false, 3000, '<i class="mdi mdi-1-5 mdi-folder-move"></i>');
-        if (typeof loadGallery === 'function') loadGallery(true);
+        showGlassToast(
+            'success',
+            'Moved',
+            itemCount === 1 ? `Image moved to ${workspaceName}` : `${moved} image(s) moved to ${workspaceName}`,
+            false,
+            3000,
+            '<i class="mdi mdi-1-5 mdi-folder-move"></i>'
+        );
+        this._refreshGalleryIfOwningActive(items);
+        this._refreshGalleryIfOwningActive([{ workspaceId }]);
         await this.softRefresh();
+        } catch (err) {
+            showGlassToast('error', 'Explorer', err.message || 'Move failed', false, 5000);
+        }
     }
 
     _getExplorerReferenceMoveOptions(item) {
@@ -1306,14 +1479,29 @@ class ExplorerApplet {
         }
 
         const filename = image.filename || image.original || image.upscaled;
+        if (!filename) {
+            showGlassToast('warning', 'Explorer', 'Could not load image data for this action', false, 4000);
+            return false;
+        }
+        const owningWorkspaceId = this._owningWorkspaceId(item);
         let needsRefresh = false;
 
+        try {
         switch (action) {
-            case 'toggle-favorite':
-                // public/scripts/comp/galleryView.js togglePinImage
-                togglePinImage(image, null);
-                image.isPinned = !image.isPinned;
+            case 'toggle-favorite': {
+                if (image.isPinned) {
+                    await wsClient.removePinned(owningWorkspaceId, filename);
+                    image.isPinned = false;
+                    item.isPinned = false;
+                    showGlassToast('success', null, 'Image unpinned', undefined, undefined, '<i class="fa-regular fa-star"></i>');
+                } else {
+                    await wsClient.addPinned(owningWorkspaceId, filename);
+                    image.isPinned = true;
+                    item.isPinned = true;
+                    showGlassToast('success', null, 'Image pinned', undefined, undefined, '<i class="fa-solid fa-star"></i>');
+                }
                 break;
+            }
             case 'reroll':
                 rerollImage(image, event);
                 break;
@@ -1368,26 +1556,45 @@ class ExplorerApplet {
             case 'jump-to-image':
                 await this.openGalleryImage(filename);
                 break;
+            case 'view-image-data':
+                // public/scripts/comp/featureLoader.js
+                void featureLoader.loadFeature('image_prompt_inspector').then(() => openImagePromptInspector(image));
+                break;
             case 'create-reference':
                 createReferenceFromImage(image);
                 break;
-            case 'scrap':
+            case 'scrap': {
                 if (item.targetKind === 'scrap') {
-                    // public/scripts/app.js removeFromScraps
-                    await removeFromScraps(image);
+                    await wsClient.removeScrap(owningWorkspaceId, filename);
+                    showGlassToast('success', null, 'Image removed from scraps', undefined, undefined, '<i class="nai-dot-reset"></i>');
                 } else {
-                    moveImageToScraps(image, event);
+                    const confirmed = await showConfirmationDialog(
+                        'Are you sure you want to move this image to scraps?',
+                        [
+                            { text: 'Move to Scraps', value: true, className: 'btn-danger' },
+                            { text: 'Cancel', value: false, className: 'btn-secondary' }
+                        ],
+                        event
+                    );
+                    if (!confirmed) return true;
+                    await wsClient.addScrap(owningWorkspaceId, filename);
+                    showGlassToast('success', null, 'Image Scraped', false, 3000, '<i class="fas fa-bin-bottles-recycle"></i>');
                 }
                 needsRefresh = true;
-                if (typeof loadGallery === 'function') loadGallery(true);
+                if (this._isOwningWorkspaceActive(owningWorkspaceId) && typeof loadGallery === 'function') {
+                    loadGallery(true);
+                }
                 break;
+            }
             case 'delete':
                 deleteImage(image);
                 if (this._shouldRemoveShortcutOnly(item)) {
                     await this._removeShortcutItem(item);
                 }
                 needsRefresh = true;
-                if (typeof loadGallery === 'function') loadGallery(true);
+                if (this._isOwningWorkspaceActive(owningWorkspaceId) && typeof loadGallery === 'function') {
+                    loadGallery(true);
+                }
                 break;
             default:
                 return false;
@@ -1395,6 +1602,239 @@ class ExplorerApplet {
 
         if (needsRefresh) await this.softRefresh();
         return true;
+        } catch (err) {
+            showGlassToast('error', 'Explorer', err.message || 'Action failed', false, 5000);
+            return true;
+        }
+    }
+
+    async _handleExplorerGalleryBulkAction(action, item, event) {
+        const items = this._explorerGalleryActionItems(item);
+        const clickedIndex = this.grid?.items?.findIndex((i) => i.id === item?.id) ?? -1;
+
+        switch (action) {
+            case 'explorer-bulk-select-all':
+                this.grid?.selectAll();
+                return;
+            case 'explorer-bulk-select-before':
+                if (clickedIndex >= 0) this._selectExplorerIndexRange(0, clickedIndex);
+                return;
+            case 'explorer-bulk-select-after':
+                if (clickedIndex >= 0) this._selectExplorerIndexRange(clickedIndex + 1, (this.grid?.items?.length || 1) - 1);
+                return;
+            case 'explorer-bulk-invert': {
+                if (!this.grid) return;
+                const selected = new Set(this.grid.selectedIds);
+                this.grid.selectedIds.clear();
+                for (const row of this.grid.items) {
+                    if (!row || row.isUploadPlaceholder) continue;
+                    if (!selected.has(row.id)) this.grid.selectedIds.add(row.id);
+                }
+                this._syncExplorerGridSelection();
+                return;
+            }
+            case 'explorer-bulk-clear':
+                this.grid?.clearSelection();
+                return;
+            default:
+                break;
+        }
+
+        if (!items.length) {
+            showGlassToast('error', 'No Selection', 'Please select images first.');
+            return;
+        }
+
+        const images = items.map((entry) => this._resolveGalleryImage(entry)).filter(Boolean);
+        const filenames = items.map((entry) => this._explorerResolvedFilename(entry)).filter(Boolean);
+        const groups = this._groupExplorerImagesByWorkspace(items);
+        const count = items.length;
+
+        try {
+            switch (action) {
+                case 'explorer-bulk-copy': {
+                    if (images.length === 1) {
+                        copyImageToClipboard(images[0]);
+                        return;
+                    }
+                    const toastId = showGlassToast(
+                        'info',
+                        'Copying images...',
+                        `0 / ${images.length}`,
+                        true,
+                        false,
+                        '<i class="fas fa-clipboard"></i>'
+                    );
+                    const fetched = [];
+                    let failed = 0;
+                    let anyNaiSigInvalid = false;
+                    for (let i = 0; i < images.length; i++) {
+                        try {
+                            // fetchGalleryImageBlobForClipboard: public/scripts/comp/galleryView.js
+                            const blobItem = await fetchGalleryImageBlobForClipboard(images[i]);
+                            fetched.push(blobItem);
+                            if (blobItem.naiSigInvalid) anyNaiSigInvalid = true;
+                        } catch (err) {
+                            failed += 1;
+                            console.error('Failed to fetch image for clipboard:', err);
+                        }
+                        updateGlassToastProgress(toastId, Math.round(((i + 1) / images.length) * 100));
+                        updateGlassToastMessage(toastId, `${i + 1} / ${images.length}`);
+                    }
+                    if (!fetched.length) throw new Error('Failed to load images for clipboard');
+                    // copyBlobsToClipboard: public/scripts/utils/dreamscapeClipboard.js
+                    const result = await copyBlobsToClipboard(fetched);
+                    removeGlassToast(toastId);
+                    let toastMessage = `Copied ${result.copied} image(s)`;
+                    if (failed > 0) toastMessage += ` (${failed} failed)`;
+                    showGlassToast(
+                        anyNaiSigInvalid ? 'warning' : 'success',
+                        anyNaiSigInvalid ? 'Images copied to clipboard!' : 'Images copied to clipboard!',
+                        anyNaiSigInvalid ? `${toastMessage}<br>NAI Signing Key Invalid` : toastMessage,
+                        false,
+                        anyNaiSigInvalid ? 4000 : 3000,
+                        anyNaiSigInvalid
+                            ? '<i class="fas fa-exclamation-triangle"></i>'
+                            : '<i class="fas fa-clipboard-check"></i>'
+                    );
+                    return;
+                }
+                case 'explorer-bulk-download':
+                    images.forEach((image) => downloadImage(image));
+                    if (images.length > 1) {
+                        showGlassToast(
+                            'success',
+                            null,
+                            `Downloading ${images.length} image(s)...`,
+                            false,
+                            3000,
+                            '<i class="fas fa-download"></i>'
+                        );
+                    }
+                    return;
+                case 'explorer-bulk-sequenzia': {
+                    const confirmed = await showConfirmationDialog(
+                        `Are you sure you want to send ${count} selected image(s) to Sequenzia? This will move the images and delete them from the gallery.`,
+                        [
+                            { text: 'Send to Sequenzia', value: true, className: 'btn-danger' },
+                            { text: 'Cancel', value: false, className: 'btn-secondary' }
+                        ],
+                        event
+                    );
+                    if (!confirmed) return;
+                    const responseData = await wsClient.sendToSequenziaBulk(filenames);
+                    const successful = responseData?.successful ?? filenames.length;
+                    const failed = responseData?.failed || 0;
+                    let toastMessage = responseData?.message || `Successfully sent ${successful} image(s) to Sequenzia`;
+                    if (failed > 0) toastMessage += ` (${failed} failed)`;
+                    showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-share"></i>');
+                    this._refreshGalleryIfOwningActive(items);
+                    await this.softRefresh();
+                    return;
+                }
+                case 'explorer-bulk-scrap': {
+                    const allScraps = items.every((entry) => entry.targetKind === 'scrap');
+                    if (!allScraps) {
+                        const confirmed = await showConfirmationDialog(
+                            `Are you sure you want to move ${count} selected image(s) to scraps?`,
+                            [
+                                { text: 'Move', value: true, className: 'btn-danger' },
+                                { text: 'Cancel', value: false, className: 'btn-secondary' }
+                            ],
+                            event
+                        );
+                        if (!confirmed) return;
+                    }
+                    let acted = 0;
+                    for (const [wsId, group] of groups) {
+                        if (allScraps) {
+                            if (!group.scraps.length) continue;
+                            const responseData = await wsClient.removeScrapBulk(wsId, group.scraps);
+                            acted += responseData?.removedCount ?? group.scraps.length;
+                        } else if (group.files.length) {
+                            const responseData = await wsClient.addScrapBulk(wsId, group.files);
+                            acted += responseData?.addedCount ?? group.files.length;
+                        }
+                    }
+                    showGlassToast(
+                        'success',
+                        null,
+                        allScraps
+                            ? `Restored ${acted} image(s) from scraps`
+                            : `Successfully moved ${acted} image(s) to scraps`,
+                        false,
+                        5000,
+                        allScraps ? '<i class="nai-dot-reset"></i>' : '<i class="fas fa-bin-bottles-recycle"></i>'
+                    );
+                    this._refreshGalleryIfOwningActive(items);
+                    await this.softRefresh();
+                    return;
+                }
+                case 'explorer-bulk-pin':
+                case 'explorer-bulk-unpin': {
+                    const pinning = action === 'explorer-bulk-pin';
+                    const targets = items.filter((entry) => pinning ? !entry.isPinned : entry.isPinned);
+                    if (!targets.length) return;
+                    const confirmed = await showConfirmationDialog(
+                        pinning
+                            ? `Are you sure you want to pin ${targets.length} selected image(s)?`
+                            : `Are you sure you want to unpin ${targets.length} selected image(s)?`,
+                        [
+                            { text: pinning ? 'Pin' : 'Unpin', value: true, className: pinning ? 'btn-primary' : 'btn-danger' },
+                            { text: 'Cancel', value: false, className: 'btn-secondary' }
+                        ],
+                        event
+                    );
+                    if (!confirmed) return;
+                    let acted = 0;
+                    const pinGroups = this._groupExplorerImagesByWorkspace(targets);
+                    for (const [wsId, group] of pinGroups) {
+                        const names = [...group.files, ...group.scraps];
+                        if (!names.length) continue;
+                        const responseData = pinning
+                            ? await wsClient.bulkAddPinned(wsId, names)
+                            : await wsClient.bulkRemovePinned(wsId, names);
+                        acted += (pinning ? responseData?.addedCount : responseData?.removedCount) ?? names.length;
+                        targets.forEach((entry) => { entry.isPinned = pinning; });
+                    }
+                    showGlassToast(
+                        'success',
+                        null,
+                        pinning ? `Pinned ${acted} image(s)` : `Unpinned ${acted} image(s)`,
+                        false,
+                        5000,
+                        pinning ? '<i class="fa-solid fa-star"></i>' : '<i class="fa-regular fa-star"></i>'
+                    );
+                    this._refreshGalleryIfOwningActive(items);
+                    await this.softRefresh();
+                    return;
+                }
+                case 'explorer-bulk-delete': {
+                    const confirmed = await showConfirmationDialog(
+                        `Are you sure you want to delete ${count} selected image(s)? This will permanently delete both the original and upscaled versions.`,
+                        [
+                            { text: 'Delete', value: true, className: 'btn-danger' },
+                            { text: 'Cancel', value: false, className: 'btn-secondary' }
+                        ],
+                        event
+                    );
+                    if (!confirmed) return;
+                    const responseData = await wsClient.deleteImagesBulk(filenames);
+                    const successful = responseData?.successful ?? filenames.length;
+                    const failed = responseData?.failed || 0;
+                    let toastMessage = responseData?.message || `Successfully removed ${successful} image(s)`;
+                    if (failed > 0) toastMessage += ` (${failed} failed)`;
+                    showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-trash"></i>');
+                    this._refreshGalleryIfOwningActive(items);
+                    await this.softRefresh();
+                    return;
+                }
+                default:
+                    return;
+            }
+        } catch (err) {
+            showGlassToast('error', 'Explorer', err.message || 'Bulk action failed', false, 5000);
+        }
     }
 
     async _handleNoteContextAction(action, item) {
@@ -1564,8 +2004,15 @@ class ExplorerApplet {
         const multi = selCount > 1;
         const vfsOpts = { multi, canModify, selCount };
 
-        if (!multi && this._isGalleryImageContextItem(item)) {
-            return this._finalizeContextMenuSections(this._buildImageScrapContextMenuSections(item), item, vfsOpts);
+        if (this._isGalleryImageContextItem(item)) {
+            if (multi) {
+                const sel = this.grid?.getSelectedItems() || [];
+                if (sel.every((i) => this._isGalleryImageContextItem(i))) {
+                    return this._buildImageScrapBulkContextMenuSections(item, sel);
+                }
+            } else {
+                return this._finalizeContextMenuSections(this._buildImageScrapContextMenuSections(item), item, vfsOpts);
+            }
         }
 
         if (item.shortcutType) {
@@ -1789,6 +2236,20 @@ class ExplorerApplet {
             switch (action) {
                 case 'explorer-navigate':
                     this._navigateToItem(item);
+                    break;
+                case 'explorer-bulk-select-all':
+                case 'explorer-bulk-select-before':
+                case 'explorer-bulk-select-after':
+                case 'explorer-bulk-invert':
+                case 'explorer-bulk-clear':
+                case 'explorer-bulk-copy':
+                case 'explorer-bulk-download':
+                case 'explorer-bulk-sequenzia':
+                case 'explorer-bulk-scrap':
+                case 'explorer-bulk-pin':
+                case 'explorer-bulk-unpin':
+                case 'explorer-bulk-delete':
+                    await this._handleExplorerGalleryBulkAction(action, item, event);
                     break;
                 case 'explorer-app-workspace':
                 case 'explorer-app-references':
@@ -3001,15 +3462,20 @@ class ExplorerApplet {
             const gi = allImages.find(img =>
                 img.filename === fn || img.original === fn || img.upscaled === fn
             );
-            if (!gi?.preview) return item;
-            const previewPath = typeof getGalleryPreviewUrl === 'function'
-                ? getGalleryPreviewUrl(gi.preview)
-                : gi.preview;
-            return {
-                ...item,
-                galleryPreview: gi.preview,
-                previewUrl: `/previews/${encodeURIComponent(previewPath)}`
-            };
+            if (!gi) return item;
+            const next = { ...item };
+            if (gi.preview) {
+                const previewPath = typeof getGalleryPreviewUrl === 'function'
+                    ? getGalleryPreviewUrl(gi.preview)
+                    : gi.preview;
+                next.galleryPreview = gi.preview;
+                next.previewUrl = `/previews/${encodeURIComponent(previewPath)}`;
+            }
+            if (item.isPinned === undefined && gi.isPinned !== undefined) next.isPinned = gi.isPinned;
+            if (gi.upscaled) next.upscaled = gi.upscaled;
+            if (gi.width) next.width = gi.width;
+            if (gi.height) next.height = gi.height;
+            return next;
         });
     }
 

@@ -810,6 +810,23 @@ class VfsManager {
         return this.globalResources.getWorkspaceManager()._readWorkspaceGalleryFilenames(workspaceId, bucket);
     }
 
+    async _listPinnedFilenameSet(workspaceId) {
+        const metadataDb = this.globalResources.getMetadataDatabase?.();
+        if (metadataDb) {
+            try {
+                // listGalleryWorkspacePinFilenames: modules/metadataDatabase.js
+                const pins = await metadataDb.listGalleryWorkspacePinFilenames(workspaceId);
+                return new Set(pins || []);
+            } catch (_) { /* fall through */ }
+        }
+        try {
+            const pins = await this._readWorkspaceGalleryFilenames(workspaceId, 'pinned');
+            return new Set(pins || []);
+        } catch (_) {
+            return new Set();
+        }
+    }
+
     _getWorkspaceStatsFromCache(workspaceId) {
         const ws = this.globalResources.getWorkspaceManager().getWorkspaces()[workspaceId];
         if (!ws) return null;
@@ -1313,6 +1330,7 @@ class VfsManager {
             }
             case 'Pictures': {
                 const files = await this._readWorkspaceGalleryFilenames(workspaceId, 'files');
+                const pinnedSet = await this._listPinnedFilenameSet(workspaceId);
                 const imagesPath = this.globalResources.getPath('images');
                 let filenames = [...files].filter(f => !trashedTargets.has(`image:${f}`));
                 if (search && search.length >= 2) {
@@ -1330,7 +1348,6 @@ class VfsManager {
                             mtime = Math.floor(st.mtimeMs / 1000);
                         }
                     } catch (_) { /* skip */ }
-                    const baseName = path.basename(filename, path.extname(filename));
                     return {
                         id: `img-${filename}`,
                         name: filename,
@@ -1345,7 +1362,8 @@ class VfsManager {
                         size,
                         modifiedAt: mtime,
                         previewImageFilename: filename,
-                        workspaceId
+                        workspaceId,
+                        isPinned: pinnedSet.has(filename)
                     };
                 });
             }
@@ -1430,6 +1448,7 @@ class VfsManager {
             case 'Scraps': {
                 const scraps = (await this._readWorkspaceGalleryFilenames(workspaceId, 'scraps'))
                     .filter(f => !trashedTargets.has(`scrap:${f}`));
+                const pinnedSet = await this._listPinnedFilenameSet(workspaceId);
                 const imagesPath = this.globalResources.getPath('images');
                 return scraps.map(filename => {
                     let size = 0;
@@ -1456,7 +1475,8 @@ class VfsManager {
                         size,
                         modifiedAt: mtime,
                         previewImageFilename: filename,
-                        workspaceId
+                        workspaceId,
+                        isPinned: pinnedSet.has(filename)
                     };
                 });
             }

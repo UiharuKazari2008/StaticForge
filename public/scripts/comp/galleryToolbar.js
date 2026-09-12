@@ -188,7 +188,7 @@ async function addImageAsReference(image) {
         const base64 = await blobToBase64(imageBlob);
         
         // Upload via WebSocket
-        const response = await wsClient.uploadReference(base64, activeWorkspace || 'default');
+        const response = await wsClient.uploadReference(base64, image.workspaceId || activeWorkspace || 'default');
         
         if (response.success) {
             // Show success toast

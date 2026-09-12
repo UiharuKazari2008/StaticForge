@@ -6203,6 +6203,10 @@ class WebSocketClient {
         return this.sendMessage('workspace_bulk_add_scrap', { id, filenames });
     }
 
+    async removeScrapBulk(id, filenames) {
+        return this.sendMessage('workspace_bulk_remove_scrap', { id, filenames });
+    }
+
     async removePinnedBulk(id, filenames) {
         return this.sendMessage('workspace_bulk_remove_pinned', { id, filenames });
     }

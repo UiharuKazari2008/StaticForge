@@ -16,7 +16,8 @@ const { VfsManager } = require('../modules/vfsManager');
 const galleryByWorkspace = {
     'ws-b': {
         files: ['other-a.png', 'other-b.png'],
-        scraps: ['scrap-b.png']
+        scraps: ['scrap-b.png'],
+        pinned: ['other-a.png']
     },
     default: {
         files: ['active.png'],
@@ -55,6 +56,8 @@ async function run() {
     );
     assert.ok(pictures.items.every((item) => item.workspaceId === 'ws-b'));
     assert.ok(pictures.items.every((item) => item.targetKind === 'image'));
+    assert.strictEqual(pictures.items.find((item) => item.name === 'other-a.png').isPinned, true);
+    assert.strictEqual(pictures.items.find((item) => item.name === 'other-b.png').isPinned, false);
 
     const scraps = await vfs.listDirectory('/Workspaces/ws-b/Scraps');
     assert.strictEqual(scraps.totalCount, 1);
