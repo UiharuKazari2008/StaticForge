@@ -5388,7 +5388,9 @@ document.addEventListener('contextMenuAction', (e) => {
 
             case 'taskbar-group-close-all':
                 modals.forEach(modal => {
-                    closeModal(modal);
+                    const closeBtn = modal.querySelector('.close-btn');
+                    if (closeBtn) closeBtn.click();
+                    else closeModal(modal);
                 });
                 break;
         }
