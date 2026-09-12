@@ -158,7 +158,7 @@
     container-name: explorer;
 }
 
-/* Yozora #177: one-row actions strip; dual class beats .naxt-search-header spacing-sm */
+/* Yozora #176: one-row actions strip; dual class beats .naxt-search-header spacing-sm */
 #explorerModal .explorer-actions-header.naxt-search-header {
     overflow: visible;
     padding: var(--spacing-md);
