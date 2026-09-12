@@ -24,7 +24,7 @@ const MODULE_DEFS = {
         tools: [
             'generate_image', 'get_generation_job', 'await_generation_job',
             'get_session_state', 'get_studio_state', 'get_open_windows', 'get_client_physics',
-            'list_clients', 'bind_session', 'apply_studio_changes',
+            'list_clients', 'bind_session', 'apply_studio_changes', 'run_client_js', 'inspect_elements',
             'get_linkxi_persona', 'save_linkxi_persona',
             'get_prompt_guide', 'list_memories', 'search_memories', 'get_memory', 'save_memory',
             'upscale_image', 'expand_image'

@@ -973,6 +973,36 @@ const TOOL_DEFS = [
             }
         }
     },
+
+    {
+        name: 'run_client_js',
+        description: 'Execute raw JavaScript in the bound Dreamscape client context.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                script: { type: 'string', description: 'Raw JS expression or script string to execute' }
+            },
+            required: ['script']
+        }
+    },
+    {
+        name: 'inspect_elements',
+        description: 'Inspect elements in the bound Dreamscape client matching CSS selectors.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                selectors: { type: 'array', items: { type: 'string' }, description: 'CSS selectors to match' },
+                html: { type: 'boolean', description: 'Include outerHTML in response (default true)' },
+                style: { type: 'boolean', description: 'Include getComputedStyle in response (default true)' },
+                styleAllowlist: { type: 'array', items: { type: 'string' }, description: 'Optional list of CSS properties to include from computed style' }
+            },
+            required: ['selectors']
+        }
+    },
     {
         name: 'apply_preset_to_studio',
         core: true,
@@ -4349,6 +4379,19 @@ async function callTool(globalResources, req, name, args) {
             autoBound: !!bind.auto,
             ...data,
             ...(responseNext ? { next: responseNext } : {})
+        });
+    }
+
+    if (name === 'run_client_js' || name === 'inspect_elements') {
+        const bind = autoBindIfNeeded(globalResources, req);
+        if (!getBoundRecord(globalResources, bind.bindKey)) {
+            return mcpBindChoiceResult(bind);
+        }
+        const data = await sendBoundCommand(globalResources, name, input, 15000, bind.bindKey);
+        return mcpTextResult({
+            success: true,
+            autoBound: !!bind.auto,
+            ...data
         });
     }
 
