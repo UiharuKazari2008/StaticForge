@@ -358,9 +358,6 @@ class ReferenceMetadataDatabase {
                 return this.getAllMetadata();
             }
 
-            // Create placeholders for the IN clause
-            const placeholders = tags.map(() => '?').join(',');
-            
             const stmt = this.db.prepare(`
                 SELECT * FROM reference_metadata 
                 WHERE tags LIKE ?
@@ -374,10 +371,15 @@ class ReferenceMetadataDatabase {
                 results.push(...tagResults);
             }
             
-            // Remove duplicates and parse tags
-            const uniqueResults = results.filter((result, index, self) => 
-                index === self.findIndex(r => r.hash === result.hash)
-            );
+            // JULES: Optimize deduplication from O(N^2) filter+findIndex to O(N) Set tracking
+            const seenHashes = new Set();
+            const uniqueResults = [];
+            for (const result of results) {
+                if (!seenHashes.has(result.hash)) {
+                    seenHashes.add(result.hash);
+                    uniqueResults.push(result);
+                }
+            }
             
             return uniqueResults.map(result => ({
                 ...result,
