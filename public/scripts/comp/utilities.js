@@ -3027,4 +3027,3 @@ async function fetchTrackedImageBlob(url, knownTotalBytes, onProgress, fetchInit
 }
 
 // These will remain global for now to avoid breaking existing code
-// TODO: Move actual implementations from app.js here
