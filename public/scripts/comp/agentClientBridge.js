@@ -62,6 +62,81 @@
         return `${text.slice(0, WINDOW_TEXT_CAP)}\n…[truncated ${text.length - WINDOW_TEXT_CAP} chars]`;
     }
 
+    function jsonClone(value) {
+        if (value === undefined) return null;
+        try {
+            return JSON.parse(JSON.stringify(value));
+        } catch (_err) {
+            return String(value);
+        }
+    }
+
+    function inspectComputedStyle(el, styleAllowlist) {
+        const computed = getComputedStyle(el);
+        const styles = {};
+        if (styleAllowlist) {
+            for (let i = 0; i < styleAllowlist.length; i++) {
+                const prop = styleAllowlist[i];
+                styles[prop] = computed.getPropertyValue(prop);
+            }
+            return styles;
+        }
+        for (let i = 0; i < computed.length; i++) {
+            const prop = computed[i];
+            styles[prop] = computed.getPropertyValue(prop);
+        }
+        return styles;
+    }
+
+    function runClientJsFromCommand(script) {
+        try {
+            const raw = (0, eval)(script == null ? '' : String(script));
+            return { result: jsonClone(raw) };
+        } catch (err) {
+            return { error: (err && err.message) || String(err) };
+        }
+    }
+
+    function inspectElementsFromCommand(data) {
+        try {
+            const selectors = Array.isArray(data.selectors) ? data.selectors : [];
+            const returnHtml = data.html !== false;
+            const returnStyle = data.style !== false;
+            const styleAllowlist = Array.isArray(data.styleAllowlist) ? data.styleAllowlist : null;
+            const maxMatches = 50;
+            let remaining = maxMatches;
+            const result = [];
+            for (let s = 0; s < selectors.length; s++) {
+                const selector = selectors[s];
+                const entry = { selector, matches: [] };
+                let els;
+                try {
+                    els = document.querySelectorAll(selector);
+                } catch (selErr) {
+                    entry.error = (selErr && selErr.message) || String(selErr);
+                    result.push(entry);
+                    continue;
+                }
+                const take = Math.min(els.length, remaining);
+                for (let i = 0; i < take; i++) {
+                    const el = els[i];
+                    const info = {};
+                    if (returnHtml) info.html = capText(el.outerHTML);
+                    if (returnStyle) info.style = inspectComputedStyle(el, styleAllowlist);
+                    entry.matches.push(info);
+                }
+                entry.count = els.length;
+                if (els.length > take) entry.truncated = true;
+                remaining -= take;
+                result.push(entry);
+                if (remaining <= 0) break;
+            }
+            return { result };
+        } catch (err) {
+            return { error: (err && err.message) || String(err) };
+        }
+    }
+
     function capFilenames(list) {
         const names = [];
         const seen = new Set();
@@ -510,6 +585,14 @@
             if (command === 'apply_studio') {
                 const result = await applyStudioFromCommand(data);
                 replyAgentSessionResult(requestId, result);
+                return;
+            }
+            if (command === 'run_client_js') {
+                replyAgentSessionResult(requestId, runClientJsFromCommand(data.script));
+                return;
+            }
+            if (command === 'inspect_elements') {
+                replyAgentSessionResult(requestId, inspectElementsFromCommand(data));
                 return;
             }
             if (command === 'client_update') {
