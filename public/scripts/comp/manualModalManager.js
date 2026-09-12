@@ -537,6 +537,11 @@ function createManualPreviewImageContextMenuConfig() {
                         action: 'start-chat'
                     },
                     {
+                        icon: 'fas fa-code',
+                        text: 'Copy linkback',
+                        action: 'copy-linkback'
+                    },
+                    {
                         separator: true,
                         hidden: () => !document.body.classList.contains('desktop-mode')
                     },
@@ -779,6 +784,11 @@ async function handleManualPreviewImageContextMenuAction(event) {
                     moveManualPreviewToScraps();
                 }
             }
+            break;
+
+        case 'copy-linkback':
+            // copyLinkbackImage: public/scripts/comp/copyLinkback.js
+            copyLinkbackImage(image);
             break;
 
         case 'start-chat':
