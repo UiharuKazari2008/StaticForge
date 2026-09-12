@@ -158,20 +158,22 @@
     container-name: explorer;
 }
 
-#explorerModal .explorer-actions-header {
+/* Dual class beats #explorerModal .naxt-search-header { padding: var(--spacing-sm) } */
+#explorerModal .explorer-actions-header.naxt-search-header {
     overflow: visible;
-    padding: var(--spacing-md) var(--spacing-md);
+    padding: var(--spacing-md);
     line-height: normal; /* undo line-height: 1 crush from pre-#172 header */
     box-sizing: border-box;
 }
 
 #explorerModal .explorer-actions-header .naxt-search-controls {
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
+    display: flex;
+    flex-direction: row;
     flex-wrap: nowrap;
     align-items: center;
-    overflow: visible;
+    gap: var(--spacing-sm);
+    width: 100%;
+    min-width: 0;
 }
 
 #explorerModal .explorer-actions-header .button-group {
