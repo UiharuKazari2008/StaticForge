@@ -31,7 +31,7 @@ User-facing applet and tool names follow a **Dreamscape** style: short, tangible
 | `naxt` | Atelier |
 | `notebook` | Notion |
 | `bracket-generation` | Phasewalker |
-| `prism` | **Prism** (dual-pane compare + Studio overlay/slide/loupe tools) |
+| `prism` | **Prism** (adjacent Source | Current | Ladder + Studio compare tools) |
 | `presets` | Spellbook (preset manager, Toolbox) |
 | `expanders` | Expanders |
 | `keychain` | Keychain |

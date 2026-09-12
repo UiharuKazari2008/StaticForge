@@ -1,8 +1,8 @@
 /* Prism applet — scripts/comp/prismApplet.js
-   Soft UI glass only. Dual-pane Side-by-side + Studio compare toolbar. */
+   Soft UI glass only. Adjacent Source | Current | Ladder + Studio compare toolbar. */
 
 body.desktop-mode #prismModal.modal:not(.minimised):not(.maximised) {
-    width: min(1100px, 96vw);
+    width: min(1200px, 96vw);
     height: min(740px, 88vh);
 }
 
@@ -39,6 +39,30 @@ body.desktop-mode #prismModal.modal:not(.minimised):not(.maximised) {
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 28em;
+}
+
+#prismModal .prism-pair-line {
+    flex: 0 0 auto;
+    font-size: 0.72rem;
+    opacity: 0.7;
+    padding: 0 2px;
+}
+
+#prismModal .prism-pane-foot {
+    flex: 0 0 auto;
+    padding: 6px 10px;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.66rem;
+    opacity: 0.68;
+    border-top: 1px solid var(--glass-border-1);
+    background: var(--glass-layer-dark-2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#prismModal .prism-ladder-host {
+    display: contents;
 }
 
 #prismModal .prism-mode-tabs {
@@ -276,7 +300,7 @@ body.desktop-mode #prismModal.modal:not(.minimised):not(.maximised) {
     display: none;
 }
 
-#prismModal[data-prism-mode="loupe"] .prism-source-pane {
+#prismModal[data-prism-mode="loupe"] .prism-ladder-host {
     display: none;
 }
 
@@ -284,8 +308,13 @@ body.desktop-mode #prismModal.modal:not(.minimised):not(.maximised) {
     display: none;
 }
 
+#prismModal[data-prism-mode="grid"] .prism-pair-line {
+    display: none;
+}
+
 #prismModal[data-prism-picker="1"] .prism-panes,
 #prismModal[data-prism-picker="1"] .prism-grid,
-#prismModal[data-prism-picker="1"] .prism-filmstrip {
+#prismModal[data-prism-picker="1"] .prism-filmstrip,
+#prismModal[data-prism-picker="1"] .prism-pair-line {
     visibility: hidden;
 }

@@ -1,6 +1,6 @@
 /**
  * Prism — creative compare applet (Yozora #189).
- * Dual-pane Side-by-side + Studio compare toolset (overlay / slide / loupe reveal).
+ * Adjacent Source | Current | Ladder Side-by-side + Studio compare toolset.
  * public/scripts/comp/compareViewManager.js (COMPARE_* menus, slide clip-path model)
  * public/scripts/comp/imageLoupe.js (attachImageLoupe)
  * public/scripts/comp/modalUtils.js (openModal, closeModal)
@@ -147,17 +147,17 @@ class PrismApplet {
                 onAction: (action, _t, item) => this.onCompareMenu(action, item)
             });
         }
-        const colorBtn = document.getElementById('prismColorBtn');
-        if (colorBtn) {
-            contextMenu.attachToElement(colorBtn, {
-                sections: this.colorMenuSections(),
+        const sourceColorBtn = document.getElementById('prismSourceColorBtn');
+        if (sourceColorBtn) {
+            contextMenu.attachToElement(sourceColorBtn, {
+                sections: [{ type: 'grid', title: 'Source', items: this.colorMenuSections()[0].items }],
                 onAction: (action, _t, item) => this.onCompareMenu(action, item)
             });
         }
-        const priorityBtn = document.getElementById('prismPriorityBtn');
-        if (priorityBtn) {
-            contextMenu.attachToElement(priorityBtn, {
-                sections: [{ type: 'list', items: this.priorityMenuItems() }],
+        const resultColorBtn = document.getElementById('prismResultColorBtn');
+        if (resultColorBtn) {
+            contextMenu.attachToElement(resultColorBtn, {
+                sections: [{ type: 'grid', title: 'Result', items: this.colorMenuSections()[1].items }],
                 onAction: (action, _t, item) => this.onCompareMenu(action, item)
             });
         }
@@ -510,11 +510,13 @@ class PrismApplet {
         if (action === 'setCompareOpacity') {
             this.runtime.overlayOpacity = Number(item && item.value) || 50;
             this.renderCompareHost();
+            this.renderToolbar();
             return;
         }
         if (action === 'setCompareBlend') {
             this.runtime.blendMode = (item && item.value) || 'normal';
             this.renderCompareHost();
+            this.renderToolbar();
             return;
         }
         if (action === 'setCompareSourceColor') {
@@ -702,12 +704,15 @@ class PrismApplet {
         const transform = `translate(${this.pan.x}px, ${this.pan.y}px) scale(${this.pan.scale})`;
         const sourceImg = document.getElementById('prismSourcePaneImage');
         const resultHost = document.getElementById('prismPreviewHit');
+        const ladderImgs = this.modal.querySelectorAll('.prism-ladder-pane img');
         if (this.syncPanZoom) {
             if (sourceImg) sourceImg.style.transform = transform;
             if (resultHost) resultHost.style.transform = transform;
+            ladderImgs.forEach((img) => { img.style.transform = transform; });
         } else {
             if (sourceImg) sourceImg.style.transform = '';
             if (resultHost) resultHost.style.transform = '';
+            ladderImgs.forEach((img) => { img.style.transform = ''; });
         }
     }
 
@@ -749,10 +754,16 @@ class PrismApplet {
             }
         }
         const overlayOff = !this.overlayEnabled;
-        ['prismOpacityBtn', 'prismBlendBtn', 'prismColorBtn', 'prismPriorityBtn'].forEach((id) => {
+        ['prismOpacityBtn', 'prismBlendBtn', 'prismSourceColorBtn', 'prismResultColorBtn'].forEach((id) => {
             const el = document.getElementById(id);
             if (el) el.disabled = overlayOff;
         });
+        const overlayBtn = document.getElementById('prismOverlayBtn');
+        if (overlayBtn) overlayBtn.textContent = this.overlayEnabled ? 'Overlay on' : 'Overlay off';
+        const opacityBtn = document.getElementById('prismOpacityBtn');
+        if (opacityBtn) opacityBtn.textContent = `Opacity ${this.runtime.overlayOpacity}%`;
+        const blendBtn = document.getElementById('prismBlendBtn');
+        if (blendBtn) blendBtn.textContent = `Blend ${this.runtime.blendMode}`;
         const slideBtn = document.getElementById('prismSlideBtn');
         if (slideBtn) slideBtn.disabled = this.loupeRevealEnabled;
         const loupeBtn = document.getElementById('prismLoupeRevealBtn');
@@ -777,14 +788,18 @@ class PrismApplet {
     renderPanes() {
         const empty = document.getElementById('prismEmpty');
         const panes = this.modal.querySelector('.prism-panes');
+        const pairLine = document.getElementById('prismPairLine');
         const hasPair = this.items.length > 0;
         if (empty) empty.classList.toggle('hidden', hasPair);
         if (panes) panes.classList.toggle('hidden', !hasPair || this.mode === 'grid');
+        if (pairLine) pairLine.classList.toggle('hidden', !hasPair || this.mode === 'grid');
         const source = this.sourceItem();
         const result = this.resultItem();
         const sourceImg = document.getElementById('prismSourcePaneImage');
         const sourceCap = document.getElementById('prismSourceCaption');
+        const sourceLetter = document.getElementById('prismSourceLetter');
         const resultCap = document.getElementById('prismResultCaption');
+        const resultLetter = document.getElementById('prismResultLetter');
         if (sourceImg) {
             if (source) {
                 sourceImg.src = source.url;
@@ -794,16 +809,55 @@ class PrismApplet {
                 sourceImg.classList.add('hidden');
             }
         }
-        if (sourceCap) {
-            sourceCap.textContent = source
-                ? `Source · ${this.letterAt(this.sourceIndex)} · ${source.filename}`
-                : 'Source';
+        if (sourceCap) sourceCap.textContent = 'Source';
+        if (sourceLetter) sourceLetter.textContent = source ? this.letterAt(this.sourceIndex) : '';
+        if (resultCap) resultCap.textContent = 'Current';
+        if (resultLetter) resultLetter.textContent = result ? this.letterAt(this.resultIndex) : '';
+        this.setPaneFoot('prismSourceFoot', source);
+        this.setPaneFoot('prismResultFoot', result);
+        this.renderLadderPanes();
+        if (pairLine) {
+            const extras = this.ladderIndexes().map((i) => this.letterAt(i));
+            const extraBit = extras.length ? ` | ${extras.join(' ')}` : '';
+            pairLine.textContent = `Side-by-side · Source | Current${extraBit} · separate panels`;
         }
-        if (resultCap) {
-            resultCap.textContent = result
-                ? `Current · ${this.letterAt(this.resultIndex)} · ${result.filename}`
-                : 'Current';
+    }
+
+    ladderIndexes() {
+        const out = [];
+        this.items.forEach((_item, index) => {
+            if (index !== this.sourceIndex && index !== this.resultIndex) out.push(index);
+        });
+        return out;
+    }
+
+    setPaneFoot(id, item) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (!item) {
+            el.textContent = '';
+            return;
         }
+        const bits = [item.filename];
+        if (item.seed != null) bits.push(`seed ${item.seed}`);
+        el.textContent = bits.join(' · ');
+    }
+
+    renderLadderPanes() {
+        const host = document.getElementById('prismLadderHost');
+        if (!host) return;
+        host.innerHTML = '';
+        const extras = this.mode === 'side' ? this.ladderIndexes() : [];
+        host.classList.toggle('hidden', extras.length === 0);
+        extras.forEach((index) => {
+            const item = this.items[index];
+            const pane = document.createElement('div');
+            pane.className = 'prism-pane prism-ladder-pane';
+            pane.innerHTML = `<div class="prism-pane-caption"><span>Ladder ${this.letterAt(index)}</span><span>${this.letterAt(index)}</span></div><div class="prism-pane-frame"><img alt="" src="${item.url}"></div><div class="prism-pane-foot"></div>`;
+            pane.querySelector('.prism-pane-foot').textContent = item.filename;
+            pane.addEventListener('click', (e) => this.focusCell(index, e.shiftKey));
+            host.appendChild(pane);
+        });
     }
 
     renderCompareHost() {

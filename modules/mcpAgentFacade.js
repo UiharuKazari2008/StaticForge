@@ -1354,7 +1354,7 @@ const TOOL_DEFS = [
     {
         name: 'open_in_prism',
         core: true,
-        description: 'Open 2+ gallery filenames in Prism (creative compare: dual-pane Side-by-side, Studio overlay/slide/loupe tools, Grid). Prefer this over opening N Lumen windows. compare_images remains the server pixel-diff.',
+        description: 'Open 2+ gallery filenames in Prism (creative compare: adjacent Source | Current | Ladder, Studio overlay/slide/loupe tools, Grid). Prefer this over opening N Lumen windows. compare_images remains the server pixel-diff.',
         scope: 'gallery',
         inputSchema: {
             type: 'object',
