@@ -1,0 +1,171 @@
+{
+  "galleries": {
+    "danbooru-artist-tags-v4.5": {
+      "promptTemplate": "artist:<INPUT_VALUE>, neutral background, white background, transparent background, cowboy shot, -1.5::nipples::",
+      "characterPrompt": "girl, soft smile, red lips, hoodie, jeans, orange hair, small breasts",
+      "model": "nai-diffusion-4-5-full",
+      "resPreset": "normal_portrait",
+      "steps": 28,
+      "scale": 4,
+      "sampler": "k_euler_ancestral",
+      "qualityToggle": true,
+      "ucPreset": 3,
+      "seed": 2710136181
+    },
+    "danbooru-artist-tags-v5": {
+      "promptTemplate": "0.75:: artist: <INPUT_VALUE> ::, white background, simple background, cowboy shot, -1.5::nipples, nude, nsfw, worst quality, bad quality, bad anatomy, blurry, very displeasing, blush, weird anatomy, wavy hair, nose piercing, bad hands, censor, duplicate, claws, abs, fish, facial tattoo::",
+      "characterPrompt": "girl, solo, looking at viewer, standing, faint smile, closed mouth, red lips, black hoodie, hood down, long sleeves, hand in pocket, blue jeans, orange hair, long hair, high ponytail, bangs, green eyes, medium breasts, midriff peek, belt, leather belt, navel, linea alba, hand on railing",
+      "model": "nai-diffusion-5-full",
+      "resPreset": "normal_portrait",
+      "steps": 16,
+      "scale": 4,
+      "sampler": "k_euler_ancestral",
+      "qualityToggle": true,
+      "ucPreset": 3,
+      "seed": 4168358238
+    },
+    "danbooru-artist-tags-2-v5": {
+      "promptTemplate": "artist:<INPUT_VALUE>, cowboy shot, -2::panties, huge breasts::",
+      "characterPrompt": "girl, facing viewer, fully clothed",
+      "model": "nai-diffusion-5-full",
+      "resPreset": "normal_portrait",
+      "steps": 28,
+      "scale": 4,
+      "sampler": "k_euler_ancestral",
+      "qualityToggle": true,
+      "ucPreset": 0,
+      "seed": 2138582679
+    },
+    "danbooru-hair-tags-v5": {
+      "promptTemplate": "1girl, solo, mature female, 1.25::<INPUT_VALUE> ::, upper body, standing, arms at sides, looking at viewer, soft smile, closed mouth, sweater, black sweater, blonde hair, blue eyes, small breasts, simple background, white background",
+      "model": "nai-diffusion-5-full",
+      "resPreset": "normal_portrait",
+      "steps": 23,
+      "scale": 7,
+      "sampler": "k_euler_ancestral",
+      "qualityToggle": true,
+      "ucPreset": 0,
+      "seed": 1899431449
+    },
+    "danbooru-artist-tags-2-v4.5": {
+      "promptTemplate": "artist:<INPUT_VALUE>, cowboy shot, -2::panties, huge breasts::",
+      "characterPrompt": "girl, facing viewer, fully clothed",
+      "model": "nai-diffusion-4-5-full",
+      "resPreset": "normal_portrait",
+      "steps": 28,
+      "scale": 4,
+      "sampler": "k_euler_ancestral",
+      "qualityToggle": true,
+      "ucPreset": 3,
+      "seed": 1345464988
+    },
+    "danbooru-character-tags-v4.5": {
+      "promptTemplate": "portrait, solo, -2::nude::, location",
+      "characterPrompt": "<INPUT_VALUE>",
+      "characterUc": "lowres, aliasing",
+      "model": "nai-diffusion-4-5-full",
+      "resPreset": "normal_portrait",
+      "steps": 28,
+      "scale": 4,
+      "sampler": "k_euler_ancestral",
+      "qualityToggle": true,
+      "ucPreset": 3,
+      "seed": 1790766485
+    },
+    "danbooru-character-tags-v5": {
+      "promptTemplate": "portrait, cowboy shot, solo, -2::nude::",
+      "characterPrompt": "<INPUT_VALUE>",
+      "characterUc": "nsfw",
+      "model": "nai-diffusion-5-full",
+      "resPreset": "normal_portrait",
+      "steps": 15,
+      "scale": 4,
+      "sampler": "k_euler_ancestral",
+      "qualityToggle": true,
+      "ucPreset": 3,
+      "seed": 2029004535
+    },
+    "danbooru-copyright-tags-v4.5": {
+      "promptTemplate": "1.5::<INPUT_VALUE> ::, portrait, solo, -2::nude, huge breasts::, 1girl, location",
+      "model": "nai-diffusion-4-full",
+      "resPreset": "normal_portrait",
+      "steps": 28,
+      "scale": 5,
+      "sampler": "k_euler_ancestral",
+      "qualityToggle": true,
+      "ucPreset": 3,
+      "seed": 3902014325
+    },
+    "artists-v4.5": {
+      "promptTemplate": "1.2::artist:<INPUT_VALUE> ::, portrait, -2::nude::",
+      "characterPrompt": "girl, blonde hair, blue eyes, soft smile, cardigan",
+      "model": "nai-diffusion-4-5-full",
+      "resPreset": "normal_portrait",
+      "steps": 28,
+      "scale": 4,
+      "sampler": "k_euler_ancestral",
+      "qualityToggle": true,
+      "ucPreset": 3,
+      "seed": 282427355
+    },
+    "danbooru-face-tags-v4.5": {
+      "promptTemplate": "girl, mature female, 1.25::<INPUT_VALUE> ::, 1.5::portrait::, black hoodie, blonde hair, medium hair, blue eyes, white background, small breasts",
+      "model": "nai-diffusion-4-full",
+      "resPreset": "normal_portrait",
+      "steps": 28,
+      "scale": 4,
+      "sampler": "k_euler_ancestral",
+      "qualityToggle": true,
+      "ucPreset": 3,
+      "seed": 2320725169
+    },
+    "danbooru-hair-tags-v4.5": {
+      "promptTemplate": "girl, mature female, 1.25::<INPUT_VALUE> ::, 1.5::arms at sides, portrait::, black hoodie, blonde hair, blue eyes, white background, small breasts",
+      "model": "nai-diffusion-4-5-full",
+      "resPreset": "normal_portrait",
+      "steps": 28,
+      "scale": 4,
+      "sampler": "k_euler_ancestral",
+      "qualityToggle": true,
+      "ucPreset": 2,
+      "seed": 2710136180
+    },
+    "danbooru-artist-tags-v4": {
+      "promptTemplate": "artist:<INPUT_VALUE>",
+      "characterPrompt": "girl, soft smile, red lips, hoodie, jeans, orange hair, small breasts",
+      "model": "nai-diffusion-4-full",
+      "resPreset": "normal_portrait",
+      "steps": 28,
+      "scale": 5.5,
+      "sampler": "k_euler_ancestral",
+      "qualityToggle": true,
+      "ucPreset": 2,
+      "seed": 1005398329
+    },
+    "danbooru-character-tags-v4": {
+      "promptTemplate": "upper body",
+      "negativePrompt": "nsfw, nude",
+      "characterPrompt": "<INPUT_VALUE>",
+      "characterUc": "lowres, aliasing",
+      "model": "nai-diffusion-4-full",
+      "resPreset": "normal_portrait",
+      "steps": 28,
+      "scale": 5.5,
+      "sampler": "k_euler_ancestral",
+      "qualityToggle": true,
+      "ucPreset": 2,
+      "seed": 2320725169
+    },
+    "danbooru-face-tags-v4": {
+      "promptTemplate": "girl, mature female, 1.25::<INPUT_VALUE> ::, 1.5::arms at sides, portrait::, black hoodie, blonde hair, medium hair, blue eyes, white background, small breasts",
+      "model": "nai-diffusion-4-full",
+      "resPreset": "normal_portrait",
+      "steps": 28,
+      "scale": 5.5,
+      "sampler": "k_euler_ancestral",
+      "qualityToggle": true,
+      "ucPreset": 2,
+      "seed": 2320725169
+    }
+  }
+}
