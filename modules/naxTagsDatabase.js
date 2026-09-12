@@ -11,7 +11,8 @@ let DB_PATH = null;
 
 /** Artist style pairs share favorites by tag name. */
 const NAX_FAVORITE_MERGE_GROUPS = [
-    ['danbooru-artist-tags-v4.5', 'danbooru-artist-tags-2-v4.5']
+    ['danbooru-artist-tags-v4.5', 'danbooru-artist-tags-2-v4.5'],
+    ['danbooru-artist-tags-v5', 'danbooru-artist-tags-2-v5']
 ];
 
 let db = null;
@@ -636,6 +637,7 @@ const NAX_EXPANDER_PRESETS = [
         resolveSlugs(model) {
             if (isNaxModelV5(model)) {
                 return existingGallerySlugs([
+                    'danbooru-character-tags-v5',
                     'danbooru-character-tags-v4.5',
                     'danbooru-character-tags-v4'
                 ]);
@@ -652,7 +654,7 @@ const NAX_EXPANDER_PRESETS = [
     {
         id: 'ARTIST',
         label: 'Artist',
-        description: 'Random marked artist tag (v4 / v4.5 / v5 follows model; v4.5 pools constrained and loose)',
+        description: 'Random marked artist tag (v4 / v4.5 / v5 follows model; v4.5/v5 pool constrained and loose)',
         resolveSlugs(model) {
             return artistGallerySlugsForModel(model);
         }
@@ -715,10 +717,13 @@ function isNaxModelV5(model) {
     return false;
 }
 
-/** Version-locked danbooru artist-tag galleries (V5 loose; constrained + loose on v4.5). */
+/** Version-locked danbooru artist-tag galleries (constrained + loose on v5 and v4.5). */
 function artistGallerySlugsForModel(model) {
     if (isNaxModelV5(model)) {
-        return existingGallerySlugs(['danbooru-artist-tags-2-v5']);
+        return existingGallerySlugs([
+            'danbooru-artist-tags-v5',
+            'danbooru-artist-tags-2-v5'
+        ]);
     }
     if (isNaxModelV45(model)) {
         return existingGallerySlugs([
