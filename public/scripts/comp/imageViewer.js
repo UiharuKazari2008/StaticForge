@@ -828,6 +828,11 @@ class ImageViewer {
                     action: 'image-viewer-copy-lookback'
                 },
                 {
+                    icon: 'fas fa-code',
+                    text: 'Copy linkback',
+                    action: 'image-viewer-copy-linkback'
+                },
+                {
                     icon: 'fas fa-image',
                     text: 'Set as Wallpaper',
                     action: 'image-viewer-set-wallpaper',
@@ -951,6 +956,10 @@ class ImageViewer {
             case 'image-viewer-copy-lookback':
                 // copyLookbackImage: public/scripts/comp/copyLookback.js
                 copyLookbackImage(this.getImageFilename());
+                break;
+            case 'image-viewer-copy-linkback':
+                // copyLinkbackImage: public/scripts/comp/copyLinkback.js
+                copyLinkbackImage(this.metadata);
                 break;
             case 'image-viewer-set-wallpaper':
                 this.setAsWallpaper();

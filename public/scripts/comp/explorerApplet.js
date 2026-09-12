@@ -7,7 +7,7 @@ const EXPLORER_IMAGE_GALLERY_CONTEXT_ACTIONS = new Set([
     'toggle-favorite', 'reroll', 'download', 'copy', 'open-in-window', 'modify',
     'expand-canvas', 'enhance', 'upscale', 'view-image-data',
     'copy-original', 'download-original', 'expand-canvas-original', 'delete-original',
-    'start-chat', 'copy-lookback', 'publish-to-explorer',
+    'start-chat', 'copy-lookback', 'copy-linkback', 'publish-to-explorer',
     'set-wallpaper', 'jump-to-image', 'create-reference', 'create-desktop-shortcut',
     'scrap', 'delete', 'move-to-workspace'
 ]);
@@ -578,6 +578,7 @@ class ExplorerApplet {
                     { separator: true },
                     { icon: 'fas fa-person-to-portal', text: 'Create Chat', action: 'start-chat' },
                     { icon: 'fas fa-link', text: 'Copy Lookback', action: 'copy-lookback' },
+                    { icon: 'fas fa-code', text: 'Copy linkback', action: 'copy-linkback' },
                     { icon: 'fas fa-globe', text: 'Publish to Explorer', action: 'publish-to-explorer' },
                     {
                         icon: 'fas fa-image',
@@ -1354,6 +1355,10 @@ class ExplorerApplet {
             case 'copy-lookback':
                 // copyLookbackImage: public/scripts/comp/copyLookback.js
                 copyLookbackImage(filename);
+                break;
+            case 'copy-linkback':
+                // copyLinkbackImage: public/scripts/comp/copyLinkback.js
+                copyLinkbackImage(image);
                 break;
             case 'publish-to-explorer':
                 // openPublishToExplorerDialog — public/scripts/comp/galleryView.js
