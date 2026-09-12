@@ -1211,7 +1211,7 @@ function disposeGalleryContents() {
     if (!gallery) return;
     gallery.querySelectorAll('.gallery-item, .gallery-placeholder').forEach(disposeGalleryItemElement);
     purgePlaceholderResolutionQueue();
-    placeholderCleanupQueue.length = 0;
+    placeholderCleanupQueue.clear();
     visibleItems.clear();
 }
 
@@ -3317,8 +3317,8 @@ function resetInfiniteScroll() {
     purgePlaceholderResolutionQueue();
 
     // Clean up placeholder cleanup queue for iOS
-    if (placeholderCleanupQueue.length > 0) {
-        placeholderCleanupQueue.length = 0;
+    if (placeholderCleanupQueue.size > 0) {
+        placeholderCleanupQueue.clear();
     }
 
     // Clear scroll timeouts
@@ -5001,7 +5001,7 @@ let isJumpingToPosition = false;
 
 // iOS-aware placeholder management
 let isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-let placeholderCleanupQueue = [];
+let placeholderCleanupQueue = new Set();
 let lastScrollTime = 0;
 let scrollVelocity = 0;
 let isScrolling = false;
@@ -5020,10 +5020,14 @@ function schedulePlaceholderCleanup(placeholdersToRemove) {
     if (placeholdersToRemove.length === 0) return;
 
     // Queue placeholders for removal (deduplicate on add)
-    const newPlaceholders = placeholdersToRemove.filter(p => p && !placeholderCleanupQueue.includes(p));
-    if (newPlaceholders.length === 0) return;
-
-    placeholderCleanupQueue.push(...newPlaceholders);
+    let added = false;
+    for (const p of placeholdersToRemove) {
+        if (p && !placeholderCleanupQueue.has(p)) {
+            placeholderCleanupQueue.add(p);
+            added = true;
+        }
+    }
+    if (!added) return;
 
     // Clear any existing cleanup timeout to prevent duplicates
     if (cleanupTimeout) {
@@ -5062,7 +5066,7 @@ function schedulePlaceholderCleanup(placeholdersToRemove) {
 }
 
 function processPlaceholderCleanup() {
-    if (placeholderCleanupQueue.length === 0) return;
+    if (placeholderCleanupQueue.size === 0) return;
 
     // Clear cleanup timeout since we're processing now
     if (cleanupTimeout) {
@@ -5077,37 +5081,27 @@ function processPlaceholderCleanup() {
 
     const gallery = document.getElementById('gallery');
     if (!gallery) {
-        placeholderCleanupQueue.length = 0;
-        return;
-    }
-
-    // Deduplicate queue using Set (faster than array checks)
-    const seen = new Set();
-    const uniqueQueue = [];
-    for (const placeholder of placeholderCleanupQueue) {
-        if (placeholder && !seen.has(placeholder)) {
-            seen.add(placeholder);
-            uniqueQueue.push(placeholder);
-        }
-    }
-
-    if (uniqueQueue.length === 0) {
-        placeholderCleanupQueue.length = 0;
+        placeholderCleanupQueue.clear();
         return;
     }
 
     // Filter out placeholders that are no longer in the DOM
-    const validPlaceholders = uniqueQueue.filter(p => p.parentNode === gallery);
+    const validPlaceholders = [];
+    for (const p of placeholderCleanupQueue) {
+        if (p.parentNode === gallery) {
+            validPlaceholders.push(p);
+        }
+    }
 
     if (validPlaceholders.length === 0) {
-        placeholderCleanupQueue.length = 0;
+        placeholderCleanupQueue.clear();
         return;
     }
 
     // Calculate current items per row to ensure we remove in full rows
     const currentItemsPerRow = calculateTrueItemsPerRow();
     if (currentItemsPerRow < 1) {
-        placeholderCleanupQueue.length = 0;
+        placeholderCleanupQueue.clear();
         return;
     }
 
@@ -5146,7 +5140,7 @@ function processPlaceholderCleanup() {
     }
 
     if (placeholdersToRemove.length === 0) {
-        placeholderCleanupQueue.length = 0;
+        placeholderCleanupQueue.clear();
         return;
     }
 
@@ -5196,7 +5190,7 @@ function processPlaceholderCleanup() {
     }
 
     // Clear the queue
-    placeholderCleanupQueue.length = 0;
+    placeholderCleanupQueue.clear();
 }
 
 // Resolve all currently visible placeholders after fast scrolling stops using the existing queue system
@@ -6492,7 +6486,7 @@ window.wsClient.registerInitStep(30, 'Initializing Gallery System', async () => 
             isScrolling = false;
             // Process any queued placeholder cleanup when scrolling stops
             // Only if scroll velocity is low (scrolling has actually stopped)
-            if (placeholderCleanupQueue.length > 0 && Math.abs(scrollVelocity) < 0.5) {
+            if (placeholderCleanupQueue.size > 0 && Math.abs(scrollVelocity) < 0.5) {
                 processPlaceholderCleanup();
             }
             // Start processing placeholders immediately when scrolling stops
