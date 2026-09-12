@@ -160,63 +160,26 @@
 
 #explorerModal .explorer-actions-header {
     overflow: visible;
-    line-height: 1;
+    padding: var(--spacing-md) var(--spacing-md);
+    line-height: normal; /* undo line-height: 1 crush from pre-#172 header */
+    box-sizing: border-box;
 }
 
 #explorerModal .explorer-actions-header .naxt-search-controls {
-    display: flex;
-    flex-wrap: nowrap;
-    align-items: center;
-    gap: var(--spacing-sm);
     width: 100%;
     max-width: 100%;
     min-width: 0;
+    flex-wrap: nowrap;
+    align-items: center;
     overflow: visible;
 }
 
 #explorerModal .explorer-actions-header .button-group {
-    display: flex;
-    flex-wrap: nowrap;
-    align-items: center;
-    gap: var(--spacing-sm);
     flex-shrink: 0;
-    box-shadow: none;
-}
-
-#explorerModal .explorer-actions-header .button-group .btn-secondary,
-#explorerModal .explorer-actions-header .explorer-toolbar-right .btn-secondary {
-    background: var(--glass-layer-dark-4);
-    border: 1px solid var(--glass-border-3);
-    color: var(--text-accent-tinted);
-    box-shadow: var(--glass-shadow-2), inset 0 0 12px var(--glass-inset-bg-4);
-    border-radius: var(--border-radius-md);
-    min-width: 2.25rem;
-    min-height: 32px;
-    padding: 0.25em 0.55em;
-}
-
-/* Disabled cut/copy/… icons on dark teal --glass-layer-2: do not keep --text-muted at 0.4 */
-#explorerModal .explorer-actions-header .button-group .btn-secondary:disabled,
-#explorerModal .explorer-actions-header .button-group .btn-secondary.disabled,
-#explorerModal .explorer-actions-header .explorer-toolbar-right .btn-secondary:disabled,
-#explorerModal .explorer-actions-header .explorer-toolbar-right .btn-secondary.disabled {
-    color: var(--text-secondary);
-    opacity: 0.72;
-    background: var(--glass-layer-dark-2);
-    border-color: var(--glass-border-2);
-}
-
-/* undo gallery-core contiguous radius/border collapse in this header only */
-#explorerModal .explorer-actions-header .button-group [class^="btn-"]:not(:first-child):not(:last-child):not(:only-child),
-#explorerModal .explorer-actions-header .button-group [class^="btn-"]:first-child:not(:last-child),
-#explorerModal .explorer-actions-header .button-group [class^="btn-"]:last-child:not(:first-child) {
-    border-radius: var(--border-radius-md);
-    border-left: 1px solid var(--glass-border-3);
 }
 
 #explorerModal .explorer-actions-header .explorer-toolbar-right {
     display: flex;
-    flex-wrap: nowrap;
     align-items: center;
     gap: var(--spacing-sm);
     margin-left: auto;
