@@ -134,7 +134,7 @@ function register(app, globalResources) {
         }
     });
 
-    app.get('/replication/gallery/remote', async (req, res) => {
+    app.get('/replication/gallery/remote', readAuth, async (req, res) => {
         try {
             const config = globalResources.getReplicationService().getReplicationConfig();
             if (!config.masterAccessUrl) {
