@@ -626,21 +626,6 @@ function addSafeEventListener(element, eventType, handler, handlerId = null) {
 }
 
 /**
- * Helper function to safely remove event listeners
- * @param {HTMLElement} element
- * @param {string} eventType
- * @param {string} handlerId - Unique identifier for the handler
- */
-function removeSafeEventListener(element, eventType, handlerId) {
-    const listenerKey = `_${eventType}_${handlerId}`;
-    
-    if (element[listenerKey]) {
-        element.removeEventListener(eventType, element[listenerKey]);
-        delete element[listenerKey];
-    }
-}
-
-/**
  * Helper function to clean up all safe event listeners on an element
  * @param {HTMLElement} element
  */
@@ -2062,16 +2047,6 @@ function autoResizeTextarea(textarea, _minHeight = 70, extraContainerHeight = 0,
     return true;
 }
 
-/** Layout reflow after input — defer so native autocorrect/IME can commit first. */
-function scheduleAutoResizeTextarea(textarea, minHeight = 70, extraContainerHeight = 0) {
-    if (!textarea) return;
-    // scheduleTextInputSideEffect: public/scripts/comp/textareaUtils.js
-    scheduleTextInputSideEffect(textarea, () => {
-        autoResizeTextarea(textarea, minHeight, extraContainerHeight);
-    });
-}
-
-
 /**
  * Lead icon for selected datasets. optionsData uses values like "furry dataset"
  * / "background dataset" — never match the bare token "furry" against unrelated strings.
@@ -2348,26 +2323,6 @@ function updatePromptStatusIcons() {
 
     // refreshTokenBarCounts: public/scripts/comp/promptTextareaToolbar.js (or token bar helpers)
     refreshTokenBarCounts();
-}
-
-
-function isValidEmphasisWeightBeforeDelimiter(weight) {
-    if (!weight) return false;
-    return /^-?(?:0(?:\.\d+)?|[1-9]\d*(?:\.\d+)?|\.\d+)$/.test(weight);
-}
-
-/**
- * Insert a space before "::" when it is not preceded by a valid emphasis weight at a token boundary.
- * Prevents false groups such as "magion02::" being parsed as "02::".
- * @param {string} text
- * @returns {string}
- */
-function fixInvalidEmphasisDelimiters(text) {
-    // normalizeEmphasisPromptSyntax: public/scripts/comp/emphasisParse.js
-    if (typeof normalizeEmphasisPromptSyntax === 'function') {
-        return normalizeEmphasisPromptSyntax(text, { fixCommas: false });
-    }
-    return text;
 }
 
 /**
