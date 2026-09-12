@@ -281,7 +281,7 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 | `list_references` / `get_references_by_ids` / `list_workspace_references` / `upload_reference` | reference packets | `references` |
 | `list_notes_by_workspace` / `create_note` / `update_note` | extra notepad CRUD | `notes` |
 | `vfs_stat` / `vfs_write` / `vfs_delete` / `list_desktop_items` | VFS mutate + desktop shortcuts | `vfs` |
-| `run_client_js` / `inspect_elements` | Bound-tab JS eval / CSS inspect (`agent_session_command`). Same bind as `apply_studio_changes` (one tab auto-binds; several → `needsClientChoice`). | `generation` |
+| `run_client_js` / `inspect_elements` | Connected-tab JS eval / CSS inspect (`agent_session_command`). Same auto-attach / `needsClientChoice` rules as `apply_studio_changes`. | `generation` |
 
 ### Module Sets (sfapp_ scopes)
 

@@ -587,7 +587,7 @@ const TOOL_DEFS = [
     },
     {
         name: 'run_client_js',
-        description: 'Execute raw JavaScript in the bound Dreamscape client. Returns JSON-serializable { result } or { error } if the script throws. Same bind as apply_studio_changes (one tab auto-binds; several → needsClientChoice).',
+        description: 'Execute raw JavaScript in the connected Dreamscape tab. Returns JSON-serializable { result } or { error } if the script throws. Same auto-attach / needsClientChoice rules as apply_studio_changes.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -600,7 +600,7 @@ const TOOL_DEFS = [
     },
     {
         name: 'inspect_elements',
-        description: 'Match CSS selectors in the bound Dreamscape client and return html and/or computed style per selector. Same bind as apply_studio_changes.',
+        description: 'Match CSS selectors in the connected Dreamscape tab and return html and/or computed style per selector. Same auto-attach / needsClientChoice rules as apply_studio_changes.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
