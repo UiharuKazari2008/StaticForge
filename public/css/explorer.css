@@ -164,16 +164,29 @@
 }
 
 #explorerModal .explorer-actions-header .naxt-search-controls {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: var(--spacing-sm);
     width: 100%;
     max-width: 100%;
     min-width: 0;
-    flex-wrap: nowrap;
-    align-items: center;
     overflow: visible;
 }
 
 #explorerModal .explorer-actions-header .button-group {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0;
     flex-shrink: 0;
+}
+
+/* Disabled cut/copy/… icons on dark teal --glass-layer-2: do not keep --text-muted at 0.4 */
+#explorerModal .explorer-actions-header .button-group .btn-secondary:disabled,
+#explorerModal .explorer-actions-header .button-group .btn-secondary.disabled {
+    color: var(--text-secondary);
+    opacity: 0.72;
 }
 
 #explorerModal .explorer-actions-header .explorer-toolbar-right {
