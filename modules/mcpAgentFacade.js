@@ -586,6 +586,35 @@ const TOOL_DEFS = [
         }
     },
     {
+        name: 'run_client_js',
+        description: 'Execute raw JavaScript in the connected Dreamscape tab. Returns JSON-serializable { result } or { error } if the script throws. Same auto-attach / needsClientChoice rules as apply_studio_changes.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['script'],
+            properties: {
+                script: { type: 'string', description: 'Raw JS expression or script to run in the bound tab' }
+            }
+        }
+    },
+    {
+        name: 'inspect_elements',
+        description: 'Match CSS selectors in the connected Dreamscape tab and return html and/or computed style per selector. Same auto-attach / needsClientChoice rules as apply_studio_changes.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['selectors'],
+            properties: {
+                selectors: { type: 'array', items: { type: 'string' }, description: 'CSS selectors to match' },
+                html: { type: 'boolean', description: 'Include outerHTML per match (default true)' },
+                style: { type: 'boolean', description: 'Include getComputedStyle per match (default true)' },
+                styleAllowlist: { type: 'array', items: { type: 'string' }, description: 'Optional CSS property names to include from computed style' }
+            }
+        }
+    },
+    {
         name: 'get_linkxi_persona',
         core: true,
         description: 'Read the account LinkXi persona (user_name, backstory, default_verbosity 1–5, hasPhoto). Wraps get_persona_settings. Use when the user speaks as themselves in Enshutsuka.',
@@ -4350,6 +4379,34 @@ async function callTool(globalResources, req, name, args) {
             ...data,
             ...(responseNext ? { next: responseNext } : {})
         });
+    }
+
+    if (name === 'run_client_js' || name === 'inspect_elements') {
+        const bind = autoBindIfNeeded(globalResources, req);
+        if (!getBoundRecord(globalResources, bind.bindKey)) {
+            return mcpBindChoiceResult(bind);
+        }
+        if (name === 'run_client_js' && typeof input.script !== 'string') {
+            return mcpTextResult({ success: false, error: 'script must be a string' }, true);
+        }
+        if (name === 'inspect_elements' && !Array.isArray(input.selectors)) {
+            return mcpTextResult({ success: false, error: 'selectors must be a string array' }, true);
+        }
+        const payload = name === 'run_client_js'
+            ? { script: input.script }
+            : {
+                selectors: input.selectors,
+                html: input.html,
+                style: input.style,
+                styleAllowlist: input.styleAllowlist
+            };
+        const data = await sendBoundCommand(globalResources, name, payload, 15000, bind.bindKey);
+        const failed = !!(data && (data.error || data.ok === false));
+        return mcpTextResult({
+            success: !failed,
+            autoBound: !!bind.auto,
+            ...data
+        }, failed);
     }
 
 

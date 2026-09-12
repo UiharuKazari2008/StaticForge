@@ -23,7 +23,7 @@ Bind is **per application key** (the `sfapp_` / OAuth-bound key that authenticat
 3. Or mint a short code from the tab (no UI): `await window.agentSessionShareStart()` or `wsClient.sendMessage('session_share_start', {})`. Response type is `session_share_code_response` (`code`, `clientId`, `expiresInSec` ~300). Then `POST /agent/bind` `{ "code": "ABC234" }` claims it. Codes expire in ~5 minutes and are single-use.
 4. `POST /agent/unbind` — release this key's bind. The bound tab can also send `agent_session_unbind` (Remote Access tray Disconnect) to release every key bound to that tab.
 
-The bind stays until: this key rebinds, the user Disconnects from the Remote Access tray, or **15 minutes** pass with no session commands (`get_state` / `get_windows` / `apply_studio` / `open_image` / `get_physics` / `client_update`). Share codes and keys are never logged. Bind / command / physics notices include the application token `appName` when known (e.g. Your session was accessed by "Grok").
+The bind stays until: this key rebinds, the user Disconnects from the Remote Access tray, or **15 minutes** pass with no session commands (`get_state` / `get_windows` / `apply_studio` / `open_image` / `get_physics` / `run_client_js` / `inspect_elements` / `client_update`). Share codes and keys are never logged. Bind / command / physics notices include the application token `appName` when known (e.g. Your session was accessed by "Grok").
 
 ## Named scopes (no bind)
 
