@@ -158,11 +158,9 @@
     container-name: explorer;
 }
 
-#explorerModal .explorer-actions-header.naxt-search-header {
+#explorerModal .explorer-actions-header {
     overflow: visible;
-    padding: var(--spacing-md) var(--spacing-md);
-    line-height: normal; /* undo line-height: 1 crush */
-    box-sizing: border-box;
+    line-height: 1;
 }
 
 #explorerModal .explorer-actions-header .naxt-search-controls {
