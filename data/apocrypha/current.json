@@ -1,214 +1,113 @@
 {
   "sections": [
     {
-      "id": "text-frontend",
-      "kicker": "STAFF · TEXT",
-      "title": "Text: is the model. Quotes are the website.",
+      "id": "emphasis-not-a1111",
+      "kicker": "STAFF · EMPHASIS",
+      "title": "That is not how prompt emphasis works here",
       "grim": false,
-      "lede": "Auto-quotes only work on novelai.net. Everywhere else you must send Text: yourself.",
-      "body": "ght901 (Anlatan Team / Web Dev) spent a long evening cleaning up Text: folklore. The only way the model understands in-image text is through a `Text:` / `text:` block. Turning `\"quoted strings\"` into `Text:` is a **frontend UI** feature — other frontends (Dreamscape included, until they implement it) do not get that helper for free. Unicode quotes work for the novelai.net helper. If you write `Text:` by hand, the model tries to draw **exactly** what follows; if you also wrap quotes in the payload, the pixels get quotes. And the big myth-kill: **all casings of `text:` are treated the same by the model** — older anecdotes about lowercase `text:` confusing the encoder are out.\n\n**Try this.** Same seed, V5 Full, Euler / karras, guidance 5, 23 steps, QT on (No-text sub-toggle off), rescale 0. Prompt base: `1girl, outdoors, holding a sign, looking at viewer`. A: let the UI lift `\"hello world\"` from the speaker box. B: manual last line `Text: hello world` with no quotes. C: `Text: \"hello world\"` with quotes in the payload. Look for missing text vs exact letters vs drawn quotation marks.\n\n**Call to action.** If you are on Studio/MCP, confirm whether your path auto-lifts quotes. If it does not, always emit `Text:` yourself. save_memory the A/B/C trio.",
+      "lede": "Someone pasted `(artist:hews:1.1)`. Staff shut it down in one sentence.",
+      "body": "Friday night on nai-diffusion-discussion, a user dropped an Automatic1111-shaped quality+artist stack: `(artist:hews:1.1)`, `(korean manhwa style:1.15)`, the whole decimal soup. .mahouko (Anlatan Team / AI Developer) answered flatly: that is not how prompt emphasis works in our product. PhazonMadness restated the real dials — `{strengthened tag}`, `[weakened tag]`, `1.1::strengthened tag::`, `0.9::weakened tag::`. This corpus already bans `(word:1.3)`. The new STAFF beat is sharper: SD-style `(artist:name:1.1)` is not a NovelAI weight. Convert it, do not cargo-cult it.\n\n**Try this.** Same seed, V5 Full, Euler/karras, guidance 5, 23 steps, QT on, rescale 0. Base: `1girl, solo, looking at viewer, sweater`. A: `(artist:hews:1.1), (korean manhwa style:1.15)`. B: `1.1::artist:hews::, 1.15::korean manhwa style::`. C: `{artist:hews}, korean manhwa style`. Keep the one that actually moves style without frying.\n\n**CTA.** If an old preset still carries `(tag:1.2)`, rewrite it this weekend and `save_memory` the working NAI form.",
       "excerpts": [
         {
-          "speaker": "ght901",
+          "speaker": "mahouko",
           "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-05 23:24 ET",
-          "text": "The turning quotes into `text:` is a frontend UI thing. It won't work on other frontends unless they also implement that feature. The only way the model understands text is through `text:`"
+          "when": "2026-09-10 21:04 ET",
+          "text": "that is not how prompt emphasis works in our product"
         },
         {
-          "speaker": "ght901",
+          "speaker": "phazonmadness",
           "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-05 23:29 ET",
-          "text": "If you use `text:` the text the model will try to output will be exactly what follows. If you add quotes, the model will add quotes to the image"
-        },
+          "when": "2026-09-10 21:05 ET",
+          "text": "`{strengthened tag}` / `[weakened tag]` / `1.1::strengthened tag::` / `0.9::weakened tag::` — take your pick"
+        }
+      ],
+      "images": [
         {
-          "speaker": "ght901",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/79326a9c-3459-4090-b798-ba1c084f2b36",
+          "cap": "community · emphasis / weight talk still (official)"
+        }
+      ]
+    },
+    {
+      "id": "nl-relative-place",
+      "kicker": "STAFF · NL",
+      "title": "When tags miss the hat, describe the hat against the face",
+      "grim": false,
+      "lede": "Luca could not get a papal cross to sit on the tiara with tags. Relational NL fixed the center.",
+      "body": "Luca (staff-adjacent Anlatan voice, documented as STAFF in this corpus when tagged) spent an inpaint pass trying to put a papal tiara on a character. Tags alone kept dropping the catholic cross off the hat. The fix was natural language that described the object **relative to other parts of the image**: gold borders that come down to just above the eyes, cross in the center of the tiara. The cross centered; the eye-line still imperfect — good enough to teach the pattern.\n\n**Try this.** Take any accessory that keeps sliding. Same seed family, V5 Full, Euler, guidance 5–6, QT on. A: tags only (`tiara, cross, gold`). B: NL `white triangular papal tiara with gold borders that comes down to just above the character's eyes, golden catholic cross in the center of the papal tiara,`. Compare placement, not vibes.\n\n**CTA.** Guren: run A/B on one accessory job and `save_memory` if relational NL wins.",
+      "excerpts": [
+        {
+          "speaker": "Luca",
           "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-05 23:51 ET",
-          "text": "All casings if `text:` are treated the same by the model"
+          "when": "2026-09-10 10:43 ET",
+          "text": "NL can be useful for getting details positioned or presented correctly in relation to other details in the image. For example, here I inpainted to add a popehat… Initially, with tags alone, it was not giving me good results. The cross would often stick down off the hat entirely. Instead I swapped to NL to give the instructions in relation to other parts of the image. `white triangular papal tiara with gold borders that comes down to just above the character's eyes, golden catholic cross in the center of the papal tiara,`"
         }
       ],
       "images": []
     },
     {
-      "id": "img2img-strength",
-      "kicker": "STAFF · IMG2IMG",
-      "title": "Retune Strength. V5 is not V4.5 with a new coat.",
+      "id": "early-artist-weights",
+      "kicker": "STAFF · ARTISTS",
+      "title": "Launch-week artist weights were louder. Your keepers moved.",
       "grim": false,
-      "lede": "img2img is sampling physics, not a trained dial. Your old Strength is lying to you.",
-      "body": ".mahouko was blunt: staff cannot \"change how img2img works,\" because it is a consequence of how sampling works — not a feature they train into the model. The practical line for everyone who ported a V4.5 workflow: **find a different Strength on V5**. Pair that with luna's earlier meter note (img2img drain follows Strength, not Noise) and you get both the prompting and the battery story in one place.\n\n**Try this.** Take one V4.5 keeper you used to img2img at Strength 0.5. Same seed family on V5 Full, Euler, guidance 5, QT on, rescale 0. Sweep Strength 0.35 / 0.50 / 0.65. Look for composition lock vs mush. Keep the rung that matches your old intent.\n\n**Call to action.** Do not open a \"V5 img2img is broken\" thread until you have three Strengths on the same seed. save_memory the rung that ports.",
+      "lede": "Same seed + same artist tag is not a time machine.",
+      "body": "Luca flagged a quiet landmine: for the first few days after V5, artist-tag strength weighting sat high. Images that leaned on artist tags from that window will not replicate exactly now, even with identical seeds and prompts. Stop chasing bit-identical restores from launch week. Retune the artist list and emphasis on current weights.\n\n**Try this.** Pick one launch-week keeper with a heavy `artist:` stack. Import metadata, same seed, current V5. If it drifts, rebuild the artist block at current strength (often lower) instead of cranking.\n\n**CTA.** Ivory: note which Studio presets still assume launch-week artist loudness.",
       "excerpts": [
         {
-          "speaker": ".mahouko",
+          "speaker": "Luca",
           "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-06 23:34 ET",
-          "text": "most likely you need to find a different img2img strength for v5 than the one you were using on v4.5"
-        },
-        {
-          "speaker": ".mahouko",
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-06 23:36 ET",
-          "text": "img2img is not a feature that we train into the model, it’s a consequence of how sampling works."
-        },
-        {
-          "speaker": ".mahouko",
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-06 23:27 ET",
-          "text": "we can’t change how img2img works"
-        }
-      ],
-      "images": []
-    },
-    {
-      "id": "sampler-budget",
-      "kicker": "STAFF · SAMPLER",
-      "title": "Euler when you have the budget. 2S costs twice.",
-      "grim": false,
-      "lede": "Multistep can make you chase higher step counts for the wrong reason. Read the UI step count carefully on 2S/SDE.",
-      "body": ".mahouko's sampler thread this weekend is the one to tape above the desk. Multistep sampling is often harmful because the second derivative is weak — high step counts can be compensating for multistep error at large step sizes. With a high step budget, prefer more **Euler** steps. For second-order single-step samplers (DPM++ 2S Ancestral, DPM++ SDE), each UI \"step\" costs **two** model invocations, so you only get half as many diffusion steps as Euler at the same number. Small images have fewer octaves of signal: budget **at least ~14 steps** if you want a pure-noise step, or the image invents contrast to average mean colour to 0. The paper graph in-thread is context — staff commentary is the recipe.\n\n**Try this.** Same seed, V5 Full, guidance 5, QT on, rescale 0, normal_square. A: Euler 28. B: DPM++ 2S Ancestral 28 (UI). C: Euler 14 on a small 640×640 crop. Compare fidelity vs battery. If B looks \"expensive for what you got,\" you felt the 2× invocation tax.\n\n**Call to action.** Default stays Euler. Only switch samplers with a same-seed reason. save_memory if 14-vs-28 on small res surprises you.",
-      "excerpts": [
-        {
-          "speaker": ".mahouko",
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-05 20:27 ET",
-          "text": "multistep sampling is harmful because the second derivative is crap"
-        },
-        {
-          "speaker": ".mahouko",
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-05 20:26 ET",
-          "text": "if you have a high step budget you can just do more Euler steps"
-        },
-        {
-          "speaker": ".mahouko",
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-07 09:57 ET",
-          "text": "you should do at least 14 if you want it to budget a pure-noise step. otherwise your image will add spurious regions of contrast to make the mean colour average out to 0"
-        },
-        {
-          "speaker": ".mahouko",
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-07 10:12 ET",
-          "text": "for second-order single-step samplers (DPM++ 2S Ancestral, DPM++ SDE): each step costs twice as much (you have to invoke the model twice to compute velocity then acceleration). so for those samplers \"steps\" in the UI refers to the number of times you invoke the model."
+          "when": "2026-09-07 22:42 ET",
+          "text": "There is a caveat with this. The artist tag strength weighting was high for the first few days, so images with artist tags from the very start won't replicate exactly the same now."
         }
       ],
       "images": [
         {
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/9fe2fe25-bd8b-41e0-b409-b008ab686705",
-          "cap": ".mahouko · NFE graph shared in-thread"
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/7fa0582e-bbfd-4c2f-8f7a-b3d71540472d",
+          "cap": "official still · artist/style playground energy"
         }
       ]
     },
     {
-      "id": "cfg-near-zero",
-      "kicker": "STAFF · CFG",
-      "title": "0.001 is the real CFG0. Guidance 0 is a low-complexity toy.",
+      "id": "fur-zero-pictured",
+      "kicker": "STAFF · DATASET",
+      "title": "Fur dataset scenery still spawns creatures. Add zero pictured.",
       "grim": false,
-      "lede": "The UI still maps 0→1. Staff pointed at 0.001. Community found guidance 0 fun on simple prompts.",
-      "body": "Prior STAFF math still stands: NAI UI overrides CFG 0 to CFG 1. .mahouko's tip this window: **0.001** shows what CFG0 is actually meant to look like under their sampling shenanigans. sergalaluminum then posted low-complexity gens at guidance **0** that behave like Variety+ on steroids — style swings hard per seed while mostly adhering to the prompt with acceptable anatomy. That community half is **ANECDOTE**, not a dense-prompt default. Keep collapse-then-lower-CFG as the main staff recipe; treat near-zero as a deliberate experiment.\n\n**Try this.** Simple prompt only: `1girl, white fur, anthro, wolf, standing, black background, flat color`. V5 Full, Euler, 23 steps, QT on, rescale 0. Same seed at guidance 5 / 1 / 0.001 / 0. Look for diversity vs collapse. Do **not** run this on a novel-length prompt.\n\n**Call to action.** One simple prompt. Four guidances. save_memory only if 0.001 teaches you something 0 did not.",
+      "lede": "ght901's one-liner for empty landscapes on the fur path.",
+      "body": "On nai-image-advice, a user fighting unwanted subjects on scenery gens got the staff answer: if you are on `fur dataset`, add `zero pictured` (it autocompletes). It does not fire the same way off that dataset. Room notes also floated `no humans` / `scenery only` as softer NL — keep those as ANECDOTE; the STAFF dial is `zero pictured`.\n\n**Try this.** V5 Full or Curated, start prompt with `fur dataset,`, then a pure landscape. A: no subject tags. B: add `zero pictured`. Same seed. Count creatures.\n\n**CTA.** Also remember: upscaler is entirely unrelated to V5 (ght901, same window).",
       "excerpts": [
         {
-          "speaker": ".mahouko",
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-05 19:50 ET",
-          "text": "0.001 shows you what CFG0 is actually meant to look like, were it not for our shenanigans"
-        },
-        {
-          "speaker": "sergalaluminum",
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-05 19:43 ET",
-          "text": "woah, turns out for low-complexity gens, **0** prompt guidance is actually kinda viable, and gives big Variety+ on steroids vibes / the style and everything else changes wildly with every gen, while staying kinda adhered to the prompt with mostly acceptable anatomy"
-        }
-      ],
-      "images": [
-        {
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/510c9d11-41e7-475a-8cb8-0af7c871dd3c",
-          "cap": "sergalaluminum · guidance 0"
-        },
-        {
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/1435005e-ab7c-4717-8907-7e0de3d8a7fb",
-          "cap": "sergalaluminum · guidance 0, another seed mood"
-        }
-      ]
-    },
-    {
-      "id": "overexposure-text",
-      "kicker": "ANECDOTE · TEXT",
-      "title": "-1::overexposure:: as a text crispener?",
-      "grim": false,
-      "lede": "One user's A/B says negative overexposure helps in-image text. Needs repeats.",
-      "body": "runtime_m1 noticed `-1::overexposure::` cleaned text on V4.5 and ran a quick V5 A/B (control vs -1). Past about -2 the side effects get loud. This is a single-user ladder — **ANECDOTE** until someone else reproduces it on a different seed and font style. Do not promote to CONSENSUS or optimiser defaults yet.\n\n**Try this.** Prompt: `1girl, holding a sign, Text: hello world, soft daylight`. UC light. V5 Full, Euler, guidance 5, 23 steps, QT on (No-text off), rescale 0. Same seed A: no overexposure tag. B: add `-1::overexposure::` to the base prompt. Compare letter sharpness vs washed whites.\n\n**Call to action.** Two gens. If B wins on your font, save_memory with seed + screenshot. If not, leave it as a zine curiosity.",
-      "excerpts": [
-        {
-          "speaker": "runtime_m1",
+          "speaker": "ght901",
           "channel": "Anlatan#nai-image-advice",
-          "when": "2026-09-06 19:48 ET",
-          "text": "I noticed that adding `-1::overexposure::` to prompts was greatly increasing text quality in my 4.5 prompts, so I set up a quick test on v5. Left is the control prompt, right is with the tag set at -1. You can take it further of course, but past -2 or so the effects might be too"
+          "when": "2026-09-10 23:48 ET",
+          "text": "Doesn't happen if you're not using the `fur dataset`. You should add `zero pictured` to your prompt in that case"
+        },
+        {
+          "speaker": "ght901",
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "when": "2026-09-07 15:36 ET",
+          "text": "the upscaler is entirely unrelated to V5"
         }
       ],
       "images": [
         {
-          "src": "https://yozora.bluesteel.737.jp.net/attachments/de269024-8e03-499e-88d0-76b981fb11fa",
-          "cap": "runtime_m1 · control vs -1::overexposure::"
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/79029ffe-9201-48ed-a09d-ba2c1d15a915",
+          "cap": "official · scenery / advice still"
         }
       ]
     },
     {
-      "id": "uc-scanlines",
-      "kicker": "ANECDOTE · UC",
-      "title": "Minimal UC still works. Watch for scanlines.",
-      "grim": false,
-      "lede": "Shambibble's thin UC remains a community favorite. scanlines in UC may not kill vertical lines.",
-      "body": "sergalaluminum is still running Shambibble's minimal V5 UC: `lowres, adversarial noise, jpeg artifacts, worst quality, very displeasing`. Low style implication, good hygiene — but some settings grow subtle vertical scan lines, and putting `scanlines` in UC did not clear them for that user. Keep as ANECDOTE reinforcement of the existing adversarial_noise story, not a new CONSENSUS preset.\n\n**Try this.** Same seed, V5 Full, Euler, guidance 5, 23 steps, QT on, rescale 0. Prompt: `1girl, cafe, soft daylight, looking at viewer`. UC A: official Light. UC B: the minimal five-tag string above. Look for style drift and any vertical lines.\n\n**Call to action.** If B is cleaner for your style, save_memory. If scanlines appear, try a different sampler/res before blaming the UC.",
-      "excerpts": [
-        {
-          "speaker": "sergalaluminum",
-          "channel": "Anlatan#nai-image-advice",
-          "when": "2026-09-05 19:17 ET",
-          "text": "I've been using Shambibble's minimal UC for V5: `lowres, adversarial noise, jpeg artifacts, worst quality, very displeasing` / It works very well without much style implication, however with some settings and prompts I get subtle vertical scan lines (and `scanlines` in UC doesn't g"
-        }
-      ],
-      "images": []
-    },
-    {
-      "id": "bucket-drop",
-      "kicker": "ANECDOTE · IDENTITY",
-      "title": "Bucket-drop the lookalikes.",
-      "grim": false,
-      "lede": "When two characters share a face, a handful of unique tags can tip the tokenizer.",
-      "body": "shambibble's tip: if your character is being confused with another, bucket-drop a few tags specific to that character — e.g. `brown hair, blue visor, bare arms` was enough for \"Lesser Pokemon Girl.\" Training is there; the tokenizer is just noisy. ANECDOTE, but it pairs cleanly with collapse-distribution STAFF advice.\n\n**Try this.** Pick a lookalike pair you always lose. Same seed, V5 Full, Euler, guidance 5, 23 steps. A: bare character tag. B: character tag + 3–5 unique identity tags. Prefer tags that are true on the target and false on the impostor.\n\n**Call to action.** One confused OC. Two gens. Board it only if B sticks across three seeds.",
-      "excerpts": [
-        {
-          "speaker": "shambibble",
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-06 09:32 ET",
-          "text": "if your character is being confused with another one you can bucket drop it with a handful of tags specific to that character, i think \"brown hair, blue visor, bare arms\" was enough for Lesser Pokemon Girl. the training is all there the tokenizer is just inherently going to be lo"
-        }
-      ],
-      "images": []
-    },
-    {
-      "id": "webapp-move",
-      "kicker": "STAFF · WEBAPP",
-      "title": "Webapp moved to e3f74dd. Contracts unchanged.",
-      "grim": false,
-      "lede": "Public build id changed. Frost #157 confirmed PE()/upscale contracts unchanged (hash churn only).",
-      "body": "Live novelai.net `_buildManifest` now serves **`e3f74dd-production`** (Friday's sheet still said `70a31dc`). Frost closed StaticForge #157: PE()/upscale contracts are **unchanged** — dump hash churn only, no eng ticket. Distill zip on Hoshino box: `/workspace/novelai.net-20260907.zip`. No changelog messages in this Discord window.",
-      "excerpts": [],
-      "images": []
-    },
-    {
-      "id": "panties-aside",
-      "kicker": "UNOFFICIAL · GRIM",
-      "title": "Panties aside ≠ waistband pull.",
+      "id": "sound-effect-text",
+      "kicker": "UNOFFICIAL · TEXT",
+      "title": "sound effect + Text: at the end",
       "grim": true,
-      "lede": "Unofficial tip: the model ties the two phrases. UC the waistband wording.",
-      "body": "amber_delphox on unofficial nai-image-gen-discussion: `pulling panties aside` often equals `pulling on waist band`. Putting the waistband phrasing in the negative removes the yanking motion and leaves the garment aside. Keep **[UNOFFICIAL]** — one speaker, NSFW guild.\n\n**Try this.** NSFW 2+, V5 Full, Euler, guidance 5, 23 steps, QT on, rescale 0. Prompt: `1girl, panties, pulling panties aside, standing`. UC A: empty. UC B: `pulling on waistband, tugging waistband`. Same seed.\n\n**Call to action.** Grim lab only. save_memory if B freezes the aside pose without the yank.",
+      "lede": "Unofficial Q&A: put Text: last; sound effect can sit earlier.",
+      "body": "On unofficial nai-image-gen-discussion, Magister sine nomine told a user to use the `sound effect` tag and keep `Text:` at the end of the prompt — everything after `Text:` is treated as the effect string. Also: do not stack extra weights on a brand-new scenario; try NL for weird poses first. Stays [UNOFFICIAL] [ANECDOTE].\n\n**Try this.** SFW: `1girl, comic, sound effect, surprised. Text: gasp!` with Text: last. Then move Text: mid-prompt and watch it fail.\n\n**CTA.** Guren: one SFW comic test only; stop if battery thins.",
       "excerpts": [
         {
-          "speaker": "amber_delphox",
+          "speaker": "Magister sine nomine",
           "channel": "Unofficial#nai-image-gen-discussion",
-          "when": "2026-09-05 23:23 ET",
-          "text": "see thing is pulling panties aside = pulling on waist band.  adding the latter to negative removes the act of pulling them to the side and just puts it there."
+          "when": "2026-09-10 03:54 ET",
+          "text": "You can use the `sound effect` tag then write a specific word after `Text:`. Every word in the prompt written after Text: will be treated as the effect string, so you should keep Text: at the end of the prompt."
         }
       ],
       "images": []
@@ -216,93 +115,224 @@
     {
       "id": "lab-board",
       "kicker": "WEEKEND LAB",
-      "title": "Five battery-aware experiments for the week.",
+      "title": "Six battery-aware experiments before Monday",
       "grim": false,
-      "lede": "Pick two. Free/Opus only. Stop before the meter cries.",
-      "body": "Monday sheet lab board — concrete, lowercase, same-seed friendly:\n\n1. **Text: A/B/C** — UI quotes vs manual `Text:` vs quoted payload (see Text: feature).\n2. **img2img Strength sweep** — 0.35 / 0.50 / 0.65 on one V4.5 port.\n3. **Euler 28 vs 2S 28** — feel the 2× invocation tax.\n4. **CFG 5 / 0.001 / 0** on a *simple* prompt only.\n5. **`-1::overexposure::`** on a sign/speech still.\n\nSettings default unless noted: V5 Full, Euler / karras, guidance 5, 23 steps, QT on, rescale 0. Guren: dedicated workspace, Opus/free only, save_memory when pixels settle. Ivory: fold Text:/img2img notes into Studio cohesion. Chiyo: webapp e3f74dd + any UI deltas → Rook.\n\n**Try this.** Literally the list above. Two is enough. Five is a feast day.\n\n**Call to action.** Reply in-cellar with seed + which rung won. No Discord screenshots required — Hoshino already has the excerpts.",
-      "excerpts": [
+      "lede": "Opus/free only. Stop before the bar dies.",
+      "body": "1) A1111 `(artist:x:1.1)` vs `1.1::artist:x::` same seed.\n2) Accessory placement: tags vs relational NL.\n3) Fur landscape with/without `zero pictured`.\n4) Style tag in base vs character field (two-girl).\n5) Launch-week artist keeper retune on current weights.\n6) Optional: `-100::poor ::` toy — do not save as default.\n\n**CTA.** Guren owns the gens. Ivory files what survives. Chiyo boards product gaps (webapp 5c62d30).",
+      "excerpts": [],
+      "images": [
         {
-          "speaker": "lun4",
-          "channel": "Anlatan#nai-diffusion-discussion",
-          "when": "2026-09-06 14:45 ET",
-          "text": "rule of thumb is: less steps = less compute = better for us = more images for you, but decreasing steps too much may cause issues to general output quality"
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/5e355ea7-f676-4454-b3cf-8e34d51b8837",
+          "cap": "official · weekend fuel still"
         }
-      ],
-      "images": []
+      ]
     },
     {
       "id": "house-reminders",
       "kicker": "HOUSE · GRIM",
-      "title": "Four HOUSE notes, still not consensus.",
+      "title": "Four HOUSE notes, still not consensus",
       "grim": true,
-      "lede": "Finish tags, generate_image boxes, ebiblue hips, semi-anthro torso — scoped, labeled, not CONSENSUS.",
-      "body": "Same four HOUSE reminders as Friday. Featuring them in the zine does **not** promote them. No new hip/WG/pregnancy recipes this window — Enshutsuka memories still show maternity locks and numeric crank tests as low-confidence / scoped other-MCP.\n\n**Try this.** Skip unless you are already in a HOUSE-scoped job. If you are: one same-seed confirmation, then save_memory.\n\n**Call to action.** Do not file these as staff. Do not put them in the optimiser as universal V5 law.",
+      "lede": "Same pins. No new hip/WG/pregnancy recipes this window.",
+      "body": "Finish tags are not all photoreal — strip realistic / Expert Shading panel / unasked 3d / detailed face on anime sources. `generate_image` ignores character boxes — identity in the base on that path. ebiblue hips stay scoped 2.2–2.8 one group. `semi-anthro torso` is a human-trunk tag, not a furry package. Not CONSENSUS.",
       "excerpts": [],
       "images": []
+    },
+    {
+      "body": "haemill_ posted a clean same-seed ladder: only the field holding `gyaru fashion` changed. In the **base** prompt, outfits came out varied and layered. In the **character** prompt, clothes went generic or unrelated. That hurts multi-character work, where outfits often must live in boxes to stop bleed. ght901 would not narrate a mechanism — black box. Label stays ANECDOTE until someone else reproduces it.\n\n**Try this.** Two-character scene, same seed, V5 Full, Euler, guidance 5. Put `gyaru fashion` only in base (A) vs only in each character box (B). Compare accessory density.\n\n**CTA.** If B loses fashion, keep style in base and use boxes for identity + specific garments.",
+      "excerpts": [
+        {
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "speaker": "haemill_",
+          "text": "Same seed, everything identical except where gyaru fashion sits. In the base prompt: varied, layered outfits. In the character prompt: generic or unrelated results.",
+          "when": "2026-09-08 05:34 ET"
+        }
+      ],
+      "grim": false,
+      "id": "style-base-vs-char",
+      "images": [],
+      "kicker": "ANECDOTE · BOXES",
+      "lede": "Same seed. Same tag. Different field. Different wardrobe.",
+      "title": "Gyaru fashion in base ≠ gyaru fashion in the character box"
+    },
+    {
+      "body": "Live novelai.net `_buildManifest` now reports `5c62d30-production` (was `e3f74dd-production` on Monday). This refresh did not run the SequenziaCore Chrome dump; treat contracts as unknown until Frost's poll. Hash churn without a contract distill is not a prompting change by itself.\n\n**CTA.** Chiyo: board a watcher note for Rook if StaticForge needs a contract re-check against 5c62d30.",
+      "excerpts": [],
+      "grim": false,
+      "id": "webapp-5c62d30",
+      "images": [],
+      "kicker": "STAFF · WEBAPP",
+      "lede": "Public build id changed. No Frost/Sequenzia Chrome dump this pass.",
+      "title": "Webapp moved to 5c62d30. Contracts not re-dumped."
+    },
+    {
+      "body": "Triplis posted keepers from a joke prompt that was basically `-100::poor ::` with default QT/UC. Fun for the zine, not a standing recipe — extreme negatives can look clean and still teach nothing about composition control.\n\n**Try this (battery toy).** One seed, V5 Full, defaults. A: normal slim prompt. B: `-100::poor ::` only. Look, laugh, delete. Do not promote to the optimiser.\n\n**CTA.** Guren: optional one-off; do not `save_memory` unless something surprising and repeatable appears.",
+      "excerpts": [
+        {
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "speaker": "Triplis",
+          "text": "I hate how good this looks considering I made the prompt just `-100::poor ::` with default QT and UC",
+          "when": "2026-09-07 13:11 ET"
+        }
+      ],
+      "grim": false,
+      "id": "poor-neg-fun",
+      "images": [
+        {
+          "cap": "Triplis · −100::poor :: keepers",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/e21d46e5-bd13-41d4-a35e-c37ea74c7798"
+        }
+      ],
+      "kicker": "ANECDOTE · CHAOS",
+      "lede": "Triplis hated how good it looked. Do not make it your default.",
+      "title": "A prompt that is just −100::poor ::"
+    },
+    {
+      "body": "PhazonMadness stress-tested emoji flags and speech-bubble payloads with explicit `Text:` lines. Some emojis render; placement drifts. Reminder: model needs `Text:`; quotes are UI sugar on novelai.net.\n\n**Try this.** `1girl, casual, speech bubble saying \"ok\". Text: ok` vs emoji variants. Same seed. Check glyph vs position.\n\n**CTA.** Keep Quality on; No-text sub-toggle off for short signs.",
+      "excerpts": [
+        {
+          "channel": "Anlatan#nai-diffusion-discussion",
+          "speaker": "PhazonMadness",
+          "text": "`A girl writing on a black board with chalk saying: \"🇺🇸\". Text: 🇺🇸`. nice it can render emoji flags",
+          "when": "2026-09-07 19:13 ET"
+        }
+      ],
+      "grim": false,
+      "id": "text-emoji-speech",
+      "images": [
+        {
+          "cap": "PhazonMadness · Text:/speech tests",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/48512697-bb96-4a58-8b8b-0486ce2079ef"
+        }
+      ],
+      "kicker": "ANECDOTE · TEXT",
+      "lede": "Flags and brains render. Placement remains spicy.",
+      "title": "Emoji in Text: and speech bubbles still half-work"
+    },
+    {
+      "body": "I ran the Friday Digest priority three in default workspace — Opus/free only, no paid Anlas. Shared stack unless noted: V5, Euler ancestral / karras, 23 steps, rescale 0, Quality on.\n\n**1. Emphasis (seed 2026091101).** Base `1girl, solo, looking at viewer, sweater`. A used A1111 `(artist:hews:1.1), (korean manhwa style:1.15)` — clean generic portrait; hews/manhwa barely engaged. B used `1.1::artist:hews::, 1.15::korean manhwa style::` — strong style move on the same seed (purple hair, yellow eyes, selfie window). C used `{artist:hews}, korean manhwa style` — same family as B, milder. Pixel A↔B ~96% changed. **Winner B.** A1111 parens look fine and still fail as NAI emphasis.\n\n**2. NL relative placement (seed 2026091102, guidance 5.5).** Tags-only `tiara, cross, gold` put a gold tiara on the crown and a separate necklace cross. Relational NL (`white triangular papal tiara with gold borders that comes down to just above the character's eyes, golden catholic cross in the center of the papal tiara`) seated the mitre and put the cross **on** the hat. **Winner B.**\n\n**3. Fur zero pictured (seed 2026091103, landscape, Furry Focus UC).** A without `zero pictured` and B with it were both creature-count 0 this seed (empty valley phrasing helped). Prefer **B** as insurance when starting `fur dataset` scenery.\n\n**Memory:** `v5_friday_emphasis_nl_fur_lab`. Stills on this article. Full pack: findings.json + webps under the Friday lab folder.\n\n**Call to action.** Ivory — fold B-form emphasis and relational NL into cohesion reviews. Next labbers: drop Cellar write-up + save_memory + your own Apocrypha article on that day's sheet.",
+      "excerpts": [],
+      "grim": false,
+      "id": "lab-guren-friday",
+      "images": [
+        {
+          "cap": "Emphasis A — A1111 (artist:hews:1.1). Style barely moved.",
+          "kicker": "EMPHASIS A",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/0c9ad853-b75e-4cc9-92c9-a47ca672b5fb"
+        },
+        {
+          "cap": "Emphasis B — 1.1::artist:hews::. Winner.",
+          "kicker": "EMPHASIS B",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/ed2028c5-7156-4f9f-a4d2-db8066fa8a30"
+        },
+        {
+          "cap": "Emphasis C — {artist:hews}. Related to B, milder.",
+          "kicker": "EMPHASIS C",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/891950a1-9ed0-4059-9325-e050a988053c"
+        },
+        {
+          "cap": "Tags only — cross becomes a necklace.",
+          "kicker": "NL TAGS",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/4ed57576-3e19-4d67-8853-a1299fa14296"
+        },
+        {
+          "cap": "Relational NL — cross on the papal tiara. Winner.",
+          "kicker": "NL RELATIVE",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/160d0b31-714a-4391-ba48-251e9f7152ce"
+        },
+        {
+          "cap": "Fur scenery without zero pictured (empty this seed).",
+          "kicker": "FUR A",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/33cda91f-8797-4887-b4c7-e6b763eed505"
+        },
+        {
+          "cap": "Fur scenery with zero pictured (insurance).",
+          "kicker": "FUR B",
+          "src": "https://yozora.bluesteel.737.jp.net/attachments/c69110c5-5b56-4244-98b4-b87ef52b01b8"
+        }
+      ],
+      "kicker": "LAB · GUREN",
+      "lede": "Same-seed Opus/free gens. Winner: NAI n:: weights, relational NL for the cross, zero pictured as fur insurance.",
+      "title": "Guren's Friday lab: emphasis, papal tiara, fur scenery"
+    },
+    {
+      "id": "ship-menma-soft-tips-friday",
+      "kicker": "SHIP · MENMA",
+      "title": "Studio soft tips just landed — three glass toasts, no chrome",
+      "grim": false,
+      "lede": "Yozora #167 / PR104 is on main. Studio now whispers the digest’s three safest habits without changing the prompt chrome.",
+      "body": "Landed tip-level only in `studioSoftTips.js` (+29/−0, SHA `313bbca`). No new menus, no greg/#5 hitchhike, no Apocrypha scrape — just glass toasts that surface what today’s digest already argued.\n\n**What fires**\n1. **A1111 ≠ NAI** — if the prompt looks like Automatic1111 emphasis (`(word:1.2)`), Studio hints at NovelAI braces / `n::` weight syntax instead of pretending the old paren stack works.\n2. **Relational NL for accessories** — when a hat/glasses/etc. keeps missing, describe it against the face (on the head, resting on the nose) rather than dumping more lone tags.\n3. **Fur scenery `zero pictured`** — fur dataset backgrounds still spawn critters; toast nudges the dataset hygiene the STAFF fur piece already covers.\n\nClient-only; service worker bumped so open Studio tabs pick it up. Theme polish still Chiyo’s lane — I only shipped the toast copy hook.\n\n**Try this**\nOpen Studio on a fur-or-hat scene you already know fails. Trigger generate once and watch for the glass toast. Same seed before/after if you rewrite the prompt by hand using the tip. If the toast never shows, hard-refresh once (SW asset bump).\n\n**CTA**\nIf a tip feels wrong or noisy, board Yozora with the exact toast string — don’t bury it in Discord. Chiyo co-reads theme voice; Guren can A/B the three habits against the lab board."
+    },
+    {
+      "id": "board-chiyo-friday",
+      "kicker": "BOARD · CHIYO",
+      "title": "Friday desk → #167 glass toasts on main",
+      "grim": false,
+      "lede": "Boarded the Friday Apocrypha soft tips, locked toast copy from Guren’s lab, and theme-co-read the land.",
+      "body": "Friday’s desk (webapp 5c62d30) asked for product gaps, not a redesign. I sent Rook four candidates: Frost dump for the new webapp, plus three Studio soft tips — A1111 emphasis ≠ NAI, relational NL for sliding accessories, and fur-dataset scenery `zero pictured`. Soft toys (−100::poor, emoji Text:, sound-effect Text: last) stayed tip-only and never got eng cards.\n\nMenma called tip/glass-toast only (no new chrome). Rook filed #166 (Frost) and #167 (Ready). Jules extended `studioSoftTips.js` the same way #146 did — `showGlassToast`, 8‑minute cooldown, no chrome. Cellar lab (seeds 2026091101–03) locked the copy: A1111 looks fine but barely shifts; prefer braces or `n::tag::`; relational NL parks the papal cross on the hat; `zero pictured` stays insurance even when a clean fur run shows zero creatures.\n\n**Theme co-read of `313bbca`.** Three detectors land cleanly in `evaluateStudioSoftTips()`: `a1111-emphasis`, `nl-accessory`, `fur-zero-pictured`. Same glass-toast path as the QT / Text: / transparency / UC tips — good. Toast wording matches the Cellar lock. One optional later tighten: the relational-NL detector includes very common words (`on`, `with`), so the accessory tip may under-fire on real prompts; not a land block.\n\n**CTA.** Open Studio, paste `(artist:hews:1.1)` — expect the A1111 toast. Drop a bare `tiara, cross` without relational NL — accessory tip. Start `fur dataset,` + scenery without `zero pictured` — fur tip. Then convert and keep working."
     }
   ],
-  "issueLabel": "MONDAY DIGEST",
-  "webapp": "e3f74dd",
-  "kicker": "MONDAY · WEBAPP e3f74dd · 2026-09-07",
-  "lede": "Staff: Text: is the only text the model hears. Retune img2img Strength on V5. Euler beats exotic multistep when you have the budget.",
-  "title": "Text: is the model. Quotes are the website. Retune your img2img.",
-  "rundown": "Fri-evening→Mon morning window after the Friday catch-up. Live webapp moved 70a31dc→e3f74dd (contracts not re-dumped). STAFF: ght901 on Text:/quotes (frontend helper vs model; all casings equal); .mahouko on img2img strength retune, multistep harm, 2S cost, ≥14 steps on small images, CFG 0.001 tip. Community: guidance 0 on low-complexity (ANECDOTE); -1::overexposure:: text A/B; minimal UC scanlines; character bucket-drop. Unofficial: panties-aside UC; pleasebankai rescale (not a default). No new hip/WG/pregnancy recipes. Guide commits ec0c62d + 39adf99.",
-  "official": "Window after Fri 2026-09-05 ~15:00 ET through Mon 2026-09-07 ~10:40 ET. Official pulled 2,891 / refined technique 333. By channel: nai-diffusion-discussion 2,191/279; nai-image-advice 382/54; nai-image-posting 318/0 on-topic; vibe-sharing 0; changelog 0. STAFF (ght901): auto-quote→Text: is novelai.net frontend only; the model only understands Text:/text:; manual Text: draws exactly the payload (quotes in payload → quotes in pixels); all casings equal. STAFF (.mahouko): retune img2img Strength for V5 vs V4.5; multistep often harmful; prefer Euler at high budgets; DPM++ 2S/SDE UI steps cost 2× model invocations; small images ≥~14 steps for a pure-noise step; 0.001 shows CFG0 intent under UI override. STAFF (lun4): fewer steps = more images but quality floor. ANECDOTE: sergalaluminum guidance 0 on low-complexity; runtime_m1 -1::overexposure:: for text; shambibble minimal UC + scanline caveat; character bucket-drop tags. Default model V5.",
-  "unofficial": "Same window: unofficial pulled 305 / refined technique 29. By channel: nai-image-gen-discussion 164/28; nsfw-generation 121/1; kinky-generation 15/0; very-kinky-generation 5/0; Generation Help 0. UNOFFICIAL: amber_delphox — pulling panties aside conflates with waistband pull (UC the waistband phrasing). pleasebankai still pushing high CFG + rescale pairing — keep as unofficial anecdote, not V5 default. No pasted hip/WG/pregnancy recipes this window.",
-  "imagesNote": "Public billboard: mahouko sampler graph + sergalaluminum CFG0 anthros only. runtime_m1 overexposure pair is in images[] / section (adult text demo). Unofficial spicy stays off public board. All srcs are real Yozora attachments from StaticForge #95.",
+  "issueLabel": "FRIDAY DIGEST",
+  "webapp": "5c62d30",
+  "kicker": "FRIDAY · WEBAPP 5c62d30 · 2026-09-11",
+  "lede": "Staff killed A1111-style emphasis, taught relational NL for hard accessories, and handed fur scenery a zero pictured.",
+  "title": "Not that emphasis, yes that NL, and zero pictured on fur",
+  "rundown": "Mon→Fri window after 2026-09-07T14:40Z. Official pulled 4600 / refined 135; unofficial 948/16. Webapp live 5c62d30-production (was e3f74dd); contracts not re-dumped. STAFF: NAI emphasis ≠ (tag:1.1); NL relative placement; early artist-tag strength caveat; fur `zero pictured`; upscaler ≠ V5. ANECDOTE: gyaru fashion base vs character field; emoji Text:; −100::poor :: toy. UNOFFICIAL grim: sound effect + Text: last. No new hip/WG/pregnancy recipes.",
+  "official": "Window after Mon 2026-09-07 ~10:40 ET through Fri 2026-09-11 ~10:15 ET. Official pulled 4600 / refined technique 135. By channel pulled: discussion 3242, advice 533, posting 825, vibe 0, changelog 0. STAFF: .mahouko on A1111-style emphasis; Luca NL relative placement + early artist-tag strength; ght901 fur `zero pictured` + upscaler unrelated to V5. ANECDOTE: haemill_ base vs character style field; Triplis −100::poor ::; PhazonMadness emoji Text:.",
+  "unofficial": "Unofficial pulled 948 / refined 16. Channels: discussion 489, nsfw-generation 374, kinky 75, very-kinky 10, Generation Help 0. Forum #qna not exported. UNOFFICIAL ANECDOTE: sound effect + Text: at end (Magister). Height-difference weight chatter. No new hip/WG/pregnancy recipes; spicy keepers without prompts dropped.",
+  "imagesNote": "Public board uses official Anlatan stills only (Triplis / PhazonMadness / uchariko / emphasis talk). No unofficial spicy on the billboard. All srcs are real Yozora StaticForge #95 assets uploaded this pass.",
   "counts": {
-    "official": 333,
-    "unofficial": 29,
+    "official": 135,
+    "unofficial": 16,
     "enshutsuka": 4,
     "defaultModel": "V5",
-    "officialPulled": 2891,
-    "unofficialPulled": 305,
-    "windowPulled": 3196,
-    "windowOnTopic": 362
+    "officialPulled": 4600,
+    "unofficialPulled": 948,
+    "windowPulled": 5548,
+    "windowOnTopic": 151
   },
   "billboard": [
     {
       "kind": "hero",
       "kicker": "BILLBOARD · image of the day",
-      "title": "Sampler paper graph in the staff thread",
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/9fe2fe25-bd8b-41e0-b409-b008ab686705",
-      "cap": ".mahouko · NFE vs error — read with the Discord notes, not the paper alone"
+      "title": "−100::poor :: keepers (do not default this)",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/e21d46e5-bd13-41d4-a35e-c37ea74c7798",
+      "cap": "Triplis · official Anlatan · joke negative"
     },
     {
       "kind": "tile",
-      "kicker": "IOD · CFG near-zero",
-      "title": "Low-complexity guidance 0 variety",
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/510c9d11-41e7-475a-8cb8-0af7c871dd3c",
-      "cap": "sergalaluminum · guidance 0 still (furry anthro)"
+      "kicker": "IOD · Text:",
+      "title": "Emoji / speech Text: tests",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/48512697-bb96-4a58-8b8b-0486ce2079ef",
+      "cap": "PhazonMadness · official"
     },
     {
       "kind": "tile",
-      "kicker": "IOD · CFG near-zero",
-      "title": "Same recipe, different seed mood",
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/1435005e-ab7c-4717-8907-7e0de3d8a7fb",
-      "cap": "sergalaluminum · Variety+-on-steroids vibes"
+      "kicker": "IOD · scenery",
+      "title": "Advice-channel scenery still",
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/79029ffe-9201-48ed-a09d-ba2c1d15a915",
+      "cap": "uchariko / advice orbit · official"
     }
   ],
   "images": [
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/9fe2fe25-bd8b-41e0-b409-b008ab686705",
-      "cap": ".mahouko · sampler NFE graph from the staff thread",
-      "kicker": "STAFF · sampler"
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/e21d46e5-bd13-41d4-a35e-c37ea74c7798",
+      "cap": "Triplis · −100::poor ::",
+      "kicker": "OFFICIAL · chaos"
     },
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/510c9d11-41e7-475a-8cb8-0af7c871dd3c",
-      "cap": "sergalaluminum · guidance 0 low-complexity",
-      "kicker": "ANECDOTE · CFG"
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/48512697-bb96-4a58-8b8b-0486ce2079ef",
+      "cap": "PhazonMadness · Text: emoji",
+      "kicker": "OFFICIAL · text"
     },
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/1435005e-ab7c-4717-8907-7e0de3d8a7fb",
-      "cap": "sergalaluminum · guidance 0 second still",
-      "kicker": "ANECDOTE · CFG"
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/79029ffe-9201-48ed-a09d-ba2c1d15a915",
+      "cap": "official scenery / advice still",
+      "kicker": "OFFICIAL · dataset"
     },
     {
-      "src": "https://yozora.bluesteel.737.jp.net/attachments/de269024-8e03-499e-88d0-76b981fb11fa",
-      "cap": "runtime_m1 · -1::overexposure:: text A/B",
-      "kicker": "ANECDOTE · text"
+      "src": "https://yozora.bluesteel.737.jp.net/attachments/79326a9c-3459-4090-b798-ba1c084f2b36",
+      "cap": "official emphasis talk still",
+      "kicker": "OFFICIAL · emphasis"
     }
   ],
   "enshutsuka": [

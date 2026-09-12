@@ -1,10 +1,10 @@
 {
-  "updated_at": "2026-09-11T11:33:40.895557+00:00",
+  "updated_at": "2026-09-12T11:09:46.097903+00:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
   "last_breakfast_at": "2026-09-02T11:21:37.116143+00:00",
   "open": [],
   "done_since_breakfast": [],
-  "cake_note": "2026-09-11 7am: pile empty. Quiet tree. Commit b33bdd9 docs auth for POST /test-bias-adjustment (PR #98) + work-pile. Ships since prior Rook note (credit:menma Jules 1.25x): PR #99 +11/-11 (sess 9439836321021720140); PR #96 +2/-2 (7215142525272760004); PR #97 +18/-15 (12982757015656103476); PR #98 +1/-1 (2131444555391313127); PR #89 +44/-10 (12023835158094833279). HOLD PR #100 ManualDropdownManager. 8:30: OPEN #103 compareView (+21/-3 sess 345482790056119721); CLOSED-unmerged reopen/land #101 (+14/-11 sess 14921756134916394620), #102 (+2/-2 sess 15606741625546235112). Jules kicked after push: (1) deep inspect https://jules.google.com/session/2713561479814763070 (2) #5 websocket first extract requirePlanApproval https://jules.google.com/session/4622282820234334101 \u2014 8:30 collect. No Menma leftover edits (Rook gate). Stay off greg #11/#9. cursor-agent alone. DB backup keep=2 done. Rook owns cake.",
+  "cake_note": "2026-09-12 7am: snapshot Apocrypha current.json (Hoshino overnight sheet) + client-api docs for PR #104 soft tips, #106 PIN realtime, NAX v5 constrained galleries. NEW ships for Rook 11am (not banked at Sep11 8:30 #103 note): PR #104 soft tips +29 (Jules 10959750974151706742); PR #105 tag-lookup perf +6/-4 (Jules 10278635411460994147); PR #106 PIN pad realtime +52/-32 (Jules 14471064346466589181); ManualDropdownManager stub class delete -56 on main (297a83f; PR #100 still HOLD/closed); NAX v5 artist/character +171 and +9/-4 (5b717cb/71f0050). Overnight Jules already open for grill at 8:30: PR #108/#110 (#170 taskbar), #109 (#171 V5 curated), #111 (#172 cartograph), #112 defect dead-code. Stay off greg/#5. No cake here.",
   "eaten": [
     {
       "id": "sf-22",

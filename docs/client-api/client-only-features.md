@@ -155,7 +155,18 @@ Two login UX paths:
 
 Both POST same `/` login action.
 
----
+**Realtime press feedback (Yozora #168 / GitHub PR #106, 2026-09-11):** digit/key buttons on both paths show immediate pressed-state styling while the pointer/touch is down (not only on click). Client-only CSS class toggles in `pinModal.js` / `login.js`; no server or WS change.
+
+## Studio soft tips (client toasts)
+
+`public/scripts/comp/studioSoftTips.js` (Yozora #167 / GitHub PR #104, 2026-09-11) watches the Manual Studio prompt/UC fields and shows cooldown-gated glass toasts (8 min per tip id) for Apocrypha desk guidance:
+
+- A1111-style `(tag:1.1)` weights → prefer `{tag}` / `[tag]` or `1.1::tag::`
+- accessory tags without relational NL
+- `fur dataset` scenery without `zero pictured`
+- plus earlier quality / heavy-emphasis / lowercase `text:` / scene+character-UC tips
+
+Not a redesign; toast-only. Relies on existing `showGlassToast` and Manual Studio globals.
 
 ## Developer / debug surfaces
 

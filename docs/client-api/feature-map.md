@@ -95,7 +95,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Character database browser | — | `get_character_db`, `character_db_upsert`, `character_db_delete`, `character_db_rename_copyright`, `character_db_delete_copyright` | — | Tools applet (`characterDbApplet`); SQLite `.cache/characters.db`; import `scripts/import-characters-json.js` |
 | Search index admin | — | `search_index_*` | `search_indexing_status` | — |
 | Spellcheck custom word | — | `spellcheck_add_word` | — | `autofill/spellCheck.js` overlay |
-| NAX tags | `GET /naxCache/...` | `get_nax_*`, `set_nax_*`, `generate_nax_custom_tag` | — | NAX applets. MCP `search_nax` / `list_nax_galleries` wrap `queryTags` / `getGalleries` (`sort=score` is top votes). |
+| NAX tags | `GET /naxCache/...` | `get_nax_*`, `set_nax_*`, `generate_nax_custom_tag` | — | NAX applets. MCP `search_nax` / `list_nax_galleries` wrap `queryTags` / `getGalleries` (`sort=score` is top votes). V5 constrained artist/character galleries (`danbooru-artist-tags-v5`, `danbooru-character-tags-v5`) are in ARTIST/CHARA kind pools and `nax_generation_config.json` (2026-09-12). |
 | Docubase | Grimoire site `docubase` (pages in `.cache/wiki/docubase`, clone `.cache/nai-prompt-guide`) | `get_static_wiki_page` / MCP `get_prompt_guide` | — | Hard-reset clone from Yozora on boot, then write the same wiki HTML/index files as other static docs. |
 | Knowledge memories | — | `list_knowledge_memories`, `get_knowledge_memory`, `update_knowledge_memory` | — | Memories DSAP. MCP `save_memory` / `saveKnowledgeMemory` (old API name). Grok Memory is not the store. |
 
@@ -140,6 +140,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Feature | REST | WS | Push | Client-only |
 |---------|------|-----|------|-------------|
 | Weight Rack (emphasis groups) | — | — | — | `emphasisGroupsToolManager.js`, forge `emphasis_normalization` |
+| Studio soft tips | — | — | — | `studioSoftTips.js` glass toasts (A1111 weights, accessory NL, fur/`zero pictured`; Yozora #167 / PR #104) |
 
 ---
 
