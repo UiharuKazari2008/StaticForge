@@ -806,6 +806,10 @@ class VfsManager {
         };
     }
 
+    _readWorkspaceGalleryFilenames(workspaceId, bucket) {
+        return this.globalResources.getWorkspaceManager()._readWorkspaceGalleryFilenames(workspaceId, bucket);
+    }
+
     _getWorkspaceStatsFromCache(workspaceId) {
         const ws = this.globalResources.getWorkspaceManager().getWorkspaces()[workspaceId];
         if (!ws) return null;
@@ -1308,7 +1312,7 @@ class VfsManager {
                 return rootShortcuts.map(s => this._shortcutToItem(s, workspaceId));
             }
             case 'Pictures': {
-                const files = ws.files || [];
+                const files = await this._readWorkspaceGalleryFilenames(workspaceId, 'files');
                 const imagesPath = this.globalResources.getPath('images');
                 let filenames = [...files].filter(f => !trashedTargets.has(`image:${f}`));
                 if (search && search.length >= 2) {
@@ -1424,7 +1428,8 @@ class VfsManager {
                 }));
             }
             case 'Scraps': {
-                const scraps = (ws.scraps || []).filter(f => !trashedTargets.has(`scrap:${f}`));
+                const scraps = (await this._readWorkspaceGalleryFilenames(workspaceId, 'scraps'))
+                    .filter(f => !trashedTargets.has(`scrap:${f}`));
                 const imagesPath = this.globalResources.getPath('images');
                 return scraps.map(filename => {
                     let size = 0;
@@ -1980,7 +1985,7 @@ class VfsManager {
                 return { itemCount: rootShortcuts.length, totalSizeBytes: 0 };
             }
             case 'Pictures': {
-                const files = ws.files || [];
+                const files = await this._readWorkspaceGalleryFilenames(workspaceId, 'files');
                 return {
                     itemCount: files.length,
                     totalSizeBytes: await this._sumImageFilenamesSize(files)
@@ -2009,7 +2014,7 @@ class VfsManager {
                 };
             }
             case 'Scraps': {
-                const scraps = ws.scraps || [];
+                const scraps = await this._readWorkspaceGalleryFilenames(workspaceId, 'scraps');
                 return {
                     itemCount: scraps.length,
                     totalSizeBytes: await this._sumImageFilenamesSize(scraps)
