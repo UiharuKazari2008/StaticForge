@@ -310,14 +310,14 @@ function determineModelFromMetadata(metadata) {
     const source = metadata.source;
 
     // NovelAI Diffusion V5 models (sample Source: "NovelAI Diffusion V5 0ADF9AB7")
+    // JULES:#171
     if (source.includes("NovelAI Diffusion V5")) {
         switch (source) {
+            case "NovelAI Diffusion V5 657484A5":
             case "NovelAI Diffusion V5 0ADF9AB7":
-            case "NovelAI Diffusion V5 DB276663":
                 return "V5";
             default:
-                if (source.includes("Curated") || source.includes("CUR")) return "V5_CUR";
-                return "V5";
+                return "V5_CUR";
         }
     }
     
