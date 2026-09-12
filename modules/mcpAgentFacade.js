@@ -1352,6 +1352,26 @@ const TOOL_DEFS = [
         }
     },
     {
+        name: 'open_in_prism',
+        core: true,
+        description: 'Open 2+ gallery filenames in Prism (creative compare: dual-pane Side-by-side, Studio overlay/slide/loupe tools, Grid). Prefer this over opening N Lumen windows. compare_images remains the server pixel-diff.',
+        scope: 'gallery',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                filename: { type: 'string' },
+                filenames: { type: 'array', items: { type: 'string' } },
+                filenameA: { type: 'string' },
+                filenameB: { type: 'string' },
+                a: { type: 'string' },
+                b: { type: 'string' },
+                mode: { type: 'string', description: 'side, loupe, or grid' },
+                workspace: { type: 'string' }
+            }
+        }
+    },
+    {
         name: 'compare_images',
         core: true,
         description: 'Pixel-diff two gallery images (same seed preferred). Returns change stats plus a magenta difference webp.',
@@ -2303,7 +2323,7 @@ async function openViewerFromMcp(globalResources, input, target, req) {
     if (!filenames.length) {
         return mcpTextResult({ success: false, error: 'filename or filenames is required' }, true);
     }
-    const payload = { target, filenames };
+    const payload = { target, filenames, mode: input && input.mode };
     const bindKey = resolveBindKey(req);
     if (getBoundRecord(globalResources, bindKey)) {
         try {
@@ -3843,6 +3863,17 @@ async function callTool(globalResources, req, name, args) {
     }
     if (name === 'open_in_glancewell') {
         return openViewerFromMcp(globalResources, input, 'glancewell', req);
+    }
+    if (name === 'open_in_prism') {
+        const names = collectFilenames(input);
+        ['filenameA', 'filenameB', 'a', 'b'].forEach((key) => {
+            const safe = sanitizeGalleryFilename(input && input[key]);
+            if (safe && !names.includes(safe)) names.push(safe);
+        });
+        return openViewerFromMcp(globalResources, {
+            filenames: names,
+            mode: input && input.mode
+        }, 'prism', req);
     }
 
     if (name === 'compare_images') {

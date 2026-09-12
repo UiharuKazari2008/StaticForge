@@ -63,6 +63,10 @@ const FEATURE_MANIFEST = {
         // vfsClient / vfsVirtualGrid / routers stay sync — desktop + inbound use them without Cartograph
         scripts: ['scripts/comp/explorerApplet.js']
     },
+    prism: {
+        styles: ['css/prism-applet.css'],
+        scripts: ['scripts/comp/prismApplet.js']
+    },
     naxt: {
         styles: ['css/naxt-shell.css', 'css/spellbook.css'],
         scripts: ['scripts/comp/naxtApplet.js']
@@ -225,4 +229,10 @@ async function openBracketGenerationApplet(options) {
     // initializePhasewalkerTray: public/scripts/comp/bracketGenerationApplet.js
     initializePhasewalkerTray();
     bracketGenerationApplet.open(options);
+}
+
+async function openPrismApplet(options) {
+    await featureLoader.loadFeature('prism');
+    // prismApplet: public/scripts/comp/prismApplet.js
+    return prismApplet.open(options);
 }
