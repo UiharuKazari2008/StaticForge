@@ -26,8 +26,13 @@ const SCOPE_WS_PACKETS = {
         'workspace_get_scraps', 'workspace_get_pinned',
         'workspace_add_pinned', 'workspace_remove_pinned', 'workspace_add_scrap',
         'workspace_remove_scrap', 'workspace_bulk_add_scrap', 'workspace_bulk_remove_scrap',
-        'workspace_bulk_pinned',
+        'workspace_bulk_pinned', 'workspace_bulk_add_pinned', 'workspace_bulk_remove_pinned',
         'workspace_get_groups', 'workspace_get_group', 'workspace_get_image_groups',
+        'workspace_create_group', 'workspace_rename_group', 'workspace_delete_group',
+        'workspace_add_images_to_group', 'workspace_remove_images_from_group',
+        'workspace_rename', 'workspace_update_color', 'workspace_update_background_color',
+        'workspace_update_settings', 'workspace_update_window_positions',
+        'workspace_update_primary_font', 'workspace_update_textarea_font', 'workspace_reorder',
         'desktop_add_shortcut', 'desktop_update_shortcut',
         'desktop_remove_shortcut', 'desktop_update_positions'
     ],
@@ -44,8 +49,13 @@ const SCOPE_WS_PACKETS = {
         'vfs_list_directory', 'vfs_get_path_stats', 'vfs_resolve_path',
         'vfs_read_system_file', 'vfs_download_file', 'vfs_download_system_file',
         'vfs_upload_file', 'vfs_replace_file', 'vfs_delete_entry', 'vfs_delete_file',
-        'vfs_create_folder', 'vfs_move_items', 'vfs_copy_items',
-        'desktop_get_shortcuts', 'desktop_get_settings'
+        'vfs_create_folder', 'vfs_rename_folder', 'vfs_delete_folder', 'vfs_folder_has_user_files',
+        'vfs_move_items', 'vfs_copy_items', 'vfs_rename_file',
+        'vfs_rename_shortcut_entry', 'vfs_rename_entry',
+        'vfs_move_to_trash', 'vfs_restore_from_trash', 'vfs_empty_trash', 'vfs_permanently_delete',
+        'vfs_convert_reference_to_file', 'vfs_convert_file_to_reference',
+        'desktop_get_shortcuts', 'desktop_get_settings',
+        'desktop_create_empty_folder', 'desktop_update_shortcut_folders', 'desktop_create_folder_from_selection'
     ],
     presets: [
         'get_presets', 'search_presets', 'load_preset', 'save_preset', 'update_preset',
