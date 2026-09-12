@@ -16,6 +16,8 @@ const MENMA_TAB_LABELS = {
     log: 'Log'
 };
 
+const MENMA_ACCOUNT_IDS = ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'];
+
 const menmaDsapScopedCss = `
 [data-dsap="menma"] .menma-view { padding: 8px 10px 16px; }
 [data-dsap="menma"] .menma-pair { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -72,15 +74,38 @@ function menmaDsapNum(value, digits) {
 
 function menmaDsapResolveTab(host) {
     const segments = host.getPathSegments();
-    const first = (segments[0] || '').toLowerCase();
-    if (MENMA_TAB_LABELS[first]) return first;
+    for (let i = 0; i < segments.length; i++) {
+        const part = (segments[i] || '').toLowerCase();
+        if (MENMA_TAB_LABELS[part]) return part;
+    }
     const q = (host.getQueryParam('tab') || '').toLowerCase();
     if (MENMA_TAB_LABELS[q]) return q;
     return 'status';
 }
 
-function menmaDsapTabUrl(tabId) {
-    return `dsap://${MENMA_DSAP_URL}/${tabId}`;
+function menmaDsapResolveAccount(host) {
+    const segments = host.getPathSegments();
+    for (let i = 0; i < segments.length; i++) {
+        const part = (segments[i] || '').toLowerCase();
+        if (MENMA_ACCOUNT_IDS.indexOf(part) !== -1) return part;
+    }
+    const q = (host.getQueryParam('account') || host.getQueryParam('acct') || '').toLowerCase();
+    if (MENMA_ACCOUNT_IDS.indexOf(q) !== -1) return q;
+    return 'menma';
+}
+
+function menmaDsapTabUrl(tabId, accountId) {
+    const tab = MENMA_TAB_LABELS[tabId] ? tabId : 'status';
+    const acct = accountId && MENMA_ACCOUNT_IDS.indexOf(accountId) !== -1 && accountId !== 'menma'
+        ? `/${accountId}`
+        : '';
+    return `dsap://${MENMA_DSAP_URL}/${tab}${acct}`;
+}
+
+function menmaDsapEntryShot(entry, side) {
+    if (!entry || typeof entry !== 'object') return null;
+    if (side === 'after') return entry.after || entry.after_image || entry.after_img || null;
+    return entry.before || entry.before_image || entry.before_img || null;
 }
 
 function menmaDsapFindGalleryImage(filename) {
@@ -153,7 +178,7 @@ function menmaDsapAccountCardHtml(accountId, accountData, isActive) {
 
 function menmaDsapAccountsGridHtml(accounts, activeAccountId) {
     if (!accounts || typeof accounts !== 'object') return '';
-    const order = ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren'];
+    const order = MENMA_ACCOUNT_IDS;
     const cards = order
         .filter((id) => accounts[id])
         .map((id) => menmaDsapAccountCardHtml(id, accounts[id], id === activeAccountId));
@@ -198,9 +223,12 @@ function menmaDsapStatusHtml(data, activeAccountId) {
     }
     const mealLine = mealBits.length ? mealBits.join(' · ') : 'No meal recorded yet.';
 
-    // Yozora #163: Show images from the latest meal when present, rather than stale historical last_before/after
-    const beforeImg = meal.before !== undefined ? meal.before : activeData.last_before;
-    const afterImg = meal.after !== undefined ? meal.after : activeData.last_after;
+    // Yozora #163 / #190: honor last_meal shots (incl. before_image aliases). Explicit
+    // null still means none — do not fall back to stale last_before/after.
+    const mealHasBefore = meal.before !== undefined || meal.before_image !== undefined || meal.before_img !== undefined;
+    const mealHasAfter = meal.after !== undefined || meal.after_image !== undefined || meal.after_img !== undefined;
+    const beforeImg = mealHasBefore ? menmaDsapEntryShot(meal, 'before') : activeData.last_before;
+    const afterImg = mealHasAfter ? menmaDsapEntryShot(meal, 'after') : activeData.last_after;
 
     return `${accountsGrid}
 ${dsapSmfBuildSectionHdr(activeName + ' Ledger')}
@@ -253,8 +281,10 @@ function menmaDsapLogItemHtml(entry) {
     const named = Array.isArray(entry.named_for) && entry.named_for.length
         ? `<ul class="menma-named">${entry.named_for.map((n) => `<li>${menmaDsapEscape(n)}</li>`).join('')}</ul>`
         : '';
-    const thumbs = (entry.before || entry.after)
-        ? `<div class="menma-pair" style="margin-top:6px">${menmaDsapShotHtml(entry.before, 'Before')}${menmaDsapShotHtml(entry.after, 'After')}</div>`
+    const beforeImg = menmaDsapEntryShot(entry, 'before');
+    const afterImg = menmaDsapEntryShot(entry, 'after');
+    const thumbs = (beforeImg || afterImg)
+        ? `<div class="menma-pair" style="margin-top:6px">${menmaDsapShotHtml(beforeImg, 'Before')}${menmaDsapShotHtml(afterImg, 'After')}</div>`
         : '';
     return `<div class="menma-log-item">
   <strong>${menmaDsapEscape(title)}</strong>
@@ -308,13 +338,15 @@ const menmaDsapDriver = {
             host,
             tabId,
             data: null,
-            activeAccountId: 'menma',
+            activeAccountId: menmaDsapResolveAccount(host),
             _onClick: null,
             _timer: null
         };
         root.innerHTML = menmaDsapShellHtml(tabId);
         const dsapRoot = root.querySelector('[data-dsap="menma"]') || root;
-        dsapSmfWireTabBar(dsapRoot, '#menmaDsapTabBar', 'data-menma-tab', menmaDsapTabUrl, host);
+        dsapSmfWireTabBar(dsapRoot, '#menmaDsapTabBar', 'data-menma-tab', (nextTab) => {
+            return menmaDsapTabUrl(nextTab, this._state && this._state.activeAccountId);
+        }, host);
         this._state._onClick = (e) => this._onClick(e);
         dsapRoot.addEventListener('click', this._state._onClick);
         this._wireContextMenus(host);
@@ -380,6 +412,10 @@ const menmaDsapDriver = {
             const accountId = accountCard.getAttribute('data-menma-account');
             if (accountId && this._state) {
                 this._state.activeAccountId = accountId;
+                const nextUrl = menmaDsapTabUrl(this._state.tabId, accountId);
+                if (this._state.host && typeof this._state.host.setUrl === 'function') {
+                    this._state.host.setUrl(nextUrl);
+                }
                 this._renderView();
             }
             return;

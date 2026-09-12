@@ -12,7 +12,7 @@ The web applet (`public/scripts/comp/menmaDsapApplet.js`) calls `window.wsClient
 - Root-level Menma fields (backward compat)
 - `accounts` object with status for all six accounts (menma, hoshino, ivory, pyra, chiyo, guren)
 
-The applet displays all accounts in a clickable grid; selecting an account shows its ledger, work pile, and cake log.
+The applet displays all accounts in a clickable grid; selecting an account shows its ledger, work pile, and cake log. The selected pantry is kept in the DSAP path (`/log/ivory`) so Status / Work / Log stay on that account. `cake_log[].before` / `after` are gallery filenames (`before_image` / `before_img` aliases accepted).
 
 ## Packet index
 

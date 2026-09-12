@@ -60,6 +60,67 @@ function pickWorkItem(item) {
     };
 }
 
+const LOG_BEFORE_KEYS = ['before', 'before_image', 'before_img'];
+const LOG_AFTER_KEYS = ['after', 'after_image', 'after_img'];
+
+function firstSafeImage(entry, keys) {
+    if (!entry || typeof entry !== 'object') return null;
+    for (let i = 0; i < keys.length; i++) {
+        const picked = safeImageName(entry[keys[i]]);
+        if (picked) return picked;
+    }
+    return null;
+}
+
+function parseJsonField(raw, fallback) {
+    try {
+        const parsed = JSON.parse(raw == null || raw === '' ? (Array.isArray(fallback) ? '[]' : '{}') : raw);
+        return parsed == null ? fallback : parsed;
+    } catch (_) {
+        return fallback;
+    }
+}
+
+/**
+ * SQLite cake_pantry_log row → ledger object.
+ * Dedicated before_img/after_img columns win; extra_data aliases fill gaps
+ * and cannot clobber a column filename with null (Yozora #190).
+ */
+function composeCakeLogEntry(row) {
+    if (!row || typeof row !== 'object') return null;
+    const extraRaw = parseJsonField(row.extra_data, {});
+    const extra = extraRaw && typeof extraRaw === 'object' && !Array.isArray(extraRaw) ? extraRaw : {};
+    return {
+        ...extra,
+        at: row.at,
+        loop: row.loop,
+        date_local: row.date_local,
+        slices: row.slices,
+        stacks: row.stacks,
+        cake_type: row.cake_type,
+        cake_rating: row.cake_rating,
+        kg_before: row.kg_before,
+        kg_after: row.kg_after,
+        gained_kg: row.gained_kg,
+        chair: row.chair,
+        named_for: parseJsonField(row.named_for, []),
+        landed: parseJsonField(row.landed, []),
+        left_open: parseJsonField(row.left_open, []),
+        before: firstSafeImage({
+            before: row.before_img,
+            before_image: extra.before_image,
+            before_img: extra.before_img,
+            extra_before: extra.before
+        }, ['before', 'before_image', 'before_img', 'extra_before']),
+        after: firstSafeImage({
+            after: row.after_img,
+            after_image: extra.after_image,
+            after_img: extra.after_img,
+            extra_after: extra.after
+        }, ['after', 'after_image', 'after_img', 'extra_after'])
+    };
+}
+
 function pickLogEntry(entry) {
     if (!entry || typeof entry !== 'object') return null;
     return {
@@ -75,8 +136,8 @@ function pickLogEntry(entry) {
         gained_kg: entry.gained_kg != null ? entry.gained_kg : null,
         chair: entry.chair || null,
         named_for: Array.isArray(entry.named_for) ? entry.named_for.slice(0, 24) : [],
-        before: safeImageName(entry.before),
-        after: safeImageName(entry.after),
+        before: firstSafeImage(entry, LOG_BEFORE_KEYS),
+        after: firstSafeImage(entry, LOG_AFTER_KEYS),
         landed: Array.isArray(entry.landed) ? entry.landed.slice(0, 24) : [],
         left_open: Array.isArray(entry.left_open) ? entry.left_open.slice(0, 24) : []
     };
@@ -458,36 +519,7 @@ async function getCakeLogFromDb(db, accountId, limit = 50) {
 
     rows.reverse();
 
-    return rows.map(row => {
-        let named_for = [];
-        let landed = [];
-        let left_open = [];
-        let extra = {};
-        try { named_for = JSON.parse(row.named_for || '[]'); } catch (e) {}
-        try { landed = JSON.parse(row.landed || '[]'); } catch (e) {}
-        try { left_open = JSON.parse(row.left_open || '[]'); } catch (e) {}
-        try { extra = JSON.parse(row.extra_data || '{}'); } catch (e) {}
-
-        return {
-            at: row.at,
-            loop: row.loop,
-            date_local: row.date_local,
-            slices: row.slices,
-            stacks: row.stacks,
-            cake_type: row.cake_type,
-            cake_rating: row.cake_rating,
-            kg_before: row.kg_before,
-            kg_after: row.kg_after,
-            gained_kg: row.gained_kg,
-            chair: row.chair,
-            named_for,
-            before: row.before_img,
-            after: row.after_img,
-            landed,
-            left_open,
-            ...extra
-        };
-    });
+    return rows.map(composeCakeLogEntry).filter(Boolean);
 }
 
 /**
@@ -912,5 +944,7 @@ module.exports = {
     removeWorkItemFromDb,
     pickWorkItem,
     pickLogEntry,
+    composeCakeLogEntry,
+    firstSafeImage,
     safeImageName
 };
