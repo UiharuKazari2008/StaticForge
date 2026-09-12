@@ -5387,9 +5387,13 @@ document.addEventListener('contextMenuAction', (e) => {
                 break;
 
             case 'taskbar-group-close-all':
-                modals.forEach(modal => {
-                    closeModal(modal);
-                });
+                void (async () => {
+                    for (const modal of modals) {
+                        if (!modal.classList.contains('closing')) {
+                            await closeModal(modal);
+                        }
+                    }
+                })();
                 break;
         }
         return;
