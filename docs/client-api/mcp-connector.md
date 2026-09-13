@@ -264,7 +264,7 @@ Each tool wraps an existing `/agent` function or WS packet. No parallel generate
 | `delete_images` | `delete_images_bulk` | `gallery` | no |
 | `scrap_images` | `workspace_bulk_add_scrap` / `workspace_remove_scrap` | `workspace` | no |
 | `toggle_favorite` | `workspace_add_pinned` / `workspace_remove_pinned` | `workspace` | no |
-| `open_in_lumen` / `open_in_glancewell` / `open_in_prism` | Bound `open_viewer` or `mcp_open_viewer` push | `gallery` | client |
+| `open_in_lumen` / `open_in_glancewell` | Bound `open_viewer` or `mcp_open_viewer` push | `gallery` | client |
 | `compare_images` | Sharp abs-diff of two gallery files; magenta webp + change % | `gallery` | no |
 | `evaluate_workspace_themes` | Tag/character frequency on recent workspace files | `gallery` | no |
 | `vfs_list` / `vfs_read` | `vfs_list_directory` / `vfs_read_system_file` or `vfs_download_file`. Path `@desktop` is the workspace desktop. | `vfs` | no |

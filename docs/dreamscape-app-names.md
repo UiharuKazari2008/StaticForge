@@ -19,7 +19,6 @@ User-facing applet and tool names follow a **Dreamscape** style: short, tangible
 - **Cartograph:** `explorer`, `files`, `file explorer`, `cartograph`, `vfs`
 - **Runes:** `config`, `settings`, `settings editor`, `runes`
 - **Periscope:** `log`, `logs`, `console`, `periscope`, `event viewer`, `events`, …
-- **Prism:** `prism`, `compare`, `creative compare`, `side by side`
 
 ## Already on-brand (no rename planned)
 
@@ -31,7 +30,6 @@ User-facing applet and tool names follow a **Dreamscape** style: short, tangible
 | `naxt` | Atelier |
 | `notebook` | Notion |
 | `bracket-generation` | Phasewalker |
-| `prism` | **Prism** (adjacent Source | Current | Ladder + Studio compare tools) |
 | `presets` | Spellbook (preset manager, Toolbox) |
 | `expanders` | Expanders |
 | `keychain` | Keychain |
@@ -56,6 +54,7 @@ Do not use these for the apps above or minor utilities—they are held for highe
 | **Seismograph** | Event/wave instrument (heavy telemetry UI) |
 | **Ledger** | Audit trail / commit history surface |
 | **Oracle** | Prophecy / AI guidance (director-adjacent) |
+| **Prism** | Signal decomposition / pipeline inspector |
 
 ## Rename candidates (not scheduled)
 
